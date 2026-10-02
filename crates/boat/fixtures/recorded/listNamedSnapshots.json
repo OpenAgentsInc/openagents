@@ -1,0 +1,30 @@
+{
+  "method": "GET",
+  "operation_id": "listNamedSnapshots",
+  "path": "/named-snapshots",
+  "response": {
+    "ok": true,
+    "snapshots": [
+      {
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "name": "redacted",
+        "sizeBytes": 64905216,
+        "snapshotId": "redacted",
+        "sourceSandboxId": "bx_23456789",
+        "status": "ready",
+        "type": "default"
+      },
+      {
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "name": "redacted",
+        "sizeBytes": 46886912,
+        "snapshotId": "redacted",
+        "sourceSandboxId": "bx_23456789",
+        "status": "ready",
+        "type": "default"
+      }
+    ],
+    "type": "snapshot.named.list"
+  },
+  "status": 200
+}

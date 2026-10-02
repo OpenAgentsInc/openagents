@@ -1,0 +1,42 @@
+{
+  "method": "GET",
+  "operation_id": "environments",
+  "path": "/environments",
+  "response": {
+    "environments": [
+      {
+        "envContents": "redacted",
+        "id": "redacted",
+        "isDefault": true,
+        "latestVersionId": "redacted",
+        "latestVersionNumber": 2,
+        "name": "redacted",
+        "passAgentsCredentials": true,
+        "passGithub": true,
+        "passSandboxCredentials": true,
+        "passSecrets": true,
+        "safeForThirdParties": true,
+        "safetyAnsweredAt": null,
+        "secretFiles": [],
+        "selectedRepositories": [],
+        "versions": [
+          {
+            "createdAt": "2026-01-01T00:00:00.000Z",
+            "id": "redacted",
+            "sandboxCount": 0,
+            "versionNumber": 2
+          },
+          {
+            "createdAt": "2026-01-01T00:00:00.000Z",
+            "id": "redacted",
+            "sandboxCount": 0,
+            "versionNumber": 1
+          }
+        ]
+      }
+    ],
+    "ok": true,
+    "type": "environments.list"
+  },
+  "status": 200
+}

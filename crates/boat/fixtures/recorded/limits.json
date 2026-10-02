@@ -1,0 +1,142 @@
+{
+  "method": "GET",
+  "operation_id": "limits",
+  "path": "/limits",
+  "response": {
+    "accessTier": "redacted",
+    "accountPlan": "redacted",
+    "activeSandboxes": 0,
+    "activeStates": [
+      "redacted",
+      "redacted"
+    ],
+    "billingStatus": "redacted",
+    "blockedReason": null,
+    "canStart": true,
+    "checkoutRequired": false,
+    "contactMessage": "redacted",
+    "creditBalanceHours": 555.56,
+    "creditBalanceSeconds": 2000000,
+    "creditPurchasedSeconds": 0,
+    "creditSecondsPerDollar": 100000,
+    "creditUsedSeconds": 51965,
+    "currentLimits": {
+      "activeSandboxes": 100,
+      "creationRatePerMinute": 12,
+      "creationRequestsPerDay": 200,
+      "creationRequestsPerHour": 60
+    },
+    "giftLimit": null,
+    "hasPaymentHistory": true,
+    "hasSeatPlan": true,
+    "hasSubscription": true,
+    "last24hUsageSeconds": 0,
+    "liveUsageSeconds": 0,
+    "maxActiveSandboxes": 100,
+    "maxCreationRequestsPerDay": 200,
+    "maxCreationRequestsPerMinute": 12,
+    "ok": true,
+    "packBalanceDollars": 0,
+    "packBalanceHours": 0,
+    "packBalanceSeconds": 0,
+    "package": {
+      "dollars": 20,
+      "seconds": 2000000,
+      "secondsPerDollar": 100000
+    },
+    "plan": null,
+    "planName": null,
+    "sandboxPlanDollars": 20,
+    "sandboxPlanKey": "box_23456789",
+    "sandboxPlanTiers": [
+      {
+        "displayPrice": "redacted",
+        "dollars": 20,
+        "includedSeconds": 2000000,
+        "key": "box_23456789",
+        "maxActiveSandboxes": 100,
+        "purchasable": true,
+        "startsPerDay": 200,
+        "startsPerHour": 60,
+        "startsPerMinute": 12
+      },
+      {
+        "displayPrice": "redacted",
+        "dollars": 100,
+        "includedSeconds": 10000000,
+        "key": "box_23456789",
+        "maxActiveSandboxes": 300,
+        "purchasable": true,
+        "startsPerDay": 840,
+        "startsPerHour": 210,
+        "startsPerMinute": 30
+      }
+    ],
+    "serviceAccount": false,
+    "standardLimits": {
+      "activeSandboxes": 100,
+      "creationRatePerMinute": 12,
+      "creationRequestsPerDay": 200,
+      "creationRequestsPerHour": 60
+    },
+    "startBlockedReason": null,
+    "startLimits": {
+      "perDay": 200,
+      "perHour": 60,
+      "perMinute": 12
+    },
+    "starts": {
+      "day": {
+        "limit": 200,
+        "remaining": 200,
+        "used": 0
+      },
+      "hour": {
+        "limit": 60,
+        "remaining": 60,
+        "used": 0
+      },
+      "minute": {
+        "limit": 12,
+        "remaining": 12,
+        "used": 0
+      },
+      "unlimited": false
+    },
+    "subscriptionCancelAtPeriodEnd": false,
+    "subscriptionCurrentPeriodEnd": "2026-01-01T00:00:00.000Z",
+    "subscriptionQuotaSeconds": 2000000,
+    "subscriptionRemainingSeconds": 2000000,
+    "subscriptionStatus": "redacted",
+    "subscriptionTrialEndsAt": "2026-01-01T00:00:00.000Z",
+    "trialComputeCapSeconds": null,
+    "trialLimits": {
+      "activeSandboxes": 2,
+      "creationRatePerMinute": 5,
+      "creationRequestsPerDay": 75,
+      "creationRequestsPerHour": 25
+    },
+    "trialLine": null,
+    "type": "limits.info",
+    "unlimited": false,
+    "upgradeEffects": {
+      "endTrialOrFirstPayment": {
+        "activeSandboxes": 100,
+        "creationRequestsPerDay": 200,
+        "note": "redacted"
+      },
+      "pack": {
+        "note": "redacted",
+        "persistsAcrossMonths": true,
+        "seconds": 2000000
+      },
+      "startTrial": {
+        "activeSandboxes": 2,
+        "canCreate": true,
+        "creationRequestsPerDay": 75,
+        "note": "redacted"
+      }
+    }
+  },
+  "status": 200
+}

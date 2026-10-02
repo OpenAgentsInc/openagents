@@ -1,0 +1,21 @@
+{
+  "method": "GET",
+  "operation_id": "listOrganizations",
+  "path": "/orgs",
+  "response": {
+    "activeWalletChosen": false,
+    "ok": true,
+    "orgs": [
+      {
+        "active": true,
+        "id": "redacted",
+        "memberCount": 1,
+        "name": "redacted",
+        "role": "owner",
+        "type": "personal"
+      }
+    ],
+    "type": "org.list"
+  },
+  "status": 200
+}

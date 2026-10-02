@@ -1,0 +1,554 @@
+[
+  {
+    "method": "GET",
+    "path": "/me",
+    "operation_id": "me",
+    "rust_method": "me",
+    "response": "MeResponse",
+    "retry": "read"
+  },
+  {
+    "method": "GET",
+    "path": "/orgs",
+    "operation_id": "listOrganizations",
+    "rust_method": "list_organizations",
+    "response": "OrgListResponse",
+    "retry": "read"
+  },
+  {
+    "method": "PATCH",
+    "path": "/orgs/active",
+    "operation_id": "setActiveOrganization",
+    "rust_method": "set_active_organization",
+    "response": "ActiveOrgResponse",
+    "retry": "never"
+  },
+  {
+    "method": "GET",
+    "path": "/account/data-retention",
+    "operation_id": "getDataRetention",
+    "rust_method": "get_data_retention",
+    "response": "DataRetentionPolicyResponse",
+    "retry": "read"
+  },
+  {
+    "method": "PATCH",
+    "path": "/account/data-retention",
+    "operation_id": "updateDataRetention",
+    "rust_method": "update_data_retention",
+    "response": "DataRetentionPolicyResponse",
+    "retry": "never"
+  },
+  {
+    "method": "GET",
+    "path": "/deletion-operations/{operationId}",
+    "operation_id": "getDeletionOperation",
+    "rust_method": "get_deletion_operation",
+    "response": "DeletionOperationResponse",
+    "retry": "read"
+  },
+  {
+    "method": "GET",
+    "path": "/limits",
+    "operation_id": "limits",
+    "rust_method": "limits",
+    "response": "LimitsResponse",
+    "retry": "read"
+  },
+  {
+    "method": "GET",
+    "path": "/repos",
+    "operation_id": "repos",
+    "rust_method": "repos",
+    "response": "ReposResponse",
+    "retry": "read"
+  },
+  {
+    "method": "POST",
+    "path": "/repos",
+    "operation_id": "selectRepo",
+    "rust_method": "select_repo",
+    "response": "RepoSelectionResponse",
+    "retry": "never"
+  },
+  {
+    "method": "GET",
+    "path": "/api-keys",
+    "operation_id": "apiKeys",
+    "rust_method": "api_keys",
+    "response": "ApiKeysResponse",
+    "retry": "read"
+  },
+  {
+    "method": "POST",
+    "path": "/api-keys/scoped",
+    "operation_id": "createScopedApiKey",
+    "rust_method": "create_scoped_api_key",
+    "response": "ApiKeySecretResponse",
+    "retry": "never"
+  },
+  {
+    "method": "DELETE",
+    "path": "/api-keys/{apiKeyId}",
+    "operation_id": "revokeApiKey",
+    "rust_method": "revoke_api_key",
+    "response": "ApiKeyRevokeResponse",
+    "retry": "never"
+  },
+  {
+    "method": "POST",
+    "path": "/api-keys/{apiKeyId}/rotate",
+    "operation_id": "rotateApiKey",
+    "rust_method": "rotate_api_key",
+    "response": "ApiKeySecretResponse",
+    "retry": "never"
+  },
+  {
+    "method": "GET",
+    "path": "/api-keys/{apiKeyId}/usage",
+    "operation_id": "apiKeyUsage",
+    "rust_method": "api_key_usage",
+    "response": "ApiKeyUsageResponse",
+    "retry": "read"
+  },
+  {
+    "method": "GET",
+    "path": "/webhooks",
+    "operation_id": "listWebhooks",
+    "rust_method": "list_webhooks",
+    "response": "WebhookListResponse",
+    "retry": "read"
+  },
+  {
+    "method": "POST",
+    "path": "/webhooks",
+    "operation_id": "createWebhook",
+    "rust_method": "create_webhook",
+    "response": "WebhookSecretResponse",
+    "retry": "never"
+  },
+  {
+    "method": "GET",
+    "path": "/webhooks/{webhookId}",
+    "operation_id": "getWebhook",
+    "rust_method": "get_webhook",
+    "response": "WebhookResponse",
+    "retry": "read"
+  },
+  {
+    "method": "PATCH",
+    "path": "/webhooks/{webhookId}",
+    "operation_id": "updateWebhook",
+    "rust_method": "update_webhook",
+    "response": "WebhookResponse",
+    "retry": "never"
+  },
+  {
+    "method": "DELETE",
+    "path": "/webhooks/{webhookId}",
+    "operation_id": "deleteWebhook",
+    "rust_method": "delete_webhook",
+    "response": "WebhookDeleteResponse",
+    "retry": "never"
+  },
+  {
+    "method": "POST",
+    "path": "/webhooks/{webhookId}/rotate",
+    "operation_id": "rotateWebhookSigningSecret",
+    "rust_method": "rotate_webhook_signing_secret",
+    "response": "WebhookSecretResponse",
+    "retry": "never"
+  },
+  {
+    "method": "GET",
+    "path": "/secrets",
+    "operation_id": "secrets",
+    "rust_method": "secrets",
+    "response": "SecretsResponse",
+    "retry": "read"
+  },
+  {
+    "method": "POST",
+    "path": "/secrets",
+    "operation_id": "updateSecrets",
+    "rust_method": "update_secrets",
+    "response": "SecretsResponse",
+    "retry": "never"
+  },
+  {
+    "method": "GET",
+    "path": "/environments",
+    "operation_id": "environments",
+    "rust_method": "environments",
+    "response": "SandboxEnvironmentListResponse",
+    "retry": "read"
+  },
+  {
+    "method": "POST",
+    "path": "/environments",
+    "operation_id": "createEnvironment",
+    "rust_method": "create_environment",
+    "response": "SandboxEnvironmentListResponse",
+    "retry": "never"
+  },
+  {
+    "method": "PUT",
+    "path": "/environments/{environmentId}",
+    "operation_id": "updateEnvironment",
+    "rust_method": "update_environment",
+    "response": "SandboxEnvironmentResponse",
+    "retry": "never"
+  },
+  {
+    "method": "DELETE",
+    "path": "/environments/{environmentId}",
+    "operation_id": "deleteEnvironment",
+    "rust_method": "delete_environment",
+    "response": "SandboxEnvironmentResponse",
+    "retry": "never"
+  },
+  {
+    "method": "POST",
+    "path": "/environments/{environmentId}/upgrade",
+    "operation_id": "upgradeEnvironment",
+    "rust_method": "upgrade_environment",
+    "response": "UpgradeSandboxEnvironmentResponse",
+    "retry": "never"
+  },
+  {
+    "method": "PUT",
+    "path": "/environments/{environmentId}/vars/{key}",
+    "operation_id": "setEnvironmentVar",
+    "rust_method": "set_environment_var",
+    "response": "EnvironmentItemChangeResponse",
+    "retry": "never"
+  },
+  {
+    "method": "DELETE",
+    "path": "/environments/{environmentId}/vars/{key}",
+    "operation_id": "deleteEnvironmentVar",
+    "rust_method": "delete_environment_var",
+    "response": "EnvironmentItemChangeResponse",
+    "retry": "never"
+  },
+  {
+    "method": "PUT",
+    "path": "/environments/{environmentId}/secret-files",
+    "operation_id": "setEnvironmentSecretFile",
+    "rust_method": "set_environment_secret_file",
+    "response": "EnvironmentItemChangeResponse",
+    "retry": "never"
+  },
+  {
+    "method": "DELETE",
+    "path": "/environments/{environmentId}/secret-files",
+    "operation_id": "deleteEnvironmentSecretFile",
+    "rust_method": "delete_environment_secret_file",
+    "response": "EnvironmentItemChangeResponse",
+    "retry": "never"
+  },
+  {
+    "method": "POST",
+    "path": "/environments/{environmentId}/repos",
+    "operation_id": "addEnvironmentRepo",
+    "rust_method": "add_environment_repo",
+    "response": "EnvironmentItemChangeResponse",
+    "retry": "never"
+  },
+  {
+    "method": "DELETE",
+    "path": "/environments/{environmentId}/repos/{repositoryId}",
+    "operation_id": "deleteEnvironmentRepo",
+    "rust_method": "delete_environment_repo",
+    "response": "EnvironmentItemChangeResponse",
+    "retry": "never"
+  },
+  {
+    "method": "GET",
+    "path": "/sandboxes",
+    "operation_id": "sandboxes",
+    "rust_method": "sandboxes",
+    "response": "SandboxListResponse",
+    "retry": "read"
+  },
+  {
+    "method": "POST",
+    "path": "/sandboxes",
+    "operation_id": "create",
+    "rust_method": "create",
+    "response": "CreateSandboxResponse",
+    "retry": "if_idempotency_key"
+  },
+  {
+    "method": "GET",
+    "path": "/sandboxes/{sandboxId}",
+    "operation_id": "get",
+    "rust_method": "get",
+    "response": "SandboxInfoResponse",
+    "retry": "read"
+  },
+  {
+    "method": "PATCH",
+    "path": "/sandboxes/{sandboxId}",
+    "operation_id": "update",
+    "rust_method": "update",
+    "response": "SandboxInfoResponse",
+    "retry": "never"
+  },
+  {
+    "method": "DELETE",
+    "path": "/sandboxes/{sandboxId}",
+    "operation_id": "deleteSandbox",
+    "rust_method": "delete_sandbox",
+    "response": "DeletionOperationResponse",
+    "retry": "never"
+  },
+  {
+    "method": "POST",
+    "path": "/sandboxes/{sandboxId}/stop",
+    "operation_id": "stop",
+    "rust_method": "stop",
+    "response": "SandboxActionResponse",
+    "retry": "never"
+  },
+  {
+    "method": "POST",
+    "path": "/sandboxes/{sandboxId}/share",
+    "operation_id": "share",
+    "rust_method": "share",
+    "response": "ShareResponseBody",
+    "retry": "never"
+  },
+  {
+    "method": "POST",
+    "path": "/sandboxes/{sandboxId}/resume",
+    "operation_id": "resume",
+    "rust_method": "resume",
+    "response": "SandboxActionResponse",
+    "retry": "never"
+  },
+  {
+    "method": "POST",
+    "path": "/sandboxes/{sandboxId}/fork",
+    "operation_id": "fork",
+    "rust_method": "fork",
+    "response": "SandboxActionResponse",
+    "retry": "if_idempotency_key"
+  },
+  {
+    "method": "POST",
+    "path": "/sandboxes/{sandboxId}/prompt",
+    "operation_id": "prompt",
+    "rust_method": "prompt",
+    "response": "PromptResponse",
+    "retry": "never"
+  },
+  {
+    "method": "GET",
+    "path": "/sandboxes/{sandboxId}/events",
+    "operation_id": "events",
+    "rust_method": "events",
+    "response": "EventsResponse",
+    "retry": "read"
+  },
+  {
+    "method": "GET",
+    "path": "/sandboxes/{sandboxId}/conversations",
+    "operation_id": "conversations",
+    "rust_method": "conversations",
+    "response": "ConversationsResponse",
+    "retry": "read"
+  },
+  {
+    "method": "GET",
+    "path": "/sandboxes/{sandboxId}/prompts/{promptId}",
+    "operation_id": "promptRunStatus",
+    "rust_method": "prompt_run_status",
+    "response": "PromptRunResponse",
+    "retry": "read"
+  },
+  {
+    "method": "GET",
+    "path": "/sandboxes/{sandboxId}/files",
+    "operation_id": "readFile",
+    "rust_method": "read_file",
+    "response": "FileReadResponse",
+    "retry": "read"
+  },
+  {
+    "method": "PUT",
+    "path": "/sandboxes/{sandboxId}/files",
+    "operation_id": "writeFile",
+    "rust_method": "write_file",
+    "response": "FileWriteResponse",
+    "retry": "never"
+  },
+  {
+    "method": "POST",
+    "path": "/sandboxes/{sandboxId}/commands",
+    "operation_id": "command",
+    "rust_method": "command",
+    "response": "CommandResponseBody",
+    "retry": "never"
+  },
+  {
+    "method": "GET",
+    "path": "/sandboxes/{sandboxId}/commands/{processId}",
+    "operation_id": "commandStatus",
+    "rust_method": "command_status",
+    "response": "CommandStatusResponse",
+    "retry": "read"
+  },
+  {
+    "method": "GET",
+    "path": "/sandboxes/{sandboxId}/artifacts",
+    "operation_id": "artifact",
+    "rust_method": "artifact",
+    "response": "crate::Download",
+    "retry": "read"
+  },
+  {
+    "method": "POST",
+    "path": "/sandboxes/{sandboxId}/steer",
+    "operation_id": "steer",
+    "rust_method": "steer",
+    "response": "SteerResponse",
+    "retry": "never"
+  },
+  {
+    "method": "POST",
+    "path": "/sandboxes/{sandboxId}/interrupt",
+    "operation_id": "interrupt",
+    "rust_method": "interrupt",
+    "response": "SandboxActionResponse",
+    "retry": "never"
+  },
+  {
+    "method": "POST",
+    "path": "/sandboxes/{sandboxId}/desktop",
+    "operation_id": "desktop",
+    "rust_method": "desktop",
+    "response": "DesktopResponse",
+    "retry": "never"
+  },
+  {
+    "method": "POST",
+    "path": "/sandboxes/{sandboxId}/host",
+    "operation_id": "hostPort",
+    "rust_method": "host_port",
+    "response": "HostPortResponse",
+    "retry": "never"
+  },
+  {
+    "method": "POST",
+    "path": "/sandboxes/{sandboxId}/sshkey",
+    "operation_id": "sshKey",
+    "rust_method": "ssh_key",
+    "response": "SshKeyResponse",
+    "retry": "never"
+  },
+  {
+    "method": "GET",
+    "path": "/named-snapshots",
+    "operation_id": "listNamedSnapshots",
+    "rust_method": "list_named_snapshots",
+    "response": "NamedSnapshotListResponse",
+    "retry": "read"
+  },
+  {
+    "method": "POST",
+    "path": "/named-snapshots",
+    "operation_id": "saveNamedSnapshot",
+    "rust_method": "save_named_snapshot",
+    "response": "NamedSnapshotSavingResponse",
+    "retry": "never"
+  },
+  {
+    "method": "GET",
+    "path": "/named-snapshots/{name}",
+    "operation_id": "getNamedSnapshot",
+    "rust_method": "get_named_snapshot",
+    "response": "NamedSnapshotInfoResponse",
+    "retry": "read"
+  },
+  {
+    "method": "DELETE",
+    "path": "/named-snapshots/{name}",
+    "operation_id": "deleteNamedSnapshot",
+    "rust_method": "delete_named_snapshot",
+    "response": "NamedSnapshotDeletedResponse",
+    "retry": "never"
+  },
+  {
+    "method": "GET",
+    "path": "/snapshots",
+    "operation_id": "listSnapshots",
+    "rust_method": "list_snapshots",
+    "response": "SnapshotListResponse",
+    "retry": "read"
+  },
+  {
+    "method": "GET",
+    "path": "/sandboxes/{sandboxId}/snapshots",
+    "operation_id": "listSandboxSnapshots",
+    "rust_method": "list_sandbox_snapshots",
+    "response": "SnapshotListResponse",
+    "retry": "read"
+  },
+  {
+    "method": "DELETE",
+    "path": "/sandboxes/{sandboxId}/snapshots",
+    "operation_id": "deleteSandboxSnapshots",
+    "rust_method": "delete_sandbox_snapshots",
+    "response": "DeletionOperationListResponse",
+    "retry": "never"
+  },
+  {
+    "method": "GET",
+    "path": "/sandboxes/{sandboxId}/snapshots/latest",
+    "operation_id": "getLatestSandboxSnapshot",
+    "rust_method": "get_latest_sandbox_snapshot",
+    "response": "SnapshotLatestResponse",
+    "retry": "read"
+  },
+  {
+    "method": "GET",
+    "path": "/sandboxes/{sandboxId}/usage",
+    "operation_id": "usage",
+    "rust_method": "usage",
+    "response": "SandboxUsageResponse",
+    "retry": "read"
+  },
+  {
+    "method": "DELETE",
+    "path": "/snapshots/{snapshotId}",
+    "operation_id": "deleteSnapshot",
+    "rust_method": "delete_snapshot",
+    "response": "DeletionOperationResponse",
+    "retry": "never"
+  },
+  {
+    "method": "GET",
+    "path": "/snapshots/{snapshotId}/tree",
+    "operation_id": "getSnapshotTree",
+    "rust_method": "get_snapshot_tree",
+    "response": "SnapshotTreeResponse",
+    "retry": "read"
+  },
+  {
+    "method": "GET",
+    "path": "/snapshots/{snapshotId}/files",
+    "operation_id": "getSnapshotFile",
+    "rust_method": "get_snapshot_file",
+    "response": "crate::Download",
+    "retry": "read"
+  },
+  {
+    "method": "GET",
+    "path": "/snapshots/{snapshotId}/download",
+    "operation_id": "getSnapshotDownload",
+    "rust_method": "get_snapshot_download",
+    "response": "SnapshotDownloadResponse",
+    "retry": "read"
+  }
+]

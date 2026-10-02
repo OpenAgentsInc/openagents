@@ -1,0 +1,33 @@
+{
+  "method": "GET",
+  "operation_id": "me",
+  "path": "/me",
+  "response": {
+    "ok": true,
+    "type": "user.info",
+    "user": {
+      "accountPlan": "redacted",
+      "accountStatus": "redacted",
+      "closed": false,
+      "closedAt": null,
+      "closureContactEmail": "user@example.com",
+      "connectionMethod": "redacted",
+      "connectionMethods": [
+        "redacted"
+      ],
+      "displayName": "redacted",
+      "email": "user@example.com",
+      "id": "redacted",
+      "login": "redacted",
+      "purgeAt": null,
+      "purgedAt": null,
+      "serviceAccount": false,
+      "suspended": false,
+      "suspendedAt": null,
+      "suspendedReason": null,
+      "zeroDataRetention": false,
+      "zeroDataRetentionEnabledAt": null
+    }
+  },
+  "status": 200
+}

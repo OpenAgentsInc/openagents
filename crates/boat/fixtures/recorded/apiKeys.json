@@ -1,0 +1,100 @@
+{
+  "method": "GET",
+  "operation_id": "apiKeys",
+  "path": "/api-keys",
+  "response": {
+    "apiKeys": [
+      {
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "credentialLane": "redacted",
+        "expired": false,
+        "expiresAt": "2026-01-01T00:00:00.000Z",
+        "expiringSoon": false,
+        "id": "redacted",
+        "keyLastFour": "redacted",
+        "keyPrefix": "boat_23456789",
+        "lastUsedAt": "2026-01-01T00:00:00.000Z",
+        "name": "redacted",
+        "resources": {
+          "agents": 0,
+          "sandboxes": 0,
+          "total": 0
+        },
+        "sandboxId": null,
+        "scope": {
+          "actions": [
+            "redacted"
+          ],
+          "environments": "redacted",
+          "expiresAt": "2026-01-01T00:00:00.000Z",
+          "grandfathered": false,
+          "sandboxes": "redacted"
+        },
+        "usage": {
+          "requests": 20,
+          "windowDays": 30
+        }
+      },
+      {
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "credentialLane": "redacted",
+        "expired": false,
+        "expiresAt": null,
+        "expiringSoon": false,
+        "id": "redacted",
+        "keyLastFour": "redacted",
+        "keyPrefix": "box_23456789",
+        "lastUsedAt": "2026-01-01T00:00:00.000Z",
+        "name": "redacted",
+        "resources": {
+          "agents": 0,
+          "sandboxes": 2,
+          "total": 2
+        },
+        "sandboxId": null,
+        "scope": {
+          "actions": [
+            "redacted"
+          ],
+          "environments": "redacted",
+          "expiresAt": null,
+          "grandfathered": true,
+          "sandboxes": "redacted"
+        },
+        "usage": {
+          "requests": 7032,
+          "windowDays": 30
+        }
+      }
+    ],
+    "catalog": {
+      "actions": [
+        "redacted",
+        "redacted"
+      ],
+      "defaultTtl": "redacted",
+      "maxTtl": "redacted",
+      "presets": {
+        "admin": [
+          "redacted"
+        ],
+        "ci": [
+          "redacted",
+          "redacted"
+        ],
+        "full-sandbox": [
+          "redacted",
+          "redacted"
+        ],
+        "read-only": [
+          "redacted",
+          "redacted"
+        ]
+      },
+      "scopedCreationEnabled": true
+    },
+    "ok": true,
+    "type": "api_key.list"
+  },
+  "status": 200
+}
