@@ -816,14 +816,17 @@ impl CoderTab {
         }
     }
 
-    /// The open conversation's Coder task, once its turn has ended, as the
-    /// router's context (#10094): what the task's chat showed when the
-    /// follow-up left it, else only how it ended. `None` while it runs.
+    /// The open conversation's Coder task, as the router's context: once
+    /// its turn has ended, what the task's chat showed when the follow-up
+    /// left it, else only how it ended (#10094); while it runs or waits,
+    /// that it does, with its computer's headline (#10143).
     fn talk_run(&self, computers: Option<&Computers>) -> Option<openagents_chat::router::CoderRun> {
         let id = self.talk.as_deref()?;
         let spawned = self.basic.get(id)?.coder.as_ref()?;
-        let phase = Self::summary(computers?.snapshot(), &spawned.host, &spawned.task)?.phase;
-        let ending = ending_of(phase)?;
+        let summary = Self::summary(computers?.snapshot(), &spawned.host, &spawned.task);
+        let Some(ending) = summary.and_then(|summary| ending_of(summary.phase)) else {
+            return Some(going_run(summary));
+        };
         Some(
             self.talk_runs
                 .get(id)
@@ -4338,6 +4341,28 @@ fn ending_of(phase: Phase) -> Option<openagents_chat::router::RunEnding> {
     }
 }
 
+/// A task whose turn has not ended, as the router's context (#10143):
+/// waiting for the person, else running (a task just started may have no
+/// summary yet), with the computer's headline as what it is doing.
+fn going_run(summary: Option<&ActivitySummary>) -> openagents_chat::router::CoderRun {
+    use openagents_chat::router::{CoderRun, RunEnding};
+    CoderRun {
+        ending: if summary.is_some_and(|summary| summary.phase == Phase::Waiting) {
+            RunEnding::Waiting
+        } else {
+            RunEnding::Running
+        },
+        turn: 1,
+        engine: None,
+        model: None,
+        summary: summary
+            .map(|summary| summary.headline.clone())
+            .unwrap_or_default(),
+        files: Vec::new(),
+        commands: Vec::new(),
+    }
+}
+
 /// What an ended task's chat shows of its last turn, as the router's
 /// context (#10094): its last reply, the commands after the last message
 /// the person sent, and the files its review read.
@@ -5421,6 +5446,36 @@ mod tests {
         .unwrap();
         assert_eq!(shown.chars().count(), OUTCOME_CHARS);
         assert!(shown.ends_with('…'));
+    }
+
+    /// A conversation whose Coder task has not ended tells the router it
+    /// runs or waits, with the computer's headline (#10143); a task just
+    /// started, with no summary yet, runs.
+    #[test]
+    fn a_going_task_is_sent_as_running_or_waiting() {
+        use openagents_chat::router::RunEnding;
+        assert_eq!(going_run(None).ending, RunEnding::Running);
+        assert!(going_run(None).summary.is_empty());
+        let summary = |phase| ActivitySummary {
+            host: "a".repeat(64),
+            subject_kind: SubjectKind::Task,
+            subject: "b".repeat(64),
+            sequence: 1,
+            phase,
+            headline: "Reading acceptance-repo".into(),
+            attention: Attention::None,
+            updated_at: 0,
+        };
+        for (phase, ending) in [
+            (Phase::Queued, RunEnding::Running),
+            (Phase::Running, RunEnding::Running),
+            (Phase::Unknown, RunEnding::Running),
+            (Phase::Waiting, RunEnding::Waiting),
+        ] {
+            let run = going_run(Some(&summary(phase)));
+            assert_eq!(run.ending, ending, "{phase:?}");
+            assert_eq!(run.summary, "Reading acceptance-repo");
+        }
     }
 
     #[test]

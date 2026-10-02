@@ -325,7 +325,8 @@ pub const MAX_RUN_COMMAND_BYTES: usize = 200;
 /// The longest model name, in bytes.
 pub const MAX_RUN_MODEL_BYTES: usize = 64;
 
-/// How the chat's Coder run ended its last turn (#10094).
+/// How the chat's Coder run ended its last turn (#10094), or that the turn
+/// is still going (#10143).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RunEnding {
     /// It finished with a result.
@@ -334,6 +335,10 @@ pub enum RunEnding {
     Failed,
     /// The person or the host stopped it.
     Stopped,
+    /// Its turn is still going: started, queued, or working.
+    Running,
+    /// Its turn waits for the person's answer or approval.
+    Waiting,
 }
 
 impl RunEnding {
@@ -344,6 +349,8 @@ impl RunEnding {
             Self::Finished => "finished",
             Self::Failed => "failed",
             Self::Stopped => "stopped",
+            Self::Running => "running",
+            Self::Waiting => "waiting",
         }
     }
 }
@@ -519,10 +526,10 @@ pub struct Context {
     /// The chat's project folder. Its path is sent only with
     /// [`Computer::Here`].
     pub project: Option<Project>,
-    /// The chat's Coder run, once its turn has ended (#10094): what it
+    /// The chat's Coder run (#10094): once its turn has ended, what it
     /// did, for the chat to answer about and the router to decide whether
-    /// a follow-up is more work for it. `None` while it runs, while it
-    /// waits for an answer, and in a chat with no run.
+    /// a follow-up is more work for it; while it runs or waits for an
+    /// answer, that it does (#10143). `None` in a chat with no run.
     pub coder_run: Option<CoderRun>,
     /// The conversation's open test-set draft (`openagents.eval-draft.v1`),
     /// which the phone keeps and resends each turn: the request's `draft`,
@@ -1598,6 +1605,32 @@ mod computer_context_tests {
         assert_eq!(long["commands"][0], "echo 24");
         assert!(long.get("engine").is_none());
         assert_eq!(long["ending"], "failed");
+    }
+
+    /// A turn sent while the chat's Coder run is still going carries it,
+    /// with the words the worker reads (#10143).
+    #[test]
+    fn a_running_coder_run_is_sent() {
+        for (ending, word) in [
+            (RunEnding::Running, "running"),
+            (RunEnding::Waiting, "waiting"),
+        ] {
+            let context = Context {
+                coder_run: Some(CoderRun {
+                    ending,
+                    turn: 1,
+                    engine: None,
+                    model: None,
+                    summary: "Reading acceptance-repo".into(),
+                    files: vec![],
+                    commands: vec![],
+                }),
+                ..Context::default()
+            };
+            let run = &context.json()["coder_run"];
+            assert_eq!(run["ending"], word);
+            assert_eq!(run["summary"], "Reading acceptance-repo");
+        }
     }
 
     /// A phone names its paired computer and the project by name, never a
