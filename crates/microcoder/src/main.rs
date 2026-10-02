@@ -296,6 +296,13 @@ fn jev_client() -> Result<jev::Client, String> {
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args == ["--version"] {
+        println!(
+            "{}",
+            coder::identity::program_line("microcoder", env!("CARGO_PKG_VERSION"))
+        );
+        return ExitCode::SUCCESS;
+    }
     if args
         .first()
         .is_some_and(|argument| argument == "repository")

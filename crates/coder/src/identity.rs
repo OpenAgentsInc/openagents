@@ -36,7 +36,18 @@ pub fn build() -> String {
 /// What `coder --version` prints.
 #[must_use]
 pub fn line() -> String {
-    format!("coder {VERSION} ({REPOSITORY} {} {TREE})", short_commit())
+    program_line("coder", VERSION)
+}
+
+/// What a program built from this repository prints for `--version`: its
+/// name and version, then the repository, the commit, and the tree state,
+/// such as `openagents 1.0.0-rc.2 (OpenAgentsInc/openagents 68662bd344 clean)`.
+#[must_use]
+pub fn program_line(program: &str, version: &str) -> String {
+    format!(
+        "{program} {version} ({REPOSITORY} {} {TREE})",
+        short_commit()
+    )
 }
 
 #[cfg(test)]

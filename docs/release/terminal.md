@@ -59,10 +59,10 @@ runs build there.
 
 ## Cut a release
 
-1. **Bump the version.** Set `version` in `crates/openagents-cli/Cargo.toml`
-   and `crates/openagents-terminal/Cargo.toml` to the release, such as
-   `1.0.0-rc.2` or `1.0.0`. `openagents --version` and the welcome card print
-   it. It moves apart from the workspace version. Commit and push it.
+1. **Bump the version.** Set `version` in `crates/openagents-cli/Cargo.toml`,
+   `crates/openagents-terminal/Cargo.toml`, and `crates/microcoder/Cargo.toml`
+   to the release, such as `1.0.0-rc.2` or `1.0.0`. `openagents --version`,
+   the welcome card, and `microcoder --version` print it. It moves apart from the workspace version. Commit and push it.
 2. **Build and check.**
    `CARGO_TARGET_DIR=~/work/openagents-target-release scripts/release/terminal.sh --version 1.0.0-rc.2`
    builds every platform from an archive of `HEAD` and stages the

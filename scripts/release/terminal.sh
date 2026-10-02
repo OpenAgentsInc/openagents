@@ -39,11 +39,12 @@
 # bucket holds, and never replaces an object. A new build takes the next
 # rc.N.
 #
-# The version is the `version` of `crates/openagents-cli` and
-# `crates/openagents-terminal`, which `openagents --version` and the welcome
-# card print. It moves apart from the workspace version, and the script
-# refuses a --version that differs from either crate's at the commit, so a
-# release is cut by committing the bump first.
+# The version is the `version` of `crates/openagents-cli`,
+# `crates/openagents-terminal`, and `crates/microcoder`, which
+# `openagents --version`, the welcome card, and `microcoder --version` print.
+# It moves apart from the workspace version, and the script refuses a
+# --version that differs from any of those crates' at the commit, so a release
+# is cut by committing the bump first.
 #
 # Every artifact is built from an archive of the commit, extracted into a
 # directory of its own, and never from the checkout, so an edit that lands
@@ -469,7 +470,7 @@ done
 # The version the binaries print is their crates' own, so a --version that
 # differs would publish artifacts named for one release that call themselves
 # another.
-for manifest in crates/openagents-cli/Cargo.toml crates/openagents-terminal/Cargo.toml; do
+for manifest in crates/openagents-cli/Cargo.toml crates/openagents-terminal/Cargo.toml crates/microcoder/Cargo.toml; do
   crate_version=$(git -C "$repo_root" show "$sha:$manifest" 2>/dev/null |
     sed -n 's/^version = "\(.*\)"$/\1/p' | head -1)
   [ "$crate_version" = "$version" ] ||

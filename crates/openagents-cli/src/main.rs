@@ -258,13 +258,7 @@ pub(crate) fn host_answers_at(socket: &Path) -> bool {
 /// (`1.0.0-rc.1`), then the repository, the commit, and the tree state the
 /// build came from.
 pub(crate) fn version_line() -> String {
-    format!(
-        "openagents {} ({} {} {})",
-        env!("CARGO_PKG_VERSION"),
-        coder::identity::REPOSITORY,
-        coder::identity::short_commit(),
-        coder::identity::TREE
-    )
+    coder::identity::program_line("openagents", env!("CARGO_PKG_VERSION"))
 }
 
 pub fn runtime() -> tokio::runtime::Runtime {
