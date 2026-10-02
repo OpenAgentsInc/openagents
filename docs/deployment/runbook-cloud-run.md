@@ -17,7 +17,7 @@ same binary on one box.
 | Tag convention | the 10-character commit hash the image was built from (`git rev-parse --short=10 HEAD`) |
 | Database | Cloud SQL `openagentsgemini:us-central1:khala-sync-pg`, database `nostr_relay_v2`, user `khala_app`, over the `/cloudsql/...` socket |
 | Secrets | `PGPASSWORD` from `openagents-monolith-pgpassword`, `NOSTR_RELAY_SECRET_KEY` from `openagents-nostr-relay-private-key` |
-| Runtime service account | `oa-nostr-relay@openagentsgemini.iam.gserviceaccount.com` in the service template since 2026-10-02 (the serving revision `00034-pit` still runs as `157437760789-compute@developer.gserviceaccount.com`); see [Accounts](#accounts) |
+| Runtime service account | `oa-nostr-relay@openagentsgemini.iam.gserviceaccount.com` since revision `00036-toy` (2026-10-02); earlier revisions ran as `157437760789-compute@developer.gserviceaccount.com`. See [Accounts](#accounts) |
 | Media | Bucket `gs://openagentsgemini-relay-media` (public read; `oa-nostr-relay` is `roles/storage.objectAdmin` on it) mounted as volume `media` (Cloud Storage FUSE) at `/var/lib/nostr-relay/media`, with `NOSTR_RELAY_MEDIA_ROOT=/var/lib/nostr-relay/media`, `NOSTR_RELAY_MEDIA_CLOUD_BASE_URL=https://storage.googleapis.com/openagentsgemini-relay-media`, `NOSTR_RELAY_MEDIA_MAX_BLOB_BYTES=16777216` (the CLI's `MAX_BLOB`; Cloud Run's request limit is 32 MiB). Uploads are `PUT /upload` with a NIP-98 event signed by the uploader's key (`docs/protocol/media.md`); reads redirect to the bucket |
 
 The rest of the environment (`NOSTR_RELAY_URL=wss://relay.openagents.com`,
@@ -40,33 +40,15 @@ History:
 | 2026-09-27 | `openagents-nostr-relay-00029-nar` | `24fc83269a` | Applied migration 11 (`push_executor`, new tables only; NIP-PL delivery stays off without `NOSTR_RELAY_PUSH_SECRET`). NIP-CAP heads with `requires: ["oa-x402-v1"]` are now accepted. Build ran as the automation account; deploy and traffic shift ran as `chris@` after a `--no-launch-browser` login. Verified by `openagents x402 advertise --binding mcp:1` publishing to `next` and `openagents cap describe` reading it from `relay.openagents.com` |
 | 2026-09-29 | `openagents-nostr-relay-00031-mel` | `358975bdbd` | No migrations. Pipelined admission statements, in-memory fan-out after commit, `TCP_NODELAY` (`f20742ebf7`). Build ran as the automation account; its deploy was again refused `actAs` although it holds `roles/iam.serviceAccountUser` on the runtime account, so deploy and traffic shift ran as `chris@`. Verified by the step 3 checks and `chat-load-bench` against `relay.openagents.com`: median request `OK` 78 to 71 ms, request to reply 221 to 178 ms, chat open done 424 to 331 ms |
 | 2026-09-29 | `openagents-nostr-relay-00034-pit` | `17cefc1703` | No migrations. A lost Postgres notification listener no longer stops the relay: it reconnects with backoff and catches up by sequence; a cancelled history read no longer fails the next statement on its worker, which stopped the relay four times on 2026-09-29 (#9947). Rollback revision: `00031-mel`. Build ran as the automation account; the deploy, the traffic shift, and removing the crash-looping `candidate` tag and revision 00023-kax ran as `chris@` (the account was refused `actAs` again, including for `update-traffic --remove-tags`). Verified by the step 3 checks on `next` and production, `live_basic_coder_streams_a_reply` (first words 0.66 s, answer 5.2 s), an XP referee pass reading the relay after the shift, and 11 minutes of logs with no warning, error, or restart (70 WebSocket sessions, no 5xx) |
-| 2026-10-02 | `openagents-nostr-relay-00036-toy` (failed, never served) | `17cefc1703` | Same image; adds the media volume and variables above and moves the template to the new `oa-nostr-relay` account, so `plugin publish` and `plugin test publish` can upload without cloud credentials (#10181). The bucket mounted; the revision failed its startup probe because `oa-nostr-relay` lacks project `roles/cloudsql.client` (`boss::NOT_AUTHORIZED` on `khala-sync-pg`), which the automation account cannot grant. Traffic stayed on `00034-pit`; the `next` tag was removed. Pending the owner's grant (workspace `NEEDS_OWNER.md`), then [Enabling media](#enabling-media) |
+| 2026-10-02 | `openagents-nostr-relay-00036-toy` | `17cefc1703` | No migrations; same image. Turns Blossom media on (the volume and variables above) and runs as the new `oa-nostr-relay` account, so `plugin publish` and `plugin test publish` upload without cloud credentials (#10181). Its first start failed (`boss::NOT_AUTHORIZED` on `khala-sync-pg`: the account had no project `roles/cloudsql.client`); after the owner granted `cloudsql.client`, `logging.logWriter`, and `monitoring.metricWriter`, the revision became ready. The whole deploy ran as the automation account (no `actAs` refusal on `oa-nostr-relay`). Verified on `next` by the step 3 checks and `PUT /upload` answering `401` (was `405`), then on production after the shift by a real `openagents plugin publish` with no `--blossom` (throwaway plugin `blob-upload-test-10181`, release `a9571ee442`: four blobs uploaded, `plugin install` fetched and verified each through a `307` to the bucket; then revoked and its listing deleted, after which install finds no such plugin). Rollback revision: `00034-pit` (no media) |
 
-## Enabling media
+## Media checks
 
-After `oa-nostr-relay` holds project `roles/cloudsql.client`,
-`roles/logging.logWriter`, and `roles/monitoring.metricWriter` (it already
-reads the two secrets and writes the media bucket), the automation account
-can create the revision itself, since it may act as that account:
-
-```sh
-gcloud run services update openagents-nostr-relay --region us-central1 \
-  --project openagentsgemini --no-traffic --tag next   # the template already carries media
-gcloud run services update-traffic openagents-nostr-relay \
-  --to-revisions <new-revision>=100 --region us-central1 --project openagentsgemini
-gcloud run services update-traffic openagents-nostr-relay --remove-tags next \
-  --region us-central1 --project openagentsgemini
-```
-
-Until that grant, any new revision from the template fails the same way.
-To ship an image before it, deploy as `chris@` with
-`--service-account 157437760789-compute@developer.gserviceaccount.com`
-(media then works too: that account is also `roles/storage.objectAdmin` on
-the bucket).
-
-Check it: `curl -s -o /dev/null -w '%{http_code}' -X PUT https://relay.openagents.com/upload`
-answers `401` (no authorization), not `405`, and a `plugin test publish`
-with no `--blossom` uploads its files.
+`curl -s -o /dev/null -w '%{http_code}' -X PUT -H 'content-length: 0' https://relay.openagents.com/upload`
+answers `401` (no authorization), not `405`; a `plugin publish` with no
+`--blossom` uploads its files, and `HEAD /<sha256>` on the relay answers
+`307` to `https://storage.googleapis.com/openagentsgemini-relay-media/...`.
+A revision that should not take uploads leaves out `NOSTR_RELAY_MEDIA_ROOT`.
 
 ## Accounts
 
@@ -81,13 +63,14 @@ On 2026-09-26 it was still refused
 cannot read the project IAM policy, so it cannot grant itself more; plan on
 `chris@` for these two steps until an owner fixes the binding.
 
-On 2026-10-02 the service template moved to a dedicated runtime account,
+Since 2026-10-02 the service runs as a dedicated account,
 `oa-nostr-relay@openagentsgemini.iam.gserviceaccount.com`, on which the
-automation account does hold a working `roles/iam.serviceAccountUser`
-(it created revision `00036-toy` with no `actAs` refusal). It reads
-`openagents-monolith-pgpassword` and `openagents-nostr-relay-private-key`
-and administers objects in the media bucket; it still needs the project
-roles named in [Enabling media](#enabling-media) from an owner.
+automation account holds a working `roles/iam.serviceAccountUser`, so the
+automation account now deploys and shifts traffic itself. `oa-nostr-relay`
+holds project `roles/cloudsql.client`, `roles/logging.logWriter`, and
+`roles/monitoring.metricWriter`, reads `openagents-monolith-pgpassword` and
+`openagents-nostr-relay-private-key`, and is `roles/storage.objectAdmin` on
+the media bucket.
 
 ## 1. Check migrations before you build
 
