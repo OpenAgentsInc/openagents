@@ -52,8 +52,10 @@ The app has four tabs, shown as icons:
   and while the tab shows the phone keeps one signed-in relay connection
   with its subscription placed, so a message only publishes its request;
   the connection closes in the background. The app holds no model key; the
-  worker meters each caller key (see `INVARIANTS.md`). Until a reply's
-  result arrives, a spinner and **Working…** sit under it, before its first
+  worker has no usage limits and records every job in its usage log (see
+  [chat worker admission](../../docs/deployment/chat-worker.md#admission-no-usage-limits)
+  and `INVARIANTS.md`). Until a reply's result arrives, a spinner and
+  **Working…** sit under it, before its first
   words and under an opener or any part that shows first. When the worker's
   judgment places a message on a computer, or the router offers to run
   Coder, **Run Coder on** a computer shows as a chip under that reply once
