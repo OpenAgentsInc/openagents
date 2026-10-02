@@ -320,6 +320,11 @@ export PATH="$HOME/.cargo/bin:$HOME/.grok/bin:$HOME/.local/bin:/usr/local/bin:$P
 [ -n "${{OA_GIT_EMAIL:-}}" ] && git config --global user.email "$OA_GIT_EMAIL"
 unset OA_GIT_NAME OA_GIT_EMAIL
 gh auth setup-git >/dev/null 2>&1 || true
+# The 2026-10-02 template left ~/.openagents (with the warm target) and
+# ~/.cargo owned by root (#10219); the run's user must write both.
+for d in "$HOME/.openagents" "$HOME/.cargo"; do
+  [ -e "$d" ] && [ "$(stat -c %u "$d")" != "$(id -u)" ] && sudo -n chown -R "$(id -u):$(id -g)" "$d"
+done
 # protoc's well-known types (spark-primitives needs them); templates built
 # before coder-host-setup.sh installed libprotobuf-dev lack them.
 [ -f /usr/include/google/protobuf/descriptor.proto ] || sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y -q libprotobuf-dev >/dev/null 2>&1 || true
