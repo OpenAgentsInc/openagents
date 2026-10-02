@@ -1,0 +1,465 @@
+# Background processes: user-defined, reliable, System One
+
+Status: design, 2026-10-02. Nothing here is implemented yet. Issues:
+umbrella [#10155](https://github.com/OpenAgentsInc/openagents/issues/10155),
+phase 1 [#10156](https://github.com/OpenAgentsInc/openagents/issues/10156),
+phase 2 [#10157](https://github.com/OpenAgentsInc/openagents/issues/10157),
+phase 3 [#10158](https://github.com/OpenAgentsInc/openagents/issues/10158).
+
+## Why
+
+On 2026-10-02 the owner's Mac (1.8 TB) filled to 100% twice. Coder runs
+failed with `No space left on device`. Each time, the orchestrating
+conversational agent noticed only after the failures and then spent turns
+deleting directories by hand. What it found:
+
+| Path | Size | What it is |
+| --- | --- | --- |
+| `~/.openagents/targets/<project>-<task>-<hash>` | 9–38 GB each, 131 GB after one day | One Cargo target directory per Coder task, never deleted. [#10148](https://github.com/OpenAgentsInc/openagents/issues/10148) replaced these with reusable slots and a cleanup on task end. |
+| `~/.openagents/coder-one/target` | 85 GB | Stale Coder One build output. |
+| `~/work/openagents-target-agentN` | 17–72 GB each | Agent target directories left behind by finished conversation-agent work. |
+| `~/work/openagents/target` | 66 GB | The checkout's own build directory. |
+| `~/.openagents/worktrees` | 35 GB, 29 worktrees | Coder task worktrees, many for ended tasks. |
+| `~/.openagents/gate/*` | 55 GB | Release-gate pools and their builds. |
+| `~/.openagents/pylon` | 47 GB | Pylon state. Not known to be disposable. |
+| `~/Library/Caches`, `/private/var/folders` | 75 GB | Application and operating-system caches. |
+
+The rules the agent applied by hand were simple: never delete a directory
+that a running task or process uses, never touch the user's source checkouts
+or uncommitted work, and treat Cargo target directories and ended tasks'
+worktrees as disposable caches. Simple, repeated, and mechanical work like
+this should not wait for a conversation. The owner's words: "There just
+should be some processes that do automatic cleanup, user-defined, defined in
+conversation but reliable."
+
+## The System One framing
+
+The TypeSafe material (`docs/research/typesafe/`) and episodes 285–287
+(`docs/transcripts/`) make one argument that applies directly here:
+
+- Today's models are trained for assistance, with a person in the loop.
+  Automation needs "simple little bits of work that just need to be done
+  reliably" running "in the background in a server that you never even look
+  at" (Diogo Almeida, AI Engineer, 2026-07-31).
+- The answer is not a smarter conversation. It is software that owns the
+  workflow and calls a System One model, Jev, only for a bounded, typed
+  judgment, with probabilities that code compares to a named threshold.
+  "Code owns control. Jev judges. Executors generate." (episode 287).
+- Episode 286 lists background processing as a first-class category for a
+  System One coding agent: work that runs beside the normal workflow and
+  reads shared state.
+
+A background process is that idea made concrete. A conversation defines it
+once. Code then runs it deterministically, every time, without a model in the
+loop for routine work. Jev appears only where a judgment needs semantic
+understanding, such as "is this unknown directory a disposable cache?", and
+even then its answer informs a decision that code makes. Escalation to a
+Coder run (System Two) happens only when the rule cannot handle the
+situation.
+
+## What a background process is
+
+A background process is a durable, user-defined **rule**: a trigger, a
+condition, and an ordered list of actions. The host runs it. A conversation
+does not.
+
+```text
+trigger  ->  observe  ->  condition  ->  plan (dry run)  ->  act  ->  record  ->  notify
+```
+
+- **Defined in conversation.** The user says "keep my disk above 50 GB free;
+  clear old build caches first." The chat router selects the
+  `background.define` route, and a compiler turns the message into a typed
+  rule (phase 2). The user sees the rule and a dry run of what it would do
+  now, and confirms.
+- **Compiled once.** The result is a typed definition, not a prompt. It is
+  inspectable (`openagents background show`), editable in conversation or as
+  a file, versioned, and digested. Re-running it never re-asks a model what
+  the user meant.
+- **Executed deterministically.** The host evaluates triggers and conditions,
+  builds a plan, applies the safety checks, acts, and records every action.
+- **Jev for bounded judgments only.** A rule may contain a judgment step: a
+  Jev question set with a named `Setting` threshold, in the same pattern as
+  `crates/coder-delegate/src/decision.rs` (`ISSUE_TURN_PLAIN` and the
+  others). There is never an open-ended agent loop in a routine run.
+- **Escalation is explicit.** When a rule cannot reach its goal, it notifies,
+  and if the rule allows it, starts a Coder run with a briefing (phase 3).
+
+There are no usage limits or quotas anywhere in this design. The disk
+monitor is about the machine's disk, not about how much anyone uses
+OpenAgents.
+
+### The rule type
+
+A rule is one JSON document, held at
+`~/.openagents/background/rules/<id>.json`:
+
+```text
+Rule {
+  id, name, version, digest,
+  origin: BuiltIn | Conversation { thread, message } | File,
+  enabled: bool,
+  triggers: [Trigger],          // any one starts an evaluation
+  conditions: [Condition],      // all must hold
+  actions: [Action],            // run in order until the goal is met
+  goal: Option<Goal>,           // for example: free >= 15% of the volume
+  safety: Safety,               // allow and deny lists, trash window, dry run
+  notify: Notify,               // when and where to tell the user
+  escalate: Option<Escalation>, // what to do when the actions fall short
+  cooldown: Duration,
+}
+```
+
+Built-in rules ship with the host and the user edits their parameters. A
+plugin can contribute a built-in rule, an action, or a candidate class
+(phase 3); it declares them in its manifest with the same types.
+
+### Triggers
+
+| Trigger | Fires when | Notes |
+| --- | --- | --- |
+| `Interval { every }` | A timer elapses. | Jittered by up to 10% so several rules do not run at once. |
+| `Daily { at }` | A local wall-clock time passes. | Missed runs (computer asleep) run once at wake. |
+| `Threshold { metric, below \| above }` | A measured value crosses a bound. | Checked on the rule's interval. Metrics in phase 1: free bytes and free percent of a volume. |
+| `TaskEnded { workspace? }` | A Coder task reaches `Finished` or `Cancelled`. | From the task store, the same signal `targets::cleanup` uses. |
+| `HostStart` | The host starts. | Runs after the host is serving. |
+| `FsEvent { paths, kinds }` | A watched path changes. | FSEvents on macOS, inotify on Linux. Phase 2. |
+
+### Conditions
+
+Conditions are typed predicates over an observation that code takes before
+deciding: free space on a volume, a path's existence, size, or age, the state
+of a task, the time of day, whether any Coder task is running, and whether
+the host is on battery. One more kind, `Judgment`, asks Jev a question set
+over a typed state and compares the answer to a named `Setting`. A judgment
+condition is the only place a model appears in evaluation.
+
+### Actions
+
+Every action is built in and typed, and every action can produce a dry-run
+plan before it changes anything.
+
+| Action | Does |
+| --- | --- |
+| `DeleteCaches { classes, keep }` | Deletes candidate directories from the listed classes, in class order, until the goal is met. |
+| `PruneWorktrees { ended_only, require_pushed }` | Removes Coder worktrees of ended tasks with `git worktree remove`, then `git worktree prune`. |
+| `CargoCleanPartial { what }` | Removes part of an idle Cargo target directory: `debug/incremental`, `release/incremental`, or `doc`. Compiled dependencies stay. |
+| `EmptyTrash { older_than }` | Empties the background trash. |
+| `Notify { text }` | Sends a short notification. |
+| `StartCoderRun { prompt, workspace, briefing }` | Starts a Coder task with a prompt and a code-built briefing (phase 3). |
+| `RunPlugin { plugin, input }` | Runs an installed plugin's declared background action (phase 3). |
+
+There is no "run any shell command" action. A user who needs one writes a
+plugin, which declares what it reads and writes.
+
+### Safety
+
+Safety checks run on every candidate, in code, after any judgment:
+
+1. **Allow and deny lists.** A candidate must be under an allowed root and
+   not under a denied path. The deny list always contains the host's own
+   state (`~/.openagents/host`, the task store, keys, the wallet, the
+   background log and rules), `~/.claude`, `~/.codex`, and the user's
+   documents folders. The user adds to it in conversation.
+2. **No symbolic links, no other volumes.** A candidate that is a symbolic
+   link, or whose device ID differs from its parent's (a mount point), is
+   skipped. Walks never follow links.
+3. **In-use detection.** A candidate is skipped when a running Coder task
+   names it, when its lock is held (a target slot's `.lock`, Cargo's
+   `.cargo-lock` in `debug/` or `release/`), or when any process has its
+   working directory or an open file under it (`lsof` on macOS,
+   `/proc/*/cwd` and `/proc/*/fd` on Linux). The check runs immediately
+   before deletion, not only when planning.
+4. **Never source or unsaved work.** A Git work tree is never deleted unless
+   it is a Coder worktree of an ended task with a clean `git status` and no
+   commits missing from every remote (`git rev-list HEAD --not --remotes` is
+   empty). Inside any other checkout, only the build directory itself is
+   eligible, and only when it carries `CACHEDIR.TAG` (Cargo writes one) and
+   Git ignores it.
+5. **Dry run first.** `openagents background run ID --dry-run` and every
+   rule edit show the exact plan: paths, classes, sizes, and why each one
+   qualifies or is skipped. A new rule's first real run waits for the user
+   to confirm its dry run.
+6. **Trash and undo for anything that is not a known cache.** Known caches
+   (classes 1, 2, and 5 below) are deleted directly; they rebuild. A removed
+   worktree records its repository, branch, and commit, so
+   `openagents background undo RUN` recreates it from the remote. A
+   directory that Jev judged disposable (phase 3) moves to
+   `~/.openagents/background/trash/<run>/` and stays for 24 hours. Moving to
+   trash on the same volume frees nothing until the trash empties, so under
+   an emergency (below) the trash empties oldest first, and that is recorded.
+7. **Audit log.** Every action is recorded (see Records).
+
+## The disk cleanup monitor
+
+The first built-in rule, `disk`, is enabled by default on every host.
+
+### Default policy
+
+| Setting | Default | On the owner's 1.8 TB disk |
+| --- | --- | --- |
+| Volumes | Each distinct volume holding `~/.openagents`, a Coder workspace, or an agent target directory, by device ID. | One volume. |
+| Check | Every 5 minutes, on every task end, and at host start. A check is one `statvfs` call per volume and costs nothing. | |
+| Start cleaning when | Free space is below `max(30 GB, 5% of the volume)`. | Below 90 GB. |
+| Stop cleaning when | Free space reaches `max(60 GB, 15% of the volume)`, or this run has freed 100 GB, whichever comes first. | At 270 GB free, or after 100 GB. |
+| Emergency when | Free space is below `max(10 GB, 1% of the volume)`. Every class runs, the trash empties, and the notification is immediate. | Below 18 GB. |
+| Cooldown | 10 minutes after a run, unless free space falls into emergency. | |
+| Free space measure | `f_bavail`, the space available to the user. | |
+
+The monitor measures sizes as allocated blocks (`st_blocks × 512`), not file
+lengths, and caches directory sizes between runs so a check does not walk
+the disk. It reports freed space two ways: the sum of what it deleted and
+the change in free space. On macOS, when the change is much smaller than the
+sum, local Time Machine snapshots probably hold the space; the monitor says
+so and never deletes snapshots.
+
+### Candidate classes, in order
+
+The monitor works down this list and stops as soon as the goal is met. Within
+a class, it takes the least recently used candidate first.
+
+| # | Class | Paths | Qualifies when | In use when |
+| --- | --- | --- | --- | --- |
+| 1 | Ended tasks' target directories | `~/.openagents/targets/<project>-<task>-<hash>` (legacy per-task), and any slot past the configured slot count | The task store lists the task as ended (`Finished` or `Cancelled`, checks not running, group clear: the `ended` test in `crates/coder/src/task/targets.rs`). | A live task maps to the directory, or its lock is held. |
+| 2 | Stale target directories | Idle slots `~/.openagents/targets/*-slot-N`; `~/.openagents/coder-one/target`; agent target directories (`~/work/openagents-target-agent*`, configurable); a checkout's `target/` with `CACHEDIR.TAG` | Untouched for 3 days (slots and agent directories) or 7 days (a checkout's `target/`). "Touched" is the newest of the lock file's mtime, `.cargo-lock`'s mtime, and the `.fingerprint` directory's mtime. | `.cargo-lock` or the slot lock is held, or a process has a working directory or open file inside. |
+| 3 | Ended tasks' worktrees | `~/.openagents/worktrees/*` | The task is ended, `git status --porcelain` is empty, and no commit is missing from every remote. A worktree with no task record qualifies only when it is also older than 7 days. | A process has a working directory or open file inside, or a task names it. |
+| 4 | Gate pools | Build directories under `~/.openagents/gate/` that carry `CACHEDIR.TAG` | No gate run holds the gate's lock and none ran in the last hour. Checkouts in the gate pool follow class 3's rules. | The gate lock is held, or a gate or `verify-rust` process runs. |
+| 5 | Incremental caches of live target directories | `debug/incremental` and `release/incremental` inside slots and agent target directories | Its Cargo lock is free. Compiled dependencies stay, so the next build is warm. | `.cargo-lock` is held. |
+| 6 | Background trash (emergency only) | `~/.openagents/background/trash/*` | Oldest first. | Never. |
+
+[#10148](https://github.com/OpenAgentsInc/openagents/issues/10148) and this
+monitor work together. Slot reuse stops the per-task growth at its source,
+and its cleanup trims the slot pool when a task ends. The monitor cleans
+everything slot reuse does not cover (agent target directories, Coder One,
+worktrees, gate pools, a checkout's own `target/`) and acts on the disk's
+actual free space, not on one directory's budget.
+
+### What it never touches
+
+- Any path outside the allowed roots, or under the deny list.
+- `~/.openagents/pylon`, `~/Library/Caches`, `/private/var/folders`, and
+  anything else not in a class above. These are measured and named in the
+  report ("not cleaned: not a known cache") so the user can add a rule.
+  `/private/var/folders` belongs to the operating system and is never a
+  candidate.
+- Source files, uncommitted changes, unpushed commits, and stashes.
+- Anything a running task or process uses at the moment of deletion.
+- Symbolic links and other volumes.
+- The host's state, keys, wallet, and logs.
+
+### How it decides ownership
+
+Code answers "whose is this, and is it finished?" from evidence, in this
+order:
+
+1. **The task store.** Coder's task records name each task's workspace,
+   worktree, target directory, and status.
+2. **Locks.** The slot lock and Cargo's `.cargo-lock` are advisory file
+   locks. A lock the monitor can take is not held by a build. The monitor
+   takes it for the duration of the deletion, so a build cannot start
+   mid-delete.
+3. **Processes.** Open files and working directories, checked just before
+   the deletion.
+4. **Markers.** `CACHEDIR.TAG` and Git's ignore rules mark a build
+   directory.
+5. **Age.** Lock and fingerprint modification times.
+
+Phase 1 needs no model. Phase 3 adds one judgment for directories no class
+covers (below).
+
+### What the user sees
+
+Notifications are one or two plain lines, sent only when something happens:
+
+- `Freed 84 GB: 3 build caches from ended tasks.`
+- `Freed 41 GB: 2 old agent build folders, 6 finished worktrees. 312 GB free.`
+- `Disk still low: 22 GB free. Largest not cleaned: ~/.openagents/pylon (47 GB), not a known cache.`
+- `Disk almost full (9 GB free). Cleaned everything allowed: 12 GB.`
+
+A check that finds enough free space sends nothing. The terminal status line
+shows `disk ok · 312 GB free` only in `/background`.
+
+### Changing it in conversation
+
+Each request becomes a typed edit to the `disk` rule. The user sees the
+change and the dry run before it applies.
+
+| The user says | The edit |
+| --- | --- |
+| "only keep 2 agent target dirs" | Class 2, agent target directories: `keep: 2` (the two most recently used stay, regardless of age). |
+| "never touch ~/.openagents/pylon" | Add `~/.openagents/pylon` to the deny list. |
+| "keep 200 GB free" | Start threshold `200 GB`; stop threshold raised to stay above it. |
+| "clean old build caches first" | No change: that is already the order. The reply says so. |
+| "don't delete worktrees, just tell me" | Class 3 set to report only. |
+| "pause disk cleanup until tomorrow" | `enabled: false` with a resume time. |
+
+## Surfaces
+
+**CLI.** `openagents background` with:
+
+| Command | Does |
+| --- | --- |
+| `list` | Each rule: enabled or paused, last run, last result, next check. |
+| `show ID` | The full definition, its version and digest, and its origin. |
+| `add --file PATH` | Adds a rule from a JSON file (phase 1); from a message in phase 2. |
+| `edit ID` | Opens the rule as JSON in `$EDITOR`, validates it, and shows the dry run. |
+| `pause ID [--until TIME]`, `resume ID` | Stops or restarts a rule. |
+| `run ID [--dry-run]` | Runs a rule now. Without a host, it runs in this process. |
+| `log [ID] [--since TIME] [--stats]` | The audit log; `--stats` totals bytes freed by class and week. |
+| `undo RUN` | Recreates removed worktrees and restores trashed directories from that run. |
+
+Every command takes `--json`. Each is declared in the chat router's command
+tree (`coder::cli_route::tree`) with its effect, as `service` is.
+
+**Terminal.** `/background` lists the rules with their status. Enter shows a
+rule, `r` runs it (dry run first), `p` pauses or resumes, and `l` shows its
+log. A notification from a rule appears as one line in the transcript area.
+
+**Host protocol.** NIP-HOST methods `background.list`, `background.show`,
+`background.run`, `background.pause`, and `background.log`, so the desktop
+app and the phone can render the same list later (phase 3). A run's result is
+also an activity summary, like a task change.
+
+**Desktop and phone.** Phase 3: a Background section in settings and a
+notification for each non-empty run.
+
+## Where it runs
+
+- **The host.** `openagents host serve` runs the rule runner. On a Mac the
+  desktop app runs the host. On a computer without the app,
+  `openagents service install` already registers the host as a launchd agent
+  (macOS) or a systemd user unit (Linux); the background runner comes with
+  it. There is no second daemon.
+- **One runner per machine.** The runner holds
+  `~/.openagents/background/runner.lock`. A second host, or a
+  `background run` while the host runs, defers to the holder.
+- **Without a host.** `openagents background run disk` performs one run in
+  the calling process, so a user can schedule it with cron.
+- **Low disk resilience.** The runner keeps a small preallocated log file and
+  buffers records in memory when a write fails, then flushes after it frees
+  space.
+- **Windows.** Not supported in phase 1, like the host itself.
+
+## Records
+
+Every run and every action is appended to
+`~/.openagents/background/runs.jsonl`:
+
+```text
+{ run, rule, rule_version, rule_digest, trigger, started, ended,
+  observation: { volume, free_before, free_after, total },
+  actions: [ { kind, class, path, bytes, outcome: deleted | trashed | removed | skipped,
+               reason, evidence: { task, task_status, lock, processes, age, markers,
+                                   judgment: { set, setting, probability } } } ],
+  freed_sum, freed_measured, notified, escalated }
+```
+
+The log rotates at 10 MB and keeps 10 files. `log --stats` reads it to
+answer "how much did cleanup free this week, and from where?" Judgment
+records keep the question set, the `Setting` name, and the probability, so
+the Gym can calibrate thresholds the way it does for the other Jev settings.
+
+## Other background processes worth having
+
+In priority order. "Rule" means pure code; "Jev" means it needs a bounded
+judgment.
+
+1. **Disk cleanup monitor** (rule; Jev for unknown directories in phase 3).
+2. **Stale worktree pruning** (rule): remove ended tasks' clean, pushed
+   worktrees after 7 days even when the disk is fine.
+3. **Stale issue-claim release** (rule): release a Coder issue claim whose
+   task ended or has not run for 6 hours, and comment why.
+4. **Keep `~/openagents` on `main` on CoderOS** (rule): fast-forward when the
+   checkout is clean; notify when it is dirty or diverged.
+5. **Relay and host health watch** (rule): probe the relay and the host;
+   after three failures, restart through the service manager and notify.
+6. **Flaky-test watch** (Jev): judge whether a new test failure matches a
+   known flake's signature or is a new failure, then update or open an issue.
+7. **Nightly simulated-user QA run** (rule trigger, Coder run action):
+   start the playtest suite at night and post its result.
+8. **Daily usage summary** (rule): one short line of what ran, what it cost,
+   and what finished. A summary, never a limit.
+9. **Log and trace rotation** (rule): compress and age out traces, gate
+   logs, and run artifacts by the same safety rules as the disk monitor.
+
+## Phased plan
+
+### Phase 1: the disk monitor, end to end
+
+- **Crates.** A new `crates/background` holds the rule types, the volume
+  observation (behind a trait, so tests inject free space), the candidate
+  classes, the ownership checks, the planner, the executor, undo, and the
+  audit log. It has no host dependency. `crates/coder` shares the task
+  store's `ended` test (moved out of `task/targets.rs`) and emits a
+  task-ended signal. `crates/coder-host` starts the runner in `serve`, wires
+  the `Interval`, `Threshold`, `TaskEnded`, and `HostStart` triggers, and
+  adds the NIP-HOST methods. `crates/openagents-cli` adds
+  `openagents background` and the terminal's `/background`.
+- **Scope.** The `disk` rule only, with the default policy, classes 1–6,
+  every safety check, dry run, undo for worktrees, notifications to the
+  terminal and the host's activity stream, and the audit log. Rules can be
+  edited as JSON; conversation editing is phase 2. No model calls.
+- **Size.** Large: about 2,500 lines with tests.
+- **Tests.** All under a temporary `HOME` with a scratch task store; none
+  reach the real home. Ended and running tasks' target directories; a held
+  slot lock and a held `.cargo-lock` keep a directory; a child process with
+  an open file inside keeps it; a worktree with an unpushed commit, a dirty
+  worktree, and a stash are kept; a clean, pushed worktree is removed and
+  `undo` recreates it; symbolic links are not followed and other devices are
+  skipped; the deny list wins over every class; a checkout's `target/`
+  without `CACHEDIR.TAG` is kept; the dry-run plan equals the executed plan;
+  class order and the stop goal; threshold arithmetic for small and large
+  volumes; cooldown and emergency; the record's bytes match what was
+  deleted.
+
+### Phase 2: rules from conversation
+
+- **Crates.** `crates/coder` router: a `background.define` and a
+  `background.edit` route in the next chat-router question set, chosen by
+  Jev like every other route. `crates/background`: a compiler that asks Jev
+  Choice questions over the typed catalogs (trigger kinds, condition kinds,
+  action kinds, candidate classes, the existing rules for an edit) and fills
+  bounded fields (sizes, durations, paths, times) by deterministic parsing
+  only after the route is chosen. The general engine: every trigger,
+  including `Daily` and `FsEvent`, every condition including `Judgment`, and
+  multiple rules. Terminal and CLI: a rule card showing the compiled rule and
+  its dry run, with confirm and cancel.
+- **Rules.** No keyword or string matching selects a route, an action, or a
+  class. When the compiler's confidence is below its `Setting`
+  (`background.compile`), it asks one clarifying question instead of
+  guessing. A compiled rule is shown, never applied silently.
+- **Size.** Medium to large.
+- **Tests.** A labeled set of requests (define, edit, pause, and off-topic)
+  in `crates/gym/questions/` for the route and the compiler, scored like the
+  router's evaluation; golden compiled rules for the examples in this
+  document; a request below the threshold produces a question, not a rule;
+  engine tests for each trigger and condition with injected clocks and file
+  events.
+
+### Phase 3: judgment, escalation, more built-ins, more surfaces
+
+- **Unknown-directory judgment.** For the largest directories no class
+  covers, Jev answers a Noul ("Is this directory output a program will
+  regenerate, or a download cache, holding nothing a person made?") and a
+  Choice of kind (build output, package cache, application cache, user data,
+  source, unknown) over a code-built state: path, size, age, top entries,
+  marker files, and the processes that write it. Setting
+  `background.cache_dir`, default 0.9. A yes never deletes on its own: it
+  proposes a new class to the user, and once confirmed, the class is a plain
+  rule, so later runs need no model.
+- **Escalation.** When a rule falls short, it may start a Coder run with a
+  briefing that code assembles in the Jev-probe pattern from episode 287
+  (sizes, ownership evidence, what was skipped and why). The run proposes
+  rule changes; it does not delete. At most one escalation per rule per day.
+- **Built-ins.** The other processes listed above, in order, each its own
+  small change.
+- **Plugins.** A plugin can contribute rules, actions, and candidate classes
+  through its manifest, and a user's rule can be published as a plugin.
+- **Surfaces.** The desktop Background section, phone notifications, and the
+  NIP-HOST methods rendered on both.
+- **Crates.** `background`, `coder-host`, `coder`, `jev`, the desktop and
+  mobile app crates, and the plugin catalog.
+- **Size.** Large, delivered as separate issues per built-in.
+- **Tests.** Judgment question sets in the Gym with labeled directories;
+  escalation briefing contents; each built-in's rule tests in the phase 1
+  style.
