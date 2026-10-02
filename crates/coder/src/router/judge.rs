@@ -1164,6 +1164,7 @@ mod tests {
                     personalize: true,
                     draft: false,
                     earlier: false,
+                    plugin: false,
                 },
             );
             if routing.route.word() == *expected {

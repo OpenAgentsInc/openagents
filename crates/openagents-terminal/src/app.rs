@@ -1066,6 +1066,15 @@ impl App {
                     self.loud(format!("{line} failed."));
                 }
             }
+            // A step of making a plugin ran here (#10177): what we say about
+            // it, as a turn of ours, ending with what we ask next.
+            Event::Plugin { text, ok, .. } => {
+                self.activity = None;
+                self.push(Row::Turn(Who::OpenAgents, text));
+                if !ok {
+                    self.loud("That step of making the plugin didn't finish.");
+                }
+            }
             Event::Detached { .. } => {
                 if !std::mem::take(&mut self.quiet_detach) {
                     self.note(

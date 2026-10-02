@@ -649,6 +649,21 @@ impl<'a> Printer<'a> {
                     }
                 }
             }
+            Event::Plugin {
+                thread,
+                flow,
+                text,
+                ok,
+            } => {
+                // A step of making a plugin, typed, and in plain words (#10177).
+                event(
+                    output,
+                    json!({"event": "plugin", "thread": thread, "plugin": flow.wire(), "text": text, "ok": ok}),
+                );
+                if !output.json() {
+                    println!("\n{text}");
+                }
+            }
             Event::Detached { thread } => {
                 let flag = coder_run::flag(self.kind);
                 eprintln!(

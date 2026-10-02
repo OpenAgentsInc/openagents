@@ -1574,3 +1574,269 @@ async fn a_plan_starts_one_read_only_run_per_engine_and_summarizes_them() {
         Some("task-codex")
     );
 }
+
+/// A worker serving one plugin step per turn, in order (#10177): the
+/// reply's typed `plugin` field, and a Run Coder offer at the draft.
+struct PluginSteps(Mutex<Vec<crate::plugin_flow::Flow>>);
+
+impl Door for PluginSteps {
+    fn ask(
+        &self,
+        _: Vec<Turn>,
+        _: Context,
+        reply: Arc<std::sync::Mutex<Reply>>,
+    ) -> BoxFuture<'static, ()> {
+        let flow = self.0.lock().unwrap().remove(0);
+        Box::pin(async move {
+            let mut reply = lock(&reply);
+            let step = flow.step().unwrap();
+            reply.text = step.line().to_owned();
+            let mut meta = Meta {
+                route: Some("eval.author".into()),
+                tier: Some("author".into()),
+                ..Meta::default()
+            };
+            if step == crate::plugin_flow::Step::Draft {
+                meta.offered(&serde_json::json!({"offer": "run_coder"}));
+            }
+            meta.resulted(&serde_json::json!({"plugin": flow.wire()}));
+            reply.meta = meta;
+            reply.done = true;
+        })
+    }
+}
+
+/// Coder that drafts the plugin `hello` with two tests, and records every
+/// prompt and plugin command.
+#[derive(Default)]
+struct Drafts {
+    prompts: Mutex<Vec<String>>,
+    ran: Mutex<Vec<Vec<String>>>,
+}
+
+impl Coder for Drafts {
+    fn default_store(&self) -> PathBuf {
+        std::env::temp_dir().join("openagents-chat-client-test-tasks")
+    }
+    fn context(&self, _: &Path, _: Option<&Path>) -> Context {
+        Context {
+            computer_ready: true,
+            ..Context::default()
+        }
+    }
+    fn predict(&self, _: &Path, _: Option<nostr::cj_conversation::Engine>) -> Option<Runner> {
+        None
+    }
+    fn asks_first(&self) -> bool {
+        false
+    }
+    fn checkout(&self, _: &Path) -> Result<(), String> {
+        Ok(())
+    }
+    fn start(
+        &self,
+        _: &Path,
+        _: &Path,
+        _: &str,
+        prompt: &str,
+        _: &str,
+        _: Option<nostr::cj_conversation::Engine>,
+    ) -> Result<Started, String> {
+        self.prompts.lock().unwrap().push(prompt.to_owned());
+        Ok(Started {
+            task: "t1".into(),
+            project: "demo".into(),
+            worktree: "/tmp/demo-t1".into(),
+        })
+    }
+    fn issue(&self, _: &str, _: &str, _: &Path) -> Option<Box<dyn Issue>> {
+        None
+    }
+    fn follow(&self, _: &Path, task: &str, chat: &str, _: Option<String>) -> Box<dyn Follow> {
+        struct Once(Option<Line>);
+        impl Follow for Once {
+            fn poll(&mut self) -> Result<(Vec<Line>, Progress), String> {
+                Ok((self.0.take().into_iter().collect(), Progress::Waiting))
+            }
+        }
+        Box::new(Once(Some(Line {
+            seq: 1,
+            task: task.to_owned(),
+            thread: Some(chat.to_owned()),
+            event: CoderEvent::Question(Asked {
+                turn: 1,
+                text: "Anything else?".into(),
+                answer: None,
+            }),
+        })))
+    }
+    fn stop(&self, _: &Path, _: &str) -> Result<(), String> {
+        Ok(())
+    }
+    fn answer(&self, _: &Path, _: &str, _: &str) -> Result<usize, String> {
+        Ok(2)
+    }
+    fn result(&self, _: &Path, _: &str) -> Option<CoderRun> {
+        let file = |path: &str| crate::router::RunFile {
+            path: path.into(),
+            status: "added".into(),
+        };
+        Some(CoderRun {
+            ending: crate::router::RunEnding::Finished,
+            turn: 1,
+            engine: Some("codex".into()),
+            model: None,
+            summary: "Drafted plugins/hello.".into(),
+            files: vec![
+                file("plugins/hello/package.json"),
+                file("plugins/hello/skills/hello.md"),
+                file("plugins/hello/evals/greets-by-name/prompt.md"),
+                file("plugins/hello/evals/stays-out/prompt.md"),
+            ],
+            commands: Vec::new(),
+        })
+    }
+    fn trajectories(&self, _: &Path, _: &str) -> Vec<Value> {
+        Vec::new()
+    }
+    fn permit(&self, _: &[String]) -> Permit {
+        // This build has no `plugin publish` yet.
+        Permit::Never
+    }
+    fn worktree(&self, _: &Path, _: &str) -> Option<PathBuf> {
+        Some(PathBuf::from("/tmp/demo-t1"))
+    }
+    fn plugin_tests(&self, dir: &Path) -> Result<Vec<crate::plugin_flow::Test>, String> {
+        assert_eq!(dir, Path::new("/tmp/demo-t1/plugins/hello"));
+        Ok(vec![
+            crate::plugin_flow::Test {
+                name: "greets-by-name".into(),
+                kind: "should-fire".into(),
+                task: "Say hello to Ada.".into(),
+            },
+            crate::plugin_flow::Test {
+                name: "stays-out".into(),
+                kind: "should-not-fire".into(),
+                task: "What is 2 + 2?".into(),
+            },
+        ])
+    }
+    fn plugin_command(&self, argv: &[String], _: Duration) -> Result<Ran, String> {
+        self.ran.lock().unwrap().push(argv.to_vec());
+        Ok(Ran {
+            ok: true,
+            output: format!("ran {}", argv[1]),
+        })
+    }
+}
+
+/// #10177: making a plugin from a terminal. The draft reply starts Coder
+/// with the plugin brief and, once its run ended, this computer shows the
+/// tests it drafted (step `tests`); an approved run reply runs them here
+/// and asks the publish question (step `publish`); the done reply turns it
+/// on here, and says publishing waits for a build that can.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_plugin_is_drafted_tested_and_turned_on_through_typed_steps() {
+    use crate::plugin_flow::{Flow, Step};
+    let dir = tempfile::tempdir().unwrap();
+    let coder = Arc::new(Drafts::default());
+    let mut done = Flow::at(Step::Done, Some("hello".into()));
+    done.publish = true;
+    done.enable = true;
+    let door = Arc::new(PluginSteps(Mutex::new(vec![
+        Flow::at(Step::Draft, None),
+        Flow::at(Step::Run, Some("hello".into())),
+        done,
+    ])));
+    let client = in_process(door, options(dir.path()), coder.clone());
+    let thread = new_id();
+    let plugin_events = |events: &[Event]| -> Vec<(Flow, String)> {
+        events
+            .iter()
+            .filter_map(|event| match event {
+                Event::Plugin {
+                    flow,
+                    text,
+                    ok: true,
+                    ..
+                } => Some((flow.clone(), text.clone())),
+                _ => None,
+            })
+            .collect()
+    };
+
+    let (events, client, ended) = drain(client.stream(send(
+        &thread,
+        "Help me make a plugin that greets people by name",
+        Start::Settings,
+    )))
+    .await;
+    assert_eq!(ended, Ok(Ended::Done), "{events:?}");
+    let prompts = coder.prompts.lock().unwrap().clone();
+    assert!(
+        prompts[0].contains(crate::plugin_flow::BRIEF),
+        "{prompts:?}"
+    );
+    let shown = plugin_events(&events);
+    let [(flow, text)] = shown.as_slice() else {
+        panic!("{events:?}");
+    };
+    assert_eq!(flow, &Flow::at(Step::Tests, Some("hello".into())));
+    assert!(text.contains("greets-by-name") && text.contains("stays out of the way"));
+    assert_eq!(Step::from_line(text), Some(Step::Tests));
+
+    let (events, client, ended) = drain(client.stream(Op::Send {
+        thread: thread.clone(),
+        new: false,
+        text: "yes".into(),
+        start: Start::Settings,
+        timeout: Duration::from_secs(10),
+    }))
+    .await;
+    assert_eq!(ended, Ok(Ended::Done), "{events:?}");
+    let shown = plugin_events(&events);
+    let [(flow, text)] = shown.as_slice() else {
+        panic!("{events:?}");
+    };
+    assert_eq!(flow.step(), Some(Step::Publish));
+    assert_eq!(Step::from_line(text), Some(Step::Publish));
+    assert_eq!(
+        coder.ran.lock().unwrap()[0],
+        [
+            "plugin",
+            "test",
+            "run",
+            "/tmp/demo-t1/plugins/hello",
+            "--trust"
+        ]
+    );
+
+    let (events, _, ended) = drain(client.stream(Op::Send {
+        thread: thread.clone(),
+        new: false,
+        text: "yes".into(),
+        start: Start::Settings,
+        timeout: Duration::from_secs(10),
+    }))
+    .await;
+    assert_eq!(ended, Ok(Ended::Done), "{events:?}");
+    let shown = plugin_events(&events);
+    let [(flow, text)] = shown.as_slice() else {
+        panic!("{events:?}");
+    };
+    assert_eq!(flow.step(), Some(Step::Done));
+    assert!(
+        text.contains("can't publish a plugin to the registry yet"),
+        "{text}"
+    );
+    assert!(text.ends_with(Step::Done.line()), "{text}");
+    let ran = coder.ran.lock().unwrap().clone();
+    assert_eq!(
+        ran[1..],
+        [
+            vec!["plugin", "install", "/tmp/demo-t1/plugins/hello"],
+            vec!["plugin", "enable", "hello"],
+        ]
+        .map(|argv| argv.into_iter().map(str::to_owned).collect::<Vec<_>>())
+    );
+}

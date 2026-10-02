@@ -105,6 +105,7 @@ fn decided(row: &Row, response: &jev::SystemOneResponse, admitted: &router::Admi
             personalize: true,
             draft: false,
             earlier: false,
+            plugin: false,
         },
     )
 }

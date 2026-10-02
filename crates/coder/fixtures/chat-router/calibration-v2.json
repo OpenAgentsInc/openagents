@@ -1,23 +1,23 @@
 {
   "schema": "openagents.chat-router.calibration.v1",
-  "set": "chat-router-v4@9d17e4d3e2d7",
+  "set": "chat-router-v4@60fb0f55d6ab",
   "bank": "chat-answers-v1@cfc839ef703b",
   "created": "2026-10-02",
   "fitted_on": "calibration",
-  "fitted_rows": 370,
+  "fitted_rows": 380,
   "route": {
     "map": {
       "bins": [
         {
           "lo": 0.0,
           "hi": 0.1,
-          "fitted": 0.9135135135135135,
+          "fitted": 0.9129287598944591,
           "count": 0
         },
         {
           "lo": 0.1,
           "hi": 0.2,
-          "fitted": 0.9135135135135135,
+          "fitted": 0.9129287598944591,
           "count": 0
         },
         {
@@ -29,65 +29,65 @@
         {
           "lo": 0.3,
           "hi": 0.4,
-          "fitted": 0.4166666666666667,
-          "count": 5
+          "fitted": 0.16666666666666666,
+          "count": 2
         },
         {
           "lo": 0.4,
           "hi": 0.5,
-          "fitted": 0.15,
-          "count": 9
+          "fitted": 0.22727272727272727,
+          "count": 10
         },
         {
           "lo": 0.5,
           "hi": 0.6,
-          "fitted": 0.6538461538461539,
-          "count": 12
+          "fitted": 0.53125,
+          "count": 15
         },
         {
           "lo": 0.6,
           "hi": 0.7,
-          "fitted": 0.5952380952380952,
+          "fitted": 0.6904761904761905,
           "count": 20
         },
         {
           "lo": 0.7,
           "hi": 0.8,
-          "fitted": 0.8913043478260869,
-          "count": 22
+          "fitted": 0.78125,
+          "count": 15
         },
         {
           "lo": 0.8,
           "hi": 0.9,
-          "fitted": 0.9423076923076923,
-          "count": 25
+          "fitted": 0.9852941176470589,
+          "count": 33
         },
         {
           "lo": 0.9,
           "hi": 1.0,
-          "fitted": 0.98014440433213,
-          "count": 276
+          "fitted": 0.977112676056338,
+          "count": 283
         }
       ],
-      "base_rate": 0.9135135135135135,
-      "fitted_on": 370
+      "base_rate": 0.9129287598944591,
+      "fitted_on": 379
     },
-    "held_out_items": 254,
+    "held_out_items": 256,
     "raw": {
-      "accuracy": 0.889763779527559,
-      "ece": 0.046811023622047615,
-      "brier": 0.06678700787401569,
-      "nll": 0.21756440939215108,
+      "accuracy": 0.89453125,
+      "ece": 0.04058593749999992,
+      "brier": 0.06948476562499997,
+      "nll": 0.22351387016366034,
       "confident_errors": 1,
-      "items": 254
+      "items": 256
     },
     "calibrated": {
-      "accuracy": 0.889763779527559,
-      "ece": 0.07304156107570832,
-      "brier": 0.07745724055040286,
-      "nll": 0.2453440012139095,
-      "confident_errors": 2,
-      "items": 254
+      "accuracy": 0.89453125,
+      "ece": 0.033268609515301834,
+      "brier": 0.07088928945975635,
+      "nll": 0.23352968047359415,
+      "confident_errors": 3,
+      "items": 256
     },
     "verdict": "failed",
     "gate": "gate:5bdfd1423c6c2d305a12d8f9f16e7e83a594f8548f1b605de0f77c1ef639e758"
@@ -98,7 +98,7 @@
         {
           "lo": 0.0,
           "hi": 0.1,
-          "fitted": 0.56,
+          "fitted": 0.5387596899224806,
           "count": 0
         },
         {
@@ -110,26 +110,26 @@
         {
           "lo": 0.2,
           "hi": 0.3,
-          "fitted": 0.0625,
-          "count": 7
+          "fitted": 0.07142857142857142,
+          "count": 6
         },
         {
           "lo": 0.3,
           "hi": 0.4,
-          "fitted": 0.1956521739130435,
-          "count": 22
+          "fitted": 0.1,
+          "count": 24
         },
         {
           "lo": 0.4,
           "hi": 0.5,
-          "fitted": 0.17105263157894737,
-          "count": 37
+          "fitted": 0.15853658536585366,
+          "count": 40
         },
         {
           "lo": 0.5,
           "hi": 0.6,
-          "fitted": 0.2037037037037037,
-          "count": 26
+          "fitted": 0.19696969696969696,
+          "count": 32
         },
         {
           "lo": 0.6,
@@ -140,41 +140,41 @@
         {
           "lo": 0.7,
           "hi": 0.8,
-          "fitted": 0.4791666666666667,
-          "count": 23
+          "fitted": 0.5227272727272727,
+          "count": 21
         },
         {
           "lo": 0.8,
           "hi": 0.9,
-          "fitted": 0.74,
-          "count": 24
+          "fitted": 0.7045454545454546,
+          "count": 21
         },
         {
           "lo": 0.9,
           "hi": 1.0,
-          "fitted": 0.9731182795698925,
-          "count": 92
+          "fitted": 0.9739583333333334,
+          "count": 95
         }
       ],
-      "base_rate": 0.56,
-      "fitted_on": 250
+      "base_rate": 0.5387596899224806,
+      "fitted_on": 258
     },
-    "held_out_items": 182,
+    "held_out_items": 183,
     "raw": {
-      "accuracy": 0.6208791208791209,
-      "ece": 0.11010989010989003,
-      "brier": 0.1693934065934066,
-      "nll": 0.4839431702884332,
+      "accuracy": 0.6010928961748634,
+      "ece": 0.12071038251366124,
+      "brier": 0.15870109289617493,
+      "nll": 0.45846384785538163,
       "confident_errors": 2,
-      "items": 182
+      "items": 183
     },
     "calibrated": {
-      "accuracy": 0.6208791208791209,
-      "ece": 0.08656599340200911,
-      "brier": 0.1600856330998559,
-      "nll": 0.48178886445011915,
+      "accuracy": 0.6010928961748634,
+      "ece": 0.06277125750671897,
+      "brier": 0.1416136266348863,
+      "nll": 0.4323334075608526,
       "confident_errors": 2,
-      "items": 182
+      "items": 183
     },
     "verdict": "passed",
     "gate": "gate:5bdfd1423c6c2d305a12d8f9f16e7e83a594f8548f1b605de0f77c1ef639e758"

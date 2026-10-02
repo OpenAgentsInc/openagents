@@ -224,9 +224,11 @@ pub fn route(route: RouteId) -> Value {
                  their computers, sessions, XP, or other things an `openagents` command reads \
                  (cli); testing one of our Gym plugins on Coder or running its tests, even \
                  when the plugin's name reads like a task, such as Explain this error or \
-                 Dependency check (eval.run); making a plugin or writing a test set for a \
-                 plugin with us (eval.author), including tests for one of our Gym plugins, \
-                 which are Coder's plugins, not the user's code; reaching a service, site, account, or device outside \
+                 Dependency check (eval.run); making a new plugin with us, even when they \
+                 describe in detail what it should do on their computer or in their files, \
+                 such as one that cleans their disk in the background, or writing a test set \
+                 for a plugin with us (eval.author), including tests for one of our Gym \
+                 plugins, which are Coder's plugins, not the user's code; reaching a service, site, account, or device outside \
                  their code and computer, such as email, a calendar, or a booking \
                  (capability.missing)",
             ),
@@ -378,15 +380,23 @@ pub fn route(route: RouteId) -> Value {
             ],
         ),
         RouteId::EvalAuthor => option(
-            "The user wants to make a new tool for Coder, or write tests or a test set for a \
-             tool with us, including one of our Gym plugins (plugins Coder uses, not the user's \
-             repository); or answers our questions in that interview: what the tool is for, \
-             what a good run looks like, approving or changing a draft, or trying it once",
+            "The user wants to make a new plugin (a tool, skill, or capability that OpenAgents \
+             or Coder uses) with us, whether they name only what it is for or describe in \
+             detail what it should do, what it must not touch, or that it runs in the \
+             background or stays off until they turn it on; or says yes to making one after we \
+             said there's no plugin for that yet; or wants tests or a test set for a plugin, \
+             including one of our Gym plugins (plugins Coder uses, not the user's \
+             repository); or answers our questions while we make one: what it should and \
+             shouldn't do, what a good run looks like, approving or changing its drafted \
+             tests, or whether to publish it and turn it on",
             Some(
-                "Unit tests or other code in their own repository (work.dispatch); running an \
-                 existing tool's test set (eval.run)",
+                "Unit tests, scripts, CLIs, extensions for other editors, or other code in their \
+                 own repository, including changing an existing plugin's files there \
+                 (work.dispatch); running an existing plugin's test set (eval.run)",
             ),
             &[
+                "Help me make a plugin that keeps my disk from filling up",
+                "make a plugin that reminds Coder to run the formatter before it commits",
                 "Help me make a tool that writes changelog entries",
                 "Write tests for my tool",
                 "write me a set of tests for my changelog helper",

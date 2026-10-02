@@ -156,7 +156,8 @@ pub struct Package {
     #[serde(default)]
     pub trusted_publishers: Vec<String>,
     /// The program this package carries, pinned. A plugin that only runs
-    /// in the background (its `background` rules) carries none.
+    /// in the background (its `background` rules), or only brings skills
+    /// (`skills/*.md`), carries none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub program: Option<Reference>,
     /// The background rules the package brings, pinned: rule documents
@@ -230,12 +231,11 @@ impl Package {
         if !is_slug(&self.slug) {
             return Err(format!("slug {:?} is not a package slug", self.slug));
         }
-        match &self.program {
-            Some(program) => check(program, "the program", is_slug)?,
-            None if self.background.is_empty() => {
-                return Err("a package carries a program, background rules, or both".into());
-            }
-            None => {}
+        // A package with neither a program nor background rules carries
+        // skills (#10177), which only its directory shows: resolution
+        // checks for them ([`Package::resolve`]).
+        if let Some(program) = &self.program {
+            check(program, "the program", is_slug)?;
         }
         for (what, references, grammar) in [
             (
@@ -337,6 +337,7 @@ impl Package {
     /// the stated digest, a dependency cycle, or a compatibility
     /// requirement the host does not satisfy.
     pub fn resolve(root: &Path, package: &Package) -> Result<Lock, Refusal> {
+        carries(root, package)?;
         resolve_tree(root, package, &mut Vec::new(), &BTreeSet::new())
     }
 
@@ -355,7 +356,29 @@ impl Package {
         package: &Package,
         revoked: &BTreeSet<String>,
     ) -> Result<Lock, Refusal> {
+        carries(root, package)?;
         resolve_tree(root, package, &mut Vec::new(), revoked)
+    }
+}
+
+/// Whether the package at `root` carries something: a program, background
+/// rules, or skills (a `.md` file directly in `skills/`, as a plugin made
+/// in chat or drafted by Coder from the chat is, #10177).
+fn carries(root: &Path, package: &Package) -> Result<(), Refusal> {
+    let skills = std::fs::read_dir(root.join("skills"))
+        .map(|entries| {
+            entries.filter_map(Result::ok).any(|entry| {
+                entry.path().is_file() && entry.path().extension().is_some_and(|ext| ext == "md")
+            })
+        })
+        .unwrap_or(false);
+    if package.program.is_some() || !package.background.is_empty() || skills {
+        Ok(())
+    } else {
+        Err(Refusal::Record {
+            source: package.slug.clone(),
+            reason: "a package carries a program, background rules, skills, or any of them".into(),
+        })
     }
 }
 
@@ -1047,6 +1070,23 @@ mod tests {
             digest: pinned,
         };
         (dir, program)
+    }
+
+    /// A plugin with no program and no background rules resolves when it
+    /// brings skills, and is refused when it carries nothing (#10177).
+    #[test]
+    fn a_skills_only_package_resolves_and_an_empty_one_is_refused() {
+        let (dir, program) = staged();
+        let mut record = package("greeter", &program);
+        record.program = None;
+        record.validate().expect("a record need not name a program");
+        assert!(matches!(
+            Package::resolve(dir.path(), &record),
+            Err(Refusal::Record { .. })
+        ));
+        stage(dir.path(), "skills/greeter.md", "Greet people by name.\n");
+        let lock = Package::resolve(dir.path(), &record).expect("skills are enough");
+        assert!(lock.program.is_none());
     }
 
     /// Writes a package record under `root/packages/` and returns it.

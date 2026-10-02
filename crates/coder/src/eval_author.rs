@@ -115,6 +115,9 @@ pub struct Ask {
     pub draft: Option<Value>,
     /// A try's or a full run's result, when the app has one for this draft.
     pub tried: Option<Tried>,
+    /// The tool Jev already picked for this message, when the plugin
+    /// flow's start asked first (#10177), so the step asks no second time.
+    pub picked: Option<Pick>,
 }
 
 /// One step's reply.
@@ -148,6 +151,10 @@ pub struct Picked {
     /// The probability that a tool to make needs new code, when Jev chose
     /// `code`; zero when it chose a skill.
     pub code: f64,
+    /// The probability that the messages already say what a new plugin
+    /// should do (the `scope` question's `stated`), for the plugin flow on
+    /// a computer (#10177); zero when Jev didn't answer it.
+    pub stated: f64,
 }
 
 /// The interview's driver.
@@ -280,6 +287,16 @@ impl<G: Generate> Author<G> {
                         ("code".to_string(), Some(Entry::from(rubric::code()))),
                     ]),
                 ),
+            )
+            .with(
+                "scope",
+                Choice::new(
+                    rubric::scope_instructions(),
+                    IndexMap::from([
+                        ("stated".to_string(), Some(Entry::from(rubric::stated()))),
+                        ("missing".to_string(), Some(Entry::from(rubric::missing()))),
+                    ]),
+                ),
             );
         let state = json!({
             "message": cut(message, 1_200),
@@ -298,6 +315,11 @@ impl<G: Generate> Author<G> {
             .ok()
             .filter(|b| b.choice == "code")
             .and_then(|b| b.probabilities.get("code").copied())
+            .unwrap_or(0.0);
+        let stated = response
+            .choice("scope")
+            .ok()
+            .and_then(|scope| scope.probabilities.get("stated").copied())
             .unwrap_or(0.0);
         let pick = if p < PICK_AT {
             Pick::Unclear
@@ -325,6 +347,7 @@ impl<G: Generate> Author<G> {
             choice: tool.choice.clone(),
             probability: p,
             code,
+            stated,
         })
     }
 
@@ -561,7 +584,11 @@ impl<G: Generate> Author<G> {
             });
         }
         let (turn, wrote) = if interview.stage == Stage::Start {
-            match interview.start(self.pick(&ask.message, &ask.transcript).await?) {
+            let pick = match ask.picked.clone() {
+                Some(pick) => pick,
+                None => self.pick(&ask.message, &ask.transcript).await?,
+            };
+            match interview.start(pick) {
                 Ok(need) => self.fulfil(&mut interview, &need, &input).await?,
                 Err(turn) => (turn, None),
             }
@@ -657,20 +684,41 @@ impl<G: Generate + 'static> crate::router::seams::EvalAuthor for Author<G> {
         Result<crate::router::seams::AuthorStep, crate::router::seams::SeamError>,
     > {
         Box::pin(async move {
+            let failed = |e: AuthorError| crate::router::seams::SeamError::Failed(e.to_string());
+            // On a computer, a request for a new plugin, and every reply
+            // while one is being made, is the plugin flow (#10177).
+            let mut picked = None;
+            if ask.here {
+                if let Some(open) = plugin::open(&ask.transcript) {
+                    return self.plugin_step(open, ask).await.map_err(failed);
+                }
+                if ask.draft.is_none() {
+                    let read = self
+                        .read_pick(&ask.message, &ask.transcript)
+                        .await
+                        .map_err(failed)?;
+                    if matches!(read.pick, Pick::Make | Pick::NeedsCode) {
+                        return Ok(plugin::start(read.stated));
+                    }
+                    picked = Some(read.pick);
+                }
+            }
             let step = self
                 .step(&Ask {
                     message: ask.message.clone(),
                     transcript: ask.transcript.clone(),
                     draft: ask.draft.clone(),
                     tried: ask.tried.clone(),
+                    picked,
                 })
                 .await
-                .map_err(|e| crate::router::seams::SeamError::Failed(e.to_string()))?;
+                .map_err(failed)?;
             Ok(crate::router::seams::AuthorStep {
                 text: step.reply,
                 draft: step.draft,
                 offer: step.offers.into_iter().next().and_then(router_offer),
                 model: step.model,
+                plugin: None,
             })
         })
     }
@@ -744,6 +792,7 @@ pub fn seam(
 }
 
 pub mod fake;
+pub mod plugin;
 pub mod rubric;
 
 #[cfg(test)]

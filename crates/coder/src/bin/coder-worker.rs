@@ -2129,6 +2129,10 @@ impl Job {
         // Whether the latest message has earlier ones to refer to: a
         // count, never text (#10138).
         let earlier = judged.len() > 1;
+        // A plugin being made on this computer (#10177): our last message
+        // ended at an open step's fixed line, an exact comparison.
+        let plugin =
+            makes_plugins(&turn.context) && coder::eval_author::plugin::open(input).is_some();
         Some(Box::pin(async move {
             let started = Instant::now();
             let answered = tokio::time::timeout(first::LATE, judge.system_one(request)).await;
@@ -2162,6 +2166,7 @@ impl Job {
                                 personalize,
                                 draft,
                                 earlier,
+                                plugin,
                             },
                         )
                     };
@@ -2573,6 +2578,8 @@ impl Job {
                                 draft: turn.draft.clone(),
                                 tried: turn.tried.clone(),
                                 surface: turn.context.surface(),
+                                here: makes_plugins(&turn.context),
+                                coder_run: turn.context.coder_run.clone(),
                             };
                             seam = author_step(seams, ask);
                             seam_waiting = true;
@@ -2665,6 +2672,7 @@ impl Job {
                                     tier: "author",
                                     route: routing.route.word(),
                                     model: Some(step.model.clone()),
+                                    plugin: step.plugin.as_ref().map(|flow| flow.wire()),
                                     ..Served::default()
                                 };
                                 return Ok((step.text, None, Some(record)));
@@ -3257,6 +3265,14 @@ fn proposal(seams: &Seams, ask: CliAsk) -> SeamCall {
                 .unwrap_or_else(|_| Err(SeamError::Failed("ran past its budget".to_string()))),
         )
     })
+}
+
+/// Whether the turn's chat makes a plugin in steps (#10177): a terminal on
+/// the computer Coder runs on, whose client runs the steps that happen
+/// there (showing the drafted tests, running them, installing and turning
+/// the plugin on). Elsewhere `eval.author` is the authoring interview.
+fn makes_plugins(context: &router::Context) -> bool {
+    context.here() && context.surface() == router::Surface::Terminal
 }
 
 /// The exploration dispatch a codebase question escalates to: the
@@ -5948,9 +5964,109 @@ mod tests {
                         label: "Try it once".into(),
                     }),
                     model: "interview-test".into(),
+                    plugin: None,
                 })
             })
         }
+    }
+
+    /// A plugin step for tests (#10177): the step the transcript's last
+    /// fixed line opened, or the draft.
+    struct PluginSeam;
+
+    impl router::seams::EvalAuthor for PluginSeam {
+        fn available(&self) -> bool {
+            true
+        }
+        fn recipients(&self) -> Vec<String> {
+            Vec::new()
+        }
+        fn step<'a>(
+            &'a self,
+            ask: &'a AuthorAsk,
+        ) -> futures_util::future::BoxFuture<'a, Result<AuthorStep, SeamError>> {
+            use openagents_chat::plugin_flow::{Flow, Step};
+            let open = coder::eval_author::plugin::open(&ask.transcript);
+            let here = ask.here;
+            Box::pin(async move {
+                assert!(here, "the turn came from the computer Coder runs on");
+                let (step, offer) = match open {
+                    Some(Step::Tests) => (Step::Run, None),
+                    _ => (
+                        Step::Draft,
+                        Some(router::Offer::RunCoder {
+                            label: "Run Coder".into(),
+                            engine: None,
+                            plan: Default::default(),
+                        }),
+                    ),
+                };
+                Ok(AuthorStep {
+                    text: step.line().into(),
+                    draft: None,
+                    offer,
+                    model: coder::eval_author::plugin::MODEL.into(),
+                    plugin: Some(Flow::at(step, Some("greeter".into()))),
+                })
+            })
+        }
+    }
+
+    /// #10177: on a computer, `eval.author` serves the plugin flow's step
+    /// as the result's typed `plugin` field, with its Run Coder offer, and
+    /// a short reply while a plugin is being made continues it rather than
+    /// answering as small talk.
+    #[tokio::test]
+    async fn a_plugin_step_rides_the_result_and_an_open_flow_continues() {
+        let context = json!({
+            "surface": "terminal", "computer_ready": true,
+            "computer": { "place": "here", "engines": [] },
+        });
+        let terminal = |task: &str| {
+            let mut turn = v2_turn(task);
+            turn["context"] = context.clone();
+            turn
+        };
+        let seams = || Seams {
+            author: Arc::new(PluginSeam),
+            ..Seams::default()
+        };
+        let frames = frames_routed(
+            slow_door(Duration::from_millis(1_500)),
+            Some(judge(
+                Duration::ZERO,
+                routed_in(&context, "eval.author", "none", 0.1, "none"),
+            )),
+            terminal("Help me make a plugin that greets people by name"),
+            seams(),
+            RouterSetting::Live,
+        )
+        .await;
+        let result = &frames.last().unwrap().1;
+        assert_eq!(result["plugin"]["step"], "draft");
+        assert_eq!(result["tier"], "author");
+        assert_eq!(of_type(&frames, "offer")[0]["offer"], "run_coder");
+
+        let mut turn = terminal("yes");
+        turn["transcript"] = json!([
+            { "role": "user", "content": "Help me make a plugin that greets people by name" },
+            { "role": "assistant", "content": openagents_chat::plugin_flow::Step::Tests.line() },
+            { "role": "user", "content": "yes" },
+        ]);
+        let frames = frames_routed(
+            slow_door(Duration::from_millis(1_500)),
+            Some(judge(
+                Duration::ZERO,
+                routed_in(&context, "smalltalk", "smalltalk.thanks", 0.1, "none"),
+            )),
+            turn,
+            seams(),
+            RouterSetting::Live,
+        )
+        .await;
+        let result = &frames.last().unwrap().1;
+        assert_eq!(result["plugin"]["step"], "run", "{result}");
+        assert_eq!(result["plugin"]["slug"], "greeter");
     }
 
     /// `eval.author` without the interview wired says so, from

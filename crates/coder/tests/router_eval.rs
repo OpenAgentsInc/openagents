@@ -22,7 +22,8 @@
 //! follow-up after Coder's run in the chat ended: a question about the run
 //! for the chat, or more work for Coder's next turn, and near misses,
 //! #10094), or `essays` (our essays and the ideas in them, and near
-//! misses, #10099). Every run
+//! misses, #10099), or `plugin_create` (asking to make a new plugin, and
+//! ordinary coding asks near it, #10177). Every run
 //! also prints how the dispatch offers named engines (#10076).
 //! `ROUTER_EVAL_SURFACE=desktop` asks as the desktop app does, with the
 //! `deck` question over the decks it ships; unset is the set's default
@@ -106,6 +107,7 @@ fn rows<'a>(set: &'a Set, split: &str) -> (Vec<&'a Row>, String) {
     let plugins = |row: &Row| row.tags.iter().any(|tag| tag == "plugins");
     let followup = |row: &Row| row.tags.iter().any(|tag| tag == "coder_followup");
     let essays = |row: &Row| row.tags.iter().any(|tag| tag == "essays");
+    let plugin_create = |row: &Row| row.tags.iter().any(|tag| tag == "plugin_create");
     match which.as_str() {
         "v1" => (
             rows.into_iter()
@@ -119,6 +121,7 @@ fn rows<'a>(set: &'a Set, split: &str) -> (Vec<&'a Row>, String) {
                         && !plugins(r)
                         && !followup(r)
                         && !essays(r)
+                        && !plugin_create(r)
                 })
                 .collect(),
             format!("{split}-v1-rows"),
@@ -138,6 +141,10 @@ fn rows<'a>(set: &'a Set, split: &str) -> (Vec<&'a Row>, String) {
         "essays" => (
             rows.into_iter().filter(|r| essays(r)).collect(),
             format!("{split}-essays-rows"),
+        ),
+        "plugin_create" => (
+            rows.into_iter().filter(|r| plugin_create(r)).collect(),
+            format!("{split}-plugin-create-rows"),
         ),
         "coder_followup" => (
             rows.into_iter().filter(|r| followup(r)).collect(),
@@ -231,6 +238,7 @@ async fn run_router(name: &str, mode: router::Mode) {
         personalize: true,
         draft: false,
         earlier: false,
+        plugin: false,
     };
     let set = Set::fixture();
     let (rows, split_label) = if publishing() {

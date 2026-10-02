@@ -845,6 +845,7 @@ pub fn check_step(step: &super::seams::AuthorStep) -> Result<super::seams::Autho
             .and_then(|draft| super::card::draft(draft).ok()),
         offer,
         model: step.model.clone(),
+        plugin: step.plugin.clone(),
     })
 }
 
@@ -1866,6 +1867,7 @@ mod tests {
                 label: "Try it once".into(),
             }),
             model: "test".into(),
+            plugin: None,
         };
         let checked = check_step(&step).unwrap();
         assert_eq!(checked.draft, Some(draft));

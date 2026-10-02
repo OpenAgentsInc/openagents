@@ -1903,3 +1903,45 @@ recalibration):
   assistant turns ("We'll dispatch Coder ...") as recorded transcripts;
   changing them would move the calibrated eval, and the route question does
   not read the bank's stems.
+
+## Making a plugin on a computer (2026-10-02)
+
+[#10177](https://github.com/OpenAgentsInc/openagents/issues/10177). On the
+Mac, "Help me make a plugin that keeps my disk from filling up …" with its
+details went to `work.dispatch` and straight to Coder, and the Episode 289
+flow (what should it do and not do, drafted tests, run them, register) never
+ran. Two changes:
+
+- **The route.** The `eval.author` rubric now says a new plugin, however
+  detailed (what it must not touch, that it runs in the background, that it
+  stays off until turned on), and "yes" to our "There's no plugin for that
+  yet. Want to make one?"; `work.dispatch`'s `not_for` says making a new
+  plugin is `eval.author` even when it describes work on the person's
+  computer or files. Scripts, CLIs, other editors' extensions, and changes
+  to an existing plugin's files stay `work.dispatch`. The route question
+  moved, so the set's digest, the Gym question set, and the calibration
+  moved with it (see the measurement).
+- **The flow.** On a turn from a terminal where Coder runs (surface
+  `terminal` and `context.computer.place = here`, whose client runs the
+  steps that happen on the computer),
+  `eval.author` with Jev's `tool` reading `make` (a skill or new code alike)
+  is the plugin-creation flow, a typed state per step
+  (`openagents_chat::plugin_flow::Step`), served by
+  `coder::eval_author::plugin` and carried on the result as `plugin`:
+
+  | Step | Served by | Next on |
+  | --- | --- | --- |
+  | `scope` | the worker: one question, skipped when Jev's `scope` reading is `stated` at 0.8 | any reply |
+  | `draft` | the worker: a Run Coder offer; the client adds `plugin_flow::BRIEF` to Coder's prompt | Coder's run ending (`context.coder_run`) with a plugin under `plugins/` |
+  | `tests` | the client: the drafted tests, read from the task's worktree as `plugin test` loads them | Jev's `reply` reading: approve, change (Coder again with `plugin_flow::REVISE`), or neither (shown again) |
+  | `run` | the client: `openagents plugin test run DIR --trust`, and the result | the run ending |
+  | `publish` | the client: the publish question | Jev's `publish` reading: both, publish, enable, or neither at 0.7 |
+  | `done` | the client: `plugin publish` when this build has it, `plugin install` and `plugin enable` for what was chosen | none: the flow ends |
+
+  The worker recovers the open step from our last message's fixed line (an
+  exact comparison, as the interview's gates are) and the Coder run, and
+  policy rule 0b keeps a reply in the flow when it reads as one of
+  `AUTHOR_CONTINUES`, more work for Coder, or a command. The phone and the
+  desktop app still get the authoring interview until their clients run
+  the computer's steps. A plugin that only brings skills now resolves
+  without a program (`Package::resolve` refuses one that carries nothing).

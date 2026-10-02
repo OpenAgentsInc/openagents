@@ -1,0 +1,26 @@
+{
+  "v": "openagents.chat-router.configuration.v1",
+  "requires": [],
+  "set": "chat-router-v4@60fb0f55d6ab",
+  "set_digest": "sha256:60fb0f55d6aba9fec51507eaacc8ffd0302832af7e929220a3c7e76915a20c5d",
+  "bank": "chat-answers-v1@cfc839ef703b",
+  "mode": "router",
+  "calibration": "off",
+  "thresholds": {
+    "route_confidence": 0.8,
+    "answer_confidence": 0.8,
+    "specifics_ceiling": 0.3,
+    "stem_confidence": 0.7,
+    "opener_confidence": 0.7,
+    "dispatch_route": 0.7,
+    "dispatch_lane": 0.75,
+    "cli_route": 0.75,
+    "cli_group": 0.6,
+    "risk_warn": 0.6,
+    "risk_refuse": 0.85,
+    "grounded_route": 0.6,
+    "clarify_route": 0.6,
+    "eval_route": 0.7,
+    "tool_confidence": 0.6
+  }
+}

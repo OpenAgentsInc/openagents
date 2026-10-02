@@ -35,6 +35,35 @@ pub const COMMAND_OUTPUT: usize = 16 * 1024;
 
 /// Run `openagents ARGV` with this program, as [`Here::run_command`] does.
 fn run_here(argv: &[String]) -> Result<Ran, String> {
+    run_for(argv, COMMAND_TIMEOUT, true)
+}
+
+/// The first line of a test's task: the prompt after its front matter.
+fn task_line(prompt: &str) -> String {
+    let body = prompt
+        .strip_prefix("+++")
+        .and_then(|rest| rest.split_once("\n+++").map(|(_, body)| body))
+        .unwrap_or(prompt);
+    let line = body
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .unwrap_or_default();
+    let mut cut: String = line.chars().take(160).collect();
+    if line.chars().count() > 160 {
+        cut.push('…');
+    }
+    cut
+}
+
+/// Run `openagents ARGV` with this program for up to `timeout`. Its
+/// standard error joins the output when `show_errors`; otherwise only when it
+/// fails, so a test run's progress lines stay out of its summary.
+fn run_for(
+    argv: &[String],
+    timeout: std::time::Duration,
+    show_errors: bool,
+) -> Result<Ran, String> {
     use std::io::Read;
     use std::process::Stdio;
     let exe = std::env::current_exe().map_err(|e| format!("cannot find this program: {e}"))?;
@@ -70,13 +99,13 @@ fn run_here(argv: &[String]) -> Result<Ran, String> {
     let status = loop {
         match child.try_wait() {
             Ok(Some(status)) => break status,
-            Ok(None) if started.elapsed() >= COMMAND_TIMEOUT => {
+            Ok(None) if started.elapsed() >= timeout => {
                 let _ = child.kill();
                 let _ = child.wait();
                 return Err(format!(
                     "openagents {} did not finish within {} s and was stopped.",
                     argv.join(" "),
-                    COMMAND_TIMEOUT.as_secs()
+                    timeout.as_secs()
                 ));
             }
             Ok(None) => std::thread::sleep(std::time::Duration::from_millis(50)),
@@ -85,7 +114,7 @@ fn run_here(argv: &[String]) -> Result<Ran, String> {
     };
     let mut text = String::from_utf8_lossy(&out.join().unwrap_or_default()).into_owned();
     let errors = String::from_utf8_lossy(&err.join().unwrap_or_default()).into_owned();
-    if !errors.trim().is_empty() {
+    if !errors.trim().is_empty() && (show_errors || !status.success()) {
         if !text.is_empty() && !text.ends_with('\n') {
             text.push('\n');
         }
@@ -288,6 +317,41 @@ impl Coder for Here {
     /// [`COMMAND_TIMEOUT`], what it printed kept to [`COMMAND_OUTPUT`].
     fn run_command(&self, argv: &[String]) -> Result<Ran, String> {
         run_here(argv)
+    }
+
+    fn worktree(&self, store: &Path, task: &str) -> Option<PathBuf> {
+        local::record(store, task).map(|record| PathBuf::from(record.worktree))
+    }
+
+    /// The package record loads and resolves as `openagents plugin
+    /// install` checks it, and the tests load as `openagents plugin test`
+    /// loads them (`ext_eval::author::files::read`).
+    fn plugin_tests(&self, dir: &Path) -> Result<Vec<openagents_chat::plugin_flow::Test>, String> {
+        use crate::package::Package;
+        let package = Package::load(&dir.join("package.json"))?;
+        Package::resolve(dir, &package).map_err(|refusal| refusal.to_string())?;
+        let evals = ext_eval::eval_dir(dir, None, package.eval_dir.as_deref())
+            .map_err(|error| error.to_string())?;
+        if !evals.is_dir() {
+            return Ok(Vec::new());
+        }
+        let cases = ext_eval::author::files::read(&evals).map_err(|error| error.to_string())?;
+        Ok(cases
+            .into_iter()
+            .take(openagents_chat::plugin_flow::MAX_TESTS)
+            .map(|case| openagents_chat::plugin_flow::Test {
+                name: case.id,
+                kind: match case.kind {
+                    nostr::eval_ext::CaseKind::ShouldNotFire => "should-not-fire".into(),
+                    _ => "should-fire".into(),
+                },
+                task: task_line(&case.prompt),
+            })
+            .collect())
+    }
+
+    fn plugin_command(&self, argv: &[String], timeout: std::time::Duration) -> Result<Ran, String> {
+        run_for(argv, timeout, false)
     }
 
     fn trajectories(&self, store: &Path, task: &str) -> Vec<Value> {

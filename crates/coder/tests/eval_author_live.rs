@@ -122,6 +122,7 @@ impl Chat {
             transcript: self.transcript.clone(),
             draft: self.draft.clone(),
             tried,
+            picked: None,
         };
         let started = std::time::Instant::now();
         let step = author.step(&ask).await.expect("the live step");

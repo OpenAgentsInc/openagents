@@ -160,6 +160,9 @@ pub struct Served {
     pub citations: Vec<Citation>,
     /// The commit the corpus was read at.
     pub commit: Option<String>,
+    /// The plugin-creation step the turn served (#10177): the result's
+    /// typed `plugin` field (`openagents_chat::plugin_flow::Flow::wire`).
+    pub plugin: Option<Value>,
 }
 
 /// Adds a routed turn's fields to a `26900` result body.
@@ -188,6 +191,9 @@ pub fn annotate(result: &mut Value, served: &Served, bank: &Bank) {
     }
     if let Some(commit) = &served.commit {
         result["commit"] = json!(commit);
+    }
+    if let Some(plugin) = &served.plugin {
+        result["plugin"] = plugin.clone();
     }
 }
 
@@ -405,6 +411,7 @@ mod tests {
                 personalize: false,
                 draft: false,
                 earlier: false,
+                plugin: false,
             },
         );
         assert_eq!(
@@ -614,6 +621,7 @@ mod tests {
                 personalize: false,
                 draft: false,
                 earlier: false,
+                plugin: false,
             },
         );
         let record = Shadow::of(&routing, bank, Mode::Router, false, &tier, &tier, 180);

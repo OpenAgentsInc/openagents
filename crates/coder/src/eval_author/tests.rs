@@ -46,6 +46,8 @@ fn judge() -> Arc<ScriptJudge> {
                 ("skill".into(), 0.9)
             }
         }
+        // Read only by the plugin flow on a computer (#10177).
+        "scope" => ("missing".into(), 0.6),
         "reply" => match state["they_replied"].as_str().unwrap_or_default() {
             "Looks good" => ("approve".into(), 0.95),
             "Sort of" => ("approve".into(), 0.6),
@@ -86,6 +88,7 @@ impl Phone {
             transcript: self.transcript.clone(),
             draft: self.draft.clone(),
             tried,
+            picked: None,
         };
         let step = author.step(&ask).await.expect("the step");
         assert!(!step.reply.trim().is_empty());
@@ -111,6 +114,7 @@ impl Phone {
             draft: step.draft.clone(),
             offer: step.offers.first().cloned().and_then(router_offer),
             model: step.model.clone(),
+            plugin: None,
         })
         .expect("the router shows the step");
         assert_eq!(routed.draft, step.draft);
@@ -510,6 +514,8 @@ async fn the_router_seam_runs_a_step() {
             draft: None,
             tried: None,
             surface: crate::router::Surface::Phone,
+            here: false,
+            coder_run: None,
         },
     )
     .await
@@ -521,4 +527,256 @@ async fn the_router_seam_runs_a_step() {
     assert!(step.draft.is_some());
     let none = Author::new(StepModel::default(), "m", None, Catalog::starter());
     assert!(!none.available());
+}
+
+/// The plugin-creation flow on a computer (#10177), with a stand-in Jev:
+/// the `tool` reading picks `make` for a request for a new plugin, the
+/// `scope` reading says whether it already says what the plugin does, the
+/// `reply` reading reads the tests' answer, and the `publish` reading the
+/// publish question's.
+mod plugin_flow {
+    use openagents_chat::plugin_flow::{Flow, Step};
+
+    use super::*;
+    use crate::router::seams::{AuthorAsk, AuthorStep, EvalAuthor};
+    use crate::router::{CoderRun, Offer as Routed, RunEnding};
+
+    fn jev() -> Arc<ScriptJudge> {
+        Arc::new(ScriptJudge::answering(|id, state| {
+            let message = state["message"]
+                .as_str()
+                .or_else(|| state["they_replied"].as_str())
+                .unwrap_or_default();
+            match id {
+                "tool" if message.contains("plugin") || message == "yes" => ("make".into(), 0.95),
+                "tool" if message.contains("Project map") => ("tool_0".into(), 0.93),
+                "tool" => ("unclear".into(), 0.7),
+                "build" => ("skill".into(), 0.9),
+                "scope" if message.contains("greets") => ("stated".into(), 0.92),
+                "scope" => ("missing".into(), 0.9),
+                "reply" => match message {
+                    "yes" | "looks good" => ("approve".into(), 0.95),
+                    "what does stays-out check?" => ("other".into(), 0.8),
+                    _ => ("change".into(), 0.9),
+                },
+                "publish" => match message {
+                    "yes" => ("both".into(), 0.93),
+                    "just turn it on" => ("enable".into(), 0.9),
+                    "not now" => ("neither".into(), 0.9),
+                    _ => ("other".into(), 0.8),
+                },
+                _ => ("unclear".into(), 0.5),
+            }
+        }))
+    }
+
+    fn run(ending: RunEnding, files: &[&str]) -> CoderRun {
+        CoderRun {
+            ending,
+            turn: 1,
+            engine: Some("codex".into()),
+            model: None,
+            summary: String::new(),
+            files: files
+                .iter()
+                .map(|path| ((*path).to_owned(), "added".to_owned()))
+                .collect(),
+            commands: Vec::new(),
+        }
+    }
+
+    const DRAFTED: [&str; 4] = [
+        "plugins/greeter/package.json",
+        "plugins/greeter/skills/greeter.md",
+        "plugins/greeter/evals/greets-by-name/prompt.md",
+        "plugins/greeter/evals/stays-out/prompt.md",
+    ];
+
+    /// One computer's chat: it keeps the transcript, as the worker reads it.
+    struct Terminal {
+        transcript: Vec<Message>,
+        run: Option<CoderRun>,
+    }
+
+    impl Terminal {
+        fn new() -> Self {
+            Self {
+                transcript: Vec::new(),
+                run: None,
+            }
+        }
+
+        async fn send(&mut self, author: &Author<StepModel>, message: &str) -> AuthorStep {
+            self.transcript.push(Message {
+                role: Role::User,
+                text: message.into(),
+            });
+            let step = EvalAuthor::step(
+                author,
+                &AuthorAsk {
+                    message: message.into(),
+                    transcript: self.transcript.clone(),
+                    draft: None,
+                    tried: None,
+                    surface: crate::router::Surface::Terminal,
+                    here: true,
+                    coder_run: self.run.clone(),
+                },
+            )
+            .await
+            .unwrap();
+            // The router shows it only after its own check.
+            let step = crate::router::gym::check_step(&step).expect("the router shows the step");
+            self.transcript.push(Message {
+                role: Role::Assistant,
+                text: step.text.clone(),
+            });
+            step
+        }
+    }
+
+    fn at(step: &AuthorStep) -> Option<Step> {
+        step.plugin.as_ref().and_then(Flow::step)
+    }
+
+    fn runs_coder(step: &AuthorStep) -> bool {
+        matches!(step.offer, Some(Routed::RunCoder { .. }))
+    }
+
+    /// A request that says what the plugin does goes straight to Coder's
+    /// draft; one that doesn't asks one question first. Neither reaches
+    /// the model, and a phone still gets the interview.
+    #[tokio::test]
+    async fn a_request_for_a_new_plugin_starts_the_flow_on_a_computer() {
+        let author = author(StepModel::default(), jev());
+        let mut chat = Terminal::new();
+        let step = chat
+            .send(&author, "Help me make a plugin that greets people by name")
+            .await;
+        assert_eq!(at(&step), Some(Step::Draft));
+        assert!(runs_coder(&step));
+        assert!(step.text.ends_with(Step::Draft.line()));
+        assert!(author.model.calls().is_empty(), "no model words");
+
+        let mut chat = Terminal::new();
+        let step = chat.send(&author, "I want to make a plugin").await;
+        assert_eq!(at(&step), Some(Step::Scope));
+        assert!(step.offer.is_none());
+        assert!(step.text.ends_with(Step::Scope.line()));
+        // Whatever the answer, Coder drafts it next.
+        let step = chat
+            .send(&author, "It should say hi; it shouldn't touch files.")
+            .await;
+        assert_eq!(at(&step), Some(Step::Draft));
+        assert!(runs_coder(&step));
+
+        // An existing plugin's tests on a computer are still the interview.
+        let mut chat = Terminal::new();
+        let step = chat
+            .send(&author, "Help me write tests for Project map")
+            .await;
+        assert_eq!(step.plugin, None);
+        assert!(
+            step.text
+                .ends_with(Stage::Tool.line(Surface::Chat).unwrap())
+        );
+        // And on a phone, a new plugin is the interview's.
+        let phone = EvalAuthor::step(
+            &author,
+            &AuthorAsk {
+                message: "Help me make a plugin that greets people by name".into(),
+                transcript: Vec::new(),
+                draft: None,
+                tried: None,
+                surface: crate::router::Surface::Phone,
+                here: false,
+                coder_run: None,
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(phone.plugin, None);
+    }
+
+    /// Every transition after the draft is a typed outcome or a typed
+    /// reading: Coder still working, Coder done without a plugin, the
+    /// tests approved, changed, or asked about, and each publish answer.
+    #[tokio::test]
+    async fn each_step_moves_on_a_typed_outcome_or_reading() {
+        let author = author(StepModel::default(), jev());
+        let mut chat = Terminal::new();
+        chat.send(&author, "Help me make a plugin that greets people by name")
+            .await;
+
+        // Coder still drafts: the message goes to it.
+        chat.run = Some(run(RunEnding::Running, &[]));
+        let step = chat.send(&author, "use a friendly tone").await;
+        assert_eq!(at(&step), Some(Step::Draft));
+        assert!(runs_coder(&step));
+
+        // Its run ended with no plugin: Coder tries again.
+        chat.run = Some(run(RunEnding::Finished, &["README.md"]));
+        let step = chat.send(&author, "try again").await;
+        assert_eq!(at(&step), Some(Step::Draft));
+        assert!(runs_coder(&step));
+        assert!(step.text.contains("without a plugin"));
+
+        // It drafted `greeter`: the answer to the tests this computer
+        // showed. A question shows them again, typed.
+        chat.run = Some(run(RunEnding::Finished, &DRAFTED));
+        let step = chat.send(&author, "what does stays-out check?").await;
+        assert_eq!(
+            step.plugin,
+            Some(Flow::at(Step::Tests, Some("greeter".into())))
+        );
+        assert!(step.text.contains("greets-by-name, stays-out"));
+        assert!(step.text.ends_with(Step::Tests.line()));
+        // A change goes back to Coder, on the same plugin.
+        let step = chat.send(&author, "add a test in French").await;
+        assert_eq!(
+            step.plugin,
+            Some(Flow::at(Step::Draft, Some("greeter".into())))
+        );
+        assert!(runs_coder(&step));
+        // An approval runs them here.
+        let step = chat.send(&author, "looks good").await;
+        assert_eq!(
+            step.plugin,
+            Some(Flow::at(Step::Run, Some("greeter".into())))
+        );
+        assert!(step.offer.is_none());
+
+        // The publish question, which this computer asked after the run.
+        let mut after_run = Terminal {
+            transcript: chat.transcript.clone(),
+            run: chat.run.clone(),
+        };
+        let step = after_run
+            .send(&author, "how long does publishing take?")
+            .await;
+        assert_eq!(at(&step), Some(Step::Publish));
+        let step = after_run.send(&author, "yes").await;
+        let flow = step.plugin.clone().unwrap();
+        assert_eq!(flow.step(), Some(Step::Done));
+        assert!(flow.publish && flow.enable);
+        assert_eq!(flow.slug.as_deref(), Some("greeter"));
+        assert!(step.text.ends_with(Step::Done.line()));
+        // The flow ended: the next message is no step of it.
+        assert_eq!(super::super::plugin::open(&after_run.transcript), None);
+
+        for (answer, publish, enable) in
+            [("just turn it on", false, true), ("not now", false, false)]
+        {
+            let mut chat = Terminal {
+                transcript: chat.transcript.clone(),
+                run: chat.run.clone(),
+            };
+            let flow = chat.send(&author, answer).await.plugin.unwrap();
+            assert_eq!(
+                (flow.step(), flow.publish, flow.enable),
+                (Some(Step::Done), publish, enable),
+                "{answer}"
+            );
+        }
+    }
 }

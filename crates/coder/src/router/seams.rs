@@ -338,6 +338,15 @@ pub struct AuthorAsk {
     pub tried: Option<ext_eval::author::runner::Tried>,
     /// Where the chat is.
     pub surface: Surface,
+    /// The chat is a terminal on the computer Coder runs on (the request's
+    /// surface is `terminal` and its `context.computer` is `here`), whose
+    /// client runs the plugin-creation flow's steps: a request for a new
+    /// plugin is that flow there (#10177).
+    pub here: bool,
+    /// The chat's Coder run, as the request's `context.coder_run` said:
+    /// its typed ending and the bounded paths it changed, which the plugin
+    /// flow reads to know whether Coder's draft is done.
+    pub coder_run: Option<super::CoderRun>,
 }
 
 /// One step of the interview, as the seam wrote it. The router checks it
@@ -354,6 +363,9 @@ pub struct AuthorStep {
     pub offer: Option<super::Offer>,
     /// The model that wrote `text`, for the result's `model`.
     pub model: String,
+    /// The plugin-creation step this turn served (#10177), carried to the
+    /// client as the result's `plugin` field.
+    pub plugin: Option<openagents_chat::plugin_flow::Flow>,
 }
 
 /// The authoring interview's chat driver (`crate::eval_author`, #9937):
@@ -588,6 +600,8 @@ mod tests {
             draft: None,
             tried: None,
             surface: Surface::Phone,
+            here: false,
+            coder_run: None,
         };
         assert_eq!(
             seams.author.step(&author).await,

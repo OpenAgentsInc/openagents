@@ -152,7 +152,7 @@ and `crates/openagents-cli` (`plugin list|run|test|defaults`):
 | Friction | Fix |
 | --- | --- |
 | A plugin could not run in the background, ask for a delete capability, or be turned on per computer. | `background::plugins`, `package.json` `background`, `plugin install|enable|disable|installed`, `/plugins` Space (72cf012985). |
-| "Help me make a plugin …" with no details got a plan reply and a Coder offer, not the interview; with details it went straight to Coder. The interview only writes tests for a plugin that exists. | None yet: building first, then `plugin test init`, worked. |
+| "Help me make a plugin …" with no details got a plan reply and a Coder offer, not the interview; with details it went straight to Coder. The interview only writes tests for a plugin that exists. | On a computer the request is the plugin-creation flow: what it should and shouldn't do, Coder's draft with its tests, the tests for approval, a run, and publish and turn on (#10177). |
 | `plugin test init` sent the model door an empty conversation, which the gateway refuses (`input: Too small`). | The person's request is the first message. |
 | A background plugin's tests admitted nothing in the subject arm (no program, no skills). | The subject arm reads each pinned background rule as guidance. |
 | The interview cannot try or run the tests itself from a terminal; it prints the command. | None yet. |

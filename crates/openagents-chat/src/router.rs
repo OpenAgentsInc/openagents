@@ -1049,6 +1049,11 @@ pub struct Meta {
     /// parser read it. `None` is one run, as before.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub plan: Option<nostr::cj_conversation::Plan>,
+    /// The step of making a plugin this reply served (#10177), from the
+    /// result's typed `plugin` field ([`crate::plugin_flow::Flow::parse`]):
+    /// what this computer does next, never read from the reply's text.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plugin: Option<crate::plugin_flow::Flow>,
 }
 
 impl Meta {
@@ -1131,6 +1136,9 @@ impl Meta {
         }
         self.take_words(payload);
         self.take_followups(payload);
+        if let Some(flow) = crate::plugin_flow::Flow::parse(&payload["plugin"]) {
+            self.plugin = Some(flow);
+        }
     }
 
     fn take_words(&mut self, payload: &Value) {

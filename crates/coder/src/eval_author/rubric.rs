@@ -136,6 +136,49 @@ pub fn code() -> Value {
     )
 }
 
+/// The `scope` question's instructions: on a computer, whether a request
+/// for a new plugin already says enough to draft it (#10177).
+#[must_use]
+pub fn scope_instructions() -> Value {
+    json!({
+        "question": "If the person wants a new plugin, do their messages already say what it should do?",
+        "context": CONTEXT,
+        "focus": "Read the latest message and the earlier turns together. What it should do \
+                  counts when it is named as a job, however briefly, such as greeting people by \
+                  name or turning notes into tickets; what it must not do is welcome but not \
+                  needed.",
+    })
+}
+
+/// The `stated` option's rubric.
+#[must_use]
+pub fn stated() -> Value {
+    option(
+        "They say what the new plugin should do, as a job Coder or OpenAgents could carry \
+         out, in the latest message or an earlier one",
+        Some("Asking to make a plugin with no job named yet, or only a topic (missing)"),
+        &[
+            "make a plugin that turns meeting notes into Linear tickets, one per action item",
+            "a plugin so Coder always writes commit messages in the imperative mood",
+        ],
+    )
+}
+
+/// The `missing` option's rubric.
+#[must_use]
+pub fn missing() -> Value {
+    option(
+        "They want a new plugin but haven't said what it should do beyond wanting one, or \
+         name only a topic",
+        Some("A job named however briefly (stated)"),
+        &[
+            "I want to make a plugin",
+            "can we build a plugin together",
+            "a plugin for git",
+        ],
+    )
+}
+
 /// The live check's "make a tool" requests (`tests/eval_author_live.rs`)
 /// and what each one is: `skill` stays in the interview and reaches a
 /// draft, `code` goes to Coder on a computer. The first two are the

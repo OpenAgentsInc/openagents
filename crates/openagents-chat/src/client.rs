@@ -416,6 +416,29 @@ pub trait Coder: Send + Sync {
     }
     /// Every turn's ATIF trajectory the store holds, for an export.
     fn trajectories(&self, store: &Path, task: &str) -> Vec<Value>;
+    /// The worktree `task` works in, where its files are (#10177).
+    fn worktree(&self, _store: &Path, _task: &str) -> Option<PathBuf> {
+        None
+    }
+    /// The plugin Coder drafted at `dir` (#10177): its package record
+    /// checked as `openagents plugin` checks it, and its tests read as
+    /// `openagents plugin test` loads them. Blocking.
+    ///
+    /// # Errors
+    /// Why it is not a plugin with tests here, in words for the person.
+    fn plugin_tests(&self, _dir: &Path) -> Result<Vec<crate::plugin_flow::Test>, String> {
+        Err("Plugins are not checked here.".into())
+    }
+    /// Run a step of making a plugin on this computer (#10177): the
+    /// `openagents` command `argv` for that step, which may take up to
+    /// `timeout`; what it printed on its standard output is the output.
+    /// Blocking.
+    ///
+    /// # Errors
+    /// Why it could not run.
+    fn plugin_command(&self, _argv: &[String], _timeout: Duration) -> Result<Ran, String> {
+        Err("Plugins are not made here.".into())
+    }
 }
 
 /// How a command a reply proposed may run here ([`Coder::permit`]).
@@ -609,6 +632,15 @@ pub enum Event {
         argv: Vec<String>,
         ok: bool,
         output: String,
+    },
+    /// A step of making a plugin ran on this computer (#10177): where the
+    /// thread's plugin now stands, typed, and what we say about it, which
+    /// ends with that step's fixed line when it waits for the person.
+    Plugin {
+        thread: String,
+        flow: crate::plugin_flow::Flow,
+        text: String,
+        ok: bool,
     },
 }
 
@@ -1024,7 +1056,17 @@ impl Client {
                 };
                 self.send(&thread, new, &text, run, timeout, sink).await
             }
-            Op::RunCoder { thread } => Ok(self.run_coder(&thread, sink).await),
+            Op::RunCoder { thread } => {
+                let ended = self.run_coder(&thread, sink).await;
+                let plugin = match ended {
+                    Ended::Done => self.last_plugin(&thread).await,
+                    _ => None,
+                };
+                Ok(match plugin {
+                    Some(flow) => self.plugin(&thread, flow, sink).await,
+                    None => ended,
+                })
+            }
             Op::RunCommand { thread } => Ok(self.confirmed(&thread, sink).await),
             Op::Follow { thread } | Op::Stop { thread } | Op::Answer { thread, .. }
                 if matches!(self.backend, Backend::Computer { .. }) =>
@@ -1239,6 +1281,7 @@ impl Client {
                 // once, unless the person asked only for the offer.
                 let coding = crate::delegation::offered(reply.meta.as_ref(), snapshot.computer);
                 let command = reply.meta.as_ref().and_then(|meta| meta.command.clone());
+                let plugin = reply.meta.as_ref().and_then(|meta| meta.plugin.clone());
                 // Say who will run it, from what the run itself reads here.
                 let mut turns = [reply];
                 let store = self.store(id);
@@ -1263,7 +1306,18 @@ impl Client {
                     {
                         return Ok(ended);
                     }
-                    return Ok(self.run_coder(id, sink).await);
+                    let ended = self.run_coder(id, sink).await;
+                    return Ok(match plugin {
+                        Some(flow) if ended == Ended::Done => self.plugin(id, flow, sink).await,
+                        _ => ended,
+                    });
+                }
+                // A step of making a plugin that runs here (#10177).
+                if let Some(flow) = plugin
+                    && !coding
+                    && !matches!(self.backend, Backend::Computer { .. })
+                {
+                    return Ok(self.plugin(id, flow, sink).await);
                 }
                 // A command the reply proposed runs here: at once when it
                 // only reads, else after a confirm (#10170).
@@ -1661,6 +1715,18 @@ impl Client {
                     &format!("Coder continues task {} with your message.", coder.task),
                     serde_json::to_value(coder).ok(),
                 );
+                // A change to a drafted plugin, or another try at one
+                // (#10177), carries what Coder is to do with it.
+                let text = match last_flow(&thread.turns) {
+                    Some(flow) if flow.step() == Some(crate::plugin_flow::Step::Draft) => {
+                        if flow.slug.is_some() {
+                            format!("{}\n\n{text}", crate::plugin_flow::REVISE)
+                        } else {
+                            format!("{}\n\n{text}", crate::plugin_flow::BRIEF)
+                        }
+                    }
+                    _ => text,
+                };
                 return self.answer_task(id, &coder.task, &text, sink).await;
             }
             coder_report(
@@ -1675,7 +1741,11 @@ impl Client {
             );
             return self.follow_from(id, &coder.task, 1, false, sink).await;
         }
-        let (prompt, requested) = handoff(&thread.summary.title, &thread.turns);
+        let (mut prompt, requested) = handoff(&thread.summary.title, &thread.turns);
+        // Coder drafting a plugin is told what a plugin is here (#10177).
+        if plugin_step(&thread.turns) == Some(crate::plugin_flow::Step::Draft) {
+            prompt = format!("{prompt}\n\n{}", crate::plugin_flow::BRIEF);
+        }
         let Some(here) = self.dir.clone() else {
             coder_report(sink, id, false, NO_DIR, None);
             return Ended::Failed;
@@ -2207,6 +2277,215 @@ impl Client {
     /// it asks the flow to stop, which stops the running turn or stops
     /// before landing and says so on the issue, and the stream then shows
     /// how it ended.
+    /// The plugin step of the thread's last reply, if it served one.
+    async fn last_plugin(&mut self, id: &str) -> Option<crate::plugin_flow::Flow> {
+        let snapshot = self
+            .apply(Command::Read {
+                chat: id.to_owned(),
+                before: None,
+            })
+            .await
+            .ok()?;
+        last_flow(&snapshot.turns)
+    }
+
+    /// Run the step of making a plugin that `flow`, the last reply's,
+    /// leaves to this computer (#10177), and say where the plugin stands:
+    ///
+    /// - [`Step::Draft`](crate::plugin_flow::Step::Draft), once Coder's
+    ///   run ended: the plugin it drafted and its tests, for approval.
+    /// - [`Step::Run`](crate::plugin_flow::Step::Run): its tests, with the
+    ///   plugin and without it, and the result, then the publish question.
+    /// - [`Step::Done`](crate::plugin_flow::Step::Done): publish it, turn
+    ///   it on here, both, or neither, as the person chose.
+    ///
+    /// Every other step waits for the person; nothing runs.
+    async fn plugin(
+        &mut self,
+        id: &str,
+        flow: crate::plugin_flow::Flow,
+        sink: &mut Sink<'_>,
+    ) -> Ended {
+        use crate::plugin_flow::{Outcome, Step, said};
+        let Some(step) = flow.step() else {
+            return Ended::Done;
+        };
+        if !matches!(step, Step::Draft | Step::Run | Step::Done) {
+            return Ended::Done;
+        }
+        let snapshot = match self
+            .apply(Command::Read {
+                chat: id.to_owned(),
+                before: None,
+            })
+            .await
+        {
+            Ok(snapshot) => snapshot,
+            Err(_) => return Ended::Failed,
+        };
+        let Some(task) = snapshot
+            .coder
+            .as_ref()
+            .filter(|coder| coder.host == LOCAL_HOST)
+            .map(|coder| coder.task.clone())
+        else {
+            return Ended::Done;
+        };
+        let store = self.store(id);
+        let (coder, worktree_store, worktree_task) =
+            (self.coder.clone(), store.clone(), task.clone());
+        let worktree =
+            tokio::task::spawn_blocking(move || coder.worktree(&worktree_store, &worktree_task))
+                .await
+                .ok()
+                .flatten();
+        let report = |sink: &mut Sink<'_>, flow: crate::plugin_flow::Flow, outcome: &Outcome| {
+            let ok = !matches!(outcome, Outcome::Failed { .. } | Outcome::NoPlugin);
+            sink(Event::Plugin {
+                thread: id.to_owned(),
+                text: said(&flow, outcome),
+                flow: flow.advanced(outcome),
+                ok,
+            });
+            if ok { Ended::Done } else { Ended::Failed }
+        };
+        let Some(worktree) = worktree else {
+            let outcome = Outcome::Failed {
+                why: format!("the worktree of Coder's task {task} is not on this computer"),
+            };
+            return report(sink, flow, &outcome);
+        };
+        match step {
+            Step::Draft => {
+                // A turn still going, or waiting for the person's answer,
+                // has drafted nothing yet: its question shows instead.
+                let Some(run) = self.result(id, &task).await else {
+                    return Ended::Done;
+                };
+                let found =
+                    crate::plugin_flow::drafted(run.files.iter().map(|file| file.path.as_str()));
+                let Some((slug, _)) = found else {
+                    return report(sink, flow, &Outcome::NoPlugin);
+                };
+                let dir = worktree.join(crate::plugin_flow::PLUGINS_DIR).join(&slug);
+                let coder = self.coder.clone();
+                let read = tokio::task::spawn_blocking(move || coder.plugin_tests(&dir))
+                    .await
+                    .unwrap_or_else(|error| Err(error.to_string()));
+                let outcome = match read {
+                    Ok(tests) => Outcome::Drafted { slug, tests },
+                    Err(why) => Outcome::Failed {
+                        why: format!(
+                            "the plugin Coder drafted in {}/{slug} doesn't load: {why}",
+                            crate::plugin_flow::PLUGINS_DIR
+                        ),
+                    },
+                };
+                report(sink, flow, &outcome)
+            }
+            Step::Run => {
+                let Some(dir) = flow.dir().map(|dir| worktree.join(dir)) else {
+                    return report(sink, flow, &Outcome::NoPlugin);
+                };
+                let argv: Vec<String> = vec![
+                    "plugin".into(),
+                    "test".into(),
+                    "run".into(),
+                    dir.display().to_string(),
+                    "--trust".into(),
+                ];
+                sink(Event::Command {
+                    thread: id.to_owned(),
+                    argv: argv.clone(),
+                    confirm: false,
+                });
+                let coder = self.coder.clone();
+                let ran = tokio::task::spawn_blocking(move || {
+                    coder.plugin_command(&argv, crate::plugin_flow::TEST_TIMEOUT)
+                })
+                .await
+                .unwrap_or_else(|error| Err(error.to_string()));
+                let outcome = match ran {
+                    Ok(ran) => Outcome::Ran {
+                        ok: ran.ok,
+                        summary: ran.output,
+                    },
+                    Err(why) => Outcome::Failed { why },
+                };
+                report(sink, flow, &outcome)
+            }
+            Step::Done => {
+                let (Some(slug), Some(dir)) =
+                    (flow.slug.clone(), flow.dir().map(|dir| worktree.join(dir)))
+                else {
+                    return Ended::Done;
+                };
+                let dir = dir.display().to_string();
+                let mut lines: Vec<String> = Vec::new();
+                let mut ok = true;
+                let mut steps: Vec<Vec<String>> = Vec::new();
+                if flow.publish {
+                    let publish = vec!["plugin".to_owned(), "publish".to_owned(), dir.clone()];
+                    if self.coder.permit(&publish) == Permit::Never {
+                        lines.push(format!(
+                            "This build of OpenAgents can't publish a plugin to the registry yet. To publish it once it can, run: {}",
+                            crate::router::Offer::command_line(&publish)
+                        ));
+                    } else {
+                        steps.push(publish);
+                    }
+                }
+                if flow.enable {
+                    steps.push(vec!["plugin".to_owned(), "install".to_owned(), dir.clone()]);
+                    steps.push(vec!["plugin".to_owned(), "enable".to_owned(), slug.clone()]);
+                }
+                for argv in steps {
+                    sink(Event::Command {
+                        thread: id.to_owned(),
+                        argv: argv.clone(),
+                        confirm: false,
+                    });
+                    let coder = self.coder.clone();
+                    let words = argv.clone();
+                    let ran = tokio::task::spawn_blocking(move || {
+                        coder.plugin_command(&words, crate::plugin_flow::STEP_TIMEOUT)
+                    })
+                    .await
+                    .unwrap_or_else(|error| Err(error.to_string()));
+                    let (done, output) = match ran {
+                        Ok(ran) => (ran.ok, ran.output),
+                        Err(why) => (false, why),
+                    };
+                    sink(Event::Ran {
+                        thread: id.to_owned(),
+                        argv: argv.clone(),
+                        ok: done,
+                        output: output.clone(),
+                    });
+                    if !done {
+                        ok = false;
+                        lines.push(format!(
+                            "{} failed.",
+                            crate::router::Offer::command_line(&argv)
+                        ));
+                        break;
+                    }
+                }
+                if ok {
+                    lines.push(crate::plugin_flow::Step::Done.line().to_owned());
+                }
+                sink(Event::Plugin {
+                    thread: id.to_owned(),
+                    flow,
+                    text: lines.join("\n"),
+                    ok,
+                });
+                if ok { Ended::Done } else { Ended::Failed }
+            }
+            _ => Ended::Done,
+        }
+    }
+
     async fn follow_from(
         &self,
         id: &str,
@@ -2319,6 +2598,21 @@ fn cut_note(text: &str) -> String {
         end -= 1;
     }
     format!("{}…", &text[..end])
+}
+
+/// The plugin step the last reply in `turns` served (#10177).
+fn last_flow(turns: &[Turn]) -> Option<crate::plugin_flow::Flow> {
+    turns
+        .iter()
+        .rev()
+        .find(|turn| turn.role == Role::Assistant)
+        .and_then(|turn| turn.meta.as_ref())
+        .and_then(|meta| meta.plugin.clone())
+}
+
+/// The step of [`last_flow`].
+fn plugin_step(turns: &[Turn]) -> Option<crate::plugin_flow::Step> {
+    last_flow(turns).and_then(|flow| flow.step())
 }
 
 fn coder_report(sink: &mut Sink<'_>, id: &str, accepted: bool, message: &str, task: Option<Value>) {

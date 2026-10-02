@@ -68,11 +68,32 @@ copied, each with its test result and a run on a real repository.
 
 ## Make a plugin in chat
 
-In the OpenAgents app, ask "Help me make a plugin that ...". We draft the
-plugin and its tests with you one step at a time, try it once, and then run
-the full test set on our computers. A plugin made in chat is a skill, and
-it can turn on plugins we already have, such as Project map. A plugin that
-needs new code goes to Coder on a computer you connect.
+In the OpenAgents app on your phone, ask "Help me make a plugin that ...".
+We draft the plugin and its tests with you one step at a time, try it once,
+and then run the full test set on our computers. A plugin made in chat is a
+skill, and it can turn on plugins we already have, such as Project map. A
+plugin that needs new code goes to Coder on a computer you connect.
+
+In a terminal on your computer (`openagents chat` or OpenAgents Terminal),
+the same request makes the plugin there, in steps
+([#10177](https://github.com/OpenAgentsInc/openagents/issues/10177)):
+
+1. If your request doesn't say what the plugin should do, we ask what it
+   should do and what it shouldn't.
+1. Coder drafts it in the project's `plugins/<slug>/` folder, in its own
+   worktree: the package record, a skill under `skills/`, a README, and its
+   tests under `evals/`. It installs, publishes, and runs nothing.
+1. We show you the tests. Say yes, or what to change, and Coder changes
+   them.
+1. We run the tests on this computer, with the plugin and without it
+   (`openagents plugin test run`), and show the result.
+1. We ask whether to publish it and turn it on here, and run what you
+   choose: `openagents plugin publish` (see
+   [Publish a plugin](#publish-a-plugin)), and
+   `openagents plugin install` and `openagents plugin enable`.
+
+A plugin that only brings skills needs no workflow: its package record names
+no `program`, and `skills/` holds at least one `.md` file.
 
 ## Write a plugin
 

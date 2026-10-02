@@ -193,7 +193,8 @@ pub enum RouteId {
     GymNews,
     /// Test a tool on Coder, or pick which tool to test.
     EvalRun,
-    /// Make a tool, or write a test set for one, with us.
+    /// Make a plugin, or write a test set for one, with us: the authoring
+    /// interview, and on a computer the plugin-creation flow (#10177).
     EvalAuthor,
     /// Check another trainer's published result.
     EvalCheck,
@@ -380,7 +381,7 @@ impl RouteId {
                  asks which tool to test or what to do next in the Gym"
             }
             RouteId::EvalAuthor => {
-                "The user wants to make a tool, or write tests or a test set for a tool, with \
+                "The user wants to make a plugin, or write tests or a test set for one, with \
                  us, or is answering our questions while we make one together"
             }
             RouteId::EvalCheck => {

@@ -10,7 +10,9 @@
 //! 0. **An open interview.** A request that carries the authoring
 //!    interview's draft continues it ([`Tier::Author`]) unless the route
 //!    reading is sure of a route in no way part of it
-//!    ([`AUTHOR_CONTINUES`]); risk is still read first.
+//!    ([`AUTHOR_CONTINUES`]); risk is still read first. A plugin being made
+//!    on this computer (#10177) continues the same way, and also on a
+//!    reply that reads as more work or a command ([`PLUGIN_CONTINUES`]).
 //! 1. **Risk.** `secret_shared`, `asks_for_secret`, or `harmful` at
 //!    [`RISK_REFUSE`], or at [`RISK_WARN`] when `route` is also `refuse` at
 //!    [`ROUTE_CONFIDENCE`], answers with the bank's refusal and nothing
@@ -202,6 +204,12 @@ pub const AUTHOR_CONTINUES: [RouteId; 7] = [
     RouteId::Unknown,
 ];
 
+/// The routes a message may take and still continue a plugin being made
+/// on this computer (#10177): the interview's, and a reply that reads as
+/// more work for Coder ("make the tests harder") or as a command ("turn it
+/// on"), which the flow's own typed readings then decide.
+pub const PLUGIN_CONTINUES: [RouteId; 2] = [RouteId::WorkDispatch, RouteId::Cli];
+
 /// The instruction the model gets when the router wants one question.
 pub const CLARIFY_NOTE: &str = "The user's message is ambiguous. Reply with one short question \
 that would let us answer or act, and nothing else.";
@@ -237,6 +245,10 @@ pub struct Situation<'a> {
     /// Whether the conversation has a message before the latest one, which
     /// the latest can refer to: a count, never text (#10138).
     pub earlier: bool,
+    /// Whether a plugin is being made on this computer (#10177): our last
+    /// message ended at an open step's fixed line
+    /// (`crate::eval_author::plugin::open`), an exact comparison.
+    pub plugin: bool,
 }
 
 /// A line above the model's reply.
@@ -892,6 +904,15 @@ fn decide_anywhere(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Si
     {
         return Tier::Author;
     }
+    // 0b. A plugin being made on this computer continues the same way.
+    if situation.plugin
+        && (AUTHOR_CONTINUES.contains(&routing.route)
+            || PLUGIN_CONTINUES.contains(&routing.route)
+            || routing.route_p < ROUTE_CONFIDENCE)
+        && !(risky && routing.risk_p >= RISK_WARN)
+    {
+        return Tier::Author;
+    }
     if risky && routing.risk_p >= RISK_WARN {
         let lead = (routing.risk == Risk::SecretShared)
             .then(|| bank.entry("warn.secret_shared"))
@@ -1221,6 +1242,7 @@ mod tests {
                 personalize,
                 draft: false,
                 earlier: false,
+                plugin: false,
             },
         )
     }
@@ -1602,6 +1624,7 @@ mod tests {
                     personalize: true,
                     draft: false,
                     earlier: true,
+                    plugin: false,
                 },
             )
         };
@@ -1748,6 +1771,7 @@ mod tests {
                     personalize: true,
                     draft: false,
                     earlier: false,
+                    plugin: false,
                 },
             )
         };
@@ -1841,6 +1865,7 @@ mod tests {
                     personalize: false,
                     draft: true,
                     earlier: false,
+                    plugin: false,
                 },
             )
         };
@@ -1861,6 +1886,42 @@ mod tests {
         secret.risk = Risk::SecretShared;
         secret.risk_p = 0.9;
         assert_eq!(drafting(&secret).word(), "refuse");
+    }
+
+    /// A plugin being made on this computer (#10177) continues through
+    /// short answers and through a reply that reads as more work for Coder
+    /// or as a command, but not through a sure other route or a risk; with
+    /// no plugin open, the same work reading is a dispatch.
+    #[test]
+    fn an_open_plugin_flow_continues_through_work_and_commands() {
+        let making = |routing: &Routing, plugin: bool| {
+            decide(
+                routing,
+                Bank::builtin(),
+                &facts(),
+                &Situation {
+                    mode: Mode::Router,
+                    context: &Context::default(),
+                    personalize: false,
+                    draft: false,
+                    earlier: true,
+                    plugin,
+                },
+            )
+        };
+        let more_work = routed(RouteId::WorkDispatch, 0.9, "dispatch.stem", 0.8, 0.5);
+        assert_eq!(making(&more_work, true), Tier::Author);
+        assert_ne!(making(&more_work, false), Tier::Author);
+        let turn_it_on = routed(RouteId::Cli, 0.9, "none", 0.0, 0.5);
+        assert_eq!(making(&turn_it_on, true), Tier::Author);
+        let yes = routed(RouteId::Smalltalk, 0.9, "smalltalk.thanks", 0.9, 0.1);
+        assert_eq!(making(&yes, true), Tier::Author);
+        let wallet = routed(RouteId::Wallet, 0.9, "wallet.what", 0.9, 0.1);
+        assert_eq!(making(&wallet, true).word(), "canned");
+        let mut secret = routed(RouteId::Smalltalk, 0.9, "none", 0.0, 0.5);
+        secret.risk = Risk::SecretShared;
+        secret.risk_p = 0.9;
+        assert_eq!(making(&secret, true).word(), "refuse");
     }
 
     /// A missing capability shows only when the route and the capability
