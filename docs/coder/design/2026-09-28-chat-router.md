@@ -1939,7 +1939,7 @@ ran. Two changes:
   | `draft` | the worker: a Run Coder offer; the client adds `plugin_flow::BRIEF` to Coder's prompt | Coder's run ending (`context.coder_run`) with a plugin under `plugins/` |
   | `tests` | the client: the drafted tests, read from the task's worktree as `plugin test` loads them | Jev's `reply` reading: approve, change (Coder again with `plugin_flow::REVISE`), or neither (shown again) |
   | `run` | the client: `openagents plugin test run DIR --trust`, and the result | the run ending |
-  | `publish` | the client: the publish question | Jev's `publish` reading: both, publish, enable, or neither at 0.7 |
+  | `publish` | the client: the publish question | Jev's `publish` reading: both, publish, enable, or neither at 0.7; `again` runs the tests again (a run that stopped before its report keeps the step) |
   | `done` | the client: `plugin publish` when this build has it, `plugin install` and `plugin enable` for what was chosen | none: the flow ends |
 
   The worker recovers the open step from our last message's fixed line (an

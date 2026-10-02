@@ -563,6 +563,7 @@ mod plugin_flow {
                     "yes" => ("both".into(), 0.93),
                     "just turn it on" => ("enable".into(), 0.9),
                     "not now" => ("neither".into(), 0.9),
+                    "run the tests again" => ("again".into(), 0.9),
                     _ => ("other".into(), 0.8),
                 },
                 _ => ("unclear".into(), 0.5),
@@ -755,6 +756,12 @@ mod plugin_flow {
             .send(&author, "how long does publishing take?")
             .await;
         assert_eq!(at(&step), Some(Step::Publish));
+        // The run didn't finish: the person asks for it again.
+        let step = after_run.send(&author, "run the tests again").await;
+        assert_eq!(
+            step.plugin,
+            Some(Flow::at(Step::Run, Some("greeter".into())))
+        );
         let step = after_run.send(&author, "yes").await;
         let flow = step.plugin.clone().unwrap();
         assert_eq!(flow.step(), Some(Step::Done));

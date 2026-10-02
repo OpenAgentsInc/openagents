@@ -24,7 +24,8 @@
 //!   again). A run that left no plugin goes back to Coder.
 //! - **Run.** The reply answers the publish question this computer asked
 //!   after the run ([`Step::Publish`]): Jev's `publish` reading chooses
-//!   publishing, turning it on here, both, or neither ([`Step::Done`]), or
+//!   publishing, turning it on here, both, or neither ([`Step::Done`]),
+//!   running the tests again ([`Step::Run`], when they didn't run), or
 //!   asks again.
 
 use indexmap::IndexMap;
@@ -147,6 +148,9 @@ fn tests_said(slug: &str, tests: &[String]) -> String {
 /// The `publish` reading's choice.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Publish {
+    /// Run the tests again: they didn't run, or the person wants another
+    /// run.
+    Again,
     Both,
     Publish,
     Enable,
@@ -243,6 +247,9 @@ impl<G: Generate> Author<G> {
                     Publish::Neither => {
                         "Leaving it as it is: not published, and off on this computer."
                     }
+                    Publish::Again => {
+                        return Ok(step(Step::Run.line().to_owned(), flow(Step::Run), None));
+                    }
                     Publish::Other => {
                         return Ok(step(
                             Step::Publish.line().to_owned(),
@@ -297,6 +304,12 @@ impl<G: Generate> Author<G> {
                 )),
             ),
             (
+                "again".to_string(),
+                Some(Entry::from(
+                    "They want the tests run again first: the tests didn't run or failed to start, or they ask for another run.",
+                )),
+            ),
+            (
                 "other".to_string(),
                 Some(Entry::from(
                     "They ask a question or say something that answers neither way.",
@@ -329,6 +342,7 @@ impl<G: Generate> Author<G> {
             "publish" => Publish::Publish,
             "enable" => Publish::Enable,
             "neither" => Publish::Neither,
+            "again" => Publish::Again,
             _ => Publish::Other,
         })
     }
