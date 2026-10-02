@@ -71,6 +71,7 @@ pub mod model;
 pub mod notices;
 pub mod qr;
 #[cfg(feature = "app")]
+pub mod route_chat;
 pub mod route_future;
 #[cfg(feature = "app")]
 pub mod route_map;

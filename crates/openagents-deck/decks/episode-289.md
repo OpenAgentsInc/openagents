@@ -9,7 +9,7 @@ source: the owner's episode number, 2026-10-01
 layout: statement
 id: routes
 scene: routes
-source: the route map (#10085), live in the desktop slide viewer
+source: the route map (#10085), live in the desktop slide viewer, with a scripted chat lighting each message's route
 
 —
 

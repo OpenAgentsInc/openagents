@@ -143,6 +143,23 @@ pub struct MapPage {
     shown: Option<Vec<f32>>,
     /// The traffic a scene draws on the edges.
     traffic: Vec<Pulse>,
+    /// A message's way through the map, lit while a slide's chat plays
+    /// ([`MapPage::set_light`]).
+    light: Option<RouteLight>,
+}
+
+/// One message's way through the map: from the router down to what serves
+/// it, lit up to a moving head, the target glowing once the head arrives.
+#[derive(Clone, Debug, PartialEq)]
+pub struct RouteLight {
+    /// The nodes it passes, the router first and the target last.
+    pub path: Vec<usize>,
+    /// How far along the path the head is, 0 to 1, by distance.
+    pub head: f32,
+    /// How bright the target glows, 0 to 1.
+    pub glow: f32,
+    /// The whole light's opacity, 0 to 1, as it fades.
+    pub fade: f32,
 }
 
 /// A dot of traffic on the map: a request on its way out, or a payment on
@@ -208,6 +225,7 @@ impl MapPage {
             presenting: false,
             shown: None,
             traffic: Vec::new(),
+            light: None,
         }
     }
 
@@ -250,6 +268,45 @@ impl MapPage {
         self.fitted = true;
         self.moved = true;
         self.changed();
+    }
+
+    /// Lights a message's way through the map, or clears it, leaving the
+    /// camera, the selection, and the input as they are.
+    pub fn set_light(&mut self, light: Option<RouteLight>) {
+        if self.light != light {
+            self.light = light;
+            self.changed();
+        }
+    }
+
+    /// The way lit through the map, if any.
+    pub fn light(&self) -> Option<&RouteLight> {
+        self.light.as_ref()
+    }
+
+    /// How many of the lit path's nodes the head has reached, by distance
+    /// along it in the map's own units.
+    fn light_reached(&self) -> usize {
+        let Some(light) = &self.light else {
+            return 0;
+        };
+        let at = |i: usize| self.layout.positions[light.path[i]];
+        let lengths: Vec<f32> = (1..light.path.len())
+            .map(|i| at(i - 1).distance(at(i)))
+            .collect();
+        let total: f32 = lengths.iter().sum();
+        let head = light.head.clamp(0.0, 1.0) * total;
+        let mut walked = 0.0;
+        let mut reached = 1;
+        for length in lengths {
+            walked += length;
+            if walked <= head + 0.01 {
+                reached += 1;
+            } else {
+                break;
+            }
+        }
+        reached.min(light.path.len())
     }
 
     /// The camera that fits `bounds` in the surface as last painted.
@@ -901,6 +958,7 @@ impl MapPage {
                 );
             }
         }
+        self.paint_light(frame, &px, unit);
         // Traffic, over the edges it travels: a soft glow and a bright core.
         for pulse in &self.traffic {
             let center = px(pulse.at);
@@ -1109,6 +1167,123 @@ impl MapPage {
         frame.restore_clip(clip);
     }
 
+    /// A message's way: the edges behind the head bright in the target's
+    /// color over a soft wash, a ring on each node passed, the head as a
+    /// moving pulse, and the target glowing once it arrives.
+    fn paint_light(&self, frame: &mut Frame, px: &dyn Fn(Point) -> (f32, f32), unit: f32) {
+        let Some(light) = &self.light else {
+            return;
+        };
+        let fade = light.fade.clamp(0.0, 1.0);
+        if fade <= 0.0 || light.path.is_empty() {
+            return;
+        }
+        let target = *light.path.last().unwrap_or(&0);
+        let tint = self.map.nodes[target].kind.color();
+        let alpha = |a: f32| Color {
+            alpha: (a * fade).round().clamp(0.0, 255.0) as u8,
+            ..tint
+        };
+        let points: Vec<(f32, f32)> = light
+            .path
+            .iter()
+            .map(|&i| px(self.layout.positions[i]))
+            .collect();
+        let world = |i: usize| self.layout.positions[light.path[i]];
+        let lengths: Vec<f32> = (1..light.path.len())
+            .map(|i| world(i - 1).distance(world(i)))
+            .collect();
+        let total: f32 = lengths.iter().sum();
+        let mut left = light.head.clamp(0.0, 1.0) * total;
+        let mut head = points[0];
+        for (i, length) in lengths.iter().enumerate() {
+            if left <= 0.0 {
+                break;
+            }
+            let (a, b) = (points[i], points[i + 1]);
+            let t = if *length > 0.0 {
+                (left / length).min(1.0)
+            } else {
+                1.0
+            };
+            let end = (a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t);
+            thin_line(frame, a, end, 9.0 * unit, alpha(34.0));
+            thin_line(frame, a, end, 3.0 * unit, alpha(235.0));
+            head = end;
+            left -= length;
+        }
+        let radius = |i: usize| (self.layout.radii[i] * self.camera.zoom).max(2.5) * unit;
+        for (step, &index) in light.path.iter().enumerate().take(self.light_reached()) {
+            let (x, y) = points[step];
+            let r = radius(index) + 3.5 * unit;
+            frame.stroke(
+                PxRect {
+                    x: x - r,
+                    y: y - r,
+                    w: 2.0 * r,
+                    h: 2.0 * r,
+                },
+                r,
+                1.5 * unit,
+                alpha(200.0),
+            );
+        }
+        let glow = light.glow.clamp(0.0, 1.0);
+        if glow > 0.0 {
+            let (x, y) = *points.last().unwrap_or(&head);
+            let base = radius(target);
+            for (grow_by, a) in [(22.0, 26.0), (13.0, 48.0), (6.0, 90.0)] {
+                let r = base + grow_by * unit * glow;
+                frame.fill(
+                    PxRect {
+                        x: x - r,
+                        y: y - r,
+                        w: 2.0 * r,
+                        h: 2.0 * r,
+                    },
+                    r,
+                    alpha(a * glow),
+                );
+            }
+            let r = base + 5.0 * unit;
+            frame.stroke(
+                PxRect {
+                    x: x - r,
+                    y: y - r,
+                    w: 2.0 * r,
+                    h: 2.0 * r,
+                },
+                r,
+                2.0 * unit,
+                alpha(255.0 * glow),
+            );
+        }
+        if light.head < 1.0 {
+            let (x, y) = head;
+            for (r, a) in [(13.0, 40.0), (7.0, 110.0), (4.0, 255.0)] {
+                let r = r * unit;
+                let color = if a >= 255.0 {
+                    Color {
+                        alpha: (255.0 * fade) as u8,
+                        ..visual::TEXT
+                    }
+                } else {
+                    alpha(a)
+                };
+                frame.fill(
+                    PxRect {
+                        x: x - r,
+                        y: y - r,
+                        w: 2.0 * r,
+                        h: 2.0 * r,
+                    },
+                    r,
+                    color,
+                );
+            }
+        }
+    }
+
     /// The selection's details on a card in the graph's top right corner,
     /// for a deck slide, which has no side panel: what the inspector
     /// leads with (the name, kind, what it is, why the router sends things
@@ -1267,6 +1442,9 @@ impl MapPage {
     /// selection lights.
     fn lit(&self) -> BTreeSet<usize> {
         let mut lit = BTreeSet::new();
+        if let Some(light) = self.light.as_ref().filter(|light| light.fade > 0.25) {
+            lit.extend(light.path.iter().take(self.light_reached()));
+        }
         if let Some(node) = self.selected.or(self.hover) {
             lit.insert(node);
             let mut at = self.map.nodes[node].parent;

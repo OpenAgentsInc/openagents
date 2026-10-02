@@ -23,9 +23,12 @@
 //! the wheel to zoom, click to select and see the node's details, double
 //! click to zoom in), and Tab, Enter, Esc with a selection, and Cmd + − 0
 //! go to it too. The arrow and page keys still change slides, except while
-//! the map is being dragged. `scene: routes-future` shows the same view
+//! the map is being dragged. Beside it, a narrow column plays a scripted
+//! chat and lights each message's way through the map ([`RouteChat`]).
+//! `scene: routes-future` shows the same view
 //! fed a growing model instead ([`RouteFuture`]), on the frame clock.
 
+use crate::route_chat::RouteChat;
 use crate::route_future::RouteFuture;
 use crate::route_map::MapPage;
 use openagents_deck::{Outcome, UnknownDeck, Viewer};
@@ -109,6 +112,8 @@ pub struct Slides {
     routes: Option<(MapPage, String)>,
     /// The growing map a `scene: routes-future` slide shows, once shown.
     future: Option<RouteFuture>,
+    /// The scripted chat beside the live route map, once shown.
+    chat: Option<RouteChat>,
 }
 
 /// Ease-out: fast at first, settling at the end.
@@ -144,6 +149,7 @@ impl Slides {
             slide_at: None,
             routes: None,
             future: None,
+            chat: None,
         })
     }
 
@@ -189,6 +195,12 @@ impl Slides {
             return None;
         }
         self.routes.as_mut().map(|(page, _)| page)
+    }
+
+    /// The scripted chat beside the live route map, once its slide has
+    /// shown.
+    pub fn chat(&self) -> Option<&RouteChat> {
+        self.chat.as_ref()
     }
 
     /// The growing map, once its slide has shown.
@@ -256,7 +268,7 @@ impl Slides {
         if self.phase != Phase::Open {
             return None;
         }
-        if self.on_future() && !self.reduce_motion {
+        if (self.on_future() || self.wants_routes()) && !self.reduce_motion {
             return Some(now + FUTURE_FRAME);
         }
         self.routes().and_then(|page| page.next_wake(now))
@@ -335,6 +347,18 @@ impl Slides {
         } else if let Some(future) = &mut self.future {
             // Off its slide: the next visit plays from today.
             future.reset();
+        }
+        if self.wants_routes() && self.phase != Phase::Closed {
+            let reduce = self.reduce_motion;
+            let chat = self.chat.get_or_insert_with(|| RouteChat::new(reduce));
+            chat.advance(now);
+            moved |= chat.playing();
+            if let Some((page, _)) = &mut self.routes {
+                page.set_light(chat.light(page.map()));
+            }
+        } else if let Some(chat) = &mut self.chat {
+            // Off its slide: the next visit starts the conversation over.
+            chat.reset();
         }
         if let Some(page) = self.routes_mut() {
             moved |= page.tick(now);
@@ -508,6 +532,7 @@ impl Slides {
     fn map_input(&mut self, event: SurfaceInput, now: Instant) -> bool {
         let (width, height) = self.size;
         let slide = Layout::of(width, height, self.fullscreen, 1.0).slide;
+        let (_, slide) = crate::route_chat::split(slide);
         let Some(page) = self.routes_mut() else {
             return false;
         };
@@ -652,8 +677,13 @@ impl Slides {
         if self.wants_routes()
             && let Some((page, _)) = &mut self.routes
         {
+            let (column, map) = crate::route_chat::split(px(layout.slide));
+            let reduce = self.reduce_motion;
+            let chat = self.chat.get_or_insert_with(|| RouteChat::new(reduce));
+            page.set_light(chat.light(page.map()));
             page.set_unit(unit);
-            page.paint(frame, px(layout.slide));
+            page.paint(frame, map);
+            chat.paint(frame, column, unit);
         } else if self.on_future() {
             let reduce = self.reduce_motion;
             self.future

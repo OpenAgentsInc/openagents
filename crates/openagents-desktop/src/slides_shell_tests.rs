@@ -409,13 +409,42 @@ fn episode_289_hosts_the_live_route_map_and_its_future() {
         frame
     };
     assert!(key(&mut app, "ArrowRight", false, open));
+    let wake = app.tick(open).expect("the chat asks for frames");
+    assert!(wake <= open + Duration::from_millis(40));
+    // Mid route: the first message's pulse on its way to its answer, then
+    // the third's lit all the way to Codex under Coder.
+    let exchange = openagents_desktop::route_chat::EXCHANGE;
+    let lit = |app: &DesktopApp| {
+        let page = app.presentation().unwrap().routes().unwrap();
+        page.light().map(|light| {
+            let target = *light.path.last().unwrap();
+            (page.map().nodes[target].id.clone(), light.head, light.glow)
+        })
+    };
+    app.tick(open + Duration::from_secs_f32(1.2));
+    let first = write(&mut app, "episode-289-routes-chat-a");
+    let (target, head, _) = lit(&app).expect("the first message's way is lit");
+    assert_eq!(target, "answer:meta.who");
+    assert!(head > 0.0 && head < 1.0, "{head}");
+    app.tick(open + Duration::from_secs_f32(2.0 * exchange + 2.4));
+    let third = write(&mut app, "episode-289-routes-chat-b");
+    let (target, head, glow) = lit(&app).expect("the third message's way is lit");
+    assert_eq!(target, "engine:codex");
+    assert_eq!((head, glow), (1.0, 1.0));
+    assert_ne!(first.pixels, third.pixels);
+    // Between exchanges the light is out.
+    app.tick(open + Duration::from_secs_f32(exchange + 0.1));
+    assert!(lit(&app).is_none());
     let map = write(&mut app, "episode-289-routes");
     let slides = app.presentation().expect("the viewer shows");
     let page = slides.routes().expect("the slide holds the live map");
     assert!(page.map().nodes.len() > 20);
     assert_eq!(page.selected(), None);
     // A click on the router, where the fitted map draws it, selects it.
-    let slide = Layout::of(WIDTH, HEIGHT, false, 1.0).slide;
+    // A chat plays in a column beside it, lighting each message's way.
+    let (column, slide) =
+        openagents_desktop::route_chat::split(Layout::of(WIDTH, HEIGHT, false, 1.0).slide);
+    assert!(column.w > 0.2 * (column.w + slide.w) && column.w < 0.3 * (column.w + slide.w));
     let (w, h) = page.size();
     let front = page.camera().to_screen(
         openagents_chat_app::route_map::layout::Point::default(),
