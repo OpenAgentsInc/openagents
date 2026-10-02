@@ -346,6 +346,47 @@ fn unsaved_worktrees_stay_and_a_clean_pushed_one_goes_and_comes_back() {
 }
 
 #[test]
+fn ignored_files_keep_a_worktree_and_ignored_caches_do_not() {
+    let home = Home::new();
+    let (repo, trees) = repo(&home, &["env", "private", "cache"]);
+    let [env_tree, private, cache] = [&trees[0], &trees[1], &trees[2]];
+    std::fs::write(
+        repo.join(".git/info/exclude"),
+        ".env\nprivate/\ntarget/\nnode_modules/\n",
+    )
+    .unwrap();
+    std::fs::write(env_tree.join(".env"), "SECRET=1").unwrap();
+    std::fs::create_dir_all(private.join("private")).unwrap();
+    std::fs::write(private.join("private/data"), "mine").unwrap();
+    std::fs::create_dir_all(cache.join("target/debug")).unwrap();
+    std::fs::write(cache.join("target/debug/out"), "built").unwrap();
+    std::fs::create_dir_all(cache.join("web/node_modules/x")).unwrap();
+    std::fs::write(cache.join("web/node_modules/x/index.js"), "").unwrap();
+    let facts = home.facts();
+    let volumes = low();
+    let env = env(&home, &facts, &volumes, &Idle);
+    let dry = run::run(&env, &disk(), Cause::Manual, true, true).unwrap();
+    let reasons: Vec<(PathBuf, String)> = dry
+        .plan
+        .kept
+        .iter()
+        .map(|kept| (kept.path.clone(), kept.why.clone()))
+        .collect();
+    assert!(
+        reasons.contains(&(env_tree.clone(), "holds ignored files: .env".into())),
+        "{reasons:?}"
+    );
+    assert!(
+        reasons.contains(&(private.clone(), "holds ignored files: private/".into())),
+        "{reasons:?}"
+    );
+    let real = run::run(&env, &disk(), Cause::Manual, false, true).unwrap();
+    assert!(env_tree.join(".env").exists());
+    assert!(private.join("private/data").exists());
+    assert!(!cache.exists(), "{:?} {reasons:?}", real.record);
+}
+
+#[test]
 fn symlinks_are_not_followed_and_other_volumes_are_refused() {
     let home = Home::new();
     let outside = home.layout.home.join("precious");

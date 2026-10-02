@@ -176,7 +176,15 @@ Safety checks run on every candidate, in code, after any judgment:
 4. **Never source or unsaved work.** A Git work tree is never deleted unless
    it is a Coder worktree of an ended task with a clean `git status` and no
    commits missing from every remote (`git rev-list HEAD --not --remotes` is
-   empty). Inside any other checkout, only the build directory itself is
+   empty). Git-ignored files count too: `git worktree remove` deletes them
+   and undo only recreates the checkout, so a worktree that holds any
+   ignored path outside a disposable cache (`.env`, `private/`, a dataset)
+   is kept, and the dry run says why ("holds ignored files: .env,
+   private/"). Disposable caches are paths with a component named
+   `target`, `node_modules`, `dist`, `build`, `.build`, `.next`, `.turbo`,
+   `.cache`, `.parcel-cache`, `.svelte-kit`, `.gradle`, `DerivedData`,
+   `__pycache__`, `.pytest_cache`, `.mypy_cache`, `.ruff_cache`, or
+   `.DS_Store`, or starting with `.cargo-target` (#10166). Inside any other checkout, only the build directory itself is
    eligible, and only when it carries `CACHEDIR.TAG` (Cargo writes one) and
    Git ignores it.
 5. **Dry run first.** `openagents background run ID --dry-run` and every
@@ -225,7 +233,7 @@ a class, it takes the least recently used candidate first.
 | --- | --- | --- | --- | --- |
 | 1 | Ended tasks' target directories | `~/.openagents/targets/<project>-<task>-<hash>` (legacy per-task), and any slot past the configured slot count | The task store lists the task as ended (`Finished` or `Cancelled`, checks not running, group clear: the `ended` test in `crates/coder/src/task/targets.rs`). | A live task maps to the directory, or its lock is held. |
 | 2 | Stale target directories | Idle slots `~/.openagents/targets/*-slot-N`; `~/.openagents/coder-one/target`; agent target directories (`~/work/openagents-target-agent*`, configurable); a checkout's `target/` with `CACHEDIR.TAG` | Untouched for 3 days (slots and agent directories) or 7 days (a checkout's `target/`). "Touched" is the newest of the lock file's mtime, `.cargo-lock`'s mtime, and the `.fingerprint` directory's mtime. | `.cargo-lock` or the slot lock is held, or a process has a working directory or open file inside. |
-| 3 | Ended tasks' worktrees | `~/.openagents/worktrees/*` | The task is ended, `git status --porcelain` is empty, and no commit is missing from every remote. A worktree with no task record qualifies only when it is also older than 7 days. | A process has a working directory or open file inside, or a task names it. |
+| 3 | Ended tasks' worktrees | `~/.openagents/worktrees/*` | The task is ended, `git status --porcelain` is empty, it holds no ignored file outside a disposable cache (Safety 4), and no commit is missing from every remote. A worktree with no task record qualifies only when it is also older than 7 days. | A process has a working directory or open file inside, or a task names it. |
 | 4 | Gate pools | Build directories under `~/.openagents/gate/` that carry `CACHEDIR.TAG` | No gate run holds the gate's lock and none ran in the last hour. Checkouts in the gate pool follow class 3's rules. | The gate lock is held, or a gate or `verify-rust` process runs. |
 | 5 | Incremental caches of live target directories | `debug/incremental` and `release/incremental` inside slots and agent target directories | Its Cargo lock is free. Compiled dependencies stay, so the next build is warm. | `.cargo-lock` is held. |
 | 6 | Background trash (emergency only) | `~/.openagents/background/trash/*` | Oldest first. | Never. |
@@ -523,6 +531,13 @@ Where the implementation differs from the design above, and why:
   directory's last-use time is unchanged.
 - **Spare worktrees** (`*.spare-*`, #10115) are never candidates: they are
   the next task's worktree.
+- **Ignored files.** One `git status --porcelain --untracked-files=all
+  --ignored=matching` lists both unsaved changes and ignored paths (an
+  ignored directory once, without walking it). A worktree whose ignored
+  paths are not all disposable caches is kept: "holds ignored files: .env,
+  private/" (first three, then "and N more"). Keeping it was chosen over
+  moving the files to trash, so nothing a person made is ever moved
+  (#10166).
 - **Stashes.** A worktree is kept when any stash was made on its branch (or,
   detached, on its commit), since stashes belong to the repository.
 - **Low-disk log writes** are buffered in memory and flushed with the next

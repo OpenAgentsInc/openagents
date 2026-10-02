@@ -58,9 +58,43 @@ pub fn ignored(top: &Path, path: &Path) -> bool {
         .is_ok_and(|status| status.success())
 }
 
+/// Directory and file names that only ever hold rebuildable output: build
+/// directories, package installs, and tool caches.
+const DISPOSABLE: &[&str] = &[
+    "target",
+    "node_modules",
+    "dist",
+    "build",
+    ".build",
+    ".next",
+    ".turbo",
+    ".cache",
+    ".parcel-cache",
+    ".svelte-kit",
+    ".gradle",
+    "DerivedData",
+    "__pycache__",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+    ".DS_Store",
+];
+
+/// Whether an ignored path (as `git status --ignored=matching` lists it) lies in
+/// a disposable cache: some component is a [`DISPOSABLE`] name or a
+/// `.cargo-target*` directory. Anything else may be a person's data.
+#[must_use]
+pub fn disposable(entry: &str) -> bool {
+    entry
+        .split('/')
+        .any(|part| DISPOSABLE.contains(&part) || part.starts_with(".cargo-target"))
+}
+
 /// Check that the worktree at `path` holds nothing that is not saved
 /// elsewhere: it is a linked worktree (its `.git` is a file), `git status`
-/// is clean (untracked files count), every commit is on some remote, and
+/// is clean (untracked files count), it holds no ignored file outside a
+/// disposable cache (`git worktree remove` would delete it, and undo only
+/// recreates the checkout), every commit is on some remote, and
 /// no stash was made on it. Returns what recreates it.
 ///
 /// # Errors
@@ -72,9 +106,35 @@ pub fn removable(path: &Path) -> Result<Undo, String> {
         Ok(_) => return Err("a full checkout, not a worktree".into()),
         Err(_) => return Err("not a Git worktree".into()),
     }
-    let status = git(path, &["status", "--porcelain", "--untracked-files=all"])?;
-    if !status.is_empty() {
-        return Err("uncommitted changes".into());
+    // `--ignored=matching` names an ignored directory once (`target/`)
+    // without walking it, and every ignored file outside one.
+    let status = git(
+        path,
+        &[
+            "status",
+            "--porcelain",
+            "--untracked-files=all",
+            "--ignored=matching",
+            "-z",
+        ],
+    )?;
+    let mut ignored = Vec::new();
+    for entry in status.split('\0').filter(|entry| !entry.is_empty()) {
+        match entry.strip_prefix("!! ") {
+            Some(path) => ignored.push(path),
+            None => return Err("uncommitted changes".into()),
+        }
+    }
+    let kept: Vec<&str> = ignored
+        .into_iter()
+        .filter(|entry| !disposable(entry))
+        .collect();
+    if !kept.is_empty() {
+        let mut why = kept.iter().take(3).copied().collect::<Vec<_>>().join(", ");
+        if kept.len() > 3 {
+            why.push_str(&format!(" and {} more", kept.len() - 3));
+        }
+        return Err(format!("holds ignored files: {why}"));
     }
     let commit = git(path, &["rev-parse", "HEAD"])?;
     let unpushed = git(path, &["rev-list", "HEAD", "--not", "--remotes"])?;
