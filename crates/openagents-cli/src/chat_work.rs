@@ -6,7 +6,8 @@
 //! its flow's task, so the desktop and a paired phone show it like any
 //! chat's Coder run. Issues run one at a time, or `--parallel N` at once,
 //! each in its own worktree; landing is serialized so parallel flows
-//! rebase onto each other. An issue another claim holds (a claim comment
+//! rebase onto each other. Each flow is handed to a process of its own,
+//! so it keeps working if this command or its shell ends. An issue another claim holds (a claim comment
 //! within the repository's claim window, not released) is skipped, and so
 //! is a closed one. Every flow's events stream here, marked with the
 //! issue, and each issue ends with one `issue` line saying what happened.
@@ -15,7 +16,7 @@ use std::io::Write;
 use std::path::Path;
 use std::time::Duration;
 
-use coder::task::issue_run::{self, Land, Reference, Refused, Runner, Tracker};
+use coder::task::issue_run::{self, Handed, Land, Reference, Refused, Runner, Tracker};
 use coder::task::local::{self, Local, State};
 use openagents_chat::coder_events::{self, CoderEvent, Line};
 use openagents_chat::service::Command;
@@ -308,7 +309,14 @@ fn worker(
         project: started.record.project.clone(),
         url: started.issue.url.clone(),
     });
-    let finishing = std::thread::spawn(move || started.finish());
+    // The flow goes to a process of its own (the `microcoder` engine), so
+    // it survives this command, the shell, or the terminal closing; it is
+    // worked here only when no engine can take it.
+    let driver = local::controller().ok();
+    let finishing = std::thread::spawn(move || started.hand_off(driver.as_deref()));
+    let ended = |store: &Path| {
+        issue_run::load(store, &task).is_none_or(|flow| flow.finished || issue_run::orphaned(&flow))
+    };
     let mut follow = Local::new(store.to_path_buf()).follow(&task, Some(&thread), None);
     loop {
         match follow.poll() {
@@ -323,12 +331,22 @@ fn worker(
                     break;
                 }
             }
-            Err(_) if finishing.is_finished() => break,
+            Err(_) if finishing.is_finished() && ended(store) => break,
             Err(_) => {}
+        }
+        // A flow whose process is gone never ends: stop following it.
+        if finishing.is_finished()
+            && issue_run::load(store, &task).is_some_and(|flow| issue_run::orphaned(&flow))
+        {
+            break;
         }
         std::thread::sleep(POLL);
     }
-    let flow = finishing.join().ok();
+    let flow = match finishing.join() {
+        Ok(Handed::Here(flow)) => Some(*flow),
+        Ok(Handed::Detached { .. }) => issue_run::load(store, &task).filter(|flow| flow.finished),
+        Err(_) => None,
+    };
     let (outcome, message, commits) = match flow {
         Some(flow) => (flow.link.outcome, flow.closing, flow.link.commits),
         None => (

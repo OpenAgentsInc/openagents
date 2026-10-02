@@ -259,7 +259,9 @@ pub trait Issue: Send {
 pub struct IssueStarted {
     pub started: Started,
     pub url: String,
-    /// The rest of the flow: the checks, landing, and closing. Blocking.
+    /// The rest of the flow: the checks, landing, and closing. Blocking
+    /// until the flow is handed to a process of its own, or until it ends
+    /// when it is worked here.
     pub finish: Box<dyn FnOnce() + Send>,
 }
 
@@ -1343,7 +1345,8 @@ impl Client {
     /// Start the issue flow on this computer for the thread `id`: claim, a
     /// worktree of the fetched default branch, the checks, and landing as
     /// the repository's policy says, all streamed as the thread's Coder
-    /// events. The flow runs on a thread of this process until it ends.
+    /// events. `finish` hands the flow to a process of its own when it
+    /// can, so it outlives this one.
     async fn start_issue(
         &mut self,
         id: &str,

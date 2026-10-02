@@ -330,9 +330,11 @@ keeps its notes beside the task (`<store>/local/<task>.issue.json`), so
 
 **Stopping.** Ctrl-C while the flow runs (or `chat stop`, or the apps' stop)
 stops the running turn, or, between turns, stops the flow before its next
-step; it says so on the issue. The flow itself runs in the process that
-started it: closing that process mid-flow leaves the claim without an
-ending comment.
+step; it says so on the issue. The flow runs in a process of its own
+(`microcoder issue-flow`), like a run's engine, so closing the terminal,
+the shell, or the screen that started it does not end it; a chat or the
+thread list follows it again. With an engine older than this program it
+runs in the process that started it, as before.
 
 **A queue.** `openagents chat work --issues 10052,10053` (or `--issues
 LABEL`, a label's open issues) works several issues, one at a time or

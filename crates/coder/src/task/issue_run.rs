@@ -326,7 +326,7 @@ impl Policy {
 // GitHub.
 
 /// One comment on an issue.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Comment {
     pub body: String,
     /// Unix seconds.
@@ -334,7 +334,7 @@ pub struct Comment {
 }
 
 /// An issue as the flow reads it.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Issue {
     pub number: u64,
     pub title: String,
@@ -842,8 +842,24 @@ fn names(packages: &[String]) -> String {
 // The flow.
 
 /// Only one flow lands at a time in this process, so parallel flows
-/// rebase onto each other instead of racing the push.
+/// rebase onto each other instead of racing the push; [`landing_lock`]
+/// does the same across the processes flows are handed to.
 static LANDING: Mutex<()> = Mutex::new(());
+
+/// An exclusive lock on the task store's landing file, held while a flow
+/// lands; `None` when the file cannot be opened or locked.
+fn landing_lock(store: &Path) -> Option<std::fs::File> {
+    let file = crate::private::file(
+        std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true),
+    )
+    .open(store.join("local").join("issue-landing.lock"))
+    .ok()?;
+    file.lock().ok()?;
+    Some(file)
+}
 
 /// Why a flow did not start.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1185,6 +1201,191 @@ impl Started {
     }
 }
 
+// ---------------------------------------------------------------------------
+// A flow in a process of its own.
+
+/// The version of the file a flow's own process reads to take it over.
+pub const JOB_SCHEMA: &str = "openagents.coder.issue-job.v1";
+
+/// What [`drive`] needs to work a started flow in another process: the
+/// issue as it was read, the policy, and where to land.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+struct Job {
+    schema: String,
+    task: String,
+    repository: String,
+    issue: Issue,
+    policy: Policy,
+    branch: String,
+    top: PathBuf,
+}
+
+fn job_path(store: &Path, task: &str) -> PathBuf {
+    store.join("local").join(format!("{task}.issue-job.json"))
+}
+
+fn log_path(store: &Path, task: &str) -> PathBuf {
+    store.join("local").join(format!("{task}.issue.log"))
+}
+
+/// Where a started flow went ([`Started::hand_off`]).
+#[derive(Debug)]
+pub enum Handed {
+    /// A process of its own works it, as any run's engine does: closing
+    /// the screen or the shell that started it does not end it.
+    Detached { process: u32 },
+    /// It was worked here, to its end, because no driver could take it.
+    Here(Box<Flow>),
+}
+
+impl Started {
+    /// Hands the flow to a process of its own, `driver issue-flow --store
+    /// STORE --task TASK` (the `microcoder` engine, [`local::controller`]),
+    /// and returns once that process has taken it over. Without a driver,
+    /// or when it cannot take the flow over (such as an engine older than
+    /// this program), the flow is worked here as [`Started::finish`] does.
+    #[must_use]
+    pub fn hand_off(self, driver: Option<&Path>) -> Handed {
+        let Some(driver) = driver else {
+            return Handed::Here(Box::new(self.finish()));
+        };
+        match self.detach(driver) {
+            Ok(process) => Handed::Detached { process },
+            Err(started) => Handed::Here(Box::new(started.finish())),
+        }
+    }
+
+    fn detach(self, driver: &Path) -> Result<u32, Self> {
+        let store = self.work.store.clone();
+        let task = self.record.task.clone();
+        let job = Job {
+            schema: JOB_SCHEMA.into(),
+            task: task.clone(),
+            repository: self.repository.clone(),
+            issue: self.issue.clone(),
+            policy: self.work.policy.clone(),
+            branch: self.work.branch.clone(),
+            top: self.work.top.clone(),
+        };
+        let Ok(bytes) = serde_json::to_vec_pretty(&job) else {
+            return Err(self);
+        };
+        if super::autostart::write_private(&job_path(&store, &task), &bytes).is_err() {
+            return Err(self);
+        }
+        let Ok(child) = spawn_driver(driver, &store, &task) else {
+            return Err(self);
+        };
+        let mut child = child;
+        let process = child.id();
+        // The driver records itself as the flow's process once it has
+        // read the job; one that exits first could not take it.
+        loop {
+            if load(&store, &task).is_some_and(|flow| flow.process_id == Some(process)) {
+                return Ok(process);
+            }
+            if !matches!(child.try_wait(), Ok(None)) {
+                return Err(self);
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    }
+}
+
+/// Starts the driver detached: a session of its own on Unix, a process
+/// group with no console window on Windows, its output in the flow's log.
+fn spawn_driver(driver: &Path, store: &Path, task: &str) -> std::io::Result<std::process::Child> {
+    let log = crate::private::file(
+        std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .write(true),
+    )
+    .open(log_path(store, task))?;
+    let mut command = std::process::Command::new(driver);
+    command
+        .arg("issue-flow")
+        .arg("--store")
+        .arg(store)
+        .arg("--task")
+        .arg(task)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::from(log.try_clone()?))
+        .stderr(std::process::Stdio::from(log));
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        // SAFETY: setsid is async-signal-safe and uses no parent-memory state.
+        unsafe {
+            command.pre_exec(|| {
+                if libc::setsid() == -1 {
+                    Err(std::io::Error::last_os_error())
+                } else {
+                    Ok(())
+                }
+            });
+        }
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x0000_0200 | 0x0800_0000);
+    }
+    command.spawn()
+}
+
+/// Takes over the started flow of `task` in `store` and works it to its
+/// end, in this process: what `microcoder issue-flow` runs. A flow that
+/// already ended is returned as it is.
+///
+/// # Errors
+/// The flow, its job, or its run's record is missing or unreadable.
+pub fn drive(store: &Path, task: &str) -> Result<Flow, String> {
+    drive_with(&Runner::new(store.to_path_buf()), store, task)
+}
+
+fn drive_with(runner: &Runner, store: &Path, task: &str) -> Result<Flow, String> {
+    let mut flow = load(store, task).ok_or("This task has no issue flow.")?;
+    if flow.finished {
+        return Ok(flow);
+    }
+    let bytes = std::fs::read(job_path(store, task))
+        .map_err(|_| "This issue flow was not handed to another process.".to_owned())?;
+    let job: Job = serde_json::from_slice(&bytes)
+        .ok()
+        .filter(|job: &Job| job.schema == JOB_SCHEMA && job.task == task)
+        .ok_or("This issue flow's job cannot be read.")?;
+    let record = local::record(store, task).ok_or("This issue flow's run has no record.")?;
+    flow.process_id = Some(std::process::id());
+    save(store, &flow)?;
+    let started = Started {
+        record,
+        issue: job.issue,
+        repository: job.repository,
+        work: Work {
+            store: store.to_path_buf(),
+            local: Arc::clone(&runner.local),
+            tracker: Arc::clone(&runner.tracker),
+            checks: Arc::clone(&runner.checks),
+            policy: job.policy,
+            branch: job.branch,
+            top: job.top,
+            now: runner.now,
+        },
+    };
+    Ok(started.finish())
+}
+
+/// Whether `flow` has not ended and the process working it is gone, so
+/// nothing will end it.
+#[must_use]
+pub fn orphaned(flow: &Flow) -> bool {
+    !flow.finished
+        && flow
+            .process_id
+            .is_some_and(|process| !crate::activity::alive(process))
+}
+
 /// A flow while it works.
 struct Run<'a> {
     work: &'a Work,
@@ -1401,6 +1602,7 @@ impl Run<'_> {
 
     fn land_main(&mut self) {
         let _landing = LANDING.lock().unwrap_or_else(|poison| poison.into_inner());
+        let _shared = landing_lock(&self.work.store);
         let branch = self.work.branch.clone();
         let mut base = self.record.base.clone();
         for attempt in 0..3 {

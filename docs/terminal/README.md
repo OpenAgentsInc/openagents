@@ -177,8 +177,9 @@ of how much is complete. Runs have no step or time budget.
 - **A question from Coder** is answered by typing in the composer.
 - **A follow-up after a run** goes to the router with what the run did, so
   more work continues the same run.
-- **An issue** ("work on #10034") runs the issue flow inside the screen's
-  process in v1: keep the screen open until it lands.
+- **An issue** ("work on #10034") runs the issue flow in a process of its
+  own, as `openagents chat work --issues` does: quitting leaves it running
+  through its checks and landing.
 
 Coder needs a Git checkout here. Outside one, a host with a project of its own
 runs it there instead, as `openagents chat` does.

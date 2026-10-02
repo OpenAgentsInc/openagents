@@ -450,3 +450,127 @@ fn stopping_or_losing_a_process_releases_the_claim_in_one_line() {
         );
     }
 }
+
+fn started_fixture(dir: &Path) -> Started {
+    let tracker = Arc::new(Comments::default());
+    std::fs::create_dir_all(dir.join("local")).unwrap();
+    let mut flow = flow("working");
+    flow.finished = false;
+    flow.process_id = Some(std::process::id());
+    save(dir, &flow).unwrap();
+    Started {
+        record: local_record(),
+        issue: issue(&[]),
+        repository: "acme/app".into(),
+        work: Work {
+            store: dir.into(),
+            local: Arc::new(Local::new(dir.into())),
+            tracker,
+            checks: Arc::new(NoChecks),
+            policy: Policy {
+                land: Land::Main,
+                ..Policy::default()
+            },
+            branch: "main".into(),
+            top: dir.into(),
+            now: || 100,
+        },
+    }
+}
+
+/// A driver that takes the flow over as `microcoder issue-flow` does: it
+/// records its own process as the flow's, then stays a moment.
+#[cfg(unix)]
+fn fake_driver(dir: &Path) -> PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+    let path = dir.join("driver.sh");
+    std::fs::write(
+        &path,
+        "#!/bin/sh\n[ \"$1\" = issue-flow ] || exit 2\n\
+         flow=\"$3/local/$5.issue.json\"\n\
+         sed \"s/\\\"process_id\\\": [0-9a-z]*/\\\"process_id\\\": $$/\" \"$flow\" > \"$flow.new\" \
+         && mv \"$flow.new\" \"$flow\"\nsleep 1\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    path
+}
+
+#[cfg(unix)]
+#[test]
+fn a_started_flow_goes_to_a_process_of_its_own_with_what_it_needs() {
+    let dir = tempfile::tempdir().unwrap();
+    let driver = fake_driver(dir.path());
+    let started = started_fixture(dir.path());
+    let Handed::Detached { process } = started.hand_off(Some(&driver)) else {
+        panic!("the driver took it over")
+    };
+    let flow = load(dir.path(), "task-fixture-1234").unwrap();
+    assert_eq!(flow.process_id, Some(process));
+    assert!(!orphaned(&flow), "its process works it");
+    // The job carries the issue, the policy, and where to land.
+    let job: Job =
+        serde_json::from_slice(&std::fs::read(job_path(dir.path(), "task-fixture-1234")).unwrap())
+            .unwrap();
+    assert_eq!(job.issue, issue(&[]));
+    assert_eq!(
+        (
+            job.policy.land,
+            job.branch.as_str(),
+            job.repository.as_str()
+        ),
+        (Land::Main, "main", "acme/app")
+    );
+    // The driver reads it back; this run has no record, so it says so
+    // after reading the job, before changing anything.
+    let runner = Runner {
+        local: Arc::new(Local::new(dir.path().into())),
+        tracker: Arc::new(Comments::default()),
+        checks: Arc::new(NoChecks),
+        land: None,
+        skip_claimed: true,
+        now: || 100,
+    };
+    assert_eq!(
+        drive_with(&runner, dir.path(), "task-fixture-1234").unwrap_err(),
+        "This issue flow's run has no record."
+    );
+    // A flow that already ended is returned as it is.
+    save(dir.path(), &self::flow("landed")).unwrap();
+    let ended = drive_with(&runner, dir.path(), "task-fixture-1234").unwrap();
+    assert_eq!(ended.link.outcome, "landed");
+}
+
+#[cfg(unix)]
+#[test]
+fn a_flow_whose_process_is_gone_is_orphaned() {
+    let mut flow = flow("working");
+    flow.finished = false;
+    flow.process_id = Some(std::process::id());
+    assert!(!orphaned(&flow));
+    let mut child = std::process::Command::new("true").spawn().unwrap();
+    let gone = child.id();
+    child.wait().unwrap();
+    flow.process_id = Some(gone);
+    assert!(orphaned(&flow));
+    flow.finished = true;
+    assert!(!orphaned(&flow), "an ended flow is not");
+}
+
+#[cfg(unix)]
+#[test]
+fn a_driver_that_cannot_take_the_flow_leaves_it_here() {
+    let dir = tempfile::tempdir().unwrap();
+    // An engine older than this program exits without taking it over; a
+    // missing one never starts. Either way the flow comes back to be
+    // worked here, still this process's.
+    for driver in ["/usr/bin/false", "/nonexistent/microcoder"] {
+        let started = started_fixture(dir.path());
+        let back = started.detach(Path::new(driver)).err().unwrap();
+        assert_eq!(back.record.task, "task-fixture-1234");
+        assert_eq!(
+            load(dir.path(), "task-fixture-1234").unwrap().process_id,
+            Some(std::process::id())
+        );
+    }
+}

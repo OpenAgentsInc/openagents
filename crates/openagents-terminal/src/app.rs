@@ -683,17 +683,6 @@ impl App {
                     if !quiet {
                         self.note(message);
                     }
-                    // The issue flow runs in this process (docs/terminal,
-                    // decision 4): say so before the person quits.
-                    if task.as_ref().and_then(|task| task.get("issue")).is_some() {
-                        self.push(Row::Note(
-                            "This issue flow runs inside this screen: keep it open until the flow \
-                             lands; quitting first leaves the issue claimed without its closing \
-                             comment."
-                                .into(),
-                            Intensity::ThreeQuarters,
-                        ));
-                    }
                     if let Some(id) = task
                         .as_ref()
                         .and_then(|task| task.get("task"))

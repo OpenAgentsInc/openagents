@@ -16,6 +16,7 @@ const USAGE: &str = "usage: microcoder <terminal-bench-task> [options]
        microcoder kb <command> ... (microcoder kb --help lists the commands)
        microcoder xp <command> ... (microcoder xp --help lists the commands)
        microcoder repository --grant FILE [--store DIRECTORY] [--detach]
+       microcoder issue-flow --store DIRECTORY --task ID
 
 Runs Microcoder on a Terminal-Bench 4 task and streams every step: Jev's
 judgments, the model's rationale and commands, each command's output, and
@@ -327,6 +328,9 @@ async fn main() -> ExitCode {
             return ExitCode::from(microcoder::kbnet::main(&args[1..]).await);
         }
         return ExitCode::from(knowledge::cli::main(&args[1..]).await);
+    }
+    if args.first().is_some_and(|a| a == "issue-flow") {
+        return ExitCode::from(issue_flow_cli(&args[1..]).await);
     }
     if args.first().is_some_and(|a| a == "xp") {
         return ExitCode::from(microcoder::xpnet::main(&args[1..]).await);
@@ -905,6 +909,54 @@ async fn repository_cli(arguments: &[String]) -> u8 {
         }
         Err(error) => {
             eprintln!("{}", error.diagnostic());
+            2
+        }
+    }
+}
+
+/// `microcoder issue-flow --store DIRECTORY --task ID`: take over an
+/// issue flow a chat or `openagents chat work` started and handed off
+/// (`coder::task::issue_run::Started::hand_off`), and work it to its end
+/// in this detached process.
+async fn issue_flow_cli(arguments: &[String]) -> u8 {
+    let (mut store, mut task) = (None, None);
+    let mut arguments = arguments.iter();
+    while let Some(flag) = arguments.next() {
+        match (flag.as_str(), arguments.next()) {
+            ("--store", Some(value)) if store.is_none() => {
+                store = Some(std::path::PathBuf::from(value));
+            }
+            ("--task", Some(value)) if task.is_none() => task = Some(value.clone()),
+            _ => {
+                eprintln!("usage: microcoder issue-flow --store DIRECTORY --task ID");
+                return 2;
+            }
+        }
+    }
+    let (Some(store), Some(task)) = (store, task) else {
+        eprintln!("usage: microcoder issue-flow --store DIRECTORY --task ID");
+        return 2;
+    };
+    let driven =
+        tokio::task::spawn_blocking(move || coder::task::issue_run::drive(&store, &task)).await;
+    match driven {
+        Ok(Ok(flow)) => {
+            println!(
+                "{}",
+                serde_json::json!({"task": flow.task, "outcome": flow.link.outcome,
+                    "closing": flow.closing, "commits": flow.link.commits})
+            );
+            0
+        }
+        Ok(Err(why)) => {
+            eprintln!("{}", serde_json::json!({"error": why}));
+            2
+        }
+        Err(_) => {
+            eprintln!(
+                "{}",
+                serde_json::json!({"error": "the issue flow ended unexpectedly"})
+            );
             2
         }
     }

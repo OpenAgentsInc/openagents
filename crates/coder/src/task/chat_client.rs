@@ -191,8 +191,11 @@ impl Issue for IssueRef {
                 worktree: record.worktree.clone(),
             },
             url: started.issue.url.clone(),
+            // The flow goes to a process of its own, so it survives the
+            // screen or shell that started it; worked here only when no
+            // engine can take it.
             finish: Box::new(move || {
-                let _ = started.finish();
+                let _ = started.hand_off(local::controller().ok().as_deref());
             }),
         })
     }
