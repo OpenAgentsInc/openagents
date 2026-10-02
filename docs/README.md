@@ -35,6 +35,7 @@ the [document catalog](catalog.md) to find a specific reference.
 | Operate the relay | [Deployment](deployment/README.md) |
 | Plan CoderOS | [CoderOS index](os/README.md), [audit of what moves from the private tree](os/2026-09-28-coderos-audit.md) |
 | Run reliable, user-defined background processes such as disk cleanup | [Background processes](background/README.md) |
+| Fan Coder runs out onto Google Cloud machines | [Cloud](cloud/README.md), [parallel execution audit](cloud/2026-10-02-cloud-parallel-execution-audit.md) |
 | Build general agents and optimization | [Agent architecture](agents/README.md), [optimization](optimization/README.md) |
 | Explore world interfaces | [Voyager](voyager/README.md), [Minecraft](minecraft/README.md), [Verse](verse/README.md), [Gym building](verse/gym.md), [Unreal source study](research/unreal/README.md) |
 | Verify a change | [Targeted development and release verification](verification.md) |
