@@ -1,0 +1,437 @@
+# A router for agentic execution
+
+2026-10-02. Implementation plan, not a shipped public service. This plan expands
+[the OpenAgents API design](2026-10-02-openagents-api.md); it does not replace its
+owner decisions. New contracts and launch gates below are proposals. The
+[PPQ research](../research/ppq.md) motivates payment interoperability, not a
+claim that PPQ implements this architecture.
+
+## 1. Product thesis
+
+**OpenAgents routes work, not only tokens.** A caller describes an outcome. The
+router selects an admitted capability, places execution where the caller has
+authority, runs it through an existing executor, checks the result, and returns
+an attributable record of what happened and what it cost.
+
+A model gateway answers “which model should produce this response?” This service
+also answers:
+
+- Does this request need execution, or can an existing answer satisfy it?
+- Which plugin, program, model, or Coder route can perform the work?
+- Which computer may run it, with which source, tools, and disclosure policy?
+- What needs an explicit offer or approval before it runs?
+- What evidence establishes completion, and what happens when evidence is missing?
+- Who receives the payment for the resources actually used?
+
+The unit of value is a **verified task outcome**, where verification has a
+stated scope. A process exit, model judgment, passing test, and buyer acceptance
+are different facts. None alone proves every kind of outcome.
+
+### First customer and first task
+
+Start with partner applications that want repository work on a user's paired
+computer without implementing engine selection, task supervision, history,
+and recovery themselves. Also serve self-hosters and the existing apps through
+the same domain contracts.
+
+The first execution slice is narrow: one request, one explicitly granted
+computer and repository, one admitted Coder executor, retained artifacts, and
+an independent check. For example, “update this repository's installation guide
+and return a patch.” Committing, pushing, publishing, and deploying require
+those effects to be included in the grant; returning a patch does not imply
+permission to publish it.
+
+### Non-goals for the first release
+
+- A catalog of hundreds of models as the primary product.
+- Arbitrary paid workers, bidding, escrow, dispute resolution, or paid labor.
+- Execution on OpenAgents' computers or the owner's computers by default.
+- Recursive agent spawning, unbounded parallel work, or model-selected delegation.
+- A new coding loop or a second permission system.
+- Claims of confidential computing or remote attestation from signed receipts.
+- New limits on the users of OpenAgents' own apps. Follow API decision D16;
+  execution grants, physical capacity, and correctness checks are not pricing tiers.
+
+## 2. Existing foundations and missing integration
+
+| Foundation | Reuse | Work still required |
+| --- | --- | --- |
+| [Chat router](../coder/design/2026-09-28-chat-router.md) | Typed Jev judgments, deterministic route policy, offers, labeled evaluation | An execution admission snapshot and task-level outcome feedback |
+| [Task owner](../coder/runtime/task-owner.md) | Durable task identity, command dispositions, retained evidence, independent checks | Public HTTP projection, route-to-task binding, and recovery reconciliation |
+| [Host autostart](../coder/runtime/host-autostart.md) | Operator-selected local execution policy | Partner-key scope and current grant checks at dispatch |
+| [Microcoder](../coder/guides/microcoder.md) | The existing Rust loop and provider capacity handling | A bounded admitted-route interface, not a fork of the loop |
+| [Execution boundary](../coder/verification/2026-09-20-execution-boundary.md) | Filesystem enforcement and workspace snapshots | Explicit per-route enforcement declarations and admission refusal on unsupported hosts |
+| [Subprocess supervisor](../coder/runtime/subprocesses.md) | Process groups, cancellation, output bounds | Map transport cancellation to executor disposition |
+| [Free labor host](../coder/runtime/free-labor.md) | Separation of order, execution authority, delivery, checking, and acceptance | Paid labor remains unsupported; do not expose it as a working route |
+| [API design](2026-10-02-openagents-api.md) | Messages, threads, computers, runs, offers, sats pricing, HTTP conventions | The public agent service is still design work |
+| [Payments design](../payments/README.md) | Central receiving, split ledger, author fees, payout reconciliation | The shared paid execution path and its durable settlement integration |
+
+Existing decision-gateway authentication and quota patterns are useful references,
+not evidence that the agent API already supports sats accounts or execution.
+Keep decision-serving reservations distinct from the agent's money ledger.
+
+## 3. End-to-end architecture
+
+```text
+HTTP message + thread + caller constraints
+    -> authentication and caller scope
+    -> bounded context and admitted capability discovery
+    -> Jev semantic judgments
+    -> deterministic route policy
+    -> immutable route proposal or offer
+    -> execution authority + disclosure + funding admission
+    -> durable dispatch intent
+    -> existing executor on an admitted computer
+    -> artifact retention + independent checks
+    -> result projection + cost settlement + receipts
+```
+
+Implement product logic in Rust. Keep HTTP and Nostr adapters thin; they translate
+transport messages into domain operations, not separate workflows. Share the
+route policy with app entry points instead of letting each surface interpret
+Jev answers independently.
+
+### Suggested ownership
+
+- `coder::router`: semantic route selection and policy over admitted candidates.
+- The task owner and host: command execution, lifecycle, current grant checks,
+  local state, and uncertain-effect recovery.
+- Existing capability, boundary, and supervisor crates: capability trust and
+  enforcement; never replace their checks with generated instructions.
+- A proposed agent API adapter: HTTP identities, thread projection, offers,
+  streams, and translation into existing task operations.
+- Wallet, x402, and the proposed payments ledger: payment validation, replay
+  claims, accounting, and payout state.
+- ATIF and receipts: execution evidence and attributable summaries.
+
+Choose the API crate boundary in the first implementation change. Do not add
+execution to the typed-decision gateway merely because it already accepts HTTP.
+
+## 4. Admission and route contract
+
+Build the eligible candidate set in code **before** asking Jev to rank it.
+A registry entry is not permission to execute its probe or use its tools.
+Unknown capability or capacity is not positive evidence of availability.
+
+The proposed immutable admission snapshot binds:
+
+| Field group | Required content |
+| --- | --- |
+| Identity | Caller, workspace, request, thread, task, and attempt identifiers |
+| Input | Exact request digest, source revision or snapshot, instruction digests |
+| Route | Capability and adapter digests, executor revision, selected model, policy and question-set versions |
+| Placement | Computer identity, workspace binding, grant identity and revocation epoch |
+| Effects | Allowed reads, writes, network destinations, commands, and publication effects |
+| Disclosure | Permitted recipients, provider identities, allowed context and artifact classes |
+| Resources | Operator execution constraints, available capacity, caller-selected ceilings |
+| Money | Price-book version, quote, fee recipients, reservation and settlement identities |
+| Evidence | Deliverable definitions, checker identity and criteria, retention policy |
+
+Use content digests for immutable definitions and opaque identifiers for public
+references. Public summaries omit private paths, secrets, and internal Jev scores.
+A signed digest establishes attribution, not execution truth or hardware attestation.
+
+### Keep four authorities separate
+
+1. **Observation:** permission to read a thread, task, host state, or artifact.
+2. **Execution:** permission from the computer's operator to run the selected work.
+3. **Disclosure:** permission to send specific material to named model or tool providers.
+4. **Spending:** permission to reserve and settle the quoted charges.
+
+Pairing, payment, a plugin installation, or creating an inbox task does not grant
+the other authorities. A partner key reaches only computers explicitly granted
+to that key. Host admission checks current rights again when dispatching;
+long-running channels follow the host's current revocation rules.
+
+An offer is an immutable proposal with an expiry and a digest of the effects,
+recipients, price terms, and source. Confirming it cannot approve a changed
+proposal. If any material field changes, issue a new offer. Existing local
+autostart can supply execution authority only within its configured bounds.
+
+## 5. Routing policy
+
+Use Jev for semantic ambiguity: whether the request calls for repository work,
+which admitted capability fits, whether evidence supports an answer, and whether
+an unresolved request needs clarification. Code handles exact scopes, money,
+capacity, identity, retries, placement, and grants.
+
+Follow [TypeSafe's confidence guidance](https://docs.typesafe.ai/confidence.md):
+model confidence is a signal to calibrate against labeled outcomes, not an
+intrinsic authorization threshold. Do not ship arbitrary probability cutoffs.
+Freeze question sets and policy versions, tune on a separate split, and retain
+untouched test evidence before promoting an execution route.
+
+### Route families
+
+| Family | Behavior |
+| --- | --- |
+| Prepared or knowledge answer | Return an answer with checked citations where applicable; no computer execution |
+| Model answer | Generate through an admitted provider under the disclosure policy |
+| Plugin or program | Run the pinned admitted capability with validated typed arguments |
+| Coder | Start or continue a durable task on a granted computer |
+| Missing capability | Offer to build or install a capability; do not install it implicitly |
+| Clarification or refusal | Explain missing authority, ambiguous intent, or unavailable capability |
+
+### Selection order
+
+1. Honor an explicit caller route if it is admitted. Never silently substitute
+   a route excluded by caller constraints.
+2. Eliminate candidates that violate authority, disclosure, source requirements,
+   caller-selected limits, or enforcement requirements.
+3. Apply deterministic capacity and placement rules.
+4. Rank remaining candidates for task fit using measured route evidence and
+   semantic judgments. Initially use a transparent ordered policy, not an opaque
+   learned optimizer.
+5. Prefer the least expensive adequate route only when its quality and latency
+   evidence satisfy the task class. “Cheapest” is not synonymous with “adequate.”
+6. Return a clarification, offer, or refusal when no route meets the contract.
+
+Track quality, latency, and cost by task class and route version. Avoid rewarding
+routes for declaring success without artifacts. Separate selection bias from
+observed performance; use fixture comparisons before traffic experiments.
+
+### Fallback is a new admission check
+
+A rate-limited model can fall back only to a provider already allowed by the
+snapshot's disclosure and price terms. A new recipient, computer, stronger
+permission, plugin fee, or publication effect requires a new offer.
+
+Do not restart repository execution elsewhere after a transport timeout. First
+reconcile the original task. Once commands can have effects, “retry the request”
+is not equivalent to “run the commands again.”
+
+## 6. Durable lifecycle and recovery
+
+Proposed lifecycle states are domain concepts to map onto the task owner's
+existing dispositions, not permission to replace its journal:
+
+```text
+received -> proposed -> awaiting_authority_or_payment -> admitted
+    -> dispatch_pending -> running -> checking -> completed
+                                      -> failed
+                                      -> cancelled
+                                      -> needs_reconciliation
+```
+
+Each state transition records its cause, prior revision, attempt identity, and
+artifact references. A completed task requires the declared deliverables and
+recorded check disposition. A task can finish with a clearly labeled unverifiable
+result; it must not present that as verified success.
+
+### Idempotency
+
+- Scope HTTP idempotency keys to caller and operation. Bind them to exact
+  accepted request bytes or a documented canonical digest.
+- Same key and same request returns the existing resource or result. Same key
+  and different request returns a conflict.
+- Persist admission and dispatch intent before contacting the executor.
+- Bind one execution identity to one admitted task. Redelivery must not spawn
+  a second task. Keep transport attempt identifiers separate from task identity.
+- Keep payment consumption, task dispatch, and payout obligations separately
+  journaled; reconcile crashes between them rather than claiming a distributed
+  transaction exists.
+
+### Failure handling
+
+| Failure | Required behavior |
+| --- | --- |
+| Host offline before admission | Report unavailable or retain an explicitly authorized queue; do not choose an unauthorized host |
+| Dispatch acknowledgment lost | Query the same execution identity; mark uncertainty until resolved |
+| API restart during a run | Reattach to the task owner and stream from retained evidence |
+| Executor crash after a command | Preserve uncertain effects; never replay the command automatically |
+| Grant revoked | Stop new admissions and follow current host cancellation rules; retain an honest final disposition |
+| Cancellation requested | Record intent, terminate through the supervisor, and report acknowledged cancellation separately from requested cancellation |
+| Checker fails | Return failed verification and evidence; rework requires remaining authority and funding |
+| Artifact missing | Report delivery incomplete; do not treat a status flag as artifact availability |
+| Payout unavailable | Keep a durable payout obligation; task success does not depend on immediate payout routing |
+
+Disconnecting an SSE client does not cancel a task. An explicit cancellation
+operation does. Resumption cannot imply exactly-once delivery of stream events;
+provide sequence identifiers and explicit gaps when retained events expire.
+
+## 7. Public experience
+
+Reuse the API design's resources: `POST /v1/messages`, threads, computers,
+runs, offers, usage, and model discovery. Do not invent a parallel “agent jobs”
+API with a different authority model.
+
+A proposed execution flow is:
+
+1. The client submits a message and optional thread, computer, and caller limits.
+2. The response identifies the request and route, or returns a confirmable offer.
+3. Funding and execution authority admit the exact proposal.
+4. The client receives a run identifier and resumes observation through the run
+   resource even if the originating stream closes.
+5. The final projection includes deliverables, check scope and outcome, selected
+   route and model, elapsed time, settled cost, and any remaining uncertainty.
+
+Use the established API error envelope and codes. Proposed subreasons distinguish
+missing execution grant, denied disclosure, unavailable host, stale offer,
+unverifiable evidence, and recovery in progress. Final code names need review
+against the existing error table before implementation.
+
+Show understandable route explanations such as “Coder on your granted computer.”
+Expose no internal Jev probabilities. A caller can inspect an attributable route
+record without receiving private prompts or another tenant's traces.
+
+## 8. Prices, reservations, and payments
+
+Keep prices in sats. Follow API decisions D3, D7, D9, D10, D12, and D13:
+Lightning only, prepaid balances or per-call payment, author-declared plugin
+fees paid in full after settlement, and x402 plus MPP from one invoice and
+one replay store. Classic L402 is not a first-release dependency.
+
+### Launch pricing
+
+Start with fixed-price task classes or prepaid balance reservations under
+caller-selected ceilings. Publish the route's price terms before admission.
+Do not advertise an exact upfront price for arbitrary route-dependent work.
+Metered MPP Lightning sessions are a later dependency for streaming costs,
+not something existing x402 `exact` already provides.
+
+For every charge, retain a versioned breakdown:
+
+- Model or executor resource charge and its pricing basis.
+- OpenAgents routing and coordination charge.
+- Each plugin's declared fee and author identity.
+- Quoted maximum, reserved amount, actual charge, and unused reservation release.
+- Separately disclosed Lightning payment fees and payout costs under the
+  payments design's rules; do not silently deduct them from an author's fee.
+
+Prevent parallel calls from overspending a balance or caller-set budget through
+durable reservations. Unknown costs remain held for reconciliation. Never free
+an uncertain hold because a process restarted.
+
+### Payment and execution are separate state machines
+
+An unpaid challenge performs no execution. Bind proof to request body, method,
+resource, amount, expiry, and quote identity. Consume its payment hash atomically
+across x402 and MPP, but let an exact idempotent retry retrieve the already-funded
+resource without consuming or charging again.
+
+Test a crash after payment consumption but before task creation. Recovery must
+find the funded request and create or recover only its original task. Test a
+crash after settlement but before author payout bookkeeping: a stable settlement
+source recreates the same obligation, not a second payout.
+
+Apply the API design's current failure policy: a paid call that fails before any
+answer can retry free under the same idempotency key; no automatic refund for a
+settled charge. Retrying observation is always safe; retrying execution is allowed
+only after the original disposition is reconciled. Release unused balance holds
+without describing that as a refund of a settled payment. MPP session remainder
+refunds follow their separate session policy and need durable retry tracking.
+
+## 9. Evidence, privacy, and operational visibility
+
+Record route policy and question-set digests, admission identity, execution
+attempts, command dispositions, deliverable digests, check results, and settlement
+references. Link ATIF evidence rather than copying entire private traces into
+public receipts.
+
+Treat repository files, retrieved documents, plugin output, and model text as
+untrusted content. None can grant authority or edit the admitted recipient set.
+Validate typed arguments in code, pin executable adapters, and refuse unsupported
+enforcement. Full-access execution requires an explicit operator choice and
+must be visible in the admission record.
+
+Keep secrets out of logs, receipts, URLs, and public statistics. Result URLs for
+keyless callers are narrow, expiring bearer capabilities, with separate read and
+cancel authority. Redact query credentials from access logs, constrain artifact
+size and content types, and define retention and deletion before public launch.
+Tenant checks apply to every thread, run, event cursor, and artifact fetch.
+
+Measure:
+
+- Time to route, admission, first execution event, and final checked result.
+- Route confusion, unnecessary offers, and missed execution requests.
+- Unsupported success claims and verification failures.
+- Cost per checked outcome, reservations awaiting reconciliation, and payout age.
+- Capacity refusals, provider failover, transport gaps, and cancellation latency.
+- Duplicate execution, unauthorized disclosure, and cross-tenant access attempts.
+
+Alert on uncertain dispatches, replay conflicts, ledger disagreement, and stuck
+payout obligations. Public live payment views use the payments design's sanitized
+aggregates, not private task text or computer identifiers.
+
+## 10. Delivery plan and acceptance gates
+
+Each phase is a small set of independently reviewable Rust changes with targeted
+crate tests. Documentation-only changes need no Rust gate. Do not run live engine
+or payment probes on the owner's machines as routine acceptance.
+
+| Phase | Deliverables | Exit evidence |
+| --- | --- | --- |
+| 0. Freeze the first contract | Task class, route/admission DTOs, effect and disclosure schema, failure policy, labeled evaluation split | Reviewed mappings to API decisions and existing host authority; no unexplained duplicate state machine |
+| 1. Local vertical slice | One message routed into the existing task owner in a scratch host; one retained patch and checker result | Synthetic fixtures prove successful delivery, denied grant, cancellation, and executor crash without duplicate effects |
+| 2. HTTP projection | Caller-scoped threads, offers, run reads, resumable events, idempotent creation | HTTP contract fixtures prove conflict detection, isolation, restart reattachment, and stream gaps |
+| 3. Granted remote computer | Partner-key computer binding and current host admission; retained remote artifacts | Scratch identities and hosts prove revoked/stale grants refuse, lost acknowledgment reconciles, and no implicit host substitution occurs |
+| 4. Paid admission | Sats reservations, one fixed-price route, x402 and MPP shared replay claims, settlement and author obligations | Fake-wallet and fault-injection tests prove no unpaid dispatch, no cross-scheme double spend, and crash-safe funded-task recovery |
+| 5. Capability routing | A small reviewed plugin catalog and model fallback within admitted disclosure | Held-out evaluation plus adversarial fixtures prove excluded routes cannot run and fallback cannot widen authority |
+| 6. Metered and composed work | MPP sessions, durable remainder handling, bounded execution graphs, explicit rework | Conservation and restart tests cover every hold, debit, payout, and refund; graph cancellation and per-node evidence stay attributable |
+
+Do not block the initial local/HTTP slice on paid labor or metered sessions.
+Launch paid traffic only after phase 4's accounting and recovery gates pass.
+Roll out one task class and a small opt-in partner cohort first. Keep route
+promotion reversible without relabeling tasks already in flight.
+
+### Test matrix
+
+Use scripted executors, fake clocks, fake wallets, temporary homes, and scratch
+host identities. Pin the route/question versions and keep tuning data separate
+from test data. Include:
+
+- Answer-only, execution, ambiguous, and missing-capability requests.
+- Explicit route requests that conflict with grants or caller limits.
+- Prompt injection that asks a tool to expand permissions or disclose secrets.
+- Two concurrent admissions spending the same remaining balance.
+- Same idempotency key with both identical and changed request bodies.
+- Duplicate payment proofs through different encodings and concurrent instances.
+- Process death at every persistence-to-dispatch and ledger-to-payout boundary.
+- Model failover to both allowed and forbidden recipients.
+- Partial output, missing artifacts, failed checks, and a model's false success claim.
+- Revocation and cancellation while execution or artifact delivery is in progress.
+- Cross-tenant run identifiers, event cursors, and expired result capabilities.
+
+For hard authority and accounting properties, any fixture violation blocks
+promotion. For semantic routing, report confusion by task class and confidence
+intervals; establish numeric quality and latency gates from phase 1 measurements
+rather than presenting unmeasured targets as facts.
+
+## 11. Later composition
+
+After single-task recovery works, represent composed work as an explicit graph:
+each node has an admitted capability, input artifact references, dependencies,
+resources, spending authority, and completion criteria. The host controls fan-out.
+Models can propose a graph; they cannot authorize or launch it.
+
+Reuse knowledge and checked artifacts across nodes only under source and tenant
+permissions. Bound concurrency in the operator's execution grant. Propagate
+cancellation while preserving the disposition of already-running nodes. Charge
+and verify per node, then summarize the parent without hiding partial failure.
+
+A paid worker market is a separate project. It requires commercial agreements,
+delivery and buyer acceptance, settlement, rework, and dispute semantics beyond
+the current free-only labor host. This router can eventually admit such a
+capability; it must not pretend a remote subprocess is a complete labor contract.
+
+## 12. Decisions to resolve during implementation
+
+These questions do not block writing the plan or the local slice:
+
+1. Which existing thread store should own the public API's retained turns, and
+   how do self-hosters configure retention and export?
+2. Which initial task classes have a defensible fixed price, and which require
+   a prepaid reservation or a metered session?
+3. Which checker contracts distinguish patch delivery, repository tests, and
+   publication effects without overstating their evidence?
+4. How does a keyless caller recover an expired result capability without
+   exposing a paid artifact to someone holding only a public request identifier?
+5. Which route explanations are useful to partners without exposing private
+   policy state or internal judgments?
+6. What measured routing error and latency levels justify each task class's
+   promotion beyond the opt-in cohort?
+
+**First implementation milestone:** a message creates exactly one authorized
+repository task on a scratch computer, produces a retained patch with an
+independent check, survives a lost connection, and returns an honest final
+record. That is the smallest proof of a router for agentic execution.
