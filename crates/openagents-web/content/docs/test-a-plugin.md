@@ -51,7 +51,8 @@ When you start a test from chat, it runs on our hosted runner:
   but it is bigger than the same comparison on a computer with a shell.
 - Both runs include Coder's defaults (today, Project map), so a result
   says what the plugin adds on top of them.
-- At most 8 tests and 3 runs each way, and 3 test runs per person a day.
+- A test set run there has 8 tests or fewer, each run up to three times
+  with the plugin and three times without.
 
 ## The three examples
 

@@ -16,8 +16,8 @@ A plugin can have any of these parts:
   or how a command is used.
 - **Wasm.** Sandboxed code that does one bounded job, such as reading a
   failing command's output. It is the only code a plugin can carry. It
-  runs with no network, under instruction and memory limits, and reads
-  only the files its workflow grants. A workflow runs it; the model never
+  runs with no network, on a fixed budget of instructions and memory,
+  and reads only the files its workflow grants. A workflow runs it; the model never
   calls it by name.
 - **Tests.** Tasks Coder runs with the plugin and without it, and the
   checks on each run.
@@ -50,5 +50,8 @@ can add a part, and a part only becomes one of Coder's defaults after it
 was measured with and without, rerun by other people, and shown to help
 on someone else's tests. The argument is in
 [The Return of the General Agent](https://github.com/OpenAgentsInc/openagents/blob/main/docs/essays/2026-10-01-the-return-of-the-general-agent.md).
+
+You can also ask in any chat: "Which plugins can I test?" lists them all,
+and asking for something no plugin does yet offers **Add a plugin**.
 
 Next: [Write a plugin](/docs/write-a-plugin).

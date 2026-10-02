@@ -65,7 +65,7 @@ async fn get(router: Router, uri: &str) -> (StatusCode, String) {
 }
 
 /// Every public HTML page a development server serves.
-const PAGES: [&str; 18] = [
+const PAGES: [&str; 36] = [
     "/",
     "/download",
     "/terms",
@@ -74,16 +74,34 @@ const PAGES: [&str; 18] = [
     "/docs",
     "/docs/what-is-openagents",
     "/docs/download",
-    "/docs/connect-a-computer",
+    "/docs/website",
+    "/docs/mac",
+    "/docs/iphone",
+    "/docs/terminal",
+    "/docs/cli",
     "/docs/chat",
+    "/docs/privacy-and-security",
     "/docs/coder",
+    "/docs/coding-agents",
+    "/docs/following-coder",
+    "/docs/worktrees-and-changes",
+    "/docs/github-issues",
+    "/docs/ship-from-your-phone",
+    "/docs/connect-a-computer",
+    "/docs/manage-computers",
     "/docs/plugins",
     "/docs/write-a-plugin",
     "/docs/test-a-plugin",
     "/docs/publish-and-share",
+    "/docs/gym-and-xp",
     "/docs/verse",
-    "/docs/privacy-and-security",
-    "/docs/help",
+    "/docs/the-grid",
+    "/docs/wallet",
+    "/docs/decks",
+    "/docs/settings",
+    "/docs/troubleshooting",
+    "/docs/faq",
+    "/docs/glossary",
 ];
 
 /// The docs list every guide, each guide links its neighbors, and every
@@ -250,6 +268,7 @@ async fn the_download_page_links_only_the_release_candidates_and_the_source() {
         ("/install", "/download"),
         ("/desktop", "/download"),
         ("/docs/install", "/docs/download"),
+        ("/docs/help", "/docs/troubleshooting"),
     ] {
         let (status, headers, _) = get_with(router(config(root.path().into())), old, LOCAL).await;
         assert_eq!(status, StatusCode::PERMANENT_REDIRECT, "{old}");
@@ -854,7 +873,7 @@ async fn owned_pages_removed_sections_and_the_task_browser_never_go_upstream() {
             "{uri}"
         );
     }
-    for uri in ["/install", "/desktop", "/docs/install"] {
+    for uri in ["/install", "/desktop", "/docs/install", "/docs/help"] {
         let (status, _, _) = get_with(site.clone(), uri, "openagents.com").await;
         assert_eq!(status, StatusCode::PERMANENT_REDIRECT, "{uri}");
     }

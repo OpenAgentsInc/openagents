@@ -1,0 +1,76 @@
+# Settings
+
+Coder's settings on a computer live in one file,
+`~/.openagents/settings.json`. The Mac app, OpenAgents Terminal, the
+`openagents` command, and the computer's host all read it. With no file,
+every setting is its default.
+
+## Change a setting
+
+```sh
+openagents settings show                          # every setting and the file
+openagents settings get coder.providers
+openagents settings set coder.start ask_first
+openagents settings unset coder.start             # back to the default
+```
+
+Lists are comma-separated. A bad value changes nothing and says why. In
+OpenAgents Terminal, `/settings` shows them. In the Mac app, **Settings →
+Coder** changes `coder.start` and `coder.providers`.
+
+## The keys
+
+| Key | Values | Default | What it does |
+| --- | --- | --- | --- |
+| `coder.providers` | 1 to 5 of `codex`, `claude`, `grok`, `opencode:PROVIDER/MODEL`, `devin`; each may add `:MODEL` | `codex,claude,grok` | Which coding agents Coder may use, first preferred. Each is used only when it's signed in on this computer and has room. See [Coding agents](/docs/coding-agents). |
+| `coder.start` | `at_once`, `ask_first` | `at_once` | Whether a coding reply starts Coder at once, or only offers **Run Coder**. It decides for your phone's requests to this computer too. |
+| `coder.usage_threshold_percent` | 1 to 100, or `off` | `90` | How full an agent's usage window can read before Coder moves on to the next agent. With `off`, Coder moves on only when an agent turns it away. |
+| `coder.projects` | folders | none: any Git checkout | Which folders hold your projects. Coder runs only in a checkout inside one of them, and the Mac app tries them when a chat names no project. |
+| `coder.access` | `full`, `toolchains`, `boundary` | `full` | What Coder's commands may reach. `full`: your own access, with every step approved. `toolchains`: writes only in Coder's worktree, with this computer's developer programs and the network. `boundary`: the plain sandbox. |
+
+Examples:
+
+```sh
+openagents settings set coder.providers claude,codex       # Claude Code first
+openagents settings set coder.providers codex,claude,grok,devin   # turn on Devin
+openagents settings set coder.providers codex,opencode:openrouter/MODEL
+openagents settings set coder.projects ~/code,~/work
+openagents settings set coder.access toolchains
+```
+
+OpenCode always needs its model named. Devin bills its own paid API for
+each run, so it's on only when you add it.
+
+The Mac app reads the file when Coder first starts a run; restart the app
+after editing the file by hand. A file that can't be read is never treated
+as the defaults: Coder refuses to run and names the file, and a coding
+reply only offers Coder until you fix or remove it.
+
+## The Mac app's own settings
+
+**Settings** (Cmd+,) has these pages:
+
+| Page | What's there |
+| --- | --- |
+| Appearance | **Reduce motion**, which keeps the Verse's camera still. The app is dark only. |
+| Text size | Smaller, default, larger, or largest (90, 100, 115, or 130 percent). |
+| Keyboard shortcuts | Every shortcut. They can't be changed yet. |
+| Notifications | **Notify me about Coder**: when Coder asks you something, finishes, or fails while OpenAgents isn't in front. |
+| Coder | Each coding agent's sign-in and usage, **Start at once** or **Ask first**, and **Agents Coder may run**. |
+| Phones and computers | Connecting and removing phones, and Coder's project. |
+| Archived chats | Chats you archived, with **Restore**. |
+
+They're saved in the same file, under `app`.
+
+## Environment variables
+
+| Variable | What it does |
+| --- | --- |
+| `OPENAGENTS_SETTINGS` | Use another settings file. |
+| `OPENAGENTS_CHAT_HOME` | Keep chats somewhere other than `~/.openagents/chat`. |
+| `OPENAGENTS_TASKS` | Keep Coder's tasks somewhere other than `~/.openagents/tasks`. |
+| `OPENAGENTS_CHANNEL`, `OPENAGENTS_VERSION` | For the installer: the `rc` or `stable` channel, or one version. |
+| `OPENAGENTS_NO_LAUNCH=1` | For the installer: don't open the Terminal afterward. |
+| `NO_COLOR` | OpenAgents Terminal draws with no color. |
+
+Next: [Troubleshooting](/docs/troubleshooting).

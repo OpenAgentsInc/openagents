@@ -75,8 +75,7 @@ made and the XP it earned.
 
 In OpenAgents for Mac, the **Map** page shows each plugin and the step it
 has reached: Not packaged, Candidate, a verdict, Reproduced, Validated,
-or Adopted, with the next step for each. The Map is new on `main` and not
-in the 1.0.0 release yet.
+or Adopted, with the next step for each. See [Decks and the Map](/docs/decks).
 
 The specifications are on GitHub:
 [testing and publishing](https://github.com/OpenAgentsInc/openagents/blob/main/docs/extensions/evaluation.md),
@@ -86,3 +85,5 @@ and the protocols for
 [workflows](https://github.com/OpenAgentsInc/openagents/blob/main/nips/openagents/NIP-PRG.md),
 [knowledge](https://github.com/OpenAgentsInc/openagents/blob/main/nips/openagents/NIP-KB.md),
 and [XP](https://github.com/OpenAgentsInc/openagents/blob/main/nips/openagents/NIP-XP.md).
+
+Next: [The Gym and XP](/docs/gym-and-xp).

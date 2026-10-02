@@ -4,7 +4,7 @@
 //! Every document is compiled into the binary, so a deploy cannot fail to
 //! copy one and leave a page answering `404`. The terms and the policy are
 //! the text openagents.com published, last updated 2026-09-03, unchanged.
-//! The docs are short guides to the apps we launch and to plugins, in
+//! The docs are the user guide to OpenAgents, grouped into sections, in
 //! `content/docs/`.
 
 use axum::Router;
@@ -24,18 +24,51 @@ pub(crate) const TERMS: &str = include_str!("../../content/legal/terms.md");
 pub(crate) const PRIVACY: &str = include_str!("../../content/legal/privacy.md");
 
 /// The docs, by slug, in reading order.
-pub(crate) const DOCS: [(&str, &str); 13] = [
+pub(crate) const DOCS: [(&str, &str); 30] = [
     (
         "what-is-openagents",
         include_str!("../../content/docs/what-is-openagents.md"),
     ),
     ("download", include_str!("../../content/docs/download.md")),
+    ("website", include_str!("../../content/docs/website.md")),
+    ("mac", include_str!("../../content/docs/mac.md")),
+    ("iphone", include_str!("../../content/docs/iphone.md")),
+    ("terminal", include_str!("../../content/docs/terminal.md")),
+    ("cli", include_str!("../../content/docs/cli.md")),
+    ("chat", include_str!("../../content/docs/chat.md")),
+    (
+        "privacy-and-security",
+        include_str!("../../content/docs/privacy-and-security.md"),
+    ),
+    ("coder", include_str!("../../content/docs/coder.md")),
+    (
+        "coding-agents",
+        include_str!("../../content/docs/coding-agents.md"),
+    ),
+    (
+        "following-coder",
+        include_str!("../../content/docs/following-coder.md"),
+    ),
+    (
+        "worktrees-and-changes",
+        include_str!("../../content/docs/worktrees-and-changes.md"),
+    ),
+    (
+        "github-issues",
+        include_str!("../../content/docs/github-issues.md"),
+    ),
+    (
+        "ship-from-your-phone",
+        include_str!("../../content/docs/ship-from-your-phone.md"),
+    ),
     (
         "connect-a-computer",
         include_str!("../../content/docs/connect-a-computer.md"),
     ),
-    ("chat", include_str!("../../content/docs/chat.md")),
-    ("coder", include_str!("../../content/docs/coder.md")),
+    (
+        "manage-computers",
+        include_str!("../../content/docs/manage-computers.md"),
+    ),
     ("plugins", include_str!("../../content/docs/plugins.md")),
     (
         "write-a-plugin",
@@ -49,18 +82,77 @@ pub(crate) const DOCS: [(&str, &str); 13] = [
         "publish-and-share",
         include_str!("../../content/docs/publish-and-share.md"),
     ),
+    (
+        "gym-and-xp",
+        include_str!("../../content/docs/gym-and-xp.md"),
+    ),
     ("verse", include_str!("../../content/docs/verse.md")),
-    // Its image is the Grid seen from above as the desktop app's backdrop
+    // Its image is the Grid seen from above as the desktop app's Verse page
     // draws it, captured from the live relay with
     // `crates/verse/examples/overlook_capture.rs`
     // (`OVERLOOK_SIZE=1600x900 … /tmp/grid.png 45 wss://relay.openagents.com 8`)
     // and served from `/static/verse-grid.jpg`.
     ("the-grid", include_str!("../../content/docs/the-grid.md")),
+    ("wallet", include_str!("../../content/docs/wallet.md")),
+    ("decks", include_str!("../../content/docs/decks.md")),
+    ("settings", include_str!("../../content/docs/settings.md")),
     (
-        "privacy-and-security",
-        include_str!("../../content/docs/privacy-and-security.md"),
+        "troubleshooting",
+        include_str!("../../content/docs/troubleshooting.md"),
     ),
-    ("help", include_str!("../../content/docs/help.md")),
+    ("faq", include_str!("../../content/docs/faq.md")),
+    ("glossary", include_str!("../../content/docs/glossary.md")),
+];
+
+/// The docs index's sections: each one's title, a line saying what it
+/// covers, and the slug of its first guide. A section runs until the next
+/// one's first guide, in [`DOCS`] order.
+pub(crate) const SECTIONS: [(&str, &str, &str); 9] = [
+    (
+        "Getting started",
+        "What OpenAgents is, and how to get it.",
+        "what-is-openagents",
+    ),
+    (
+        "Apps",
+        "The website, the Mac and iPhone apps, the Terminal, and the command.",
+        "website",
+    ),
+    (
+        "Chat",
+        "What the chat answers, and who sees your messages.",
+        "chat",
+    ),
+    (
+        "Coder",
+        "Coding work on your own computer, with the agents you already use.",
+        "coder",
+    ),
+    (
+        "Computers",
+        "Connect your phone to a computer, and manage them.",
+        "connect-a-computer",
+    ),
+    (
+        "Plugins",
+        "Make a plugin, test whether it helps, and publish the result.",
+        "plugins",
+    ),
+    (
+        "The Gym, the Verse, and the wallet",
+        "XP, the shared world, bitcoin, and decks.",
+        "gym-and-xp",
+    ),
+    (
+        "Reference",
+        "Settings and fixes for common problems.",
+        "settings",
+    ),
+    (
+        "Questions and words",
+        "Short answers, and what each word means.",
+        "faq",
+    ),
 ];
 
 pub(crate) fn routes() -> Router<App> {
@@ -74,21 +166,40 @@ pub(crate) fn routes() -> Router<App> {
             "/docs/install",
             get(|| async { Redirect::permanent("/docs/download") }),
         )
+        // The troubleshooting guide's old name.
+        .route(
+            "/docs/help",
+            get(|| async { Redirect::permanent("/docs/troubleshooting") }),
+        )
 }
 
-/// `/docs`: every guide, in reading order.
+/// `/docs`: every guide, in reading order, under its section's title.
 async fn docs_index() -> Response {
     let mut body = String::from(
-        "<h1>Docs</h1><p class=\"label\">Short guides to OpenAgents for iPhone and Mac, and to plugins.</p>\
-<ol class=\"list docs\">",
+        "<h1>Docs</h1><p class=\"label\">Guides to OpenAgents: the chat, Coder, the apps, \
+plugins, and the Gym.</p>",
     );
+    let mut open = false;
     for (slug, source) in DOCS {
+        if let Some((title, lead, _)) = SECTIONS.iter().find(|(_, _, first)| *first == slug) {
+            if open {
+                body.push_str("</ol>");
+            }
+            body.push_str(&format!(
+                "<h2>{}</h2><p class=\"label\">{}</p><ol class=\"list docs\">",
+                escape(title),
+                escape(lead)
+            ));
+            open = true;
+        }
         body.push_str(&format!(
             "<li><a class=\"title\" href=\"/docs/{slug}\">{}</a></li>",
             escape(&markdown::title(source, slug))
         ));
     }
-    body.push_str("</ol>");
+    if open {
+        body.push_str("</ol>");
+    }
     page("Docs", Some("/docs"), &body)
 }
 
@@ -168,6 +279,23 @@ mod tests {
         for document in [TERMS, PRIVACY] {
             assert!(document.contains("do not sell your"));
             assert!(document.contains("1101 W 34th St. #581, Austin, TX 78705"));
+        }
+    }
+
+    /// Every section starts at a guide, the first guide starts a section,
+    /// the sections are in reading order, and every guide has a title.
+    #[test]
+    fn the_sections_cover_the_docs_in_order() {
+        assert_eq!(SECTIONS[0].2, DOCS[0].0);
+        let mut last = None;
+        for (title, _, first) in SECTIONS {
+            let index = DOCS.iter().position(|(slug, _)| *slug == first);
+            assert!(index.is_some(), "{title} starts at {first}");
+            assert!(index > last, "{title} is out of order");
+            last = index;
+        }
+        for (slug, source) in DOCS {
+            assert!(source.starts_with("# "), "{slug} has a title");
         }
     }
 
