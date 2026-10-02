@@ -222,6 +222,38 @@ impl Policy {
         Some(policy)
     }
 
+    /// This policy with only `provider`'s routes (#10183): a run of a
+    /// dispatch plan is pinned to its engine, so it never falls back to
+    /// an engine another run of the plan uses. `None` when the policy
+    /// admits no route for `provider`.
+    #[must_use]
+    pub fn only(&self, provider: Provider) -> Option<Policy> {
+        let routes: Vec<Route> = self
+            .routes()
+            .into_iter()
+            .filter(|route| route.provider == provider)
+            .collect();
+        let first = routes.first()?.model.clone();
+        let mut policy = self.clone();
+        policy.engine.model = first;
+        policy.engine.routes = routes;
+        Some(policy)
+    }
+
+    /// This policy for read-only runs (#10183): the grant writes nothing
+    /// in the worktree, so the command boundary is read-only and seals
+    /// Git, and a full-access setting runs under this computer's
+    /// toolchains instead, since full access has no boundary at all.
+    #[must_use]
+    pub fn read_only(&self) -> Policy {
+        let mut policy = self.clone();
+        policy.engine.write_workspace = false;
+        if policy.engine.access == adapter::Access::Full {
+            policy.engine.access = adapter::Access::Toolchains;
+        }
+        policy
+    }
+
     /// Choose a route at `now`: the first admitted route whose provider is
     /// connected and has capacity in `book`. A one-route policy skips the
     /// connection probe, so an existing policy starts exactly as before

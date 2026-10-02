@@ -1885,6 +1885,7 @@ mod tests {
             offer: Some(Offer::RunCoder {
                 label: "Run Coder".into(),
                 engine: None,
+                plan: Default::default(),
             }),
             ..step.clone()
         };

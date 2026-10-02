@@ -199,6 +199,34 @@ impl Coder for Here {
         })
     }
 
+    fn start_run(
+        &self,
+        store: &Path,
+        dir: &Path,
+        title: &str,
+        prompt: &str,
+        chat: &str,
+        engine: nostr::cj_conversation::Engine,
+        read_only: bool,
+    ) -> Result<Started, String> {
+        let record = Self::runner(store).start_shaped(
+            dir,
+            title,
+            prompt,
+            Some(chat),
+            super::settings::provider_of(engine),
+            super::local::Shape {
+                only: true,
+                read_only,
+            },
+        )?;
+        Ok(Started {
+            task: record.task,
+            project: record.project,
+            worktree: record.worktree,
+        })
+    }
+
     fn issue(&self, request: &str, earlier: &str, dir: &Path) -> Option<Box<dyn Issue>> {
         super::issue_run::asked_blocking(request, earlier, dir)
             .map(|reference| Box::new(IssueRef(reference)) as Box<dyn Issue>)

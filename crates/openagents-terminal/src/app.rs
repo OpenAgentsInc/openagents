@@ -221,6 +221,10 @@ pub struct App {
     pub delegations: Vec<crate::rail::Delegation>,
     /// The rail row the keyboard is on, by its number.
     pub rail: Option<usize>,
+    /// The tasks of a dispatch plan's runs (#10183): each shows in its own
+    /// rail row and full screen, and the transcript shows only its start,
+    /// its engine, and its result.
+    pub fanned: Vec<String>,
 }
 
 impl App {
@@ -271,6 +275,7 @@ impl App {
             worktree: None,
             delegations: Vec::new(),
             rail: None,
+            fanned: Vec::new(),
         }
     }
 
@@ -965,6 +970,24 @@ impl App {
                     if !quiet {
                         self.note(message);
                     }
+                    // A plan's runs (#10183): one row each in the rail.
+                    if let Some(runs) = task.as_ref().and_then(|task| task.as_array()) {
+                        for id in runs.iter().filter_map(|run| run["task"].as_str()) {
+                            if !self.fanned.iter().any(|held| held == id) {
+                                self.fanned.push(id.to_owned());
+                            }
+                            self.delegated(id);
+                            if let Some(agent) = run_agent(runs, id)
+                                && let Some(held) =
+                                    self.delegations.iter_mut().find(|held| held.task == id)
+                            {
+                                held.agent = agent;
+                            }
+                        }
+                        self.running = true;
+                        self.starting = None;
+                        self.doing(format!("{} runs working…", self.fanned_running()));
+                    }
                     if let Some(id) = task
                         .as_ref()
                         .and_then(|task| task.get("task"))
@@ -1089,6 +1112,10 @@ impl App {
             return;
         }
         *seen = line.seq.max(*seen);
+        if self.fanned.iter().any(|task| *task == line.task) {
+            self.fanned_line(&line);
+            return;
+        }
         self.task = Some(line.task.clone());
         let ended = self.finished(&line.event);
         self.track(&line, true, ended);
@@ -1168,6 +1195,54 @@ impl App {
         {
             view.scroll = 0;
         }
+    }
+
+    /// One new event of a plan's run (#10183): its rail row and full
+    /// screen take every event; the transcript only its start and its
+    /// result, under its engine's name, so three runs never interleave
+    /// there.
+    fn fanned_line(&mut self, line: &CoderLine) {
+        let ended = self.finished(&line.event);
+        self.track(line, true, ended);
+        match &line.event {
+            CoderEvent::CoderStarted(started) => {
+                self.push(Row::Note(started.line(), Intensity::ThreeQuarters));
+                if let Some(news) = started.news() {
+                    self.push(Row::note(news));
+                }
+            }
+            event if event.ends_turn() => {
+                let agent = self
+                    .delegations
+                    .iter()
+                    .find(|held| held.task == line.task)
+                    .map_or_else(|| "Coder".to_owned(), |held| held.agent.clone());
+                self.push(Row::Note(format!("{agent}:"), Intensity::ThreeQuarters));
+                if grow(&mut self.transcript, line, self.expanded) {
+                    self.scroll = 0;
+                }
+            }
+            _ => {}
+        }
+        let working = self.fanned_running();
+        self.running = working > 0;
+        if working > 0 {
+            self.doing(format!(
+                "{working} run{} working…",
+                if working == 1 { "" } else { "s" }
+            ));
+        } else {
+            self.activity = None;
+            self.progress = None;
+        }
+    }
+
+    /// How many of a plan's runs still work.
+    fn fanned_running(&self) -> usize {
+        self.delegations
+            .iter()
+            .filter(|held| held.running && self.fanned.contains(&held.task))
+            .count()
     }
 
     /// Whether `event` ends its run's turn for good: not a turn a message
@@ -1441,6 +1516,16 @@ impl App {
 
 /// Adds a run event to `log`: it joins the open stretch of tool calls,
 /// starts one, or draws its own row. Whether `log` changed.
+/// The engine a plan's run `task` is on, by name, from the start report
+/// (#10183).
+fn run_agent(runs: &[serde_json::Value], task: &str) -> Option<String> {
+    runs.iter()
+        .find(|run| run["task"].as_str() == Some(task))
+        .and_then(|run| run["engine"].as_str())
+        .and_then(nostr::cj_conversation::Engine::parse)
+        .map(|engine| engine.name().to_owned())
+}
+
 pub(crate) fn grow(
     log: &mut Scrollback<Row, Line<'static>, Wrap>,
     line: &CoderLine,

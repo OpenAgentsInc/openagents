@@ -813,6 +813,7 @@ impl CoderTab {
             draft,
             tried,
             skip: self.gym.skip(),
+            runs: Vec::new(),
         }
     }
 

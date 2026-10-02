@@ -588,6 +588,108 @@ pub fn engine_none() -> Value {
     )
 }
 
+/// The `fanout` question's instructions (#10183).
+#[must_use]
+pub fn fanout_instructions() -> Value {
+    instructions(
+        "If the user's latest message asks for work on their code or computer, how many \
+         coding-agent runs do they ask for: one, or one on each of several coding agents?",
+        "Coding agents (also \"agents\" or \"engines\") here are Codex, Claude Code, and Grok \
+         Build. Pick `each_engine` when the message asks for the same work to go to every \
+         agent, or to several agents with one run each: \"one per agent\", \"1 per agent\", \
+         \"ask all the agents\", \"have each agent look\", \"three delegations, one to each \
+         engine\", or all three named. Pick a pair when it names exactly two agents to each \
+         do it (\"have Codex and Claude both look\"). Pick `one` for a single run, a run on \
+         one named agent, a message that only mentions agents as a subject (asking about \
+         them, comparing them in chat), several different tasks for one agent, or no work. \
+         A number of runs alone is not several agents: \"two passes\" with no agents named \
+         is `one`. Earlier messages only resolve what the latest one refers to.",
+    )
+}
+
+/// The `fanout` question's `one`.
+#[must_use]
+pub fn fanout_one() -> Value {
+    option(
+        "One run: the message asks for work by one agent, names one agent or none, or asks \
+         for no work on the user's code or computer",
+        Some(
+            "A message that names agents only as a subject (which is better, what they are), \
+             or asks one agent for several steps; these are one run",
+        ),
+        &[],
+    )
+}
+
+/// A [`super::judge::Fanout`] option.
+#[must_use]
+pub fn fanout(fanout: super::judge::Fanout) -> Value {
+    use super::judge::Fanout;
+    let what = match fanout {
+        Fanout::EachEngine => {
+            "One run on each coding agent: the user asks for the same work to go to every agent, \
+             or to each of several agents (\"one per agent\", \"1 per agent\", \"all three \
+             agents\", \"each agent\", or Codex, Claude Code, and Grok Build all named)"
+                .to_string()
+        }
+        Fanout::Pair(first, second) => format!(
+            "One run on {} and one on {}: the user names exactly these two agents to each do \
+             the work (\"have {} and {} both look\")",
+            first.name(),
+            second.name(),
+            first.name(),
+            second.name()
+        ),
+    };
+    json!({ "what": what })
+}
+
+/// The `read_only` question's instructions (#10183).
+#[must_use]
+pub fn read_only_instructions() -> Value {
+    instructions(
+        "If the user's latest message asks for work on their code or computer, does that work \
+         only read, changing nothing?",
+        "Read-only work looks and reports; it writes, commits, installs, and deletes nothing. \
+         Earlier messages only resolve what the latest one refers to.",
+    )
+}
+
+/// The `read_only` question's criteria.
+#[must_use]
+pub fn read_only(only_reads: bool) -> Value {
+    json!({ "what": if only_reads {
+        "The message says read-only, readonly, or not to change anything, or the work only looks: \
+         explore, read, review, audit, summarize, explain, or answer questions about the code"
+    } else {
+        "The work changes, creates, deletes, commits, installs, or runs something that changes \
+         state, or might need to (fix, build, add, refactor, update, clone), or the message asks \
+         for no work"
+    } })
+}
+
+/// The `summarize` question's instructions (#10183).
+#[must_use]
+pub fn summarize_instructions() -> Value {
+    instructions(
+        "Does the user's latest message ask for a summary, overview, or comparison of what the \
+         work finds?",
+        "Only the latest message's own words count; a request for work with no word about \
+         reporting back is no.",
+    )
+}
+
+/// The `summarize` question's criteria.
+#[must_use]
+pub fn summarize(asks: bool) -> Value {
+    json!({ "what": if asks {
+        "The message asks to summarize, sum up, give an overview or a brief report, or compare \
+         what the work finds"
+    } else {
+        "The message asks for no summary, overview, or comparison of the findings"
+    } })
+}
+
 /// The `capability` question's instructions.
 #[must_use]
 pub fn capability_instructions() -> Value {

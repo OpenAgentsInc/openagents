@@ -251,9 +251,14 @@ pub enum Offer {
     /// router's typed `engine` reading named one (#10076): a preference
     /// the start puts first, never permission to run an engine the
     /// computer's owner did not allow. `None` is no preference.
+    ///
+    /// `plan` is the router's typed dispatch plan (#10183): one run, or
+    /// one run on each of `plan.runs`, read-only or not. The default is
+    /// one run that may change files, the offer as it was before.
     RunCoder {
         label: String,
         engine: Option<Engine>,
+        plan: Plan,
     },
     /// Open a screen of the app.
     OpenScreen { screen: Screen, label: String },
@@ -293,6 +298,50 @@ impl Offer {
             Offer::PublishEval { .. } => "publish_eval",
             Offer::OpenPresentation { .. } => "open_presentation",
         }
+    }
+}
+
+/// How many Coder runs a `run_coder` offer starts, on which engines, and
+/// with what access (#10183). The router fills it only from its typed
+/// readings, never from text.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Plan {
+    /// Empty: one run, as before. Otherwise one run on each engine, in
+    /// order: 2 to [`MAX_PLAN_RUNS`] distinct engines.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub runs: Vec<Engine>,
+    /// The runs only read: Coder starts them under a boundary that
+    /// writes nothing in the worktree and seals Git, whatever the
+    /// computer's access setting.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub read_only: bool,
+    /// The person asked for one combined summary of the runs' results,
+    /// which the chat writes once they all end.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub summarize: bool,
+}
+
+/// The most runs one plan starts: one per engine.
+pub const MAX_PLAN_RUNS: usize = Engine::ALL.len();
+
+impl Plan {
+    /// One run that may change files: the offer before plans.
+    #[must_use]
+    pub fn is_single(&self) -> bool {
+        self.runs.is_empty()
+    }
+
+    /// The plan's runs, each a distinct engine, 2 to [`MAX_PLAN_RUNS`],
+    /// or none.
+    #[must_use]
+    pub fn valid(&self) -> bool {
+        self.runs.is_empty()
+            || (2..=MAX_PLAN_RUNS).contains(&self.runs.len())
+                && self
+                    .runs
+                    .iter()
+                    .enumerate()
+                    .all(|(at, engine)| !self.runs[..at].contains(engine))
     }
 }
 
@@ -434,7 +483,14 @@ pub fn parse_offer(value: &Value) -> Result<(u64, Offer), ContractError> {
     };
     let offer = match word.as_str() {
         "run_coder" => {
-            allow(&["target", "label", "engine"])?;
+            allow(&[
+                "target",
+                "label",
+                "engine",
+                "runs",
+                "read_only",
+                "summarize",
+            ])?;
             if object.get("target").and_then(Value::as_str) != Some("connected_computer") {
                 return Err(unsupported("target"));
             }
@@ -447,9 +503,33 @@ pub fn parse_offer(value: &Value) -> Result<(u64, Offer), ContractError> {
                         .ok_or_else(|| unsupported("engine"))?,
                 ),
             };
+            let runs = match object.get("runs") {
+                None => Vec::new(),
+                Some(value) => value
+                    .as_array()
+                    .ok_or_else(|| unsupported("runs"))?
+                    .iter()
+                    .map(|word| word.as_str().and_then(Engine::parse))
+                    .collect::<Option<Vec<Engine>>>()
+                    .ok_or_else(|| unsupported("runs"))?,
+            };
+            let flag = |key: &str| match object.get(key) {
+                None => Ok(false),
+                Some(Value::Bool(flag)) => Ok(*flag),
+                Some(_) => Err(unsupported(key)),
+            };
+            let plan = Plan {
+                runs,
+                read_only: flag("read_only")?,
+                summarize: flag("summarize")?,
+            };
+            if !plan.valid() || object.contains_key("runs") && plan.runs.is_empty() {
+                return Err(unsupported("runs"));
+            }
             Offer::RunCoder {
                 label: label(object)?,
                 engine,
+                plan,
             }
         }
         "open_screen" => {
@@ -1263,11 +1343,24 @@ fn body(version: u64, kind: &str, word: &str) -> Value {
 pub fn offer_feedback(offer: &Offer, version: u64) -> Result<Value, ContractError> {
     let mut value = body(version, "offer", offer.word());
     match offer {
-        Offer::RunCoder { label, engine } => {
+        Offer::RunCoder {
+            label,
+            engine,
+            plan,
+        } => {
             value["target"] = json!("connected_computer");
             value["label"] = json!(label);
             if let Some(engine) = engine {
                 value["engine"] = json!(engine.word());
+            }
+            if !plan.runs.is_empty() {
+                value["runs"] = json!(plan.runs.iter().map(|e| e.word()).collect::<Vec<_>>());
+            }
+            if plan.read_only {
+                value["read_only"] = json!(true);
+            }
+            if plan.summarize {
+                value["summarize"] = json!(true);
             }
         }
         Offer::OpenScreen { screen, label } => {

@@ -682,7 +682,15 @@ impl<G: Generate + 'static> crate::router::seams::EvalAuthor for Author<G> {
 pub fn router_offer(offer: Offer) -> Option<crate::router::Offer> {
     use crate::router::Offer as Routed;
     match offer {
-        Offer::RunCoder { label, engine } => Some(Routed::RunCoder { label, engine }),
+        Offer::RunCoder {
+            label,
+            engine,
+            plan,
+        } => Some(Routed::RunCoder {
+            label,
+            engine,
+            plan,
+        }),
         Offer::StartEval {
             suite,
             subject,

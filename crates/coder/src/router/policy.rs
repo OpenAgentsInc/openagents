@@ -179,6 +179,16 @@ pub const DECK_CONFIDENCE: f64 = 0.60;
 /// engine the person asked for (#10076). An unsure reading is no
 /// preference: a wrong engine put first costs more than none.
 pub const ENGINE_CONFIDENCE: f64 = 0.70;
+/// The least `fanout` probability at which a dispatch starts one run on
+/// each of several engines (#10183). An unsure reading is one run, as
+/// before.
+pub const FANOUT_CONFIDENCE: f64 = 0.70;
+/// The least `read_only` probability at which a plan's runs are
+/// read-only. A missed reading leaves the runs as a single run would be.
+pub const READ_ONLY_CONFIDENCE: f64 = 0.70;
+/// The least `summarize` probability at which the chat writes one
+/// combined summary once a plan's runs end.
+pub const SUMMARIZE_CONFIDENCE: f64 = 0.60;
 /// The routes a message may take and still continue an open authoring
 /// interview: the interview's own, running or reading its pilot, and the
 /// short replies ("looks good", "change it") that answer its questions.
@@ -562,6 +572,11 @@ fn dispatch(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Situation
     if situation.context.computer_ready == Some(false) {
         return final_of(bank, facts, "dispatch.no_computer");
     }
+    if let Some(plan) = fan_out(routing, situation.context)
+        && let Some(tier) = fan_out_tier(bank, facts, plan)
+    {
+        return Some(tier);
+    }
     let engine = requested_engine(routing);
     let mut tier = dispatch_stem(routing, bank, facts, situation, engine)?;
     if let Tier::CannedStem {
@@ -570,6 +585,80 @@ fn dispatch(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Situation
     } = &mut tier
     {
         *named = engine;
+    }
+    Some(tier)
+}
+
+/// The dispatch plan for several runs (#10183): one run on each engine the
+/// `fanout` reading asks for at [`FANOUT_CONFIDENCE`], read-only at
+/// [`READ_ONLY_CONFIDENCE`], with a combined summary at
+/// [`SUMMARIZE_CONFIDENCE`]. Only a terminal on the computer starts
+/// several runs (the `openagents chat` client), so any other surface gets
+/// one run, as before. "Each engine" is each the computer's context names
+/// ready, in its order; with no engines named, Codex, Claude Code, and
+/// Grok Build. `None` when fewer than two engines remain.
+#[must_use]
+pub fn fan_out(routing: &Routing, context: &super::Context) -> Option<super::DispatchPlan> {
+    use super::judge::Fanout;
+    use super::{CodingEngine as Engine, Computer, EngineState};
+    if context.surface() != Surface::Terminal {
+        return None;
+    }
+    let (fanout, _) = routing.fanout.filter(|(_, p)| *p >= FANOUT_CONFIDENCE)?;
+    let runs: Vec<Engine> = match fanout {
+        Fanout::EachEngine => {
+            let listed = match &context.computer {
+                Some(Computer::Here { engines, .. } | Computer::Paired { engines, .. }) => {
+                    engines.as_slice()
+                }
+                None => &[],
+            };
+            if listed.is_empty() {
+                vec![Engine::Codex, Engine::ClaudeCode, Engine::GrokBuild]
+            } else {
+                let mut ready: Vec<Engine> = listed
+                    .iter()
+                    .filter(|engine| engine.state == EngineState::Ready)
+                    .filter_map(|engine| super::coding_engine(&engine.engine))
+                    .collect();
+                ready.dedup();
+                ready
+            }
+        }
+        Fanout::Pair(first, second) => vec![first, second],
+    };
+    let plan = super::DispatchPlan {
+        runs,
+        read_only: routing.read_only >= READ_ONLY_CONFIDENCE,
+        summarize: routing.summarize >= SUMMARIZE_CONFIDENCE,
+    };
+    (plan.runs.len() >= 2 && plan.valid()).then_some(plan)
+}
+
+/// The reply for a plan: the bank's `dispatch.fan_out`, saying plainly
+/// what starts ("Starting 3 read-only runs: Codex, Claude Code, Grok
+/// Build."), with the `run_coder` offer carrying the plan. No
+/// continuation: a continuation could restate the request as its topic.
+fn fan_out_tier(bank: &Bank, facts: &Facts, plan: super::DispatchPlan) -> Option<Tier> {
+    let count = plan.runs.len();
+    let runs = format!(
+        "{count} {}runs",
+        if plan.read_only { "read-only " } else { "" }
+    );
+    let engines: Vec<&str> = plan.runs.iter().map(|engine| engine.name()).collect();
+    let facts = facts
+        .clone()
+        .set("fanout.runs", runs)
+        .set("fanout.engines", engines.join(", "));
+    let mut tier = final_of(bank, &facts, "dispatch.fan_out")?;
+    if let Tier::CannedFinal {
+        offer: Some(Offer::RunCoder { plan: planned, .. }),
+        ..
+    } = &mut tier
+    {
+        *planned = plan;
+    } else {
+        return None;
     }
     Some(tier)
 }
@@ -1113,6 +1202,9 @@ mod tests {
             capability_closest: None,
             deck: None,
             engine: None,
+            fanout: None,
+            read_only: 0.0,
+            summarize: 0.0,
             risk: Risk::Ok,
             risk_p: 0.95,
         }
@@ -1889,6 +1981,7 @@ mod tests {
             &Some(Offer::RunCoder {
                 label: "Run Coder".into(),
                 engine: Some(Engine::ClaudeCode),
+                plan: Default::default(),
             })
         );
         // An unsure reading is no preference, on the plain stem.
@@ -1913,6 +2006,111 @@ mod tests {
         general.engine = Some((Engine::ClaudeCode, 0.9));
         general.lane = Lane::Chat;
         assert!(matches!(router(&general), Tier::Model { .. }));
+    }
+
+    /// #10183: "do 3 readonly delegations, 1 per agent, explore repo and
+    /// summarize briefly" in a terminal is a plan, not one run: one run on
+    /// each engine the computer has ready, read-only, with a combined
+    /// summary, and the reply says plainly what starts. An unsure reading,
+    /// another surface, or fewer than two engines is one run, as before.
+    #[test]
+    fn a_fan_out_in_a_terminal_plans_one_run_per_ready_engine() {
+        use crate::router::{CodingEngine as Engine, DispatchPlan, Fanout};
+        let terminal = Context::of(&serde_json::json!({
+            "surface": "terminal",
+            "computer": { "place": "here", "engines": [
+                {"engine": "codex", "state": "ready"},
+                {"engine": "claude", "state": "ready"},
+                {"engine": "grok", "state": "ready"},
+                {"engine": "devin", "state": "not_signed_in"},
+            ]},
+        }));
+        let mut work = routed(RouteId::WorkDispatch, 0.9, "dispatch.stem", 0.8, 0.9);
+        work.fanout = Some((Fanout::EachEngine, 0.9));
+        work.read_only = 0.93;
+        work.summarize = 0.88;
+        let tier = decided(&work, &terminal, false);
+        let Tier::CannedFinal {
+            answer,
+            text,
+            offer,
+        } = &tier
+        else {
+            panic!("{tier:?}");
+        };
+        assert_eq!(answer.id, "dispatch.fan_out");
+        assert_eq!(
+            text,
+            "Starting 3 read-only runs: Codex, Claude Code, Grok Build."
+        );
+        let plan = DispatchPlan {
+            runs: vec![Engine::Codex, Engine::ClaudeCode, Engine::GrokBuild],
+            read_only: true,
+            summarize: true,
+        };
+        assert_eq!(
+            offer,
+            &Some(Offer::RunCoder {
+                label: "Run Coder".into(),
+                engine: None,
+                plan: plan.clone(),
+            })
+        );
+        // The offer reaches the wire whole.
+        let wire = offer.as_ref().unwrap().feedback(2).unwrap();
+        assert_eq!(
+            wire["runs"],
+            serde_json::json!(["codex", "claude_code", "grok_build"])
+        );
+        assert_eq!(wire["read_only"], true);
+        // Two named engines that may change files.
+        work.fanout = Some((Fanout::Pair(Engine::Codex, Engine::ClaudeCode), 0.85));
+        work.read_only = 0.2;
+        work.summarize = 0.1;
+        let Tier::CannedFinal { text, offer, .. } = decided(&work, &terminal, false) else {
+            panic!();
+        };
+        assert_eq!(text, "Starting 2 runs: Codex, Claude Code.");
+        assert!(matches!(
+            offer,
+            Some(Offer::RunCoder { plan: DispatchPlan { ref runs, read_only: false, summarize: false }, .. })
+                if *runs == [Engine::Codex, Engine::ClaudeCode]
+        ));
+        // Unsure: one run on the plain stem.
+        work.fanout = Some((Fanout::EachEngine, FANOUT_CONFIDENCE - 0.01));
+        assert!(matches!(
+            decided(&work, &terminal, false),
+            Tier::CannedStem { offer: Some(Offer::RunCoder { ref plan, .. }), .. } if plan.is_single()
+        ));
+        // A phone or the desktop starts one run.
+        work.fanout = Some((Fanout::EachEngine, 0.9));
+        assert!(matches!(router(&work), Tier::CannedStem { .. }));
+        // Only one engine ready: one run.
+        let lonely = Context::of(&serde_json::json!({
+            "surface": "terminal",
+            "computer": { "place": "here", "engines": [
+                {"engine": "codex", "state": "ready"},
+                {"engine": "claude", "state": "not_signed_in"},
+            ]},
+        }));
+        assert!(matches!(
+            decided(&work, &lonely, false),
+            Tier::CannedStem { .. }
+        ));
+        // A terminal whose context names no engines: the three.
+        let bare = Context::of(&serde_json::json!({ "surface": "terminal" }));
+        let Tier::CannedFinal { text, .. } = decided(&work, &bare, false) else {
+            panic!();
+        };
+        assert_eq!(text, "Starting 3 runs: Codex, Claude Code, Grok Build.");
+        // Not a dispatch: no plan, whatever the reading.
+        let mut general = routed(RouteId::General, 0.9, "none", 0.0, 0.9);
+        general.fanout = Some((Fanout::EachEngine, 0.9));
+        general.lane = Lane::Chat;
+        assert!(matches!(
+            decided(&general, &terminal, false),
+            Tier::Model { .. }
+        ));
     }
 
     /// A dispatch offer names the Coder-run capability the reading found

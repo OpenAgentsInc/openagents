@@ -228,7 +228,9 @@ impl Session {
                     | Command::Rename { chat, .. }
                     | Command::Pin { chat, .. }
                     | Command::Archive { chat }
-                    | Command::Restore { chat } => Some(chat),
+                    | Command::Restore { chat }
+                    | Command::Note { chat, .. }
+                    | Command::Summarize { chat, .. } => Some(chat),
                 };
                 if target.is_some_and(|id| self.observed.get(id).is_some_and(|seen| *seen > ticket))
                 {

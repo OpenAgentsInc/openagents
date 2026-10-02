@@ -398,6 +398,17 @@ offer = { run_coder = true, label = "Run Coder" }
 sources = ["crates/coder/src/router/judge.rs", "crates/coder/src/task/local.rs"]
 
 [[answer]]
+id = "dispatch.fan_out"
+version = 1
+routes = ["work.dispatch"]
+records = true
+when = "Picked by code from the typed fanout reading: the user asks for the same work to go to several coding engines, one run each, from a terminal on their computer"
+text = "Starting {runs}: {engines}."
+facts = { runs = "fanout.runs", engines = "fanout.engines" }
+offer = { run_coder = true, label = "Run Coder" }
+sources = ["crates/coder/src/router/judge.rs", "crates/openagents-chat/src/client.rs"]
+
+[[answer]]
 id = "dispatch.no_computer"
 version = 2
 routes = ["work.dispatch"]

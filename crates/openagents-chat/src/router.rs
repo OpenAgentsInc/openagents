@@ -542,6 +542,10 @@ pub struct Context {
     /// Results a check must not be offered, as the request's `skip`: the
     /// trainer's own and the ones it already checked (public `3189` IDs).
     pub skip: Vec<String>,
+    /// A dispatch plan's runs once they all ended (#10183), each as
+    /// [`CoderRun::json`] made it: a request that carries them asks the
+    /// worker for one combined summary of them.
+    pub runs: Vec<Value>,
 }
 
 impl Context {
@@ -589,6 +593,14 @@ impl Context {
         }
         if let Some(run) = &self.coder_run {
             context["coder_run"] = run.json();
+        }
+        if !self.runs.is_empty() {
+            context["runs"] = json!(
+                self.runs
+                    .iter()
+                    .take(nostr::cj_conversation::MAX_PLAN_RUNS)
+                    .collect::<Vec<_>>()
+            );
         }
         context
     }
@@ -891,6 +903,21 @@ impl Offer {
     }
 }
 
+/// The dispatch plan a `run_coder` offer payload carries (#10183), as
+/// NIP-CJ's parser reads it: several runs, or read-only. `None` for one
+/// run that may change files, or an offer the parser refuses.
+#[must_use]
+pub fn plan_of(payload: &Value) -> Option<nostr::cj_conversation::Plan> {
+    match nostr::cj_conversation::parse_offer(payload).ok()? {
+        (_, nostr::cj_conversation::Offer::RunCoder { plan, .. })
+            if !plan.is_single() || plan.read_only =>
+        {
+            Some(plan)
+        }
+        _ => None,
+    }
+}
+
 /// The engine a `run_coder` offer payload names (#10076): one exact word
 /// of NIP-CJ's closed set, else none. A word this build doesn't know is no
 /// preference, and the offer still shows.
@@ -1017,6 +1044,11 @@ pub struct Meta {
     /// own command tree ([`crate::client::Coder::effect`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub command: Option<Vec<String>>,
+    /// The dispatch plan the worker's `run_coder` offer carried (#10183):
+    /// several runs, one per engine, read-only or not, as NIP-CJ's own
+    /// parser read it. `None` is one run, as before.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan: Option<nostr::cj_conversation::Plan>,
 }
 
 impl Meta {
@@ -1054,6 +1086,7 @@ impl Meta {
         {
             if offer == Offer::RunCoder {
                 self.engine = engine_of(payload);
+                self.plan = plan_of(payload);
             }
             self.offers.push(offer);
         }
@@ -1195,6 +1228,35 @@ mod tests {
 
     /// A `run_coder` offer's `engine` is kept beside the offer as a typed
     /// value; an unknown word is no preference (#10076).
+    /// A `run_coder` offer's plan (#10183) is kept on the reply's meta as
+    /// NIP-CJ read it; a plain offer keeps none.
+    #[test]
+    fn a_run_coder_offer_keeps_its_plan() {
+        use nostr::cj_conversation::{Engine, Plan};
+        let mut meta = Meta::default();
+        meta.offered(&json!({
+            "v": 2, "requires": [], "type": "offer", "offer": "run_coder",
+            "target": "connected_computer", "label": "Run Coder",
+            "runs": ["codex", "claude_code", "grok_build"], "read_only": true, "summarize": true,
+        }));
+        assert_eq!(meta.offers, [Offer::RunCoder]);
+        assert_eq!(
+            meta.plan,
+            Some(Plan {
+                runs: vec![Engine::Codex, Engine::ClaudeCode, Engine::GrokBuild],
+                read_only: true,
+                summarize: true,
+            })
+        );
+        let mut plain = Meta::default();
+        plain.offered(&json!({
+            "v": 2, "requires": [], "type": "offer", "offer": "run_coder",
+            "target": "connected_computer", "label": "Run Coder",
+        }));
+        assert_eq!(plain.offers, [Offer::RunCoder]);
+        assert_eq!(plain.plan, None);
+    }
+
     #[test]
     fn a_run_coder_offer_keeps_the_engine_asked_for() {
         use nostr::cj_conversation::Engine;

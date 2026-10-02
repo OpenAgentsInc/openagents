@@ -306,6 +306,9 @@ mod tests {
             capability_closest: None,
             deck: None,
             engine: None,
+            fanout: None,
+            read_only: 0.0,
+            summarize: 0.0,
             risk: crate::router::Risk::Ok,
             risk_p: 0.99,
         };

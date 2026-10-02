@@ -70,6 +70,7 @@ fn offers() -> Vec<Offer> {
         Offer::RunCoder {
             label: "Run on Studio Mac".into(),
             engine: None,
+            plan: Plan::default(),
         },
         Offer::OpenScreen {
             screen: Screen::GymResult,
@@ -117,6 +118,16 @@ fn offers() -> Vec<Offer> {
         Offer::RunCoder {
             label: "Run Coder".into(),
             engine: Some(Engine::ClaudeCode),
+            plan: Plan::default(),
+        },
+        Offer::RunCoder {
+            label: "Run Coder".into(),
+            engine: None,
+            plan: Plan {
+                runs: vec![Engine::Codex, Engine::ClaudeCode, Engine::GrokBuild],
+                read_only: true,
+                summarize: true,
+            },
         },
     ]
 }
@@ -237,6 +248,7 @@ fn a_run_coder_engine_is_a_closed_word_or_absent() {
         &Offer::RunCoder {
             label: "Run Coder".into(),
             engine: Some(Engine::ClaudeCode),
+            plan: Plan::default(),
         },
         2,
     )
@@ -246,6 +258,7 @@ fn a_run_coder_engine_is_a_closed_word_or_absent() {
         &Offer::RunCoder {
             label: "Run Coder".into(),
             engine: None,
+            plan: Plan::default(),
         },
         2,
     )
@@ -387,4 +400,68 @@ fn an_oversize_draft_refuses() {
     twice.cases[1].id = "sort-imports".into();
     assert_eq!(code(draft_value(&twice)), RefusalCode::Conflict);
     let _: Value = value;
+}
+
+/// A `run_coder` offer's plan (#10183): `runs` is 2 to 5 distinct engine
+/// words, `read_only` and `summarize` are booleans, and a single run that
+/// may change files carries none of them, so it reads as before.
+#[test]
+fn a_run_coder_plan_is_closed_and_bounded() {
+    let plan = Plan {
+        runs: vec![Engine::Codex, Engine::ClaudeCode, Engine::GrokBuild],
+        read_only: true,
+        summarize: true,
+    };
+    let body = offer_feedback(
+        &Offer::RunCoder {
+            label: "Run Coder".into(),
+            engine: None,
+            plan: plan.clone(),
+        },
+        2,
+    )
+    .unwrap();
+    assert_eq!(body["runs"], json!(["codex", "claude_code", "grok_build"]));
+    assert_eq!(body["read_only"], true);
+    assert_eq!(body["summarize"], true);
+    let (_, read) = parse_offer(&body).unwrap();
+    assert!(matches!(read, Offer::RunCoder { plan: ref p, .. } if *p == plan));
+    let single = offer_feedback(
+        &Offer::RunCoder {
+            label: "Run Coder".into(),
+            engine: None,
+            plan: Plan::default(),
+        },
+        2,
+    )
+    .unwrap();
+    for key in ["runs", "read_only", "summarize"] {
+        assert!(single.get(key).is_none(), "{key}");
+    }
+    for runs in [
+        json!([]),
+        json!(["codex"]),
+        json!(["codex", "codex"]),
+        json!(["codex", "claude"]),
+        json!("codex"),
+        json!([
+            "codex",
+            "claude_code",
+            "grok_build",
+            "opencode",
+            "devin",
+            "codex"
+        ]),
+    ] {
+        let mut odd = body.clone();
+        odd["runs"] = runs.clone();
+        assert_eq!(
+            code(parse_offer(&odd)),
+            RefusalCode::UnsupportedFeature,
+            "{runs}"
+        );
+    }
+    let mut odd = body.clone();
+    odd["read_only"] = json!("yes");
+    assert_eq!(code(parse_offer(&odd)), RefusalCode::UnsupportedFeature);
 }

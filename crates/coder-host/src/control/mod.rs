@@ -1429,7 +1429,8 @@ pub(crate) fn apply_chat_as(
     // computer's agents and projects for the turn's context.
     let asking = match &command {
         openagents_chat::service::Command::Send { chat, .. }
-        | openagents_chat::service::Command::Retry { chat } => Some(chat.clone()),
+        | openagents_chat::service::Command::Retry { chat }
+        | openagents_chat::service::Command::Summarize { chat, .. } => Some(chat.clone()),
         _ => None,
     };
     let context = match asking {

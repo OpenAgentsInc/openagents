@@ -691,6 +691,43 @@ impl BasicChats {
         true
     }
 
+    /// Add `text` as a reply after `id`'s last turn, asking the worker
+    /// nothing: a dispatch plan's run result (#10183). `false` while a
+    /// reply streams, for empty or overlong text, or a missing chat.
+    pub fn note(&mut self, id: &str, text: &str, now: u64) -> bool {
+        let text = text.trim();
+        if text.is_empty() || text.len() > 32 * 1024 || self.busy(id) || self.get(id).is_none() {
+            return false;
+        }
+        self.turns(id);
+        if self.corrupt_index || self.storage_errors.contains_key(&item(id)) {
+            return false;
+        }
+        if let Some(turns) = self.turns.get_mut(id) {
+            let mut turn = Turn::assistant(text, None);
+            turn.at = Some(now);
+            turns.push(turn);
+        }
+        self.touch(id, now);
+        self.save(id);
+        self.storage_error.is_none()
+    }
+
+    /// Ask the worker for one combined summary of a dispatch plan's ended
+    /// `runs` (#10183): the context carries them for this reply only, and
+    /// the reply streams in as a send's does. `false` while a reply
+    /// streams or for a missing chat.
+    pub fn summarize(&mut self, id: &str, runs: Vec<serde_json::Value>) -> bool {
+        if self.busy(id) || self.get(id).is_none() {
+            return false;
+        }
+        self.turns(id);
+        let kept = std::mem::replace(&mut self.context.runs, runs);
+        self.ask(id);
+        self.context.runs = kept;
+        true
+    }
+
     /// Ask again for the reply to the last message, after a failure.
     pub fn retry(&mut self, id: &str) {
         if self.busy(id) || self.get(id).is_some_and(|summary| summary.archived) {

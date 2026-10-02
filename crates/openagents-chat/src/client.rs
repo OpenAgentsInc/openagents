@@ -351,6 +351,27 @@ pub trait Coder: Send + Sync {
         chat: &str,
         requested: Option<nostr::cj_conversation::Engine>,
     ) -> Result<Started, String>;
+    /// Start one run of a dispatch plan (#10183) in a worktree of its own:
+    /// pinned to `engine`, never falling back to another, and, when
+    /// `read_only`, under a boundary that writes nothing in the worktree
+    /// and seals Git. A Coder that cannot refuses, so a plan never runs
+    /// with less than it promised.
+    ///
+    /// # Errors
+    /// Why it did not start.
+    #[allow(clippy::too_many_arguments)]
+    fn start_run(
+        &self,
+        _store: &Path,
+        _dir: &Path,
+        _title: &str,
+        _prompt: &str,
+        _chat: &str,
+        _engine: nostr::cj_conversation::Engine,
+        _read_only: bool,
+    ) -> Result<Started, String> {
+        Err("Coder here cannot start one run per engine.".into())
+    }
     /// The GitHub issue of `dir`'s repository the message asks to work, as
     /// Jev judges it after routing, if any.
     fn issue(&self, request: &str, earlier: &str, dir: &Path) -> Option<Box<dyn Issue>>;
@@ -1234,7 +1255,12 @@ impl Client {
                 // The reply arrived; a coding reply then succeeds only if
                 // Coder does.
                 if coding && run {
-                    if let Some(ended) = self.steer_working(id, &snapshot, text, sink).await {
+                    // A plan starts runs of its own (#10183); it never
+                    // steers the thread's earlier run.
+                    let planned = crate::delegation::plan(&snapshot.turns).is_some();
+                    if !planned
+                        && let Some(ended) = self.steer_working(id, &snapshot, text, sink).await
+                    {
                         return Ok(ended);
                     }
                     return Ok(self.run_coder(id, sink).await);
@@ -1510,7 +1536,9 @@ impl Client {
         // whose last turn ended takes the new message as its next turn,
         // as a start does (#10094); following it would only replay what
         // is already on the screen, with nothing coming.
-        if let Some(coder) = &snapshot.coder
+        let planned = crate::delegation::plan(&snapshot.turns).is_some();
+        if !planned
+            && let Some(coder) = &snapshot.coder
             && !(coder.host == LOCAL_HOST && self.result(id, &coder.task).await.is_some())
         {
             coder_report(
@@ -1608,6 +1636,11 @@ impl Client {
                 return Ended::Failed;
             }
         };
+        // The reply planned several runs (#10183): they start here, each
+        // its own task, beside whatever the thread ran before.
+        if let Some(plan) = crate::delegation::plan(&thread.turns) {
+            return self.fan_out(id, &thread, plan, sink).await;
+        }
         if let Some(coder) = &thread.summary.coder {
             // The thread's run ended, and the router judged the latest
             // message more work for it: Coder takes it as the task's next
@@ -1703,6 +1736,301 @@ impl Client {
             quiet: true,
         });
         self.follow_from(id, &record.task, 1, false, sink).await
+    }
+
+    /// Start a dispatch plan's runs (#10183): one per engine, in
+    /// parallel, each pinned to its engine and read-only when the plan
+    /// is; the first is bound to the thread and every task's record names
+    /// the thread. Each run's events stream as the thread's Coder lines,
+    /// so the terminal's rail lists every run; once all end, the thread
+    /// gets each run's result, and, when the person asked for one, the
+    /// chat model's combined summary of them.
+    async fn fan_out(
+        &mut self,
+        id: &str,
+        thread: &Thread,
+        plan: nostr::cj_conversation::Plan,
+        sink: &mut Sink<'_>,
+    ) -> Ended {
+        let Some(here) = self.dir.clone() else {
+            coder_report(sink, id, false, NO_DIR, None);
+            return Ended::Failed;
+        };
+        let title = crate::delegation::title(&thread.summary.title, &thread.turns);
+        let mut starting = Vec::new();
+        for &engine in &plan.runs {
+            sink(Event::Starting {
+                thread: id.to_owned(),
+                engine: agent_word(engine).to_owned(),
+            });
+            let prompt =
+                crate::delegation::plan_prompt(&thread.summary.title, &thread.turns, &plan, engine);
+            let (coder, store, dir) = (self.coder.clone(), self.store(id), here.clone());
+            let (title, chat, read_only) = (title.clone(), id.to_owned(), plan.read_only);
+            starting.push(tokio::task::spawn_blocking(move || {
+                let started =
+                    coder.start_run(&store, &dir, &title, &prompt, &chat, engine, read_only);
+                (engine, started)
+            }));
+        }
+        let mut started = Vec::new();
+        let mut refused = Vec::new();
+        for (at, handle) in starting.into_iter().enumerate() {
+            match handle.await {
+                Ok((engine, Ok(record))) => started.push((engine, record)),
+                Ok((engine, Err(why))) => refused.push((engine, why)),
+                Err(_) => refused.push((plan.runs[at], "Coder could not start.".to_owned())),
+            }
+        }
+        let kind = if plan.read_only { "read-only " } else { "" };
+        for (engine, why) in &refused {
+            coder_report(
+                sink,
+                id,
+                false,
+                &format!("{} did not start: {why}", engine.name()),
+                None,
+            );
+        }
+        if started.is_empty() {
+            return Ended::Failed;
+        }
+        if thread.summary.coder.is_none() {
+            self.bind(id, &started[0].1, false, sink).await;
+        }
+        let names: Vec<&str> = started.iter().map(|(engine, _)| engine.name()).collect();
+        let count = started.len();
+        let runs = if count == 1 { "run" } else { "runs" };
+        coder_report(
+            sink,
+            id,
+            true,
+            &format!("Started {count} {kind}{runs}: {}.", names.join(", ")),
+            Some(serde_json::json!(
+                started
+                    .iter()
+                    .map(|(engine, record)| serde_json::json!({
+                        "host": LOCAL_HOST,
+                        "task": record.task,
+                        "engine": engine.word(),
+                        "project": record.project,
+                        "worktree": record.worktree,
+                        "read_only": plan.read_only,
+                    }))
+                    .collect::<Vec<_>>()
+            )),
+        );
+        let tasks: Vec<String> = started
+            .iter()
+            .map(|(_, record)| record.task.clone())
+            .collect();
+        let ended = self.follow_many(id, &tasks, sink).await;
+        if ended == Ended::Failed && self.interrupted_all(id, &tasks).await {
+            return ended;
+        }
+        // Each run's result, in the thread, in the plan's order.
+        let mut results = Vec::new();
+        for (engine, record) in &started {
+            let Some(run) = self.result(id, &record.task).await else {
+                continue;
+            };
+            let how = match run.ending {
+                crate::router::RunEnding::Finished => "",
+                crate::router::RunEnding::Failed => " (failed)",
+                crate::router::RunEnding::Stopped => " (stopped)",
+                crate::router::RunEnding::Running | crate::router::RunEnding::Waiting => {
+                    " (waiting)"
+                }
+            };
+            let summary = cut_note(run.summary.trim());
+            let text = format!("**{}**{how}: {summary}", engine.name());
+            if let Err(why) = self
+                .apply(Command::Note {
+                    chat: id.to_owned(),
+                    text,
+                })
+                .await
+            {
+                sink(Event::Failure {
+                    thread: id.to_owned(),
+                    message: why,
+                });
+            }
+            let mut wire = run.json();
+            wire["engine"] = serde_json::json!(agent_word(*engine));
+            results.push(wire);
+        }
+        if plan.summarize && !results.is_empty() {
+            return self.summarize(id, results, sink).await;
+        }
+        ended
+    }
+
+    /// Whether every one of `tasks` is still working: following them was
+    /// interrupted, so the person left them running.
+    async fn interrupted_all(&self, id: &str, tasks: &[String]) -> bool {
+        for task in tasks {
+            if self.result(id, task).await.is_some() {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// Follow every one of `tasks` from its first event until each ends or
+    /// asks, their lines interleaved as they come. An interrupt stops
+    /// following, not the runs. `Done` when any run ended with a result
+    /// or a question.
+    async fn follow_many(&self, id: &str, tasks: &[String], sink: &mut Sink<'_>) -> Ended {
+        let store = self.store(id);
+        let hint = self.hint.map(|hint| hint(self.kind(), id));
+        let mut follows: Vec<Option<Box<dyn Follow>>> = tasks
+            .iter()
+            .map(|task| Some(self.coder.follow(&store, task, id, hint.clone())))
+            .collect();
+        let mut running = vec![true; tasks.len()];
+        let mut answered = false;
+        let interrupt = (self.interrupt)();
+        tokio::pin!(interrupt);
+        while running.iter().any(|running| *running) {
+            for at in 0..tasks.len() {
+                if !running[at] {
+                    continue;
+                }
+                let Some(mut follow) = follows[at].take() else {
+                    running[at] = false;
+                    continue;
+                };
+                let polled = tokio::task::spawn_blocking(move || {
+                    let result = follow.poll();
+                    (follow, result)
+                })
+                .await;
+                let Ok((back, result)) = polled else {
+                    sink(Event::Lost);
+                    running[at] = false;
+                    continue;
+                };
+                follows[at] = Some(back);
+                let (lines, state) = match result {
+                    Ok(polled) => polled,
+                    Err(why) => {
+                        sink(Event::TaskUnreadable {
+                            thread: id.to_owned(),
+                            task: tasks[at].clone(),
+                            message: why,
+                        });
+                        running[at] = false;
+                        continue;
+                    }
+                };
+                for line in lines {
+                    if matches!(
+                        line.event,
+                        CoderEvent::Result(_) | CoderEvent::Question(_) | CoderEvent::Approval(_)
+                    ) {
+                        answered = true;
+                    }
+                    sink(Event::Line(Box::new(line)));
+                }
+                if state != Progress::Running {
+                    running[at] = false;
+                }
+            }
+            if !running.iter().any(|running| *running) {
+                break;
+            }
+            tokio::select! {
+                () = tokio::time::sleep(CODER_POLL) => {}
+                () = &mut interrupt => {
+                    sink(Event::Detached { thread: id.to_owned() });
+                    return Ended::Failed;
+                }
+            }
+        }
+        if answered { Ended::Done } else { Ended::Failed }
+    }
+
+    /// Ask the worker for the combined summary of a plan's ended runs
+    /// (#10183) and stream it in as a reply.
+    async fn summarize(&mut self, id: &str, runs: Vec<Value>, sink: &mut Sink<'_>) -> Ended {
+        let asked = self
+            .apply(Command::Summarize {
+                chat: id.to_owned(),
+                runs,
+            })
+            .await;
+        let mut snapshot = match asked {
+            Ok(snapshot) => snapshot,
+            Err(message) => {
+                sink(Event::Failure {
+                    thread: id.to_owned(),
+                    message,
+                });
+                return Ended::Failed;
+            }
+        };
+        let before = snapshot.total;
+        let mut shown = String::new();
+        let deadline = tokio::time::Instant::now() + DEFAULT_TIMEOUT;
+        while snapshot.busy && tokio::time::Instant::now() < deadline {
+            tokio::time::sleep(POLL).await;
+            snapshot = match self
+                .apply(Command::Read {
+                    chat: id.to_owned(),
+                    before: None,
+                })
+                .await
+            {
+                Ok(read) => read,
+                Err(message) => {
+                    sink(Event::Failure {
+                        thread: id.to_owned(),
+                        message,
+                    });
+                    return Ended::Failed;
+                }
+            };
+            if snapshot.busy && snapshot.partial != shown {
+                let delta = snapshot
+                    .partial
+                    .strip_prefix(shown.as_str())
+                    .map(str::to_owned);
+                sink(Event::Partial {
+                    thread: id.to_owned(),
+                    text: snapshot.partial.clone(),
+                    delta,
+                });
+                shown.clone_from(&snapshot.partial);
+            }
+        }
+        let reply = (snapshot.total > before)
+            .then(|| snapshot.turns.last().cloned())
+            .flatten()
+            .filter(|turn| turn.role == Role::Assistant);
+        match reply {
+            Some(reply) => {
+                sink(Event::Reply {
+                    thread: id.to_owned(),
+                    reply: Box::new(reply),
+                    computer: snapshot.computer,
+                    running: false,
+                });
+                Ended::Done
+            }
+            None => {
+                sink(Event::ReplyFailed {
+                    thread: id.to_owned(),
+                    message: snapshot
+                        .failure
+                        .clone()
+                        .unwrap_or_else(|| basic_coder::Failure::Silent.describe()),
+                    stopped: false,
+                    partial: None,
+                });
+                Ended::Failed
+            }
+        }
     }
 
     /// Record the started task on the thread, so the apps show the run.
@@ -1966,6 +2294,32 @@ impl Client {
 }
 
 const NO_DIR: &str = "This command has no working directory.";
+
+/// The agent word a computer names `engine` by (`codex`, `claude`,
+/// `grok`, `opencode`, `devin`): what a run's start and context carry.
+pub fn agent_word(engine: nostr::cj_conversation::Engine) -> &'static str {
+    use nostr::cj_conversation::Engine;
+    match engine {
+        Engine::Codex => "codex",
+        Engine::ClaudeCode => "claude",
+        Engine::GrokBuild => "grok",
+        Engine::OpenCode => "opencode",
+        Engine::Devin => "devin",
+    }
+}
+
+/// At most 8 KiB of a run's summary for the thread, cut at a character.
+fn cut_note(text: &str) -> String {
+    const MOST: usize = 8 * 1024;
+    if text.len() <= MOST {
+        return text.to_owned();
+    }
+    let mut end = MOST;
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}…", &text[..end])
+}
 
 fn coder_report(sink: &mut Sink<'_>, id: &str, accepted: bool, message: &str, task: Option<Value>) {
     sink(Event::Coder {

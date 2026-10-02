@@ -269,6 +269,26 @@ Exit codes after a run: `0` when the turn finished or asked, `1` when it
 failed, was stopped, or could not start (not a checkout, no provider signed
 in, no capacity).
 
+### Several runs at once
+
+A message that asks for the same work on several coding engines ("do 3
+readonly delegations, 1 per agent", "ask all three agents", "have codex
+and claude both look") gets a dispatch plan from the router's typed
+readings (`fanout`, `read_only`, `summarize`; #10183), only from a
+terminal: the reply says what starts ("Starting 3 read-only runs: Codex,
+Claude Code, Grok Build."), and the client starts one run per engine in
+parallel, each in its own worktree, pinned to its engine with no fallback.
+A read-only plan's runs start with a grant that writes nothing in the
+worktree and seals Git, and a full-access setting runs them under this
+computer's toolchains instead, so the boundary holds whatever the engine
+does. The `coder` event's `task` is then an array, one `{task, engine,
+worktree, read_only}` per run; every run's events stream as usual (the
+terminal shows one rail row per run). When all end, each run's result is
+added to the thread, and, when the message asked for a summary, the chat
+model writes one combined summary of them (the request carries
+`context.runs`; no further run starts). The first run is the thread's
+bound task; each run's own record names the thread.
+
 ### Working a GitHub issue
 
 A message that asks Coder to work a GitHub issue of this checkout's

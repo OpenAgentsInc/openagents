@@ -1326,3 +1326,251 @@ async fn a_command_that_changes_something_waits_for_the_confirm_and_money_never_
     assert_eq!(ended, Ok(Ended::Failed));
     assert!(coder.ran.lock().unwrap().is_empty());
 }
+
+/// A worker that plans three read-only runs with a summary, then answers a
+/// request carrying their results with a combined summary (#10183).
+struct Planner {
+    contexts: Arc<Mutex<Vec<Context>>>,
+}
+
+impl Door for Planner {
+    fn ask(
+        &self,
+        _: Vec<Turn>,
+        context: Context,
+        reply: Arc<std::sync::Mutex<Reply>>,
+    ) -> BoxFuture<'static, ()> {
+        self.contexts.lock().unwrap().push(context.clone());
+        Box::pin(async move {
+            let mut reply = lock(&reply);
+            if context.runs.is_empty() {
+                use nostr::cj_conversation::{Engine, Plan};
+                reply.text = "Starting 3 read-only runs: Codex, Claude Code, Grok Build.".into();
+                reply.meta = Meta {
+                    offers: vec![Offer::RunCoder],
+                    route: Some("work.dispatch".into()),
+                    plan: Some(Plan {
+                        runs: vec![Engine::Codex, Engine::ClaudeCode, Engine::GrokBuild],
+                        read_only: true,
+                        summarize: true,
+                    }),
+                    ..Meta::default()
+                };
+            } else {
+                reply.text = format!("All {} runs agree: a Rust workspace.", context.runs.len());
+            }
+            reply.done = true;
+        })
+    }
+}
+
+/// Coder that starts each plan run after a pause, recording how many
+/// started at once, and finishes each with a result naming its engine.
+#[derive(Default)]
+struct FanCoder {
+    runs: Mutex<Vec<(nostr::cj_conversation::Engine, bool, String)>>,
+    starting: std::sync::atomic::AtomicUsize,
+    most: std::sync::atomic::AtomicUsize,
+}
+
+impl Coder for FanCoder {
+    fn default_store(&self) -> PathBuf {
+        std::env::temp_dir().join("openagents-chat-fan-test-tasks")
+    }
+    fn context(&self, _: &Path, _: Option<&Path>) -> Context {
+        Context {
+            computer_ready: true,
+            ..Context::default()
+        }
+    }
+    fn predict(&self, _: &Path, _: Option<nostr::cj_conversation::Engine>) -> Option<Runner> {
+        None
+    }
+    fn asks_first(&self) -> bool {
+        false
+    }
+    fn checkout(&self, _: &Path) -> Result<(), String> {
+        Ok(())
+    }
+    fn start(
+        &self,
+        _: &Path,
+        _: &Path,
+        _: &str,
+        _: &str,
+        _: &str,
+        _: Option<nostr::cj_conversation::Engine>,
+    ) -> Result<Started, String> {
+        panic!("a plan never starts one plain run");
+    }
+    fn start_run(
+        &self,
+        _: &Path,
+        _: &Path,
+        _: &str,
+        prompt: &str,
+        _: &str,
+        engine: nostr::cj_conversation::Engine,
+        read_only: bool,
+    ) -> Result<Started, String> {
+        use std::sync::atomic::Ordering;
+        let now = self.starting.fetch_add(1, Ordering::SeqCst) + 1;
+        self.most.fetch_max(now, Ordering::SeqCst);
+        std::thread::sleep(Duration::from_millis(300));
+        self.starting.fetch_sub(1, Ordering::SeqCst);
+        self.runs
+            .lock()
+            .unwrap()
+            .push((engine, read_only, prompt.to_owned()));
+        Ok(Started {
+            task: format!("task-{}", agent_word(engine)),
+            project: "demo".into(),
+            worktree: format!("/tmp/demo-{}", agent_word(engine)),
+        })
+    }
+    fn issue(&self, _: &str, _: &str, _: &Path) -> Option<Box<dyn Issue>> {
+        None
+    }
+    fn follow(&self, _: &Path, task: &str, chat: &str, _: Option<String>) -> Box<dyn Follow> {
+        struct Done(Option<Line>);
+        impl Follow for Done {
+            fn poll(&mut self) -> Result<(Vec<Line>, Progress), String> {
+                Ok((self.0.take().into_iter().collect(), Progress::Ended))
+            }
+        }
+        Box::new(Done(Some(Line {
+            seq: 1,
+            task: task.to_owned(),
+            thread: Some(chat.to_owned()),
+            event: CoderEvent::Result(coder_events::Finished {
+                turn: 1,
+                summary: format!("{task} found a Rust workspace."),
+                files_changed: Vec::new(),
+                insertions: 0,
+                deletions: 0,
+                worktree: "/tmp".into(),
+                trajectory: String::new(),
+                issue: None,
+                cost_microusd: None,
+            }),
+        })))
+    }
+    fn stop(&self, _: &Path, _: &str) -> Result<(), String> {
+        Ok(())
+    }
+    fn answer(&self, _: &Path, _: &str, _: &str) -> Result<usize, String> {
+        panic!("a plan's runs are new tasks");
+    }
+    fn result(&self, _: &Path, task: &str) -> Option<CoderRun> {
+        Some(CoderRun {
+            ending: crate::router::RunEnding::Finished,
+            turn: 1,
+            engine: task.strip_prefix("task-").map(str::to_owned),
+            model: None,
+            summary: format!("{task} found a Rust workspace."),
+            files: Vec::new(),
+            commands: Vec::new(),
+        })
+    }
+    fn trajectories(&self, _: &Path, _: &str) -> Vec<Value> {
+        Vec::new()
+    }
+}
+
+/// #10183: a reply that plans three read-only runs starts them in
+/// parallel, one per engine, each read-only and told it is one of three;
+/// says plainly what started; streams every run's events; and, once all
+/// end, puts each result in the thread and asks the chat for one combined
+/// summary of them.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_plan_starts_one_read_only_run_per_engine_and_summarizes_them() {
+    use nostr::cj_conversation::Engine;
+    let dir = tempfile::tempdir().unwrap();
+    let contexts = Arc::new(Mutex::new(Vec::new()));
+    let door = Arc::new(Planner {
+        contexts: contexts.clone(),
+    });
+    let coder = Arc::new(FanCoder::default());
+    let client = in_process(door, options(dir.path()), coder.clone());
+    let thread = new_id();
+    let ask = "do 3 readonly delegations, 1 per agent, explore repo and summarize briefly";
+    let (events, mut client, ended) =
+        drain(client.stream(send(&thread, ask, Start::Settings))).await;
+    assert_eq!(ended, Ok(Ended::Done), "{events:?}");
+    let runs = coder.runs.lock().unwrap().clone();
+    let mut engines: Vec<Engine> = runs.iter().map(|(engine, _, _)| *engine).collect();
+    engines.sort_by_key(|engine| engine.word());
+    assert_eq!(
+        engines,
+        [Engine::ClaudeCode, Engine::Codex, Engine::GrokBuild]
+    );
+    assert!(runs.iter().all(|(_, read_only, _)| *read_only));
+    for (engine, _, prompt) in &runs {
+        assert!(prompt.starts_with(ask), "{prompt}");
+        assert!(
+            prompt.contains(&format!("this run is the one on {}", engine.name())),
+            "{prompt}"
+        );
+        assert!(prompt.contains("This run is read-only"), "{prompt}");
+        assert!(
+            prompt.contains("never say you could not delegate"),
+            "{prompt}"
+        );
+    }
+    // The three started at once, not one after another.
+    assert!(
+        coder.most.load(std::sync::atomic::Ordering::SeqCst) >= 2,
+        "the runs started one at a time"
+    );
+    let said: Vec<&str> = events
+        .iter()
+        .filter_map(|event| match event {
+            Event::Coder {
+                accepted: true,
+                quiet: false,
+                message,
+                ..
+            } => Some(message.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        said,
+        ["Started 3 read-only runs: Codex, Claude Code, Grok Build."]
+    );
+    let lines: Vec<&str> = events
+        .iter()
+        .filter_map(|event| match event {
+            Event::Line(line) => Some(line.task.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(lines.len(), 3, "{events:?}");
+    let Some(Event::Reply { reply, .. }) = events.last() else {
+        panic!("{events:?}");
+    };
+    assert_eq!(reply.text, "All 3 runs agree: a Rust workspace.");
+    // The summary request carried the three results, each with its engine.
+    let sent = contexts.lock().unwrap().clone();
+    assert_eq!(sent.len(), 2);
+    let engines: Vec<&str> = sent[1]
+        .runs
+        .iter()
+        .filter_map(|run| run["engine"].as_str())
+        .collect();
+    assert_eq!(engines, ["codex", "claude", "grok"]);
+    // The thread holds the request, the reply, each result, and the summary.
+    let thread = client.collect(&thread).await.unwrap();
+    let texts: Vec<&str> = thread.turns.iter().map(|turn| turn.text.as_str()).collect();
+    assert_eq!(texts.len(), 6, "{texts:?}");
+    assert_eq!(texts[2], "**Codex**: task-codex found a Rust workspace.");
+    assert_eq!(texts[5], "All 3 runs agree: a Rust workspace.");
+    assert_eq!(
+        thread
+            .summary
+            .coder
+            .as_ref()
+            .map(|coder| coder.task.as_str()),
+        Some("task-codex")
+    );
+}

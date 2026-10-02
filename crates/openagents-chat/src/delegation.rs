@@ -61,17 +61,79 @@ pub fn routing(requested: Option<nostr::cj_conversation::Engine>) -> String {
                  already started this run on the engine it chose, so that request is done. "
             .to_owned(),
     };
-    format!(
-        "{asked}Do what the person's message asks, here, with your own commands: when it \
-         names work, such as cloning a repository, running something, or changing files, do \
-         that work. You never start another coding engine's command line (such as `claude`, \
-         `codex`, `devin`, `opencode`, or `grok`) as a sub-process, and you never ask the \
-         person for another engine's login. Only when the message asks for nothing but the handoff \
-         itself, such as a bare test delegation, is the task a small, harmless check of this \
-         project: look at what it holds, change nothing, and tell the person in a few \
-         sentences what you found. Tell the person about the work, not about how this run \
-         was started."
+    format!("{asked}{DO_THE_WORK}")
+}
+
+/// What every handoff asks of the engine, after how the run started.
+/// Delegating, to one engine or several, is OpenAgents' job and is done:
+/// the engine never refuses the person's request, or reports it could
+/// not delegate, because it does not start other engines itself (#10183:
+/// Codex answered "I couldn't perform the three agent delegations" and
+/// gave that as the reason).
+const DO_THE_WORK: &str = "Do what the person's message asks, here, with your own commands: \
+when it names work, such as cloning a repository, running something, exploring the code, or \
+changing files, do that work. Handing work to coding engines, one or several, is OpenAgents' \
+job, and it is already done: if the message asks for delegations or for several agents, this \
+run is the share OpenAgents gave you, so do the work it names yourself and never say you \
+could not delegate. You never start another coding engine's command line (such as `claude`, \
+`codex`, `devin`, `opencode`, or `grok`) as a sub-process, and you never ask the person for \
+another engine's login. Only when the message asks for nothing but the handoff itself, such \
+as a bare test delegation, is the task a small, harmless check of this project: look at what \
+it holds, change nothing, and tell the person in a few sentences what you found. Tell the \
+person about the work, not about how this run was started.";
+
+/// The prompt one run of a dispatch plan starts with (#10183): the same
+/// handoff as [`prompt`], told that OpenAgents started one run on each of
+/// `plan.runs` for the message and that this one is `engine`'s, and, for
+/// a read-only plan, that the run reads and changes nothing (Coder's
+/// boundary enforces it whatever the run does).
+#[must_use]
+pub fn plan_prompt(
+    chat_title: &str,
+    turns: &[Turn],
+    plan: &nostr::cj_conversation::Plan,
+    engine: nostr::cj_conversation::Engine,
+) -> String {
+    let names: Vec<&str> = plan.runs.iter().map(|engine| engine.name()).collect();
+    let mut routing = format!(
+        "The person asked for this work to go to several coding engines. OpenAgents has \
+         already started {} runs of it, one each on {}, and this run is the one on {}; the \
+         others run beside it and report to the person themselves, and OpenAgents puts their \
+         results together. ",
+        plan.runs.len(),
+        names.join(", "),
+        engine.name()
+    );
+    if plan.read_only {
+        routing.push_str(
+            "This run is read-only: its worktree and Git are sealed against writes, so read, \
+             explore, and run commands that only look; change, create, delete, and commit \
+             nothing. ",
+        );
+    }
+    routing.push_str(DO_THE_WORK);
+    routing.push_str(" Report what you found in a few short paragraphs.");
+    crate::basic_chats::handoff_routed(
+        &title(chat_title, turns),
+        turns,
+        MAX_PROMPT_BYTES,
+        Some(&routing),
     )
+}
+
+/// The dispatch plan for a Coder start from `turns` (#10183): the typed
+/// plan on the latest reply's `run_coder` offer
+/// ([`crate::router::Meta::plan`]) when it names several runs, else none.
+/// Never read from text.
+#[must_use]
+pub fn plan(turns: &[Turn]) -> Option<nostr::cj_conversation::Plan> {
+    turns
+        .iter()
+        .rev()
+        .find(|turn| turn.role == crate::basic_coder::Role::Assistant)
+        .and_then(|turn| turn.meta.as_ref())
+        .and_then(|meta| meta.plan.clone())
+        .filter(|plan| !plan.is_single())
 }
 
 /// The task's title for a Coder run started from a conversation: the

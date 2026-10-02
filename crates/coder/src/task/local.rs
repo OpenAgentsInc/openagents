@@ -292,6 +292,30 @@ pub struct Record {
     /// as its word (`claude`); every turn puts it first again.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub requested: Option<String>,
+    /// How a run of a dispatch plan starts (#10183); every turn starts the
+    /// same way.
+    #[serde(default, skip_serializing_if = "Shape::is_plain")]
+    pub shape: Shape,
+}
+
+/// How a run of a dispatch plan starts (#10183). The plain shape is a run
+/// as before: the engine asked for goes first, others are its fallbacks,
+/// and it may change files as the settings allow.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Shape {
+    /// Only the engine asked for, never a fallback.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub only: bool,
+    /// Under a read-only boundary ([`Policy::read_only`]).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub read_only: bool,
+}
+
+impl Shape {
+    #[must_use]
+    pub fn is_plain(&self) -> bool {
+        *self == Shape::default()
+    }
 }
 
 impl Record {
@@ -645,6 +669,40 @@ impl Local {
         }
     }
 
+    /// [`Local::asking`] for a run of `shape` (#10183): pinned to the
+    /// engine asked for when `shape.only`, read-only when
+    /// `shape.read_only`.
+    fn shaped(
+        &self,
+        policy: Policy,
+        requested: Option<Provider>,
+        shape: Shape,
+    ) -> Result<(Policy, Option<Asked>), String> {
+        let policy = if shape.read_only {
+            policy.read_only()
+        } else {
+            policy
+        };
+        if shape.only
+            && let Some(provider) = requested
+        {
+            let only = policy.only(provider).ok_or_else(|| {
+                format!(
+                    "{} is not allowed in this computer's Coder settings.",
+                    settings::provider_name(provider)
+                )
+            })?;
+            return Ok((
+                only,
+                Some(Asked {
+                    provider,
+                    allowed: true,
+                }),
+            ));
+        }
+        Ok(self.asking(policy, requested))
+    }
+
     fn policy_with(&self, label: &str, controller: PathBuf) -> Result<Policy, String> {
         let settings = self.settings()?;
         let routes: Vec<Route> = settings.routes_with((self.opencode_model)().as_deref())?;
@@ -893,6 +951,33 @@ impl Local {
         self.start_full(dir, None, title, prompt, thread, images, requested)
     }
 
+    /// A run of a dispatch plan (#10183): [`Local::start_requested`] on
+    /// `requested` in `shape`, in a worktree of its own.
+    ///
+    /// # Errors
+    /// As [`Local::start`], or the engine is not allowed or cannot start
+    /// here now, with no fallback when `shape.only`.
+    pub fn start_shaped(
+        &self,
+        dir: &Path,
+        title: &str,
+        prompt: &str,
+        thread: Option<&str>,
+        requested: Provider,
+        shape: Shape,
+    ) -> Result<Record, String> {
+        self.start_with(
+            dir,
+            None,
+            title,
+            prompt,
+            thread,
+            &[],
+            Some(requested),
+            shape,
+        )
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn start_full(
         &self,
@@ -903,6 +988,30 @@ impl Local {
         thread: Option<&str>,
         images: &[super::media::wire::Upload],
         requested: Option<Provider>,
+    ) -> Result<Record, String> {
+        self.start_with(
+            dir,
+            base,
+            title,
+            prompt,
+            thread,
+            images,
+            requested,
+            Shape::default(),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn start_with(
+        &self,
+        dir: &Path,
+        base: Option<&str>,
+        title: &str,
+        prompt: &str,
+        thread: Option<&str>,
+        images: &[super::media::wire::Upload],
+        requested: Option<Provider>,
+        shape: Shape,
     ) -> Result<Record, String> {
         let began = Instant::now();
         let references: Vec<_> = images.iter().map(|image| image.reference.clone()).collect();
@@ -947,7 +1056,8 @@ impl Local {
             });
             let at = Instant::now();
             let chosen = (|| {
-                let (policy, asked) = self.asking(self.policy(&checkout.name)?, requested);
+                let (policy, asked) =
+                    self.shaped(self.policy(&checkout.name)?, requested, shape)?;
                 // Read again before passing an engine over, and always the
                 // one the person asked for (#10105): a reading or hold may
                 // be another login's, or old.
@@ -1053,6 +1163,7 @@ impl Local {
             turns: Vec::new(),
             ends: BTreeMap::new(),
             requested: requested.map(|provider| provider.as_str().to_owned()),
+            shape,
         };
         timings.submit_ms = millis(submitting);
         let launching = Instant::now();
@@ -1131,7 +1242,8 @@ impl Local {
             return Err("Coder is still working on this task; wait for it to ask.".into());
         }
         let requested = record.requested.as_deref().and_then(Provider::from_config);
-        let (policy, asked) = self.asking(self.policy(&record.project)?, requested);
+        let (policy, asked) =
+            self.shaped(self.policy(&record.project)?, requested, record.shape)?;
         let (order, runner) = self.choose_asking(&policy, asked)?;
         let command = Command {
             schema: COMMAND_SCHEMA.into(),
@@ -3098,6 +3210,63 @@ mod tests {
             .unwrap();
         assert_eq!(record.turns[0].provider, "claude");
         assert_eq!(asked.lock().unwrap().as_slice(), [vec![Provider::Claude]]);
+    }
+
+    /// A run of a dispatch plan (#10183) is pinned to its engine and,
+    /// read-only, has a grant that writes nothing in the worktree and is
+    /// never full access, whatever the settings; every later turn starts
+    /// the same way.
+    #[test]
+    fn a_plans_run_is_pinned_to_its_engine_and_read_only_by_its_grant() {
+        let dir = tempfile::tempdir().unwrap();
+        let top = repo(dir.path());
+        let run = local(dir.path(), both).with_launcher(Box::new(Held));
+        let shape = Shape {
+            only: true,
+            read_only: true,
+        };
+        let record = run
+            .start_shaped(&top, "Look", "Look around.", None, Provider::Claude, shape)
+            .unwrap();
+        assert_eq!(record.turns[0].provider, "claude");
+        assert!(
+            record.turns[0].fallbacks.is_empty(),
+            "{:?}",
+            record.turns[0]
+        );
+        assert_eq!(record.shape, shape);
+        let grant: Value = serde_json::from_slice(
+            &std::fs::read(
+                run.store()
+                    .join("local")
+                    .join("grants")
+                    .join(format!("{}-1.grant.json", record.task)),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(grant["write_workspace"], false, "{grant}");
+        assert_ne!(grant["adapter_configuration"]["access"], "full", "{grant}");
+        let routes = grant["adapter_configuration"]["fallbacks"]
+            .as_array()
+            .map_or(0, Vec::len);
+        assert_eq!(routes, 0, "{grant}");
+        // A plain start of the same request may change files.
+        let plain = run
+            .start_requested(&top, "Fix", "Fix it.", None, &[], Some(Provider::Claude))
+            .unwrap();
+        let grant: Value = serde_json::from_slice(
+            &std::fs::read(
+                run.store()
+                    .join("local")
+                    .join("grants")
+                    .join(format!("{}-1.grant.json", plain.task)),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(grant["write_workspace"], true, "{grant}");
+        assert!(plain.shape.is_plain());
     }
 
     /// The three things an offer says, each from the store's own books

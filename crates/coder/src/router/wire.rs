@@ -365,6 +365,9 @@ mod tests {
             capability_closest: None,
             deck: None,
             engine: None,
+            fanout: None,
+            read_only: 0.0,
+            summarize: 0.0,
             risk: Risk::Ok,
             risk_p: 0.99,
         }
@@ -432,6 +435,7 @@ mod tests {
             Offer::RunCoder {
                 label: "Run Coder".into(),
                 engine: None,
+                plan: Default::default(),
             }
             .feedback(2)
             .unwrap(),

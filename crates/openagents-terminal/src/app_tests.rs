@@ -1832,3 +1832,56 @@ fn a_proposed_command_shows_itself_and_enter_runs_it() {
     );
     assert!(!screen.contains("Enter"), "{screen}");
 }
+
+/// #10183: a plan's three runs each get a rail row named for its engine
+/// from the start report; their tool calls stay in their own full screens,
+/// the transcript shows each start and each result under its engine, and
+/// the screen keeps working until the last run ends.
+#[test]
+fn a_plans_runs_each_get_a_rail_row_and_their_results_show_by_engine() {
+    let mut app = app();
+    let runs: Vec<serde_json::Value> = [
+        ("t1", "codex"),
+        ("t2", "claude_code"),
+        ("t3", "grok_build"),
+    ]
+    .into_iter()
+    .map(|(task, engine)| serde_json::json!({"host": "local", "task": task, "engine": engine}))
+    .collect();
+    app.event(Event::Coder {
+        thread: "a".repeat(32),
+        accepted: true,
+        message: "Started 3 read-only runs: Codex, Claude Code, Grok Build.".into(),
+        task: Some(serde_json::Value::Array(runs)),
+        quiet: false,
+    });
+    assert_eq!(app.rail_numbers(), vec![1, 2, 3]);
+    let agents: Vec<String> = app.rail_rows().into_iter().map(|row| row.agent).collect();
+    assert_eq!(agents, ["Codex", "Claude Code", "Grok Build"]);
+    app.event(of("t1", 1, started_on("codex")));
+    app.event(of("t2", 1, started_on("claude")));
+    app.event(of("t3", 1, started_on("grok")));
+    app.event(of("t1", 2, output(2, "ls crates", "a\nb").as_line_event()));
+    app.event(of("t2", 2, status("Reading README")));
+    // The tool call is in run 1's own log, not the transcript.
+    let shown = frame(&mut app, 70, 30);
+    assert!(!shown.contains("ls crates"), "{shown}");
+    assert!(shown.contains("Started 3 read-only runs"), "{shown}");
+    assert!(app.running);
+    app.event(of("t1", 3, finished()));
+    app.event(of("t2", 3, finished()));
+    assert!(app.running, "one run still works");
+    app.event(of("t3", 2, finished()));
+    assert!(!app.running);
+    let shown = frame(&mut app, 70, 40);
+    for agent in ["Codex:", "Claude Code:", "Grok Build:"] {
+        assert!(shown.contains(agent), "{agent} in {shown}");
+    }
+    // Enter on run 1 opens its full screen with its own call.
+    app.key(&key(KeyCode::Up), 80);
+    assert_eq!(app.rail, Some(1));
+    app.key(&key(KeyCode::Enter), 80);
+    assert_eq!(app.run_view.and_then(|view| view.number), Some(1));
+    let view = frame(&mut app, 70, 30);
+    assert!(view.contains("ls crates"), "{view}");
+}

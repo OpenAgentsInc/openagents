@@ -17,6 +17,9 @@
 //! | `capability` | Choice | the admitted-capability set ([`Admitted`]), plus `none` (a request none covers) and `not-a-capability-request`; asked on every turn |
 //! | `deck` | Choice | the decks the desktop app ships (`openagents_deck::decks()`), by title, plus `none`; asked only on a desktop turn |
 //! | `engine` | Choice | the coding engines a dispatch may name ([`Engine::ALL`]), plus `none`; asked on every turn, read only for a dispatch (#10076) |
+//! | `fanout` | Choice | one run, one run on each ready engine, or one on each of two named engines ([`Fanout`]); asked on every turn, read only for a dispatch (#10183) |
+//! | `read_only` | Noul | whether the work asked for only reads: explore, review, summarize, answer, change nothing (#10183) |
+//! | `summarize` | Noul | whether the person asks for one summary or comparison of what the work finds (#10183) |
 //! | `risk` | Choice | ok, secret shared, asks for a secret, harmful, money movement, none |
 //!
 //! No question consumes another's answer, so they cost one round trip.
@@ -122,6 +125,64 @@ pub fn engine() -> Choice {
         Some(Criterion::from(super::rubric::engine_none())),
     );
     Choice::new(super::rubric::engine_instructions(), options)
+}
+
+/// How many Coder runs a message asks for, read from the `fanout`
+/// question (#10183): the plan's shape, never its engines' readiness,
+/// which the computer's context says.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Fanout {
+    /// One run on each coding engine ready on the computer ("one per
+    /// agent", "ask all three agents").
+    EachEngine,
+    /// One run on each of two engines the message names ("have Codex and
+    /// Claude both look").
+    Pair(Engine, Engine),
+}
+
+impl Fanout {
+    /// Every option but `one`, in the order the question lists them.
+    pub const ALL: [Fanout; 4] = [
+        Fanout::EachEngine,
+        Fanout::Pair(Engine::Codex, Engine::ClaudeCode),
+        Fanout::Pair(Engine::Codex, Engine::GrokBuild),
+        Fanout::Pair(Engine::ClaudeCode, Engine::GrokBuild),
+    ];
+
+    /// The option's word.
+    #[must_use]
+    pub fn word(self) -> &'static str {
+        match self {
+            Fanout::EachEngine => "each_engine",
+            Fanout::Pair(Engine::Codex, Engine::ClaudeCode) => "codex_and_claude_code",
+            Fanout::Pair(Engine::Codex, Engine::GrokBuild) => "codex_and_grok_build",
+            Fanout::Pair(Engine::ClaudeCode, Engine::GrokBuild) => "claude_code_and_grok_build",
+            Fanout::Pair(..) => "pair",
+        }
+    }
+
+    /// The option an exact word names; `one` and anything else is none.
+    #[must_use]
+    pub fn parse(word: &str) -> Option<Self> {
+        Fanout::ALL.into_iter().find(|fanout| fanout.word() == word)
+    }
+}
+
+/// The `fanout` question (#10183): `one`, then each [`Fanout`] option.
+#[must_use]
+pub fn fanout() -> Choice {
+    let mut options: IndexMap<String, Option<Criterion>> = IndexMap::new();
+    options.insert(
+        "one".to_string(),
+        Some(Criterion::from(super::rubric::fanout_one())),
+    );
+    for fanout in Fanout::ALL {
+        options.insert(
+            fanout.word().to_string(),
+            Some(Criterion::from(super::rubric::fanout(fanout))),
+        );
+    }
+    Choice::new(super::rubric::fanout_instructions(), options)
 }
 
 /// The questions, from one state. Only entries selectable under `facts`
@@ -277,6 +338,28 @@ pub fn questions(
     // policy serves a dispatch: the questions are independent, so it
     // costs no round trip.
     questions = questions.with("engine", engine());
+    // The dispatch plan's readings (#10183), asked beside the route like
+    // `engine` and read only when the policy serves a dispatch.
+    questions = questions
+        .with("fanout", fanout())
+        .with(
+            "read_only",
+            Noul::with_criteria(
+                super::rubric::read_only_instructions(),
+                NoulCriteria::new()
+                    .when_true(super::rubric::read_only(true))
+                    .when_false(super::rubric::read_only(false)),
+            ),
+        )
+        .with(
+            "summarize",
+            Noul::with_criteria(
+                super::rubric::summarize_instructions(),
+                NoulCriteria::new()
+                    .when_true(super::rubric::summarize(true))
+                    .when_false(super::rubric::summarize(false)),
+            ),
+        );
     questions.with(
         "risk",
         Choice::new(super::rubric::risk_instructions(), risks),
@@ -369,6 +452,17 @@ pub struct Routing {
     /// dispatch reads it, and only at
     /// [`ENGINE_CONFIDENCE`](super::policy::ENGINE_CONFIDENCE) (#10076).
     pub engine: Option<(Engine, f64)>,
+    /// The plan's shape the `fanout` reading named, with the probability
+    /// of that option; `None` for `one` or not asked. Only a dispatch
+    /// reads it, at [`FANOUT_CONFIDENCE`](super::policy::FANOUT_CONFIDENCE)
+    /// (#10183).
+    pub fanout: Option<(Fanout, f64)>,
+    /// The probability that the work only reads; 0 when not asked, so a
+    /// missing reading never makes a run read-only.
+    pub read_only: f64,
+    /// The probability that the person asks for one summary of what the
+    /// runs find; 0 when not asked.
+    pub summarize: f64,
     pub risk: Risk,
     pub risk_p: f64,
 }
@@ -491,6 +585,19 @@ pub fn reading(
             .unwrap_or(answer.confidence);
         Some((engine, finite(p)))
     });
+    let fanout = choice(response, "fanout").and_then(|answer| {
+        let fanout = Fanout::parse(&answer.choice)?;
+        let p = answer
+            .probabilities
+            .get(&answer.choice)
+            .copied()
+            .unwrap_or(answer.confidence);
+        Some((fanout, finite(p)))
+    });
+    let noul = |id: &str| match response.answers.get(id) {
+        Some(Answer::Noul(noul)) if noul.noul.is_finite() => noul.noul.clamp(0.0, 1.0),
+        _ => 0.0,
+    };
     let risk_answer = choice(response, "risk");
     Routing {
         action: crate::classify::route(&judgment),
@@ -511,6 +618,9 @@ pub fn reading(
         capability_closest,
         deck,
         engine,
+        fanout,
+        read_only: noul("read_only"),
+        summarize: noul("summarize"),
         risk: risk_answer.map_or(Risk::Unknown, |risk| Risk::parse(&risk.choice)),
         risk_p: risk_answer.map_or(0.0, |risk| finite(risk.confidence)),
     }
@@ -549,6 +659,9 @@ mod tests {
                 "opener",
                 "capability",
                 "engine",
+                "fanout",
+                "read_only",
+                "summarize",
                 "risk"
             ]
         );
@@ -706,6 +819,66 @@ mod tests {
         assert_eq!(read("Claude Code", 0.9), None);
         let routing = reading(&response(json!({})), bank, &facts(), &admitted);
         assert_eq!(routing.engine, None);
+    }
+
+    /// The `fanout` reading is a listed plan shape with its probability,
+    /// or nothing for `one`, an unknown word, or no answer; `read_only`
+    /// and `summarize` are 0 when not answered, so a missing reading never
+    /// makes a run read-only (#10183).
+    #[test]
+    fn the_fanout_reading_is_a_listed_shape_or_nothing() {
+        let bank = Bank::builtin();
+        let admitted = Admitted::builtin();
+        let read = |choice: &str, p: f64| {
+            let other = if choice == "one" {
+                "each_engine"
+            } else {
+                "one"
+            };
+            reading(
+                &response(json!({
+                    "fanout": {"type": "choice", "choice": choice, "confidence": 0.5,
+                               "probabilities": {choice: p, other: 1.0 - p}},
+                    "read_only": {"type": "noul", "noul": 0.9},
+                })),
+                bank,
+                &facts(),
+                &admitted,
+            )
+        };
+        let each = read("each_engine", 0.9);
+        assert_eq!(each.fanout, Some((Fanout::EachEngine, 0.9)));
+        assert_eq!(each.read_only, 0.9);
+        assert_eq!(each.summarize, 0.0);
+        assert_eq!(
+            read("codex_and_claude_code", 0.8).fanout,
+            Some((Fanout::Pair(Engine::Codex, Engine::ClaudeCode), 0.8))
+        );
+        assert_eq!(read("one", 0.9).fanout, None);
+        assert_eq!(read("all", 0.9).fanout, None);
+        let none = reading(&response(json!({})), bank, &facts(), &admitted);
+        assert_eq!(
+            (none.fanout, none.read_only, none.summarize),
+            (None, 0.0, 0.0)
+        );
+        // The question lists `one`, then every shape, and nothing else.
+        let question = serde_json::to_value(fanout()).unwrap();
+        let options: Vec<&str> = question["criteria"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect();
+        assert_eq!(
+            options,
+            [
+                "one",
+                "each_engine",
+                "codex_and_claude_code",
+                "codex_and_grok_build",
+                "claude_code_and_grok_build"
+            ]
+        );
     }
 
     /// A desktop turn asks `deck` over the decks the app ships, each by its

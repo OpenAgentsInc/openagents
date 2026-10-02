@@ -65,6 +65,21 @@ pub enum Command {
     Restore {
         chat: String,
     },
+    /// Add `text` to the chat as the reply after its last turn: one run of
+    /// a dispatch plan's result, as the client that ran it read it
+    /// (#10183). It asks the worker nothing.
+    Note {
+        chat: String,
+        text: String,
+    },
+    /// Ask the worker for one combined summary of a dispatch plan's ended
+    /// `runs` (#10183), each as `router::CoderRun::json` made it, at most
+    /// one per engine: the reply streams in as a send's does, with no
+    /// message of the person's added.
+    Summarize {
+        chat: String,
+        runs: Vec<serde_json::Value>,
+    },
     /// How many replies of the saved conversations took each route, from
     /// the worker's typed judgments the turns keep: the Map page's local
     /// counts (#10085). Read-only; the counts stay on this computer.
@@ -228,6 +243,27 @@ pub fn apply(chats: &mut BasicChats, command: Command, now: u64) -> Result<Snaps
                 return Err(
                     "Couldn't send the message. Wait for the reply or check chat storage.".into(),
                 );
+            }
+            (Some(chat), None)
+        }
+        Command::Note { chat, text } => {
+            if !identity(&chat) || chats.get(&chat).is_none() {
+                return Err("Chat not found.".into());
+            }
+            if !chats.note(&chat, &text, now) {
+                return Err("Couldn't add the run's result to the chat.".into());
+            }
+            (Some(chat), None)
+        }
+        Command::Summarize { chat, runs } => {
+            if !identity(&chat) || chats.get(&chat).is_none() {
+                return Err("Chat not found.".into());
+            }
+            if runs.is_empty() || runs.len() > nostr::cj_conversation::MAX_PLAN_RUNS {
+                return Err("A summary needs one to five runs.".into());
+            }
+            if !chats.summarize(&chat, runs) {
+                return Err("Couldn't ask for the summary. Wait for the reply.".into());
             }
             (Some(chat), None)
         }

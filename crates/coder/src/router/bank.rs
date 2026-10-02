@@ -39,7 +39,9 @@ pub const MAX_TEXT_CHARS: usize = 600;
 /// [`super::policy::decide`], from the decks the desktop app ships
 /// ([`super::decks`]), and `engine.*` keys only by
 /// [`super::policy::decide`], from the engine the typed `engine` reading
-/// named (#10076), each for an entry that sets [`Entry::records`].
+/// named (#10076), and `fanout.*` keys only by [`super::policy::decide`],
+/// from the dispatch plan the typed `fanout` reading made (#10183), each
+/// for an entry that sets [`Entry::records`].
 /// `chat.*` keys are filled only by [`super::Context::facts`], from the
 /// request's bounded `context`: the computer's name and the chat's project
 /// folder, the person's own words and paths (#10077).
@@ -58,6 +60,8 @@ pub const FACT_KEYS: &[&str] = &[
     "chat.project",
     "chat.project_path",
     "engine.name",
+    "fanout.runs",
+    "fanout.engines",
 ];
 
 /// The id suffix of an entry's variant for a chat on a computer: the entry
@@ -151,6 +155,7 @@ impl EntryOffer {
             (true, None) => Some(super::Offer::RunCoder {
                 label: self.label.clone(),
                 engine: None,
+                plan: super::DispatchPlan::default(),
             }),
             (false, Some(screen)) => Some(super::Offer::OpenScreen {
                 screen,
@@ -608,10 +613,11 @@ pub fn lint(bank: &Bank, root: Option<&Path>) -> Vec<String> {
         // `capability.missing` or a dispatch stem that names a capability
         // or the engine the person asked for, or from the deck list on
         // `presentation.open`.
-        let capability_slot = entry
-            .facts
-            .values()
-            .any(|key| key.starts_with("capability.") || key.starts_with("engine."));
+        let capability_slot = entry.facts.values().any(|key| {
+            key.starts_with("capability.")
+                || key.starts_with("engine.")
+                || key.starts_with("fanout.")
+        });
         let picked_by_code = routes.iter().all(|route| {
             route.is_gym()
                 || *route == RouteId::CapabilityMissing

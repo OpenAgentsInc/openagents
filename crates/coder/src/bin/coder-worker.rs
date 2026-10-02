@@ -1963,7 +1963,22 @@ impl Job {
                         tried: router::card::tried(&payload["tried"]).ok(),
                         skip: router::card::skip(&payload["skip"]),
                     };
-                    let triage = judged.then(|| self.triage(&turn, &input)).flatten();
+                    // A plan's results (#10183): the model writes their
+                    // combined summary, with no routing and no offer, from
+                    // the transcript up to the request that started them.
+                    let summary = !turn.context.runs.is_empty();
+                    let mut input = input;
+                    if summary {
+                        while input
+                            .last()
+                            .is_some_and(|message| message.role != Role::User)
+                        {
+                            input.pop();
+                        }
+                    }
+                    let triage = (judged && !summary)
+                        .then(|| self.triage(&turn, &input))
+                        .flatten();
                     let mut instructions = payload["instructions"]
                         .as_str()
                         .unwrap_or_default()
@@ -1972,6 +1987,12 @@ impl Job {
                     // computer, Coder runs here and the project folder is
                     // the working directory (#10077).
                     if let Some(note) = turn.context.note() {
+                        if !instructions.is_empty() {
+                            instructions.push_str("\n\n");
+                        }
+                        instructions.push_str(&note);
+                    }
+                    if let Some(note) = turn.context.runs_note() {
                         if !instructions.is_empty() {
                             instructions.push_str("\n\n");
                         }
@@ -4139,6 +4160,9 @@ mod tests {
             "capability": capability("not-a-capability-request", &[]),
             "risk": sure("ok", &["ok", "secret_shared", "asks_for_secret", "harmful", "money_movement", "none"]),
             "engine": engine("none"),
+            "fanout": fanout("one"),
+            "read_only": { "type": "noul", "noul": 0.0 },
+            "summarize": { "type": "noul", "noul": 0.0 },
         });
         // A desktop turn also asks which deck (#10058).
         if router::Context::of(context).surface() == router::Surface::Desktop {
@@ -4159,6 +4183,16 @@ mod tests {
             .iter()
             .map(|engine| engine.word())
             .chain(["none"])
+            .collect();
+        sure(choice, &options)
+    }
+
+    /// The `fanout` answer over its closed options, sure of `choice`
+    /// (#10183).
+    fn fanout(choice: &str) -> Value {
+        let options: Vec<&str> = ["one"]
+            .into_iter()
+            .chain(router::Fanout::ALL.iter().map(|fanout| fanout.word()))
             .collect();
         sure(choice, &options)
     }
@@ -4525,6 +4559,99 @@ mod tests {
         let frames = frames_through(door, None, payload).await;
         assert_eq!(frames.last().unwrap().1["type"], "result");
         assert_eq!(seen.lock().unwrap()[0]["instructions"], "Reply with JSON.");
+    }
+
+    /// #10183: a fan-out read in a terminal is one `run_coder` offer with
+    /// the plan, and the reply says what starts, with no continuation.
+    #[tokio::test]
+    async fn a_fan_out_offer_carries_the_plan_and_says_what_starts() {
+        let context = json!({
+            "surface": "terminal",
+            "computer_ready": true,
+            "computer": {"place": "here", "engines": [
+                {"engine": "codex", "state": "ready"},
+                {"engine": "claude", "state": "ready"},
+                {"engine": "grok", "state": "ready"},
+            ]},
+        });
+        let mut answers = routed_in(&context, "work.dispatch", "dispatch.stem", 0.9, "none");
+        answers["fanout"] = fanout("each_engine");
+        answers["read_only"] = json!({"type": "noul", "noul": 0.95});
+        answers["summarize"] = json!({"type": "noul", "noul": 0.9});
+        let frames = frames_routed(
+            slow_door(Duration::from_millis(1_500)),
+            Some(judge(Duration::ZERO, answers)),
+            routed_turn(
+                "do 3 readonly delegations, 1 per agent, explore repo and summarize briefly",
+                context,
+            ),
+            personalized(" look through the repo."),
+            RouterSetting::Live,
+        )
+        .await;
+        let offers = of_type(&frames, "offer");
+        assert_eq!(offers.len(), 1, "{offers:?}");
+        assert_eq!(offers[0]["offer"], "run_coder");
+        assert_eq!(
+            offers[0]["runs"],
+            json!(["codex", "claude_code", "grok_build"])
+        );
+        assert_eq!(offers[0]["read_only"], true);
+        assert_eq!(offers[0]["summarize"], true);
+        let result = &frames.last().unwrap().1;
+        assert_eq!(
+            result["text"],
+            "Starting 3 read-only runs: Codex, Claude Code, Grok Build."
+        );
+        assert!(
+            result["answer"]
+                .as_str()
+                .unwrap()
+                .starts_with("dispatch.fan_out@")
+        );
+    }
+
+    /// #10183: a request carrying a plan's ended runs is the model's
+    /// combined summary of them: no judgment or offer, the reports in its
+    /// instructions, and a transcript that ends with the person's request.
+    #[tokio::test]
+    async fn a_plans_results_get_the_models_combined_summary() {
+        let stream = include_str!("../../fixtures/gateway/google-gemini-3.8-flash.sse");
+        let (url, seen) = serve_recorded(1, Duration::ZERO, "text/event-stream", stream.into());
+        let door = Door::Live(coder::generate::ResponsesDoor::new(url, GEMINI, "test"));
+        let ask = "do 3 readonly delegations, 1 per agent, explore repo and summarize briefly";
+        let mut payload = turn(ask);
+        payload["transcript"] = json!([
+            {"role": "user", "content": ask},
+            {"role": "assistant", "content": "Starting 3 read-only runs: Codex, Claude Code, Grok Build."},
+        ]);
+        payload["router"] = json!("chat-router-v2");
+        payload["context"] = json!({
+            "surface": "terminal",
+            "runs": [
+                {"ending": "finished", "turn": 1, "engine": "codex", "summary": "A Rust workspace of 80 crates.", "files": [], "commands": []},
+                {"ending": "finished", "turn": 1, "engine": "claude", "summary": "Rust monorepo; apps under bins/.", "files": [], "commands": []},
+                {"ending": "failed", "turn": 1, "engine": "grok", "summary": "Not signed in.", "files": [], "commands": []},
+            ],
+        });
+        let judging = judge(
+            Duration::ZERO,
+            routed("work.dispatch", "dispatch.stem", 0.9, "none"),
+        );
+        let frames = frames_through(door, Some(judging), payload).await;
+        assert!(frames.iter().all(|(_, body)| body["type"] != "judgment"));
+        assert!(frames.iter().all(|(_, body)| body["type"] != "offer"));
+        assert_eq!(frames.last().unwrap().1["type"], "result");
+        let request = seen.lock().unwrap()[0].clone();
+        let instructions = request["instructions"].as_str().unwrap();
+        assert!(instructions.contains("combined summary"), "{instructions}");
+        assert!(
+            instructions.contains("A Rust workspace of 80 crates."),
+            "{instructions}"
+        );
+        assert!(instructions.contains("Grok Build failed"), "{instructions}");
+        let input = request["input"].as_array().unwrap();
+        assert_eq!(input.last().unwrap()["role"], "user", "{input:?}");
     }
 
     /// A `rank` job answers the caller's candidates, most likely first,
