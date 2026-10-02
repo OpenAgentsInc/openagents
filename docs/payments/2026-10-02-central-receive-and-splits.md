@@ -432,7 +432,12 @@ stays `unknown` until a reconciler updates it. Configure the website with
   under it. With no traffic it shows the last real events, never synthetic
   ones, and says when the last event was.
 - **`openagents.com/stats`:** the numbers as tables and small series charts,
-  linked from `/live`.
+  linked from `/live`. Drawn on the server
+  (`crates/openagents-web/src/pages/stats.rs`, #10196) from the pay host's
+  `/stats` and `/flow/snapshot`: totals, plugins, authors, recent author
+  payouts, 24 h and 30 d bars, the reconciliation state, and the last
+  event's time. No script; it says when the pay host is unreachable or no
+  payment has settled yet.
 - **Desktop deck scene `routes-live`:** `RouteFuture`'s renderer fed by the
   stream instead of `traffic()`'s hash slots: each event maps to a leaf by
   node id, and its pulses run along `path_to(leaf)`. Episode decks can show

@@ -65,9 +65,10 @@ async fn get(router: Router, uri: &str) -> (StatusCode, String) {
 }
 
 /// Every public HTML page a development server serves.
-const PAGES: [&str; 37] = [
+const PAGES: [&str; 38] = [
     "/",
     "/live",
+    "/stats",
     "/download",
     "/terms",
     "/privacy",
@@ -786,6 +787,7 @@ fn the_site_owns_its_pages_and_the_removed_sections() {
         "/privacy",
         "/connect",
         "/live",
+        "/stats",
         "/ask",
         "/health",
         "/.well-known/apple-app-site-association",
@@ -1105,4 +1107,176 @@ async fn payment_proxy_preserves_resume_and_streams_before_upstream_finishes() {
             .contains("id: 42")
     );
     server.abort();
+}
+
+// ---------------------------------------------------------------------
+// `/stats` (#10196): drawn on the server from the pay host's public
+// `/stats` and `/flow/snapshot`, here a stub serving fixtures.
+
+/// A pay host answering `/stats` and `/flow/snapshot` with `stats` and
+/// `snapshot`.
+async fn stub_pay_host(stats: serde_json::Value, snapshot: serde_json::Value) -> String {
+    let app = Router::new()
+        .route(
+            "/stats",
+            axum::routing::get(move || {
+                let stats = stats.clone();
+                async move { axum::Json(stats) }
+            }),
+        )
+        .route(
+            "/flow/snapshot",
+            axum::routing::get(move || {
+                let snapshot = snapshot.clone();
+                async move { axum::Json(snapshot) }
+            }),
+        );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    format!("http://{address}")
+}
+
+fn with_pay_host(root: &std::path::Path, pay: &str) -> Config {
+    let mut config = config(root.join("tasks"));
+    config.public_hosts.push("openagents.com".to_owned());
+    config.pay_upstream = Some(Arc::new(upstream::Upstream::new(pay).unwrap()));
+    config
+}
+
+fn totals(received: f64, paid: f64, pending: f64, calls: u64, earned: f64) -> serde_json::Value {
+    json!({
+        "received_sats": received,
+        "paid_out_sats": paid,
+        "pending_accruals_sats": pending,
+        "calls": calls,
+        "earnings_sats": earned,
+    })
+}
+
+#[tokio::test]
+async fn the_stats_page_renders_the_pay_hosts_numbers() {
+    let hour = 3_600_000_i64;
+    let now = 1_790_000_000_000_i64 / hour * hour;
+    let mut series_24h: Vec<_> = (0..24)
+        .map(|i| json!({"at": now - (23 - i) * hour, "width_ms": hour, "totals": totals(0.0, 0.0, 0.0, 0, 0.0)}))
+        .collect();
+    series_24h[23]["totals"] = totals(1500.0, 0.0, 0.0, 3, 0.0);
+    let stats = json!({
+        "totals": totals(1500.0, 900.0, 600.0, 3, 1200.5),
+        "per_plugin": {
+            "explain-error": totals(0.0, 900.0, 300.5, 2, 1200.5),
+            "summarize": totals(0.0, 0.0, 0.0, 1, 0.0),
+            "<i>x</i>": totals(0.0, 0.0, 0.0, 0, 0.0),
+        },
+        "per_author": {
+            "alice": totals(0.0, 900.0, 300.5, 0, 1200.5),
+        },
+        "series_24h": series_24h,
+        "series_30d": [],
+        "reconciliation": "ok",
+    });
+    let snapshot = json!({
+        "events": [
+            {"v": 1, "seq": 1, "at": now + 60_000, "type": "call", "resource": "plugin",
+             "plugin": "explain-error", "node": "plugin:explain-error", "payer": "fox-17"},
+            {"v": 1, "seq": 2, "at": now + 120_000, "type": "payout", "resource": "plugin",
+             "plugin": "explain-error", "node": "plugin:explain-error", "amount_sats": 905,
+             "split": {"author": 900, "lsp_fee": 5}, "author": "alice"},
+            {"v": 1, "seq": 3, "at": now + 180_000, "type": "payout", "resource": "route",
+             "node": "router", "amount_sats": 40, "split": {"openagents": 40}},
+            {"v": 1, "seq": 4, "at": now + 240_000, "type": "payment", "resource": "plugin",
+             "plugin": "<b>x</b>", "node": "plugin:x", "amount_sats": 10, "payer": "owl-3"},
+        ],
+        "totals": totals(1500.0, 900.0, 600.0, 3, 1200.5),
+        "topology": [],
+    });
+    let pay = stub_pay_host(stats, snapshot).await;
+    let root = tempfile::tempdir().unwrap();
+    let (status, headers, html) = get_with(
+        router(with_pay_host(root.path(), &pay)),
+        "/stats",
+        "openagents.com",
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{html}");
+    assert_eq!(headers[header::CACHE_CONTROL], "no-store");
+    let policy = headers[header::CONTENT_SECURITY_POLICY].to_str().unwrap();
+    assert!(!policy.contains("script-src"), "{policy}");
+    assert!(!html.to_ascii_lowercase().contains("<script"));
+    assert!(html.contains("href=\"/live\""));
+    // Totals, exact and grouped.
+    assert!(
+        html.contains("<dt>Received</dt><dd>1,500 sats</dd>"),
+        "{html}"
+    );
+    assert!(html.contains("<dt>Paid out</dt><dd>900 sats</dd>"));
+    assert!(html.contains("<dt>Pending</dt><dd>600 sats</dd>"));
+    assert!(html.contains("<dt>Calls</dt><dd>3</dd>"));
+    assert!(html.contains("<dt>Author earnings</dt><dd>1,200.5 sats</dd>"));
+    // Plugins by earnings, then authors.
+    let plugins = &html[html.find("id=\"stats-plugins\"").unwrap()..];
+    assert!(plugins.find("explain-error").unwrap() < plugins.find("summarize").unwrap());
+    assert!(
+        plugins.contains("<td>explain-error</td><td>2</td><td>1,200.5 sats</td><td>900 sats</td>")
+    );
+    assert!(html.contains(
+        "<td class=\"stats-id\">alice</td><td>1,200.5 sats</td><td>900 sats</td><td>300.5 sats</td>"
+    ));
+    // Recent payouts: the author's part only, no treasury-only payout.
+    let payouts = &html[html.find("id=\"stats-payouts\"").unwrap()..];
+    let payouts = &payouts[..payouts.find("</table>").unwrap()];
+    assert_eq!(payouts.matches("<tr>").count(), 2, "{payouts}");
+    assert!(payouts.contains(&format!(
+        "<td>{}</td><td>explain-error</td><td class=\"stats-id\">alice</td><td>900 sats</td>",
+        pages::utc(now + 120_000)
+    )));
+    // The footing, the series, escaping, and no payer alias anywhere.
+    assert!(html.contains("Reconciliation: the ledger matches the wallet."));
+    assert!(html.contains(&format!("Last event: {} UTC.", pages::utc(now + 240_000))));
+    let day = &html[html.find("id=\"stats-24h\"").unwrap()..];
+    assert_eq!(
+        day[..day.find("</figure>").unwrap()]
+            .matches("class=\"stats-bar\"")
+            .count(),
+        24
+    );
+    assert!(day.contains("1,500 sats received over 3 calls"));
+    assert!(html.contains("The last 30 days, by day: nothing received."));
+    assert!(!html.contains("<b>x</b>") && !html.contains("<i>x</i>"));
+    assert!(html.contains("<td>&lt;i&gt;x&lt;/i&gt;</td>"));
+    assert!(!html.contains("fox-17") && !html.contains("owl-3"));
+}
+
+#[tokio::test]
+async fn the_stats_page_says_when_there_are_no_payments_or_no_pay_host() {
+    let empty = json!({
+        "totals": totals(0.0, 0.0, 0.0, 0, 0.0),
+        "per_plugin": {}, "per_author": {}, "series_24h": [], "series_30d": [],
+        "reconciliation": "unknown",
+    });
+    let pay = stub_pay_host(empty, json!({"events": [], "topology": []})).await;
+    let root = tempfile::tempdir().unwrap();
+    let (status, _, html) = get_with(
+        router(with_pay_host(root.path(), &pay)),
+        "/stats",
+        "openagents.com",
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(html.contains("id=\"stats-empty\""), "{html}");
+    assert!(html.contains("Reconciliation: not checked yet. Last event: none yet."));
+    assert!(!html.contains("<table") && !html.contains("sats</dd>"));
+
+    // No pay host configured, and one that doesn't answer.
+    for config in [
+        config(root.path().join("tasks")),
+        with_pay_host(root.path(), "http://127.0.0.1:9"),
+    ] {
+        let (status, _, html) = get_with(router(config), "/stats", LOCAL).await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(html.contains("id=\"stats-unreachable\""), "{html}");
+        assert!(!html.contains("<table") && !html.contains(" sats"));
+        assert!(html.contains("href=\"/live\""));
+    }
 }

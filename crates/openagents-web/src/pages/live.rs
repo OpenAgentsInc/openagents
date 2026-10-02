@@ -55,7 +55,9 @@ payments coming back, shares going on to a plugin's author, and payouts to the a
 wallet; a gold dot with a ring is a bonus. Payers show only as a daily alias.</p>\
 <h2>Recent events</h2>\
 <ol class=\"flow-recent\" id=\"flow-recent\"><li class=\"dim\">None yet.</li></ol>\
-<noscript><p class=\"dim\">Turn on JavaScript to see the live map.</p></noscript>\
+<p><a href=\"/stats\">[ Stats ]</a> <span class=\"dim\">The totals, plugins, authors, and payouts \
+as tables.</span></p>\
+<noscript><p class=\"dim\">Turn on JavaScript to see the live map, or read the numbers on <a href=\"/stats\">Stats</a>.</p></noscript>\
 </section>\
 <script src=\"/static/flow.js\" defer></script>"
     )
