@@ -34,6 +34,7 @@ use crate::publish::Publisher;
 use crate::tasks::{TaskRef, Tasks};
 use crate::{CAPABILITIES, Error, PROTOCOL_VERSION, Result, unix_time};
 
+pub(crate) mod activity;
 mod cj;
 mod direct;
 pub(crate) mod dispatch;
@@ -95,6 +96,14 @@ pub(crate) struct Shared {
     /// Tailnet admission as the control socket's `tailnet_status` reports
     /// it (#10125): `None` until the serving program says.
     pub(crate) tailnet: std::sync::Mutex<Option<Tailnet>>,
+    /// Requests in flight on every path, and when the last one ended: what
+    /// a restart for an update waits out.
+    pub(crate) activity: activity::Activity,
+    /// A second descriptor for the control socket's listener, so a restart
+    /// hands the bound socket to the new program: a client that connects
+    /// meanwhile waits in its queue instead of finding nothing there.
+    #[cfg(unix)]
+    pub(crate) control_listener: std::sync::Mutex<Option<std::os::fd::OwnedFd>>,
 }
 
 /// Tailnet admission's state, as the serving program started it.
@@ -213,6 +222,9 @@ pub async fn start(config: Config, tasks: Arc<dyn Tasks>) -> Result<Running> {
         restart: tokio::sync::watch::channel(false).0,
         engines: std::sync::Mutex::new(Vec::new()),
         tailnet: std::sync::Mutex::new(None),
+        activity: activity::Activity::default(),
+        #[cfg(unix)]
+        control_listener: std::sync::Mutex::new(None),
     });
 
     let (ready, relay_ready) = tokio::sync::oneshot::channel();
@@ -229,6 +241,13 @@ pub async fn start(config: Config, tasks: Arc<dyn Tasks>) -> Result<Running> {
         None => None,
     };
     if let Some(bound) = control {
+        #[cfg(unix)]
+        {
+            *shared
+                .control_listener
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = bound.keep();
+        }
         // Threads `openagents chat` kept without a host join this host's
         // store before the socket answers, so the first list shows them.
         if let Some(home) = shared.config.chat_home.clone() {
@@ -346,6 +365,61 @@ impl Running {
         let _ = receiver.wait_for(|wanted| *wanted).await;
     }
 
+    /// Whether nobody is using the host now: no request in flight on any
+    /// path or answered within [`activity::QUIET`], no chat reply
+    /// streaming, and no device holding a terminal.
+    #[must_use]
+    pub fn idle(&self) -> bool {
+        self.shared.activity.quiet_for(activity::QUIET)
+            && !chats_streaming(&self.shared)
+            && self.shared.pty.terminals() == 0
+    }
+
+    /// Return once [`Running::idle`] holds.
+    pub async fn until_idle(&self) {
+        while !self.idle() {
+            tokio::time::sleep(activity::LOOK_EVERY).await;
+        }
+    }
+
+    /// Return once no request is in flight and no chat reply streams, or
+    /// `most` has passed: what a stop waits out, so a request being
+    /// answered gets its answer. `true` when it drained.
+    pub async fn drain(&self, most: Duration) -> bool {
+        let deadline = tokio::time::Instant::now() + most;
+        loop {
+            if self.shared.activity.in_flight() == 0 && !chats_streaming(&self.shared) {
+                return true;
+            }
+            if tokio::time::Instant::now() >= deadline {
+                return false;
+            }
+            tokio::time::sleep(activity::LOOK_EVERY).await;
+        }
+    }
+
+    /// Requests being answered now, on every path.
+    #[must_use]
+    pub fn in_flight(&self) -> usize {
+        self.shared.activity.in_flight()
+    }
+
+    /// Ready the control socket's listener for the program this one is
+    /// replaced by (`exec`): the descriptor stays open across it, and the
+    /// value for [`crate::control::HANDOVER_ENV`] names it. `None` when the
+    /// host serves no control socket.
+    #[cfg(unix)]
+    #[must_use]
+    pub fn hand_over_control(&self) -> Option<String> {
+        let fd = self
+            .shared
+            .control_listener
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take()?;
+        crate::control::socket::hand_over(fd)
+    }
+
     /// Publish presence and hints to every enrolled device now.
     pub async fn publish_reach(&self) {
         publish_reach(&self.shared).await;
@@ -354,6 +428,17 @@ impl Running {
     /// Stop serving: end every terminal's process tree, stop the listener
     /// and relay loops, and remove the runtime record.
     pub async fn shutdown(self) {
+        self.stop(false).await;
+    }
+
+    /// [`Running::shutdown`] for a restart that took the control socket
+    /// ([`Running::hand_over_control`]): its file stays, for the program
+    /// that serves it next.
+    pub async fn shutdown_for_restart(self) {
+        self.stop(true).await;
+    }
+
+    async fn stop(self, keep_socket: bool) {
         for task in &self.tasks {
             task.abort();
         }
@@ -362,13 +447,30 @@ impl Running {
         if let Some(iroh) = self.shared.iroh.get() {
             iroh.shutdown().await;
         }
-        if let Some(control) = &self.shared.config.control {
+        if let Some(control) = &self.shared.config.control
+            && !keep_socket
+        {
             let _ = std::fs::remove_file(&control.path);
         }
         if let Some(path) = &self.shared.config.runtime {
             let _ = std::fs::remove_file(path);
         }
     }
+}
+
+/// Whether a chat reply streams in the host's store, or the worker ranks
+/// suggestions. Replies that ended are moved into their threads first, as a
+/// read would.
+fn chats_streaming(shared: &Shared) -> bool {
+    let mut state = shared
+        .chats
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let Some(chats) = state.as_mut() else {
+        return false;
+    };
+    chats.settle(unix_time().unwrap_or(0));
+    chats.streaming()
 }
 
 /// How often the presence loop reads this computer's coding agents again

@@ -211,6 +211,7 @@ fn serve_message(
             let (shared, outbound) = (shared.clone(), outbound.clone());
             let principal = binding.client.clone();
             tokio::spawn(async move {
+                let _busy = shared.activity.begin();
                 let sink_queue = outbound.clone();
                 let worker = shared.clone();
                 let result = tokio::task::spawn_blocking(move || {

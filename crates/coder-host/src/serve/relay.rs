@@ -121,6 +121,7 @@ fn schema(shared: &Shared, event: &Event) -> Option<String> {
 /// Admit one signed NIP-HOST request and return the signed reply, if the
 /// host produced one. Task changes publish summaries afterwards.
 pub(super) async fn host_request(shared: &Arc<Shared>, event: Event, relay: &str) -> Option<Event> {
+    let _busy = shared.activity.begin();
     let worker = shared.clone();
     let relay = relay.to_owned();
     let (reply, changed) = tokio::task::spawn_blocking(move || {
@@ -142,6 +143,8 @@ pub(super) async fn host_request(shared: &Arc<Shared>, event: Event, relay: &str
 /// Answer one relay-carried terminal request with a sealed result, and
 /// deliver an attachment's frames as sealed artifacts on the same relay.
 async fn terminal_request(shared: Arc<Shared>, relay: String, event: Event) {
+    let busy = shared.clone();
+    let _busy = busy.activity.begin();
     let Ok(now) = unix_time() else { return };
     let device = event.pubkey.clone();
     // Only a key this host enrolled, even a revoked one, earns an answer.

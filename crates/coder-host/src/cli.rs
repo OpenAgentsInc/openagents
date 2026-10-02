@@ -728,6 +728,9 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
     #[cfg(unix)]
     let own_host = same_root(root);
     raise_open_file_limit();
+    // Before the host serves, so an ask to restart while it starts is
+    // heard rather than ending it (`SIGUSR1`'s default).
+    let restart_signal = RestartSignal::listen();
     let running = crate::serve::start(config, tasks).await?;
     #[cfg(unix)]
     if own_host {
@@ -768,17 +771,83 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
     }
     let restart = tokio::select! {
         () = wait_for_stop() => false,
-        () = running.restart_requested() => true,
+        () = running.restart_requested() => {
+            eprintln!("coder host: starting again to serve the changed settings");
+            true
+        }
+        () = restart_when_idle(restart_signal, &running) => {
+            eprintln!("coder host: nobody is using it; starting again");
+            true
+        }
     };
-    running.shutdown().await;
-    if restart {
-        // A local action changed what the host serves, such as its
-        // projects. Start again as the same process, with the same
-        // arguments, so a service manager sees no exit.
-        eprintln!("coder host: starting again to serve the changed settings");
-        return Err(reexec());
+    // A request being answered gets its answer first, such as the one
+    // that changed the settings.
+    if !running.drain(DRAIN).await {
+        eprintln!(
+            "coder host: stopping with {} request(s) unanswered",
+            running.in_flight()
+        );
     }
-    Ok(())
+    if !restart {
+        running.shutdown().await;
+        return Ok(());
+    }
+    // Start again as the same process, with the same arguments, so a
+    // service manager sees no exit, and keep the control socket bound
+    // across it: a client that connects meanwhile is answered by the new
+    // program instead of finding no host.
+    #[cfg(unix)]
+    let handover = running.hand_over_control();
+    #[cfg(not(unix))]
+    let handover: Option<String> = None;
+    if handover.is_some() {
+        running.shutdown_for_restart().await;
+    } else {
+        running.shutdown().await;
+    }
+    Err(reexec(handover.as_deref()))
+}
+
+/// The longest a stop or restart waits for requests being answered.
+const DRAIN: Duration = Duration::from_secs(10);
+
+/// Return once the host was asked to start again when nobody uses it
+/// (`SIGUSR1`: what a rebuild of the host's program sends, through
+/// `systemctl --user kill --kill-whom=main -s SIGUSR1`) and nobody does:
+/// no request in flight or just answered on any path, no chat reply
+/// streaming, no device holding a terminal (2026-10-02: a restart for an
+/// update cut off the owner's message). A second ask while it waits
+/// changes nothing.
+async fn restart_when_idle(signal: RestartSignal, running: &crate::Running) {
+    signal.wait().await;
+    eprintln!("coder host: asked to start again; waiting until nobody is using it");
+    running.until_idle().await;
+}
+
+/// The ask to restart when idle: `SIGUSR1`. Windows has none; a restart
+/// there is the settings path's.
+struct RestartSignal(#[cfg(unix)] Option<tokio::signal::unix::Signal>);
+
+impl RestartSignal {
+    #[cfg(unix)]
+    fn listen() -> Self {
+        use tokio::signal::unix::{SignalKind, signal};
+        Self(signal(SignalKind::user_defined1()).ok())
+    }
+
+    #[cfg(windows)]
+    fn listen() -> Self {
+        Self()
+    }
+
+    async fn wait(self) {
+        #[cfg(unix)]
+        if let Some(mut signal) = self.0 {
+            signal.recv().await;
+            return;
+        }
+        std::future::pending::<()>().await;
+    }
 }
 
 /// How many times, and how far apart, the host looks for its program when
@@ -847,7 +916,7 @@ fn restart_program_here() -> Option<PathBuf> {
 /// host then exits with a failure, and its service manager starts it again
 /// within a second or two.
 #[cfg(unix)]
-fn reexec() -> Error {
+fn reexec(handover: Option<&str>) -> Error {
     use std::os::unix::process::CommandExt;
     let mut last = None;
     for attempt in 0..REEXEC_TRIES.0 {
@@ -866,6 +935,7 @@ fn reexec() -> Error {
                         .unwrap_or_else(|| program.clone().into_os_string()),
                 )
                 .args(std::env::args_os().skip(1))
+                .envs(handover.map(|value| (crate::control::HANDOVER_ENV, value)))
                 .exec(),
         );
     }
@@ -879,7 +949,7 @@ fn reexec() -> Error {
 /// and end this one: Windows cannot replace a running image. The new host
 /// waits for this one's control pipe to close before it binds.
 #[cfg(windows)]
-fn reexec() -> Error {
+fn reexec(_handover: Option<&str>) -> Error {
     use std::os::windows::process::CommandExt;
     // Process creation flags, from `winbase.h`.
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;

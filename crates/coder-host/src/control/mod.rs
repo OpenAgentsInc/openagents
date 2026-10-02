@@ -42,6 +42,10 @@ pub mod windows;
 #[cfg(unix)]
 pub use socket::{Bound, own_uid};
 
+/// Names the control socket a host that started itself again for an
+/// update handed to its new program (`PID:FD`, see `socket::hand_over`).
+pub const HANDOVER_ENV: &str = "OPENAGENTS_HOST_CONTROL_HANDOVER";
+
 /// Connections served at once; more wait for a slot.
 const CONNECTIONS: usize = 16;
 /// The lifetime of a connect code's grant: the most NIP-HOST allows.
@@ -201,8 +205,17 @@ pub(crate) async fn serve(shared: Arc<Shared>, bound: Bound) {
 }
 
 /// Answer requests on one connection, in order, until the client closes.
-async fn connection<S: AsyncRead + AsyncWrite + Unpin>(shared: Arc<Shared>, mut stream: S) {
+async fn connection<S: AsyncRead + AsyncWrite + Unpin>(shared: Arc<Shared>, stream: S) {
+    use tokio::io::AsyncBufReadExt;
+    let mut stream = tokio::io::BufReader::new(stream);
     loop {
+        // A request is in use from its first byte until its answer is
+        // written, so a restart waiting for idle never cuts one off.
+        match stream.fill_buf().await {
+            Ok([]) | Err(_) => return,
+            Ok(_) => {}
+        }
+        let _busy = shared.activity.begin();
         let request = match control::next_request(&mut stream).await {
             Ok(Some(request)) => request,
             Ok(None) => return,

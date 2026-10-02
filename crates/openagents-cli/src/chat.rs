@@ -412,6 +412,9 @@ pub(crate) struct Printer<'a> {
     diverged: bool,
     /// The Coder run's tool calls not yet final (#10117).
     tools: openagents_chat::tool_groups::Stream,
+    /// "Reconnecting" was printed and not yet answered by "Connected
+    /// again".
+    offline: bool,
 }
 
 impl<'a> Printer<'a> {
@@ -422,6 +425,7 @@ impl<'a> Printer<'a> {
             printed: String::new(),
             diverged: false,
             tools: openagents_chat::tool_groups::Stream::default(),
+            offline: false,
         }
     }
 
@@ -595,15 +599,15 @@ impl<'a> Printer<'a> {
                     output,
                     json!({"event": "offline", "thread": thread, "retry_in": retry_in}),
                 );
-                if !output.json() {
-                    eprintln!(
-                        "OpenAgents cannot be reached; trying again in {retry_in}s. Ctrl-C stops."
-                    );
+                // The client says so only once the outage has lasted
+                // `QUIET_FOR`; the line is printed once per outage.
+                if !output.json() && !std::mem::replace(&mut self.offline, true) {
+                    eprintln!("Reconnecting to OpenAgents… (Ctrl-C stops)");
                 }
             }
             Event::Online { thread } => {
                 event(output, json!({"event": "online", "thread": thread}));
-                if !output.json() {
+                if !output.json() && std::mem::take(&mut self.offline) {
                     eprintln!("Connected again.");
                 }
             }
@@ -906,5 +910,28 @@ mod tests {
             message(&["x".repeat(33 * 1024)]),
             Err(Failure::Usage(_))
         ));
+    }
+
+    /// "Reconnecting" prints once per outage, and "Connected again" only
+    /// after it. (The client sends `offline` only once an outage has
+    /// lasted three seconds, so a restart's blip prints nothing.)
+    #[test]
+    fn reconnecting_is_printed_once_and_answered() {
+        let output = Output::new(false);
+        let mut printer = Printer::new(&output);
+        let thread = "a".repeat(32);
+        printer.print(Event::Online {
+            thread: thread.clone(),
+        });
+        assert!(!printer.offline);
+        for retry_in in [3, 8] {
+            printer.print(Event::Offline {
+                thread: thread.clone(),
+                retry_in,
+            });
+            assert!(printer.offline);
+        }
+        printer.print(Event::Online { thread });
+        assert!(!printer.offline);
     }
 }

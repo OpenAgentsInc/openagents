@@ -78,6 +78,30 @@ const STARTING_FOR: Duration = Duration::from_secs(10);
 const OFFLINE_FIRST: Duration = Duration::from_secs(2);
 /// The longest pause between tries.
 const OFFLINE_MOST: Duration = Duration::from_secs(30);
+/// How long the chat stays unreachable before the screen says so. A host
+/// that restarts for an update is back well within it, so a blip passes
+/// without a word.
+pub const QUIET_FOR: Duration = Duration::from_secs(3);
+
+/// One stretch of not reaching the chat, so a short one is not said: the
+/// first [`Event::Offline`] comes [`QUIET_FOR`] after it began, and
+/// [`Event::Online`] only after an [`Event::Offline`].
+#[derive(Debug, Default)]
+struct Outage {
+    since: Option<tokio::time::Instant>,
+    said: bool,
+}
+
+impl Outage {
+    /// It is over: say so when the screen was told it began.
+    fn over(&mut self, id: &str, sink: &mut Sink<'_>) {
+        if std::mem::take(self).said {
+            sink(Event::Online {
+                thread: id.to_owned(),
+            });
+        }
+    }
+}
 /// The message the apps show when a person stops a reply.
 pub const STOPPED: &str = "Stopped receiving this reply. The hosted worker may still finish.";
 
@@ -543,11 +567,12 @@ pub enum Event {
     Stopping { why: Option<String> },
     /// Following stopped; Coder keeps working.
     Detached { thread: String },
-    /// The chat cannot be reached (the relay, or this computer's host):
-    /// the reply is asked for again in `retry_in` seconds. Esc stops
-    /// waiting.
+    /// The chat has not been reached for [`QUIET_FOR`] (the relay, or this
+    /// computer's host): the reply is asked for again in `retry_in`
+    /// seconds. Esc stops waiting. A shorter blip is not said.
     Offline { thread: String, retry_in: u64 },
-    /// It can be reached again, and the reply streams on.
+    /// It can be reached again, and the reply streams on. Only after an
+    /// [`Event::Offline`].
     Online { thread: String },
     /// The reply proposed the `openagents` command `argv` (#10170): it
     /// runs here now (`confirm` false, [`Event::Ran`] follows), or waits
@@ -1104,6 +1129,7 @@ impl Client {
         // the person stops it. What streamed before stays on the screen.
         let mut offline = 0u32;
         let mut down = 0u32;
+        let mut outage = Outage::default();
         'tries: loop {
             let deadline = tokio::time::Instant::now() + timeout;
             while snapshot.busy {
@@ -1133,7 +1159,7 @@ impl Client {
                     // it keeps answering, so read again once it is back.
                     Err(_) if !matches!(self.backend, Backend::Local { .. }) => {
                         down += 1;
-                        if !self.pause(id, down, &mut interrupt, sink).await {
+                        if !Self::pause(id, down, &mut outage, &mut interrupt, sink).await {
                             stopped = true;
                             break 'tries;
                         }
@@ -1146,9 +1172,7 @@ impl Client {
                 let took = !snapshot.partial.is_empty() || (!snapshot.busy && !snapshot.offline);
                 if std::mem::take(&mut down) > 0 && (offline == 0 || took) || offline > 0 && took {
                     offline = 0;
-                    sink(Event::Online {
-                        thread: id.to_owned(),
-                    });
+                    outage.over(id, sink);
                 }
                 if snapshot.busy && snapshot.partial != shown {
                     let delta = snapshot
@@ -1168,7 +1192,7 @@ impl Client {
             }
             // The relay could not be reached: ask again after a pause.
             offline += 1;
-            if !self.pause(id, offline, &mut interrupt, sink).await {
+            if !Self::pause(id, offline, &mut outage, &mut interrupt, sink).await {
                 stopped = true;
                 break;
             }
@@ -1409,43 +1433,55 @@ impl Client {
         sink: &mut Sink<'_>,
     ) -> Result<Snapshot, String> {
         let mut down = 0u32;
+        let mut outage = Outage::default();
         loop {
             let result = self.apply(command.clone()).await;
             let unanswered = match &self.backend {
                 Backend::Host { link, .. } | Backend::Computer { link, .. } => link.unanswered(),
                 Backend::Local { .. } => false,
             };
-            if result.is_ok() && down > 0 {
-                sink(Event::Online {
-                    thread: id.to_owned(),
-                });
+            if result.is_ok() {
+                outage.over(id, sink);
             }
             if result.is_ok() || !unanswered {
                 return result;
             }
             down += 1;
-            if !self.pause(id, down, interrupt, sink).await {
+            if !Self::pause(id, down, &mut outage, interrupt, sink).await {
                 return result;
             }
         }
     }
 
-    /// Say the chat cannot be reached, and wait before try `attempt`.
-    /// `false` when the person stopped waiting.
+    /// Wait before try `attempt`, saying the chat cannot be reached once
+    /// `outage` has lasted [`QUIET_FOR`]. `false` when the person stopped
+    /// waiting.
     async fn pause(
-        &self,
         id: &str,
         attempt: u32,
+        outage: &mut Outage,
         interrupt: &mut BoxFuture<'static, ()>,
         sink: &mut Sink<'_>,
     ) -> bool {
-        let wait = backoff(attempt);
-        sink(Event::Offline {
-            thread: id.to_owned(),
-            retry_in: wait.as_secs(),
-        });
+        let now = tokio::time::Instant::now();
+        let end = now + backoff(attempt);
+        let say_at = *outage.since.get_or_insert(now) + QUIET_FOR;
+        if !outage.said && say_at < end {
+            tokio::select! {
+                () = tokio::time::sleep_until(say_at) => {}
+                () = &mut *interrupt => return false,
+            }
+            outage.said = true;
+        }
+        if outage.said {
+            let left = end.saturating_duration_since(tokio::time::Instant::now());
+            sink(Event::Offline {
+                thread: id.to_owned(),
+                retry_in: u64::try_from((left.as_millis() + 500) / 1000).unwrap_or(u64::MAX),
+            });
+        }
         tokio::select! {
-            () = tokio::time::sleep(wait) => true,
+            () = tokio::time::sleep_until(end) => true,
             () = interrupt => false,
         }
     }

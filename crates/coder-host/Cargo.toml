@@ -133,5 +133,9 @@ required-features = ["host"]
 name = "threads"
 required-features = ["host"]
 
+[[test]]
+name = "idle"
+required-features = ["host"]
+
 [lints]
 workspace = true

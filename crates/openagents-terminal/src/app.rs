@@ -995,9 +995,7 @@ impl App {
             )),
             Event::Offline { retry_in, .. } => {
                 if self.offline.is_none() {
-                    self.loud(
-                        "OpenAgents cannot be reached. Trying again until it can; Esc stops.",
-                    );
+                    self.loud("Reconnecting to OpenAgents… (Esc stops)");
                 }
                 self.offline = Some(retry_in);
             }
@@ -1389,7 +1387,7 @@ impl App {
                     .map_or("", |plugin| plugin.name.as_str())
             ),
             Phase::Replying => match self.offline {
-                Some(seconds) => format!("offline · trying again in {seconds}s · Esc stops"),
+                Some(_) => "reconnecting · Esc stops".into(),
                 None => "replying · Esc stops".into(),
             },
             Phase::Working => "working".into(),

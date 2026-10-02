@@ -730,7 +730,74 @@ async fn an_unreachable_relay_is_said_and_retried_until_the_reply_comes() {
         .collect();
     assert_eq!(
         names,
-        ["offline 2", "offline 4", "online", "You said: hello"],
+        ["offline 3", "online", "You said: hello"],
+        "{events:?}"
+    );
+}
+
+/// A blip shorter than `QUIET_FOR`, as a host restarting for an update,
+/// is not said: no offline line, no "connected again" (2026-10-02).
+#[tokio::test(flavor = "current_thread", start_paused = true)]
+async fn a_short_blip_is_not_said() {
+    let dir = tempfile::tempdir().unwrap();
+    let took = Arc::new(Mutex::new(Vec::new()));
+    let host = Restarting {
+        misses: 1,
+        unanswered: false,
+        took: took.clone(),
+    };
+    let client = Client::over_host(
+        Box::new(host),
+        PathBuf::from("/nowhere/control.sock"),
+        options(dir.path()),
+        Arc::new(NoCoder),
+    );
+    let thread = new_id();
+    let mut op = send(&thread, "hello", Start::Settings);
+    if let Op::Send { new, .. } = &mut op {
+        *new = false;
+    }
+    let (events, _, _) = drain(client.stream(op)).await;
+    assert!(
+        events
+            .iter()
+            .all(|event| !matches!(event, Event::Offline { .. } | Event::Online { .. })),
+        "{events:?}"
+    );
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, Event::Accepted { .. }))
+    );
+    assert_eq!(took.lock().unwrap().len(), 1);
+
+    // Mid-reply too: one unanswered read, then the reply streams on.
+    let reads = vec![
+        Some(Snapshot {
+            busy: true,
+            partial: "Wor".into(),
+            ..Snapshot::default()
+        }),
+        None,
+        Some(Snapshot::default()),
+    ];
+    let client = Client::over_host(
+        Box::new(Flaky {
+            reads: reads.into(),
+        }),
+        PathBuf::from("/nowhere/control.sock"),
+        options(dir.path()),
+        Arc::new(NoCoder),
+    );
+    let mut op = send(&thread, "hello", Start::Settings);
+    if let Op::Send { new, .. } = &mut op {
+        *new = false;
+    }
+    let (events, _, _) = drain(client.stream(op)).await;
+    assert!(
+        events
+            .iter()
+            .all(|event| !matches!(event, Event::Offline { .. } | Event::Online { .. })),
         "{events:?}"
     );
 }
@@ -847,7 +914,7 @@ async fn a_host_that_stops_answering_mid_reply_is_read_again() {
         .collect();
     assert_eq!(
         names,
-        ["Wor", "offline 2", "offline 4", "online", "Working on it"],
+        ["Wor", "offline 3", "online", "Working on it"],
         "{events:?}"
     );
 }
@@ -925,11 +992,7 @@ async fn a_send_to_a_restarting_host_goes_through_once_it_answers() {
             _ => None,
         })
         .collect();
-    assert_eq!(
-        names,
-        ["offline 2", "offline 4", "online", "accepted"],
-        "{events:?}"
-    );
+    assert_eq!(names, ["offline 3", "online", "accepted"], "{events:?}");
     assert_eq!(took.lock().unwrap().len(), 1);
 }
 

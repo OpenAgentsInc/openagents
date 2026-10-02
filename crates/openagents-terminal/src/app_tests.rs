@@ -765,8 +765,9 @@ fn a_results_changes_expand_with_ctrl_o() {
     assert_eq!(shown(&mut app), collapsed);
 }
 
-/// When the chat cannot be reached, the screen says so once, the rail
-/// counts to the next try, and the screen says when it is back (#10151).
+/// When the chat cannot be reached, the screen says so once, calmly, and
+/// says when it is back (#10151). The client sends `Offline` only after the
+/// outage has lasted `QUIET_FOR`, so a restart's blip never reaches here.
 #[test]
 fn offline_is_said_once_and_the_rail_shows_the_next_try() {
     let mut app = app();
@@ -782,8 +783,13 @@ fn offline_is_said_once_and_the_rail_shows_the_next_try() {
             retry_in,
         });
     }
-    assert_eq!(app.status(), "offline · trying again in 4s · Esc stops");
-    assert_eq!(shown(&mut app).matches("cannot be reached").count(), 1);
+    assert_eq!(app.status(), "reconnecting · Esc stops");
+    assert_eq!(
+        shown(&mut app)
+            .matches("Reconnecting to OpenAgents… (Esc stops)")
+            .count(),
+        1
+    );
     app.event(Event::Online { thread });
     assert_eq!(app.status(), "replying · Esc stops");
     assert!(shown(&mut app).ends_with("Connected again."));
