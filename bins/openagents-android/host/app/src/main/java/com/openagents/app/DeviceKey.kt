@@ -29,6 +29,9 @@ object DeviceKey {
      */
     enum class Purpose(val id: String, val maxBytes: Int) {
         DEVICE("device", 32), WORLD("world", 32), SPARK("spark", 32), GYM("gym", 65_536), IROH("iroh", 32),
+        // The person's own model provider keys (BYOK, #10176), one each.
+        PROVIDER_OPENROUTER("provider-openrouter", 512), PROVIDER_VERCEL("provider-vercel", 512),
+        PROVIDER_TYPESAFE("provider-typesafe", 512),
     }
     private val lock = Any()
 
@@ -76,6 +79,44 @@ object DeviceKey {
         val bytes = code.toByteArray(Charsets.UTF_8)
         require(bytes.size <= Purpose.GYM.maxBytes) { "The Gym connection exceeds its size limit." }
         write(context, Purpose.GYM, bytes)
+    }
+
+    /** A provider key's purpose, for `openrouter`, `vercel`, or `typesafe`. */
+    private fun providerPurpose(provider: String) = when (provider) {
+        "openrouter" -> Purpose.PROVIDER_OPENROUTER
+        "vercel" -> Purpose.PROVIDER_VERCEL
+        "typesafe" -> Purpose.PROVIDER_TYPESAFE
+        else -> null
+    }
+
+    /**
+     * The person's own model provider keys (BYOK), as Rust's `provider_keys`
+     * request takes them: read only to hand to Rust at start. A key that
+     * can't be read is left out.
+     */
+    fun providerKeys(context: Context): org.json.JSONArray = synchronized(lock) {
+        val keys = org.json.JSONArray()
+        for (provider in listOf("openrouter", "vercel", "typesafe")) {
+            val purpose = providerPurpose(provider) ?: continue
+            val key = runCatching { read(context, purpose) }.getOrNull()?.toString(Charsets.UTF_8) ?: continue
+            keys.put(org.json.JSONObject().put("provider", provider).put("key", key))
+        }
+        keys
+    }
+
+    /** Keeps a provider key once Rust's test accepted it. */
+    fun saveProviderKey(context: Context, provider: String, key: String): Boolean = synchronized(lock) {
+        val purpose = providerPurpose(provider) ?: return false
+        val bytes = key.toByteArray(Charsets.UTF_8)
+        if (bytes.isEmpty() || bytes.size > purpose.maxBytes) return false
+        runCatching { write(context, purpose, bytes) }.isSuccess
+    }
+
+    /** Deletes a provider key and its Keystore key. */
+    fun deleteProviderKey(context: Context, provider: String) = synchronized(lock) {
+        val purpose = providerPurpose(provider) ?: return
+        file(context, purpose).delete()
+        runCatching { KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.deleteEntry(alias(purpose)) }
     }
 
     /** The app's private state directory, excluded from backup. */

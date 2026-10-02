@@ -45,6 +45,7 @@ mod hosted;
 mod outbox;
 mod payees;
 mod playtest;
+mod provider_keys;
 mod router;
 mod spark;
 mod spend;

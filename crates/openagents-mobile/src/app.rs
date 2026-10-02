@@ -526,6 +526,34 @@ pub enum Request {
     },
     /// Revoke the push lease and forget the token at the gateway.
     PushDisable,
+    /// Account > **Your keys** (BYOK, #10176): the keys the host read from
+    /// its protected store at start, and the saved "Use my keys for
+    /// everything" switch. Kept in memory only.
+    ProviderKeys {
+        #[serde(default)]
+        keys: Vec<crate::provider_keys::Stored>,
+        #[serde(default)]
+        mine: bool,
+    },
+    /// A key the person entered in the secure field: tested in the
+    /// background, and kept by the host only when the packet's
+    /// `provider_keys.done` says so.
+    ProviderKeyAdd {
+        provider: String,
+        key: String,
+    },
+    /// Test the stored key again.
+    ProviderKeyTest {
+        provider: String,
+    },
+    /// Remove the key; the host deletes it from its store first.
+    ProviderKeyRemove {
+        provider: String,
+    },
+    /// "Use my keys for everything", on or off.
+    ProviderKeysMine {
+        on: bool,
+    },
     /// Show and read amounts app-wide as `bip177` (₿12,345) or `btc`
     /// (0.00012345 BTC). The choice is saved.
     AmountFormat {
@@ -699,6 +727,9 @@ pub struct Packet {
     /// menu, the chat, or the first run), the cards the chat's surfaces
     /// name, the open sheet, and a share sheet to open.
     pub gym: crate::gym::View,
+    /// Account > **Your keys** (BYOK): each provider's last four
+    /// characters and state, the switch, and the status line. Never a key.
+    pub provider_keys: crate::provider_keys::View,
 }
 
 /// The encrypted store for the Computers record, keyed by the device key.
@@ -779,6 +810,10 @@ pub struct App {
     world: Option<SecretKey>,
     /// Connect a computer (`SCR-22`, `SCR-23`).
     connect: crate::connect::Connect,
+    /// The person's own model provider keys (BYOK), in memory only.
+    provider_keys: crate::provider_keys::ProviderKeys,
+    /// How a provider key is tested.
+    key_check: Arc<dyn crate::provider_keys::Check>,
 }
 
 impl App {
@@ -1072,6 +1107,9 @@ impl App {
             push_status,
             notices,
             world: None,
+            // Tests share the process: only the app installs who pays.
+            provider_keys: crate::provider_keys::ProviderKeys::new(!cfg!(test), crate::wake::ring),
+            key_check: Arc::new(crate::provider_keys::Https),
             connect: crate::connect::Connect::new(
                 pairing
                     .clone()
@@ -1585,6 +1623,17 @@ impl App {
                     self.coder.gym.set_world(world);
                 }
             }
+            Request::ProviderKeys { keys, mine } => self.provider_keys.load(keys, mine),
+            Request::ProviderKeyAdd { provider, key } => {
+                self.provider_keys
+                    .add(&provider, key, &self.key_check, self.runtime.handle())
+            }
+            Request::ProviderKeyTest { provider } => {
+                self.provider_keys
+                    .test(&provider, &self.key_check, self.runtime.handle());
+            }
+            Request::ProviderKeyRemove { provider } => self.provider_keys.remove(&provider),
+            Request::ProviderKeysMine { on } => self.provider_keys.set_mine(on),
             Request::PushToken { token } => self.push_token(Some(&token)),
             Request::PushDisable => self.push_token(None),
         }
@@ -2036,6 +2085,7 @@ impl App {
             push: self.push_status.clone(),
             amounts: self.amounts.view(),
             gym,
+            provider_keys: self.provider_keys.view(),
         }
     }
 

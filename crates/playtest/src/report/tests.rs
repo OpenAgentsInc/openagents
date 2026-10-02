@@ -91,6 +91,7 @@ fn no_screenshot_leaves_the_wallet_or_a_key_screen() {
         (Tab::Wallet, Route::Home),
         (Tab::Wallet, Route::History),
         (Tab::Account, Route::Identity),
+        (Tab::Account, Route::Keys),
         (Tab::Account, Route::Trainer),
     ] {
         let mut sent = report(tab, route);

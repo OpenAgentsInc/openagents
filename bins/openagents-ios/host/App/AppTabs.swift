@@ -28,7 +28,7 @@ enum AppTab: String, CaseIterable {
 
 /// A screen that the Account tab pushes.
 enum AccountRoute: String, Hashable {
-    case trainer, computers, tailnet, identity, device, changelog, playtest, reports
+    case trainer, computers, tailnet, keys, identity, device, changelog, playtest, reports
 }
 
 /// Developer launch arguments that open a tab or an Account screen directly,
@@ -238,6 +238,8 @@ struct AccountTab: View {
                     NavigationLink("Tailnet", value: AccountRoute.tailnet)
                 }
                 Section {
+                    NavigationLink("Your keys", value: AccountRoute.keys)
+                        .accessibilityIdentifier("account-your-keys")
                     NavigationLink("Identity keys", value: AccountRoute.identity)
                     NavigationLink("About this device", value: AccountRoute.device)
                     NavigationLink("Changelog", value: AccountRoute.changelog)
@@ -279,6 +281,7 @@ struct AccountTab: View {
         case .trainer: TrainerScreen(bridge: bridge).navigationTitle("Trainer")
         case .computers: ComputersTab(bridge: bridge) // It sets its own title.
         case .tailnet: TailnetTab(bridge: bridge).navigationTitle("") // The screen draws its own heading.
+        case .keys: YourKeysScreen(bridge: bridge).navigationTitle("Your keys")
         case .identity: IdentityKeysScreen(bridge: bridge).navigationTitle("Identity keys")
         case .device: AboutDeviceScreen(bridge: bridge).navigationTitle("About this device")
         case .changelog: ChangelogScreen(bridge: bridge).navigationTitle("Changelog")

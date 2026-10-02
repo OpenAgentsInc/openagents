@@ -95,6 +95,42 @@ struct ComputersHome: Decodable, Equatable {
     let add_other: String
 }
 
+/// Account > Your keys (BYOK, #10176), as Rust shows it. Never a key: each
+/// row has its last four characters and its last test.
+struct ProviderKeysState: Decodable, Equatable {
+    struct Input: Decodable, Equatable {
+        /// Always `provider_key`: a secure, never-echoed field.
+        let purpose: String
+        let secret: Bool
+        let label: String
+        let prompt: String
+        let max_bytes: Int
+    }
+    struct Row: Decodable, Equatable, Identifiable {
+        let provider: String
+        let name: String
+        let last_four: String?
+        let state: String?
+        let line: String?
+        let checking: Bool
+        let page: String
+        let input: Input
+        var id: String { provider }
+    }
+    /// A key this host collected was tested: keep it or drop it.
+    struct Done: Decodable, Equatable {
+        let provider: String
+        let kept: Bool
+        let ask_mine: Bool
+    }
+    let rows: [Row]
+    let mine: Bool
+    let mine_blocked: String?
+    let status: String
+    let notice: String?
+    let done: [Done]
+}
+
 struct AppPacket: Decodable {
     let schema: String
     let device: String
@@ -136,6 +172,8 @@ struct AppPacket: Decodable {
     /// The Gym in chat: which of the Chat tab's screens shows, the cards
     /// the chat's surfaces name, the open sheet, and a share sheet to open.
     let gym: GymSlot?
+    /// Account > Your keys (BYOK).
+    let provider_keys: ProviderKeysState?
 
     /// The Gym's part, when it decodes.
     var gymPacket: GymPacket? { gym?.value }
@@ -418,6 +456,7 @@ final class MobileBridge: ObservableObject {
         }
         send(["op": "snapshot"])
         gymWorld()
+        providerKeysLoad()
         if handle != nil { watchChanges() }
     }
 
@@ -427,6 +466,56 @@ final class MobileBridge: ObservableObject {
     func gymWorld() {
         guard let secret = try? DeviceKey.loadOrCreateVerse() else { return }
         send(["op": "gym_world", "world_secret_hex": secret.map { String(format: "%02x", $0) }.joined()])
+    }
+
+    /// Keys the person entered that wait for their test, by provider. Held
+    /// in memory only until Rust says to keep or drop them.
+    private var pendingKeys: [String: String] = [:]
+    /// Ask "Use your keys for everything?" after a key was added.
+    @Published var askMine = false
+    /// A key could not be saved in Keychain.
+    @Published var providerKeyError: String?
+
+    /// Hand Rust the person's own provider keys from Keychain and the saved
+    /// switch (BYOK). Rust keeps them in memory only.
+    func providerKeysLoad() {
+        send(["op": "provider_keys", "keys": ProviderKeyStore.all(), "mine": ProviderKeyStore.mine]) {
+            self.providerKeysLoaded = true
+        }
+    }
+    /// Rust holds the saved keys: from here on its switch is the one saved.
+    private var providerKeysLoaded = false
+
+    /// A key from the secure field: Rust tests it, and it goes to Keychain
+    /// only once the provider accepts it.
+    func providerKeyAdd(_ provider: String, key: String) {
+        let key = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty else { return }
+        pendingKeys[provider] = key
+        send(["op": "provider_key_add", "provider": provider, "key": key])
+    }
+
+    func providerKeyTest(_ provider: String) { send(["op": "provider_key_test", "provider": provider]) }
+
+    func providerKeyRemove(_ provider: String) {
+        ProviderKeyStore.delete(provider)
+        send(["op": "provider_key_remove", "provider": provider])
+    }
+
+    func providerKeysMine(_ on: Bool) { send(["op": "provider_keys_mine", "on": on]) }
+
+    /// Keep or drop the keys whose tests finished, and save the switch.
+    private func settleProviderKeys(_ state: ProviderKeysState?) {
+        guard let state else { return }
+        for done in state.done {
+            guard let key = pendingKeys.removeValue(forKey: done.provider) else { continue }
+            if done.kept {
+                let saved = ProviderKeyStore.save(done.provider, key: key)
+                providerKeyError = saved ? nil : "Could not save the key in Keychain. It works until OpenAgents restarts."
+                if done.ask_mine { askMine = true }
+            }
+        }
+        if providerKeysLoaded, ProviderKeyStore.mine != state.mine { ProviderKeyStore.mine = state.mine }
     }
 
     /// A tap on a Gym button, by the ID Rust gave it.
@@ -770,6 +859,7 @@ final class MobileBridge: ObservableObject {
                 return
             }
             self.packet = packet
+            self.settleProviderKeys(packet.provider_keys)
             if let share = packet.gymPacket?.share { self.gymShare = share }
             switch packet.coder_go {
             case "computers": self.computersRequested += 1
@@ -812,6 +902,7 @@ final class MobileBridge: ObservableObject {
                 if let reply, let packet = try? JSONDecoder().decode(AppPacket.self, from: reply),
                    packet.schema == "openagents.mobile.v1" {
                     self.packet = packet
+                    self.settleProviderKeys(packet.provider_keys)
                 }
             }
         }

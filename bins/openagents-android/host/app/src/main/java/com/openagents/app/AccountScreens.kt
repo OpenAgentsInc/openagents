@@ -374,6 +374,95 @@ internal class AccountScreens(private val activity: MainActivity, private val br
         }
     }
 
+    // Your keys (BYOK, #10176)
+
+    /**
+     * The person's own OpenRouter, Vercel AI Gateway, and TypeSafe keys. Rust
+     * tests each key and writes every row; this screen collects a key in a
+     * masked field and never draws one, only its last four characters.
+     */
+    fun yourKeys(state: JSONObject?, refresh: () -> Unit): View {
+        val body = activity.column().apply { setPadding(activity.dp(16), 0, activity.dp(16), activity.dp(24)) }
+        if (state == null) {
+            body.add(note("Your keys load in a moment."))
+            return ScrollView(activity).apply { addView(body) }
+        }
+        val mine = state.optBoolean("mine")
+        val blocked = state.textOrNull("mine_blocked")
+        body.section(null, if (!mine && blocked != null) blocked
+            else "Chat replies, Jev, and search run on your own provider accounts. Nothing falls back to OpenAgents.") {
+            add(note(state.optString("status"), Palette.PRIMARY).apply { tag = "keys-status" }); rowDivider()
+            add(action(if (mine) "Use my keys for everything: on" else "Use my keys for everything: off", "keys-mine",
+                enabled = mine || blocked == null) { bridge.providerKeysMine(!mine) })
+        }
+        for (row in state.optJSONArray("rows")?.objects() ?: emptyList()) {
+            val provider = row.optString("provider")
+            val last = row.textOrNull("last_four")
+            val checking = row.optBoolean("checking")
+            body.section(row.optString("name")) {
+                val word = if (checking) "checking…" else row.textOrNull("state")
+                add(activity.label(listOfNotNull(last?.let { "Ends in $it" } ?: "Not added", word).joinToString(" · "), 16f,
+                    if (last == null) Palette.SECONDARY else Palette.PRIMARY, key = "keys-$provider-row").apply {
+                    setPadding(0, activity.dp(12), 0, activity.dp(12))
+                })
+                row.textOrNull("line")?.let { rowDivider(); add(note(it)) }
+                rowDivider()
+                add(action(if (last == null) "Add key" else "Replace key", "keys-$provider-add") { askKey(row) })
+                if (last != null) {
+                    rowDivider()
+                    add(action("Test", "keys-$provider-test", enabled = !checking) { bridge.providerKeyTest(provider) })
+                    rowDivider()
+                    add(action("Remove", "keys-$provider-remove", Palette.FAILURE) {
+                        confirm("Remove your ${row.optString("name")} key?", "It is deleted from this phone.", "Remove") {
+                            bridge.providerKeyRemove(provider)
+                        }
+                    })
+                }
+                rowDivider()
+                add(action("Make a key at ${row.optString("name")}", null) { activity.openLink(row.optString("page")) })
+            }
+        }
+        (bridge.providerKeyError ?: state.textOrNull("notice"))?.let { body.section(null) { add(note(it).apply { tag = "keys-notice" }) } }
+        return ScrollView(activity).apply { addView(body) }
+    }
+
+    /** "Use your keys for everything?", once, after a key that can answer chat was added. */
+    fun askMine() = confirm("Use your keys for everything?",
+        "Chat replies, Jev, and search will run on your own provider accounts, never on OpenAgents.", "Use my keys") {
+        bridge.providerKeysMine(true)
+    }
+
+    /**
+     * The masked field for one provider's key (`provider_key`): no
+     * suggestions, no autofill, no screenshots while it shows, and the value
+     * goes only to Rust's test.
+     */
+    private fun askKey(row: JSONObject) {
+        val input = row.objectOrNull("input")
+        val max = input?.optInt("max_bytes", 512) ?: 512
+        val field = android.widget.EditText(activity).apply {
+            hint = input?.optString("label") ?: "Key"; tag = "keys-entry"; isSingleLine = true
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD or
+                android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO
+            filters = arrayOf(android.text.InputFilter.LengthFilter(max))
+        }
+        val frame = android.widget.FrameLayout(activity).apply {
+            setPadding(activity.dp(20), activity.dp(8), activity.dp(20), 0); addView(field)
+        }
+        val shown = dialog().setTitle(row.optString("name"))
+            .setMessage(input?.optString("prompt") ?: "")
+            .setView(frame)
+            .setPositiveButton("Add") { _, _ ->
+                bridge.providerKeyAdd(row.optString("provider"), field.text.toString())
+                field.text.clear()
+            }
+            .setNegativeButton("Cancel") { _, _ -> field.text.clear() }
+            .create()
+        shown.window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        shown.show()
+    }
+
     // About this device
 
     fun about(packet: JSONObject?): View {

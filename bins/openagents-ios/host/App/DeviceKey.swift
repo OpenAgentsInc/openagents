@@ -133,3 +133,54 @@ enum DeviceKey {
         return directory
     }
 }
+
+/// The person's own model provider keys (BYOK, #10176): one
+/// this-device-only Keychain item per provider (`openrouter`, `vercel`,
+/// `typesafe`), never synced or backed up, read only to hand to Rust at
+/// start. No key is printed or put in UserDefaults; only the "Use my keys
+/// for everything" switch is, which is not a secret.
+enum ProviderKeyStore {
+    static let providers = ["openrouter", "vercel", "typesafe"]
+    private static let service = "com.openagents.app.provider-key"
+    private static let mineDefault = "provider-keys-mine"
+
+    private static func query(_ provider: String) -> [String: Any] {
+        [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: provider,
+            kSecAttrSynchronizable as String: false,
+        ]
+    }
+
+    /// Every stored key, as Rust's `provider_keys` request takes them.
+    static func all() -> [[String: String]] {
+        providers.compactMap { provider in
+            var item = query(provider)
+            item[kSecReturnData as String] = true
+            var result: CFTypeRef?
+            guard SecItemCopyMatching(item as CFDictionary, &result) == errSecSuccess,
+                  let data = result as? Data, let key = String(data: data, encoding: .utf8) else { return nil }
+            return ["provider": provider, "key": key]
+        }
+    }
+
+    static func save(_ provider: String, key: String) -> Bool {
+        guard providers.contains(provider), let data = key.data(using: .utf8) else { return false }
+        SecItemDelete(query(provider) as CFDictionary)
+        var item = query(provider)
+        item[kSecValueData as String] = data
+        item[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+        return SecItemAdd(item as CFDictionary, nil) == errSecSuccess
+    }
+
+    static func delete(_ provider: String) {
+        guard providers.contains(provider) else { return }
+        SecItemDelete(query(provider) as CFDictionary)
+    }
+
+    static var mine: Bool {
+        get { UserDefaults.standard.bool(forKey: mineDefault) }
+        set { UserDefaults.standard.set(newValue, forKey: mineDefault) }
+    }
+}

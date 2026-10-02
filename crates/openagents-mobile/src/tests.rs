@@ -1184,3 +1184,38 @@ fn live_coder_timings() {
         }
     }
 }
+
+/// Account > Your keys (BYOK, #10176): the host's stored keys and switch
+/// reach the packet as last four characters and the status line, never as
+/// a key, and "Use my keys for everything" with only a TypeSafe key stays
+/// off with the one line.
+#[test]
+fn your_keys_reach_the_packet_without_the_key() {
+    let (mut app, _dir) = app();
+    let request: Request = serde_json::from_str(
+        r#"{"op":"provider_keys","keys":[{"provider":"openrouter","key":"sk-or-v1-secretsecretABCD"}],"mine":true}"#,
+    )
+    .expect("request");
+    let packet = app.call(request);
+    let text = serde_json::to_string(&packet).expect("packet");
+    assert!(!text.contains("secretsecret"), "a key reached the packet");
+    let keys = packet.provider_keys;
+    assert!(keys.mine);
+    assert_eq!(keys.status, "Running on your keys.");
+    assert_eq!(keys.rows[0].last_four.as_deref(), Some("ABCD"));
+    let request: Request =
+        serde_json::from_str(r#"{"op":"provider_key_remove","provider":"openrouter"}"#)
+            .expect("request");
+    let keys = app.call(request).provider_keys;
+    assert!(!keys.mine, "removing the last chat key returns to ours");
+    let request: Request = serde_json::from_str(
+        r#"{"op":"provider_keys","keys":[{"provider":"typesafe","key":"ts-key-1234"}],"mine":false}"#,
+    )
+    .expect("request");
+    app.call(request);
+    let request: Request =
+        serde_json::from_str(r#"{"op":"provider_keys_mine","on":true}"#).expect("request");
+    let keys = app.call(request).provider_keys;
+    assert!(!keys.mine);
+    assert_eq!(keys.notice.as_deref(), Some(model_access::TYPESAFE_ONLY));
+}

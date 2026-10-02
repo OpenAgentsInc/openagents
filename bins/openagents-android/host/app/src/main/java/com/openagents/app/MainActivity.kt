@@ -45,7 +45,7 @@ enum class AppTab(val title: String, val icon: Int) {
 
 /** A screen that the Account tab opens. */
 enum class AccountRoute(val title: String) {
-    TRAINER("Trainer"), COMPUTERS("Computers"), TAILNET("Tailnet"), IDENTITY("Identity keys"), DEVICE("About this device"), CHANGELOG("Changelog"),
+    TRAINER("Trainer"), COMPUTERS("Computers"), TAILNET("Tailnet"), KEYS("Your keys"), IDENTITY("Identity keys"), DEVICE("About this device"), CHANGELOG("Changelog"),
     PLAYTEST("Playtest"), REPORTS("My reports"),
 }
 
@@ -76,6 +76,9 @@ class MainActivity : ComponentActivity() {
     private val main = Handler(Looper.getMainLooper())
     private var tab = AppTab.CODER
     private var route: AccountRoute? = null
+    /** The Your keys section last drawn, and the add-key asks already shown. */
+    private var shownKeys: String? = null
+    private var askMineShown = 0
     private var resumed = false
     private var ticks = 0
     /** The Coder tab's requests to open Account > Computers, as last handled. */
@@ -500,6 +503,7 @@ class MainActivity : ComponentActivity() {
                 redrawAccountScreen()
                 account.load { redrawAccountScreen() }
             }
+            AccountRoute.KEYS -> redrawAccountScreen()
             AccountRoute.TRAINER -> {
                 redrawAccountScreen()
                 account.loadTrainer(xpPreview) { redrawAccountScreen() }
@@ -527,6 +531,10 @@ class MainActivity : ComponentActivity() {
         val view = when (route) {
             AccountRoute.IDENTITY -> account.identity { redrawAccountScreen() }
             AccountRoute.TRAINER -> account.trainer(xpPreview) { redrawAccountScreen() }
+            AccountRoute.KEYS -> {
+                shownKeys = bridge.packet?.objectOrNull("provider_keys")?.toString() + bridge.providerKeyError
+                account.yourKeys(bridge.packet?.objectOrNull("provider_keys")) { redrawAccountScreen() }
+            }
             AccountRoute.DEVICE -> account.about(bridge.packet)
             AccountRoute.CHANGELOG -> account.changelog()
             AccountRoute.PLAYTEST -> playtest.screen({ redrawAccountScreen() }, { report() }, { open(AccountRoute.REPORTS) })
@@ -553,7 +561,7 @@ class MainActivity : ComponentActivity() {
                 "Report a problem" to "account-report" to { report() },
             )), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(24) })
             addView(group(listOf(AccountRoute.COMPUTERS, AccountRoute.TAILNET).map { it.title to "account-${it.name.lowercase()}" to { open(it) } }))
-            addView(group(listOf(AccountRoute.IDENTITY, AccountRoute.DEVICE, AccountRoute.CHANGELOG).map {
+            addView(group(listOf(AccountRoute.KEYS, AccountRoute.IDENTITY, AccountRoute.DEVICE, AccountRoute.CHANGELOG).map {
                 it.title to "account-${it.name.lowercase()}" to { open(it) } }),
                 LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(24) })
             addView(group(listOf(
@@ -691,6 +699,11 @@ class MainActivity : ComponentActivity() {
             if (bridge.attachmentsEnabled) pickImage.launch(androidx.activity.result.PickVisualMediaRequest(
                 ActivityResultContracts.PickVisualMedia.ImageOnly))
         }
+        // A key that can answer chat was added: ask once whether to use it for everything.
+        if (bridge.askMineRequests != askMineShown) {
+            askMineShown = bridge.askMineRequests
+            account.askMine()
+        }
         // An offer under a chat reply opened another screen.
         if (bridge.screenRequests != screensShown) {
             screensShown = bridge.screenRequests
@@ -748,6 +761,7 @@ class MainActivity : ComponentActivity() {
                 routeProgress?.visibility = if (packet?.optBoolean("tailnet_loading") == true) View.VISIBLE else View.GONE
             }
             AccountRoute.DEVICE -> if (routeBody?.findViewWithTag<View>("device-key")?.contentDescription != packet?.textOrNull("device")) redrawAccountScreen()
+            AccountRoute.KEYS -> if (packet?.objectOrNull("provider_keys")?.toString() + bridge.providerKeyError != shownKeys) redrawAccountScreen()
             AccountRoute.IDENTITY, AccountRoute.CHANGELOG, AccountRoute.TRAINER, AccountRoute.PLAYTEST, AccountRoute.REPORTS -> Unit
             null -> Unit
         }

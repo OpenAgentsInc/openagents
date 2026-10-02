@@ -499,3 +499,130 @@ struct TrainerScreen: View {
         .onChange(of: scenePhase) { _, phase in if phase != .active { nsec = nil } }
     }
 }
+
+/// Account > Your keys (BYOK, #10176): the person's own OpenRouter, Vercel
+/// AI Gateway, and TypeSafe keys. Rust tests each key and writes every row;
+/// this screen collects a key in a secure field (never shown, never kept in
+/// a draft) and never draws one, only its last four characters.
+struct YourKeysScreen: View {
+    @ObservedObject var bridge: MobileBridge
+    @State private var adding: ProviderKeysState.Row?
+    @State private var removing: ProviderKeysState.Row?
+
+    private var state: ProviderKeysState? { bridge.packet?.provider_keys }
+
+    var body: some View {
+        List {
+            if let state {
+                Section {
+                    Text(state.status)
+                        .accessibilityIdentifier("keys-status")
+                    Toggle("Use my keys for everything", isOn: Binding(
+                        get: { state.mine },
+                        set: { bridge.providerKeysMine($0) }))
+                        .disabled(!state.mine && state.mine_blocked != nil)
+                        .accessibilityIdentifier("keys-mine")
+                } footer: {
+                    Text(state.mine_blocked.map { state.mine ? "" : $0 } ?? "Chat replies, Jev, and search run on your own provider accounts. Nothing falls back to OpenAgents.")
+                }
+                ForEach(state.rows) { row in
+                    Section {
+                        HStack {
+                            Text(row.last_four.map { "Ends in \($0)" } ?? "Not added")
+                                .foregroundStyle(row.last_four == nil ? .secondary : .primary)
+                            Spacer()
+                            if row.checking {
+                                ProgressView()
+                            } else if let word = row.state {
+                                Text(word).foregroundStyle(word == "works" ? .green : .orange)
+                            }
+                        }
+                        if let line = row.line {
+                            Text(line).font(.footnote).foregroundStyle(.secondary)
+                        }
+                        Button(row.last_four == nil ? "Add key" : "Replace key", systemImage: "key") { adding = row }
+                            .accessibilityIdentifier("keys-\(row.provider)-add")
+                        if row.last_four != nil {
+                            Button("Test", systemImage: "checkmark.circle") { bridge.providerKeyTest(row.provider) }
+                                .disabled(row.checking)
+                                .accessibilityIdentifier("keys-\(row.provider)-test")
+                            Button("Remove", systemImage: "trash", role: .destructive) { removing = row }
+                                .accessibilityIdentifier("keys-\(row.provider)-remove")
+                        }
+                        if let url = URL(string: row.page) {
+                            Link("Make a key at \(row.name)", destination: url).font(.footnote)
+                        }
+                    } header: {
+                        Text(row.name)
+                    }
+                }
+                if let notice = bridge.providerKeyError ?? state.notice {
+                    Section { Text(notice).font(.footnote).accessibilityIdentifier("keys-notice") }
+                }
+            } else {
+                Text("Your keys load in a moment.").foregroundStyle(.secondary)
+            }
+        }
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(Color.black.ignoresSafeArea())
+        .sheet(item: $adding) { row in
+            ProviderKeyEntry(row: row) { key in bridge.providerKeyAdd(row.provider, key: key) }
+        }
+        .confirmationDialog("Remove your \(removing?.name ?? "") key?", isPresented: Binding(
+            get: { removing != nil }, set: { if !$0 { removing = nil } }), titleVisibility: .visible) {
+            Button("Remove", role: .destructive) {
+                if let row = removing { bridge.providerKeyRemove(row.provider) }
+                removing = nil
+            }
+        }
+        .alert("Use your keys for everything?", isPresented: $bridge.askMine) {
+            Button("Use my keys") { bridge.providerKeysMine(true) }
+            Button("Not now", role: .cancel) {}
+        } message: {
+            Text("Chat replies, Jev, and search will run on your own provider accounts, never on OpenAgents.")
+        }
+    }
+}
+
+/// The secure field for one provider's key (`provider_key`): it never shows
+/// what was typed or pasted, offers no autofill or suggestions, and forgets
+/// the value when it closes.
+private struct ProviderKeyEntry: View {
+    let row: ProviderKeysState.Row
+    let submit: (String) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var key = ""
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    SecureField(row.input.label, text: $key)
+                        .textContentType(.password)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                        .privacySensitive()
+                        .accessibilityIdentifier("keys-entry")
+                } footer: {
+                    Text(row.input.prompt)
+                }
+            }
+            .navigationTitle(row.name)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { key = ""; dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Add") {
+                        submit(key)
+                        key = ""
+                        dismiss()
+                    }
+                    .disabled(key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                              || key.utf8.count > row.input.max_bytes)
+                }
+            }
+        }
+        .onDisappear { key = "" }
+    }
+}

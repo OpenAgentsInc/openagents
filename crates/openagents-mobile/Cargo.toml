@@ -12,6 +12,10 @@ crate-type = ["rlib", "staticlib", "cdylib"]
 [dependencies]
 openagents-chat-app = { path = "../openagents-chat-app" }
 openagents-chat = { path = "../openagents-chat" }
+# Account > Your keys (BYOK, #10176): who pays and the key tests.
+model-access = { path = "../model-access" }
+# The key tests' one HTTPS call each, on the app's runtime.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 # Coder's Computers screens, live host client, encrypted store, and phone
 # terminal screen: enrollment, presence, direct channels, and commands.
 coder-computers = { path = "../coder-computers" }

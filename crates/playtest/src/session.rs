@@ -60,6 +60,9 @@ pub enum Route {
     Trainer,
     Computers,
     Tailnet,
+    /// Account: Your keys, where the person enters their own model provider
+    /// keys (BYOK).
+    Keys,
     /// Account: Identity keys, which can reveal the device's nsec.
     Identity,
     /// Account: About this device.
@@ -93,7 +96,12 @@ impl Route {
         tab == Tab::Wallet
             || matches!(
                 self,
-                Self::Identity | Self::Trainer | Self::Send | Self::Receive | Self::Recovery
+                Self::Identity
+                    | Self::Keys
+                    | Self::Trainer
+                    | Self::Send
+                    | Self::Receive
+                    | Self::Recovery
             )
     }
 }
@@ -342,6 +350,7 @@ mod tests {
     fn wallet_and_key_screens_are_sensitive() {
         assert!(Route::Home.sensitive(Tab::Wallet));
         assert!(Route::Identity.sensitive(Tab::Account));
+        assert!(Route::Keys.sensitive(Tab::Account));
         assert!(Route::Trainer.sensitive(Tab::Account));
         assert!(!Route::Gym.sensitive(Tab::Verse));
         assert!(!Route::Changelog.sensitive(Tab::Account));

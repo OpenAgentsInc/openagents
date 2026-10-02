@@ -90,6 +90,7 @@ class MobileBridge(private val context: Context, private val computersFixture: B
         }
         send(json("op" to "snapshot"))
         gymWorld()
+        providerKeysLoad()
         watchChanges()
     }
 
@@ -101,6 +102,59 @@ class MobileBridge(private val context: Context, private val computersFixture: B
     fun gymWorld() {
         val secret = try { DeviceKey.loadOrCreate(context, DeviceKey.Purpose.WORLD) } catch (_: Exception) { return }
         send(json("op" to "gym_world", "world_secret_hex" to secret))
+    }
+
+    // Account > Your keys (BYOK, #10176)
+
+    private val keyPrefs get() = context.getSharedPreferences("provider_keys", Context.MODE_PRIVATE)
+    /** Keys the person entered that wait for their test, by provider; in memory only. */
+    private val pendingKeys = HashMap<String, String>()
+    /** Rust holds the saved keys: from here on its switch is the one saved. */
+    private var providerKeysLoaded = false
+    /** Counts the asks for "Use your keys for everything?" after a key was added. */
+    var askMineRequests = 0; private set
+    /** A key could not be saved in the Keystore. */
+    var providerKeyError: String? = null; private set
+
+    /** Hands Rust the person's own provider keys and the saved switch; Rust keeps them in memory only. */
+    fun providerKeysLoad() {
+        val keys = try { DeviceKey.providerKeys(context) } catch (_: Exception) { org.json.JSONArray() }
+        send(json("op" to "provider_keys", "keys" to keys, "mine" to keyPrefs.getBoolean("mine", false))) {
+            providerKeysLoaded = true
+        }
+    }
+
+    /** A key from the secure field: Rust tests it, and it is kept only once the provider accepts it. */
+    fun providerKeyAdd(provider: String, key: String) {
+        val trimmed = key.trim()
+        if (trimmed.isEmpty()) return
+        pendingKeys[provider] = trimmed
+        send(json("op" to "provider_key_add", "provider" to provider, "key" to trimmed))
+    }
+
+    fun providerKeyTest(provider: String) = send(json("op" to "provider_key_test", "provider" to provider))
+
+    fun providerKeyRemove(provider: String) {
+        DeviceKey.deleteProviderKey(context, provider)
+        send(json("op" to "provider_key_remove", "provider" to provider))
+    }
+
+    fun providerKeysMine(on: Boolean) = send(json("op" to "provider_keys_mine", "on" to on))
+
+    /** Keeps or drops the keys whose tests finished, and saves the switch. */
+    private fun settleProviderKeys(state: JSONObject?) {
+        state ?: return
+        for (done in state.optJSONArray("done")?.objects() ?: emptyList()) {
+            val provider = done.optString("provider")
+            val key = pendingKeys.remove(provider) ?: continue
+            if (done.optBoolean("kept")) {
+                providerKeyError = if (DeviceKey.saveProviderKey(context, provider, key)) null
+                    else "Could not save the key on this phone. It works until OpenAgents restarts."
+                if (done.optBoolean("ask_mine")) askMineRequests += 1
+            }
+        }
+        val mine = state.optBoolean("mine")
+        if (providerKeysLoaded && keyPrefs.getBoolean("mine", false) != mine) keyPrefs.edit().putBoolean("mine", mine).apply()
     }
 
     /** A tap on a Gym button, by the ID Rust gave it. */
@@ -433,6 +487,7 @@ class MobileBridge(private val context: Context, private val computersFixture: B
         }
         packet = next
         failure = null
+        settleProviderKeys(next.objectOrNull("provider_keys"))
         nearby.hold(next.optBoolean("nearby_listening"))
         next.objectOrNull("gym")?.textOrNull("share")?.let { gymShare = it }
         when (val go = next.textOrNull("coder_go")) {
