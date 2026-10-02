@@ -73,6 +73,15 @@ steps in the workspace `NEEDS_OWNER.md`, say in the closing comment what the
 owner still has to do, and close the issue. If the owner's step later finds a
 defect, open a new issue for it.
 
+Keep the OpenAgents project board
+(<https://github.com/orgs/OpenAgentsInc/projects/19>, `docs/project-board.md`)
+current: when you start an issue, claim it and run
+`scripts/project-status.sh N in-progress`; when it is blocked, run
+`scripts/project-status.sh N blocked --blocked-by "B"` naming the blocker; when
+it is done, the closing commit closes it and the issue becomes Done
+(`scripts/project-status.sh N done`, or `scripts/project-sync.sh`). A new issue
+goes on the board with its blockers.
+
 The full workspace gate (`./scripts/verify-rust.sh --release`) is for full
 releases only. Never require it before ordinary issue development, integration,
 commits, pushes, or closing an issue whose own acceptance checks pass. Never
