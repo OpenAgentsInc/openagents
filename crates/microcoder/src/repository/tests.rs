@@ -2575,7 +2575,12 @@ mod local_run {
                 "main did not move"
             );
             let comments = github.comments.lock().unwrap().clone();
-            assert_eq!(comments.len(), 2);
+            // Failed runs also post the short claim release from #10144.
+            assert_eq!(comments.len(), 3, "{comments:#?}");
+            assert_eq!(
+                comments[2],
+                format!("Coder released its claim; nothing landed. {RELEASE_MARK}")
+            );
             assert!(
                 comments[1].contains("did not land a change"),
                 "{}",
@@ -2736,7 +2741,12 @@ mod local_run {
                 crate::run::STUCK_STEPS
             );
             let comments = github.comments.lock().unwrap().clone();
-            assert_eq!(comments.len(), 2);
+            // Failed runs also post the short claim release from #10144.
+            assert_eq!(comments.len(), 3, "{comments:#?}");
+            assert_eq!(
+                comments[2],
+                format!("Coder released its claim; nothing landed. {RELEASE_MARK}")
+            );
             let failure = &comments[1];
             assert!(failure.contains("stuck"), "{failure}");
             assert!(failure.contains("without progress"), "{failure}");
