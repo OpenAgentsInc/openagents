@@ -45,6 +45,11 @@ const THREADS_MAX: usize = 200;
 
 /// What a piece of work off the loop sends back.
 enum Done {
+    Rail(
+        String,
+        crate::rail::Refresh,
+        Vec<(String, client::Progress)>,
+    ),
     Stopped(Result<String, String>),
     Invite(Result<Invite, String>),
     Paired(Result<Option<String>, String>),
@@ -77,6 +82,8 @@ struct Screen {
     folder: Option<PathBuf>,
     home: PathBuf,
     version: String,
+    rail_refresh: Option<(String, crate::rail::Refresh)>,
+    rail_polled: Option<std::time::Instant>,
     quit: bool,
 }
 
@@ -177,6 +184,8 @@ async fn prepare(launch: Launch, ladder: Ladder) -> (Screen, mpsc::UnboundedRece
         folder,
         home,
         version,
+        rail_refresh: Some((thread.clone(), crate::rail::Refresh::default())),
+        rail_polled: None,
         quit: false,
     };
     if !fresh {
@@ -253,6 +262,7 @@ async fn drive(
             }
             _ = tick.tick() => {
                 screen.app.tick = screen.app.tick.wrapping_add(1);
+                screen.refresh_rail();
                 dirty = screen.app.animating()
                     && coder_terminal::grok_spinner::turns(screen.app.tick);
             }
@@ -283,6 +293,44 @@ async fn next(events: &mut Option<mpsc::UnboundedReceiver<Event>>) -> Option<Eve
 }
 
 impl Screen {
+    /// Read all listed runs without borrowing the client that follows one.
+    fn refresh_rail(&mut self) {
+        if self.app.delegations.is_empty()
+            || self
+                .rail_polled
+                .is_some_and(|at| at.elapsed() < Duration::from_secs(1))
+        {
+            return;
+        }
+        let reader = self
+            .client
+            .as_ref()
+            .map(|client| client.stopper(&self.app.thread))
+            .or_else(|| self.stopper.clone());
+        let Some(reader) = reader else {
+            return;
+        };
+        let Some((thread, mut refresh)) = self.rail_refresh.take() else {
+            return;
+        };
+        self.rail_polled = Some(std::time::Instant::now());
+        let current = self.app.thread.clone();
+        if thread != current {
+            refresh = crate::rail::Refresh::default();
+        }
+        let tasks = self
+            .app
+            .delegations
+            .iter()
+            .map(|held| held.task.clone())
+            .collect::<Vec<_>>();
+        let done = self.done.clone();
+        tokio::task::spawn_blocking(move || {
+            let states = refresh.poll(&tasks, |task| reader.follow(task, &current));
+            let _ = done.send(Done::Rail(current, refresh, states));
+        });
+    }
+
     /// Run one action.
     async fn act(&mut self, action: Action) {
         match action {
@@ -675,6 +723,12 @@ impl Screen {
 
     fn done(&mut self, result: Done) {
         match result {
+            Done::Rail(thread, refresh, states) => {
+                if thread == self.app.thread {
+                    self.app.refresh_rail(states);
+                }
+                self.rail_refresh = Some((thread, refresh));
+            }
             Done::Steered(result) => self.app.steered(result),
             Done::File(Ok(Some(file))) => self.app.show_file(file),
             // A click on a word that names no file here does nothing.

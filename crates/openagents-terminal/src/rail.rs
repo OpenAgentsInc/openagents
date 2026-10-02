@@ -256,3 +256,54 @@ impl App {
         !self.rail_numbers().is_empty()
     }
 }
+
+/// Persistent readers keep status refreshes from replaying each run's log.
+#[derive(Default)]
+pub(crate) struct Refresh {
+    readers: std::collections::HashMap<String, Box<dyn openagents_chat::client::Follow>>,
+}
+
+impl Refresh {
+    pub(crate) fn poll(
+        &mut self,
+        tasks: &[String],
+        mut follow: impl FnMut(&str) -> Box<dyn openagents_chat::client::Follow>,
+    ) -> Vec<(String, openagents_chat::client::Progress)> {
+        self.readers.retain(|task, _| tasks.contains(task));
+        tasks
+            .iter()
+            .filter_map(|task| {
+                let reader = self
+                    .readers
+                    .entry(task.clone())
+                    .or_insert_with(|| follow(task));
+                // An unreadable or busy store is not evidence that a run ended.
+                reader.poll().ok().map(|(_, state)| (task.clone(), state))
+            })
+            .collect()
+    }
+}
+
+impl App {
+    pub(crate) fn refresh_rail(
+        &mut self,
+        states: Vec<(String, openagents_chat::client::Progress)>,
+    ) {
+        for (task, state) in states {
+            let Some(held) = self.delegations.iter_mut().find(|held| held.task == task) else {
+                continue;
+            };
+            let running = state == openagents_chat::client::Progress::Running;
+            if running {
+                if !held.running {
+                    held.since = self.tick;
+                }
+                held.running = true;
+                held.ended = None;
+            } else {
+                held.running = false;
+                held.ended.get_or_insert(self.tick);
+            }
+        }
+    }
+}

@@ -1627,3 +1627,85 @@ fn alt_and_a_number_or_open_and_a_number_opens_one() {
     assert!(app.run_view.is_none());
     assert!(shown(&mut app).contains("There are 3 Coder runs: /open 1 to /open 3."));
 }
+
+#[test]
+fn unfollowed_runs_refresh_from_the_store_and_expire_without_end_events() {
+    use openagents_chat::client::{Follow, Progress as State};
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex};
+
+    struct StoreReader {
+        task: String,
+        store: Arc<Mutex<HashMap<String, Result<State, String>>>>,
+    }
+    impl Follow for StoreReader {
+        fn poll(&mut self) -> Result<(Vec<CoderLine>, State), String> {
+            self.store.lock().unwrap()[&self.task]
+                .clone()
+                .map(|state| (Vec::new(), state))
+        }
+    }
+    let store = Arc::new(Mutex::new(HashMap::from([
+        ("t1".into(), Ok(State::Running)),
+        ("t2".into(), Ok(State::Running)),
+        ("t3".into(), Ok(State::Running)),
+    ])));
+    let mut refresh = crate::rail::Refresh::default();
+    let mut created = 0;
+    let mut poll = |refresh: &mut crate::rail::Refresh| {
+        refresh.poll(&["t1".into(), "t2".into(), "t3".into()], |task| {
+            created += 1;
+            Box::new(StoreReader {
+                task: task.into(),
+                store: store.clone(),
+            })
+        })
+    };
+    let mut app = three_runs();
+    app.task = Some("t3".into());
+    app.refresh_rail(poll(&mut refresh));
+    assert!(app.delegations.iter().all(|held| held.running));
+    store.lock().unwrap().insert("t2".into(), Ok(State::Ended));
+    store
+        .lock()
+        .unwrap()
+        .insert("t1".into(), Err("store busy".into()));
+    app.tick = 30;
+    app.refresh_rail(poll(&mut refresh));
+    assert!(
+        app.delegations[0].running,
+        "read failures must not end a run"
+    );
+    assert!(!app.delegations[1].running);
+    assert_eq!(app.delegations[1].ended, Some(30));
+    let shown = frame(&mut app, 80, 14);
+    let row = shown
+        .lines()
+        .find(|line| line.contains("2 Claude Code"))
+        .unwrap();
+    assert!(row.contains("done"), "{shown}");
+    assert_eq!(app.rail_rows()[1].elapsed, None);
+    app.tick += crate::rail::KEPT_AFTER_DONE;
+    app.refresh_rail(poll(&mut refresh));
+    assert_eq!(
+        app.delegations[1].ended,
+        Some(30),
+        "polls must not reset expiry"
+    );
+    assert_eq!(app.rail_numbers(), vec![1, 2, 3]);
+    app.tick += 1;
+    app.refresh_rail(poll(&mut refresh));
+    assert_eq!(app.rail_numbers(), vec![1, 3]);
+    store
+        .lock()
+        .unwrap()
+        .insert("t2".into(), Ok(State::Running));
+    app.refresh_rail(poll(&mut refresh));
+    assert_eq!(app.rail_numbers(), vec![1, 2, 3]);
+    assert_eq!(app.delegations[1].ended, None);
+    assert_eq!(app.delegations[1].since, app.tick);
+    assert_eq!(
+        created, 3,
+        "refreshes reuse readers instead of replaying logs"
+    );
+}

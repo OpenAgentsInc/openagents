@@ -549,6 +549,11 @@ pub struct Stopper {
 }
 
 impl Stopper {
+    /// Read a task's events and real progress on a connection of its own.
+    pub fn follow(&self, task: &str, thread: &str) -> Box<dyn Follow> {
+        self.coder.follow(&self.store, task, thread, None)
+    }
+
     /// Ask `task` to stop, in the words `chat stop` uses. Blocking.
     ///
     /// # Errors
