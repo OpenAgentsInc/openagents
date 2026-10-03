@@ -6339,6 +6339,36 @@
             "effect": "publishes",
             "runs_on": "connected_computer"
           }
+        },
+        {
+          "name": "list",
+          "leaf": {
+            "path": [
+              "boat",
+              "list"
+            ],
+            "usage": [
+              "list [--all]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "list"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "all",
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "This account's sandboxes: name, ID, state, machine size, created, and when Boat archives it. Archived ones only with --all. A running sandbox bills; stopped and archived do not.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
         }
       ],
       "options": [
@@ -6351,6 +6381,14 @@
             "default",
             "large"
           ],
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "all",
+          "value": "A",
+          "open": true,
           "optional": true,
           "repeated": true
         }

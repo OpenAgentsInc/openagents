@@ -29,6 +29,9 @@ pub(crate) const USAGE: &str = "usage: openagents boat COMMAND
   stop NAME      Stop the sandbox NAME; a stopped sandbox costs nothing.
   delete NAME|ID Delete the sandbox NAME, or the sandbox ID (bx_...), such as
                  one a Boat issue run kept stopped after it failed.
+  list [--all]   This account's sandboxes: name, ID, state, machine size,
+                 created, and when Boat archives it. Archived ones only with
+                 --all. A running sandbox bills; stopped and archived do not.
 The first run for a NAME creates a sandbox (default large, four-hour
 lifetime, no account credentials) and keeps its id in ~/.openagents/boat/NAME.
 The key is BOAT_API_KEY, or Secret Manager boat-api-key through gcloud.
@@ -42,6 +45,7 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("run", Effect::Spends),
     Declared::computer("stop", Effect::Publishes),
     Declared::computer("delete", Effect::Publishes),
+    Declared::computer("list", Effect::ReadOnly),
 ];
 
 const PATCH_PATH: &str = "/tmp/oa-change.patch";
@@ -68,6 +72,11 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         "delete" => match rest {
             [target] if valid_name(target) => crate::runtime().block_on(delete(output, target)),
             _ => output.usage("boat", "delete takes one NAME or sandbox ID", USAGE),
+        },
+        "list" => match rest {
+            [] => crate::runtime().block_on(list(output, false)),
+            [flag] if flag == "--all" => crate::runtime().block_on(list(output, true)),
+            _ => output.usage("boat", "list takes only --all", USAGE),
         },
         other => output.usage("boat", &format!("unknown command `{other}`"), USAGE),
     }
@@ -566,9 +575,177 @@ async fn delete(output: &Output, target: &str) -> u8 {
     }
 }
 
+/// `list [--all]`: every sandbox on the account, named from
+/// `~/.openagents/boat/NAME` where this computer made it.
+async fn list(output: &Output, all: bool) -> u8 {
+    let client = match boat::Client::from_env().await {
+        Ok(client) => client,
+        Err(e) => return output.fail("boat list", &format!("no Boat key: {e}")),
+    };
+    let mut sandboxes = Vec::new();
+    let mut cursor = None;
+    loop {
+        let page = match client
+            .sandboxes(&SandboxesParams {
+                limit: Some(100),
+                cursor: cursor.take(),
+                ..Default::default()
+            })
+            .await
+        {
+            Ok(page) => page,
+            Err(e) => return output.fail("boat list", &e.to_string()),
+        };
+        sandboxes.extend(page.sandboxes);
+        match page.page_info {
+            Some(info) if info.has_more && info.next_cursor.is_some() => {
+                cursor = info.next_cursor;
+            }
+            _ => break,
+        }
+    }
+    let names = local_names();
+    let rows: Vec<Row> = sandboxes
+        .iter()
+        .filter(|sandbox| all || sandbox.state != "archived")
+        .map(|sandbox| Row::of(sandbox, &names))
+        .collect();
+    let hidden = sandboxes.len() - rows.len();
+    output.emit(
+        &json!({ "sandboxes": rows, "archived_hidden": hidden }),
+        |_| list_text(&rows, hidden),
+    );
+    0
+}
+
+#[derive(Debug, serde::Serialize, PartialEq, Eq)]
+struct Row {
+    name: Option<String>,
+    id: String,
+    state: String,
+    size: Option<String>,
+    created: Option<String>,
+    archive_after: Option<String>,
+    bills: bool,
+}
+
+impl Row {
+    fn of(sandbox: &Sandbox, names: &std::collections::BTreeMap<String, String>) -> Self {
+        Self {
+            name: names.get(&sandbox.id).cloned(),
+            id: sandbox.id.clone(),
+            state: sandbox.state.clone(),
+            size: sandbox.type_.clone(),
+            created: sandbox.created_at.as_ref().cloned(),
+            archive_after: sandbox.archive_after.as_ref().cloned(),
+            bills: !matches!(sandbox.state.as_str(), "stopped" | "archived" | "deleted"),
+        }
+    }
+}
+
+/// Sandbox id -> the NAME this computer keeps it under.
+fn local_names() -> std::collections::BTreeMap<String, String> {
+    let mut names = std::collections::BTreeMap::new();
+    let Ok(entries) = std::fs::read_dir(state_dir()) else {
+        return names;
+    };
+    for entry in entries.flatten() {
+        let Some(name) = entry.file_name().to_str().map(str::to_owned) else {
+            continue;
+        };
+        if let Ok(id) = std::fs::read_to_string(entry.path()) {
+            let id = id.trim();
+            if !id.is_empty() {
+                names.insert(id.to_owned(), name);
+            }
+        }
+    }
+    names
+}
+
+fn list_text(rows: &[Row], hidden: usize) -> String {
+    let mut lines = Vec::new();
+    if rows.is_empty() {
+        lines.push("No sandboxes.".to_owned());
+    } else {
+        lines.push(format!(
+            "{:<16} {:<16} {:<10} {:<8} {:<20} {}",
+            "NAME", "ID", "STATE", "SIZE", "CREATED", "ARCHIVES"
+        ));
+        for row in rows {
+            lines.push(format!(
+                "{:<16} {:<16} {:<10} {:<8} {:<20} {}",
+                row.name.as_deref().unwrap_or("-"),
+                row.id,
+                if row.bills {
+                    format!("{}*", row.state)
+                } else {
+                    row.state.clone()
+                },
+                row.size.as_deref().unwrap_or("-"),
+                short_time(row.created.as_deref()),
+                short_time(row.archive_after.as_deref()),
+            ));
+        }
+        if rows.iter().any(|row| row.bills) {
+            lines.push(
+                "* bills while in this state; `openagents boat stop NAME` or `delete ID` ends it."
+                    .to_owned(),
+            );
+        }
+    }
+    if hidden > 0 {
+        lines.push(format!(
+            "{hidden} archived sandbox{} not shown; --all lists them.",
+            if hidden == 1 { "" } else { "es" }
+        ));
+    }
+    lines.join("\n")
+}
+
+/// `2026-10-03T08:01:00.000Z` -> `2026-10-03 08:01 UTC`.
+fn short_time(time: Option<&str>) -> String {
+    match time {
+        Some(time) if time.len() >= 16 => format!("{} {} UTC", &time[..10], &time[11..16]),
+        Some(time) => time.to_owned(),
+        None => "-".to_owned(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn list_names_known_sandboxes_marks_billing_and_counts_hidden_archives() {
+        let mut names = std::collections::BTreeMap::new();
+        names.insert("bx_one".to_owned(), "b23".to_owned());
+        let running = Sandbox {
+            id: "bx_one".into(),
+            state: "running".into(),
+            type_: Some("large".into()),
+            created_at: boat::Nullable::Value("2026-10-03T03:01:22.000Z".into()),
+            ..Default::default()
+        };
+        let stopped = Sandbox {
+            id: "bx_two".into(),
+            state: "stopped".into(),
+            ..Default::default()
+        };
+        let rows = [Row::of(&running, &names), Row::of(&stopped, &names)];
+        assert_eq!(rows[0].name.as_deref(), Some("b23"));
+        assert!(rows[0].bills);
+        assert_eq!(rows[1].name, None);
+        assert!(!rows[1].bills);
+        let text = list_text(&rows, 2);
+        assert!(text.contains("running*"), "{text}");
+        assert!(text.contains("2026-10-03 03:01 UTC"), "{text}");
+        assert!(
+            text.contains("2 archived sandboxes not shown; --all lists them."),
+            "{text}"
+        );
+        assert_eq!(list_text(&[], 0), "No sandboxes.");
+    }
 
     fn words(text: &[&str]) -> Vec<String> {
         text.iter().map(|w| (*w).to_owned()).collect()

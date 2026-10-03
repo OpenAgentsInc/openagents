@@ -88,8 +88,9 @@ it. Each issue runs on a Boat sandbox of its own.
 killed), each run keeps going on its sandbox, because it runs in a session
 of its own: it still lands, comments, and closes. Nothing then stops or
 deletes that sandbox before its 12-hour lifetime ends, and no cost comment
-is posted; list the account's sandboxes and `openagents boat delete ID` the
-ones a dead command started. (Seen 2026-10-03: the orchestrator's own
+is posted; `openagents boat list` shows the account's sandboxes (a `*`
+marks the ones billing) and `openagents boat delete ID` removes the ones a
+dead command started. (Seen 2026-10-03: the orchestrator's own
 sandbox reached its lifetime mid-run.)
 
 ## Credentials
