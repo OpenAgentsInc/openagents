@@ -233,6 +233,18 @@ pub fn draw(app: &mut App, area: Rect, buf: &mut Buffer) -> (u16, u16) {
                 "Enter show · r run (dry run first) · p pause or resume · l log · Esc or ← close",
                 "No background rules.",
             ),
+            Overlay::Worktrees { rows, selected } => (
+                "Task worktrees".to_owned(),
+                rows.iter()
+                    .map(|row| Item {
+                        label: row.label.clone(),
+                        detail: row.detail.clone(),
+                    })
+                    .collect(),
+                *selected,
+                "a archive an ended task's worktree (only when nothing in it is unsaved) · Esc close",
+                "No task worktrees on this computer.",
+            ),
         };
         ListOverlay {
             title: &title,

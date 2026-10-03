@@ -56,6 +56,11 @@ pub enum Overlay {
         rows: Vec<crate::BackgroundRow>,
         selected: usize,
     },
+    /// The task worktrees per project (`/worktrees`).
+    Worktrees {
+        rows: Vec<crate::WorktreeRow>,
+        selected: usize,
+    },
 }
 
 /// What the input loop does next.
@@ -104,6 +109,10 @@ pub enum Action {
         id: String,
         act: crate::BackgroundAct,
     },
+    /// Show the task worktrees per project.
+    Worktrees,
+    /// Archive the worktree of the ended task `task`.
+    ArchiveWorktree { task: String },
     /// Copy Claude Code and Codex sessions in as threads.
     Import,
     /// `/efficiency`: the efficiency report, as a card.
@@ -666,6 +675,31 @@ impl App {
                     _ => Vec::new(),
                 }
             }
+            Overlay::Worktrees { rows, selected } => {
+                match key.code {
+                    KeyCode::Up => *selected = selected.saturating_sub(1),
+                    KeyCode::Down => *selected = (*selected + 1).min(rows.len().saturating_sub(1)),
+                    KeyCode::Char('a') => {
+                        let picked = rows.get(*selected).cloned();
+                        match picked {
+                            Some(crate::WorktreeRow {
+                                task: Some(task),
+                                ended: true,
+                                ..
+                            }) => {
+                                self.overlay = None;
+                                return vec![Action::ArchiveWorktree { task }];
+                            }
+                            Some(crate::WorktreeRow { task: Some(_), .. }) => {
+                                self.note("That task is still going, so its worktree stays.");
+                            }
+                            _ => {}
+                        }
+                    }
+                    _ => {}
+                }
+                Vec::new()
+            }
         }
     }
 
@@ -860,6 +894,7 @@ impl App {
             Slash::Background => self.watchers_view(),
             Slash::Import => vec![Action::Import],
             Slash::Efficiency => vec![Action::Efficiency],
+            Slash::Worktrees => vec![Action::Worktrees],
             Slash::Expand => {
                 self.toggle_tools();
                 Vec::new()

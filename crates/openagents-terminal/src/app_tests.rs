@@ -1999,3 +1999,69 @@ fn watcher_notifications_wait_in_the_watchers_view_not_the_transcript() {
     app.key(&key(KeyCode::Left), 80);
     assert!(app.overlay.is_none());
 }
+
+/// `/worktrees` lists each project's task worktrees with how much room
+/// they take; `a` archives an ended task's and refuses a running one's.
+#[test]
+fn worktrees_view_lists_projects_and_archives_only_ended_tasks() {
+    use crate::WorktreeRow;
+    let mut app = app();
+    assert_eq!(typed(&mut app, "/worktrees"), vec![Action::Worktrees]);
+    let rows = vec![
+        WorktreeRow {
+            task: None,
+            label: "~/code/app".into(),
+            detail: "2 worktrees · 1.5 GB".into(),
+            ended: false,
+        },
+        WorktreeRow {
+            task: Some("t-ended".into()),
+            label: "  task t-ended".into(),
+            detail: "1.2 GB · ended, a archives it".into(),
+            ended: true,
+        },
+        WorktreeRow {
+            task: Some("t-live".into()),
+            label: "  task t-live".into(),
+            detail: "300 MB · still going".into(),
+            ended: false,
+        },
+    ];
+    app.overlay = Some(Overlay::Worktrees {
+        rows: rows.clone(),
+        selected: 0,
+    });
+    let view = frame(&mut app, 100, 24);
+    check_snapshot("worktrees_view", &view);
+    assert!(view.contains("Task worktrees"), "{view}");
+    assert!(view.contains("2 worktrees · 1.5 GB"), "{view}");
+    assert!(
+        view.contains("a archive an ended task's worktree"),
+        "{view}"
+    );
+    // On the project row, `a` does nothing.
+    assert!(app.key(&key(KeyCode::Char('a')), 80).is_empty());
+    // On a running task's row it says why and keeps the view.
+    app.key(&key(KeyCode::Down), 80);
+    app.key(&key(KeyCode::Down), 80);
+    assert!(app.key(&key(KeyCode::Char('a')), 80).is_empty());
+    assert!(app.overlay.is_some());
+    assert!(
+        shown(&mut app).contains("still going"),
+        "{}",
+        shown(&mut app)
+    );
+    // On the ended task's row it archives.
+    app.key(&key(KeyCode::Up), 80);
+    assert_eq!(
+        app.key(&key(KeyCode::Char('a')), 80),
+        vec![Action::ArchiveWorktree {
+            task: "t-ended".into()
+        }]
+    );
+    assert!(app.overlay.is_none());
+    // Esc closes it.
+    app.overlay = Some(Overlay::Worktrees { rows, selected: 0 });
+    app.key(&key(KeyCode::Esc), 80);
+    assert!(app.overlay.is_none());
+}

@@ -645,6 +645,54 @@ impl Extras for ProgramExtras {
     fn watchers(&self) -> Vec<String> {
         crate::background::watchers()
     }
+
+    fn worktrees(&self) -> Result<Vec<openagents_terminal::WorktreeRow>, String> {
+        let store = coder::task::local::default_store();
+        coder::task::worktrees::list(&store).map(|projects| worktree_rows(&projects))
+    }
+
+    fn archive_worktree(&self, task: &str) -> Result<String, String> {
+        coder::task::worktrees::archive(&coder::task::local::default_store(), task)
+    }
+}
+
+/// `/worktrees`: each project's row (how many, how much room), then its
+/// worktrees, largest first, each with whether its task is over.
+fn worktree_rows(
+    projects: &[coder::task::worktrees::Project],
+) -> Vec<openagents_terminal::WorktreeRow> {
+    use coder::task::worktrees::human;
+    let mut rows = Vec::new();
+    for project in projects {
+        let count = project.worktrees.len();
+        rows.push(openagents_terminal::WorktreeRow {
+            task: None,
+            label: openagents_terminal::app::home_relative(&project.project),
+            detail: format!(
+                "{count} worktree{} · {}",
+                if count == 1 { "" } else { "s" },
+                human(project.bytes)
+            ),
+            ended: false,
+        });
+        for worktree in &project.worktrees {
+            rows.push(openagents_terminal::WorktreeRow {
+                task: Some(worktree.task.clone()),
+                label: format!("  task {}", &worktree.task[..worktree.task.len().min(8)]),
+                detail: format!(
+                    "{} · {}",
+                    human(worktree.bytes),
+                    if worktree.ended {
+                        "ended, a archives it"
+                    } else {
+                        "still going"
+                    }
+                ),
+                ended: worktree.ended,
+            });
+        }
+    }
+    rows
 }
 
 /// What an import did, in words.
@@ -1058,6 +1106,58 @@ fn service_manager_here() -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn worktree_rows_name_each_project_then_its_worktrees() {
+        use coder::task::worktrees::{Project, Worktree};
+        let rows = worktree_rows(&[Project {
+            project: "/repo/app".into(),
+            bytes: 1_500_000_000,
+            worktrees: vec![
+                Worktree {
+                    task: "abcdef0123456789".into(),
+                    path: "/w/a".into(),
+                    bytes: 1_200_000_000,
+                    ended: true,
+                },
+                Worktree {
+                    task: "99887766".into(),
+                    path: "/w/b".into(),
+                    bytes: 300_000_000,
+                    ended: false,
+                },
+            ],
+        }]);
+        let lines: Vec<_> = rows
+            .iter()
+            .map(|row| {
+                (
+                    row.task.as_deref(),
+                    row.label.as_str(),
+                    row.detail.as_str(),
+                    row.ended,
+                )
+            })
+            .collect();
+        assert_eq!(
+            lines,
+            vec![
+                (None, "/repo/app", "2 worktrees · 1.5 GB", false),
+                (
+                    Some("abcdef0123456789"),
+                    "  task abcdef01",
+                    "1.2 GB · ended, a archives it",
+                    true
+                ),
+                (
+                    Some("99887766"),
+                    "  task 99887766",
+                    "300 MB · still going",
+                    false
+                ),
+            ]
+        );
+    }
 
     fn ready() -> Facts {
         Facts {

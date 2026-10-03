@@ -59,6 +59,8 @@ enum Done {
     Turned(String, Result<String, String>),
     Imported(Result<String, String>),
     Efficiency(Result<crate::Efficiency, String>),
+    Worktrees(Result<Vec<crate::WorktreeRow>, String>),
+    WorktreeArchived(Result<String, String>),
     Settings(Result<crate::Settings, String>),
     Background(Result<Vec<crate::BackgroundRow>, String>),
     BackgroundCard(String, crate::BackgroundAct, Result<Vec<String>, String>),
@@ -475,6 +477,19 @@ impl Screen {
                     let _ = done.send(Done::Efficiency(extras.efficiency()));
                 });
             }
+            Action::Worktrees => {
+                let (extras, done) = (self.extras.clone(), self.done.clone());
+                tokio::task::spawn_blocking(move || {
+                    let _ = done.send(Done::Worktrees(extras.worktrees()));
+                });
+            }
+            Action::ArchiveWorktree { task } => {
+                self.app.note("Archiving the worktree…");
+                let (extras, done) = (self.extras.clone(), self.done.clone());
+                tokio::task::spawn_blocking(move || {
+                    let _ = done.send(Done::WorktreeArchived(extras.archive_worktree(&task)));
+                });
+            }
             Action::Settings => {
                 let (extras, done) = (self.extras.clone(), self.done.clone());
                 tokio::task::spawn_blocking(move || {
@@ -859,6 +874,11 @@ impl Screen {
                 keys: Vec::new(),
             })),
             Done::Efficiency(Err(why)) => self.app.loud(why),
+            Done::Worktrees(Ok(rows)) => {
+                self.app.overlay = Some(Overlay::Worktrees { rows, selected: 0 });
+            }
+            Done::Worktrees(Err(why)) | Done::WorktreeArchived(Err(why)) => self.app.loud(why),
+            Done::WorktreeArchived(Ok(message)) => self.app.note(message),
         }
     }
 

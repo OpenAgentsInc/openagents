@@ -19,6 +19,7 @@ pub enum Slash {
     Connect,
     Plugins,
     Background,
+    Worktrees,
     Import,
     Efficiency,
     Expand,
@@ -30,7 +31,7 @@ pub enum Slash {
 
 impl Slash {
     /// Every command, in the order `/help` lists them.
-    pub const ALL: [Slash; 16] = [
+    pub const ALL: [Slash; 17] = [
         Slash::New,
         Slash::Resume,
         Slash::Threads,
@@ -40,6 +41,7 @@ impl Slash {
         Slash::Connect,
         Slash::Plugins,
         Slash::Background,
+        Slash::Worktrees,
         Slash::Import,
         Slash::Efficiency,
         Slash::Expand,
@@ -61,6 +63,7 @@ impl Slash {
             Slash::Connect => "connect",
             Slash::Plugins => "plugins",
             Slash::Background => "background",
+            Slash::Worktrees => "worktrees",
             Slash::Import => "import",
             Slash::Efficiency => "efficiency",
             Slash::Expand => "expand",
@@ -101,6 +104,9 @@ impl Slash {
             Slash::Plugins => "list plugins and run one installed here",
             Slash::Background => {
                 "background rules: show, run, pause, log; /background WORDS makes or changes one"
+            }
+            Slash::Worktrees => {
+                "task worktrees per project: how many and how much room; a archives an ended task's"
             }
             Slash::Import => "copy this computer's Claude Code and Codex sessions in as threads",
             Slash::Efficiency => {

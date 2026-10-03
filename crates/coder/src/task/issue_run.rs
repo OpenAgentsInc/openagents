@@ -846,40 +846,6 @@ pub trait Checks: Send + Sync {
 /// `cargo fmt --check` and Clippy when the policy asks.
 pub struct Gate {
     pub jev: Option<jev::Client>,
-    /// The task store, whose build slots the checks build in (#10293);
-    /// `None` builds where [`coder_delegate::issue::confined`] says.
-    pub store: Option<PathBuf>,
-}
-
-/// How long the checks wait for a free build slot before building
-/// outside the slots.
-const SLOT_WAIT: std::time::Duration = std::time::Duration::from_secs(600);
-
-impl Gate {
-    /// A build slot for checking `worktree`'s change, waiting up to
-    /// [`SLOT_WAIT`] while every slot is taken; `None` without a store, or
-    /// when no slot frees up in time.
-    fn slot(&self, worktree: &Path) -> Option<super::targets::Lease> {
-        let store = self.store.as_ref()?;
-        let common = std::process::Command::new("git")
-            .args(["rev-parse", "--path-format=absolute", "--git-common-dir"])
-            .current_dir(worktree)
-            .stdin(std::process::Stdio::null())
-            .output()
-            .ok()
-            .filter(|output| output.status.success())?;
-        let common = PathBuf::from(String::from_utf8_lossy(&common.stdout).trim());
-        let started = std::time::Instant::now();
-        loop {
-            match super::targets::Lease::acquire(store, &common) {
-                Ok(lease) => return Some(lease),
-                Err(super::Error::Busy) if started.elapsed() < SLOT_WAIT => {
-                    std::thread::sleep(std::time::Duration::from_secs(2));
-                }
-                Err(_) => return None,
-            }
-        }
-    }
 }
 
 impl Checks for Gate {
@@ -901,20 +867,10 @@ impl Checks for Gate {
         let _captured = coder_delegate::say::capture(Box::new(move |line| {
             heard.borrow_mut().push(line.trim().to_owned());
         }));
-        // The checks build in one of the task store's build slots, held
-        // until they end, so they stay in the slot budget (#10293).
-        let slot = self.slot(worktree);
-        let target = slot.as_ref().map(|lease| lease.path.as_path());
         runtime.block_on(async {
             let recorder = coder_delegate::record::Recorder::default();
-            let (mut problems, tested) = coder_delegate::issue::gate_in(
-                worktree,
-                self.jev.as_ref(),
-                &recorder,
-                None,
-                target,
-            )
-            .await;
+            let (mut problems, tested) =
+                coder_delegate::issue::gate(worktree, self.jev.as_ref(), &recorder, None).await;
             let mut ran = Vec::new();
             let packages = tested
                 .as_ref()
@@ -960,7 +916,7 @@ impl Checks for Gate {
             }
             if policy.clippy && !packages.is_empty() {
                 use coder_delegate::issue::confined;
-                match confined::Setup::for_run_in(worktree, None, target) {
+                match confined::Setup::for_run(worktree, None) {
                     Ok(setup) => {
                         let (lints, _) =
                             confined::run_suite(&setup, &packages, confined::Suite::Clippy).await;
@@ -1081,12 +1037,9 @@ impl Runner {
     pub fn new(store: PathBuf) -> Self {
         let (jev, _) = crate::delegate_door::jev_from(&crate::delegate_door::env_value);
         Runner {
-            local: Arc::new(Local::here(store.clone())),
+            local: Arc::new(Local::here(store)),
             tracker: Arc::new(Gh),
-            checks: Arc::new(Gate {
-                jev,
-                store: Some(store),
-            }),
+            checks: Arc::new(Gate { jev }),
             land: None,
             skip_claimed: false,
             now: super::autostart::unix_now,

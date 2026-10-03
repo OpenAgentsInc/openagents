@@ -1,0 +1,24 @@
+
+
+
+
+
+
+
+
+     ┌─ Task worktrees ───────────────────────────────────────────────────────────────────────┐
+     │                                                                                        │
+     │ › ~/code/app                                                      2 worktrees · 1.5 GB │
+     │     task t-ended                                         1.2 GB · ended, a archives it │
+     │     task t-live                                                   300 MB · still going │
+     │                                                                                        │
+     └─ a archive an ended task's worktree (only when nothing in it is unsaved) · Esc close ──┘
+
+
+
+
+
+┌─ Esc closes the list ────────────────────────────────────────────────────────────────────────────┐
+│ >                                                                                                │
+│                                                                                                  │
+└───────────────────────────────────────────────────────────────────────────────────── new thread ─┘

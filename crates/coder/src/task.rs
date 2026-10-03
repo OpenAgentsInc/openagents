@@ -63,6 +63,7 @@ pub use targets::facts as background_facts;
 pub mod usage;
 pub mod view;
 pub mod worktree_hooks;
+pub mod worktrees;
 /// Per-engine steering semantics; see [`coder_delegate::steering`].
 pub use coder_delegate::steering;
 /// The most turns one task can take. A follow-up past it is refused.

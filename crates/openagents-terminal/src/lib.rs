@@ -215,6 +215,35 @@ pub trait Extras: Send + Sync {
     fn watchers(&self) -> Vec<String> {
         Vec::new()
     }
+    /// The task worktrees on this computer (`/worktrees`, #10296): a row
+    /// per project with how many and how much room, then its worktrees.
+    ///
+    /// # Errors
+    /// They cannot be read here, in words for the person.
+    fn worktrees(&self) -> Result<Vec<WorktreeRow>, String> {
+        Err("Task worktrees are not shown here.".into())
+    }
+    /// Archive the worktree of the ended task `task` (what `openagents
+    /// worktree archive` does); the words to show.
+    ///
+    /// # Errors
+    /// It holds something unsaved or the task is still going, in words for
+    /// the person.
+    fn archive_worktree(&self, _task: &str) -> Result<String, String> {
+        Err("Worktrees cannot be archived here.".into())
+    }
+}
+
+/// One row of `/worktrees`: a project (no task) with its count and size,
+/// or one task's worktree under it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WorktreeRow {
+    /// The task whose worktree this is; `None` on a project's row.
+    pub task: Option<String>,
+    pub label: String,
+    pub detail: String,
+    /// The task is over, so `a` may archive its worktree.
+    pub ended: bool,
 }
 
 /// The efficiency report as `/efficiency` shows it: a card.
