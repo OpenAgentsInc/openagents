@@ -1,6 +1,7 @@
 //! The other built-in background processes (phase 3), in the spec's
 //! order, and the steps their actions take. Each ships off, except
-//! keeping `~/openagents` on `main` on CoderOS; a person turns one on with
+//! keeping `~/openagents` on `main` on CoderOS and pruning stale Coder
+//! worktrees on CoderOS and cloud pool hosts (#10292); a person turns one on with
 //! `openagents background resume ID`, `/background`, or the desktop's
 //! Background settings, and edits it like any rule.
 //!
@@ -37,6 +38,26 @@ pub fn on_coderos() -> bool {
     Path::new("/etc/coderos").is_dir()
 }
 
+/// The file a cloud pool host's setup writes (a GCE pool VM, a Boat
+/// sandbox from the Coder host template): `scripts/cloud/coder-host-setup.sh`
+/// and the pool host agent create it.
+pub const POOL_HOST_MARKER: &str = "/etc/openagents/pool-host";
+
+/// Whether this computer is a cloud pool host.
+#[must_use]
+pub fn on_pool_host() -> bool {
+    Path::new(POOL_HOST_MARKER).is_file()
+}
+
+/// Whether this computer is a host that runs Coder for others to come
+/// back to: CoderOS or a cloud pool host, not a person's own computer.
+/// Stale worktree pruning ships on there (#10292); disk cleanup stays a
+/// person's choice everywhere.
+#[must_use]
+pub fn coder_host() -> bool {
+    on_coderos() || on_pool_host()
+}
+
 fn base(id: &str, name: &str) -> Rule {
     let mut rule = disk();
     rule.id = id.into();
@@ -65,6 +86,7 @@ pub fn rule(id: &str) -> Option<Rule> {
     Some(match id {
         "worktrees" => {
             let mut rule = base(id, "Stale worktree pruning");
+            rule.enabled = coder_host();
             rule.triggers = vec![Trigger::Daily { at: "03:30".into() }];
             rule.actions = vec![Action::PruneWorktrees];
             rule.goal.start = Level {

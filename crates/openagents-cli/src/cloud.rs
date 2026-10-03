@@ -464,6 +464,9 @@ pub(crate) const HOST_AGENT: &str = r#"#!/bin/bash
 set -u
 install -d -o coder -g coder /home/coder/.oa-pool /home/coder/.oa-pool/runs /home/coder/.oa-pool/bin
 touch /home/coder/.oa-pool/busy && chown coder:coder /home/coder/.oa-pool/busy
+# A pool host: stale Coder worktree pruning ships on (#10292). Images baked
+# before that lack the marker the setup script now writes.
+install -d -m 0755 /etc/openagents && touch /etc/openagents/pool-host
 cat >/usr/local/bin/oa-pool-idle <<'IDLE'
 #!/bin/bash
 # Deletes this VM once no pool run has been alive for oa-pool-idle-minutes.
@@ -1224,6 +1227,7 @@ mod tests {
         assert!(HOST_AGENT.contains("oa-pool-idle-minutes"));
         assert!(HOST_AGENT.contains("bubblewrap") && HOST_AGENT.contains("agent-ready"));
         assert!(HOST_AGENT.contains("compute.googleapis.com"));
+        assert!(HOST_AGENT.contains("/etc/openagents/pool-host"));
         assert!(prepare_script().contains("oa_build"));
     }
 

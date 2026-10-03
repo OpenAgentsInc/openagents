@@ -17,6 +17,8 @@
 #     (`claude`), Grok Build (`grok`). None is logged in. No credential of
 #     any kind is written by this script; logins come later, per host.
 #   - a clone of OpenAgentsInc/openagents at the requested revision
+#   - /etc/openagents/pool-host, which turns stale worktree pruning on by
+#     default (the `worktrees` background rule)
 #   - with --warm: a warm Cargo target for openagents-cli, microcoder and
 #     coder (their libraries, binaries and test targets) in the Coder target
 #     slot the task runner leases first, and the release `openagents`
@@ -90,6 +92,11 @@ if ! id "$user" >/dev/null 2>&1; then
   as_root useradd --create-home --shell /bin/bash "$user"
 fi
 home="$(getent passwd "$user" | cut -d: -f6)"
+
+# Mark this machine as a cloud pool host. The background rules read it:
+# stale Coder worktree pruning ships on here, as on CoderOS (#10292).
+as_root install -d -m 0755 /etc/openagents
+as_root touch /etc/openagents/pool-host
 repo_dir="${repo_dir:-$home/openagents}"
 
 # Run a command as the host user with a login-like environment.

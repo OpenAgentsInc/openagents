@@ -258,7 +258,7 @@ fn steps(env: &Env<'_>, rule: &Rule, p: Powers<'_>, dry: bool) -> Vec<engine::St
 // Built-ins.
 
 #[test]
-fn every_built_in_is_valid_listed_and_off_but_checkout_on_coderos() {
+fn every_built_in_is_valid_listed_and_off_but_host_defaults() {
     let h = home();
     for id in rule::BUILT_IN {
         let rule = rule::built_in(id).unwrap();
@@ -267,6 +267,13 @@ fn every_built_in_is_valid_listed_and_off_but_checkout_on_coderos() {
         assert_eq!(rule.origin, rule::Origin::BuiltIn);
         if id == "checkout" {
             assert_eq!(rule.enabled, crate::builtins::on_coderos());
+        } else if id == "worktrees" {
+            assert_eq!(rule.enabled, crate::builtins::coder_host());
+            assert_eq!(rule.classes.worktree_days, 7);
+            assert_eq!(
+                rule.triggers,
+                vec![rule::Trigger::Daily { at: "03:30".into() }]
+            );
         } else {
             assert!(!rule.enabled, "{id} ships off");
         }

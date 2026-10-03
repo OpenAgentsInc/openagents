@@ -383,7 +383,11 @@ judgment.
 
 1. **Disk cleanup monitor** (rule; Jev for unknown directories in phase 3).
 2. **Stale worktree pruning** (rule): remove ended tasks' clean, pushed
-   worktrees after 7 days even when the disk is fine.
+   worktrees after 7 days even when the disk is fine. Daily at 03:30. Ships
+   on for CoderOS (`/etc/coderos`) and cloud pool hosts
+   (`/etc/openagents/pool-host`, written by `scripts/cloud/coder-host-setup.sh`
+   and the GCE pool host agent); off on a person's own computer (#10292).
+   Disk cleanup stays opt-in everywhere.
 3. **Stale issue-claim release** (rule): release a Coder issue claim whose
    task ended or has not run for 6 hours, and comment why.
 4. **Keep `~/openagents` on `main` on CoderOS** (rule): fast-forward when the
