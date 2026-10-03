@@ -44,7 +44,7 @@ use std::io::Write;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use boat::{CommandFrame, Nullable, Signal, WaitOptions, models::*, shell_quote};
+use boat::{CommandFrame, Nullable, WaitOptions, models::*, shell_quote};
 use coder::task::issue_run::Land;
 use openagents_chat::coder_events::Line;
 use openagents_chat::tool_groups::Stream;
@@ -311,17 +311,20 @@ fn run_script(issue: u64, land: Option<Land>) -> String {
     };
     format!(
         r#"set -uo pipefail
+# The 2026-10-02 template left ~/.openagents (the warm target, the task
+# store) owned by root (#10219), and chown -R over it takes many minutes
+# while its files stream in: run as root there, in the same HOME.
+if [ "$(id -u)" != 0 ] && [ "$(stat -c %u "$HOME/.openagents/targets" 2>/dev/null)" = 0 ]; then
+  exec sudo -n HOME="$HOME" bash "$0"
+fi
+[ "$(id -u)" = 0 ] && git config --global --add safe.directory '*'
 if [ -f {ENV_FILE} ]; then set -a; . {ENV_FILE}; set +a; rm -f {ENV_FILE}; fi
-export PATH="$HOME/.cargo/bin:$HOME/.grok/bin:$HOME/.local/bin:/usr/local/bin:$PATH" CARGO_INCREMENTAL=0
+export PATH="$HOME/.cargo/bin:/usr/local/cargo/bin:$HOME/.grok/bin:$HOME/.local/bin:/usr/local/bin:$PATH" CARGO_INCREMENTAL=0
+[ -z "${{RUSTUP_HOME:-}}" ] && [ -d /usr/local/rustup ] && export RUSTUP_HOME=/usr/local/rustup
 [ -n "${{OA_GIT_NAME:-}}" ] && git config --global user.name "$OA_GIT_NAME"
 [ -n "${{OA_GIT_EMAIL:-}}" ] && git config --global user.email "$OA_GIT_EMAIL"
 unset OA_GIT_NAME OA_GIT_EMAIL
 gh auth setup-git >/dev/null 2>&1 || true
-# The 2026-10-02 template left ~/.openagents (with the warm target) and
-# ~/.cargo owned by root (#10219); the run's user must write both.
-for d in "$HOME/.openagents" "$HOME/.cargo"; do
-  [ -e "$d" ] && [ "$(stat -c %u "$d")" != "$(id -u)" ] && sudo -n chown -R "$(id -u):$(id -g)" "$d"
-done
 # protoc's well-known types (spark-primitives needs them); templates built
 # before coder-host-setup.sh installed libprotobuf-dev lack them.
 [ -f /usr/include/google/protobuf/descriptor.proto ] || sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y -q libprotobuf-dev >/dev/null 2>&1 || true
@@ -590,29 +593,183 @@ async fn ready(client: &boat::Client, id: &str) -> Result<(), String> {
     reachable(client, id).await
 }
 
-/// Waits until `id` starts a detached command, the way the run's own
-/// command starts: a detached `true`, once every two seconds, up to ten
-/// minutes. A sandbox from a template ran a plain command while it still
-/// refused detached ones (2026-10-02), so the probe is detached too. Only
-/// then does the run's own command go, which is never resent.
+/// Waits until `id` runs a command: `true`, once every two seconds, up to
+/// ten minutes.
 async fn reachable(client: &boat::Client, id: &str) -> Result<(), String> {
     let deadline = Instant::now() + Duration::from_secs(600);
     loop {
-        let tried = client
-            .exec_detached(
-                id,
-                CommandRequest {
-                    command: "true".into(),
-                    ..Default::default()
-                },
-            )
-            .await;
+        let tried = sh(client, id, "true".into()).await;
         match tried {
             Ok(_) => return Ok(()),
             Err(e) if not_reachable_yet(&e) && Instant::now() < deadline => {
                 tokio::time::sleep(Duration::from_secs(2)).await;
             }
             Err(e) => return Err(format!("{id} does not run commands: {}", why(&e))),
+        }
+    }
+}
+
+/// Runs `command` on `id` and waits for it (Boat's limit is 600 s).
+async fn sh(client: &boat::Client, id: &str, command: String) -> boat::Result<CommandResponse> {
+    match client
+        .command(&CommandParams {
+            sandbox_id: id.into(),
+            body: CommandRequest {
+                command,
+                timeout_seconds: Some(120),
+                ..Default::default()
+            },
+            ..Default::default()
+        })
+        .await?
+    {
+        CommandResponseBody::Finished(done) => Ok(done),
+        CommandResponseBody::Started(_) => Err(boat::Error::Decode),
+    }
+}
+
+/// Where a run's process writes, on the sandbox.
+const RUN_SCRIPT: &str = "/tmp/oa-run.sh";
+const RUN_OUT: &str = "/tmp/oa-run.out";
+const RUN_ERR: &str = "/tmp/oa-run.err";
+const RUN_EXIT: &str = "/tmp/oa-run.exit";
+/// The most bytes of each stream one poll reads.
+const POLL_BYTES: u64 = 1 << 20;
+
+/// The command that starts the run in its own session, so it outlives the
+/// command that started it, and prints its process id. Boat's detached
+/// commands were refused for minutes on fresh template sandboxes
+/// (`400 sandbox_direct_failed`) while plain commands ran, so the run is
+/// started and read with plain commands.
+fn launch_command() -> String {
+    format!(
+        "setsid nohup bash -c 'bash {RUN_SCRIPT} >{RUN_OUT} 2>{RUN_ERR} </dev/null; echo $? >{RUN_EXIT}' \
+         >/dev/null 2>&1 </dev/null & echo $!"
+    )
+}
+
+/// The command that reads what the run wrote past `out` and `err` bytes:
+/// `EXIT ALIVE OUT ERR`, the streams in base64 (`_` when empty), EXIT `_`
+/// while the run has not ended.
+fn poll_command(pid: i64, out: u64, err: u64) -> String {
+    format!(
+        "o=$(tail -c +{} {RUN_OUT} 2>/dev/null | head -c {POLL_BYTES} | base64 -w0); \
+         e=$(tail -c +{} {RUN_ERR} 2>/dev/null | head -c {POLL_BYTES} | base64 -w0); \
+         x=$(cat {RUN_EXIT} 2>/dev/null); kill -0 {pid} 2>/dev/null && a=1 || a=0; \
+         echo \"${{x:-_}} $a ${{o:-_}} ${{e:-_}}\"",
+        out + 1,
+        err + 1
+    )
+}
+
+/// One poll's answer.
+#[derive(Debug, PartialEq)]
+struct Polled {
+    exit: Option<i64>,
+    alive: bool,
+    out: Vec<u8>,
+    err: Vec<u8>,
+}
+
+fn parse_poll(text: &str) -> Option<Polled> {
+    use base64::Engine as _;
+    let words: Vec<&str> = text.split_whitespace().collect();
+    let [exit, alive, out, err] = words.as_slice() else {
+        return None;
+    };
+    let bytes = |word: &str| {
+        if word == "_" {
+            Some(Vec::new())
+        } else {
+            base64::engine::general_purpose::STANDARD.decode(word).ok()
+        }
+    };
+    Some(Polled {
+        exit: match *exit {
+            "_" => None,
+            code => Some(code.parse().ok()?),
+        },
+        alive: *alive == "1",
+        out: bytes(out)?,
+        err: bytes(err)?,
+    })
+}
+
+/// Reads a run's output as frames, from plain commands every two seconds.
+struct Tail<'a> {
+    client: &'a boat::Client,
+    id: String,
+    pid: i64,
+    out: u64,
+    err: u64,
+    frames: VecDeque<CommandFrame>,
+    ended: bool,
+    misses: u32,
+}
+
+impl Tail<'_> {
+    async fn next(&mut self) -> Result<Option<CommandFrame>, String> {
+        loop {
+            if let Some(frame) = self.frames.pop_front() {
+                return Ok(Some(frame));
+            }
+            if self.ended {
+                return Ok(None);
+            }
+            let answer = match sh(
+                self.client,
+                &self.id,
+                poll_command(self.pid, self.out, self.err),
+            )
+            .await
+            {
+                Ok(answer) => answer,
+                // A read can fail for a moment; a run is never resent.
+                Err(e) => {
+                    self.misses += 1;
+                    if self.misses > 60 {
+                        return Err(format!("reading the run on {}: {}", self.id, why(&e)));
+                    }
+                    tokio::time::sleep(Duration::from_secs(5)).await;
+                    continue;
+                }
+            };
+            self.misses = 0;
+            let Some(polled) = parse_poll(&answer.stdout) else {
+                return Err(format!(
+                    "reading the run on {}: an unexpected answer",
+                    self.id
+                ));
+            };
+            let more =
+                polled.out.len() as u64 == POLL_BYTES || polled.err.len() as u64 == POLL_BYTES;
+            self.out += polled.out.len() as u64;
+            self.err += polled.err.len() as u64;
+            if !polled.out.is_empty() {
+                self.frames.push_back(CommandFrame::Stdout(
+                    String::from_utf8_lossy(&polled.out).into_owned(),
+                ));
+            }
+            if !polled.err.is_empty() {
+                self.frames.push_back(CommandFrame::Stderr(
+                    String::from_utf8_lossy(&polled.err).into_owned(),
+                ));
+            }
+            if more {
+                continue;
+            }
+            if polled.exit.is_some() || !polled.alive {
+                self.ended = true;
+                self.frames.push_back(CommandFrame::Exit {
+                    exit_code: polled.exit,
+                    success: polled.exit == Some(0),
+                    timed_out: false,
+                });
+                continue;
+            }
+            if self.frames.is_empty() {
+                tokio::time::sleep(Duration::from_secs(2)).await;
+            }
         }
     }
 }
@@ -893,6 +1050,14 @@ async fn run_issue(
             &format!("#{issue}: Boat sandbox {id} from {}", source.name()),
         );
         match ready(&client, &id).await {
+            Ok(()) if *stopping.borrow() => {
+                let state = end_run(&client, &id, true).await;
+                return done(
+                    "not_started",
+                    "Stopped before it started.".into(),
+                    json!({"sandbox": id, "sandbox_state": state}),
+                );
+            }
             Ok(()) => break id,
             Err(message) => {
                 if let Ok(usage) = client
@@ -1011,41 +1176,41 @@ async fn follow(
     if written.type_ != "file.written" {
         return Err("the run's credentials could not be written".into());
     }
-    // A refusal that means "not reachable yet" ran nothing (it is a 400 or
-    // 409, never the 502 that may have started the command), so it alone is
-    // retried, a few times.
+    let written = client
+        .write_text(id, RUN_SCRIPT, &run_script(issue, request.land))
+        .await
+        .map_err(|e| format!("the run's script could not be written: {}", why(&e)))?;
+    if written.type_ != "file.written" {
+        return Err("the run's script could not be written".into());
+    }
+    // A refusal that means "not reachable yet" ran nothing, so it alone is
+    // retried.
     let mut attempt = 0;
-    let process = loop {
+    let pid = loop {
         attempt += 1;
-        match client
-            .exec_detached(
-                id,
-                CommandRequest {
-                    command: run_script(issue, request.land),
-                    ..Default::default()
-                },
-            )
-            .await
-        {
-            Ok(process) => break process,
-            Err(e) if not_reachable_yet(&e) && attempt < 5 => {
-                tokio::time::sleep(Duration::from_secs(3)).await;
+        match sh(client, id, launch_command()).await {
+            Ok(started) => match started.stdout.trim().parse::<i64>() {
+                Ok(pid) => break pid,
+                Err(_) => return Err(format!("the flow did not start on {id}")),
+            },
+            Err(e) if not_reachable_yet(&e) && attempt < 30 => {
+                tokio::time::sleep(Duration::from_secs(5)).await;
             }
             Err(e) => {
                 return Err(format!("the flow did not start on {id}: {}", why(&e)));
             }
         }
     };
-    let mut follower = client
-        .follow_command(
-            id,
-            process.process_id,
-            wait(
-                Duration::from_secs(RUN_TTL_SECONDS.unsigned_abs()),
-                Duration::from_secs(2),
-            ),
-        )
-        .map_err(|e| e.to_string())?;
+    let mut follower = Tail {
+        client,
+        id: id.to_owned(),
+        pid,
+        out: 0,
+        err: 0,
+        frames: VecDeque::new(),
+        ended: false,
+        misses: 0,
+    };
     let mut pending = String::new();
     let mut tools = Stream::default();
     let mut errors: VecDeque<String> = VecDeque::new();
@@ -1054,10 +1219,10 @@ async fn follow(
     let mut last = None;
     loop {
         let frame = tokio::select! {
-            frame = follower.next() => frame.map_err(|e| format!("following {id}: {}", why(&e)))?,
+            frame = follower.next() => frame?,
             changed = stopping.changed() => {
                 if changed.is_ok() && *stopping.borrow() {
-                    let _ = client.kill_command(id, process.pid, Signal::Term).await;
+                    let _ = sh(client, id, format!("kill -TERM -- -{pid} 2>/dev/null || kill -TERM {pid}")).await;
                     return Err("Stopped: the flow on the sandbox was killed.".into());
                 }
                 continue;
@@ -1401,6 +1566,33 @@ mod tests {
         assert_eq!(record["run"]["projection"]["state"], "completed");
         let failed = route_record("o/r", 7, "k1", "bx_1", "s", "failed", &cost);
         assert_eq!(failed["run"]["projection"]["state"], "failed");
+    }
+
+    #[test]
+    fn a_poll_reads_exit_liveness_and_both_streams() {
+        assert_eq!(
+            parse_poll("_ 1 eyJhIjoxfQo= _\n"),
+            Some(Polled {
+                exit: None,
+                alive: true,
+                out: b"{\"a\":1}\n".to_vec(),
+                err: Vec::new(),
+            })
+        );
+        assert_eq!(
+            parse_poll("3 0 _ Ym9vbQ=="),
+            Some(Polled {
+                exit: Some(3),
+                alive: false,
+                out: Vec::new(),
+                err: b"boom".to_vec(),
+            })
+        );
+        assert_eq!(parse_poll("garbage"), None);
+        let poll = poll_command(41, 10, 0);
+        assert!(poll.contains("tail -c +11 /tmp/oa-run.out") && poll.contains("kill -0 41"));
+        assert!(launch_command().starts_with("setsid nohup bash -c 'bash /tmp/oa-run.sh >"));
+        assert!(launch_command().ends_with("& echo $!"));
     }
 
     #[test]

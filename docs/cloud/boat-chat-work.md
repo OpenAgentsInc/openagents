@@ -26,17 +26,24 @@ it. Each issue runs on a Boat sandbox of its own.
    with the template's own host setup (`scripts/cloud/coder-host-setup.sh
    --warm`), stops it, forks it once per issue, and deletes it at the end.
    The seed takes tens of minutes; a template start takes seconds.
-3. **Reachable.** A sandbox from a template reports `ready` before Boat can
-   start commands on it: commands are refused with `400
-   sandbox_direct_failed` (seen 2026-10-02). The command waits until a
-   detached `true` starts (up to ten minutes); a sandbox that never gets
-   there is deleted and replaced once, and its cost is added to the run's.
-   The run's own command is sent once, retried only on those refusals,
-   which run nothing.
+3. **Reachable.** A sandbox from a template reports `ready` before Boat
+   runs commands on it, and its *detached* commands were refused with `400
+   sandbox_direct_failed` for minutes at a time (on 7 of 12 starts on
+   2026-10-02) while plain commands ran. So nothing here uses detached
+   commands: the command waits until a plain `true` runs (up to ten
+   minutes; a sandbox that never gets there is deleted and replaced once,
+   its cost added to the run's), starts the run with a plain command in a
+   session of its own (`setsid nohup`, output to `/tmp/oa-run.out` and
+   `.err`, exit code to `/tmp/oa-run.exit`), and reads its output every two
+   seconds from the byte offset it reached, base64-encoded so offsets stay
+   exact.
 4. **Credentials.** Written to `/tmp/oa-run.env` through the files API; the
    sandbox's command sources and deletes that file before anything else
    runs. See below.
-5. **Build.** The sandbox fetches `origin/main` and builds `openagents` and
+5. **Build.** When the template left `~/.openagents` owned by root (the
+   2026-10-02 template did, #10219; a `chown -R` over its warm target takes
+   many minutes while the files stream in), the run re-executes itself as
+   root in the same `HOME`. The sandbox fetches `origin/main` and builds `openagents` and
    `microcoder` on the template's warm target (a delta build; not
    `--locked`, so a `Cargo.lock` that lags a push does not stop the run),
    copies them
@@ -47,8 +54,8 @@ it. Each issue runs on a Boat sandbox of its own.
    worktree of `origin/main`, engine turn, checks, the multi-machine landing
    of #10226 (fetch, rebase, plain push, jittered retry), evidence comment,
    close.
-7. **Streaming.** The flow's NDJSON events stream back through
-   `follow_command` and print here exactly as a local `chat work` prints
+7. **Streaming.** The flow's NDJSON events stream back through that
+   reader and print here exactly as a local `chat work` prints
    them, marked with the issue. Under `--json` every line carries `issue`;
    the extra events are `boat_sandbox`, `boat_seed`, and `route_record`, and
    the final `issue` event adds `sandbox`, `wall_seconds`,
@@ -64,7 +71,7 @@ it. Each issue runs on a Boat sandbox of its own.
    The sandbox is deleted when the issue landed, was skipped, or was
    closed; otherwise it is stopped and kept for inspection, and
    `openagents boat delete ID` removes it. Ctrl-C kills every running flow
-   on its sandbox and stops the sandboxes.
+   (its process group) on its sandbox and stops the sandboxes.
 
 ## Credentials
 
