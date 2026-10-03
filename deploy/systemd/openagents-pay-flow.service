@@ -16,6 +16,9 @@ Group=openagents-pay
 EnvironmentFile=/etc/openagents-pay/flow-salt.env
 Environment=OPENAGENTS_PAY_SOURCE_DB=/var/lib/openagents-pay/ledger/ledger.sqlite
 Environment=OPENAGENTS_PAY_FLOW_DB=/var/lib/openagents-pay/flow/flow.sqlite
+# /stats `reconciliation`: the newest report of openagents-pay-reconcile.timer
+# (ok, drift, or unknown when absent or older than 30 minutes).
+Environment=OPENAGENTS_PAY_RECONCILIATION=/var/lib/openagents-pay/reconcile/latest.json
 # The website (Cloud Run `coder`) reaches this over the VPC through Direct
 # VPC egress; firewall oa-pay-flow-from-vpc admits only 10.128.0.0/20 on
 # this port. It serves read-only public projections and nothing else.

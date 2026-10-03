@@ -412,6 +412,19 @@ impl LightningWallet for LdkWallet {
         Ok(self.payment(payment_hash).as_ref().map(record))
     }
 
+    fn payments(&self) -> Result<Vec<PaymentRecord>, WalletError> {
+        Ok(self
+            .node
+            .list_payments_with_filter(|p| !matches!(p.kind, PaymentKind::Onchain { .. }))
+            .iter()
+            .map(|details| PaymentRecord {
+                preimage: None,
+                bolt11: None,
+                ..record(details)
+            })
+            .collect())
+    }
+
     fn balance(&self) -> Result<Balance, WalletError> {
         let balances = self.node.list_balances();
         Ok(Balance {

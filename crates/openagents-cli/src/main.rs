@@ -47,6 +47,7 @@ mod pay;
 mod pay_hosted;
 mod pay_payout;
 mod pay_plugin;
+mod pay_reconcile;
 mod playtest;
 #[cfg(unix)]
 mod plugin_local;

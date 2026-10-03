@@ -1,0 +1,56 @@
+[Unit]
+Description=Reconcile the OpenAgents payments ledger with the receiver and payout Spark wallets
+Documentation=https://github.com/OpenAgentsInc/openagents/blob/main/docs/deployment/pay-host.md
+After=openagents-pay.service openagents-pay-payouts.service network-online.target
+Wants=network-online.target
+RequiresMountsFor=/var/lib/openagents-pay
+
+[Service]
+Type=oneshot
+User=openagents-pay
+Group=openagents-pay
+EnvironmentFile=/etc/openagents-pay/openagents-pay.env
+# The receiver wallet is read through the running node's control.sock. The
+# payout Spark wallet's seed is the payout worker's tmpfs copy (the Spark
+# home's `seed` links to /run/openagents-pay-payouts/spark-seed); its store
+# is copied to reconcile/spark-scratch and opened there, so the worker's own
+# store is never written. --resolve settles only `unknown` payouts whose
+# wallet record proves the outcome. Nothing here sends money.
+# A drift is an error-priority line ({"event":"reconciliation_drift",...})
+# in this unit's journal; pay-host reads reconcile/latest.json for /stats.
+ExecStartPre=/usr/bin/install -d -m 0700 /var/lib/openagents-pay/reconcile
+ExecStart=/opt/openagents-pay/current/openagents --json pay reconcile --ledger /var/lib/openagents-pay/ledger/ledger.sqlite --spark-home /var/lib/openagents-pay/spark --report-dir /var/lib/openagents-pay/reconcile --resolve
+TimeoutStartSec=300
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=openagents-pay-reconcile
+
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SocketBindDeny=any
+ReadWritePaths=/var/lib/openagents-pay
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+DevicePolicy=closed
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+CapabilityBoundingSet=
+AmbientCapabilities=
+KeyringMode=private
+UMask=0077

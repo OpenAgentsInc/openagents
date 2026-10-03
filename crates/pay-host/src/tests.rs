@@ -378,3 +378,36 @@ async fn resume_ids_survive_restart_and_invalid_ids_are_rejected() {
         assert_eq!(response.status(), axum::http::StatusCode::BAD_REQUEST);
     }
 }
+
+#[test]
+fn the_reconciliation_report_sets_the_state_until_it_goes_stale() {
+    let report = |state: &str, at: i64| {
+        format!(
+            r#"{{"schema":"openagents.pay-reconciliation.v1","at":{at},"state":"{state}","findings":[]}}"#
+        )
+    };
+    assert_eq!(
+        reconciliation_from_report(&report("ok", 1_000), 1_600),
+        Reconciliation::Ok
+    );
+    assert_eq!(
+        reconciliation_from_report(&report("drift", 1_000), 1_600),
+        Reconciliation::Drift
+    );
+    assert_eq!(
+        reconciliation_from_report(&report("unknown", 1_000), 1_600),
+        Reconciliation::Unknown
+    );
+    assert_eq!(
+        reconciliation_from_report(&report("drift", 1_000), 1_000 + REPORT_STALE_SECS + 1),
+        Reconciliation::Unknown
+    );
+    assert_eq!(
+        reconciliation_from_report("not json", 1_600),
+        Reconciliation::Unknown
+    );
+    assert_eq!(
+        reconciliation_from_report(r#"{"schema":"other","at":1000,"state":"ok"}"#, 1_600),
+        Reconciliation::Unknown
+    );
+}

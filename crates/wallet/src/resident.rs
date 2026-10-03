@@ -45,6 +45,7 @@ pub enum Request {
     Lookup {
         payment_hash: String,
     },
+    Payments,
     Balance,
     Channels,
     FundingAddress,
@@ -239,6 +240,7 @@ fn handle<W: Served>(
         Request::Lookup { payment_hash } => {
             value(wallet.lookup(crate::parse_hash32(&payment_hash)?)?)
         }
+        Request::Payments => value(wallet.payments()?),
         Request::Balance => value(wallet.balance()?),
         Request::Channels => value(wallet.channels()?),
         Request::FundingAddress => Ok(serde_json::Value::String(wallet.funding_address()?)),
@@ -440,6 +442,10 @@ impl LightningWallet for RemoteWallet {
             },
             REPLY_WAIT,
         )
+    }
+
+    fn payments(&self) -> Result<Vec<PaymentRecord>, WalletError> {
+        self.typed(&Request::Payments, REPLY_WAIT)
     }
 
     fn balance(&self) -> Result<Balance, WalletError> {

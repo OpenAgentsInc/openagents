@@ -53,6 +53,15 @@ pub trait LightningWallet {
     /// direction, or `None` when this wallet never saw it.
     fn lookup(&self, payment_hash: [u8; 32]) -> Result<Option<PaymentRecord>, WalletError>;
 
+    /// Every Lightning payment the node recorded, in either direction,
+    /// without preimages or invoices (on-chain payments are left out). For
+    /// reconciliation (`crates/pay-ledger/src/reconcile.rs`).
+    fn payments(&self) -> Result<Vec<PaymentRecord>, WalletError> {
+        Err(WalletError::Node(
+            "this wallet cannot list its payments".into(),
+        ))
+    }
+
     /// On-chain and Lightning balances.
     fn balance(&self) -> Result<Balance, WalletError>;
 

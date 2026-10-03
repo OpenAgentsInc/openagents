@@ -1,0 +1,10 @@
+[Unit]
+Description=Reconcile the OpenAgents payments ledger with its wallets every ten minutes
+
+[Timer]
+OnBootSec=5m
+OnUnitActiveSec=10m
+Unit=openagents-pay-reconcile.service
+
+[Install]
+WantedBy=timers.target

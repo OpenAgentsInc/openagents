@@ -14,6 +14,7 @@ use std::{collections::BTreeMap, path::Path};
 
 pub mod payee;
 pub mod payout;
+pub mod reconcile;
 
 pub const V1: &str = include_str!("../rules/v1.toml");
 pub const OPENAGENTS: &str = "openagents";

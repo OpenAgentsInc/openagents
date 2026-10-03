@@ -67,6 +67,19 @@ pub(crate) const USAGE: &str = "usage: openagents pay COMMAND [OPTIONS]
                           List payouts: state, rail, amounts, and the wallet
                           reference; --open lists planned, sending, and
                           unknown ones only.
+  reconcile --ledger FILE [--spark-home DIR] [--report-dir DIR] [--resolve]
+                          Check the ledger against the receiver wallet (through
+                          the running node's control.sock) and the payout
+                          Spark wallet: every Lightning settlement is a
+                          succeeded inbound payment of its amount, every sent
+                          payout a succeeded outbound record, no outbound
+                          payment is unexplained, no payout stays unknown,
+                          and holdings cover what the ledger owes. Prints the
+                          report (state ok, drift, or unknown); --report-dir
+                          writes latest.json/.txt and daily/DATE.json/.txt
+                          there; --resolve settles an unknown payout whose
+                          wallet record proves it sent or failed. Nothing is
+                          ever sent. A drift is also an error line on stderr.
   payout-spark-init [--spark-home DIR]
                           Make a fresh seed for the payout Spark wallet in DIR
                           and print its Spark address (never the seed).
@@ -123,6 +136,7 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::screen("serve", Effect::LongRunning, "wallet"),
     Declared::screen("payouts", Effect::Spends, "wallet"),
     Declared::screen("payout-list", Effect::ReadOnly, "wallet"),
+    Declared::screen("reconcile", Effect::LocalWrite, "wallet"),
     Declared::screen("payout-spark-init", Effect::Secret, "wallet"),
 ];
 
@@ -138,6 +152,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         "serve" => serve(output, rest),
         "payouts" => crate::pay_payout::payouts(output, rest, USAGE),
         "payout-list" => crate::pay_payout::list(output, rest, USAGE),
+        "reconcile" => crate::pay_reconcile::reconcile(output, rest, USAGE),
         "payout-spark-init" => crate::pay_payout::spark_init(output, rest, USAGE),
         other => output.usage("pay", &format!("unknown command `{other}`"), USAGE),
     }

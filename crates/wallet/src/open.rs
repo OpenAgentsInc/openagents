@@ -143,6 +143,13 @@ impl LightningWallet for Opened {
         }
     }
 
+    fn payments(&self) -> Result<Vec<PaymentRecord>, WalletError> {
+        match self {
+            Self::Resident(w) => w.payments(),
+            Self::Local(w) => w.payments(),
+        }
+    }
+
     fn balance(&self) -> Result<Balance, WalletError> {
         match self {
             Self::Resident(w) => w.balance(),

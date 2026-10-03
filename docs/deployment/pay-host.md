@@ -44,6 +44,7 @@ nothing here reads them, and no node here ever runs on that mnemonic.
   ledger/          crates/pay-ledger (#10187): ledger.sqlite
   spark/           the payout Spark wallet's store; seed -> /run/openagents-pay-payouts/spark-seed
   flow/            pay-host's projection (flow.sqlite), rebuilt from the ledger
+  reconcile/       latest.json/.txt, daily/DATE.json/.txt, spark-scratch/
   backups/         encrypted copies, newest 48; health.json
 /run/openagents-pay/seed                           tmpfs, 0400, written at each start
 /run/openagents-pay-payouts/spark-seed             the same for the payout Spark wallet
@@ -53,8 +54,9 @@ nothing here reads them, and no node here ever runs on that mnemonic.
 The units are `deploy/systemd/openagents-pay.service` (the node),
 `deploy/systemd/openagents-pay-payouts.service` (the payout worker),
 `deploy/systemd/openagents-pay-flow.service` (`pay-host`, the flow and stats),
-`deploy/backup/openagents-pay-backup.{service,timer}` (hourly), and
-`deploy/pay/openagents-pay-health.{service,timer}` (every five minutes).
+`deploy/backup/openagents-pay-backup.{service,timer}` (hourly),
+`deploy/pay/openagents-pay-health.{service,timer}` (every five minutes), and
+`deploy/pay/openagents-pay-reconcile.{service,timer}` (every ten minutes).
 
 ### For the pay front (#10186)
 
@@ -153,6 +155,50 @@ reachable from nowhere outside the VPC. `openagents.com/api/flow/*` and
 `/api/stats` proxy there (`crates/openagents-web`), so `/live` and `/stats`
 read it same-origin.
 
+### Reconciliation (#10191)
+
+`deploy/pay/openagents-pay-reconcile.timer` runs `openagents pay reconcile
+--resolve` every ten minutes (`crates/pay-ledger/src/reconcile.rs`, the
+[design](../payments/2026-10-02-central-receive-and-splits.md#reconciliation)).
+It checks the ledger against the receiver wallet (through the node's
+`control.sock`; the node lists every Lightning payment) and the payout Spark
+wallet (read from a copy of its store in `reconcile/spark-scratch`, so the
+payout worker's store is never written):
+
+| Finding | Severity |
+| --- | --- |
+| A Lightning settlement with no succeeded inbound payment, or another amount (invariant 6) | drift |
+| A `sent` payout with no succeeded outbound record on its rail, or another amount | drift |
+| A `failed` payout (shares returned) that the wallet records as sent | drift |
+| An outbound payment no payout explains (the receiver's payments into the Spark wallet are its top-ups) | drift |
+| A payout `unknown` for more than 10 minutes (less: a notice) | drift |
+| Holdings (receiver Lightning plus Spark) below what the ledger owes (accrued plus reserved shares, OpenAgents' own included) | drift |
+| An inbound payment the ledger never settled (paid, never redeemed) | notice |
+| A wallet that could not be read | notice; the state is `unknown` |
+
+`--resolve` settles an `unknown` payout only when its wallet record proves
+the outcome: succeeded with the amount that went out is `sent`, failed is
+`failed` (its shares return). It never sends, refunds, or retries anything;
+every other finding is for a person.
+
+Each run writes `reconcile/latest.json` and `latest.txt`, and the day's
+report `reconcile/daily/YYYY-MM-DD.json` and `.txt` (the day's last run,
+with its run count, drift runs, and the drift kinds seen). A drift logs an
+error-priority line, `{"event":"reconciliation_drift",...}`, in the unit's
+journal until a run clears it (`reconciliation_cleared`). `pay-host` reads
+`latest.json` (`OPENAGENTS_PAY_RECONCILIATION`) every 10 seconds, so
+`/stats` shows `reconciliation: ok`, `drift`, or `unknown` (no report, or
+one older than 30 minutes). The Spark side is read with the payout worker's
+seed copy, so it is `unknown` while `openagents-pay-payouts` is stopped.
+
+```sh
+sudo journalctl -u openagents-pay-reconcile -p err         # drift alerts
+sudo cat /var/lib/openagents-pay/reconcile/latest.txt
+sudo -u openagents-pay sh -c 'set -a; . /etc/openagents-pay/openagents-pay.env; exec \
+  /opt/openagents-pay/current/openagents --json pay reconcile \
+  --ledger /var/lib/openagents-pay/ledger/ledger.sqlite'   # on demand; resolves nothing
+```
+
 ## Install from a checkout
 
 The binary is built on the host (or a builder with the same Debian release),
@@ -180,6 +226,7 @@ sudo install -m 0755 deploy/pay/openagents-pay-seed deploy/pay/openagents-pay-he
 sudo install -m 0644 deploy/systemd/openagents-pay.service \
   deploy/backup/openagents-pay-backup.service deploy/backup/openagents-pay-backup.timer \
   deploy/pay/openagents-pay-health.service deploy/pay/openagents-pay-health.timer \
+  deploy/pay/openagents-pay-reconcile.service deploy/pay/openagents-pay-reconcile.timer \
   /etc/systemd/system/
 sudo install -d -o root -g openagents-pay -m 0750 /etc/openagents-pay
 sudo install -o root -g openagents-pay -m 0640 deploy/openagents-pay.env.example \

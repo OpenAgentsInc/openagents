@@ -468,11 +468,40 @@ fn committed_nodes() -> &'static BTreeSet<String> {
             .collect()
     })
 }
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Reconciliation {
     Unknown,
     Ok,
     Drift,
+}
+/// A reconciliation report older than this no longer speaks for now: the
+/// timer runs every ten minutes, so three missed runs read as unknown.
+pub const REPORT_STALE_SECS: i64 = 1_800;
+/// The state the newest reconciliation report (`openagents pay reconcile
+/// --report-dir`, its `latest.json`) gives at `now_secs`. An unreadable or
+/// stale report is unknown; drift stays drift until a report says
+/// otherwise.
+#[must_use]
+pub fn reconciliation_from_report(text: &str, now_secs: i64) -> Reconciliation {
+    #[derive(Deserialize)]
+    struct Report {
+        schema: String,
+        at: i64,
+        state: String,
+    }
+    let Ok(report) = serde_json::from_str::<Report>(text) else {
+        return Reconciliation::Unknown;
+    };
+    if report.schema != "openagents.pay-reconciliation.v1"
+        || now_secs.saturating_sub(report.at) > REPORT_STALE_SECS
+    {
+        return Reconciliation::Unknown;
+    }
+    match report.state.as_str() {
+        "ok" => Reconciliation::Ok,
+        "drift" => Reconciliation::Drift,
+        _ => Reconciliation::Unknown,
+    }
 }
 #[derive(Default, Serialize)]
 pub struct Totals {

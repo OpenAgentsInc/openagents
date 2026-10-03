@@ -11945,6 +11945,57 @@
           }
         },
         {
+          "name": "reconcile",
+          "leaf": {
+            "path": [
+              "pay",
+              "reconcile"
+            ],
+            "usage": [
+              "reconcile --ledger FILE [--spark-home DIR] [--report-dir DIR] [--resolve]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "reconcile"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "ledger",
+                    "value": "FILE",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "spark-home",
+                    "value": "DIR",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "report-dir",
+                    "value": "DIR",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "resolve",
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Check the ledger against the receiver wallet (through the running node's control.sock) and the payout Spark wallet: every Lightning settlement is a succeeded inbound payment of its amount, every sent payout a succeeded outbound record, no outbound payment is unexplained, no payout stays unknown, and holdings cover what the ledger owes. Prints the report (state ok, drift, or unknown); --report-dir writes latest.json/.txt and daily/DATE.json/.txt there; --resolve settles an unknown payout whose wallet record proves it sent or failed. Nothing is ever sent. A drift is also an error line on stderr.",
+            "effect": "local_write",
+            "runs_on": "screen",
+            "screen": "wallet"
+          }
+        },
+        {
           "name": "payout-spark-init",
           "leaf": {
             "path": [
@@ -12044,6 +12095,20 @@
         {
           "kind": "option",
           "name": "open",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "report-dir",
+          "value": "DIR",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "resolve",
           "optional": true,
           "repeated": true
         }
