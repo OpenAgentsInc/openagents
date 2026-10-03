@@ -9357,6 +9357,7 @@ dependencies = [
  "gym",
  "gym-bridge",
  "jev",
+ "jev-hosted",
  "knowledge",
  "libc",
  "microcoder",

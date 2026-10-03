@@ -48,6 +48,7 @@ glam = "0.30.10"
 gym = { path = "../gym" }
 gym-bridge = { path = "../gym-bridge", default-features = false }
 jev = { path = "../jev" }
+jev-hosted = { path = "../jev-hosted" }
 knowledge = { path = "../knowledge" }
 libc = "0.2"
 microcoder = { path = "../microcoder" }
