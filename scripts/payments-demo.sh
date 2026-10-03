@@ -17,7 +17,8 @@
 #   2. Before: the public totals on openagents.com/api/stats.
 #   3. Pay and retry, CALLS times: `openagents x402 fetch ... --pay-with
 #      phone` (the phone asks to approve each payment; `--pay-with wallet`
-#      pays from this computer's x402 node instead).
+#      pays from this computer's wallet, `openagents wallet`, and
+#      `--pay-with node` from this computer's x402 node).
 #   4. Settlement and split: the payment, share, and bonus events on the
 #      public flow (openagents.com/api/flow/snapshot) and the time each took
 #      to appear; with --operator, the ledger rows on oa-pay-1.
@@ -29,9 +30,11 @@
 #      and its report).
 #
 # Options:
-#   --plugin ID        plugin id or slug (default explain-error)
+#   --plugin ID        plugin id or slug (default explain-error; until step 0
+#                      has published it, a quote falls back to the published
+#                      stand-in explain-error-check)
 #   --calls N          paid calls (default 2)
-#   --pay-with HOW     phone (default) or wallet
+#   --pay-with HOW     phone (default), wallet, or node
 #   --max-msat N       the buyer ceiling per call (default 20000)
 #   --body FILE        the failing output sent to the plugin (default a rustc error)
 #   --publish          publish the plugin first (needs --operator and --payout)
@@ -55,6 +58,8 @@ oa=${OPENAGENTS_BIN:-openagents}
 api=${PAY_API:-https://api.openagents.com}
 site=${PAY_SITE:-https://openagents.com}
 plugin=explain-error
+plugin_given=0
+stand_in=explain-error-check
 calls=2
 pay_with=phone
 max_msat=20000
@@ -69,7 +74,7 @@ first_receive=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --plugin) plugin=$2; shift 2 ;;
+    --plugin) plugin=$2; plugin_given=1; shift 2 ;;
     --calls) calls=$2; shift 2 ;;
     --pay-with) pay_with=$2; shift 2 ;;
     --max-msat) max_msat=$2; shift 2 ;;
@@ -168,6 +173,15 @@ url="$api/v1/plugins/$plugin/invoke"
 step "1. Quote: POST $url with no payment"
 status=$(curl -s -o "$work/402.json" -D "$work/402.headers" -w '%{http_code}' -X POST --data-binary @"$body" "$url")
 echo "   HTTP $status"
+if [ "$status" = 404 ] && [ "$plugin_given" = 0 ] && [ "$publish" = 0 ]; then
+  echo "   $plugin isn't published yet (step 0: --publish --operator --payout ADDRESS);"
+  echo "   quoting the published stand-in $stand_in instead"
+  plugin=$stand_in
+  url="$api/v1/plugins/$plugin/invoke"
+  step "1. Quote: POST $url with no payment"
+  status=$(curl -s -o "$work/402.json" -D "$work/402.headers" -w '%{http_code}' -X POST --data-binary @"$body" "$url")
+  echo "   HTTP $status"
+fi
 if [ "$status" != 402 ]; then
   cat "$work/402.json"; echo
   echo "   expected 402; is the plugin published (step 0) and the pay front up?" >&2
