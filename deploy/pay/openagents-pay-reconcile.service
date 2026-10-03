@@ -7,6 +7,9 @@ RequiresMountsFor=/var/lib/openagents-pay
 
 [Service]
 Type=oneshot
+# An unreadable wallet still writes an unknown report and exits 1. Accept
+# that status for timer runs; interactive invocations keep their exit code.
+SuccessExitStatus=1
 User=openagents-pay
 Group=openagents-pay
 EnvironmentFile=/etc/openagents-pay/openagents-pay.env

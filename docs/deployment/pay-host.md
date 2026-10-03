@@ -216,6 +216,12 @@ journal until a run clears it (`reconciliation_cleared`). `pay-host` reads
 `/stats` shows `reconciliation: ok`, `drift`, or `unknown` (no report, or
 one older than 30 minutes). The Spark side is read with the payout worker's
 seed copy, so it is `unknown` while `openagents-pay-payouts` is stopped.
+Interactive `openagents pay reconcile` exits 1 when a wallet cannot be read.
+The timer's service sets `SuccessExitStatus=1`, so systemd treats that exit
+as successful instead of marking the unit failed every ten minutes. The
+report still records `unknown`; this does not turn an unchecked wallet into
+`ok` or suppress journal findings. Other exit codes and signal failures
+keep systemd's default failure handling.
 
 ```sh
 sudo journalctl -u openagents-pay-reconcile -p err         # drift alerts
