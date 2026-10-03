@@ -1,5 +1,8 @@
 # Verse
 
+The [owned engine specification](engine/architecture.md) defines the Rust runtime,
+GPU pipeline, authoring tools, and near-term migration to original assets.
+
 For cross-project priorities and dependencies, see the [master roadmap](../roadmap.md).
 
 Verse is the OpenAgents desktop, iOS, and Android world. Its global plaza is a
