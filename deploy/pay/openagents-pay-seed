@@ -12,9 +12,17 @@
 #                               as the secret's first version, read it back
 #                               and compare digests, then shred the file and
 #                               replace it with the symlink to the tmpfs copy.
+#   openagents-pay-seed fetch spark | store spark
+#                               The same for the payout Spark wallet's seed
+#                               (hex entropy from `openagents pay
+#                               payout-spark-init`): secret
+#                               OPENAGENTS_PAY_SPARK_SEED_SECRET, home
+#                               OPENAGENTS_PAY_SPARK_HOME, tmpfs copy
+#                               /run/openagents-pay-payouts/spark-seed.
 #
 # Environment (from /etc/openagents-pay/openagents-pay.env when unset):
-#   OPENAGENTS_PAY_PROJECT, OPENAGENTS_PAY_SEED_SECRET, OPENAGENTS_WALLET_HOME
+#   OPENAGENTS_PAY_PROJECT, OPENAGENTS_PAY_SEED_SECRET, OPENAGENTS_WALLET_HOME,
+#   OPENAGENTS_PAY_SPARK_SEED_SECRET, OPENAGENTS_PAY_SPARK_HOME
 set -eu
 umask 077
 
@@ -26,10 +34,25 @@ if test -z "${OPENAGENTS_PAY_PROJECT:-}" && test -r "${env_file}"; then
     set +a
 fi
 project="${OPENAGENTS_PAY_PROJECT:?OPENAGENTS_PAY_PROJECT is unset}"
-secret="${OPENAGENTS_PAY_SEED_SECRET:-openagents-pay-wallet-seed}"
-home="${OPENAGENTS_WALLET_HOME:-/var/lib/openagents-pay/wallet}"
-run_dir=/run/openagents-pay
-run_seed="${run_dir}/seed"
+kind="${2:-wallet}"
+case "${kind}" in
+wallet)
+    secret="${OPENAGENTS_PAY_SEED_SECRET:-openagents-pay-wallet-seed}"
+    home="${OPENAGENTS_WALLET_HOME:-/var/lib/openagents-pay/wallet}"
+    run_dir=/run/openagents-pay
+    run_seed="${run_dir}/seed"
+    ;;
+spark)
+    secret="${OPENAGENTS_PAY_SPARK_SEED_SECRET:-openagents-pay-spark-seed}"
+    home="${OPENAGENTS_PAY_SPARK_HOME:-/var/lib/openagents-pay/spark}"
+    run_dir=/run/openagents-pay-payouts
+    run_seed="${run_dir}/spark-seed"
+    ;;
+*)
+    echo "openagents-pay-seed: unknown seed ${kind} (wallet or spark)" >&2
+    exit 1
+    ;;
+esac
 service_user=openagents-pay
 api="https://secretmanager.googleapis.com/v1/projects/${project}/secrets/${secret}"
 metadata="http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token"
@@ -57,8 +80,20 @@ read_secret() {
     test -s "$1" || fail "${secret} is empty"
 }
 
-# A BIP39 mnemonic is 12 to 24 lowercase words; check the shape only.
+# A BIP39 mnemonic is 12 to 24 lowercase words; the Spark seed is 16 or 32
+# bytes of entropy as hex. Check the shape only.
 check_shape() {
+    if test "${kind}" = spark; then
+        chars="$(tr -d '\n' < "$1" | wc -c | tr -d ' ')"
+        case "${chars}" in
+            32 | 64) ;;
+            *) fail "the Spark seed is not 16 or 32 bytes of hex" ;;
+        esac
+        if tr -d '\n' < "$1" | LC_ALL=C grep -q '[^0-9a-f]'; then
+            fail "the Spark seed holds characters outside lowercase hex"
+        fi
+        return
+    fi
     words="$(wc -w < "$1" | tr -d ' ')"
     case "${words}" in
         12 | 15 | 18 | 21 | 24) ;;
@@ -112,6 +147,6 @@ store)
     echo "openagents-pay-seed: seed stored in ${secret}; ${home}/seed now links to ${run_seed}"
     ;;
 *)
-    fail "usage: openagents-pay-seed fetch|store"
+    fail "usage: openagents-pay-seed fetch|store [wallet|spark]"
     ;;
 esac

@@ -283,7 +283,7 @@ impl Store {
         }
         // A successful payout may drain several plugins. Project each item once
         // so author and plugin totals receive exactly their own paid amount.
-        let mut payouts=read.prepare("SELECT p.id,p.party,p.rail,p.updated_at,i.settlement,i.role,s.amount_msat,t.plugin_id FROM payout p JOIN (SELECT * FROM payout_item UNION ALL SELECT * FROM bonus_payout_item) i ON i.payout=p.id JOIN payable_share s ON s.settlement=i.settlement AND s.party=i.party AND s.role=i.role JOIN settlement t ON t.payment_hash=i.settlement WHERE p.state='succeeded' ORDER BY p.updated_at,p.id,i.settlement,i.role")?;
+        let mut payouts=read.prepare("SELECT p.id,p.party,p.rail,p.updated_at,i.settlement,i.role,s.amount_msat,t.plugin_id FROM payout p JOIN (SELECT * FROM payout_item UNION ALL SELECT * FROM bonus_payout_item) i ON i.payout=p.id JOIN payable_share s ON s.settlement=i.settlement AND s.party=i.party AND s.role=i.role JOIN settlement t ON t.payment_hash=i.settlement WHERE p.state IN ('sent','succeeded') ORDER BY p.updated_at,p.id,i.settlement,i.role")?;
         for row in payouts.query_map([], |r| {
             Ok((
                 r.get::<_, String>(0)?,

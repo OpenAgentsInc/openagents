@@ -30,6 +30,7 @@ nothing here reads them, and no node here ever runs on that mnemonic.
 
 ```text
 /opt/openagents-pay/releases/<commit>/openagents   immutable release
+/opt/openagents-pay/releases/<commit>/pay-host     the flow and stats server
 /opt/openagents-pay/current -> releases/<commit>
 /etc/openagents-pay/openagents-pay.env             deploy/openagents-pay.env.example, filled in
 /usr/local/sbin/openagents-pay-seed                deploy/pay/
@@ -40,12 +41,18 @@ nothing here reads them, and no node here ever runs on that mnemonic.
   wallet/          OPENAGENTS_WALLET_HOME: config.json, ldk/ (channel store),
                    control.sock, seed -> /run/openagents-pay/seed
   x402/replay/     OPENAGENTS_X402_HOME: the one replay store for this payTo
-  ledger/          crates/pay-ledger (#10187), when it exists
+  ledger/          crates/pay-ledger (#10187): ledger.sqlite
+  spark/           the payout Spark wallet's store; seed -> /run/openagents-pay-payouts/spark-seed
+  flow/            pay-host's projection (flow.sqlite), rebuilt from the ledger
   backups/         encrypted copies, newest 48; health.json
 /run/openagents-pay/seed                           tmpfs, 0400, written at each start
+/run/openagents-pay-payouts/spark-seed             the same for the payout Spark wallet
+/etc/openagents-pay/flow-salt.env                  OPENAGENTS_PAY_FLOW_SALT, root 0400
 ```
 
 The units are `deploy/systemd/openagents-pay.service` (the node),
+`deploy/systemd/openagents-pay-payouts.service` (the payout worker),
+`deploy/systemd/openagents-pay-flow.service` (`pay-host`, the flow and stats),
 `deploy/backup/openagents-pay-backup.{service,timer}` (hourly), and
 `deploy/pay/openagents-pay-health.{service,timer}` (every five minutes).
 
@@ -72,11 +79,79 @@ It resolves `{id}` to the newest signed release, fetches and checks it into
 `plugin_cache` (default `OPENAGENTS_X402_HOME/plugins/<release>`), quotes the
 endpoint price plus the author's fee (the `402` names both), and runs the
 release's single guest step with no grant beyond the request. The ledger's v1
-split rule takes effect 2026-10-15; before then the ledger refuses
-settlements, so paid calls get a `503` and nothing runs. Add it as its own unit with
+split rule took effect 2026-10-02 (a settlement dated before it is refused,
+so its call gets a `503` and nothing runs). Add it as its own unit with
 `After=openagents-pay.service` and `Requires=openagents-pay.service`; it
 needs `ReadWritePaths=/var/lib/openagents-pay` and the one TCP port Caddy
 proxies to.
+
+### The payout worker (#10190)
+
+`deploy/systemd/openagents-pay-payouts.service` runs `openagents pay
+payouts` as the same user against the same ledger
+(`/var/lib/openagents-pay/ledger/ledger.sqlite`). Every 60 seconds it pays
+each payee whose accrued shares reached the threshold (100 sats to a Spark
+address, 1,000 sats to a Lightning address, or anything over 1 sat once its
+oldest share is a day old), as the
+[design](../payments/2026-10-02-central-receive-and-splits.md#how-payouts-go-out)
+describes:
+
+- Lightning addresses are paid from the receiver wallet through the
+  resident's `control.sock` (fee cap 1%, at least 5 sats).
+- Spark addresses are paid from the payout Spark wallet in
+  `/var/lib/openagents-pay/spark` (Breez SDK, mainnet). Its seed is Secret
+  Manager `openagents-pay-spark-seed` (hex entropy, never on the data disk):
+  `openagents-pay-seed fetch spark` writes it to
+  `/run/openagents-pay-payouts/spark-seed` before each start and the Spark
+  home's `seed` links there. The wallet refills itself, at least 1,000 sats
+  at a time, by having the receiver wallet pay its invoice.
+- Stopping or killing the unit is safe at any moment: the payment hash or
+  Spark transfer id is written before the send, and a restart settles an
+  interrupted payout only by looking it up, never by sending again.
+
+```sh
+pay pay payout-list --ledger /var/lib/openagents-pay/ledger/ledger.sqlite --open
+sudo journalctl -u openagents-pay-payouts -f     # one JSON line per payout step
+```
+
+An `unknown` payout whose wallet has no record of its reference keeps its
+shares reserved (a crash between dispatch and the wallet's own record looks
+the same as a send that never started). Check it with `pay wallet lookup
+HASH` (Lightning) or the Spark wallet's payments before doing anything by
+hand.
+
+The Spark seed (once):
+
+```sh
+sudo -u openagents-pay env HOME=/var/lib/openagents-pay \
+  /opt/openagents-pay/current/openagents --json pay payout-spark-init \
+  --spark-home /var/lib/openagents-pay/spark      # prints the Spark address only
+sudo /usr/local/sbin/openagents-pay-seed store spark
+```
+
+### Flow and stats for the website (#10195)
+
+`deploy/systemd/openagents-pay-flow.service` runs the `pay-host` binary
+(`crates/pay-host`): it projects the ledger, read-only, into
+`/var/lib/openagents-pay/flow/flow.sqlite` and serves `GET /flow/snapshot`,
+`GET /flow/stream` (SSE), and `GET /stats` on `0.0.0.0:4400`. Nothing else
+is served. `OPENAGENTS_PAY_FLOW_SALT` is in `/etc/openagents-pay/flow-salt.env`
+(root, 0400), made once on the host:
+
+```sh
+sudo sh -c 'umask 077; printf "OPENAGENTS_PAY_FLOW_SALT=%s\n" "$(openssl rand -hex 32)" \
+  > /etc/openagents-pay/flow-salt.env'
+```
+
+The host has no public address. The website (Cloud Run `coder`) reaches it
+over the VPC: the service has Direct VPC egress on the `default` subnet with
+`private-ranges-only`, so only RFC 1918 traffic takes the VPC, and the `web`
+container has `OPENAGENTS_WEB_PAY_HOST=http://10.128.0.46:4400`. The
+address is reserved as `oa-pay-1-internal`. The VPC's
+`default-allow-internal` rule (10.128.0.0/9) already admits it; port 4400 is
+reachable from nowhere outside the VPC. `openagents.com/api/flow/*` and
+`/api/stats` proxy there (`crates/openagents-web`), so `/live` and `/stats`
+read it same-origin.
 
 ## Install from a checkout
 

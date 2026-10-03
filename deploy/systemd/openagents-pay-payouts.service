@@ -1,0 +1,74 @@
+[Unit]
+Description=OpenAgents payout worker (openagents pay payouts)
+Documentation=https://github.com/OpenAgentsInc/openagents/blob/main/docs/deployment/pay-host.md
+After=openagents-pay.service network-online.target
+Requires=openagents-pay.service
+Wants=network-online.target
+RequiresMountsFor=/var/lib/openagents-pay
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=openagents-pay
+Group=openagents-pay
+EnvironmentFile=/etc/openagents-pay/openagents-pay.env
+# The payout Spark wallet's seed lives in Secret Manager
+# (openagents-pay-spark-seed). Before each start, root writes it to
+# /run/openagents-pay-payouts/spark-seed (tmpfs, owner openagents-pay, mode
+# 0400); the Spark home's `seed` is a symlink to it. The receiver wallet is
+# reached through the resident's control.sock, never opened here.
+RuntimeDirectory=openagents-pay-payouts
+RuntimeDirectoryMode=0700
+ExecStartPre=+/usr/local/sbin/openagents-pay-seed fetch spark
+ExecStartPre=/usr/bin/test -x /opt/openagents-pay/current/openagents
+# Killing it at any moment is safe: each payout's payment hash or transfer
+# id is on disk before it is sent, and a restart settles an interrupted
+# payout by lookup only (crates/pay-ledger/src/payout.rs).
+ExecStart=/opt/openagents-pay/current/openagents --json pay payouts --ledger /var/lib/openagents-pay/ledger/ledger.sqlite --spark-home /var/lib/openagents-pay/spark --interval 60
+Restart=on-failure
+RestartSec=30
+TimeoutStopSec=30
+KillSignal=SIGTERM
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=openagents-pay-payouts
+
+# It reaches out only: Lightning-address services over HTTPS, the Spark
+# operators, the relay. It binds no port.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SocketBindDeny=any
+
+StateDirectory=openagents-pay
+StateDirectoryMode=0700
+ReadWritePaths=/var/lib/openagents-pay
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+DevicePolicy=closed
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+CapabilityBoundingSet=
+AmbientCapabilities=
+KeyringMode=private
+RemoveIPC=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

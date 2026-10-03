@@ -272,7 +272,7 @@ async fn real_ledger_bonus_and_payout_replay_are_exact_and_private() {
     ledger
         .set_payout_state(
             "private-payout",
-            PayoutState::Succeeded,
+            PayoutState::Sent,
             Some("private-wallet-reference"),
             START + 1,
         )

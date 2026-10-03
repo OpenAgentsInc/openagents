@@ -271,9 +271,9 @@ fn first_bonus_survives_restart_and_replay_without_new_funding() {
 #[test]
 fn only_failed_openagents_payouts_make_their_funding_available() {
     for state in [
-        PayoutState::Pending,
+        PayoutState::Planned,
         PayoutState::Unknown,
-        PayoutState::Succeeded,
+        PayoutState::Sent,
         PayoutState::Failed,
     ] {
         let mut ledger = configured(100, 0, 0);
@@ -283,7 +283,7 @@ fn only_failed_openagents_payouts_make_their_funding_available() {
         ledger
             .reserve_payout("treasury", OPENAGENTS, &shares, start())
             .unwrap();
-        if state != PayoutState::Pending {
+        if state != PayoutState::Planned {
             ledger
                 .set_payout_state("treasury", state, Some("wallet-reference"), start())
                 .unwrap();
@@ -379,7 +379,7 @@ fn a_first_bonus_can_be_paid_once_and_only_failed_payouts_release_it() {
     ledger
         .set_payout_state(
             "retry",
-            PayoutState::Succeeded,
+            PayoutState::Sent,
             Some("wallet-reference"),
             start(),
         )
@@ -482,12 +482,12 @@ proptest! {
                 let payout = format!("payout-{index}-{party_index}");
                 ledger.reserve_payout(&payout, party, &shares, start()).unwrap();
                 let state = match outcome {
-                    0 => PayoutState::Pending,
+                    0 => PayoutState::Planned,
                     1 => PayoutState::Unknown,
-                    2 => PayoutState::Succeeded,
+                    2 => PayoutState::Sent,
                     _ => PayoutState::Failed,
                 };
-                if state != PayoutState::Pending {
+                if state != PayoutState::Planned {
                     ledger.set_payout_state(&payout, state, Some("fixture-reference"), start()).unwrap();
                 }
                 conserved(&ledger);

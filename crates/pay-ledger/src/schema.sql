@@ -34,18 +34,7 @@ CREATE TABLE IF NOT EXISTS payee (
     source TEXT NOT NULL,
     verified_at INTEGER NOT NULL
 );
-CREATE TABLE IF NOT EXISTS payout (
-    id TEXT PRIMARY KEY,
-    party TEXT NOT NULL REFERENCES payee(party),
-    amount_msat INTEGER NOT NULL CHECK(amount_msat > 0),
-    destination TEXT NOT NULL,
-    rail TEXT NOT NULL,
-    state TEXT NOT NULL CHECK(state IN ('pending','unknown','succeeded','failed')),
-    wallet_reference TEXT,
-    attempts INTEGER NOT NULL,
-    created_at INTEGER NOT NULL,
-    updated_at INTEGER NOT NULL
-);
+-- `payout` is created by `payout::create_table` (it has a migration).
 CREATE TABLE IF NOT EXISTS payout_item (
     payout TEXT NOT NULL REFERENCES payout(id),
     settlement TEXT NOT NULL,

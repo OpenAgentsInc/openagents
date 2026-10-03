@@ -315,6 +315,37 @@ and a cached destination stays until a newer resolution replaces it.
 - **Fees:** Lightning routing fees on a payout come out of OpenAgents' share
   for amounts at or above the threshold.
 
+Implemented (#10190) as `pay_ledger::payout` (the state machine, batching,
+and backoff, tested against a fake wallet in
+`crates/pay-ledger/tests/payouts.rs`, crashes included) and `openagents pay
+payouts` (`crates/openagents-cli/src/pay_payout.rs`, the real rails), run
+on the pay host as `openagents-pay-payouts.service`. What it does:
+
+- One payout per payee at a time; the payout drains whole shares
+  (`payout_item`, `bonus_payout_item`) and sends their sum rounded down to
+  whole sats (`sent_msat`); the sub-sat remainder stays with OpenAgents.
+- States `planned` (shares reserved, nothing sent) → `sending` (the payment
+  hash, or for Spark the payout id that is the transfer's idempotency key,
+  is on disk) → `sent` | `failed` | `unknown`. After a restart a `planned`
+  payout fails (nothing went out) and a `sending` or `unknown` one is looked
+  up: succeeded is `sent`, failed is `failed`, pending stays `unknown`. A
+  wallet with **no record** of the reference also stays `unknown`, because
+  `ldk-node` stores an outbound payment only after dispatching it, so a
+  crash in between leaves no record of a payment that may still succeed.
+  Such a payout keeps its shares reserved until an operator checks it.
+- A failed payout returns its shares; the payee then waits 5 minutes,
+  doubling per consecutive failure, at most 6 hours.
+- Lightning address: LUD-16 well-known URL, the amount checked against
+  `minSendable`/`maxSendable`, the invoice checked for network, exact
+  amount, and the description hash of the metadata, then paid from the
+  receiver wallet with a fee cap of 1% (at least 5 sats).
+- Spark address: the payout Spark wallet (seed in Secret Manager
+  `openagents-pay-spark-seed`) tops itself up by at least 1,000 sats by
+  having the receiver wallet pay its BOLT11 invoice, then sends the transfer.
+- A node-key destination has no rail yet; its shares stay owed.
+- Ledgers written before this move from `pending`/`succeeded` to these
+  states when opened.
+
 ## 6. Paid endpoints on the central receiver
 
 - **API endpoints** (API phase 1): the pay front serves the priced `/v1`

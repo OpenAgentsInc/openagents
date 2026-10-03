@@ -1,0 +1,69 @@
+[Unit]
+Description=OpenAgents payment flow and stats (pay-host: /flow/snapshot, /flow/stream, /stats)
+Documentation=https://github.com/OpenAgentsInc/openagents/blob/main/docs/deployment/pay-host.md
+After=network-online.target
+Wants=network-online.target
+RequiresMountsFor=/var/lib/openagents-pay
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=openagents-pay
+Group=openagents-pay
+# OPENAGENTS_PAY_FLOW_SALT (64 hex digits, made once on this host, mode
+# 0400 root) keys the daily payer aliases. systemd reads it as root.
+EnvironmentFile=/etc/openagents-pay/flow-salt.env
+Environment=OPENAGENTS_PAY_SOURCE_DB=/var/lib/openagents-pay/ledger/ledger.sqlite
+Environment=OPENAGENTS_PAY_FLOW_DB=/var/lib/openagents-pay/flow/flow.sqlite
+# The website (Cloud Run `coder`) reaches this over the VPC through Direct
+# VPC egress; firewall oa-pay-flow-from-vpc admits only 10.128.0.0/20 on
+# this port. It serves read-only public projections and nothing else.
+Environment=OPENAGENTS_PAY_LISTEN=0.0.0.0:4400
+ExecStartPre=/usr/bin/test -r /var/lib/openagents-pay/ledger/ledger.sqlite
+ExecStartPre=/usr/bin/install -d -m 0700 /var/lib/openagents-pay/flow
+ExecStart=/opt/openagents-pay/current/pay-host
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=openagents-pay-flow
+
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SocketBindAllow=tcp:4400
+SocketBindDeny=any
+
+StateDirectory=openagents-pay
+StateDirectoryMode=0700
+ReadWritePaths=/var/lib/openagents-pay
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+DevicePolicy=closed
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+CapabilityBoundingSet=
+AmbientCapabilities=
+KeyringMode=private
+RemoveIPC=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

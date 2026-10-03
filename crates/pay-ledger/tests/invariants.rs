@@ -131,9 +131,9 @@ proptest! {
         prop_assert!(ledger.reserve_payout("duplicate", "alice", &shares, START).is_err());
         ledger.set_payout_state("first", PayoutState::Unknown, None, START).unwrap();
         prop_assert!(ledger.reserve_payout("unknown-retry", "alice", &shares, START).is_err());
-        ledger.set_payout_state("first", if fail { PayoutState::Failed } else { PayoutState::Succeeded }, Some("wallet-ref"), START).unwrap();
+        ledger.set_payout_state("first", if fail { PayoutState::Failed } else { PayoutState::Sent }, Some("wallet-ref"), START).unwrap();
         prop_assert_eq!(ledger.reserve_payout("retry", "alice", &shares, START).is_ok(), fail);
-        prop_assert!(ledger.set_payout_state("first", PayoutState::Pending, None, START).is_err());
+        prop_assert!(ledger.set_payout_state("first", PayoutState::Planned, None, START).is_err());
         conserved(&ledger);
     }
 
@@ -149,7 +149,7 @@ proptest! {
                 let id = format!("payout-{index}-{n}");
                 ledger.reserve_payout(&id, &share.party, std::slice::from_ref(&share), START).unwrap();
                 conserved(&ledger);
-                let state = match outcome { 0 => PayoutState::Failed, 1 => PayoutState::Unknown, _ => PayoutState::Succeeded };
+                let state = match outcome { 0 => PayoutState::Failed, 1 => PayoutState::Unknown, _ => PayoutState::Sent };
                 ledger.set_payout_state(&id, state, Some("wallet-ref"), START).unwrap();
                 conserved(&ledger);
                 let t = ledger.totals().unwrap();
@@ -237,7 +237,7 @@ fn invalid_rules_inputs_and_payouts_are_atomic() {
         .unwrap();
     assert!(
         ledger
-            .set_payout_state("valid", PayoutState::Succeeded, None, START)
+            .set_payout_state("valid", PayoutState::Sent, None, START)
             .is_err()
     );
     conserved(&ledger);

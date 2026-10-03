@@ -13,6 +13,7 @@ use sha2::{Digest, Sha256};
 use std::{collections::BTreeMap, path::Path};
 
 pub mod payee;
+pub mod payout;
 
 pub const V1: &str = include_str!("../rules/v1.toml");
 pub const OPENAGENTS: &str = "openagents";
@@ -173,7 +174,7 @@ pub struct Totals {
     pub received_msat: i64,
     pub lsp_fee_msat: i64,
     pub accrued_msat: i64,
-    /// Pending and unknown payouts remain reserved until explicitly failed.
+    /// Planned, sending, and unknown payouts stay reserved until they fail.
     pub reserved_msat: i64,
     pub paid_msat: i64,
 }
@@ -194,20 +195,38 @@ pub struct Payee {
     pub verified_at: i64,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// A payout's state. `planned` reserves the shares; `sending` means the
+/// wallet reference (payment hash or Spark transfer id) is on disk and the
+/// send may have started; `unknown` is a send whose outcome only a wallet
+/// lookup can tell. `sent` and `failed` are final, and only `failed`
+/// returns the shares to accrued.
 pub enum PayoutState {
-    Pending,
+    Planned,
+    Sending,
     Unknown,
-    Succeeded,
+    Sent,
     Failed,
 }
 impl PayoutState {
-    fn as_str(self) -> &'static str {
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
         match self {
-            Self::Pending => "pending",
+            Self::Planned => "planned",
+            Self::Sending => "sending",
             Self::Unknown => "unknown",
-            Self::Succeeded => "succeeded",
+            Self::Sent => "sent",
             Self::Failed => "failed",
         }
+    }
+    fn parse(text: &str) -> Option<Self> {
+        Some(match text {
+            "planned" => Self::Planned,
+            "sending" => Self::Sending,
+            "unknown" => Self::Unknown,
+            "sent" => Self::Sent,
+            "failed" => Self::Failed,
+            _ => return None,
+        })
     }
 }
 
@@ -224,6 +243,7 @@ impl Ledger {
     fn initialize(mut connection: Connection) -> Result<Self> {
         connection.busy_timeout(std::time::Duration::from_secs(5))?;
         connection.execute_batch(include_str!("schema.sql"))?;
+        payout::create_table(&mut connection)?;
         // Existing ledgers predate plugin release attribution. Serialize the
         // check and alteration so concurrent receiver opens migrate once.
         let tx = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -434,12 +454,12 @@ impl Ledger {
             |r| r.get(0),
         )?;
         total.reserved_msat = self.connection.query_row(
-            "SELECT COALESCE(SUM(amount_msat),0) FROM payout WHERE state IN ('pending','unknown')",
+            "SELECT COALESCE(SUM(amount_msat),0) FROM payout WHERE state IN ('planned','sending','unknown')",
             [],
             |r| r.get(0),
         )?;
         total.paid_msat = self.connection.query_row(
-            "SELECT COALESCE(SUM(amount_msat),0) FROM payout WHERE state='succeeded'",
+            "SELECT COALESCE(SUM(amount_msat),0) FROM payout WHERE state='sent'",
             [],
             |r| r.get(0),
         )?;
@@ -520,9 +540,15 @@ impl Ledger {
                 .checked_add(value)
                 .ok_or(Error::Invalid("payout overflow"))?;
         }
+        let rail = if destination.starts_with("spark:") {
+            "spark"
+        } else {
+            "lightning"
+        };
+        let attempts = payout::failure_streak(&tx, party)?.0 + 1;
         tx.execute(
-            "INSERT INTO payout VALUES(?,?,?,?,?,'pending',NULL,1,?,?)",
-            params![id, party, amount, destination, "lightning", at, at],
+            "INSERT INTO payout(id,party,amount_msat,destination,rail,state,wallet_reference,attempts,created_at,updated_at) VALUES(?,?,?,?,?,'planned',NULL,?,?,?)",
+            params![id, party, amount, destination, rail, attempts, at, at],
         )?;
         for item in items {
             let table = if item.role == "first_paid_call" {
@@ -538,6 +564,9 @@ impl Ledger {
         tx.commit()?;
         Ok(amount)
     }
+    /// Move an open payout to `state`. A payout never goes back to
+    /// `planned`, `sending` and `sent` need a wallet reference, and a
+    /// reference once recorded never changes (`None` keeps it).
     pub fn set_payout_state(
         &mut self,
         id: &str,
@@ -545,17 +574,42 @@ impl Ledger {
         wallet_reference: Option<&str>,
         at: i64,
     ) -> Result<()> {
-        if state == PayoutState::Succeeded && wallet_reference.is_none_or(str::is_empty) {
-            return Err(Error::Invalid("successful payout needs a wallet reference"));
+        if state == PayoutState::Planned {
+            return Err(Error::Invalid("a payout never returns to planned"));
         }
-        let changed = self.connection.execute("UPDATE payout SET state=?,wallet_reference=?,updated_at=? WHERE id=? AND state IN ('pending','unknown')", params![state.as_str(),wallet_reference,at,id])?;
+        let existing: Option<Option<String>> = self
+            .connection
+            .query_row(
+                "SELECT wallet_reference FROM payout WHERE id=? AND state IN ('planned','sending','unknown')",
+                [id],
+                |r| r.get(0),
+            )
+            .optional()?;
+        let Some(existing) = existing else {
+            return Err(Error::Invalid("payout absent or terminal"));
+        };
+        if existing.is_some()
+            && wallet_reference.is_some()
+            && existing.as_deref() != wallet_reference
+        {
+            return Err(Error::Invalid("a payout's wallet reference never changes"));
+        }
+        let reference = existing.as_deref().or(wallet_reference);
+        if matches!(state, PayoutState::Sent | PayoutState::Sending)
+            && reference.is_none_or(str::is_empty)
+        {
+            return Err(Error::Invalid(
+                "a sending or sent payout needs a wallet reference",
+            ));
+        }
+        let changed = self.connection.execute("UPDATE payout SET state=?,wallet_reference=?,updated_at=? WHERE id=? AND state IN ('planned','sending','unknown')", params![state.as_str(),reference,at,id])?;
         if changed != 1 {
             return Err(Error::Invalid("payout absent or terminal"));
         }
         Ok(())
     }
 }
-const AVAILABLE: &str = "NOT EXISTS (SELECT 1 FROM payout_item i JOIN payout p ON p.id=i.payout WHERE i.settlement=s.settlement AND i.party=s.party AND i.role=s.role AND p.state!='failed') AND NOT EXISTS (SELECT 1 FROM bonus_payout_item i JOIN payout p ON p.id=i.payout WHERE i.settlement=s.settlement AND i.party=s.party AND i.role=s.role AND p.state!='failed')";
+pub(crate) const AVAILABLE: &str = "NOT EXISTS (SELECT 1 FROM payout_item i JOIN payout p ON p.id=i.payout WHERE i.settlement=s.settlement AND i.party=s.party AND i.role=s.role AND p.state!='failed') AND NOT EXISTS (SELECT 1 FROM bonus_payout_item i JOIN payout p ON p.id=i.payout WHERE i.settlement=s.settlement AND i.party=s.party AND i.role=s.role AND p.state!='failed')";
 fn available_shares(connection: &Connection, party: &str) -> Result<Vec<Share>> {
     let mut stmt = connection.prepare(&format!("SELECT s.settlement,s.party,s.role,s.amount_msat FROM payable_share s JOIN settlement t ON t.payment_hash=s.settlement WHERE s.party=? AND s.amount_msat>0 AND {AVAILABLE} ORDER BY t.seq,s.role"))?;
     let rows = stmt.query_map([party], |r| {

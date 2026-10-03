@@ -43,6 +43,33 @@ pub(crate) const USAGE: &str = "usage: openagents pay COMMAND [OPTIONS]
                           published plugin named by the path. If the log
                           cannot be written the call gets a 503, nothing runs,
                           and the same proof stays good for a retry.
+  payouts --ledger FILE [--relay URL] [--interval SECS] [--spark-home DIR] [--once]
+                          Pay the ledger's accrued shares out from this
+                          computer's wallet, every SECS (default 60): per
+                          payee, once its owed amount reaches 100 sats (Spark
+                          address) or 1,000 sats (Lightning address), or once
+                          its oldest share is a day old. The destination is
+                          the signed release's payout, then the payee's NIP-A3
+                          Spark address, then its profile's lud16, read from
+                          the relay; a payee with none stays owed. Lightning
+                          addresses are paid by LNURL-pay from the wallet
+                          within a 1% fee cap; Spark addresses from the payout
+                          Spark wallet in DIR (default
+                          /var/lib/openagents-pay/spark), topped up from the
+                          wallet. Each payout's payment hash or transfer id is
+                          written before it is sent; after a restart an
+                          interrupted payout is settled only by looking it up,
+                          never sent again. A failed payout returns its
+                          shares and the payee backs off (5 min, doubling, at
+                          most 6 h). OPENAGENTS_PAY_LEDGER and
+                          OPENAGENTS_PAY_SPARK_HOME stand in for the flags.
+  payout-list --ledger FILE [--open]
+                          List payouts: state, rail, amounts, and the wallet
+                          reference; --open lists planned, sending, and
+                          unknown ones only.
+  payout-spark-init [--spark-home DIR]
+                          Make a fresh seed for the payout Spark wallet in DIR
+                          and print its Spark address (never the seed).
 The route file:
   public_url = \"https://api.openagents.com\"   # routes bind this + path
   listen = \"127.0.0.1:8402\"                    # optional
@@ -92,7 +119,12 @@ settlements ~/.openagents/x402/settlements.ndjson. Every process that
 settles for this wallet must share all three.";
 
 #[cfg(test)]
-pub(crate) const EFFECTS: &[Declared] = &[Declared::screen("serve", Effect::LongRunning, "wallet")];
+pub(crate) const EFFECTS: &[Declared] = &[
+    Declared::screen("serve", Effect::LongRunning, "wallet"),
+    Declared::screen("payouts", Effect::Spends, "wallet"),
+    Declared::screen("payout-list", Effect::ReadOnly, "wallet"),
+    Declared::screen("payout-spark-init", Effect::Secret, "wallet"),
+];
 
 pub fn run(output: &Output, words: &[String]) -> u8 {
     let Some((command, rest)) = words.split_first() else {
@@ -104,6 +136,9 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
             0
         }
         "serve" => serve(output, rest),
+        "payouts" => crate::pay_payout::payouts(output, rest, USAGE),
+        "payout-list" => crate::pay_payout::list(output, rest, USAGE),
+        "payout-spark-init" => crate::pay_payout::spark_init(output, rest, USAGE),
         other => output.usage("pay", &format!("unknown command `{other}`"), USAGE),
     }
 }

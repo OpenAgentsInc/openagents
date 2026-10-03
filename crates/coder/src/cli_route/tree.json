@@ -11792,6 +11792,134 @@
             "runs_on": "screen",
             "screen": "wallet"
           }
+        },
+        {
+          "name": "payouts",
+          "leaf": {
+            "path": [
+              "pay",
+              "payouts"
+            ],
+            "usage": [
+              "payouts --ledger FILE [--relay URL] [--interval SECS] [--spark-home DIR] [--once]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "payouts"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "ledger",
+                    "value": "FILE",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "relay",
+                    "value": "URL",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "interval",
+                    "value": "SECS",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "spark-home",
+                    "value": "DIR",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "once",
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Pay the ledger's accrued shares out from this computer's wallet, every SECS (default 60): per payee, once its owed amount reaches 100 sats (Spark address) or 1,000 sats (Lightning address), or once its oldest share is a day old. The destination is the signed release's payout, then the payee's NIP-A3 Spark address, then its profile's lud16, read from the relay; a payee with none stays owed. Lightning addresses are paid by LNURL-pay from the wallet within a 1% fee cap; Spark addresses from the payout Spark wallet in DIR (default /var/lib/openagents-pay/spark), topped up from the wallet. Each payout's payment hash or transfer id is written before it is sent; after a restart an interrupted payout is settled only by looking it up, never sent again. A failed payout returns its shares and the payee backs off (5 min, doubling, at most 6 h). OPENAGENTS_PAY_LEDGER and OPENAGENTS_PAY_SPARK_HOME stand in for the flags.",
+            "effect": "spends",
+            "runs_on": "screen",
+            "screen": "wallet"
+          }
+        },
+        {
+          "name": "payout-list",
+          "leaf": {
+            "path": [
+              "pay",
+              "payout-list"
+            ],
+            "usage": [
+              "payout-list --ledger FILE [--open]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "payout-list"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "ledger",
+                    "value": "FILE",
+                    "open": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "open",
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "List payouts: state, rail, amounts, and the wallet reference; --open lists planned, sending, and unknown ones only.",
+            "effect": "read_only",
+            "runs_on": "screen",
+            "screen": "wallet"
+          }
+        },
+        {
+          "name": "payout-spark-init",
+          "leaf": {
+            "path": [
+              "pay",
+              "payout-spark-init"
+            ],
+            "usage": [
+              "payout-spark-init [--spark-home DIR]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "payout-spark-init"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "spark-home",
+                    "value": "DIR",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Make a fresh seed for the payout Spark wallet in DIR and print its Spark address (never the seed).",
+            "effect": "secret",
+            "runs_on": "screen",
+            "screen": "wallet"
+          }
         }
       ],
       "options": [
@@ -11816,6 +11944,50 @@
           "name": "seconds",
           "value": "N",
           "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "ledger",
+          "value": "FILE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "relay",
+          "value": "URL",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "interval",
+          "value": "SECS",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "spark-home",
+          "value": "DIR",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "once",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "open",
           "optional": true,
           "repeated": true
         }
