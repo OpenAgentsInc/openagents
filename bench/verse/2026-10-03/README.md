@@ -17,8 +17,14 @@ JSON records all ten abilities, 32 enemy casts, 54 absorbed shield damage, ten
 cultists defeated, and the adventurer's defeat at 46.9 simulated seconds.
 Claude finishes at 299,877 of 300,000 HP. The capture ends five seconds later.
 
-Validation: Verse library tests (368 passed, eight existing tests ignored),
-the two original-pack and timeline tests, both native example builds, formatting,
-and diff checks. The asset test verifies generated file digests and animation;
-the timeline test verifies the full ability kit and actual combat outcomes.
-This fixture does not validate multiplayer, saves, or character mesh collision.
+This capture is refreshed after engine-core extraction, shared primitive
+collision, and third-person camera clearance (#10427–#10429). The original scene
+uses the headless `verse-engine` contracts and owned `physics` box queries.
+
+Validation: Physics suite (one existing oracle ignore), six engine tests,
+16 gameplay adapter tests, 33 focused chamber tests, both native example builds,
+formatting, and diff checks. The asset test verifies generated file digests and
+animation; the timeline test verifies the full ability kit and actual combat
+outcomes. Collision tests cover tunneling, wall sliding, corners, teleport
+arrival effects, and obstructed/unobstructed camera views. This fixture does not
+validate multiplayer, saves, or capsule/mesh character collision.

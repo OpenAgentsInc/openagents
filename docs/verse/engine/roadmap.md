@@ -29,6 +29,10 @@ shares room solids between rendering and collision. Movement and Misty Step use
 those queries; a thin obstacle cannot be crossed by a large displacement. This
 is primitive box collision, not the full capsule/mesh controller of VE-2.
 
+[#10429](https://github.com/OpenAgentsInc/openagents/issues/10429) uses the same
+query for third-person camera clearance against walls, columns, and the floor,
+without changing the requested orbit distance.
+
 This delivers the visual procedural milestone of VE-1/VE-3, not the complete
 VE-0–VE-6 roadmap. Portable authority extraction, original
 rules replacement, service persistence, and multiplayer remain implementation

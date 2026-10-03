@@ -36,14 +36,19 @@ Mono; its SIL Open Font License is retained at
 `crates/verse/assets/FiraMono-LICENSE`. No Blizzard assets are distributed or read
 by this entry point.
 
-The shared renderer, director, controls, and existing local combat adapter remain
-in their current modules. Generic packs, animation, and cinematic contracts now live in `verse-engine`;
-`verse-wow` re-exports them for compatibility. Gameplay still uses the retained `verse-ruins` adapter;
-this milestone does not replace it with a new portable authority service.
-The scene uses an explicit `original-chamber-v1` collision profile. Player movement
-and Misty Step sweep an axis-aligned character box against the same authored
-boxes used to draw walls and columns, with wall sliding. Teleport occupancy,
-resource admission, and arrival effects use the collision-admitted endpoint.
+The shared renderer, controls, and local combat adapter remain in their current
+modules. Generic packs, animation, and cinematic contracts now live in
+`verse-engine`; `verse-wow` re-exports them for compatibility. Gameplay still
+uses the retained `verse-ruins` adapter; this milestone does not replace it with
+a new portable authority service.
+
+The scene uses an explicit `original-chamber-v1` collision profile. Player
+movement and Misty Step sweep an axis-aligned character box against the same
+authored boxes used to draw walls and columns, with wall sliding. The third-person
+camera uses those solids to shorten obstructed orbits and restores the requested
+zoom in open space. Teleport occupancy, resource admission, and arrival effects
+use the collision-admitted endpoint.
+
 Capsules, stairs, slopes, gravity, NPC navigation, and projectile collision remain
-future work. Further engine extraction, durable saves,
-and multiplayer remain on the engine roadmap and #10406/#10407.
+future work. Further engine extraction, durable saves, and multiplayer remain on
+the engine roadmap and #10406/#10407.

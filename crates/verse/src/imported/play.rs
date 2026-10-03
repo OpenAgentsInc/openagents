@@ -166,6 +166,22 @@ impl Game {
         )?;
         Ok((moved - glam::DVec3::Y * 0.9).as_vec3())
     }
+    fn camera_eye(&self, anchor: Vec3, desired: Vec3) -> Vec3 {
+        let delta = (desired - anchor).as_dvec3();
+        match physics::kinematic::sweep_box(
+            anchor.as_dvec3(),
+            glam::DVec3::splat(0.15),
+            delta,
+            &self.colliders,
+        ) {
+            Ok(Some(hit)) => {
+                anchor
+                    + (delta * (hit.fraction - 1e-4 / delta.length().max(1e-12)).max(0.)).as_vec3()
+            }
+            Ok(None) => desired,
+            Err(_) => anchor,
+        }
+    }
     /// Uses the retained simulation's cooldown tuning for action-button swipes.
     pub fn cooldown_duration(&self, spell: verse_ruins::Spell) -> f32 {
         self.simulation.cooldown_duration(spell)
@@ -375,10 +391,15 @@ impl Game {
         }
         let direction = self.camera.direction();
         let anchor = self.player + Vec3::Y * if self.agent_controlled { 3.0 } else { 1.4 };
-        frame.eye = anchor - direction * self.camera.distance;
-        frame.eye.y = frame.eye.y.max(0.25);
+        let mut desired = anchor - direction * self.camera.distance;
+        desired.y = desired.y.max(0.25);
+        frame.eye = if self.colliders.is_empty() {
+            desired
+        } else {
+            self.camera_eye(anchor, desired)
+        };
         frame.target = frame.eye + direction * 20.0;
-        if self.camera.distance < 0.2 {
+        if frame.eye.distance(anchor) < 0.2 {
             for actor in &mut frame.actors {
                 if actor.actor.model == "adventurer" {
                     actor.visible = false;
@@ -1133,5 +1154,22 @@ mod original_collision_tests {
         let mut scene = game().scene;
         scene.collision_profile = Some("unknown".into());
         assert!(Game::new(scene).is_err());
+    }
+    #[test]
+    fn original_camera_shortens_at_walls_and_restores_requested_zoom_in_open_space() {
+        let mut g = game();
+        g.player = Vec3::new(20.8, 0., -7.);
+        g.camera.yaw = std::f32::consts::FRAC_PI_2;
+        g.camera.pitch = 0.;
+        g.camera.distance = 10.;
+        let blocked = g.frame();
+        assert!(blocked.eye.x < 21.351 && blocked.eye.x > 21.34);
+        assert_eq!(g.camera.distance, 10.);
+        g.player = Vec3::new(0., 0., -7.);
+        let clear = g.frame();
+        assert!((clear.eye.x - 10.).abs() < 1e-4);
+        assert_eq!(g.camera.distance, 10.);
+        let floor = g.camera_eye(Vec3::Y * 1.4, Vec3::new(0., -3., -2.));
+        assert!(floor.y >= 0.15 && floor.y < 0.151);
     }
 }
