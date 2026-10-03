@@ -59,7 +59,10 @@ echo "boat: $name on $id, process $pid" >&2
 while :; do
   out=$(req "$api/sandboxes/$id/commands/$pid")
   st=$(printf '%s' "$out" | field status)
-  [ "$st" = exited ] && break; sleep 5
+  case $st in
+    running) sleep 5 ;;
+    *) break ;;
+  esac
 done
 # Upload only this run's selected artifacts when explicitly configured.
 if [ -n "${OA_ARTIFACT_BUCKET:-}" ]; then
@@ -82,5 +85,9 @@ printf '%s' "$out" | python3 -c "
 import json,sys
 d=json.load(sys.stdin)
 sys.stdout.write(d.get('stdout') or '');sys.stderr.write(d.get('stderr') or '')
+status=d.get('status')
+if status != 'exited':
+    sys.stderr.write(f'boat: command $pid on sandbox $id failed with status {status or chr(34)+chr(34)}\\n')
+    sys.exit(1)
 code=d.get('exitCode')
 sys.exit(1 if code is None else code)"
