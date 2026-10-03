@@ -1,0 +1,142 @@
+{
+  "schema": "openagents.coderbench.projection.v1",
+  "task": "bottle-etag",
+  "taskset": "efficiency-v1",
+  "provenance": "authored",
+  "baseline": {
+    "source": "bench/efficiency/results/2026-10-03b.jsonl (observed, coderos-4080, commit 0565629714, 3 trials per arm)",
+    "per_task_bottle_etag": {
+      "raw-claude": {
+        "cost_usd": 0.376,
+        "wall_s": 74.6,
+        "passed": "3/3"
+      },
+      "raw-codex": {
+        "cost_usd": 0.071,
+        "wall_s": 35.6,
+        "passed": "3/3"
+      },
+      "routed-default (codex loop)": {
+        "cost_usd": 0.073,
+        "wall_s": 77.3,
+        "passed": "3/3"
+      },
+      "routed-lean (claude session)": {
+        "cost_usd": 0.128,
+        "wall_s": 40.3,
+        "passed": "3/3"
+      }
+    },
+    "study_wide_vs_raw_claude": {
+      "routed-lean": {
+        "cost": 0.45,
+        "time": 0.86,
+        "passed": "21/21"
+      },
+      "routed-default": {
+        "cost": 0.32,
+        "time": 1.83,
+        "passed": "21/21"
+      },
+      "raw-codex": {
+        "cost": 0.38,
+        "time": 1.17,
+        "passed": "21/21"
+      }
+    },
+    "other_measurements": {
+      "routed_startup_overhead_s": 2.2,
+      "router_answer_question_ece": {
+        "raw": 0.131,
+        "mapped": 0.062,
+        "served": false
+      },
+      "hard_at": {
+        "value": 0.8,
+        "fitted_on": "7 tasks, none hard"
+      },
+      "extra_verification_turns": "mi-one lean 8 turns vs raw 3 before #10254"
+    }
+  },
+  "projected_steps": [
+    {
+      "step": "route",
+      "cost_usd": 0.0002,
+      "wall_s": 0.6,
+      "derivation": "One batched Jev call (today's routed start-up is 2.2 s across sequential calls)."
+    },
+    {
+      "step": "classify + briefing",
+      "cost_usd": 0.0001,
+      "wall_s": 0.15,
+      "derivation": "Runs concurrently with route; skipping the survey for a calibrated-small change saves the measured 4-7 s."
+    },
+    {
+      "step": "choose_engine",
+      "cost_usd": 0.0,
+      "wall_s": 0.12,
+      "derivation": "Local arithmetic over calibrated pass rates and joined cost/time records."
+    },
+    {
+      "step": "delegate (codex session)",
+      "cost_usd": 0.07,
+      "wall_s": 36.3,
+      "derivation": "Raw-codex bottle-etag mean 0.071 / 35.6 s (the session's proxy) plus ~0.7 s session start; the briefing replaces exploration rather than adding turns."
+    },
+    {
+      "step": "independent check",
+      "cost_usd": 0.0,
+      "wall_s": 2.4,
+      "derivation": "Runs once (0565629714)."
+    },
+    {
+      "step": "recalibration record",
+      "cost_usd": 0.0,
+      "wall_s": 0.01,
+      "derivation": "Append-only join of outcome to decisions."
+    }
+  ],
+  "projected_total_this_task": {
+    "cost_usd": 0.071,
+    "wall_s": 39.4,
+    "pass_probability": 0.95,
+    "vs_raw_claude": {
+      "cost": 0.19,
+      "time": 0.53
+    },
+    "vs_raw_codex": {
+      "cost": 1.0,
+      "time": 1.11
+    },
+    "vs_routed_lean_today": {
+      "cost": 0.55,
+      "time": 0.98
+    },
+    "vs_routed_default_today": {
+      "cost": 0.97,
+      "time": 0.51
+    }
+  },
+  "projected_study_wide_vs_raw_claude": {
+    "cost": {
+      "low": 0.25,
+      "high": 0.35,
+      "derivation": "Calibrated choice sends small changes to the codex session (0.32-0.38x) and keeps lean Claude (0.45x) for classes where its calibrated pass rate is higher."
+    },
+    "time": {
+      "low": 0.75,
+      "high": 0.95,
+      "derivation": "Drops the codex loop's 1.83x path; keeps lean's 0.86x; removes start-up and verification-turn overhead (2-15 s per run)."
+    },
+    "pass_rate": {
+      "low": "equal",
+      "high": "+2-5 pts on hard tasks",
+      "derivation": "Today 21/21 on easy tasks; a HARD_AT fitted with hard examples routes hard tasks to higher effort instead of guessing."
+    },
+    "wrong_route_rate": {
+      "low": "-30%",
+      "high": "-50%",
+      "derivation": "Serving the answer map halves overconfidence (13 -> 6 pts ECE); confident wrong routes fall roughly in proportion. Unmeasured live until Calibration 1 records decisions."
+    }
+  }
+}

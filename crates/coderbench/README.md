@@ -121,6 +121,18 @@ second is the one a reader over-trusts.
 The sidecar is beside the trace rather than inside it because ATIF describes
 a session, and a session cannot say who was driving it.
 
+### The calibrated-change target (authored)
+
+`goldens/calibrated-change-bottle-etag` is an **authored** golden: the path a small
+change should take once calibration lands (#10385–#10387): a calibrated route with
+a cost-derived threshold, calibrated engine choice, no survey for a small change, a
+calibrated early stop, one independent check, and the outcome joined back to every
+decision. Its `.projection.json` holds every projected number with a derivation and
+the observed baseline it is compared to. See
+[`docs/research/typesafe/2026-10-03-calibration-projected-gains.md`](../../docs/research/typesafe/2026-10-03-calibration-projected-gains.md).
+`tests/calibrated_projection.rs` keeps it readable as ATIF, authored, and
+self-consistent.
+
 ## Tasks
 
 | Task | What it tests |

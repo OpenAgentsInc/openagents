@@ -1,0 +1,10 @@
+{
+  "schema": "openagents.coderbench.golden.v1",
+  "task": "calibrated-change-bottle-etag",
+  "provenance": "authored",
+  "orchestrator": "none (projection)",
+  "repository_commit": "9b2355aa62",
+  "recorded": "2026-10-03",
+  "session_id": "projected-calibrated-bottle-etag",
+  "note": "Authored target, not a recording. It is the path we expect a bottle-etag change to take once calibration lands (#10385-#10387): calibrated route with a cost-derived threshold, calibrated engine choice, no survey for a small change, a calibrated early stop, one independent check, and the outcome joined back to every decision. Every projected number has a one-line derivation in calibrated-change-bottle-etag.projection.json; the baseline numbers there are observed study rows (bench/efficiency/results/2026-10-03b.jsonl). See docs/research/typesafe/2026-10-03-calibration-projected-gains.md for assumptions and what would confirm or kill each gain."
+}
