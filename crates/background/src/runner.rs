@@ -20,6 +20,7 @@ use crate::engine::{self, Clock, Event, Judge, Powers};
 use crate::inuse::System;
 use crate::paths::{self, Layout};
 use crate::plan::{Env, Facts, TaskFact, observe};
+use crate::presence;
 use crate::rule::{Rule, Trigger};
 use crate::run::{self, Cause, Report};
 use crate::services::Services;
@@ -146,9 +147,11 @@ impl Runner {
             }
         };
         let pid = std::process::id();
+        let started = paths::now();
         for rule in self.rules() {
             State::update(&self.layout, &rule.id, |state| state.runner = Some(pid));
         }
+        self.present(started, &self.rules());
         std::thread::sleep(START_DELAY);
         self.check_all(Cause::HostStart, &Event::default());
         // Baselines: the first look at tasks and files fires nothing.
@@ -159,6 +162,7 @@ impl Runner {
             // Each rule's schedule is read again after every wake, so an
             // edit takes effect without a restart.
             let rules = self.rules();
+            self.present(started, &rules);
             let now = paths::now();
             self.schedule(&rules, now);
             let deadline = self
@@ -213,6 +217,16 @@ impl Runner {
                 // A shorter interval after an edit takes effect now.
                 *at = (*at).min(now + every + every / 10);
             }
+        }
+    }
+
+    /// Say who runs here and which rules, for the CLI to read (#10349).
+    fn present(&self, started: u64, rules: &[Rule]) {
+        let ids = rules.iter().map(|rule| rule.id.clone()).collect();
+        if let Err(error) = presence::write(&self.layout, &presence::Presence::here(started, ids)) {
+            (self.say)(&format!(
+                "background: cannot record that rules run here: {error}"
+            ));
         }
     }
 

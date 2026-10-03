@@ -133,6 +133,12 @@ impl Layout {
     pub fn runner_lock(&self) -> PathBuf {
         self.background().join("runner.lock")
     }
+    /// What the runner holding that lock last said about itself
+    /// (#10349).
+    #[must_use]
+    pub fn runner_presence(&self) -> PathBuf {
+        self.background().join("runner.json")
+    }
     /// Held by whoever is deleting, so two runs never overlap.
     #[must_use]
     pub fn run_lock(&self) -> PathBuf {

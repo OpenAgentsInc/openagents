@@ -154,8 +154,12 @@ fn layout(args: &Args) -> Result<Layout, String> {
 
 fn list(output: &Output, layout: &Layout) -> Result<(), Failure> {
     let rows = view::list(layout);
-    output.emit(&json!({ "rules": rows }), |_| {
+    let host = background::presence::summary(layout);
+    output.emit(&json!({ "rules": rows, "host": host }), |_| {
         let mut lines: Vec<String> = rows.iter().map(view::Row::line).collect();
+        if let Some(host) = &host {
+            lines.push(host.clone());
+        }
         if let Some(paused) = rows.iter().find(|row| {
             row.error.is_none()
                 && !row.enabled
@@ -609,19 +613,50 @@ fn draft(output: &Output, layout: &Layout, args: &Args) -> Result<(), Failure> {
 
 /// `apply DRAFT`: save what the draft shows.
 fn apply(output: &Output, layout: &Layout, id: &str) -> Result<(), Failure> {
-    let (draft, saved) = background::compile::apply(layout, id, background::paths::now())
-        .map_err(Failure::Refused)?;
-    output.emit(&json!({ "draft": draft, "saved": saved }), |_| match &saved {
-        Some(rule) => match draft.kind {
-            background::compile::Kind::Define => format!(
-                "Saved {} ({}). It runs on its own from now on; openagents background list shows it.",
-                rule.name, rule.id
-            ),
-            _ => format!("Saved {} version {}.", rule.name, rule.version),
+    let now = background::paths::now();
+    let (draft, saved) = background::compile::apply(layout, id, now).map_err(Failure::Refused)?;
+    // Whether it will run is what the host here can do, not what was
+    // saved (#10349).
+    let pickup = saved
+        .as_ref()
+        .filter(|rule| rule.enabled)
+        .map(|rule| background::presence::pickup(layout, &rule.id, now));
+    let runs = pickup.as_ref().map(pickup_json);
+    output.emit(
+        &json!({ "draft": draft, "saved": saved, "runs": runs }),
+        |_| match &saved {
+            Some(rule) => {
+                let head = match draft.kind {
+                    background::compile::Kind::Define => {
+                        format!("Saved {} ({}).", rule.name, rule.id)
+                    }
+                    _ => format!("Saved {} version {}.", rule.name, rule.version),
+                };
+                match &pickup {
+                    Some(pickup) => format!(
+                        "{head} {} openagents background list shows it.",
+                        background::presence::sentence(pickup)
+                    ),
+                    None => head,
+                }
+            }
+            None => format!("Removed {}.", draft.rule.name),
         },
-        None => format!("Removed {}.", draft.rule.name),
-    });
+    );
     Ok(())
+}
+
+/// Whether a saved rule runs, for `--json` (#10349).
+fn pickup_json(pickup: &background::presence::Pickup) -> serde_json::Value {
+    use background::presence::Pickup;
+    let state = match pickup {
+        Pickup::Running => "running",
+        Pickup::Soon => "soon",
+        Pickup::Missed(_) => "missed",
+        Pickup::OldHost(_) => "old_host",
+        Pickup::NoHost => "no_host",
+    };
+    json!({ "state": state, "says": background::presence::sentence(pickup) })
 }
 
 fn edit(output: &Output, layout: &Layout, id: &str) -> Result<(), Failure> {
@@ -715,11 +750,23 @@ fn pause(
     resume: bool,
 ) -> Result<(), Failure> {
     let until = args.option("until").map(time).transpose()?;
+    let now = background::paths::now();
     let rule = view::pause(layout, id, until, resume).map_err(Failure::Refused)?;
-    output.emit(&json!({ "rule": rule }), |_| match (resume, until) {
-        (true, _) => format!("{} is on.", rule.id),
-        (false, Some(until)) => format!("{} is paused until {}.", rule.id, view::date(until)),
-        (false, None) => format!("{} is paused until you resume it.", rule.id),
+    let pickup = resume.then(|| background::presence::pickup(layout, &rule.id, now));
+    let runs = pickup.as_ref().map(pickup_json);
+    output.emit(&json!({ "rule": rule, "runs": runs }), |_| {
+        match (resume, until) {
+            (true, _) => match &pickup {
+                Some(pickup) => format!(
+                    "{} is on. {}",
+                    rule.id,
+                    background::presence::sentence(pickup)
+                ),
+                None => format!("{} is on.", rule.id),
+            },
+            (false, Some(until)) => format!("{} is paused until {}.", rule.id, view::date(until)),
+            (false, None) => format!("{} is paused until you resume it.", rule.id),
+        }
     });
     Ok(())
 }

@@ -350,6 +350,16 @@ notification for each non-empty run.
 - **One runner per machine.** The runner holds
   `~/.openagents/background/runner.lock`. A second host, or a
   `background run` while the host runs, defers to the holder.
+- **What runs, said truthfully (#10349).** The runner rereads the rules on
+  every wake (at most 30 s apart), so a rule saved while the host runs needs
+  no restart. On every wake it also writes
+  `~/.openagents/background/runner.json`: its process, program, what it can
+  run (`conversation-rules`, `reload`), and the rules it saw. `background
+  apply` and `resume` read it with the lock and say whether the rule runs,
+  runs within 90 seconds, waits for a host to start, or waits for an older
+  host (one that writes no `runner.json`) to be updated and restarted;
+  `background list` adds a line when rules made from words can't run yet.
+  `--json` carries this as `runs` and `host`.
 - **Without a host.** `openagents background run disk` performs one run in
   the calling process, so a user can schedule it with cron.
 - **Low disk resilience.** The runner keeps a small preallocated log file and

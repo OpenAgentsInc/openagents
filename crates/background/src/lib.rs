@@ -38,6 +38,7 @@ pub mod paths;
 pub mod plan;
 pub mod plugins;
 pub mod pool;
+pub mod presence;
 pub mod rule;
 pub mod run;
 pub mod runner;
