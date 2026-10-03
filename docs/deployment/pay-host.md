@@ -58,34 +58,55 @@ The units are `deploy/systemd/openagents-pay.service` (the node),
 `deploy/pay/openagents-pay-health.{service,timer}` (every five minutes), and
 `deploy/pay/openagents-pay-reconcile.{service,timer}` (every ten minutes).
 
-### For the pay front (#10186)
+### The pay front (#10186, #10193, #10194)
 
-`openagents pay serve` runs as the same `openagents-pay` user with the same
-environment file. It reaches the node through the resident's
-`control.sock` (the `open_wallet` path in `crates/openagents-cli/src/x402.rs`
-uses the resident when one answers), keeps its one replay store under
-`OPENAGENTS_X402_HOME`, and its ledger under `/var/lib/openagents-pay/ledger`,
-which the backup already picks up (`ledger = "/var/lib/openagents-pay/ledger/ledger.sqlite"`
-in the route file makes `crates/pay-ledger` the settlement sink instead of the
-NDJSON log). Paid plugin invocations (#10193) are one route:
+`deploy/systemd/openagents-pay-front.service` runs `openagents pay serve
+--routes /etc/openagents-pay/routes.toml` as the same `openagents-pay` user
+with the same environment file (installed from
+`deploy/pay/openagents-pay-routes.toml`). It reaches the node through the
+resident's `control.sock`, keeps its one replay store, challenge key, plugin
+cache, and hosted registry under `OPENAGENTS_X402_HOME`
+(`/var/lib/openagents-pay/x402`, which the backup copies), and writes every
+settlement to the ledger (`ledger = "/var/lib/openagents-pay/ledger/ledger.sqlite"`
+makes `crates/pay-ledger` the sink). Its routes:
 
-```toml
-[[route]]
-id = "plugin-invoke"
-path = "/v1/plugins/{id}/invoke"
-price_sats = 5            # the endpoint part; the release's fee_msat is added
-registry = "wss://relay.openagents.com"
+| Route | What it sells |
+| --- | --- |
+| `POST /v1/plugins/{id}/invoke` | One run of a published plugin's newest signed release (resolved on `wss://relay.openagents.com`): 5 sats plus the release's `fee_msat`, both named in the `402` (#10193) |
+| `GET`/`POST /x/{resource}` | Author-hosted resources registered with `openagents x402 publish` (#10194) |
+| `POST /v1/resources`, `GET /v1/paid-key` | A hosted registration (NIP-98 signed) and the key the `OpenAgents-Paid` header is signed with |
+
+The ledger's v1 split rule took effect 2026-10-02 (a settlement dated before
+it is refused, so its call gets a `503` and nothing runs). The unit leaves
+`MemoryDenyWriteExecute` off: plugin guests run in wasmtime, which maps code
+writable and then executable.
+
+It listens on `0.0.0.0:8402` for the `api.openagents.com` load balancer
+(`one-production-url-map`, path matcher `api`). Its route rules send
+`/v1/plugins/{id=*}/invoke` (a path template), `/x/*`, `/v1/resources`, and
+`/v1/paid-key` to backend service `oa-pay-front-backend`
+(`EXTERNAL_MANAGED`, HTTP, timeout 120 s), whose zonal NEG
+`oa-pay-front-neg` (`GCE_VM_IP_PORT`, `us-central1-a`) holds `oa-pay-1:8402`
+and whose health check `oa-pay-front-hc` asks `GET /v1/paid-key`. `/v1/sessions`
+and `/v1/sessions/*` still go to the voice backend, everything else to the
+API service; the map's tests cover each. Firewall `oa-pay-front-from-lb`
+admits only the load balancer's ranges (`35.191.0.0/16`, `130.211.0.0/22`)
+on 8402 to tag `oa-pay-host`. The instance still has no external address.
+
+```sh
+sudo systemctl status openagents-pay-front
+sudo journalctl -u openagents-pay-front -f      # one JSON line per request
+curl -s -i -X POST --data-binary @err.txt https://api.openagents.com/v1/plugins/explain-error/invoke   # 402
+gcloud compute backend-services get-health oa-pay-front-backend --global --project openagentsgemini
 ```
 
-It resolves `{id}` to the newest signed release, fetches and checks it into
-`plugin_cache` (default `OPENAGENTS_X402_HOME/plugins/<release>`), quotes the
-endpoint price plus the author's fee (the `402` names both), and runs the
-release's single guest step with no grant beyond the request. The ledger's v1
-split rule took effect 2026-10-02 (a settlement dated before it is refused,
-so its call gets a `503` and nothing runs). Add it as its own unit with
-`After=openagents-pay.service` and `Requires=openagents-pay.service`; it
-needs `ReadWritePaths=/var/lib/openagents-pay` and the one TCP port Caddy
-proxies to.
+To change the routing, export the map, edit it, and check it before import:
+`gcloud compute url-maps export one-production-url-map --global --destination map.yaml`,
+then `gcloud compute url-maps validate --source map.yaml --global
+--load-balancing-scheme EXTERNAL_MANAGED` (its `tests` must pass), then
+`gcloud compute url-maps import one-production-url-map --source map.yaml --global`.
+Removing the pay front from `api.openagents.com` is dropping route rules 2
+and 3.
 
 ### The payout worker (#10190)
 
@@ -151,7 +172,12 @@ over the VPC: the service has Direct VPC egress on the `default` subnet with
 container has `OPENAGENTS_WEB_PAY_HOST=http://10.128.0.46:4400`. The
 address is reserved as `oa-pay-1-internal`. The VPC's
 `default-allow-internal` rule (10.128.0.0/9) already admits it; port 4400 is
-reachable from nowhere outside the VPC. `openagents.com/api/flow/*` and
+reachable from nowhere outside the VPC. A registry plugin (`<publisher>:<slug>`) is named
+by its slug, and its author by npub, once its signed listing is a line of
+`/var/lib/openagents-pay/flow/publications.ndjson`
+(`OPENAGENTS_PAY_PUBLICATIONS`; `scripts/payments-demo.sh --publish
+--operator` appends one); otherwise both are salted aliases.
+`openagents.com/api/flow/*` and
 `/api/stats` proxy there (`crates/openagents-web`), so `/live` and `/stats`
 read it same-origin.
 
@@ -260,13 +286,13 @@ has a version.
 ```sh
 sudo -u openagents-pay env OPENAGENTS_WALLET_HOME=/var/lib/openagents-pay/wallet \
   HOME=/var/lib/openagents-pay \
-  /opt/openagents-pay/current/openagents --json wallet init --network bitcoin --lsp mdk
+  /opt/openagents-pay/current/openagents --json x402 node init --network bitcoin --lsp mdk
 sudo /usr/local/sbin/openagents-pay-seed store
 ```
 
 MoneyDevKit publishes no minimum for LSPS4 forwards (the LSPS4
 registration carries no fee parameters, and MDK's checkout accepts 1 sat),
-so `--lsp-min-msat` is not set. Set it with `wallet init --lsp-min-msat N`
+so `--lsp-min-msat` is not set. Set it with `x402 node init --lsp-min-msat N`
 (init keeps the seed) if the first receives show a floor.
 
 ## Start, stop, logs
@@ -309,7 +335,7 @@ sudo systemctl start openagents-pay-health && sudo cat /var/lib/openagents-pay/h
 
 ## Backups
 
-Every hour `openagents-pay-backup` takes `openagents wallet backup` (seed,
+Every hour `openagents-pay-backup` takes `openagents x402 node backup` (seed,
 `config.json`, a `VACUUM INTO` snapshot of the channel store, a digest
 manifest), the replay store, and the ledger, streams the tar into `age`
 for the recipient in the environment file, keeps the newest 48 on the data
@@ -353,11 +379,11 @@ sudo systemctl start openagents-pay
 
 The host's own service account cannot read the identity or the bucket;
 these two reads need an operator account. `openagents-pay-restore` refuses a
-non-empty wallet home, checks every digest through `wallet restore`, checks
+non-empty wallet home, checks every digest through `x402 node restore`, checks
 the restored seed equals the Secret Manager seed, and keeps any live replay
 store and ledger; `--with-replay` restores them when none exist, under the
 replay rule above. If no archive is newer than the last channel update,
-restore from the seed alone (`wallet init --mnemonic -` from the secret) and
+restore from the seed alone (`x402 node init --mnemonic -` from the secret) and
 have the LSP force-close, as [Backup and restore](../cli/README.md#backup-and-restore)
 describes.
 
@@ -385,3 +411,5 @@ the times, below.
 | 2026-10-02 | `oa-pay-1` provisioned and built from `869fbe155c` (`openagents 1.0.0-rc.2`). Node `0343a0f10d0856187ad55e8e64427b8902479ef510d9f5587ba6f124280db32e27` (the `payTo`) initialised on bitcoin with `--lsp mdk` (LSPS4 peer `02a63339…473b`); seed generated on the host and stored in Secret Manager. Synced to block 969,621; first encrypted backup uploaded and decrypted back as a check; the unit came back by itself after the stop and resize to `e2-small`; health `healthy`. |
 | 2026-10-02 | First-receive invoice issued: 2,000 sats, payment hash `55421ae0230a630201fce522fc6f63e46d1341e93f4032547d8f979249749cae`, expiry 7 days, with the LSPS4 route hint. Paying it is an owner step (workspace `NEEDS_OWNER.md`); record here whether it settled inside MDK's 45 s hold or failed back while the channel opened. |
 | 2026-10-03 | Payout worker and flow server deployed (#10190). Release `29f3ac33d6` (built in `rust:1.97.1-bookworm` on a Boat sandbox; `openagents` sha256 `f4608d20…51ed9bf`, `pay-host` sha256 `05cbda9d…a11b01`) is `current`; the node restarted on it with the same node id. Ledger created empty at `ledger/ledger.sqlite`. Payout Spark wallet made on the host, seed stored in `openagents-pay-spark-seed` (versions readable and addable by the host's account only); its Spark address is `spark1pgss8je5hl8eprmtgml379sdxewt82pnsvazh7jf8xlu7c5gkkcljp3j2lzey0`, balance 0. `openagents-pay-payouts` and `openagents-pay-flow` enabled and running. Internal address `10.128.0.46` reserved as `oa-pay-1-internal`. Cloud Run `coder` revision `coder-web-3a46b3c415-pay` (Direct VPC egress, `private-ranges-only`, `OPENAGENTS_WEB_PAY_HOST=http://10.128.0.46:4400`) took 100% of traffic; `coder-web-3a46b3c415` is the rollback. `openagents.com/stats` shows "No payments yet" and `/api/flow/stream` holds open. No payout has been sent: the receiver has no channel or balance yet, so the first real payout is the owner's end-to-end step (#10199). |
+| 2026-10-03 | `openagents-pay-health` and `openagents-pay-backup` had failed since `29f3ac33d6` (they called `wallet info` and `wallet backup`, which became `x402 node info` and `x402 node backup`); the last good backup was from before that release. Both scripts and `openagents-pay-restore` now call `x402 node`; health came back `healthy` and a backup uploaded at once (#10199). |
+| 2026-10-03 | Pay front deployed (#10199): `openagents-pay-front.service` on release `ee6daf9950` with `deploy/pay/openagents-pay-routes.toml`; `api.openagents.com` routes the invoke, hosted, registration, and paid-key paths to it (NEG `oa-pay-front-neg`, backend `oa-pay-front-backend`, health check `oa-pay-front-hc`, firewall `oa-pay-front-from-lb`). The relay was updated to accept `release.fee_msat` (revision `openagents-nostr-relay-00041-fed`, image `44edd848ed`). The pay host published the check plugin `explain-error-check` (fee 10 sats, payout the payout Spark wallet) and a keyless `POST https://api.openagents.com/v1/plugins/explain-error-check/invoke` answered `402` for 15 sats (endpoint 5 + author fee 10) with a mainnet invoice from the node; the challenged calls show on `/api/flow/snapshot` and `/stats`. No paid call yet: the node has no channel until the first-receive invoice is paid. Run record: [the demo](../payments/2026-10-03-end-to-end-demo.md). |

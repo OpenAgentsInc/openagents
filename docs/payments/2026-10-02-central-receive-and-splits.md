@@ -1,6 +1,9 @@
 # Central receive, splits, payouts, and the live flow view
 
-Design, 2026-10-02. Nothing here is implemented yet. Umbrella issue
+Design, 2026-10-02. Status 2026-10-03: built and deployed on `oa-pay-1`
+(issues #10185 to #10199); the agent-side demo is recorded in
+[2026-10-03-end-to-end-demo.md](2026-10-03-end-to-end-demo.md) and the
+first real payments are the owner's. Umbrella issue
 [#10200](https://github.com/OpenAgentsInc/openagents/issues/10200); the
 per-piece issues are listed in [section 11](#11-issues).
 
@@ -547,6 +550,13 @@ The first real flow, in order:
 
 The paying wallet and the author's phone are the owner's (real money), so
 steps 4 and 6 are owner taps; everything else is agent work.
+
+Status (2026-10-03): steps 1 (up to the channel, which the owner's first
+receive opens), 3, and the agent side of 7 and 8 are done; the script is
+[`scripts/payments-demo.sh`](../../scripts/payments-demo.sh) and the run is
+recorded in [2026-10-03-end-to-end-demo.md](2026-10-03-end-to-end-demo.md).
+Step 2 waits for the author's own Spark address (the owner's), so the
+priced path was checked with the pay host's `explain-error-check`.
 
 ## 9. Risks and facts
 
