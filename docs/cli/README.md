@@ -287,6 +287,21 @@ tunnel opens and one when it closes, and ends on Ctrl-C.
 Set `BOAT_API_KEY`, or use the Secret Manager secret `boat-api-key` through
 `gcloud`. Run `openagents boat --help` for the full syntax.
 
+## The GCE pool (`openagents cloud`)
+
+- `openagents cloud up [--hosts N]` grants this computer the GCE spot pool
+  `gce` and starts hosts from the daily `oa-coder-host` image until it has
+  N; it prints how long each took to be ready.
+- `openagents cloud status` lists the hosts, their live runs and idle
+  minutes, and the hourly cost estimate.
+- `openagents cloud down` deletes every host and revokes the grant.
+- `openagents chat work --on gce --issues N,M --parallel K` runs the issue
+  flows on the pool, two per host. Hosts delete themselves after 10 idle
+  minutes.
+
+Needs `gcloud` signed in to project `openagentsgemini` and `ssh`. See
+[`docs/cloud/gce-pool.md`](../cloud/gce-pool.md).
+
 ## Reach (NIP-REACH)
 
 Read and edit the owner host directory, read a host's presence, and prove a

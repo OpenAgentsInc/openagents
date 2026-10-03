@@ -2,8 +2,10 @@
 
 - Date: 2026-10-02
 - Status: audit and proposal. Built since: the daily `oa-coder-host` image
-  (§6, [#10224](https://github.com/OpenAgentsInc/openagents/issues/10224)).
-  The rest is not implemented on `main`.
+  (§6, [#10224](https://github.com/OpenAgentsInc/openagents/issues/10224))
+  and the GCE pool granted as one computer, `openagents cloud up/down/status`
+  and `chat work --on gce` (§7,
+  [#10225](https://github.com/OpenAgentsInc/openagents/issues/10225)).
 - Question from the owner: today about 16 agents and Coder (`openagents chat
   work --issues`, Codex) run in parallel on two machines (the owner's Mac and
   `coderos-4080`), and they keep filling the Mac's disk. How do we fan work out
@@ -600,7 +602,7 @@ Boat itself instead, see §1.6), or the per-session `e2-small` VMs
 3. **Cloud: one spot cloud computer paired over SSH runs a Coder issue end to end**: phase 1, with measured boot, delta build, run time, disk and cost recorded in `docs/cloud/`.
 4. **Coder: `--on <computer>` placement for `chat work` and `computer task`**: names a granted computer; the parallel limit is its free slots; never substitutes another host.
 5. **Coder: a pool computer identity (one grant, K hosts)**: hosts read the pool credential from Secret Manager and report slots; the router and `/computers` see one computer.
-6. **Cloud: `openagents cloud up/down/status` sizes a GCE managed instance group to the requested parallelism**: spot by default, hosts self-drain after 10 idle minutes, a final leak listing.
+6. **Done ([#10225](https://github.com/OpenAgentsInc/openagents/issues/10225), §7, with 4 and 5). Cloud: `openagents cloud up/down/status` sizes a GCE managed instance group to the requested parallelism**: spot by default, hosts self-drain after 10 idle minutes, a final leak listing.
 7. **Coder: cross-host landing for the issue flow**: fetch, rebase and retry on a rejected push in place of the per-machine lock; a `coder/wip/<run>` checkpoint each turn.
 8. **Coder: cloud run artifacts to GCS, linked from the issue comment**: logs, evidence and diff stats under `gs://openagentsgemini-oa-artifacts/coder/<run>/`. Shipped (#10227): with `OA_ARTIFACT_BUCKET=openagentsgemini-coder-artifacts` (90-day delete lifecycle, public access prevented) every issue flow uploads `turn-N.atif.jsonl`, `change.diff`, `checks.txt` and `route.json` under `coder/<owner>-<repo>/<issue>/<task>-<outcome>/` and links them from its landing, pull request or failure comment (`crates/coder/src/task/run_artifacts.rs`). Links are authenticated console links; `OA_ARTIFACT_LINKS=signed` with `OA_ARTIFACT_SIGN_KEY` or `OA_ARTIFACT_SIGN_AS` signs them for seven days.
 9. **Cloud: engine logins on cloud hosts**: one `CODEX_HOME` per account per persistent host by device login, API keys from Secret Manager for burst hosts, never a copied `auth.json`; document the Claude path.
@@ -674,6 +676,32 @@ What changed in the design while building it:
   `coder-worker` binary no package defines). The bake builds around it and
   records it in the image manifest.
 - Monthly cost of the daily image: about $8.
+
+## 7. Built: the GCE pool (2026-10-02)
+
+Issue [#10225](https://github.com/OpenAgentsInc/openagents/issues/10225)
+(audit issues 4, 5 and 6). Runbook: [`gce-pool.md`](gce-pool.md).
+
+- **One granted computer.** `openagents cloud up [--hosts N]` writes the pool
+  record (`~/.openagents/cloud/pool.json`: computer `gce`, grant
+  `gce:<pool>`, a revocation epoch) and starts spot `c3-standard-8` hosts
+  from the daily image, zone by zone and then on demand. `chat work --on gce
+  --parallel N` runs issue flows there, two per host, and grows the pool
+  within the grant; `cloud down` deletes the hosts and revokes the grant.
+  Route records name computer `gce` and that operator grant through the
+  placement code `--on boat` uses too (`chat_placement.rs`).
+- **What changed from §4.1.** No managed instance group: plain labelled VMs,
+  because only a host knows it is idle and a VM deletes itself more simply
+  than it leaves a group. No `coder host serve` pairing on the hosts: the
+  orchestrator reaches each host over IAP ssh with a key of its own and runs
+  the issue flow there, as `--on boat` does on a sandbox. A host deletes
+  itself through a role on its own instance only.
+- **Found on the way.** The image lacked `bubblewrap`, which the issue
+  flow's run boundary needs on Linux; Coder reads Grok Build's key from the
+  login shell, not the process. Both are handled (see the runbook).
+- **Measured.** Create to ready for runs (image ready, ssh, `openagents` and
+  `microcoder` built): 134 to 223 s. A one-file issue landed in 73 s on a
+  warm host, about $0.002 of host time.
 
 ## Sources not repeated above
 

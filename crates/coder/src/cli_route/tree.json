@@ -3344,7 +3344,7 @@
               "work"
             ],
             "usage": [
-              "work --issues NUMBERS|LABEL [--parallel N] [--land main|pr] [--on boat]"
+              "work --issues NUMBERS|LABEL [--parallel N] [--land main|pr] [--on boat|gce]"
             ],
             "forms": [
               {
@@ -3379,16 +3379,17 @@
                   {
                     "kind": "option",
                     "name": "on",
-                    "value": "boat",
+                    "value": "boat|gce",
                     "choices": [
-                      "boat"
+                      "boat",
+                      "gce"
                     ],
                     "optional": true
                   }
                 ]
               }
             ],
-            "summary": "Hand several issues to Coder, one issue flow each, each in its own thread: NUMBERS such as 10050,10051, or a LABEL's open issues. --parallel (1 to 4, default 1) runs that many at once, each in its own worktree. Issues claimed in the last hours (the repository's claim window) and closed issues are skipped. --land overrides the repository's policy. --on boat runs each issue on a Boat sandbox of its own instead of this computer (--parallel up to 16; starts are queued under Boat's start limits): started from the newest oa-coder-main-<date> template (--template NAME picks one; with none, a seed is set up once and forked), the same issue flow runs and lands there, its events stream here, and the sandbox's machine time and cost go in a comment on the issue. The sandbox stops when its run ends and is deleted once the issue landed. --engine-logins api-keys (default: Grok Build's XAI_API_KEY) or boat (subscriptions connected on Boat's dashboard). Needs BOAT_API_KEY or Secret Manager boat-api-key, and a GitHub token (OA_BOAT_GH_TOKEN, Secret Manager coder-pool-git-token, or `gh auth token`); docs/cloud/boat-chat-work.md.",
+            "summary": "Hand several issues to Coder, one issue flow each, each in its own thread: NUMBERS such as 10050,10051, or a LABEL's open issues. --parallel (1 to 4, default 1) runs that many at once, each in its own worktree. Issues claimed in the last hours (the repository's claim window) and closed issues are skipped. --land overrides the repository's policy. --on boat runs each issue on a Boat sandbox of its own instead of this computer (--parallel up to 16; starts are queued under Boat's start limits): started from the newest oa-coder-main-<date> template (--template NAME picks one; with none, a seed is set up once and forked), the same issue flow runs and lands there, its events stream here, and the sandbox's machine time and cost go in a comment on the issue. The sandbox stops when its run ends and is deleted once the issue landed. --engine-logins api-keys (default: Grok Build's XAI_API_KEY) or boat (subscriptions connected on Boat's dashboard). Needs BOAT_API_KEY or Secret Manager boat-api-key, and a GitHub token (OA_BOAT_GH_TOKEN, Secret Manager coder-pool-git-token, or `gh auth token`); docs/cloud/boat-chat-work.md. --on gce runs each issue on the GCE pool this computer granted with `openagents cloud up` (--parallel up to 32, two runs per host; the pool grows within the grant's --max-hosts): the same issue flow runs and lands on a pool host, its events stream here, and its wall time and estimated cost go in a comment on the issue. Hosts delete themselves when idle. Without a live grant it refuses; it never runs elsewhere. Engine logins are API keys (Grok Build's XAI_API_KEY), as for boat; docs/cloud/gce-pool.md.",
             "effect": "publishes",
             "runs_on": "connected_computer"
           }
@@ -3461,6 +3462,11 @@
         {
           "kind": "option",
           "name": "on",
+          "value": "boat|gce",
+          "choices": [
+            "boat",
+            "gce"
+          ],
           "optional": true,
           "repeated": true
         },
@@ -3475,6 +3481,12 @@
         {
           "kind": "option",
           "name": "engine-logins",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "max-hosts):",
           "optional": true,
           "repeated": true
         },
@@ -6198,6 +6210,182 @@
             "effect": "local_write",
             "runs_on": "connected_computer"
           }
+        }
+      ]
+    },
+    {
+      "name": "cloud",
+      "summary": "A GCE spot pool granted as one computer: up, down, status.",
+      "children": [
+        {
+          "name": "up",
+          "leaf": {
+            "path": [
+              "cloud",
+              "up"
+            ],
+            "usage": [
+              "up [--hosts N] [--machine TYPE] [--on-demand] [--max-hosts N] [--idle-minutes N]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "up"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "hosts",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "machine",
+                    "value": "TYPE",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "on-demand",
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "max-hosts",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "idle-minutes",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Grant this computer the GCE pool `gce` and start hosts until it has N (default 1): spot VMs from the newest oa-coder-host image, each zone of us-central1 in turn, then on demand (--on-demand skips spot). Waits until each host is ready and has built origin/main's openagents and microcoder, and prints how long that took. Each host runs two Coder runs at once and deletes itself after --idle-minutes (default 10) without a run. --max-hosts (default 8) caps how far `chat work --on gce` may grow the pool.",
+            "effect": "spends",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "down",
+          "leaf": {
+            "path": [
+              "cloud",
+              "down"
+            ],
+            "usage": [
+              "down"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "down"
+                  }
+                ]
+              }
+            ],
+            "summary": "Delete every host of the pool, list what is left, and revoke the grant: `chat work --on gce` refuses until the next `up`.",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "status",
+          "leaf": {
+            "path": [
+              "cloud",
+              "status"
+            ],
+            "usage": [
+              "status"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "status"
+                  }
+                ]
+              }
+            ],
+            "summary": "The grant, each host (zone, spot or on demand, uptime, live runs, idle minutes), and the pool's hourly cost estimate.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        }
+      ],
+      "options": [
+        {
+          "kind": "option",
+          "name": "hosts",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "machine",
+          "value": "TYPE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "on-demand",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "max-hosts",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "idle-minutes",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "on",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "issues",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "parallel",
+          "value": "M",
+          "open": true,
+          "optional": true,
+          "repeated": true
         }
       ]
     },

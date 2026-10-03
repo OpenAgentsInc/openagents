@@ -37,6 +37,10 @@ use crate::{Args, EXIT_FAILURE, runtime};
 mod boat;
 #[path = "chat_coder.rs"]
 mod coder_run;
+#[path = "chat_gce.rs"]
+mod gce;
+#[path = "chat_placement.rs"]
+mod placement;
 #[path = "chat_work.rs"]
 mod work;
 
@@ -79,7 +83,7 @@ pub(crate) const USAGE: &str = "usage: openagents chat COMMAND [OPTIONS]
         build's command tree declares it; one that changes something here
         waits for this; one that moves money or shows a secret never runs
         from the chat.
-  work --issues NUMBERS|LABEL [--parallel N] [--land main|pr] [--on boat]
+  work --issues NUMBERS|LABEL [--parallel N] [--land main|pr] [--on boat|gce]
         Hand several issues to Coder, one issue flow each, each in its own
         thread: NUMBERS such as 10050,10051, or a LABEL's open issues.
         --parallel (1 to 4, default 1) runs that many at once, each in its
@@ -98,6 +102,14 @@ pub(crate) const USAGE: &str = "usage: openagents chat COMMAND [OPTIONS]
         Boat's dashboard). Needs BOAT_API_KEY or Secret Manager
         boat-api-key, and a GitHub token (OA_BOAT_GH_TOKEN, Secret Manager
         coder-pool-git-token, or `gh auth token`); docs/cloud/boat-chat-work.md.
+        --on gce runs each issue on the GCE pool this computer granted with
+        `openagents cloud up` (--parallel up to 32, two runs per host; the
+        pool grows within the grant's --max-hosts): the same issue flow
+        runs and lands on a pool host, its events stream here, and its wall
+        time and estimated cost go in a comment on the issue. Hosts delete
+        themselves when idle. Without a live grant it refuses; it never
+        runs elsewhere. Engine logins are API keys (Grok Build's
+        XAI_API_KEY), as for boat; docs/cloud/gce-pool.md.
 Every command also takes --scratch, --local, and --socket PATH. When this
 computer's host runs (the OpenAgents app, or `openagents host serve
 --control`), threads live in the host and the desktop app shows them;

@@ -10,7 +10,7 @@
 #
 # What it installs, idempotently:
 #   - build tools (build-essential, pkg-config, clang, cmake, protobuf),
-#     git, gh, ripgrep, jq
+#     git, gh, ripgrep, jq, bubblewrap (the Coder run boundary on Linux)
 #   - rustup and the toolchain pinned in rust-toolchain.toml (1.97.1)
 #   - sccache, wired in through a constant rustc wrapper
 #   - Node.js (LTS) and the engine CLIs: Codex (`codex`), Claude Code
@@ -109,7 +109,7 @@ fi
 as_root apt-get update -q
 as_root env DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends \
   build-essential pkg-config clang cmake protobuf-compiler libprotobuf-dev libssl-dev \
-  ca-certificates curl git gh ripgrep jq xz-utils unzip zstd procps time \
+  ca-certificates curl git gh ripgrep jq xz-utils unzip zstd procps time bubblewrap \
   >/dev/null
 log packages end
 

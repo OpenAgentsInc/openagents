@@ -48,9 +48,6 @@ use boat::{CommandFrame, Nullable, Signal, WaitOptions, models::*, shell_quote};
 use coder::task::issue_run::Land;
 use openagents_chat::coder_events::Line;
 use openagents_chat::tool_groups::Stream;
-use route_contract::lifecycle::{CheckLabel, Lifecycle, Projection};
-use route_contract::record::RunOutcome;
-use route_contract::snapshot::{GrantRef, GrantSource, Placement, WorkspaceBinding};
 use serde_json::{Value, json};
 use tokio::sync::{Semaphore, watch};
 
@@ -200,8 +197,8 @@ async fn starts_left_today(client: &boat::Client) -> Option<i64> {
 /// One run's credentials: written to the sandbox's `/tmp` and deleted by the
 /// command that reads them. `Debug` names the variables, never the values.
 #[derive(Clone, Default)]
-struct Credentials {
-    variables: BTreeMap<String, String>,
+pub(super) struct Credentials {
+    pub(super) variables: BTreeMap<String, String>,
 }
 
 impl std::fmt::Debug for Credentials {
@@ -214,7 +211,7 @@ impl std::fmt::Debug for Credentials {
 
 impl Credentials {
     /// The env file: `NAME='value'` lines the command sources with `set -a`.
-    fn file(&self) -> String {
+    pub(super) fn file(&self) -> String {
         self.variables
             .iter()
             .map(|(name, value)| format!("{name}={}\n", shell_quote(value)))
@@ -275,7 +272,7 @@ fn git_config(key: &str) -> Option<String> {
 }
 
 /// Every credential a run needs, read once for the whole queue.
-fn credentials(logins: EngineLogins) -> Result<Credentials, String> {
+pub(super) fn credentials(logins: EngineLogins) -> Result<Credentials, String> {
     let mut variables = BTreeMap::new();
     let token = github_token().ok_or(
         "no GitHub token for the sandboxes: set OA_BOAT_GH_TOKEN, give gcloud access to \
@@ -690,7 +687,7 @@ async fn teardown(client: &boat::Client, id: &str, delete: bool) -> &'static str
 
 /// One NDJSON line from the sandbox's `chat work --json`.
 #[derive(Debug, PartialEq)]
-enum Inner {
+pub(super) enum Inner {
     /// The flow's task started (`coder`).
     Started { task: String, thread: String },
     /// The flow ended (`issue`).
@@ -705,7 +702,7 @@ enum Inner {
     Other,
 }
 
-fn inner(text: &str) -> Inner {
+pub(super) fn inner(text: &str) -> Inner {
     let Ok(value) = serde_json::from_str::<Value>(text) else {
         return Inner::Other;
     };
@@ -737,7 +734,7 @@ fn inner(text: &str) -> Inner {
 }
 
 /// Prints a message: NDJSON `value` under `--json`, else `text` on stderr.
-fn say(output: Output, value: Value, text: &str) {
+pub(super) fn say(output: Output, value: Value, text: &str) {
     if output.json() {
         event(&output, value);
     } else {
@@ -793,44 +790,13 @@ fn route_record(
     outcome: &str,
     cost: &Cost,
 ) -> Value {
-    let landed = matches!(outcome, "landed" | "pull_request");
-    let placement = Placement {
-        computer: Some(COMPUTER.into()),
-        workspace: Some(WorkspaceBinding {
-            project: repository.to_owned(),
-            path: None,
-        }),
-        grant: Some(GrantRef {
-            id: format!("boat:{sandbox}"),
-            epoch: 0,
-            source: GrantSource::Operator,
-        }),
-    };
-    let run = RunOutcome {
-        task: task.to_owned(),
-        engine: None,
-        revision: None,
-        projection: Projection {
-            state: if landed {
-                Lifecycle::Completed
-            } else {
-                Lifecycle::Failed
-            },
-            check: if landed {
-                CheckLabel::Verified
-            } else {
-                CheckLabel::CheckFailed
-            },
-            cancel_requested: false,
-        },
-        cost_microusd: cost
-            .dollars
-            .map(|d| (d * 1_000_000.0).round().max(0.0) as u64),
-        wall_ms: u64::try_from(cost.wall.as_millis()).ok(),
-        artifacts: Vec::new(),
-        payer: None,
-        payer_keys: Vec::new(),
-    };
+    let placement = super::placement::granted(COMPUTER, format!("boat:{sandbox}"), 0, repository);
+    let run = super::placement::outcome(
+        task,
+        outcome,
+        cost.dollars.map(super::placement::microusd),
+        u64::try_from(cost.wall.as_millis()).ok(),
+    );
     json!({
         "schema": "openagents.boat.run.v1",
         "issue": issue,
@@ -857,7 +823,7 @@ fn append_record(record: &Value) {
     }
 }
 
-fn comment(repository: &str, issue: u64, body: &str) {
+pub(super) fn comment(repository: &str, issue: u64, body: &str) {
     let posted = std::process::Command::new("gh")
         .args([
             "issue",

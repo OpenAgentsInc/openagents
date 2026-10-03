@@ -24,7 +24,7 @@ script.
 | Node 24 LTS | `/opt/node`, linked into `/usr/local/bin` |
 | Codex (`codex`), Claude Code (`claude`) | npm globals in `/usr/local/bin` |
 | Grok Build (`grok`) | `/home/coder/.grok/bin` |
-| git, gh, ripgrep, jq, build-essential, clang, cmake, protobuf | Debian packages (gh from GitHub's apt repository) |
+| git, gh, ripgrep, jq, build-essential, clang, cmake, protobuf; bubblewrap (Coder's run boundary on Linux) from the bake after 2026-10-02 | Debian packages (gh from GitHub's apt repository) |
 | What was built, and every tool version | `/home/coder/.openagents/coder-host.json` and `/var/lib/oa-coder-host/manifest.json` |
 | Boot unit `oa-coder-host-ready.service` | fetches `origin/main` into the clone, checks sccache can reach its bucket, prints `OA_CODER_HOST_READY` on the serial console and writes `/run/oa-coder-host/ready` |
 

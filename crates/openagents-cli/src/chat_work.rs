@@ -66,19 +66,12 @@ pub(super) async fn work(output: &Output, args: &Args) -> Result<u8, Failure> {
             Failure::Usage("`chat work` needs --issues NUMBERS or --issues LABEL".into())
         })?
         .to_owned();
-    let on_boat = match args.option("on") {
-        None | Some("here") => false,
-        Some("boat") => true,
-        Some(other) => {
-            return Err(Failure::Usage(format!(
-                "--on is `here` or `boat`, not `{other}`"
-            )));
-        }
-    };
-    let most = if on_boat {
-        super::boat::MAX_PARALLEL
-    } else {
-        MAX_PARALLEL
+    let target = super::placement::Target::parse(args.option("on")).map_err(Failure::Usage)?;
+    let on_boat = target == super::placement::Target::Boat;
+    let most = match target {
+        super::placement::Target::Boat => super::boat::MAX_PARALLEL,
+        super::placement::Target::Gce => super::gce::MAX_PARALLEL,
+        super::placement::Target::Here => MAX_PARALLEL,
     };
     let parallel: u64 = args.number("parallel", 1).map_err(Failure::Usage)?;
     if !(1..=most).contains(&parallel) {
@@ -112,6 +105,15 @@ pub(super) async fn work(output: &Output, args: &Args) -> Result<u8, Failure> {
         return Err(failed(format!(
             "No open issue in {repository} matches `{spec}`."
         )));
+    }
+    if target == super::placement::Target::Gce {
+        let request = super::gce::Request {
+            repository,
+            numbers,
+            parallel,
+            land,
+        };
+        return super::gce::work(output, request).await;
     }
     if on_boat {
         let logins = args

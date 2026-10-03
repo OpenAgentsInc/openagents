@@ -22,6 +22,7 @@ mod background;
 mod boat_run;
 mod catalog;
 mod chat;
+mod cloud;
 mod computer;
 #[cfg(unix)]
 mod connect;
@@ -111,6 +112,7 @@ Coder:
   boat         Build and test this checkout's change on a Boat sandbox, not here.
   shadow       What a sample of Coder runs would have cost through the raw engine
                (off unless set: coder.shadow).
+  cloud        A GCE spot pool granted as one computer: up, down, status.
 
 Verse (NIP-MV):
   verse        See who is around, listen, speak, move, gesture, drive owned
@@ -276,6 +278,7 @@ fn main() -> ExitCode {
         "settings" => settings::run(&output, &rest),
         "boat" => boat_run::run(&output, &rest),
         "shadow" => shadow::run(&output, &rest),
+        "cloud" => cloud::run(&output, &rest),
         #[cfg(unix)]
         "ssh" => ssh::run(&output, &rest),
         "cap" => catalog::cap(&output, &rest),
