@@ -2433,7 +2433,19 @@ mod local_run {
             git(&top, &["config", "user.name", "F"]);
             git(&top, &["config", "user.email", "f@example.invalid"]);
             let origin = root.join("origin.git");
-            git(root, &["init", "-q", "--bare", origin.to_str().unwrap()]);
+            // `-b main` so a clone checks out `main` whatever the
+            // computer's `init.defaultBranch` is.
+            git(
+                root,
+                &[
+                    "init",
+                    "-q",
+                    "--bare",
+                    "-b",
+                    "main",
+                    origin.to_str().unwrap(),
+                ],
+            );
             git(&top, &["remote", "add", "origin", origin.to_str().unwrap()]);
             git(&top, &["push", "-q", "origin", "HEAD:refs/heads/main"]);
             (top, origin)
