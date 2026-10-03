@@ -11,8 +11,10 @@
 //!   checks ([`super::recipe`]) are the session's input, as on a whole
 //!   agent; with the recipe off, the request alone.
 //! - **Lean settings**: [`executor`]: Opus 5.5 (the route's model), six
-//!   tools (`Bash, Read, Edit, Write, Glob, Grep`), the headless core
-//!   system prompt in place of Claude Code's own, the five-minute prompt
+//!   tools (`Bash, Read, Edit, Write, Glob, Grep`), the lean-session
+//!   system prompt ([`SYSTEM`]) in place of Claude Code's own: the headless
+//!   core, but stopping once the named checks pass and taking few,
+//!   parallel steps (#10254), the five-minute prompt
 //!   cache, no claude.ai connectors, and medium effort (low for a
 //!   question), the recipe's `claude-session` row.
 //! - **Process**: `claude -p --output-format stream-json`, supervised in its
@@ -52,6 +54,11 @@ pub const TOOLS: &str = "Bash,Read,Edit,Write,Glob,Grep";
 pub const PROMPT_CACHE_TTL: &str = "5m";
 /// The effort when neither the recipe nor the route names one.
 pub const EFFORT: &str = "medium";
+/// The system prompt preset. The headless `core` asks for tests nobody
+/// named, and with it the session took more turns than raw Claude Code on
+/// small fixes (#10254); `lean-session` stops once the named checks pass
+/// and asks for few, parallel steps.
+pub const SYSTEM: &str = "lean-session";
 
 /// Claude Code for this host, or why there is none.
 pub(crate) fn binary() -> Result<PathBuf, String> {
@@ -88,7 +95,7 @@ pub fn executor(model: &str, effort: &str) -> ExecutorPolicy {
         tools: Some(TOOLS.to_owned()),
         prompt_cache_ttl: Some(PROMPT_CACHE_TTL.to_owned()),
         deadline_sec: coder_delegate::terminal::TURN_WALL.as_secs(),
-        system: coder_delegate::system::Policy::preset("core"),
+        system: coder_delegate::system::Policy::preset(SYSTEM),
         session: Some(SessionPolicy {
             steer: None,
             stop_when: Some(coder_delegate::session::Trigger::Quiet {
@@ -150,6 +157,13 @@ mod tests {
         assert_eq!(policy.effort.as_deref(), Some("medium"));
         let system = policy.system.clone().expect("a trimmed system prompt");
         assert_eq!(system.mode, coder_delegate::system::Mode::Replace);
+        assert!(system.sections.iter().any(|id| id == "pace"));
+        assert!(!system.sections.iter().any(|id| id == "verify"));
+        assert!(
+            system
+                .validate(coder_delegate::delegate::Agent::ClaudeCode)
+                .is_empty()
+        );
         let cli = coder_delegate::policy::executor(
             &policy,
             ExecutorHost {

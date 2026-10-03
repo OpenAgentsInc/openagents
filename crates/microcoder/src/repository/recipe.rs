@@ -60,7 +60,9 @@ pub(crate) struct Recipe {
 impl Recipe {
     /// Prepares the turn's recipe and freezes its checks, and records both
     /// in the transcript.
-    pub(crate) async fn prepare(host: &Host, jev: Option<jev::Client>) -> Recipe {
+    /// `survey` off skips the workspace survey, for an engine that reads
+    /// the workspace itself ([`coder_delegate::recipe::Input::survey`]).
+    pub(crate) async fn prepare(host: &Host, jev: Option<jev::Client>, survey: bool) -> Recipe {
         let (request, earlier) = split_prompt(host.prompt(), &host.engine_prompt());
         let workdir = host.workspace().to_path_buf();
         let prepared = coder_delegate::recipe::prepare(coder_delegate::recipe::Input {
@@ -70,6 +72,7 @@ impl Recipe {
             jev,
             resumed: false,
             knowledge_dirs: coder_delegate::recipe::knowledge_dirs(&workdir),
+            survey,
         })
         .await;
         let mut frozen = Vec::new();

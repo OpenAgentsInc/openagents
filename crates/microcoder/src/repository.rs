@@ -971,7 +971,14 @@ pub async fn execute(
     // `off` runs the engines raw, for a with/without measurement.
     let recipe = if recipe::enabled(&|name| std::env::var(name).ok()) {
         let client = judge.as_ref().ok().map(|judge| judge.client.clone());
-        Some(recipe::Recipe::prepare(&host, client).await)
+        // A lean Claude Code session reads the workspace itself in less
+        // time than the survey takes, so its briefing skips the survey
+        // (#10254); every other first route keeps it.
+        let survey = !matches!(
+            stages.first(),
+            Some(Stage::Agent(AgentEngine::ClaudeSession, ..))
+        );
+        Some(recipe::Recipe::prepare(&host, client, survey).await)
     } else {
         let _ = host.append(&Step::said(
             Source::System,

@@ -251,7 +251,7 @@ pub(crate) async fn turn(
             lean.kind,
             json!({"program": program, "cwd": host.workspace(), "model": route.model,
                 "effort": effort, "tools": policy.tools, "prompt_cache_ttl": policy.prompt_cache_ttl,
-                "system": "core", "codex_config": lean.codex_config, "resume": resume, "briefing_chars": briefing.chars(),
+                "system": policy.system.as_ref().map(|system| &system.sections), "codex_config": lean.codex_config, "resume": resume, "briefing_chars": briefing.chars(),
                 "briefing_sha256": briefing.sha256(), "artifacts": artifacts}),
         ) {
             Ok(sequence) => sequence,

@@ -215,6 +215,20 @@
       "question": null
     },
     {
+      "id": "finish",
+      "status": "core",
+      "chars": 426,
+      "note": "The lean session's verify: run the named checks, then stop without adding tests or checks nobody asked for.",
+      "question": null
+    },
+    {
+      "id": "pace",
+      "status": "core",
+      "chars": 480,
+      "note": "The lean session's pace: few steps, parallel tool calls, act when ready, no interactive commands.",
+      "question": null
+    },
+    {
       "id": "report",
       "status": "core",
       "chars": 176,
@@ -314,6 +328,25 @@
       "chars": {
         "claude-code": 1542,
         "codex": 1542
+      }
+    },
+    {
+      "name": "lean-session",
+      "policy": {
+        "mode": "replace",
+        "sections": [
+          "role",
+          "security",
+          "authority",
+          "finish",
+          "pace",
+          "report",
+          "code-style"
+        ]
+      },
+      "chars": {
+        "claude-code": 2191,
+        "codex": 2191
       }
     }
   ]

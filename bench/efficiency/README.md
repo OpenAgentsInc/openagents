@@ -122,6 +122,71 @@ starts; this run did not break the time down.
 Most of the cost win against raw Claude Code is Codex's lower price; the
 part routing adds on the same engine is 17%.
 
+## Follow-up: the lean session's speed (#10254)
+
+The lean session was cheaper than raw Claude Code but slower (1.34× above,
+1.46–1.61× in the [demo](../../docs/cost/2026-10-02-terminal-vs-claude-code-demo.md)).
+The trajectories showed why:
+
+- **The headless core asked for more work than raw Claude Code does.** Its
+  `verify` section says "Test your change even when nobody asked you to".
+  On `mi-one` the session fixed the bug in 3 calls, as raw did, then wrote
+  regression tests, reverted the fix to watch them fail, and reapplied it:
+  8 turns against raw's 3. On `build-cython-ext` it cross-checked Cython
+  against pure Python and cleaned up build folders, 22–33 turns against
+  17–22, and in one run waited 131 s on a `python3 -` that read standard
+  input. That task alone was the whole time gap in the sum of means.
+- **The survey cost 4–7 s before the session started** (6–9 sequential
+  Jev requests), as long as raw Claude Code took for a whole small fix,
+  and the session read the files again anyway.
+- **The harness polled the route record every 5 s**, adding up to 5 s to
+  each routed run's wall time that raw runs never paid.
+- Effort was not the main cause: per-turn API time was close on most
+  tasks (3–6 s a turn on both arms). The six tools were not either: both
+  arms mostly used Bash.
+
+The changes: the session's system prompt is now the `lean-session` preset
+(`crates/coder-delegate/src/system.rs`). It is the core with `verify`
+replaced by `finish` (run the named checks, check requirements as a fresh
+shell sees them, then stop without adding tests or checks) plus `pace` (few
+steps, parallel tool calls, act when ready, no commands that wait for
+input). The recipe skips the workspace survey when the first route is the
+lean Claude session (`Input::survey`): the briefing is the request with
+Jev's class, knowledge, and frozen checks. The Codex session and every
+other route keep the core and the survey. `study.py` polls every 0.5 s.
+Effort stays medium and the tools stay six.
+
+Measured on coderos-4080 against raw Claude Code in the same run, 7 tasks ×
+3 trials, 4 at a time (rows in
+[`docs/cost/2026-10-02-lean-session-speed/`](../../docs/cost/2026-10-02-lean-session-speed/);
+ratios from `openagents efficiency --study`, 95% bootstrap intervals):
+
+| Lean session | n per arm | Passed (lean / raw) | Cost against raw | Time against raw | Mean turns (lean / raw) |
+| --- | ---: | --- | --- | --- | --- |
+| Before (`2026-10-03`, above) | 21 | 21/21 / 21/21 | 0.63 (0.56–0.71) | 1.34 (1.19–1.53) | 8.9 / 8.9 |
+| Prompt only (`a-prompt`) | 21 | 21/21 / 21/21 | 0.53 (0.46–0.61) | 1.12 (0.87–1.45) | 7.6 / 9.7 |
+| Prompt and no survey, first wording (`b-prompt-nosurvey`) | 21 | 20/21 / 21/21 | 0.45 (0.42–0.50) | 0.91 (0.72–1.12) | 6.7 / 9.8 |
+| **Shipped (`final`)** | 21 | **21/21 / 21/21** | **0.42 (0.38–0.47)** | **0.99 (0.76–1.27)** | **6.6 / 9.9** |
+
+The `b` failure was a `build-cython-ext` run that made the snippet work
+only with an `LD_LIBRARY_PATH` set in its own commands, which the checker
+does not have; `finish` now says to check as a fresh shell would. Per
+task in the shipped run, the session was faster on `bottle-etag` (0.72),
+`build-cython-ext` (0.87), and `mi-seekable` (0.95), and slower on the
+small ones: `fix-git` 1.36, `fix-code-vulnerability` 1.41, `headless-terminal`
+1.26, `mi-one` 1.61, with as many turns as raw or fewer. What is left on a
+small fix is the route's own start: the chat router (an offer the harness
+accepts, 3–10 s), Jev's class and checks (2–4 s), and the session's
+startup, against a 15–20 s raw run.
+
+Caveats: coderos-4080 was loaded by another job during these runs (load
+average 40–180, disk briefly full; run `d` was discarded for that). Raw and
+routed runs interleave in one run, so both arms shared it. An extension
+to 5 trials was stopped when the disk fell under 12 GB; its 17 rows
+(`final-extension-aborted.jsonl`, both arms failed one `headless-terminal`
+trial) are kept and not counted. Rerun the standing study to publish
+these settings on openagents.com/efficiency.
+
 ## Schedule
 
 Manual, not weekly. A run is cheap at list price (about $13), but it spends

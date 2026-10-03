@@ -15,7 +15,7 @@ Claude Code's cost, and took 1.61× and 1.46× as long.** Cheaper, not faster.
 
 | Side | Command | Configuration |
 | --- | --- | --- |
-| Left: OpenAgents Terminal | `openagents chat send` | Routed to Claude Code as one lean session, the shipped Claude route ([#10246](https://github.com/OpenAgentsInc/openagents/issues/10246), `coder.claude session`): Jev's briefing, six tools, the headless core system prompt, Opus 5.5 at medium effort. |
+| Left: OpenAgents Terminal | `openagents chat send` | Routed to Claude Code as one lean session, the shipped Claude route ([#10246](https://github.com/OpenAgentsInc/openagents/issues/10246), `coder.claude session`): Jev's briefing, six tools, a trimmed system prompt, Opus 5.5 at medium effort. Since [#10254](https://github.com/OpenAgentsInc/openagents/issues/10254) the briefing skips the workspace survey and the prompt stops once the named checks pass; the dry run below predates that. |
 | Right: Claude Code | `claude -p` | Claude Code's own defaults (Opus 5.5, 1M context, its own system prompt and tools). |
 
 Same engine and model family on both sides, so the difference is what

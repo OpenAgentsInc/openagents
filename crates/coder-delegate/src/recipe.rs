@@ -126,6 +126,13 @@ Work in few, large steps.";
 const CONCLUSION: &str = "No explorer ran for this request. The evidence below comes from the \
 host's read-only probes and Jev's file survey.";
 
+/// What the briefing says when the engine reads the workspace itself.
+const UNSURVEYED_CONCLUSION: &str = "The host gathered no evidence for this request: read the \
+files and run the commands you need.";
+
+/// The directions when no survey ran.
+const UNSURVEYED_DIRECTIONS: &str = "Work in few, large steps.";
+
 /// What a question's briefing says instead: no survey ran.
 const QUESTION_CONCLUSION: &str = "Jev read this request as a question, so the host gathered \
 no evidence for it: find the answer by reading files and running read-only commands.";
@@ -148,6 +155,11 @@ pub struct Input<'a> {
     /// The knowledge bases to search, in order; a missing directory is
     /// skipped and said.
     pub knowledge_dirs: Vec<PathBuf>,
+    /// Whether the host surveys the workspace for the briefing: the probe
+    /// battery, Jev's file ratings, and the requirements. A lean Claude
+    /// Code session reads the workspace itself, faster than the survey
+    /// takes, and skips it (#10254).
+    pub survey: bool,
 }
 
 /// One candidate check and Jev's probability.
@@ -421,7 +433,8 @@ pub async fn prepare(input: Input<'_>) -> Prepared {
             recorder.clone(),
         )
         .probe_v2(false);
-    if !question {
+    let survey = !question && input.survey;
+    if survey {
         judge.survey(&mut state).await;
     }
 
@@ -495,12 +508,18 @@ pub async fn prepare(input: Input<'_>) -> Prepared {
         &judge.evidence,
         &Ended::StepLimit { steps: 0 },
         &words,
-        DIRECTIONS,
+        if question || survey {
+            DIRECTIONS
+        } else {
+            UNSURVEYED_DIRECTIONS
+        },
     );
     inputs.conclusion = if question {
         QUESTION_CONCLUSION
-    } else {
+    } else if survey {
         CONCLUSION
+    } else {
+        UNSURVEYED_CONCLUSION
     }
     .to_owned();
     let head = if input.resumed { RESUMED_HEAD } else { HEAD };
@@ -526,6 +545,7 @@ pub async fn prepare(input: Input<'_>) -> Prepared {
         "schema": SCHEMA,
         "version": RECIPE_VERSION,
         "class": class_record,
+        "survey": survey,
         "briefing": briefing.record(),
         "knowledge": knowledge_record,
         "checks": {"set": CHECK, "keep": CHECK_KEEP, "candidates": candidates,
@@ -741,9 +761,11 @@ mod tests {
             jev: None,
             resumed: false,
             knowledge_dirs: vec![dir.path().join("knowledge")],
+            survey: true,
         })
         .await;
         assert_eq!(prepared.class, None);
+        assert_eq!(prepared.record["survey"], true);
         assert!(prepared.checks.is_empty());
         assert!(prepared.briefing.text.starts_with(HEAD));
         assert!(prepared.briefing.text.contains("Fix `cargo test -p foo`."));
@@ -760,6 +782,29 @@ mod tests {
         let resumed = prepared.text(true, &[]);
         assert!(resumed.starts_with(RESUMED_HEAD));
         assert!(resumed.contains("Fix `cargo test -p foo`."));
+    }
+
+    /// Without the survey the briefing says the engine reads the workspace
+    /// itself, and the request's own commands are still the candidates.
+    #[tokio::test(flavor = "current_thread")]
+    async fn without_the_survey_the_briefing_sends_the_engine_to_read() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("test_x.py"), "").unwrap();
+        let prepared = prepare(Input {
+            workdir: dir.path(),
+            request: "Fix `cargo test -p foo`.",
+            earlier: "",
+            jev: None,
+            resumed: false,
+            knowledge_dirs: vec![dir.path().join("knowledge")],
+            survey: false,
+        })
+        .await;
+        assert_eq!(prepared.record["survey"], false);
+        assert!(prepared.briefing.text.contains(UNSURVEYED_CONCLUSION));
+        assert!(prepared.briefing.text.contains(UNSURVEYED_DIRECTIONS));
+        assert!(!prepared.briefing.text.contains(DIRECTIONS));
+        assert!(!prepared.briefing.text.contains("test_x.py"));
     }
 
     #[tokio::test(flavor = "current_thread")]

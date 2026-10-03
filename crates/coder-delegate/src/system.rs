@@ -118,6 +118,21 @@ pub const CORE: &[&str] = &[
     "code-style",
 ];
 
+/// The lean Claude Code session's prompt (#10254): the core with
+/// `verify` replaced by `finish`, which stops once the named checks pass,
+/// and `pace`, which asks for few, parallel steps. Raw Claude Code took
+/// fewer turns on small fixes than the core, which asks for tests nobody
+/// named.
+pub const SESSION: &[&str] = &[
+    "role",
+    "security",
+    "authority",
+    "finish",
+    "pace",
+    "report",
+    "code-style",
+];
+
 /// Optional sections Jev may select, in the order they render.
 pub const OPTIONAL: &[&str] = &[
     "long-builds",
@@ -156,6 +171,20 @@ pub const LIBRARY: &[Section] = &[
         status: Status::Core,
         text: include_str!("../../coder-one/prompts/headless/verify.md"),
         note: "The checker grades the final state; replaces Codex's rule against running tests unasked.",
+        question: None,
+    },
+    Section {
+        id: "finish",
+        status: Status::Core,
+        text: include_str!("../../coder-one/prompts/headless/finish.md"),
+        note: "The lean session's verify: run the named checks, then stop without adding tests or checks nobody asked for.",
+        question: None,
+    },
+    Section {
+        id: "pace",
+        status: Status::Core,
+        text: include_str!("../../coder-one/prompts/headless/pace.md"),
+        note: "The lean session's pace: few steps, parallel tool calls, act when ready, no interactive commands.",
         question: None,
     },
     Section {
@@ -469,8 +498,9 @@ pub struct Policy {
 }
 
 impl Policy {
-    /// A named preset: `core`, the headless core replacing the default, or
-    /// `core-select`, the same with every optional section open to Jev.
+    /// A named preset: `core`, the headless core replacing the default,
+    /// `core-select`, the same with every optional section open to Jev, or
+    /// `lean-session`, the lean Claude Code session's ([`SESSION`]).
     #[must_use]
     pub fn preset(name: &str) -> Option<Self> {
         let core = || CORE.iter().map(|id| (*id).to_string()).collect();
@@ -484,6 +514,11 @@ impl Policy {
                 mode: Mode::Replace,
                 sections: core(),
                 select: OPTIONAL.iter().map(|id| (*id).to_string()).collect(),
+            }),
+            "lean-session" => Some(Policy {
+                mode: Mode::Replace,
+                sections: SESSION.iter().map(|id| (*id).to_string()).collect(),
+                select: Vec::new(),
             }),
             _ => None,
         }
@@ -809,7 +844,7 @@ pub fn library_record() -> Value {
             })
         })
         .collect();
-    let presets: Vec<Value> = ["core", "core-select"]
+    let presets: Vec<Value> = ["core", "core-select", "lean-session"]
         .iter()
         .filter_map(|name| Policy::preset(name).map(|policy| (name, policy)))
         .map(|(name, policy)| {
@@ -884,7 +919,7 @@ mod tests {
 
     #[test]
     fn every_preset_carries_the_protected_section_on_both_executors() {
-        for name in ["core", "core-select"] {
+        for name in ["core", "core-select", "lean-session"] {
             for agent in [Agent::ClaudeCode, Agent::Codex] {
                 let policy = Policy::preset(name).unwrap();
                 assert!(policy.validate(agent).is_empty(), "{name} {agent:?}");

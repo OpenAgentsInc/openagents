@@ -553,16 +553,23 @@ def run_routed(settings, prompt, cwd, d):
             except ValueError:
                 pass
     # Wait for the route record to settle (the CLI may stop following first).
+    # Polled every half second: at 5 s the wait added up to 5 s to a routed
+    # run's wall time that raw runs never pay (#10254).
     rec = None
     deadline = start + TIMEOUT + 120
     while time.time() < deadline:
         files = glob.glob(os.path.join(d, "routes", "*.jsonl"))
         if files:
-            lines = [json.loads(l) for l in open(files[0]) if l.strip()]
-            rec = lines[-1]
-            if rec.get("settled_ms"):
+            lines = []
+            for l in open(files[0]):
+                try:
+                    lines.append(json.loads(l))
+                except ValueError:  # a line still being written
+                    pass
+            rec = lines[-1] if lines else rec
+            if rec and rec.get("settled_ms"):
                 break
-        time.sleep(5)
+        time.sleep(0.5)
     wall = time.time() - start
     work = None
     for e in events:

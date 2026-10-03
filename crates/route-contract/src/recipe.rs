@@ -121,6 +121,9 @@ pub struct EngineRecipe {
 const BRIEFING: Setting = Setting::Applied(
     "Jev probes the workspace (read-only probe battery, 40-file survey) and the kept evidence goes in front of the task, capped at 12,000 characters",
 );
+const BRIEFING_SESSION: Setting = Setting::Applied(
+    "the request, with the knowledge and checks below, in front of the task; no workspace survey, since the session reads the workspace itself in less time than the survey takes (#10254)",
+);
 const BRIEFING_LOOP: Setting = Setting::Applied(
     "the briefing is the loop's Task section, the stable prefix of every step's prompt",
 );
@@ -188,7 +191,7 @@ pub const ENGINES: [EngineRecipe; 9] = [
     EngineRecipe {
         engine: CLAUDE_SESSION,
         runs_as: Runs::Cli,
-        briefing: BRIEFING,
+        briefing: BRIEFING_SESSION,
         knowledge: KNOWLEDGE,
         effort_setting: Setting::Applied(
             "Claude Code's --effort: medium, the cost audit's lean session, low for a question",
@@ -200,7 +203,7 @@ pub const ENGINES: [EngineRecipe; 9] = [
         },
         tools: Setting::Applied("six: Bash, Read, Edit, Write, Glob, Grep"),
         system_prompt: Setting::Applied(
-            "replaced (--system-prompt-file) with the headless core sections",
+            "replaced (--system-prompt-file) with the lean-session sections: the headless core, but stopping once the named checks pass and taking few, parallel steps",
         ),
         prompt_cache: Setting::Applied("five minutes (CLAUDE_CODE_PROMPT_CACHE_TTL=5m)"),
         checks: Setting::Applied(
