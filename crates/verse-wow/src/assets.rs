@@ -52,6 +52,13 @@ pub struct Clip {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Attachment {
+    pub id: u16,
+    pub bone: usize,
+    pub position: [f32; 3],
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Model {
     pub source: String,
     pub source_sha256: String,
@@ -59,6 +66,8 @@ pub struct Model {
     pub bones: Vec<Bone>,
     pub clips: Vec<Clip>,
     pub height: f32,
+    #[serde(default)]
+    pub attachments: Vec<Attachment>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -122,6 +131,13 @@ impl Pack {
         }
         let mut vertices = 0;
         for model in self.models.values() {
+            if model
+                .attachments
+                .iter()
+                .any(|a| a.bone >= model.bones.len() || a.position.iter().any(|v| !v.is_finite()))
+            {
+                return Err("Invalid model attachment".into());
+            }
             if model.bones.len() > 256 || model.clips.len() > 512 || !model.height.is_finite() {
                 return Err("Invalid model skeleton".into());
             }
@@ -209,6 +225,7 @@ mod tests {
                     }],
                     clips: vec![],
                     height: 1.0,
+                    attachments: vec![],
                 },
             )]),
             placements: vec![],

@@ -4,7 +4,7 @@ use std::{io::Write, path::PathBuf};
 use verse::{
     imported::{Instance, Renderer},
     render::View,
-    ui::{Atlas, UiBatch},
+    ui::Atlas,
 };
 use verse_wow::{assets::Pack, position_from_wow};
 fn basis() -> Mat4 {
@@ -43,33 +43,66 @@ fn main() -> Result<(), String> {
             },
         })
         .collect();
-    let mut actors = vec![Instance {
-        model: "claude".into(),
-        transform: conversion
-            * Mat4::from_scale_rotation_translation(
-                Vec3::splat(2.4),
-                Quat::IDENTITY,
-                [-15.0, 141.0, 83.9].into(),
-            ),
-        animation: 0,
-        time: 0.0,
-        emission: Vec3::new(0.08, 1.0, 0.03),
-    }];
-    for i in 0..12 {
-        let a = i as f32 * std::f32::consts::TAU / 12.0;
+    let scene = verse_wow::director::Scene::from_json(include_bytes!(
+        "../../../assets/verse/wow/anthropic.json"
+    ))?;
+    let time: f32 = mode.parse().unwrap_or(3.0);
+    let frame = scene.frame(time);
+    let mut actors: Vec<_> = frame
+        .actors
+        .iter()
+        .filter(|a| a.visible)
+        .map(|a| Instance {
+            model: a.actor.model.clone(),
+            transform: Mat4::from_translation(a.actor.position)
+                * Mat4::from_rotation_y(a.actor.yaw)
+                * Mat4::from_scale(Vec3::splat(a.actor.scale))
+                * basis(),
+            animation: a.animation,
+            time: a.animation_time,
+            emission: Vec3::ONE,
+        })
+        .collect();
+    for a in frame
+        .actors
+        .iter()
+        .filter(|a| a.visible && a.actor.model == "adventurer")
+    {
+        let model = &pack.models["adventurer"];
+        if let Some(hand) = model.attachments.iter().find(|a| a.id == 2) {
+            let pose = verse_wow::animation::pose(model, a.animation, a.animation_time);
+            let transform = Mat4::from_translation(a.actor.position)
+                * Mat4::from_rotation_y(a.actor.yaw)
+                * basis()
+                * pose[hand.bone]
+                * Mat4::from_translation(hand.position.into())
+                * Mat4::from_rotation_z(std::f32::consts::FRAC_PI_2)
+                * Mat4::from_rotation_y(-std::f32::consts::FRAC_PI_2);
+            actors.push(Instance {
+                model: "bow".into(),
+                transform,
+                animation: 0,
+                time,
+                emission: Vec3::ONE,
+            });
+        }
+    }
+    for arrow in &frame.projectiles {
         actors.push(Instance {
-            model: "cultist".into(),
-            transform: conversion
-                * Mat4::from_scale_rotation_translation(
-                    Vec3::ONE,
-                    Quat::from_rotation_z(a + std::f32::consts::PI),
-                    [-15.0 + 9.0 * a.cos(), 141.0 + 9.0 * a.sin(), 83.9].into(),
-                ),
+            model: "arrow".into(),
+            transform: Mat4::from_translation(arrow.position)
+                * Mat4::from_quat(Quat::from_rotation_arc(-Vec3::Z, arrow.direction))
+                * basis(),
             animation: 0,
-            time: i as f32 * 0.1,
+            time,
             emission: Vec3::ONE,
         });
     }
+    let heights: std::collections::BTreeMap<_, _> = pack
+        .models
+        .iter()
+        .map(|(id, m)| (id.clone(), m.height))
+        .collect();
     let atlas = Atlas::new(16.0);
     let mut renderer = Renderer::new(
         pack,
@@ -80,11 +113,9 @@ fn main() -> Result<(), String> {
         &static_instances,
     )?;
     eprintln!("Verse GPU: {}", renderer.adapter_name);
-    let eye = position_from_wow([15.0, 141.0, 86.0]) - origin;
     let view = View {
-        view_proj: Mat4::perspective_rh(1.0, 1280.0 / 720.0, 0.1, 500.0)
-            * Mat4::look_at_rh(eye, Vec3::new(0.0, 3.0, 0.0), Vec3::Y),
-        eye,
+        view_proj: frame.view_projection(1280.0 / 720.0),
+        eye: frame.eye,
     };
     let mut lighting = verse::imported::lighting::Lighting::default();
     lighting.ambient = Vec3::new(0.055, 0.06, 0.075);
@@ -110,7 +141,16 @@ fn main() -> Result<(), String> {
     if mode == "--lights-off" {
         lighting.lights.clear();
     }
-    let pixels = renderer.draw(view, &actors, &UiBatch::default(), &lighting)?;
+    lighting.time = time;
+    let ui = verse::imported::overlay::cinematic(
+        &atlas,
+        &frame,
+        &heights,
+        view.view_proj,
+        1280.0,
+        720.0,
+    );
+    let pixels = renderer.draw(view, &actors, &ui, &lighting)?;
     let mut png = png::Encoder::new(
         std::fs::File::create(output).map_err(|e| e.to_string())?,
         1280,

@@ -81,6 +81,7 @@ mod tests {
             source_sha256: String::new(),
             surfaces: vec![],
             height: 1.0,
+            attachments: vec![],
             bones: vec![
                 Bone {
                     parent: -1,

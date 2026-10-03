@@ -10,6 +10,7 @@ use crate::{
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3};
 pub mod lighting;
+pub mod overlay;
 use lighting::{Frame, Lighting};
 use std::{
     collections::{BTreeMap, HashMap},

@@ -135,3 +135,11 @@ The capture's `--no-shadows` mode keeps the same camera and lights while disabli
 occlusion. The October 3 check changed 367,300 pixels by more than five channel
 levels when shadows were disabled. This lighting is calculated in the engine;
 there is no video grading step.
+
+The [ritual scene](../../assets/verse/wow/anthropic.json) declares the cast,
+yells, camera cut, and bow cues. `verse-wow::director` evaluates them from
+simulation time; it does not send keyboard input or use a chat box. Hostile
+actors have head-anchored red health bars. Directed arrow impacts reduce the
+target's displayed health. These scene impacts are local cinematic state, not
+realm combat authority. Pass a time in seconds as the capture's third argument
+to inspect a cue, for example `51.2` for an arrow in flight.

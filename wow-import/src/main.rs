@@ -88,7 +88,10 @@ impl Importer {
         }
         let mut surfaces = Vec::new();
         let mut height = 0.0f32;
-        for sub in subs {
+        for mut sub in subs {
+            if sub.texture.is_none() && sub.char_slot==Some(f::CharSkinSlot::Object){
+                sub.texture=skins.iter().flatten().next().map(|skin|format!("{}\\{}.blp",path.rsplit_once('\\').map_or("",|p|p.0),skin));
+            }
             if matches!(sub.blend, f::ModelBlend::Mod | f::ModelBlend::Mod2x) {
                 continue;
             }
@@ -165,6 +168,18 @@ impl Importer {
         } else {
             (vec![], vec![])
         };
+        let attachments = if path.ends_with(".m2") {
+            f::parse_m2_attachments(&bytes)?
+                .into_iter()
+                .map(|a| Attachment {
+                    id: a.id,
+                    bone: usize::from(a.bone),
+                    position: a.position,
+                })
+                .collect()
+        } else {
+            vec![]
+        };
         eprintln!("{key}: {} surfaces", surfaces.len());
         self.pack.models.insert(
             key.into(),
@@ -175,6 +190,7 @@ impl Importer {
                 bones,
                 clips,
                 height,
+                attachments,
             },
         );
         Ok(())
@@ -275,6 +291,14 @@ fn main() -> Result<()> {
         format!("Item\\ObjectComponents\\Weapon\\{path}")
     };
     import.model("bow", &path, &[bow.model_texture[0].clone()], false)?;
+    let anim = f::load_anim_data_catalog(&mut import.chain)?;
+    for id in [40, 64, 65, 68, 85, 87, 105, 109] {
+        eprintln!("animation {id}: {:?}", anim.name(id));
+    }
+    eprintln!("arrow display: {:?}", items.get(5996));
+    let arrow=items.get(5996).context("Arrow display")?;
+    let arrow_path=format!("Item\\ObjectComponents\\Ammo\\{}",arrow.model[1].as_ref().context("Arrow model")?);
+    import.model("arrow",&arrow_path,&[arrow.model_texture[1].clone()],false)?;
     import.pack.validate().map_err(anyhow::Error::msg)?;
     serde_json::to_writer(std::fs::File::create(dir.join("pack.json"))?, &import.pack)?;
     println!(
