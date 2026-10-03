@@ -216,3 +216,12 @@ coder-web-2f838a3b1d=100`). `/`, `/live`, `/stats`, `/efficiency` and
 `/api/stats` answered 200 on the `new` tag before traffic moved.
 `/.well-known/agent-card.json` still returns 404: no deployed service
 serves the `discovery` crate's card (#10364).
+
+Live (2026-10-03, calibration): revision `coder-web-530b207410` (image
+`openagents/openagents-web:530b207410`, the Decisions section on
+`/efficiency`, #10387; built from GitHub by the automation account),
+copied from `coder-web-bbed5d89af`'s spec with the pay host variable and
+both VPC annotations kept, serves 100% of the traffic;
+`coder-web-bbed5d89af` is the rollback (`--to-revisions
+coder-web-bbed5d89af=100`). `/`, `/live`, `/stats`, `/efficiency` and
+`/api/stats` answered 200 on the `new` tag before traffic moved.
