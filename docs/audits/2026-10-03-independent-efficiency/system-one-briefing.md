@@ -11,6 +11,10 @@ adds a preparation architecture, isolated experiments, and a runnable
 baseline; it makes no new claim about agent completion quality or Jev savings.
 Production routing and Claude's concurrent work remain separate.
 
+Follow-up: [Tree-sitter excerpt selection experiment](briefing-syntax-results.md)
+implements the first structural treatment, with a pinned source panel and
+matched baseline, syntax, and index-loading comparisons.
+
 ## 1. What the TypeSafe material adds
 
 The requested `docs/typesafe/` directory is retained as

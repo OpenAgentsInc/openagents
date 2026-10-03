@@ -1,4 +1,4 @@
-use briefing_lab::{Components, Index, Issue, Result};
+use briefing_lab::{Components, Index, Issue, Options, Result};
 use std::{collections::BTreeMap, env, fs, path::PathBuf, process, time::Instant};
 
 fn main() {
@@ -12,7 +12,7 @@ fn run() -> Result<()> {
     let command = args.next().unwrap_or_default();
     if command == "--help" || command.is_empty() {
         println!(
-            "briefing-lab index --repo PATH --rev COMMIT_OR_REF --output FILE\nbriefing-lab preview --repo PATH --rev COMMIT_OR_REF --index FILE --issue-file FILE --output-dir DIR [--no-lexical] [--no-symbols] [--no-history]\n\nAll artifacts must be outside the inspected repository. The preview reads committed source only."
+            "briefing-lab index --repo PATH --rev COMMIT_OR_REF --output FILE [--syntax]\nbriefing-lab preview --repo PATH --rev COMMIT_OR_REF --index FILE --issue-file FILE --output-dir DIR [--no-lexical] [--no-symbols] [--no-history] [--syntax]\n\nAll artifacts must be outside the inspected repository. The preview reads committed source only."
         );
         return Ok(());
     }
@@ -21,9 +21,11 @@ fn run() -> Result<()> {
     }
     let mut values = BTreeMap::new();
     let mut components = Components::default();
+    let mut options = Options::default();
     let mut args = env::args().skip(2);
     while let Some(key) = args.next() {
         match key.as_str() {
+            "--syntax" => options.syntax = true,
             "--no-lexical" if command == "preview" => components.lexical = false,
             "--no-symbols" if command == "preview" => components.symbols = false,
             "--no-history" if command == "preview" => components.history = false,
@@ -49,7 +51,7 @@ fn run() -> Result<()> {
     if command == "index" {
         let output = PathBuf::from(required("--output")?);
         briefing_lab::check_output(&repo, &output)?;
-        let index = briefing_lab::build_index(&repo, &revision)?;
+        let index = briefing_lab::build_index_with_options(&repo, &revision, options)?;
         if let Some(parent) = output.parent().filter(|p| !p.as_os_str().is_empty()) {
             fs::create_dir_all(parent)?;
         }
@@ -72,7 +74,8 @@ fn run() -> Result<()> {
     let issue_bytes = fs::read(required("--issue-file")?)?;
     let issue: Issue = serde_json::from_slice(&issue_bytes)?;
     let load_ms = load_start.elapsed().as_secs_f64() * 1000.0;
-    let mut brief = briefing_lab::assemble(&repo, &index, &commit, issue, components)?;
+    let mut brief =
+        briefing_lab::assemble_with_options(&repo, &index, &commit, issue, components, options)?;
     let directory = PathBuf::from(required("--output-dir")?);
     briefing_lab::check_output(&repo, &directory)?;
     briefing_lab::check_output(&repo, &directory.join("briefing.json"))?;

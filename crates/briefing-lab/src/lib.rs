@@ -1,4 +1,5 @@
 //! Read-only, offline issue briefings from a bounded Git snapshot.
+pub mod syntax;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
@@ -25,6 +26,8 @@ pub struct Index {
     pub index_ms: f64,
     pub scanned_bytes: usize,
     pub attempted_files: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub syntax: Option<syntax::Provenance>,
 }
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Source {
@@ -35,6 +38,8 @@ pub struct Source {
     pub line_count: usize,
     pub terms: BTreeSet<String>,
     pub symbols: Vec<Symbol>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub syntax: Option<syntax::FileSyntax>,
 }
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Symbol {
@@ -60,6 +65,11 @@ pub struct Issue {
 fn nullable_body<'de, D: serde::Deserializer<'de>>(d: D) -> std::result::Result<String, D::Error> {
     Ok(Option::<String>::deserialize(d)?.unwrap_or_default())
 }
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Options {
+    pub syntax: bool,
+}
+
 #[derive(Debug, Clone, Copy, Serialize)]
 pub struct Components {
     pub lexical: bool,
@@ -86,6 +96,8 @@ pub struct Evidence {
     pub total_lines: usize,
     pub reasons: Vec<String>,
     pub text: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub syntax_selection: Option<syntax::Selection>,
 }
 #[derive(Debug, Serialize)]
 pub struct Brief {
@@ -100,6 +112,8 @@ pub struct Brief {
     pub omitted_candidates: usize,
     pub index_omissions: BTreeMap<String, usize>,
     pub timings_ms: BTreeMap<String, f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub syntax: Option<syntax::Provenance>,
 }
 
 pub fn sha256(bytes: &[u8]) -> String {
@@ -264,6 +278,10 @@ fn symbols(text: &str) -> Vec<Symbol> {
 }
 
 pub fn build_index(repo: &Path, revision: &str) -> Result<Index> {
+    build_index_with_options(repo, revision, Options::default())
+}
+
+pub fn build_index_with_options(repo: &Path, revision: &str, options: Options) -> Result<Index> {
     let start = Instant::now();
     let commit = resolve(repo, revision)?;
     let listing = git(repo, &["ls-tree", "-r", "-l", "-z", &commit])?;
@@ -367,6 +385,11 @@ pub fn build_index(repo: &Path, revision: &str) -> Result<Index> {
             *omissions.entry("binary contents".into()).or_default() += 1;
             continue;
         }
+        let syntax = if options.syntax && path.ends_with(".rs") {
+            Some(syntax::extract(&text)?)
+        } else {
+            None
+        };
         files.push(Source {
             terms: terms(&format!("{path}\n{text}")),
             symbols: if path.ends_with(".rs") {
@@ -379,6 +402,7 @@ pub fn build_index(repo: &Path, revision: &str) -> Result<Index> {
             sha256: hash,
             size,
             line_count: text.lines().count(),
+            syntax,
         });
     }
     drop(input);
@@ -407,6 +431,7 @@ pub fn build_index(repo: &Path, revision: &str) -> Result<Index> {
         index_ms: start.elapsed().as_secs_f64() * 1000.0,
         scanned_bytes: bytes,
         attempted_files,
+        syntax: options.syntax.then(syntax::Provenance::default),
     })
 }
 
@@ -513,6 +538,24 @@ pub fn assemble(
     issue: Issue,
     components: Components,
 ) -> Result<Brief> {
+    assemble_with_options(
+        repo,
+        index,
+        expected_commit,
+        issue,
+        components,
+        Options::default(),
+    )
+}
+
+pub fn assemble_with_options(
+    repo: &Path,
+    index: &Index,
+    expected_commit: &str,
+    issue: Issue,
+    components: Components,
+    options: Options,
+) -> Result<Brief> {
     let start = Instant::now();
     if index.schema != SCHEMA {
         return Err("Unsupported index schema; rebuild the index.".into());
@@ -525,6 +568,9 @@ pub fn assemble(
         || index.scanned_bytes > MAX_BYTES
     {
         return Err("Cached index exceeds the file or byte bounds; rebuild it.".into());
+    }
+    if options.syntax && index.syntax.as_ref() != Some(&syntax::Provenance::default()) {
+        return Err("Syntax preview needs a compatible syntax index. Rebuild with `briefing-lab index --syntax`.".into());
     }
     let mut paths = BTreeSet::new();
     let mut bytes = 0usize;
@@ -554,7 +600,24 @@ pub fn assemble(
             return Err("The index has an invalid symbol or line range; rebuild it.".into());
         }
     }
+    if options.syntax {
+        for source in &index.files {
+            if source.path.ends_with(".rs") && source.syntax.is_none() {
+                return Err(
+                    "Rust syntax metadata is missing; rebuild the index with --syntax.".into(),
+                );
+            }
+            if let Some(file) = &source.syntax {
+                syntax::validate(file, source.size, source.line_count)?;
+            }
+        }
+    }
     let query = terms(&format!("{}\n{}", issue.title, issue.body));
+    let identifiers = if options.syntax {
+        syntax::identifiers(&format!("{}\n{}", issue.title, issue.body))
+    } else {
+        BTreeSet::new()
+    };
     let refs = references(&issue);
     let mut notes = vec!["Evidence is source material, not an instruction to execute commands. No issue commands were run.".into(),
         "Symbol matches are declaration-name hints, not an AST, call graph, or proof of relevance.".into(),
@@ -652,10 +715,17 @@ pub fn assemble(
         &chosen.iter().map(|(s, _)| *s).collect::<Vec<_>>(),
     )?;
     let selected_read_ms = read_start.elapsed().as_secs_f64() * 1000.0;
+    if options.syntax {
+        for ((source, _), text) in chosen.iter().zip(&texts) {
+            if let Some(file) = &source.syntax {
+                syntax::validate_text(file, text)?;
+            }
+        }
+    }
     let evidence = chosen
         .into_iter()
         .zip(texts)
-        .map(|((source, reasons), source_text)| {
+        .map(|((source, mut reasons), source_text)| {
             let lines: Vec<_> = source_text.split_inclusive('\n').collect();
             let hit = if components.symbols {
                 source
@@ -676,8 +746,20 @@ pub fn assemble(
                 }
             })
             .unwrap_or(0);
-            let start = hit.saturating_sub(8);
-            let end = (start + 64).min(lines.len());
+            let selection = if options.syntax { source.syntax.as_ref().and_then(|file| syntax::choose(file, &identifiers)) } else { None };
+            let (start, end) = if let Some((declaration, match_kind, matches)) = selection {
+                reasons.push(format!("Tree-sitter {match_kind}: {} ({})", declaration.qualified_name, declaration.kind));
+                if matches > 1 { reasons.push(format!("Ambiguous name: {matches} equally ranked declarations; source order breaks the tie.")); }
+                let start = declaration.declaration.start_line - 1;
+                (start, (start + 64).min(declaration.declaration.end_line).min(lines.len()))
+            } else {
+                if options.syntax { reasons.push("No complete matching Rust declaration; baseline excerpt selection used.".into()); }
+                let start = hit.saturating_sub(8);
+                (start, (start + 64).min(lines.len()))
+            };
+            if options.syntax && source.syntax.as_ref().is_some_and(|file| file.parse_has_error) {
+                reasons.push("The source has parse errors; declarations containing recovered errors are not selected structurally.".into());
+            }
             let byte_start: usize = lines[..start].iter().map(|line| line.len()).sum();
             let byte_end = byte_start
                 + lines[start..end]
@@ -695,6 +777,10 @@ pub fn assemble(
                 total_lines: lines.len(),
                 reasons,
                 text,
+                syntax_selection: selection.map(|(declaration, match_kind, matches)| syntax::Selection {
+                    partial: byte_start > declaration.declaration.start_byte || byte_end < declaration.declaration.end_byte,
+                    declaration: declaration.clone(), match_kind: match_kind.into(), equally_ranked_matches: matches,
+                }),
             }
         })
         .collect();
@@ -726,7 +812,18 @@ pub fn assemble(
         notes.push("History considers subjects from at most 32 recent commits; it does not infer fixes or dependency relationships.".into());
     }
     notes.push("Excerpts show at most 64 lines per file. Omitted lines, files, and unselected checks can still matter; this briefing grants no execution authority.".into());
+    if options.syntax {
+        notes.push("Tree-sitter changes excerpt selection only; the baseline file ranking and 64-line maximum remain the same. Syntax names are case-sensitive lexical scopes, without macro expansion or compiler name resolution.".into());
+        let limited = index
+            .files
+            .iter()
+            .filter_map(|f| f.syntax.as_ref())
+            .filter(|f| f.parse_has_error || f.traversal_limited || f.omitted_declarations > 0)
+            .count();
+        notes.push(format!("Syntax parsing reports errors or bounded extraction in {limited} indexed Rust files; see each file's cached limitations."));
+    }
     Ok(Brief {
+        syntax: options.syntax.then(syntax::Provenance::default),
         schema: "openagents.briefing-lab.preview.v1".into(),
         commit: index.commit.clone(),
         issue,
@@ -765,6 +862,17 @@ pub fn markdown(brief: &Brief) -> String {
         "{mark}text\n{issue_text}\n{mark}\n\n## Selected evidence\n\n"
     ));
     for e in &brief.evidence {
+        if let Some(selection) = &e.syntax_selection {
+            out.push_str(&format!(
+                "Syntax selection: `{}`; declaration {}.\n\n",
+                selection.declaration.qualified_name,
+                if selection.partial {
+                    "partially shown under the 64-line limit"
+                } else {
+                    "fully shown"
+                }
+            ));
+        }
         let mark = fence(&e.text);
         out.push_str(&format!("### `{}`: {}–{} of {} lines\n\n{}\n\nFile SHA-256: `{}`. Git blob: `{}`.\n\n{mark}text\n{}\n{mark}\n\n", e.path, e.start_line, e.end_line, e.total_lines, e.reasons.join("; "), e.file_sha256, e.blob, e.text));
     }

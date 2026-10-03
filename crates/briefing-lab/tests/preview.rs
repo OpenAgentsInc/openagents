@@ -425,3 +425,168 @@ fn cached_path_and_blob_are_bound_to_the_selected_commit() {
         .contains("pinned Git commit")
     );
 }
+
+#[test]
+fn syntax_is_opt_in_and_requires_compatible_index_metadata() {
+    let r = Repository::new();
+    let index = build_index(&r.repo, "HEAD").unwrap();
+    let options = briefing_lab::Options { syntax: true };
+    let error = briefing_lab::assemble_with_options(
+        &r.repo,
+        &index,
+        &index.commit,
+        r.issue("repair_index", ""),
+        Components::default(),
+        options,
+    )
+    .unwrap_err();
+    assert!(error.to_string().contains("index --syntax"));
+    let syntax_index = briefing_lab::build_index_with_options(&r.repo, "HEAD", options).unwrap();
+    let issue = r.issue("repair_index", "");
+    let a = assemble(
+        &r.repo,
+        &index,
+        &index.commit,
+        issue.clone(),
+        Components::default(),
+    )
+    .unwrap();
+    let b = assemble(
+        &r.repo,
+        &syntax_index,
+        &index.commit,
+        issue,
+        Components::default(),
+    )
+    .unwrap();
+    assert_eq!(
+        serde_json::to_value(&a.evidence).unwrap(),
+        serde_json::to_value(&b.evidence).unwrap()
+    );
+    assert!(a.syntax.is_none());
+    assert!(b.syntax.is_none());
+    assert!(
+        serde_json::to_value(&index)
+            .unwrap()
+            .get("syntax")
+            .is_none()
+    );
+}
+
+#[test]
+fn syntax_changes_only_spans_and_preserves_exact_bytes_under_same_line_bound() {
+    let r = Repository::new();
+    let text = format!(
+        "{}pub(crate)\r\nfn repair_index() {{\r\n{}    FINAL_CALL();\r\n}}\r\n",
+        "// repair_index appears in this comment first.\r\n".repeat(80),
+        "    work();\r\n".repeat(90)
+    );
+    r.write("crates/example/src/lib.rs", &text);
+    r.commit();
+    let options = briefing_lab::Options { syntax: true };
+    let index = briefing_lab::build_index_with_options(&r.repo, "HEAD", options).unwrap();
+    let issue = r.issue("repair_index", "crates/example/src/lib.rs");
+    let baseline = assemble(
+        &r.repo,
+        &index,
+        &index.commit,
+        issue.clone(),
+        Components::default(),
+    )
+    .unwrap();
+    let treatment = briefing_lab::assemble_with_options(
+        &r.repo,
+        &index,
+        &index.commit,
+        issue,
+        Components::default(),
+        options,
+    )
+    .unwrap();
+    assert_eq!(
+        baseline
+            .evidence
+            .iter()
+            .map(|e| &e.path)
+            .collect::<Vec<_>>(),
+        treatment
+            .evidence
+            .iter()
+            .map(|e| &e.path)
+            .collect::<Vec<_>>()
+    );
+    let a = baseline
+        .evidence
+        .iter()
+        .find(|e| e.path.ends_with("src/lib.rs"))
+        .unwrap();
+    let b = treatment
+        .evidence
+        .iter()
+        .find(|e| e.path.ends_with("src/lib.rs"))
+        .unwrap();
+    assert_ne!(a.start_line, b.start_line);
+    assert_eq!(b.start_line, 81);
+    assert_eq!(b.end_line - b.start_line + 1, 64);
+    assert!(b.syntax_selection.as_ref().unwrap().partial);
+    let expected: String = text.split_inclusive('\n').skip(80).take(64).collect();
+    assert_eq!(b.text.as_bytes(), expected.as_bytes());
+    assert!(b.text.starts_with("pub(crate)\r\n"));
+    assert!(!b.text.contains("FINAL_CALL"));
+}
+
+#[test]
+fn syntax_complete_short_declaration_and_ambiguous_names_are_labeled() {
+    let r = Repository::new();
+    r.write("crates/example/src/lib.rs", "struct First; struct Second;\nimpl First {\nfn repeated() {}\n}\nimpl Second {\nfn repeated() {}\n}\n");
+    r.commit();
+    let options = briefing_lab::Options { syntax: true };
+    let index = briefing_lab::build_index_with_options(&r.repo, "HEAD", options).unwrap();
+    let brief = briefing_lab::assemble_with_options(
+        &r.repo,
+        &index,
+        &index.commit,
+        r.issue("repeated", "crates/example/src/lib.rs"),
+        Components::default(),
+        options,
+    )
+    .unwrap();
+    let selected = brief
+        .evidence
+        .iter()
+        .find_map(|e| e.syntax_selection.as_ref())
+        .unwrap();
+    assert!(!selected.partial);
+    assert_eq!(selected.equally_ranked_matches, 2);
+    assert!(
+        brief
+            .evidence
+            .iter()
+            .any(|e| e.reasons.iter().any(|r| r.contains("Ambiguous name")))
+    );
+}
+
+#[test]
+fn invalid_cached_syntax_range_returns_an_error() {
+    let r = Repository::new();
+    let options = briefing_lab::Options { syntax: true };
+    let mut index = briefing_lab::build_index_with_options(&r.repo, "HEAD", options).unwrap();
+    let source = index
+        .files
+        .iter_mut()
+        .find(|f| f.path.ends_with("src/lib.rs"))
+        .unwrap();
+    source.syntax.as_mut().unwrap().declarations[0]
+        .declaration
+        .start_line = 0;
+    let error = briefing_lab::assemble_with_options(
+        &r.repo,
+        &index,
+        &index.commit,
+        r.issue("repair_index", ""),
+        Components::default(),
+        options,
+    )
+    .unwrap_err();
+    assert!(error.to_string().contains("invalid declaration range"));
+}

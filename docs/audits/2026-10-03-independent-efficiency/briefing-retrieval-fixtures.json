@@ -1,0 +1,366 @@
+{
+  "schema": "openagents.briefing-retrieval-fixtures.v1",
+  "source_revision": "43709aba33bab17d3aa6ab42102097c9d32db760",
+  "provenance": {
+    "origin": "mixed_hand_authored_and_public_issue_retrieval_panel",
+    "real_issue_outcomes": false,
+    "description": "Eight hand-authored diagnostic retrieval queries plus two original public GitHub issue inputs. The hand-authored queries are not verbatim issues. The real issue snapshots were last updated before the pinned source commit; neither case is labeled from a later fix or an accepted outcome. All source labels were read from the pinned revision.",
+    "label_scope": "The listed spans are necessary to answer each narrow inspection query. They are not a complete implementation plan or a claim that every acceptable source of supporting context has been labeled.",
+    "future_fix_inputs_used": false,
+    "source_text_policy": "Only Git blobs from source_revision were used for labels; line ranges are one-based and inclusive, and span_sha256 hashes their exact bytes, including existing line terminators.",
+    "source_revision_committed_at": "2026-10-03T02:18:40Z"
+  },
+  "evaluation_notes": [
+    "Only the issue object is a retrieval input. Never feed expected_evidence, rationales, identifiers in case IDs, or absence checks to the retriever.",
+    "Four development cases support debugging. Freeze the policy before the four evaluation cases. This convenience split is a small diagnostic panel, not a statistically independent holdout or a calibrated population estimate.",
+    "The two diagnostic_real_issue cases are additional original GitHub inputs with explicitly scoped Rust diagnosis labels. Report them separately from the four hand-authored evaluation cases; their scores do not establish completion of those issues.",
+    "Compare baseline and Tree-sitter treatments with the same file candidate pool, optional components, maximum evidence count, 64-line cap, and a stated shared source-byte budget. Apply byte trimming identically before scoring.",
+    "Report necessary-file recall separately from whole-span coverage and line-overlap fraction. A file hit without the labeled body lines is not a span hit. Merge overlapping output ranges before counting coverage or bytes.",
+    "Report every labeled span and each case separately, then summaries by split and kind. Multiple spans in one file must not inflate necessary-file counts. Also report all-required-spans-covered per case.",
+    "Keep absent evidence separate from positive recall denominators. Report whether the retriever explicitly abstained and how much unrelated source it delivered; an empty oracle must not automatically earn a perfect score.",
+    "The current prototype emits source candidates rather than verified semantic answers. Retrieval of an unrelated excerpt on the negative case is a diagnostic cost, not proof that it asserted the absent declaration exists.",
+    "A missing file from the candidate pool is a candidate-generation miss. A selector that keeps the pool unchanged cannot repair that miss; report it separately from excerpt selection.",
+    "Do not tune on evaluation results and still call the same cases held out. Any retuning converts this panel to development data and needs new evaluation cases.",
+    "These metrics are source retrieval proxies. They do not establish accepted issue outcomes, behavioral test coverage, agent correctness, or lower total cost.",
+    "Some real-issue labels occupy widely separated regions of one file. With one 64-line excerpt per file, whole-case coverage can be structurally impossible. Preserve and report that limitation; do not silently drop the distant labels to make the treatment pass."
+  ],
+  "cases": [
+    {
+      "id": "dev-first-call-bonus",
+      "split": "development",
+      "kind": "exact_symbol_multiline_declaration",
+      "issue": {
+        "title": "Locate first_call_bonus and its funding decision",
+        "body": "Before changing first_call_bonus, show its complete parameter list, the guard against a second first-call award, and the branch that records an unfunded award when OpenAgents shares cannot cover the requested amount. Preserve the distinction between recording the attempt and funding it."
+      },
+      "expected_evidence": [
+        {
+          "path": "crates/pay-ledger/src/lib.rs",
+          "start_line": 630,
+          "end_line": 647,
+          "rationale": "The multiline function declaration identifies the input contract; the existing-bonus and prior-paid-settlement query prevents another first-call award.",
+          "blob": "6518ad2045ed416fc2fbe4299e175ecc613b2ebd",
+          "file_sha256": "13e33042179ad47216d6da8a55da775b389c6088cc409179eaab1b512ce8fcf9",
+          "span_sha256": "530c0a173322c0bb3deb304ecb1b4dc2adda258a885f97dc2ad904b66f74cad8"
+        },
+        {
+          "path": "crates/pay-ledger/src/lib.rs",
+          "start_line": 648,
+          "end_line": 679,
+          "rationale": "The implementation collects available OpenAgents shares, awards only if fully funded, records bonus_unfunded otherwise, and records funding only for an awarded bonus.",
+          "blob": "6518ad2045ed416fc2fbe4299e175ecc613b2ebd",
+          "file_sha256": "13e33042179ad47216d6da8a55da775b389c6088cc409179eaab1b512ce8fcf9",
+          "span_sha256": "435e4d5221924289b51d6a3c5cb228c4a25ffa2e216431ff131c832084444f8a"
+        }
+      ],
+      "expected_absence": false,
+      "origin": "hand_authored"
+    },
+    {
+      "id": "dev-classes-method",
+      "split": "development",
+      "kind": "generic_method_name",
+      "issue": {
+        "title": "Locate the highlighting classes method with its input guards",
+        "body": "Find Grammars::classes for code highlighting. Show the source-byte and line-length guards, grammar lookup, and highlighter invocation. The free classes convenience function alone does not show these checks."
+      },
+      "expected_evidence": [
+        {
+          "path": "crates/code-highlight/src/lib.rs",
+          "start_line": 204,
+          "end_line": 215,
+          "rationale": "This classes method enforces the byte and line limits, resolves the grammar, and invokes the highlighter. The same file also has a free classes function, making a name-only hit ambiguous.",
+          "blob": "b53909ba65c743d58087d3b3c7a8ddfa91e74d96",
+          "file_sha256": "87b67d0f7d45d5399d356ec8b3e91889ec04d858973dc7a18a9943e6ab73998d",
+          "span_sha256": "f6ad28b2a411401a304ca48840693d4ff1c0f23eedfafc0c4d7c65b7969f263a"
+        }
+      ],
+      "expected_absence": false,
+      "origin": "hand_authored"
+    },
+    {
+      "id": "dev-projection-secret-restart",
+      "split": "development",
+      "kind": "symptom_only",
+      "issue": {
+        "title": "A changed pseudonymization secret must not split payment history after restart",
+        "body": "Find the existing initialization check that binds the live payment projection database to its original pseudonymization secret and refuses reopening with a different secret. Show both the persisted identity and the comparison. This is an inspection of current behavior, not a request to change the secret."
+      },
+      "expected_evidence": [
+        {
+          "path": "crates/pay-host/src/lib.rs",
+          "start_line": 198,
+          "end_line": 218,
+          "rationale": "Store initialization persists the salt digest in flow_identity and compares the stored digest before returning a usable Store.",
+          "blob": "d7616d3d76abd2917376c951ceedb522549ac8c6",
+          "file_sha256": "53d2196c4eb7da24269051c5f59a6b05fb3f43fd516b6e804c5f39a7b057574b",
+          "span_sha256": "acddba051281933e3bc5442e933101ab57b2c464458dea0de6c353b2aa70b75d"
+        }
+      ],
+      "expected_absence": false,
+      "origin": "hand_authored"
+    },
+    {
+      "id": "dev-absent-symbol",
+      "split": "development",
+      "kind": "absent_evidence",
+      "issue": {
+        "title": "Check whether Qzxv_928371_Zorblax exists",
+        "body": "Locate a Rust declaration named exactly Qzxv_928371_Zorblax in this revision. If it is absent, say that no exact declaration was found; do not substitute a similarly named item."
+      },
+      "expected_evidence": [],
+      "expected_absence": true,
+      "absence_rationale": "The exact identifier has no occurrence in tracked Rust files at the pinned revision. This checks exact-symbol absence, not whether related functionality exists.",
+      "absence_check": {
+        "argv": [
+          "git",
+          "grep",
+          "-n",
+          "-F",
+          "Qzxv_928371_Zorblax",
+          "43709aba33bab17d3aa6ab42102097c9d32db760",
+          "--",
+          "*.rs"
+        ],
+        "expected_exit_code": 1
+      },
+      "origin": "hand_authored"
+    },
+    {
+      "id": "eval-watched-dispatch",
+      "split": "evaluation",
+      "kind": "exact_symbol_multiline_declaration",
+      "issue": {
+        "title": "Inspect execute_watched before delegate dispatch",
+        "body": "Locate execute_watched. Show its resume and event-observer parameters, plus the admission checks that can stop dispatch when the gate refuses or the episode has no remaining time. Include enough implementation to distinguish this method from its wrapper."
+      },
+      "expected_evidence": [
+        {
+          "path": "crates/coder-delegate/src/delegate.rs",
+          "start_line": 2379,
+          "end_line": 2385,
+          "rationale": "The multiline method signature carries the resume session and mutable event observer.",
+          "blob": "e16235d575e855b8d789dc78a9fd8924c4bd84da",
+          "file_sha256": "49acb59cf30fc3dda0c48388e93cd8ada19b925ea1503d94f970908701993a20",
+          "span_sha256": "27aac66392495c3072ec9d6e2a4996c1214b672f4c0cd295b5742c76250243d0"
+        },
+        {
+          "path": "crates/coder-delegate/src/delegate.rs",
+          "start_line": 2404,
+          "end_line": 2417,
+          "rationale": "The method checks the gate, asks the episode for a deadline grant, and returns a harness failure before writing the briefing when admission fails.",
+          "blob": "e16235d575e855b8d789dc78a9fd8924c4bd84da",
+          "file_sha256": "49acb59cf30fc3dda0c48388e93cd8ada19b925ea1503d94f970908701993a20",
+          "span_sha256": "2f5b04e49e7c9b66b2e7e33b53476a6fba6ab3aed1ccd43b9cd3727bc36ae488"
+        }
+      ],
+      "expected_absence": false,
+      "origin": "hand_authored"
+    },
+    {
+      "id": "eval-snapshot-open",
+      "split": "evaluation",
+      "kind": "generic_function_name",
+      "issue": {
+        "title": "Disambiguate open for the filesystem snapshot root",
+        "body": "Find the open helper that opens a snapshot root one path component at a time. Show how it requires an absolute path and rejects noncanonical components. A different database or ordinary file open helper does not answer this question."
+      },
+      "expected_evidence": [
+        {
+          "path": "crates/coder-boundary/src/snapshot/observe.rs",
+          "start_line": 768,
+          "end_line": 795,
+          "rationale": "This open helper requires an absolute root, walks its components from a descriptor for /, calls open_at for normal components, and rejects other component kinds.",
+          "blob": "de029560b352bc154213cc49788093cdd645e2c6",
+          "file_sha256": "383ce75f4a220087dff800c77cad3d134d923471e5d21970b7afea1be1e7bfac",
+          "span_sha256": "558bd44b5947aef98a3aaa3603f7832fc4ae7155350b2dc50bc9de95698bd3db"
+        }
+      ],
+      "expected_absence": false,
+      "origin": "hand_authored"
+    },
+    {
+      "id": "eval-intensity-owner",
+      "split": "evaluation",
+      "kind": "ambiguous_reexport",
+      "issue": {
+        "title": "Find the current Intensity owner and preserve its terminal import",
+        "body": "The terminal still exposes coder_terminal::Intensity, but the brightness type has a shared UI owner. Locate the canonical enum and the Quarter and Full RGB values, and show the re-export chain that preserves the terminal import. Do not treat a compatibility import as the enum definition."
+      },
+      "expected_evidence": [
+        {
+          "path": "crates/coder-ui/src/theme.rs",
+          "start_line": 18,
+          "end_line": 28,
+          "rationale": "This is the canonical Intensity enum and its four brightness variants.",
+          "blob": "1fcfcf881cdc5d388d16a8163e5fe0767a8167d6",
+          "file_sha256": "1859a6bc7ff9fe4a582674abca130a185ad708deeb063dcb71c65ec2c815df12",
+          "span_sha256": "59022096d33f3aa033a6b72ea1b230e2db2203f398d1d66d739a2871d2973796"
+        },
+        {
+          "path": "crates/coder-ui/src/theme.rs",
+          "start_line": 40,
+          "end_line": 47,
+          "rationale": "The canonical color method defines Quarter as 0x4a4a4a and Full as 0xffffff.",
+          "blob": "1fcfcf881cdc5d388d16a8163e5fe0767a8167d6",
+          "file_sha256": "1859a6bc7ff9fe4a582674abca130a185ad708deeb063dcb71c65ec2c815df12",
+          "span_sha256": "88dbb150cf0dd3c6cf84f97736fa409e569c3c8c4df353c3206f6b2e05d03888"
+        },
+        {
+          "path": "crates/coder-terminal/src/intensity.rs",
+          "start_line": 1,
+          "end_line": 3,
+          "rationale": "The compatibility module re-exports Intensity from coder_ui::theme.",
+          "blob": "c0a90a8194b7ddca4bd0b2b915d5a203b5f9a599",
+          "file_sha256": "d0a1aecc122444ac42cd74fc8faffede9cae738de275985478778d9286c38a10",
+          "span_sha256": "d0a1aecc122444ac42cd74fc8faffede9cae738de275985478778d9286c38a10"
+        },
+        {
+          "path": "crates/coder-terminal/src/lib.rs",
+          "start_line": 59,
+          "end_line": 59,
+          "rationale": "The terminal crate publicly re-exports the compatibility module type, completing coder_terminal::Intensity.",
+          "blob": "7ab2784fb4d80967d8319b5b9b335582e1094d13",
+          "file_sha256": "70ed9e1ec7818113e60ca6a4cd17f55f16b573c21f92739c9c9667e6a910d4f1",
+          "span_sha256": "0df3c4a25906732caeffb350c7acf612d6283d8f19b3b006b759cf8c49d33c7d"
+        }
+      ],
+      "expected_absence": false,
+      "origin": "hand_authored"
+    },
+    {
+      "id": "eval-missing-engine-session",
+      "split": "evaluation",
+      "kind": "symptom_only",
+      "issue": {
+        "title": "A follow-up should recover once when the retained engine session is gone",
+        "body": "A native engine follow-up tries to resume retained session state, receives no answer, and has not run any tools. Find the existing recovery branch that retries with a fresh session once. Show the conditions that prevent repeated retries or replay after a tool has already run."
+      },
+      "expected_evidence": [
+        {
+          "path": "crates/microcoder/src/repository/lean_session.rs",
+          "start_line": 303,
+          "end_line": 322,
+          "rationale": "The lost-session predicate requires a resumed first attempt, a non-answer, no result text, and zero tool calls. It clears resume and continues once; otherwise the report ends the loop.",
+          "blob": "26577abfd82929cd467577bff53c30e1a661e157",
+          "file_sha256": "611021cc957b7d5973489e907c608a40a20fa4b91042edbb493e3c27107dc9a5",
+          "span_sha256": "4e99e7402cd8819b324ddec77be8cd4dac18ff54736ff106927f64ceaf9b3aa1"
+        }
+      ],
+      "expected_absence": false,
+      "origin": "hand_authored"
+    },
+    {
+      "id": "issue-10239",
+      "split": "diagnostic_real_issue",
+      "origin": "github_issue",
+      "kind": "real_issue_explicit_path",
+      "issue": {
+        "number": 10239,
+        "url": "https://github.com/OpenAgentsInc/openagents/issues/10239",
+        "title": "Live flow clients must preserve fractional satoshi amounts",
+        "body": "The #10195 producer preserves exact millisatoshi amounts as JSON decimal sats, for example `31.001` received and `10.001` in a split. The newly landed live clients were tested with whole-satoshi fixtures.\n\n- Desktop: `crates/openagents-desktop/src/route_live.rs` uses `Option<u64>` for event amounts, `BTreeMap<String, u64>` for splits, and `u64` for received/paid totals. A fractional amount rejects the whole event or snapshot. `follow()` silently skips parsing failures, so it can show Live while losing those payments.\n- Web: `crates/openagents-web/static/flow.js` accepts the JSON but rounds money with `Math.round`; `0.001` displays as zero sats.\n\nUse an exact millisatoshi-backed decimal amount on the desktop, checked accumulation, and up to three decimal places when displaying money on both surfaces. Keep sequence numbers and call counts integral. Do not round amounts in the producer to accommodate a client.\n\nAcceptance: replay a producer-compatible snapshot and SSE fixture containing fractional amounts and splits; assert that the desktop accepts every event and preserves the totals across snapshot/resume, and that both views display `0.001` and `31.001` correctly. The original client tasks #10197 and #10198 are closed.\n"
+      },
+      "source_issue_updated_at": "2026-10-03T01:44:54Z",
+      "source_issue_json_sha256": "19e2953c38245ffb0c035c935683987e13ed691422fc1a69f8bcf29f60b9393a",
+      "issue_snapshot_predates_source_revision": true,
+      "expected_absence": false,
+      "label_scope": "Selected Rust diagnosis spans for the desktop amount types, accumulation, and skipped stream parse. The original issue also requires web formatting and acceptance tests; those requirements remain in the input but are not labeled by this Rust span experiment.",
+      "expected_evidence": [
+        {
+          "path": "crates/openagents-desktop/src/route_live.rs",
+          "start_line": 84,
+          "end_line": 90,
+          "rationale": "The FlowEvent amount and split fields use unsigned whole-satoshi integers, so decimal JSON amounts cannot deserialize into these fields.",
+          "blob": "32735e13c69978050ad6792b0f22d57b3ba428ba",
+          "file_sha256": "7f872e6731d00e7a589ca413047fb40220dd6d143095d1e219247f1386a28321",
+          "span_sha256": "2a7a832ea74e97afc7441187dd0a77f1e1e515e713f4c0f7a445603a92d679fc"
+        },
+        {
+          "path": "crates/openagents-desktop/src/route_live.rs",
+          "start_line": 109,
+          "end_line": 129,
+          "rationale": "Totals also uses unsigned whole-satoshi integers and performs unchecked addition in count, covering both the representation and accumulation requirements.",
+          "blob": "32735e13c69978050ad6792b0f22d57b3ba428ba",
+          "file_sha256": "7f872e6731d00e7a589ca413047fb40220dd6d143095d1e219247f1386a28321",
+          "span_sha256": "ac5ba89102e135f40dbc0f8fabf57de330690745bd2e986962bb8aefc80ab608"
+        },
+        {
+          "path": "crates/openagents-desktop/src/route_live.rs",
+          "start_line": 790,
+          "end_line": 804,
+          "rationale": "The stream delivers and advances its cursor only when FlowEvent deserialization succeeds; failed decimal deserialization has no reported error in this branch.",
+          "blob": "32735e13c69978050ad6792b0f22d57b3ba428ba",
+          "file_sha256": "7f872e6731d00e7a589ca413047fb40220dd6d143095d1e219247f1386a28321",
+          "span_sha256": "b18957e2f6cba2776c29ad7e0a794410f0ccfc7ca6ad77a1e7549f00dba82116"
+        }
+      ]
+    },
+    {
+      "id": "issue-10248",
+      "split": "diagnostic_real_issue",
+      "origin": "github_issue",
+      "kind": "real_issue_symptom_only",
+      "issue": {
+        "number": 10248,
+        "url": "https://github.com/OpenAgentsInc/openagents/issues/10248",
+        "title": "openagents chat send waits forever on a task whose process died",
+        "body": "From the #10209 study (docs/cost/2026-10-02-shadow-baseline-measurement.md, de33359b99): on the shipped path, routed Claude cost 1.68× raw Claude Code. Part of #10204.\n\nDuring the study, `chat send` kept waiting on tasks whose owner process had died, with no error. Detect a dead owner (task store disposition / pid liveness, like the issue flow's 'owner process ended') and end the wait with a plain message."
+      },
+      "source_issue_updated_at": "2026-10-03T01:44:59Z",
+      "source_issue_json_sha256": "aca667cd36c919660b0681da19dc6bcf235960908e60bbbdd7ad9263174e68a0",
+      "issue_snapshot_predates_source_revision": true,
+      "expected_absence": false,
+      "label_scope": "Selected source for the wait symptom and the existing dead-owner detection pattern named by the issue. These labels establish where to investigate; they do not assert a unique fix or cover every liveness and ownership condition.",
+      "expected_evidence": [
+        {
+          "path": "crates/openagents-chat/src/client.rs",
+          "start_line": 3143,
+          "end_line": 3155,
+          "rationale": "The chat follow loop keeps reading events and exits only when the returned progress is no longer Running.",
+          "blob": "464f97bf270174ebac0e956d7ea65dd6e1d36af7",
+          "file_sha256": "2b32569f3e62d4ba1e9df264aaca4382cc9dd597ebc4a3243dabadf898a80ec3",
+          "span_sha256": "808e091fcc835d35e13d035e27adcd18ab681b8a46bccbe92a56f04054f79294"
+        },
+        {
+          "path": "crates/coder/src/task/local.rs",
+          "start_line": 1992,
+          "end_line": 2000,
+          "rationale": "The durable follower returns Running when the admitted run has no result, and also while its last issue flow remains unfinished.",
+          "blob": "10347769a998982b04d6a3fa66ef41b0d653a8cb",
+          "file_sha256": "024fce0a14da61bf66c64bb257bd333c2d80206f6c000eec677f994c4e71cf39",
+          "span_sha256": "b88d6c456a0233b075c4aa4cb0c3162189becc161b534181fecc3f08f28304c2"
+        },
+        {
+          "path": "crates/coder/src/task/issue_run.rs",
+          "start_line": 1512,
+          "end_line": 1520,
+          "rationale": "The existing orphaned helper checks unfinished flow state and owner PID liveness, matching the detection pattern explicitly cited by the issue.",
+          "blob": "f8b3ae9f9e637f74a93463063c59d39f12a5e0bd",
+          "file_sha256": "99ba2df69714099743b0c213fbffc9146dd8268fe2701dea45524279f03456ac",
+          "span_sha256": "6bf5482fc7ca3cf96beaee2cec18b8132b944e7c962b9b6e51b8ac174a7905e8"
+        }
+      ],
+      "supporting_evidence": [
+        {
+          "path": "crates/coder/src/task/chat_client.rs",
+          "start_line": 484,
+          "end_line": 497,
+          "rationale": "This adapter maps local State::Running directly to chat Progress::Running, connecting the two mandatory spans.",
+          "blob": "6649e0dab97d1d23598976ec403f0bf1728c2628",
+          "file_sha256": "dc56f6588f568a56ab0a9448e7422bf1ce816213545c221865443c0c255b3975",
+          "span_sha256": "66b639b92a1e8e437955773b5aeba97b644599cc64c1160b48f8ad3b91ccdf6a"
+        },
+        {
+          "path": "crates/coder/src/task/owner.rs",
+          "start_line": 24,
+          "end_line": 30,
+          "rationale": "These constants document the existing owner-process-ended outcome and its plain user-facing message.",
+          "blob": "b808b473ed4d72b0469def6c51aa3fa460258296",
+          "file_sha256": "4d57d311a7b2025aa80375bc7133f66dee0ca82b8fbdec9ba35104e6df9b68b5",
+          "span_sha256": "11ee71ccb3e98ad08747fbb3f56b7bec105a539614cf67836f8bf7f6d1e1ff7f"
+        }
+      ]
+    }
+  ]
+}

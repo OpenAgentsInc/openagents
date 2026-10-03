@@ -8,7 +8,9 @@ Extension: [System One briefing experiments and runnable prototype](system-one-b
 tracked in [#10253](https://github.com/OpenAgentsInc/openagents/issues/10253).
 The extension reads the entire retained TypeSafe corpus and adds a concrete
 program for preparing context in advance. Its new measurements are separate
-from the historical agent comparisons below.
+from the historical agent comparisons below. The later
+[Tree-sitter experiment](briefing-syntax-results.md) measures source-span
+selection independently of file ranking and agent execution.
 
 ## Executive assessment
 

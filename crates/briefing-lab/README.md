@@ -43,7 +43,8 @@ ranges, selection reasons, selected recent commit subjects, and omissions.
 construction, cache loading, revision validation, assembly, and serialization.
 The CLI also prints complete preview time including output writes. Build and
 GitHub fetch time are separate; the wrapper prints measured fetch wall time.
-No warm-latency claim is made until measured.
+Warm timings and coverage limits are recorded in the
+[syntax experiment](../../docs/audits/2026-10-03-independent-efficiency/briefing-syntax-results.md).
 
 The index attempts at most 10,000 source files, 512 KiB per file, and 64 MiB
 of source bytes in total. It counts bytes before checking UTF-8 contents.
@@ -51,8 +52,8 @@ It caches terms, declaration hints, sizes, and hashes, without full source
 text. Preview fetches only selected blobs and verifies their path bindings to
 the commit and content digests. Excerpts retain exact source bytes, including
 CRLF and terminal newlines. The index prioritizes instructions, manifests,
-and Rust source. It excludes generated lockfiles, vendor directories, traces, transcripts, fixtures, binaries, and
-symlinks, and reports omitted counts. Preview selects at most eight ranked
+and Rust source. It excludes generated lockfiles, vendor directories, traces,
+transcripts, fixtures, binaries, and symlinks, and reports omitted counts. Preview selects at most eight ranked
 files plus ancestor context, up to 14 excerpts of 64 lines each. History uses
 up to 32 recent subjects and selects up to four. Lexical order breaks ties.
 
@@ -70,3 +71,46 @@ cargo test -p briefing-lab
 cargo fmt -p briefing-lab -- --check
 bash -n scripts/briefing-preview.sh
 ```
+
+## Opt-in Rust syntax treatment
+
+Build a separate cache with `index --syntax`, then select it with
+`preview --syntax`. The wrapper's `--syntax` forwards to both commands.
+An existing baseline cache cannot serve the syntax treatment; rebuild it
+with the flag. Without `--syntax`, ranking and excerpts retain baseline
+behavior, including when reading a syntax-enriched cache.
+
+```sh
+"$BRIEFING_LAB_BIN" index --repo /path/to/openagents --rev COMMIT \
+  --output /tmp/briefing-syntax-index.json --syntax
+"$BRIEFING_LAB_BIN" preview --repo /path/to/openagents --rev COMMIT \
+  --index /tmp/briefing-syntax-index.json --issue-file /tmp/issue.json \
+  --output-dir /tmp/briefing-syntax --syntax
+```
+
+The treatment changes excerpt selection only. It keeps baseline file
+scores, the candidate pool, history, and the maximum of 64 lines per
+excerpt. Case-sensitive declaration identifiers or complete qualified names
+in the issue select structural declarations within those files. It does not
+split `repair_cache` into the words `repair` and `cache`. Equal matches use
+source order and are labeled ambiguous. Without a complete matching Rust
+declaration, the preview labels its fallback to baseline selection.
+
+The cache records Tree-sitter `0.27.0`, the Rust grammar `0.24.2`, and extractor
+`briefing-lab-rust-v1`. Declarations include functions, impl methods, traits,
+modules, types, constants, and macro definitions, with declaration, signature,
+and optional body spans. Byte ranges are half-open; line ranges are inclusive
+and one-based. The selected excerpt retains exact whole source lines and marks
+a declaration partial when the 64-line limit clips it. These APIs follow the
+[Tree-sitter node contract](https://tree-sitter.github.io/tree-sitter/using-parsers/2-basic-parsing.html)
+and [Rust grammar binding](https://docs.rs/tree-sitter-rust/0.24.2/tree_sitter_rust/).
+
+Parse errors and missing nodes are recorded. Declarations containing recovered
+errors are not selected structurally; complete declarations elsewhere in the
+file remain eligible. Extraction retains at most 1,024 declarations and visits
+at most 100,000 syntax nodes per file, with omissions recorded. Names describe
+lexical scopes, not resolved compiler identities. This treatment does not
+expand macros, evaluate `cfg`, resolve imports/types, or build a call graph.
+Separate attributes and comments are outside declaration spans. The parser
+can improve boundaries without establishing that the selected declaration
+answers the issue.

@@ -6,7 +6,7 @@ usage() {
 Usage: briefing-preview.sh --repo LOCAL_PATH --rev COMMIT_OR_REF
        (--issue-file JSON | --issue URL_OR_NUMBER [--github-repo OWNER/REPO])
        [--output-dir OUTSIDE_REPO] [--index INDEX_JSON]
-       [--no-lexical] [--no-symbols] [--no-history]
+       [--no-lexical] [--no-symbols] [--no-history] [--syntax]
 
 Set BRIEFING_LAB_BIN to a built briefing-lab binary, or put it on PATH.
 Build and indexing are separate from warm preview time. No AI calls are made.
@@ -14,6 +14,7 @@ HELP
 }
 local_repo= revision= issue_file= issue= github_repo= output_dir= index_file=
 components=()
+index_options=()
 while (($#)); do
   case "$1" in
     --help|-h) usage; exit 0 ;;
@@ -25,6 +26,7 @@ while (($#)); do
         --output-dir) output_dir=$2 ;; --index) index_file=$2 ;;
       esac
       shift 2 ;;
+    --syntax) components+=("$1"); index_options+=("$1"); shift ;;
     --no-lexical|--no-symbols|--no-history) components+=("$1"); shift ;;
     *) echo "Unknown argument: $1" >&2; usage >&2; exit 2 ;;
   esac
@@ -42,7 +44,7 @@ command -v "$briefing_binary" >/dev/null 2>&1 || {
 # Index construction validates its artifact destination. Preview validates both outputs.
 [[ -n "$index_file" ]] || index_file="$output_dir/index.json"
 if [[ ! -f "$index_file" ]]; then
-  "$briefing_binary" index --repo "$local_repo" --rev "$revision" --output "$index_file"
+  "$briefing_binary" index --repo "$local_repo" --rev "$revision" --output "$index_file" ${index_options[@]+"${index_options[@]}"}
 fi
 if [[ -z "$issue_file" ]]; then
   issue_file=$(mktemp "${TMPDIR:-/tmp}/briefing-issue.XXXXXXXX")
