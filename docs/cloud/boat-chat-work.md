@@ -41,9 +41,9 @@ it. Each issue runs on a Boat sandbox of its own.
    sandbox's command sources and deletes that file before anything else
    runs. See below.
 5. **Binaries.** The run uses the `openagents` and `microcoder` the
-   template built (`<slot>/debug/`, the template's `origin/main`), copied
-   out of the target slot, with `OPENAGENTS_CODER_CONTROLLER` pointing at
-   that `microcoder`. `OA_BOAT_BUILD=1` builds `origin/main`'s instead, on
+   template built (`<slot>/debug/`, the template's `origin/main`), run in
+   place (a copy reads gigabytes the sandbox may still be streaming in), with
+   `OPENAGENTS_CODER_CONTROLLER` pointing at that `microcoder`. `OA_BOAT_BUILD=1` builds `origin/main`'s instead, on
    the warm target (not `--locked`). Building in a fresh template sandbox
    failed on 2026-10-02 while its files were still streaming in (`can't
    find crate` for rlibs the template holds, `Permission denied` in the

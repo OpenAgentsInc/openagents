@@ -356,9 +356,11 @@ else
   CARGO_TARGET_DIR="$slot" cargo build -q -p openagents-cli --bin openagents -p microcoder --bin microcoder >/tmp/oa-build.log 2>&1 \
     || {{ tail -n 40 /tmp/oa-build.log >&2; exit 3; }}
 fi
-mkdir -p ~/.oa-run/bin && cp "$slot/debug/openagents" "$slot/debug/microcoder" ~/.oa-run/bin/
-export OPENAGENTS_CODER_CONTROLLER=$HOME/.oa-run/bin/microcoder
-~/.oa-run/bin/openagents chat work --local --json --issues {issue} --parallel 1{land}
+# Run them where they are: a copy reads gigabytes the sandbox may still be
+# streaming in (a 2 GB copy took over 13 minutes once), and a later build
+# into the slot replaces the files, never the running inodes.
+export OPENAGENTS_CODER_CONTROLLER="$slot/debug/microcoder"
+"$slot/debug/openagents" chat work --local --json --issues {issue} --parallel 1{land}
 "#
     )
 }
@@ -1493,7 +1495,7 @@ mod tests {
         let script = run_script(10220, Some(Land::Main), false);
         let read = script.find(". /tmp/oa-run.env").unwrap();
         let removed = script.find("rm -f /tmp/oa-run.env").unwrap();
-        let work = script.find("openagents chat work").unwrap();
+        let work = script.find("/debug/openagents\" chat work").unwrap();
         assert!(read < removed && removed < work);
         assert!(script.ends_with("--issues 10220 --parallel 1 --land main\n"));
         assert!(script.contains("OPENAGENTS_CODER_CONTROLLER"));
