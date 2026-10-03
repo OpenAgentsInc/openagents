@@ -1000,6 +1000,14 @@ impl Host {
         *self.frozen_checks.borrow_mut() = commands.to_vec();
     }
 
+    /// Whether a turn that completes is checked independently when it
+    /// ends (#10232): the grant states requirements, so the frozen checks
+    /// and the touched packages' tests run on the exact candidate.
+    #[must_use]
+    pub fn checks_follow(&self) -> bool {
+        self.admission.grant.requirements.is_some()
+    }
+
     /// The variables a local check's commands get (#10232): this run's
     /// own tool `PATH` and toolchain variables, so `cargo` resolves as it
     /// did for the engine while the check's `HOME` is scratch.

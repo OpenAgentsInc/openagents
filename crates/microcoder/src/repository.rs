@@ -1160,16 +1160,25 @@ async fn run_stages_with<T: codex_transport::Transport>(
                 match engine.turn(&host, &route, program, recipe.as_mut()).await {
                     devin::Turn::Ended(ended) => {
                         let cancelled = host.cancelled();
+                        let (ending, completed) = ended.ending(cancelled);
                         // Frozen checks that didn't pass while the agent
-                        // worked run once after its turn, for the record.
+                        // worked run once after its turn, for the record,
+                        // unless the run's independent check runs them on
+                        // the exact candidate right after (#10232): running
+                        // them twice only kept the person waiting (#10279).
+                        let independent = completed && host.checks_follow();
                         let checks = match recipe.as_mut() {
-                            Some(recipe) if !recipe.frozen.is_empty() => Some(
-                                ended.checks_passed
-                                    || (!cancelled && recipe.check(&host, "after the turn").await),
-                            ),
+                            Some(recipe) if !recipe.frozen.is_empty() => {
+                                Some(if ended.checks_passed {
+                                    Some(true)
+                                } else if cancelled || independent {
+                                    None
+                                } else {
+                                    Some(recipe.check(&host, "after the turn").await)
+                                })
+                            }
                             _ => None,
                         };
-                        let (ending, completed) = ended.ending(cancelled);
                         if let Some(error) = &ended.error {
                             let _ = host.append(
                                 &Step::said(
@@ -1187,6 +1196,7 @@ async fn run_stages_with<T: codex_transport::Transport>(
                         let summary = json!({"configuration":host.configuration(),"route":route,
                             note:agent,"independent_checks":"not_run",
                             "recipe_checks":checks.map(|pass| json!({"pass":pass,
+                                "left_to":(pass.is_none() && independent).then_some("independent_checks"),
                                 "ended_turn":ended.checks_passed})),
                             "billing":"unknown","automatic_crash_resume":false});
                         return host.finish(ending, completed, summary);
