@@ -399,10 +399,21 @@ fn door(name: Option<&str>) -> Result<Door, String> {
             std::env::var("CODER_AI_GATEWAY_KEY")
                 .ok()
                 .filter(|key| !key.is_empty())
-        })
-        .ok_or_else(|| {
-            "no door key: set CODER_DOOR_KEY or CODER_AI_GATEWAY_KEY in this shell".to_string()
-        })?;
+        });
+    let Some(key) = key else {
+        // OpenAgents ships no model key (INVARIANTS: no model API key in
+        // the app), so a test run here goes on a key the person stored.
+        let theirs = model_access::Access::theirs(access.keys().clone());
+        if theirs.keys().chat_capable() {
+            let door = their_door(&theirs, name)?;
+            eprintln!(
+                "Running the tests on your own {} key.",
+                provider_of(&door.url)
+            );
+            return Ok(door);
+        }
+        return Err(NO_MODEL_KEY.to_string());
+    };
     let url = std::env::var("CODER_DOOR_URL")
         .ok()
         .filter(|url| !url.is_empty())
@@ -428,6 +439,18 @@ fn door(name: Option<&str>) -> Result<Door, String> {
         key: Secret::new(key),
         model,
     })
+}
+
+/// What a test run says when there is no model key to run it on.
+pub(crate) const NO_MODEL_KEY: &str = "Plugin tests run Coder on this computer, which needs a model key, and OpenAgents ships none. Add your own with `openagents settings provider-key set openrouter` (or `vercel`), then run this again.";
+
+/// The provider a door's address belongs to, as people name it.
+fn provider_of(url: &str) -> &'static str {
+    if url.contains("openrouter") {
+        "OpenRouter"
+    } else {
+        "Vercel AI Gateway"
+    }
 }
 
 /// The door on the person's own keys (BYOK `mine`): the lane's model on

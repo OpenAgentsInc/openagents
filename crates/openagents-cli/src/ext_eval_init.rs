@@ -85,12 +85,10 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         },
     };
     let door = match Door::from_env() {
-        Ok(Door::Stub(_)) => {
-            return output.fail(
-                command,
-                "the interview needs a model: set CODER_DOOR_KEY (or CODER_AI_GATEWAY_KEY)",
-            );
-        }
+        Ok(Door::Stub(_)) => match interview_door() {
+            Some(door) => door,
+            None => return output.fail(command, NO_INTERVIEW_MODEL),
+        },
         Ok(door) => door,
         Err(error) => return output.fail(command, &error),
     };
@@ -465,6 +463,28 @@ fn shown(turn: &Turn) -> String {
 
 fn ended() -> Stop {
     Stop::Failed("the answers ended before the test set was ready; nothing was written".into())
+}
+
+/// What the interview says when nothing here can answer it.
+const NO_INTERVIEW_MODEL: &str = "The interview needs a model on this computer, and OpenAgents ships no model key. Add your own with `openagents settings provider-key set openrouter` (or `vercel`) and run this again, or ask for the tests in chat (\"write tests for my plugin\"), which runs the interview with us.";
+
+/// The interview's model when no door key is set: a key the person stored
+/// (`openagents settings provider-key`). OpenAgents ships no model key, and
+/// a signed-in coding agent answers in prose, not the interview's records.
+fn interview_door() -> Option<Door> {
+    let theirs = model_access::Access::theirs(model_access::current().keys().clone());
+    let model = coder::generate::DEFAULT_MODEL;
+    match theirs.chat(model_access::Use::Model(model)) {
+        Ok(model_access::Doors::Theirs(doors)) => {
+            let first = doors.into_iter().next()?;
+            Some(Door::Live(coder::generate::ResponsesDoor::new(
+                first.responses_base().to_string(),
+                model.to_string(),
+                first.key.expose().to_string(),
+            )))
+        }
+        _ => None,
+    }
 }
 
 #[cfg(test)]

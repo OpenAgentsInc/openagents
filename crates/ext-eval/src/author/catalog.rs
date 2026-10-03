@@ -145,8 +145,8 @@ const GUESTS: [Guest; 6] = [
         words: "Reads a failing command's output (a compiler error, a failing test, or a stack trace) that the request pastes or names in a saved log, finds the file and line in the project it points at, shows the code there, and says the likely cause and a likely fix: the names close to a missing one, the keys a dictionary has, the value that was undefined, a loop that runs one past the end. It runs as a program step and reads only the files the output names. It does not run the command or change code.",
         step: "explain_error",
         component: "explain-error",
-        digest: "sha256:3f037b24ce3f60a81f8e126d9e91a55a9ef0607ad4b8ce72f93aee3ae420289e",
-        size: 167_423,
+        digest: "sha256:07edd4e3f89a7993cb92ec00b0774f4f6f44fa5db3d8b2169924e6abc8b27dcc",
+        size: 169_888,
     },
     Guest {
         name: "Release notes",

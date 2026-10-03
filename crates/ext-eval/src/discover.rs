@@ -91,7 +91,8 @@ impl Suite {
         if !dir.is_dir() {
             return Err(CaseError::Io {
                 file: dir.display().to_string(),
-                detail: "the eval directory does not exist".into(),
+                detail: "there are no tests yet; write them with `openagents plugin test init`"
+                    .into(),
             });
         }
         let paths = case_dirs(dir)?;

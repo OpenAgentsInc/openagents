@@ -410,6 +410,7 @@ fn responsible(diagnostic: &Diagnostic, frames: &[(Frame, Option<&Granted>)]) ->
 
 /// Every error the output shows, in the order it shows them.
 fn diagnostics(text: &str) -> Vec<Diagnostic> {
+    let text = unfold(text);
     let lines: Vec<&str> = text.lines().collect();
     let mut found = Vec::new();
     let mut at = 0;
@@ -602,6 +603,84 @@ fn rust_panic(lines: &[&str], at: usize) -> Option<(Diagnostic, usize)> {
         },
         at + 2,
     ))
+}
+
+/// `text` with any Python traceback pasted onto one line (a chat box or a
+/// copied log line joins it) laid back out one frame per line, as Python
+/// printed it, and curly quotes around a frame's file made straight.
+fn unfold(text: &str) -> String {
+    const HEAD: &str = "Traceback (most recent call last):";
+    let mut out = String::with_capacity(text.len());
+    for line in text.lines() {
+        let straight = line.replace(['\u{201c}', '\u{201d}'], "\"");
+        let Some(start) = straight.find(HEAD) else {
+            out.push_str(line);
+            out.push('\n');
+            continue;
+        };
+        let rest = straight[start + HEAD.len()..].trim();
+        if !rest.starts_with("File \"") {
+            out.push_str(line);
+            out.push('\n');
+            continue;
+        }
+        let before = straight[..start].trim();
+        if !before.is_empty() {
+            out.push_str(before);
+            out.push('\n');
+        }
+        out.push_str(HEAD);
+        out.push('\n');
+        let mut tail = rest;
+        // Each frame: `File "f", line N, in name` and the code after it.
+        while let Some(after) = tail.strip_prefix("File \"") {
+            let next = after.find(" File \"").map_or(after.len(), |at| at);
+            let frame = &after[..next];
+            let (head, code) = match frame.find(", in ") {
+                Some(at) => {
+                    let name_end = frame[at + 5..]
+                        .find(' ')
+                        .map_or(frame.len(), |end| at + 5 + end);
+                    (&frame[..name_end], frame[name_end..].trim())
+                }
+                None => (frame, ""),
+            };
+            out.push_str("  File \"");
+            out.push_str(head);
+            out.push('\n');
+            let (code, exception) = split_exception(code);
+            if !code.is_empty() {
+                out.push_str("    ");
+                out.push_str(code);
+                out.push('\n');
+            }
+            if let Some(exception) = exception {
+                out.push_str(exception);
+                out.push('\n');
+            }
+            tail = after[next..].trim_start();
+        }
+    }
+    out
+}
+
+/// A frame's code and, when the exception line follows it on the same
+/// line, that exception: `print(x) NameError: name 'x' is not defined`.
+fn split_exception(code: &str) -> (&str, Option<&str>) {
+    let mut at = 0;
+    for word in code.split(' ') {
+        let kind = word.strip_suffix(':').unwrap_or("");
+        let named = kind.rsplit('.').next().unwrap_or(kind);
+        let exceptional = ["Error", "Exception", "Warning", "Exit", "Interrupt"]
+            .iter()
+            .any(|end| named.ends_with(end))
+            && named.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+        if exceptional {
+            return (code[..at].trim(), Some(code[at..].trim()));
+        }
+        at += word.len() + 1;
+    }
+    (code, None)
 }
 
 /// A Python traceback: its `File "...", line N, in f` frames, outermost
@@ -1698,6 +1777,23 @@ mod tests {
         let value = run(&mut host, "the build failed, the output is in ci/build.log");
         assert_eq!(value["read"], json!(["ci/build.log"]));
         assert_eq!(value["location"]["file"], "src/ledger.rs");
+    }
+
+    /// #10323: a traceback pasted onto one line reads as the same error.
+    #[test]
+    fn a_traceback_pasted_on_one_line_is_read_like_the_printed_one() {
+        let printed = fixture("python-keyerror.txt");
+        let joined = printed.lines().map(str::trim).collect::<Vec<_>>().join(" ");
+        let value = run(&mut tree(), &joined);
+        assert_eq!(value["found"], true, "{joined}");
+        assert_eq!(value["error"]["kind"], "KeyError");
+        assert_eq!(value["location"]["file"], "shop/billing.py");
+        assert_eq!(value["location"]["line"], 9);
+        let curly = "Traceback (most recent call last): File \u{201c}app.py\u{201d}, line 3, in <module> print(x) NameError: name \u{2018}x\u{2019} is not defined";
+        let value = run(&mut tree(), curly);
+        assert_eq!(value["found"], true);
+        assert_eq!(value["error"]["kind"], "NameError");
+        assert_eq!(value["location"]["line"], 3);
     }
 
     #[test]

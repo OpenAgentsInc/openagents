@@ -8,6 +8,6 @@
   "provenance": "OpenAgents catalog: the explain-error guest (crates/plugin-explain-error), an example plugin (docs/plugins/examples/)",
   "program": {
     "name": "explain-error",
-    "digest": "9023dc421f1b2261ff041a39994ffd6fb3bc8f25068268c6bced8208b0b0f8ff"
+    "digest": "f71da08aff05dc4440435be73154ec5e10893d43cfccba69342426b7ef766f35"
   }
 }

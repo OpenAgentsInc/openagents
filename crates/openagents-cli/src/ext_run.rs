@@ -66,12 +66,105 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
     match execute(&dir, &workspace, &request) {
         Ok(ran) => {
             let finished = ran["finished"].as_bool() == Some(true);
-            output.emit(&ran, |value| {
-                value["reply"].as_str().unwrap_or_default().to_string()
-            });
+            output.emit(&ran, human);
             if finished { 0 } else { crate::EXIT_FAILURE }
         }
         Err(message) => output.fail(NAME, &message),
+    }
+}
+
+/// The run as a person reads it: the reply, and when the workflow's guest
+/// rendered nothing, what its last step found, laid out (#10323).
+fn human(ran: &Value) -> String {
+    let reply = ran["reply"].as_str().unwrap_or_default();
+    if ran["rendered"].as_bool() == Some(true) {
+        return reply.to_string();
+    }
+    let found = ran["steps"]
+        .as_array()
+        .and_then(|steps| {
+            steps
+                .iter()
+                .rev()
+                .find(|step| step["output"]["status"].as_str() == Some("ok"))
+        })
+        .map(|step| &step["output"]["value"]);
+    match found {
+        Some(value) if !value.is_null() => {
+            let mut lines = Vec::new();
+            readable(value, 0, &mut lines);
+            if lines.len() > READABLE_LINES {
+                let more = lines.len() - READABLE_LINES;
+                lines.truncate(READABLE_LINES);
+                lines.push(format!("… {more} more lines; --json prints all of it"));
+            }
+            format!("{}\n\n{reply}", lines.join("\n"))
+        }
+        _ => reply.to_string(),
+    }
+}
+
+/// At most this many lines of a step's value are shown.
+const READABLE_LINES: usize = 80;
+
+/// `value` as indented `key: value` lines, a list of records one per line.
+fn readable(value: &Value, depth: usize, lines: &mut Vec<String>) {
+    let pad = "  ".repeat(depth);
+    match value {
+        Value::Object(map) => {
+            for (key, item) in map {
+                let key = key.replace('_', " ");
+                match item {
+                    Value::Object(_) => {
+                        lines.push(format!("{pad}{key}:"));
+                        readable(item, depth + 1, lines);
+                    }
+                    Value::Array(list) if list.is_empty() => {
+                        lines.push(format!("{pad}{key}: none"))
+                    }
+                    Value::Array(list) if list.iter().all(|entry| !entry.is_object()) => {
+                        lines.push(format!(
+                            "{pad}{key}: {}",
+                            list.iter().map(scalar).collect::<Vec<_>>().join(", ")
+                        ));
+                    }
+                    Value::Array(list) => {
+                        lines.push(format!("{pad}{key}:"));
+                        for entry in list {
+                            lines.push(format!("{pad}  - {}", record(entry)));
+                        }
+                    }
+                    other => lines.push(format!("{pad}{key}: {}", scalar(other))),
+                }
+            }
+        }
+        Value::Array(list) => {
+            for entry in list {
+                lines.push(format!("{pad}- {}", record(entry)));
+            }
+        }
+        other => lines.push(format!("{pad}{}", scalar(other))),
+    }
+}
+
+/// One record on one line: `path Cargo.toml · bytes 35`.
+fn record(entry: &Value) -> String {
+    match entry {
+        Value::Object(map) => map
+            .iter()
+            .map(|(key, item)| format!("{} {}", key.replace('_', " "), scalar(item)))
+            .collect::<Vec<_>>()
+            .join(" · "),
+        other => scalar(other),
+    }
+}
+
+fn scalar(value: &Value) -> String {
+    match value {
+        Value::String(text) => text.clone(),
+        Value::Null => "none".into(),
+        Value::Object(_) | Value::Array(_) => value.to_string(),
+        other => other.to_string(),
     }
 }
 
@@ -92,10 +185,18 @@ pub fn execute(dir: &Path, workspace: &Path, request: &str) -> Result<Value, Str
         } else {
             &package.name
         };
-        return Err(format!(
-            "{name} has no workflow to run here; it runs in the background when it is on (`openagents plugin enable {}`).",
-            package.slug
-        ));
+        return Err(if package.background.is_empty() {
+            format!(
+                "{name} has no workflow to run: its skills guide Coder's runs while it is on (`openagents plugin install {}` and `openagents plugin enable {}`).",
+                dir.display(),
+                package.slug
+            )
+        } else {
+            format!(
+                "{name} has no workflow to run here; it runs in the background when it is on (`openagents plugin enable {}`).",
+                package.slug
+            )
+        });
     };
     let program_path = dir.join(&pinned.found);
     let program = Program::load(&program_path)?;
@@ -140,6 +241,38 @@ pub fn execute(dir: &Path, workspace: &Path, request: &str) -> Result<Value, Str
         "finished": run.finished(),
         "stopped": run.stopped.as_ref().map(ToString::to_string),
         "steps": steps,
+        "rendered": run.rendered().is_some(),
         "reply": run.reply(),
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_run_whose_guest_renders_nothing_shows_what_it_found() {
+        let ran = json!({
+            "rendered": false,
+            "reply": "project-map ran its 1 step.",
+            "steps": [{"output": {"status": "ok", "value": {
+                "files": 2,
+                "languages": [{"language": "Rust", "files": 1}],
+                "manifests": ["Cargo.toml"],
+                "tests": {"dirs": [], "files": 0}
+            }}}]
+        });
+        let text = human(&ran);
+        assert!(text.contains("files: 2"), "{text}");
+        assert!(text.contains("- language Rust · files 1"), "{text}");
+        assert!(text.contains("manifests: Cargo.toml"), "{text}");
+        assert!(text.contains("  dirs: none"), "{text}");
+        assert!(text.ends_with("project-map ran its 1 step."), "{text}");
+    }
+
+    #[test]
+    fn a_rendered_reply_is_shown_as_it_is() {
+        let ran = json!({"rendered": true, "reply": "# Map\n\nran its 1 step.", "steps": []});
+        assert_eq!(human(&ran), "# Map\n\nran its 1 step.");
+    }
 }

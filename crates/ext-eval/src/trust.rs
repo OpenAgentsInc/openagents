@@ -26,9 +26,14 @@ pub enum TrustError {
     /// Others can write the path.
     #[error("{0} is writable by others; an extension eval refuses it")]
     WritableByOthers(String),
-    /// The operator said no, or there was no terminal to ask on.
+    /// The operator said no.
     #[error("{0} is not trusted; answer yes when asked, or pass --trust")]
     Untrusted(String),
+    /// There was no terminal to ask on.
+    #[error(
+        "{0} is not trusted yet, and there is no terminal here to ask on: run this in a terminal and answer yes, or pass --trust"
+    )]
+    NoTerminal(String),
     /// The trust record couldn't be read or written.
     #[error("the trust record {0}: {1}")]
     Store(String, String),
@@ -137,8 +142,8 @@ pub enum Answer<'a> {
 ///
 /// # Errors
 ///
-/// Returns [`TrustError::Untrusted`] for a no, an empty answer, or no
-/// terminal, and [`TrustError::Store`] when a yes can't be remembered.
+/// Returns [`TrustError::Untrusted`] for a no or an empty answer,
+/// [`TrustError::NoTerminal`] with no terminal to ask on, and [`TrustError::Store`] when a yes can't be remembered.
 pub fn decide(store: &TrustStore, dir: &Path, answer: Answer<'_>) -> Result<(), TrustError> {
     if store.trusts(dir) {
         return Ok(());
@@ -149,7 +154,7 @@ pub fn decide(store: &TrustStore, dir: &Path, answer: Answer<'_>) -> Result<(), 
         Answer::Scripted(input, output) => ask(input, output, &shown),
         Answer::Terminal => {
             if !std::io::stdin().is_terminal() || !std::io::stderr().is_terminal() {
-                return Err(TrustError::Untrusted(shown));
+                return Err(TrustError::NoTerminal(shown));
             }
             let stdin = std::io::stdin();
             let mut input = stdin.lock();
