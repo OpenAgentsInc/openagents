@@ -30,7 +30,7 @@ use serde_json::{Map, Value, json};
 use crate::relay::{Client, identity_for, relay_url, unix_now};
 use crate::x402::{
     Node, Spend, admit, ceiling_present, expiry, fail_wallet, flags, limits, load_policy,
-    open_wallet, pay_invoice, record_payment, replay_dir, set_phase, toll_floor,
+    open_wallet, pay_by, payer, record_payment, replay_dir, set_phase, toll_floor,
 };
 use crate::{Args, Output};
 
@@ -1113,6 +1113,10 @@ pub fn buy(output: &Output, words: &[String]) -> u8 {
         Ok(n) if n > 0 => n,
         _ => return usage(output, "--wait takes seconds above zero"),
     };
+    let payer = match payer(&args, false) {
+        Ok(payer) => payer,
+        Err(message) => return usage(output, &message),
+    };
     let input = match args.option("input") {
         None => Vec::new(),
         Some("-") => {
@@ -1331,12 +1335,14 @@ pub fn buy(output: &Output, words: &[String]) -> u8 {
         |value| format!("challenge: {} msat to {}", value["amount_msat"], value["pay_to"]),
     );
 
-    // Pay exactly once; a pending payment is left for `wallet lookup`.
-    let proof = match pay_invoice(
+    // Pay exactly once; a pending payment is reported, never paid again.
+    let proof = match pay_by(
+        payer,
         &terms.invoice,
         &terms.requirements.network,
         limits.max_fee_msat,
         wait.min(90),
+        &format!("{provider} {slug} {purchase}"),
     ) {
         Ok(proof) => proof,
         Err(message) => {
@@ -1351,7 +1357,7 @@ pub fn buy(output: &Output, words: &[String]) -> u8 {
             wait,
             binding: PROFILE,
             resource: format!("{provider} {slug} {purchase}"),
-            phone: false,
+            payer,
         },
         &terms.requirements.network,
         &terms.requirements.pay_to,

@@ -1,7 +1,10 @@
 //! `openagents x402`: sell one operation over HTTP or MCP for an exact
-//! Lightning payment, or buy one. Both roles use this computer's Lightning
-//! node under `openagents x402 node` (`x402_node`), never the person's
-//! Spark wallet (`openagents wallet`).
+//! Lightning payment, or buy one. Buying pays from the person's Spark
+//! wallet (`openagents wallet`, `x402_spark`) unless `--pay-with` says this
+//! computer's Lightning node or the phone; selling from this computer
+//! (`serve`, `mcp-serve`, `native-serve`) needs that node, under
+//! `openagents x402 node` (`x402_node`), and `publish` sells through
+//! OpenAgents with no node at all.
 
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
@@ -64,14 +67,15 @@ pub(crate) const USAGE: &str = "usage: openagents x402 COMMAND [OPTIONS]
                           updates it.
   fetch URL [--method M] [--body FILE|-] [--max-msat N] [--max-fee-msat F]
         [--wait SECONDS] [--cap PUBKEY:SLUG] [--relay URL] [--show-proof]
-        [--pay-with wallet|phone]
+        [--pay-with wallet|node|phone]
                           Buy one call: read the 402, check the invoice against
-                          this request, refuse above the ceiling, pay from the
+                          this request, refuse above the ceiling, pay from your
                           wallet, retry with the preimage, print the body. With
                           --cap, resolve that NIP-CAP head first and refuse a
                           challenge whose payTo or URL it does not advertise.
-                          --pay-with phone asks the owner's phone to pay
-                          through this computer's Coder host instead (mainnet
+                          --pay-with node pays from this computer's Lightning
+                          node instead; --pay-with phone asks the owner's phone
+                          to pay through this computer's Coder host (mainnet
                           only; the owner approves each payment there, and the
                           wait is at least 300 seconds).
   mcp-serve --server URI --msat N [--tool GROUP]... [--expiry SECONDS]
@@ -85,12 +89,12 @@ pub(crate) const USAGE: &str = "usage: openagents x402 COMMAND [OPTIONS]
                           the buyer must bind to; it is not connected to.
   call TOOL [--arg WORD]... [--max-msat N] [--max-fee-msat F] [--wait SECONDS]
         [--server URI] [--cap PUBKEY:SLUG] [--relay URL] [--show-proof]
-        [--pay-with wallet|phone]
+        [--pay-with wallet|node|phone]
         -- CMD [ARGS...]
                           Buy one tools/call: start CMD as a stdio MCP server,
                           call TOOL with {\"args\": [WORD...]}, check the
                           challenge's invoice against this call and URI, refuse
-                          above the ceiling, pay from the wallet, retry with the
+                          above the ceiling, pay from your wallet, retry with the
                           proof, print the result. With --cap, URI defaults to
                           the advertised endpoint and the payTo must be one it
                           advertises.
@@ -121,10 +125,11 @@ pub(crate) const USAGE: &str = "usage: openagents x402 COMMAND [OPTIONS]
                           worker_refused, or worker_failed.
   buy PROVIDER --slug SLUG [--input FILE|-] [--max-msat N] [--max-fee-msat F]
         [--wait SECONDS] [--as PROFILE] [--relay URL] [--show-proof]
+        [--pay-with wallet|node]
                           Buy one run: resolve PROVIDER:SLUG on the relay, seal
                           the input and a request to PROVIDER, check the
                           challenge against them, refuse above the ceiling, pay
-                          from the wallet, seal the claim, follow the status
+                          from your wallet, seal the claim, follow the status
                           chain, print the output. A run that does not end
                           within --wait leaves the purchase for `status`; it
                           is never paid again.
@@ -177,8 +182,12 @@ Replay records live in ~/.openagents/x402/replay, native purchases in
 ~/.openagents/x402/native, the policy in ~/.openagents/x402/policy.json, and
 the ledger in ~/.openagents/x402/ledger.ndjson. The preimage is printed only
 with --show-proof. Add --json before `x402` for one JSON document.
-Both roles use this computer's Lightning node; set it up and run it with
-`openagents x402 node` (see `openagents x402 node --help`).";
+Buying (fetch, call, buy) pays from your wallet, `openagents wallet`: the
+same balance as the OpenAgents app on your phone. Selling from this computer
+(serve, mcp-serve, native-serve) needs its own Lightning node; set it up and
+run it with `openagents x402 node` (see `openagents x402 node --help`), or sell
+through OpenAgents with no node: `openagents x402 publish`. With no wallet on
+this computer and a Lightning node set up, buying pays from the node.";
 
 /// What each command above does and where the phone runs it, for the
 /// chat router's command tree (`coder::cli_route::tree`).
@@ -492,10 +501,9 @@ fn fetch(output: &Output, words: &[String]) -> u8 {
         Ok(wait) => wait,
         Err(message) => return output.usage("x402", &message, USAGE),
     };
-    let phone = match args.option("pay-with") {
-        None | Some("wallet") => false,
-        Some("phone") => true,
-        Some(_) => return output.usage("x402", "--pay-with takes wallet or phone", USAGE),
+    let payer = match payer(&args, true) {
+        Ok(payer) => payer,
+        Err(message) => return output.usage("x402", &message, USAGE),
     };
     let show_proof = args.switch("show-proof");
     let descriptor = match args.option("cap") {
@@ -536,7 +544,7 @@ fn fetch(output: &Output, words: &[String]) -> u8 {
         wait,
         binding: "http:1",
         resource: url.clone(),
-        phone,
+        payer,
     };
     let fetched = fetch_paid(&method, url, &body, |required| {
         buy(
@@ -672,9 +680,62 @@ pub(crate) struct Spend {
     pub(crate) wait: u64,
     pub(crate) binding: &'static str,
     pub(crate) resource: String,
-    /// Pay through the owner's phone (`--pay-with phone`) instead of this
-    /// computer's wallet.
-    pub(crate) phone: bool,
+    /// Who pays: the person's wallet, this computer's Lightning node, or
+    /// the owner's phone (`--pay-with`).
+    pub(crate) payer: Payer,
+}
+
+/// Who pays for a call (`--pay-with`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Payer {
+    /// The person's Spark wallet, `openagents wallet` (`x402_spark`).
+    Wallet,
+    /// This computer's Lightning node, `openagents x402 node`.
+    Node,
+    /// The owner's phone, through this computer's Coder host (`x402_phone`).
+    Phone,
+}
+
+/// `--pay-with wallet|node|phone` (`phone` only where `phone` is true);
+/// without it, the wallet, unless this computer has no wallet and has a
+/// Lightning node set up.
+pub(crate) fn payer(args: &Args, phone: bool) -> Result<Payer, String> {
+    match args.option("pay-with") {
+        Some("wallet") => Ok(Payer::Wallet),
+        Some("node") => Ok(Payer::Node),
+        Some("phone") if phone => Ok(Payer::Phone),
+        Some(_) if phone => Err("--pay-with takes wallet, node, or phone".into()),
+        Some(_) => Err("--pay-with takes wallet or node".into()),
+        None => Ok(default_payer(
+            openagents_spark::computer::has_seed(&openagents_spark::computer::home()),
+            config::home().join(config::CONFIG_FILE).is_file(),
+        )),
+    }
+}
+
+/// The payer when `--pay-with` is not given.
+fn default_payer(has_wallet: bool, has_node: bool) -> Payer {
+    if !has_wallet && has_node {
+        Payer::Node
+    } else {
+        Payer::Wallet
+    }
+}
+
+/// Pay `bolt11` the way `payer` says, within the fee cap and the wait.
+pub(crate) fn pay_by(
+    payer: Payer,
+    bolt11: &str,
+    network: &str,
+    max_fee_msat: u64,
+    wait: u64,
+    resource: &str,
+) -> Result<openagents_wallet::Proof, String> {
+    match payer {
+        Payer::Wallet => crate::x402_spark::pay(bolt11, network, max_fee_msat),
+        Payer::Node => pay_invoice(bolt11, network, max_fee_msat, wait),
+        Payer::Phone => crate::x402_phone::pay(bolt11, network, max_fee_msat, wait, resource),
+    }
 }
 
 /// Read `--max-msat` and `--max-fee-msat`, both optional.
@@ -872,17 +933,14 @@ fn buy(
         .and_then(Value::as_str)
         .unwrap_or_default()
         .to_string();
-    let proof = if spend.phone {
-        crate::x402_phone::pay(
-            &bolt11,
-            &terms.network,
-            limits.max_fee_msat,
-            spend.wait,
-            &spend.resource,
-        )?
-    } else {
-        pay_invoice(&bolt11, &terms.network, limits.max_fee_msat, spend.wait)?
-    };
+    let proof = pay_by(
+        spend.payer,
+        &bolt11,
+        &terms.network,
+        limits.max_fee_msat,
+        spend.wait,
+        &spend.resource,
+    )?;
     record_payment(&spend, &terms.network, &terms.pay_to, &proof, "paid");
 
     let mut payload = Map::new();
@@ -1157,10 +1215,9 @@ fn call(output: &Output, words: &[String]) -> u8 {
         Ok(wait) => wait,
         Err(message) => return output.usage("x402", &message, USAGE),
     };
-    let phone = match args.option("pay-with") {
-        None | Some("wallet") => false,
-        Some("phone") => true,
-        Some(_) => return output.usage("x402", "--pay-with takes wallet or phone", USAGE),
+    let payer = match payer(&args, true) {
+        Ok(payer) => payer,
+        Err(message) => return output.usage("x402", &message, USAGE),
     };
     let show_proof = args.switch("show-proof");
     let descriptor = match args.option("cap") {
@@ -1221,7 +1278,7 @@ fn call(output: &Output, words: &[String]) -> u8 {
             wait,
             binding: "mcp:1",
             resource: format!("{server} {tool}"),
-            phone,
+            payer,
         },
     ) {
         Ok(bought) => bought,
@@ -2123,6 +2180,31 @@ mod tests {
             lsp: Some(lsp),
             trusted_peers: Vec::new(),
         }
+    }
+
+    #[test]
+    fn buying_pays_from_the_wallet_unless_only_a_node_is_set_up() {
+        assert_eq!(default_payer(true, true), Payer::Wallet);
+        assert_eq!(default_payer(true, false), Payer::Wallet);
+        assert_eq!(default_payer(false, false), Payer::Wallet);
+        assert_eq!(default_payer(false, true), Payer::Node);
+        let args = |words: &[&str]| {
+            Args::parse(
+                &words.iter().map(|w| (*w).to_owned()).collect::<Vec<_>>(),
+                SWITCHES,
+            )
+            .expect("args")
+        };
+        assert_eq!(payer(&args(&["--pay-with", "node"]), true), Ok(Payer::Node));
+        assert_eq!(
+            payer(&args(&["--pay-with", "wallet"]), false),
+            Ok(Payer::Wallet)
+        );
+        assert_eq!(
+            payer(&args(&["--pay-with", "phone"]), true),
+            Ok(Payer::Phone)
+        );
+        assert!(payer(&args(&["--pay-with", "phone"]), false).is_err());
     }
 
     #[test]

@@ -9233,6 +9233,37 @@
       "summary": "Your OpenAgents wallet: your balance and an address to get paid at.",
       "children": [
         {
+          "name": "create",
+          "leaf": {
+            "path": [
+              "wallet",
+              "create"
+            ],
+            "usage": [
+              "create [--show-words]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "create"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "show-words",
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Start a new wallet on this computer. It shows your 12 recovery words once: write them down, they are the only way back to the wallet. Off a terminal or with --json, add --show-words to print them.",
+            "effect": "secret",
+            "runs_on": "screen",
+            "screen": "wallet"
+          }
+        },
+        {
           "name": "balance",
           "leaf": {
             "path": [
@@ -9292,7 +9323,7 @@
               "receive"
             ],
             "usage": [
-              "receive [--amount N] [--bitcoin]"
+              "receive [--amount SATS] [--bitcoin]"
             ],
             "forms": [
               {
@@ -9304,7 +9335,7 @@
                   {
                     "kind": "option",
                     "name": "amount",
-                    "value": "N",
+                    "value": "SATS",
                     "open": true,
                     "optional": true
                   },
@@ -9316,7 +9347,7 @@
                 ]
               }
             ],
-            "summary": "A payment request to share: a Lightning invoice, for N if given; --bitcoin gives a Bitcoin address to send to instead.",
+            "summary": "A payment request to share: a Lightning invoice, for SATS if given; --bitcoin gives a Bitcoin address to send to instead.",
             "effect": "local_write",
             "runs_on": "screen",
             "screen": "wallet"
@@ -9330,7 +9361,7 @@
               "send"
             ],
             "usage": [
-              "send TO [--amount N] [--yes]"
+              "send TO [--amount SATS] [--yes]"
             ],
             "forms": [
               {
@@ -9346,7 +9377,7 @@
                   {
                     "kind": "option",
                     "name": "amount",
-                    "value": "N",
+                    "value": "SATS",
                     "open": true,
                     "optional": true
                   },
@@ -9391,7 +9422,7 @@
                 ]
               }
             ],
-            "summary": "Your recent payments, newest first.",
+            "summary": "Your recent payments, newest first, with the time and any fee (N is 1 to 200; default 10).",
             "effect": "read_only",
             "runs_on": "screen",
             "screen": "wallet"
@@ -9429,7 +9460,7 @@
                 ]
               }
             ],
-            "summary": "Use your phone's wallet on this computer. Your phone asks you to approve and shows a code to check against this screen (default wait 600).",
+            "summary": "Use your phone's wallet on this computer. Your phone asks you to approve and shows a code to check against this screen (10 to 3600 seconds; default 600).",
             "effect": "secret",
             "runs_on": "screen",
             "screen": "wallet"
@@ -9470,8 +9501,20 @@
       "options": [
         {
           "kind": "option",
+          "name": "show-words",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "json",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
           "name": "amount",
-          "value": "N",
+          "value": "SATS",
           "open": true,
           "optional": true,
           "repeated": true
@@ -9509,12 +9552,6 @@
           "name": "wait",
           "value": "SECONDS",
           "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "json",
           "optional": true,
           "repeated": true
         }
@@ -9685,7 +9722,7 @@
               "fetch"
             ],
             "usage": [
-              "fetch URL [--method M] [--body FILE|-] [--max-msat N] [--max-fee-msat F] [--wait SECONDS] [--cap PUBKEY:SLUG] [--relay URL] [--show-proof] [--pay-with wallet|phone]"
+              "fetch URL [--method M] [--body FILE|-] [--max-msat N] [--max-fee-msat F] [--wait SECONDS] [--cap PUBKEY:SLUG] [--relay URL] [--show-proof] [--pay-with wallet|node|phone]"
             ],
             "forms": [
               {
@@ -9758,9 +9795,10 @@
                   {
                     "kind": "option",
                     "name": "pay-with",
-                    "value": "wallet|phone",
+                    "value": "wallet|node|phone",
                     "choices": [
                       "wallet",
+                      "node",
                       "phone"
                     ],
                     "optional": true
@@ -9768,7 +9806,7 @@
                 ]
               }
             ],
-            "summary": "Buy one call: read the 402, check the invoice against this request, refuse above the ceiling, pay from the wallet, retry with the preimage, print the body. With --cap, resolve that NIP-CAP head first and refuse a challenge whose payTo or URL it does not advertise. --pay-with phone asks the owner's phone to pay through this computer's Coder host instead (mainnet only; the owner approves each payment there, and the wait is at least 300 seconds).",
+            "summary": "Buy one call: read the 402, check the invoice against this request, refuse above the ceiling, pay from your wallet, retry with the preimage, print the body. With --cap, resolve that NIP-CAP head first and refuse a challenge whose payTo or URL it does not advertise. --pay-with node pays from this computer's Lightning node instead; --pay-with phone asks the owner's phone to pay through this computer's Coder host (mainnet only; the owner approves each payment there, and the wait is at least 300 seconds).",
             "effect": "spends",
             "runs_on": "screen",
             "screen": "wallet"
@@ -9835,7 +9873,7 @@
               "call"
             ],
             "usage": [
-              "call TOOL [--arg WORD]... [--max-msat N] [--max-fee-msat F] [--wait SECONDS] [--server URI] [--cap PUBKEY:SLUG] [--relay URL] [--show-proof] [--pay-with wallet|phone] -- CMD [ARGS...]"
+              "call TOOL [--arg WORD]... [--max-msat N] [--max-fee-msat F] [--wait SECONDS] [--server URI] [--cap PUBKEY:SLUG] [--relay URL] [--show-proof] [--pay-with wallet|node|phone] -- CMD [ARGS...]"
             ],
             "forms": [
               {
@@ -9906,9 +9944,10 @@
                   {
                     "kind": "option",
                     "name": "pay-with",
-                    "value": "wallet|phone",
+                    "value": "wallet|node|phone",
                     "choices": [
                       "wallet",
+                      "node",
                       "phone"
                     ],
                     "optional": true
@@ -9919,7 +9958,7 @@
                 ]
               }
             ],
-            "summary": "Buy one tools/call: start CMD as a stdio MCP server, call TOOL with {\"args\": [WORD...]}, check the challenge's invoice against this call and URI, refuse above the ceiling, pay from the wallet, retry with the proof, print the result. With --cap, URI defaults to the advertised endpoint and the payTo must be one it advertises.",
+            "summary": "Buy one tools/call: start CMD as a stdio MCP server, call TOOL with {\"args\": [WORD...]}, check the challenge's invoice against this call and URI, refuse above the ceiling, pay from your wallet, retry with the proof, print the result. With --cap, URI defaults to the advertised endpoint and the payTo must be one it advertises.",
             "effect": "spends",
             "runs_on": "screen",
             "screen": "wallet"
@@ -10029,7 +10068,7 @@
               "buy"
             ],
             "usage": [
-              "buy PROVIDER --slug SLUG [--input FILE|-] [--max-msat N] [--max-fee-msat F] [--wait SECONDS] [--as PROFILE] [--relay URL] [--show-proof]"
+              "buy PROVIDER --slug SLUG [--input FILE|-] [--max-msat N] [--max-fee-msat F] [--wait SECONDS] [--as PROFILE] [--relay URL] [--show-proof] [--pay-with wallet|node]"
             ],
             "forms": [
               {
@@ -10097,11 +10136,21 @@
                     "kind": "option",
                     "name": "show-proof",
                     "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "pay-with",
+                    "value": "wallet|node",
+                    "choices": [
+                      "wallet",
+                      "node"
+                    ],
+                    "optional": true
                   }
                 ]
               }
             ],
-            "summary": "Buy one run: resolve PROVIDER:SLUG on the relay, seal the input and a request to PROVIDER, check the challenge against them, refuse above the ceiling, pay from the wallet, seal the claim, follow the status chain, print the output. A run that does not end within --wait leaves the purchase for `status`; it is never paid again.",
+            "summary": "Buy one run: resolve PROVIDER:SLUG on the relay, seal the input and a request to PROVIDER, check the challenge against them, refuse above the ceiling, pay from your wallet, seal the claim, follow the status chain, print the output. A run that does not end within --wait leaves the purchase for `status`; it is never paid again.",
             "effect": "spends",
             "runs_on": "screen",
             "screen": "wallet"
@@ -11622,9 +11671,10 @@
         {
           "kind": "option",
           "name": "pay-with",
-          "value": "wallet|phone",
+          "value": "wallet|node|phone",
           "choices": [
             "wallet",
+            "node",
             "phone"
           ],
           "optional": true,

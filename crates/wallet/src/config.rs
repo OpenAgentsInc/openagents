@@ -284,7 +284,7 @@ impl WalletConfig {
         let path = home.join(CONFIG_FILE);
         let text = std::fs::read_to_string(&path).map_err(|error| {
             WalletError::Setup(format!(
-                "wallet is not initialized ({}: {error}); run `openagents x402 node init`",
+                "this computer's Lightning node isn't set up ({}: {error}); set it up with `openagents x402 node init`, or sell through OpenAgents with no node: `openagents x402 publish`",
                 path.display()
             ))
         })?;

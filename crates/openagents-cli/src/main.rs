@@ -84,6 +84,8 @@ mod x402_native;
 mod x402_node;
 #[cfg(unix)]
 mod x402_phone;
+#[cfg(unix)]
+mod x402_spark;
 mod zone;
 
 pub use argv::Args;
@@ -409,6 +411,7 @@ fn doctor(output: &Output) -> u8 {
         ("computers", computer::store_dir(None)),
         ("tasks", openagents.join("tasks")),
         ("sov", sov::home()),
+        ("wallet", openagents_spark::computer::home()),
         ("x402_node", openagents_wallet::config::home()),
     ];
     let mut report = serde_json::Map::new();
