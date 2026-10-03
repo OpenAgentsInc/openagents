@@ -628,7 +628,7 @@ fn prepare<X: Clone, W: Worker<X>>(
             source.display(),
             workdir.display()
         );
-        command(source, "git", &["fetch", "-q", "origin", &base])?;
+        crate::git_fetch::fetch(source, &[&base], |dir, args| command(dir, "git", args))?;
         command(
             source,
             "git",
