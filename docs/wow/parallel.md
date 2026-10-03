@@ -79,3 +79,27 @@ For private spectating, point the owner's 1.12.1 client's `realmlist.wtf` at the
 realm's Tailscale address, or run benilla with `WOW_DATA` pointing at the owner's
 private `Data` directory and that realm. Use a separate spectator account and
 character. Never give Voyager that account or include game assets in artifacts.
+
+## Recorded verification
+
+The [2026-10-03 evidence](../../bench/wow/2026-10-03/parallel.json) records four
+successful delivery episodes on each host, with two workers. Mac helpers
+completed four quests in 71.98 seconds (200.06 quests/hour); native Linux
+helpers completed four in 76.51 seconds (188.21 quests/hour). Pool timing
+includes character setup and cleanup. Both runs recorded zero deaths and no
+model calls; the zero model cost excludes infrastructure costs.
+
+Simultaneous characters passed separate inventory and quest-log checks after
+trusted setup seeded only one character. Both characters were deleted during
+cleanup. Both capacity locks were held during the run and released afterward.
+The realm used approximately 991 MiB of resident memory, the database 147 MiB,
+and each native helper 4 MiB in one concurrent sample. Private realm files,
+including source, extraction outputs, and backups, occupied approximately
+12 GiB; the separate persistent Cargo target directory is additional storage.
+These measurements justify retaining the two-worker limit, not raising it to
+20–50 combat agents.
+
+Terminating the active worker's SSH capacity lease retired its bridge call in
+0.11 seconds. The trace ended as interrupted, and the next queued episode
+recreated the character and completed cleanup. The pool recorded the failed
+episode instead of replaying its interrupted action.

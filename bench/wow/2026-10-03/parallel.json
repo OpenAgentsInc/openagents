@@ -1,0 +1,259 @@
+{
+  "schema": "openagents.wow.parallel-evidence/v1",
+  "date": "2026-10-03",
+  "concurrency_limit": 2,
+  "realm": "private CoderOS vmangos",
+  "isolation": {
+    "inventory_and_quest_checks": "passed on simultaneous GYM1 and GYM2 characters",
+    "trusted_setup_level": 4,
+    "capacity_locks": "both held during isolation run; both free after cleanup",
+    "overworld": "shared spawns; no modern phasing",
+    "cleanup": "both characters deleted",
+    "a_trace_sha256": "f31c6490414bc7e43addbe88dae9dcc6531ac894269bf8c9e2247c88ea890c7b",
+    "b_trace_sha256": "5c44027668e28d93074a502715c2fd996a8584a407a83da1341d91c641b76d96"
+  },
+  "resource_sample": {
+    "realm_rss_kib": 1014260,
+    "database_rss_kib": 150008,
+    "realmd_rss_kib": 10576,
+    "helper_rss_kib": [
+      4112,
+      4168
+    ],
+    "realm_cpu_percent": 5.6,
+    "private_realm_disk_gib_approx": 12,
+    "disk_free_gib_sample": 189
+  },
+  "boat": "owner must supply private tailnet enrollment and scoped SSH/account credentials; see NEEDS_OWNER.md",
+  "mac_pool": {
+    "schema": "voyager.wow.pool/v1",
+    "episodes": 4,
+    "parallel": 2,
+    "failed": 0,
+    "seconds": 71.978399958,
+    "quests_completed": 4,
+    "quests_per_hour": 200.06001812213833,
+    "deaths": 0,
+    "model_cost_per_completed_quest": 0,
+    "cost_scope": "model calls only; infrastructure costs excluded",
+    "runs": [
+      {
+        "episode": 1,
+        "passed": true,
+        "metrics": {
+          "schema": "voyager.wow.metrics/v1",
+          "quests_completed": 1,
+          "quests_per_hour": 237.98929520871187,
+          "seconds": 15.126730792,
+          "deaths": 0,
+          "earned_xp": 40,
+          "actions": 14,
+          "xp_per_action": 2.857142857142857,
+          "cost_per_completed_quest": 0,
+          "cost_scope": "model calls only; excludes host infrastructure"
+        },
+        "trace_sha256": "b51d03efdae4d76ffb28db4d9688fdd4b596f773e05d1b4298ce94318f25ec65"
+      },
+      {
+        "episode": 2,
+        "passed": true,
+        "metrics": {
+          "schema": "voyager.wow.metrics/v1",
+          "quests_completed": 1,
+          "quests_per_hour": 234.23522961203585,
+          "seconds": 15.369165458,
+          "deaths": 0,
+          "earned_xp": 40,
+          "actions": 14,
+          "xp_per_action": 2.857142857142857,
+          "cost_per_completed_quest": 0,
+          "cost_scope": "model calls only; excludes host infrastructure"
+        },
+        "trace_sha256": "309bec4570c6c73c2f513a3a437c47cbfe7b0de5b6463f0e938d1df43e21b037"
+      },
+      {
+        "episode": 3,
+        "passed": true,
+        "metrics": {
+          "schema": "voyager.wow.metrics/v1",
+          "quests_completed": 1,
+          "quests_per_hour": 237.70268737220889,
+          "seconds": 15.144969709,
+          "deaths": 0,
+          "earned_xp": 40,
+          "actions": 14,
+          "xp_per_action": 2.857142857142857,
+          "cost_per_completed_quest": 0,
+          "cost_scope": "model calls only; excludes host infrastructure"
+        },
+        "trace_sha256": "80748b2b7b226827278ade566b954448a9a9d1c0f01b5badb3c1ca2562817050"
+      },
+      {
+        "episode": 4,
+        "passed": true,
+        "metrics": {
+          "schema": "voyager.wow.metrics/v1",
+          "quests_completed": 1,
+          "quests_per_hour": 238.5306584272244,
+          "seconds": 15.092399542,
+          "deaths": 0,
+          "earned_xp": 40,
+          "actions": 14,
+          "xp_per_action": 2.857142857142857,
+          "cost_per_completed_quest": 0,
+          "cost_scope": "model calls only; excludes host infrastructure"
+        },
+        "trace_sha256": "193364e6589602cc0e7f5e846565522212ea26b0db7af49f0e13c7f412c9981a"
+      }
+    ]
+  },
+  "linux_pool": {
+    "schema": "voyager.wow.pool/v1",
+    "episodes": 4,
+    "parallel": 2,
+    "failed": 0,
+    "seconds": 76.511389123,
+    "quests_completed": 4,
+    "quests_per_hour": 188.20727430331326,
+    "deaths": 0,
+    "model_cost_per_completed_quest": 0,
+    "cost_scope": "model calls only; infrastructure costs excluded",
+    "runs": [
+      {
+        "episode": 1,
+        "passed": true,
+        "metrics": {
+          "schema": "voyager.wow.metrics/v1",
+          "quests_completed": 1,
+          "quests_per_hour": 206.15071122279977,
+          "seconds": 17.462952122,
+          "deaths": 0,
+          "earned_xp": 40,
+          "actions": 14,
+          "xp_per_action": 2.857142857142857,
+          "cost_per_completed_quest": 0,
+          "cost_scope": "model calls only; excludes host infrastructure"
+        },
+        "trace_sha256": "ea75f56475a1548905fd34d7b37926d7d14aa965b2c31949b92cbdf1cdb845d5"
+      },
+      {
+        "episode": 2,
+        "passed": true,
+        "metrics": {
+          "schema": "voyager.wow.metrics/v1",
+          "quests_completed": 1,
+          "quests_per_hour": 205.68221319314517,
+          "seconds": 17.502728817,
+          "deaths": 0,
+          "earned_xp": 40,
+          "actions": 14,
+          "xp_per_action": 2.857142857142857,
+          "cost_per_completed_quest": 0,
+          "cost_scope": "model calls only; excludes host infrastructure"
+        },
+        "trace_sha256": "3d0344bf29bc225089242f5d7b4f363cf74ce1a6ab670cc1ee0a0c489ae94d1e"
+      },
+      {
+        "episode": 3,
+        "passed": true,
+        "metrics": {
+          "schema": "voyager.wow.metrics/v1",
+          "quests_completed": 1,
+          "quests_per_hour": 185.65683208948693,
+          "seconds": 19.390614175,
+          "deaths": 0,
+          "earned_xp": 40,
+          "actions": 14,
+          "xp_per_action": 2.857142857142857,
+          "cost_per_completed_quest": 0,
+          "cost_scope": "model calls only; excludes host infrastructure"
+        },
+        "trace_sha256": "2a98fc9304f5f820944d5f5e75746c89a92ee3cd2a890496da809f7d69c4aae3"
+      },
+      {
+        "episode": 4,
+        "passed": true,
+        "metrics": {
+          "schema": "voyager.wow.metrics/v1",
+          "quests_completed": 1,
+          "quests_per_hour": 186.0588252028832,
+          "seconds": 19.348719396,
+          "deaths": 0,
+          "earned_xp": 40,
+          "actions": 14,
+          "xp_per_action": 2.857142857142857,
+          "cost_per_completed_quest": 0,
+          "cost_scope": "model calls only; excludes host infrastructure"
+        },
+        "trace_sha256": "bdc3f8b0e8b8fadfb43d8942e258e2380c754666fccc12ca84f532b75375f8be"
+      }
+    ]
+  },
+  "linux_source_commit": "3c1139e7d3ba61321aeed70d04924bd0d3a06104",
+  "lease_fault": {
+    "exit": 1,
+    "retirement_seconds": 0.10947708299999981,
+    "lease": "capacity",
+    "fault": "terminate own SSH coordinator child",
+    "traces": [
+      {
+        "sha256": "cdd179c5c43872e9b7bda48022796013c294009b41248a91ece09ff4bc478834",
+        "end": "ended"
+      },
+      {
+        "sha256": "1418b78cb982a4ad3fcb43e2ec907650383acdad77b74d06fc853c59d50dd9ed",
+        "end": "interrupted"
+      }
+    ],
+    "next_queued_episode": "fresh reset, ran successfully, character deleted"
+  },
+  "recovery_delivery_pool": {
+    "schema": "voyager.wow.pool/v1",
+    "episodes": 2,
+    "parallel": 1,
+    "failed": 0,
+    "seconds": 76.857369667,
+    "quests_completed": 2,
+    "quests_per_hour": 93.6800209426298,
+    "deaths": 0,
+    "model_cost_per_completed_quest": 0,
+    "cost_scope": "model calls only; infrastructure costs excluded",
+    "runs": [
+      {
+        "episode": 1,
+        "passed": true,
+        "metrics": {
+          "schema": "voyager.wow.metrics/v1",
+          "quests_completed": 1,
+          "quests_per_hour": 236.5351872413774,
+          "seconds": 15.219722875,
+          "deaths": 0,
+          "earned_xp": 40,
+          "actions": 14,
+          "xp_per_action": 2.857142857142857,
+          "cost_per_completed_quest": 0,
+          "cost_scope": "model calls only; excludes host infrastructure"
+        },
+        "trace_sha256": "0624fa6c28e5244a9bc7e55033c700b2849f8dea334dcfcdb651890c26ff100b"
+      },
+      {
+        "episode": 2,
+        "passed": true,
+        "metrics": {
+          "schema": "voyager.wow.metrics/v1",
+          "quests_completed": 1,
+          "quests_per_hour": 236.72705255160184,
+          "seconds": 15.207387416,
+          "deaths": 0,
+          "earned_xp": 40,
+          "actions": 14,
+          "xp_per_action": 2.857142857142857,
+          "cost_per_completed_quest": 0,
+          "cost_scope": "model calls only; excludes host infrastructure"
+        },
+        "trace_sha256": "e3dc4d4bf8e0bc52a4d48ff0b5c80f9aa69116681e2ed6353a0f5814abec8c24"
+      }
+    ]
+  },
+  "leases_after_recovery": "capacity slots, GYM1/GYM2 accounts, and both character names free"
+}
