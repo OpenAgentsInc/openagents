@@ -51,7 +51,8 @@ The desktop app runs `serve --keychain --iroh --control`: the owner, host,
 and iroh keys live in the keychain, the host establishes its own owner on
 first start, and `openagents connect` and the app reach it through the
 same-user control socket. On such a computer `public-key` and `list` ask
-that running host over the socket too.
+that running host over the socket too. serve's --relay defaults to
+OPENAGENTS_RELAY, then wss://relay.openagents.com/.
 Every command also takes --state DIR (the access store, default
 ~/.openagents/coder-access), --root DIR (default ~/.openagents/host), and
 --loopback-test (allow ws:// to a numeric loopback relay, for fixtures only).
@@ -684,8 +685,14 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
     };
     let telemetry = !options.flag("--no-telemetry");
     let connect = connect_options(options, root)?;
-    if relays.is_empty() && connect.iroh.is_some() {
-        relays.push(DEFAULT_RELAY.to_owned());
+    // Like `ssh`, serve defaults to OPENAGENTS_RELAY, then the public relay.
+    if relays.is_empty() {
+        relays.push(
+            std::env::var("OPENAGENTS_RELAY")
+                .ok()
+                .filter(|relay| !relay.trim().is_empty())
+                .unwrap_or_else(|| DEFAULT_RELAY.to_owned()),
+        );
     }
     let tailnet = tailnet_admission(options)?.or_else(|| settings.tailnet_admission.clone());
     let mut advertise = options

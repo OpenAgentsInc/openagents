@@ -317,6 +317,10 @@ async fn status(output: &Output, socket: &Path, args: &[String]) -> Result<(), F
         _ => None,
     };
     let mut value = serde_json::to_value(&status).unwrap_or(Value::Null);
+    let offline = offline_reason(&status.endpoint, status.online);
+    if let Some(reason) = offline {
+        value["offline_reason"] = json!(reason);
+    }
     let tailnet_line = match &tailnet {
         Some((Some(address), chats, _)) => {
             value["tailnet"] = json!({"address": address, "chats": chats});
@@ -339,10 +343,9 @@ async fn status(output: &Output, socket: &Path, args: &[String]) -> Result<(), F
             } else {
                 &status.label
             },
-            if status.online {
-                "Online. Your phone can reach this computer."
-            } else {
-                "Offline."
+            match offline {
+                None => "Online. Your phone can reach this computer.".to_owned(),
+                Some(reason) => format!("Offline: {reason}"),
             },
             status.host,
             if status.endpoint.is_empty() {
@@ -355,6 +358,23 @@ async fn status(output: &Output, socket: &Path, args: &[String]) -> Result<(), F
         )
     });
     Ok(())
+}
+
+/// Why a host is offline, in words, or `None` when it is online.
+fn offline_reason(endpoint: &str, online: bool) -> Option<&'static str> {
+    if online {
+        None
+    } else if endpoint.is_empty() {
+        Some(
+            "this host has no phone endpoint; it was started without --iroh. \
+             Start it with `openagents host serve --iroh` (the OpenAgents app's host does this for you).",
+        )
+    } else {
+        Some(
+            "the phone endpoint can't reach its relay or a direct address yet. \
+             Check this computer's network; it keeps retrying on its own.",
+        )
+    }
 }
 
 async fn owner(output: &Output, socket: &Path, args: &[String]) -> Result<(), Failure> {
@@ -414,6 +434,13 @@ fn secret_hex(text: &str) -> Result<String, Failure> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn offline_status_says_why() {
+        assert_eq!(super::offline_reason("abc", true), None);
+        assert!(super::offline_reason("", false).is_some_and(|r| r.contains("--iroh")));
+        assert!(super::offline_reason("abc", false).is_some_and(|r| r.contains("relay")));
+    }
+
     use super::*;
 
     #[test]

@@ -132,7 +132,11 @@ pub async fn bind(path: &Path, uid: u32) -> Result<Bound> {
     // A Unix socket address holds at most 104 bytes on macOS and 108 on
     // Linux, terminator included.
     if path.as_os_str().len() >= 104 {
-        return Err(failed("path is too long; choose a shorter one"));
+        return Err(failed(&format!(
+            "path is too long ({} bytes; at most 103): pass --control-socket with a shorter path, \
+             such as /tmp/openagents-host.sock",
+            path.as_os_str().len()
+        )));
     }
     let directory = path
         .parent()
