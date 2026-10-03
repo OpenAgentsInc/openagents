@@ -24,7 +24,8 @@ pub(crate) const USAGE: &str = "usage: openagents service COMMAND [OPTIONS]
           [--snapshot-max-bytes N] [--path PATH] [--platform macos|linux]
           [--registration-dir DIR] [--linger] [--no-start] [-- HOST_ARGS...]
         Install the launcher and register it with the service manager.
-  status    Show the service manager's view and the host descriptor.
+  status    Show the service manager's view and the host descriptor; when
+            the OpenAgents app runs the host instead, say so.
   restart   Restart the service.
   uninstall Stop and unregister the service; state and bundles stay.
   update --to SHA256 [--wait SECONDS]
@@ -274,6 +275,22 @@ fn render_install(value: &Value) -> String {
 
 fn status(output: &Output, args: &Args) -> Result<u8, Failure> {
     let layout = layout(args)?;
+    if !layout.config().is_file() {
+        // No service installed under this root. The desktop app runs its
+        // own host outside this launcher; say so instead of telling the
+        // person to install what already runs.
+        let app = app_host();
+        let value = app_host_value(app.as_ref());
+        if app.is_some() {
+            output.emit(&value, render_app_host);
+            return Ok(0);
+        }
+        return Err(Failure::Refused(format!(
+            "no host runs on this computer and none is installed under {}; \
+             open the OpenAgents app, or run `openagents service install`",
+            layout.root().display()
+        )));
+    }
     let config = Config::load(&layout)?;
     let status = service::status(&layout, &config, &mut SystemRunner)?;
     output.emit(&serialized(&status)?, render_status);
@@ -440,6 +457,14 @@ fn render_update(value: &Value) -> String {
 
 fn descriptor(output: &Output, args: &Args) -> Result<u8, Failure> {
     let layout = layout(args)?;
+    if !layout.config().is_file()
+        && let Some(app) = app_host()
+    {
+        // A descriptor left by an earlier service install is not this
+        // computer's host: the app's host runs outside the launcher.
+        output.emit(&app_host_value(Some(&app)), render_app_host);
+        return Ok(0);
+    }
     let Some(descriptor) = launcher::read_descriptor(&layout)? else {
         return Err(Failure::Refused(format!(
             "no descriptor under {}; the launcher has not run",
@@ -458,12 +483,87 @@ fn descriptor(output: &Output, args: &Args) -> Result<u8, Failure> {
 
 fn host_line(descriptor: &Value) -> String {
     format!(
-        "{} {} generation {} version {} on {}",
-        text(&descriptor["host_key"]),
+        "host {}: {}, version {}, listening on {} (start {})",
+        short(&text(&descriptor["host_key"])),
         text(&descriptor["state"]),
-        text(&descriptor["host_generation"]),
-        text(&descriptor["version"]),
+        short(&text(&descriptor["version"])),
         text(&descriptor["listen"]),
+        text(&descriptor["host_generation"]),
+    )
+}
+
+/// A long hex key or hash shortened for reading: `9c9122…f316`.
+fn short(value: &str) -> String {
+    if value.len() > 12 && value.is_ascii() {
+        format!("{}…{}", &value[..6], &value[value.len() - 4..])
+    } else {
+        value.to_owned()
+    }
+}
+
+/// The host the desktop app runs, asked over its same-user control socket.
+/// `None` when no host answers there within a short wait.
+fn app_host() -> Option<openagents_connect::control::Status> {
+    use openagents_connect::control::{self, Op, Reply, Request};
+    let socket = control::socket_path()?;
+    if !socket.exists() {
+        return None;
+    }
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .ok()?;
+    runtime.block_on(async {
+        #[cfg(unix)]
+        {
+            let ask = async {
+                let mut stream = tokio::net::UnixStream::connect(&socket).await.ok()?;
+                match control::call(&mut stream, &Request::new(1, Op::Status {})).await {
+                    Ok(Reply::Status(status)) => Some(status),
+                    _ => None,
+                }
+            };
+            tokio::time::timeout(Duration::from_secs(3), ask)
+                .await
+                .ok()
+                .flatten()
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = socket;
+            None
+        }
+    })
+}
+
+fn app_host_value(app: Option<&openagents_connect::control::Status>) -> Value {
+    match app {
+        Some(app) => json!({
+            "managed_by": "app",
+            "installed_service": false,
+            "running": true,
+            "host_key": app.host,
+            "label": app.label,
+            "online": app.online,
+            "version": app.version,
+            "devices": app.devices,
+        }),
+        None => json!({ "managed_by": null, "installed_service": false, "running": false }),
+    }
+}
+
+fn render_app_host(value: &Value) -> String {
+    let online = if value["online"].as_bool().unwrap_or(false) {
+        "online"
+    } else {
+        "offline"
+    };
+    format!(
+        "The OpenAgents app runs this computer's host ({}, {online}, host {}, version {}).\n\
+         `openagents service` manages a host installed without the app, so there is nothing to install here.",
+        text(&value["label"]),
+        short(&text(&value["host_key"])),
+        short(&text(&value["version"])),
     )
 }
 
@@ -518,7 +618,16 @@ mod tests {
         });
         assert_eq!(
             host_line(&descriptor),
-            "ab ready generation 3 version v2 on 127.0.0.1:47100"
+            "host ab: ready, version v2, listening on 127.0.0.1:47100 (start 3)"
+        );
+        let long = json!({
+            "host_key": "9c9122aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaf316", "state": "stopped",
+            "host_generation": 1, "version": "285a86bbbbbbbbbbbbbbbbbbbbbbbbbbc1a4",
+            "listen": "127.0.0.1:47100",
+        });
+        assert_eq!(
+            host_line(&long),
+            "host 9c9122…f316: stopped, version 285a86…c1a4, listening on 127.0.0.1:47100 (start 1)"
         );
         assert_eq!(
             update_line(&descriptor["update"]),
@@ -526,6 +635,28 @@ mod tests {
         );
         let update = json!({ "result": "rolled-back", "target": "v3", "request": "r", "descriptor": descriptor });
         assert_eq!(render_update(&update), "rolled back from v3: not ready");
+    }
+
+    #[test]
+    fn the_app_host_is_reported_instead_of_asking_to_install() {
+        let app = openagents_connect::control::Status {
+            host: "9c9122aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaf316".into(),
+            endpoint: "e".into(),
+            label: "MacBook".into(),
+            online: true,
+            relay: None,
+            devices: 2,
+            outstanding_invitations: 0,
+            version: "285a86bbbbbbbbbbbbbbbbbbbbbbbbbbc1a4".into(),
+        };
+        let value = app_host_value(Some(&app));
+        assert_eq!(value["managed_by"], "app");
+        let text = render_app_host(&value);
+        assert!(text.starts_with(
+            "The OpenAgents app runs this computer's host (MacBook, online, host 9c9122…f316, version 285a86…c1a4)."
+        ));
+        assert!(text.contains("nothing to install"));
+        assert!(!text.contains("run `openagents service install`"));
     }
 
     #[test]
