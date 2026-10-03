@@ -151,11 +151,30 @@ impl Setup {
     /// Returns a message when the target directory or the seal can't be
     /// laid out.
     pub fn for_run(workdir: &Path, seal: Option<&crate::seal::Seal>) -> Result<Setup, String> {
+        Setup::for_run_in(workdir, seal, None)
+    }
+
+    /// [`Setup::for_run`], building in `slot` when the caller leased one
+    /// of the host's build slots for the run (#10293), so the gate's
+    /// builds stay in the slot budget. A sealed evaluation still builds in
+    /// its own directory.
+    ///
+    /// # Errors
+    ///
+    /// Returns a message when the target directory or the seal can't be
+    /// laid out.
+    pub fn for_run_in(
+        workdir: &Path,
+        seal: Option<&crate::seal::Seal>,
+        slot: Option<&Path>,
+    ) -> Result<Setup, String> {
         let home = crate::credentials::openagents_dir().map(|dir| dir.join("coder-one"));
         let target = if seal.is_some_and(|seal| seal.read_scope().is_some()) {
             // A shared build directory can contain other attempts' source
             // and compiled answers. Sealed evaluations use their own.
             workdir.join("target")
+        } else if let Some(slot) = slot {
+            slot.to_path_buf()
         } else if let Some(named) =
             std::env::var_os("CARGO_TARGET_DIR").filter(|dir| seal.is_none() && !dir.is_empty())
         {
@@ -826,5 +845,26 @@ esac
             assert!(!problems.is_empty());
             assert!(record.notes.is_empty());
         }
+    }
+
+    #[test]
+    fn a_leased_slot_is_where_a_normal_runs_checks_build() {
+        let dir = tempfile::tempdir().unwrap();
+        let slot = dir.path().join("targets").join("project-slot-0");
+        let setup = Setup::for_run_in(dir.path(), None, Some(&slot)).unwrap();
+        assert_eq!(setup.target, slot);
+        assert!(slot.is_dir());
+        assert!(!setup.evaluation);
+    }
+
+    #[test]
+    fn an_offline_seal_without_a_read_scope_still_builds_in_the_slot() {
+        let dir = tempfile::tempdir().unwrap();
+        let seal = crate::seal::Seal::create(&dir.path().join("seal"), true).unwrap();
+        assert!(seal.read_scope().is_none());
+        let slot = dir.path().join("slot");
+        let setup = Setup::for_run_in(dir.path(), Some(&seal), Some(&slot)).unwrap();
+        assert_eq!(setup.target, slot);
+        assert!(setup.evaluation);
     }
 }

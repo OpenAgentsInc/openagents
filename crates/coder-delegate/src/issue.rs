@@ -452,6 +452,7 @@ pub async fn work<X: Clone, W: Worker<X>>(
                 &checked,
                 worker.seal(&inner).as_ref(),
                 gate_base.as_deref(),
+                None,
             )
             .await;
             remaining = problems;
@@ -1219,8 +1220,20 @@ pub async fn gate(
     recorder: &Recorder,
     seal: Option<&crate::seal::Seal>,
 ) -> (Vec<String>, Option<Confinement>) {
+    gate_in(workdir, jev, recorder, seal, None).await
+}
+
+/// [`gate`], building in `slot`, a build slot the caller leased for the
+/// run ([`confined::Setup::for_run_in`], #10293).
+pub async fn gate_in(
+    workdir: &Path,
+    jev: Option<&jev::Client>,
+    recorder: &Recorder,
+    seal: Option<&crate::seal::Seal>,
+    slot: Option<&Path>,
+) -> (Vec<String>, Option<Confinement>) {
     let base = command(workdir, "git", &["rev-parse", "origin/main"]).ok();
-    gate_with_base(workdir, jev, recorder, seal, base.as_deref()).await
+    gate_with_base(workdir, jev, recorder, seal, base.as_deref(), slot).await
 }
 
 async fn gate_with_base(
@@ -1229,11 +1242,12 @@ async fn gate_with_base(
     recorder: &Recorder,
     seal: Option<&crate::seal::Seal>,
     base: Option<&str>,
+    slot: Option<&Path>,
 ) -> (Vec<String>, Option<Confinement>) {
     let _ = command(workdir, "git", &["add", "-A"]);
     let diff = command(workdir, "git", &["diff", "--cached", "-U0"]).unwrap_or_default();
     let packages = changed_packages(workdir, &diff);
-    let (mut problems, tested) = match confined::Setup::for_run(workdir, seal) {
+    let (mut problems, tested) = match confined::Setup::for_run_in(workdir, seal, slot) {
         Ok(setup) => {
             let (problems, tested) = confined::run_with_base(&setup, &packages, base).await;
             (problems, Some(tested))
