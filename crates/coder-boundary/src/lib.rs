@@ -28,6 +28,10 @@
 //!   keeps every command out of them, so nothing OpenAgents runs makes
 //!   macOS ask the person for their music, photos, or documents.
 //!
+//! - [`source`] keeps a command that otherwise has full access out of the
+//!   checkout its worktree was made from, and out of that checkout's Git
+//!   directory.
+//!
 //! This is filesystem write enforcement, plus network denial when the
 //! caller asks for it with [`Spec::offline`], and read confinement when
 //! the caller asks for it with [`Spec::confining_reads`] or
@@ -39,6 +43,7 @@ pub mod boundary;
 pub mod cmdline;
 pub mod privacy;
 pub mod snapshot;
+pub mod source;
 pub mod toolchains;
 #[cfg(windows)]
 pub mod windows;

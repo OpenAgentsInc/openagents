@@ -225,7 +225,14 @@ pub const SETUID_PROGRAMS: &[&str] = &[
 /// set-user-ID programs ([`SETUID_PROGRAMS`]) start outside it too.
 #[must_use]
 pub fn profile(home: &Path, allowed: &[&Path]) -> String {
-    let mut profile = format!("(version 1)\n(allow default)\n{}", rules(home, allowed));
+    profile_with(Some(home), allowed, "")
+}
+
+/// [`profile`] with `before` (such as a [`crate::source::Guard`]'s
+/// rules) ahead of the privacy rules, for `home` when there is one.
+pub(crate) fn profile_with(home: Option<&Path>, allowed: &[&Path], before: &str) -> String {
+    let privacy = home.map(|home| rules(home, allowed)).unwrap_or_default();
+    let mut profile = format!("(version 1)\n(allow default)\n{before}{privacy}");
     for program in std::iter::once(SANDBOX_EXEC).chain(SETUID_PROGRAMS.iter().copied()) {
         profile.push_str(&format!(
             "(allow process-exec (literal \"{program}\") (with no-sandbox))\n"

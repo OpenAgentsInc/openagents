@@ -131,12 +131,15 @@ pub(crate) async fn turn(
             .map(str::to_owned)
     });
     let opening = Opening {
-        spec: super::private_spec(acp_client::process::Spec {
-            program: program.clone(),
-            arguments: arguments.clone(),
-            cwd: host.workspace().to_path_buf(),
-            environment: variables,
-        }),
+        spec: super::private_spec(
+            host,
+            acp_client::process::Spec {
+                program: program.clone(),
+                arguments: arguments.clone(),
+                cwd: host.workspace().to_path_buf(),
+                environment: variables,
+            },
+        ),
         resume: resume.clone(),
         meta: Some(acp_client::devin::engine_meta(coder_history::engine::MARK)),
         mode: None,

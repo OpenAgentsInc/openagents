@@ -1166,17 +1166,29 @@ fn no_capacity(host: Host, book: &Path, refusals: &[Refusal]) -> Result<task::Ta
     )
 }
 
-/// A whole coding agent's process, kept on macOS out of the places the
-/// system guards with a privacy prompt (`coder_boundary::privacy`), so
-/// nothing it reads makes macOS ask the owner about Coder. Its workspace
-/// stays allowed even inside one. A spec already inside the run's own
-/// boundary (`sandbox-exec`) carries the same rules and is unchanged.
-fn private_spec(spec: acp_client::process::Spec) -> acp_client::process::Spec {
-    let (program, arguments) =
-        coder_boundary::privacy::argv(spec.program, spec.arguments, &[spec.cwd.as_path()]);
+/// A whole coding agent's process, kept out of the checkout its
+/// workspace was made from (`Host::private_argv`, #10247): the agent and
+/// every tool it approves for itself write anywhere full access does but
+/// there. On macOS it is also kept out of the places the system guards
+/// with a privacy prompt (`coder_boundary::privacy`), so nothing it reads
+/// makes macOS ask the owner about Coder; its workspace stays allowed
+/// even inside one. A spec already inside the run's own boundary
+/// (`sandbox-exec`) carries the same rules and is unchanged.
+fn private_spec(host: &Host, spec: acp_client::process::Spec) -> acp_client::process::Spec {
+    let (program, arguments) = host.private_argv(spec.program, spec.arguments);
+    let mut environment = spec.environment;
+    for (name, value) in host.guard_environment() {
+        let (name, value) = (
+            name.to_string_lossy().into_owned(),
+            value.to_string_lossy().into_owned(),
+        );
+        environment.retain(|(existing, _)| *existing != name);
+        environment.push((name, value));
+    }
     acp_client::process::Spec {
         program,
         arguments,
+        environment,
         ..spec
     }
 }

@@ -279,12 +279,15 @@ pub(crate) async fn turn(
             cwd: host.workspace().to_path_buf(),
             environment: contained.environment.clone(),
         },
-        None => super::private_spec(acp_client::process::Spec {
-            program: program.clone(),
-            arguments: arguments.clone(),
-            cwd: host.workspace().to_path_buf(),
-            environment: grok_environment(host).await,
-        }),
+        None => super::private_spec(
+            host,
+            acp_client::process::Spec {
+                program: program.clone(),
+                arguments: arguments.clone(),
+                cwd: host.workspace().to_path_buf(),
+                environment: grok_environment(host).await,
+            },
+        ),
     };
     let opening = Opening {
         spec,

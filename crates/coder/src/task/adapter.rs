@@ -567,6 +567,11 @@ pub struct Host {
     /// This computer's toolchains, for a run with [`Access::Toolchains`]:
     /// what its boundary reads, and its commands' `PATH` and variables.
     toolchains: Option<coder_boundary::Toolchains>,
+    /// What the run's full-access commands and whole coding agents may
+    /// not write: the checkout the workspace was made from and its Git
+    /// directory (#10247). `None` when the workspace is no linked
+    /// worktree, in a container, or off macOS and Linux.
+    guard: Option<coder_boundary::source::Guard>,
     /// The owner's login-shell environment, for a full-access run: read
     /// beside admission, and waited for by the first command that runs
     /// with it ([`Host::login_environment`]). Set to `None` at admission
@@ -690,6 +695,23 @@ impl Host {
             )
             .await?,
         );
+        // The checkout the worktree was made from stays unwritten even
+        // under full access, and even by a whole coding agent that
+        // approves its own tools (#10247): a guard that can't be
+        // enforced here refuses the run.
+        let guard = if coder_boundary::source::APPLIES && configuration.container.is_none() {
+            let guard = coder_boundary::source::Guard::for_worktree(&workspace).map_err(|_| {
+                Error::InvalidCommand("the workspace's source checkout cannot be found")
+            })?;
+            if let Some(guard) = &guard {
+                guard.enforceable().map_err(|_| {
+                    Error::InvalidCommand("the source checkout cannot be kept unwritten here")
+                })?;
+            }
+            guard
+        } else {
+            None
+        };
         let target = if configuration.access == Access::Full {
             Some(super::targets::Lease::acquire(&owner.dir, &git_directory)?)
         } else {
@@ -861,7 +883,14 @@ impl Host {
                     json!({"source":"cleared","path":owner::SYSTEM_PATH})
                 },
             )
-            .noting("toolchains", json!(toolchains)),
+            .noting("toolchains", json!(toolchains))
+            .noting(
+                "source_guard",
+                json!(guard.as_ref().map(|guard| json!({
+                    "unwritten": guard.protected().collect::<Vec<_>>(),
+                    "allowed_back": guard.allowed().collect::<Vec<_>>(),
+                }))),
+            ),
         )?;
         if Snapshot::observe(&workspace).digest() != before.digest() {
             return Err(Error::InvalidCommand(
@@ -889,6 +918,7 @@ impl Host {
             boundary,
             policy,
             toolchains,
+            guard,
             login: if login_reading.is_some() {
                 tokio::sync::OnceCell::new()
             } else {
@@ -1037,6 +1067,48 @@ impl Host {
     }
     pub fn workspace(&self) -> &Path {
         &self.admission.workspace
+    }
+
+    /// The guard that keeps this run out of the checkout its worktree
+    /// was made from, when there is one.
+    #[must_use]
+    pub fn source_guard(&self) -> Option<&coder_boundary::source::Guard> {
+        self.guard.as_ref()
+    }
+
+    /// `program` as a command with no boundary of this run's (full
+    /// access, or a whole coding agent): under the [`Host::source_guard`]
+    /// when there is one, so nothing it starts writes the checkout the
+    /// workspace was made from, and on macOS always under the privacy
+    /// rules (`coder_boundary::privacy`), with the workspace allowed
+    /// back. The caller adds [`Host::guard_environment`] after its own.
+    #[must_use]
+    pub fn private_command(&self, program: impl AsRef<Path>) -> std::process::Command {
+        let program = program.as_ref();
+        match &self.guard {
+            Some(guard) => guard.command(program, &[self.workspace()]),
+            None => coder_boundary::privacy::command(program, &[self.workspace()]),
+        }
+    }
+
+    /// [`Host::private_command`] as a program and its arguments.
+    #[must_use]
+    pub fn private_argv(&self, program: PathBuf, arguments: Vec<String>) -> (PathBuf, Vec<String>) {
+        match &self.guard {
+            Some(guard) => guard.argv(program, arguments, &[self.workspace()]),
+            None => coder_boundary::privacy::argv(program, arguments, &[self.workspace()]),
+        }
+    }
+
+    /// The variables a guarded process adds to its environment: Git's
+    /// repository discovery stops at the worktree's parent. Empty with no
+    /// guard.
+    #[must_use]
+    pub fn guard_environment(&self) -> Vec<(std::ffi::OsString, std::ffi::OsString)> {
+        self.guard
+            .as_ref()
+            .map(coder_boundary::source::Guard::environment)
+            .unwrap_or_default()
     }
     pub fn execution_workspace(&self) -> &Path {
         if self.configuration().container.is_some() {
@@ -1388,17 +1460,17 @@ impl Host {
             // one: on macOS the places it guards with a privacy prompt
             // (music, photos, documents, other apps' data) and Apple
             // Events are denied, so no command makes macOS ask the owner
-            // about Coder (`coder_boundary::privacy`).
+            // about Coder (`coder_boundary::privacy`). The checkout the
+            // worktree was made from stays unwritten (#10247).
             Some(login) => {
-                let mut command = coder_boundary::privacy::command(
-                    coder_boundary::plain_path(&self.admission.grant.program),
-                    &[self.workspace()],
-                );
+                let mut command =
+                    self.private_command(coder_boundary::plain_path(&self.admission.grant.program));
                 command
                     .args(&arguments)
                     .current_dir(&directory)
                     .env_clear()
                     .envs(login.variables.iter().map(|(key, value)| (key, value)));
+                command.envs(self.guard_environment());
                 command.envs(script_variables);
                 command
             }

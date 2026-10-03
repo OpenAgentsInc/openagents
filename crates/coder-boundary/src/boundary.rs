@@ -934,7 +934,7 @@ impl Held {
 /// read-only root settles the question before any boundary exists.
 /// `/bin/sh` is the one command every POSIX host has; `/bin/true` is
 /// absent on NixOS.
-fn operable(backend: &Path) -> Result<(), Error> {
+pub(crate) fn operable(backend: &Path) -> Result<(), Error> {
     use std::sync::OnceLock;
     static PROBE: OnceLock<Result<(), String>> = OnceLock::new();
     let probe = PROBE.get_or_init(|| {
@@ -966,7 +966,7 @@ fn operable(backend: &Path) -> Result<(), Error> {
 }
 
 /// Resolves a path that must exist to its canonical form.
-fn existing(path: &Path) -> Result<PathBuf, Error> {
+pub(crate) fn existing(path: &Path) -> Result<PathBuf, Error> {
     if !path.is_absolute() {
         return Err(Error::Relative(path.to_path_buf()));
     }
@@ -1002,7 +1002,7 @@ fn quoted(path: &Path) -> Result<String, Error> {
 /// everything beneath it. Denies land before the allows, so an allowed
 /// path nested under a protected one is the exception and the rest of
 /// the protected tree stays denied.
-fn deny(path: &Path) -> Result<String, Error> {
+pub(crate) fn deny(path: &Path) -> Result<String, Error> {
     let path = quoted(path)?;
     Ok(format!(
         "(deny file-write* (subpath {path}) (literal {path}))\n"
@@ -1019,7 +1019,7 @@ fn allow_read(path: &Path) -> Result<String, Error> {
 }
 
 /// An allow rule for one writable path, after every deny.
-fn allow(path: &Path) -> Result<String, Error> {
+pub(crate) fn allow(path: &Path) -> Result<String, Error> {
     let path = quoted(path)?;
     Ok(format!(
         "(allow file-write* (subpath {path}) (literal {path}))\n"

@@ -1400,6 +1400,65 @@ fn full_access(grant: &[u8]) -> Vec<u8> {
     serde_json::to_vec(&grant).unwrap()
 }
 
+/// The `fix-git` case (#10247): a full-access command, and a whole coding
+/// agent approving its own tools, `cd` into the checkout the worktree was
+/// made from and commit or merge there. Every write there fails and the
+/// checkout's branch and files are as they were, while a commit in the
+/// worktree itself works.
+#[tokio::test]
+async fn full_access_never_writes_the_checkout_the_worktree_came_from() {
+    let (root, store, grant) = fixture();
+    let source = root.path().join("repo").canonicalize().unwrap();
+    let git = |args: &[&str]| {
+        let output = std::process::Command::new("git")
+            .args(args)
+            .current_dir(&source)
+            .output()
+            .unwrap();
+        String::from_utf8_lossy(&output.stdout).trim().to_string()
+    };
+    let master = git(&["rev-parse", "HEAD"]);
+    let host = Host::admit(&store, &full_access(&grant)).await.unwrap();
+    let guard = host.source_guard().expect("a linked worktree is guarded");
+    assert!(guard.protected().any(|path| path == source));
+    let identity = "export GIT_AUTHOR_NAME=E GIT_AUTHOR_EMAIL=e@example.invalid \
+                    GIT_COMMITTER_NAME=E GIT_COMMITTER_EMAIL=e@example.invalid";
+    let ours = host
+        .command(
+            &format!("{identity}; printf fixed > fixed.txt && git add fixed.txt && git commit -qm fix && git rev-parse HEAD"),
+            Duration::from_secs(20),
+        )
+        .await
+        .unwrap();
+    assert_eq!(ours.exit, Some(0), "{}", ours.output);
+    let commit = ours.output.lines().next().unwrap().trim().to_string();
+    let escape = format!(
+        "{identity}; cd '{}' && git merge -q --ff-only {commit} || git commit -q --allow-empty -m escape \
+         || printf escape > escape.txt",
+        source.display()
+    );
+    let escaped = host
+        .command(&escape, Duration::from_secs(20))
+        .await
+        .unwrap();
+    assert_ne!(escaped.exit, Some(0), "{}", escaped.output);
+    // A whole coding agent (Grok Build, OpenCode, Devin) runs the same way.
+    let (program, arguments) = host.private_argv(system_shell(), vec!["-c".into(), escape.clone()]);
+    let agent = std::process::Command::new(program)
+        .args(arguments)
+        .current_dir(host.workspace())
+        .envs(host.guard_environment())
+        .output()
+        .unwrap();
+    assert!(!agent.status.success());
+    assert_eq!(git(&["rev-parse", "HEAD"]), master);
+    assert_eq!(git(&["status", "--porcelain"]), "");
+    assert!(!source.join("escape.txt").exists());
+    let trace = std::fs::read_to_string(store.join("fixture.1.atif.jsonl")).unwrap();
+    assert!(trace.contains("\"source_guard\""), "{trace}");
+    host.finish("fixture_complete", false, json!({})).unwrap();
+}
+
 /// Full access: no sandbox, the owner's login environment and real HOME,
 /// and process listing; the boundary grant keeps its scratch HOME and its
 /// write boundary.

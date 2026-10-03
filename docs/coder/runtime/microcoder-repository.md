@@ -284,8 +284,11 @@ and with network access, in the owner's login-shell environment read once at
 admission, with the real `HOME`, `USER`, and `LOGNAME`, and without variables
 named `*_API_KEY`, `*_TOKEN`, or `*_SECRET`. The admission records
 `host_network` and `host_user`; the trace records the environment's source,
-shell, `PATH`, and variable names only. The task store and the common Git
-directory are no longer protected from commands. A container grant refuses
+shell, `PATH`, and variable names only. The task store is no longer protected from
+commands. The checkout the worktree was made from and its common Git
+directory still are, apart from the worktree's own administrative directory
+and the object store, and so are Grok Build, OpenCode, and Devin processes
+in every access mode (`coder_boundary::source`, #10247). A container grant refuses
 full access. [Full access](host-autostart.md#full-access) covers it.
 
 `"access": "toolchains"` is what a person running Coder on their own computer

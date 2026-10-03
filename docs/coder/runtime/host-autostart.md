@@ -275,12 +275,18 @@ coder host autostart on --workspace openagents \
 
 Each grant then carries `"access": "full"`, and the engine's commands:
 
-- run as you, with the admitted shell and no write boundary: no
-  namespaces on Linux, and on macOS only the privacy profile, a
-  `sandbox-exec` profile that allows everything but the folders macOS
-  guards with a privacy prompt and Apple Events
-  ([privacy prompts](privacy-prompts.md)), so Git, `ps`, Xcode's
-  libraries, and everything else your account can use work;
+- run as you, with the admitted shell and no write boundary but one:
+  nothing writes the checkout the task's worktree was made from, or that
+  checkout's Git directory (#10247). The worktree, its own entry under
+  `.git/worktrees/`, and the object store stay writable, so committing in
+  the worktree works; merging into your checkout's branch, or editing
+  its files, fails. On Linux that is a `bwrap` mount namespace with the
+  whole host bound as it is and the checkout bound read-only over it; on
+  macOS it is in the privacy profile, a `sandbox-exec` profile that
+  otherwise allows everything but the folders macOS guards with a privacy
+  prompt and Apple Events ([privacy prompts](privacy-prompts.md)). Git,
+  `ps`, Xcode's libraries, and everything else your account can use work
+  (on Linux, `sudo` doesn't: the namespace is a user namespace);
 - reach the network;
 - get your login-shell environment, read once when the task is admitted by
   running your shell (`$SHELL -l -i`, else the account's shell) with
