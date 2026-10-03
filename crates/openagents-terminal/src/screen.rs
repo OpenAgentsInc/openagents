@@ -846,7 +846,7 @@ impl Screen {
             Done::BackgroundCard(id, _, Err(why)) => self.app.loud(format!("{id}: {why}")),
             Done::Notice(Some((at, line))) if at > self.app.notice_seen => {
                 self.app.notice_seen = at;
-                self.app.note(line);
+                self.app.notice(line);
             }
             Done::Notice(_) => {}
             Done::Imported(Ok(message)) => self.app.note(message),

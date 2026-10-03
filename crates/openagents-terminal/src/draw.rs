@@ -216,15 +216,21 @@ pub fn draw(app: &mut App, area: Rect, buf: &mut Buffer) -> (u16, u16) {
                     .unwrap_or("There are no settings to change here."),
             ),
             Overlay::Background { rows, selected } => (
-                "Background".to_owned(),
+                "Background watchers".to_owned(),
                 rows.iter()
                     .map(|row| Item {
                         label: row.id.clone(),
                         detail: row.line.clone(),
                     })
+                    // Their notifications, newest first: they never go
+                    // into the transcript (#10283).
+                    .chain(app.notices.iter().rev().map(|notice| Item {
+                        label: "notice".to_owned(),
+                        detail: notice.clone(),
+                    }))
                     .collect(),
                 *selected,
-                "Enter show · r run (dry run first) · p pause or resume · l log · Esc close",
+                "Enter show · r run (dry run first) · p pause or resume · l log · Esc or ← close",
                 "No background rules.",
             ),
         };
