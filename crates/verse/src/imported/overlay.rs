@@ -299,7 +299,7 @@ mod tests {
 /// Classic UI units use a 768-pixel reference height.
 fn bar_geometry(width: f32, height: f32) -> (f32, f32, f32) {
     let scale = height / 768.0;
-    ((width - 1024.0 * scale) * 0.5, height - 40.0 * scale, scale)
+    ((width - 430.0 * scale) * 0.5, height - 52.0 * scale, scale)
 }
 /// Classic action-bar hit regions share the drawing geometry with input handling.
 pub fn action_at(x: f32, y: f32, width: f32, height: f32) -> Option<super::play::Ability> {
@@ -316,7 +316,7 @@ pub fn action_at(x: f32, y: f32, width: f32, height: f32) -> Option<super::play:
 /// Decorative chrome consumes pointer presses instead of selecting the world behind it.
 pub fn chrome_at(x: f32, y: f32, width: f32, height: f32) -> bool {
     let (left, _, s) = bar_geometry(width, height);
-    (x >= left - 96.0 * s && x <= left + 1120.0 * s && y >= height - 53.0 * s)
+    (x >= left && x <= left + 430.0 * s && (height - 60.0 * s..height - 8.0 * s).contains(&y))
         || (y <= 104.0 * s && (x <= 213.0 * s || (250.0 * s..482.0 * s).contains(&x)))
 }
 fn health_color(fraction: f32) -> [f32; 4] {
@@ -369,50 +369,23 @@ pub fn action_bar(
          h: f32,
          uv: [f32; 4],
          color: [f32; 4]| ui.image_region(atlas, name, [x, y, w * s, h * s], uv, color);
-    for i in 0..4 {
-        let v = 0.83203125 - i as f32 * 0.25;
-        image(
-            ui,
-            "main-bar",
-            left + i as f32 * 256.0 * s,
-            height - 43.0 * s,
-            256.0,
-            43.0,
-            [0.0, 1.0, v, v + 0.16796875],
-            [1.0; 4],
-        );
-        image(
-            ui,
-            "main-bar",
-            left + i as f32 * 256.0 * s,
-            height - 50.0 * s,
-            256.0,
-            10.0,
-            [0.0, 1.0, v - 0.0390625, v],
-            [1.0; 4],
+    // A compact beveled tray holds only the chamber abilities.
+    for (inset, color) in [
+        (0.0, [0.08, 0.07, 0.06, 0.96]),
+        (1.0, [0.46, 0.39, 0.24, 1.0]),
+        (2.0, [0.19, 0.17, 0.13, 1.0]),
+        (4.0, [0.035, 0.03, 0.025, 0.96]),
+    ] {
+        ui.rect(
+            atlas,
+            left + inset * s,
+            y + (inset - 8.0) * s,
+            (430.0 - inset * 2.0) * s,
+            (52.0 - inset * 2.0) * s,
+            color,
         );
     }
-    image(
-        ui,
-        "end-cap",
-        left - 96.0 * s,
-        height - 128.0 * s,
-        128.0,
-        128.0,
-        [0.0, 1.0, 0.0, 1.0],
-        [1.0; 4],
-    );
-    image(
-        ui,
-        "end-cap",
-        left + 992.0 * s,
-        height - 128.0 * s,
-        128.0,
-        128.0,
-        [1.0, 0.0, 0.0, 1.0],
-        [1.0; 4],
-    );
-    for index in 0..12 {
+    for index in 0..Ability::ALL.len() {
         let x = left + (8.0 + index as f32 * 42.0) * s;
         if let Some(ability) = Ability::ALL.get(index) {
             let (ready, cd, total) = if let Some(spell) = ability.spell() {
@@ -474,124 +447,8 @@ pub fn action_bar(
                 &key,
                 [0.6, 0.6, 0.6, 1.0],
             );
-        } else {
-            image(
-                ui,
-                "empty-slot",
-                x,
-                y,
-                36.0,
-                36.0,
-                [0.0, 1.0, 0.0, 1.0],
-                [1.0; 4],
-            );
         }
     }
-    image(
-        ui,
-        "page-up",
-        left + 506.0 * s,
-        height - 47.0 * s,
-        32.0,
-        32.0,
-        [0.0, 1.0, 0.0, 1.0],
-        [1.0; 4],
-    );
-    image(
-        ui,
-        "page-down",
-        left + 506.0 * s,
-        height - 27.0 * s,
-        32.0,
-        32.0,
-        [0.0, 1.0, 0.0, 1.0],
-        [1.0; 4],
-    );
-    outlined(
-        ui,
-        &small,
-        left + 542.0 * s - small.measure("1") * 0.5,
-        height - 26.5 * s,
-        "1",
-        [1.0, 0.82, 0.0, 1.0],
-    );
-    for (i, name) in [
-        "character",
-        "spellbook",
-        "talents",
-        "quest",
-        "socials",
-        "world",
-        "mainmenu",
-        "help",
-    ]
-    .iter()
-    .enumerate()
-    {
-        image(
-            ui,
-            &format!("micro-{name}"),
-            left + (552.0 + i as f32 * 26.0) * s,
-            height - 60.0 * s,
-            29.0,
-            58.0,
-            [0.0, 1.0, 0.0, 1.0],
-            [1.0; 4],
-        );
-    }
-    image(
-        ui,
-        "portrait-adventurer",
-        left + 557.5 * s,
-        height - 32.0 * s,
-        18.0,
-        25.0,
-        [0.2, 0.8, 0.0666, 0.9],
-        [1.0; 4],
-    );
-    for i in 0..4 {
-        let x = left + (939.0 - i as f32 * 42.0) * s;
-        image(
-            ui,
-            "bag-empty",
-            x,
-            height - 39.0 * s,
-            37.0,
-            37.0,
-            [0.0, 1.0, 0.0, 1.0],
-            [1.0; 4],
-        );
-        image(
-            ui,
-            "action-frame",
-            x - 13.5 * s,
-            height - 51.5 * s,
-            64.0,
-            64.0,
-            [0.0, 1.0, 0.0, 1.0],
-            [1.0; 4],
-        );
-    }
-    image(
-        ui,
-        "backpack",
-        left + 981.0 * s,
-        height - 39.0 * s,
-        37.0,
-        37.0,
-        [0.0, 1.0, 0.0, 1.0],
-        [1.0; 4],
-    );
-    image(
-        ui,
-        "action-frame",
-        left + 967.5 * s,
-        height - 51.5 * s,
-        64.0,
-        64.0,
-        [0.0, 1.0, 0.0, 1.0],
-        [1.0; 4],
-    );
     let health = snapshot.player.hp as f32 / snapshot.player.max_hp as f32;
     ui.rect(
         atlas,
@@ -875,7 +732,8 @@ mod action_tests {
                 action_at(left + 50.0 * s, top + 18.0 * s, w, h),
                 Some(super::super::play::Ability::FireBolt)
             );
-            assert!(chrome_at(left + 800.0 * s, h - 20.0 * s, w, h));
+            assert!(chrome_at(left + 215.0 * s, h - 20.0 * s, w, h));
+            assert!(!chrome_at(left + 800.0 * s, h - 20.0 * s, w, h));
             assert!(!chrome_at(w * 0.5, h * 0.5, w, h));
         }
         assert_eq!(health_color(1.0), [0.0, 1.0, 0.0, 1.0]);

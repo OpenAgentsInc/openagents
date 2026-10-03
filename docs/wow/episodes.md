@@ -309,3 +309,9 @@ normal hit and 45 while enraged; cultists deal 8 and cast more often. Cultists
 have 15 health. Floating damage numbers use the imported Classic Friz font,
 with yellow text above enemies and red text above the adventurer. Numbers rise
 and fade, show actual health lost, and exclude damage absorbed by shields.
+
+The bottom HUD now uses a compact, centered tray containing only the ten chamber
+abilities. Classic icon frames, hotkeys, cooldowns, and tooltips remain; bags,
+menu buttons, paging controls, end caps, and unused slots are removed. The
+[native compact-bar capture](../../bench/wow/2026-10-03/verse-compact-bar.png)
+shows the updated layout.
