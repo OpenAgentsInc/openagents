@@ -327,6 +327,17 @@ fi
 if [ -f {ENV_FILE} ]; then set -a; . {ENV_FILE}; set +a; rm -f {ENV_FILE}; fi
 export PATH="$HOME/.cargo/bin:/usr/local/cargo/bin:$HOME/.grok/bin:$HOME/.local/bin:/usr/local/bin:$PATH" CARGO_INCREMENTAL=0
 [ -z "${{RUSTUP_HOME:-}}" ] && [ -d /usr/local/rustup ] && export RUSTUP_HOME=/usr/local/rustup
+# Coder hands Grok Build the XAI_API_KEY of the login shell, which it starts
+# with an empty environment: the profile reads the key from /tmp (outside
+# every snapshot), and the file goes when this script ends.
+trap 'rm -f /tmp/oa-engine.env' EXIT
+if [ -n "${{XAI_API_KEY:-}}" ]; then
+  (umask 077; printf 'export XAI_API_KEY=%q\n' "$XAI_API_KEY" > /tmp/oa-engine.env)
+  for f in "$HOME/.profile" "$HOME/.bash_profile"; do
+    [ "$f" = "$HOME/.bash_profile" ] && [ ! -f "$f" ] && continue
+    grep -q oa-engine.env "$f" 2>/dev/null || echo '[ -r /tmp/oa-engine.env ] && . /tmp/oa-engine.env' >> "$f"
+  done
+fi
 [ -n "${{OA_GIT_NAME:-}}" ] && git config --global user.name "$OA_GIT_NAME"
 [ -n "${{OA_GIT_EMAIL:-}}" ] && git config --global user.email "$OA_GIT_EMAIL"
 unset OA_GIT_NAME OA_GIT_EMAIL
@@ -347,7 +358,7 @@ else
 fi
 mkdir -p ~/.oa-run/bin && cp "$slot/debug/openagents" "$slot/debug/microcoder" ~/.oa-run/bin/
 export OPENAGENTS_CODER_CONTROLLER=$HOME/.oa-run/bin/microcoder
-exec ~/.oa-run/bin/openagents chat work --local --json --issues {issue} --parallel 1{land}
+~/.oa-run/bin/openagents chat work --local --json --issues {issue} --parallel 1{land}
 "#
     )
 }
@@ -1482,13 +1493,16 @@ mod tests {
         let script = run_script(10220, Some(Land::Main), false);
         let read = script.find(". /tmp/oa-run.env").unwrap();
         let removed = script.find("rm -f /tmp/oa-run.env").unwrap();
-        let work = script.find("chat work").unwrap();
+        let work = script.find("openagents chat work").unwrap();
         assert!(read < removed && removed < work);
         assert!(script.ends_with("--issues 10220 --parallel 1 --land main\n"));
         assert!(script.contains("OPENAGENTS_CODER_CONTROLLER"));
-        for word in ["GH_TOKEN=", "XAI_API_KEY=", "ghp_", "gho_", "xai-"] {
+        for word in ["GH_TOKEN=", "ghp_", "gho_", "xai-"] {
             assert!(!script.contains(word), "{word}");
         }
+        // The engine key reaches the login shell through /tmp, by name only.
+        assert!(script.contains(r#"printf 'export XAI_API_KEY=%q\n' "$XAI_API_KEY""#));
+        assert!(script.contains("trap 'rm -f /tmp/oa-engine.env' EXIT"));
         assert!(run_script(1, None, true).ends_with("--parallel 1\n"));
     }
 

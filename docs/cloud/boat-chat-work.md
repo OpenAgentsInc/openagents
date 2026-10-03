@@ -90,7 +90,7 @@ reads and deletes first. That keeps credentials:
 | Variable | Source, first found wins | Used for |
 | --- | --- | --- |
 | `GH_TOKEN` | `OA_BOAT_GH_TOKEN`; Secret Manager `coder-pool-git-token` (the September pool's git token); `gh auth token` on this computer | the flow's `gh` (claim, comments, close) and `git push` through `gh auth setup-git` |
-| `XAI_API_KEY` | `XAI_API_KEY`; Secret Manager `openagents-xai-api-key` | Grok Build, the engine the flow uses under `api-keys` |
+| `XAI_API_KEY` | `XAI_API_KEY`; Secret Manager `openagents-xai-api-key` | Grok Build, the engine the flow uses under `api-keys`. Coder gives Grok Build the key of the login shell, which it starts with an empty environment, so the run writes it to `/tmp/oa-engine.env` (mode 600, outside snapshots), the profile sources that file, and the run deletes it when it ends |
 | `OA_GIT_NAME`, `OA_GIT_EMAIL` | the same variables; this computer's `git config user.name/email` | commit identity |
 
 `coder-pool-git-token` is an owner OAuth token with push to the repository.
