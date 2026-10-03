@@ -78,6 +78,10 @@ const SECRET_PROJECT: &str = "openagentsgemini";
 const GITHUB_SECRET: &str = "coder-pool-git-token";
 /// Grok Build's key.
 const XAI_SECRET: &str = "openagents-xai-api-key";
+/// The OpenAI API key Codex logs in with on a cloud run (#10275): optional.
+/// With it Coder prefers Codex (`gpt-6.1-sol`, medium, as one lean
+/// `codex exec` session); without it the run is on Grok Build.
+const OPENAI_SECRET: &str = "coder-openai-api-key";
 
 /// How a run's coding agents log in.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -291,6 +295,12 @@ pub(super) fn credentials(logins: EngineLogins) -> Result<Credentials, String> {
              connected subscriptions on Boat (NEEDS_OWNER: Boat: choose how coding agents log in)",
             )?;
         variables.insert("XAI_API_KEY".to_owned(), xai);
+        // Codex takes an API key only through `codex login --with-api-key`,
+        // which the run does on the computer that runs it.
+        if let Some(openai) = variable("OA_CODER_OPENAI_API_KEY").or_else(|| secret(OPENAI_SECRET))
+        {
+            variables.insert("OA_CODEX_API_KEY".to_owned(), openai);
+        }
     }
     for (name, key) in [("OA_GIT_NAME", "user.name"), ("OA_GIT_EMAIL", "user.email")] {
         if let Some(value) = variable(name).or_else(|| git_config(key)) {
@@ -325,6 +335,12 @@ export PATH="$HOME/.cargo/bin:/usr/local/cargo/bin:$HOME/.grok/bin:$HOME/.local/
 # with an empty environment: the profile reads the key from /tmp (outside
 # every snapshot), and the file goes when this script ends.
 trap 'rm -f /tmp/oa-engine.env' EXIT
+# An OpenAI key logs Codex in (API-key login, run as a lean codex exec
+# session); the login goes with the sandbox.
+if [ -n "${{OA_CODEX_API_KEY:-}}" ]; then
+  printenv OA_CODEX_API_KEY | codex login --with-api-key >/dev/null 2>&1 || echo "boat: codex login with the API key failed" >&2
+fi
+unset OA_CODEX_API_KEY
 if [ -n "${{XAI_API_KEY:-}}" ]; then
   (umask 077; printf 'export XAI_API_KEY=%q\n' "$XAI_API_KEY" > /tmp/oa-engine.env)
   for f in "$HOME/.profile" "$HOME/.bash_profile"; do

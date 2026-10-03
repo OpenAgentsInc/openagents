@@ -105,6 +105,7 @@ reads and deletes first. That keeps credentials:
 | --- | --- | --- |
 | `GH_TOKEN` | `OA_BOAT_GH_TOKEN`; Secret Manager `coder-pool-git-token` (the September pool's git token); `gh auth token` on this computer | the flow's `gh` (claim, comments, close) and `git push` through `gh auth setup-git` |
 | `XAI_API_KEY` | `XAI_API_KEY`; Secret Manager `openagents-xai-api-key` | Grok Build, the engine the flow uses under `api-keys`. Coder gives Grok Build the key of the login shell, which it starts with an empty environment, so the run writes it to `/tmp/oa-engine.env` (mode 600, outside snapshots), the profile sources that file, and the run deletes it when it ends |
+| `OA_CODEX_API_KEY` (optional) | `OA_CODER_OPENAI_API_KEY`; Secret Manager `coder-openai-api-key` | Codex, under `api-keys`: the run pipes it to `codex login --with-api-key` and unsets it, so Coder prefers Codex (`gpt-6.1-sol`, medium) as one lean `codex exec` session (#10275). Absent, the run is on Grok Build |
 | `OA_GIT_NAME`, `OA_GIT_EMAIL` | the same variables; this computer's `git config user.name/email` | commit identity |
 
 `coder-pool-git-token` is an owner OAuth token with push to the repository.
@@ -117,9 +118,19 @@ place to change.
 The default is `api-keys` (`OA_BOAT_ENGINE_LOGINS` sets the default).
 
 - **`api-keys`.** The issue flow's engines are Codex, Claude Code, and Grok
-  Build. Coder's Codex route needs a ChatGPT login, not an OpenAI API key,
-  and its Claude route needs a Claude Code sign-in; only Grok Build takes an
-  API key (`XAI_API_KEY`). So with `api-keys` the flow runs on Grok Build.
+  Build. Coder's Codex step loop needs a ChatGPT login, but its lean
+  `codex exec` session takes an API-key login, and Coder runs Codex that way
+  whenever Codex's login is an API key (#10275). So with `api-keys` the flow
+  runs on Codex when an OpenAI key is given (`coder-openai-api-key`), else
+  on Grok Build (`XAI_API_KEY`). Claude Code needs a sign-in.
+- **The Grok model.** On `XAI_API_KEY` Grok Build's own default is
+  `grok-4.20-0309-non-reasoning`, which reported edits it never made
+  (#10221). A Grok route that keeps the default therefore runs `grok-4.7`
+  on the API login (`acp_client::grok::API_KEY_MODEL`), and a turn on a
+  model known to fake tool results (`FAKES_TOOL_RESULTS`) is refused with
+  that reason instead of ending `unchanged`. `coder.providers grok:MODEL`
+  passes `--model MODEL`; a login that does not offer it (`grok models`)
+  connects its own default, and the turn is refused as a model mismatch.
 - **`boat`.** The sandboxes start with `noEnv: false`, so Boat writes the
   ChatGPT and Claude subscriptions the owner connected on Boat's dashboard
   (`~/.codex/auth.json`, `~/.claude/.credentials.json`) into each sandbox,

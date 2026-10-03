@@ -121,6 +121,7 @@ The same reader as `--on boat` (`chat_boat::credentials`, engine logins
 | --- | --- |
 | `GH_TOKEN` | `OA_BOAT_GH_TOKEN`; Secret Manager `coder-pool-git-token`; `gh auth token` |
 | `XAI_API_KEY` | `XAI_API_KEY`; Secret Manager `openagents-xai-api-key` |
+| `OA_CODEX_API_KEY` (optional) | `OA_CODER_OPENAI_API_KEY`; Secret Manager `coder-openai-api-key` |
 | `OA_GIT_NAME`, `OA_GIT_EMAIL` | the same variables; `git config user.name/email` |
 
 They travel inside the run's script on ssh's standard input, never on a
@@ -133,9 +134,13 @@ the key only in the process environment Grok Build refuses with
 "Authentication required" (seen 2026-10-02). So the run script writes the
 key to `~/.oa-pool/engine.env` (mode 600), which `~/.profile` and
 `~/.bashrc` source. That file goes with the host's disk when the host
-deletes itself. Codex and Claude Code are not signed in on pool hosts; the
-owner's choice of how they log in is pending in `NEEDS_OWNER.md` ("Boat:
-choose how coding agents log in"), and the pool follows the same choice.
+deletes itself. With `OA_CODEX_API_KEY` the script pipes it to `codex login
+--with-api-key` (an API-key login on the host's disk) and Coder runs Codex,
+its first choice, as one lean `codex exec` session at `gpt-6.1-sol` medium
+(#10275). Grok Build on the key runs `grok-4.7`, not the API's default
+`grok-4.20-0309-non-reasoning`, which fakes edits (see `boat-chat-work.md`).
+Claude Code is not signed in on pool hosts; subscription logins are pending
+in `NEEDS_OWNER.md` ("Boat: choose how coding agents log in").
 
 ## Operate
 

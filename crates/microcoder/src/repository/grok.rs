@@ -249,8 +249,33 @@ pub(crate) async fn turn(
     let effort = recipe
         .as_deref()
         .and_then(|recipe| recipe.effort("grok", route.effort.as_deref()));
-    let arguments =
-        acp_client::grok::arguments_with_effort(&route.model, approve, effort.as_deref());
+    // Under full access Grok Build gets the owner's login environment;
+    // inside the boundary its private home holds the key when this
+    // process has one, else a copy of the stored login.
+    let environment = if approve {
+        Some(grok_environment(host).await)
+    } else {
+        None
+    };
+    let api_login = match &environment {
+        Some(environment) => acp_client::grok::api_key_login(&|name| {
+            environment
+                .iter()
+                .find(|(key, _)| key == name)
+                .map(|(_, value)| value.into())
+        }),
+        None => {
+            login_variable(acp_client::grok::API_KEY_VAR).is_some_and(|value| !value.is_empty())
+        }
+    };
+    // The API login's own default model fakes tool results (#10275): a
+    // route that keeps Grok Build's default runs a capable one instead.
+    let model = acp_client::grok::session_model(&route.model, api_login).to_owned();
+    if let Some(why) = acp_client::grok::refusal(&model) {
+        ended.error = Some(why);
+        return Turn::Ended(ended);
+    }
+    let arguments = acp_client::grok::arguments_with_effort(&model, approve, effort.as_deref());
     let earlier = host.earlier_note(SESSION_NOTE).and_then(|note| {
         note.get("session")
             .and_then(Value::as_str)
@@ -285,7 +310,7 @@ pub(crate) async fn turn(
                 program: program.clone(),
                 arguments: arguments.clone(),
                 cwd: host.workspace().to_path_buf(),
-                environment: grok_environment(host).await,
+                environment: environment.unwrap_or_default(),
             },
         ),
     };
@@ -298,7 +323,7 @@ pub(crate) async fn turn(
     let sequence = match host.effect(
         "grok_session",
         json!({"program": program, "arguments": arguments, "cwd": host.workspace(),
-            "approve": approve, "resume": resume, "model": route.model,
+            "approve": approve, "resume": resume, "model": model, "route_model": route.model,
             "boundary": contained.as_ref().map(|contained| &contained.record)}),
     ) {
         Ok(sequence) => sequence,
@@ -339,13 +364,19 @@ pub(crate) async fn turn(
         session.close(STOP_GRACE).await;
         return Turn::Ended(ended);
     }
-    if !acp_client::grok::admits(&route.model, reported.as_deref()) {
+    if !acp_client::grok::admits(&model, reported.as_deref()) {
         host.fail("Grok Build reported a model different from the admitted model");
         ended.error = Some(format!(
-            "Requested {}, Grok Build reported {}; refusing the turn.",
-            route.model,
+            "Requested {model}, Grok Build reported {}; refusing the turn. This Grok Build \
+             login may not offer {model} (`grok models` lists the ones it does).",
             reported.as_deref().unwrap_or("no model")
         ));
+        session.close(STOP_GRACE).await;
+        return Turn::Ended(ended);
+    }
+    if let Some(why) = reported.as_deref().and_then(acp_client::grok::refusal) {
+        host.fail("the Grok Build model is known to report edits it never made");
+        ended.error = Some(why);
         session.close(STOP_GRACE).await;
         return Turn::Ended(ended);
     }
@@ -354,7 +385,7 @@ pub(crate) async fn turn(
     let prompt = super::recipe::agent_prompt(recipe.as_deref(), host, session.resumed);
     let prompted = match host.effect(
         "grok_prompt",
-        json!({"session": session.id(), "prompt": prompt, "model": route.model}),
+        json!({"session": session.id(), "prompt": prompt, "model": model}),
     ) {
         Ok(sequence) => sequence,
         Err(error) => {
@@ -363,7 +394,7 @@ pub(crate) async fn turn(
             return Turn::Ended(ended);
         }
     };
-    let mut recorder = Recorder::new(host, "Grok Build", "grok", route.model.clone(), access);
+    let mut recorder = Recorder::new(host, "Grok Build", "grok", model.clone(), access);
     if let Some(contained) = &contained {
         let roots = contained
             .boundary
@@ -579,6 +610,20 @@ mod tests {
                 "stdio"
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn a_model_that_fakes_tool_results_is_refused_before_it_starts() {
+        let faking = acp_client::grok::FAKES_TOOL_RESULTS[0];
+        let (_root, store, grant) = fixture_with(faking, |c| grok_route(c, Access::Full, faking));
+        let agent_dir = tempfile::tempdir().unwrap();
+        let agent = agent(agent_dir.path(), &replay::blocks(replay::GROK_TURN));
+        let task = run_turn(&store, &grant, faking, agent).await;
+        let result = task.run.as_ref().unwrap().result.as_ref().unwrap();
+        assert_eq!(result.ending, "engine_incomplete");
+        assert!(replay::arguments(agent_dir.path()).is_empty());
+        let trace = std::fs::read_to_string(store.join("fixture.1.atif.jsonl")).unwrap();
+        assert!(trace.contains("reports edits it never made"), "{trace}");
     }
 
     #[tokio::test]

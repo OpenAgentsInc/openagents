@@ -86,6 +86,51 @@ pub fn parse_model(model: &str) -> Result<(), String> {
     }
 }
 
+/// The model a turn on Grok Build's API login (`XAI_API_KEY`, no stored
+/// login) runs when its route keeps [`DEFAULT_MODEL`]: the API's own
+/// default is `grok-4.20-0309-non-reasoning`, which reported edits it never
+/// made (#10275), while a signed-in Grok Build defaults to this one.
+pub const API_KEY_MODEL: &str = "grok-4.7";
+
+/// Models seen to report tool results they never produced: the turn says
+/// "I created the file" and the file is not there (#10221, #10275). A turn
+/// on one of them is refused, never run to an empty result.
+pub const FAKES_TOOL_RESULTS: [&str; 1] = ["grok-4.20-0309-non-reasoning"];
+
+/// Whether Grok Build will log in with [`API_KEY_VAR`]: the key is set and
+/// no stored login (`auth.json`) is present, which Grok Build prefers.
+#[must_use]
+pub fn api_key_login(variable: &dyn Fn(&str) -> Option<OsString>) -> bool {
+    let key = variable(API_KEY_VAR).is_some_and(|value| !value.is_empty());
+    let file = auth_path(variable)
+        .and_then(|path| std::fs::metadata(path).ok())
+        .is_some_and(|meta| meta.is_file() && meta.len() > 0);
+    key && !file
+}
+
+/// The model a turn asks Grok Build for: the route's, except that
+/// [`DEFAULT_MODEL`] on the API login is [`API_KEY_MODEL`].
+#[must_use]
+pub fn session_model(route_model: &str, api_login: bool) -> &str {
+    if route_model == DEFAULT_MODEL && api_login {
+        API_KEY_MODEL
+    } else {
+        route_model
+    }
+}
+
+/// Why a turn on `model` is refused, when it is one of
+/// [`FAKES_TOOL_RESULTS`].
+#[must_use]
+pub fn refusal(model: &str) -> Option<String> {
+    FAKES_TOOL_RESULTS.contains(&model).then(|| {
+        format!(
+            "Grok Build model {model} reports edits it never made (#10275); refusing the turn. \
+             Name a capable model, e.g. `coder.providers grok:{API_KEY_MODEL}`."
+        )
+    })
+}
+
 /// The arguments that start Grok Build as an ACP agent with `model`.
 ///
 /// `approve` adds `--always-approve`, which is full access. A bounded turn
@@ -233,6 +278,32 @@ mod tests {
         assert_eq!(binary(&env), Some(grok));
         let missing = |name: &str| (name == BIN_VAR).then(|| OsString::from("/nonexistent/grok"));
         assert_eq!(binary(&missing), None);
+    }
+
+    #[test]
+    fn the_api_login_runs_a_capable_model_and_a_faking_one_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = dir.path().as_os_str().to_owned();
+        let key = OsString::from("present");
+        let with_key = |name: &str| match name {
+            "HOME" => Some(home.clone()),
+            API_KEY_VAR => Some(key.clone()),
+            _ => None,
+        };
+        let no_key = |name: &str| (name == "HOME").then(|| home.clone());
+        assert!(api_key_login(&with_key));
+        assert!(!api_key_login(&no_key));
+        assert_eq!(session_model(DEFAULT_MODEL, true), API_KEY_MODEL);
+        assert_eq!(session_model(DEFAULT_MODEL, false), DEFAULT_MODEL);
+        assert_eq!(session_model("grok-4.6", true), "grok-4.6");
+        // A stored login wins over the key, so the run is not on the API login.
+        let path = auth_path(&with_key).unwrap();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, "x").unwrap();
+        assert!(!api_key_login(&with_key));
+        assert!(refusal("grok-4.20-0309-non-reasoning").is_some());
+        assert!(refusal(API_KEY_MODEL).is_none());
+        assert!(refusal(DEFAULT_MODEL).is_none());
     }
 
     #[test]

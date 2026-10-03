@@ -729,11 +729,28 @@ impl Connection {
     }
 }
 
+/// Whether Codex's login on this host is an API key (`codex login
+/// --with-api-key`) and not a ChatGPT login: the step loop's transport
+/// needs ChatGPT, so a Codex route then runs as one lean `codex exec`
+/// session (#10275). The key itself is not read.
+#[must_use]
+pub fn codex_api_key_only() -> bool {
+    codex_transport::codex::Login::default_path().is_some_and(|path| {
+        matches!(
+            codex_transport::codex::Login::load(&path),
+            Err(codex_transport::codex::LoginError::NotChatgpt(mode)) if mode == "apikey"
+        )
+    })
+}
+
 /// Whether `provider` has a usable login on this host, decided locally:
 ///
 /// - **Codex**: `$CODEX_HOME/auth.json` or `~/.codex/auth.json` holds a
 ///   ChatGPT login whose access token is not about to expire, as
-///   `codex_transport::codex::Login::load` requires before a request.
+///   `codex_transport::codex::Login::load` requires before a request; or
+///   an API-key login (`codex login --with-api-key`, `auth_mode`
+///   `apikey`), which only the lean `codex exec` session can use
+///   ([`codex_api_key_only`], #10275).
 /// - **Claude**: a `claude` binary (`CLAUDE_BIN`, else
 ///   [`crate::claude::locate`]: `PATH`, the folders Claude Code, npm, and
 ///   Homebrew install it in, or the login shell's `PATH`) and a Claude Code sign-in: the account record in
@@ -773,6 +790,9 @@ pub fn probe(provider: Provider) -> Connection {
             };
             match codex_transport::codex::Login::load(&path) {
                 Ok(_) => Connection::Connected,
+                Err(codex_transport::codex::LoginError::NotChatgpt(mode)) if mode == "apikey" => {
+                    Connection::Connected
+                }
                 Err(error) => Connection::Missing(error.to_string()),
             }
         }

@@ -97,6 +97,13 @@ d=$(dirname "$0")
   # Coder gives Grok Build the XAI_API_KEY of the account's login shell,
   # not of this process: keep it in a private file the login shell reads.
   # The file goes with the host's disk when the host deletes itself.
+  # An OpenAI key logs Codex in (API-key login, run as a lean codex exec
+  # session, #10275); the login goes with the host's disk.
+  if [ -n "${{OA_CODEX_API_KEY:-}}" ]; then
+    printenv OA_CODEX_API_KEY | codex login --with-api-key >/dev/null 2>&1 \
+      || echo "pool: codex login with the API key failed" >&2
+  fi
+  unset OA_CODEX_API_KEY
   if [ -n "${{XAI_API_KEY:-}}" ]; then
     (umask 077; printf 'export XAI_API_KEY=%q\n' "$XAI_API_KEY" >"$HOME/.oa-pool/engine.env")
     for f in "$HOME/.profile" "$HOME/.bashrc"; do

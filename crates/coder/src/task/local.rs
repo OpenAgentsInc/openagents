@@ -730,7 +730,13 @@ impl Local {
                     .map(|threshold_percent| UsageProbe { threshold_percent }),
                 access: settings.access,
                 claude: settings.claude,
-                codex: settings.codex,
+                // An API-key Codex login (a cloud run's, #10275) works only
+                // in the lean `codex exec` session.
+                codex: if capacity::codex_api_key_only() {
+                    autostart::CodexRuns::Session
+                } else {
+                    settings.codex
+                },
             },
             changed_at: (self.now)(),
         };
