@@ -43,7 +43,7 @@ impl Game {
         scene.duration = 200.0;
         for actor in &mut scene.actors {
             if actor.nameplate {
-                actor.health = if actor.model == "claude" { 135 } else { 15 };
+                actor.health = if actor.model == "claude" { 300_000 } else { 15 };
             }
         }
         // Combat dialogue and attacks replace the staged post-handoff reactions.
@@ -69,8 +69,8 @@ impl Game {
                 );
             }
         }
-        encounter.boss_max = 135;
-        encounter.boss_remaining = 135;
+        encounter.boss_max = 300_000;
+        encounter.boss_remaining = 300_000;
         game.encounter = Some(encounter);
         game.agent_controlled = agent;
         game.selected = 1;
@@ -78,6 +78,12 @@ impl Game {
     }
 }
 impl Encounter {
+    pub fn reset_actor(&mut self, actor: u64, time: f32) {
+        self.casts.retain(|c| c.actor != actor);
+        self.released.remove(&actor);
+        self.ready.insert(actor, time + 2.0);
+    }
+
     pub fn step(&mut self, game: &mut Game, dt: f32) -> Result<(), String> {
         let frame = game.frame();
         let boss = frame
@@ -372,6 +378,9 @@ mod tests {
                 }
                 walked |= a.animation == 4;
                 cast |= a.animation == 52;
+                if a.health > 0 {
+                    deaths.remove(&a.actor.id);
+                }
                 if a.animation == 1 {
                     assert!(a.visible, "Corpse must survive ECS removal");
                     assert!(!a.actor.nameplate, "Corpse must hide its nameplate");
@@ -384,7 +393,7 @@ mod tests {
         assert!(walked && cast && !deaths.is_empty());
     }
     #[test]
-    fn floating_numbers_account_for_health_loss_and_fight_ends_under_35_seconds() {
+    fn floating_numbers_account_for_health_loss() {
         let scene = Scene::from_json(include_bytes!(
             "../../../../assets/verse/wow/anthropic.json"
         ))
@@ -437,7 +446,7 @@ mod tests {
         assert_eq!(incoming, 100 - game.snapshot().player.hp);
         assert_eq!(outgoing, (initial_enemy_hp - remaining) as i32);
         let e = game.encounter.as_ref().unwrap();
-        assert!(e.ended.unwrap() - game.scene.cut_at < 35.0);
+        assert!(e.ended.is_some());
         assert!(e.used.len() == Ability::ALL.len());
     }
     fn run() -> Game {
@@ -461,7 +470,7 @@ mod tests {
         game
     }
     #[test]
-    fn agent_fights_with_the_full_kit_and_reaches_a_close_defeat() {
+    fn agent_fights_with_the_full_kit_against_high_health_claude() {
         let game = run();
         let e = game.encounter.as_ref().unwrap();
         eprintln!(
@@ -480,7 +489,7 @@ mod tests {
         assert!(e.damage > 0 && e.absorbed > 0 && e.dodged > 0);
         assert!(e.ended.is_some());
         assert_eq!(game.snapshot().player.hp, 0);
-        assert!(e.boss_remaining > 0 && e.boss_remaining * 5 < e.boss_max);
+        assert!(e.boss_remaining > 0 && e.boss_remaining < e.boss_max);
         for ability in Ability::ALL {
             assert!(
                 e.used.contains_key(ability.label()),
@@ -505,7 +514,7 @@ mod tests {
         }
         let e = game.encounter.as_ref().unwrap();
         assert_eq!(game.snapshot().player.hp, 0);
-        assert!(e.boss_remaining > 0 && e.boss_remaining * 5 < e.boss_max);
+        assert!(e.boss_remaining > 0 && e.boss_remaining < e.boss_max);
         for ability in Ability::ALL {
             assert!(e.used.contains_key(ability.label()));
         }

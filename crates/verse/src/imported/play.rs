@@ -389,6 +389,7 @@ impl Game {
         if !self.unlocked() {
             return Ok(());
         }
+        self.respawn_cultists()?;
         let movement = if self.agent_controlled {
             super::combat::drive(self, dt)?
         } else {
@@ -549,6 +550,41 @@ impl Game {
         }
         self.damage_numbers.retain(|n| self.time - n.at < 1.35);
         self.impacts.retain(|(_, at, _)| self.time - at < 0.6);
+        Ok(())
+    }
+    fn respawn_cultists(&mut self) -> Result<(), String> {
+        let due: Vec<_> = self
+            .scene
+            .actors
+            .iter()
+            .filter(|a| {
+                a.model == "cultist"
+                    && self
+                        .npc_deaths
+                        .get(&a.id)
+                        .is_some_and(|(at, _)| self.time - at >= 60.0)
+            })
+            .cloned()
+            .collect();
+        for actor in due {
+            let old = self.ids[&actor.id];
+            let source = self
+                .simulation
+                .spawn_chamber_actor(actor.position.to_array(), actor.health as i32)?;
+            self.ids.insert(actor.id, source);
+            self.observed_health.remove(&old);
+            self.observed_health.insert(source, actor.health as i32);
+            self.controls.forget_actor(old);
+            self.npc_deaths.remove(&actor.id);
+            self.npc_motion.remove(&actor.id);
+            self.npc_yaw.remove(&actor.id);
+            self.arrows.retain(|a| a.target != actor.id);
+            self.damage_numbers.retain(|n| n.actor != actor.id);
+            if let Some(e) = &mut self.encounter {
+                e.positions.insert(actor.id, actor.position);
+                e.reset_actor(actor.id, self.time);
+            }
+        }
         Ok(())
     }
     fn damage_number(&mut self, actor: u64, amount: i32, position: Vec3, incoming: bool) {
@@ -717,6 +753,64 @@ mod tests {
             .unwrap(),
         )
         .unwrap()
+    }
+    #[test]
+    fn cultists_respawn_sixty_seconds_after_each_death_with_fresh_state() {
+        let mut g = Game::combat(game().scene, false).unwrap();
+        g.time = 30.0;
+        assert_eq!(g.encounter.as_ref().unwrap().boss_max, 300_000);
+        assert_eq!(
+            g.frame()
+                .actors
+                .iter()
+                .find(|a| a.actor.model == "claude")
+                .unwrap()
+                .health,
+            300_000
+        );
+        let cultist = g
+            .scene
+            .actors
+            .iter()
+            .find(|a| a.model == "cultist")
+            .unwrap()
+            .clone();
+        for _ in 0..2 {
+            let old = g.ids[&cultist.id];
+            g.simulation.bow_impact(old, 1000).unwrap();
+            g.tick(0.0, [0.0; 2]).unwrap();
+            let died = g.npc_deaths[&cultist.id].0;
+            assert!(
+                !g.frame()
+                    .actors
+                    .iter()
+                    .find(|a| a.actor.id == cultist.id)
+                    .unwrap()
+                    .actor
+                    .nameplate
+            );
+            // Allow the retained ECS to remove the old corpse before respawning.
+            for _ in 0..30 {
+                g.tick(0.1, [0.0; 2]).unwrap();
+            }
+            g.time = died + 59.9;
+            g.tick(0.0, [0.0; 2]).unwrap();
+            assert_eq!(g.ids[&cultist.id], old);
+            g.time = died + 60.0;
+            g.tick(0.0, [0.0; 2]).unwrap();
+            assert_ne!(g.ids[&cultist.id], old);
+            assert!(!g.npc_deaths.contains_key(&cultist.id));
+            assert!(!g.observed_health.contains_key(&old));
+            let frame = g.frame();
+            let alive = frame
+                .actors
+                .iter()
+                .find(|a| a.actor.id == cultist.id)
+                .unwrap();
+            assert_eq!(alive.health, 15);
+            assert_eq!(alive.actor.position, cultist.position);
+            assert!(alive.actor.nameplate && alive.animation != 1);
+        }
     }
     #[test]
     fn manual_instant_spell_reports_damage_once() {

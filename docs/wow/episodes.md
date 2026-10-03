@@ -315,3 +315,9 @@ abilities. Classic icon frames, hotkeys, cooldowns, and tooltips remain; bags,
 menu buttons, paging controls, end caps, and unused slots are removed. The
 [native compact-bar capture](../../bench/wow/2026-10-03/verse-compact-bar.png)
 shows the updated layout.
+
+Claude now starts with 300,000 health. Each defeated cultist respawns at its
+original spawn point 60 seconds after death with full health and a visible
+nameplate. Respawning clears the previous life's corpse, control effects, and
+pending attacks. The retained shorter-combat video records the earlier
+135-health boss profile; the current profile no longer targets a close defeat.

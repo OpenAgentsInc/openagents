@@ -602,9 +602,11 @@ fn demo(app: &mut App, output: PathBuf, utility: bool, combat: bool) -> Result<(
                 .map_err(|e| e.to_string())?;
                 if app.game.snapshot().player.hp != 0
                     || encounter.boss_remaining == 0
-                    || encounter.boss_remaining * 5 >= encounter.boss_max
+                    || encounter.boss_remaining >= encounter.boss_max
                 {
-                    return Err("Combat recording did not reach the expected close defeat".into());
+                    return Err(
+                        "Combat recording did not reach the expected adventurer defeat".into(),
+                    );
                 }
                 break;
             }

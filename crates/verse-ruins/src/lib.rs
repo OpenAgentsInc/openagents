@@ -176,6 +176,27 @@ impl Simulation {
             ids,
         ))
     }
+    /// Creates a fresh chamber hostile after its previous life has ended.
+    pub fn spawn_chamber_actor(&mut self, position: [f32; 3], hp: i32) -> Result<u32, String> {
+        validate_position(position)?;
+        if !(1..=1_000_000).contains(&hp) {
+            return Err("Invalid chamber health".into());
+        }
+        Ok(self
+            .source
+            .ecs
+            .spawn(
+                ActorKind::Wizard,
+                Faction::Undead,
+                server_core::Transform {
+                    pos: position.into(),
+                    yaw: 0.0,
+                    radius: 0.65,
+                },
+                server_core::Health { hp, max: hp },
+            )
+            .0)
+    }
     pub fn place_chamber_actor(
         &mut self,
         id: u32,

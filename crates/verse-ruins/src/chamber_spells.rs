@@ -53,6 +53,12 @@ pub struct Controls {
     roots: BTreeMap<u32, Vec3>,
 }
 impl Controls {
+    /// Clears control effects that belong to a removed actor's previous life.
+    pub fn forget_actor(&mut self, id: u32) {
+        self.offsets.remove(&id);
+        self.roots.remove(&id);
+    }
+
     pub fn cooldown(&self, spell: Utility, time: f32) -> f32 {
         (self.ready.get(&spell).copied().unwrap_or(0.0) - time).max(0.0)
     }
