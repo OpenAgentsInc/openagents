@@ -40,8 +40,11 @@ it. Each issue runs on a Boat sandbox of its own.
 4. **Credentials.** Written to `/tmp/oa-run.env` through the files API; the
    sandbox's command sources and deletes that file before anything else
    runs. See below.
-5. **Binaries.** The run uses the `openagents` and `microcoder` the
-   template built (`<slot>/debug/`, the template's `origin/main`), run in
+5. **Binaries.** The run reads the template's binaries through once first
+   (they stream in from the template, and a read of the 2 GB debug
+   `openagents` failed mid-stream twice on 2026-10-02; a failed read is
+   retried six times, then the run builds its own), then uses the
+   `openagents` and `microcoder` the template built (`<slot>/debug/`, the template's `origin/main`), run in
    place (a copy reads gigabytes the sandbox may still be streaming in), with
    `OPENAGENTS_CODER_CONTROLLER` pointing at that `microcoder`. `OA_BOAT_BUILD=1` builds `origin/main`'s instead, on
    the warm target (not `--locked`). Building in a fresh template sandbox
@@ -62,7 +65,8 @@ it. Each issue runs on a Boat sandbox of its own.
    the final `issue` event adds `sandbox`, `wall_seconds`,
    `machine_seconds`, and `cost_usd`.
 8. **Cost.** When the flow ends, `GET /sandboxes/{id}/usage` gives the
-   sandbox's machine time and list-price dollars. They go into a comment on
+   sandbox's billed seconds (Boat counts `default`-size seconds, so a
+   `large` sandbox bills two a second) and list-price dollars. They go into a comment on
    the issue and into a route record appended to
    `~/.openagents/boat/runs.jsonl`: placement computer `boat`, grant source
    `operator` (the person typed `--on boat`), and a
@@ -73,6 +77,14 @@ it. Each issue runs on a Boat sandbox of its own.
    closed; otherwise it is stopped and kept for inspection, and
    `openagents boat delete ID` removes it. Ctrl-C kills every running flow
    (its process group) on its sandbox and stops the sandboxes.
+
+**If the orchestrating command dies** (its machine stops, the shell is
+killed), each run keeps going on its sandbox, because it runs in a session
+of its own: it still lands, comments, and closes. Nothing then stops or
+deletes that sandbox before its 12-hour lifetime ends, and no cost comment
+is posted; list the account's sandboxes and `openagents boat delete ID` the
+ones a dead command started. (Seen 2026-10-03: the orchestrator's own
+sandbox reached its lifetime mid-run.)
 
 ## Credentials
 

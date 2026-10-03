@@ -349,7 +349,19 @@ cd ~/openagents || {{ echo "boat: no clone at ~/openagents" >&2; exit 2; }}
 git fetch -q origin main && git checkout -q --detach origin/main || exit 2
 slot=$(jq -r .warm_target.slot ~/.openagents/coder-host.json 2>/dev/null)
 [ -n "$slot" ] && [ "$slot" != null ] || slot=$HOME/openagents/target
+# Read the template's binaries through once first: they stream in from the
+# template, and a read of a 2 GB debug binary failed mid-stream ("Software
+# caused connection abort") on 2026-10-02. A failed read is retried, then
+# the run builds its own.
+ready=""
 if [ -z "{build}" ] && [ -x "$slot/debug/openagents" ] && [ -x "$slot/debug/microcoder" ]; then
+  for attempt in 1 2 3 4 5 6; do
+    cat "$slot/debug/openagents" "$slot/debug/microcoder" >/dev/null 2>&1 && {{ ready=1; break; }}
+    echo "boat: the template's binaries are still streaming in (attempt $attempt)" >&2
+    sleep 10
+  done
+fi
+if [ -n "$ready" ]; then
   echo "boat: using the template's openagents and microcoder ($(jq -r .rev ~/.openagents/coder-host.json | cut -c1-10))" >&2
 else
   echo "boat: building origin/main $(git rev-parse --short HEAD) on the warm target" >&2
@@ -952,7 +964,7 @@ fn cost_comment(
          `{source}`, engine logins `{}`.\n\n\
          - outcome: {outcome}\n\
          - wall time (start to end, from the orchestrator): {} s\n\
-         - machine time: {machine}\n\
+         - billed time (Boat counts `default`-size seconds; `large` bills two a second): {machine}\n\
          - cost at Boat list price (`GET /sandboxes/{{id}}/usage`): {price}\n",
         logins.as_str(),
         cost.wall.as_secs(),
@@ -1579,6 +1591,7 @@ mod tests {
             EngineLogins::ApiKeys,
         );
         assert!(body.contains("`bx_1`") && body.contains("754 s") && body.contains("760 s"));
+        assert!(body.contains("billed time"));
         assert!(body.contains("$0.0152") && body.contains("`api-keys`"));
         let record = route_record(
             "o/r",
