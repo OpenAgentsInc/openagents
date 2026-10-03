@@ -30,3 +30,7 @@ and the status-bar texture into the private output directory. The Verse capture
 loads these assets for proportional outlined text and textured health bars.
 To refresh only these UI assets without importing the chamber again, append
 `--ui-only` to the importer command. The font and textures remain outside Git.
+
+The UI refresh also extracts Classic quick-slot frames and bow, fire, and arcane
+icons used by the playable chamber action bar. Spell behavior comes from the
+retained public Ruins simulation; icon imports do not change combat rules.

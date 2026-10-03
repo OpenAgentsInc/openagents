@@ -250,7 +250,16 @@ impl Atlas {
             return Err("Invalid UI sprite".into());
         }
         let old = self.height;
-        let new = (old + height).next_power_of_two();
+        let start = self
+            .sprites
+            .values()
+            .map(|(_, end)| (end[1] * old as f32).round() as u32)
+            .max()
+            .unwrap_or((self.pixels.len() / self.width as usize) as u32);
+        let new = old.max((start + height).next_power_of_two());
+        if new > 8192 {
+            return Err("UI sprite atlas exceeds 8192 rows".into());
+        }
         let mut rgba = self.rgba.take().unwrap_or_else(|| {
             self.pixels
                 .iter()
@@ -259,7 +268,7 @@ impl Atlas {
         });
         rgba.resize((self.width * new * 4) as usize, 0);
         for row in 0..height as usize {
-            let dst = (old as usize + row) * self.width as usize * 4;
+            let dst = (start as usize + row) * self.width as usize * 4;
             rgba[dst..dst + width as usize * 4]
                 .copy_from_slice(&pixels[row * width as usize * 4..(row + 1) * width as usize * 4]);
         }
@@ -276,10 +285,10 @@ impl Atlas {
         self.sprites.insert(
             name.into(),
             (
-                [0.0, old as f32 / new as f32],
+                [0.0, start as f32 / new as f32],
                 [
                     width as f32 / self.width as f32,
-                    (old + height) as f32 / new as f32,
+                    (start + height) as f32 / new as f32,
                 ],
             ),
         );
@@ -544,6 +553,20 @@ mod tests {
         );
         assert_eq!(atlas.layout_at_scale(2.0).unwrap().sprites, atlas.sprites);
         assert!(Atlas::from_font(b"invalid", 16.0).is_err());
+    }
+
+    #[test]
+    fn action_icons_pack_into_existing_rows_without_exponential_growth() {
+        let mut atlas = Atlas::new(18.0);
+        for i in 0..7 {
+            atlas
+                .add_sprite(&format!("icon-{i}"), 64, 64, &vec![255; 64 * 64 * 4])
+                .unwrap();
+        }
+        assert!(atlas.height <= 1024);
+        for (_, end) in atlas.sprites.values() {
+            assert!(end[1] <= 1.0);
+        }
     }
 
     #[test]

@@ -174,3 +174,29 @@ and black outlines above textured red health bars. Programmed yells use outlined
 cinematic text. The temporary backing boxes and connector lines are removed.
 Run the importer with `--ui-only` to extract these assets into the private pack
 before recording; the font and interface textures are not checked into Git.
+
+## Playable wizard action bar
+
+The native chamber unlocks its Classic action bar at the 20-second camera
+handoff. It uses the retained Ruins combat schedule for Fire Bolt, Magic Missile,
+and Fireball, including its mana, cooldown, homing, damage, and area effects.
+Magic Missile and Fireball have one-second casts that movement interrupts.
+This is the implemented Ruins spell subset and runtime tuning, not a complete
+SRD interpreter. Bow impacts use the same hostile health state.
+
+```sh
+CARGO_TARGET_DIR="$HOME/work/openagents-target-agent1" cargo run -p verse \
+  --no-default-features --features imported-desktop --example wow_play -- \
+  "$HOME/wow-gym/verse-assets/pack.json"
+```
+
+Use **1** for the bow, **2** for Fire Bolt, **3** for Magic Missile, and **4**
+for Fireball, or click their icons. **Tab** cycles living targets; click an NPC
+to select it. **WASD** moves within the chamber; drag with the right mouse button
+to turn. **Escape** closes the window. Refresh the private UI assets with the
+importer's `--ui-only` mode to obtain the original Classic button frames and icons.
+The [spell demo](../../bench/wow/2026-10-03/verse-wizard-actions.mp4) records the
+handoff and all four actions through the same input-facing gameplay methods.
+Append `--demo OUTPUT.mp4` to reproduce it, or `--proof OUTPUT.png` for a native
+window capture. Chamber movement is bounded locally; this does not replace
+realm authority or provide collision navigation for the full imported dungeon.

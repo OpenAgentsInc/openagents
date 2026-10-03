@@ -1020,6 +1020,10 @@ fn projectile_collision_ecs(srv: &mut ServerState, ctx: &mut Ctx) {
                 let Some(act) = srv.ecs.get(aid) else {
                     continue;
                 };
+                // Projectile actors cannot trigger their own proximity explosion.
+                if act.projectile.is_some() {
+                    continue;
+                }
                 if !act.hp.alive() {
                     continue;
                 }
@@ -1221,6 +1225,10 @@ pub fn system_names_for_test() -> Vec<&'static str> {
 
 fn aoe_apply_explosions(srv: &mut ServerState, ctx: &mut Ctx) {
     for e in ctx.boom.drain(..) {
+        ctx.fx_hits.push(net_core::snapshot::HitFx {
+            kind: 1,
+            pos: [e.center_xz.x, 1.0, e.center_xz.y],
+        });
         let snapshot: Vec<_> = srv
             .ecs
             .iter()

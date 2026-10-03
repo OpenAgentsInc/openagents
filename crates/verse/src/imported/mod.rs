@@ -9,8 +9,10 @@ use crate::{
 };
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3};
+pub mod chamber;
 pub mod lighting;
 pub mod overlay;
+pub mod play;
 use lighting::{Frame, Lighting};
 use std::{
     collections::{BTreeMap, HashMap},
@@ -73,6 +75,10 @@ struct Actor {
 }
 /// Persistent offscreen renderer; frames come directly from owned GPU passes.
 pub struct Renderer {
+    #[cfg(feature = "imported-desktop")]
+    instance: wgpu::Instance,
+    #[cfg(feature = "imported-desktop")]
+    adapter: wgpu::Adapter,
     device: wgpu::Device,
     queue: wgpu::Queue,
     pack: Pack,
@@ -185,6 +191,12 @@ fn make_pose(pack: &Pack, instance: Option<&Instance>) -> Pose {
     };
     if let Some(i) = instance {
         pose.model = i.transform.to_cols_array_2d();
+        if pack.models[&i.model]
+            .source
+            .starts_with("verse/procedural/")
+        {
+            pose.params = [1.0, i.emission.x.clamp(0.0, 1.0), i.time, 0.0];
+        }
         for (dst, m) in
             pose.bones
                 .iter_mut()
@@ -490,7 +502,9 @@ impl Renderer {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::COPY_SRC
+                | wgpu::TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         });
         let target_view = target.create_view(&Default::default());
@@ -528,6 +542,10 @@ impl Renderer {
         });
         use sha2::Digest;
         Ok(Self {
+            #[cfg(feature = "imported-desktop")]
+            instance,
+            #[cfg(feature = "imported-desktop")]
+            adapter,
             device,
             queue,
             pack,
@@ -778,5 +796,155 @@ mod tests {
         .validate(&module)
         .unwrap();
         assert_eq!(std::mem::size_of::<super::GpuVertex>(), 76);
+    }
+}
+
+#[cfg(feature = "imported-desktop")]
+pub struct WindowPresenter {
+    surface: wgpu::Surface<'static>,
+    config: wgpu::SurfaceConfiguration,
+    pipeline: wgpu::RenderPipeline,
+    group: wgpu::BindGroup,
+}
+#[cfg(feature = "imported-desktop")]
+impl Renderer {
+    pub fn attach_window(
+        &self,
+        window: std::sync::Arc<winit::window::Window>,
+    ) -> Result<WindowPresenter, String> {
+        let size = window.inner_size();
+        let surface = self
+            .instance
+            .create_surface(window)
+            .map_err(|e| e.to_string())?;
+        let mut config = surface
+            .get_default_config(&self.adapter, size.width.max(1), size.height.max(1))
+            .ok_or("Unsupported imported scene surface")?;
+        config.present_mode = wgpu::PresentMode::Fifo;
+        surface.configure(&self.device, &config);
+        let layout = self
+            .device
+            .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Imported scene presentation"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+            });
+        let sampler = self.device.create_sampler(&wgpu::SamplerDescriptor {
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            ..Default::default()
+        });
+        let group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: None,
+            layout: &layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&self.target_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&sampler),
+                },
+            ],
+        });
+        let shader=self.device.create_shader_module(wgpu::ShaderModuleDescriptor {label:Some("Imported window blit"),source:wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed("@group(0) @binding(0) var image:texture_2d<f32>; @group(0) @binding(1) var samp:sampler; struct Out {@builtin(position) pos:vec4<f32>,@location(0) uv:vec2<f32>}; @vertex fn vs(@builtin(vertex_index) i:u32)->Out {let p=array<vec2<f32>,3>(vec2(-1.,-1.),vec2(3.,-1.),vec2(-1.,3.)); var o:Out;o.pos=vec4(p[i],0.,1.);o.uv=vec2((p[i].x+1.)*.5,(1.-p[i].y)*.5);return o;} @fragment fn fs(v:Out)->@location(0) vec4<f32> {return textureSample(image,samp,v.uv);}"))});
+        let pipeline_layout = self
+            .device
+            .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: None,
+                bind_group_layouts: &[Some(&layout)],
+                immediate_size: 0,
+            });
+        let pipeline = self
+            .device
+            .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: None,
+                layout: Some(&pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &shader,
+                    entry_point: Some("vs"),
+                    compilation_options: Default::default(),
+                    buffers: &[],
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader,
+                    entry_point: Some("fs"),
+                    compilation_options: Default::default(),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: config.format,
+                        blend: None,
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                }),
+                primitive: Default::default(),
+                depth_stencil: None,
+                multisample: Default::default(),
+                multiview_mask: None,
+                cache: None,
+            });
+        Ok(WindowPresenter {
+            surface,
+            config,
+            pipeline,
+            group,
+        })
+    }
+    pub fn present_window(&self, p: &mut WindowPresenter, size: [u32; 2]) -> Result<(), String> {
+        if size[0] == 0 || size[1] == 0 {
+            return Ok(());
+        }
+        if p.config.width != size[0] || p.config.height != size[1] {
+            p.config.width = size[0];
+            p.config.height = size[1];
+            p.surface.configure(&self.device, &p.config);
+        }
+        let texture = match p.surface.get_current_texture() {
+            wgpu::CurrentSurfaceTexture::Success(t)
+            | wgpu::CurrentSurfaceTexture::Suboptimal(t) => t,
+            _ => {
+                p.surface.configure(&self.device, &p.config);
+                return Ok(());
+            }
+        };
+        let view = texture.texture.create_view(&Default::default());
+        let mut encoder = self.device.create_command_encoder(&Default::default());
+        {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Imported interactive presentation"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                ..Default::default()
+            });
+            pass.set_pipeline(&p.pipeline);
+            pass.set_bind_group(0, &p.group, &[]);
+            pass.draw(0..3, 0..1);
+        }
+        self.queue.submit([encoder.finish()]);
+        texture.present();
+        Ok(())
     }
 }

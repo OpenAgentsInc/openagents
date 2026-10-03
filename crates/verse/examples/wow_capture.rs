@@ -1,17 +1,12 @@
 //! Capture an imported WoW chamber with Verse-owned textured GPU rendering.
 use glam::{Mat4, Quat, Vec3};
 use std::{io::Write, path::PathBuf};
+use verse::imported::chamber::{basis, classic_atlas, instances};
 use verse::{
     imported::{Instance, Renderer},
     render::View,
-    ui::Atlas,
 };
 use verse_wow::{assets::Pack, position_from_wow};
-fn basis() -> Mat4 {
-    Mat4::from_cols_array(&[
-        0.0, 0.0, -0.9144, 0.0, -0.9144, 0.0, 0.0, 0.0, 0.0, 0.9144, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
-    ])
-}
 fn main() -> Result<(), String> {
     let mut args = std::env::args().skip(1);
     let path = PathBuf::from(args.next().ok_or("Expected private pack.json")?);
@@ -195,87 +190,4 @@ fn main() -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     std::io::stdout().flush().map_err(|e| e.to_string())?;
     Ok(())
-}
-
-fn instances(pack: &Pack, frame: &verse_wow::director::Frame) -> Vec<Instance> {
-    let mut actors: Vec<_> = frame
-        .actors
-        .iter()
-        .filter(|a| a.visible)
-        .map(|a| Instance {
-            model: a.actor.model.clone(),
-            transform: Mat4::from_translation(a.actor.position)
-                * Mat4::from_rotation_y(a.actor.yaw)
-                * Mat4::from_scale(Vec3::splat(a.actor.scale))
-                * basis(),
-            animation: a.animation,
-            time: a.animation_time,
-            emission: Vec3::ONE,
-        })
-        .collect();
-    for a in frame
-        .actors
-        .iter()
-        .filter(|a| a.visible && a.actor.model == "adventurer")
-    {
-        let model = &pack.models["adventurer"];
-        if let Some(hand) = model.attachments.iter().find(|a| a.id == 2) {
-            let pose = verse_wow::animation::pose(model, a.animation, a.animation_time);
-            let hand_position = (Mat4::from_translation(a.actor.position)
-                * Mat4::from_rotation_y(a.actor.yaw)
-                * basis()
-                * pose[hand.bone])
-                .transform_point3(hand.position.into());
-            let transform = Mat4::from_translation(hand_position)
-                * Mat4::from_rotation_y(a.actor.yaw)
-                * basis()
-                * Mat4::from_rotation_z(std::f32::consts::FRAC_PI_2)
-                * Mat4::from_rotation_y(-std::f32::consts::FRAC_PI_2);
-            actors.push(Instance {
-                model: "bow".into(),
-                transform,
-                animation: 0,
-                time: frame.time,
-                emission: Vec3::ONE,
-            });
-        }
-    }
-    for arrow in &frame.projectiles {
-        actors.push(Instance {
-            model: "arrow".into(),
-            transform: Mat4::from_translation(arrow.position)
-                * Mat4::from_quat(Quat::from_rotation_arc(-Vec3::Z, arrow.direction))
-                * basis(),
-            animation: 0,
-            time: frame.time,
-            emission: Vec3::ONE,
-        });
-    }
-    actors
-}
-
-fn classic_atlas(dir: &std::path::Path) -> Result<Atlas, String> {
-    let font = std::fs::read(dir.join("FRIZQT__.TTF"))
-        .map_err(|e| format!("Import Classic UI assets with wow-import --ui-only: {e}"))?;
-    let mut atlas = Atlas::from_font(&font, 18.0)?;
-    for name in ["status-bar", "nameplate-border"] {
-        let decoder = png::Decoder::new(std::io::BufReader::new(
-            std::fs::File::open(dir.join(format!("{name}.png"))).map_err(|e| e.to_string())?,
-        ));
-        let mut reader = decoder.read_info().map_err(|e| e.to_string())?;
-        let mut rgba = vec![0; reader.output_buffer_size().ok_or("Invalid UI image")?];
-        let info = reader.next_frame(&mut rgba).map_err(|e| e.to_string())?;
-        if info.color_type != png::ColorType::Rgba {
-            return Err("Expected RGBA UI sprite".into());
-        }
-        if name == "nameplate-border" {
-            if info.height != 32 || info.width != 128 {
-                return Err("Unexpected Classic nameplate dimensions".into());
-            }
-            atlas.add_sprite(name, 128, 16, &rgba[128 * 16 * 4..128 * 32 * 4])?;
-        } else {
-            atlas.add_sprite(name, info.width, info.height, &rgba[..info.buffer_size()])?;
-        }
-    }
-    Ok(atlas)
 }

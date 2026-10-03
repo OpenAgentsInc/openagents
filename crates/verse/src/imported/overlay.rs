@@ -109,6 +109,15 @@ pub fn cinematic(
                 .unwrap()
                 .actor
                 .name;
+            let height = if frame
+                .actors
+                .iter()
+                .any(|a| a.actor.model == "adventurer" && a.visible)
+            {
+                height - 85.0
+            } else {
+                height
+            };
             let label = format!("{speaker} yells:");
             outlined(
                 &mut ui,
@@ -134,7 +143,14 @@ pub fn cinematic(
     ui
 }
 
-fn outlined(ui: &mut UiBatch, atlas: &Atlas, x: f32, y: f32, text: &str, color: [f32; 4]) {
+pub(crate) fn outlined(
+    ui: &mut UiBatch,
+    atlas: &Atlas,
+    x: f32,
+    y: f32,
+    text: &str,
+    color: [f32; 4],
+) {
     for (dx, dy) in [(-1.0, 0.0), (1.0, 0.0), (0.0, -1.0), (0.0, 1.0)] {
         ui.text(atlas, x + dx, y + dy, text, [0.0, 0.0, 0.0, 1.0]);
     }
@@ -204,5 +220,240 @@ mod tests {
                     .all(|v| v.pos.iter().all(|x| x.is_finite()))
             );
         }
+    }
+}
+
+/// Classic action-bar hit regions share the drawing geometry with input handling.
+pub fn action_at(x: f32, y: f32, width: f32, height: f32) -> Option<super::play::Ability> {
+    let left = (width - 12.0 * 46.0) * 0.5;
+    if y < height - 64.0 || y > height - 14.0 || x < left {
+        return None;
+    }
+    let index = ((x - left) / 46.0).floor() as usize;
+    super::play::Ability::ALL.get(index).copied()
+}
+pub fn action_bar(
+    ui: &mut UiBatch,
+    atlas: &Atlas,
+    game: &super::play::Game,
+    width: f32,
+    height: f32,
+    hover: Option<super::play::Ability>,
+) {
+    if !game.unlocked() {
+        return;
+    }
+    use super::play::Ability;
+    let snapshot = game.snapshot();
+    let small = atlas.layout_at_scale(1.35).unwrap();
+    let left = (width - 12.0 * 46.0) * 0.5;
+    let y = height - 62.0;
+    ui.rect(
+        atlas,
+        left - 12.0,
+        y - 7.0,
+        576.0,
+        57.0,
+        [0.02, 0.018, 0.015, 0.95],
+    );
+    for index in 0..12 {
+        let x = left + index as f32 * 46.0;
+        ui.rect(
+            atlas,
+            x + 3.0,
+            y + 3.0,
+            39.0,
+            39.0,
+            [0.025, 0.025, 0.025, 1.0],
+        );
+        if let Some(ability) = Ability::ALL.get(index) {
+            ui.image(
+                atlas,
+                ability.icon(),
+                x + 4.0,
+                y + 4.0,
+                37.0,
+                37.0,
+                [1.0; 4],
+            );
+            let (ready, cd) = if let Some(spell) = ability.spell() {
+                let gate = snapshot.abilities.iter().find(|a| a.id == spell).unwrap();
+                (gate.ready, gate.cooldown_remaining)
+            } else {
+                (
+                    game.time >= game.bow_ready,
+                    (game.bow_ready - game.time).max(0.0),
+                )
+            };
+            if !ready {
+                ui.rect(atlas, x + 4.0, y + 4.0, 37.0, 37.0, [0.0, 0.0, 0.0, 0.65]);
+            }
+            if cd > 0.0 {
+                outlined(
+                    ui,
+                    atlas,
+                    x + 13.0,
+                    y + 14.0,
+                    &format!("{:.0}", cd.ceil()),
+                    [1.0; 4],
+                );
+            }
+            outlined(
+                ui,
+                &small,
+                x + 30.0,
+                y + 1.0,
+                &(index + 1).to_string(),
+                [1.0; 4],
+            );
+        }
+        ui.image(
+            atlas,
+            "action-frame",
+            x - 6.0,
+            y - 6.0,
+            58.0,
+            58.0,
+            [1.0; 4],
+        );
+    }
+    outlined(
+        ui,
+        &small,
+        left,
+        y + 48.0,
+        "1 Bow   2 Fire Bolt   3 Magic Missile   4 Fireball   Tab Target",
+        [0.9, 0.8, 0.6, 1.0],
+    );
+    let health = snapshot.player.hp as f32 / snapshot.player.max_hp as f32;
+    outlined(ui, atlas, 28.0, 20.0, "Adventurer", [1.0, 0.85, 0.5, 1.0]);
+    ui.rect(atlas, 26.0, 46.0, 204.0, 32.0, [0.025, 0.025, 0.025, 0.9]);
+    ui.image(
+        atlas,
+        "status-bar",
+        28.0,
+        48.0,
+        200.0 * health,
+        12.0,
+        [0.015, 0.6, 0.035, 1.0],
+    );
+    ui.image(
+        atlas,
+        "status-bar",
+        28.0,
+        63.0,
+        200.0 * snapshot.player.mana as f32 / snapshot.player.max_mana as f32,
+        12.0,
+        [0.02, 0.15, 0.9, 1.0],
+    );
+    outlined(
+        ui,
+        &small,
+        78.0,
+        62.0,
+        &format!("{} / {}", snapshot.player.mana, snapshot.player.max_mana),
+        [1.0; 4],
+    );
+    if let Some(target) = game
+        .frame()
+        .actors
+        .iter()
+        .find(|a| a.actor.id == game.selected)
+    {
+        outlined(
+            ui,
+            atlas,
+            280.0,
+            20.0,
+            &target.actor.name,
+            [1.0, 0.25, 0.16, 1.0],
+        );
+        ui.rect(atlas, 278.0, 46.0, 204.0, 17.0, [0.025, 0.025, 0.025, 0.9]);
+        ui.image(
+            atlas,
+            "status-bar",
+            280.0,
+            48.0,
+            200.0 * target.health as f32 / target.actor.health as f32,
+            13.0,
+            [0.8, 0.015, 0.01, 1.0],
+        );
+        outlined(
+            ui,
+            &small,
+            332.0,
+            47.0,
+            &format!("{} / {}", target.health, target.actor.health),
+            [1.0; 4],
+        );
+    }
+    if let Some(cast) = &game.casting {
+        let progress = ((game.time - cast.started) / (cast.ends - cast.started)).clamp(0.0, 1.0);
+        ui.rect(
+            atlas,
+            width * 0.5 - 152.0,
+            y - 48.0,
+            304.0,
+            22.0,
+            [0.06, 0.04, 0.01, 0.95],
+        );
+        ui.image(
+            atlas,
+            "status-bar",
+            width * 0.5 - 150.0,
+            y - 46.0,
+            300.0 * progress,
+            18.0,
+            [1.0, 0.65, 0.04, 1.0],
+        );
+        outlined(
+            ui,
+            &small,
+            width * 0.5 - atlas.measure(cast.ability.label()) * 0.4,
+            y - 45.0,
+            cast.ability.label(),
+            [1.0; 4],
+        );
+    } else if let Some(ability) = hover {
+        let cost = ability
+            .spell()
+            .and_then(|spell| snapshot.abilities.iter().find(|a| a.id == spell))
+            .map_or(0, |a| a.cost);
+        let text = format!("{}  ·  {} mana", ability.label(), cost);
+        outlined(
+            ui,
+            atlas,
+            width * 0.5 - atlas.measure(&text) * 0.5,
+            y - 35.0,
+            &text,
+            [1.0, 0.85, 0.55, 1.0],
+        );
+    }
+    if !game.message.is_empty() {
+        outlined(
+            ui,
+            &small,
+            width * 0.5 - small.measure(&game.message) * 0.5,
+            100.0,
+            &game.message,
+            [1.0, 0.8, 0.4, 1.0],
+        );
+    }
+}
+
+#[cfg(test)]
+mod action_tests {
+    use super::*;
+    #[test]
+    fn clickable_slots_match_hotkeys_and_empty_slots_do_not_cast() {
+        let left = (1280.0 - 12.0 * 46.0) * 0.5;
+        for (i, ability) in super::super::play::Ability::ALL.iter().enumerate() {
+            assert_eq!(
+                action_at(left + i as f32 * 46.0 + 20.0, 680.0, 1280.0, 720.0),
+                Some(*ability)
+            );
+        }
+        assert_eq!(action_at(left + 5.0 * 46.0, 680.0, 1280.0, 720.0), None);
+        assert_eq!(action_at(left, 600.0, 1280.0, 720.0), None);
     }
 }

@@ -240,6 +240,32 @@ fn main() -> Result<()> {
         encoder.set_depth(png::BitDepth::Eight);
         encoder.write_header()?.write_image_data(&rgba)?;
     }
+    for (name, source) in [
+        ("action-frame", "Interface\\Buttons\\UI-Quickslot2.blp"),
+        ("bow-icon", "Interface\\Icons\\INV_Weapon_Bow_07.blp"),
+        (
+            "fire-bolt-icon",
+            "Interface\\Icons\\Spell_Fire_FlameBolt.blp",
+        ),
+        (
+            "magic-missile-icon",
+            "Interface\\Icons\\Spell_Arcane_StarFire.blp",
+        ),
+        (
+            "fireball-icon",
+            "Interface\\Icons\\Spell_Fire_Fireball02.blp",
+        ),
+    ] {
+        let (w, h, rgba) = f::read_texture_rgba(&mut import.chain, source)?;
+        let mut encoder = png::Encoder::new(
+            std::fs::File::create(dir.join(format!("{name}.png")))?,
+            w,
+            h,
+        );
+        encoder.set_color(png::ColorType::Rgba);
+        encoder.set_depth(png::BitDepth::Eight);
+        encoder.write_header()?.write_image_data(&rgba)?;
+    }
     if args.next().as_deref() == Some("--ui-only") {
         return Ok(());
     }

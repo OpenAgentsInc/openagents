@@ -29,6 +29,13 @@ fn occlusion(index:u32,p:vec3<f32>,normal:vec3<f32>)->f32{
 }
 fn tone(x:vec3<f32>)->vec3<f32>{return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14),vec3(0.0),vec3(1.0));}
 @fragment fn fs(v:Out,@builtin(front_facing) front:bool)->@location(0) vec4<f32>{
+ if pose.params.x>0.5 {
+  let facing=abs(dot(normalize(v.normal),normalize(frame.eye.xyz-v.pos)));
+  let rim=pow(1.0-facing,1.5);
+  let turbulence=0.7+0.3*sin(v.pos.x*17.0+v.pos.y*23.0+v.pos.z*19.0-pose.params.z*24.0);
+  let opacity=(0.04+rim*0.2)*turbulence*pose.params.y;
+  return vec4(v.tint*2.0,opacity);
+ }
  let tex=textureSample(image,tex_sampler,v.uv);if material.params.y==1.0 && tex.a<0.5{discard;}
  let n=normalize(select(-v.normal,v.normal,front));var light=frame.ambient.rgb;
  for(var i=0u;i<u32(frame.settings.x);i++){let source=frame.lights[i*2u];let radiance=frame.lights[i*2u+1u];let delta=source.xyz-v.pos;let d=length(delta);let falloff=pow(max(1.0-d/source.w,0.0),2.0)/(1.0+d*d);let lambert=max(dot(n,delta/max(d,0.001)),0.0);light+=radiance.rgb*radiance.w*falloff*lambert*occlusion(i,v.pos,n);}

@@ -13,6 +13,7 @@ model-host = ["dep:coder", "dep:coder-delegate"]
 xp-host = ["dep:xp-ledger"]
 replay-host = ["dep:gym", "dep:knowledge"]
 capture = []
+imported-desktop = ["dep:winit", "capture"]
 
 [dependencies]
 bytemuck = { version = "1.25", features = ["derive"] }
@@ -107,3 +108,7 @@ required-features = ["capture"]
 [[example]]
 name = "overlook_capture"
 required-features = ["capture"]
+
+[[example]]
+name = "wow_play"
+required-features = ["imported-desktop"]

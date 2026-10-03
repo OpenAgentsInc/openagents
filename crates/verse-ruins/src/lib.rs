@@ -132,6 +132,81 @@ impl Simulation {
         })
     }
 
+    /// Starts the retained combat schedule with caller-authored stationary hostiles.
+    pub fn chamber(
+        player_position: [f32; 3],
+        hostiles: &[([f32; 3], i32)],
+    ) -> Result<(Self, Vec<u32>), String> {
+        validate_position(player_position)?;
+        if hostiles.len() > 256 {
+            return Err("Too many chamber actors".into());
+        }
+        let mut source = ServerState::new();
+        source.spawn_pc_at(player_position.into());
+        let mut ids = Vec::new();
+        for (position, hp) in hostiles {
+            validate_position(*position)?;
+            if !(1..=1_000_000).contains(hp) {
+                return Err("Invalid chamber health".into());
+            }
+            let id = source.ecs.spawn(
+                ActorKind::Wizard,
+                Faction::Undead,
+                server_core::Transform {
+                    pos: (*position).into(),
+                    yaw: 0.0,
+                    radius: 0.65,
+                },
+                server_core::Health { hp: *hp, max: *hp },
+            );
+            ids.push(id.0);
+        }
+        Ok((
+            Self {
+                source,
+                elapsed: 0.0,
+                effects: vec![],
+                counters: Counters::default(),
+                seen_projectiles: Default::default(),
+                ruins: vec![],
+                ruin_revision: 0,
+            },
+            ids,
+        ))
+    }
+    pub fn place_chamber_actor(
+        &mut self,
+        id: u32,
+        position: [f32; 3],
+        yaw: f32,
+    ) -> Result<(), String> {
+        validate_position(position)?;
+        if !yaw.is_finite() {
+            return Err("Invalid chamber facing".into());
+        }
+        let actor = self
+            .source
+            .ecs
+            .get_mut(server_core::ActorId(id))
+            .ok_or("Unknown chamber actor")?;
+        actor.tr.pos = position.into();
+        actor.tr.yaw = yaw;
+        Ok(())
+    }
+    /// Applies a directed cinematic bow impact to the same health state as spells.
+    pub fn bow_impact(&mut self, id: u32, damage: i32) -> Result<(), String> {
+        if !(1..=10000).contains(&damage) {
+            return Err("Invalid bow damage".into());
+        }
+        let actor = self
+            .source
+            .ecs
+            .get_mut(server_core::ActorId(id))
+            .ok_or("Unknown bow target")?;
+        actor.hp.hp = actor.hp.hp.saturating_sub(damage).max(0);
+        Ok(())
+    }
+
     pub fn tick(&mut self, dt: f32, player_position: [f32; 3], yaw: f32) -> Result<(), String> {
         validate_position(player_position)?;
         if !dt.is_finite() || !(0.0..=0.1).contains(&dt) || !yaw.is_finite() {
