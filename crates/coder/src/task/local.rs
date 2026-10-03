@@ -2123,6 +2123,17 @@ impl Follow {
                     if let CoderEvent::Result(finished) = &mut end {
                         finished.cost_microusd = result.cost_microusd;
                     }
+                    // The person stopped it: say so, not that something
+                    // refused (#10331).
+                    if let CoderEvent::Stopped(stopped) = &mut end
+                        && result.stop_requested
+                        && matches!(
+                            result.ending.as_str(),
+                            "cancelled_or_host_refusal" | "cancelled"
+                        )
+                    {
+                        stopped.message = coder_events::STOPPED_AS_ASKED.into();
+                    }
                     // The flow's process died before it checked and
                     // landed this turn: nothing landed, whatever the
                     // turn did (#10248).

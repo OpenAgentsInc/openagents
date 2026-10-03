@@ -41,6 +41,9 @@ pub const MAX_OUTPUT: usize = 4 * 1024;
 pub const MAX_TEXT: usize = 2 * 1024;
 /// What a person reads when a turn ended because its owner process died
 /// and the task store ended the run for it (#10248).
+/// What a turn's end says when the person stopped it (#10331).
+pub const STOPPED_AS_ASKED: &str = "Stopped, as you asked.";
+
 pub const OWNER_ENDED_MESSAGE: &str = "Coder's process ended unexpectedly.";
 
 /// One thing a Coder task did, said, or became.
@@ -823,6 +826,10 @@ pub struct Mapper {
     /// The last command this turn that ran past its deadline, and its
     /// seconds: what a `process_cleanup_unknown` ending names (#10281).
     timed_out: Option<(String, f64)>,
+    /// The last line the task's own checks printed when they all passed:
+    /// the answer of a turn the loop ended because its checks passed
+    /// before the agent wrote one (#10331).
+    checked: Option<String>,
 }
 
 impl Mapper {
@@ -841,6 +848,20 @@ impl Mapper {
     #[must_use]
     pub fn reply(&self) -> &str {
         &self.reply
+    }
+
+    /// The turn's answer: Coder's reply, or, when the loop ended the turn
+    /// because the task's checks passed before the agent wrote one, what
+    /// the checks said (#10331).
+    fn answer_or_checks(&self) -> String {
+        if !self.reply.trim().is_empty() {
+            return self.reply.clone();
+        }
+        match &self.checked {
+            Some(line) if !line.is_empty() => format!("The task's checks pass: {line}"),
+            Some(_) => "The task's checks pass.".to_owned(),
+            None => String::new(),
+        }
     }
 
     /// The events one step makes, in the ATIF document form
@@ -1072,6 +1093,23 @@ impl Mapper {
                         truncated,
                     }));
                 }
+                Some("tested") => {
+                    let results = event["results"].as_array();
+                    let passed = results.is_some_and(|results| {
+                        !results.is_empty() && results.iter().all(|result| result["exit"] == 0)
+                    });
+                    self.checked = passed.then(|| {
+                        results
+                            .into_iter()
+                            .flatten()
+                            .filter_map(|result| result["output"].as_str())
+                            .flat_map(str::lines)
+                            .map(str::trim)
+                            .rfind(|line| !line.is_empty())
+                            .unwrap_or_default()
+                            .to_owned()
+                    });
+                }
                 Some("ended") => {
                     let ending = &event["outcome"]["ending"];
                     let reason = ending["reason"]
@@ -1172,7 +1210,7 @@ impl Mapper {
                 let deletions = changes.iter().filter_map(|c| c.removed).sum();
                 CoderEvent::Result(Finished {
                     turn,
-                    summary: self.reply.clone(),
+                    summary: self.answer_or_checks(),
                     files_changed: changes,
                     insertions,
                     deletions,
@@ -2279,6 +2317,38 @@ mod tests {
         assert_eq!(failure.ending.as_deref(), Some("process_cleanup_unknown"));
         let unnamed = Mapper::new(1, None).end("process_cleanup_unknown", vec![], "", "", None);
         assert_eq!(unnamed.name(), "failure");
+    }
+
+    /// A turn the loop ended because the task's checks passed, before the
+    /// agent wrote an answer, answers with what the checks said (#10331).
+    #[test]
+    fn a_turn_ended_by_passing_checks_answers_with_them() {
+        let mut mapper = Mapper::new(1, None);
+        mapper.step(&step(
+            1,
+            "system",
+            "tested",
+            mc(json!({"event": "tested", "step": 1, "results": [{"command": "check-1", "exit": 1, "output": "No module named pytest\n"}]})),
+        ));
+        mapper.step(&step(
+            2,
+            "system",
+            "tested",
+            mc(json!({"event": "tested", "step": 2, "results": [{"command": "check-1", "exit": 0, "output": "...   [100%]\n3 passed in 0.00s\n"}]})),
+        ));
+        let end = mapper.end("checks_passed", vec![], "/w", "/t", None);
+        let CoderEvent::Result(finished) = &end else {
+            panic!("{end:?}")
+        };
+        assert_eq!(
+            finished.summary,
+            "The task's checks pass: 3 passed in 0.00s"
+        );
+        let failing = Mapper::new(1, None).end("model_finished", vec![], "/w", "/t", None);
+        let CoderEvent::Result(finished) = &failing else {
+            panic!("{failing:?}")
+        };
+        assert_eq!(finished.summary, "");
     }
 
     /// When the person asked for an engine, the runner says so first, and

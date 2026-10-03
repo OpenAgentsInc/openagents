@@ -847,9 +847,7 @@ fn notes(id: &str, meta: &Meta, computer: bool, running: bool) {
         }
     }
     if coder {
-        eprintln!(
-            "offer: run Coder on this computer for this thread: openagents chat run-coder --thread {id}"
-        );
+        eprintln!("Nothing is running yet. Start it with: openagents chat run-coder --thread {id}");
         if let Some(engine) = meta.engine {
             eprintln!("asked for: {}", engine.name());
         }

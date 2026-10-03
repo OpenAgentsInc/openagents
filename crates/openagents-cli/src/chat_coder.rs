@@ -62,10 +62,15 @@ pub(super) fn show(output: &Output, tools: &mut Stream, line: &Line) {
     }
     match &line.event {
         CoderEvent::Result(result) => {
-            if let Some(text) = coder_events::text(&line.event) {
-                eprintln!("{text}");
+            // The live view's header only: stdout lists the files (#10331).
+            if let Some(text) = coder_events::text(&line.event)
+                && let Some(header) = text.lines().next()
+            {
+                eprintln!("{header}");
             }
-            println!("{}", result.summary.trim());
+            if !result.summary.trim().is_empty() {
+                println!("{}", result.summary.trim());
+            }
             for file in &result.files_changed {
                 println!(
                     "  {} {} (+{} -{})",

@@ -2326,7 +2326,10 @@ impl Client {
                     sink,
                     id,
                     true,
-                    &format!("Coder continues task {} with your message.", coder.task),
+                    &format!(
+                        "Coder continues task {} with your message.",
+                        coder.task.get(..8).unwrap_or(&coder.task)
+                    ),
                     serde_json::to_value(coder).ok(),
                 );
                 // A change to a drafted plugin, or another try at one
