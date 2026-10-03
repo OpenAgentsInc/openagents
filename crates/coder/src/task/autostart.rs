@@ -166,7 +166,9 @@ pub enum CodexRuns {
     /// a Codex route runs the loop, whose commands the host bounds.
     Session,
     /// Microcoder's step loop: each step is one Codex request that returns
-    /// one action, and the host runs the commands.
+    /// one action, and the host runs the commands. The default: #10250
+    /// measured it at 0.79x raw Codex's cost (95% CI 0.72-0.86) and the
+    /// session at 0.94x (0.88-1.00), at 21 of 21 passes each.
     #[default]
     Loop,
 }

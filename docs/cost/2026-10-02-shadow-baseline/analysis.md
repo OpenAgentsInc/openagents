@@ -54,3 +54,36 @@
 ## Study spend
 
 Runs: 126; total list-price spend $39.39; agent wall time 3.8 h.
+
+## The Codex arms (#10250)
+
+Produced by `codex_session.py collected.jsonl` (binaries at `fbc68cfe86`).
+
+| Arm | n | Passed (Wilson 95%) | Total cost | Median cost/run | Total wall | Median wall/run | Median input tokens | Cache read share |
+|---|---:|---|---:|---:|---:|---:|---:|---:|
+| `raw-codex` | 21 | 21/21 (85%–100%) | $2.38 | $0.069 | 36.5 min | 62 s | 117,422 | 91% |
+| `routed-codex-loop` | 21 | 21/21 (85%–100%) | $1.88 | $0.058 | 36.4 min | 78 s | 48,665 | 77% |
+| `routed-codex-session` | 21 | 21/21 (85%–100%) | $2.24 | $0.075 | 38.5 min | 68 s | 107,574 | 88% |
+
+| Arm | Against | Tasks | Cost ratio (95% CI) | Wall-time ratio (95% CI) |
+|---|---|---:|---|---|
+| `routed-codex-loop` | `raw-codex` | 7 | 0.79 (0.72–0.86) | 1.00 (0.93–1.07) |
+| `routed-codex-session` | `raw-codex` | 7 | 0.94 (0.88–1.00) | 1.06 (0.99–1.14) |
+| `routed-codex-session` | `routed-codex-loop` | 7 | 1.19 (1.09–1.31) | 1.06 (0.98–1.14) |
+| `routed-codex-session` | `raw-claude` | 7 | 0.36 (0.34–0.38) | 1.58 (1.24–1.97) |
+| `routed-codex-session` | `routed-claude-lean` | 7 | 0.59 (0.55–0.64) | 1.45 (1.27–1.75) |
+
+| Task | `raw-codex` | `routed-codex-loop` | `routed-codex-session` |
+|---|---|---|---|
+| `fix-git` | 3/3 · $0.046 · 41 s | 3/3 · $0.062 · 73 s | 3/3 · $0.075 · 63 s |
+| `fix-code-vulnerability` | 3/3 · $0.122 · 67 s | 3/3 · $0.053 · 49 s | 3/3 · $0.075 · 68 s |
+| `headless-terminal` | 3/3 · $0.090 · 146 s | 3/3 · $0.058 · 104 s | 3/3 · $0.067 · 129 s |
+| `build-cython-ext` | 3/3 · $0.344 · 309 s | 3/3 · $0.250 · 257 s | 3/3 · $0.307 · 279 s |
+| `mi-seekable` | 3/3 · $0.060 · 62 s | 3/3 · $0.055 · 93 s | 3/3 · $0.098 · 82 s |
+| `mi-one` | 3/3 · $0.044 · 53 s | 3/3 · $0.040 · 58 s | 3/3 · $0.059 · 61 s |
+| `bottle-etag` | 3/3 · $0.062 · 56 s | 3/3 · $0.066 · 74 s | 3/3 · $0.072 · 60 s |
+
+- `routed-codex-loop`: endings {'finished': 16, 'checks_passed': 5}; class {'change': 21}; runs with checks kept 5/21; Jev $0.0469 of $1.88 (2.5%); 77% of 2.28 M input tokens read from cache.
+- `routed-codex-session`: endings {'answered': 21}; class {'change': 21}, effort medium on all 21; runs with checks kept 6/21; Jev $0.0163 of $2.24 (0.7%); 88% of 4.17 M input tokens read from cache.
+- `raw-codex`: `codex exec` on gpt-6.1-sol at medium, standard tier; 91% of 5.14 M input tokens read from cache.
+- Spend on the three Codex arms: $6.50 at list price (63 runs), 1.9 h of agent wall time.

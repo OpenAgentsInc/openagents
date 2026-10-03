@@ -37,6 +37,12 @@ Code (95% CI 0.57–0.65) at 21 of 21 passes with no measurable difference
 in wall time, and is now the default Claude route
 ([below](#the-lean-session-arm-10246)).
 
+**Update, #10250:** the Codex counterpart (one `codex exec` session) passed
+21 of 21 at 0.94× raw Codex's cost (0.88–1.00) but 1.19× (1.09–1.31) the
+routed Codex loop, which itself cost 0.79× raw Codex (0.72–0.86) at equal
+wall time, so the Codex default stays the loop
+([below](#the-codex-session-10250-built-measured-not-the-default)).
+
 ## Numbers
 
 105 runs: 7 tasks × 5 arms × 3 trials, all on coderos-4080 on 2026-10-02.
@@ -345,20 +351,56 @@ loop, whose commands the host bounds, and a task with images runs Claude in
 the loop, which takes them natively). `openagents settings set coder.claude
 loop` keeps the loop.
 
-### The Codex equivalent (designed, not yet built)
+### The Codex session (#10250): built, measured, not the default
 
-One `codex exec --json` session with the same briefing in place of the
-loop, through the same CLI adapter (`coder_delegate::delegate::Cli` with
-`Agent::Codex`, which already resumes with `codex exec resume`):
-`gpt-6.1-sol` at the route's medium effort (`model_reasoning_effort`), the
-headless core sections as `model_instructions_file`, Codex's own per-session
-prompt cache (it has no tool-list or TTL setting), the recipe's frozen checks
-in the briefing and run once at the end. It would be a `codex-session` row
-in `route_contract::recipe`, a `local:codex-session` endpoint, and a
-`coder.codex` setting beside `coder.claude`. On this panel the Codex loop
-with the recipe off already cost 0.54× raw Claude Code at 1.83× the time;
-the arm to run next is that session against it and against the lean Claude
-session, since the Codex loop's cache read rate was 6–9%.
+The Codex equivalent is now a route
+([#10250](https://github.com/OpenAgentsInc/openagents/issues/10250)):
+`coder.codex` = `session` runs one `codex exec --json` session
+([`microcoder::repository::codex_session`](../../crates/microcoder/src/repository/codex_session.rs),
+sharing its turn with the Claude session in `lean_session.rs`) with the
+recipe's briefing, the route's `gpt-6.1-sol` at medium reasoning effort,
+the headless core sections as `model_instructions_file`, Codex's own tools
+and per-session cache, and standard processing (`service_tier="default"`,
+so a person's `fast` tier doesn't bill priority processing). The grant names
+`local:codex-session`; full access only, as for Claude.
+
+Three new arms ran interleaved (shuffled) on coderos-4080 the same night,
+7 tasks × 3 trials, with `openagents` and `microcoder` built at
+`fbc68cfe86` (Codex CLI 0.159.2): **raw Codex** (`codex exec` with the
+owner's default, `gpt-6.1-sol` at medium, standard tier), the **routed
+Codex loop** (recipe on, `coder.codex` = `loop`), and the **routed Codex
+session**. Costs are list-price estimates from the usage Codex reports
+($2 / $0.20 cached / $10 per million tokens), Jev included.
+
+| Arm | n | Passed (Wilson 95%) | Total cost | Median cost per run | Total wall time | Median wall time per run | Cache reads |
+| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: |
+| Raw Codex | 21 | 21/21 (85%–100%) | $2.38 | $0.069 | 36.5 min | 62 s | 91% |
+| Routed, Codex loop | 21 | 21/21 (85%–100%) | **$1.88** | $0.058 | 36.4 min | 78 s | 77% |
+| Routed, Codex session | 21 | 21/21 (85%–100%) | $2.24 | $0.075 | 38.5 min | 68 s | 88% |
+
+| Arm | Against | Cost ratio (95% CI) | Wall-time ratio (95% CI) |
+| --- | --- | --- | --- |
+| Codex loop | raw Codex | **0.79 (0.72–0.86)** | 1.00 (0.93–1.07) |
+| Codex session | raw Codex | 0.94 (0.88–1.00) | 1.06 (0.99–1.14) |
+| Codex session | Codex loop | 1.19 (1.09–1.31) | 1.06 (0.98–1.14) |
+
+**On Codex the loop wins, so `coder.codex` stays `loop`.** All three arms
+passed 21 of 21; the session cost 6% less than raw Codex (the interval
+touches 1.00) but 19% more than the loop, and neither routed arm was
+measurably faster or slower than raw Codex. The difference from Claude is
+the cache: since the prompt-cache fix (#10244) the Codex loop read 77% of
+its input from the cache (it was 6–9% on the first panel), and it sends
+less than half the session's input (2.28 M against 4.17 M tokens over 21
+runs), because a `codex exec` session carries Codex's own instructions and
+tool definitions on every request. Jev classed all 21 tasks "change" on
+both routed arms, so both ran at medium effort. The session stays
+available as `openagents settings set coder.codex session`.
+
+For scale only (different hours, same host and tasks): the Codex loop's
+$1.88 is 0.30× raw Claude Code's $6.24 and the Codex session cost 0.59×
+(0.55–0.64) the lean Claude session, at 1.45× (1.27–1.75) its wall time.
+Another harness shared the host during part of these runs, which affects
+wall time on all three arms alike (the jobs were interleaved).
 
 ## The shadow baseline (shipped with this measurement)
 
@@ -382,10 +424,12 @@ settings are documented in [docs/cli/settings.md](../cli/settings.md).
 
 - [`2026-10-02-shadow-baseline/study.py`](2026-10-02-shadow-baseline/study.py):
   the harness (prepare, run, check, recheck, collect).
+- [`2026-10-02-shadow-baseline/codex_session.py`](2026-10-02-shadow-baseline/codex_session.py):
+  the #10250 Codex tables.
 - [`2026-10-02-shadow-baseline/analyze.py`](2026-10-02-shadow-baseline/analyze.py)
   and [`extra.py`](2026-10-02-shadow-baseline/extra.py): the tables above.
 - [`2026-10-02-shadow-baseline/collected.jsonl`](2026-10-02-shadow-baseline/collected.jsonl):
-  one line per run, 126 with the lean arm. Each run's directory on coderos-4080
+  one line per run, 189 with the lean arm and the three Codex arms of #10250. Each run's directory on coderos-4080
   (`~/shadow-10209/runs/<task>/<arm>/<trial>/`) holds `result.json` with the
   check's output, the CLI's event stream, the route record, and the ATIF
   trajectory.
