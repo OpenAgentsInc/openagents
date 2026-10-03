@@ -37,6 +37,7 @@ pub mod judged;
 pub mod paths;
 pub mod plan;
 pub mod plugins;
+pub mod pool;
 pub mod rule;
 pub mod run;
 pub mod runner;

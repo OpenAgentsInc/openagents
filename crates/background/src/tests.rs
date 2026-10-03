@@ -1016,3 +1016,46 @@ fn shipped_plugin_worktree_plan_matches_builtin_including_old_orphans() {
     assert_eq!(git(&repository, &["worktree", "list"]).lines().count(), 7);
     assert!(trees.iter().all(|tree| tree.exists()));
 }
+
+#[test]
+fn checking_many_worktrees_at_once_agrees_with_checking_each() {
+    let home = Home::new();
+    let (repo, trees) = repo(
+        &home,
+        &["clean", "unpushed", "dirty", "stashed", "env", "detached"],
+    );
+    std::fs::write(trees[1].join("file"), "two").unwrap();
+    git(&trees[1], &["commit", "-q", "-am", "two"]);
+    std::fs::write(trees[2].join("new"), "untracked").unwrap();
+    std::fs::write(trees[3].join("file"), "stash me").unwrap();
+    git(&trees[3], &["stash", "-q"]);
+    std::fs::write(repo.join(".git/info/exclude"), ".env\n").unwrap();
+    std::fs::write(trees[4].join(".env"), "SECRET=1").unwrap();
+    git(&trees[5], &["checkout", "-q", "--detach"]);
+    let mut paths = trees.clone();
+    // A full checkout and a folder that is no worktree at all.
+    paths.push(repo.clone());
+    paths.push(home.layout.home.clone());
+    let all = crate::git::removable_all(&paths);
+    let each: Vec<_> = paths
+        .iter()
+        .map(|path| crate::git::removable(path))
+        .collect();
+    assert_eq!(all, each);
+    assert!(all[0].is_ok() && all[5].is_ok(), "{all:?}");
+    assert_eq!(all[5].as_ref().unwrap().branch, None);
+    assert_eq!(all[0].as_ref().unwrap().branch.as_deref(), Some("clean"));
+    for (index, why) in [
+        (1, "commits not on any remote"),
+        (2, "uncommitted changes"),
+        (3, "a stash was made on it"),
+        (4, "holds ignored files: .env"),
+        (6, "a full checkout, not a worktree"),
+    ] {
+        assert_eq!(
+            all[index].as_ref().err().map(String::as_str),
+            Some(why),
+            "{index}"
+        );
+    }
+}

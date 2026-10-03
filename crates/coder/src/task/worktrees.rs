@@ -44,24 +44,30 @@ pub fn list(store: &Path) -> Result<Vec<Project>, String> {
     let tasks = Store::open_waiting(store, std::time::Duration::from_secs(30))
         .and_then(|store| store.list())
         .map_err(|error| error.to_string())?;
+    let found: Vec<(String, Worktree)> = tasks
+        .iter()
+        .filter_map(|task| {
+            let record = super::local::record(store, &task.task_id)?;
+            let path = PathBuf::from(&record.worktree);
+            path.is_dir().then(|| {
+                (
+                    task.intent.workspace.path.clone(),
+                    Worktree {
+                        task: task.task_id.clone(),
+                        bytes: 0,
+                        path,
+                        ended: task.ended(),
+                    },
+                )
+            })
+        })
+        .collect();
+    // Sizing walks every file: several worktrees at a time (#10304).
+    let sizes = background::pool::map(&found, |(_, worktree)| size(&worktree.path));
     let mut projects: BTreeMap<String, Vec<Worktree>> = BTreeMap::new();
-    for task in &tasks {
-        let Some(record) = super::local::record(store, &task.task_id) else {
-            continue;
-        };
-        let path = PathBuf::from(&record.worktree);
-        if !path.is_dir() {
-            continue;
-        }
-        projects
-            .entry(task.intent.workspace.path.clone())
-            .or_default()
-            .push(Worktree {
-                task: task.task_id.clone(),
-                bytes: size(&path),
-                path,
-                ended: task.ended(),
-            });
+    for ((project, mut worktree), bytes) in found.into_iter().zip(sizes) {
+        worktree.bytes = bytes;
+        projects.entry(project).or_default().push(worktree);
     }
     let mut out: Vec<Project> = projects
         .into_iter()

@@ -156,46 +156,35 @@ fn ls(output: &Output, store: &Path, worktrees: &Path, sizes: bool) {
         }
     }
     found.sort();
-    // Sizing walks every file and the Git checks run Git: eight at a time.
+    // The Git checks run several worktrees at a time and ask each
+    // repository once what it answers for all of them (#10304); sizing
+    // walks every file, so it runs several at a time too.
+    let paths: Vec<PathBuf> = found.iter().map(|(_, path)| path.clone()).collect();
+    let saved = git::removable_all(&paths);
+    let sized: Vec<u64> = if sizes {
+        background::pool::map(&paths, |path| {
+            paths::measure(path, &home).map_or(0, |measure| measure.bytes)
+        })
+    } else {
+        vec![0; paths.len()]
+    };
     let mut rows = Vec::with_capacity(found.len());
-    for chunk in found.chunks(8) {
-        let measured: Vec<(String, u64)> = std::thread::scope(|scope| {
-            let handles: Vec<_> = chunk
-                .iter()
-                .map(|(_, path)| {
-                    let home = &home;
-                    scope.spawn(move || {
-                        let saved = match git::removable(path) {
-                            Ok(_) => "nothing unsaved".to_owned(),
-                            Err(why) => why,
-                        };
-                        let size = if sizes {
-                            paths::measure(path, home).map_or(0, |measure| measure.bytes)
-                        } else {
-                            0
-                        };
-                        (saved, size)
-                    })
-                })
-                .collect();
-            handles
-                .into_iter()
-                .map(|handle| handle.join().unwrap_or_else(|_| ("unknown".into(), 0)))
-                .collect()
-        });
-        for ((name, path), (saved, size)) in chunk.iter().zip(measured) {
-            let task = task_of(name, &tasks);
-            rows.push(json!({
-                "name": name,
-                "path": path,
-                "kind": if spare(name) { "spare" } else { "task" },
-                "task": task.map(|task| task.task_id.clone()),
-                "state": if spare(name) { "spare".to_owned() } else { state(task) },
-                "bytes": sizes.then_some(size),
-                "unsaved": saved,
-                "age_seconds": now.saturating_sub(paths::touched_worktree(path)),
-            }));
-        }
+    for (((name, path), saved), size) in found.iter().zip(saved).zip(sized) {
+        let saved = match saved {
+            Ok(_) => "nothing unsaved".to_owned(),
+            Err(why) => why,
+        };
+        let task = task_of(name, &tasks);
+        rows.push(json!({
+            "name": name,
+            "path": path,
+            "kind": if spare(name) { "spare" } else { "task" },
+            "task": task.map(|task| task.task_id.clone()),
+            "state": if spare(name) { "spare".to_owned() } else { state(task) },
+            "bytes": sizes.then_some(size),
+            "unsaved": saved,
+            "age_seconds": now.saturating_sub(paths::touched_worktree(path)),
+        }));
     }
     let archived: Vec<Value> = shared::archived(store)
         .into_iter()

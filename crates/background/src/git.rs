@@ -114,11 +114,96 @@ pub fn removable(path: &Path) -> Result<Undo, String> {
 /// # Errors
 /// Why it must stay.
 pub fn removable_with(path: &Path, published: Option<&str>) -> Result<Undo, String> {
+    let local = local_state(path, published, false)?;
+    let tips: Vec<&str> = vec![local.head.as_str(), local.commit.as_str()];
+    let unpushed = unpushed(path, &tips)?;
+    if tips.iter().any(|tip| unpushed.contains(*tip)) {
+        return Err("commits not on any remote".into());
+    }
+    let stashes = git(path, &["stash", "list", "--format=%P %gs"]).unwrap_or_default();
+    finish(local, &stashes)
+}
+
+/// [`removable`] for many worktrees at once, in `paths`' order, for a
+/// listing (#10304). The checks are the same; Git runs for several
+/// worktrees at a time, and what a repository answers for all its
+/// worktrees (which commits are on no remote, its stashes) is asked once
+/// per repository instead of once per worktree.
+#[must_use]
+pub fn removable_all(paths: &[PathBuf]) -> Vec<Result<Undo, String>> {
+    let locals = crate::pool::map(paths, |path| local_state(path, None, true));
+    // One `rev-list` and one `stash list` per repository.
+    let mut repos: std::collections::BTreeMap<PathBuf, (PathBuf, Vec<String>)> =
+        std::collections::BTreeMap::new();
+    for (path, local) in paths.iter().zip(&locals) {
+        if let Ok(local) = local {
+            repos
+                .entry(local.common.clone())
+                .or_insert_with(|| (path.clone(), Vec::new()))
+                .1
+                .push(local.head.clone());
+        }
+    }
+    let repos: Vec<(PathBuf, PathBuf, Vec<String>)> = repos
+        .into_iter()
+        .map(|(common, (path, tips))| (common, path, tips))
+        .collect();
+    let facts = crate::pool::map(&repos, |(_, path, tips)| {
+        let stashes = git(path, &["stash", "list", "--format=%P %gs"]).unwrap_or_default();
+        let tips: Vec<&str> = tips.iter().map(String::as_str).collect();
+        (unpushed(path, &tips), stashes)
+    });
+    let facts: std::collections::BTreeMap<&PathBuf, _> = repos
+        .iter()
+        .map(|(common, _, _)| common)
+        .zip(facts)
+        .collect();
+    locals
+        .into_iter()
+        .map(|local| {
+            let local = local?;
+            let (unpushed, stashes) = &facts[&local.common];
+            let unpushed = unpushed.as_ref().map_err(Clone::clone)?;
+            if unpushed.contains(&local.head) {
+                return Err("commits not on any remote".into());
+            }
+            finish(local, stashes)
+        })
+        .collect()
+}
+
+/// What one worktree says of itself: it passed the checks that need only
+/// it (linked, clean or exactly its published commit, no ignored file
+/// outside a cache).
+struct Local {
+    path: PathBuf,
+    head: String,
+    /// `HEAD`, or the published commit that holds its content.
+    commit: String,
+    branch: Option<String>,
+    common: PathBuf,
+}
+
+/// `quick` first asks Git about tracked files alone, which does not walk
+/// the folders: a tracked change already decides "uncommitted changes"
+/// (with no published commit, the answer the full check gives first), so
+/// the walk for untracked and ignored files is skipped.
+fn local_state(path: &Path, published: Option<&str>, quick: bool) -> Result<Local, String> {
     let dot = path.join(".git");
     match std::fs::symlink_metadata(&dot) {
         Ok(meta) if meta.is_file() => {}
         Ok(_) => return Err("a full checkout, not a worktree".into()),
         Err(_) => return Err("not a Git worktree".into()),
+    }
+    if quick
+        && published.is_none()
+        && !git(
+            path,
+            &["status", "--porcelain", "--untracked-files=no", "-z"],
+        )?
+        .is_empty()
+    {
+        return Err("uncommitted changes".into());
     }
     // `--ignored=matching` names an ignored directory once (`target/`)
     // without walking it, and every ignored file outside one.
@@ -166,37 +251,64 @@ pub fn removable_with(path: &Path, published: Option<&str>) -> Result<Undo, Stri
         }
         return Err(format!("holds ignored files: {why}"));
     }
-    let head = git(path, &["rev-parse", "HEAD"])?;
-    let commit = saved_at.map_or_else(|| head.clone(), str::to_owned);
-    for tip in [&head, &commit] {
-        let unpushed = git(path, &["rev-list", tip, "--not", "--remotes"])?;
-        if !unpushed.is_empty() {
-            return Err("commits not on any remote".into());
-        }
-    }
-    let branch = git(path, &["symbolic-ref", "-q", "--short", "HEAD"])
-        .ok()
-        .filter(|branch| !branch.is_empty());
+    // The common directory, `HEAD`, and its branch in one call.
+    let facts = git(
+        path,
+        &[
+            "rev-parse",
+            "--path-format=absolute",
+            "--git-common-dir",
+            "HEAD",
+            "--symbolic-full-name",
+            "HEAD",
+        ],
+    )?;
+    let mut lines = facts.lines();
+    let (Some(common), Some(head), symbolic) = (lines.next(), lines.next(), lines.next()) else {
+        return Err("git rev-parse: unexpected output".into());
+    };
+    let branch = symbolic
+        .and_then(|name| name.strip_prefix("refs/heads/"))
+        .filter(|branch| !branch.is_empty())
+        .map(str::to_owned);
+    let head = head.to_owned();
+    Ok(Local {
+        path: path.to_owned(),
+        commit: saved_at.map_or_else(|| head.clone(), str::to_owned),
+        head,
+        branch,
+        common: PathBuf::from(common),
+    })
+}
+
+/// The commits of `tips` (and their history) on no remote. A tip is on no
+/// remote exactly when it is in this set: a tip some remote has brings its
+/// whole history with it.
+fn unpushed(path: &Path, tips: &[&str]) -> Result<std::collections::HashSet<String>, String> {
+    let mut args = vec!["rev-list"];
+    args.extend(tips.iter().copied());
+    args.extend(["--not", "--remotes"]);
+    Ok(git(path, &args)?.lines().map(str::to_owned).collect())
+}
+
+/// The checks after a worktree's own: no stash was made on it. Returns
+/// what recreates it.
+fn finish(local: Local, stashes: &str) -> Result<Undo, String> {
     // A stash is the repository's, not the worktree's: keep the worktree
     // when any stash was made on its branch (or, detached, on its commit).
-    let stashes = git(path, &["stash", "list", "--format=%P %gs"]).unwrap_or_default();
     for line in stashes.lines() {
         let base = line.split(' ').next().unwrap_or_default();
-        let made_here = match &branch {
+        let made_here = match &local.branch {
             Some(branch) => line
                 .to_lowercase()
                 .contains(&format!("on {branch}:").to_lowercase()),
-            None => base == commit && line.contains("(no branch)"),
+            None => base == local.commit && line.contains("(no branch)"),
         };
         if made_here {
             return Err("a stash was made on it".into());
         }
     }
-    let common = git(
-        path,
-        &["rev-parse", "--path-format=absolute", "--git-common-dir"],
-    )?;
-    let common = PathBuf::from(common);
+    let common = local.common;
     let repo = if common.file_name().is_some_and(|name| name == ".git") {
         common.parent().map(Path::to_owned).unwrap_or(common)
     } else {
@@ -204,9 +316,9 @@ pub fn removable_with(path: &Path, published: Option<&str>) -> Result<Undo, Stri
     };
     Ok(Undo {
         repo,
-        path: path.to_owned(),
-        branch,
-        commit,
+        path: local.path,
+        branch: local.branch,
+        commit: local.commit,
     })
 }
 
