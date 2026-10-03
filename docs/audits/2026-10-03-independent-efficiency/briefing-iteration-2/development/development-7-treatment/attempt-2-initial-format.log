@@ -1,0 +1,11 @@
+Diff in <VERIFICATION_ROOT>/repo/crates/background/src/git.rs:138:
+         }
+     }
+     if let Some(shown) = ignored_data {
+-        return Err(format!(
+-            "ignored files that are not a build cache: {shown}"
+-        ));
++        return Err(format!("ignored files that are not a build cache: {shown}"));
+     }
+     let commit = git(path, &["rev-parse", "HEAD"])?;
+     let unpushed = git(path, &["rev-list", "HEAD", "--not", "--remotes"])?;

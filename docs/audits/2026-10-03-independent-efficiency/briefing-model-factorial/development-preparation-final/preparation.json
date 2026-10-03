@@ -1,0 +1,484 @@
+{
+  "schema": "openagents.briefing-replay.structure-preparation.v1",
+  "policy": "ExplicitStructureV1",
+  "status": "complete",
+  "source_commit": "4705102273140a5f381fb75e17a29965662629c8",
+  "model_calls": 0,
+  "external_git_probes": 0,
+  "byte_budget": 16384,
+  "preview_flags": [
+    "--explicit-structure"
+  ],
+  "hashes": {
+    "binary_sha256": "cfe8027a1c2aa1278483e4f38b45819bd19933b3d6703f51aa02110d8212c3a1",
+    "issue_sha256": "48d292a829dc635bb9558dfb95557ba6fa3134b8d08d64c77fe0a9bbd1aaafe1",
+    "warm_index_sha256": "f320f9f7f99a0923427e06233e6ffeedb96351edfee8de58f7a98772ffb8ad6e",
+    "preparation_script_sha256": "a8d99c27e48c2e3480bbba71e90ebf0f300daba3d569b2be107390c9526eef34",
+    "cold_index_sha256": "b1351281f3bc3336ae0c80ea7c28105724851d71e2f712fa131431a36f4bf564",
+    "structured_preview_sha256": "72a3742a95a093eede2e8dfe50684aec9c01ed731de740ae0ebec9e8c4200486",
+    "focused_sha256": "291cdd81af50e275b316fc7a3f3d7946d0edfdf2ead8b1e1929625b8063d3c9e",
+    "treatment_sha256": "291cdd81af50e275b316fc7a3f3d7946d0edfdf2ead8b1e1929625b8063d3c9e"
+  },
+  "timings_ms": {
+    "cold_index_build_wall": 1692.404943999918,
+    "cold_index_reported": 1549.2134119999998,
+    "warm_preview_wall": 231.66820200003713,
+    "preview_stages": {
+      "assembly": 30.183464999999998,
+      "index_and_issue_load": 155.609625,
+      "original_index_build_separate": 1847.006019,
+      "output_serialization_sample": 0.142798,
+      "revision_validation": 0.890348,
+      "selected_git_validation_and_read": 12.211226,
+      "warm_preview_before_output": 189.273049
+    },
+    "warm_preview_reported_including_output": 189.678,
+    "v2_comparison_wall": 211.56148499994742
+  },
+  "notes": [
+    "Default lexical and symbol ranking is enabled inside the explicit-file and nearby-test pool. It does not admit unrelated lexical file matches.",
+    "The fresh index build is measured separately. Operating-system page caches are not cleared; cold means a new index artifact, not cold storage.",
+    "Warm preview uses the supplied immutable index copy after the fresh index build. Subprocess wall time includes process startup and output writes.",
+    "treatment.md is exactly focused.md. There is no external probe, additional source appendix, model call, or task execution.",
+    "Supply the complete issue and mandatory instructions separately and identically to both arms."
+  ],
+  "payload_bytes": 15045,
+  "source_bytes": 13035,
+  "selected_ranges": [
+    {
+      "path": "crates/background/src/git.rs",
+      "start_line": 4,
+      "end_line": 41
+    },
+    {
+      "path": "crates/background/src/git.rs",
+      "start_line": 61,
+      "end_line": 118
+    },
+    {
+      "path": "docs/background/2026-10-02-background-processes.md",
+      "start_line": 158,
+      "end_line": 195
+    },
+    {
+      "path": "docs/background/2026-10-02-background-processes.md",
+      "start_line": 219,
+      "end_line": 239
+    },
+    {
+      "path": "crates/background/src/tests.rs",
+      "start_line": 4,
+      "end_line": 72
+    },
+    {
+      "path": "crates/background/src/tests.rs",
+      "start_line": 89,
+      "end_line": 133
+    },
+    {
+      "path": "crates/background/src/tests.rs",
+      "start_line": 239,
+      "end_line": 256
+    },
+    {
+      "path": "crates/background/src/tests.rs",
+      "start_line": 409,
+      "end_line": 429
+    }
+  ],
+  "selections": [
+    {
+      "path": "crates/background/src/git.rs",
+      "role": "explicit_source",
+      "anchor": {
+        "start_line": 75,
+        "end_line": 78
+      },
+      "method": "Complete declaration `removable`; containing explicit line anchor; 1 equally ranked candidate(s)",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 61,
+      "end_line": 118
+    },
+    {
+      "path": "crates/background/src/git.rs",
+      "role": "structural_dependency",
+      "anchor": null,
+      "method": "Same-file syntax dependency candidate `Undo`",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 9,
+      "end_line": 18
+    },
+    {
+      "path": "crates/background/src/git.rs",
+      "role": "structural_dependency",
+      "anchor": null,
+      "method": "Same-file syntax dependency candidate `git`",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 20,
+      "end_line": 41
+    },
+    {
+      "path": "crates/background/src/git.rs",
+      "role": "structural_dependency",
+      "anchor": null,
+      "method": "Same-scope imports; imported definitions were not expanded",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 4,
+      "end_line": 4
+    },
+    {
+      "path": "crates/background/src/git.rs",
+      "role": "structural_dependency",
+      "anchor": null,
+      "method": "Same-scope imports; imported definitions were not expanded",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 5,
+      "end_line": 5
+    },
+    {
+      "path": "crates/background/src/git.rs",
+      "role": "structural_dependency",
+      "anchor": null,
+      "method": "Same-scope imports; imported definitions were not expanded",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 7,
+      "end_line": 7
+    },
+    {
+      "path": "crates/background/src/tests.rs",
+      "role": "nearby_test",
+      "anchor": null,
+      "method": "Complete test `a_checkout_target_needs_cachedir_tag_and_git_ignore`; Scope-limited lexical fallback; no direct source call was established; 1 equally ranked candidate(s)",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 409,
+      "end_line": 429
+    },
+    {
+      "path": "crates/background/src/tests.rs",
+      "role": "test_fixture_helper",
+      "anchor": null,
+      "method": "Same-file syntax dependency candidate `Idle`",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 33,
+      "end_line": 34
+    },
+    {
+      "path": "crates/background/src/tests.rs",
+      "role": "test_fixture_helper",
+      "anchor": null,
+      "method": "Same-file syntax dependency candidate `Idle`",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 36,
+      "end_line": 40
+    },
+    {
+      "path": "crates/background/src/tests.rs",
+      "role": "test_fixture_helper",
+      "anchor": null,
+      "method": "Same-file syntax dependency candidate `Home`",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 42,
+      "end_line": 46
+    },
+    {
+      "path": "crates/background/src/tests.rs",
+      "role": "test_fixture_helper",
+      "anchor": null,
+      "method": "Same-file syntax dependency candidate `Home`",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 48,
+      "end_line": 72
+    },
+    {
+      "path": "crates/background/src/tests.rs",
+      "role": "test_fixture_helper",
+      "anchor": null,
+      "method": "Same-file syntax dependency candidate `Home::new`",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 49,
+      "end_line": 58
+    },
+    {
+      "path": "crates/background/src/tests.rs",
+      "role": "test_fixture_helper",
+      "anchor": null,
+      "method": "Same-file syntax dependency candidate `low`",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 89,
+      "end_line": 95
+    },
+    {
+      "path": "crates/background/src/tests.rs",
+      "role": "test_fixture_helper",
+      "anchor": null,
+      "method": "Same-file syntax dependency candidate `target`",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 97,
+      "end_line": 109
+    },
+    {
+      "path": "crates/background/src/tests.rs",
+      "role": "test_fixture_helper",
+      "anchor": null,
+      "method": "Same-file syntax dependency candidate `age`",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 111,
+      "end_line": 133
+    },
+    {
+      "path": "crates/background/src/tests.rs",
+      "role": "test_fixture_helper",
+      "anchor": null,
+      "method": "Same-file syntax dependency candidate `git`",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 239,
+      "end_line": 256
+    },
+    {
+      "path": "crates/background/src/tests.rs",
+      "role": "test_fixture_helper",
+      "anchor": null,
+      "method": "Same-file syntax dependency candidate `Fixed`",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 16,
+      "end_line": 20
+    },
+    {
+      "path": "crates/background/src/tests.rs",
+      "role": "test_fixture_helper",
+      "anchor": null,
+      "method": "Same-file syntax dependency candidate `Fixed`",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 22,
+      "end_line": 31
+    },
+    {
+      "path": "crates/background/src/tests.rs",
+      "role": "structural_dependency",
+      "anchor": null,
+      "method": "Same-scope imports; imported definitions were not expanded",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 4,
+      "end_line": 4
+    },
+    {
+      "path": "crates/background/src/tests.rs",
+      "role": "structural_dependency",
+      "anchor": null,
+      "method": "Same-scope imports; imported definitions were not expanded",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 5,
+      "end_line": 5
+    },
+    {
+      "path": "crates/background/src/tests.rs",
+      "role": "structural_dependency",
+      "anchor": null,
+      "method": "Same-scope imports; imported definitions were not expanded",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 6,
+      "end_line": 6
+    },
+    {
+      "path": "crates/background/src/tests.rs",
+      "role": "structural_dependency",
+      "anchor": null,
+      "method": "Same-scope imports; imported definitions were not expanded",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 7,
+      "end_line": 7
+    },
+    {
+      "path": "crates/background/src/tests.rs",
+      "role": "structural_dependency",
+      "anchor": null,
+      "method": "Same-scope imports; imported definitions were not expanded",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 9,
+      "end_line": 9
+    },
+    {
+      "path": "crates/background/src/tests.rs",
+      "role": "structural_dependency",
+      "anchor": null,
+      "method": "Same-scope imports; imported definitions were not expanded",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 10,
+      "end_line": 10
+    },
+    {
+      "path": "crates/background/src/tests.rs",
+      "role": "structural_dependency",
+      "anchor": null,
+      "method": "Same-scope imports; imported definitions were not expanded",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 11,
+      "end_line": 11
+    },
+    {
+      "path": "crates/background/src/tests.rs",
+      "role": "structural_dependency",
+      "anchor": null,
+      "method": "Same-scope imports; imported definitions were not expanded",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 12,
+      "end_line": 12
+    },
+    {
+      "path": "crates/background/src/tests.rs",
+      "role": "structural_dependency",
+      "anchor": null,
+      "method": "Same-scope imports; imported definitions were not expanded",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 13,
+      "end_line": 13
+    },
+    {
+      "path": "crates/background/src/tests.rs",
+      "role": "structural_dependency",
+      "anchor": null,
+      "method": "Same-scope imports; imported definitions were not expanded",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 14,
+      "end_line": 14
+    },
+    {
+      "path": "docs/background/2026-10-02-background-processes.md",
+      "role": "explicit_document",
+      "anchor": null,
+      "method": "Complete Markdown section `Safety`; term match within named document; 1 equally ranked candidate(s)",
+      "complete_file": false,
+      "complete_declaration": false,
+      "start_line": 158,
+      "end_line": 195
+    },
+    {
+      "path": "docs/background/2026-10-02-background-processes.md",
+      "role": "explicit_document",
+      "anchor": null,
+      "method": "Complete Markdown section `Candidate classes, in order`; term match within named document; 1 equally ranked candidate(s)",
+      "complete_file": false,
+      "complete_declaration": false,
+      "start_line": 219,
+      "end_line": 239
+    }
+  ],
+  "coverage": {
+    "omissions": [
+      {
+        "path": "crates/background/src/git.rs",
+        "role": "structural_dependency",
+        "reason": "4 calls have no supported same-file target (examples: Err, Ok, PathBuf::from); external and relative paths were not expanded."
+      },
+      {
+        "path": "crates/background/src/git.rs",
+        "role": "structural_dependency",
+        "reason": "5 calls have no supported same-file target (examples: Command::new, Err, Ok); external and relative paths were not expanded."
+      },
+      {
+        "path": "crates/background/src/git.rs",
+        "role": "explicit_source",
+        "reason": "41 method, macro, or indirect call occurrences are unresolved; this is a syntax dependency candidate set, not a complete call graph."
+      },
+      {
+        "path": "nearby tests",
+        "role": "nearby_test",
+        "reason": "10 additional ranked tests were omitted by the one automatically ranked test bound."
+      },
+      {
+        "path": "crates/background/src/tests.rs",
+        "role": "test_fixture_helper",
+        "reason": "Call `env` may be shadowed by a local binding; its target is unresolved."
+      },
+      {
+        "path": "crates/background/src/tests.rs",
+        "role": "test_fixture_helper",
+        "reason": "5 calls have no supported same-file target (examples: disk, run::run, std::fs::create_dir_all); external and relative paths were not expanded."
+      },
+      {
+        "path": "crates/background/src/tests.rs",
+        "role": "test_fixture_helper",
+        "reason": "2 calls have no supported same-file target (examples: Ok, Snapshot::default); external and relative paths were not expanded."
+      },
+      {
+        "path": "crates/background/src/tests.rs",
+        "role": "test_fixture_helper",
+        "reason": "6 calls have no supported same-file target (examples: Layout::new, Mutex::new, Ok); external and relative paths were not expanded."
+      },
+      {
+        "path": "crates/background/src/tests.rs",
+        "role": "test_fixture_helper",
+        "reason": "5 calls have no supported same-file target (examples: Layout::new, Mutex::new, Vec::new); external and relative paths were not expanded."
+      },
+      {
+        "path": "crates/background/src/tests.rs",
+        "role": "test_fixture_helper",
+        "reason": "2 calls have no supported same-file target (examples: std::fs::create_dir_all, std::fs::write); external and relative paths were not expanded."
+      },
+      {
+        "path": "crates/background/src/tests.rs",
+        "role": "test_fixture_helper",
+        "reason": "5 calls have no supported same-file target (examples: Duration::from_secs, SystemTime::now, std::fs::File::open); external and relative paths were not expanded."
+      },
+      {
+        "path": "crates/background/src/tests.rs",
+        "role": "test_fixture_helper",
+        "reason": "2 calls have no supported same-file target (examples: Command::new, String::from_utf8_lossy); external and relative paths were not expanded."
+      },
+      {
+        "path": "crates/background/src/tests.rs",
+        "role": "test_fixture_helper",
+        "reason": "2 calls have no supported same-file target (examples: Ok, std::fs::metadata); external and relative paths were not expanded."
+      },
+      {
+        "path": "crates/background/src/tests.rs",
+        "role": "nearby_test",
+        "reason": "74 method, macro, or indirect call occurrences are unresolved; this is a syntax dependency candidate set, not a complete call graph."
+      },
+      {
+        "path": "docs/background/2026-10-02-background-processes.md",
+        "role": "explicit_document",
+        "reason": "19 additional ranked document sections were omitted by the two-section bound."
+      }
+    ],
+    "omitted_coverage_records": 0
+  },
+  "v2_comparison": {
+    "flags": [
+      "--focused",
+      "--no-lexical",
+      "--no-symbols"
+    ],
+    "prior_focused_sha256": "0ebc6e55dc2944420bdcd18e41840a0dc09d06863acc35b3aa7b0c41da17bb9a",
+    "new_binary_focused_sha256": "0ebc6e55dc2944420bdcd18e41840a0dc09d06863acc35b3aa7b0c41da17bb9a",
+    "identical": true
+  }
+}

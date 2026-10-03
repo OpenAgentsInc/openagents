@@ -1,0 +1,36 @@
+{
+  "schema": "openagents.briefing.packer-freeze.v1",
+  "frozen_at_utc": "2026-10-03T05:08:00.656560+00:00",
+  "policy": "ExplicitStructureV1",
+  "preview_flags": [
+    "--explicit-structure"
+  ],
+  "payload_budget_bytes": 16384,
+  "external_runtime_probe": false,
+  "paid_preparation_model_calls": 0,
+  "known_development_source": "4705102273140a5f381fb75e17a29965662629c8",
+  "development_payload_sha256": "291cdd81af50e275b316fc7a3f3d7946d0edfdf2ead8b1e1929625b8063d3c9e",
+  "binary_sha256": "cfe8027a1c2aa1278483e4f38b45819bd19933b3d6703f51aa02110d8212c3a1",
+  "source_files": {
+    "crates/briefing-lab/src/explicit_structure.rs": "6f3d5ad89bd051f61a75a040d3266d775c51429a85565a97513368263312c36b",
+    "crates/briefing-lab/src/focused.rs": "5e2bb144ffe4d6fe34221d72b101aaa1dd634881969ac14781203a0791ea52b7",
+    "crates/briefing-lab/src/lib.rs": "863e4a0d44af2f7db7f158da89443933a61e5ddcbe55e29012850ca71ae80901",
+    "crates/briefing-lab/src/main.rs": "7e7ad3470b61aa2a7513f6624a95ff28446da4cec892e97a24ddaf0da39944c2",
+    "crates/briefing-lab/tests/focused.rs": "369e6d2966960aacc20ffd2c56e1a2d11d65f7177d61533950d6302ae7068156",
+    "bench/briefing-replay/prepare_structure.py": "a8d99c27e48c2e3480bbba71e90ebf0f300daba3d569b2be107390c9526eef34",
+    "scripts/briefing-preview.sh": "4f70754679f50392904dea48c90feaf931e22a97b23d8ada279ae9ae64b2a127"
+  },
+  "verification": {
+    "host": "isolated Linux Boat sandbox",
+    "rust_tests_passed": 61,
+    "cargo_fmt_check_passed": true,
+    "old_focused_payload_byte_identical": true
+  },
+  "limitations": [
+    "The selected development test uses scoped lexical fallback rather than a resolved call graph.",
+    "The development test fixture constructor is omitted by conservative shadowing handling; this known dependency-recall gap is retained.",
+    "No held-out or reserve executor outcome is used to choose this policy. The implementer has not read the reserve task or checker."
+  ],
+  "reserve_commitment_sha256": "d968b244918658167fc208dd75ba82e319810aefa068193abd11d77387de778e",
+  "reserve_checker_amendment_sha256": "545ed2a436f043ba009b069f2e4a7d3251421e3eb56e5c905610c7aea593427d"
+}

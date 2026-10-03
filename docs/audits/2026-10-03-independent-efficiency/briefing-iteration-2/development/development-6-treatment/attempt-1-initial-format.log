@@ -1,0 +1,22 @@
+Diff in <VERIFICATION_ROOT>/repo/crates/background/src/tests.rs:421:
+             .file_type()
+             .is_symlink()
+     );
+-    assert_eq!(std::fs::read_to_string(outside.join("keep")).unwrap(), "keep");
+     assert_eq!(
++        std::fs::read_to_string(outside.join("keep")).unwrap(),
++        "keep"
++    );
++    assert_eq!(
+         std::fs::read_to_string(file.join("node_modules")).unwrap(),
+         "not a cache"
+     );
+Diff in <VERIFICATION_ROOT>/repo/crates/background/src/tests.rs:429:
+-    assert_eq!(std::fs::read_to_string(store.join("x.env")).unwrap(), "KEY=2");
++    assert_eq!(
++        std::fs::read_to_string(store.join("x.env")).unwrap(),
++        "KEY=2"
++    );
+     assert_eq!(
+         std::fs::read_to_string(store_dir.join(".DS_Store/inside")).unwrap(),
+         "data"

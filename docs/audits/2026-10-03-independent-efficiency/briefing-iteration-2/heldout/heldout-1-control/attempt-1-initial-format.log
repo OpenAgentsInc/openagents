@@ -1,0 +1,26 @@
+Diff in <VERIFICATION_ROOT>/repo/crates/gym/src/runs_beats_winner.rs:707:
+             "{claim:#?}"
+         );
+         assert!(
+-            claim["caveats"].as_array().unwrap().iter().any(|caveat| *caveat
+-                == "2 run directories of drift-check hold two runs' records and are left out."),
++            claim["caveats"]
++                .as_array()
++                .unwrap()
++                .iter()
++                .any(|caveat| *caveat
++                    == "2 run directories of drift-check hold two runs' records and are left out."),
+             "{claim:#?}"
+         );
+     }
+Diff in <VERIFICATION_ROOT>/repo/crates/gym/src/runs_microcoder.rs:396:
+     /// The manifest of the directory at `host`, when it has one.
+     #[must_use]
+     pub fn manifest(&self, host: usize) -> Option<&Manifest> {
+-        self.hosts.get(host).and_then(|(_, manifest)| manifest.as_ref())
++        self.hosts
++            .get(host)
++            .and_then(|(_, manifest)| manifest.as_ref())
+     }
+ }
+ 

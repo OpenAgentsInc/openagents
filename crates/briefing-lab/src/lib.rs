@@ -2,6 +2,7 @@
 pub mod attempt;
 pub mod environment;
 pub mod execution;
+pub mod explicit_structure;
 pub mod focused;
 pub mod syntax;
 use serde::{Deserialize, Serialize};
@@ -585,7 +586,7 @@ pub fn assemble_with_options(
         issue,
         components,
         options,
-        false,
+        None,
     )
 }
 
@@ -604,7 +605,32 @@ pub fn assemble_focused(
         issue,
         components,
         Options::default(),
-        true,
+        Some(FocusedPolicy::FocusedV1),
+    )
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FocusedPolicy {
+    FocusedV1,
+    ExplicitStructureV1,
+}
+
+/// Select complete units from explicit files and nearby tests.
+pub fn assemble_explicit_structure(
+    repo: &Path,
+    index: &Index,
+    expected_commit: &str,
+    issue: Issue,
+    components: Components,
+) -> Result<Brief> {
+    assemble_internal(
+        repo,
+        index,
+        expected_commit,
+        issue,
+        components,
+        Options::default(),
+        Some(FocusedPolicy::ExplicitStructureV1),
     )
 }
 
@@ -615,7 +641,7 @@ fn assemble_internal(
     issue: Issue,
     components: Components,
     options: Options,
-    focused: bool,
+    focused: Option<FocusedPolicy>,
 ) -> Result<Brief> {
     let start = Instant::now();
     if index.schema != SCHEMA {
@@ -661,8 +687,14 @@ fn assemble_internal(
             return Err("The index has an invalid symbol or line range; rebuild it.".into());
         }
     }
-    if focused {
-        return focused::assemble(repo, index, issue, components, start);
+    match focused {
+        Some(FocusedPolicy::FocusedV1) => {
+            return focused::assemble(repo, index, issue, components, start);
+        }
+        Some(FocusedPolicy::ExplicitStructureV1) => {
+            return explicit_structure::assemble(repo, index, issue, components, start);
+        }
+        None => {}
     }
     if options.syntax {
         for source in &index.files {

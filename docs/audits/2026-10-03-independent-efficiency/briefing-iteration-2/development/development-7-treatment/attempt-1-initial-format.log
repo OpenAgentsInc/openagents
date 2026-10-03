@@ -1,0 +1,14 @@
+Diff in <VERIFICATION_ROOT>/repo/crates/background/src/tests.rs:385:
+     let odd = spaced.join("my data\nnext line.dat");
+     std::fs::write(&odd, "line one\nline two").unwrap();
+     for tree in [cache, private, fake, linked, dsdir, spaced] {
+-        assert_eq!(git(tree, &["status", "--porcelain"]), "", "{}", tree.display());
++        assert_eq!(
++            git(tree, &["status", "--porcelain"]),
++            "",
++            "{}",
++            tree.display()
++        );
+     }
+     let facts = home.facts();
+     let volumes = low();

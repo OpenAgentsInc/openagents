@@ -1,0 +1,12 @@
+Diff in <VERIFICATION_ROOT>/repo/crates/background/src/git.rs:110:
+         ],
+     )?;
+     let mut ignored = Vec::new();
+-    for entry in status.split(|&byte| byte == 0).filter(|entry| !entry.is_empty()) {
++    for entry in status
++        .split(|&byte| byte == 0)
++        .filter(|entry| !entry.is_empty())
++    {
+         match entry.strip_prefix(b"!! ") {
+             Some(name) => ignored.push(name),
+             None => return Err("uncommitted changes".into()),

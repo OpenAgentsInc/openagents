@@ -34,7 +34,8 @@
           "model_success": true,
           "reported_check_passed": null,
           "num_turns_per_input": 1,
-          "duration_api_ms_per_input": 1163,
+          "duration_ms_per_input": 1190,
+          "duration_api_ms_cumulative": 1163,
           "usage_per_input": {
             "cache_creation_input_tokens": 24547,
             "cache_read_input_tokens": 3594,
@@ -120,7 +121,8 @@
           "model_success": true,
           "reported_check_passed": false,
           "num_turns_per_input": 23,
-          "duration_api_ms_per_input": 147778,
+          "duration_ms_per_input": 148064,
+          "duration_api_ms_cumulative": 147778,
           "usage_per_input": {
             "cache_creation_input_tokens": 37638,
             "cache_read_input_tokens": 726046,
@@ -263,7 +265,8 @@
           "model_success": true,
           "reported_check_passed": true,
           "num_turns_per_input": 8,
-          "duration_api_ms_per_input": 223557,
+          "duration_ms_per_input": 75821,
+          "duration_api_ms_cumulative": 223557,
           "usage_per_input": {
             "cache_creation_input_tokens": 12709,
             "cache_read_input_tokens": 435549,
@@ -557,7 +560,8 @@
           "model_success": true,
           "reported_check_passed": false,
           "num_turns_per_input": 23,
-          "duration_api_ms_per_input": 112757,
+          "duration_ms_per_input": 112822,
+          "duration_api_ms_cumulative": 112757,
           "usage_per_input": {
             "cache_creation_input_tokens": 40172,
             "cache_read_input_tokens": 630466,
@@ -700,7 +704,8 @@
           "model_success": true,
           "reported_check_passed": true,
           "num_turns_per_input": 10,
-          "duration_api_ms_per_input": 142422,
+          "duration_ms_per_input": 30056,
+          "duration_api_ms_cumulative": 142422,
           "usage_per_input": {
             "cache_creation_input_tokens": 8215,
             "cache_read_input_tokens": 436945,
@@ -993,7 +998,8 @@
           "model_success": true,
           "reported_check_passed": false,
           "num_turns_per_input": 20,
-          "duration_api_ms_per_input": 99099,
+          "duration_ms_per_input": 99176,
+          "duration_api_ms_cumulative": 99099,
           "usage_per_input": {
             "cache_creation_input_tokens": 32816,
             "cache_read_input_tokens": 588968,
@@ -1136,7 +1142,8 @@
           "model_success": true,
           "reported_check_passed": true,
           "num_turns_per_input": 6,
-          "duration_api_ms_per_input": 115564,
+          "duration_ms_per_input": 16483,
+          "duration_api_ms_cumulative": 115564,
           "usage_per_input": {
             "cache_creation_input_tokens": 5594,
             "cache_read_input_tokens": 190377,
@@ -1417,12 +1424,390 @@
       "label": "development-4-control",
       "registered": true,
       "condition": "control",
-      "final_result_available": false,
-      "status": "in_progress_or_interrupted",
-      "accepted": false,
-      "completed": false,
-      "attempts": [],
-      "artifacts": {},
+      "final_result_available": true,
+      "status": "complete",
+      "accepted": true,
+      "completed": true,
+      "attempts": [
+        {
+          "attempt": 1,
+          "cumulative_cost_usd_list_estimate": 0.6309083999999999,
+          "incremental_cost_usd_list_estimate": 0.6309083999999999,
+          "model_success": true,
+          "reported_check_passed": false,
+          "num_turns_per_input": 23,
+          "duration_ms_per_input": 117294,
+          "duration_api_ms_cumulative": 116831,
+          "usage_per_input": {
+            "cache_creation_input_tokens": 29289,
+            "cache_read_input_tokens": 666082,
+            "input_tokens": 30,
+            "output_tokens": 13163,
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 29289,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "output_tokens_details": {
+              "thinking_tokens": 4521
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            }
+          },
+          "checks": [
+            {
+              "name": "initial-format",
+              "exit_code": 1,
+              "timed_out": false,
+              "wall_s": 0.06375208999997994,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "background",
+                "--",
+                "--check"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "development-4-control/attempt-1-initial-format.log"
+            },
+            {
+              "name": "autoformat",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.06396975999996357,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "background"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "development-4-control/attempt-1-autoformat.log"
+            },
+            {
+              "name": "format",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.06397466699991128,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "background",
+                "--",
+                "--check"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "development-4-control/attempt-1-format.log"
+            },
+            {
+              "name": "own-tests",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 2.52003908100005,
+              "command": [
+                "cargo",
+                "test",
+                "-p",
+                "background",
+                "--offline"
+              ],
+              "test_summaries": [
+                {
+                  "passed": 22,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 0,
+                  "failed": 0,
+                  "ignored": 0
+                }
+              ],
+              "failed_test_names": [],
+              "log": "development-4-control/attempt-1-own-tests.log"
+            },
+            {
+              "name": "acceptance",
+              "exit_code": 101,
+              "timed_out": false,
+              "wall_s": 1.2157360629998948,
+              "command": [
+                "cargo",
+                "+1.97.1",
+                "test",
+                "--manifest-path",
+                "<VERIFICATION_ROOT>/checks/<RUN_ID>/1/harness/Cargo.toml",
+                "--offline",
+                "--test",
+                "acceptance",
+                "--",
+                "--test-threads=1"
+              ],
+              "test_summaries": [
+                {
+                  "passed": 6,
+                  "failed": 11,
+                  "ignored": 0
+                }
+              ],
+              "failed_test_names": [
+                "disposable_caches_do_not_hide_ignored_user_data",
+                "extension_cache_named_symlink_is_kept_without_following_it",
+                "extension_ds_store_directory_with_user_data_is_kept",
+                "extension_ignored_filename_with_newline_is_kept",
+                "extension_ignored_private_directory_with_spaces_is_kept",
+                "extension_regular_file_named_node_modules_is_kept",
+                "extension_regular_file_named_target_is_kept",
+                "extension_regular_file_with_cargo_target_prefix_is_kept",
+                "extension_unknown_ignored_parent_stays_even_when_it_contains_cache_names",
+                "ignored_dotenv_is_kept_with_a_useful_reason",
+                "ignored_private_directory_is_kept_with_its_contents"
+              ],
+              "log": "development-4-control/attempt-1-acceptance.log"
+            }
+          ]
+        },
+        {
+          "attempt": 2,
+          "cumulative_cost_usd_list_estimate": 0.7585915999999999,
+          "incremental_cost_usd_list_estimate": 0.1276832,
+          "model_success": true,
+          "reported_check_passed": true,
+          "num_turns_per_input": 6,
+          "duration_ms_per_input": 15970,
+          "duration_api_ms_cumulative": 132721,
+          "usage_per_input": {
+            "cache_creation_input_tokens": 5931,
+            "cache_read_input_tokens": 240916,
+            "input_tokens": 8,
+            "output_tokens": 1601,
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 5931,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "output_tokens_details": {
+              "thinking_tokens": 244
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            }
+          },
+          "checks": [
+            {
+              "name": "initial-format",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.06373700799986182,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "background",
+                "--",
+                "--check"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "development-4-control/attempt-2-initial-format.log"
+            },
+            {
+              "name": "autoformat",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.06386499800009915,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "background"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "development-4-control/attempt-2-autoformat.log"
+            },
+            {
+              "name": "format",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.06387107799992009,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "background",
+                "--",
+                "--check"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "development-4-control/attempt-2-format.log"
+            },
+            {
+              "name": "own-tests",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 2.5696167090000017,
+              "command": [
+                "cargo",
+                "test",
+                "-p",
+                "background",
+                "--offline"
+              ],
+              "test_summaries": [
+                {
+                  "passed": 22,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 0,
+                  "failed": 0,
+                  "ignored": 0
+                }
+              ],
+              "failed_test_names": [],
+              "log": "development-4-control/attempt-2-own-tests.log"
+            },
+            {
+              "name": "acceptance",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 1.2157677639997928,
+              "command": [
+                "cargo",
+                "+1.97.1",
+                "test",
+                "--manifest-path",
+                "<VERIFICATION_ROOT>/checks/<RUN_ID>/2/harness/Cargo.toml",
+                "--offline",
+                "--test",
+                "acceptance",
+                "--",
+                "--test-threads=1"
+              ],
+              "test_summaries": [
+                {
+                  "passed": 17,
+                  "failed": 0,
+                  "ignored": 0
+                }
+              ],
+              "failed_test_names": [],
+              "log": "development-4-control/attempt-2-acceptance.log"
+            }
+          ]
+        }
+      ],
+      "artifacts": {
+        "development-4-control/attempt-1-initial-format.log": {
+          "sha256": "41573ec884c9abd1991d2a245c19317d413d90589feb1f987c5e00c14c4d6abf",
+          "original_sha256": "a96d05b68b5b72f9c2e372b6fdaf524aeb783a539175617cd3bc2cc5b6ac8f04",
+          "redacted": true,
+          "bytes": 474
+        },
+        "development-4-control/attempt-1-autoformat.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "development-4-control/attempt-1-format.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "development-4-control/attempt-1-own-tests.log": {
+          "sha256": "6eb34f49157e3bcb2f6d196da85b24088df5d9434a53b0d9c8b3c201d01712a0",
+          "original_sha256": "3230821d78811be56fd9c7bc0dbb5af3f14df39dc81bbad2fad4a60b525bfcf1",
+          "redacted": true,
+          "bytes": 1933
+        },
+        "development-4-control/attempt-1-acceptance.log": {
+          "sha256": "da5f41dc138afc06584d854a30b1b5f73a416310b29a43fe50915fbb3ad15cda",
+          "original_sha256": "64e76e136866afbbd1ec05cc2f00d29255fe5d29dd0993dc0b5aa779969a0107",
+          "redacted": true,
+          "bytes": 5052
+        },
+        "development-4-control/attempt-2-initial-format.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "development-4-control/attempt-2-autoformat.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "development-4-control/attempt-2-format.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "development-4-control/attempt-2-own-tests.log": {
+          "sha256": "fd4e722cac5b3f665f55e9e406bd746a7edb4ff70305a6b977e9281f49eea4dc",
+          "original_sha256": "fb8910bb96e8941c7f6519fef3a7d9456d6480e89ef1b8145d9bfd228acdd0f5",
+          "redacted": true,
+          "bytes": 1933
+        },
+        "development-4-control/attempt-2-acceptance.log": {
+          "sha256": "42f960eb6b7558142f754860c89b6c3f3f442269009a1b5fa438d4b14ca3cceb",
+          "original_sha256": "4d2d1ee3484c286f05bebc409f889c67a879d796a17d377897d763880890b88c",
+          "redacted": true,
+          "bytes": 1507
+        },
+        "development-4-control/candidate-1.patch": {
+          "sha256": "b910adfbfc286f98713921a7a977fe8b1364c78a70e279c3672b5230752f695d",
+          "original_sha256": "b910adfbfc286f98713921a7a977fe8b1364c78a70e279c3672b5230752f695d",
+          "redacted": false,
+          "bytes": 11158,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "1172f48e251ab4aede215b9617e997eacedfbac56a0a7c4884c7f1f34b1fafc2"
+        },
+        "development-4-control/candidate-2.patch": {
+          "sha256": "6e450a57152ca21d9876ce1d84b60d96dfc1692956de250ff4516da046472788",
+          "original_sha256": "6e450a57152ca21d9876ce1d84b60d96dfc1692956de250ff4516da046472788",
+          "redacted": false,
+          "bytes": 11408,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "66e178c06a992fcbaa569dec69f404ca4913a1762371226383bdf63424f67cda"
+        },
+        "development-4-control/final-candidate.patch": {
+          "sha256": "6e450a57152ca21d9876ce1d84b60d96dfc1692956de250ff4516da046472788",
+          "original_sha256": "6e450a57152ca21d9876ce1d84b60d96dfc1692956de250ff4516da046472788",
+          "redacted": false,
+          "bytes": 11408,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "66e178c06a992fcbaa569dec69f404ca4913a1762371226383bdf63424f67cda"
+        },
+        "development-4-control/normalized-candidate-1.patch": {
+          "sha256": "176fd9ce70b23543bcdbe3f7d1e3ee9fa824aa72f0567c267df349fef976f246",
+          "original_sha256": "176fd9ce70b23543bcdbe3f7d1e3ee9fa824aa72f0567c267df349fef976f246",
+          "redacted": false,
+          "bytes": 11183,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "863e6db31db14583767fc738d42ff732676ee904d75edfe55716a758f626cb5e"
+        },
+        "development-4-control/normalized-candidate-2.patch": {
+          "sha256": "6e450a57152ca21d9876ce1d84b60d96dfc1692956de250ff4516da046472788",
+          "original_sha256": "6e450a57152ca21d9876ce1d84b60d96dfc1692956de250ff4516da046472788",
+          "redacted": false,
+          "bytes": 11408,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "66e178c06a992fcbaa569dec69f404ca4913a1762371226383bdf63424f67cda"
+        }
+      },
       "input_consistency_errors": [],
       "artifact_errors": [],
       "source_commit": "4705102273140a5f381fb75e17a29965662629c8",
@@ -1434,82 +1819,1803 @@
       "effort": "medium",
       "timeout": false,
       "tool_counts": {
+        "Edit": 14,
         "Glob": 1,
-        "Grep": 3,
-        "Read": 4
+        "Grep": 5,
+        "Read": 7
       },
-      "tool_calls": 8,
+      "tool_calls": 27,
       "event_scan": {
         "available": true,
-        "bytes_scanned": 80897,
+        "bytes_scanned": 517463,
         "malformed_lines": 0,
         "truncated_tail": false
       },
-      "attempt_count": 0,
-      "first_attempt_check_passed": null,
-      "final_model_usage_cumulative": {},
-      "cost_usd_list_estimate": null,
-      "cost_complete": false,
-      "cost_status": "partial_observation",
-      "repair_cost_usd_list_estimate": null,
+      "attempt_count": 2,
+      "first_attempt_check_passed": false,
+      "final_model_usage_cumulative": {
+        "claude-opus-5-5": {
+          "cacheCreationInputTokens": 35220,
+          "cacheReadInputTokens": 906998,
+          "contextWindow": 1000000,
+          "costUSD": 0.7585915999999999,
+          "inputTokens": 38,
+          "maxOutputTokens": 128000,
+          "outputTokens": 14764,
+          "thinkingTokens": 4765,
+          "webSearchRequests": 0
+        }
+      },
+      "cost_usd_list_estimate": 0.7585915999999999,
+      "cost_complete": true,
+      "cost_status": "complete_cli_report",
+      "repair_cost_usd_list_estimate": 0.1276832,
       "paid_brief_cost_usd": 0.0,
-      "cost_with_preparation_usd_list_estimate": null,
+      "cost_with_preparation_usd_list_estimate": 0.7585915999999999,
       "warm_brief_wall_s": 0.0,
-      "agent_wall_s": null,
-      "checks_wall_s": null,
+      "agent_wall_s": 133.972111125,
+      "checks_wall_s": 27.798639084,
       "preparation_wall_s": 3.770070333,
-      "wall_s": null,
-      "total_wall_with_preparation_s": null
+      "wall_s": 161.770750209,
+      "total_wall_with_preparation_s": 165.540820542
     },
     {
       "label": "development-5-control",
       "registered": true,
       "condition": "control",
-      "final_result_available": false,
-      "status": "missing",
-      "accepted": false,
-      "completed": false,
-      "attempts": [],
-      "artifacts": {}
+      "final_result_available": true,
+      "status": "complete",
+      "accepted": true,
+      "completed": true,
+      "attempts": [
+        {
+          "attempt": 1,
+          "cumulative_cost_usd_list_estimate": 0.638156,
+          "incremental_cost_usd_list_estimate": 0.638156,
+          "model_success": true,
+          "reported_check_passed": false,
+          "num_turns_per_input": 22,
+          "duration_ms_per_input": 134040,
+          "duration_api_ms_cumulative": 133950,
+          "usage_per_input": {
+            "cache_creation_input_tokens": 31938,
+            "cache_read_input_tokens": 545880,
+            "input_tokens": 24,
+            "output_tokens": 13669,
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 31938,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "output_tokens_details": {
+              "thinking_tokens": 6019
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            }
+          },
+          "checks": [
+            {
+              "name": "initial-format",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.06378422499983571,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "background",
+                "--",
+                "--check"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "development-5-control/attempt-1-initial-format.log"
+            },
+            {
+              "name": "autoformat",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.06392470699984187,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "background"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "development-5-control/attempt-1-autoformat.log"
+            },
+            {
+              "name": "format",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.06398816399996576,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "background",
+                "--",
+                "--check"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "development-5-control/attempt-1-format.log"
+            },
+            {
+              "name": "own-tests",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 2.52125163699975,
+              "command": [
+                "cargo",
+                "test",
+                "-p",
+                "background",
+                "--offline"
+              ],
+              "test_summaries": [
+                {
+                  "passed": 22,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 0,
+                  "failed": 0,
+                  "ignored": 0
+                }
+              ],
+              "failed_test_names": [],
+              "log": "development-5-control/attempt-1-own-tests.log"
+            },
+            {
+              "name": "acceptance",
+              "exit_code": 101,
+              "timed_out": false,
+              "wall_s": 1.215694423000059,
+              "command": [
+                "cargo",
+                "+1.97.1",
+                "test",
+                "--manifest-path",
+                "<VERIFICATION_ROOT>/checks/<RUN_ID>/1/harness/Cargo.toml",
+                "--offline",
+                "--test",
+                "acceptance",
+                "--",
+                "--test-threads=1"
+              ],
+              "test_summaries": [
+                {
+                  "passed": 6,
+                  "failed": 11,
+                  "ignored": 0
+                }
+              ],
+              "failed_test_names": [
+                "disposable_caches_do_not_hide_ignored_user_data",
+                "extension_cache_named_symlink_is_kept_without_following_it",
+                "extension_ds_store_directory_with_user_data_is_kept",
+                "extension_ignored_filename_with_newline_is_kept",
+                "extension_ignored_private_directory_with_spaces_is_kept",
+                "extension_regular_file_named_node_modules_is_kept",
+                "extension_regular_file_named_target_is_kept",
+                "extension_regular_file_with_cargo_target_prefix_is_kept",
+                "extension_unknown_ignored_parent_stays_even_when_it_contains_cache_names",
+                "ignored_dotenv_is_kept_with_a_useful_reason",
+                "ignored_private_directory_is_kept_with_its_contents"
+              ],
+              "log": "development-5-control/attempt-1-acceptance.log"
+            }
+          ]
+        },
+        {
+          "attempt": 2,
+          "cumulative_cost_usd_list_estimate": 0.7278263999999999,
+          "incremental_cost_usd_list_estimate": 0.08967039999999993,
+          "model_success": true,
+          "reported_check_passed": true,
+          "num_turns_per_input": 4,
+          "duration_ms_per_input": 15325,
+          "duration_api_ms_cumulative": 149260,
+          "usage_per_input": {
+            "cache_creation_input_tokens": 4817,
+            "cache_read_input_tokens": 122592,
+            "input_tokens": 4,
+            "output_tokens": 1330,
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 4817,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "output_tokens_details": {
+              "thinking_tokens": 356
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            }
+          },
+          "checks": [
+            {
+              "name": "initial-format",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.06381224099959582,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "background",
+                "--",
+                "--check"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "development-5-control/attempt-2-initial-format.log"
+            },
+            {
+              "name": "autoformat",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.06385515300007683,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "background"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "development-5-control/attempt-2-autoformat.log"
+            },
+            {
+              "name": "format",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.06387795600039681,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "background",
+                "--",
+                "--check"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "development-5-control/attempt-2-format.log"
+            },
+            {
+              "name": "own-tests",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 2.5187995070000397,
+              "command": [
+                "cargo",
+                "test",
+                "-p",
+                "background",
+                "--offline"
+              ],
+              "test_summaries": [
+                {
+                  "passed": 22,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 0,
+                  "failed": 0,
+                  "ignored": 0
+                }
+              ],
+              "failed_test_names": [],
+              "log": "development-5-control/attempt-2-own-tests.log"
+            },
+            {
+              "name": "acceptance",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 1.2160480069996993,
+              "command": [
+                "cargo",
+                "+1.97.1",
+                "test",
+                "--manifest-path",
+                "<VERIFICATION_ROOT>/checks/<RUN_ID>/2/harness/Cargo.toml",
+                "--offline",
+                "--test",
+                "acceptance",
+                "--",
+                "--test-threads=1"
+              ],
+              "test_summaries": [
+                {
+                  "passed": 17,
+                  "failed": 0,
+                  "ignored": 0
+                }
+              ],
+              "failed_test_names": [],
+              "log": "development-5-control/attempt-2-acceptance.log"
+            }
+          ]
+        }
+      ],
+      "artifacts": {
+        "development-5-control/attempt-1-initial-format.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "development-5-control/attempt-1-autoformat.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "development-5-control/attempt-1-format.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "development-5-control/attempt-1-own-tests.log": {
+          "sha256": "776142d9a2712b4d77f67ef27f0eff041c3441aba51d695d67bf0585d531107d",
+          "original_sha256": "ae7b7e7b7a7af5c137bf515a0173e2b2bebd8f124960ba19a9624a4d7959a6ac",
+          "redacted": true,
+          "bytes": 1939
+        },
+        "development-5-control/attempt-1-acceptance.log": {
+          "sha256": "c4098aa9443e8c3c9625930764f0dd55d7205b21aed7619e6dcfa44e6d06fd11",
+          "original_sha256": "a3e0c168aec261f1f3a534a448210e0aad4bea8e6cb97c9fc97c987b0fa62a4e",
+          "redacted": true,
+          "bytes": 5112
+        },
+        "development-5-control/attempt-2-initial-format.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "development-5-control/attempt-2-autoformat.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "development-5-control/attempt-2-format.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "development-5-control/attempt-2-own-tests.log": {
+          "sha256": "ee879b393d02eaebd3123c90b76f7ea59a28e0c9ce635c84a5be8a6fc90e6e70",
+          "original_sha256": "74b90c01b6a63edac093391ad5eef6160ffff0e25fa4871864dec07cf6635ace",
+          "redacted": true,
+          "bytes": 1939
+        },
+        "development-5-control/attempt-2-acceptance.log": {
+          "sha256": "e90b0d2985f6aa066b2e35c53b9827d5f29701dfccf4f04f11b7d26f7585fcd0",
+          "original_sha256": "379feeaa8d41a11b012db7e5c9d25a59c33c72e5637200f1c139f7778dae5214",
+          "redacted": true,
+          "bytes": 1507
+        },
+        "development-5-control/candidate-1.patch": {
+          "sha256": "05b815c6fb2fd630c8e809eb1ce87339cc39345f3bb5c5c739ae83f6362c01cd",
+          "original_sha256": "05b815c6fb2fd630c8e809eb1ce87339cc39345f3bb5c5c739ae83f6362c01cd",
+          "redacted": false,
+          "bytes": 12870,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "ea0c96640b645f4e493a4553e5f2366c570665628954714c9e5580752bf502bb"
+        },
+        "development-5-control/candidate-2.patch": {
+          "sha256": "500b60d8dcd73ecdac96995376ca52d6e782b5c2daf9369c07c69a98eec8a7c5",
+          "original_sha256": "500b60d8dcd73ecdac96995376ca52d6e782b5c2daf9369c07c69a98eec8a7c5",
+          "redacted": false,
+          "bytes": 13100,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "62b26cc1275292e22638e1d8db981e53fda048cd8df610df4e96e0866bc247b6"
+        },
+        "development-5-control/final-candidate.patch": {
+          "sha256": "500b60d8dcd73ecdac96995376ca52d6e782b5c2daf9369c07c69a98eec8a7c5",
+          "original_sha256": "500b60d8dcd73ecdac96995376ca52d6e782b5c2daf9369c07c69a98eec8a7c5",
+          "redacted": false,
+          "bytes": 13100,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "62b26cc1275292e22638e1d8db981e53fda048cd8df610df4e96e0866bc247b6"
+        },
+        "development-5-control/normalized-candidate-1.patch": {
+          "sha256": "05b815c6fb2fd630c8e809eb1ce87339cc39345f3bb5c5c739ae83f6362c01cd",
+          "original_sha256": "05b815c6fb2fd630c8e809eb1ce87339cc39345f3bb5c5c739ae83f6362c01cd",
+          "redacted": false,
+          "bytes": 12870,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "ea0c96640b645f4e493a4553e5f2366c570665628954714c9e5580752bf502bb"
+        },
+        "development-5-control/normalized-candidate-2.patch": {
+          "sha256": "500b60d8dcd73ecdac96995376ca52d6e782b5c2daf9369c07c69a98eec8a7c5",
+          "original_sha256": "500b60d8dcd73ecdac96995376ca52d6e782b5c2daf9369c07c69a98eec8a7c5",
+          "redacted": false,
+          "bytes": 13100,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "62b26cc1275292e22638e1d8db981e53fda048cd8df610df4e96e0866bc247b6"
+        }
+      },
+      "input_consistency_errors": [],
+      "artifact_errors": [],
+      "source_commit": "4705102273140a5f381fb75e17a29965662629c8",
+      "instructions_sha256": "9b2263b8a61955ab13d45283688fb37f08dce9bbb5f5b304e0f2e6c87c2c7761",
+      "common_input_sha256": "21bee85dcc8a1d5cc6e6984379f98193b200237a753b4c5c2a76499698d49d60",
+      "prompt_sha256": "d0a51a8b7f931f13ea8352e9b3612a6f0b51f904db5520c510106818aa9c63a9",
+      "suffix_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "model": "claude-opus-5-5",
+      "effort": "medium",
+      "timeout": false,
+      "tool_counts": {
+        "Edit": 12,
+        "Grep": 5,
+        "Read": 7
+      },
+      "tool_calls": 24,
+      "event_scan": {
+        "available": true,
+        "bytes_scanned": 474355,
+        "malformed_lines": 0,
+        "truncated_tail": false
+      },
+      "attempt_count": 2,
+      "first_attempt_check_passed": false,
+      "final_model_usage_cumulative": {
+        "claude-opus-5-5": {
+          "cacheCreationInputTokens": 36755,
+          "cacheReadInputTokens": 668472,
+          "contextWindow": 1000000,
+          "costUSD": 0.7278263999999999,
+          "inputTokens": 28,
+          "maxOutputTokens": 128000,
+          "outputTokens": 14999,
+          "thinkingTokens": 6375,
+          "webSearchRequests": 0
+        }
+      },
+      "cost_usd_list_estimate": 0.7278263999999999,
+      "cost_complete": true,
+      "cost_status": "complete_cli_report",
+      "repair_cost_usd_list_estimate": 0.08967039999999993,
+      "paid_brief_cost_usd": 0.0,
+      "cost_with_preparation_usd_list_estimate": 0.7278263999999999,
+      "warm_brief_wall_s": 0.0,
+      "agent_wall_s": 150.02854483400003,
+      "checks_wall_s": 29.064572207999987,
+      "preparation_wall_s": 3.881845834,
+      "wall_s": 179.09311704200002,
+      "total_wall_with_preparation_s": 182.974962876
     },
     {
       "label": "development-6-treatment",
       "registered": true,
       "condition": "treatment",
-      "final_result_available": false,
-      "status": "missing",
-      "accepted": false,
-      "completed": false,
-      "attempts": [],
-      "artifacts": {}
+      "final_result_available": true,
+      "status": "complete",
+      "accepted": true,
+      "completed": true,
+      "attempts": [
+        {
+          "attempt": 1,
+          "cumulative_cost_usd_list_estimate": 0.6113706,
+          "incremental_cost_usd_list_estimate": 0.6113706,
+          "model_success": true,
+          "reported_check_passed": false,
+          "num_turns_per_input": 19,
+          "duration_ms_per_input": 110118,
+          "duration_api_ms_cumulative": 109996,
+          "usage_per_input": {
+            "cache_creation_input_tokens": 33388,
+            "cache_read_input_tokens": 456833,
+            "input_tokens": 20,
+            "output_tokens": 12641,
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 33388,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "output_tokens_details": {
+              "thinking_tokens": 5178
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            }
+          },
+          "checks": [
+            {
+              "name": "initial-format",
+              "exit_code": 1,
+              "timed_out": false,
+              "wall_s": 0.11410244399985459,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "background",
+                "--",
+                "--check"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "development-6-treatment/attempt-1-initial-format.log"
+            },
+            {
+              "name": "autoformat",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.06393396700013909,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "background"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "development-6-treatment/attempt-1-autoformat.log"
+            },
+            {
+              "name": "format",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.06384681300005468,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "background",
+                "--",
+                "--check"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "development-6-treatment/attempt-1-format.log"
+            },
+            {
+              "name": "own-tests",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 2.6212776739998844,
+              "command": [
+                "cargo",
+                "test",
+                "-p",
+                "background",
+                "--offline"
+              ],
+              "test_summaries": [
+                {
+                  "passed": 22,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 0,
+                  "failed": 0,
+                  "ignored": 0
+                }
+              ],
+              "failed_test_names": [],
+              "log": "development-6-treatment/attempt-1-own-tests.log"
+            },
+            {
+              "name": "acceptance",
+              "exit_code": 101,
+              "timed_out": false,
+              "wall_s": 1.3160181739999643,
+              "command": [
+                "cargo",
+                "+1.97.1",
+                "test",
+                "--manifest-path",
+                "<VERIFICATION_ROOT>/checks/<RUN_ID>/1/harness/Cargo.toml",
+                "--offline",
+                "--test",
+                "acceptance",
+                "--",
+                "--test-threads=1"
+              ],
+              "test_summaries": [
+                {
+                  "passed": 6,
+                  "failed": 11,
+                  "ignored": 0
+                }
+              ],
+              "failed_test_names": [
+                "disposable_caches_do_not_hide_ignored_user_data",
+                "extension_cache_named_symlink_is_kept_without_following_it",
+                "extension_ds_store_directory_with_user_data_is_kept",
+                "extension_ignored_filename_with_newline_is_kept",
+                "extension_ignored_private_directory_with_spaces_is_kept",
+                "extension_regular_file_named_node_modules_is_kept",
+                "extension_regular_file_named_target_is_kept",
+                "extension_regular_file_with_cargo_target_prefix_is_kept",
+                "extension_unknown_ignored_parent_stays_even_when_it_contains_cache_names",
+                "ignored_dotenv_is_kept_with_a_useful_reason",
+                "ignored_private_directory_is_kept_with_its_contents"
+              ],
+              "log": "development-6-treatment/attempt-1-acceptance.log"
+            }
+          ]
+        },
+        {
+          "attempt": 2,
+          "cumulative_cost_usd_list_estimate": 0.7461384,
+          "incremental_cost_usd_list_estimate": 0.1347678,
+          "model_success": true,
+          "reported_check_passed": true,
+          "num_turns_per_input": 5,
+          "duration_ms_per_input": 18565,
+          "duration_api_ms_cumulative": 128012,
+          "usage_per_input": {
+            "cache_creation_input_tokens": 7148,
+            "cache_read_input_tokens": 192699,
+            "input_tokens": 6,
+            "output_tokens": 1951,
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 7148,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "output_tokens_details": {
+              "thinking_tokens": 420
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            }
+          },
+          "checks": [
+            {
+              "name": "initial-format",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.06377780000002531,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "background",
+                "--",
+                "--check"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "development-6-treatment/attempt-2-initial-format.log"
+            },
+            {
+              "name": "autoformat",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.06388710400005948,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "background"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "development-6-treatment/attempt-2-autoformat.log"
+            },
+            {
+              "name": "format",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.0637987099999009,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "background",
+                "--",
+                "--check"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "development-6-treatment/attempt-2-format.log"
+            },
+            {
+              "name": "own-tests",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 2.722477325,
+              "command": [
+                "cargo",
+                "test",
+                "-p",
+                "background",
+                "--offline"
+              ],
+              "test_summaries": [
+                {
+                  "passed": 22,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 0,
+                  "failed": 0,
+                  "ignored": 0
+                }
+              ],
+              "failed_test_names": [],
+              "log": "development-6-treatment/attempt-2-own-tests.log"
+            },
+            {
+              "name": "acceptance",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 1.316393077000157,
+              "command": [
+                "cargo",
+                "+1.97.1",
+                "test",
+                "--manifest-path",
+                "<VERIFICATION_ROOT>/checks/<RUN_ID>/2/harness/Cargo.toml",
+                "--offline",
+                "--test",
+                "acceptance",
+                "--",
+                "--test-threads=1"
+              ],
+              "test_summaries": [
+                {
+                  "passed": 17,
+                  "failed": 0,
+                  "ignored": 0
+                }
+              ],
+              "failed_test_names": [],
+              "log": "development-6-treatment/attempt-2-acceptance.log"
+            }
+          ]
+        }
+      ],
+      "artifacts": {
+        "development-6-treatment/attempt-1-initial-format.log": {
+          "sha256": "7018193580e5e8418fce6c84a3174b3f72c07551e3c7b43738d22513ae490a61",
+          "original_sha256": "beeb71d79d72ae24c58f7536b82d09757a338aa547310feaf16f5649d27c4b33",
+          "redacted": true,
+          "bytes": 803
+        },
+        "development-6-treatment/attempt-1-autoformat.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "development-6-treatment/attempt-1-format.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "development-6-treatment/attempt-1-own-tests.log": {
+          "sha256": "1f218dec8a600d9771c86430bf00a185cf314caf2abca88cdf017a06674f392e",
+          "original_sha256": "3e8e55f7be70f59c3ea24dd72f65facdf105065c8c17ae05be7487b677c8657a",
+          "redacted": true,
+          "bytes": 1939
+        },
+        "development-6-treatment/attempt-1-acceptance.log": {
+          "sha256": "6a2b2a235125bcc29947ce6e4e70983a0063e8dcc1c410f53baaebfe32d9fcd0",
+          "original_sha256": "75101b1527e3eab028001b7e85fe144e5df15a06d9f604da969e8d5e338475b7",
+          "redacted": true,
+          "bytes": 5122
+        },
+        "development-6-treatment/attempt-2-initial-format.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "development-6-treatment/attempt-2-autoformat.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "development-6-treatment/attempt-2-format.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "development-6-treatment/attempt-2-own-tests.log": {
+          "sha256": "2ff969db3bde8b6949677039e1daf2b4be76678b91a37c550b617f84b05b51f7",
+          "original_sha256": "d77e12e8b1f7c49fb669b198878832f00c8ccb540b0b2096de51830f2d2be1ab",
+          "redacted": true,
+          "bytes": 1939
+        },
+        "development-6-treatment/attempt-2-acceptance.log": {
+          "sha256": "a7a88e120e4440073189d23711cd9f112d34aa3ab0d697f14a2ccd4d028dec46",
+          "original_sha256": "63f76d51a4c8cc8c0e21d019bdd4386b78c85f0a62441e1216dcf7b230b521c8",
+          "redacted": true,
+          "bytes": 1507
+        },
+        "development-6-treatment/candidate-1.patch": {
+          "sha256": "36bcb93f9808a07fb3d8ef2626f420674d36f90a2bc70ab5e2eee79f574d17bb",
+          "original_sha256": "36bcb93f9808a07fb3d8ef2626f420674d36f90a2bc70ab5e2eee79f574d17bb",
+          "redacted": false,
+          "bytes": 13644,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "4de2b692771e41b4606fbb945cdb866c762be373962ca0570cdbf7e88407f1fc"
+        },
+        "development-6-treatment/candidate-2.patch": {
+          "sha256": "de0ec30fb71159054db3827c4e179df0998c5360fb376ea19b6037c7d1f525d8",
+          "original_sha256": "de0ec30fb71159054db3827c4e179df0998c5360fb376ea19b6037c7d1f525d8",
+          "redacted": false,
+          "bytes": 13994,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "433d8d17a44e53b36fa3c53d30fe3906b327967ac5a95c97015b9f2920d3604f"
+        },
+        "development-6-treatment/final-candidate.patch": {
+          "sha256": "de0ec30fb71159054db3827c4e179df0998c5360fb376ea19b6037c7d1f525d8",
+          "original_sha256": "de0ec30fb71159054db3827c4e179df0998c5360fb376ea19b6037c7d1f525d8",
+          "redacted": false,
+          "bytes": 13994,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "433d8d17a44e53b36fa3c53d30fe3906b327967ac5a95c97015b9f2920d3604f"
+        },
+        "development-6-treatment/normalized-candidate-1.patch": {
+          "sha256": "8dd8e9465325143671ab3bf10d8cbc969afcf920b9d2bdce5301cfccb20ab4df",
+          "original_sha256": "8dd8e9465325143671ab3bf10d8cbc969afcf920b9d2bdce5301cfccb20ab4df",
+          "redacted": false,
+          "bytes": 13695,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "6ad383e6a58a1577c7f6e7d79aaa36abf6a515524301a17c613211b088ebed88"
+        },
+        "development-6-treatment/normalized-candidate-2.patch": {
+          "sha256": "de0ec30fb71159054db3827c4e179df0998c5360fb376ea19b6037c7d1f525d8",
+          "original_sha256": "de0ec30fb71159054db3827c4e179df0998c5360fb376ea19b6037c7d1f525d8",
+          "redacted": false,
+          "bytes": 13994,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "433d8d17a44e53b36fa3c53d30fe3906b327967ac5a95c97015b9f2920d3604f"
+        }
+      },
+      "input_consistency_errors": [],
+      "artifact_errors": [],
+      "source_commit": "4705102273140a5f381fb75e17a29965662629c8",
+      "instructions_sha256": "9b2263b8a61955ab13d45283688fb37f08dce9bbb5f5b304e0f2e6c87c2c7761",
+      "common_input_sha256": "21bee85dcc8a1d5cc6e6984379f98193b200237a753b4c5c2a76499698d49d60",
+      "prompt_sha256": "67060f9dfe389ee1af6a18ca07492a9f1437cd1ae450d14235248ac24853a4fd",
+      "suffix_sha256": "3f26768e77bc16a6113c9ad2a7fcc055ffec86bac8538cdf70c609518365e904",
+      "model": "claude-opus-5-5",
+      "effort": "medium",
+      "timeout": false,
+      "tool_counts": {
+        "Edit": 12,
+        "Grep": 5,
+        "Read": 5
+      },
+      "tool_calls": 22,
+      "event_scan": {
+        "available": true,
+        "bytes_scanned": 464766,
+        "malformed_lines": 0,
+        "truncated_tail": false
+      },
+      "attempt_count": 2,
+      "first_attempt_check_passed": false,
+      "final_model_usage_cumulative": {
+        "claude-opus-5-5": {
+          "cacheCreationInputTokens": 40536,
+          "cacheReadInputTokens": 649532,
+          "contextWindow": 1000000,
+          "costUSD": 0.7461384,
+          "inputTokens": 26,
+          "maxOutputTokens": 128000,
+          "outputTokens": 14592,
+          "thinkingTokens": 5598,
+          "webSearchRequests": 0
+        }
+      },
+      "cost_usd_list_estimate": 0.7461384,
+      "cost_complete": true,
+      "cost_status": "complete_cli_report",
+      "repair_cost_usd_list_estimate": 0.1347678,
+      "paid_brief_cost_usd": 0.0,
+      "cost_with_preparation_usd_list_estimate": 0.7461384,
+      "warm_brief_wall_s": 0.29851194599996234,
+      "agent_wall_s": 129.279351792,
+      "checks_wall_s": 28.559414082999993,
+      "preparation_wall_s": 3.67741875,
+      "wall_s": 157.838765875,
+      "total_wall_with_preparation_s": 161.81469657099996
     },
     {
       "label": "development-7-treatment",
       "registered": true,
       "condition": "treatment",
-      "final_result_available": false,
-      "status": "missing",
-      "accepted": false,
-      "completed": false,
-      "attempts": [],
-      "artifacts": {}
+      "final_result_available": true,
+      "status": "complete",
+      "accepted": true,
+      "completed": true,
+      "attempts": [
+        {
+          "attempt": 1,
+          "cumulative_cost_usd_list_estimate": 0.6070605999999998,
+          "incremental_cost_usd_list_estimate": 0.6070605999999998,
+          "model_success": true,
+          "reported_check_passed": false,
+          "num_turns_per_input": 17,
+          "duration_ms_per_input": 114100,
+          "duration_api_ms_cumulative": 113800,
+          "usage_per_input": {
+            "cache_creation_input_tokens": 33951,
+            "cache_read_input_tokens": 508823,
+            "input_tokens": 22,
+            "output_tokens": 11680,
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 33951,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "output_tokens_details": {
+              "thinking_tokens": 4604
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            }
+          },
+          "checks": [
+            {
+              "name": "initial-format",
+              "exit_code": 1,
+              "timed_out": false,
+              "wall_s": 0.06390893599973424,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "background",
+                "--",
+                "--check"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "development-7-treatment/attempt-1-initial-format.log"
+            },
+            {
+              "name": "autoformat",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.06402186700006496,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "background"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "development-7-treatment/attempt-1-autoformat.log"
+            },
+            {
+              "name": "format",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.06398260400010258,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "background",
+                "--",
+                "--check"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "development-7-treatment/attempt-1-format.log"
+            },
+            {
+              "name": "own-tests",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 2.621157757000219,
+              "command": [
+                "cargo",
+                "test",
+                "-p",
+                "background",
+                "--offline"
+              ],
+              "test_summaries": [
+                {
+                  "passed": 22,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 0,
+                  "failed": 0,
+                  "ignored": 0
+                }
+              ],
+              "failed_test_names": [],
+              "log": "development-7-treatment/attempt-1-own-tests.log"
+            },
+            {
+              "name": "acceptance",
+              "exit_code": 101,
+              "timed_out": false,
+              "wall_s": 1.3669302260000222,
+              "command": [
+                "cargo",
+                "+1.97.1",
+                "test",
+                "--manifest-path",
+                "<VERIFICATION_ROOT>/checks/<RUN_ID>/1/harness/Cargo.toml",
+                "--offline",
+                "--test",
+                "acceptance",
+                "--",
+                "--test-threads=1"
+              ],
+              "test_summaries": [
+                {
+                  "passed": 6,
+                  "failed": 11,
+                  "ignored": 0
+                }
+              ],
+              "failed_test_names": [
+                "disposable_caches_do_not_hide_ignored_user_data",
+                "extension_cache_named_symlink_is_kept_without_following_it",
+                "extension_ds_store_directory_with_user_data_is_kept",
+                "extension_ignored_filename_with_newline_is_kept",
+                "extension_ignored_private_directory_with_spaces_is_kept",
+                "extension_regular_file_named_node_modules_is_kept",
+                "extension_regular_file_named_target_is_kept",
+                "extension_regular_file_with_cargo_target_prefix_is_kept",
+                "extension_unknown_ignored_parent_stays_even_when_it_contains_cache_names",
+                "ignored_dotenv_is_kept_with_a_useful_reason",
+                "ignored_private_directory_is_kept_with_its_contents"
+              ],
+              "log": "development-7-treatment/attempt-1-acceptance.log"
+            }
+          ]
+        },
+        {
+          "attempt": 2,
+          "cumulative_cost_usd_list_estimate": 0.7667461999999998,
+          "incremental_cost_usd_list_estimate": 0.15968559999999998,
+          "model_success": true,
+          "reported_check_passed": true,
+          "num_turns_per_input": 7,
+          "duration_ms_per_input": 23723,
+          "duration_api_ms_cumulative": 137302,
+          "usage_per_input": {
+            "cache_creation_input_tokens": 7603,
+            "cache_read_input_tokens": 263148,
+            "input_tokens": 8,
+            "output_tokens": 2310,
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 7603,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "output_tokens_details": {
+              "thinking_tokens": 325
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            }
+          },
+          "checks": [
+            {
+              "name": "initial-format",
+              "exit_code": 1,
+              "timed_out": false,
+              "wall_s": 0.06382520700026362,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "background",
+                "--",
+                "--check"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "development-7-treatment/attempt-2-initial-format.log"
+            },
+            {
+              "name": "autoformat",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.06382719899966105,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "background"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "development-7-treatment/attempt-2-autoformat.log"
+            },
+            {
+              "name": "format",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.06388475799985827,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "background",
+                "--",
+                "--check"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "development-7-treatment/attempt-2-format.log"
+            },
+            {
+              "name": "own-tests",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 2.769753749999836,
+              "command": [
+                "cargo",
+                "test",
+                "-p",
+                "background",
+                "--offline"
+              ],
+              "test_summaries": [
+                {
+                  "passed": 22,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 0,
+                  "failed": 0,
+                  "ignored": 0
+                }
+              ],
+              "failed_test_names": [],
+              "log": "development-7-treatment/attempt-2-own-tests.log"
+            },
+            {
+              "name": "acceptance",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 1.366577612999663,
+              "command": [
+                "cargo",
+                "+1.97.1",
+                "test",
+                "--manifest-path",
+                "<VERIFICATION_ROOT>/checks/<RUN_ID>/2/harness/Cargo.toml",
+                "--offline",
+                "--test",
+                "acceptance",
+                "--",
+                "--test-threads=1"
+              ],
+              "test_summaries": [
+                {
+                  "passed": 17,
+                  "failed": 0,
+                  "ignored": 0
+                }
+              ],
+              "failed_test_names": [],
+              "log": "development-7-treatment/attempt-2-acceptance.log"
+            }
+          ]
+        }
+      ],
+      "artifacts": {
+        "development-7-treatment/attempt-1-initial-format.log": {
+          "sha256": "d6a3ef8be49044a3f7f05232c4438ce974385b59169f6cd4789f63a8e0a27f50",
+          "original_sha256": "a9adb556b1a515e97291d10286202c72fd85f0cb675bf3171797923828820aa7",
+          "redacted": true,
+          "bytes": 545
+        },
+        "development-7-treatment/attempt-1-autoformat.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "development-7-treatment/attempt-1-format.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "development-7-treatment/attempt-1-own-tests.log": {
+          "sha256": "f8a5d9fbf9fa90e8f05cfcdd6436399d4ca7e71711376d62f2afb7f04c884a35",
+          "original_sha256": "b4b570ccd582e35dd7d77156eb7d3baaa79bd9d24ed3c4a3b9351ded66ff78c6",
+          "redacted": true,
+          "bytes": 1939
+        },
+        "development-7-treatment/attempt-1-acceptance.log": {
+          "sha256": "05e35d26f3f7bca9af0de78c4077aabe94e77b44f63605aa341307d8368fd307",
+          "original_sha256": "fbd1793e0ca35bdc39695012bef18ec51062c14bb638aa2988267d0fd6345943",
+          "redacted": true,
+          "bytes": 5122
+        },
+        "development-7-treatment/attempt-2-initial-format.log": {
+          "sha256": "3e8b4934657076b9fcd692c144de40ae9294fa48f8edf3ac826c9e119e63bad0",
+          "original_sha256": "a352154ceb5042fa5e102bbf882d47ed902159f3edff34cfc552bb3ced38172d",
+          "redacted": true,
+          "bytes": 454
+        },
+        "development-7-treatment/attempt-2-autoformat.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "development-7-treatment/attempt-2-format.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "development-7-treatment/attempt-2-own-tests.log": {
+          "sha256": "fd20b924248dd8a6fb94025ca5aec8b79564622c49a8ed2b1b22cb944b09b0c3",
+          "original_sha256": "57e787f8ff4c4bd55f52f431c8ec88c8212ed08b9f1818aed4a2f0d9de82c5c6",
+          "redacted": true,
+          "bytes": 1939
+        },
+        "development-7-treatment/attempt-2-acceptance.log": {
+          "sha256": "b83b86d14ba5fc5238d403b1fdd6445c7d60b98d1be2ad598cd60aeb39d6ebec",
+          "original_sha256": "70e7652f154652410297eb43b399a067399e53b0557c3ec88d52bfa8ede3527d",
+          "redacted": true,
+          "bytes": 1507
+        },
+        "development-7-treatment/candidate-1.patch": {
+          "sha256": "eac9bc7ce7e32162fef77a51b41dc50067b692c9dfa5183527c9f3b8912309f0",
+          "original_sha256": "eac9bc7ce7e32162fef77a51b41dc50067b692c9dfa5183527c9f3b8912309f0",
+          "redacted": false,
+          "bytes": 12171,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "5a0c4fce37e42a3f13d6b3fe21d40c0943f3f39a0d2a2001579d2f0d0ce1ef20"
+        },
+        "development-7-treatment/candidate-2.patch": {
+          "sha256": "0634804c517e4be5152dae920e3d317d1b0966862041c6466d54c3f69c34f21a",
+          "original_sha256": "0634804c517e4be5152dae920e3d317d1b0966862041c6466d54c3f69c34f21a",
+          "redacted": false,
+          "bytes": 12674,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "7ce648803a91ad0f7a09232192db8dfa1b74ba7184f8bb54fe1034b87d63b9f3"
+        },
+        "development-7-treatment/final-candidate.patch": {
+          "sha256": "184fc8f0cb8159db3d38bb3df8e1f2f616af91d0629a13a95de79174a1bce2bb",
+          "original_sha256": "184fc8f0cb8159db3d38bb3df8e1f2f616af91d0629a13a95de79174a1bce2bb",
+          "redacted": false,
+          "bytes": 12650,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "a4176fbce111d22726c6f270d2a1c9d2ef45967cabf5fa2b0bb141b5e99b435f"
+        },
+        "development-7-treatment/normalized-candidate-1.patch": {
+          "sha256": "8a645c1757ee1cb3a0012f63e1ea141aefe1f2d31e9114e00c844f98cbd934a9",
+          "original_sha256": "8a645c1757ee1cb3a0012f63e1ea141aefe1f2d31e9114e00c844f98cbd934a9",
+          "redacted": false,
+          "bytes": 12234,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "9b5a8e6f4fc5e2fa134a0ba7a3c4d00730cafa0009c4f4bc5326570353a76e79"
+        },
+        "development-7-treatment/normalized-candidate-2.patch": {
+          "sha256": "184fc8f0cb8159db3d38bb3df8e1f2f616af91d0629a13a95de79174a1bce2bb",
+          "original_sha256": "184fc8f0cb8159db3d38bb3df8e1f2f616af91d0629a13a95de79174a1bce2bb",
+          "redacted": false,
+          "bytes": 12650,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "a4176fbce111d22726c6f270d2a1c9d2ef45967cabf5fa2b0bb141b5e99b435f"
+        }
+      },
+      "input_consistency_errors": [],
+      "artifact_errors": [],
+      "source_commit": "4705102273140a5f381fb75e17a29965662629c8",
+      "instructions_sha256": "9b2263b8a61955ab13d45283688fb37f08dce9bbb5f5b304e0f2e6c87c2c7761",
+      "common_input_sha256": "21bee85dcc8a1d5cc6e6984379f98193b200237a753b4c5c2a76499698d49d60",
+      "prompt_sha256": "67060f9dfe389ee1af6a18ca07492a9f1437cd1ae450d14235248ac24853a4fd",
+      "suffix_sha256": "3f26768e77bc16a6113c9ad2a7fcc055ffec86bac8538cdf70c609518365e904",
+      "model": "claude-opus-5-5",
+      "effort": "medium",
+      "timeout": false,
+      "tool_counts": {
+        "Edit": 11,
+        "Grep": 6,
+        "Read": 5
+      },
+      "tool_calls": 22,
+      "event_scan": {
+        "available": true,
+        "bytes_scanned": 432057,
+        "malformed_lines": 0,
+        "truncated_tail": false
+      },
+      "attempt_count": 2,
+      "first_attempt_check_passed": false,
+      "final_model_usage_cumulative": {
+        "claude-opus-5-5": {
+          "cacheCreationInputTokens": 41554,
+          "cacheReadInputTokens": 771971,
+          "contextWindow": 1000000,
+          "costUSD": 0.7667461999999998,
+          "inputTokens": 30,
+          "maxOutputTokens": 128000,
+          "outputTokens": 13990,
+          "thinkingTokens": 4929,
+          "webSearchRequests": 0
+        }
+      },
+      "cost_usd_list_estimate": 0.7667461999999998,
+      "cost_complete": true,
+      "cost_status": "complete_cli_report",
+      "repair_cost_usd_list_estimate": 0.15968559999999998,
+      "paid_brief_cost_usd": 0.0,
+      "cost_with_preparation_usd_list_estimate": 0.7667461999999998,
+      "warm_brief_wall_s": 0.29851194599996234,
+      "agent_wall_s": 138.833222541,
+      "checks_wall_s": 30.45117062499999,
+      "preparation_wall_s": 3.927068125,
+      "wall_s": 169.284393166,
+      "total_wall_with_preparation_s": 173.50997323699997
     },
     {
       "label": "development-8-control",
       "registered": true,
       "condition": "control",
-      "final_result_available": false,
-      "status": "missing",
-      "accepted": false,
-      "completed": false,
-      "attempts": [],
-      "artifacts": {}
+      "final_result_available": true,
+      "status": "complete",
+      "accepted": true,
+      "completed": true,
+      "attempts": [
+        {
+          "attempt": 1,
+          "cumulative_cost_usd_list_estimate": 0.6872646,
+          "incremental_cost_usd_list_estimate": 0.6872646,
+          "model_success": true,
+          "reported_check_passed": false,
+          "num_turns_per_input": 22,
+          "duration_ms_per_input": 121038,
+          "duration_api_ms_cumulative": 120689,
+          "usage_per_input": {
+            "cache_creation_input_tokens": 35324,
+            "cache_read_input_tokens": 693603,
+            "input_tokens": 28,
+            "output_tokens": 13292,
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 35324,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "output_tokens_details": {
+              "thinking_tokens": 5282
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            }
+          },
+          "checks": [
+            {
+              "name": "initial-format",
+              "exit_code": 1,
+              "timed_out": false,
+              "wall_s": 0.26452796100011255,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "background",
+                "--",
+                "--check"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "development-8-control/attempt-1-initial-format.log"
+            },
+            {
+              "name": "autoformat",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.06394697300038388,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "background"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "development-8-control/attempt-1-autoformat.log"
+            },
+            {
+              "name": "format",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.06379531000038696,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "background",
+                "--",
+                "--check"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "development-8-control/attempt-1-format.log"
+            },
+            {
+              "name": "own-tests",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 3.2214983480002957,
+              "command": [
+                "cargo",
+                "test",
+                "-p",
+                "background",
+                "--offline"
+              ],
+              "test_summaries": [
+                {
+                  "passed": 22,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 0,
+                  "failed": 0,
+                  "ignored": 0
+                }
+              ],
+              "failed_test_names": [],
+              "log": "development-8-control/attempt-1-own-tests.log"
+            },
+            {
+              "name": "acceptance",
+              "exit_code": 101,
+              "timed_out": false,
+              "wall_s": 1.316368897999837,
+              "command": [
+                "cargo",
+                "+1.97.1",
+                "test",
+                "--manifest-path",
+                "<VERIFICATION_ROOT>/checks/<RUN_ID>/1/harness/Cargo.toml",
+                "--offline",
+                "--test",
+                "acceptance",
+                "--",
+                "--test-threads=1"
+              ],
+              "test_summaries": [
+                {
+                  "passed": 6,
+                  "failed": 11,
+                  "ignored": 0
+                }
+              ],
+              "failed_test_names": [
+                "disposable_caches_do_not_hide_ignored_user_data",
+                "extension_cache_named_symlink_is_kept_without_following_it",
+                "extension_ds_store_directory_with_user_data_is_kept",
+                "extension_ignored_filename_with_newline_is_kept",
+                "extension_ignored_private_directory_with_spaces_is_kept",
+                "extension_regular_file_named_node_modules_is_kept",
+                "extension_regular_file_named_target_is_kept",
+                "extension_regular_file_with_cargo_target_prefix_is_kept",
+                "extension_unknown_ignored_parent_stays_even_when_it_contains_cache_names",
+                "ignored_dotenv_is_kept_with_a_useful_reason",
+                "ignored_private_directory_is_kept_with_its_contents"
+              ],
+              "log": "development-8-control/attempt-1-acceptance.log"
+            }
+          ]
+        },
+        {
+          "attempt": 2,
+          "cumulative_cost_usd_list_estimate": 0.9676792,
+          "incremental_cost_usd_list_estimate": 0.28041459999999996,
+          "model_success": true,
+          "reported_check_passed": true,
+          "num_turns_per_input": 12,
+          "duration_ms_per_input": 49611,
+          "duration_api_ms_cumulative": 169706,
+          "usage_per_input": {
+            "cache_creation_input_tokens": 12020,
+            "cache_read_input_tokens": 415633,
+            "input_tokens": 12,
+            "output_tokens": 5054,
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 12020,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "output_tokens_details": {
+              "thinking_tokens": 1877
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            }
+          },
+          "checks": [
+            {
+              "name": "initial-format",
+              "exit_code": 1,
+              "timed_out": false,
+              "wall_s": 0.06384420599988516,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "background",
+                "--",
+                "--check"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "development-8-control/attempt-2-initial-format.log"
+            },
+            {
+              "name": "autoformat",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.11405311899989101,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "background"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "development-8-control/attempt-2-autoformat.log"
+            },
+            {
+              "name": "format",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.06401872300011746,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "background",
+                "--",
+                "--check"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "development-8-control/attempt-2-format.log"
+            },
+            {
+              "name": "own-tests",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 2.622166281999853,
+              "command": [
+                "cargo",
+                "test",
+                "-p",
+                "background",
+                "--offline"
+              ],
+              "test_summaries": [
+                {
+                  "passed": 22,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 0,
+                  "failed": 0,
+                  "ignored": 0
+                }
+              ],
+              "failed_test_names": [],
+              "log": "development-8-control/attempt-2-own-tests.log"
+            },
+            {
+              "name": "acceptance",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 1.4666552970002158,
+              "command": [
+                "cargo",
+                "+1.97.1",
+                "test",
+                "--manifest-path",
+                "<VERIFICATION_ROOT>/checks/<RUN_ID>/2/harness/Cargo.toml",
+                "--offline",
+                "--test",
+                "acceptance",
+                "--",
+                "--test-threads=1"
+              ],
+              "test_summaries": [
+                {
+                  "passed": 17,
+                  "failed": 0,
+                  "ignored": 0
+                }
+              ],
+              "failed_test_names": [],
+              "log": "development-8-control/attempt-2-acceptance.log"
+            }
+          ]
+        }
+      ],
+      "artifacts": {
+        "development-8-control/attempt-1-initial-format.log": {
+          "sha256": "1bbf283cc5cca0bcf3751e272864e77255b0eba94ba657271f1643f72e792c7e",
+          "original_sha256": "0140e4351ed18cc471d04043657171305ad951fa779c5f9441d7235dabfddfd9",
+          "redacted": true,
+          "bytes": 635
+        },
+        "development-8-control/attempt-1-autoformat.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "development-8-control/attempt-1-format.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "development-8-control/attempt-1-own-tests.log": {
+          "sha256": "c8f6a58b5e53546e3131c571552506ca9f3ff40f9c20b26e2a7d199b86c52042",
+          "original_sha256": "394c2cc9fbab52bb7e7af04b6d171057d0f6685bd5b5cb58d1288d720d321892",
+          "redacted": true,
+          "bytes": 1936
+        },
+        "development-8-control/attempt-1-acceptance.log": {
+          "sha256": "ea1061a34cf016fc2fcee19c33df82effefd393d8b8e964cbed88c3fef715f9a",
+          "original_sha256": "e3aeb26c2f5aede3421e12b4bd9770eaa66789b6f5e98d7687f84fd606158cd9",
+          "redacted": true,
+          "bytes": 5115
+        },
+        "development-8-control/attempt-2-initial-format.log": {
+          "sha256": "8a981e061a2f1ff31504733be62aeea769010f77940e5681bf6433ea4562a6f9",
+          "original_sha256": "06698db48448bf30c4ad11cdcb2664f44f31b2843d77a5939bb0ab5892cc5825",
+          "redacted": true,
+          "bytes": 703
+        },
+        "development-8-control/attempt-2-autoformat.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "development-8-control/attempt-2-format.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "development-8-control/attempt-2-own-tests.log": {
+          "sha256": "a8289dc720afe0270219f1bfa7f5b61e84bd45d599aeb727e84e4054251c5e02",
+          "original_sha256": "12f78a677d6d9cef9eae8d040329501e7e17c4799795f7d1766b4d6c08237bec",
+          "redacted": true,
+          "bytes": 1936
+        },
+        "development-8-control/attempt-2-acceptance.log": {
+          "sha256": "d5bf75754689afa4ce6480354bec2d6da23fe354bcf3535b535d27ab81abc96c",
+          "original_sha256": "63340019cc68c0740b19789476511b14e379db82cafc8acedfad852ae10f0435",
+          "redacted": true,
+          "bytes": 1507
+        },
+        "development-8-control/candidate-1.patch": {
+          "sha256": "daf3402313994fa772946ceefb43060ece9cd4126e9ec19a4c219e5a4d70a7a0",
+          "original_sha256": "daf3402313994fa772946ceefb43060ece9cd4126e9ec19a4c219e5a4d70a7a0",
+          "redacted": false,
+          "bytes": 12775,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "19c07b007c4bf7f514c28812d18aaa1afa066b06b98dd0c6c56ff2e4433b0583"
+        },
+        "development-8-control/candidate-2.patch": {
+          "sha256": "67a0c1c2aebed3a52fd10d0748406abff0ebd77ea41f01b0cb5c526b6660982a",
+          "original_sha256": "67a0c1c2aebed3a52fd10d0748406abff0ebd77ea41f01b0cb5c526b6660982a",
+          "redacted": false,
+          "bytes": 13764,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "40328401af001d9b66f6834849a0eb40a732c2e341e7fdae0b511355ea90dea6"
+        },
+        "development-8-control/final-candidate.patch": {
+          "sha256": "9480b46e12a8b4c8a8c782aff7aa9d5bbe66dd432dee8e3b83d074fcd55c1f49",
+          "original_sha256": "9480b46e12a8b4c8a8c782aff7aa9d5bbe66dd432dee8e3b83d074fcd55c1f49",
+          "redacted": false,
+          "bytes": 13732,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "ad0baa0c1a8b5cf67829894499e1f34c968cc7228a92ce1a1699dbb0033245b7"
+        },
+        "development-8-control/normalized-candidate-1.patch": {
+          "sha256": "6f83ed3a0231c732b44d6603fa9b63c0114473b2337334c6feaa18537a5d50eb",
+          "original_sha256": "6f83ed3a0231c732b44d6603fa9b63c0114473b2337334c6feaa18537a5d50eb",
+          "redacted": false,
+          "bytes": 12851,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "f998b0d2c294f7f8d4bbd2bc4046e1aafcb9025de57440c044fedc3ebf003dd6"
+        },
+        "development-8-control/normalized-candidate-2.patch": {
+          "sha256": "9480b46e12a8b4c8a8c782aff7aa9d5bbe66dd432dee8e3b83d074fcd55c1f49",
+          "original_sha256": "9480b46e12a8b4c8a8c782aff7aa9d5bbe66dd432dee8e3b83d074fcd55c1f49",
+          "redacted": false,
+          "bytes": 13732,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "ad0baa0c1a8b5cf67829894499e1f34c968cc7228a92ce1a1699dbb0033245b7"
+        }
+      },
+      "input_consistency_errors": [],
+      "artifact_errors": [],
+      "source_commit": "4705102273140a5f381fb75e17a29965662629c8",
+      "instructions_sha256": "9b2263b8a61955ab13d45283688fb37f08dce9bbb5f5b304e0f2e6c87c2c7761",
+      "common_input_sha256": "21bee85dcc8a1d5cc6e6984379f98193b200237a753b4c5c2a76499698d49d60",
+      "prompt_sha256": "d0a51a8b7f931f13ea8352e9b3612a6f0b51f904db5520c510106818aa9c63a9",
+      "suffix_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "model": "claude-opus-5-5",
+      "effort": "medium",
+      "timeout": false,
+      "tool_counts": {
+        "Edit": 18,
+        "Grep": 5,
+        "Read": 9
+      },
+      "tool_calls": 32,
+      "event_scan": {
+        "available": true,
+        "bytes_scanned": 654678,
+        "malformed_lines": 0,
+        "truncated_tail": false
+      },
+      "attempt_count": 2,
+      "first_attempt_check_passed": false,
+      "final_model_usage_cumulative": {
+        "claude-opus-5-5": {
+          "cacheCreationInputTokens": 47344,
+          "cacheReadInputTokens": 1109236,
+          "contextWindow": 1000000,
+          "costUSD": 0.9676792,
+          "inputTokens": 40,
+          "maxOutputTokens": 128000,
+          "outputTokens": 18346,
+          "thinkingTokens": 7159,
+          "webSearchRequests": 0
+        }
+      },
+      "cost_usd_list_estimate": 0.9676792,
+      "cost_complete": true,
+      "cost_status": "complete_cli_report",
+      "repair_cost_usd_list_estimate": 0.28041459999999996,
+      "paid_brief_cost_usd": 0.0,
+      "cost_with_preparation_usd_list_estimate": 0.9676792,
+      "warm_brief_wall_s": 0.0,
+      "agent_wall_s": 171.355371417,
+      "checks_wall_s": 32.27142275,
+      "preparation_wall_s": 73.969740042,
+      "wall_s": 203.62679416699999,
+      "total_wall_with_preparation_s": 277.59653420899997
     }
   ],
   "comparison": {
-    "verdict": "pending",
+    "verdict": "advance_to_heldout",
     "registered_runs": 8,
-    "final_results": 3,
+    "final_results": 8,
     "pairs": [
       {
         "pair": 1,
@@ -1525,59 +3631,59 @@
         "pair": 2,
         "control": "development-4-control",
         "treatment": "development-3-treatment",
-        "both_final": false,
-        "control_accepted": false,
+        "both_final": true,
+        "control_accepted": true,
         "treatment_accepted": true,
-        "treatment_cost_ratio": null,
+        "treatment_cost_ratio": 0.9355877391734895,
         "same_common_input": true
       },
       {
         "pair": 3,
         "control": "development-5-control",
         "treatment": "development-6-treatment",
-        "both_final": false,
-        "control_accepted": false,
-        "treatment_accepted": false,
-        "treatment_cost_ratio": null,
-        "same_common_input": null
+        "both_final": true,
+        "control_accepted": true,
+        "treatment_accepted": true,
+        "treatment_cost_ratio": 1.0251598458093856,
+        "same_common_input": true
       },
       {
         "pair": 4,
         "control": "development-8-control",
         "treatment": "development-7-treatment",
-        "both_final": false,
-        "control_accepted": false,
-        "treatment_accepted": false,
-        "treatment_cost_ratio": null,
-        "same_common_input": null
+        "both_final": true,
+        "control_accepted": true,
+        "treatment_accepted": true,
+        "treatment_cost_ratio": 0.7923557724502086,
+        "same_common_input": true
       }
     ],
     "conditions": {
       "control": {
-        "accepted": 1,
-        "final_results": 1,
-        "complete_cost_observations": 1,
-        "median_cost_usd_list_estimate": 1.0501630000000002,
-        "median_total_wall_s": 260.98156312500004
+        "accepted": 4,
+        "final_results": 4,
+        "complete_cost_observations": 4,
+        "median_cost_usd_list_estimate": 0.8631354,
+        "median_total_wall_s": 221.97826300050002
       },
       "treatment": {
-        "accepted": 2,
-        "final_results": 2,
-        "complete_cost_observations": 2,
-        "median_cost_usd_list_estimate": 0.8112356000000001,
-        "median_total_wall_s": 161.59624815399997
+        "accepted": 4,
+        "final_results": 4,
+        "complete_cost_observations": 4,
+        "median_cost_usd_list_estimate": 0.7564422999999999,
+        "median_total_wall_s": 167.66233490399998
       }
     },
     "early_futility_eligible": false,
-    "pending_reason": "The registered four-pair panel is incomplete."
+    "development_gate_passed": true
   },
   "privacy": "Only selected counters, sanitized checker logs, and candidate patches are exported. No raw streams, model prose, thinking, tool input/results, or init/account metadata.",
   "cost_accounting": {
-    "registered_runs_known_cli_cost_usd_list_estimate": 2.6726342,
+    "registered_runs_known_cli_cost_usd_list_estimate": 6.639615999999999,
     "unregistered_runs_known_cli_cost_usd_list_estimate": 0,
     "shared_warmup_known_cli_cost_usd_list_estimate": 0.1971828,
-    "all_observed_known_cli_cost_usd_list_estimate": 2.8698170000000003,
-    "complete_for_observed_runs": false,
+    "all_observed_known_cli_cost_usd_list_estimate": 6.8367987999999995,
+    "complete_for_observed_runs": true,
     "note": "Known cumulative reports are counted once per run, including failures. Missing or interrupted usage can make this total a lower bound. Machine and engineering costs are not measured."
   }
 }

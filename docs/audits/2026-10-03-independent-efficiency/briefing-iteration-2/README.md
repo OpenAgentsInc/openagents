@@ -4,15 +4,37 @@ This study continues the [failed first replay](../historical-replay-10166/README
 The first four fresh candidates all missed a nested ignored-cache case. Their
 own tests passed, and the original briefing did not include the faulty function.
 That result is retained. Issue #10166 is development data for this round.
+Iteration work is tracked in [#10282](https://github.com/OpenAgentsInc/openagents/issues/10282).
 
-## Results in progress
+## Development result and held-out test
 
-The [development panel](development/README.md) retains every registered row,
-with metrics, logs, and raw and formatted patches. The panel is incomplete;
-there is no declared win. The first control and two treatment runs are
-accepted after one repair each. The first pair reduced the CLI cost estimate
-by 13.1% and total wall time by 32.7%. Those observations alone do not pass
-the registered gate.
+The [development panel](development/README.md) is complete. Both arms reach
+4/4 accepted patches, each after one repair. Median CLI cost is $0.8631 for
+control and $0.7564 with the brief, a 12.4% reduction. Treatment is cheaper
+in three of four pairs. Median recorded endpoint wall time is 222.0 versus 167.7 seconds,
+a 24.5% reduction. This falls short of the prospective 20% cost threshold.
+The registered development acceptance gate permits the unchanged method to
+advance to the independent Gym task; that panel is running.
+
+Elapsed time includes source export and preflight checks. The final control
+setup takes 74.0 seconds; all other scored development setups take 3.7–4.0
+seconds. The runner does not time each setup component separately, so the
+cause of this outlier is unknown. This variability affects the endpoint
+comparison; the report also retains model and check time separately. Do not
+attribute all elapsed savings to reduced model discovery. Removing the entire
+setup bucket from both arms gives a secondary median wall reduction of 14.4%.
+The [independent development review](development-audit.json) records both
+comparisons and the failure classification.
+
+Every initial draft fails the independent checker's path-bearing refusal
+requirements. That diagnostic criterion is stricter than the common task's
+explicit wording; these repairs do not all represent unsafe behavior. The
+first and final controls also incorrectly permit an unknown ignored parent
+containing `target/`; all four treatment drafts refuse it. Of 88 failed
+first-draft case results, 86 stop on diagnostic text after refusing removal
+and two stop on that unsafe admission. The shared feedback exposes the failed
+requirements, and every second draft passes. This supports measuring verification and repair as part
+of task completion, without establishing that the brief prevents repairs.
 
 ## Theses
 
@@ -124,16 +146,22 @@ actually violate its coordinate contract.
 ## Accounting
 
 The CLI reports cumulative list-price usage estimates for a session. The
-runner counts its final value once, including a repair when present. These
+runner counts its final value once, including a repair when present. The CLI
+API-duration field is also cumulative; its ordinary duration field is per
+input turn. Measured wall time remains the primary timing metric. These
 are not verified subscription charges. Warmups, invalid infrastructure
 runs, preparation, and verification are recorded separately. Failed
 candidates remain in the results and cannot be called cost through acceptance.
-Raw model streams, account metadata, and private conversation records remain
-outside the repository.
+The frozen runner stops its wall timer after the executor closes. Final patch
+capture, scratch-directory deletion, and result serialization happen afterward.
+The reported endpoint includes setup, model work, and checks, but is not the
+entire benchmark process duration. The registered comparison retains that
+same formula in both arms. Raw model streams, account metadata, and private
+conversation records remain outside the repository.
 
 ## Further hypotheses to test independently
 
-The first pair suggests several distinct experiments. None changes the
+The development panel suggests several distinct experiments. None changes the
 registered treatment during this panel.
 
 | Component | Hypothesis | Isolated measurement |

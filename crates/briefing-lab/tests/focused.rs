@@ -470,3 +470,463 @@ fn focused_ablation_flags_apply_to_declaration_and_fallback_selection() {
         "selected"
     );
 }
+
+#[test]
+fn structural_policy_keeps_attributes_and_fixture_cycles_without_broad_noise() {
+    let f = Fixture::new();
+    f.write("crates/example/src/worker.rs", "/// Execute a value.\n#[inline]\npub fn execute() -> usize { 1 }\nfn unrelated_source() {}\n");
+    f.write("crates/example/src/tests.rs", "fn fixture() -> usize { seed() }\nfn seed() -> usize { if false { fixture() } else { 1 } }\nfn unrelated_helper() {}\n/// Exercise the public entry point.\n#[test]\n\nfn executes_value() {\n    let actual = super::worker::execute();\n    let expected = fixture();\n    assert_eq!(actual, expected);\n}\nfn fake() { let _ = \"#[test]\"; }\n");
+    f.write(
+        "crates/noise/src/lib.rs",
+        "pub fn execute() { /* execute execute value */ }\n",
+    );
+    f.write(
+        "crates/example/nested/Cargo.toml",
+        "[package]\nname='nested'\nversion='0.1.0'\n",
+    );
+    f.write(
+        "crates/example/nested/src/tests.rs",
+        "#[test]\nfn executes_value() { super::worker::execute(); }\n",
+    );
+    f.commit();
+    let index = f.index(false);
+    let issue = f.issue("crates/example/src/worker.rs:3 execute value");
+    let before = assemble_focused(
+        &f.repo,
+        &index,
+        &index.commit,
+        issue.clone(),
+        Components::default(),
+    )
+    .unwrap()
+    .focused
+    .unwrap()
+    .markdown;
+    let brief = briefing_lab::assemble_explicit_structure(
+        &f.repo,
+        &index,
+        &index.commit,
+        issue.clone(),
+        Components::default(),
+    )
+    .unwrap();
+    let pack = brief.focused.as_ref().unwrap();
+    assert_eq!(pack.schema, "openagents.briefing-lab.explicit-structure.v1");
+    assert!(
+        pack.markdown
+            .contains("/// Execute a value.\n#[inline]\npub fn execute")
+    );
+    assert!(pack.markdown.contains("#[test]\n\nfn executes_value"));
+    assert!(pack.markdown.contains("fn fixture()"));
+    assert!(pack.markdown.contains("fn seed()"));
+    assert!(!pack.markdown.contains("fn unrelated_helper"));
+    assert!(!pack.markdown.contains("fn unrelated_source"));
+    assert!(
+        !brief
+            .evidence
+            .iter()
+            .any(|e| e.path.contains("nested") || e.path.contains("noise"))
+    );
+    assert!(
+        pack.selections
+            .iter()
+            .any(|s| s.role == Role::TestFixtureHelper)
+    );
+    assert!(pack.packed_bytes <= BYTE_BUDGET);
+    assert_eq!(pack.packed_bytes, pack.markdown.len());
+    let after = assemble_focused(&f.repo, &index, &index.commit, issue, Components::default())
+        .unwrap()
+        .focused
+        .unwrap()
+        .markdown;
+    assert_eq!(before, after);
+}
+
+#[test]
+fn structural_test_fallback_is_labeled_and_an_explicit_test_anchor_still_works() {
+    let f = Fixture::new();
+    f.write("crates/example/src/worker.rs", "pub fn entry() {}\n");
+    f.write("crates/example/src/tests.rs","#[test]\nfn durable_records_survive_restart() { runner::run(); }\n#[test]\nfn unrelated_widgets_render() {}\n");
+    f.commit();
+    let index = f.index(false);
+    let brief = briefing_lab::assemble_explicit_structure(
+        &f.repo,
+        &index,
+        &index.commit,
+        f.issue("crates/example/src/worker.rs:1 durable records survive restart"),
+        Components::default(),
+    )
+    .unwrap();
+    assert!(
+        brief
+            .focused
+            .as_ref()
+            .unwrap()
+            .selections
+            .iter()
+            .any(|s| s.role == Role::NearbyTest
+                && s.method.contains("Scope-limited lexical fallback"))
+    );
+    assert!(
+        brief
+            .focused
+            .unwrap()
+            .markdown
+            .contains("fn durable_records_survive_restart")
+    );
+    let brief = briefing_lab::assemble_explicit_structure(
+        &f.repo,
+        &index,
+        &index.commit,
+        f.issue("crates/example/src/tests.rs:4"),
+        Components {
+            lexical: false,
+            symbols: false,
+            history: false,
+        },
+    )
+    .unwrap();
+    assert!(
+        brief
+            .evidence
+            .iter()
+            .any(|e| e.text.contains("#[test]\nfn unrelated_widgets_render"))
+    );
+}
+
+#[test]
+fn structural_markdown_retains_complete_sections_and_ignores_fenced_headings() {
+    let f = Fixture::new();
+    let doc = "# Guide\n\n## Cache retention\n\nKeep complete records.\n\n````text\n### Fake heading\n```\nretention example\n````\n\nLast sentence of this section.\n\nUnrelated\n---------\n\nOther material.\n\nRetention details\n-----------------\n\nFinal sentence without newline";
+    f.write("docs/guide.md", doc);
+    f.commit();
+    let index = f.index(false);
+    let brief = briefing_lab::assemble_explicit_structure(
+        &f.repo,
+        &index,
+        &index.commit,
+        f.issue("docs/guide.md cache retention"),
+        Components::default(),
+    )
+    .unwrap();
+    let pack = brief.focused.unwrap();
+    assert!(pack.markdown.contains("Last sentence of this section."));
+    assert!(pack.markdown.contains("### Fake heading"));
+    assert!(pack.markdown.contains("Final sentence without newline"));
+    assert!(!pack.markdown.contains("Other material."));
+    assert!(
+        pack.selections
+            .iter()
+            .all(|s| !s.method.contains("Fake heading"))
+    );
+}
+
+#[test]
+fn structural_dependency_ambiguity_and_shadowing_are_not_resolved_by_name_alone() {
+    let f = Fixture::new();
+    f.write("crates/example/src/lib.rs", "pub fn entry() { fixture(); }\nfn fixture() {}\nfn fixture() {}\npub fn shadowed(fixture: fn()) { fixture(); }\n");
+    f.commit();
+    let index = f.index(false);
+    let brief = briefing_lab::assemble_explicit_structure(
+        &f.repo,
+        &index,
+        &index.commit,
+        f.issue("crates/example/src/lib.rs:1"),
+        Components::default(),
+    )
+    .unwrap();
+    let pack = brief.focused.unwrap();
+    assert!(
+        pack.omissions
+            .iter()
+            .any(|o| o.reason.contains("multiple same-file declarations"))
+    );
+    assert!(
+        !brief
+            .evidence
+            .iter()
+            .any(|e| e.text.contains("fn fixture()"))
+    );
+    let brief = briefing_lab::assemble_explicit_structure(
+        &f.repo,
+        &index,
+        &index.commit,
+        f.issue("crates/example/src/lib.rs:4"),
+        Components::default(),
+    )
+    .unwrap();
+    assert!(
+        brief
+            .focused
+            .unwrap()
+            .omissions
+            .iter()
+            .any(|o| o.reason.contains("shadowed"))
+    );
+}
+
+#[test]
+fn structural_budget_omits_an_entire_dependency_bundle_and_reports_missing_paths() {
+    let f = Fixture::new();
+    f.write(
+        "crates/example/src/lib.rs",
+        &format!(
+            "pub fn entry() {{ huge(); }}\nfn huge() {{\n{}}}\n",
+            "    let _ = \"界\";\n".repeat(1500)
+        ),
+    );
+    f.commit();
+    let index = f.index(false);
+    let brief = briefing_lab::assemble_explicit_structure(
+        &f.repo,
+        &index,
+        &index.commit,
+        f.issue("crates/example/src/lib.rs:1 crates/absent/src/lib.rs:20"),
+        Components::default(),
+    )
+    .unwrap();
+    let pack = brief.focused.unwrap();
+    assert!(pack.packed_bytes <= BYTE_BUDGET);
+    assert!(brief.evidence.is_empty());
+    assert!(
+        pack.omissions
+            .iter()
+            .any(|o| o.reason.contains("complete bundle was omitted"))
+    );
+    assert!(
+        pack.omissions
+            .iter()
+            .any(|o| o.path == "crates/absent/src/lib.rs")
+    );
+}
+
+#[test]
+fn structural_cli_is_separate_and_writes_the_exact_payload() {
+    let f = Fixture::new();
+    f.write("crates/example/src/lib.rs", "pub fn entry() {}\n");
+    f.commit();
+    let index = f.index(false);
+    let index_file = f.root.join("index.json");
+    let issue_file = f.root.join("issue.json");
+    let out = f.root.join("structure");
+    fs::write(&index_file, serde_json::to_vec(&index).unwrap()).unwrap();
+    fs::write(
+        &issue_file,
+        serde_json::to_vec(&f.issue("crates/example/src/lib.rs:1")).unwrap(),
+    )
+    .unwrap();
+    let output = f
+        .command("bash")
+        .arg(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../scripts/briefing-preview.sh"))
+        .env("BRIEFING_LAB_BIN", env!("CARGO_BIN_EXE_briefing-lab"))
+        .arg("--repo")
+        .arg(&f.repo)
+        .args(["--rev", &index.commit, "--explicit-structure"])
+        .arg("--index")
+        .arg(&index_file)
+        .arg("--issue-file")
+        .arg(&issue_file)
+        .arg("--output-dir")
+        .arg(&out)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let json: serde_json::Value =
+        serde_json::from_slice(&fs::read(out.join("briefing.json")).unwrap()).unwrap();
+    assert_eq!(
+        json["focused"]["markdown"].as_str().unwrap(),
+        fs::read_to_string(out.join("focused.md")).unwrap()
+    );
+    let rejected = f
+        .command(env!("CARGO_BIN_EXE_briefing-lab"))
+        .args(["preview", "--focused", "--explicit-structure"])
+        .output()
+        .unwrap();
+    assert!(!rejected.status.success());
+}
+
+#[test]
+fn structural_plain_file_anchors_are_checked_and_parent_sections_remain_complete() {
+    let f = Fixture::new();
+    f.write("config.toml", "answer = 42\n");
+    f.write("docs/plain.md", "A plain short document.\n");
+    f.write(
+        "docs/parent.md",
+        "# Parent\n\nAn introduction.\n\n## Child\n\nChild content.\n",
+    );
+    f.commit();
+    let index = f.index(false);
+    for path in ["config.toml", "docs/plain.md"] {
+        let brief = briefing_lab::assemble_explicit_structure(
+            &f.repo,
+            &index,
+            &index.commit,
+            f.issue(&format!("{path}:999")),
+            Components::default(),
+        )
+        .unwrap();
+        assert!(!brief.evidence.iter().any(|e| e.path == path));
+        assert!(
+            brief
+                .focused
+                .unwrap()
+                .omissions
+                .iter()
+                .any(|o| o.path == path && o.reason.contains("outside the pinned file"))
+        );
+    }
+    let brief = briefing_lab::assemble_explicit_structure(
+        &f.repo,
+        &index,
+        &index.commit,
+        f.issue("docs/parent.md:3"),
+        Components {
+            lexical: false,
+            symbols: false,
+            history: false,
+        },
+    )
+    .unwrap();
+    assert_eq!(brief.evidence.len(), 1);
+    assert_eq!(brief.evidence[0].start_line, 1);
+    assert!(brief.evidence[0].text.ends_with("Child content.\n"));
+}
+
+#[test]
+fn structural_documents_do_not_admit_workspace_bench_tests_ahead_of_package_tests() {
+    let f = Fixture::new();
+    f.write("crates/example/src/worker.rs", "pub fn entry() {}\n");
+    f.write(
+        "crates/example/src/tests.rs",
+        "#[test]\nfn durable_records_survive() { super::worker::entry(); }\n",
+    );
+    f.write(
+        "docs/guide.md",
+        "# Durable records\n\nKeep the complete record.\n",
+    );
+    for n in 0..40 {
+        f.write(
+            &format!("bench/aaa-{n:02}/tests.rs"),
+            "#[test]\nfn durable_records_survive() { crate::worker::entry(); }\n",
+        );
+    }
+    f.commit();
+    let index = f.index(false);
+    let brief = briefing_lab::assemble_explicit_structure(
+        &f.repo,
+        &index,
+        &index.commit,
+        f.issue("crates/example/src/worker.rs:1 docs/guide.md durable records survive"),
+        Components::default(),
+    )
+    .unwrap();
+    assert_eq!(brief.candidate_files, 3);
+    assert!(
+        brief
+            .evidence
+            .iter()
+            .any(|e| e.path == "crates/example/src/tests.rs")
+    );
+    assert!(!brief.evidence.iter().any(|e| e.path.starts_with("bench/")));
+    let pack = brief.focused.unwrap();
+    assert!(!pack.omissions.iter().any(|o| o.path.starts_with("bench/")));
+    assert!(
+        !pack
+            .omissions
+            .iter()
+            .any(|o| o.reason.contains("24-file read bound"))
+    );
+    let documentation = briefing_lab::assemble_explicit_structure(
+        &f.repo,
+        &index,
+        &index.commit,
+        f.issue("docs/guide.md durable records survive"),
+        Components::default(),
+    )
+    .unwrap();
+    assert_eq!(documentation.candidate_files, 1);
+    let virtual_root = briefing_lab::assemble_explicit_structure(
+        &f.repo,
+        &index,
+        &index.commit,
+        f.issue("Cargo.toml durable records survive"),
+        Components::default(),
+    )
+    .unwrap();
+    assert_eq!(virtual_root.candidate_files, 1);
+    assert!(
+        virtual_root
+            .focused
+            .unwrap()
+            .omissions
+            .iter()
+            .any(|o| o.reason.contains("does not establish a package table"))
+    );
+}
+
+#[test]
+fn structural_real_root_package_is_verified_before_admitting_tests() {
+    let f = Fixture::new();
+    f.write(
+        "Cargo.toml",
+        "[package]\nname='root-example'\nversion='0.1.0'\n",
+    );
+    f.write("src/lib.rs", "pub fn entry() {}\n");
+    f.write(
+        "tests/root.rs",
+        "#[test]\nfn entry_works() { root_example::entry(); }\n",
+    );
+    f.commit();
+    let index = f.index(false);
+    let brief = briefing_lab::assemble_explicit_structure(
+        &f.repo,
+        &index,
+        &index.commit,
+        f.issue("src/lib.rs:1 entry works"),
+        Components::default(),
+    )
+    .unwrap();
+    assert!(brief.evidence.iter().any(|e| e.path == "tests/root.rs"));
+    assert!(
+        !brief
+            .focused
+            .unwrap()
+            .omissions
+            .iter()
+            .any(|o| o.reason.contains("does not establish a package table"))
+    );
+}
+
+#[test]
+fn structural_rendered_warning_details_are_bounded_separately_from_source() {
+    let f = Fixture::new();
+    f.write("crates/example/src/lib.rs", "pub fn entry() {}\n");
+    f.commit();
+    let index = f.index(false);
+    let missing = (0..100)
+        .map(|n| format!("crates/missing-{n}/src/lib.rs:3"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    let brief = briefing_lab::assemble_explicit_structure(
+        &f.repo,
+        &index,
+        &index.commit,
+        f.issue(&format!("crates/example/src/lib.rs:1 {missing}")),
+        Components::default(),
+    )
+    .unwrap();
+    let pack = brief.focused.unwrap();
+    let warnings: usize = pack
+        .markdown
+        .lines()
+        .filter(|line| line.starts_with("Coverage `"))
+        .map(|line| line.len() + 1)
+        .sum();
+    assert!(warnings <= 768);
+    assert!(pack.omissions.len() >= 100);
+    assert!(pack.packed_bytes <= BYTE_BUDGET);
+}

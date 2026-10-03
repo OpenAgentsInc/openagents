@@ -9,7 +9,7 @@ use std::{
 };
 
 const HELP: &str = "briefing-lab index --repo PATH --rev COMMIT_OR_REF --output FILE [--syntax]
-briefing-lab preview --repo PATH --rev COMMIT_OR_REF --index FILE --issue-file FILE --output-dir DIR [--no-lexical] [--no-symbols] [--no-history] [--syntax] [--focused]
+briefing-lab preview --repo PATH --rev COMMIT_OR_REF --index FILE --issue-file FILE --output-dir DIR [--no-lexical] [--no-symbols] [--no-history] [--syntax] [--focused | --explicit-structure]
   [--execution --manifest PACKAGE/Cargo.toml --environment-id LABEL]
   [--require-tool NAME] [--require-file PATH] [--attempt-dir RUN_DIR]
 briefing-lab prepare-run --repo PATH --rev COMMIT_OR_REF --issue-file FILE --manifest PACKAGE/Cargo.toml --environment-id LABEL --artifact-root DIR
@@ -31,6 +31,7 @@ struct Args {
     attempts: Vec<PathBuf>,
     execution: bool,
     focused: bool,
+    explicit_structure: bool,
     components: Components,
     options: Options,
 }
@@ -55,6 +56,7 @@ impl Args {
                 ("preview", "--no-history") => result.components.history = false,
                 ("preview", "--execution") => result.execution = true,
                 ("preview", "--focused") => result.focused = true,
+                ("preview", "--explicit-structure") => result.explicit_structure = true,
                 (command, key) => {
                     let common = command != "record-result" && matches!(key, "--repo" | "--rev");
                     let allowed = common
@@ -120,6 +122,9 @@ impl Args {
                 || result.values.contains_key("--environment-id"))
         {
             return Err("Execution options require --execution.".into());
+        }
+        if result.focused && result.explicit_structure {
+            return Err("Choose --focused or --explicit-structure.".into());
         }
         if result.attempts.len() > 8 {
             return Err("Supply at most eight prior attempt directories.".into());
@@ -248,7 +253,9 @@ fn run() -> Result<()> {
     }
     let index: Index = serde_json::from_slice(&fs::read(args.required("--index")?)?)?;
     let load_ms = load_start.elapsed().as_secs_f64() * 1000.0;
-    let mut brief = if args.focused {
+    let mut brief = if args.explicit_structure {
+        briefing_lab::assemble_explicit_structure(&repo, &index, &commit, issue, args.components)?
+    } else if args.focused {
         briefing_lab::assemble_focused(&repo, &index, &commit, issue, args.components)?
     } else {
         briefing_lab::assemble_with_options(
@@ -299,7 +306,7 @@ fn run() -> Result<()> {
     briefing_lab::check_output(&repo, &directory)?;
     briefing_lab::check_output(&repo, &directory.join("briefing.json"))?;
     briefing_lab::check_output(&repo, &directory.join("briefing.md"))?;
-    if args.focused {
+    if args.focused || args.explicit_structure {
         briefing_lab::check_output(&repo, &directory.join("focused.md"))?;
     }
     brief

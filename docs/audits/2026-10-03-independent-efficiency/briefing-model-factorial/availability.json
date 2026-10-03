@@ -1,0 +1,86 @@
+{
+  "schema": "openagents.briefing.model-availability-panel.v1",
+  "scope": "Availability only; no scored task calls. CLI list-price estimates are not verified charges.",
+  "probes": [
+    {
+      "schema": "openagents.briefing.model-availability.v1",
+      "requested_alias": "sonnet",
+      "requested_effort": "medium",
+      "cli_version": "2.1.287",
+      "exit_code": 0,
+      "timed_out": false,
+      "wall_s": 2.255763792,
+      "init_model": "claude-sonnet-5-5",
+      "assistant_message_models": [
+        "claude-sonnet-5-5"
+      ],
+      "final_subtype": "success",
+      "is_error": false,
+      "ready": true,
+      "total_cost_usd_list_estimate": 0.010829,
+      "model_usage_cumulative": {
+        "claude-sonnet-5-5": {
+          "inputTokens": 2,
+          "outputTokens": 4,
+          "cacheReadInputTokens": 3585,
+          "cacheCreationInputTokens": 2517,
+          "costUSD": 0.010829,
+          "thinkingTokens": 0,
+          "canonicalModel": "claude-sonnet-5-5",
+          "costBasis": "list"
+        }
+      },
+      "tools": [
+        "Edit",
+        "Glob",
+        "Grep",
+        "Read",
+        "Write"
+      ],
+      "tool_calls": 0,
+      "no_session_persistence": true,
+      "max_budget_usd": 0.1,
+      "purpose": "Availability only; no task, benchmark source, brief, or checker was supplied."
+    },
+    {
+      "schema": "openagents.briefing.model-availability.v1",
+      "requested_alias": "haiku",
+      "requested_effort": "medium",
+      "cli_version": "2.1.287",
+      "exit_code": 0,
+      "timed_out": false,
+      "wall_s": 2.899683334,
+      "init_model": "claude-haiku-4-5-20251001",
+      "assistant_message_models": [
+        "claude-haiku-4-5-20251001"
+      ],
+      "final_subtype": "success",
+      "is_error": false,
+      "ready": false,
+      "total_cost_usd_list_estimate": 0.0062450000000000006,
+      "model_usage_cumulative": {
+        "claude-haiku-4-5-20251001": {
+          "inputTokens": 9,
+          "outputTokens": 110,
+          "cacheReadInputTokens": 5280,
+          "cacheCreationInputTokens": 2579,
+          "costUSD": 0.0062450000000000006,
+          "thinkingTokens": 101,
+          "canonicalModel": "claude-haiku-4-5",
+          "costBasis": "list"
+        }
+      },
+      "tools": [
+        "Edit",
+        "Glob",
+        "Grep",
+        "Read",
+        "Write"
+      ],
+      "tool_calls": 0,
+      "no_session_persistence": true,
+      "max_budget_usd": 0.1,
+      "purpose": "Availability only; no task, benchmark source, brief, or checker was supplied."
+    }
+  ]
+}

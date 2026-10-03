@@ -20,6 +20,15 @@ produce zero accepted patches; all four pass their own tests but fail the
 same independent nested-cache case. The timing and cost advantage reverses
 between pairs. A separate 26 ms Git probe on Boat exposes the missing fact.
 
+The [focused briefing iteration](briefing-iteration-2/README.md) adds complete
+instructions, a bounded source pack, a conditional Git probe, independent
+checks, and one repair. Its eight development runs all finish successfully;
+the briefing reduces median cost by 12.4%, below the 20% prospective win
+threshold. An unchanged held-out panel and a separately planned
+[model-by-briefing experiment](briefing-model-factorial/plan.md) continue the
+investigation. These later studies do run paid executor sessions; their
+scope and accounting are documented separately from the original audit.
+
 ## Executive assessment
 
 **Some of the earlier context and delegation work is missing from the

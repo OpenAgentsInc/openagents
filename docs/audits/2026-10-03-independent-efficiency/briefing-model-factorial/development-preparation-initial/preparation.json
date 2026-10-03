@@ -1,0 +1,809 @@
+{
+  "schema": "openagents.briefing-replay.structure-preparation.v1",
+  "policy": "ExplicitStructureV1",
+  "status": "complete",
+  "source_commit": "4705102273140a5f381fb75e17a29965662629c8",
+  "model_calls": 0,
+  "external_git_probes": 0,
+  "byte_budget": 16384,
+  "preview_flags": [
+    "--explicit-structure"
+  ],
+  "hashes": {
+    "binary_sha256": "0ef2f522ff25b3236202277576d280ec4a3c2f2e814db98547e7e1d1348c281a",
+    "issue_sha256": "48d292a829dc635bb9558dfb95557ba6fa3134b8d08d64c77fe0a9bbd1aaafe1",
+    "warm_index_sha256": "f320f9f7f99a0923427e06233e6ffeedb96351edfee8de58f7a98772ffb8ad6e",
+    "preparation_script_sha256": "a8d99c27e48c2e3480bbba71e90ebf0f300daba3d569b2be107390c9526eef34",
+    "cold_index_sha256": "25f59f41a821d664d69a74ed8b5b5f35602157f8a613d183a7755357002ae848",
+    "structured_preview_sha256": "9207a9637e7652c0bf94d740a875fdef63f452a71e4290e8e1a6657b731b8730",
+    "focused_sha256": "47a3c6e9d432c5e3cdbde0d7be9c1d3cbda2b696915d573b99d279b4cc81be56",
+    "treatment_sha256": "47a3c6e9d432c5e3cdbde0d7be9c1d3cbda2b696915d573b99d279b4cc81be56"
+  },
+  "timings_ms": {
+    "cold_index_build_wall": 1943.7551589999202,
+    "cold_index_reported": 1811.5726410000002,
+    "warm_preview_wall": 225.92475900000863,
+    "preview_stages": {
+      "assembly": 26.569757,
+      "index_and_issue_load": 151.17090299999998,
+      "original_index_build_separate": 1847.006019,
+      "output_serialization_sample": 0.06891,
+      "revision_validation": 1.045779,
+      "selected_git_validation_and_read": 2.850681,
+      "warm_preview_before_output": 181.345753
+    },
+    "warm_preview_reported_including_output": 181.621,
+    "v2_comparison_wall": 212.32775599992237
+  },
+  "notes": [
+    "Default lexical and symbol ranking is enabled inside the explicit-file and nearby-test pool. It does not admit unrelated lexical file matches.",
+    "The fresh index build is measured separately. Operating-system page caches are not cleared; cold means a new index artifact, not cold storage.",
+    "Warm preview uses the supplied immutable index copy after the fresh index build. Subprocess wall time includes process startup and output writes.",
+    "treatment.md is exactly focused.md. There is no external probe, additional source appendix, model call, or task execution.",
+    "Supply the complete issue and mandatory instructions separately and identically to both arms."
+  ],
+  "payload_bytes": 16223,
+  "source_bytes": 8203,
+  "selected_ranges": [
+    {
+      "path": "crates/background/src/git.rs",
+      "start_line": 4,
+      "end_line": 41
+    },
+    {
+      "path": "crates/background/src/git.rs",
+      "start_line": 61,
+      "end_line": 118
+    },
+    {
+      "path": "docs/background/2026-10-02-background-processes.md",
+      "start_line": 158,
+      "end_line": 195
+    },
+    {
+      "path": "docs/background/2026-10-02-background-processes.md",
+      "start_line": 219,
+      "end_line": 239
+    }
+  ],
+  "selections": [
+    {
+      "path": "crates/background/src/git.rs",
+      "role": "explicit_source",
+      "anchor": {
+        "start_line": 75,
+        "end_line": 78
+      },
+      "method": "Complete declaration `removable`; containing explicit line anchor; 1 equally ranked candidate(s)",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 61,
+      "end_line": 118
+    },
+    {
+      "path": "crates/background/src/git.rs",
+      "role": "structural_dependency",
+      "anchor": null,
+      "method": "Same-file syntax dependency candidate `Undo`",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 9,
+      "end_line": 18
+    },
+    {
+      "path": "crates/background/src/git.rs",
+      "role": "structural_dependency",
+      "anchor": null,
+      "method": "Same-file syntax dependency candidate `git`",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 20,
+      "end_line": 41
+    },
+    {
+      "path": "crates/background/src/git.rs",
+      "role": "structural_dependency",
+      "anchor": null,
+      "method": "Same-scope imports; imported definitions were not expanded",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 4,
+      "end_line": 4
+    },
+    {
+      "path": "crates/background/src/git.rs",
+      "role": "structural_dependency",
+      "anchor": null,
+      "method": "Same-scope imports; imported definitions were not expanded",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 5,
+      "end_line": 5
+    },
+    {
+      "path": "crates/background/src/git.rs",
+      "role": "structural_dependency",
+      "anchor": null,
+      "method": "Same-scope imports; imported definitions were not expanded",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 7,
+      "end_line": 7
+    },
+    {
+      "path": "docs/background/2026-10-02-background-processes.md",
+      "role": "explicit_document",
+      "anchor": null,
+      "method": "Complete Markdown section `Safety`; term match within named document; 1 equally ranked candidate(s)",
+      "complete_file": false,
+      "complete_declaration": false,
+      "start_line": 158,
+      "end_line": 195
+    },
+    {
+      "path": "docs/background/2026-10-02-background-processes.md",
+      "role": "explicit_document",
+      "anchor": null,
+      "method": "Complete Markdown section `Candidate classes, in order`; term match within named document; 1 equally ranked candidate(s)",
+      "complete_file": false,
+      "complete_declaration": false,
+      "start_line": 219,
+      "end_line": 239
+    }
+  ],
+  "coverage": {
+    "omissions": [
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/embedding-drift-monitor/suite/tests/T5.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/embedding-drift-monitor/suite/tests/T6.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/embedding-drift-monitor/suite/tests/T7.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/embedding-drift-monitor/suite/tests/T8.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/fin-saccr-rwa/suite/tests/T2.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/fin-saccr-rwa/suite/tests/T3.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/fin-saccr-rwa/suite/tests/T7.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/fin-saccr-rwa/suite/tests/T8.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/fin-saccr-rwa/suite/tests/T9.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/html-js-filter/suite/tests/T1.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/html-js-filter/suite/tests/T2.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/html-js-filter/suite/tests/T3.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/html-js-filter/suite/tests/T4.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/html-js-filter/suite/tests/T5.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/html-js-filter/suite/tests/T6.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/interleaved-vigenere/suite/tests/T1.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/interleaved-vigenere/suite/tests/T2.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/interleaved-vigenere/suite/tests/T3.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/interleaved-vigenere/suite/tests/T4.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/interleaved-vigenere/suite/tests/T5.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/interleaved-vigenere/suite/tests/T6.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/ks-solver-cpp/suite/tests/T2.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/mvcc-lsm-compaction/suite/tests/T2.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/mvcc-lsm-compaction/suite/tests/T3.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/production-planning/suite/tests/T1.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/production-planning/suite/tests/T10.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/production-planning/suite/tests/T2.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/production-planning/suite/tests/T3.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/production-planning/suite/tests/T4.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/production-planning/suite/tests/T5.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/production-planning/suite/tests/T7.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/production-planning/suite/tests/T8.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/risk-scorer-replay/suite/tests/T1.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/risk-scorer-replay/suite/tests/T2.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/sound-change-cascade/suite/tests/T1.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/sound-change-cascade/suite/tests/T2.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/sound-change-cascade/suite/tests/T3.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/sound-change-cascade/suite/tests/T4.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/sound-change-cascade/suite/tests/T5.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/sound-change-cascade/suite/tests/T6.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/sound-change-cascade/suite/tests/T7.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/sound-change-cascade/suite/tests/T8.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/wal-recovery-ordering/suite/tests/T1.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/wal-recovery-ordering/suite/tests/T10.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/wal-recovery-ordering/suite/tests/T12.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/wal-recovery-ordering/suite/tests/T13.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/wal-recovery-ordering/suite/tests/T15.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/wal-recovery-ordering/suite/tests/T2.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/wal-recovery-ordering/suite/tests/T3.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/wal-recovery-ordering/suite/tests/T4.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/wal-recovery-ordering/suite/tests/T5.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/wal-recovery-ordering/suite/tests/T6.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/wal-recovery-ordering/suite/tests/T7.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/wal-recovery-ordering/suite/tests/T8.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass2-calibrated/wal-recovery-ordering/suite/tests/T9.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass3-facts/bun-sourcemap-leak/suite/tests/T2.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass3-facts/bun-sourcemap-leak/suite/tests/T3.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass3-facts/bun-sourcemap-leak/suite/tests/T4.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass3-facts/bun-sourcemap-leak/suite/tests/T5.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass3-facts/bun-sourcemap-leak/suite/tests/T7.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass3-facts/embedding-drift-monitor/suite/tests/T1.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass3-facts/embedding-drift-monitor/suite/tests/T2.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass3-facts/embedding-drift-monitor/suite/tests/T3.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass3-facts/embedding-drift-monitor/suite/tests/T4.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass3-facts/embedding-drift-monitor/suite/tests/T5.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass3-facts/fin-saccr-rwa/suite/tests/T1.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass3-facts/fin-saccr-rwa/suite/tests/T2.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass3-facts/fin-saccr-rwa/suite/tests/T4.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass3-facts/fin-saccr-rwa/suite/tests/T6.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass3-facts/fin-saccr-rwa/suite/tests/T7.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass3-facts/interleaved-vigenere/suite/tests/T1.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass3-facts/interleaved-vigenere/suite/tests/T2.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass3-facts/interleaved-vigenere/suite/tests/T4.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass3-facts/interleaved-vigenere/suite/tests/T5.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass3-facts/interleaved-vigenere/suite/tests/T6.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass3-facts/ks-solver-cpp/suite/tests/T1.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass3-facts/ks-solver-cpp/suite/tests/T2.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass3-facts/ks-solver-cpp/suite/tests/T3.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass3-facts/sound-change-cascade/suite/tests/T1.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass3-facts/sound-change-cascade/suite/tests/T3.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass3-facts/sound-change-cascade/suite/tests/T5.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-24-acceptance-first/records/pass3-facts/sound-change-cascade/suite/tests/T6.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-25-retention-budget-repairs/docker/sidecar/task/tests/test.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-25-retention-budget-repairs/docker/single-service/task/tests/test.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-25-tiered-acceptance/records/replay/live-v6-20260924T102404/embedding-drift-monitor/suite/tests/T1.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-25-tiered-acceptance/records/replay/live-v6-20260924T102404/embedding-drift-monitor/suite/tests/T2.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-25-tiered-acceptance/records/replay/live-v6-20260924T102404/embedding-drift-monitor/suite/tests/T3.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-25-tiered-acceptance/records/replay/live-v6-20260924T102404/embedding-drift-monitor/suite/tests/T4.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-25-tiered-acceptance/records/replay/live-v6-20260924T102404/embedding-drift-monitor/suite/tests/T5.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-25-tiered-acceptance/records/replay/live-v6-20260924T102404/embedding-drift-monitor/suite/tests/T6.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-25-tiered-acceptance/records/replay/live-v7-20260924T113920/embedding-drift-monitor/suite/tests/T1.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-25-tiered-acceptance/records/replay/live-v7-20260924T113920/embedding-drift-monitor/suite/tests/T10.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-25-tiered-acceptance/records/replay/live-v7-20260924T113920/embedding-drift-monitor/suite/tests/T11.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-25-tiered-acceptance/records/replay/live-v7-20260924T113920/embedding-drift-monitor/suite/tests/T12.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-25-tiered-acceptance/records/replay/live-v7-20260924T113920/embedding-drift-monitor/suite/tests/T13.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-25-tiered-acceptance/records/replay/live-v7-20260924T113920/embedding-drift-monitor/suite/tests/T2.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-25-tiered-acceptance/records/replay/live-v7-20260924T113920/embedding-drift-monitor/suite/tests/T3.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-25-tiered-acceptance/records/replay/live-v7-20260924T113920/embedding-drift-monitor/suite/tests/T4.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-25-tiered-acceptance/records/replay/live-v7-20260924T113920/embedding-drift-monitor/suite/tests/T5.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-25-tiered-acceptance/records/replay/live-v7-20260924T113920/embedding-drift-monitor/suite/tests/T6.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-25-tiered-acceptance/records/replay/live-v7-20260924T113920/embedding-drift-monitor/suite/tests/T7.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-25-tiered-acceptance/records/replay/live-v7-20260924T113920/embedding-drift-monitor/suite/tests/T8.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-25-tiered-acceptance/records/replay/live-v7-20260924T113920/embedding-drift-monitor/suite/tests/T9.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-25-tiered-acceptance/records/replay/live-v7-20260924T124146/embedding-drift-monitor/suite/tests/T1.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-25-tiered-acceptance/records/replay/live-v7-20260924T124146/embedding-drift-monitor/suite/tests/T10.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-25-tiered-acceptance/records/replay/live-v7-20260924T124146/embedding-drift-monitor/suite/tests/T11.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-25-tiered-acceptance/records/replay/live-v7-20260924T124146/embedding-drift-monitor/suite/tests/T12.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-25-tiered-acceptance/records/replay/live-v7-20260924T124146/embedding-drift-monitor/suite/tests/T13.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-25-tiered-acceptance/records/replay/live-v7-20260924T124146/embedding-drift-monitor/suite/tests/T14.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-25-tiered-acceptance/records/replay/live-v7-20260924T124146/embedding-drift-monitor/suite/tests/T15.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-25-tiered-acceptance/records/replay/live-v7-20260924T124146/embedding-drift-monitor/suite/tests/T16.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-25-tiered-acceptance/records/replay/live-v7-20260924T124146/embedding-drift-monitor/suite/tests/T17.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-25-tiered-acceptance/records/replay/live-v7-20260924T124146/embedding-drift-monitor/suite/tests/T18.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-25-tiered-acceptance/records/replay/live-v7-20260924T124146/embedding-drift-monitor/suite/tests/T19.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-25-tiered-acceptance/records/replay/live-v7-20260924T124146/embedding-drift-monitor/suite/tests/T2.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-25-tiered-acceptance/records/replay/live-v7-20260924T124146/embedding-drift-monitor/suite/tests/T20.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-25-tiered-acceptance/records/replay/live-v7-20260924T124146/embedding-drift-monitor/suite/tests/T21.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-25-tiered-acceptance/records/replay/live-v7-20260924T124146/embedding-drift-monitor/suite/tests/T22.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-25-tiered-acceptance/records/replay/live-v7-20260924T124146/embedding-drift-monitor/suite/tests/T23.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-25-tiered-acceptance/records/replay/live-v7-20260924T124146/embedding-drift-monitor/suite/tests/T24.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-25-tiered-acceptance/records/replay/live-v7-20260924T124146/embedding-drift-monitor/suite/tests/T25.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-25-tiered-acceptance/records/replay/live-v7-20260924T124146/embedding-drift-monitor/suite/tests/T26.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-25-tiered-acceptance/records/replay/live-v7-20260924T124146/embedding-drift-monitor/suite/tests/T27.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-25-tiered-acceptance/records/replay/live-v7-20260924T124146/embedding-drift-monitor/suite/tests/T3.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-25-tiered-acceptance/records/replay/live-v7-20260924T124146/embedding-drift-monitor/suite/tests/T4.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-25-tiered-acceptance/records/replay/live-v7-20260924T124146/embedding-drift-monitor/suite/tests/T5.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-25-tiered-acceptance/records/replay/live-v7-20260924T124146/embedding-drift-monitor/suite/tests/T6.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      },
+      {
+        "path": "bench/terminal-bench/experiments/2026-09-25-tiered-acceptance/records/replay/live-v7-20260924T124146/embedding-drift-monitor/suite/tests/T7.sh",
+        "role": "nearby_test",
+        "reason": "The 24-file read bound omitted this admitted path."
+      }
+    ],
+    "omitted_coverage_records": 127
+  },
+  "v2_comparison": {
+    "flags": [
+      "--focused",
+      "--no-lexical",
+      "--no-symbols"
+    ],
+    "prior_focused_sha256": "0ebc6e55dc2944420bdcd18e41840a0dc09d06863acc35b3aa7b0c41da17bb9a",
+    "new_binary_focused_sha256": "0ebc6e55dc2944420bdcd18e41840a0dc09d06863acc35b3aa7b0c41da17bb9a",
+    "identical": true
+  }
+}

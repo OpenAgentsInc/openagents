@@ -1,0 +1,222 @@
+diff --git a/crates/background/src/git.rs b/crates/background/src/git.rs
+--- a/crates/background/src/git.rs
++++ b/crates/background/src/git.rs
+@@ -18,6 +18,11 @@
+ }
+ 
+ fn git(dir: &Path, args: &[&str]) -> Result<String, String> {
++    let stdout = git_bytes(dir, args)?;
++    Ok(String::from_utf8_lossy(&stdout).trim_end().to_owned())
++}
++
++fn git_bytes(dir: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
+     let output = Command::new("git")
+         .arg("-C")
+         .arg(dir)
+@@ -28,9 +33,7 @@
+         .output()
+         .map_err(|error| format!("git: {error}"))?;
+     if output.status.success() {
+-        Ok(String::from_utf8_lossy(&output.stdout)
+-            .trim_end()
+-            .to_owned())
++        Ok(output.stdout)
+     } else {
+         Err(format!(
+             "git {}: {}",
+@@ -58,10 +61,32 @@
+         .is_ok_and(|status| status.success())
+ }
+ 
++/// Whether an ignored entry `name` (relative to the worktree `top`, as
++/// `git status` prints it) is safe to lose with the worktree: a real
++/// directory named `target`, `node_modules`, or `.cargo-target*`, or a
++/// regular `.DS_Store` file. A symbolic link or anything else is not.
++fn disposable(top: &Path, name: &[u8]) -> bool {
++    use std::os::unix::ffi::OsStrExt;
++    let name = name.strip_suffix(b"/").unwrap_or(name);
++    let Some(last) = name.rsplit(|&byte| byte == b'/').next() else {
++        return false;
++    };
++    let Ok(meta) = std::fs::symlink_metadata(top.join(std::ffi::OsStr::from_bytes(name))) else {
++        return false;
++    };
++    if last == b".DS_Store" {
++        return meta.file_type().is_file();
++    }
++    let cache = last == b"target" || last == b"node_modules" || last.starts_with(b".cargo-target");
++    cache && meta.file_type().is_dir()
++}
++
+ /// Check that the worktree at `path` holds nothing that is not saved
+ /// elsewhere: it is a linked worktree (its `.git` is a file), `git status`
+-/// is clean (untracked files count), every commit is on some remote, and
+-/// no stash was made on it. Returns what recreates it.
++/// is clean (untracked files count), every ignored entry is a recognized
++/// cache (`git worktree remove` deletes ignored files, and undo cannot
++/// bring them back), every commit is on some remote, and no stash was made
++/// on it. Returns what recreates it.
+ ///
+ /// # Errors
+ /// Why it must stay.
+@@ -72,9 +97,36 @@
+         Ok(_) => return Err("a full checkout, not a worktree".into()),
+         Err(_) => return Err("not a Git worktree".into()),
+     }
+-    let status = git(path, &["status", "--porcelain", "--untracked-files=all"])?;
+-    if !status.is_empty() {
+-        return Err("uncommitted changes".into());
++    // `-z` keeps names with spaces or newlines intact; `matching` reports an
++    // ignored directory once rather than everything inside it.
++    let status = git_bytes(
++        path,
++        &[
++            "status",
++            "--porcelain=v1",
++            "-z",
++            "--untracked-files=all",
++            "--ignored=matching",
++        ],
++    )?;
++    let mut ignored = Vec::new();
++    for entry in status
++        .split(|&byte| byte == 0)
++        .filter(|entry| !entry.is_empty())
++    {
++        match entry.strip_prefix(b"!! ") {
++            Some(name) => ignored.push(name),
++            None => return Err("uncommitted changes".into()),
++        }
++    }
++    for name in ignored {
++        if !disposable(path, name) {
++            let name = name.strip_suffix(b"/").unwrap_or(name);
++            return Err(format!(
++                "ignored files that are not caches: {}",
++                String::from_utf8_lossy(name)
++            ));
++        }
+     }
+     let commit = git(path, &["rev-parse", "HEAD"])?;
+     let unpushed = git(path, &["rev-list", "HEAD", "--not", "--remotes"])?;
+diff --git a/crates/background/src/tests.rs b/crates/background/src/tests.rs
+--- a/crates/background/src/tests.rs
++++ b/crates/background/src/tests.rs
+@@ -346,6 +346,77 @@
+ }
+ 
+ #[test]
++fn ignored_files_keep_a_worktree_unless_they_are_caches() {
++    let home = Home::new();
++    let (repo, trees) = repo(
++        &home,
++        &["private", "caches", "linked", "fake", "dsdir", "dotenv"],
++    );
++    let [private, caches, linked, fake, dsdir, dotenv] = [
++        &trees[0], &trees[1], &trees[2], &trees[3], &trees[4], &trees[5],
++    ];
++    std::fs::create_dir_all(repo.join(".git/info")).unwrap();
++    std::fs::write(
++        repo.join(".git/info/exclude"),
++        "/private/\n.env\ntarget\nnode_modules\n.cargo-target*\n.DS_Store\n",
++    )
++    .unwrap();
++    // Ignored user data, named with a space and a newline.
++    let data = private.join("private/my data\nfile");
++    std::fs::create_dir_all(data.parent().unwrap()).unwrap();
++    std::fs::write(&data, "secret\ncontents with spaces").unwrap();
++    // Only recognized caches, some nested, and a regular .DS_Store.
++    for dir in [
++        "target/debug",
++        "web/node_modules/pkg",
++        ".cargo-target-agent1/debug",
++        "crates/a b/target/release",
++    ] {
++        std::fs::create_dir_all(caches.join(dir)).unwrap();
++        std::fs::write(caches.join(dir).join("out"), "build").unwrap();
++    }
++    std::fs::write(caches.join(".DS_Store"), "finder").unwrap();
++    // A cache beside an ignored secret: the secret keeps it.
++    std::fs::create_dir_all(dotenv.join("web/node_modules")).unwrap();
++    std::fs::write(dotenv.join("web/node_modules/x"), "x").unwrap();
++    std::fs::write(dotenv.join(".env"), "KEY=1").unwrap();
++    // A cache name that is a link, a regular file, or a .DS_Store directory.
++    let outside = home.layout.home.join("outside");
++    std::fs::create_dir_all(&outside).unwrap();
++    std::fs::write(outside.join("keep"), "x").unwrap();
++    std::os::unix::fs::symlink(&outside, linked.join("target")).unwrap();
++    std::fs::write(fake.join("node_modules"), "not a directory").unwrap();
++    std::fs::create_dir_all(dsdir.join(".DS_Store")).unwrap();
++    std::fs::write(dsdir.join(".DS_Store/inner"), "x").unwrap();
++
++    let facts = home.facts();
++    let volumes = low();
++    let env = env(&home, &facts, &volumes, &Idle);
++    let report = run::run(&env, &disk(), Cause::Manual, false, true).unwrap();
++    assert!(!caches.exists());
++    for kept in [private, linked, fake, dsdir, dotenv] {
++        assert!(kept.exists(), "{}", kept.display());
++    }
++    assert_eq!(
++        std::fs::read_to_string(&data).unwrap(),
++        "secret\ncontents with spaces"
++    );
++    assert!(dotenv.join(".env").exists());
++    assert!(outside.join("keep").exists());
++    let reasons: Vec<String> = report
++        .plan
++        .kept
++        .iter()
++        .map(|kept| kept.why.clone())
++        .collect();
++    let ignored = reasons
++        .iter()
++        .filter(|why| why.starts_with("ignored files that are not caches: "))
++        .count();
++    assert!(ignored >= 5, "{reasons:?}");
++}
++
++#[test]
+ fn symlinks_are_not_followed_and_other_volumes_are_refused() {
+     let home = Home::new();
+     let outside = home.layout.home.join("precious");
+diff --git a/docs/background/2026-10-02-background-processes.md b/docs/background/2026-10-02-background-processes.md
+--- a/docs/background/2026-10-02-background-processes.md
++++ b/docs/background/2026-10-02-background-processes.md
+@@ -176,7 +176,13 @@
+ 4. **Never source or unsaved work.** A Git work tree is never deleted unless
+    it is a Coder worktree of an ended task with a clean `git status` and no
+    commits missing from every remote (`git rev-list HEAD --not --remotes` is
+-   empty). Inside any other checkout, only the build directory itself is
++   empty). `git worktree remove` deletes ignored files and undo can't bring
++   them back, so the worktree is also kept when it holds any ignored entry
++   other than a real directory named `target`, `node_modules`, or
++   `.cargo-target*` (at any depth) or a regular `.DS_Store` file. A symbolic
++   link with a cache name, a regular file with a cache name, and a
++   `.DS_Store` directory all keep it, as does any other ignored data such
++   as `.env`. Inside any other checkout, only the build directory itself is
+    eligible, and only when it carries `CACHEDIR.TAG` (Cargo writes one) and
+    Git ignores it.
+ 5. **Dry run first.** `openagents background run ID --dry-run` and every
+@@ -225,7 +231,7 @@
+ | --- | --- | --- | --- | --- |
+ | 1 | Ended tasks' target directories | `~/.openagents/targets/<project>-<task>-<hash>` (legacy per-task), and any slot past the configured slot count | The task store lists the task as ended (`Finished` or `Cancelled`, checks not running, group clear: the `ended` test in `crates/coder/src/task/targets.rs`). | A live task maps to the directory, or its lock is held. |
+ | 2 | Stale target directories | Idle slots `~/.openagents/targets/*-slot-N`; `~/.openagents/coder-one/target`; agent target directories (`~/work/openagents-target-agent*`, configurable); a checkout's `target/` with `CACHEDIR.TAG` | Untouched for 3 days (slots and agent directories) or 7 days (a checkout's `target/`). "Touched" is the newest of the lock file's mtime, `.cargo-lock`'s mtime, and the `.fingerprint` directory's mtime. | `.cargo-lock` or the slot lock is held, or a process has a working directory or open file inside. |
+-| 3 | Ended tasks' worktrees | `~/.openagents/worktrees/*` | The task is ended, `git status --porcelain` is empty, and no commit is missing from every remote. A worktree with no task record qualifies only when it is also older than 7 days. | A process has a working directory or open file inside, or a task names it. |
++| 3 | Ended tasks' worktrees | `~/.openagents/worktrees/*` | The task is ended, `git status --porcelain` is empty, every ignored entry is a recognized cache (Safety, item 4), and no commit is missing from every remote. A worktree with no task record qualifies only when it is also older than 7 days. | A process has a working directory or open file inside, or a task names it. |
+ | 4 | Gate pools | Build directories under `~/.openagents/gate/` that carry `CACHEDIR.TAG` | No gate run holds the gate's lock and none ran in the last hour. Checkouts in the gate pool follow class 3's rules. | The gate lock is held, or a gate or `verify-rust` process runs. |
+ | 5 | Incremental caches of live target directories | `debug/incremental` and `release/incremental` inside slots and agent target directories | Its Cargo lock is free. Compiled dependencies stay, so the next build is warm. | `.cargo-lock` is held. |
+ | 6 | Background trash (emergency only) | `~/.openagents/background/trash/*` | Oldest first. | Never. |
+@@ -514,5 +520,12 @@
+   the next task's worktree.
+ - **Stashes.** A worktree is kept when any stash was made on its branch (or,
+   detached, on its commit), since stashes belong to the repository.
++- **Ignored files.** The clean check reads
++  `git status --porcelain=v1 -z --untracked-files=all --ignored=matching`,
++  so names with spaces or newlines arrive intact and an ignored directory
++  appears once. Any ignored entry outside the recognized caches keeps the
++  worktree with the reason `ignored files that are not caches: PATH`, naming
++  the first such entry relative to the worktree. Ignored
++  files are never moved to the trash; the worktree stays instead.
+ - **Low-disk log writes** are buffered in memory and flushed with the next
+   record; there is no preallocated file.

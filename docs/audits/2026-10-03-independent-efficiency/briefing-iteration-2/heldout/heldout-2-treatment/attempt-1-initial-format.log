@@ -1,0 +1,14 @@
+Diff in <VERIFICATION_ROOT>/repo/crates/gym/src/runs_microcoder.rs:1485:
+             let run = parent.join(name);
+             std::fs::create_dir_all(&run).unwrap();
+             for file in ["summary.json", "events.jsonl"] {
+-                std::fs::copy(fixtures().join("runs").join(name).join(file), run.join(file))
+-                    .unwrap();
++                std::fs::copy(
++                    fixtures().join("runs").join(name).join(file),
++                    run.join(file),
++                )
++                .unwrap();
+             }
+         }
+         let manifest = serde_json::json!({

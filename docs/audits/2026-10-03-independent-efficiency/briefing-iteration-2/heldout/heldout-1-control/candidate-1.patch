@@ -1,0 +1,451 @@
+diff --git a/crates/gym/src/runs.rs b/crates/gym/src/runs.rs
+--- a/crates/gym/src/runs.rs
++++ b/crates/gym/src/runs.rs
+@@ -47,9 +47,11 @@
+     /// to [`crate::index::default_dir`].
+     pub index: Option<PathBuf>,
+     /// Directories of Microcoder run directories: this computer's
+-    /// `~/.openagents/microcoder/runs`, then each retained host directory
+-    /// under `bench/terminal-bench/microcoder-runs`. A run in an earlier
+-    /// directory wins over a copy in a later one.
++    /// `~/.openagents/microcoder/runs` and each retained host directory
++    /// under `bench/terminal-bench/microcoder-runs`. Their order doesn't
++    /// matter: a run in more than one is read from the copy its manifest
++    /// names, with every manifest's marks
++    /// ([`crate::runs_microcoder::Copies`]).
+     pub microcoder: Vec<PathBuf>,
+     /// The knowledge base whose provenance says whether a Microcoder run
+     /// is in-sample: the checkout's `knowledge/`.
+@@ -446,34 +448,39 @@
+             }
+         }
+         // Microcoder runs: a finished run keeps what was read; the
+-        // knowledge base is read only when a run needs reading.
++        // knowledge base is read only when a run needs reading. One copy of
++        // each run is read, carrying every manifest's marks, whatever order
++        // the directories came in.
+         let mut knowledge: Option<crate::runs_microcoder::Knowledge> = None;
+-        for dir in self.sources.microcoder.clone() {
+-            let manifest = crate::runs_microcoder::Manifest::read(&dir);
+-            for run_dir in crate::runs_microcoder::run_dirs(&dir) {
+-                let id = format!("{}/{}", crate::runs_microcoder::JOB, file_name(&run_dir));
+-                if !seen.insert(id.clone()) {
+-                    continue;
+-                }
+-                if let Some(run) = kept.remove(&id) {
+-                    runs.push(run);
+-                    continue;
+-                }
+-                let knowledge = knowledge.get_or_insert_with(|| {
+-                    self.sources
+-                        .knowledge
+-                        .as_deref()
+-                        .map(crate::runs_microcoder::Knowledge::read)
+-                        .unwrap_or_default()
+-                });
+-                let mut run =
+-                    crate::runs_microcoder::read(&run_dir, knowledge, manifest.as_ref(), now);
+-                let (_, info) = self.task_info(None, &run.task);
+-                run.ask = info.ask;
+-                run.category = info.category;
+-                run.expert_hours = info.expert_hours;
++        let copies = crate::runs_microcoder::Copies::find(&self.sources.microcoder);
++        for (name, (run_dir, host)) in &copies.runs {
++            let id = format!("{}/{name}", crate::runs_microcoder::JOB);
++            if !seen.insert(id.clone()) {
++                continue;
++            }
++            if let Some(run) = kept.remove(&id) {
+                 runs.push(run);
+-            }
++                continue;
++            }
++            let knowledge = knowledge.get_or_insert_with(|| {
++                self.sources
++                    .knowledge
++                    .as_deref()
++                    .map(crate::runs_microcoder::Knowledge::read)
++                    .unwrap_or_default()
++            });
++            let mut run = crate::runs_microcoder::read_marked(
++                run_dir,
++                knowledge,
++                copies.manifest(*host),
++                &copies.marks,
++                now,
++            );
++            let (_, info) = self.task_info(None, &run.task);
++            run.ask = info.ask;
++            run.category = info.category;
++            run.expert_hours = info.expert_hours;
++            runs.push(run);
+         }
+         runs.sort_by(|a, b| {
+             (b.outcome == Outcome::Running)
+diff --git a/crates/gym/src/runs_beats_winner.rs b/crates/gym/src/runs_beats_winner.rs
+--- a/crates/gym/src/runs_beats_winner.rs
++++ b/crates/gym/src/runs_beats_winner.rs
+@@ -660,6 +660,60 @@
+     }
+ 
+     #[test]
++    fn the_claim_does_not_depend_on_directory_order() {
++        // A retained host directory holds a copy of a passing run and its
++        // manifest marks that directory mixed; the live directory holds an
++        // unmarked copy of the same run.
++        let fixtures = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/microcoder");
++        let live = fixtures.join("runs");
++        let dir = tempfile::tempdir().unwrap();
++        let host = dir.path().join("coderos-4080");
++        let name = "drift-check-1790393791";
++        std::fs::create_dir_all(host.join(name)).unwrap();
++        for file in ["summary.json", "events.jsonl"] {
++            std::fs::copy(live.join(name).join(file), host.join(name).join(file)).unwrap();
++        }
++        let retained = json!({
++            "schema": crate::runs_microcoder::MANIFEST_SCHEMA,
++            "commit_rule": "the last crates/microcoder commit at or before the start",
++            "runs": [{"name": name, "files": {}, "commit": "a784eadef8",
++                      "mixed": "two runs started in the same second"}],
++        });
++        std::fs::write(
++            host.join(crate::runs_microcoder::MANIFEST),
++            retained.to_string(),
++        )
++        .unwrap();
++        let knowledge = Knowledge::read(&fixtures.join("knowledge"));
++        let manifest = manifest();
++        let claim_json = |dirs: &[PathBuf]| {
++            let runs = read_all(dirs, &knowledge, i64::MAX / 4);
++            claims(&runs, Some(&manifest))
++                .iter()
++                .map(Highlight::to_json)
++                .collect::<Vec<_>>()
++        };
++        let live_first = claim_json(&[live.clone(), host.clone()]);
++        let retained_first = claim_json(&[host, live]);
++        assert_eq!(live_first, retained_first);
++        assert_eq!(live_first.len(), 1, "{live_first:#?}");
++        let claim = &live_first[0];
++        assert!(
++            !claim["runs"]
++                .as_array()
++                .unwrap()
++                .iter()
++                .any(|run| run == &json!(format!("microcoder/{name}"))),
++            "{claim:#?}"
++        );
++        assert!(
++            claim["caveats"].as_array().unwrap().iter().any(|caveat| *caveat
++                == "2 run directories of drift-check hold two runs' records and are left out."),
++            "{claim:#?}"
++        );
++    }
++
++    #[test]
+     fn no_manifest_or_no_win_makes_no_claim() {
+         let runs = runs();
+         assert!(claims(&runs, None).is_empty());
+diff --git a/crates/gym/src/runs_microcoder.rs b/crates/gym/src/runs_microcoder.rs
+--- a/crates/gym/src/runs_microcoder.rs
++++ b/crates/gym/src/runs_microcoder.rs
+@@ -28,7 +28,7 @@
+ //! - **Commit.** The record's own `commit` when it has one; otherwise the
+ //!   retained manifest's attribution, labelled as such.
+ 
+-use std::collections::{BTreeMap, BTreeSet, HashMap};
++use std::collections::{BTreeMap, HashMap};
+ use std::path::{Path, PathBuf};
+ 
+ use serde::{Deserialize, Serialize};
+@@ -310,6 +310,94 @@
+         }
+         Some(manifest)
+     }
++
++    /// Whether the manifest names the run directory `name`.
++    #[must_use]
++    pub fn names(&self, name: &str) -> bool {
++        self.files.contains_key(name)
++            || self.commits.contains_key(name)
++            || self.mixed.contains_key(name)
++    }
++}
++
++/// The run directories under a list of directories, one copy of each run,
++/// and the marks their manifests give. The result doesn't depend on the
++/// list's order.
++#[derive(Clone, Debug, Default)]
++pub struct Copies {
++    /// Each directory and its manifest, when it has one, in the list's order.
++    pub hosts: Vec<(PathBuf, Option<Manifest>)>,
++    /// Every manifest's commit attributions and mixed marks, by run name,
++    /// for every copy of the run wherever it's read from.
++    pub marks: Manifest,
++    /// Each run's chosen copy by name, with the index into `hosts` of the
++    /// directory it's read from.
++    pub runs: BTreeMap<String, (PathBuf, usize)>,
++}
++
++impl Copies {
++    /// Finds the runs under `dirs`. A run under more than one directory is
++    /// read from the copy whose manifest names it, else from a retained host
++    /// directory, else from the first path in sorted order.
++    #[must_use]
++    pub fn find(dirs: &[PathBuf]) -> Self {
++        let hosts: Vec<(PathBuf, Option<Manifest>)> = dirs
++            .iter()
++            .map(|dir| (dir.clone(), Manifest::read(dir)))
++            .collect();
++        // Marks merge in path order, so two manifests that disagree resolve
++        // the same way whatever order the directories came in.
++        let mut order: Vec<usize> = (0..hosts.len()).collect();
++        order.sort_by(|a, b| hosts[*a].0.cmp(&hosts[*b].0));
++        let mut marks = Manifest::default();
++        for &host in &order {
++            let Some(manifest) = &hosts[host].1 else {
++                continue;
++            };
++            for (name, commit) in &manifest.commits {
++                marks
++                    .commits
++                    .entry(name.clone())
++                    .or_insert_with(|| commit.clone());
++            }
++            for (name, why) in &manifest.mixed {
++                marks
++                    .mixed
++                    .entry(name.clone())
++                    .or_insert_with(|| why.clone());
++            }
++        }
++        let rank = |name: &str, path: &Path, host: usize| {
++            let preference = match &hosts[host].1 {
++                Some(manifest) if manifest.names(name) => 0,
++                Some(_) => 1,
++                None => 2,
++            };
++            (preference, path.to_path_buf())
++        };
++        let mut runs: BTreeMap<String, (PathBuf, usize)> = BTreeMap::new();
++        for (host, (dir, _)) in hosts.iter().enumerate() {
++            for run_dir in run_dirs(dir) {
++                let name = run_dir
++                    .file_name()
++                    .map(|n| n.to_string_lossy().into_owned())
++                    .unwrap_or_default();
++                let better = runs.get(&name).is_none_or(|(path, chosen)| {
++                    rank(&name, &run_dir, host) < rank(&name, path, *chosen)
++                });
++                if better {
++                    runs.insert(name, (run_dir, host));
++                }
++            }
++        }
++        Copies { hosts, marks, runs }
++    }
++
++    /// The manifest of the directory at `host`, when it has one.
++    #[must_use]
++    pub fn manifest(&self, host: usize) -> Option<&Manifest> {
++        self.hosts.get(host).and_then(|(_, manifest)| manifest.as_ref())
++    }
+ }
+ 
+ /// `sha256:` and the hex digest of a file.
+@@ -334,7 +422,8 @@
+ }
+ 
+ /// The standard places Microcoder runs are read from: this computer's run
+-/// directory first, then each retained host directory in the checkout.
++/// directory and each retained host directory in the checkout. A run in
++/// more than one is read as [`Copies::find`] chooses.
+ #[must_use]
+ pub fn standard_dirs() -> Vec<PathBuf> {
+     let mut dirs = Vec::new();
+@@ -398,6 +487,20 @@
+ /// manifest, when the run is retained.
+ #[must_use]
+ pub fn read(dir: &Path, knowledge: &Knowledge, manifest: Option<&Manifest>, now: i64) -> Run {
++    read_marked(dir, knowledge, manifest, &Manifest::default(), now)
++}
++
++/// Reads one run directory like [`read`], also applying `marks`: the commit
++/// attributions and mixed marks other manifests give a run of this name
++/// ([`Copies::marks`]). The run's own manifest wins where both say.
++#[must_use]
++pub fn read_marked(
++    dir: &Path,
++    knowledge: &Knowledge,
++    manifest: Option<&Manifest>,
++    marks: &Manifest,
++    now: i64,
++) -> Run {
+     let name = dir
+         .file_name()
+         .map(|n| n.to_string_lossy().into_owned())
+@@ -586,6 +689,7 @@
+         Some(commit) => (Some(commit.to_owned()), Some("record".to_owned())),
+         None => manifest
+             .and_then(|m| m.commits.get(&name))
++            .or_else(|| marks.commits.get(&name))
+             .map_or((None, None), |(commit, source)| {
+                 (Some(commit.clone()), Some(source.clone()))
+             }),
+@@ -602,7 +706,9 @@
+         .filter_map(|e| e["seconds"].as_f64())
+         .collect();
+     let backwards = times.windows(2).any(|pair| pair[1] < pair[0]);
+-    let noted = manifest.and_then(|m| m.mixed.get(&name));
++    let noted = manifest
++        .and_then(|m| m.mixed.get(&name))
++        .or_else(|| marks.mixed.get(&name));
+     let mixed = starts > 1 || backwards || noted.is_some();
+     if starts > 1 {
+         notes.push(format!(
+@@ -763,25 +869,24 @@
+     }
+ }
+ 
+-/// Every run in `dirs`, the first directory's copy of a run winning.
++/// Every run in `dirs`, one copy of each as [`Copies::find`] chooses, with
++/// every manifest's marks applied. The order of `dirs` doesn't matter.
+ #[must_use]
+ pub fn read_all(dirs: &[PathBuf], knowledge: &Knowledge, now: i64) -> Vec<Run> {
+-    let mut seen = BTreeSet::new();
+-    let mut runs = Vec::new();
+-    for dir in dirs {
+-        let manifest = Manifest::read(dir);
+-        for run_dir in run_dirs(dir) {
+-            let name = run_dir
+-                .file_name()
+-                .map(|n| n.to_string_lossy().into_owned())
+-                .unwrap_or_default();
+-            if !seen.insert(name) {
+-                continue;
+-            }
+-            runs.push(read(&run_dir, knowledge, manifest.as_ref(), now));
+-        }
+-    }
+-    runs
++    let copies = Copies::find(dirs);
++    copies
++        .runs
++        .values()
++        .map(|(run_dir, host)| {
++            read_marked(
++                run_dir,
++                knowledge,
++                copies.manifest(*host),
++                &copies.marks,
++                now,
++            )
++        })
++        .collect()
+ }
+ 
+ /// The run's details in lines, for `gym runs show`.
+@@ -1378,6 +1483,55 @@
+     }
+ 
+     #[test]
++    fn manifest_marks_reach_every_copy_and_the_retained_copy_wins() {
++        let dir = tempfile::tempdir().unwrap();
++        let host = dir.path().join("host");
++        let run = host.join("drift-check-1790393791");
++        std::fs::create_dir_all(&run).unwrap();
++        for file in ["summary.json", "events.jsonl"] {
++            std::fs::copy(
++                fixtures().join("runs/drift-check-1790393791").join(file),
++                run.join(file),
++            )
++            .unwrap();
++        }
++        let manifest = |name: &str| {
++            serde_json::json!({
++                "schema": MANIFEST_SCHEMA,
++                "commit_rule": "the rule",
++                "runs": [{
++                    "name": name,
++                    "files": {},
++                    "commit": "a784eadef8",
++                    "mixed": "two runs started in the same second",
++                }],
++            })
++            .to_string()
++        };
++        std::fs::write(host.join(MANIFEST), manifest("drift-check-1790393791")).unwrap();
++        // A manifest whose host has no copy of the run still marks it.
++        let notes = dir.path().join("notes");
++        std::fs::create_dir_all(&notes).unwrap();
++        std::fs::write(notes.join(MANIFEST), manifest("drift-check-1790394263")).unwrap();
++        let live = fixtures().join("runs");
++        let knowledge = Knowledge::default();
++        let forward = read_all(&[live.clone(), host.clone(), notes.clone()], &knowledge, 0);
++        let backward = read_all(&[notes, host.clone(), live], &knowledge, 0);
++        assert_eq!(forward, backward);
++        let retained = find(&forward, "drift-check-1790393791");
++        assert!(retained.retained);
++        assert!(retained.files.dir.starts_with(&host));
++        assert!(retained.microcoder.as_ref().unwrap().mixed);
++        let marked = find(&forward, "drift-check-1790394263");
++        let m = marked.microcoder.as_ref().unwrap();
++        assert!(!marked.retained);
++        assert!(m.mixed);
++        assert_eq!(m.commit.as_deref(), Some("a784eadef8"));
++        assert_eq!(m.commit_source.as_deref(), Some("the rule"));
++        assert!(m.digests.is_empty());
++    }
++
++    #[test]
+     fn the_transcript_reads_the_events() {
+         let runs = catalog();
+         let run = find(&runs, "drift-check-1790393791");
+diff --git a/docs/coder/beat-fable-showcase.md b/docs/coder/beat-fable-showcase.md
+--- a/docs/coder/beat-fable-showcase.md
++++ b/docs/coder/beat-fable-showcase.md
+@@ -96,13 +96,13 @@
+ Fable 5.1 low there; the study's result is the study owner's to report
+ [below](#the-honest-limit).
+ 
+-**A Gym caveat found while doing this.** Directory order matters. With the
+-live directory read *first*, `fin-saccr-rwa-1790406697` comes from the live
+-copy, which doesn't carry the retained manifest's *mixed* mark. The claim
+-then counts that directory's pass: 4 of 10, up to $0.0835. With the
+-retained directories first, as above, the mark holds and the directory is
+-left out. Read the retained directories first until the Gym applies the
+-manifest's mark to either copy.
++**A Gym caveat found while doing this, now fixed.** Directory order used
++to matter. With the live directory read *first*, `fin-saccr-rwa-1790406697`
++came from the live copy, which didn't carry the retained manifest's *mixed*
++mark, and the claim counted that directory's pass: 4 of 10, up to $0.0835.
++The Gym now reads the retained copy of a run that's in both and applies
++the manifest's marks to every copy of a run with that name, so either
++order leaves the directory out and gives the same claim.
+ 
+ ### What this supports
+ 
+diff --git a/docs/gym/terminal-bench-cli.md b/docs/gym/terminal-bench-cli.md
+--- a/docs/gym/terminal-bench-cli.md
++++ b/docs/gym/terminal-bench-cli.md
+@@ -86,11 +86,17 @@
+ `gym runs` also lists [Microcoder](../coder/guides/microcoder.md) runs, as
+ `microcoder/<run directory>` with the agent **Microcoder**. They come from
+ this computer's `~/.openagents/microcoder/runs/` and from the retained host
+-directories under `bench/terminal-bench/microcoder-runs/`, in that order; a
+-run in the first wins over a retained copy. `--microcoder-dir PATH`
+-(repeatable) reads other directories instead, `--no-microcoder` skips them,
++directories under `bench/terminal-bench/microcoder-runs/`. `--microcoder-dir
++PATH` (repeatable) reads other directories instead, `--no-microcoder` skips them,
+ and `--knowledge-dir PATH` names the knowledge base whose provenance
+ decides which runs are in-sample (the checkout's `knowledge/` by default).
++
++The order of the directories doesn't change the result. When a run
++directory of the same name is in more than one, the Gym reads one copy:
++the one whose host directory's `MANIFEST.json` names it, else a copy in a
++directory with a manifest, else the first path in sorted order. A
++manifest's marks, such as **mixed** and the commit attribution, apply to
++every copy of a run with that name, wherever the Gym reads it from.
+ 
+ ```sh
+ gym runs --agent microcoder

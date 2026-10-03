@@ -23,6 +23,8 @@ pub enum Role {
     NearbyFixture,
     Manifest,
     LexicalCandidate,
+    StructuralDependency,
+    TestFixtureHelper,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct Anchor {
@@ -68,7 +70,7 @@ struct Candidate<'a> {
     anchors: Vec<Anchor>,
 }
 
-fn instruction(path: &str) -> bool {
+pub(crate) fn instruction(path: &str) -> bool {
     matches!(
         Path::new(path).file_name().and_then(|s| s.to_str()),
         Some("AGENTS.md" | "SKILL.md" | "CLAUDE.md")
@@ -77,14 +79,14 @@ fn instruction(path: &str) -> bool {
 fn document(path: &str) -> bool {
     path.ends_with(".md")
 }
-fn role(path: &str) -> Role {
+pub(crate) fn role(path: &str) -> Role {
     if document(path) {
         Role::ExplicitDocument
     } else {
         Role::ExplicitSource
     }
 }
-fn test_path(path: &str) -> bool {
+pub(crate) fn test_path(path: &str) -> bool {
     let name = Path::new(path)
         .file_name()
         .and_then(|p| p.to_str())
@@ -94,7 +96,7 @@ fn test_path(path: &str) -> bool {
         || name.ends_with("_tests.rs")
         || name.ends_with("_test.rs")
 }
-fn package<'a>(path: &str, index: &'a Index) -> Option<&'a str> {
+pub(crate) fn package<'a>(path: &str, index: &'a Index) -> Option<&'a str> {
     index
         .files
         .iter()
@@ -105,7 +107,7 @@ fn package<'a>(path: &str, index: &'a Index) -> Option<&'a str> {
 }
 
 /// Recognize repository paths independently of prose term overlap, including quoted spaces.
-fn references(
+pub(crate) fn references(
     text: &str,
     index: &Index,
 ) -> (

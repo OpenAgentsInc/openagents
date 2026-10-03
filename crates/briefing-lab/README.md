@@ -143,6 +143,60 @@ The optional pack omits `AGENTS.md`, `CLAUDE.md`, and `SKILL.md`. Supply complet
 applicable instructions separately and identically to both experiment arms.
 The pack does not replace instructions or establish requirement coverage.
 
+## Explicit structural policy
+
+`--explicit-structure` selects `ExplicitStructureV1` and writes its exact
+payload to `focused.md`. Choose this flag or `--focused`; the existing focused
+policy remains unchanged. This variant reads task-named files and test
+filenames under verified package manifests. Only explicit Rust and Cargo paths
+introduce automatic test scopes; named documents do not. A committed manifest
+must declare a `[package]` table, so virtual workspace roots grant no test scope.
+Manifest inspection counts toward the 24-file read bound. The policy does not
+search unrelated source files for lexical matches. Inline tests are eligible when their source file is
+already named; inline tests elsewhere are outside this file pool.
+
+Explicit anchors select complete Rust declarations with attached attributes and
+comments. Without an anchor, identifiers and terms rank declarations within the
+named file. Supported same-file calls and type names add dependency candidates.
+The traversal stops at 64 declarations, handles cycles, and reports ambiguous
+or unsupported links. Imports provide context but do not expand imported code.
+This is syntax evidence, not Rust name resolution or a complete call graph.
+
+The policy automatically selects one actual `#[test]` or namespaced test
+function. Explicit anchors can select additional tests. Syntactic
+module/function references rank first, followed by a labeled term fallback
+within the admitted test files. Same-file fixture helpers and local types travel
+with that test. Named Markdown documents contribute at most two complete
+sections. Anchors select the smallest containing section; term matching ranks
+leaf sections. ATX and Setext headings are supported, and fenced headings are
+skipped. The section reader is not a full Markdown parser.
+
+The renderer merges adjacent ranges and records each file's digest once.
+Complete declaration/dependency bundles are admitted together or omitted
+without clipping. The final payload, including coverage warnings, stays within
+16 KiB and 16 ranges. Repeated selection-limit omissions are summarized;
+rendered warning details use at most 768 bytes plus a summary. Full bounded
+coverage records remain in `briefing.json`. Reads remain capped at 24 files. Fresh Rust parsing is
+charged to preparation time; this policy does not reuse the older syntax cache.
+Complete instructions and the issue remain separate inputs. The lexical and
+symbol flags also apply to this policy's ranking and fallback selection.
+
+For example, use the default within-file ranking:
+
+```sh
+scripts/briefing-preview.sh --repo /path/to/openagents --rev COMMIT \
+  --index /tmp/briefing-example/index.json --issue-file /tmp/issue.json \
+  --output-dir /tmp/briefing-structure --explicit-structure
+```
+
+For a reproducible preparation, `bench/briefing-replay/prepare_structure.py`
+requires a pinned binary SHA-256, a full source commit, an issue file, and an
+existing index. It measures a fresh index build and a warm preview separately,
+verifies the actual 16 KiB bound, and copies the exact payload to `treatment.md`.
+It makes no model calls and appends no Git probe. Default lexical and symbol
+ranking stays within the admitted files; disabling those flags also disables
+the corresponding test and document fallbacks.
+
 ## Execution facts and prior attempts
 
 The opt-in execution treatment adds committed Cargo manifest facts, local

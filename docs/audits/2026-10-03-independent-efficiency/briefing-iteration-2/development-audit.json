@@ -1,0 +1,505 @@
+{
+  "schema": "openagents.briefing.development-audit.v1",
+  "source_commit": "4705102273140a5f381fb75e17a29965662629c8",
+  "registration_sha256": "54d5fd9573a88e8c5a566908610f1afbbdc911ce5a54ed7dfcd8e67d127e60de",
+  "metrics_sha256": "e5ef290a751b4d88db243b824e50f318ba7b24180a0b8f4866dbd2fa9ccc8ef0",
+  "conditions": {
+    "control": {
+      "final_accepted": 4,
+      "first_attempt_accepted": 0,
+      "run_count": 4,
+      "all_runs_used_one_repair": true,
+      "median_cli_cost_usd_list_estimate": 0.8631354,
+      "total_cli_cost_usd_list_estimate": 3.5042602,
+      "median_first_attempt_cli_cost_usd_list_estimate": 0.6627103,
+      "median_repair_cli_cost_usd_list_estimate": 0.20404889999999998,
+      "median_total_wall_with_preparation_s": 221.97826300050002,
+      "median_recorded_wall_without_setup_plus_brief_s": 191.3599556045,
+      "median_agent_wall_s": 160.6919581255,
+      "median_check_wall_s": 30.667997478999993,
+      "median_tool_calls": 28.0,
+      "median_read_calls": 7.0
+    },
+    "treatment": {
+      "final_accepted": 4,
+      "first_attempt_accepted": 0,
+      "run_count": 4,
+      "all_runs_used_one_repair": true,
+      "median_cli_cost_usd_list_estimate": 0.7564422999999999,
+      "total_cli_cost_usd_list_estimate": 3.1353558,
+      "median_first_attempt_cli_cost_usd_list_estimate": 0.6092156,
+      "median_repair_cli_cost_usd_list_estimate": 0.1472267,
+      "median_total_wall_with_preparation_s": 167.66233490399998,
+      "median_recorded_wall_without_setup_plus_brief_s": 163.86009146649997,
+      "median_agent_wall_s": 134.0562871665,
+      "median_check_wall_s": 28.307778437000003,
+      "median_tool_calls": 23.0,
+      "median_read_calls": 5.0
+    }
+  },
+  "comparison": {
+    "median_cli_cost_reduction_fraction": 0.12361108118146946,
+    "cheaper_treatment_pairs": 3,
+    "median_paired_cost_reduction_fraction": 0.09763444963608064,
+    "median_total_wall_reduction_fraction": 0.2446903014840588,
+    "secondary_wall_reduction_without_setup_fraction": 0.143707517338875,
+    "development_advance_gate_passed": true,
+    "meets_20_percent_median_cost_reduction": false
+  },
+  "first_attempt_failures": [
+    {
+      "run": "development-1-control",
+      "registered_first_attempt_passed": 6,
+      "registered_first_attempt_total": 17,
+      "unsafe_admission_failures": 1,
+      "diagnostic_failures": 10,
+      "failures": [
+        {
+          "test": "disposable_caches_do_not_hide_ignored_user_data",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_cache_named_symlink_is_kept_without_following_it",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_ds_store_directory_with_user_data_is_kept",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_ignored_filename_with_newline_is_kept",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_ignored_private_directory_with_spaces_is_kept",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_regular_file_named_node_modules_is_kept",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_regular_file_named_target_is_kept",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_regular_file_with_cargo_target_prefix_is_kept",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_unknown_ignored_parent_stays_even_when_it_contains_cache_names",
+          "category": "unsafe_removal_admission"
+        },
+        {
+          "test": "ignored_dotenv_is_kept_with_a_useful_reason",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "ignored_private_directory_is_kept_with_its_contents",
+          "category": "missing_path_in_refusal_diagnostic"
+        }
+      ],
+      "evidence": "development/development-1-control/attempt-1-acceptance.log"
+    },
+    {
+      "run": "development-2-treatment",
+      "registered_first_attempt_passed": 6,
+      "registered_first_attempt_total": 17,
+      "unsafe_admission_failures": 0,
+      "diagnostic_failures": 11,
+      "failures": [
+        {
+          "test": "disposable_caches_do_not_hide_ignored_user_data",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_cache_named_symlink_is_kept_without_following_it",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_ds_store_directory_with_user_data_is_kept",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_ignored_filename_with_newline_is_kept",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_ignored_private_directory_with_spaces_is_kept",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_regular_file_named_node_modules_is_kept",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_regular_file_named_target_is_kept",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_regular_file_with_cargo_target_prefix_is_kept",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_unknown_ignored_parent_stays_even_when_it_contains_cache_names",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "ignored_dotenv_is_kept_with_a_useful_reason",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "ignored_private_directory_is_kept_with_its_contents",
+          "category": "missing_path_in_refusal_diagnostic"
+        }
+      ],
+      "evidence": "development/development-2-treatment/attempt-1-acceptance.log"
+    },
+    {
+      "run": "development-3-treatment",
+      "registered_first_attempt_passed": 6,
+      "registered_first_attempt_total": 17,
+      "unsafe_admission_failures": 0,
+      "diagnostic_failures": 11,
+      "failures": [
+        {
+          "test": "disposable_caches_do_not_hide_ignored_user_data",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_cache_named_symlink_is_kept_without_following_it",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_ds_store_directory_with_user_data_is_kept",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_ignored_filename_with_newline_is_kept",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_ignored_private_directory_with_spaces_is_kept",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_regular_file_named_node_modules_is_kept",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_regular_file_named_target_is_kept",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_regular_file_with_cargo_target_prefix_is_kept",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_unknown_ignored_parent_stays_even_when_it_contains_cache_names",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "ignored_dotenv_is_kept_with_a_useful_reason",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "ignored_private_directory_is_kept_with_its_contents",
+          "category": "missing_path_in_refusal_diagnostic"
+        }
+      ],
+      "evidence": "development/development-3-treatment/attempt-1-acceptance.log"
+    },
+    {
+      "run": "development-4-control",
+      "registered_first_attempt_passed": 6,
+      "registered_first_attempt_total": 17,
+      "unsafe_admission_failures": 0,
+      "diagnostic_failures": 11,
+      "failures": [
+        {
+          "test": "disposable_caches_do_not_hide_ignored_user_data",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_cache_named_symlink_is_kept_without_following_it",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_ds_store_directory_with_user_data_is_kept",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_ignored_filename_with_newline_is_kept",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_ignored_private_directory_with_spaces_is_kept",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_regular_file_named_node_modules_is_kept",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_regular_file_named_target_is_kept",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_regular_file_with_cargo_target_prefix_is_kept",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_unknown_ignored_parent_stays_even_when_it_contains_cache_names",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "ignored_dotenv_is_kept_with_a_useful_reason",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "ignored_private_directory_is_kept_with_its_contents",
+          "category": "missing_path_in_refusal_diagnostic"
+        }
+      ],
+      "evidence": "development/development-4-control/attempt-1-acceptance.log"
+    },
+    {
+      "run": "development-5-control",
+      "registered_first_attempt_passed": 6,
+      "registered_first_attempt_total": 17,
+      "unsafe_admission_failures": 0,
+      "diagnostic_failures": 11,
+      "failures": [
+        {
+          "test": "disposable_caches_do_not_hide_ignored_user_data",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_cache_named_symlink_is_kept_without_following_it",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_ds_store_directory_with_user_data_is_kept",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_ignored_filename_with_newline_is_kept",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_ignored_private_directory_with_spaces_is_kept",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_regular_file_named_node_modules_is_kept",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_regular_file_named_target_is_kept",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_regular_file_with_cargo_target_prefix_is_kept",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_unknown_ignored_parent_stays_even_when_it_contains_cache_names",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "ignored_dotenv_is_kept_with_a_useful_reason",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "ignored_private_directory_is_kept_with_its_contents",
+          "category": "missing_path_in_refusal_diagnostic"
+        }
+      ],
+      "evidence": "development/development-5-control/attempt-1-acceptance.log"
+    },
+    {
+      "run": "development-6-treatment",
+      "registered_first_attempt_passed": 6,
+      "registered_first_attempt_total": 17,
+      "unsafe_admission_failures": 0,
+      "diagnostic_failures": 11,
+      "failures": [
+        {
+          "test": "disposable_caches_do_not_hide_ignored_user_data",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_cache_named_symlink_is_kept_without_following_it",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_ds_store_directory_with_user_data_is_kept",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_ignored_filename_with_newline_is_kept",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_ignored_private_directory_with_spaces_is_kept",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_regular_file_named_node_modules_is_kept",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_regular_file_named_target_is_kept",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_regular_file_with_cargo_target_prefix_is_kept",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_unknown_ignored_parent_stays_even_when_it_contains_cache_names",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "ignored_dotenv_is_kept_with_a_useful_reason",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "ignored_private_directory_is_kept_with_its_contents",
+          "category": "missing_path_in_refusal_diagnostic"
+        }
+      ],
+      "evidence": "development/development-6-treatment/attempt-1-acceptance.log"
+    },
+    {
+      "run": "development-7-treatment",
+      "registered_first_attempt_passed": 6,
+      "registered_first_attempt_total": 17,
+      "unsafe_admission_failures": 0,
+      "diagnostic_failures": 11,
+      "failures": [
+        {
+          "test": "disposable_caches_do_not_hide_ignored_user_data",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_cache_named_symlink_is_kept_without_following_it",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_ds_store_directory_with_user_data_is_kept",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_ignored_filename_with_newline_is_kept",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_ignored_private_directory_with_spaces_is_kept",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_regular_file_named_node_modules_is_kept",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_regular_file_named_target_is_kept",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_regular_file_with_cargo_target_prefix_is_kept",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_unknown_ignored_parent_stays_even_when_it_contains_cache_names",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "ignored_dotenv_is_kept_with_a_useful_reason",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "ignored_private_directory_is_kept_with_its_contents",
+          "category": "missing_path_in_refusal_diagnostic"
+        }
+      ],
+      "evidence": "development/development-7-treatment/attempt-1-acceptance.log"
+    },
+    {
+      "run": "development-8-control",
+      "registered_first_attempt_passed": 6,
+      "registered_first_attempt_total": 17,
+      "unsafe_admission_failures": 1,
+      "diagnostic_failures": 10,
+      "failures": [
+        {
+          "test": "disposable_caches_do_not_hide_ignored_user_data",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_cache_named_symlink_is_kept_without_following_it",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_ds_store_directory_with_user_data_is_kept",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_ignored_filename_with_newline_is_kept",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_ignored_private_directory_with_spaces_is_kept",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_regular_file_named_node_modules_is_kept",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_regular_file_named_target_is_kept",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_regular_file_with_cargo_target_prefix_is_kept",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "extension_unknown_ignored_parent_stays_even_when_it_contains_cache_names",
+          "category": "unsafe_removal_admission"
+        },
+        {
+          "test": "ignored_dotenv_is_kept_with_a_useful_reason",
+          "category": "missing_path_in_refusal_diagnostic"
+        },
+        {
+          "test": "ignored_private_directory_is_kept_with_its_contents",
+          "category": "missing_path_in_refusal_diagnostic"
+        }
+      ],
+      "evidence": "development/development-8-control/attempt-1-acceptance.log"
+    }
+  ],
+  "failure_totals": {
+    "diagnostic_assertion_failures": 86,
+    "unsafe_admission_assertion_failures": 2
+  },
+  "setup": {
+    "largest_run": "development-8-control",
+    "largest_preparation_wall_s": 73.969740042,
+    "other_run_range_s": [
+      3.67741875,
+      3.9846848750000006
+    ],
+    "note": "The preparation timer combines export, baseline enumeration, instruction validation, and prompt preparation. It does not identify the cause of this outlier. Keep it in the registered endpoint and report the without-setup comparison only as a labeled secondary view."
+  },
+  "interpretation": [
+    "All first drafts scored 6/17 under the frozen checker; every repaired draft passed 17/17. Do not change those scores retrospectively.",
+    "The checker requires a retained-path fragment in refusal diagnostics. The common task does not explicitly request that string content, and the frozen specification records path and reason separately. Treat this as an extra diagnostic requirement, not proof of data-loss behavior.",
+    "For 86 failed case results, removable returned an error and the next path-text assertion failed. The test then stopped before later content-integrity assertions. This supports classification of the observed failure; it does not establish a new safety-only acceptance score.",
+    "Only controls 1 and 8 approved removal for the unknown ignored parent containing private/target/notes.bin. The failing assertion occurs before remove is called, so these are unsafe approvals, not observed deletions.",
+    "The repeated diagnostic failures share a generic refusal message and are not independent defects. All eight runs required repair feedback that exposed this diagnostic expectation.",
+    "The known development case supports advancement under the registered acceptance gate. Its 12.36% median cost reduction is below the 20% cost-win threshold; three of four treatment runs were cheaper. Do not use development results as held-out evidence.",
+    "The measured primary wall-time reduction includes unusually slow control setup. Tool counts and secondary timings are descriptive; neither establishes that the brief caused the entire difference."
+  ]
+}

@@ -1,0 +1,99 @@
+   Compiling background v0.1.0 (<VERIFICATION_ROOT>/repo/crates/background)
+   Compiling briefing-replay-acceptance v0.0.0 (<VERIFICATION_ROOT>/checks/<RUN_ID>/1/harness)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.97s
+     Running <CHECKER> (<TARGET>/debug/deps/acceptance-a9cca53e30c1a589)
+
+running 17 tests
+test clean_pushed_worktree_remains_eligible ... ok
+test disposable_caches_do_not_hide_ignored_user_data ... FAILED
+test extension_cache_named_symlink_is_kept_without_following_it ... FAILED
+test extension_ds_store_directory_with_user_data_is_kept ... FAILED
+test extension_ignored_filename_with_newline_is_kept ... FAILED
+test extension_ignored_private_directory_with_spaces_is_kept ... FAILED
+test extension_nested_caches_at_multiple_depths_remain_removable ... ok
+test extension_regular_ds_store_metadata_file_remains_disposable ... ok
+test extension_regular_file_named_node_modules_is_kept ... FAILED
+test extension_regular_file_named_target_is_kept ... FAILED
+test extension_regular_file_with_cargo_target_prefix_is_kept ... FAILED
+test extension_unknown_ignored_parent_stays_even_when_it_contains_cache_names ... FAILED
+test ignored_dotenv_is_kept_with_a_useful_reason ... FAILED
+test ignored_private_directory_is_kept_with_its_contents ... FAILED
+test ordinary_unsaved_work_is_still_protected ... ok
+test recognized_cache_only_worktree_can_still_be_removed ... ok
+test unpushed_commits_are_still_protected ... ok
+
+failures:
+
+---- disposable_caches_do_not_hide_ignored_user_data stdout ----
+
+thread 'disposable_caches_do_not_hide_ignored_user_data' (67433) panicked at <CHECKER>:116:9:
+The reason must identify the retained path: ignored files that are not a build cache
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- extension_cache_named_symlink_is_kept_without_following_it stdout ----
+
+thread 'extension_cache_named_symlink_is_kept_without_following_it' (67458) panicked at <CHECKER>:321:5:
+assertion failed: result.unwrap_err().contains("target")
+
+---- extension_ds_store_directory_with_user_data_is_kept stdout ----
+
+thread 'extension_ds_store_directory_with_user_data_is_kept' (67483) panicked at <CHECKER>:116:9:
+The reason must identify the retained path: ignored files that are not a build cache
+
+---- extension_ignored_filename_with_newline_is_kept stdout ----
+
+thread 'extension_ignored_filename_with_newline_is_kept' (67508) panicked at <CHECKER>:116:9:
+The reason must identify the retained path: ignored files that are not a build cache
+
+---- extension_ignored_private_directory_with_spaces_is_kept stdout ----
+
+thread 'extension_ignored_private_directory_with_spaces_is_kept' (67533) panicked at <CHECKER>:116:9:
+The reason must identify the retained path: ignored files that are not a build cache
+
+---- extension_regular_file_named_node_modules_is_kept stdout ----
+
+thread 'extension_regular_file_named_node_modules_is_kept' (67623) panicked at <CHECKER>:116:9:
+The reason must identify the retained path: ignored files that are not a build cache
+
+---- extension_regular_file_named_target_is_kept stdout ----
+
+thread 'extension_regular_file_named_target_is_kept' (67648) panicked at <CHECKER>:116:9:
+The reason must identify the retained path: ignored files that are not a build cache
+
+---- extension_regular_file_with_cargo_target_prefix_is_kept stdout ----
+
+thread 'extension_regular_file_with_cargo_target_prefix_is_kept' (67673) panicked at <CHECKER>:116:9:
+The reason must identify the retained path: ignored files that are not a build cache
+
+---- extension_unknown_ignored_parent_stays_even_when_it_contains_cache_names stdout ----
+
+thread 'extension_unknown_ignored_parent_stays_even_when_it_contains_cache_names' (67698) panicked at <CHECKER>:111:9:
+A worktree containing ignored user data must remain: private/target/notes.bin
+
+---- ignored_dotenv_is_kept_with_a_useful_reason stdout ----
+
+thread 'ignored_dotenv_is_kept_with_a_useful_reason' (67728) panicked at <CHECKER>:116:9:
+The reason must identify the retained path: ignored files that are not a build cache
+
+---- ignored_private_directory_is_kept_with_its_contents stdout ----
+
+thread 'ignored_private_directory_is_kept_with_its_contents' (67753) panicked at <CHECKER>:116:9:
+The reason must identify the retained path: ignored files that are not a build cache
+
+
+failures:
+    disposable_caches_do_not_hide_ignored_user_data
+    extension_cache_named_symlink_is_kept_without_following_it
+    extension_ds_store_directory_with_user_data_is_kept
+    extension_ignored_filename_with_newline_is_kept
+    extension_ignored_private_directory_with_spaces_is_kept
+    extension_regular_file_named_node_modules_is_kept
+    extension_regular_file_named_target_is_kept
+    extension_regular_file_with_cargo_target_prefix_is_kept
+    extension_unknown_ignored_parent_stays_even_when_it_contains_cache_names
+    ignored_dotenv_is_kept_with_a_useful_reason
+    ignored_private_directory_is_kept_with_its_contents
+
+test result: FAILED. 6 passed; 11 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.29s
+
+error: test failed, to rerun pass `--test acceptance`

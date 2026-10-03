@@ -1,0 +1,17 @@
+Diff in <VERIFICATION_ROOT>/repo/crates/background/src/tests.rs:412:
+     assert!(outside.join("keep").exists());
+     for tree in [private, file, linked, dsdir, odd] {
+         assert!(
+-            report
+-                .plan
+-                .kept
+-                .iter()
+-                .any(|kept| &kept.path == tree
+-                    && kept.why.starts_with("ignored files that are not a build cache: ")),
++            report.plan.kept.iter().any(|kept| &kept.path == tree
++                && kept
++                    .why
++                    .starts_with("ignored files that are not a build cache: ")),
+             "{}: {:?}",
+             tree.display(),
+             report.plan.kept
