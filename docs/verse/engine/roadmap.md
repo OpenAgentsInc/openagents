@@ -18,6 +18,11 @@ sprites; it uses the bundled licensed Fira Mono font. It retains timed dialogue,
 camera handoff, local combat, overhead red health bars, damage numbers, corpses,
 and respawns. See the [scene instructions](../../../assets/verse/original/README.md).
 
+[#10427](https://github.com/OpenAgentsInc/openagents/issues/10427) extracts generic
+pack, skeletal animation, and cinematic contracts into `crates/verse-engine`.
+The renderer and original scene consume that headless crate directly; the WoW
+adapter preserves its old API through re-exports.
+
 This delivers the visual procedural milestone of VE-1/VE-3, not the complete
 VE-0–VE-6 roadmap. Column collision, portable authority extraction, original
 rules replacement, service persistence, and multiplayer remain implementation

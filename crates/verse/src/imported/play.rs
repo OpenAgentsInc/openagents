@@ -1,9 +1,9 @@
 //! Player input after the cinematic handoff, backed by retained Ruins combat.
 use glam::Vec3;
 use std::collections::BTreeMap;
+use verse_engine::director::{Action, Frame, Scene};
 use verse_ruins::chamber_spells::{Controls, Utility};
 use verse_ruins::{Simulation, Snapshot, Spell};
-use verse_wow::director::{Action, Frame, Scene};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Ability {
@@ -365,7 +365,7 @@ impl Game {
         frame.projectiles = self
             .arrows
             .iter()
-            .map(|a| verse_wow::director::Projectile {
+            .map(|a| verse_engine::director::Projectile {
                 position: a.start.lerp(
                     a.end,
                     ((self.time - a.fired) / (a.impact - a.fired)).clamp(0.0, 1.0),

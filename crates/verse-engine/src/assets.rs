@@ -1,6 +1,6 @@
-//! Versioned imported meshes, textures, skeletons, and animation tracks.
+//! Versioned meshes, textures, skeletons, and animation tracks.
 //!
-//! Asset payloads remain private. This schema carries data only; shaders and
+//! This schema carries data only; shaders and
 //! executable scene behavior belong to the compiled Verse engine.
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, path::Path};
@@ -126,7 +126,7 @@ impl Pack {
                 || texture.width > 4096
                 || texture.height > 4096
             {
-                return Err("Invalid private texture reference".into());
+                return Err("Invalid texture reference".into());
             }
         }
         let mut vertices = 0;
@@ -230,7 +230,7 @@ mod tests {
             )]),
             placements: vec![],
             textures: vec![Texture {
-                file: "../private.png".into(),
+                file: "../compiled.png".into(),
                 sha256: String::new(),
                 width: 1,
                 height: 1,

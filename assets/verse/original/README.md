@@ -37,8 +37,8 @@ Mono; its SIL Open Font License is retained at
 by this entry point.
 
 The shared renderer, director, controls, and existing local combat adapter remain
-in their current modules. Generic pack and animation types still have the legacy
-`verse-wow` crate name. Gameplay still uses the retained `verse-ruins` adapter;
+in their current modules. Generic packs, animation, and cinematic contracts now live in `verse-engine`;
+`verse-wow` re-exports them for compatibility. Gameplay still uses the retained `verse-ruins` adapter;
 this milestone does not replace it with a new portable authority service.
 Movement currently uses the adapter's bounded floor rather than colliding with
 chamber columns. Engine extraction, physical character queries, durable saves,

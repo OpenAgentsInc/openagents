@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 
 /// Convert WoW yards and Z-up axes into Verse meters and Y-up axes.
 pub fn position_from_wow(p: [f32; 3]) -> Vec3 {
-    Vec3::new(-p[1], p[2], -p[0]) * 0.9144
+    verse_engine::source_position(p)
 }
 
 /// An authoritative unit projected into presentation state.
@@ -112,8 +112,5 @@ mod tests {
     }
 }
 
-pub mod assets;
-
-pub mod animation;
-
-pub mod director;
+// Retain adapter API compatibility while the generic contracts live in the engine.
+pub use verse_engine::{animation, assets, director};

@@ -88,8 +88,10 @@ The existing [`verse` runtime](../../../crates/verse/src/runtime.rs) shares
 platform-independent local behavior, but rendering and game-specific adapters
 still live together in a broad crate. [`imported`](../../../crates/verse/src/imported/mod.rs)
 owns the chamber's geometry submission, materials, shadows, lighting, and UI.
-[`verse-wow`](../../../crates/verse-wow/src/lib.rs) owns compatibility snapshots,
-imported animation, and cinematic scene descriptions. [`verse-ruins`](../../../crates/verse-ruins/README.md)
+[`verse-engine`](../../../crates/verse-engine/README.md) now owns generic pack,
+skeletal animation, and cinematic contracts.
+[`verse-wow`](../../../crates/verse-wow/src/lib.rs) owns compatibility snapshots
+and re-exports the engine modules for existing adapters. [`verse-ruins`](../../../crates/verse-ruins/README.md)
 wraps retained source combat. These are useful evidence and transition paths;
 they are not the final engine boundary.
 

@@ -11,7 +11,7 @@ use verse::{
     render::View,
     ui::Atlas,
 };
-use verse_wow::{assets::Pack, director::Scene, position_from_wow};
+use verse_engine::{assets::Pack, director::Scene, source_position as position_from_wow};
 use winit::{
     application::ApplicationHandler,
     event::{DeviceEvent, DeviceId, ElementState, MouseButton, MouseScrollDelta, WindowEvent},

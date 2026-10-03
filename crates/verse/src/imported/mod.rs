@@ -21,7 +21,7 @@ use std::{
     collections::{BTreeMap, HashMap},
     path::Path,
 };
-use verse_wow::{
+use verse_engine::{
     animation,
     assets::{Pack, Vertex},
 };

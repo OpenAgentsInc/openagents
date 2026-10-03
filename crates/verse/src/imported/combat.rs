@@ -2,7 +2,7 @@
 use super::play::{Ability, Game};
 use glam::Vec3;
 use std::collections::BTreeMap;
-use verse_wow::director::{Action, Scene};
+use verse_engine::director::{Action, Scene};
 
 #[derive(Clone, Debug)]
 pub struct EnemyCast {
@@ -50,7 +50,7 @@ impl Game {
         scene
             .cues
             .retain(|cue| cue.at < scene.cut_at || !matches!(cue.action, Action::Yell { .. }));
-        scene.cues.push(verse_wow::director::Cue {
+        scene.cues.push(verse_engine::director::Cue {
             at: scene.cut_at + 0.4,
             actor: 3,
             action: Action::Yell {
@@ -103,7 +103,7 @@ impl Encounter {
         if game.snapshot().player.hp == 0 || boss.health == 0 {
             self.ended = Some(game.time);
             if game.snapshot().player.hp == 0 {
-                game.scene.cues.push(verse_wow::director::Cue {
+                game.scene.cues.push(verse_engine::director::Cue {
                     at: game.time,
                     actor: 1,
                     action: Action::Yell {
@@ -125,7 +125,7 @@ impl Encounter {
         let enraged = boss.health * 4 < self.boss_max;
         if enraged && self.enrage.is_none() {
             self.enrage = Some(game.time);
-            game.scene.cues.push(verse_wow::director::Cue {
+            game.scene.cues.push(verse_engine::director::Cue {
                 at: game.time,
                 actor: 1,
                 action: Action::Yell {

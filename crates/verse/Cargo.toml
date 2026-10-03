@@ -16,6 +16,7 @@ capture = []
 imported-desktop = ["dep:winit", "capture"]
 
 [dependencies]
+verse-engine = { path = "../verse-engine" }
 bytemuck = { version = "1.25", features = ["derive"] }
 coder = { path = "../coder", optional = true }
 coder-delegate = { path = "../coder-delegate", optional = true }

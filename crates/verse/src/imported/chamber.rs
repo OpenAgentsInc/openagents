@@ -2,14 +2,14 @@
 use super::Instance;
 use crate::ui::Atlas;
 use glam::{Mat4, Quat, Vec3};
-use verse_wow::{assets::Pack, position_from_wow};
+use verse_engine::{assets::Pack, source_position as position_from_wow};
 pub fn basis() -> Mat4 {
     Mat4::from_cols_array(&[
         0.0, 0.0, -0.9144, 0.0, -0.9144, 0.0, 0.0, 0.0, 0.0, 0.9144, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
     ])
 }
 
-pub fn instances(pack: &Pack, frame: &verse_wow::director::Frame) -> Vec<Instance> {
+pub fn instances(pack: &Pack, frame: &verse_engine::director::Frame) -> Vec<Instance> {
     let mut actors: Vec<_> = frame
         .actors
         .iter()
@@ -33,7 +33,7 @@ pub fn instances(pack: &Pack, frame: &verse_wow::director::Frame) -> Vec<Instanc
     {
         let model = &pack.models["adventurer"];
         if let Some(hand) = model.attachments.iter().find(|a| a.id == 2) {
-            let pose = verse_wow::animation::pose(model, a.animation, a.animation_time);
+            let pose = verse_engine::animation::pose(model, a.animation, a.animation_time);
             let hand_position = (Mat4::from_translation(a.actor.position)
                 * Mat4::from_rotation_y(a.actor.yaw)
                 * basis()
@@ -302,8 +302,8 @@ pub fn combat_lighting(game: &super::play::Game) -> super::lighting::Lighting {
     lighting.lights.extend(effects);
     lighting
 }
-fn particle_quad() -> (Vec<verse_wow::assets::Vertex>, Vec<u32>) {
-    use verse_wow::assets::Vertex;
+fn particle_quad() -> (Vec<verse_engine::assets::Vertex>, Vec<u32>) {
+    use verse_engine::assets::Vertex;
     let vertices = [
         ([-1.0, -1.0, 0.0], [0.0, 1.0]),
         ([1.0, -1.0, 0.0], [1.0, 1.0]),
@@ -333,7 +333,7 @@ fn particle_texture(pack: &mut Pack, dir: &std::path::Path, name: &str) -> Resul
         .read_info()
         .map_err(|e| e.to_string())?;
     let i = pack.textures.len();
-    pack.textures.push(verse_wow::assets::Texture {
+    pack.textures.push(verse_engine::assets::Texture {
         file,
         sha256: format!("{:x}", Sha256::digest(&bytes)),
         width: reader.info().width,
@@ -343,7 +343,7 @@ fn particle_texture(pack: &mut Pack, dir: &std::path::Path, name: &str) -> Resul
 }
 pub fn add_effect_models(pack: &mut Pack, dir: &std::path::Path) -> Result<(), String> {
     use sha2::{Digest, Sha256};
-    use verse_wow::assets::{Model, Surface, Texture, Vertex};
+    use verse_engine::assets::{Model, Surface, Texture, Vertex};
     let mut bytes = Vec::new();
     {
         let mut encoder = png::Encoder::new(&mut bytes, 1, 1);
@@ -846,7 +846,7 @@ mod tests {
     use super::*;
     #[test]
     fn explosions_light_the_room_then_fade_with_the_effect() {
-        let scene = verse_wow::director::Scene::from_json(include_bytes!(
+        let scene = verse_engine::director::Scene::from_json(include_bytes!(
             "../../../../assets/verse/wow/anthropic.json"
         ))
         .unwrap();
@@ -865,7 +865,7 @@ mod tests {
     }
     #[test]
     fn many_effects_keep_the_brightest_local_lights_and_respect_the_gpu_bound() {
-        let scene = verse_wow::director::Scene::from_json(include_bytes!(
+        let scene = verse_engine::director::Scene::from_json(include_bytes!(
             "../../../../assets/verse/wow/anthropic.json"
         ))
         .unwrap();
@@ -886,7 +886,7 @@ mod tests {
     }
     #[test]
     fn simultaneous_impacts_keep_a_finite_deterministic_particle_budget() {
-        let scene = verse_wow::director::Scene::from_json(include_bytes!(
+        let scene = verse_engine::director::Scene::from_json(include_bytes!(
             "../../../../assets/verse/wow/anthropic.json"
         ))
         .unwrap();

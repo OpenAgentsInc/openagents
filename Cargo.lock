@@ -14641,6 +14641,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tokio-tungstenite 0.30.0",
+ "verse-engine",
  "verse-lagrange",
  "verse-ruins",
  "verse-wow",
@@ -14648,6 +14649,15 @@ dependencies = [
  "wgpu",
  "winit",
  "xp-ledger",
+]
+
+[[package]]
+name = "verse-engine"
+version = "0.1.0"
+dependencies = [
+ "glam",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -14678,6 +14688,7 @@ dependencies = [
  "glam",
  "serde",
  "serde_json",
+ "verse-engine",
 ]
 
 [[package]]

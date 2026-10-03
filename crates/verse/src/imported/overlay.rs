@@ -2,7 +2,7 @@
 use crate::ui::{Atlas, UiBatch};
 use glam::Mat4;
 use std::collections::BTreeMap;
-use verse_wow::director::{Action, Frame};
+use verse_engine::director::{Action, Frame};
 
 pub fn cinematic(
     atlas: &Atlas,
@@ -235,7 +235,7 @@ mod tests {
     use super::*;
     #[test]
     fn ritual_keeps_all_thirteen_hostile_bars_in_both_camera_shots() {
-        let scene = verse_wow::director::Scene::from_json(include_bytes!(
+        let scene = verse_engine::director::Scene::from_json(include_bytes!(
             "../../../../assets/verse/wow/anthropic.json"
         ))
         .unwrap();

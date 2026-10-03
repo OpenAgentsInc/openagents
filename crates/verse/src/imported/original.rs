@@ -3,7 +3,7 @@ use crate::ui::Atlas;
 use glam::{Quat, Vec3};
 use sha2::{Digest, Sha256};
 use std::{collections::BTreeMap, path::Path};
-use verse_wow::assets::{
+use verse_engine::assets::{
     Attachment, Bone, BoneKeys, Clip, Model, Pack, Placement, Surface, Texture, Vertex,
 };
 
@@ -447,8 +447,8 @@ mod tests {
             let m = &pack.models[name];
             assert!(m.clips.iter().any(|c| c.id == 1));
             assert_ne!(
-                verse_wow::animation::pose(m, 4, 0.),
-                verse_wow::animation::pose(m, 4, 0.9)
+                verse_engine::animation::pose(m, 4, 0.),
+                verse_engine::animation::pose(m, 4, 0.9)
             );
         }
         atlas().unwrap();
@@ -456,7 +456,7 @@ mod tests {
     }
     #[test]
     fn original_timeline_runs_the_full_kit_and_actual_defeat() {
-        let scene = verse_wow::director::Scene::from_json(include_bytes!(
+        let scene = verse_engine::director::Scene::from_json(include_bytes!(
             "../../../../assets/verse/original/ritual.json"
         ))
         .unwrap();
