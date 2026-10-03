@@ -11,6 +11,9 @@ program for preparing context in advance. Its new measurements are separate
 from the historical agent comparisons below. The later
 [Tree-sitter experiment](briefing-syntax-results.md) measures source-span
 selection independently of file ranking and agent execution.
+The [conversation audit](conversation-briefing-audit.md) examines actual recent
+Claude activity and identifies concrete preparation experiments from observed
+coordination, setup, retrieval, and verification problems.
 
 ## Executive assessment
 
@@ -88,6 +91,7 @@ Jev, Claude, or Codex outcome improvement.
 - [Standalone study protocol](#7-a-standalone-head-to-head-program)
 - [Recommended work order](#8-recommended-order-of-work)
 - [System One theory, code indexing, history, and isolated experiments](system-one-briefing.md)
+- [Briefing opportunities in actual agent conversations](conversation-briefing-audit.md)
 - [Runnable issue briefing preview](../../../crates/briefing-lab/README.md)
 
 ## Scope and method

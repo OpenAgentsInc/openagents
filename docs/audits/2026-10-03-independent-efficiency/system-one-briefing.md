@@ -15,6 +15,11 @@ Follow-up: [Tree-sitter excerpt selection experiment](briefing-syntax-results.md
 implements the first structural treatment, with a pinned source panel and
 matched baseline, syntax, and index-loading comparisons.
 
+The later [conversation audit](conversation-briefing-audit.md) tests these
+priorities against recent real work. Its strongest immediate candidates are
+verified execution facts, fresh ownership, run-specific artifacts, and retained
+corrections, followed by source and historical evidence selection.
+
 ## 1. What the TypeSafe material adds
 
 The requested `docs/typesafe/` directory is retained as

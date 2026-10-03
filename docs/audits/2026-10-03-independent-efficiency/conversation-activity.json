@@ -1,0 +1,188 @@
+{
+  "schema": "openagents.conversation-activity.v1",
+  "window_utc": {
+    "start_inclusive": "2026-10-01T05:00:00.000Z",
+    "end_exclusive": "2026-10-03T02:36:00.000Z"
+  },
+  "method": {
+    "source": "Owner-authorized local Claude project history; private paths and message text omitted.",
+    "deduplication": "Tool-use ID and assistant message ID across files; repeated usage fields use per-field maxima. Top-level files take precedence over subagent files.",
+    "bash_tags": "Nonexclusive lexical matches over command strings, including quoted or embedded commands. Tags do not prove execution, necessity, or wasted effort.",
+    "time": "No tool durations or cost estimates inferred from timestamp gaps.",
+    "tokens": "Recorded usage, not independently reconciled billing. Cached tokens are repeated input exposure, not unique source text.",
+    "result_bytes": "UTF-8 bytes of strings or JSON-serialized content arrays, including image payloads; not readable-text size or model tokens.",
+    "population": "Local project history includes coordination, maintenance, and adjacent workspace work; not a pure product-development census. Child file counts do not count distinct active agents.",
+    "weighting": "Input-token percentiles weight unique assistant message IDs, not tasks. Window boundaries can retain only part of a streamed response.",
+    "tool_error_flags": "Only explicitly marked tool-result errors are counted. Pipeline success can conceal a failing child process, so this is not a count of all failed builds or tests."
+  },
+  "all": {
+    "files_with_records": 168,
+    "unique_tool_calls": 19389,
+    "tool_names": {
+      "Bash": 18338,
+      "Read": 199,
+      "Write": 306,
+      "Agent": 166,
+      "SendMessage": 101,
+      "TaskStop": 30,
+      "Edit": 55,
+      "ToolSearch": 86,
+      "AskUserQuestion": 4,
+      "WebFetch": 13,
+      "CronCreate": 1,
+      "Monitor": 88,
+      "WebSearch": 2
+    },
+    "bash_lexical_tags_nonexclusive": {
+      "file_read_or_output_inspection": 14779,
+      "git_inspection": 2555,
+      "source_search": 11225,
+      "task_output_path": 653,
+      "github_cli": 606,
+      "sleep": 1009,
+      "cargo_build": 419,
+      "remote_shell": 1318,
+      "cargo_test_or_check": 2068,
+      "instruction_path": 146,
+      "boat_reference": 989
+    },
+    "bash_calls_with_multiple_tags": 12521,
+    "instruction_path_bash_calls": 146,
+    "explicit_instruction_Read_calls": 2,
+    "files_with_instruction_path_calls": 64,
+    "exact_repeated_command_calls_after_first_within_file": 81,
+    "matched_tool_results": 19382,
+    "tool_results_marked_error_by_name": {
+      "Bash": 335,
+      "TaskStop": 2,
+      "Read": 1,
+      "Monitor": 2
+    },
+    "unique_assistant_message_ids_with_usage": 19288,
+    "usage_sums": {
+      "input_tokens": 39234,
+      "cache_creation_input_tokens": 116352333,
+      "cache_read_input_tokens": 4829564450,
+      "output_tokens": 12449673
+    },
+    "recorded_input_tokens_per_message": {
+      "median": 212366.0,
+      "p95": 643846,
+      "max": 966878
+    },
+    "matched_serialized_result_payload_utf8_bytes": 75271423
+  },
+  "top_level": {
+    "files_with_records": 1,
+    "unique_tool_calls": 1460,
+    "tool_names": {
+      "Bash": 1200,
+      "Read": 8,
+      "Write": 9,
+      "Agent": 136,
+      "SendMessage": 95,
+      "TaskStop": 1,
+      "Edit": 1,
+      "ToolSearch": 3,
+      "AskUserQuestion": 4,
+      "WebFetch": 2,
+      "CronCreate": 1
+    },
+    "bash_lexical_tags_nonexclusive": {
+      "file_read_or_output_inspection": 1024,
+      "git_inspection": 207,
+      "source_search": 741,
+      "task_output_path": 56,
+      "github_cli": 100,
+      "sleep": 122,
+      "cargo_build": 58,
+      "remote_shell": 277,
+      "cargo_test_or_check": 122,
+      "instruction_path": 7,
+      "boat_reference": 34
+    },
+    "bash_calls_with_multiple_tags": 949,
+    "instruction_path_bash_calls": 7,
+    "explicit_instruction_Read_calls": 0,
+    "files_with_instruction_path_calls": 1,
+    "exact_repeated_command_calls_after_first_within_file": 13,
+    "matched_tool_results": 1460,
+    "tool_results_marked_error_by_name": {
+      "Bash": 21,
+      "TaskStop": 1,
+      "Read": 1
+    },
+    "unique_assistant_message_ids_with_usage": 1692,
+    "usage_sums": {
+      "input_tokens": 3830,
+      "cache_creation_input_tokens": 3795170,
+      "cache_read_input_tokens": 1010264820,
+      "output_tokens": 1013972
+    },
+    "recorded_input_tokens_per_message": {
+      "median": 632998.0,
+      "p95": 939799,
+      "max": 966878
+    },
+    "matched_serialized_result_payload_utf8_bytes": 2008319
+  },
+  "subagent": {
+    "files_with_records": 167,
+    "unique_tool_calls": 17929,
+    "tool_names": {
+      "Bash": 17138,
+      "Write": 297,
+      "Read": 191,
+      "Agent": 30,
+      "ToolSearch": 83,
+      "TaskStop": 29,
+      "SendMessage": 6,
+      "Monitor": 88,
+      "Edit": 54,
+      "WebFetch": 11,
+      "WebSearch": 2
+    },
+    "bash_lexical_tags_nonexclusive": {
+      "file_read_or_output_inspection": 13755,
+      "git_inspection": 2348,
+      "source_search": 10484,
+      "cargo_test_or_check": 1946,
+      "cargo_build": 361,
+      "sleep": 887,
+      "remote_shell": 1041,
+      "github_cli": 506,
+      "instruction_path": 139,
+      "task_output_path": 597,
+      "boat_reference": 955
+    },
+    "bash_calls_with_multiple_tags": 11572,
+    "instruction_path_bash_calls": 139,
+    "explicit_instruction_Read_calls": 2,
+    "files_with_instruction_path_calls": 63,
+    "exact_repeated_command_calls_after_first_within_file": 68,
+    "matched_tool_results": 17922,
+    "tool_results_marked_error_by_name": {
+      "Bash": 314,
+      "Monitor": 2,
+      "TaskStop": 1
+    },
+    "unique_assistant_message_ids_with_usage": 17596,
+    "usage_sums": {
+      "input_tokens": 35404,
+      "cache_creation_input_tokens": 112557163,
+      "cache_read_input_tokens": 3819299630,
+      "output_tokens": 11435701
+    },
+    "recorded_input_tokens_per_message": {
+      "median": 200427.0,
+      "p95": 456854,
+      "max": 808225
+    },
+    "matched_serialized_result_payload_utf8_bytes": 73263104
+  },
+  "diagnostics": {
+    "duplicate_tool_use_records_omitted": 200,
+    "usage_records_differing_within_message": 11852,
+    "malformed_complete_lines": 0
+  }
+}
