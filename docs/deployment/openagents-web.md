@@ -72,6 +72,17 @@ private-range traffic takes the VPC and everything else leaves as before.
 Keep both annotations and the variable in the copied spec for every later
 site build. See [pay host](pay-host.md#flow-and-stats-for-the-website-10195).
 
+Live (2026-10-03, after 01:55 UTC): revision `coder-web-37def7d8fc` (image
+`openagents/openagents-web:37def7d8fc`, `/efficiency`, #10210), copied from
+`coder-web-3a46b3c415-pay`'s spec with the pay host variable and both VPC
+annotations kept, serves 100% of the traffic; `coder-web-3a46b3c415-pay` is
+the rollback (`--to-revisions coder-web-3a46b3c415-pay=100`). The image was
+built from GitHub by the automation account and the revision applied as
+`chris@`. `/efficiency` is computed from the study rows compiled into the
+image (`coder::efficiency::PUBLISHED`); publishing a new study run is a
+commit of its rows and a site build. `coder-web-5e22f2af96`, an earlier
+build of the same page, never took traffic.
+
 ## Ported and complete
 
 These pages need nothing more than this repository and the public buckets:
