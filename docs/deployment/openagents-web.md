@@ -196,3 +196,13 @@ copied from `coder-web-37def7d8fc`'s spec with the pay host variable and
 both VPC annotations kept, serves 100% of the traffic; `coder-web-37def7d8fc`
 is the rollback (`--to-revisions coder-web-37def7d8fc=100`). Built from
 GitHub by the automation account, applied as `chris@`.
+
+Live (2026-10-03, later): revision `coder-web-2f838a3b1d` (image
+`openagents/openagents-web:2f838a3b1d`, `/efficiency` leading with the
+standing run `2026-10-03b` after the routed start-up cut, #10279; it
+includes #10239), copied from `coder-web-16006f7873`'s spec with the pay
+host variable and both VPC annotations kept, serves 100% of the traffic;
+`coder-web-16006f7873` is the rollback (`--to-revisions
+coder-web-16006f7873=100`). Built from GitHub by the automation account,
+applied as `chris@`; the tag `new` URL served the page and `/api/stats`
+from the pay host before traffic moved.
