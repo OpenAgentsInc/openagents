@@ -49,22 +49,41 @@ pub use route_contract::recipe::{RECIPE_VERSION, TaskClass};
 pub const SCHEMA: &str = "openagents.coder.delegate-recipe-run.v1";
 
 /// The class question set's name in records.
-pub const CLASS_SET: &str = "openagents.delegate.recipe.class.v1";
+pub const CLASS_SET: &str = "openagents.delegate.recipe.class.v2";
 
 /// Whether the request only asks: the terminal's own question
 /// ([`crate::terminal::ASKS_ONLY`]).
 pub const ASKS_ONLY: &str = crate::terminal::ASKS_ONLY;
 
-/// Whether the task is hard: Microcoder's `route.json` question, read
-/// against the request.
-pub const HARD: &str = "Judging by the request in `request`, does doing it correctly depend on \
-precise specialized knowledge, such as exact mathematical, statistical, scientific, or domain \
-definitions, or on subtle reasoning where a fast, low-cost model is likely to write plausible \
-but wrong code or tests?";
+/// Whether the task needs a sustained investigation rather than a bounded fix.
+/// Calibrated against the passing turns and wall time in the #10209 study.
+pub const HARD: &str = "Judging by the request in `request`, is this a substantial task likely to \
+need more than 20 agent steps or more than 10 minutes of active work to reach passing checks, \
+because it requires a sustained investigation, a broad implementation across components, or \
+deriving and validating a new algorithm? Answer no for a question, a localized bug fix, a \
+small feature, routine Git operations, or installing and building an existing package. \
+Specialized terminology, security implications, edge cases, and a requirement to add tests \
+do not by themselves make a task substantial. Judge the work needed, not how serious the \
+subject sounds; time spent waiting for downloads or builds is not active work.";
 
-/// The probability of `hard` at which a task is hard (Microcoder's
-/// `HARD`).
-pub const HARD_AT: f64 = 0.5;
+/// Escalate only on strong evidence of substantial work. See the class-v2
+/// remeasurement in `docs/cost/2026-10-02-shadow-baseline-measurement.md`.
+pub const HARD_AT: f64 = 0.8;
+
+/// The production class state, also used by the class-only evaluation.
+#[must_use]
+pub fn class_state(request: &str, earlier: &str) -> Value {
+    json!({"request": crate::judge::clip(request, 6_000),
+        "earlier": crate::judge::clip(earlier, 2_000)})
+}
+
+/// The production class questions, also used by the class-only evaluation.
+#[must_use]
+pub fn class_questions() -> jev::Questions {
+    jev::Questions::new()
+        .with("asks_only", jev::Noul::new(ASKS_ONLY))
+        .with("hard", jev::Noul::new(HARD))
+}
 
 /// The question asked of each candidate check.
 pub const CHECK: &str = "Run in the workspace, would this command exit 0 once the request in \
@@ -373,13 +392,8 @@ pub async fn prepare(input: Input<'_>) -> Prepared {
                     component: "recipe.class",
                     name: "jev_recipe_class",
                     id: "jev_recipe_class-1".to_owned(),
-                    state: json!({
-                        "request": crate::judge::clip(input.request, 6_000),
-                        "earlier": crate::judge::clip(input.earlier, 2_000),
-                    }),
-                    questions: jev::Questions::new()
-                        .with("asks_only", jev::Noul::new(ASKS_ONLY))
-                        .with("hard", jev::Noul::new(HARD)),
+                    state: class_state(input.request, input.earlier),
+                    questions: class_questions(),
                     parent: None,
                     deadline: None,
                 },
@@ -389,7 +403,7 @@ pub async fn prepare(input: Input<'_>) -> Prepared {
             let class = class_of(asks_only, hard);
             (
                 class,
-                json!({"set": CLASS_SET, "asks_only": asks_only, "hard": hard,
+                json!({"set": CLASS_SET, "hard_at": HARD_AT, "asks_only": asks_only, "hard": hard,
                     "class": class.map(TaskClass::word), "error": asked.error}),
             )
         }
@@ -649,7 +663,7 @@ mod tests {
     fn the_class_follows_jevs_probabilities_and_is_none_without_them() {
         assert_eq!(class_of(None, None), None);
         assert_eq!(class_of(Some(0.9), Some(0.9)), Some(TaskClass::Question));
-        assert_eq!(class_of(Some(0.1), Some(0.6)), Some(TaskClass::Hard));
+        assert_eq!(class_of(Some(0.1), Some(HARD_AT)), Some(TaskClass::Hard));
         assert_eq!(class_of(Some(0.1), Some(0.2)), Some(TaskClass::Change));
         assert_eq!(class_of(None, Some(0.2)), Some(TaskClass::Change));
     }

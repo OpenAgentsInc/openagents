@@ -103,6 +103,66 @@ model call, against raw Claude Code's single session (a median of 9 turns).
   (the loop gave up after three unusable replies). All four `bad_replies` runs
   still passed the check. On Codex, 17 `finished` and 4 `checks_passed`.
 
+## Task-class recalibration (#10245)
+
+The shipped class question is now `openagents.delegate.recipe.class.v2`.
+It asks about work to reach passing checks, not specialized terminology or
+security implications. A substantial task is expected to need more than
+20 agent steps or 10 minutes of active work; routine builds, localized fixes,
+and questions do not qualify by subject alone. Escalation requires
+`hard >= 0.8` (previously 0.5). The unchanged information-only judgment takes
+precedence at `asks_only >= 0.6`.
+
+Calibration uses all **105 retained runs**, grouped by their seven tasks and
+five arms, with passing-run medians rather than failed-run duration. The
+largest routed passing median step count is **15 steps**.
+All seven tasks have the label `change`. Raw Claude's native tool
+turns are retained separately because they are not loop steps. Recorded wall
+time includes build waits, so it is a conservative proxy for active work, not
+an independently measured active-time field.
+
+The class-only remeasurement reused the 42 recipe-on runs' original framed
+requests with Jev, plus three authored information-only and three authored
+substantial-work controls. The production state builder, questions, and
+classifier are shared with the evaluation runner:
+
+| Rows | Expected | v1 hard labels | v2 result |
+| --- | --- | ---: | --- |
+| 42 measured requests (seven distinct tasks) | change | 36 | 42 change, 0 hard |
+| 3 authored information-only controls | question | Not measured | 3 question |
+| 3 authored substantial-work controls | hard | Not measured | 3 hard |
+
+The small-task hard probabilities range from **0.10 to 0.67**, while the
+substantial controls range from **0.97 to 0.98**. The 0.8 cutoff lies between
+these groups. All **48/48** rows match their labels. These are calibration
+results, not a held-out generalization claim: the measured corpus has only
+seven distinct small tasks and no measured hard tasks. The authored hard
+controls test that escalation remains possible; they do not supply measured
+time-to-pass for hard work.
+
+The 48 decision calls took **34.78 seconds** in total (median **0.69 seconds**)
+and cost **$0.002084** at the recorded Jev input-token rate of $0.042 per
+million tokens. No engine ran. The effort mapping now keeps these small
+requests at admitted Codex medium or Claude low, while hard controls still
+select Codex high or Claude medium. This does **not** remeasure end-to-end
+engine cost, wall time, or pass rate; the original +61% cost and +43% time
+comparison includes other recipe settings and cannot be attributed solely
+to effort or claimed as savings from this change.
+
+Retained evidence is under
+[`2026-10-02-shadow-baseline/class-v2/`](2026-10-02-shadow-baseline/class-v2/):
+`labels.json` binds labels to all 105 runs' outcomes, times, steps, and costs;
+`rows.jsonl` contains exact framed requests and original v1 class records;
+`results.jsonl` contains the remeasured answers, exact question bodies,
+ATIF calls, wall times, and usage. Offline regression tests recompute labels,
+verify the production question bodies, and exercise class and effort cutoffs.
+To repeat the class-only measurement with the configured Jev door:
+
+```sh
+cargo run -p coder-delegate --example recipe_class_eval -- \
+  docs/cost/2026-10-02-shadow-baseline/class-v2/rows.jsonl > /tmp/recipe-class-results.jsonl
+```
+
 ## Method
 
 - **Host and binaries:** coderos-4080, `~/coder-runner/openagents` and
