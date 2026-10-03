@@ -1,4 +1,7 @@
 //! Read-only, offline issue briefings from a bounded Git snapshot.
+pub mod attempt;
+pub mod environment;
+pub mod execution;
 pub mod syntax;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -114,6 +117,22 @@ pub struct Brief {
     pub timings_ms: BTreeMap<String, f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub syntax: Option<syntax::Provenance>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub execution: Option<ExecutionBrief>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ExecutionBrief {
+    pub schema: String,
+    pub manifest: execution::ExecutionManifest,
+    pub environment: environment::EnvironmentSnapshot,
+    pub attempts: Vec<attempt::AttemptView>,
+    pub notes: Vec<String>,
+}
+
+/// Bind attempts to the complete parsed issue, independent of JSON whitespace.
+pub fn issue_digest(issue: &Issue) -> Result<String> {
+    Ok(sha256(&serde_json::to_vec(issue)?))
 }
 
 pub fn sha256(bytes: &[u8]) -> String {
@@ -823,6 +842,7 @@ pub fn assemble_with_options(
         notes.push(format!("Syntax parsing reports errors or bounded extraction in {limited} indexed Rust files; see each file's cached limitations."));
     }
     Ok(Brief {
+        execution: None,
         syntax: options.syntax.then(syntax::Provenance::default),
         schema: "openagents.briefing-lab.preview.v1".into(),
         commit: index.commit.clone(),
@@ -858,9 +878,60 @@ pub fn markdown(brief: &Brief) -> String {
     );
     let issue_text = format!("{}\n\n{}", brief.issue.title, brief.issue.body);
     let mark = fence(&issue_text);
-    out.push_str(&format!(
-        "{mark}text\n{issue_text}\n{mark}\n\n## Selected evidence\n\n"
-    ));
+    out.push_str(&format!("{mark}text\n{issue_text}\n{mark}\n\n"));
+    if let Some(execution) = &brief.execution {
+        out.push_str("## Execution facts\n\nCommands below are proposed checks from committed manifests. They have not run. Use a checkout matching the source commit; dirty or untracked source is outside this preview.\n\n");
+        for package in &execution.manifest.packages {
+            out.push_str(&format!(
+                "### {}\n\nManifest: `{}`. Blob: `{}`. SHA-256: `{}`.\n\n",
+                package.package, package.manifest, package.manifest_blob, package.manifest_sha256
+            ));
+            let details = serde_json::json!({
+                "workspace": package.workspace,
+                "test_argv": package.test_argv,
+                "fmt_argv": package.fmt_argv,
+            });
+            let text = serde_json::to_string_pretty(&details).expect("Serialize execution facts");
+            let mark = fence(&text);
+            out.push_str(&format!("{mark}json\n{text}\n{mark}\n\n"));
+        }
+        out.push_str("### Observed prerequisites\n\nThis snapshot describes the computer running the preview. Presence checks cover only the requested tools and files. They do not prove that a build will succeed.\n\n");
+        let environment = &execution.environment;
+        let text = serde_json::to_string_pretty(&serde_json::json!({
+            "label": environment.label,
+            "observed_unix_ms": environment.observed_unix_ms,
+            "fingerprint": environment.fingerprint,
+            "ready": environment.ready,
+            "tools": environment.tools,
+            "files": environment.files,
+        }))
+        .expect("Serialize environment snapshot");
+        let mark = fence(&text);
+        out.push_str(&format!("{mark}json\n{text}\n{mark}\n\n"));
+        out.push_str("Full fingerprint inputs and record provenance are retained in `briefing.json`.\n\n### Prior attempts\n\nResults are caller-reported history. Matching declared inputs do not establish a currently passing check or authorize execution.\n\n");
+        if execution.attempts.is_empty() {
+            out.push_str("No prior attempt was supplied.\n\n");
+        }
+        for attempt in &execution.attempts {
+            let text = serde_json::to_string_pretty(&serde_json::json!({
+                "run_id": attempt.request.run_id,
+                "run_dir": attempt.request.run_dir,
+                "commit": attempt.request.commit,
+                "argv": attempt.request.argv,
+                "input_status": attempt.status,
+                "changes": attempt.changes,
+                "result": attempt.result,
+            }))
+            .expect("Serialize attempt evidence");
+            let mark = fence(&text);
+            out.push_str(&format!("{mark}json\n{text}\n{mark}\n\n"));
+        }
+        for note in execution.manifest.notes.iter().chain(&execution.notes) {
+            out.push_str(&format!("- {note}\n"));
+        }
+        out.push('\n');
+    }
+    out.push_str("## Selected evidence\n\n");
     for e in &brief.evidence {
         if let Some(selection) = &e.syntax_selection {
             out.push_str(&format!(

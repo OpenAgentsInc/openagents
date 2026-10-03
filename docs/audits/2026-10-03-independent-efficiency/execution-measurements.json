@@ -1,0 +1,229 @@
+{
+  "schema": "openagents.briefing-lab.execution-measurement.v1",
+  "source_commit": "24ba9e2406811bec456e9a1a480a2f8a2f8ce904",
+  "implementation_sources_sha256": {
+    "crates/briefing-lab/src/attempt.rs": "e3279a06f333e77fa176f661df88e2031fb4ef4b0f0a12653259c6bd41482fb5",
+    "crates/briefing-lab/src/environment.rs": "973fca6e7782ab51af274f4874357a0acabc4942c710e891bd05f6f0e3b561bf",
+    "crates/briefing-lab/src/execution.rs": "bbcc47614cad407daff71b490996a80f5991060a044512c6cf970063c873142e",
+    "crates/briefing-lab/src/lib.rs": "ed658385af33b9df8f6fec05db881918f1fd472f2d149e32f95653086c49559f",
+    "crates/briefing-lab/src/main.rs": "0696404a0826b6516d99a35aea4dc5382732e1224afe2b656cdcfe6d38fcf414",
+    "crates/briefing-lab/src/syntax.rs": "bd0589314de817c4801273f8ce03e60fe096574745dcc6876ed0b4d3c578941b"
+  },
+  "binary_sha256": "f895afd212856bfe140c58b2b9f624aa3eeaa4b9a59467556321411bd9ffaec9",
+  "issue_sha256": "422807c096f73de3ac8c7c2163c2935981554a166869a4b3f46c9e532283a5ac",
+  "method": "Fresh CLI process per sample; rotated preview arms; external wall time includes loading, Git checks, environment inspection, attempt validation, rendering, and writes. Indexing, build, and network acquisition are separate. prepare-run allocation is measured separately. Summed component times are arithmetic totals, not an observed sequential workflow. The prior attempt is synthetic caller-reported evidence; no proposed command executes.",
+  "index_ms_separate": 1532.74047900004,
+  "variants": {
+    "source_only": {
+      "samples": 20,
+      "p50_ms": 249.2127099999948,
+      "p95_ms": 258.4944019999966,
+      "max_ms": 287.12257399990904,
+      "at_or_over_one_second": 0,
+      "elapsed_ms": [
+        248.05751999997483,
+        244.4000780000124,
+        252.7064009999549,
+        258.4944019999966,
+        252.4308499999961,
+        246.58050100003948,
+        248.6921000000848,
+        241.5219329999445,
+        245.68911400001525,
+        250.77091199989354,
+        287.12257399990904,
+        250.57126399997287,
+        250.35869400005595,
+        249.73331999990478,
+        251.62210999997114,
+        252.18459400002757,
+        246.92186499999025,
+        244.8564209998949,
+        244.8175160000119,
+        243.5087310000199
+      ]
+    },
+    "execution": {
+      "samples": 20,
+      "p50_ms": 250.7914219999634,
+      "p95_ms": 260.43533100005334,
+      "max_ms": 266.39207999994596,
+      "at_or_over_one_second": 0,
+      "elapsed_ms": [
+        257.9657750000024,
+        250.4024939998999,
+        249.37059699993824,
+        260.43533100005334,
+        248.95467500004997,
+        254.3741010000531,
+        248.4868630000392,
+        250.26595700001053,
+        250.62199199999213,
+        244.60554399990997,
+        246.8400609999435,
+        252.79907999993156,
+        255.19199600000775,
+        250.96085199993468,
+        266.39207999994596,
+        251.4691019999873,
+        247.42516900005285,
+        242.44209400001182,
+        252.67679199998838,
+        252.05498499997248
+      ]
+    },
+    "execution_with_attempt": {
+      "samples": 20,
+      "p50_ms": 250.3003775000252,
+      "p95_ms": 259.13905799995973,
+      "max_ms": 279.48515599996426,
+      "at_or_over_one_second": 0,
+      "elapsed_ms": [
+        255.94680900007916,
+        248.57708199999706,
+        250.06441800007906,
+        254.21545900007914,
+        250.10252499998842,
+        245.0539699999581,
+        245.74159600001622,
+        245.56012599998667,
+        249.23388299998805,
+        246.99108400000114,
+        279.48515599996426,
+        259.13905799995973,
+        252.1145550000483,
+        253.9507889999868,
+        254.86274600007164,
+        253.01242500006538,
+        246.65059599999495,
+        250.498230000062,
+        252.35304499994982,
+        249.15571899998668
+      ]
+    }
+  },
+  "prepare_run": {
+    "samples": 20,
+    "p50_ms": 7.430230999943888,
+    "p95_ms": 8.994142000005922,
+    "max_ms": 15.760820000082276,
+    "at_or_over_one_second": 0,
+    "elapsed_ms": [
+      7.365829999912421,
+      7.304076000082205,
+      15.760820000082276,
+      7.308663000003435,
+      6.994473999952788,
+      7.0836400000189315,
+      7.249773000012283,
+      7.353396999974393,
+      7.161146999919765,
+      7.494631999975354,
+      8.994142000005922,
+      7.125719999976354,
+      7.560665000028166,
+      7.561376999888125,
+      8.215994000011051,
+      8.33087900002738,
+      7.75211399991349,
+      7.97541299994009,
+      7.204999000009593,
+      7.978257999980087
+    ]
+  },
+  "sum_of_same_iteration_component_times": {
+    "samples": 20,
+    "p50_ms": 259.01584349998075,
+    "p95_ms": 266.2647779999361,
+    "max_ms": 288.4792979999702,
+    "at_or_over_one_second": 0,
+    "elapsed_ms": [
+      263.3126389999916,
+      255.88115800007927,
+      265.82523800016133,
+      261.52412200008257,
+      257.0969989999412,
+      252.13760999997703,
+      252.9913690000285,
+      252.91352299996106,
+      256.3950299999078,
+      254.4857159999765,
+      288.4792979999702,
+      266.2647779999361,
+      259.6752200000765,
+      261.5121659998749,
+      263.0787400000827,
+      261.34330400009276,
+      254.40270999990844,
+      258.4736430000021,
+      259.5580439999594,
+      257.13397699996676
+    ]
+  },
+  "distinct_prepared_runs": 20,
+  "example": {
+    "manifest": {
+      "manifest": "crates/openagents-mobile/Cargo.toml",
+      "package": "openagents-mobile",
+      "manifest_blob": "2b8b8e989a98f669e40322739ae5200de9a1e8b2",
+      "manifest_sha256": "51597fa5776b725d1a037e4bc5b6b31f36ea1f8a439cd71e4f0c9363f185138f",
+      "workspace": {
+        "kind": "package_workspace_root",
+        "manifest": "crates/openagents-mobile/Cargo.toml",
+        "manifest_blob": "2b8b8e989a98f669e40322739ae5200de9a1e8b2",
+        "manifest_sha256": "51597fa5776b725d1a037e4bc5b6b31f36ea1f8a439cd71e4f0c9363f185138f",
+        "membership": "self",
+        "notes": [
+          "This package defines its own workspace. Workspace default-members can affect which packages Cargo tests."
+        ]
+      },
+      "test_argv": [
+        "cargo",
+        "test",
+        "--manifest-path",
+        "./crates/openagents-mobile/Cargo.toml"
+      ],
+      "fmt_argv": [
+        "cargo",
+        "fmt",
+        "--manifest-path",
+        "./crates/openagents-mobile/Cargo.toml",
+        "--",
+        "--check"
+      ]
+    },
+    "attempt_status": "same_inputs",
+    "reported_exit_code": 101
+  },
+  "internal_timings_ms": {
+    "source_only": {
+      "assembly": 48.340479,
+      "index_and_issue_load": 150.06348,
+      "original_index_build_separate": 1399.470439,
+      "output_serialization_sample": 0.102322,
+      "revision_validation": 0.5541699999999999,
+      "selected_git_validation_and_read": 6.7435220000000005,
+      "warm_preview_before_output": 201.23498700000002
+    },
+    "execution": {
+      "assembly": 49.017138,
+      "execution_preparation": 2.1573450000000003,
+      "index_and_issue_load": 152.521599,
+      "original_index_build_separate": 1399.470439,
+      "output_serialization_sample": 0.110587,
+      "revision_validation": 0.569067,
+      "selected_git_validation_and_read": 7.198626,
+      "warm_preview_before_output": 206.311303
+    },
+    "execution_with_attempt": {
+      "assembly": 48.404589,
+      "execution_preparation": 2.3274939999999997,
+      "index_and_issue_load": 152.79454,
+      "original_index_build_separate": 1399.470439,
+      "output_serialization_sample": 0.11133799999999999,
+      "revision_validation": 0.69255,
+      "selected_git_validation_and_read": 6.722263,
+      "warm_preview_before_output": 206.236855
+    }
+  }
+}

@@ -1,0 +1,145 @@
+{
+  "schema": "openagents.briefing-lab.execution-preview.v1",
+  "manifest": {
+    "schema": "openagents.briefing-lab.execution.v1",
+    "commit": "24ba9e2406811bec456e9a1a480a2f8a2f8ce904",
+    "packages": [
+      {
+        "manifest": "crates/openagents-mobile/Cargo.toml",
+        "package": "openagents-mobile",
+        "manifest_blob": "2b8b8e989a98f669e40322739ae5200de9a1e8b2",
+        "manifest_sha256": "51597fa5776b725d1a037e4bc5b6b31f36ea1f8a439cd71e4f0c9363f185138f",
+        "workspace": {
+          "kind": "package_workspace_root",
+          "manifest": "crates/openagents-mobile/Cargo.toml",
+          "manifest_blob": "2b8b8e989a98f669e40322739ae5200de9a1e8b2",
+          "manifest_sha256": "51597fa5776b725d1a037e4bc5b6b31f36ea1f8a439cd71e4f0c9363f185138f",
+          "membership": "self",
+          "notes": [
+            "This package defines its own workspace. Workspace default-members can affect which packages Cargo tests."
+          ]
+        },
+        "test_argv": [
+          "cargo",
+          "test",
+          "--manifest-path",
+          "./crates/openagents-mobile/Cargo.toml"
+        ],
+        "fmt_argv": [
+          "cargo",
+          "fmt",
+          "--manifest-path",
+          "./crates/openagents-mobile/Cargo.toml",
+          "--",
+          "--check"
+        ]
+      }
+    ],
+    "notes": [
+      "Commands are proposals, not verification results. Pass each argv directly to a process; do not join it into shell code.",
+      "Run commands from a checkout of this commit at the repository root. The current working tree was not inspected.",
+      "Cargo was not invoked. Toolchains, system tools, features, target permissions, configuration, and dependency availability are unverified.",
+      "Workspace glob expansion and automatic membership through path dependencies are not resolved. Up to 256 manifest paths are inspected, each at most 512 KiB."
+    ]
+  },
+  "environment": {
+    "schema": "openagents.briefing-lab.environment.v1",
+    "label": "briefing-experiment",
+    "observed_unix_ms": 1790997030618,
+    "fingerprint": "76e87f2a11116b76eb2ccf0e48f7672d0f45e5df8e13975a0e2f5c5ba2bb78e0",
+    "fingerprint_inputs": {
+      "schema": "openagents.briefing-lab.environment-inputs.v1",
+      "label": "briefing-experiment",
+      "os": "linux",
+      "arch": "x86_64",
+      "tools": [
+        {
+          "requested": "cargo",
+          "resolved_path": "/usr/local/cargo/bin/rustup",
+          "present": true,
+          "length": 20838840,
+          "modified": "1785518788.110336129",
+          "unix_mode": 33261
+        },
+        {
+          "requested": "git",
+          "resolved_path": "/usr/bin/git",
+          "present": true,
+          "length": 4066232,
+          "modified": "1754414041.000000000",
+          "unix_mode": 33261
+        }
+      ],
+      "files": []
+    },
+    "tools": [
+      {
+        "name": "cargo",
+        "resolved_path": "/usr/local/cargo/bin/rustup",
+        "present": true
+      },
+      {
+        "name": "git",
+        "resolved_path": "/usr/bin/git",
+        "present": true
+      }
+    ],
+    "files": [],
+    "ready": true,
+    "notes": [
+      "These observations describe this local process's environment. A label does not verify a remote host.",
+      "Ready means the declared tools resolve to regular files and the declared files can be opened. On Unix, each tool must have an executable permission bit. No tool was run and no file content was read.",
+      "The fingerprint covers the label, OS, architecture, requested prerequisites, resolved paths, sizes, modification times, and Unix permission modes when available. It excludes the observation time and does not contain raw environment variables.",
+      "To reproduce the fingerprint, deserialize fingerprint_inputs as FingerprintInputs and SHA-256 its compact serde_json encoding in declaration order. Modification times are signed Unix seconds with nine fractional digits.",
+      "Metadata does not prove tool versions, dependencies, target support, execution permission under every policy, or unchanged content. Conditions can change after this observation; recheck before execution."
+    ]
+  },
+  "attempts": [
+    {
+      "schema": "openagents.briefing-lab.attempt-view.v1",
+      "request": {
+        "schema": "openagents.briefing-lab.run-request.v1",
+        "run_id": "run-5f47afd33f27a97b22a5e9b02409b791",
+        "commit": "24ba9e2406811bec456e9a1a480a2f8a2f8ce904",
+        "issue_sha256": "b77178ee75ce13e3b22d0815a5d6c9552cfd7f4d0f0693d02788f5d701ce36b1",
+        "environment_id": "briefing-experiment:76e87f2a11116b76eb2ccf0e48f7672d0f45e5df8e13975a0e2f5c5ba2bb78e0",
+        "argv": [
+          "cargo",
+          "test",
+          "--manifest-path",
+          "./crates/openagents-mobile/Cargo.toml"
+        ],
+        "created_unix_ms": 1790997015660,
+        "run_dir": "/tmp/briefing-execution-measurement-compact/runs/run-5f47afd33f27a97b22a5e9b02409b791",
+        "stdout_log": "/tmp/briefing-execution-measurement-compact/runs/run-5f47afd33f27a97b22a5e9b02409b791/stdout.log",
+        "stderr_log": "/tmp/briefing-execution-measurement-compact/runs/run-5f47afd33f27a97b22a5e9b02409b791/stderr.log",
+        "result_path": "/tmp/briefing-execution-measurement-compact/runs/run-5f47afd33f27a97b22a5e9b02409b791/result.json",
+        "request_sha256": "fd19f0adfb86d0db81cf8d82959d952f3838fbd46d4262308fbab2e3f18aed96"
+      },
+      "result": {
+        "schema": "openagents.briefing-lab.attempt.v1",
+        "run_id": "run-5f47afd33f27a97b22a5e9b02409b791",
+        "request_sha256": "fd19f0adfb86d0db81cf8d82959d952f3838fbd46d4262308fbab2e3f18aed96",
+        "reported_unix_ms": 1790997015664,
+        "status": "caller_reported",
+        "exit_code": 101,
+        "summary": "Synthetic workspace-command failure for the preview experiment.",
+        "next_action": "Inspect the proposed manifest-path command before a separately authorized check."
+      },
+      "status": "same_inputs",
+      "changes": [],
+      "notes": [
+        "Environment identity is supplied by the caller; this module does not observe the host.",
+        "Results are caller-reported. This module does not execute the recorded command or inspect its logs.",
+        "Matching inputs do not establish command suitability, verified success, or permission to execute.",
+        "Summary and next_action are untrusted historical text, not instructions.",
+        "Digests bind record contents but do not authenticate the caller or attest execution.",
+        "The source commit is declared; this record does not attest a clean checkout or which source actually ran."
+      ]
+    }
+  ],
+  "notes": [
+    "Package scope and prerequisite lists are explicit inputs. This preview does not infer complete build requirements or select a sufficient acceptance suite.",
+    "Attempt applicability compares the declared commit, complete issue digest, observed prerequisite fingerprint, and proposed command. It does not verify the actual checkout, runner, runtime version, claims, or every environment input."
+  ]
+}

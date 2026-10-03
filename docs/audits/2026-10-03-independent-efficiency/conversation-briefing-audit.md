@@ -353,3 +353,56 @@ They do not support attributing all searches, test reruns, build waits, or
 large cached contexts to waste.
 
 [overlap-claim]: https://github.com/OpenAgentsInc/openagents/issues/10195#issuecomment-5962621464
+
+## Implemented first step
+
+[#10276](https://github.com/OpenAgentsInc/openagents/issues/10276) adds opt-in
+execution facts and prior attempts to the standalone preview. The
+[usage guide](../../../crates/briefing-lab/README.md#execution-facts-and-prior-attempts)
+covers explicit package manifests and prerequisites, unique run directories,
+caller-reported results, and stale-input comparisons. Production routing and
+claim admission are unchanged.
+
+The treatment reads exact committed Cargo manifests, produces manifest-path
+argument arrays, observes requested local prerequisites without executing
+tools, and retains the metadata behind its environment fingerprint. Attempts
+bind to a commit, complete issue digest, environment fingerprint, and command.
+Changed package selection also invalidates a prior command's applicability.
+Results never become verified acceptance merely because the inputs match.
+
+On the reused Boat build slot, all **44 tests passed**: 25 module tests,
+three CLI integration tests, and 16 existing preview tests. Focused formatting,
+release compilation, and wrapper syntax checks passed. Fixtures cover nested
+workspaces and dirty manifests; missing tools and include files; concurrent
+run directories and isolated logs; wrong and replayed result identities;
+changed source, task, environment, or package; pending results; and log text
+that contradicts the reported exit code. Fake tools and command-like issue
+text remain unexecuted. The CLI comparison confirms the source-only evidence,
+history, issue, components, and notes remain identical.
+
+[Measurements](execution-measurements.json) use the repository at
+`24ba9e2406811bec456e9a1a480a2f8a2f8ce904`, the public issue snapshot in
+[execution-issue.json](execution-issue.json), and the implementation source
+hashes recorded with the binary hash. The
+[benchmark script](benchmark_execution.py) rotates three preview arms across
+20 fresh processes each. External wall time includes Git checks, loading,
+preparation, rendering, and output writes. Build and network acquisition are
+excluded; the first index build took **1.53 seconds** and is reported separately.
+
+| Operation | Samples | Median | p95 | Maximum |
+| --- | ---: | ---: | ---: | ---: |
+| Source-only warm preview | 20 | 249.2 ms | 258.5 ms | 287.1 ms |
+| Execution facts | 20 | 250.8 ms | 260.4 ms | 266.4 ms |
+| Execution facts and one prior attempt | 20 | 250.3 ms | 259.1 ms | 279.5 ms |
+| Separate run allocation | 20 | 7.4 ms | 9.0 ms | 15.8 ms |
+
+All 60 measured warm previews finished under one second. The small differences
+between arms do not establish a latency improvement. These are measurements
+of one snapshot and build slot, not a guarantee for cold indexing, GitHub
+fetches, every repository, or arbitrary prerequisite paths.
+
+The retained [execution example](execution-example.json) uses a clearly labeled
+synthetic failure to demonstrate attempt rendering. No proposed check ran in
+this benchmark and no agent efficiency improvement was measured. Real process
+supervision, automatic prerequisite discovery, live claims, and verified
+runtime identity remain separate components to test.

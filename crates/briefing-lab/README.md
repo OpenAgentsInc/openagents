@@ -60,8 +60,8 @@ up to 32 recent subjects and selects up to four. Lexical order breaks ties.
 Symbol hints identify Rust declaration names on source lines. They are not
 AST ranges, references, or a call graph. Lexical overlap and history subjects
 are candidates, not verified relevance. A no-match result is explicit. The
-briefing cannot certify requirement coverage, nominate a safe test command,
-or replace complete repository instructions. Tests and manifests can be
+briefing cannot certify requirement coverage, establish a sufficient test
+suite, or replace complete repository instructions. Tests and manifests can be
 selected as source evidence; the tool never runs them.
 
 Run focused checks on the approved build host:
@@ -114,3 +114,91 @@ expand macros, evaluate `cfg`, resolve imports/types, or build a call graph.
 Separate attributes and comments are outside declaration spans. The parser
 can improve boundaries without establishing that the selected declaration
 answers the issue.
+
+## Execution facts and prior attempts
+
+The opt-in execution treatment adds committed Cargo manifest facts, local
+prerequisite observations, and selected prior attempts. Choose the package
+scope explicitly; the lab does not infer a complete acceptance suite.
+
+```sh
+scripts/briefing-preview.sh --repo /path/to/openagents --rev COMMIT \
+  --index /tmp/briefing-example/index.json --issue-file /tmp/issue.json \
+  --output-dir /tmp/briefing-execution \
+  --execution --manifest crates/openagents-mobile/Cargo.toml \
+  --environment-id build-slot-3
+```
+
+Repeat `--manifest` for more packages, up to 32. The lab reads regular
+committed manifest blobs, bounds each to 512 KiB, and proposes structured
+argument arrays such as:
+
+```json
+["cargo", "test", "--manifest-path", "./crates/openagents-mobile/Cargo.toml"]
+```
+
+This works with the mobile package's separate workspace. Workspace declarations
+and exact member entries retain blob and content digests. Glob membership,
+dependency-based automatic membership, and workspace roots outside the snapshot
+remain unresolved. The tool does not run Cargo metadata, expand build scripts,
+or evaluate features. Workspace defaults can still affect which tests Cargo
+runs. The proposed commands apply to a matching checkout; dirty and untracked
+source is absent from the preview.
+
+Prerequisite checks always inspect `cargo` and `git` on this process's `PATH`.
+Add explicit requirements with repeated `--require-tool protoc` and
+`--require-file /path/to/include/google/protobuf/timestamp.proto` options.
+The lab checks executable-file presence and whether required files can be
+opened. It does not execute tools or read required file contents. Missing
+requirements are visible in the preview. They prevent run allocation.
+
+The environment record includes its observation time and the exact metadata
+used in its fingerprint: label, OS, architecture, required inputs, canonical
+paths, sizes, modification times, and Unix modes. It describes the computer
+running the preview. A label such as `boat` does not verify a remote host.
+Metadata checks do not prove tool versions, complete dependencies, compatible
+targets, or unchanged content. Recheck before execution.
+
+### Reserve artifacts for one attempt
+
+`prepare-run` creates a unique directory outside the repository, reserves
+separate stdout/stderr logs, and writes a request plus preparation facts.
+Concurrent requests with identical inputs receive distinct directories.
+
+```sh
+"$BRIEFING_LAB_BIN" prepare-run --repo /path/to/openagents --rev COMMIT \
+  --issue-file /tmp/issue.json --manifest crates/openagents-mobile/Cargo.toml \
+  --environment-id build-slot-3 --artifact-root /tmp/briefing-runs
+```
+
+The printed JSON provides `run_dir`, `stdout_log`, `stderr_log`, and
+`request_sha256`. No process starts. A separate executor can use those logs
+and report the actual exit code, captured before any output pipeline changes
+the shell status. For a separately observed failure with exit code 101:
+
+```sh
+"$BRIEFING_LAB_BIN" record-result --run-dir PRINTED_RUN_DIR \
+  --request-sha256 PRINTED_REQUEST_DIGEST --exit-code 101 \
+  --summary 'The check failed; inspect the retained compiler diagnostic.' \
+  --next-action 'Resolve the diagnostic before another check.'
+```
+
+Results are explicitly `caller_reported`. The lab does not verify what ran,
+read logs, or turn an exit code into accepted issue completion. It refuses a
+wrong request digest, an existing result, malformed or oversized records,
+and symlinked or hard-linked run artifacts. Records are limited to 1 MiB;
+summary and next-action text are each limited to 4 KiB. Digests bind records
+without authenticating their author.
+
+Pass `--attempt-dir PRINTED_RUN_DIR` to an execution preview, up to eight
+directories. It compares source commit, complete parsed issue, observed
+environment fingerprint, and proposed test command. Changes remain visible
+as historical evidence; matching inputs do not establish that a check passes
+now. Pending requests retain a null result. Logs that say “passed” cannot
+override the supplied exit code because the reader never parses log text.
+Attempt text is evidence, not a new instruction or permission.
+
+Live claim admission, process supervision, runtime version checks, and
+deployment stay outside this experiment. The source-only preview remains the
+default. [Measurements and isolated checks](../../docs/audits/2026-10-03-independent-efficiency/conversation-briefing-audit.md#implemented-first-step)
+record the added preparation cost and current limits.
