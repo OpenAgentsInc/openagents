@@ -1,0 +1,6 @@
+{
+  "number": 10301,
+  "title": "Task store v2 still refuses with \"another process holds the task store lock\"",
+  "body": "Parallel chat work can still fail with \u201canother process holds the task store lock\u201d after the move to one file per task. Inspect task admission and owner/store locking in `crates/coder/src/task/`, including `Store::open_for_owner`. Make short-lived contention wait briefly instead of refusing an otherwise valid start, and keep unrelated tasks independent. Preserve exclusive execution for one task: a command must not run while another owner holds that task's lock. Add regression coverage for contention and independent starts. Keep changes within the locking/admission behavior; do not change record formats, task cleanup, or engine execution policy.",
+  "url": "https://github.com/OpenAgentsInc/openagents/issues/10301"
+}

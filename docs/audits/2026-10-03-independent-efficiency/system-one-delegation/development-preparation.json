@@ -1,0 +1,210 @@
+{
+  "schema": "openagents.delegation-study.preparation.v1",
+  "source_commit": "4705102273140a5f381fb75e17a29965662629c8",
+  "policy": "syntax-units-v2",
+  "mode": "deterministic",
+  "issue_sha256": "caf889b753d583c6c357789a238d4213af37f2f34976bdde0b1cabf4e7cd07f8",
+  "index_sha256": "573481d7222c17520917076e1902e23bdb14f2412f5ef46b3675f05a47ea22c4",
+  "script_sha256": "20868f9bbfdc3002a6345e9e4fddfa0b7cdb3e164e11d74af0ad488813389c6b",
+  "briefing_sha256": "eea433fd0c52795ecef81b6352bbe13aaa06e41985a13bef58ad2e839a351ca2",
+  "briefing_bytes": 16130,
+  "selection": [
+    "c01",
+    "c02",
+    "c03",
+    "c04",
+    "c05",
+    "c06",
+    "c07",
+    "c08",
+    "c09",
+    "c10",
+    "c11",
+    "c12",
+    "c13",
+    "c14",
+    "c15",
+    "c16",
+    "c17",
+    "c18",
+    "c19"
+  ],
+  "candidate_sha256": "d5c6bde6852bd8baa258968d071e8781831f936e5c2fe2d818d178a6fd1e36e0",
+  "coverage": {
+    "files_read": 24,
+    "eligible_units": 954,
+    "candidate_units": 27,
+    "oversized_units": [
+      {
+        "path": "crates/coder/src/delegate.rs",
+        "name": "Delegator::run",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder/src/runtime.rs",
+        "name": "Runtime::run_steps",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder/src/runtime.rs",
+        "name": "Runtime::nested",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder/src/runtime.rs",
+        "name": "Runtime::look_up",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder/src/runtime.rs",
+        "name": "Runtime::review_findings",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder/src/runtime.rs",
+        "name": "Runtime::delegate",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder/src/runtime.rs",
+        "name": "Runtime::ask",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder-one/src/micro.rs",
+        "name": "Policy",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder-one/src/micro.rs",
+        "name": "Micro::session_watched",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder-one/src/micro.rs",
+        "name": "Micro::requirements",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder-one/src/micro.rs",
+        "name": "Micro::suite_loop",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder-one/src/micro.rs",
+        "name": "Micro::parallel_round",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder-one/src/micro.rs",
+        "name": "Micro::execute",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/background/src/plan.rs",
+        "name": "candidates",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/gateway/src/serve.rs",
+        "name": "authenticate_session",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/gateway/src/serve.rs",
+        "name": "admitted",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/gateway/src/serve.rs",
+        "name": "classify_run",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/gateway/src/serve.rs",
+        "name": "review_phase",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/gateway/src/serve.rs",
+        "name": "unit_result",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder-one/src/micro/lean.rs",
+        "name": "Lean",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder-one/src/micro/lean.rs",
+        "name": "Lean::validate",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder-one/src/micro/lean.rs",
+        "name": "Micro::lean_lanes",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder-one/src/micro/lean.rs",
+        "name": "Micro::oracle_prepare",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder-one/src/micro/lean.rs",
+        "name": "Micro::lean_loop",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder/src/task/adapter.rs",
+        "name": "Host::admit",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/gateway/src/classify.rs",
+        "name": "Request::plan",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/gym/src/runs_phases.rs",
+        "name": "extract",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/gym/src/runs_phases.rs",
+        "name": "piece",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/nostr/src/lane.rs",
+        "name": "PROVEN",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/nostr/src/lane.rs",
+        "name": "tests::the_remaining_official_files_call_their_own_checks",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/openagents-mobile/src/app.rs",
+        "name": "Request",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/openagents-mobile/src/app.rs",
+        "name": "App::open",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/openagents-mobile/src/app.rs",
+        "name": "App::call",
+        "reason": "unit exceeds 6000 bytes"
+      }
+    ],
+    "pool_policy": "24 lexically ranked Rust files; up to 32 complete declarations; 28 KiB state"
+  },
+  "system_one": null,
+  "source_selection_wall_s": 0.553872833,
+  "wall_s": 0.566832208,
+  "index_build_accounting": "Separate shared cold preparation; the timed call includes index load and source validation."
+}

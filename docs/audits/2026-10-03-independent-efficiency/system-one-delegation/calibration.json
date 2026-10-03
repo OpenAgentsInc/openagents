@@ -1,0 +1,655 @@
+{
+  "schema": "openagents.delegation-study.public-calibration.v1",
+  "status": "complete",
+  "scope": "Four reserved bounded Rust behavior tasks and one development task. These checks do not certify entire historical issues.",
+  "model_calls": 0,
+  "current_checkers": [
+    {
+      "task": "reserved-a",
+      "sha256": "49e196854c3be1f4d036385e9d33aed176decb61b151672197e7c6d7dc8fe7cc"
+    },
+    {
+      "task": "reserved-b",
+      "sha256": "848306b4956e095b19ccdb1d937280f20433d024232e86cf668f549c40e55529"
+    },
+    {
+      "task": "reserved-c",
+      "sha256": "bf90c92d28495a552d44214c90bb7eb9baa15dc13cf73978cd39b05b455ee09d"
+    },
+    {
+      "task": "reserved-d",
+      "sha256": "3baf235cafef8bda5e7b3428dd5f4d626e9898c674fd2f488660d4308cd6f4ed"
+    },
+    {
+      "task": "development",
+      "sha256": "faf4031386cbe53d4bd28e9d92e8e6e21fd596b3dc55ebe20850a59fdd209935"
+    }
+  ],
+  "public_task_manifest_sha256": "5c3d8837090fefebf318db4ae2bbc5cf8f4bbb19cccc50c420aae00e6738648e",
+  "attempts": [
+    {
+      "task": "reserved-a",
+      "attempt": 1,
+      "role": "base",
+      "checker_sha256": "49e196854c3be1f4d036385e9d33aed176decb61b151672197e7c6d7dc8fe7cc",
+      "build": {
+        "exit_code": 0,
+        "timed_out": false,
+        "elapsed_seconds": 1.4668110210000123
+      },
+      "test": {
+        "exit_code": 101,
+        "timed_out": false,
+        "elapsed_seconds": 0.06366468400005942
+      },
+      "recorded_classification": "semantic_base_failure",
+      "disposition": "semantic_base_failure"
+    },
+    {
+      "task": "reserved-a",
+      "attempt": 1,
+      "role": "reference",
+      "checker_sha256": "49e196854c3be1f4d036385e9d33aed176decb61b151672197e7c6d7dc8fe7cc",
+      "build": {
+        "exit_code": 0,
+        "timed_out": false,
+        "elapsed_seconds": 0.7151139940001485
+      },
+      "test": {
+        "exit_code": 0,
+        "timed_out": false,
+        "elapsed_seconds": 0.03600377799989474
+      },
+      "recorded_classification": "passed",
+      "disposition": "passed"
+    },
+    {
+      "task": "reserved-b",
+      "attempt": 1,
+      "role": "base",
+      "checker_sha256": "848306b4956e095b19ccdb1d937280f20433d024232e86cf668f549c40e55529",
+      "build": {
+        "exit_code": 0,
+        "timed_out": false,
+        "elapsed_seconds": 161.70443213
+      },
+      "test": {
+        "exit_code": 101,
+        "timed_out": false,
+        "elapsed_seconds": 0.8173655479999979
+      },
+      "recorded_classification": "semantic_base_failure",
+      "disposition": "semantic_base_failure"
+    },
+    {
+      "task": "reserved-b",
+      "attempt": 1,
+      "role": "reference",
+      "checker_sha256": "848306b4956e095b19ccdb1d937280f20433d024232e86cf668f549c40e55529",
+      "build": {
+        "exit_code": 0,
+        "timed_out": false,
+        "elapsed_seconds": 51.30469608599992
+      },
+      "test": {
+        "exit_code": 0,
+        "timed_out": false,
+        "elapsed_seconds": 1.6176124600001458
+      },
+      "recorded_classification": "passed",
+      "disposition": "passed"
+    },
+    {
+      "task": "reserved-c",
+      "attempt": 1,
+      "role": "base",
+      "checker_sha256": "bf90c92d28495a552d44214c90bb7eb9baa15dc13cf73978cd39b05b455ee09d",
+      "build": {
+        "exit_code": 0,
+        "timed_out": false,
+        "elapsed_seconds": 42.09444580199988
+      },
+      "test": {
+        "exit_code": 101,
+        "timed_out": false,
+        "elapsed_seconds": 0.36459558199999265
+      },
+      "recorded_classification": "semantic_base_failure",
+      "disposition": "semantic_base_failure"
+    },
+    {
+      "task": "reserved-c",
+      "attempt": 1,
+      "role": "reference",
+      "checker_sha256": "bf90c92d28495a552d44214c90bb7eb9baa15dc13cf73978cd39b05b455ee09d",
+      "build": {
+        "exit_code": 0,
+        "timed_out": false,
+        "elapsed_seconds": 44.066978344999825
+      },
+      "test": {
+        "exit_code": 0,
+        "timed_out": false,
+        "elapsed_seconds": 1.4163712629999736
+      },
+      "recorded_classification": "passed",
+      "disposition": "passed"
+    },
+    {
+      "task": "reserved-d",
+      "attempt": 1,
+      "role": "base",
+      "checker_sha256": "3baf235cafef8bda5e7b3428dd5f4d626e9898c674fd2f488660d4308cd6f4ed",
+      "build": {
+        "exit_code": 0,
+        "timed_out": false,
+        "elapsed_seconds": 42.332820716000015
+      },
+      "test": {
+        "exit_code": 101,
+        "timed_out": false,
+        "elapsed_seconds": 0.6151104990001386
+      },
+      "recorded_classification": "semantic_base_failure",
+      "disposition": "semantic_base_failure"
+    },
+    {
+      "task": "reserved-d",
+      "attempt": 1,
+      "role": "reference",
+      "checker_sha256": "3baf235cafef8bda5e7b3428dd5f4d626e9898c674fd2f488660d4308cd6f4ed",
+      "build": {
+        "exit_code": 0,
+        "timed_out": false,
+        "elapsed_seconds": 41.396383429000025
+      },
+      "test": {
+        "exit_code": 0,
+        "timed_out": false,
+        "elapsed_seconds": 0.4643899269999565
+      },
+      "recorded_classification": "passed",
+      "disposition": "passed"
+    },
+    {
+      "task": "development",
+      "attempt": 1,
+      "role": "base",
+      "checker_sha256": "f364b39381a826192561f7311cdab5a50412790bfb2fea5588d1ff0364b2f916",
+      "build": {
+        "exit_code": 0,
+        "timed_out": false,
+        "elapsed_seconds": 2.1900767800000267
+      },
+      "test": {
+        "exit_code": 101,
+        "timed_out": false,
+        "elapsed_seconds": 20.05090171300003
+      },
+      "recorded_classification": "semantic_base_failure",
+      "disposition": "semantic_base_failure"
+    },
+    {
+      "task": "development",
+      "attempt": 1,
+      "role": "reference",
+      "checker_sha256": "f364b39381a826192561f7311cdab5a50412790bfb2fea5588d1ff0364b2f916",
+      "build": {
+        "exit_code": 0,
+        "timed_out": false,
+        "elapsed_seconds": 1.5669573949999176
+      },
+      "test": {
+        "exit_code": 101,
+        "timed_out": false,
+        "elapsed_seconds": 83.07896661299992
+      },
+      "recorded_classification": "test_or_prerequisite_failure",
+      "disposition": "invalid_extra_oracle_requirement",
+      "reason": "The checker required display metadata to clear within3 seconds after a rule edit. The task promised automatic-execution gating, so the corrected checker observes the absence of real automatic activity over a complete interval."
+    },
+    {
+      "task": "development",
+      "attempt": 2,
+      "role": "base",
+      "checker_sha256": "faf4031386cbe53d4bd28e9d92e8e6e21fd596b3dc55ebe20850a59fdd209935",
+      "build": {
+        "exit_code": 0,
+        "timed_out": false,
+        "elapsed_seconds": 0.31415375899996434
+      },
+      "test": {
+        "exit_code": 0,
+        "timed_out": false,
+        "elapsed_seconds": 145.05138192100003
+      },
+      "recorded_classification": "invalid_cache_provenance",
+      "disposition": "invalid_cache_provenance",
+      "reason": "An older checkout reused newer workspace artifacts because source mtimes preceded cached artifacts. The remaining process was stopped. Known build/test measurements are retained; missing completion/timing is unknown."
+    },
+    {
+      "task": "development",
+      "attempt": 2,
+      "role": "reference",
+      "checker_sha256": "faf4031386cbe53d4bd28e9d92e8e6e21fd596b3dc55ebe20850a59fdd209935",
+      "build": {
+        "exit_code": 0,
+        "timed_out": false,
+        "elapsed_seconds": 0.6648933909998505
+      },
+      "test": null,
+      "recorded_classification": "invalid_cache_provenance",
+      "disposition": "invalid_cache_provenance",
+      "reason": "An older checkout reused newer workspace artifacts because source mtimes preceded cached artifacts. The remaining process was stopped. Known build/test measurements are retained; missing completion/timing is unknown."
+    },
+    {
+      "task": "development",
+      "attempt": 3,
+      "role": "base",
+      "checker_sha256": "faf4031386cbe53d4bd28e9d92e8e6e21fd596b3dc55ebe20850a59fdd209935",
+      "build": {
+        "exit_code": 0,
+        "timed_out": false,
+        "elapsed_seconds": 1.1660887220000404
+      },
+      "test": {
+        "exit_code": 101,
+        "timed_out": false,
+        "elapsed_seconds": 20.046603410999978
+      },
+      "recorded_classification": "semantic_base_failure",
+      "disposition": "semantic_base_failure"
+    },
+    {
+      "task": "development",
+      "attempt": 3,
+      "role": "reference",
+      "checker_sha256": "faf4031386cbe53d4bd28e9d92e8e6e21fd596b3dc55ebe20850a59fdd209935",
+      "build": {
+        "exit_code": 0,
+        "timed_out": false,
+        "elapsed_seconds": 1.0655829459997221
+      },
+      "test": {
+        "exit_code": 0,
+        "timed_out": false,
+        "elapsed_seconds": 145.05140032400004
+      },
+      "recorded_classification": "passed",
+      "disposition": "passed"
+    },
+    {
+      "task": "reserved-a",
+      "attempt": 1,
+      "role": "negative-control-1",
+      "checker_sha256": "49e196854c3be1f4d036385e9d33aed176decb61b151672197e7c6d7dc8fe7cc",
+      "build": {
+        "exit_code": 0,
+        "timed_out": false,
+        "elapsed_seconds": 0.7151270559998011
+      },
+      "test": {
+        "exit_code": 101,
+        "timed_out": false,
+        "elapsed_seconds": 0.03166262700005973
+      },
+      "recorded_classification": "mutant_rejected",
+      "disposition": "mutant_rejected",
+      "mutant_patch_sha256": "7bb2fa67c693999753308f8fd3e060d31cc7c75d90623be0ffa218dbfe41e244",
+      "reference_source_restored": true
+    },
+    {
+      "task": "reserved-a",
+      "attempt": 1,
+      "role": "negative-control-2",
+      "checker_sha256": "49e196854c3be1f4d036385e9d33aed176decb61b151672197e7c6d7dc8fe7cc",
+      "build": {
+        "exit_code": 0,
+        "timed_out": false,
+        "elapsed_seconds": 0.6651375880001069
+      },
+      "test": {
+        "exit_code": 101,
+        "timed_out": false,
+        "elapsed_seconds": 0.03159492999975555
+      },
+      "recorded_classification": "mutant_rejected",
+      "disposition": "mutant_rejected",
+      "mutant_patch_sha256": "dca03c692fb939d74f3f346ab882627a4bccbe63b2901780016fd8b37644e74c",
+      "reference_source_restored": true
+    },
+    {
+      "task": "reserved-b",
+      "attempt": 1,
+      "role": "negative-control-1",
+      "checker_sha256": "848306b4956e095b19ccdb1d937280f20433d024232e86cf668f549c40e55529",
+      "build": {
+        "exit_code": 0,
+        "timed_out": false,
+        "elapsed_seconds": 42.90604155799974
+      },
+      "test": {
+        "exit_code": 101,
+        "timed_out": false,
+        "elapsed_seconds": 1.5169065760001104
+      },
+      "recorded_classification": "mutant_rejected",
+      "disposition": "mutant_rejected",
+      "mutant_patch_sha256": "6a0c8933f134811ab52839c77eaebf2efda8eb25457365f5e2d581ba47c6fb69",
+      "reference_source_restored": true
+    },
+    {
+      "task": "reserved-b",
+      "attempt": 1,
+      "role": "negative-control-2",
+      "checker_sha256": "848306b4956e095b19ccdb1d937280f20433d024232e86cf668f549c40e55529",
+      "build": {
+        "exit_code": 0,
+        "timed_out": false,
+        "elapsed_seconds": 42.95069600299985
+      },
+      "test": {
+        "exit_code": 101,
+        "timed_out": false,
+        "elapsed_seconds": 0.9660711930000616
+      },
+      "recorded_classification": "mutant_rejected",
+      "disposition": "mutant_rejected",
+      "mutant_patch_sha256": "2f344cbdb09d42599fcaa45c4f8dd01bdfa8767c52c9afc207e50c159b02882d",
+      "reference_source_restored": true
+    },
+    {
+      "task": "reserved-c",
+      "attempt": 1,
+      "role": "negative-control-1",
+      "checker_sha256": "bf90c92d28495a552d44214c90bb7eb9baa15dc13cf73978cd39b05b455ee09d",
+      "build": {
+        "exit_code": 0,
+        "timed_out": false,
+        "elapsed_seconds": 47.05902101499987
+      },
+      "test": {
+        "exit_code": 101,
+        "timed_out": false,
+        "elapsed_seconds": 1.5171169090003787
+      },
+      "recorded_classification": "mutant_rejected",
+      "disposition": "mutant_rejected",
+      "mutant_patch_sha256": "981aa770fe837230d0a88aa75963c9dbc6c97c2c9ea42aab3b3ff9cb44a779e6",
+      "reference_source_restored": true
+    },
+    {
+      "task": "reserved-c",
+      "attempt": 1,
+      "role": "negative-control-2",
+      "checker_sha256": "bf90c92d28495a552d44214c90bb7eb9baa15dc13cf73978cd39b05b455ee09d",
+      "build": {
+        "exit_code": 0,
+        "timed_out": false,
+        "elapsed_seconds": 43.94990286600023
+      },
+      "test": {
+        "exit_code": 101,
+        "timed_out": false,
+        "elapsed_seconds": 1.0163716339998246
+      },
+      "recorded_classification": "mutant_rejected",
+      "disposition": "mutant_rejected",
+      "mutant_patch_sha256": "20ebc14dcdd948b12a72317b1a71a0a7d2c9e15171c4080f1a4a74db9bf61624",
+      "reference_source_restored": true
+    },
+    {
+      "task": "reserved-d",
+      "attempt": 1,
+      "role": "negative-control-1",
+      "checker_sha256": "3baf235cafef8bda5e7b3428dd5f4d626e9898c674fd2f488660d4308cd6f4ed",
+      "build": {
+        "exit_code": 0,
+        "timed_out": false,
+        "elapsed_seconds": 40.28137741899991
+      },
+      "test": {
+        "exit_code": 101,
+        "timed_out": false,
+        "elapsed_seconds": 1.1658634230002463
+      },
+      "recorded_classification": "mutant_rejected",
+      "disposition": "mutant_rejected",
+      "mutant_patch_sha256": "3d9ba8feebfedb457ce8808c4a70eb89738397aaf1d0160e3538a71c4810c034",
+      "reference_source_restored": true
+    },
+    {
+      "task": "reserved-d",
+      "attempt": 1,
+      "role": "negative-control-2",
+      "checker_sha256": "3baf235cafef8bda5e7b3428dd5f4d626e9898c674fd2f488660d4308cd6f4ed",
+      "build": {
+        "exit_code": 0,
+        "timed_out": false,
+        "elapsed_seconds": 40.62744276600006
+      },
+      "test": {
+        "exit_code": 101,
+        "timed_out": false,
+        "elapsed_seconds": 1.2162652859997252
+      },
+      "recorded_classification": "mutant_rejected",
+      "disposition": "mutant_rejected",
+      "mutant_patch_sha256": "837ecd07ab71d12c0a1df359bb2b258c3bc08b91769843bcd2fbd42e29beae56",
+      "reference_source_restored": true
+    },
+    {
+      "task": "development",
+      "attempt": 1,
+      "role": "negative-control-1",
+      "checker_sha256": "faf4031386cbe53d4bd28e9d92e8e6e21fd596b3dc55ebe20850a59fdd209935",
+      "build": {
+        "exit_code": 0,
+        "timed_out": false,
+        "elapsed_seconds": 1.266112726999836
+      },
+      "test": {
+        "exit_code": 101,
+        "timed_out": false,
+        "elapsed_seconds": 30.076461296999696
+      },
+      "recorded_classification": "mutant_rejected",
+      "disposition": "mutant_rejected",
+      "mutant_patch_sha256": "503921b838028f2ecc8ab50dd5342fc02223db3be644c40a97d4dde777dbef89",
+      "reference_source_restored": true
+    },
+    {
+      "task": "development",
+      "attempt": 1,
+      "role": "negative-control-2",
+      "checker_sha256": "faf4031386cbe53d4bd28e9d92e8e6e21fd596b3dc55ebe20850a59fdd209935",
+      "build": {
+        "exit_code": 0,
+        "timed_out": false,
+        "elapsed_seconds": 1.21617977599999
+      },
+      "test": {
+        "exit_code": 101,
+        "timed_out": false,
+        "elapsed_seconds": 30.068380179000087
+      },
+      "recorded_classification": "mutant_rejected",
+      "disposition": "mutant_rejected",
+      "mutant_patch_sha256": "fbb5dc56cbd39f0399b2ea54cb6fdf254f610232a1a372bcabfb45f0ce1a9ad5",
+      "reference_source_restored": true
+    }
+  ],
+  "artifact_freshness": [
+    {
+      "task": "reserved-a",
+      "role": "base",
+      "attempt": 1,
+      "owning_library_artifacts": [
+        {
+          "fresh": false,
+          "compiled_source_is_expected_worktree": true
+        }
+      ]
+    },
+    {
+      "task": "reserved-a",
+      "role": "reference",
+      "attempt": 1,
+      "owning_library_artifacts": [
+        {
+          "fresh": false,
+          "compiled_source_is_expected_worktree": true
+        }
+      ]
+    },
+    {
+      "task": "reserved-b",
+      "role": "base",
+      "attempt": 1,
+      "owning_library_artifacts": [
+        {
+          "fresh": false,
+          "compiled_source_is_expected_worktree": true
+        }
+      ]
+    },
+    {
+      "task": "reserved-b",
+      "role": "reference",
+      "attempt": 1,
+      "owning_library_artifacts": [
+        {
+          "fresh": false,
+          "compiled_source_is_expected_worktree": true
+        }
+      ]
+    },
+    {
+      "task": "reserved-c",
+      "role": "base",
+      "attempt": 1,
+      "owning_library_artifacts": [
+        {
+          "fresh": false,
+          "compiled_source_is_expected_worktree": true
+        }
+      ]
+    },
+    {
+      "task": "reserved-c",
+      "role": "reference",
+      "attempt": 1,
+      "owning_library_artifacts": [
+        {
+          "fresh": false,
+          "compiled_source_is_expected_worktree": true
+        }
+      ]
+    },
+    {
+      "task": "reserved-d",
+      "role": "base",
+      "attempt": 1,
+      "owning_library_artifacts": [
+        {
+          "fresh": false,
+          "compiled_source_is_expected_worktree": true
+        }
+      ]
+    },
+    {
+      "task": "reserved-d",
+      "role": "reference",
+      "attempt": 1,
+      "owning_library_artifacts": [
+        {
+          "fresh": false,
+          "compiled_source_is_expected_worktree": true
+        }
+      ]
+    },
+    {
+      "task": "development",
+      "role": "base",
+      "attempt": 1,
+      "owning_library_artifacts": [
+        {
+          "fresh": false,
+          "compiled_source_is_expected_worktree": true
+        }
+      ]
+    },
+    {
+      "task": "development",
+      "role": "reference",
+      "attempt": 1,
+      "owning_library_artifacts": [
+        {
+          "fresh": false,
+          "compiled_source_is_expected_worktree": true
+        }
+      ]
+    },
+    {
+      "task": "development",
+      "role": "base",
+      "attempt": 2,
+      "owning_library_artifacts": [
+        {
+          "fresh": true,
+          "compiled_source_is_expected_worktree": true
+        }
+      ]
+    },
+    {
+      "task": "development",
+      "role": "reference",
+      "attempt": 2,
+      "owning_library_artifacts": [
+        {
+          "fresh": true,
+          "compiled_source_is_expected_worktree": true
+        }
+      ]
+    },
+    {
+      "task": "development",
+      "role": "base",
+      "attempt": 3,
+      "owning_library_artifacts": [
+        {
+          "fresh": false,
+          "compiled_source_is_expected_worktree": true
+        }
+      ]
+    },
+    {
+      "task": "development",
+      "role": "reference",
+      "attempt": 3,
+      "owning_library_artifacts": [
+        {
+          "fresh": false,
+          "compiled_source_is_expected_worktree": true
+        }
+      ]
+    }
+  ],
+  "known_build_seconds": 653.6864732899987,
+  "known_test_seconds": 486.2810617770001,
+  "timing_limits": "Known subprocess timings only; missing/interrupted test time and orchestration, source preparation, transport, inspection, and human/agent authoring time are not zero and are not included in these sums. These are trusted-cache calibration timings, not clean candidate runtime.",
+  "coverage_limits": {
+    "reserved-a": "Does not cover full desktop launch, admission diagnostics, resource-budget refusal, hostile concurrent directory replacement, or macOS parity.",
+    "reserved-b": "Linux path selection only; does not execute engines, validate their versions, or cover macOS bundle paths.",
+    "reserved-c": "Bounded owner-admission contention only; does not cover every store/index/migration/adapter lock path or the full timeout. The upstream issue was open at metadata collection.",
+    "reserved-d": "Local Git fixtures and immediate offline failure; does not force stalled transport, concurrent fetch-lock contention, or spare-worktree races."
+  },
+  "method_notes": [
+    "Task eligibility and initial checker design preceded model outcomes. No models were called by calibration.",
+    "Initial reserve base/reference worktrees were freshly created immediately before each build. Reserve checker bytes did not change after initial calibration.",
+    "Reference source was inspected for negative-control mutations only after checker hashes were recorded. Historical added tests were not copied.",
+    "The corrected development checker and all revisited calibration worktrees force tracked source-file mtimes forward before Cargo. Reference files are restored after each mutant.",
+    "Three upstream reserve issues were closed and one was open at metadata collection; all tasks are explicitly bounded historical slices.",
+    "Negative controls are deliberately seeded requirement omissions. Rejection establishes sensitivity to those variants, not exhaustive correctness or a general mutation score."
+  ]
+}

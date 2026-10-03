@@ -1,0 +1,14 @@
+This is an isolated historical coding exercise. Produce the candidate in the working tree; the harness checks the final state after the session ends. Follow the applicable AGENTS.md and repository writing instructions in this snapshot.
+
+The exercise concerns the bounded task below. It does not authorize claiming or updating the live issue, committing, pushing, deploying, or contacting other systems. Direct external networking is unavailable. The configured Cargo toolchain and CARGO_TARGET_DIR are provided; keep that external target directory. Keep generated build outputs outside the source tree.
+
+Allowed edit roots: crates/coder-boundary/
+Named checks: cargo fmt -p coder-boundary -- --check; cargo test -p coder-boundary --locked --offline
+
+Run the named checks and the focused regression coverage requested by the task. Report the changes, checks, and any unresolved failure when finished.
+
+# Task
+
+Desktop Coder start fails: "the granted source snapshot is unavailable or changed"
+
+A desktop Coder start can fail with “the granted source snapshot is unavailable or changed” even when its source is readable and within the admitted entry and byte limits. A source tree with many sibling directories reproduces an incomplete observation caused by exhausting the process's open-file limit. Fix source observation so a wide tree can be completely observed within its resource budget. Preserve the existing no-follow boundary for links, completeness reporting, entry and byte limits, and change detection. Add a focused regression test. Work within the source-observation and admission code needed for this behavior; do not weaken admission to accept an incomplete snapshot.

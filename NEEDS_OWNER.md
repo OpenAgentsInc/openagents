@@ -1,5 +1,17 @@
 # Owner checks
 
+## Funded System One access for the independent study (#10356)
+
+Restore funded access for the TypeSafe credential configured in
+`~/.openagents/jev.json`. The October 3, 2026 Jev capability request returns
+HTTP 402; the new 48-session comparison has not started. Tell the audit agent
+when access is ready so it can verify a real answer and finish registration
+before execution. The refusal has unknown billed usage. See the
+[study status](docs/audits/2026-10-03-independent-efficiency/system-one-delegation/README.md).
+The experiment remains incomplete. The single-trial runner and independent
+checker are implemented; measured Linux feasibility and final registration
+also need to finish before scored runs.
+
 ## Desktop composer (#10004)
 
 In a Mac build from current `main`, select the Japanese input source using the

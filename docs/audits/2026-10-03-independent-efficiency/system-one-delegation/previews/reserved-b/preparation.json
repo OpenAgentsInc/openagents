@@ -1,0 +1,251 @@
+{
+  "schema": "openagents.delegation-study.preparation.v1",
+  "source_commit": "b39787700107a1605b3412c8653fad887adfbbf8",
+  "policy": "syntax-units-v2",
+  "mode": "deterministic",
+  "issue_sha256": "154e4a65c61b91cba953497f42ffd088ac10138f3dd6f2f4ce69dd4fc408cc5f",
+  "index_sha256": "7beb38b1114a1d50b6457176b6a48216ca2d2d0db481d1b0af199c1b47584768",
+  "script_sha256": "20868f9bbfdc3002a6345e9e4fddfa0b7cdb3e164e11d74af0ad488813389c6b",
+  "briefing_sha256": "455555e63a09dc3f85a2d88ed8512be7597400cf1444346c9b36eb640510dc66",
+  "briefing_bytes": 16093,
+  "selection": [
+    "c01",
+    "c02",
+    "c03",
+    "c04",
+    "c05",
+    "c06",
+    "c07",
+    "c08",
+    "c09",
+    "c10"
+  ],
+  "candidate_sha256": "8e799ebbf52ef4523eb0dd31b3a16f0144cbf4a4f9982898e6d36458f7d72b3f",
+  "coverage": {
+    "files_read": 24,
+    "eligible_units": 2593,
+    "candidate_units": 18,
+    "oversized_units": [
+      {
+        "path": "crates/coder/src/task/autostart.rs",
+        "name": "Autostart::sweep",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder/src/task/autostart.rs",
+        "name": "cli_inner",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder/src/bin/coder-worker.rs",
+        "name": "serve",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder/src/bin/coder-worker.rs",
+        "name": "Worker::session",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder/src/bin/coder-worker.rs",
+        "name": "Job::serve",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder/src/bin/coder-worker.rs",
+        "name": "Job::routed",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/microcoder/src/repository/tests.rs",
+        "name": "local_run::issue_flow::an_issue_lands_on_main_with_evidence_and_closes",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/gym/src/bin/gym.rs",
+        "name": "USAGE",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/gym/src/bin/gym.rs",
+        "name": "compare_command",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/gym/src/bin/gym.rs",
+        "name": "report_command",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/gym/src/bin/gym.rs",
+        "name": "publish_command",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/gym/src/bin/gym.rs",
+        "name": "suite_section",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/gym/src/bin/gym.rs",
+        "name": "admit_command",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/microcoder/src/repository/devin.rs",
+        "name": "turn",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder/src/task/local.rs",
+        "name": "Local::start_with",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder/src/task/local.rs",
+        "name": "Follow::poll",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/microcoder/src/repository.rs",
+        "name": "execute",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/microcoder/src/repository/opencode.rs",
+        "name": "turn",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/microcoder/src/main.rs",
+        "name": "USAGE",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/microcoder/src/main.rs",
+        "name": "parse",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/microcoder/src/main.rs",
+        "name": "go",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder/src/task/adapter.rs",
+        "name": "Host::admit",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder/src/task/adapter.rs",
+        "name": "Host::command",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/openagents-desktop/src/chat.rs",
+        "name": "Panel::action",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/openagents-desktop/src/chat.rs",
+        "name": "Panel::input",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/openagents-desktop/src/chat.rs",
+        "name": "Panel::surface",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/openagents-desktop/src/chat.rs",
+        "name": "Panel::command_panel",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/openagents-desktop/src/chat.rs",
+        "name": "Panel::body",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/openagents-desktop/src/chat.rs",
+        "name": "Panel::footer",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/microcoder/src/repository/grok.rs",
+        "name": "turn",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/openagents-chat/src/coder_events.rs",
+        "name": "Mapper::step",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder/src/delegate.rs",
+        "name": "Delegator::run",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/microcoder-loop/src/claude.rs",
+        "name": "ClaudeGenerator::invoke_streaming",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder/src/runtime.rs",
+        "name": "Runtime::run_steps",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder/src/runtime.rs",
+        "name": "Runtime::nested",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder/src/runtime.rs",
+        "name": "Runtime::look_up",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder/src/runtime.rs",
+        "name": "Runtime::review_findings",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder/src/runtime.rs",
+        "name": "Runtime::delegate",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder/src/runtime.rs",
+        "name": "Runtime::ask",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/openagents-desktop/src/chrome.rs",
+        "name": "sidebar",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/openagents-desktop/src/chrome.rs",
+        "name": "root",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder-delegate/src/delegate.rs",
+        "name": "Briefing::build_under_knowing",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder-delegate/src/delegate.rs",
+        "name": "explore_then_delegate",
+        "reason": "unit exceeds 6000 bytes"
+      }
+    ],
+    "pool_policy": "24 lexically ranked Rust files; up to 32 complete declarations; 28 KiB state"
+  },
+  "system_one": null,
+  "source_selection_wall_s": 0.8362956670000585,
+  "wall_s": 0.8525061870000172,
+  "index_build_accounting": "Separate shared cold preparation; the timed call includes index load and source validation."
+}

@@ -56,6 +56,14 @@ The [new iteration theses](iteration-theses.md) turn the observed retrieval,
 fixture, verification, and routing gaps into six independently testable
 experiments, including concrete roles for TypeSafe judgments.
 
+The [System One and native delegation study](system-one-delegation/README.md)
+collects the supporting and contrary evidence, adds frozen source-packing
+previews on four historical tasks, and prepares a six-arm native comparison.
+Its [evidence synthesis](system-one-delegation/evidence-synthesis.md) separates
+the demonstrated configuration gains from the unproven incremental Jev gain.
+Scored execution remains blocked by a real Jev request returning HTTP 402;
+the new preparation timings and broker capability check are component results.
+
 ## Executive assessment
 
 **Some of the earlier context and delegation work is missing from the

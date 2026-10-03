@@ -1,0 +1,423 @@
+{
+  "schema": "openagents.delegation-study.protocol.v1",
+  "status": "draft_pending_registration",
+  "date": "2026-10-03",
+  "scored_execution_allowed": false,
+  "design": {
+    "tasks": 4,
+    "core_arms": 6,
+    "repetitions": 2,
+    "sessions": 48,
+    "blocks": 8,
+    "sessions_per_block": 6,
+    "external_repair_turns": 0,
+    "codex_sessions": 0,
+    "candidate": "F"
+  },
+  "arms": [
+    {
+      "id": "A",
+      "model_family": "Opus 5.5",
+      "requested_effort": "medium",
+      "prompt": "native_default",
+      "tools": "native_default_with_common_isolation",
+      "source_pack": "none",
+      "system_one": "none"
+    },
+    {
+      "id": "B",
+      "model_family": "Opus 5.5",
+      "requested_effort": "medium",
+      "prompt": "frozen_lean_session",
+      "tools": "lean_six",
+      "source_pack": "deterministic_ast",
+      "system_one": "none"
+    },
+    {
+      "id": "C",
+      "model_family": "Opus 5.5",
+      "requested_effort": "medium",
+      "prompt": "identical_to_B",
+      "tools": "identical_to_B",
+      "source_pack": "same_pool_and_budget_as_B",
+      "system_one": "jev_rerank"
+    },
+    {
+      "id": "D",
+      "model_family": "Sonnet 5.5",
+      "requested_effort": "medium",
+      "prompt": "identical_to_A",
+      "tools": "identical_to_A",
+      "source_pack": "none",
+      "system_one": "none"
+    },
+    {
+      "id": "E",
+      "model_family": "Sonnet 5.5",
+      "requested_effort": "medium",
+      "prompt": "identical_to_B",
+      "tools": "identical_to_B",
+      "source_pack": "deterministic_ast",
+      "system_one": "none"
+    },
+    {
+      "id": "F",
+      "model_family": "Sonnet 5.5",
+      "requested_effort": "medium",
+      "prompt": "identical_to_C",
+      "tools": "identical_to_C",
+      "source_pack": "same_pool_and_budget_as_E",
+      "system_one": "jev_rerank"
+    }
+  ],
+  "lean_tools": [
+    "Bash",
+    "Read",
+    "Edit",
+    "Write",
+    "Glob",
+    "Grep"
+  ],
+  "source_pool": {
+    "max_rust_files": 24,
+    "max_complete_units": 32,
+    "max_unit_bytes": 6000,
+    "serialized_state_bytes": 28672,
+    "delivered_pack_bytes": 16384,
+    "request_bytes": 61440,
+    "ranking": "weighted_lexical_overlap_with_inverse_document_frequency",
+    "pool_must_match_across_arms": true,
+    "source_binding": [
+      "immutable_commit",
+      "regular_tree_mode",
+      "path_to_blob",
+      "file_sha256",
+      "exact_span_bytes",
+      "index_and_extractor_identity"
+    ],
+    "oversized_unit_policy": "omit_whole_and_record",
+    "policy": "syntax-units-v2",
+    "development_tuning_task": "issue_10167",
+    "title_weight": 3,
+    "path_name_weight": 10,
+    "code_weight": 1,
+    "exact_backtick_name_bonus": 100
+  },
+  "system_one": {
+    "requested_model": "jev-1.13.0",
+    "primitive": "score",
+    "questions": "one_per_candidate_in_one_batch",
+    "levels": [
+      "Unrelated to the behavior the request changes",
+      "Related background, but little direct implementation or regression value",
+      "Useful dependency, behavior contract, or regression example for this change",
+      "Directly implements or checks the requested behavior and should be read before editing"
+    ],
+    "max_application_requests_per_assigned_session": 1,
+    "maximum_core_requests": 16,
+    "candidate_expansion": false,
+    "tie_break": "deterministic_lexical_rank_then_source_location",
+    "confidence_threshold": null,
+    "failure_policy": "deterministic_fallback_retained_in_assigned_arm",
+    "empty_pool": "no_call_explicitly_recorded",
+    "automatic_paid_retry": false,
+    "unknown_cost": "null_not_zero",
+    "socket_timeout_seconds": 30,
+    "total_deadline": "bounded_by_outer_preparation_and_run_deadline_bound_in_registration",
+    "response_max_bytes": 1048576,
+    "price": {
+      "usd_per_million_input_tokens": 0.042,
+      "output_tokens_free": true,
+      "source": "https://docs.typesafe.ai/models",
+      "checked": "2026-10-03"
+    }
+  },
+  "task_selection": {
+    "excluded": [
+      "all_prior_development_tasks",
+      "all_prior_heldout_and_reserve_tasks",
+      "standing_seven_task_set",
+      "trivial_variants"
+    ],
+    "reference_fixes_hidden_from_executor": true,
+    "calibration": [
+      "base",
+      "historical_reference",
+      "at_least_two_plausible_incorrect_variants_per_task"
+    ],
+    "checker_contract": "public_behavior_no_private_symbol_or_unrequested_wording_requirements",
+    "minimum_behavioral_families": 3,
+    "crate_composition": {
+      "coder-boundary": 1,
+      "coder": 3
+    },
+    "repository_generalization": false,
+    "blinding": "partial",
+    "coordinator_prior_exposure": [
+      "provisional_candidate_issue_numbers",
+      "brief_labels"
+    ],
+    "reserve_materials_not_read_during_treatment_development": [
+      "prompts",
+      "source",
+      "checkers",
+      "reference_fixes"
+    ],
+    "reserve_prompt_release": "after_treatment_freeze",
+    "development_source_used": "issue_10167"
+  },
+  "execution": {
+    "initial_inputs_per_session": 1,
+    "external_feedback_inputs": 0,
+    "automatic_candidate_rewrite": false,
+    "executor_seconds_proposed": 600,
+    "final_checks_seconds_proposed": 240,
+    "candidate_selection": "final_only_no_best_intermediate",
+    "native_owns_internal_checks_and_fixes": true,
+    "shared_isolation": true,
+    "scored_schedule": null,
+    "schedule_freeze_requires_provider_feasibility": true,
+    "shared_offline_constraints": {
+      "native_tool_definitions_retained": true,
+      "provider_side_tools_refused": [
+        "WebSearch",
+        "MCP",
+        "container"
+      ],
+      "native_tool_search_definitions_permitted": true,
+      "serving_modes_refused": [
+        "fast",
+        "priority",
+        "non_global_inference"
+      ],
+      "purpose": "prevent_future_fix_leakage_and_unmetered_server_tools",
+      "unsupported_billed_server_tool_use": "unknown_cost_close_admission"
+    },
+    "common_build_environment": {
+      "CARGO_PROFILE_DEV_DEBUG": "0",
+      "CARGO_PROFILE_TEST_DEBUG": "0"
+    },
+    "seed_policy": "cargo-reported-libraries-v1",
+    "cleanup": {
+      "per_attempt_target_copies": "after_durable_candidate_checks_endpoint_and_receipts",
+      "outside_primary_endpoint": true,
+      "shared_long_lived_targets": "preserved",
+      "unconfirmed_execution": "no_automatic_cleanup",
+      "per_attempt_workspaces": "after_confirmed_phase_closure_and_durable_validated_candidate_payload_changes_logs_checks_endpoint_and_source_identity",
+      "reconstruction_evidence": "preserved"
+    }
+  },
+  "endpoint": {
+    "start": "before_per_run_export_and_preparation_after_compute_admission",
+    "end": "final_independent_checks_and_candidate_artifacts_durably_recorded",
+    "included": [
+      "per_trial_registration_and_artifact_validation",
+      "per_run_export",
+      "retrieval",
+      "jev",
+      "pack_assembly",
+      "engine",
+      "internal_checks_and_fixes",
+      "final_format_and_crate_and_independent_checks",
+      "polling",
+      "candidate_capture"
+    ],
+    "separate": [
+      "queue_time",
+      "shared_cold_compilation_and_indexing",
+      "cleanup",
+      "blind_source_review",
+      "deployment_or_merge"
+    ],
+    "batch_and_summed_run_time_reported_separately": true
+  },
+  "budget_estimated_usd": {
+    "capability_accounting_probe": 2,
+    "main_nominal_native_budget": 96,
+    "one_complete_infrastructure_replacement_block": 12,
+    "preparation_metering_and_other_reserve": 10,
+    "total_accounting_admission_ceiling": 120,
+    "requested_native_budget_per_session": 2,
+    "nominal_native_budget_per_six_arm_block": 12,
+    "admission": "reserve_entire_block_plus_conservative_preparation_and_unknown_liabilities_before_first_arm",
+    "overshoot": "retain_actual_cost_stop_new_admissions_when_next_block_reserve_would_exceed_ceiling",
+    "hard_invoice_cap_claimed": false,
+    "broker_admission_target_per_session": 8,
+    "conservative_block_reservation_before_preparation": 48,
+    "capability_requested_native_budget": 0.2,
+    "capability_broker_admission_target": 8,
+    "reservation_basis": "byte_input_heuristic_not_attested_tokenizer_bound",
+    "prior_zero_admission_preflights": 2
+  },
+  "cost_accounting": {
+    "all_admitted_provider_requests_metered": true,
+    "direct_socket_and_child_calls_included": true,
+    "native_cumulative_and_broker_totals": "crosscheck_do_not_add_overlapping_totals",
+    "unknown_cost_blocks_complete_cost_claim": true,
+    "include_invalid_and_replacement_work": true,
+    "unused_preparation_included": true,
+    "engineering_and_machine_cost": "separate_unmeasured_unless_evidence_available",
+    "unknown_cache_lifetime": "publish_lower_upper_bounds_no_point_cost",
+    "conservative_gate": "treatment_upper_divided_by_comparator_lower",
+    "native_exceeds_broker_upper": "incomplete_accounting_not_a_crosscheck_warning"
+  },
+  "required_preflight": [
+    "arbitrary_shell_cannot_read_host_home_credentials_hidden_checks_references_other_runs_or_orchestration_files",
+    "environment_proc_descriptors_and_symlink_escape_tests",
+    "source_and_scratch_write_boundary_and_archive_path_tests",
+    "network_egress_and_host_loopback_denial_except_registered_transports",
+    "broker_model_path_header_redirect_body_and_parallel_request_admission",
+    "direct_shell_inference_request_is_run_bound_metered_and_subject_to_admission",
+    "termination_and_delayed_process_cannot_mutate_checked_candidate",
+    "native_cli_capability_through_same_broker_with_actual_model_and_tools_recorded",
+    "complete_provider_access_and_usage_provenance"
+  ],
+  "quality_gate": {
+    "complete_identity_and_cost": true,
+    "both_compared_core_arms_final_acceptances_required": 8,
+    "blind_final_source_review": true,
+    "rubric": [
+      "public_contract_defect",
+      "regression",
+      "weakened_tests",
+      "prohibited_scope"
+    ],
+    "demonstrated_material_defect_blocks_practical_recommendation": true,
+    "posthoc_diagnostics_labeled_and_original_verdict_retained": true,
+    "candidate_identity": "sha256_of_candidate_manifest_binding_source_archive_all_changes_deletions_and_payload",
+    "final_checks_execution_closed_required": true
+  },
+  "comparisons": {
+    "F/E": {
+      "role": "primary_system_one_increment",
+      "cost_ratio_max": 0.9,
+      "time_ratio_max": 0.95,
+      "cost_task_mean_wins_min": 3,
+      "time_task_mean_wins_min": 3
+    },
+    "F/A": {
+      "role": "primary_combined_workflow",
+      "cost_ratio_max": 0.8,
+      "time_ratio_max": 0.9,
+      "cost_task_mean_wins_min": 3,
+      "time_task_mean_wins_min": 3
+    },
+    "C/B": {
+      "role": "secondary_system_one_on_stronger_model",
+      "same_rule_as": "F/E"
+    },
+    "B/A": {
+      "role": "secondary_tight_workflow_opus",
+      "same_rule_as": "F/A"
+    },
+    "E/D": {
+      "role": "secondary_tight_workflow_sonnet",
+      "same_rule_as": "F/A"
+    },
+    "E/B": {
+      "role": "secondary_model_choice",
+      "descriptive": true
+    },
+    "F/C": {
+      "role": "secondary_model_choice",
+      "descriptive": true
+    }
+  },
+  "combined_gate_requires": [
+    "F/E",
+    "F/A"
+  ],
+  "analysis": {
+    "primary_ratio": "sum_treatment_task_means_divided_by_sum_comparator_task_means",
+    "secondary": [
+      "geometric_mean_of_positive_task_mean_ratios",
+      "task_means",
+      "raw_totals",
+      "medians",
+      "paired_repetition_ratios_and_differences",
+      "internal_fix_and_failure_counts"
+    ],
+    "undefined_denominator": "report_undefined_without_dropping_rows",
+    "cost_per_acceptance": "all_assigned_cost_divided_by_all_final_accepted_runs",
+    "bootstrap": {
+      "draws": 10000,
+      "seed": 20261003,
+      "scheme": "task_clusters_then_paired_repetition_indices",
+      "interval": "descriptive_95_percent",
+      "familywise_claim": false
+    },
+    "independent_task_clusters": 4,
+    "generalization_claim_supported": false,
+    "intervention_delivery": "retain_assignment_and_report_delivered_fallback_empty_pool_and_changed_pack_counts; no_mechanism_gate_without_delivered_changed_input"
+  },
+  "amendments": {
+    "pre_scoring": "append_only_dated_infrastructure_amendment_binds_previous_protocol_reason_scope_and_tests",
+    "max_post_scoring_infrastructure_replacement_blocks": 1,
+    "replacement_unit": "whole_six_arm_task_repetition_block",
+    "replacement_registered_before_launch": true,
+    "old_block_preserved_and_charged": true,
+    "ordinary_model_or_task_failures_not_replaced": true,
+    "later_iteration": "separately_preregister_with_new_tasks_fixed_budget_and_limits_retain_all_prior_failures"
+  },
+  "registration": {
+    "sealed": false,
+    "seal_timestamp_utc": null,
+    "protocol_sha256": null,
+    "source_commits": [],
+    "tasks": [],
+    "instructions": [],
+    "checker_and_verifier": [],
+    "index_grammar_extractor_preparer": [],
+    "lean_prompt_and_tool_config": [],
+    "cli_version_and_sha256": null,
+    "served_models_and_price_schedule": null,
+    "broker_and_sandbox": [],
+    "schedule": null,
+    "reporter": null,
+    "capability_and_isolation_receipts": [],
+    "amendment_chain": [],
+    "report_bindings": null,
+    "offline_validator": "bench/delegation-study/schedule.py",
+    "integration_status": {
+      "paid_dispatch": false,
+      "final_acceptance": false
+    },
+    "implementation_status": {
+      "single_trial_coordinator": "implemented_with_offline_tests",
+      "final_acceptance_coordinator": "implemented_with_offline_tests",
+      "real_provider_end_to_end_preflight": false,
+      "automatic_paid_panel_loop": false
+    },
+    "harness_module_manifest": "all_12_local_runtime_python_modules_hash_checked_before_each_phase"
+  },
+  "limitations": [
+    "prompt_tools_source_pack_are_one_workflow_bundle",
+    "system_one_intervention_is_source_ranking_only",
+    "no_byte_identical_shipped_product_comparison",
+    "no_codex_comparison_in_this_round",
+    "four_task_clusters_are_not_reliable_population_generalization",
+    "equal_acceptance_does_not_establish_better_correctness",
+    "inference_estimates_are_not_total_project_cost",
+    "accounting_ceiling_is_not_guaranteed_native_or_invoice_cap",
+    "candidate_identity_and_labels_known_to_coordinator_before_full_policy_coding",
+    "three_of_four_tasks_in_coder_no_broad_repository_generalization",
+    "broker_byte_based_reservation_is_heuristic",
+    "offline_native_controls_cannot_use_provider_web_mcp_or_container_tools"
+  ],
+  "executor_prices": {
+    "claude-opus-5-5": {
+      "input": 4,
+      "output": 20,
+      "cache_write_5m": 5,
+      "cache_write_1h": 8,
+      "cache_read": 0.2
+    },
+    "claude-sonnet-5-5": {
+      "input": 2,
+      "output": 10,
+      "cache_write_5m": 2.5,
+      "cache_write_1h": 4,
+      "cache_read": 0.2
+    }
+  }
+}

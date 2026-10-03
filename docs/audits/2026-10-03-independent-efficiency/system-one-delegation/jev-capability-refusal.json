@@ -1,0 +1,15 @@
+{
+  "request_sha256": "414656a66afad062d9b99e6aeafd48f286f8bb04bf6bb8966613039841e609a0",
+  "requested_model": "jev-1.13.0",
+  "outcome": "failed",
+  "price_per_million_input_usd": 0.042,
+  "pricing_source": "https://docs.typesafe.ai/models",
+  "pricing_checked": "2026-10-03",
+  "cost_usd": null,
+  "cost_status": "unknown",
+  "attempts": 1,
+  "error_type": "HTTPError",
+  "http_status": 402,
+  "selection": "deterministic_fallback",
+  "wall_s": 0.31887754199999996
+}

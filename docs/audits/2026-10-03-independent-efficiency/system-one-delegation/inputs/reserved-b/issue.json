@@ -1,0 +1,6 @@
+{
+  "number": 10228,
+  "title": "Engine lookup falls back to an old ~/.openagents/bin/microcoder when the running binary was rebuilt (Linux \"(deleted)\" path)",
+  "body": "On Linux, a running OpenAgents program can be replaced by a rebuild while it continues running. Engine discovery then falls back to an older `~/.openagents/bin/microcoder` even though a fresh `microcoder` is beside the program. Linux can report the running executable with a trailing ` (deleted)` marker. Fix `default_controller` in `crates/coder/src/task/autostart.rs` so the sibling engine remains preferred after replacement, while preserving ordinary sibling selection and installed-engine fallback when no sibling exists. Report a missing engine when neither location is available. Add a regression test without touching installed programs.",
+  "url": "https://github.com/OpenAgentsInc/openagents/issues/10228"
+}

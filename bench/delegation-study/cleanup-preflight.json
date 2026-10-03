@@ -1,0 +1,12 @@
+{
+  "schema": "openagents.delegation.cleanup-preflight.v1",
+  "observed_unix": 1791014392.4369044,
+  "credential_transfer_absent": true,
+  "broker_processes": 0,
+  "native_claude_processes": 0,
+  "model_calls": 0,
+  "successful_baseline_directory_allocated_bytes": 3844128768,
+  "successful_seed_allocated_bytes": 133738496,
+  "trusted_copy_preflight_allocated_bytes": 2327420928,
+  "filesystem_available_bytes": 68793597952
+}

@@ -1,0 +1,282 @@
+{
+  "schema": "openagents.delegation-study.preparation.v1",
+  "source_commit": "f056853c6508581e5fc6f3c09a99edba6b05f212",
+  "policy": "syntax-units-v2",
+  "mode": "deterministic",
+  "issue_sha256": "144af64544f1f2c217b63754ae7cf4cb8c34a8b23f58bfba43e0688bd7244c5a",
+  "index_sha256": "58a636a0aab8265fed0295a7bb317f7b9baeded87870fc889a6b2dab0de6137a",
+  "script_sha256": "20868f9bbfdc3002a6345e9e4fddfa0b7cdb3e164e11d74af0ad488813389c6b",
+  "briefing_sha256": "0548697e559d5b7544bb0392201feee2a27497f5c35163135b4211d776bf50c7",
+  "briefing_bytes": 16101,
+  "selection": [
+    "c01",
+    "c02",
+    "c03",
+    "c04",
+    "c05",
+    "c06",
+    "c07",
+    "c08",
+    "c09",
+    "c10",
+    "c11",
+    "c12",
+    "c13",
+    "c14",
+    "c15",
+    "c16",
+    "c17",
+    "c18",
+    "c20",
+    "c22",
+    "c23"
+  ],
+  "candidate_sha256": "67f631b7f9eb941090292a0c8f817a830feeaf238915d0bdfe30857933a892ec",
+  "coverage": {
+    "files_read": 24,
+    "eligible_units": 1956,
+    "candidate_units": 25,
+    "oversized_units": [
+      {
+        "path": "crates/coder-one/src/micro/lean.rs",
+        "name": "Lean",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder-one/src/micro/lean.rs",
+        "name": "Lean::validate",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder-one/src/micro/lean.rs",
+        "name": "Micro::lean_lanes",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder-one/src/micro/lean.rs",
+        "name": "Micro::oracle_prepare",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder-one/src/micro/lean.rs",
+        "name": "Micro::lean_loop",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder/src/runtime.rs",
+        "name": "Runtime::run_steps",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder/src/runtime.rs",
+        "name": "Runtime::nested",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder/src/runtime.rs",
+        "name": "Runtime::look_up",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder/src/runtime.rs",
+        "name": "Runtime::review_findings",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder/src/runtime.rs",
+        "name": "Runtime::delegate",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder/src/runtime.rs",
+        "name": "Runtime::ask",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder-one/src/micro.rs",
+        "name": "Policy",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder-one/src/micro.rs",
+        "name": "Micro::session_watched",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder-one/src/micro.rs",
+        "name": "Micro::requirements",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder-one/src/micro.rs",
+        "name": "Micro::suite_loop",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder-one/src/micro.rs",
+        "name": "Micro::parallel_round",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder-one/src/micro.rs",
+        "name": "Micro::execute",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/openagents-desktop/src/chat.rs",
+        "name": "Panel::action",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/openagents-desktop/src/chat.rs",
+        "name": "Panel::input",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/openagents-desktop/src/chat.rs",
+        "name": "Panel::surface",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/openagents-desktop/src/chat.rs",
+        "name": "Panel::command_panel",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/openagents-desktop/src/chat.rs",
+        "name": "Panel::footer",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder/tests/desktop_local_coder.rs",
+        "name": "desktop_creates_retries_reads_and_cancels_through_the_phone_clients",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder/tests/desktop_local_coder.rs",
+        "name": "desktop_handoff_keeps_the_phone_prompt_project_policy_and_restart_identity",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder/tests/desktop_local_coder.rs",
+        "name": "saved_sessions_continue_with_context_through_the_durable_coder_broker",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/openagents-desktop/src/shell.rs",
+        "name": "DesktopApp::activate",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/openagents-desktop/src/shell.rs",
+        "name": "tests::live_hosted_reply_reaches_desktop_painter",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/openagents-desktop/src/shell.rs",
+        "name": "command_fixtures::palette_scrolls_its_reference_viewport_without_moving_rows_on_hover",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/openagents-desktop/src/shell.rs",
+        "name": "coder_events::a_reviewed_run_goes_stale_refreshes_and_publishes_once",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder/src/task/adapter.rs",
+        "name": "Host::admit",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder/src/task/adapter.rs",
+        "name": "Host::command",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/openagents-desktop/src/worker.rs",
+        "name": "CoderLane::answer",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder-one/src/snapshot.rs",
+        "name": "command",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder/src/task/owner.rs",
+        "name": "transition",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder/src/task/owner.rs",
+        "name": "execute",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder/src/task/autostart.rs",
+        "name": "Autostart::sweep",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder/src/task/autostart.rs",
+        "name": "cli_inner",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/microcoder/src/repository/tests.rs",
+        "name": "local_run::issue_flow::an_issue_lands_on_main_with_evidence_and_closes",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder-history/src/host/tests.rs",
+        "name": "coder_loop_events_project_as_replies_commands_and_endings",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder-computers/src/live.rs",
+        "name": "Live::snapshot",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/openagents-desktop/src/model.rs",
+        "name": "Model::outcome",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder-computers/src/controller.rs",
+        "name": "Computers::apply",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder-computers/src/controller.rs",
+        "name": "Computers::accept",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder/src/bin/coder-worker.rs",
+        "name": "serve",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder/src/bin/coder-worker.rs",
+        "name": "Worker::session",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder/src/bin/coder-worker.rs",
+        "name": "Job::answer",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder/src/bin/coder-worker.rs",
+        "name": "Job::generate",
+        "reason": "unit exceeds 6000 bytes"
+      }
+    ],
+    "pool_policy": "24 lexically ranked Rust files; up to 32 complete declarations; 28 KiB state"
+  },
+  "system_one": null,
+  "source_selection_wall_s": 0.7598846930000036,
+  "wall_s": 0.7750299140000152,
+  "index_build_accounting": "Separate shared cold preparation; the timed call includes index load and source validation."
+}

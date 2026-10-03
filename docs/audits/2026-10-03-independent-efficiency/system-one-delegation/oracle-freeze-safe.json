@@ -1,0 +1,26 @@
+{
+  "schema": "openagents.delegation-study.oracle-freeze.v1",
+  "observed_at": "2026-10-03T07:30:43.382348+00:00",
+  "reserve_checker_bytes_unchanged_since_initial_calibration": true,
+  "reference_source_inspection_for_mutants_started_only_after_checker_hashes_recorded": true,
+  "reserve_checkers": [
+    {
+      "alias": "reserved-a",
+      "checker_sha256": "49e196854c3be1f4d036385e9d33aed176decb61b151672197e7c6d7dc8fe7cc"
+    },
+    {
+      "alias": "reserved-b",
+      "checker_sha256": "848306b4956e095b19ccdb1d937280f20433d024232e86cf668f549c40e55529"
+    },
+    {
+      "alias": "reserved-c",
+      "checker_sha256": "bf90c92d28495a552d44214c90bb7eb9baa15dc13cf73978cd39b05b455ee09d"
+    },
+    {
+      "alias": "reserved-d",
+      "checker_sha256": "3baf235cafef8bda5e7b3428dd5f4d626e9898c674fd2f488660d4308cd6f4ed"
+    }
+  ],
+  "public_task_manifest_sha256": "5c3d8837090fefebf318db4ae2bbc5cf8f4bbb19cccc50c420aae00e6738648e",
+  "negative_controls": "Not complete yet; retain every mutant result before final acceptance freeze."
+}

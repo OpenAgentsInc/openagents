@@ -1,0 +1,370 @@
+{
+  "schema": "openagents.delegation.seed-preflight.v1",
+  "status": "five_final_seeds_complete",
+  "scored_runs": 0,
+  "model_calls": 0,
+  "toolchain": {
+    "cargo": "cargo 1.97.1 (c980f4866 2026-06-30)",
+    "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
+    "rustc_commit": "8bab26f4f68e0e26f0bb7960be334d5b520ea452",
+    "host": "x86_64-unknown-linux-gnu",
+    "llvm": "22.1.6",
+    "rustdoc": "rustdoc 1.97.1 (8bab26f4f 2026-07-14)\nbinary: rustdoc\ncommit-hash: 8bab26f4f68e0e26f0bb7960be334d5b520ea452\ncommit-date: 2026-07-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.97.1\nLLVM version: 22.1.6",
+    "rustdoc_path": "/usr/local/rustup/toolchains/1.97.1-x86_64-unknown-linux-gnu/bin/rustdoc",
+    "rustdoc_sha256": "3b0c7aef20e0dfdfe2dd19ddb0b40d3b744f76318a44031813f501e1912934df"
+  },
+  "common_pre_scoring_amendment": {
+    "reason": "Default-profile coder test executables totaled 42.59GB and a full-graph cache export could not fit. No scored model run preceded the amendment.",
+    "seed_policy": "cargo-reported-libraries-v1",
+    "environment": {
+      "CARGO_PROFILE_DEV_DEBUG": "0",
+      "CARGO_PROFILE_TEST_DEBUG": "0",
+      "CARGO_INCREMENTAL": "0",
+      "CARGO_BUILD_JOBS": "3",
+      "CARGO_NET_OFFLINE": "true",
+      "RUSTDOC": "/usr/local/rustup/toolchains/1.97.1-x86_64-unknown-linux-gnu/bin/rustdoc"
+    },
+    "source_archive_limit_bytes": 2147483648,
+    "seed_export_limit_bytes": 8589934592,
+    "required_additional_copy_headroom_bytes": 2147483648,
+    "preserved_settings": [
+      "Optimization level",
+      "Debug assertions",
+      "Overflow checks"
+    ],
+    "omitted": [
+      "All final test and binary executables, including profile.test library targets",
+      "Build-script output directories and their fingerprints",
+      "Incremental state",
+      "Unreported files and diagnostics"
+    ],
+    "binding": "The manifest binds the exact source commit/archive, seed policy, complete explicit build environment, toolchain versions, and actual file set. Native and acceptance both enforce it."
+  },
+  "final_seeds": [
+    {
+      "alias": "development",
+      "status": "complete",
+      "archive_wall_s": 2.254297182999835,
+      "source_archive_bytes": 1564426240,
+      "archive_entries": 35287,
+      "source_bytes": 1538434046,
+      "export_wall_s": 4.456976820999444,
+      "git_snapshot_wall_s": 16.25629808299982,
+      "build_wall_s": 1.9246773210006722,
+      "exit_code": 0,
+      "recompiled_workspace_units": 2,
+      "selected_seed_bytes": 76553089,
+      "seed_manifest_sha256": "9ebf9031e7a103f34d2bc3ea6e7a33dbf9f32f42a4ecde07703f7b324940e64d",
+      "seed_files": 202,
+      "seed_bytes": 76553089,
+      "total_wall_s": 27.118285214000025,
+      "seed_policy": "cargo-reported-libraries-v1",
+      "profiles": {
+        "CARGO_PROFILE_DEV_DEBUG": "0",
+        "CARGO_PROFILE_TEST_DEBUG": "0"
+      },
+      "observed_workspace_profiles": [
+        {
+          "debug_assertions": true,
+          "debuginfo": 0,
+          "opt_level": "0",
+          "overflow_checks": true
+        }
+      ],
+      "result_json_bytes": 1077,
+      "build_seed_manifest_sha256": "08511bd00f9f07173be6b636f17c93b6cc4c08f63341a1dc5dcc27fefa9add6d",
+      "post_build_identity_amendment": "explicit-rustdoc-v1"
+    },
+    {
+      "alias": "reserved-a",
+      "status": "complete",
+      "archive_wall_s": 2.8882708750006714,
+      "source_archive_bytes": 1553295360,
+      "archive_entries": 34707,
+      "source_bytes": 1527724030,
+      "export_wall_s": 5.194272253000236,
+      "git_snapshot_wall_s": 15.754564395999296,
+      "build_wall_s": 5.244847207999555,
+      "exit_code": 0,
+      "recompiled_workspace_units": 7,
+      "selected_seed_bytes": 63410320,
+      "seed_manifest_sha256": "37ea65315f28dbfeada623747af418d9e083818aaa1e26bcdebf7ddd861959cf",
+      "seed_files": 188,
+      "seed_bytes": 63410320,
+      "total_wall_s": 30.59128657400015,
+      "seed_policy": "cargo-reported-libraries-v1",
+      "profiles": {
+        "CARGO_PROFILE_DEV_DEBUG": "0",
+        "CARGO_PROFILE_TEST_DEBUG": "0"
+      },
+      "observed_workspace_profiles": [
+        {
+          "debug_assertions": true,
+          "debuginfo": 0,
+          "opt_level": "0",
+          "overflow_checks": true
+        }
+      ],
+      "result_json_bytes": 1077,
+      "build_seed_manifest_sha256": "eb906ef545d3f92993226929c941f5e388f448a8fd475b3196000cd6f66f954b",
+      "post_build_identity_amendment": "explicit-rustdoc-v1"
+    },
+    {
+      "alias": "reserved-b",
+      "status": "complete",
+      "archive_wall_s": 2.3674190430001545,
+      "source_archive_bytes": 1567334400,
+      "archive_entries": 35700,
+      "source_bytes": 1541022574,
+      "export_wall_s": 4.637601234000613,
+      "git_snapshot_wall_s": 15.389955648000068,
+      "build_wall_s": 131.70628121899972,
+      "exit_code": 0,
+      "recompiled_workspace_units": 93,
+      "selected_seed_bytes": 2551501963,
+      "seed_manifest_sha256": "ec467867eb8dacc3dfc0a3a7a05e35ff87d019fa95e52860ac0bf84b01747eb0",
+      "seed_files": 3880,
+      "seed_bytes": 2551501963,
+      "total_wall_s": 163.79195110400087,
+      "seed_policy": "cargo-reported-libraries-v1",
+      "profiles": {
+        "CARGO_PROFILE_DEV_DEBUG": "0",
+        "CARGO_PROFILE_TEST_DEBUG": "0"
+      },
+      "observed_workspace_profiles": [
+        {
+          "debug_assertions": true,
+          "debuginfo": 0,
+          "opt_level": "0",
+          "overflow_checks": true
+        }
+      ],
+      "result_json_bytes": 1085,
+      "build_seed_manifest_sha256": "dc98ede0abfc4dfe011d7ffe81c7337362ff925d4413d6e45a5caebbb9b069c9",
+      "post_build_identity_amendment": "explicit-rustdoc-v1"
+    },
+    {
+      "alias": "reserved-c",
+      "status": "complete",
+      "archive_wall_s": 2.217185931000131,
+      "source_archive_bytes": 1577830400,
+      "archive_entries": 36521,
+      "source_bytes": 1550937300,
+      "export_wall_s": 6.286928110999725,
+      "git_snapshot_wall_s": 15.289611676000277,
+      "build_wall_s": 65.09866382399923,
+      "exit_code": 0,
+      "recompiled_workspace_units": 95,
+      "selected_seed_bytes": 2600119555,
+      "seed_manifest_sha256": "b149dd060fdc9b54c2a9b27640df21509bc4e30b8cc2bd2c71b5337040204fbe",
+      "seed_files": 3894,
+      "seed_bytes": 2600119555,
+      "total_wall_s": 96.41456655100046,
+      "seed_policy": "cargo-reported-libraries-v1",
+      "profiles": {
+        "CARGO_PROFILE_DEV_DEBUG": "0",
+        "CARGO_PROFILE_TEST_DEBUG": "0"
+      },
+      "observed_workspace_profiles": [
+        {
+          "debug_assertions": true,
+          "debuginfo": 0,
+          "opt_level": "0",
+          "overflow_checks": true
+        }
+      ],
+      "result_json_bytes": 1082,
+      "build_seed_manifest_sha256": "6501ff76b011765ed8ea8a67bce24fb3aebcd568e20657167783277396da0a07",
+      "post_build_identity_amendment": "explicit-rustdoc-v1"
+    },
+    {
+      "alias": "reserved-d",
+      "status": "complete",
+      "archive_wall_s": 3.067993285999364,
+      "source_archive_bytes": 1577717760,
+      "archive_entries": 36511,
+      "source_bytes": 1550836354,
+      "export_wall_s": 3.502820278999934,
+      "git_snapshot_wall_s": 14.777401456000007,
+      "build_wall_s": 62.940042313999584,
+      "exit_code": 0,
+      "recompiled_workspace_units": 95,
+      "selected_seed_bytes": 2598775540,
+      "seed_manifest_sha256": "0ff875a153f6ba0ca2d87508e28e2abd102d7ab19bd1455075d4d28cd6cd9f3c",
+      "seed_files": 3894,
+      "seed_bytes": 2598775540,
+      "total_wall_s": 90.8997682879999,
+      "seed_policy": "cargo-reported-libraries-v1",
+      "profiles": {
+        "CARGO_PROFILE_DEV_DEBUG": "0",
+        "CARGO_PROFILE_TEST_DEBUG": "0"
+      },
+      "observed_workspace_profiles": [
+        {
+          "debug_assertions": true,
+          "debuginfo": 0,
+          "opt_level": "0",
+          "overflow_checks": true
+        }
+      ],
+      "result_json_bytes": 1082,
+      "build_seed_manifest_sha256": "6e8554997d941439541f73e9ecd2097d3fe0ae385c3400e70b096a541f9ec7ab",
+      "post_build_identity_amendment": "explicit-rustdoc-v1"
+    }
+  ],
+  "earlier_setup_attempts": [
+    {
+      "alias": "reserved-a",
+      "status": "infrastructure_error",
+      "total_wall_s": 2.326017096999749,
+      "error_type": "ValueError",
+      "result_json_bytes": 266,
+      "stage": "source_archive_admission",
+      "diagnosis": "The initial 512MiB source archive bound rejected the 1.55GB historical tree before Cargo. The common bound is now 2GiB."
+    },
+    {
+      "alias": "reserved-a",
+      "status": "infrastructure_error",
+      "archive_wall_s": 2.180345481999666,
+      "source_archive_bytes": 1553295360,
+      "archive_entries": 34707,
+      "source_bytes": 1527724030,
+      "export_wall_s": 3.6284784389999913,
+      "git_snapshot_wall_s": 14.621527024999978,
+      "build_wall_s": 0.6669138790002762,
+      "exit_code": 101,
+      "total_wall_s": 21.71490312500009,
+      "error_type": "ValueError",
+      "observed_workspace_profiles": [],
+      "result_json_bytes": 963,
+      "stage": "compiler_alias_mount",
+      "diagnosis": "The namespace omitted /etc/alternatives, breaking the cc symlink. The common namespace now mounts that system directory read-only."
+    },
+    {
+      "alias": "reserved-a",
+      "status": "complete",
+      "archive_wall_s": 1.961079479000091,
+      "source_archive_bytes": 1553295360,
+      "archive_entries": 34707,
+      "source_bytes": 1527724030,
+      "export_wall_s": 3.4518570459999864,
+      "git_snapshot_wall_s": 14.506645511999977,
+      "build_wall_s": 5.953755595000075,
+      "exit_code": 0,
+      "recompiled_workspace_units": 7,
+      "seed_manifest_sha256": "0642fd607b1704353ee9d0b66039b7d3e85399420dfe44adb6f231c878eb9889",
+      "seed_files": 210,
+      "seed_bytes": 132884887,
+      "total_wall_s": 27.4562675330003,
+      "seed_policy": "compiler-artifacts-before-amendment",
+      "profiles": {},
+      "observed_workspace_profiles": [
+        {
+          "debug_assertions": true,
+          "debuginfo": 2,
+          "opt_level": "0",
+          "overflow_checks": true
+        }
+      ],
+      "result_json_bytes": 1042,
+      "stage": "default_profile_full_artifact_export",
+      "diagnosis": "Small default-profile package exported successfully before the common policy amendment."
+    },
+    {
+      "alias": "reserved-b",
+      "stage": "default_profile_full_artifact_export",
+      "status": "incomplete",
+      "process_exit_code": 120,
+      "result_json_bytes": 0,
+      "cargo_build_finished": true,
+      "cargo_build_time_rounded_s": 261,
+      "build_time_source": "Cargo stderr reported 4m21s; exact phase timing was not retained",
+      "reported_artifacts": {
+        "metadata": {
+          "files": 2992,
+          "bytes": 4523221
+        },
+        "executable": {
+          "files": 50,
+          "bytes": 42593270466
+        },
+        "library": {
+          "files": 1080,
+          "bytes": 5024421824
+        }
+      },
+      "partial_copy_files": 3878,
+      "partial_copy_bytes": 29030676896,
+      "partial_inventory_sha256": "244fa252ecc911514e5d160d6b22bab3955b6e3f9e51fecd65433d176f0af06f",
+      "filesystem_available_at_inspection_bytes": 3287293952,
+      "diagnosis": "The selected graph needed more space than remained after the partial copy. Disk pressure is the supported diagnosis; the terminating exception was not retained. This output is not a valid seed."
+    }
+  ],
+  "superseded_copy_preflight": {
+    "profile": "original default profile and full reported-artifact seed",
+    "alias": "reserved-a",
+    "copy_wall_s": 0.05450804400015841,
+    "build_wall_s": 4.95094727500009,
+    "total_wall_s": 24.782658542999798,
+    "exit_code": 0,
+    "recompiled_workspace_units": 7,
+    "all_workspace_units_recompiled": true,
+    "note": "This copy/build measurement predates the amended policy. It is not a measurement of current acceptance or a zero-compilation warm cache."
+  },
+  "amended_profile_acceptance_preflight": {
+    "status": "handed_to_independent_reviewer",
+    "copy_wall_s": null,
+    "note": "The independent coordinator will measure fresh-copy, relink, full ordinary tests, and checker timing for A/B. No repeated timing is inferred from earlier profiles."
+  },
+  "cleanup": {
+    "observed_unix": 1791015489.5531876,
+    "credential_transfer_absent": true,
+    "broker_or_native_processes": 0,
+    "cargo_lock_free": true,
+    "filesystem_available_bytes": 15523639296,
+    "source_archives_seeds_manifests_logs_receipts_retained": true,
+    "shared_long_lived_target_preserved": true,
+    "removed": "Only invalid partial cache output and reconstructible setup workspace/home copies after retaining receipts and checking successful manifest identities."
+  },
+  "verification": {
+    "python_test_count": 117,
+    "python_test_outcome": "passed",
+    "python_test_command": "python3.13 -m unittest discover -s bench/delegation-study -p 'test_*.py' -q",
+    "relevant_tests": [
+      "SeedTests.test_only_reported_baseline_graph_enters_seed",
+      "SeedTests.test_copy_budget_rejects_oversize_and_low_disk_before_copy",
+      "SeedTests.test_failed_result_replacement_keeps_prior_build_receipt",
+      "SeedTests.test_validation_hashes_actual_contents_and_rejects_extra_files",
+      "SeedTests.test_validation_rejects_wrong_commit_or_symlink"
+    ],
+    "followup_focused_tests": {
+      "count": 8,
+      "outcome": "passed",
+      "command": "PYTHONPATH=bench/delegation-study python3.13 -m unittest test_seed test_infrastructure.Infrastructure.test_snapshot_disables_automatic_maintenance_without_changing_commit -q",
+      "coverage": [
+        "Automatic Git maintenance disabled without changing deterministic commit",
+        "Missing or relative RUSTDOC refused before source export",
+        "Actual rustdoc executable bound by hash"
+      ]
+    }
+  },
+  "evidence": {
+    "builder": "seed.py",
+    "seed_validation": "seed_manifest.py",
+    "synthetic_tests": "test_seed.py",
+    "namespace_probes": "namespace-preflight.json",
+    "provider_preflight": "infrastructure-preflight.json",
+    "execution_contract": "README.md#baseline-cargo-seeds",
+    "private_aggregate_sha256": "6e7a9fd2f06726da08b801647635469a80032cba6fac42d470719a10f8d02805",
+    "private_cleanup_receipt_sha256": "b7bebbf6e8bcb9cd02a9721f6fa8139df8a63596462aec4ac1eb8e7313d54aac",
+    "rustdoc_amendment": "rustdoc-amendment.json"
+  },
+  "notes": [
+    "All five final seeds compiled every reported workspace unit from its pinned baseline with fresh:false. These are compilation/export checks, not ordinary-test or acceptance pass claims.",
+    "Full setup timings include archive creation, source export, Git initialization, Cargo compilation, copying, and validation through the recorded endpoint. They exclude later cleanup. Final seed-copy time was not separately recorded by the builder.",
+    "All final snapshots reported optimization level 0, debuginfo 0, debug assertions enabled, and overflow checks enabled for workspace artifacts. Original default-profile workspace artifacts reported debuginfo 2.",
+    "Private raw receipts, source identities, manifests and Cargo logs remain retained. Public rows use task aliases and omit executor paths, task prompts, checker content, and credentials.",
+    "The amended cache still regenerates build-script state and relinks final executables. Its benefit is not established by seed creation alone.",
+    "An actual acceptance preflight later found rustdoc missing from PATH. A separately timed 10.859-second metadata amendment binds the canonical Rust 1.97.1 rustdoc path, version and executable hash in every seed/native/acceptance environment. Actual seed files were revalidated before and after; source, library bytes and original build timings are unchanged. Original manifests and build receipts remain retained."
+  ]
+}

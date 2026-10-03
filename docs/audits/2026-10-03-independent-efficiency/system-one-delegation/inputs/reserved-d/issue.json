@@ -1,0 +1,6 @@
+{
+  "number": 10298,
+  "title": "Fetch the one tracked branch before creating a chat-run worktree (no refspec changes)",
+  "body": "Before creating a chat-run worktree from a branch that tracks a remote branch, refresh that tracked branch with a bounded fetch. Start from the newer remote commit when the local branch is simply behind; preserve the user's local work when it is ahead or diverged. On an unavailable remote, continue from the cached/local state. Fetch only the branch needed, do not add or rewrite refspecs, and leave the user's checkout unchanged. Cover a local bare origin and offline fallback. Find the chat-run worktree creation in `crates/coder/src/task/`; preserve existing parallel-fetch locking and spare-worktree safety.",
+  "url": "https://github.com/OpenAgentsInc/openagents/issues/10298"
+}

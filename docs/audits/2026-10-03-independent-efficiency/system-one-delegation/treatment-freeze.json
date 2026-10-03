@@ -1,0 +1,19 @@
+{
+  "schema": "openagents.delegation-study.treatment-freeze.v1",
+  "frozen_at": "2026-10-03T07:27:39.625360+00:00",
+  "policy": "syntax-units-v2",
+  "source_parent": "da2b66306556f2d4e84c8fddcae9c484c2fdb55a",
+  "hashes": {
+    "bench/delegation-study/prepare.py": "20868f9bbfdc3002a6345e9e4fddfa0b7cdb3e164e11d74af0ad488813389c6b",
+    "bench/delegation-study/test_prepare.py": "9da12d889d4704808672663980ca82fe9ce03cf37a3a2724fa6e5a87098c601c",
+    "crates/briefing-lab/src/syntax.rs": "bd0589314de817c4801273f8ce03e60fe096574745dcc6876ed0b4d3c578941b"
+  },
+  "development_issue": 10167,
+  "scored_execution_allowed": false,
+  "notes": [
+    "Prepared source ranker and fixed Jev questions frozen before reserve prompts, source inspection, checkers, or reference solutions are revealed to its implementer.",
+    "Provisional candidate numbers and short labels were disclosed earlier; this is partial blinding, not task-identity blinding.",
+    "One Jev capability request returned HTTP402 and fell back; there has been no successful live Jev answer in this round.",
+    "Policy changes after this freeze require retained amendment and disclosure. All earlier development artifacts remain private and retained."
+  ]
+}

@@ -1,0 +1,14 @@
+This is an isolated historical coding exercise. Produce the candidate in the working tree; the harness checks the final state after the session ends. Follow the applicable AGENTS.md and repository writing instructions in this snapshot.
+
+The exercise concerns the bounded task below. It does not authorize claiming or updating the live issue, committing, pushing, deploying, or contacting other systems. Direct external networking is unavailable. The configured Cargo toolchain and CARGO_TARGET_DIR are provided; keep that external target directory. Keep generated build outputs outside the source tree.
+
+Allowed edit roots: crates/coder/
+Named checks: cargo fmt -p coder -- --check; cargo test -p coder --locked --offline
+
+Run the named checks and the focused regression coverage requested by the task. Report the changes, checks, and any unresolved failure when finished.
+
+# Task
+
+Task store v2 still refuses with "another process holds the task store lock"
+
+Parallel chat work can still fail with “another process holds the task store lock” after the move to one file per task. Inspect task admission and owner/store locking in `crates/coder/src/task/`, including `Store::open_for_owner`. Make short-lived contention wait briefly instead of refusing an otherwise valid start, and keep unrelated tasks independent. Preserve exclusive execution for one task: a command must not run while another owner holds that task's lock. Add regression coverage for contention and independent starts. Keep changes within the locking/admission behavior; do not change record formats, task cleanup, or engine execution policy.

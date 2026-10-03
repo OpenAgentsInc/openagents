@@ -1,0 +1,44 @@
+{
+  "schema": "openagents.delegation.namespace-probes.v1",
+  "model_calls": 0,
+  "cargo_commands": 0,
+  "delayed_descendant": {
+    "namespace_exit_code": 0,
+    "namespace_wall_s": 0.017195719000028475,
+    "observation_delay_s": 1.3,
+    "late_file_exists": false,
+    "passed": true
+  },
+  "usr_local_inventory": {
+    "entries": 184706,
+    "inventory_sha256": "9cdc5e9bd6b810ed717585080c0dc6ada439ac22d026cfed94c25d744077ec97",
+    "top_level": [
+      "bin",
+      "cargo",
+      "etc",
+      "games",
+      "go",
+      "include",
+      "lib",
+      "man",
+      "rustup",
+      "sbin",
+      "share",
+      "src"
+    ],
+    "product_or_study_names": [
+      "/usr/local/share/ri/4.0.0/system/JSON/Coder",
+      "/usr/local/share/ri/4.0.0/system/Psych/Coder"
+    ],
+    "credential_filenames": [
+      "/usr/local/lib/node_modules/@earendil-works/pi-coding-agent/node_modules/@anthropic-ai/sdk/lib/credentials",
+      "/usr/local/lib/node_modules/@earendil-works/pi-coding-agent/node_modules/@anthropic-ai/sdk/src/lib/credentials"
+    ],
+    "git_directories": [],
+    "match_classification": {
+      "product_or_study_names": "Both matches are Ruby standard-library documentation directories named Coder. No OpenAgents product or study artifact was found.",
+      "credential_filenames": "Both matches are Anthropic SDK source directories named credentials, not credential files. No credential file was found among the checked names.",
+      "scope": "Inventory of names, types, sizes, and symlink targets in the fixed /usr/local tree; this is not an exhaustive content or isolation proof."
+    }
+  }
+}

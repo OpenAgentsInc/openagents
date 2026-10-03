@@ -1,0 +1,21 @@
+{
+  "schema": "openagents.delegation.environment.v1",
+  "recorded_at": "2026-10-03T07:59:26.585156+00:00",
+  "machine": "owned Boat benchmark sandbox",
+  "kernel": "6.8.0-117-generic",
+  "architecture": "x86_64",
+  "python": "3.12.3",
+  "logical_cpus_visible": 8,
+  "cpu_model": "AMD Ryzen 9 9950X 16-Core Processor",
+  "memory_visible": "16375784 kB",
+  "cgroup": {
+    "cpu.max": null,
+    "memory.max": null,
+    "cpuset.cpus.effective": "0-7"
+  },
+  "bwrap": "bubblewrap 0.9.0",
+  "notes": [
+    "Shared sandbox resources can contend with trusted compilation. Host-visible CPU/RAM counts are not guaranteed exclusive capacity.",
+    "Owner-machine timings for development preparation are a separate series. No owner host is used for Cargo or native benchmark sessions."
+  ]
+}

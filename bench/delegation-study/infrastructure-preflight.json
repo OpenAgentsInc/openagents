@@ -1,0 +1,80 @@
+{
+  "schema": "openagents.delegation.infrastructure-preflight.v1",
+  "scored_runs": 0,
+  "namespace": {
+    "native_cli_runs": true,
+    "private_sentinel_hidden": true,
+    "shared_repository_hidden": true,
+    "shared_target_hidden": true,
+    "direct_internet_blocked": true,
+    "unix_provider_bridge_works": true,
+    "private_pid_namespace": true
+  },
+  "native_cli": {
+    "version": "2.1.288 (Claude Code)",
+    "sha256": "0298068b686e7fdbaf9402a7a587bb7f49c0b0e084de09f69145a0719207640c"
+  },
+  "strict_reservation_probe": {
+    "admitted_requests": 0,
+    "target_usd": 2,
+    "request_bytes": 66784,
+    "requested_max_output_tokens": 128000,
+    "reservation_usd": 3.759616,
+    "outcome": "refused_before_provider"
+  },
+  "authenticated_capability_probe": {
+    "declared_model": "claude-opus-5-5",
+    "served_models": [
+      "claude-opus-5-5"
+    ],
+    "effort": "medium",
+    "native_budget_usd": 0.2,
+    "broker_admission_target_usd": 8,
+    "tool_calls": {
+      "Bash": 1,
+      "Agent": 1,
+      "Read": 1
+    },
+    "model_completed": false,
+    "native_result": "error_max_budget_usd",
+    "provider_accounting": {
+      "admitted_requests": 2,
+      "finished_requests": 2,
+      "refused_requests": 0,
+      "unknown_cost_requests": 0,
+      "unfinished_requests": 0,
+      "reported_cost_usd": 0.288885,
+      "cost_usd": 0.288885,
+      "models": {
+        "claude-opus-5-5": {
+          "requests": 2,
+          "reported_cost_usd": 0.288885,
+          "usage": {
+            "cache_creation_input_tokens": 42178,
+            "cache_read_input_tokens": 0,
+            "cache_write_1h_tokens": 23873,
+            "cache_write_5m_tokens": 18305,
+            "input_tokens": 4,
+            "output_tokens": 318
+          }
+        }
+      },
+      "refused_models": [],
+      "accounting_complete": true
+    },
+    "native_cumulative_cost_usd": 0.28888499999999995,
+    "recorded_wall_s": 5.31788044100017
+  },
+  "synthetic_direct_socket_test": {
+    "upstream": "in_memory_fixture",
+    "first_call": "reported_usage_charged",
+    "second_call": "refused_per_model_request_cap",
+    "model_calls": 0
+  },
+  "notes": [
+    "Costs are API-equivalent amounts from reported usage and the frozen standard price schedule, not an invoice for OAuth subscription usage.",
+    "The provider ledger is primary and includes subagents and direct socket requests. Native cumulative cost is a reconciliation value.",
+    "The broker admission target and native CLI budget do not guarantee an absolute spending cap.",
+    "No Cargo command or scored task ran in these preflights. No future repository, checker, or shared Cargo target was mounted."
+  ]
+}

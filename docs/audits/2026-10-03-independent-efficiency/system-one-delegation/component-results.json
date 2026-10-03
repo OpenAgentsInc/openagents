@@ -1,0 +1,90 @@
+{
+  "schema": "openagents.delegation.component-results.v1",
+  "input_sha256": {
+    "timings": "9339efa3d5161836ff90bf58a1b81350a852acd5c028e705568b9755c3752fef",
+    "freeze": "549cf97bf3b4ae5867a3dcb7a750e70612133e412b584ce229ae1c81832bc73f",
+    "preflight": "628a9ef44d8fbfe3d286f2a418476d9d39e9e44c245b14bcf16e505d745304e7",
+    "provider_calls": "13701d2070f53c54abed8d566d804847761d8baa15f95a0bc7389cc1795302db",
+    "jev_refusal": "8b377f82ee85d53a2c22b77018bb3a5dcfd0b1aa28641c23b0007e436fe2ddf9",
+    "prior_ledger": "63cc6da8b2a662860abd47a8e7db2fd6e6193bd3e7507781bde3bc24209f5926"
+  },
+  "scored_executor_sessions": 0,
+  "reserve_preparation": {
+    "samples": 20,
+    "under_one_second": 18,
+    "same_output_within_each_task": true,
+    "tasks": [
+      {
+        "task_id": "reserved-a",
+        "source_commit": "f056853c6508581e5fc6f3c09a99edba6b05f212",
+        "samples": 5,
+        "min_s": 0.777043281000033,
+        "median_s": 0.7916432009999426,
+        "max_s": 0.8625848450001286,
+        "under_one_second": 5,
+        "index_wall_s": 6.041907834000085,
+        "briefing_sha256": "0548697e559d5b7544bb0392201feee2a27497f5c35163135b4211d776bf50c7",
+        "candidate_sha256": "67f631b7f9eb941090292a0c8f817a830feeaf238915d0bdfe30857933a892ec",
+        "briefing_bytes": 16101
+      },
+      {
+        "task_id": "reserved-b",
+        "source_commit": "b39787700107a1605b3412c8653fad887adfbbf8",
+        "samples": 5,
+        "min_s": 0.870725726000046,
+        "median_s": 0.8822800409998308,
+        "max_s": 0.9354429929999242,
+        "under_one_second": 5,
+        "index_wall_s": 6.381002669000054,
+        "briefing_sha256": "455555e63a09dc3f85a2d88ed8512be7597400cf1444346c9b36eb640510dc66",
+        "candidate_sha256": "8e799ebbf52ef4523eb0dd31b3a16f0144cbf4a4f9982898e6d36458f7d72b3f",
+        "briefing_bytes": 16093
+      },
+      {
+        "task_id": "reserved-c",
+        "source_commit": "e11b84c3adde42755c32fb478cc1895d13149042",
+        "samples": 5,
+        "min_s": 0.9533067049999318,
+        "median_s": 0.9736445159999221,
+        "max_s": 1.0575658689999727,
+        "under_one_second": 3,
+        "index_wall_s": 6.7752639959999215,
+        "briefing_sha256": "c070f70b587b03a17f5a17cb2375a9edea28509ba8870fc2356a2df225fcffaa",
+        "candidate_sha256": "c5fa458c7c00d05912fe99f0867da7a01cf2103898f4f2d86043973bdea66525",
+        "briefing_bytes": 16019
+      },
+      {
+        "task_id": "reserved-d",
+        "source_commit": "4eee1cbf3ecc844f89d42abc2b7df7be4411c846",
+        "samples": 5,
+        "min_s": 0.8879053430000567,
+        "median_s": 0.9056156359999932,
+        "max_s": 0.9229377120000208,
+        "under_one_second": 5,
+        "index_wall_s": 6.649581570000009,
+        "briefing_sha256": "29cf8f40cc6a52db2cbe67ac02f24b6fb0d6c80eaf48d0a738f2786314fa28c6",
+        "candidate_sha256": "db8b3678416d996a02da5d139c3b800d96b4b83cc9472539e432defd97d69ba4",
+        "briefing_bytes": 15715
+      }
+    ]
+  },
+  "capability": {
+    "provider_requests": 2,
+    "repriced_known_usd": 0.288885,
+    "model_completed": false,
+    "native_result": "error_max_budget_usd",
+    "pricing_source": "https://platform.claude.com/docs/en/models/opus-5-5/overview",
+    "pricing_checked": "2026-10-03"
+  },
+  "jev": {
+    "http_status": 402,
+    "cost_usd": null,
+    "cost_status": "unknown"
+  },
+  "limits": [
+    "Component measurements do not measure executor improvement or quality.",
+    "Warm preview excludes cold indexing, issue fetch, successful inference, and checks.",
+    "Linux reserve timings may include contention from trusted compilation.",
+    "Costs are list-price equivalents, not invoices; audit and machine costs are unmeasured."
+  ]
+}

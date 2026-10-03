@@ -1,0 +1,72 @@
+{
+  "schema": "openagents.delegation.study-inputs.v1",
+  "created_at": "2026-10-03T07:58:43.306985+00:00",
+  "source_commit": "da2b66306556f2d4e84c8fddcae9c484c2fdb55a",
+  "lean_sections": [
+    {
+      "role": "role",
+      "path": "crates/coder-one/prompts/headless/role.md",
+      "sha256": "b8767983afb6ec67212eb6de2563ba1fdf6998c14605181092992b57282b530c"
+    },
+    {
+      "role": "security",
+      "path": "crates/coder-one/prompts/claude-code-2.1.280/02-security.md",
+      "sha256": "70ec315051eff33f8aa4a1fa1d28f94da6604ed13d4b741399cdea58f1810718"
+    },
+    {
+      "role": "authority",
+      "path": "crates/coder-one/prompts/headless/authority.md",
+      "sha256": "dd83aa4442491f1e655f092fff15d19460445690fb62039e8d07e121ffaebae6"
+    },
+    {
+      "role": "finish",
+      "path": "crates/coder-one/prompts/headless/finish.md",
+      "sha256": "aec8128e89a0bfc22c1d41c39d7af458eb90f70d402a7ab9fcbed5dd900c521b"
+    },
+    {
+      "role": "pace",
+      "path": "crates/coder-one/prompts/headless/pace.md",
+      "sha256": "c7a9ed16c4d102f96baf354b379736a1c0c52563192052e9c7e048bbf1f9cc29"
+    },
+    {
+      "role": "report",
+      "path": "crates/coder-one/prompts/headless/report.md",
+      "sha256": "120d8199b93ae370772f493e765adcd086676b0377d2b33b5b31d70c0c3a04b4"
+    },
+    {
+      "role": "code-style",
+      "path": "crates/coder-one/prompts/headless/code-style.md",
+      "sha256": "36269cf9aa6ddf2b3b4977b6ba5fec594144e5dece4c124ee3afbf3baf071751"
+    }
+  ],
+  "lean_rendering": "SESSION order; trim each source section, join with two LF bytes, terminate with one LF, matching coder_delegate::system::Variant::text",
+  "lean_system_sha256": "6e52c905694488f57ef1f914b6dadea1b77679e6b9af70099580890b6edcc288",
+  "base_prompts": [
+    {
+      "task_id": "reserved-a",
+      "path": "reserved-a/base-prompt.txt",
+      "sha256": "caffcf4bd276cfbe6208fe32f6b158827ecf136a686a048bb13d48623bf6f073"
+    },
+    {
+      "task_id": "reserved-b",
+      "path": "reserved-b/base-prompt.txt",
+      "sha256": "f8ac068f993cffec79e7760b3836aab8d01a477a7c073ed6cae0ec9e987f8792"
+    },
+    {
+      "task_id": "reserved-c",
+      "path": "reserved-c/base-prompt.txt",
+      "sha256": "b21e14771f17d749a35c2dfc85c622df249797dfa2c03ad10613aaea782931e4"
+    },
+    {
+      "task_id": "reserved-d",
+      "path": "reserved-d/base-prompt.txt",
+      "sha256": "4d49bf76604f983772426cd63e401a4b0ab685307cd0df06dc0cfa317fbd729f"
+    }
+  ],
+  "notes": [
+    "Common operational envelope written after public task release and before any scored executor outcomes. It adds scope, isolated-environment facts, and identical check policy across arms.",
+    "Preparation continues to read the separately bound normalized issue JSON, unchanged from the frozen preview inputs.",
+    "Controls receive base prompt only; prepared arms append two LF bytes and the exact recorded briefing.",
+    "Lean text is retained public repository material rendered from the existing preset, not a new Jev judgment or a shipped-product equivalence claim."
+  ]
+}

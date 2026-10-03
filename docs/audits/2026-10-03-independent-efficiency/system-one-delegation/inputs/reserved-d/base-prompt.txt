@@ -1,0 +1,14 @@
+This is an isolated historical coding exercise. Produce the candidate in the working tree; the harness checks the final state after the session ends. Follow the applicable AGENTS.md and repository writing instructions in this snapshot.
+
+The exercise concerns the bounded task below. It does not authorize claiming or updating the live issue, committing, pushing, deploying, or contacting other systems. Direct external networking is unavailable. The configured Cargo toolchain and CARGO_TARGET_DIR are provided; keep that external target directory. Keep generated build outputs outside the source tree.
+
+Allowed edit roots: crates/coder/
+Named checks: cargo fmt -p coder -- --check; cargo test -p coder --locked --offline
+
+Run the named checks and the focused regression coverage requested by the task. Report the changes, checks, and any unresolved failure when finished.
+
+# Task
+
+Fetch the one tracked branch before creating a chat-run worktree (no refspec changes)
+
+Before creating a chat-run worktree from a branch that tracks a remote branch, refresh that tracked branch with a bounded fetch. Start from the newer remote commit when the local branch is simply behind; preserve the user's local work when it is ahead or diverged. On an unavailable remote, continue from the cached/local state. Fetch only the branch needed, do not add or rewrite refspecs, and leave the user's checkout unchanged. Cover a local bare origin and offline fallback. Find the chat-run worktree creation in `crates/coder/src/task/`; preserve existing parallel-fetch locking and spare-worktree safety.

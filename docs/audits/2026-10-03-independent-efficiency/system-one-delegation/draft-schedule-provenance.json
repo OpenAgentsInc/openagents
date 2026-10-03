@@ -1,0 +1,19 @@
+{
+  "schema": "openagents.delegation.schedule-preview-provenance.v1",
+  "created_at": "2026-10-03T08:19:50.134410+00:00",
+  "study_id": "7e9b6e00-f4a5-4726-984f-618eca879f6e",
+  "seed": 20261003,
+  "task_ids": [
+    "reserved-a",
+    "reserved-b",
+    "reserved-c",
+    "reserved-d"
+  ],
+  "draft_only": true,
+  "scored_execution_allowed": false,
+  "generator": "bench/delegation-study/schedule.py preview",
+  "generator_sha256": "0acd5c5bf042502b054f407f9aa26ce68cbedb28cbd8e2f33b662ce97d04d789",
+  "schedule_file": "draft-schedule.json",
+  "schedule_sha256": "e038832b9c07563804712c6976036f3b73e53f87f8ed2b6c17b88aa73c77347f",
+  "status": "unsealed_preview_requires_successful_funded_preflight_and_final_bindings"
+}

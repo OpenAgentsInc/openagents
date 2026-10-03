@@ -1,0 +1,218 @@
+[
+  {
+    "task_id": "reserved-a",
+    "source_commit": "f056853c6508581e5fc6f3c09a99edba6b05f212",
+    "index_wall_s": 6.041907834000085,
+    "index_exit_code": 0,
+    "binary_sha256": "cfe8027a1c2aa1278483e4f38b45819bd19933b3d6703f51aa02110d8212c3a1",
+    "timings": [
+      {
+        "repetition": 1,
+        "process_wall_s": 0.8625848450001286,
+        "exit_code": 0,
+        "reported_wall_s": 0.7750299140000152,
+        "briefing_sha256": "0548697e559d5b7544bb0392201feee2a27497f5c35163135b4211d776bf50c7",
+        "candidate_sha256": "67f631b7f9eb941090292a0c8f817a830feeaf238915d0bdfe30857933a892ec",
+        "briefing_bytes": 16101
+      },
+      {
+        "repetition": 2,
+        "process_wall_s": 0.8137154659998487,
+        "exit_code": 0,
+        "reported_wall_s": 0.7344151130000682,
+        "briefing_sha256": "0548697e559d5b7544bb0392201feee2a27497f5c35163135b4211d776bf50c7",
+        "candidate_sha256": "67f631b7f9eb941090292a0c8f817a830feeaf238915d0bdfe30857933a892ec",
+        "briefing_bytes": 16101
+      },
+      {
+        "repetition": 3,
+        "process_wall_s": 0.7916432009999426,
+        "exit_code": 0,
+        "reported_wall_s": 0.7137312320001001,
+        "briefing_sha256": "0548697e559d5b7544bb0392201feee2a27497f5c35163135b4211d776bf50c7",
+        "candidate_sha256": "67f631b7f9eb941090292a0c8f817a830feeaf238915d0bdfe30857933a892ec",
+        "briefing_bytes": 16101
+      },
+      {
+        "repetition": 4,
+        "process_wall_s": 0.7811524310000095,
+        "exit_code": 0,
+        "reported_wall_s": 0.7055198259999997,
+        "briefing_sha256": "0548697e559d5b7544bb0392201feee2a27497f5c35163135b4211d776bf50c7",
+        "candidate_sha256": "67f631b7f9eb941090292a0c8f817a830feeaf238915d0bdfe30857933a892ec",
+        "briefing_bytes": 16101
+      },
+      {
+        "repetition": 5,
+        "process_wall_s": 0.777043281000033,
+        "exit_code": 0,
+        "reported_wall_s": 0.6994178689999444,
+        "briefing_sha256": "0548697e559d5b7544bb0392201feee2a27497f5c35163135b4211d776bf50c7",
+        "candidate_sha256": "67f631b7f9eb941090292a0c8f817a830feeaf238915d0bdfe30857933a892ec",
+        "briefing_bytes": 16101
+      }
+    ]
+  },
+  {
+    "task_id": "reserved-b",
+    "source_commit": "b39787700107a1605b3412c8653fad887adfbbf8",
+    "index_wall_s": 6.381002669000054,
+    "index_exit_code": 0,
+    "binary_sha256": "cfe8027a1c2aa1278483e4f38b45819bd19933b3d6703f51aa02110d8212c3a1",
+    "timings": [
+      {
+        "repetition": 1,
+        "process_wall_s": 0.9354429929999242,
+        "exit_code": 0,
+        "reported_wall_s": 0.8525061870000172,
+        "briefing_sha256": "455555e63a09dc3f85a2d88ed8512be7597400cf1444346c9b36eb640510dc66",
+        "candidate_sha256": "8e799ebbf52ef4523eb0dd31b3a16f0144cbf4a4f9982898e6d36458f7d72b3f",
+        "briefing_bytes": 16093
+      },
+      {
+        "repetition": 2,
+        "process_wall_s": 0.8822800409998308,
+        "exit_code": 0,
+        "reported_wall_s": 0.8016741580001963,
+        "briefing_sha256": "455555e63a09dc3f85a2d88ed8512be7597400cf1444346c9b36eb640510dc66",
+        "candidate_sha256": "8e799ebbf52ef4523eb0dd31b3a16f0144cbf4a4f9982898e6d36458f7d72b3f",
+        "briefing_bytes": 16093
+      },
+      {
+        "repetition": 3,
+        "process_wall_s": 0.8876334339997811,
+        "exit_code": 0,
+        "reported_wall_s": 0.8063454200000706,
+        "briefing_sha256": "455555e63a09dc3f85a2d88ed8512be7597400cf1444346c9b36eb640510dc66",
+        "candidate_sha256": "8e799ebbf52ef4523eb0dd31b3a16f0144cbf4a4f9982898e6d36458f7d72b3f",
+        "briefing_bytes": 16093
+      },
+      {
+        "repetition": 4,
+        "process_wall_s": 0.870725726000046,
+        "exit_code": 0,
+        "reported_wall_s": 0.7905998319999981,
+        "briefing_sha256": "455555e63a09dc3f85a2d88ed8512be7597400cf1444346c9b36eb640510dc66",
+        "candidate_sha256": "8e799ebbf52ef4523eb0dd31b3a16f0144cbf4a4f9982898e6d36458f7d72b3f",
+        "briefing_bytes": 16093
+      },
+      {
+        "repetition": 5,
+        "process_wall_s": 0.8722098299999743,
+        "exit_code": 0,
+        "reported_wall_s": 0.7913769310000589,
+        "briefing_sha256": "455555e63a09dc3f85a2d88ed8512be7597400cf1444346c9b36eb640510dc66",
+        "candidate_sha256": "8e799ebbf52ef4523eb0dd31b3a16f0144cbf4a4f9982898e6d36458f7d72b3f",
+        "briefing_bytes": 16093
+      }
+    ]
+  },
+  {
+    "task_id": "reserved-c",
+    "source_commit": "e11b84c3adde42755c32fb478cc1895d13149042",
+    "index_wall_s": 6.7752639959999215,
+    "index_exit_code": 0,
+    "binary_sha256": "cfe8027a1c2aa1278483e4f38b45819bd19933b3d6703f51aa02110d8212c3a1",
+    "timings": [
+      {
+        "repetition": 1,
+        "process_wall_s": 0.9736445159999221,
+        "exit_code": 0,
+        "reported_wall_s": 0.8880436130000362,
+        "briefing_sha256": "c070f70b587b03a17f5a17cb2375a9edea28509ba8870fc2356a2df225fcffaa",
+        "candidate_sha256": "c5fa458c7c00d05912fe99f0867da7a01cf2103898f4f2d86043973bdea66525",
+        "briefing_bytes": 16019
+      },
+      {
+        "repetition": 2,
+        "process_wall_s": 0.9633789189999789,
+        "exit_code": 0,
+        "reported_wall_s": 0.8795094429999608,
+        "briefing_sha256": "c070f70b587b03a17f5a17cb2375a9edea28509ba8870fc2356a2df225fcffaa",
+        "candidate_sha256": "c5fa458c7c00d05912fe99f0867da7a01cf2103898f4f2d86043973bdea66525",
+        "briefing_bytes": 16019
+      },
+      {
+        "repetition": 3,
+        "process_wall_s": 0.9533067049999318,
+        "exit_code": 0,
+        "reported_wall_s": 0.8675836310001159,
+        "briefing_sha256": "c070f70b587b03a17f5a17cb2375a9edea28509ba8870fc2356a2df225fcffaa",
+        "candidate_sha256": "c5fa458c7c00d05912fe99f0867da7a01cf2103898f4f2d86043973bdea66525",
+        "briefing_bytes": 16019
+      },
+      {
+        "repetition": 4,
+        "process_wall_s": 1.0575658689999727,
+        "exit_code": 0,
+        "reported_wall_s": 0.9674416509999446,
+        "briefing_sha256": "c070f70b587b03a17f5a17cb2375a9edea28509ba8870fc2356a2df225fcffaa",
+        "candidate_sha256": "c5fa458c7c00d05912fe99f0867da7a01cf2103898f4f2d86043973bdea66525",
+        "briefing_bytes": 16019
+      },
+      {
+        "repetition": 5,
+        "process_wall_s": 1.0282266310000523,
+        "exit_code": 0,
+        "reported_wall_s": 0.9391837400000895,
+        "briefing_sha256": "c070f70b587b03a17f5a17cb2375a9edea28509ba8870fc2356a2df225fcffaa",
+        "candidate_sha256": "c5fa458c7c00d05912fe99f0867da7a01cf2103898f4f2d86043973bdea66525",
+        "briefing_bytes": 16019
+      }
+    ]
+  },
+  {
+    "task_id": "reserved-d",
+    "source_commit": "4eee1cbf3ecc844f89d42abc2b7df7be4411c846",
+    "index_wall_s": 6.649581570000009,
+    "index_exit_code": 0,
+    "binary_sha256": "cfe8027a1c2aa1278483e4f38b45819bd19933b3d6703f51aa02110d8212c3a1",
+    "timings": [
+      {
+        "repetition": 1,
+        "process_wall_s": 0.9098980219998793,
+        "exit_code": 0,
+        "reported_wall_s": 0.8265785779999533,
+        "briefing_sha256": "29cf8f40cc6a52db2cbe67ac02f24b6fb0d6c80eaf48d0a738f2786314fa28c6",
+        "candidate_sha256": "db8b3678416d996a02da5d139c3b800d96b4b83cc9472539e432defd97d69ba4",
+        "briefing_bytes": 15715
+      },
+      {
+        "repetition": 2,
+        "process_wall_s": 0.9229377120000208,
+        "exit_code": 0,
+        "reported_wall_s": 0.8404049959999611,
+        "briefing_sha256": "29cf8f40cc6a52db2cbe67ac02f24b6fb0d6c80eaf48d0a738f2786314fa28c6",
+        "candidate_sha256": "db8b3678416d996a02da5d139c3b800d96b4b83cc9472539e432defd97d69ba4",
+        "briefing_bytes": 15715
+      },
+      {
+        "repetition": 3,
+        "process_wall_s": 0.8879053430000567,
+        "exit_code": 0,
+        "reported_wall_s": 0.8066259259999242,
+        "briefing_sha256": "29cf8f40cc6a52db2cbe67ac02f24b6fb0d6c80eaf48d0a738f2786314fa28c6",
+        "candidate_sha256": "db8b3678416d996a02da5d139c3b800d96b4b83cc9472539e432defd97d69ba4",
+        "briefing_bytes": 15715
+      },
+      {
+        "repetition": 4,
+        "process_wall_s": 0.8993224319999626,
+        "exit_code": 0,
+        "reported_wall_s": 0.8160776370000349,
+        "briefing_sha256": "29cf8f40cc6a52db2cbe67ac02f24b6fb0d6c80eaf48d0a738f2786314fa28c6",
+        "candidate_sha256": "db8b3678416d996a02da5d139c3b800d96b4b83cc9472539e432defd97d69ba4",
+        "briefing_bytes": 15715
+      },
+      {
+        "repetition": 5,
+        "process_wall_s": 0.9056156359999932,
+        "exit_code": 0,
+        "reported_wall_s": 0.8228558240000439,
+        "briefing_sha256": "29cf8f40cc6a52db2cbe67ac02f24b6fb0d6c80eaf48d0a738f2786314fa28c6",
+        "candidate_sha256": "db8b3678416d996a02da5d139c3b800d96b4b83cc9472539e432defd97d69ba4",
+        "briefing_bytes": 15715
+      }
+    ]
+  }
+]

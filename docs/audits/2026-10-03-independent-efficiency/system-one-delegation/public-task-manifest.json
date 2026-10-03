@@ -1,0 +1,132 @@
+{
+  "schema": "openagents.delegation-study.public-task-manifest.v1",
+  "created_at": "2026-10-03T07:29:10.576275+00:00",
+  "contains_reference_solutions": false,
+  "contains_hidden_checkers": false,
+  "tasks": [
+    {
+      "id": "reserved-a",
+      "issue": 10078,
+      "title": "Desktop Coder start fails: \"the granted source snapshot is unavailable or changed\"",
+      "source_commit": "f056853c6508581e5fc6f3c09a99edba6b05f212",
+      "prompt": "A desktop Coder start can fail with \u201cthe granted source snapshot is unavailable or changed\u201d even when its source is readable and within the admitted entry and byte limits. A source tree with many sibling directories reproduces an incomplete observation caused by exhausting the process's open-file limit. Fix source observation so a wide tree can be completely observed within its resource budget. Preserve the existing no-follow boundary for links, completeness reporting, entry and byte limits, and change detection. Add a focused regression test. Work within the source-observation and admission code needed for this behavior; do not weaken admission to accept an incomplete snapshot.",
+      "allowed_paths": [
+        "crates/coder-boundary/"
+      ],
+      "packages": [
+        "coder-boundary"
+      ],
+      "applicable_instruction_paths": [
+        {
+          "path": "AGENTS.md",
+          "sha256": "dcff487bf6a5cfbc85f1aaeffb271856774b081e04a69bbbfbafbd7a007c8235"
+        },
+        {
+          "path": ".agents/skills/google-developer-style/SKILL.md",
+          "sha256": "afb103c87f283e88ea33a1439a11fb1838a17970760b8ecc59bf2f9d89fb0197"
+        }
+      ],
+      "public_requirement_provenance": {
+        "url": "https://github.com/OpenAgentsInc/openagents/issues/10078",
+        "created_at": "2026-10-01T03:52:04Z",
+        "observed_state": "CLOSED",
+        "observed_updated_at": "2026-10-01T04:13:06Z",
+        "body_sha256": "f0fb26cc945c4badf35c09af5ca41e3930f5e429e8c12b4a6cf2fabc5460cc9d",
+        "scope": "Normalized bounded behavior slice of the historical issue. It does not assert full issue closure or replay deployment/owner-machine instructions. Original public issue plus independent safety controls, finalized before candidate model trials."
+      }
+    },
+    {
+      "id": "reserved-b",
+      "issue": 10228,
+      "title": "Engine lookup falls back to an old ~/.openagents/bin/microcoder when the running binary was rebuilt (Linux \"(deleted)\" path)",
+      "source_commit": "b39787700107a1605b3412c8653fad887adfbbf8",
+      "prompt": "On Linux, a running OpenAgents program can be replaced by a rebuild while it continues running. Engine discovery then falls back to an older `~/.openagents/bin/microcoder` even though a fresh `microcoder` is beside the program. Linux can report the running executable with a trailing ` (deleted)` marker. Fix `default_controller` in `crates/coder/src/task/autostart.rs` so the sibling engine remains preferred after replacement, while preserving ordinary sibling selection and installed-engine fallback when no sibling exists. Report a missing engine when neither location is available. Add a regression test without touching installed programs.",
+      "allowed_paths": [
+        "crates/coder/"
+      ],
+      "packages": [
+        "coder"
+      ],
+      "applicable_instruction_paths": [
+        {
+          "path": "AGENTS.md",
+          "sha256": "b0b1a3a27c4505b1ccf1b12a79e9281bd7b6b43aa6b6745bcb5dcd43c4cc843f"
+        },
+        {
+          "path": ".agents/skills/google-developer-style/SKILL.md",
+          "sha256": "afb103c87f283e88ea33a1439a11fb1838a17970760b8ecc59bf2f9d89fb0197"
+        }
+      ],
+      "public_requirement_provenance": {
+        "url": "https://github.com/OpenAgentsInc/openagents/issues/10228",
+        "created_at": "2026-10-02T20:49:09Z",
+        "observed_state": "CLOSED",
+        "observed_updated_at": "2026-10-02T21:04:42Z",
+        "body_sha256": "d3cffc32662469abfa59dd29d0a5f7b24600ea64e42bad704ee498c185729049",
+        "scope": "Normalized bounded behavior slice of the historical issue. It does not assert full issue closure or replay deployment/owner-machine instructions. Original public issue plus independent safety controls, finalized before candidate model trials."
+      }
+    },
+    {
+      "id": "reserved-c",
+      "issue": 10301,
+      "title": "Task store v2 still refuses with \"another process holds the task store lock\"",
+      "source_commit": "e11b84c3adde42755c32fb478cc1895d13149042",
+      "prompt": "Parallel chat work can still fail with \u201canother process holds the task store lock\u201d after the move to one file per task. Inspect task admission and owner/store locking in `crates/coder/src/task/`, including `Store::open_for_owner`. Make short-lived contention wait briefly instead of refusing an otherwise valid start, and keep unrelated tasks independent. Preserve exclusive execution for one task: a command must not run while another owner holds that task's lock. Add regression coverage for contention and independent starts. Keep changes within the locking/admission behavior; do not change record formats, task cleanup, or engine execution policy.",
+      "allowed_paths": [
+        "crates/coder/"
+      ],
+      "packages": [
+        "coder"
+      ],
+      "applicable_instruction_paths": [
+        {
+          "path": "AGENTS.md",
+          "sha256": "85ce2d2cc4b7f94ab666ea0133b54d50bc03a911b10bf8adb00cfcadfa0fd4b2"
+        },
+        {
+          "path": ".agents/skills/google-developer-style/SKILL.md",
+          "sha256": "afb103c87f283e88ea33a1439a11fb1838a17970760b8ecc59bf2f9d89fb0197"
+        }
+      ],
+      "public_requirement_provenance": {
+        "url": "https://github.com/OpenAgentsInc/openagents/issues/10301",
+        "created_at": "2026-10-03T05:56:50Z",
+        "observed_state": "OPEN",
+        "observed_updated_at": "2026-10-03T07:13:43Z",
+        "body_sha256": "7ade714a6d8e4aff81b1db5d022148937871ccf59fa1ac3bdf56d465a6b2f208",
+        "scope": "Normalized bounded behavior slice of the historical issue. It does not assert full issue closure or replay deployment/owner-machine instructions. Original public issue plus independent safety controls, finalized before candidate model trials."
+      }
+    },
+    {
+      "id": "reserved-d",
+      "issue": 10298,
+      "title": "Fetch the one tracked branch before creating a chat-run worktree (no refspec changes)",
+      "source_commit": "4eee1cbf3ecc844f89d42abc2b7df7be4411c846",
+      "prompt": "Before creating a chat-run worktree from a branch that tracks a remote branch, refresh that tracked branch with a bounded fetch. Start from the newer remote commit when the local branch is simply behind; preserve the user's local work when it is ahead or diverged. On an unavailable remote, continue from the cached/local state. Fetch only the branch needed, do not add or rewrite refspecs, and leave the user's checkout unchanged. Cover a local bare origin and offline fallback. Find the chat-run worktree creation in `crates/coder/src/task/`; preserve existing parallel-fetch locking and spare-worktree safety.",
+      "allowed_paths": [
+        "crates/coder/"
+      ],
+      "packages": [
+        "coder"
+      ],
+      "applicable_instruction_paths": [
+        {
+          "path": "AGENTS.md",
+          "sha256": "85ce2d2cc4b7f94ab666ea0133b54d50bc03a911b10bf8adb00cfcadfa0fd4b2"
+        },
+        {
+          "path": ".agents/skills/google-developer-style/SKILL.md",
+          "sha256": "afb103c87f283e88ea33a1439a11fb1838a17970760b8ecc59bf2f9d89fb0197"
+        }
+      ],
+      "public_requirement_provenance": {
+        "url": "https://github.com/OpenAgentsInc/openagents/issues/10298",
+        "created_at": "2026-10-03T05:37:23Z",
+        "observed_state": "CLOSED",
+        "observed_updated_at": "2026-10-03T05:49:28Z",
+        "body_sha256": "e005b389797beba99fcbacc7a28c37045983ce875b89915f0892328764b987e8",
+        "scope": "Normalized bounded behavior slice of the historical issue. It does not assert full issue closure or replay deployment/owner-machine instructions. Original public issue plus independent safety controls, finalized before candidate model trials."
+      }
+    }
+  ]
+}

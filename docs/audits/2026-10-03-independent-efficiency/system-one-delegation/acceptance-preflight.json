@@ -1,0 +1,586 @@
+{
+  "acceptance_checks_unchanged": true,
+  "actual_focused_linux_tests": {
+    "cargo_commands": 0,
+    "model_calls": 0,
+    "passed": true,
+    "test_count": 2,
+    "test_names": [
+      "CheckCandidateTests.test_real_cancellation_preserves_checkpoint_and_stops_child",
+      "CheckCandidateTests.test_declared_rustdoc_uses_pinned_path_and_version"
+    ],
+    "wall_s": 1.876
+  },
+  "actual_namespace_probe": {
+    "cargo_commands": 0,
+    "checker_unchanged": true,
+    "model_calls": 0,
+    "outer_watchdog": {
+      "child_started": true,
+      "late_file_exists": false,
+      "worker_exit_code": -9
+    },
+    "passed": true,
+    "phase_timeout": {
+      "checker_read_only": true,
+      "child_started": true,
+      "late_file_exists": false,
+      "source_read_only": true,
+      "timed_out": true,
+      "wall_s": 0.301878330999898
+    },
+    "schema": "openagents.delegation.acceptance-namespace-preflight.v1",
+    "source_unchanged": true
+  },
+  "attempts": [
+    {
+      "accepted": false,
+      "alias": "reserved-a",
+      "attempt": 1,
+      "bundle": "v1",
+      "calibration_classification": "harness_incompatible_missing_rustdoc",
+      "candidate_manifest_sha256": "212a0a22b8dbd1d099ffe3934022b05f4310728b3cc7e0b99826ae0eb9dd6824",
+      "candidate_symlinks": "rejected",
+      "checker_sha256": "49e196854c3be1f4d036385e9d33aed176decb61b151672197e7c6d7dc8fe7cc",
+      "checks_sha256": "6cd4bced683a3f494cf24a247d7d4a27d8420c309d48f81f768a0bcc740cbd2b",
+      "cleanup": {
+        "original_cleanup_error": "FileNotFoundError_gc_pid",
+        "original_cleanup_wall_s": null,
+        "recovery_cleanup_s": 0.07002233799994428,
+        "status": "complete",
+        "verified_retained_files": 19
+      },
+      "completed": true,
+      "execution_closed": true,
+      "format": {
+        "exit_code": 0,
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.11602322399994591
+      },
+      "identity_validated": true,
+      "independent": {
+        "compile": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 0.26520220600014
+        },
+        "passed": false,
+        "status": "failed",
+        "test": {
+          "exit_code": 101,
+          "passed": false,
+          "status": "failed",
+          "wall_s": 0.2150603840000258
+        },
+        "wall_s": 0.48458324400053243
+      },
+      "ordinary": {
+        "compile": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 3.945285624999997
+        },
+        "passed": false,
+        "status": "failed",
+        "test": {
+          "exit_code": 101,
+          "passed": false,
+          "status": "failed",
+          "wall_s": 2.826962965000348
+        },
+        "wall_s": 6.807193595000172
+      },
+      "phase_budget_policy": "remaining_total_deadline",
+      "phases": {
+        "apply_candidate_s": 0.00033843500023067463,
+        "export_s": 3.3968091369997637,
+        "git_snapshot_s": 14.737941649999811,
+        "seed_copy_s": 0.06012644400016143,
+        "seed_validation_s": 0.08206894700015255,
+        "setup_s": 19.255560653999964
+      },
+      "preflight_wall_before_cleanup_s": null,
+      "retained_files_sha256": "e4b0c26e4940e6ef783201ff0da0a947f89c1f7e2feeeebacfa3056452d109bf",
+      "role": "base",
+      "run_id": "50943574-e270-493a-8962-f583ed71057b",
+      "schema": "openagents.delegation.final-checks.v1",
+      "scope": {
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.6437650219995703
+      },
+      "scope_validated": true,
+      "seed_policy": "cargo-reported-libraries-v1",
+      "snapshot_commit": "7c79bee9b172b70ea30af23ba0c2e9dbd414f616",
+      "source_archive_sha256": "2734e89f20d2be69a6793deb0e040655e8b0ed28248745b8ef7d5cac0c314498",
+      "source_commit": "f056853c6508581e5fc6f3c09a99edba6b05f212",
+      "source_mtime_policy": "changed_and_injected_only_verified_base_seed",
+      "status": "complete",
+      "target_seed_manifest_sha256": "eb906ef545d3f92993226929c941f5e388f448a8fd475b3196000cd6f66f954b",
+      "toolchain": {
+        "cargo": "cargo 1.97.1 (c980f4866 2026-06-30)",
+        "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)\nbinary: rustc\ncommit-hash: 8bab26f4f68e0e26f0bb7960be334d5b520ea452\ncommit-date: 2026-07-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.97.1\nLLVM version: 22.1.6"
+      },
+      "total_timeout_s": 240,
+      "total_wall_s": 26.73456987999998,
+      "wall_s": 26.669282965999628
+    },
+    {
+      "accepted": false,
+      "alias": "reserved-a",
+      "attempt": 2,
+      "bundle": "v2",
+      "calibration_classification": "expected_base_rejection",
+      "candidate_manifest_sha256": "212a0a22b8dbd1d099ffe3934022b05f4310728b3cc7e0b99826ae0eb9dd6824",
+      "candidate_symlinks": "rejected",
+      "checker_sha256": "49e196854c3be1f4d036385e9d33aed176decb61b151672197e7c6d7dc8fe7cc",
+      "checks_sha256": "18997f681bda5f6c439b15120ac5ea224c1968c35cf63dc4a832c929065a43d6",
+      "cleanup": {
+        "scratch_cleanup_outside_check_timer": true,
+        "scratch_cleanup_s": 0.9056739999996353,
+        "scratch_cleanup_status": "complete"
+      },
+      "completed": true,
+      "execution_closed": true,
+      "format": {
+        "exit_code": 0,
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.11445784699935757
+      },
+      "identity_validated": true,
+      "independent": {
+        "compile": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 0.21466396899995743
+        },
+        "passed": false,
+        "status": "failed",
+        "test": {
+          "exit_code": 101,
+          "passed": false,
+          "status": "failed",
+          "wall_s": 0.21488639600011084
+        },
+        "wall_s": 0.4336337160002586
+      },
+      "ordinary": {
+        "compile": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 3.0700664559999495
+        },
+        "passed": true,
+        "status": "passed",
+        "test": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 2.7694768139999724
+        },
+        "wall_s": 6.4279660699994565
+      },
+      "phase_budget_policy": "remaining_total_deadline",
+      "phases": {
+        "apply_candidate_s": 0.00013495300026988843,
+        "export_s": 3.4042492460002904,
+        "git_snapshot_s": 14.411190670999531,
+        "seed_copy_s": 0.019497023999974772,
+        "seed_validation_s": 0.04208387800008495,
+        "setup_s": 18.594955842000672
+      },
+      "preflight_wall_before_cleanup_s": 27.034351325999523,
+      "retained_files_sha256": "9c5d78817b1c54bf319c055aa878625dbf52de01ad561afb163c0598b1f5c661",
+      "role": "base",
+      "run_id": "be01d37a-ed27-4980-b063-b59883ad1cb6",
+      "schema": "openagents.delegation.final-checks.v1",
+      "scope": {
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.6154686300005778
+      },
+      "scope_validated": true,
+      "seed_policy": "cargo-reported-libraries-v1",
+      "snapshot_commit": "7c79bee9b172b70ea30af23ba0c2e9dbd414f616",
+      "source_archive_sha256": "2734e89f20d2be69a6793deb0e040655e8b0ed28248745b8ef7d5cac0c314498",
+      "source_commit": "f056853c6508581e5fc6f3c09a99edba6b05f212",
+      "source_mtime_policy": "changed_and_injected_only_verified_base_seed",
+      "status": "complete",
+      "target_seed_manifest_sha256": "37ea65315f28dbfeada623747af418d9e083818aaa1e26bcdebf7ddd861959cf",
+      "toolchain": {
+        "cargo": "cargo 1.97.1 (c980f4866 2026-06-30)",
+        "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)\nbinary: rustc\ncommit-hash: 8bab26f4f68e0e26f0bb7960be334d5b520ea452\ncommit-date: 2026-07-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.97.1\nLLVM version: 22.1.6",
+        "rustdoc": "rustdoc 1.97.1 (8bab26f4f 2026-07-14)\nbinary: rustdoc\ncommit-hash: 8bab26f4f68e0e26f0bb7960be334d5b520ea452\ncommit-date: 2026-07-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.97.1\nLLVM version: 22.1.6"
+      },
+      "total_timeout_s": 240,
+      "total_wall_s": 25.612682927000606,
+      "wall_s": 25.575815875000444
+    },
+    {
+      "accepted": true,
+      "alias": "reserved-a",
+      "attempt": 3,
+      "bundle": "v2",
+      "calibration_classification": "reference_accepted",
+      "candidate_manifest_sha256": "eedf188337ae9a94b85843324fb14bc36d2d80223b7787701380f9800c3fb316",
+      "candidate_symlinks": "rejected",
+      "checker_sha256": "49e196854c3be1f4d036385e9d33aed176decb61b151672197e7c6d7dc8fe7cc",
+      "checks_sha256": "350bd714f59755f91ee0343bcdb602e53244a8964f5e983b1d9b8f856f9a605f",
+      "cleanup": {
+        "scratch_cleanup_outside_check_timer": true,
+        "scratch_cleanup_s": 0.8579893569994965,
+        "scratch_cleanup_status": "complete"
+      },
+      "completed": true,
+      "execution_closed": true,
+      "format": {
+        "exit_code": 0,
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.11454469000000245
+      },
+      "identity_validated": true,
+      "independent": {
+        "compile": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 0.2147458330000518
+        },
+        "passed": true,
+        "status": "passed",
+        "test": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 0.21484668300035992
+        },
+        "wall_s": 0.43317095799920935
+      },
+      "ordinary": {
+        "compile": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 2.820025751000685
+        },
+        "passed": true,
+        "status": "passed",
+        "test": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 2.668710884000575
+        },
+        "wall_s": 5.519957100000283
+      },
+      "phase_budget_policy": "remaining_total_deadline",
+      "phases": {
+        "apply_candidate_s": 0.0008590400002503884,
+        "export_s": 3.49586202699993,
+        "git_snapshot_s": 14.784962759999871,
+        "seed_copy_s": 0.018896218999543635,
+        "seed_validation_s": 0.04269057600049564,
+        "setup_s": 19.171929557000112
+      },
+      "preflight_wall_before_cleanup_s": 26.553610590000062,
+      "retained_files_sha256": "91410713b9451ab7fb9cdcfebd52739191dcd0c16e7077e263dd18b33414e3c3",
+      "role": "reference",
+      "run_id": "e97e2356-af39-42cd-8d23-787c9ea4a16f",
+      "schema": "openagents.delegation.final-checks.v1",
+      "scope": {
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.6134443609998925
+      },
+      "scope_validated": true,
+      "seed_policy": "cargo-reported-libraries-v1",
+      "snapshot_commit": "7c79bee9b172b70ea30af23ba0c2e9dbd414f616",
+      "source_archive_sha256": "2734e89f20d2be69a6793deb0e040655e8b0ed28248745b8ef7d5cac0c314498",
+      "source_commit": "f056853c6508581e5fc6f3c09a99edba6b05f212",
+      "source_mtime_policy": "changed_and_injected_only_verified_base_seed",
+      "status": "complete",
+      "target_seed_manifest_sha256": "37ea65315f28dbfeada623747af418d9e083818aaa1e26bcdebf7ddd861959cf",
+      "toolchain": {
+        "cargo": "cargo 1.97.1 (c980f4866 2026-06-30)",
+        "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)\nbinary: rustc\ncommit-hash: 8bab26f4f68e0e26f0bb7960be334d5b520ea452\ncommit-date: 2026-07-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.97.1\nLLVM version: 22.1.6",
+        "rustdoc": "rustdoc 1.97.1 (8bab26f4f 2026-07-14)\nbinary: rustdoc\ncommit-hash: 8bab26f4f68e0e26f0bb7960be334d5b520ea452\ncommit-date: 2026-07-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.97.1\nLLVM version: 22.1.6"
+      },
+      "total_timeout_s": 240,
+      "total_wall_s": 25.322660496000026,
+      "wall_s": 25.24480479400063
+    },
+    {
+      "accepted": false,
+      "alias": "reserved-b",
+      "attempt": 4,
+      "bundle": "v2",
+      "calibration_classification": "historical_ordinary_test_failure",
+      "candidate_manifest_sha256": "0488f24323d6207c4e990c9c4b8f1fef7a174c8de96dd7dee43fe7a9f49a2652",
+      "candidate_symlinks": "rejected",
+      "checker_sha256": "848306b4956e095b19ccdb1d937280f20433d024232e86cf668f549c40e55529",
+      "checks_sha256": "360dd538aa27dcf9b966dfdac3e2ec726f8820cc96e3d96e567947e0f25fcdf9",
+      "cleanup": {
+        "scratch_cleanup_outside_check_timer": true,
+        "scratch_cleanup_s": 1.3611978099997941,
+        "scratch_cleanup_status": "complete"
+      },
+      "completed": true,
+      "execution_closed": true,
+      "format": {
+        "exit_code": 0,
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.7155169839998052
+      },
+      "identity_validated": true,
+      "independent": {
+        "compile": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 1.0684380390002843
+        },
+        "passed": false,
+        "status": "failed",
+        "test": {
+          "exit_code": 101,
+          "passed": false,
+          "status": "failed",
+          "wall_s": 0.3151434640003572
+        },
+        "wall_s": 1.3889774729996134
+      },
+      "ordinary": {
+        "compile": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 113.93714738100061
+        },
+        "passed": false,
+        "status": "failed",
+        "test": {
+          "exit_code": 101,
+          "passed": false,
+          "status": "failed",
+          "wall_s": 21.656179969999357
+        },
+        "wall_s": 135.59949127500022
+      },
+      "phase_budget_policy": "remaining_total_deadline",
+      "phases": {
+        "apply_candidate_s": 0.00013761799982603407,
+        "export_s": 3.736470886999996,
+        "git_snapshot_s": 14.835759001000042,
+        "seed_copy_s": 1.0402435759997388,
+        "seed_validation_s": 1.2434901070000706,
+        "setup_s": 22.999225787000796
+      },
+      "preflight_wall_before_cleanup_s": 162.30431169799976,
+      "retained_files_sha256": "eaabba8be8361d3c250ea911d9a47b5e6fe2f98938e6d0a543d52ce01d7c1b57",
+      "role": "base",
+      "run_id": "da00b302-8542-4ea9-9e6e-3014b9a4502b",
+      "schema": "openagents.delegation.final-checks.v1",
+      "scope": {
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.6411463080003159
+      },
+      "scope_validated": true,
+      "seed_policy": "cargo-reported-libraries-v1",
+      "snapshot_commit": "f17397eff36a2f4e6dd884f5bfa1f340bf3c9846",
+      "source_archive_sha256": "2a5b72fae36ee83a8cae3d2eb4cb96ca92038228299026477b84907b0afbeaec",
+      "source_commit": "b39787700107a1605b3412c8653fad887adfbbf8",
+      "source_mtime_policy": "changed_and_injected_only_verified_base_seed",
+      "status": "complete",
+      "target_seed_manifest_sha256": "ec467867eb8dacc3dfc0a3a7a05e35ff87d019fa95e52860ac0bf84b01747eb0",
+      "toolchain": {
+        "cargo": "cargo 1.97.1 (c980f4866 2026-06-30)",
+        "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)\nbinary: rustc\ncommit-hash: 8bab26f4f68e0e26f0bb7960be334d5b520ea452\ncommit-date: 2026-07-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.97.1\nLLVM version: 22.1.6",
+        "rustdoc": "rustdoc 1.97.1 (8bab26f4f 2026-07-14)\nbinary: rustdoc\ncommit-hash: 8bab26f4f68e0e26f0bb7960be334d5b520ea452\ncommit-date: 2026-07-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.97.1\nLLVM version: 22.1.6"
+      },
+      "total_timeout_s": 240,
+      "total_wall_s": 160.79312719999962,
+      "wall_s": 160.7084770880001
+    },
+    {
+      "accepted": false,
+      "alias": "reserved-b",
+      "attempt": 5,
+      "bundle": "v2",
+      "calibration_classification": "historical_ordinary_test_failure",
+      "candidate_manifest_sha256": "ede551bc3d1531e6af88ca6d5668ae3bb43b8b275357444fc6fa8532e151206b",
+      "candidate_symlinks": "rejected",
+      "checker_sha256": "848306b4956e095b19ccdb1d937280f20433d024232e86cf668f549c40e55529",
+      "checks_sha256": "0570afb0ab99385d6fcc43de1746c89527afd8c9c2c80fd94ea263f6c82c5910",
+      "cleanup": {
+        "scratch_cleanup_outside_check_timer": true,
+        "scratch_cleanup_s": 1.5649025509992498,
+        "scratch_cleanup_status": "complete"
+      },
+      "completed": true,
+      "execution_closed": true,
+      "format": {
+        "exit_code": 0,
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.7659839779998947
+      },
+      "identity_validated": true,
+      "independent": {
+        "compile": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 1.166728566000529
+        },
+        "passed": true,
+        "status": "passed",
+        "test": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 0.3149850379995769
+        },
+        "wall_s": 1.486750801999733
+      },
+      "ordinary": {
+        "compile": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 128.19750590999956
+        },
+        "passed": false,
+        "status": "failed",
+        "test": {
+          "exit_code": 101,
+          "passed": false,
+          "status": "failed",
+          "wall_s": 22.072450402999493
+        },
+        "wall_s": 150.46634537800037
+      },
+      "phase_budget_policy": "remaining_total_deadline",
+      "phases": {
+        "apply_candidate_s": 0.0012218629999551922,
+        "export_s": 3.5326004660000763,
+        "git_snapshot_s": 15.514089676999902,
+        "seed_copy_s": 1.6290350899998884,
+        "seed_validation_s": 1.4711485230000108,
+        "setup_s": 23.978453812000225
+      },
+      "preflight_wall_before_cleanup_s": 178.02100773199982,
+      "retained_files_sha256": "58080ac549359b7045d67d6c41e23ec317423cc3c4343733ab5a18ba3f9a9a3a",
+      "role": "reference",
+      "run_id": "bf788730-f2a5-4bae-983a-49b49c96e609",
+      "schema": "openagents.delegation.final-checks.v1",
+      "scope": {
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.6335734330004925
+      },
+      "scope_validated": true,
+      "seed_policy": "cargo-reported-libraries-v1",
+      "snapshot_commit": "f17397eff36a2f4e6dd884f5bfa1f340bf3c9846",
+      "source_archive_sha256": "2a5b72fae36ee83a8cae3d2eb4cb96ca92038228299026477b84907b0afbeaec",
+      "source_commit": "b39787700107a1605b3412c8653fad887adfbbf8",
+      "source_mtime_policy": "changed_and_injected_only_verified_base_seed",
+      "status": "complete",
+      "target_seed_manifest_sha256": "ec467867eb8dacc3dfc0a3a7a05e35ff87d019fa95e52860ac0bf84b01747eb0",
+      "toolchain": {
+        "cargo": "cargo 1.97.1 (c980f4866 2026-06-30)",
+        "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)\nbinary: rustc\ncommit-hash: 8bab26f4f68e0e26f0bb7960be334d5b520ea452\ncommit-date: 2026-07-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.97.1\nLLVM version: 22.1.6",
+        "rustdoc": "rustdoc 1.97.1 (8bab26f4f 2026-07-14)\nbinary: rustdoc\ncommit-hash: 8bab26f4f68e0e26f0bb7960be334d5b520ea452\ncommit-date: 2026-07-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.97.1\nLLVM version: 22.1.6"
+      },
+      "total_timeout_s": 240,
+      "total_wall_s": 176.74510981999993,
+      "wall_s": 176.703582266
+    }
+  ],
+  "bundles": [
+    {
+      "check_candidate_sha256": "5bd8c7ca23209191a8396c92b473d2b491fa2f4571c13352f60448467a765b73",
+      "id": "v1",
+      "sha256": "4dd7216b0540f5272ee8cdaac8cf7bc60551477f0941f53577fc50943b001d91"
+    },
+    {
+      "check_candidate_sha256": "f2c40fe470ccd92dbdcf4e9a72cfc03310583026a677114638e8355cdaa498ee",
+      "id": "v2",
+      "sha256": "dadda7b8ca160d7c93a49d14c1b33087482266f95e4ca497a5bd9f1258ce4255"
+    }
+  ],
+  "cargo_host": "Boat Linux x86_64",
+  "date": "2026-10-03",
+  "final_state": {
+    "agent3_lock_independently_reacquired_and_released": true,
+    "all_preflight_processes_exited": true,
+    "owned_reconstructed_workspaces_and_homes_absent": true,
+    "source_archives_and_trusted_seeds_preserved": true
+  },
+  "model_calls": 0,
+  "ordinary_failure": {
+    "alias": "reserved-b",
+    "eligibility": "ineligible_on_current_historical_snapshot",
+    "error_summary": "Executor boundary canonicalizes a turn artifact directory before that directory exists.",
+    "independent_checker": {
+      "base_passed": false,
+      "reference_passed": true
+    },
+    "later_ordinary_targets": "not reached after failing library target",
+    "observed_unit_test_results": {
+      "base": {
+        "failed": 1,
+        "ignored": 3,
+        "passed": 909
+      },
+      "reference": {
+        "failed": 1,
+        "ignored": 3,
+        "passed": 910
+      }
+    },
+    "present_in": [
+      "base",
+      "reference"
+    ],
+    "public_source_ordering": {
+      "boundary_called_at": "crates/coder-delegate/src/terminal.rs:494",
+      "directory_created_later_at": "crates/coder-delegate/src/terminal.rs:611",
+      "fixture_at": "crates/coder/src/delegate_door.rs:1701"
+    },
+    "source_commit": "b39787700107a1605b3412c8653fad887adfbbf8",
+    "source_modified_to_work_around_failure": false,
+    "test": "delegate_door::tests::the_permit_decides_whether_the_executor_may_write_and_a_follow_up_resumes",
+    "tests_skipped_to_work_around_failure": false
+  },
+  "pending": [
+    "reserved-c source and targeted historical-test eligibility check",
+    "reserved-d source and targeted historical-test eligibility check",
+    "Prospective replacement-task eligibility; preserve the strict ordinary-suite gate"
+  ],
+  "private_evidence": {
+    "bytes": 316068,
+    "contents_published": false,
+    "sha256": "411e4ef76e4d4c8e892134ee9d262470e3e44f66407ed35e138830dcb4e3934c"
+  },
+  "schema": "openagents.delegation.acceptance-preflight.v1",
+  "scored_runs": 0,
+  "status": "reserved_b_ineligible_under_strict_gate",
+  "timing_notes": [
+    "All phase command timings are measured wall time; compile commands include required compilation and relinking.",
+    "Outer total includes acceptance setup and checks. Export, Git snapshot, seed validation, and seed copy are nested within setup and must not be summed with it.",
+    "The private preflight wrapper also measures candidate preparation before invoking acceptance; preflight_wall_before_cleanup_s is available for corrected attempts.",
+    "Scratch cleanup happens only after durable artifacts and process closure, outside acceptance and preflight-before-cleanup timers.",
+    "The initial cleanup wall time is unknown, not zero. Its separate recovery cleanup is measured.",
+    "These are single no-model feasibility observations per case, not latency estimates for a population."
+  ],
+  "total_timeout_s": 240
+}

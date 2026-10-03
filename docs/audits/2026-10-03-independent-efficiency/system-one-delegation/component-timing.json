@@ -1,0 +1,57 @@
+{
+  "purpose": "Development component timing, before holdout task reveal",
+  "source_commit": "4705102273140a5f381fb75e17a29965662629c8",
+  "runs": [
+    {
+      "repetition": 1,
+      "exit_code": 0,
+      "process_wall_s": 0.639498584,
+      "reported_wall_s": 0.566832208,
+      "briefing_sha256": "eea433fd0c52795ecef81b6352bbe13aaa06e41985a13bef58ad2e839a351ca2",
+      "candidate_sha256": "d5c6bde6852bd8baa258968d071e8781831f936e5c2fe2d818d178a6fd1e36e0",
+      "briefing_bytes": 16130
+    },
+    {
+      "repetition": 2,
+      "exit_code": 0,
+      "process_wall_s": 0.640700208,
+      "reported_wall_s": 0.570225416,
+      "briefing_sha256": "eea433fd0c52795ecef81b6352bbe13aaa06e41985a13bef58ad2e839a351ca2",
+      "candidate_sha256": "d5c6bde6852bd8baa258968d071e8781831f936e5c2fe2d818d178a6fd1e36e0",
+      "briefing_bytes": 16130
+    },
+    {
+      "repetition": 3,
+      "exit_code": 0,
+      "process_wall_s": 0.6474569590000001,
+      "reported_wall_s": 0.5754254169999999,
+      "briefing_sha256": "eea433fd0c52795ecef81b6352bbe13aaa06e41985a13bef58ad2e839a351ca2",
+      "candidate_sha256": "d5c6bde6852bd8baa258968d071e8781831f936e5c2fe2d818d178a6fd1e36e0",
+      "briefing_bytes": 16130
+    },
+    {
+      "repetition": 4,
+      "exit_code": 0,
+      "process_wall_s": 0.6602427500000001,
+      "reported_wall_s": 0.588190333,
+      "briefing_sha256": "eea433fd0c52795ecef81b6352bbe13aaa06e41985a13bef58ad2e839a351ca2",
+      "candidate_sha256": "d5c6bde6852bd8baa258968d071e8781831f936e5c2fe2d818d178a6fd1e36e0",
+      "briefing_bytes": 16130
+    },
+    {
+      "repetition": 5,
+      "exit_code": 0,
+      "process_wall_s": 0.6362926670000002,
+      "reported_wall_s": 0.564790667,
+      "briefing_sha256": "eea433fd0c52795ecef81b6352bbe13aaa06e41985a13bef58ad2e839a351ca2",
+      "candidate_sha256": "d5c6bde6852bd8baa258968d071e8781831f936e5c2fe2d818d178a6fd1e36e0",
+      "briefing_bytes": 16130
+    }
+  ],
+  "preparation_script_sha256": "20868f9bbfdc3002a6345e9e4fddfa0b7cdb3e164e11d74af0ad488813389c6b",
+  "notes": [
+    "Warm OS caches and existing syntax index. Includes a new Python process and output writes.",
+    "No model calls. No executor improvement claim.",
+    "Cold syntax-index setup is separate; each timed call loads and verifies the source."
+  ]
+}

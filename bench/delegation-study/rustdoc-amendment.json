@@ -1,0 +1,63 @@
+{
+  "schema": "openagents.delegation.rustdoc-amendment.v1",
+  "model_calls": 0,
+  "cargo_commands": 0,
+  "rustdoc_path": "/usr/local/rustup/toolchains/1.97.1-x86_64-unknown-linux-gnu/bin/rustdoc",
+  "rustdoc_sha256": "3b0c7aef20e0dfdfe2dd19ddb0b40d3b744f76318a44031813f501e1912934df",
+  "rustdoc_version": "rustdoc 1.97.1 (8bab26f4f 2026-07-14)\nbinary: rustdoc\ncommit-hash: 8bab26f4f68e0e26f0bb7960be334d5b520ea452\ncommit-date: 2026-07-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.97.1\nLLVM version: 22.1.6",
+  "rows": [
+    {
+      "alias": "development",
+      "previous_manifest_sha256": "08511bd00f9f07173be6b636f17c93b6cc4c08f63341a1dc5dcc27fefa9add6d",
+      "seed_manifest_sha256": "9ebf9031e7a103f34d2bc3ea6e7a33dbf9f32f42a4ecde07703f7b324940e64d",
+      "files_unchanged": true,
+      "source_archive_unchanged": true,
+      "library_build_repeated": false,
+      "seed_files": 202,
+      "seed_bytes": 76553089
+    },
+    {
+      "alias": "reserved-a",
+      "previous_manifest_sha256": "eb906ef545d3f92993226929c941f5e388f448a8fd475b3196000cd6f66f954b",
+      "seed_manifest_sha256": "37ea65315f28dbfeada623747af418d9e083818aaa1e26bcdebf7ddd861959cf",
+      "files_unchanged": true,
+      "source_archive_unchanged": true,
+      "library_build_repeated": false,
+      "seed_files": 188,
+      "seed_bytes": 63410320
+    },
+    {
+      "alias": "reserved-b",
+      "previous_manifest_sha256": "dc98ede0abfc4dfe011d7ffe81c7337362ff925d4413d6e45a5caebbb9b069c9",
+      "seed_manifest_sha256": "ec467867eb8dacc3dfc0a3a7a05e35ff87d019fa95e52860ac0bf84b01747eb0",
+      "files_unchanged": true,
+      "source_archive_unchanged": true,
+      "library_build_repeated": false,
+      "seed_files": 3880,
+      "seed_bytes": 2551501963
+    },
+    {
+      "alias": "reserved-c",
+      "previous_manifest_sha256": "6501ff76b011765ed8ea8a67bce24fb3aebcd568e20657167783277396da0a07",
+      "seed_manifest_sha256": "b149dd060fdc9b54c2a9b27640df21509bc4e30b8cc2bd2c71b5337040204fbe",
+      "files_unchanged": true,
+      "source_archive_unchanged": true,
+      "library_build_repeated": false,
+      "seed_files": 3894,
+      "seed_bytes": 2600119555
+    },
+    {
+      "alias": "reserved-d",
+      "previous_manifest_sha256": "6e8554997d941439541f73e9ecd2097d3fe0ae385c3400e70b096a541f9ec7ab",
+      "seed_manifest_sha256": "0ff875a153f6ba0ca2d87508e28e2abd102d7ab19bd1455075d4d28cd6cd9f3c",
+      "files_unchanged": true,
+      "source_archive_unchanged": true,
+      "library_build_repeated": false,
+      "seed_files": 3894,
+      "seed_bytes": 2598775540
+    }
+  ],
+  "wall_s": 10.858543790000112,
+  "observed_unix": 1791016044.0338345,
+  "note": "Original build result.json and pre-rustdoc manifests remain retained. New manifests bind explicit rustdoc availability/version/hash without changing source or target bytes."
+}
