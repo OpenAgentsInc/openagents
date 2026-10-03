@@ -12,6 +12,32 @@ use crate::rule::{Rule, expand};
 /// A slot numbered past this is left over and belongs to class 1.
 pub const SLOTS: usize = 4;
 
+/// Names another task store than `~/.openagents/tasks`; Coder reads the
+/// same variable ([`crates/coder` `task::local::STORE_VAR`]).
+pub const STORE_VAR: &str = "OPENAGENTS_TASKS";
+
+/// The task store on this computer: `$OPENAGENTS_TASKS`, else
+/// `HOME/.openagents/tasks`. Coder and the background runner both use it,
+/// so they agree on where tasks, worktrees and target slots live.
+#[must_use]
+pub fn task_store(home: &Path) -> PathBuf {
+    std::env::var_os(STORE_VAR)
+        .filter(|dir| !dir.is_empty())
+        .map_or_else(|| home.join(".openagents/tasks"), PathBuf::from)
+}
+
+/// The folder Coder makes task worktrees in: beside the task store.
+#[must_use]
+pub fn task_worktrees(store: &Path) -> PathBuf {
+    store.parent().unwrap_or(store).join("worktrees")
+}
+
+/// The folder Coder keeps Cargo target slots in: beside the task store.
+#[must_use]
+pub fn task_targets(store: &Path) -> PathBuf {
+    store.parent().unwrap_or(store).join("targets")
+}
+
 /// The places one run reads and writes. Built from a canonical home, so a
 /// path built from it has no symbolic link in it unless one is on disk.
 #[derive(Clone, Debug)]
@@ -25,7 +51,7 @@ pub struct Layout {
 
 impl Layout {
     /// The layout under `home`, with the task store at `store` (default
-    /// `~/.openagents/tasks`).
+    /// `~/.openagents/tasks`; [`Layout::from_env`] reads [`task_store`]).
     ///
     /// # Errors
     /// The home cannot be resolved.
@@ -43,7 +69,8 @@ impl Layout {
         })
     }
 
-    /// This user's layout, from `HOME`.
+    /// This user's layout, from `HOME`, with the task store Coder uses
+    /// ([`task_store`]: `$OPENAGENTS_TASKS`, else `~/.openagents/tasks`).
     ///
     /// # Errors
     /// `HOME` is unset, relative, or unreadable.
@@ -52,7 +79,8 @@ impl Layout {
             .map(PathBuf::from)
             .filter(|home| home.is_absolute())
             .ok_or_else(|| std::io::Error::other("HOME must be an absolute path"))?;
-        Self::new(&home, None)
+        let store = task_store(&home);
+        Self::new(&home, Some(store))
     }
 
     #[must_use]
@@ -120,13 +148,15 @@ impl Layout {
     pub fn enabled_plugins(&self) -> PathBuf {
         self.extensions().join("enabled.json")
     }
+    /// Coder's target slots, beside the task store ([`task_targets`]).
     #[must_use]
     pub fn targets(&self) -> PathBuf {
-        self.openagents.join("targets")
+        task_targets(&self.store)
     }
+    /// Coder's task worktrees, beside the task store ([`task_worktrees`]).
     #[must_use]
     pub fn worktrees(&self) -> PathBuf {
-        self.openagents.join("worktrees")
+        task_worktrees(&self.store)
     }
     #[must_use]
     pub fn coder_one_target(&self) -> PathBuf {
@@ -190,15 +220,34 @@ impl Layout {
         deny
     }
 
-    /// The rule's allow roots, expanded.
+    /// The rule's allow roots, expanded. A rule names Coder's folders as
+    /// `~/.openagents/targets` and `~/.openagents/worktrees`; those roots
+    /// mean wherever this layout's task store keeps them.
     #[must_use]
     pub fn allow(&self, rule: &Rule) -> Vec<PathBuf> {
-        rule.safety
+        let targets = self.openagents.join("targets");
+        let worktrees = self.openagents.join("worktrees");
+        let mut roots = Vec::new();
+        for root in rule
+            .safety
             .allow
             .iter()
             .chain(rule.classes.judged.iter().map(|judged| &judged.path))
-            .map(|root| expand(root, &self.home))
-            .collect()
+        {
+            let root = expand(root, &self.home);
+            let moved = if root == targets {
+                Some(self.targets())
+            } else if root == worktrees {
+                Some(self.worktrees())
+            } else {
+                None
+            };
+            if let Some(moved) = moved.filter(|moved| *moved != root) {
+                roots.push(moved);
+            }
+            roots.push(root);
+        }
+        roots
     }
 
     /// Why `path` may not be deleted under `rule`, or `None` when it may:
@@ -433,6 +482,37 @@ pub fn bytes(n: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn coders_folders_sit_beside_any_task_store_and_rules_follow_them() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = dir.path().join("elsewhere/tasks");
+        std::fs::create_dir_all(&store).unwrap();
+        let layout = Layout::new(dir.path(), Some(store.clone())).unwrap();
+        let beside = store.canonicalize().unwrap().parent().unwrap().to_owned();
+        assert_eq!(layout.worktrees(), beside.join("worktrees"));
+        assert_eq!(layout.targets(), beside.join("targets"));
+        assert_eq!(layout.worktrees(), task_worktrees(&layout.store));
+        assert_eq!(layout.targets(), task_targets(&layout.store));
+        // The default rules name `~/.openagents/{targets,worktrees}`; they
+        // mean the store's folders, which may now be cleaned.
+        let rule = crate::rule::disk();
+        let slot = layout.targets().join("p-slot-9");
+        let tree = layout.worktrees().join("t");
+        std::fs::create_dir_all(&slot).unwrap();
+        std::fs::create_dir_all(&tree).unwrap();
+        assert_eq!(layout.refuse(&rule, &slot), None);
+        assert_eq!(layout.refuse(&rule, &tree), None);
+        // The task store itself stays denied wherever it is.
+        assert_eq!(
+            layout.refuse(&rule, &layout.store),
+            Some("outside the allowed folders")
+        );
+        // The default layout keeps them under `~/.openagents`.
+        let home = Layout::new(dir.path(), None).unwrap();
+        assert_eq!(home.worktrees(), home.openagents.join("worktrees"));
+        assert_eq!(home.targets(), home.openagents.join("targets"));
+    }
 
     #[test]
     fn deny_wins_and_symlinks_are_refused() {

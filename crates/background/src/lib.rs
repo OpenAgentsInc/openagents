@@ -45,7 +45,7 @@ pub mod store;
 pub mod view;
 pub mod volume;
 
-pub use paths::{Layout, SLOTS};
+pub use paths::{Layout, SLOTS, task_store, task_targets, task_worktrees};
 pub use plan::{Env, Facts, Plan, TaskFact};
 pub use rule::{Class, Rule};
 pub use run::{Cause, Record, Report};

@@ -67,7 +67,7 @@ pub const ROUTES: [(Provider, &str); 3] = [
     (Provider::Grok, acp_client::grok::DEFAULT_MODEL),
 ];
 /// Names another task store than [`default_store`].
-pub const STORE_VAR: &str = "OPENAGENTS_TASKS";
+pub const STORE_VAR: &str = background::paths::STORE_VAR;
 /// Names the engine (`microcoder`) instead of the one beside the running
 /// program or in `~/.openagents/bin`.
 pub const CONTROLLER_VAR: &str = "OPENAGENTS_CODER_CONTROLLER";
@@ -88,12 +88,9 @@ const ADMISSION_WAIT: u64 = 120;
 /// computer use by default.
 #[must_use]
 pub fn default_store() -> PathBuf {
-    if let Some(dir) = std::env::var_os(STORE_VAR).filter(|v| !v.is_empty()) {
-        return PathBuf::from(dir);
-    }
-    std::env::var_os("HOME")
-        .map_or_else(|| PathBuf::from("."), PathBuf::from)
-        .join(".openagents/tasks")
+    background::task_store(
+        &std::env::var_os("HOME").map_or_else(|| PathBuf::from("."), PathBuf::from),
+    )
 }
 
 /// The engine that runs a turn: `$OPENAGENTS_CODER_CONTROLLER`, else the
@@ -412,10 +409,7 @@ impl Local {
     /// engine started as a detached process.
     #[must_use]
     pub fn new(store: PathBuf) -> Self {
-        let worktrees = store.parent().map_or_else(
-            || store.join("worktrees"),
-            |parent| parent.join("worktrees"),
-        );
+        let worktrees = background::task_worktrees(&store);
         Local {
             store,
             worktrees,

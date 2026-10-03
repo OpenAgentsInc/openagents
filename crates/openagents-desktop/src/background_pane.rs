@@ -112,12 +112,11 @@ pub fn latest(layout: &background::Layout) -> Option<(u64, String)> {
         .max_by_key(|(at, _)| *at)
 }
 
-/// This user's layout, from `HOME`.
+/// This user's layout, from `HOME` and the task store Coder uses.
 #[cfg(unix)]
 #[must_use]
 pub fn here() -> Option<background::Layout> {
-    let home = std::env::var_os("HOME")?;
-    background::Layout::new(std::path::Path::new(&home), None).ok()
+    background::Layout::from_env().ok()
 }
 
 #[cfg(all(test, unix))]

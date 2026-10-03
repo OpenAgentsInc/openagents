@@ -9,7 +9,7 @@ const SLOTS: usize = background::SLOTS;
 const BUDGET: u64 = 64 * 1024 * 1024 * 1024;
 
 fn root(store: &Path) -> PathBuf {
-    store.parent().unwrap_or(store).join("targets")
+    background::task_targets(store)
 }
 
 /// A slot held for the entire run. The stable lock file is never removed.

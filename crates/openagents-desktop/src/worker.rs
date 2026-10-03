@@ -465,8 +465,7 @@ impl HostLane {
     fn watchers(&self) -> Vec<String> {
         #[cfg(unix)]
         if self.fake.is_none()
-            && let Some(home) = std::env::var_os("HOME")
-            && let Ok(layout) = background::Layout::new(std::path::Path::new(&home), None)
+            && let Ok(layout) = background::Layout::from_env()
         {
             return background::view::watchers(&layout);
         }
