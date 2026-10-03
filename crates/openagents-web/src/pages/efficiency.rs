@@ -42,7 +42,9 @@ fn estimate(v: &Value, f: fn(f64) -> String) -> String {
     }
 }
 
-fn arms_table(study: &Value, arms: &Value) -> String {
+/// `ratios`: the ratio columns, which compare whole arms, so only the
+/// whole study's table has them.
+fn arms_table(study: &Value, arms: &Value, ratios: bool) -> String {
     let comparison = |arm: &str| {
         study["comparisons"]
             .as_array()
@@ -59,7 +61,7 @@ fn arms_table(study: &Value, arms: &Value) -> String {
         let c = comparison(arm);
         let base = arm == efficiency::BASELINE;
         rows.push_str(&format!(
-            "<tr><th scope=\"row\">{}</th><td>{}</td><td>{}/{} {}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+            "<tr><th scope=\"row\">{}</th><td>{}</td><td>{}/{} {}</td><td>{}</td><td>{}</td>{}</tr>",
             escape(efficiency::arm_label(arm)),
             a["n"],
             a["passed"],
@@ -70,16 +72,26 @@ fn arms_table(study: &Value, arms: &Value) -> String {
             },
             estimate(&a["cost_per_checked_usd"], |x| format!("${x:.3}")),
             estimate(&a["time_to_checked_s"], |x| format!("{x:.0} s")),
-            if base { "1 (baseline)".into() } else { ratio(&c["cost_ratio"]) },
-            if base { "1 (baseline)".into() } else { ratio(&c["time_ratio"]) },
+            if !ratios {
+                String::new()
+            } else if base {
+                "<td>1 (baseline)</td><td>1 (baseline)</td>".into()
+            } else {
+                format!("<td>{}</td><td>{}</td>", ratio(&c["cost_ratio"]), ratio(&c["time_ratio"]))
+            },
         ));
     }
     format!(
         "<table><thead><tr><th scope=\"col\">Arm</th><th scope=\"col\">Runs</th>\
 <th scope=\"col\">Passed (95%)</th><th scope=\"col\">Cost per checked result (95%)</th>\
-<th scope=\"col\">Time to a checked result, median (95%)</th>\
-<th scope=\"col\">Cost against raw Claude Code</th><th scope=\"col\">Time against raw Claude Code</th>\
-</tr></thead><tbody>{rows}</tbody></table>"
+<th scope=\"col\">Time to a checked result, median (95%)</th>{}\
+</tr></thead><tbody>{rows}</tbody></table>",
+        if ratios {
+            "<th scope=\"col\">Cost against raw Claude Code (95%)</th>\
+<th scope=\"col\">Time against raw Claude Code (95%)</th>"
+        } else {
+            ""
+        }
     )
 }
 
@@ -93,14 +105,14 @@ fn study_section(study: &Value, latest: bool) -> String {
         escape(study["source"].as_str().unwrap_or("")),
         h = if latest { 2 } else { 3 },
     );
-    out.push_str(&arms_table(study, &study["arms"]));
+    out.push_str(&arms_table(study, &study["arms"], true));
     if latest {
         for class in study["classes"].as_array().into_iter().flatten() {
             out.push_str(&format!(
                 "<h3>Class: {}</h3>",
                 escape(class["class"].as_str().unwrap_or(""))
             ));
-            out.push_str(&arms_table(study, &class["arms"]));
+            out.push_str(&arms_table(study, &class["arms"], false));
         }
     }
     out
