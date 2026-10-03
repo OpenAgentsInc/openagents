@@ -458,7 +458,7 @@ fn pause(wait: Duration, hooks: &dyn Hooks) -> bool {
 fn workspace_wide(path: &str) -> bool {
     matches!(
         path,
-        "Cargo.toml" | "Cargo.lock" | "rust-toolchain" | "rust-toolchain.toml" | "build.rs"
+        "Cargo.toml" | "rust-toolchain" | "rust-toolchain.toml" | "build.rs"
     ) || path.starts_with(".cargo/")
 }
 
@@ -466,6 +466,8 @@ fn workspace_wide(path: &str) -> bool {
 /// rebased onto `upstream` at `worktree`'s `HEAD`, or `None` when they
 /// cannot, so its checks need not run again:
 ///
+/// - the run changes `Cargo.lock`, or landed lockfile changes alter its packages'
+///   transitive resolution (or that resolution cannot be read) → they can;
 /// - they touch a workspace-wide build file → they can;
 /// - they touch one of the change's packages, a package those depend on, or one that
 ///   depends on them (tests and dev-dependencies included) → they can;
@@ -492,13 +494,36 @@ pub fn affects(worktree: &Path, base: &str, upstream: &str) -> Option<String> {
     }
     let change = git(worktree, &["diff", "--name-only", upstream, "HEAD"]).unwrap_or_default();
     let change_files: Vec<String> = change.lines().map(str::to_owned).collect();
+    if change_files.iter().any(|file| file == "Cargo.lock") {
+        return Some(
+            "the change itself touches `Cargo.lock`, which every package builds with".into(),
+        );
+    }
+    let change_packages = packages(worktree, &change_files);
+    if landed_files.iter().any(|file| file == "Cargo.lock") && !change_packages.is_empty() {
+        let resolution = || {
+            let before = git(worktree, &["show", &format!("{base}:Cargo.lock")]).ok()?;
+            let after = git(worktree, &["show", &format!("{upstream}:Cargo.lock")]).ok()?;
+            Some(
+                lock_resolution(&before, &change_packages)?
+                    == lock_resolution(&after, &change_packages)?,
+            )
+        };
+        match resolution() {
+            Some(true) => {}
+            Some(false) => return Some(format!(
+                "they change `Cargo.lock` and the transitive dependency resolution of {}",
+                names(&change_packages)
+            )),
+            None => return Some("they change `Cargo.lock`, and the change's dependency resolution could not be read".into()),
+        }
+    }
     if let Some(file) = landed_files.iter().find(|f| workspace_wide(f)) {
         return Some(format!(
             "they change `{file}`, which every package builds with"
         ));
     }
     let landed_packages = packages(worktree, &landed_files);
-    let change_packages = packages(worktree, &change_files);
     let outside = change_files
         .iter()
         .any(|file| packages(worktree, std::slice::from_ref(file)).is_empty());
@@ -536,6 +561,85 @@ pub fn affects(worktree: &Path, base: &str, upstream: &str) -> Option<String> {
             names(&change_packages)
         ))
     }
+}
+
+/// The resolved transitive packages for each changed workspace package. Cargo's
+/// lockfile includes normal, build, and dev dependencies, including target-specific
+/// dependencies. Compare identities, checksums, and edges, not ordering or comments.
+/// Missing or ambiguous references refuse the optimization rather than guessing.
+fn lock_resolution(
+    text: &str,
+    roots: &[String],
+) -> Option<Vec<std::collections::BTreeSet<String>>> {
+    let lock: toml::Value = toml::from_str(text).ok()?;
+    let packages = lock.get("package")?.as_array()?;
+    let identity = |package: &toml::Value| -> Option<String> {
+        let name = package.get("name")?.as_str()?;
+        let version = package.get("version")?.as_str()?;
+        let source = package.get("source").and_then(toml::Value::as_str);
+        Some(match source {
+            Some(source) => format!("{name} {version} ({source})"),
+            None => format!("{name} {version}"),
+        })
+    };
+    let ids: Vec<String> = packages.iter().map(identity).collect::<Option<_>>()?;
+    let resolve = |reference: &str| -> Option<usize> {
+        let matches: Vec<_> = ids
+            .iter()
+            .enumerate()
+            .filter(|(_, id)| {
+                *id == reference
+                    || id
+                        .strip_prefix(reference)
+                        .is_some_and(|rest| rest.starts_with(' '))
+            })
+            .map(|(index, _)| index)
+            .collect();
+        (matches.len() == 1).then(|| matches[0])
+    };
+    roots
+        .iter()
+        .map(|root| {
+            let matches: Vec<_> = packages
+                .iter()
+                .enumerate()
+                .filter(|(_, package)| {
+                    package.get("name").and_then(toml::Value::as_str) == Some(root.as_str())
+                        && package.get("source").is_none()
+                })
+                .map(|(index, _)| index)
+                .collect();
+            if matches.len() != 1 {
+                return None;
+            }
+            let mut next = matches;
+            let mut seen = std::collections::BTreeSet::new();
+            let mut resolved = std::collections::BTreeSet::new();
+            while let Some(index) = next.pop() {
+                if !seen.insert(index) {
+                    continue;
+                }
+                let package = &packages[index];
+                let mut edges = std::collections::BTreeSet::new();
+                if let Some(dependencies) = package.get("dependencies") {
+                    for dependency in dependencies.as_array()? {
+                        let dependency = resolve(dependency.as_str()?)?;
+                        edges.insert(ids[dependency].clone());
+                        next.push(dependency);
+                    }
+                }
+                let checksum = match package.get("checksum") {
+                    Some(value) => value.as_str()?,
+                    None => "",
+                };
+                resolved.insert(format!(
+                    "{} checksum={checksum} dependencies={edges:?}",
+                    ids[index]
+                ));
+            }
+            Some(resolved)
+        })
+        .collect()
 }
 
 /// The workspace packages `files` are in.

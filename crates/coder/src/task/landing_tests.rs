@@ -567,3 +567,92 @@ fn the_checks_run_outside_the_landing_lock_so_others_land_meanwhile() {
     );
     assert_eq!(run(&remote, &["rev-list", "--count", "main"]), "4");
 }
+
+const LOCK_BEFORE: &str = include_str!("../../tests/fixtures/landing/before.lock");
+const LOCK_UNRELATED: &str = include_str!("../../tests/fixtures/landing/unrelated.lock");
+const LOCK_TRANSITIVE: &str = include_str!("../../tests/fixtures/landing/transitive.lock");
+
+#[test]
+fn lockfile_resolution_compares_transitive_versions_sources_checksums_and_edges() {
+    let roots = vec!["a".into()];
+    let before = lock_resolution(LOCK_BEFORE, &roots).unwrap();
+    assert_eq!(
+        Some(before.clone()),
+        lock_resolution(LOCK_UNRELATED, &roots)
+    );
+    assert_ne!(
+        Some(before.clone()),
+        lock_resolution(LOCK_TRANSITIVE, &roots)
+    );
+    for after in [
+        LOCK_BEFORE.replace("checksum = \"1111\"", "checksum = \"changed\""),
+        LOCK_BEFORE.replace(
+            "registry+https://github.com/rust-lang/crates.io-index",
+            "git+https://example.com/dependency#abcd",
+        ),
+        LOCK_BEFORE.replace("dependencies = [\"shared 1.0.0\"]", "dependencies = []"),
+    ] {
+        assert_ne!(Some(before.clone()), lock_resolution(&after, &roots));
+    }
+    assert_eq!(
+        Some(before),
+        lock_resolution(&format!("# comment\n{LOCK_BEFORE}"), &roots)
+    );
+    for bad in [
+        "invalid",
+        &LOCK_BEFORE.replace("shared 1.0.0", "missing"),
+        &LOCK_BEFORE.replace("shared 1.0.0", "shared"),
+    ] {
+        assert!(lock_resolution(bad, &roots).is_none());
+    }
+    assert!(lock_resolution(LOCK_BEFORE, &["missing".into()]).is_none());
+}
+
+#[test]
+fn landing_lockfile_changes_only_recheck_affected_runs() {
+    for (after, changed, own_lock, checks) in [
+        (LOCK_UNRELATED, "crates/a/src/new.rs", false, 0),
+        (LOCK_TRANSITIVE, "crates/a/src/new.rs", false, 1),
+        (LOCK_UNRELATED, "crates/b/src/new.rs", false, 1),
+        ("invalid", "crates/a/src/new.rs", false, 1),
+        (LOCK_UNRELATED, "docs/new.md", false, 0),
+        (LOCK_UNRELATED, "crates/a/src/new.rs", true, 1),
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let remote = origin(dir.path());
+        let seed = dir.path().join("seed");
+        write(&seed, "Cargo.lock", LOCK_BEFORE);
+        run(&seed, &["add", "-f", "Cargo.lock"]);
+        run(&seed, &["commit", "-qm", "fixture lockfile"]);
+        run(
+            &seed,
+            &["push", "-q", remote.to_str().unwrap(), "HEAD:main"],
+        );
+        let worktree = host(dir.path(), &remote, "run", changed, "// change\n");
+        if own_lock {
+            write(
+                &worktree,
+                "Cargo.lock",
+                &format!("# run changes lockfile\n{LOCK_BEFORE}"),
+            );
+            run(&worktree, &["commit", "-qam", "run lockfile change"]);
+        }
+        let other = host(dir.path(), &remote, "other", "Cargo.lock", after);
+        run(&other, &["push", "-q", "origin", "HEAD:main"]);
+        let mut hooks = Counting::default();
+        let landed = land(&plan(&worktree), &mut hooks).unwrap();
+        assert_eq!(
+            hooks.checks, checks,
+            "{changed}, own_lock={own_lock}: {:?}",
+            landed.attempts
+        );
+        if own_lock {
+            assert!(
+                hooks
+                    .notes
+                    .iter()
+                    .any(|note| note.contains("itself touches `Cargo.lock`"))
+            );
+        }
+    }
+}

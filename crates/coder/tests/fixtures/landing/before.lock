@@ -1,0 +1,34 @@
+version = 4
+
+[[package]]
+name = "a"
+version = "0.1.0"
+dependencies = ["c"]
+
+[[package]]
+name = "b"
+version = "0.1.0"
+dependencies = ["other"]
+
+[[package]]
+name = "c"
+version = "0.1.0"
+dependencies = ["shared 1.0.0"]
+
+[[package]]
+name = "shared"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1111"
+
+[[package]]
+name = "shared"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2222"
+
+[[package]]
+name = "other"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3333"
