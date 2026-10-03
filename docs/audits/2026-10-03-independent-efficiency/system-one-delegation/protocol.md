@@ -155,11 +155,15 @@ The original draft selects one `coder-boundary` task and three `coder` tasks
 across at least three behavioral families. All four are previously unused in
 the scored experiments. The full [A/B](acceptance-preflight.md) and
 [C/D](eligibility-cd.md) preflights qualify only A under the unchanged gate.
-Replacement selection is pending; retain the original manifest and draft
-schedule and bind any replacement in a separate prospective record before
-scoring. Do not choose replacements using briefing quality or executor outcomes.
-The original concentration within two crates limits transfer claims:
-there is no broad repository-level generalization. Each task needs a clean
+The [replacement record](replacement-panel.json) adopts A and qualified
+alpha, beta, and gamma in a separate [manifest](replacement-public-task-manifest.json)
+and [draft schedule](replacement-draft-schedule.json). The original manifest
+and schedule remain retained. Selection uses public scope, source provenance,
+and eligibility; no scored executor outcomes exist. The preparation policy
+remains frozen. Beta and gamma are older than the initial recent-week window
+and have no observed clean Claude launch. These small historical library tasks
+do not establish broad repository or large-workspace generalization.
+Each task needs a clean
 pre-fix source, a verifiable original public requirement,
 a known reference fix, and offline Linux checks. Exclude earlier development,
 held-out, reserve, and standing tasks, including trivial variants. New to
@@ -211,6 +215,13 @@ reserved aliases, six arms, and two repetitions with seed 20261003. Its
 [provenance](draft-schedule-provenance.json) binds the new study UUID, generator,
 and output bytes. It remains unsealed and cannot authorize execution; funded
 provider preflights and all final bindings are still required.
+
+The replacement draft uses a separate study UUID and the same seed and
+randomization procedure for A, alpha, beta, and gamma. Its 48 attempt identities
+are distinct from the original draft. The [replacement record](replacement-panel.json)
+binds both drafts and their manifests. This prospective task substitution
+changes no treatment, quality gate, threshold, budget, or deadline and
+grants no execution authority.
 
 The single-trial coordinator holds one local execution slot and uses only the
 canonical `runs/RUN_UUID` directory below its registration. It verifies fixed

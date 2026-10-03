@@ -1,0 +1,6 @@
+{
+  "number": 9425,
+  "title": "[P2][Audit A13] Recover torn traces while enforcing strict grading integrity",
+  "body": "Fix public audit finding A13 in `crates/atif` and its `crates/coderbench` consumer. Read newline-delimited bytes before UTF-8 decoding so a torn final multibyte record preserves the valid prefix for interactive viewing. Report unreadable records and interruption, and distinguish tolerant recovery from the stronger integrity needed for benchmark evidence. Specify and enforce lifecycle behavior for repeated session headers or end records, records after end, append after closure, and malformed interior records. Add property or table-driven tests truncating a non-ASCII final record at every byte. Strict CoderBench ingestion must reject or mark damaged or incomplete evidence unverifiable and must not convert recovery into a successful grade. Preserve valid ATIF fixture compatibility and the retained transcript archive. Read `docs/coder/traces.md`. Work only within `crates/atif/` and `crates/coderbench/`; run their ordinary tests and formatting checks. Documentation outside these packages and operational work are outside this isolated trial.",
+  "url": "https://github.com/OpenAgentsInc/openagents/issues/9425"
+}

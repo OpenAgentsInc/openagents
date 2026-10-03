@@ -1,0 +1,75 @@
+{
+  "schema": "openagents.delegation-study.preparation.v1",
+  "source_commit": "7ec5f6e83d018ab2f25d7a61ff695de81f2f55f6",
+  "policy": "syntax-units-v2",
+  "mode": "deterministic",
+  "issue_sha256": "fa79e041e8c2887c0195edf63b00dfd9dbc5ca9ffffd8ae65bedf8cfa1c74b50",
+  "index_sha256": "fa1d68360f8b877a2e84ec5b360b9ae8397908105c3ae4fa19c27f8d94b9a002",
+  "script_sha256": "20868f9bbfdc3002a6345e9e4fddfa0b7cdb3e164e11d74af0ad488813389c6b",
+  "briefing_sha256": "0419be1669cd47959774220e48d9a598e37b90d366e81b9e0bc5f1f1365e62aa",
+  "briefing_bytes": 16239,
+  "selection": [
+    "c01",
+    "c02",
+    "c03",
+    "c04",
+    "c05",
+    "c06",
+    "c07",
+    "c08",
+    "c09"
+  ],
+  "candidate_sha256": "4735a830eb03204052074f4679c498eef9924b086857a81deaf32efeb257f65a",
+  "coverage": {
+    "files_read": 24,
+    "eligible_units": 1325,
+    "candidate_units": 16,
+    "oversized_units": [
+      {
+        "path": "docs/audits/2026-09-19-codebase-audit/reproduce.rs",
+        "name": "main",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder/src/delegate.rs",
+        "name": "Delegator::run",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/gym/src/ab.rs",
+        "name": "Rule::v2",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/nostr-relay/src/store/mod.rs",
+        "name": "Store::admit_inner",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/nostr-relay/src/store/mod.rs",
+        "name": "Store::manage",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder/src/main.rs",
+        "name": "run",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/gym/src/row.rs",
+        "name": "Row",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder/src/agent.rs",
+        "name": "Agent::turn",
+        "reason": "unit exceeds 6000 bytes"
+      }
+    ],
+    "pool_policy": "24 lexically ranked Rust files; up to 32 complete declarations; 28 KiB state"
+  },
+  "system_one": null,
+  "source_selection_wall_s": 0.206773111000075,
+  "wall_s": 0.20859452900003816,
+  "index_build_accounting": "Separate shared cold preparation; the timed call includes index load and source validation."
+}

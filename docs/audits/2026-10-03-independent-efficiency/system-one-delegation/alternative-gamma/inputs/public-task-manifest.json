@@ -1,0 +1,58 @@
+{
+  "contains_hidden_checkers": false,
+  "contains_reference_solutions": false,
+  "created_at": "2026-10-03T09:41:54.636028+00:00",
+  "schema": "openagents.delegation-study.public-task-manifest.v1",
+  "status": "qualified prospective replacement; registration remains separate",
+  "tasks": [
+    {
+      "allowed_paths": [
+        "crates/jev/"
+      ],
+      "applicable_instruction_paths": [
+        {
+          "path": "AGENTS.md",
+          "sha256": "5fcc28a615f7106cf82e0a67e25283af6b907d75908a9cfa3faa10a83a9c0215"
+        },
+        {
+          "path": ".agents/skills/google-developer-style/SKILL.md",
+          "sha256": "afb103c87f283e88ea33a1439a11fb1838a17970760b8ecc59bf2f9d89fb0197"
+        },
+        {
+          "path": ".agents/skills/typesafe-ai/SKILL.md",
+          "sha256": "71ea90d7906c6554c4f4c460ef7361b2d26f59116ccdae986dc6d997b9389f52"
+        }
+      ],
+      "cargo_features": [
+        "jev/blocking"
+      ],
+      "id": "alternative-gamma",
+      "issue": 9424,
+      "packages": [
+        "jev"
+      ],
+      "prompt": "Implement the remaining A12 portion of public issue 9424 in `crates/jev`. Validate finite numeric ranges, probability mass within a documented tolerance, selected option identities, and score legend bounds before returning typed decisions. At the typed request-aware boundary, validate required answer coverage, answer types, and option identities. Invalid answers must return structured validation errors; preserve a separate raw compatibility path. Cover Noul, Choice, and Score malformed responses and valid compatibility cases through async and blocking clients with bounded local mocks. Read `.agents/skills/typesafe-ai/SKILL.md` and the pinned `docs/decision-models/2026-09-20-score-contract.md`; preserve that selected-answer and calibrated-score contract when interpreting confidence and probabilities. This task does not choose model thresholds or call a provider. A22 whole-call deadlines are already implemented at this source and are outside this task. Work only within `crates/jev/`; run ordinary tests with `--features jev/blocking` and formatting checks. Do not enable the live feature. Broader consumer regression checks and deployment are outside this isolated SDK trial.",
+      "public_requirement_provenance": {
+        "historical_window_limit": "Older than the initial recent-week search; admitted by the second bounded screen before any scored executor calls.",
+        "instruction_scope": "The registered isolated task gate replaces broader historical workspace verification or deployment instructions.",
+        "issue_body_sha256": "d845475194ca65eb78804b5328ae010ecf2d28fa27607e9a5a8e4bb7802f1e8f",
+        "issue_body_version_note": "Retrieved public body retained; issue edit history was not reconstructed, so byte identity with the original assignment is not claimed.",
+        "issue_record_sha256": "3d77c368726126e6591149337962960b2dcd75572c94b6ea27d8442f0ba11248",
+        "observed_clean_claude_launch": false,
+        "provenance_class": "public_issue_native_trial_not_observed_session_replay",
+        "public_issue_observed_on": "2026-10-03",
+        "scope": "Remaining A12 portion of a two-finding public issue: validate typed numeric answers and request-aware type/coverage/option identity while retaining raw compatibility. A22 retry deadline is already present in the selected source; do not count this as replaying the whole original issue.",
+        "source_policy": "Use the exact reference parent for a new native trial. This is a reconstructed pre-fix revision, not an observed agent launch. The issue audit source is retained separately.",
+        "url": "https://github.com/OpenAgentsInc/openagents/issues/9424"
+      },
+      "required_public_readings": [
+        {
+          "path": "docs/decision-models/2026-09-20-score-contract.md",
+          "sha256": "a8c612095723bf3599ae4d618aeff8ae18e3b5a05e868c07f26e623126e20c60"
+        }
+      ],
+      "source_commit": "c427943a5c84ba5938a3549f24b27de551812a37",
+      "title": "[P2][Audit A12, A22] Validate decision responses and enforce whole-call SDK deadlines"
+    }
+  ]
+}

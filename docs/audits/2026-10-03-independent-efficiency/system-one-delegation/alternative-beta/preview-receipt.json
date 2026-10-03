@@ -1,0 +1,92 @@
+{
+  "schema": "openagents.delegation.alternative-preview.v1",
+  "task_id": "alternative-beta",
+  "source_commit": "7ec5f6e83d018ab2f25d7a61ff695de81f2f55f6",
+  "started_at": "2026-10-03T09:43:12.250201+00:00",
+  "status": "complete",
+  "index": {
+    "process_wall_s": 0.5646898869999859,
+    "exit_code": 0,
+    "sha256": "fa1d68360f8b877a2e84ec5b360b9ae8397908105c3ae4fa19c27f8d94b9a002",
+    "bytes": 3845754,
+    "indexed_files": 486
+  },
+  "preview": {
+    "process_wall_s": 0.26419975600038015,
+    "exit_code": 0,
+    "reported_wall_s": 0.20859452900003816,
+    "source_selection_wall_s": 0.206773111000075,
+    "briefing_bytes": 16239,
+    "briefing_sha256": "0419be1669cd47959774220e48d9a598e37b90d366e81b9e0bc5f1f1365e62aa",
+    "preparation_sha256": "99280eb9bb57bb03ba7afd873e5c3baf0b95b8be60a72ba1246ad5626cda781e",
+    "candidate_sha256": "4735a830eb03204052074f4679c498eef9924b086857a81deaf32efeb257f65a",
+    "policy": "syntax-units-v2",
+    "coverage": {
+      "files_read": 24,
+      "eligible_units": 1325,
+      "candidate_units": 16,
+      "oversized_units": [
+        {
+          "path": "docs/audits/2026-09-19-codebase-audit/reproduce.rs",
+          "name": "main",
+          "reason": "unit exceeds 6000 bytes"
+        },
+        {
+          "path": "crates/coder/src/delegate.rs",
+          "name": "Delegator::run",
+          "reason": "unit exceeds 6000 bytes"
+        },
+        {
+          "path": "crates/gym/src/ab.rs",
+          "name": "Rule::v2",
+          "reason": "unit exceeds 6000 bytes"
+        },
+        {
+          "path": "crates/nostr-relay/src/store/mod.rs",
+          "name": "Store::admit_inner",
+          "reason": "unit exceeds 6000 bytes"
+        },
+        {
+          "path": "crates/nostr-relay/src/store/mod.rs",
+          "name": "Store::manage",
+          "reason": "unit exceeds 6000 bytes"
+        },
+        {
+          "path": "crates/coder/src/main.rs",
+          "name": "run",
+          "reason": "unit exceeds 6000 bytes"
+        },
+        {
+          "path": "crates/gym/src/row.rs",
+          "name": "Row",
+          "reason": "unit exceeds 6000 bytes"
+        },
+        {
+          "path": "crates/coder/src/agent.rs",
+          "name": "Agent::turn",
+          "reason": "unit exceeds 6000 bytes"
+        }
+      ],
+      "pool_policy": "24 lexically ranked Rust files; up to 32 complete declarations; 28 KiB state"
+    },
+    "selection_count": 9
+  },
+  "model_calls": 0,
+  "paid_cost_usd": 0,
+  "cargo_calls": 0,
+  "timing_scope": "One process measurement per phase; separate index construction. No operating-system cache flush; do not pool with original 20 previews or alpha. Cargo was released before this sequential preview pair.",
+  "binary_sha256": "cfe8027a1c2aa1278483e4f38b45819bd19933b3d6703f51aa02110d8212c3a1",
+  "prepare_sha256": "20868f9bbfdc3002a6345e9e4fddfa0b7cdb3e164e11d74af0ad488813389c6b",
+  "issue_sha256": "fa79e041e8c2887c0195edf63b00dfd9dbc5ca9ffffd8ae65bedf8cfa1c74b50",
+  "finished_at": "2026-10-03T09:43:13.089272+00:00",
+  "validation": {
+    "all_candidate_file_digests_and_exact_spans_match_source": true,
+    "candidate_units_checked": 16,
+    "input_index_script_payload_digests_match": true,
+    "briefing_within_16384_bytes": true,
+    "retained_archive_sha256": "23112ebadb8f5687c6153710b569f5129389830aa034b87218d8f218539a3f21",
+    "retained_archive_bytes": 783831,
+    "index_retention": "Retained privately; reconstruct with pinned source, frozen binary, and documented command."
+  },
+  "qualification_note": "Separate no-model Linux qualification completed before this preview. This is not a scored native result."
+}

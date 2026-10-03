@@ -1,0 +1,54 @@
+{
+  "contains_hidden_checkers": false,
+  "contains_reference_solutions": false,
+  "created_at": "2026-10-03T09:41:54.456971+00:00",
+  "schema": "openagents.delegation-study.public-task-manifest.v1",
+  "status": "qualified prospective replacement; registration remains separate",
+  "tasks": [
+    {
+      "allowed_paths": [
+        "crates/atif/",
+        "crates/coderbench/"
+      ],
+      "applicable_instruction_paths": [
+        {
+          "path": "AGENTS.md",
+          "sha256": "5fcc28a615f7106cf82e0a67e25283af6b907d75908a9cfa3faa10a83a9c0215"
+        },
+        {
+          "path": ".agents/skills/google-developer-style/SKILL.md",
+          "sha256": "afb103c87f283e88ea33a1439a11fb1838a17970760b8ecc59bf2f9d89fb0197"
+        }
+      ],
+      "cargo_features": [],
+      "id": "alternative-beta",
+      "issue": 9425,
+      "packages": [
+        "atif",
+        "coderbench"
+      ],
+      "prompt": "Fix public audit finding A13 in `crates/atif` and its `crates/coderbench` consumer. Read newline-delimited bytes before UTF-8 decoding so a torn final multibyte record preserves the valid prefix for interactive viewing. Report unreadable records and interruption, and distinguish tolerant recovery from the stronger integrity needed for benchmark evidence. Specify and enforce lifecycle behavior for repeated session headers or end records, records after end, append after closure, and malformed interior records. Add property or table-driven tests truncating a non-ASCII final record at every byte. Strict CoderBench ingestion must reject or mark damaged or incomplete evidence unverifiable and must not convert recovery into a successful grade. Preserve valid ATIF fixture compatibility and the retained transcript archive. Read `docs/coder/traces.md`. Work only within `crates/atif/` and `crates/coderbench/`; run their ordinary tests and formatting checks. Documentation outside these packages and operational work are outside this isolated trial.",
+      "public_requirement_provenance": {
+        "historical_window_limit": "Older than the initial recent-week search; admitted by the second bounded screen before any scored executor calls.",
+        "instruction_scope": "The registered isolated task gate replaces broader historical workspace verification or deployment instructions.",
+        "issue_body_sha256": "578019bdb758746718c4026d84e1da27aa1e869b9fbc4b7a275f4435952816e3",
+        "issue_body_version_note": "Retrieved public body retained; issue edit history was not reconstructed, so byte identity with the original assignment is not claimed.",
+        "issue_record_sha256": "a14ebe29e2bcab7a50603d182bd2573ffb5d70de3fa33f42bb021e9d575582c4",
+        "observed_clean_claude_launch": false,
+        "provenance_class": "public_issue_native_trial_not_observed_session_replay",
+        "public_issue_observed_on": "2026-10-03",
+        "scope": "Complete A13 issue: tolerant torn-trace recovery with visible damage, trace lifecycle integrity, and strict grader behavior. Include the original coderbench fixture adjustments and consumer tests.",
+        "source_policy": "Use the exact reference parent for a new native trial. This is a reconstructed pre-fix revision, not an observed agent launch. The issue audit source is retained separately.",
+        "url": "https://github.com/OpenAgentsInc/openagents/issues/9425"
+      },
+      "required_public_readings": [
+        {
+          "path": "docs/coder/traces.md",
+          "sha256": "b7570fc3dd4c74d377ad003e7a8c8d49e4901f620feb6cb2737db63c645390ca"
+        }
+      ],
+      "source_commit": "7ec5f6e83d018ab2f25d7a61ff695de81f2f55f6",
+      "title": "[P2][Audit A13] Recover torn traces while enforcing strict grading integrity"
+    }
+  ]
+}

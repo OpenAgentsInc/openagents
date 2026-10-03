@@ -149,7 +149,9 @@
     "minimum_behavioral_families": 3,
     "crate_composition": {
       "coder-boundary": 1,
-      "coder": 3
+      "coder-access": 1,
+      "atif_and_coderbench": 1,
+      "jev": 1
     },
     "repository_generalization": false,
     "blinding": "partial",
@@ -165,8 +167,30 @@
     ],
     "reserve_prompt_release": "after_treatment_freeze",
     "development_source_used": "issue_10167",
-    "eligibility_status": "original_draft_only_A_qualifies_replacement_selection_pending",
-    "original_artifacts_retained": true
+    "eligibility_status": "four_qualified_tasks_replacement_panel_unsealed",
+    "original_artifacts_retained": true,
+    "original_crate_composition": {
+      "coder-boundary": 1,
+      "coder": 3
+    },
+    "task_packages": {
+      "reserved-a": [
+        "coder-boundary"
+      ],
+      "alternative-alpha": [
+        "coder-access"
+      ],
+      "alternative-beta": [
+        "atif",
+        "coderbench"
+      ],
+      "alternative-gamma": [
+        "jev"
+      ]
+    },
+    "replacement_manifest": "replacement-public-task-manifest.json",
+    "replacement_record": "replacement-panel.json",
+    "replacement_schedule": "replacement-draft-schedule.json"
   },
   "execution": {
     "initial_inputs_per_session": 1,
@@ -422,9 +446,10 @@
     "inference_estimates_are_not_total_project_cost",
     "accounting_ceiling_is_not_guaranteed_native_or_invoice_cap",
     "candidate_identity_and_labels_known_to_coordinator_before_full_policy_coding",
-    "three_of_four_tasks_in_coder_no_broad_repository_generalization",
+    "qualified_historical_library_tasks_do_not_establish_large_workspace_or_backlog_generalization",
     "broker_byte_based_reservation_is_heuristic",
-    "offline_native_controls_cannot_use_provider_web_mcp_or_container_tools"
+    "offline_native_controls_cannot_use_provider_web_mcp_or_container_tools",
+    "two_replacement_tasks_are_older_than_original_recent_week_window_and_not_observed_clean_claude_sessions"
   ],
   "executor_prices": {
     "claude-opus-5-5": {

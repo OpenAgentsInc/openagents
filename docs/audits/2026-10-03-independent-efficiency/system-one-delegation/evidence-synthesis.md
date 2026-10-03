@@ -24,7 +24,7 @@ panel has **zero scored sessions** while funded Jev access is unavailable.
 | A tighter product configuration can beat a bare harness. | The [latest standing study](../claude-startup-followup.md) has 84 runs, seven tasks, and 21/21 passes per arm. Lean Claude costs 0.4488 times raw Claude and takes 0.8587 times its recorded time. | A substantial observed package benefit on familiar small tasks. Prompts, tools, preparation, and settings change together; some preparation costs and final independent checking time are outside the comparison. |
 | Routing is consistently faster across engines. | In the same [standing study](../claude-startup-followup.md), routed Codex costs 0.8518 times raw Codex and takes 1.6500 times its recorded time. Relative to raw Claude, its ratios are 0.3160 for cost and 1.8322 for time. | Unsupported. The observed Codex configuration trades time for cost. A Claude configuration win does not establish a Codex win on both measures. |
 | A cheaper executor can retain measured quality. | The [independent factorial](../briefing-model-factorial/README.md) finds Sonnet control 47.1% cheaper and 5.8% faster by median than Opus control; both pass 4/4 frozen acceptances and all eight controls pass the later deeper-import check. | A bounded model-choice win on one historical task, using common file tools and a verification-and-repair policy. This is not a full native-harness result or a Jev result. |
-| Better context can reduce executor work. | The [second briefing iteration](../briefing-iteration-2/README.md) has all final candidates accepted, with 12.6% lower median cost and 7.5% lower median time on its held-out task. The [historical version arc](../../../terminal-bench/2026-09-24-version-arc.md) reports a log-summary context repair changing Luna from 0/3 to 3/3. | Promising bounded evidence. The first misses its registered 20% cost threshold. The historical change also changes rendered guidance, so it does not isolate the packing algorithm. |
+| Better context can lower recorded cost and time. | The [second briefing iteration](../briefing-iteration-2/README.md) has all final candidates passing frozen checks, with 12.6% lower median cost and 7.5% lower median time on its held-out task. The [historical version arc](../../../terminal-bench/2026-09-24-version-arc.md) reports a log-summary context repair changing Luna from 0/3 to 3/3. | Promising bounded evidence. The first misses its 20% cost threshold, increases median tool calls and reads, and retains unexecuted static concerns about order-dependent results. It does not establish reduced discovery or complete correctness. The historical change also changes rendered guidance, so it does not isolate the packing algorithm. |
 | More briefing is reliably better. | In the factorial, the brief makes Opus 19.6% more expensive and 7.1% slower. It makes Sonnet cheaper, but a later diagnostic demonstrates a missed deeper-import notification in one briefed patch. The [first replay](../historical-replay-10166/README.md) has 0/4 independent acceptances despite all 22 ordinary tests passing when run externally afterward; those agents cannot execute commands. | Unsupported. Relevance and coverage matter more than the presence of a brief. Passing ordinary tests is insufficient. |
 | System One should participate at every step. | The [version arc](../../../terminal-bench/2026-09-24-version-arc.md) reports the four-task Gemini loop with Jev at 3/4, $0.250 and 478 seconds per task; the same loop without Jev reaches 4/4, $0.242 and 369 seconds. | This historical matched ablation supplies contrary evidence for unconditional per-step hints. It does not disprove a targeted preparation judgment. |
 | More control improves cost per accepted result. | The original audit independently recomputes the [matched controller study](../README.md#4-historical-evidence-that-changes-the-interpretation): 40.0% higher cost per accepted result, with an inconclusive pass gain. | Contrary evidence for restoring the entire older controller. Persistence and monitoring need separate justifications. |
@@ -105,6 +105,15 @@ a planned repeat compilation without claiming an unmeasured time saving.
 These cases motivate separate helper-coverage and behavior-history experiments;
 they do not justify adding every dependency and commit to every prompt.
 
+The [SDK qualification](eligibility-gamma.md) supplies an executed example of
+additional verification coverage. A deliberately incorrect fix removes typed
+request/response checking and still passes the ordinary tests; the independent
+checker rejects it. The reference passes both. This establishes sensitivity to
+that omission, not a defect rate for generated code. The checker also preserves
+the API's historical calibrated-selection and optional-probability behavior.
+A briefing or test generator needs the contract at the pinned revision;
+applying a newer contract can incorrectly reject valid behavior.
+
 Freeze any test-health packet against the source tree, ordinary-test command,
 toolchain, build profile, platform, fixture inputs, and result identity. A dirty
 tree or changed dependency invalidates the affected result. Include the exact
@@ -115,6 +124,33 @@ as well as time. Charge the initial qualification once and report the number of
 subsequent tasks over which it is reused.
 
 ## Components that can be tested separately
+
+### What preparation has to repay
+
+The [standing-study arithmetic](preparation-headroom.json) gives a useful scale:
+raw Claude averages 56.14 seconds and $0.29725 per task; lean Claude averages
+48.21 seconds and $0.13341. The point differences are **7.93 seconds and
+$0.16384 per task**. These are means over the same 21 observations per arm,
+with three trials for each of seven tasks. Five of seven tasks have a positive
+mean time difference.
+
+Those differences are not a guaranteed preparation budget. Some preparation
+costs and final checking time are absent, the tasks are familiar, and the
+retrospective task-resampling interval includes no time improvement. Adding
+7.93 seconds to the lean route without changing anything else would erase
+its observed mean time advantage. A new brief may also change execution or
+checking time, so a subsecond preview alone cannot establish a net saving.
+
+For the incremental System One comparison, count its call, any extra input
+tokens, changed executor work, and changed verification work against the
+identical deterministic workflow. For preparation performed in advance,
+also count discarded work and the portion that remains on the critical path.
+Cache reuse can amortize indexing or baseline qualification; report the
+initial cost and the actual reuse count. No measured cold index or preview
+from this audit is added to the standing-study result because the tasks and
+execution paths differ.
+
+### Isolated tests
 
 | Component | Cheap diagnostic | End-to-end decision |
 | --- | --- | --- |
@@ -141,6 +177,24 @@ in 0.665 seconds after separate indexing, with exact source spans verified.
 That establishes fast, faithful extraction for this observation, not sufficient
 task coverage. Preserve the frozen policy for the experiment and test any later
 candidate-expansion policy separately.
+
+The [beta](alternative-beta/README.md) and [gamma](alternative-gamma/README.md)
+previews strengthen that warning. Both take about 0.264 seconds, but beta's
+pool omits the ATIF reader and writer implementations, and gamma's pool has
+no unit from `jev/src`. Those declarations exist in the index. This is a
+failure to supply obvious implementation evidence, even though every retained
+source span is accurate. It is not a measured coding failure: the executor can
+still inspect files, and no executor trial has run.
+
+The next retrieval hypothesis should therefore precede semantic ranking:
+preserve explicit package and file anchors, include the relevant implementation
+alongside tests, and account for each requested public contract. Test candidate
+recall and required-reading coverage separately from exact-span fidelity and
+latency. A semantic judge can prioritize uncertain relevance after deterministic
+retrieval makes necessary evidence available. These inspected tasks now supply
+development feedback for any future revision; they cannot remain unseen
+confirmation tasks for a policy tuned to their omissions. The current treatment
+and its retained previews remain unchanged.
 
 Workspace staging is another deterministic hypothesis prompted by the measured
 1.5 GB source exports and their Git snapshot costs. A dependency graph alone

@@ -1,0 +1,71 @@
+{
+  "schema": "openagents.audit.preparation-headroom.v1",
+  "date": "2026-10-03",
+  "source": {
+    "path": "../../../../bench/efficiency/results/2026-10-03b.jsonl",
+    "sha256": "71e0da4b5037bd101cf85f3a9a163802baa0b19add57882f37cd4c9e78810e5c"
+  },
+  "method": "For each arm, arithmetic mean of all 21 recorded rows. Each of seven tasks has three trials, so this also equals the mean of task means. Gap = raw-claude mean minus routed-lean mean. No model calls or new performance trials.",
+  "arms": {
+    "raw-claude": {
+      "runs": 21,
+      "cost_usd": 0.2972491619047619,
+      "recorded_wall_s": 56.14343055089315
+    },
+    "routed-lean": {
+      "runs": 21,
+      "cost_usd": 0.13341031828571429,
+      "recorded_wall_s": 48.20891824222746
+    }
+  },
+  "mean_gap": {
+    "cost_usd": 0.16383884361904763,
+    "recorded_wall_s": 7.934512308665688
+  },
+  "per_task_gaps": [
+    {
+      "task": "bottle-etag",
+      "cost_usd_gap": 0.2483020066666667,
+      "recorded_wall_s_gap": 34.25882212320964
+    },
+    {
+      "task": "build-cython-ext",
+      "cost_usd_gap": 0.22825137200000006,
+      "recorded_wall_s_gap": 1.410104751586914
+    },
+    {
+      "task": "fix-code-vulnerability",
+      "cost_usd_gap": 0.099179198,
+      "recorded_wall_s_gap": -6.526655435562134
+    },
+    {
+      "task": "fix-git",
+      "cost_usd_gap": 0.08120067066666667,
+      "recorded_wall_s_gap": -10.301658074061077
+    },
+    {
+      "task": "headless-terminal",
+      "cost_usd_gap": 0.240428978,
+      "recorded_wall_s_gap": 28.25262475013733
+    },
+    {
+      "task": "mi-one",
+      "cost_usd_gap": 0.10343928266666666,
+      "recorded_wall_s_gap": 3.0157137711842843
+    },
+    {
+      "task": "mi-seekable",
+      "cost_usd_gap": 0.14607039733333332,
+      "recorded_wall_s_gap": 5.432634274164833
+    }
+  ],
+  "positive_time_gap_tasks": 5,
+  "limitations": [
+    "Observed point differences, not a guaranteed preparation budget or population estimate.",
+    "Historical familiar task set and bundled intervention; no isolated System One effect.",
+    "Recorded time excludes final external checks, template copy, and environment setup.",
+    "Recorded cost omits some router/issue judgments and unused preparation.",
+    "Preparation or additional context can change executor behavior and checking cost; the arithmetic holds only if other components remain unchanged.",
+    "Task-cluster sensitivity interval for the original time ratio includes 1."
+  ]
+}

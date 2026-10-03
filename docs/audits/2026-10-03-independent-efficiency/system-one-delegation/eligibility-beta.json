@@ -1,0 +1,831 @@
+{
+  "acceptance_helper_sha256": "86abab6a41fccb2f8a2b973e3a2f9d73404c55ec79ac3482829ca6174286cf6d",
+  "accounting": {
+    "cleanup_outside_attempt_timers": true,
+    "dollar_cost": null,
+    "dollar_cost_reason": "No dollar ledger was collected; these are no-model infrastructure measurements.",
+    "measured_attempts_cleanup_s": 0.6487204780005413,
+    "measured_attempts_total_wall_s": 130.50146872799814,
+    "measured_dependency_provision_s": 0,
+    "measured_seed_attempts_total_wall_s": 7.600186385001507,
+    "measured_seed_cleanup_s": 0.03374244799852022,
+    "tool_transfer_research_review_and_collection_time_included": false
+  },
+  "alias": "alternative-beta",
+  "allowed_paths": [
+    "crates/atif/",
+    "crates/coderbench/"
+  ],
+  "attempts": [
+    {
+      "alias": "alternative-beta",
+      "attempt": "ordinary-base-v1",
+      "calibration_classification": "ordinary_gate_passed",
+      "candidate_manifest_sha256": "c48a48522ccde08396f85e90f0f22c22ac201dd24f2ca467576ab7d9d2a32bb7",
+      "cargo_features": [],
+      "checker_injected": false,
+      "cleanup_outside_measurement": true,
+      "cleanup_s": 0.077009922999423,
+      "compile": {
+        "exit_code": 0,
+        "passed": true,
+        "status": "passed",
+        "wall_s": 10.585685216999991
+      },
+      "driver_sha256": "8ea4a7b52163287ae4fe5d488e46be863a7afbe2907f3b0aeb9f4c7ca270a5bf",
+      "format": {
+        "exit_code": 0,
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.06436824000047636
+      },
+      "helper_sha256": "86abab6a41fccb2f8a2b973e3a2f9d73404c55ec79ac3482829ca6174286cf6d",
+      "identity_and_scope_validated": true,
+      "model_calls": 0,
+      "packages": [
+        "atif",
+        "coderbench"
+      ],
+      "passed": true,
+      "phases": {
+        "export_s": 0.08943318899946462,
+        "git_snapshot_s": 0.1995952520010178,
+        "seed_copy_s": 0.10487972800001444,
+        "seed_validation_s": 0.1911878520004393,
+        "setup_s": 0.6587530640008481
+      },
+      "retained_files_sha256": "c4c18354392e3aeb806ffa13a01255dad6565dfe05703d2c83d7ce03f84a141b",
+      "role": "base",
+      "schema": "openagents.delegation.ordinary-eligibility.v1",
+      "scratch_absent": true,
+      "seed_manifest_sha256": "01d08f649421778f964b76aa921be00d62169965aea5dcf209505ff7b4793506",
+      "snapshot_commit": "209bcaaaaaf2d516742baa528db58765ff9001ab",
+      "source_archive_sha256": "e1b8e91c47efe40b4f2526d69ae5ad9ca64b11a9b74d4e5b91b8613b9e2aa971",
+      "source_commit": "7ec5f6e83d018ab2f25d7a61ff695de81f2f55f6",
+      "status": "complete",
+      "test": {
+        "exit_code": 0,
+        "passed": true,
+        "status": "passed",
+        "wall_s": 6.326637899999696
+      },
+      "total_timeout_s": 240,
+      "total_wall_s": 17.645147223000095
+    },
+    {
+      "alias": "alternative-beta",
+      "attempt": "ordinary-reference-v1",
+      "calibration_classification": "ordinary_gate_passed",
+      "candidate_manifest_sha256": "c31e5762254b629d3229966cdd747a75218485800bd1c11aecd6593fa474ff34",
+      "cargo_features": [],
+      "checker_injected": false,
+      "cleanup_outside_measurement": true,
+      "cleanup_s": 0.07981221299996832,
+      "compile": {
+        "exit_code": 0,
+        "passed": true,
+        "status": "passed",
+        "wall_s": 10.234496021001178
+      },
+      "driver_sha256": "8ea4a7b52163287ae4fe5d488e46be863a7afbe2907f3b0aeb9f4c7ca270a5bf",
+      "format": {
+        "exit_code": 0,
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.06448408600044786
+      },
+      "helper_sha256": "86abab6a41fccb2f8a2b973e3a2f9d73404c55ec79ac3482829ca6174286cf6d",
+      "identity_and_scope_validated": true,
+      "model_calls": 0,
+      "packages": [
+        "atif",
+        "coderbench"
+      ],
+      "passed": true,
+      "phases": {
+        "export_s": 0.07895476699923165,
+        "git_snapshot_s": 0.20720962300038082,
+        "seed_copy_s": 0.11099516799913545,
+        "seed_validation_s": 0.190562633000809,
+        "setup_s": 0.6480666439983906
+      },
+      "retained_files_sha256": "95fe39041dd5fd1558f016d6514af5af384b6543241d9c322df460b1577683b1",
+      "role": "reference",
+      "schema": "openagents.delegation.ordinary-eligibility.v1",
+      "scratch_absent": true,
+      "seed_manifest_sha256": "01d08f649421778f964b76aa921be00d62169965aea5dcf209505ff7b4793506",
+      "snapshot_commit": "209bcaaaaaf2d516742baa528db58765ff9001ab",
+      "source_archive_sha256": "e1b8e91c47efe40b4f2526d69ae5ad9ca64b11a9b74d4e5b91b8613b9e2aa971",
+      "source_commit": "7ec5f6e83d018ab2f25d7a61ff695de81f2f55f6",
+      "status": "complete",
+      "test": {
+        "exit_code": 0,
+        "passed": true,
+        "status": "passed",
+        "wall_s": 6.324979947999964
+      },
+      "total_timeout_s": 240,
+      "total_wall_s": 17.279968317998282
+    },
+    {
+      "accepted": false,
+      "alias": "alternative-beta",
+      "attempt": "qualification-base-v1",
+      "calibration_classification": "invalid_checker_contract_category",
+      "candidate_manifest_sha256": "c48a48522ccde08396f85e90f0f22c22ac201dd24f2ca467576ab7d9d2a32bb7",
+      "cargo_features": null,
+      "checker_sha256": "9d8275de2907905fef1dc7382467e3f99eab061e21f1388358141515750eaf8b",
+      "checks_sha256": "cacb432a859ef9a986461ed2fca2c7eebc2070703edd8f75942b5c9e78d283c0",
+      "cleanup_outside_acceptance_timer": true,
+      "cleanup_s": 0.08174251800119237,
+      "completed": true,
+      "error_code": null,
+      "execution_closed": true,
+      "format": {
+        "exit_code": 0,
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.06460386499929882
+      },
+      "helper_sha256": "86abab6a41fccb2f8a2b973e3a2f9d73404c55ec79ac3482829ca6174286cf6d",
+      "identity_validated": true,
+      "independent": {
+        "compile": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 0.26472331500008295
+        },
+        "passed": false,
+        "status": "failed",
+        "test": {
+          "exit_code": 101,
+          "passed": false,
+          "status": "failed",
+          "wall_s": 0.11488483799985261
+        },
+        "wall_s": 0.3838522849982837
+      },
+      "independent_test_counts": [
+        {
+          "failed": 3,
+          "passed": 0
+        }
+      ],
+      "model_calls": 0,
+      "ordinary": {
+        "compile": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 10.68584490000103
+        },
+        "passed": true,
+        "status": "passed",
+        "test": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 6.324606422000215
+        },
+        "wall_s": 17.019404774999202
+      },
+      "phases": {
+        "apply_candidate_s": 0.0001352340004814323,
+        "export_s": 0.09721198199986247,
+        "git_snapshot_s": 0.20935189699957846,
+        "seed_copy_s": 0.10682705799990799,
+        "seed_validation_s": 0.2585122520013101,
+        "setup_s": 0.7446291590003966
+      },
+      "retained_files_sha256": "e1fb89b8e7b4a1c700c52e08e6035fedf3d7452ebac869242ad789039acf57ac",
+      "role": "base",
+      "scope": {
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.009334378999483306
+      },
+      "scope_validated": true,
+      "scratch_absent": true,
+      "seed_policy": "cargo-reported-libraries-v1",
+      "snapshot_commit": "209bcaaaaaf2d516742baa528db58765ff9001ab",
+      "source_archive_sha256": "e1b8e91c47efe40b4f2526d69ae5ad9ca64b11a9b74d4e5b91b8613b9e2aa971",
+      "source_commit": "7ec5f6e83d018ab2f25d7a61ff695de81f2f55f6",
+      "source_mtime_policy": "changed_and_injected_only_verified_base_seed",
+      "status": "complete",
+      "target_seed_manifest_sha256": "01d08f649421778f964b76aa921be00d62169965aea5dcf209505ff7b4793506",
+      "total_wall_s": 18.25039321499935
+    },
+    {
+      "accepted": false,
+      "alias": "alternative-beta",
+      "attempt": "qualification-base-v2",
+      "calibration_classification": "base_rejected_by_independent_behavior",
+      "candidate_manifest_sha256": "c48a48522ccde08396f85e90f0f22c22ac201dd24f2ca467576ab7d9d2a32bb7",
+      "cargo_features": null,
+      "checker_sha256": "ee58a16d8975ee63b1f7a6911ee63e990a1e0355d0456c9b83da7febfea1ef01",
+      "checks_sha256": "b35494e303ca7c52c8e39d9fa03534307d805464c652c87d2cfb9a8e7b25a6ac",
+      "cleanup_outside_acceptance_timer": true,
+      "cleanup_s": 0.09327547600150865,
+      "completed": true,
+      "error_code": null,
+      "execution_closed": true,
+      "format": {
+        "exit_code": 0,
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.06474065399925166
+      },
+      "helper_sha256": "86abab6a41fccb2f8a2b973e3a2f9d73404c55ec79ac3482829ca6174286cf6d",
+      "identity_validated": true,
+      "independent": {
+        "compile": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 0.26476299299974926
+        },
+        "passed": false,
+        "status": "failed",
+        "test": {
+          "exit_code": 101,
+          "passed": false,
+          "status": "failed",
+          "wall_s": 0.11475158299981558
+        },
+        "wall_s": 0.3837237349998759
+      },
+      "independent_test_counts": [
+        {
+          "failed": 3,
+          "passed": 0
+        }
+      ],
+      "model_calls": 0,
+      "ordinary": {
+        "compile": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 10.234159511999678
+        },
+        "passed": true,
+        "status": "passed",
+        "test": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 6.324319007000668
+        },
+        "wall_s": 16.56514171100025
+      },
+      "phases": {
+        "apply_candidate_s": 0.00018504800027585588,
+        "export_s": 0.08332644700021774,
+        "git_snapshot_s": 0.21173903800081462,
+        "seed_copy_s": 0.10894936200020311,
+        "seed_validation_s": 0.20053298200036807,
+        "setup_s": 0.6792797679991054
+      },
+      "retained_files_sha256": "870bcc8a3935d6271fe13d7d400b5979e88204bf7454f4a88656c2edb1981d1c",
+      "role": "base",
+      "scope": {
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.009817762000238872
+      },
+      "scope_validated": true,
+      "scratch_absent": true,
+      "seed_policy": "cargo-reported-libraries-v1",
+      "snapshot_commit": "209bcaaaaaf2d516742baa528db58765ff9001ab",
+      "source_archive_sha256": "e1b8e91c47efe40b4f2526d69ae5ad9ca64b11a9b74d4e5b91b8613b9e2aa971",
+      "source_commit": "7ec5f6e83d018ab2f25d7a61ff695de81f2f55f6",
+      "source_mtime_policy": "changed_and_injected_only_verified_base_seed",
+      "status": "complete",
+      "target_seed_manifest_sha256": "01d08f649421778f964b76aa921be00d62169965aea5dcf209505ff7b4793506",
+      "total_wall_s": 17.7497960590008
+    },
+    {
+      "accepted": false,
+      "alias": "alternative-beta",
+      "attempt": "qualification-negative-control-1-v2",
+      "calibration_classification": "compiled_negative_control_rejected",
+      "candidate_manifest_sha256": "d576eaad9644152d25adb4267d0f20e2ff9d709160cfdace898330b2a76b4f41",
+      "cargo_features": null,
+      "checker_sha256": "ee58a16d8975ee63b1f7a6911ee63e990a1e0355d0456c9b83da7febfea1ef01",
+      "checks_sha256": "433f9962341268dcadbe5bf47f0a315f95a2ecc2fc615eb8693a1ee650442629",
+      "cleanup_outside_acceptance_timer": true,
+      "cleanup_s": 0.07529125099972589,
+      "completed": true,
+      "error_code": null,
+      "execution_closed": true,
+      "format": {
+        "exit_code": 0,
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.06453790799969283
+      },
+      "helper_sha256": "86abab6a41fccb2f8a2b973e3a2f9d73404c55ec79ac3482829ca6174286cf6d",
+      "identity_validated": true,
+      "independent": {
+        "compile": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 0.2647135030001664
+        },
+        "passed": false,
+        "status": "failed",
+        "test": {
+          "exit_code": 101,
+          "passed": false,
+          "status": "failed",
+          "wall_s": 0.11456632199951855
+        },
+        "wall_s": 0.38374362099966675
+      },
+      "independent_test_counts": [
+        {
+          "failed": 1,
+          "passed": 2
+        }
+      ],
+      "model_calls": 0,
+      "ordinary": {
+        "compile": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 10.836719112001447
+        },
+        "passed": false,
+        "status": "failed",
+        "test": {
+          "exit_code": 101,
+          "passed": false,
+          "status": "failed",
+          "wall_s": 0.11453502199947252
+        },
+        "wall_s": 10.957868086001326
+      },
+      "phases": {
+        "apply_candidate_s": 0.0014914080002199626,
+        "export_s": 0.0914196739995532,
+        "git_snapshot_s": 0.20158930300021893,
+        "seed_copy_s": 0.10491708200061112,
+        "seed_validation_s": 0.19112902300003043,
+        "setup_s": 0.6645436429989786
+      },
+      "retained_files_sha256": "74ede78a0609595affb67c8a8f09e8228d06c92acf434edfdcb0626670ce6bf2",
+      "role": "negative-control-1",
+      "scope": {
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.010392172998763272
+      },
+      "scope_validated": true,
+      "scratch_absent": true,
+      "seed_policy": "cargo-reported-libraries-v1",
+      "snapshot_commit": "209bcaaaaaf2d516742baa528db58765ff9001ab",
+      "source_archive_sha256": "e1b8e91c47efe40b4f2526d69ae5ad9ca64b11a9b74d4e5b91b8613b9e2aa971",
+      "source_commit": "7ec5f6e83d018ab2f25d7a61ff695de81f2f55f6",
+      "source_mtime_policy": "changed_and_injected_only_verified_base_seed",
+      "status": "complete",
+      "target_seed_manifest_sha256": "01d08f649421778f964b76aa921be00d62169965aea5dcf209505ff7b4793506",
+      "total_wall_s": 12.140537643999778
+    },
+    {
+      "accepted": false,
+      "alias": "alternative-beta",
+      "attempt": "qualification-negative-control-2-v2",
+      "calibration_classification": "compiled_negative_control_rejected",
+      "candidate_manifest_sha256": "34eb49f64b19b5a33a046dd37fc7ebeb6105af4e1985154cac1ad6d12f1b41b8",
+      "cargo_features": null,
+      "checker_sha256": "ee58a16d8975ee63b1f7a6911ee63e990a1e0355d0456c9b83da7febfea1ef01",
+      "checks_sha256": "8a1ee6d51bf5c8dfc6172fe263d3e56f7701410c7bb1db7a5c0821c8571c8c4e",
+      "cleanup_outside_acceptance_timer": true,
+      "cleanup_s": 0.07616885700008424,
+      "completed": true,
+      "error_code": null,
+      "execution_closed": true,
+      "format": {
+        "exit_code": 0,
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.06441611999980523
+      },
+      "helper_sha256": "86abab6a41fccb2f8a2b973e3a2f9d73404c55ec79ac3482829ca6174286cf6d",
+      "identity_validated": true,
+      "independent": {
+        "compile": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 0.26495734300078766
+        },
+        "passed": false,
+        "status": "failed",
+        "test": {
+          "exit_code": 101,
+          "passed": false,
+          "status": "failed",
+          "wall_s": 0.11460899400117341
+        },
+        "wall_s": 0.3855892680003308
+      },
+      "independent_test_counts": [
+        {
+          "failed": 1,
+          "passed": 2
+        }
+      ],
+      "model_calls": 0,
+      "ordinary": {
+        "compile": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 10.390114688998437
+        },
+        "passed": false,
+        "status": "failed",
+        "test": {
+          "exit_code": 101,
+          "passed": false,
+          "status": "failed",
+          "wall_s": 0.11458687000049395
+        },
+        "wall_s": 10.512197064999782
+      },
+      "phases": {
+        "apply_candidate_s": 0.0014457920005952474,
+        "export_s": 0.07798973299941281,
+        "git_snapshot_s": 0.2074413279988221,
+        "seed_copy_s": 0.10852309999972931,
+        "seed_validation_s": 0.18506319399966742,
+        "setup_s": 0.6536472819989285
+      },
+      "retained_files_sha256": "59d84ab6ab976380095ace49223ff0d1c395b5360d632ca5c7620c5e306e6615",
+      "role": "negative-control-2",
+      "scope": {
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.009871383999779937
+      },
+      "scope_validated": true,
+      "scratch_absent": true,
+      "seed_policy": "cargo-reported-libraries-v1",
+      "snapshot_commit": "209bcaaaaaf2d516742baa528db58765ff9001ab",
+      "source_archive_sha256": "e1b8e91c47efe40b4f2526d69ae5ad9ca64b11a9b74d4e5b91b8613b9e2aa971",
+      "source_commit": "7ec5f6e83d018ab2f25d7a61ff695de81f2f55f6",
+      "source_mtime_policy": "changed_and_injected_only_verified_base_seed",
+      "status": "complete",
+      "target_seed_manifest_sha256": "01d08f649421778f964b76aa921be00d62169965aea5dcf209505ff7b4793506",
+      "total_wall_s": 11.687199792000683
+    },
+    {
+      "accepted": false,
+      "alias": "alternative-beta",
+      "attempt": "qualification-reference-v1",
+      "calibration_classification": "invalid_checker_contract_category",
+      "candidate_manifest_sha256": "c31e5762254b629d3229966cdd747a75218485800bd1c11aecd6593fa474ff34",
+      "cargo_features": null,
+      "checker_sha256": "9d8275de2907905fef1dc7382467e3f99eab061e21f1388358141515750eaf8b",
+      "checks_sha256": "3f3da72c690a534f221faa6d73c17589c7624368dc61bd8c52e33a5f462bd818",
+      "cleanup_outside_acceptance_timer": true,
+      "cleanup_s": 0.08374732199990831,
+      "completed": true,
+      "error_code": null,
+      "execution_closed": true,
+      "format": {
+        "exit_code": 0,
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.06442902100025094
+      },
+      "helper_sha256": "86abab6a41fccb2f8a2b973e3a2f9d73404c55ec79ac3482829ca6174286cf6d",
+      "identity_validated": true,
+      "independent": {
+        "compile": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 0.26470024100126466
+        },
+        "passed": false,
+        "status": "failed",
+        "test": {
+          "exit_code": 101,
+          "passed": false,
+          "status": "failed",
+          "wall_s": 0.11463663699942117
+        },
+        "wall_s": 0.38351079799940635
+      },
+      "independent_test_counts": [
+        {
+          "failed": 2,
+          "passed": 1
+        }
+      ],
+      "model_calls": 0,
+      "ordinary": {
+        "compile": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 10.386085330999776
+        },
+        "passed": true,
+        "status": "passed",
+        "test": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 6.325398865999887
+        },
+        "wall_s": 16.71926008599985
+      },
+      "phases": {
+        "apply_candidate_s": 0.001452234000680619,
+        "export_s": 0.08340353399944433,
+        "git_snapshot_s": 0.20092510700123967,
+        "seed_copy_s": 0.10765687899947807,
+        "seed_validation_s": 0.18581511299998965,
+        "setup_s": 0.6367154620002111
+      },
+      "retained_files_sha256": "364655554bbc2a22ef50406ec86ee857eea18c242ea7338f1fb072a4ffd95dbc",
+      "role": "reference",
+      "scope": {
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.009759708000274259
+      },
+      "scope_validated": true,
+      "scratch_absent": true,
+      "seed_policy": "cargo-reported-libraries-v1",
+      "snapshot_commit": "209bcaaaaaf2d516742baa528db58765ff9001ab",
+      "source_archive_sha256": "e1b8e91c47efe40b4f2526d69ae5ad9ca64b11a9b74d4e5b91b8613b9e2aa971",
+      "source_commit": "7ec5f6e83d018ab2f25d7a61ff695de81f2f55f6",
+      "source_mtime_policy": "changed_and_injected_only_verified_base_seed",
+      "status": "complete",
+      "target_seed_manifest_sha256": "01d08f649421778f964b76aa921be00d62169965aea5dcf209505ff7b4793506",
+      "total_wall_s": 17.848139084999275
+    },
+    {
+      "accepted": true,
+      "alias": "alternative-beta",
+      "attempt": "qualification-reference-v2",
+      "calibration_classification": "reference_accepted",
+      "candidate_manifest_sha256": "c31e5762254b629d3229966cdd747a75218485800bd1c11aecd6593fa474ff34",
+      "cargo_features": null,
+      "checker_sha256": "ee58a16d8975ee63b1f7a6911ee63e990a1e0355d0456c9b83da7febfea1ef01",
+      "checks_sha256": "5b477deb4e266a2413294afea1e591ac9ec5f7910ea58eec9bce0ae6d0680d75",
+      "cleanup_outside_acceptance_timer": true,
+      "cleanup_s": 0.08167291799873055,
+      "completed": true,
+      "error_code": null,
+      "execution_closed": true,
+      "format": {
+        "exit_code": 0,
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.0643398240008537
+      },
+      "helper_sha256": "86abab6a41fccb2f8a2b973e3a2f9d73404c55ec79ac3482829ca6174286cf6d",
+      "identity_validated": true,
+      "independent": {
+        "compile": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 0.26487569399978383
+        },
+        "passed": true,
+        "status": "passed",
+        "test": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 0.11460018000070704
+        },
+        "wall_s": 0.38331781499982753
+      },
+      "independent_test_counts": [
+        {
+          "failed": 0,
+          "passed": 3
+        }
+      ],
+      "model_calls": 0,
+      "ordinary": {
+        "compile": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 10.23536194799999
+        },
+        "passed": true,
+        "status": "passed",
+        "test": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 6.324112143000093
+        },
+        "wall_s": 16.752234337000118
+      },
+      "phases": {
+        "apply_candidate_s": 0.0014409030009119306,
+        "export_s": 0.08099846100049035,
+        "git_snapshot_s": 0.2046980920003989,
+        "seed_copy_s": 0.10941327700129477,
+        "seed_validation_s": 0.18593017800048983,
+        "setup_s": 0.6554478800007928
+      },
+      "retained_files_sha256": "b8da7615dd00acbf64306332da3fdbd919b8a805d8b78b72b32d651e7b7d8dde",
+      "role": "reference",
+      "scope": {
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.009901999999783584
+      },
+      "scope_validated": true,
+      "scratch_absent": true,
+      "seed_policy": "cargo-reported-libraries-v1",
+      "snapshot_commit": "209bcaaaaaf2d516742baa528db58765ff9001ab",
+      "source_archive_sha256": "e1b8e91c47efe40b4f2526d69ae5ad9ca64b11a9b74d4e5b91b8613b9e2aa971",
+      "source_commit": "7ec5f6e83d018ab2f25d7a61ff695de81f2f55f6",
+      "source_mtime_policy": "changed_and_injected_only_verified_base_seed",
+      "status": "complete",
+      "target_seed_manifest_sha256": "01d08f649421778f964b76aa921be00d62169965aea5dcf209505ff7b4793506",
+      "total_wall_s": 17.900287391999882
+    }
+  ],
+  "cargo_features": [],
+  "checker_correction": {
+    "correction": "Accept strict-consumer error or a non-Passed verdict, with clean successful grading still required. Keep recovery, prefix, lifecycle, and damage assertions unchanged.",
+    "initial_attempts_retained": [
+      "qualification-base-v1",
+      "qualification-reference-v1"
+    ],
+    "initial_calibrated_sha256": "9d8275de2907905fef1dc7382467e3f99eab061e21f1388358141515750eaf8b",
+    "made_before_scored_calls": true,
+    "public_source_lines": [
+      541,
+      548,
+      549,
+      550
+    ],
+    "public_source_path": "crates/coderbench/src/lib.rs",
+    "reason": "The first checker required Unverifiable for incomplete evidence; the pinned pre-task consumer maps Unfinished to Failed. Both refuse a successful grade. Independent review also missed this classification distinction."
+  },
+  "control_coverage": {
+    "both_compiled": true,
+    "both_independent_rejected": true,
+    "both_ordinary_rejected": true,
+    "incremental_coverage_demonstrated": false
+  },
+  "date": "2026-10-03",
+  "dependency_provisioning": {},
+  "final_checker_sha256": "ee58a16d8975ee63b1f7a6911ee63e990a1e0355d0456c9b83da7febfea1ef01",
+  "gate": {
+    "build_profile": {
+      "CARGO_PROFILE_DEV_DEBUG": "0",
+      "CARGO_PROFILE_TEST_DEBUG": "0"
+    },
+    "format_check_without_rewrite": true,
+    "independent_check_required": true,
+    "network": "Private loopback only during checks; no external network or provider credentials.",
+    "ordinary_package_tests_required": true,
+    "seed_policy": "cargo-reported-libraries-v1",
+    "source_mtime_policy": "changed_and_injected_only_verified_base_seed",
+    "source_scope_required": true,
+    "toolchain": "Rust 1.97.1, Linux x86_64; exact Cargo/rustc/rustdoc versions retained in seed attempts.",
+    "total_timeout_s": 240
+  },
+  "issue": 9425,
+  "issue_url": "https://github.com/OpenAgentsInc/openagents/issues/9425",
+  "limits": [
+    "Single Linux calibration per final base/reference/control; no stability or flakiness rate estimated.",
+    "Issue-derived fresh native task at a reconstructed pre-fix source, not an observed clean Claude-session replay.",
+    "Older than the initial recent-week search; admitted by the authorized second bounded screen.",
+    "Qualification establishes feasibility and selected behavior sensitivity, not exhaustive correctness or a treatment benefit.",
+    "Native execution and acceptance caches coexisting at the endpoint remain unmeasured for this task.",
+    "The original out-of-package documentation edit is excluded. Whole atif and coderbench packages remain allowed, including alternative valid consumer implementations."
+  ],
+  "model_calls": 0,
+  "original_panel_unchanged": true,
+  "packages": [
+    "atif",
+    "coderbench"
+  ],
+  "provider_calls": 0,
+  "public_requirement_provenance": {
+    "historical_window_limit": "Older than the initial recent-week search; admitted by the second bounded screen before any scored executor calls.",
+    "instruction_scope": "The registered isolated task gate replaces broader historical workspace verification or deployment instructions.",
+    "issue_body_sha256": "578019bdb758746718c4026d84e1da27aa1e869b9fbc4b7a275f4435952816e3",
+    "issue_body_version_note": "Retrieved public body retained; issue edit history was not reconstructed, so byte identity with the original assignment is not claimed.",
+    "issue_record_sha256": "a14ebe29e2bcab7a50603d182bd2573ffb5d70de3fa33f42bb021e9d575582c4",
+    "observed_clean_claude_launch": false,
+    "provenance_class": "public_issue_native_trial_not_observed_session_replay",
+    "public_issue_observed_on": "2026-10-03",
+    "scope": "Complete A13 issue: tolerant torn-trace recovery with visible damage, trace lifecycle integrity, and strict grader behavior. Include the original coderbench fixture adjustments and consumer tests.",
+    "source_policy": "Use the exact reference parent for a new native trial. This is a reconstructed pre-fix revision, not an observed agent launch. The issue audit source is retained separately.",
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/9425"
+  },
+  "public_task_manifest_sha256": "a78647ec368dc9f6fb573915d9250bfe9ceb16edc1da9389e8576cc486c7a511",
+  "retention": {
+    "private_checker_and_reference_contents_published": false,
+    "private_evidence_archive_bytes": 167962,
+    "private_evidence_archive_sha256": "428c5292bc49ddd4fdd9dc710373e885cfd2cd6fa4a61f9c71e495688889f00e",
+    "scratch_absent_after_closed_attempts": true,
+    "seed_archives_and_shared_target_preserved": true,
+    "verified_attempts": [
+      {
+        "attempt": "ordinary-base-v1",
+        "retained_manifest_sha256": "c4c18354392e3aeb806ffa13a01255dad6565dfe05703d2c83d7ce03f84a141b",
+        "verified_files": 13
+      },
+      {
+        "attempt": "ordinary-reference-v1",
+        "retained_manifest_sha256": "95fe39041dd5fd1558f016d6514af5af384b6543241d9c322df460b1577683b1",
+        "verified_files": 13
+      },
+      {
+        "attempt": "qualification-base-v1",
+        "retained_manifest_sha256": "e1fb89b8e7b4a1c700c52e08e6035fedf3d7452ebac869242ad789039acf57ac",
+        "verified_files": 21
+      },
+      {
+        "attempt": "qualification-base-v2",
+        "retained_manifest_sha256": "870bcc8a3935d6271fe13d7d400b5979e88204bf7454f4a88656c2edb1981d1c",
+        "verified_files": 21
+      },
+      {
+        "attempt": "qualification-negative-control-1-v2",
+        "retained_manifest_sha256": "74ede78a0609595affb67c8a8f09e8228d06c92acf434edfdcb0626670ce6bf2",
+        "verified_files": 21
+      },
+      {
+        "attempt": "qualification-negative-control-2-v2",
+        "retained_manifest_sha256": "59d84ab6ab976380095ace49223ff0d1c395b5360d632ca5c7620c5e306e6615",
+        "verified_files": 21
+      },
+      {
+        "attempt": "qualification-reference-v1",
+        "retained_manifest_sha256": "364655554bbc2a22ef50406ec86ee857eea18c242ea7338f1fb072a4ffd95dbc",
+        "verified_files": 21
+      },
+      {
+        "attempt": "qualification-reference-v2",
+        "retained_manifest_sha256": "b8da7615dd00acbf64306332da3fdbd919b8a805d8b78b72b32d651e7b7d8dde",
+        "verified_files": 21
+      }
+    ],
+    "verified_retained_attempt_files": 152
+  },
+  "schema": "openagents.delegation.eligibility-calibration.v1",
+  "scored_executor_calls": 0,
+  "seed_attempts": [
+    {
+      "archive_entries": 1237,
+      "archive_wall_s": 0.06587353400027496,
+      "attempt": "base-seed",
+      "build_wall_s": 6.526840324999284,
+      "exit_code": 0,
+      "export_wall_s": 0.08817100200030836,
+      "git_snapshot_wall_s": 0.2067866130000766,
+      "recompiled_workspace_units": 15,
+      "retained_cleanup": {
+        "post-build-cleanup.json": {
+          "outside_build_timer": true,
+          "seed_preserved": true,
+          "shared_target_preserved": true,
+          "status": "complete",
+          "wall_s": 0.03374244799852022
+        }
+      },
+      "schema": "openagents.delegation.seed-build.v1",
+      "seed_bytes": 331204258,
+      "seed_files": 874,
+      "seed_manifest_sha256": "01d08f649421778f964b76aa921be00d62169965aea5dcf209505ff7b4793506",
+      "selected_seed_bytes": 331204258,
+      "snapshot_commit": "209bcaaaaaf2d516742baa528db58765ff9001ab",
+      "source_archive_bytes": 19763200,
+      "source_bytes": 18850032,
+      "source_commit": "7ec5f6e83d018ab2f25d7a61ff695de81f2f55f6",
+      "source_mtimes_refreshed_unix_ns": 1791019037103059530,
+      "status": "complete",
+      "toolchain": {
+        "cargo": "cargo 1.97.1 (c980f4866 2026-06-30)",
+        "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)\nbinary: rustc\ncommit-hash: 8bab26f4f68e0e26f0bb7960be334d5b520ea452\ncommit-date: 2026-07-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.97.1\nLLVM version: 22.1.6",
+        "rustdoc": "rustdoc 1.97.1 (8bab26f4f 2026-07-14)\nbinary: rustdoc\ncommit-hash: 8bab26f4f68e0e26f0bb7960be334d5b520ea452\ncommit-date: 2026-07-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.97.1\nLLVM version: 22.1.6"
+      },
+      "total_wall_s": 7.600186385001507
+    }
+  ],
+  "seed_validator_sha256": "0135097f1e92d46fddf7da57cf4c3b0d4ea3efc489d57f74ef1291e405406d0f",
+  "source_commit": "7ec5f6e83d018ab2f25d7a61ff695de81f2f55f6",
+  "state": "qualified_prospective_replacement"
+}

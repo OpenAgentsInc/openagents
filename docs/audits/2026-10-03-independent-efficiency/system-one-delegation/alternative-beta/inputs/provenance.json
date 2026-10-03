@@ -1,0 +1,43 @@
+{
+  "schema": "openagents.delegation.alternative-inputs.v1",
+  "task_id": "alternative-beta",
+  "source_commit": "7ec5f6e83d018ab2f25d7a61ff695de81f2f55f6",
+  "public_manifest_sha256": "a78647ec368dc9f6fb573915d9250bfe9ceb16edc1da9389e8576cc486c7a511",
+  "original_issue_record_sha256": "a14ebe29e2bcab7a50603d182bd2573ffb5d70de3fa33f42bb021e9d575582c4",
+  "original_issue_body_sha256": "578019bdb758746718c4026d84e1da27aa1e869b9fbc4b7a275f4435952816e3",
+  "normalized_issue_sha256": "fa79e041e8c2887c0195edf63b00dfd9dbc5ca9ffffd8ae65bedf8cfa1c74b50",
+  "base_prompt_sha256": "13e679d505882e9a1701a769108f5afaa3e7c5418d86b75f1540425ed4873bbb",
+  "cargo_features": [],
+  "source_instructions": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "5fcc28a615f7106cf82e0a67e25283af6b907d75908a9cfa3faa10a83a9c0215"
+    },
+    {
+      "path": ".agents/skills/google-developer-style/SKILL.md",
+      "sha256": "afb103c87f283e88ea33a1439a11fb1838a17970760b8ecc59bf2f9d89fb0197"
+    }
+  ],
+  "required_public_readings": [
+    {
+      "path": "docs/coder/traces.md",
+      "sha256": "b7570fc3dd4c74d377ad003e7a8c8d49e4901f620feb6cb2737db63c645390ca"
+    }
+  ],
+  "public_requirement_provenance": {
+    "historical_window_limit": "Older than the initial recent-week search; admitted by the second bounded screen before any scored executor calls.",
+    "instruction_scope": "The registered isolated task gate replaces broader historical workspace verification or deployment instructions.",
+    "issue_body_sha256": "578019bdb758746718c4026d84e1da27aa1e869b9fbc4b7a275f4435952816e3",
+    "issue_body_version_note": "Retrieved public body retained; issue edit history was not reconstructed, so byte identity with the original assignment is not claimed.",
+    "issue_record_sha256": "a14ebe29e2bcab7a50603d182bd2573ffb5d70de3fa33f42bb021e9d575582c4",
+    "observed_clean_claude_launch": false,
+    "provenance_class": "public_issue_native_trial_not_observed_session_replay",
+    "public_issue_observed_on": "2026-10-03",
+    "scope": "Complete A13 issue: tolerant torn-trace recovery with visible damage, trace lifecycle integrity, and strict grader behavior. Include the original coderbench fixture adjustments and consumer tests.",
+    "source_policy": "Use the exact reference parent for a new native trial. This is a reconstructed pre-fix revision, not an observed agent launch. The issue audit source is retained separately.",
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/9425"
+  },
+  "composition": "Same original common operational envelope, replacing only allowed paths and named package/feature checks, followed by exact safe manifest title and normalized prompt. The preparer reads only normalized issue.json. Original public issue body is retained provenance, not additional executor instructions.",
+  "qualification_note": "Qualified by the separate no-model Linux ordinary and independent checks before this preview. This is not a scored native result.",
+  "preview_policy": "One new deterministic preview with frozen prepare.py; one process measurement and separate index-construction time. Do not pool with original 20 previews or alpha."
+}

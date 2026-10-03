@@ -1,0 +1,14 @@
+This is an isolated historical coding exercise. Produce the candidate in the working tree; the harness checks the final state after the session ends. Follow the applicable AGENTS.md and repository writing instructions in this snapshot.
+
+The exercise concerns the bounded task below. It does not authorize claiming or updating the live issue, committing, pushing, deploying, or contacting other systems. Direct external networking is unavailable. The configured Cargo toolchain and CARGO_TARGET_DIR are provided; keep that external target directory. Keep generated build outputs outside the source tree.
+
+Allowed edit roots: crates/jev/
+Named checks: cargo fmt -p jev -- --check; cargo test --locked --offline -p jev --features jev/blocking
+
+Run the named checks and the focused regression coverage requested by the task. Report the changes, checks, and any unresolved failure when finished.
+
+# Task
+
+[P2][Audit A12, A22] Validate decision responses and enforce whole-call SDK deadlines
+
+Implement the remaining A12 portion of public issue 9424 in `crates/jev`. Validate finite numeric ranges, probability mass within a documented tolerance, selected option identities, and score legend bounds before returning typed decisions. At the typed request-aware boundary, validate required answer coverage, answer types, and option identities. Invalid answers must return structured validation errors; preserve a separate raw compatibility path. Cover Noul, Choice, and Score malformed responses and valid compatibility cases through async and blocking clients with bounded local mocks. Read `.agents/skills/typesafe-ai/SKILL.md` and the pinned `docs/decision-models/2026-09-20-score-contract.md`; preserve that selected-answer and calibrated-score contract when interpreting confidence and probabilities. This task does not choose model thresholds or call a provider. A22 whole-call deadlines are already implemented at this source and are outside this task. Work only within `crates/jev/`; run ordinary tests with `--features jev/blocking` and formatting checks. Do not enable the live feature. Broader consumer regression checks and deployment are outside this isolated SDK trial.

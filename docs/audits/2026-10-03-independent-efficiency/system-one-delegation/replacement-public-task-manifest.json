@@ -1,0 +1,180 @@
+{
+  "schema": "openagents.delegation-study.public-task-manifest.v1",
+  "created_at": "2026-10-03T09:42:41.221011+00:00",
+  "status": "qualified prospective replacement panel; unsealed; scored execution prohibited",
+  "contains_hidden_checkers": false,
+  "contains_reference_solutions": false,
+  "tasks": [
+    {
+      "id": "reserved-a",
+      "issue": 10078,
+      "title": "Desktop Coder start fails: \"the granted source snapshot is unavailable or changed\"",
+      "source_commit": "f056853c6508581e5fc6f3c09a99edba6b05f212",
+      "prompt": "A desktop Coder start can fail with \u201cthe granted source snapshot is unavailable or changed\u201d even when its source is readable and within the admitted entry and byte limits. A source tree with many sibling directories reproduces an incomplete observation caused by exhausting the process's open-file limit. Fix source observation so a wide tree can be completely observed within its resource budget. Preserve the existing no-follow boundary for links, completeness reporting, entry and byte limits, and change detection. Add a focused regression test. Work within the source-observation and admission code needed for this behavior; do not weaken admission to accept an incomplete snapshot.",
+      "allowed_paths": [
+        "crates/coder-boundary/"
+      ],
+      "packages": [
+        "coder-boundary"
+      ],
+      "applicable_instruction_paths": [
+        {
+          "path": "AGENTS.md",
+          "sha256": "dcff487bf6a5cfbc85f1aaeffb271856774b081e04a69bbbfbafbd7a007c8235"
+        },
+        {
+          "path": ".agents/skills/google-developer-style/SKILL.md",
+          "sha256": "afb103c87f283e88ea33a1439a11fb1838a17970760b8ecc59bf2f9d89fb0197"
+        }
+      ],
+      "public_requirement_provenance": {
+        "url": "https://github.com/OpenAgentsInc/openagents/issues/10078",
+        "created_at": "2026-10-01T03:52:04Z",
+        "observed_state": "CLOSED",
+        "observed_updated_at": "2026-10-01T04:13:06Z",
+        "body_sha256": "f0fb26cc945c4badf35c09af5ca41e3930f5e429e8c12b4a6cf2fabc5460cc9d",
+        "scope": "Normalized bounded behavior slice of the historical issue. It does not assert full issue closure or replay deployment/owner-machine instructions. Original public issue plus independent safety controls, finalized before candidate model trials."
+      }
+    },
+    {
+      "allowed_paths": [
+        "crates/coder-access/"
+      ],
+      "applicable_instruction_paths": [
+        {
+          "path": "AGENTS.md",
+          "sha256": "3f32f4fd3c25b1dd5bf6fd302c90bf8b18da4a78942a61db12b87ca2cbbe4779"
+        },
+        {
+          "path": ".agents/skills/google-developer-style/SKILL.md",
+          "sha256": "afb103c87f283e88ea33a1439a11fb1838a17970760b8ecc59bf2f9d89fb0197"
+        },
+        {
+          "path": ".agents/skills/nostr/SKILL.md",
+          "sha256": "627ce777325d70ea42fdc72246e225a7c1d4e15b499bd1aab04bda1ad7cb6580"
+        }
+      ],
+      "id": "alternative-alpha",
+      "issue": 9908,
+      "packages": [
+        "coder-access"
+      ],
+      "prompt": "Device re-enrollment in `crates/coder-access` keeps adding grants until the 128-grant bound prevents a new device from enrolling. Fix grant retention so a device that enrolls again has one live grant, and revoked or superseded grants do not prevent new enrollment. Preserve the bound for distinct live devices and preserve already-issued delegated access when its issuing device enrolls again. Delegation must still narrow authority and obey explicit revocation; re-enrollment must not revive authority that was revoked or removed. Preserve invitation retry behavior. Cover the public invitation and owner-approved enrollment paths with regression tests. Read the crate README and `nips/openagents/NIP-HOST.md`. Work only on the isolated code and tests in `crates/coder-access/`; host-store cleanup, deployment, owner devices, and changes outside this package are outside this trial.",
+      "public_requirement_provenance": {
+        "clean_source_provenance": "A retained child records a fresh worktree at the pinned source before the scoped implementation; raw conversation remains private.",
+        "historical_gate_limit": "Retained macOS output is provenance only; separate current Linux eligibility checks are required.",
+        "observed_historical_assignment_utc": "2026-09-28T20:51:35.069Z",
+        "original_body_sha256": "e9c74ff7b3b51b1fe1da722dda6f4138060fefed6ae5f97fa93653d1d8dda098",
+        "original_issue_record_sha256": "7d4f5bd2a5d06298362b9433628c391dd6cf0c3544e9824dcbb49d9241952ed1",
+        "scope": "Normalized public issue behavior with public protocol safety requirements. The original child also handled issue 9909 and operational host cleanup/deployment; those and the original INVARIANTS row are excluded by the isolated package-only trial scope.",
+        "url": "https://github.com/OpenAgentsInc/openagents/issues/9908"
+      },
+      "required_public_readings": [
+        {
+          "path": "crates/coder-access/README.md",
+          "sha256": "0b2d7ddf3063bbc5136326a62f210c3275ba8eb66b406d4885935d7c73af47ac"
+        },
+        {
+          "path": "nips/openagents/NIP-HOST.md",
+          "sha256": "3da5fd0161b7096a4aeada96bdccd3fc3444734f205eda3919f85e1890c18210"
+        }
+      ],
+      "source_commit": "09f4e0915150f503e332c2b213d24f793c433f3b",
+      "title": "Device-access (NIP-HOST) grants fill up: one grant per live test run in coder-access/access.json"
+    },
+    {
+      "allowed_paths": [
+        "crates/atif/",
+        "crates/coderbench/"
+      ],
+      "applicable_instruction_paths": [
+        {
+          "path": "AGENTS.md",
+          "sha256": "5fcc28a615f7106cf82e0a67e25283af6b907d75908a9cfa3faa10a83a9c0215"
+        },
+        {
+          "path": ".agents/skills/google-developer-style/SKILL.md",
+          "sha256": "afb103c87f283e88ea33a1439a11fb1838a17970760b8ecc59bf2f9d89fb0197"
+        }
+      ],
+      "cargo_features": [],
+      "id": "alternative-beta",
+      "issue": 9425,
+      "packages": [
+        "atif",
+        "coderbench"
+      ],
+      "prompt": "Fix public audit finding A13 in `crates/atif` and its `crates/coderbench` consumer. Read newline-delimited bytes before UTF-8 decoding so a torn final multibyte record preserves the valid prefix for interactive viewing. Report unreadable records and interruption, and distinguish tolerant recovery from the stronger integrity needed for benchmark evidence. Specify and enforce lifecycle behavior for repeated session headers or end records, records after end, append after closure, and malformed interior records. Add property or table-driven tests truncating a non-ASCII final record at every byte. Strict CoderBench ingestion must reject or mark damaged or incomplete evidence unverifiable and must not convert recovery into a successful grade. Preserve valid ATIF fixture compatibility and the retained transcript archive. Read `docs/coder/traces.md`. Work only within `crates/atif/` and `crates/coderbench/`; run their ordinary tests and formatting checks. Documentation outside these packages and operational work are outside this isolated trial.",
+      "public_requirement_provenance": {
+        "historical_window_limit": "Older than the initial recent-week search; admitted by the second bounded screen before any scored executor calls.",
+        "instruction_scope": "The registered isolated task gate replaces broader historical workspace verification or deployment instructions.",
+        "issue_body_sha256": "578019bdb758746718c4026d84e1da27aa1e869b9fbc4b7a275f4435952816e3",
+        "issue_body_version_note": "Retrieved public body retained; issue edit history was not reconstructed, so byte identity with the original assignment is not claimed.",
+        "issue_record_sha256": "a14ebe29e2bcab7a50603d182bd2573ffb5d70de3fa33f42bb021e9d575582c4",
+        "observed_clean_claude_launch": false,
+        "provenance_class": "public_issue_native_trial_not_observed_session_replay",
+        "public_issue_observed_on": "2026-10-03",
+        "scope": "Complete A13 issue: tolerant torn-trace recovery with visible damage, trace lifecycle integrity, and strict grader behavior. Include the original coderbench fixture adjustments and consumer tests.",
+        "source_policy": "Use the exact reference parent for a new native trial. This is a reconstructed pre-fix revision, not an observed agent launch. The issue audit source is retained separately.",
+        "url": "https://github.com/OpenAgentsInc/openagents/issues/9425"
+      },
+      "required_public_readings": [
+        {
+          "path": "docs/coder/traces.md",
+          "sha256": "b7570fc3dd4c74d377ad003e7a8c8d49e4901f620feb6cb2737db63c645390ca"
+        }
+      ],
+      "source_commit": "7ec5f6e83d018ab2f25d7a61ff695de81f2f55f6",
+      "title": "[P2][Audit A13] Recover torn traces while enforcing strict grading integrity"
+    },
+    {
+      "allowed_paths": [
+        "crates/jev/"
+      ],
+      "applicable_instruction_paths": [
+        {
+          "path": "AGENTS.md",
+          "sha256": "5fcc28a615f7106cf82e0a67e25283af6b907d75908a9cfa3faa10a83a9c0215"
+        },
+        {
+          "path": ".agents/skills/google-developer-style/SKILL.md",
+          "sha256": "afb103c87f283e88ea33a1439a11fb1838a17970760b8ecc59bf2f9d89fb0197"
+        },
+        {
+          "path": ".agents/skills/typesafe-ai/SKILL.md",
+          "sha256": "71ea90d7906c6554c4f4c460ef7361b2d26f59116ccdae986dc6d997b9389f52"
+        }
+      ],
+      "cargo_features": [
+        "jev/blocking"
+      ],
+      "id": "alternative-gamma",
+      "issue": 9424,
+      "packages": [
+        "jev"
+      ],
+      "prompt": "Implement the remaining A12 portion of public issue 9424 in `crates/jev`. Validate finite numeric ranges, probability mass within a documented tolerance, selected option identities, and score legend bounds before returning typed decisions. At the typed request-aware boundary, validate required answer coverage, answer types, and option identities. Invalid answers must return structured validation errors; preserve a separate raw compatibility path. Cover Noul, Choice, and Score malformed responses and valid compatibility cases through async and blocking clients with bounded local mocks. Read `.agents/skills/typesafe-ai/SKILL.md` and the pinned `docs/decision-models/2026-09-20-score-contract.md`; preserve that selected-answer and calibrated-score contract when interpreting confidence and probabilities. This task does not choose model thresholds or call a provider. A22 whole-call deadlines are already implemented at this source and are outside this task. Work only within `crates/jev/`; run ordinary tests with `--features jev/blocking` and formatting checks. Do not enable the live feature. Broader consumer regression checks and deployment are outside this isolated SDK trial.",
+      "public_requirement_provenance": {
+        "historical_window_limit": "Older than the initial recent-week search; admitted by the second bounded screen before any scored executor calls.",
+        "instruction_scope": "The registered isolated task gate replaces broader historical workspace verification or deployment instructions.",
+        "issue_body_sha256": "d845475194ca65eb78804b5328ae010ecf2d28fa27607e9a5a8e4bb7802f1e8f",
+        "issue_body_version_note": "Retrieved public body retained; issue edit history was not reconstructed, so byte identity with the original assignment is not claimed.",
+        "issue_record_sha256": "3d77c368726126e6591149337962960b2dcd75572c94b6ea27d8442f0ba11248",
+        "observed_clean_claude_launch": false,
+        "provenance_class": "public_issue_native_trial_not_observed_session_replay",
+        "public_issue_observed_on": "2026-10-03",
+        "scope": "Remaining A12 portion of a two-finding public issue: validate typed numeric answers and request-aware type/coverage/option identity while retaining raw compatibility. A22 retry deadline is already present in the selected source; do not count this as replaying the whole original issue.",
+        "source_policy": "Use the exact reference parent for a new native trial. This is a reconstructed pre-fix revision, not an observed agent launch. The issue audit source is retained separately.",
+        "url": "https://github.com/OpenAgentsInc/openagents/issues/9424"
+      },
+      "required_public_readings": [
+        {
+          "path": "docs/decision-models/2026-09-20-score-contract.md",
+          "sha256": "a8c612095723bf3599ae4d618aeff8ae18e3b5a05e868c07f26e623126e20c60"
+        }
+      ],
+      "source_commit": "c427943a5c84ba5938a3549f24b27de551812a37",
+      "title": "[P2][Audit A12, A22] Validate decision responses and enforce whole-call SDK deadlines"
+    }
+  ]
+}

@@ -1,0 +1,49 @@
+{
+  "schema": "openagents.delegation.alternative-inputs.v1",
+  "task_id": "alternative-gamma",
+  "source_commit": "c427943a5c84ba5938a3549f24b27de551812a37",
+  "public_manifest_sha256": "a06ff5c883e57a8bac3cafc88444d6987b80b4a5b3c7efaf4c0354d080a8050d",
+  "original_issue_record_sha256": "3d77c368726126e6591149337962960b2dcd75572c94b6ea27d8442f0ba11248",
+  "original_issue_body_sha256": "d845475194ca65eb78804b5328ae010ecf2d28fa27607e9a5a8e4bb7802f1e8f",
+  "normalized_issue_sha256": "61cc75c9fa12d618c3f2e4f86b4359d3a533424dee5a890d6a355639f0acbc66",
+  "base_prompt_sha256": "824e0fae09dbd65baba6699268e42e0e77f74ab66b63619b72daed20c25c692b",
+  "cargo_features": [
+    "jev/blocking"
+  ],
+  "source_instructions": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "5fcc28a615f7106cf82e0a67e25283af6b907d75908a9cfa3faa10a83a9c0215"
+    },
+    {
+      "path": ".agents/skills/google-developer-style/SKILL.md",
+      "sha256": "afb103c87f283e88ea33a1439a11fb1838a17970760b8ecc59bf2f9d89fb0197"
+    },
+    {
+      "path": ".agents/skills/typesafe-ai/SKILL.md",
+      "sha256": "71ea90d7906c6554c4f4c460ef7361b2d26f59116ccdae986dc6d997b9389f52"
+    }
+  ],
+  "required_public_readings": [
+    {
+      "path": "docs/decision-models/2026-09-20-score-contract.md",
+      "sha256": "a8c612095723bf3599ae4d618aeff8ae18e3b5a05e868c07f26e623126e20c60"
+    }
+  ],
+  "public_requirement_provenance": {
+    "historical_window_limit": "Older than the initial recent-week search; admitted by the second bounded screen before any scored executor calls.",
+    "instruction_scope": "The registered isolated task gate replaces broader historical workspace verification or deployment instructions.",
+    "issue_body_sha256": "d845475194ca65eb78804b5328ae010ecf2d28fa27607e9a5a8e4bb7802f1e8f",
+    "issue_body_version_note": "Retrieved public body retained; issue edit history was not reconstructed, so byte identity with the original assignment is not claimed.",
+    "issue_record_sha256": "3d77c368726126e6591149337962960b2dcd75572c94b6ea27d8442f0ba11248",
+    "observed_clean_claude_launch": false,
+    "provenance_class": "public_issue_native_trial_not_observed_session_replay",
+    "public_issue_observed_on": "2026-10-03",
+    "scope": "Remaining A12 portion of a two-finding public issue: validate typed numeric answers and request-aware type/coverage/option identity while retaining raw compatibility. A22 retry deadline is already present in the selected source; do not count this as replaying the whole original issue.",
+    "source_policy": "Use the exact reference parent for a new native trial. This is a reconstructed pre-fix revision, not an observed agent launch. The issue audit source is retained separately.",
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/9424"
+  },
+  "composition": "Same original common operational envelope, replacing only allowed paths and named package/feature checks, followed by exact safe manifest title and normalized prompt. The preparer reads only normalized issue.json. Original public issue body is retained provenance, not additional executor instructions.",
+  "qualification_note": "Qualified by the separate no-model Linux ordinary and independent checks before this preview. This is not a scored native result.",
+  "preview_policy": "One new deterministic preview with frozen prepare.py; one process measurement and separate index-construction time. Do not pool with original 20 previews or alpha."
+}

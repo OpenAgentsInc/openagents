@@ -1,0 +1,200 @@
+{
+  "schema": "openagents.delegation-study.replacement-panel.v1",
+  "created_at": "2026-10-03T09:45:14.966856+00:00",
+  "status": "prospective_unsealed",
+  "scored_executor_sessions": 0,
+  "scored_execution_allowed": false,
+  "reason": "Only original A passed the complete ordinary and independent gate. The closed replacement screens qualify alpha, beta, and gamma without changing preparation policy or using executor outcomes.",
+  "task_ids": [
+    "reserved-a",
+    "alternative-alpha",
+    "alternative-beta",
+    "alternative-gamma"
+  ],
+  "input_manifests": [
+    {
+      "path": "public-task-manifest.json",
+      "sha256": "5c3d8837090fefebf318db4ae2bbc5cf8f4bbb19cccc50c420aae00e6738648e"
+    },
+    {
+      "path": "alternative-alpha/inputs/public-task-manifest.json",
+      "sha256": "93075b5d1750c983305f57a0c2b44d18b595b3f699b3d8bf158af11af9d7e2e0"
+    },
+    {
+      "path": "alternative-beta/inputs/public-task-manifest.json",
+      "sha256": "a78647ec368dc9f6fb573915d9250bfe9ceb16edc1da9389e8576cc486c7a511"
+    },
+    {
+      "path": "alternative-gamma/inputs/public-task-manifest.json",
+      "sha256": "a06ff5c883e57a8bac3cafc88444d6987b80b4a5b3c7efaf4c0354d080a8050d"
+    }
+  ],
+  "replacement_manifest": {
+    "path": "replacement-public-task-manifest.json",
+    "sha256": "ff447c446b7b20e7b42bed4da2bde7f1d22a60b6a05cae5d2ccab165eb158d36"
+  },
+  "qualification_records": [
+    {
+      "path": "acceptance-preflight.json",
+      "sha256": "19473cfff9c4b15c4f447f3b08322bfbd4b1fc1277885ebffb647ff1a7ebe13a"
+    },
+    {
+      "path": "eligibility-alpha.json",
+      "sha256": "4771f9fca0593d90541f114fd47beabd769145512af23bd809c85bf1d182c5cd"
+    },
+    {
+      "path": "eligibility-beta.json",
+      "sha256": "d1df0c62c256219ea8b1bb915da4ebfb006a4bc487c1092af9f14d0f7041ddce"
+    },
+    {
+      "path": "eligibility-gamma.json",
+      "sha256": "68c26f988843326d3a49c0ff1b01bec7d233d07a8c47e30039ab002282a49622"
+    }
+  ],
+  "original_exclusions": [
+    {
+      "path": "eligibility-cd.json",
+      "sha256": "99b8d3b1a524e3ff9006b060245a41a1ebc589c49edb66c93b345320c2bdcb86"
+    }
+  ],
+  "selection_records": [
+    {
+      "path": "selection-screen-2.json",
+      "sha256": "2b816ed098ce57852e52a1879bc63aff43a9c2d4b3ee54e322017d4f7ac69c70"
+    }
+  ],
+  "previous_protocol": {
+    "git_commit": "fca33988a9e306cc26ff2cfd790e4dfca502c212",
+    "path": "docs/audits/2026-10-03-independent-efficiency/system-one-delegation/protocol.json",
+    "sha256": "7fb83b54383eece32a856714e3817b886f32b72dcd6d7217bed9b8cdb247129f"
+  },
+  "updated_protocol": {
+    "path": "protocol.json",
+    "sha256": "692d5c15b45a071acfc7a1e39fe6e707071128a63adee9e186b5df602c1703c1"
+  },
+  "protocol_fields_changed": [
+    "task_selection",
+    "limitations"
+  ],
+  "unchanged": [
+    "design",
+    "arms",
+    "source_pool",
+    "system_one",
+    "execution",
+    "endpoint",
+    "budget_estimated_usd",
+    "cost_accounting",
+    "quality_gate",
+    "comparisons",
+    "analysis",
+    "registration"
+  ],
+  "original_draft": {
+    "path": "draft-schedule.json",
+    "sha256": "e038832b9c07563804712c6976036f3b73e53f87f8ed2b6c17b88aa73c77347f"
+  },
+  "replacement_draft": {
+    "path": "replacement-draft-schedule.json",
+    "sha256": "c5d18f7bbe7c404941f41796b084fa6ee94d2b52e8cee9036a69e27c6e0c9fc6"
+  },
+  "schedule": {
+    "study_id": "7c1cde3f-37da-4a1c-9a5e-2798e5caf014",
+    "seed": 20261003,
+    "generator": {
+      "path": "../../../../bench/delegation-study/schedule.py",
+      "sha256": "6294517aa29ec817704774b95f9eefb34fcdb41b44704fd1e6191cb2a3eefc23"
+    },
+    "tasks": 4,
+    "arms": 6,
+    "repetitions": 2,
+    "attempts": 48,
+    "complete_six_arm_blocks": 8,
+    "all_attempt_ids_distinct_from_original_draft": true,
+    "recomputed_schedule_matches": true
+  },
+  "verified_instruction_and_reading_objects": [
+    {
+      "task_id": "reserved-a",
+      "path": "AGENTS.md",
+      "sha256": "dcff487bf6a5cfbc85f1aaeffb271856774b081e04a69bbbfbafbd7a007c8235"
+    },
+    {
+      "task_id": "reserved-a",
+      "path": ".agents/skills/google-developer-style/SKILL.md",
+      "sha256": "afb103c87f283e88ea33a1439a11fb1838a17970760b8ecc59bf2f9d89fb0197"
+    },
+    {
+      "task_id": "alternative-alpha",
+      "path": "AGENTS.md",
+      "sha256": "3f32f4fd3c25b1dd5bf6fd302c90bf8b18da4a78942a61db12b87ca2cbbe4779"
+    },
+    {
+      "task_id": "alternative-alpha",
+      "path": ".agents/skills/google-developer-style/SKILL.md",
+      "sha256": "afb103c87f283e88ea33a1439a11fb1838a17970760b8ecc59bf2f9d89fb0197"
+    },
+    {
+      "task_id": "alternative-alpha",
+      "path": ".agents/skills/nostr/SKILL.md",
+      "sha256": "627ce777325d70ea42fdc72246e225a7c1d4e15b499bd1aab04bda1ad7cb6580"
+    },
+    {
+      "task_id": "alternative-alpha",
+      "path": "crates/coder-access/README.md",
+      "sha256": "0b2d7ddf3063bbc5136326a62f210c3275ba8eb66b406d4885935d7c73af47ac"
+    },
+    {
+      "task_id": "alternative-alpha",
+      "path": "nips/openagents/NIP-HOST.md",
+      "sha256": "3da5fd0161b7096a4aeada96bdccd3fc3444734f205eda3919f85e1890c18210"
+    },
+    {
+      "task_id": "alternative-beta",
+      "path": "AGENTS.md",
+      "sha256": "5fcc28a615f7106cf82e0a67e25283af6b907d75908a9cfa3faa10a83a9c0215"
+    },
+    {
+      "task_id": "alternative-beta",
+      "path": ".agents/skills/google-developer-style/SKILL.md",
+      "sha256": "afb103c87f283e88ea33a1439a11fb1838a17970760b8ecc59bf2f9d89fb0197"
+    },
+    {
+      "task_id": "alternative-beta",
+      "path": "docs/coder/traces.md",
+      "sha256": "b7570fc3dd4c74d377ad003e7a8c8d49e4901f620feb6cb2737db63c645390ca"
+    },
+    {
+      "task_id": "alternative-gamma",
+      "path": "AGENTS.md",
+      "sha256": "5fcc28a615f7106cf82e0a67e25283af6b907d75908a9cfa3faa10a83a9c0215"
+    },
+    {
+      "task_id": "alternative-gamma",
+      "path": ".agents/skills/google-developer-style/SKILL.md",
+      "sha256": "afb103c87f283e88ea33a1439a11fb1838a17970760b8ecc59bf2f9d89fb0197"
+    },
+    {
+      "task_id": "alternative-gamma",
+      "path": ".agents/skills/typesafe-ai/SKILL.md",
+      "sha256": "71ea90d7906c6554c4f4c460ef7361b2d26f59116ccdae986dc6d997b9389f52"
+    },
+    {
+      "task_id": "alternative-gamma",
+      "path": "docs/decision-models/2026-09-20-score-contract.md",
+      "sha256": "a8c612095723bf3599ae4d618aeff8ae18e3b5a05e868c07f26e623126e20c60"
+    }
+  ],
+  "limitations": [
+    "Beta and gamma are older than the initial recent-week scope and no clean Claude launch was observed for them.",
+    "Historical issue bodies were retrieved later; original edit histories were not reconstructed.",
+    "Eligibility selects healthy ordinary suites in this Linux environment; no broad backlog or large-workspace inference.",
+    "Qualified reference fixes and rejected controls are not scored native executor outcomes."
+  ],
+  "remaining_prerequisites": [
+    "funded_successful_Jev_capability",
+    "resolution_or_bound_for_unknown_refusal_charge",
+    "current_native_model_capabilities_and_complete_native_to_acceptance_preflight",
+    "final_artifact_bindings_and_sealed_registration"
+  ]
+}

@@ -1,0 +1,875 @@
+{
+  "acceptance_helper_sha256": "86abab6a41fccb2f8a2b973e3a2f9d73404c55ec79ac3482829ca6174286cf6d",
+  "accounting": {
+    "cleanup_outside_attempt_timers": true,
+    "dollar_cost": null,
+    "dollar_cost_reason": "No dollar ledger was collected; these are no-model infrastructure measurements.",
+    "measured_attempts_cleanup_s": 0.5609606109992455,
+    "measured_attempts_total_wall_s": 68.5915552940005,
+    "measured_dependency_provision_s": 0.188644399997429,
+    "measured_seed_attempts_total_wall_s": 7.609572730001673,
+    "measured_seed_cleanup_s": 0.19360560099994473,
+    "tool_transfer_research_review_and_collection_time_included": false
+  },
+  "alias": "alternative-gamma",
+  "allowed_paths": [
+    "crates/jev/"
+  ],
+  "attempts": [
+    {
+      "alias": "alternative-gamma",
+      "attempt": "ordinary-base-v1",
+      "calibration_classification": "ordinary_gate_passed",
+      "candidate_manifest_sha256": "d5c140ab8a0e5e92e1829387a52944a6ca8d6e038640c850cc905f6821bfdeb3",
+      "cargo_features": [
+        "jev/blocking"
+      ],
+      "checker_injected": false,
+      "cleanup_outside_measurement": true,
+      "cleanup_s": 0.09932937600024161,
+      "compile": {
+        "exit_code": 0,
+        "passed": true,
+        "status": "passed",
+        "wall_s": 9.685043678000511
+      },
+      "driver_sha256": "8578fb964b9aeacf22d8add7cb9a9dba2a766f85d28e40b8956e35969ce69f1b",
+      "format": {
+        "exit_code": 0,
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.06463759400139679
+      },
+      "helper_sha256": "86abab6a41fccb2f8a2b973e3a2f9d73404c55ec79ac3482829ca6174286cf6d",
+      "identity_and_scope_validated": true,
+      "model_calls": 0,
+      "packages": [
+        "jev"
+      ],
+      "passed": true,
+      "phases": {
+        "export_s": 0.09757901099874289,
+        "git_snapshot_s": 0.21875977200033958,
+        "seed_copy_s": 0.10504795300039405,
+        "seed_validation_s": 0.18348053000045184,
+        "setup_s": 0.6803105059989321
+      },
+      "retained_files_sha256": "7b4d34a7f830f1ec59e9051939a3a891eeab1de79bc938d379ae1c6af4746817",
+      "role": "base",
+      "schema": "openagents.delegation.ordinary-eligibility.v1",
+      "scratch_absent": true,
+      "seed_manifest_sha256": "9cba61c2a281260710a678f7fa6004e3277f59effb5941a4364b47ee729c56f0",
+      "snapshot_commit": "bd38eb0319e0bed348f1e488a873a1ec0ba00e26",
+      "source_archive_sha256": "3a736e4d8e5adaebd5699804b28b6d110c77230583904f58f08caf456f6ee338",
+      "source_commit": "c427943a5c84ba5938a3549f24b27de551812a37",
+      "status": "complete",
+      "test": {
+        "exit_code": 0,
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.8162307669990696
+      },
+      "total_timeout_s": 240,
+      "total_wall_s": 11.253236282998841
+    },
+    {
+      "alias": "alternative-gamma",
+      "attempt": "ordinary-reference-v1",
+      "calibration_classification": "ordinary_gate_passed",
+      "candidate_manifest_sha256": "e20f960edb0a1347d120b2764b0e825d5c555c16962d431b119e9450b2a0c09f",
+      "cargo_features": [
+        "jev/blocking"
+      ],
+      "checker_injected": false,
+      "cleanup_outside_measurement": true,
+      "cleanup_s": 0.0874813880000147,
+      "compile": {
+        "exit_code": 0,
+        "passed": true,
+        "status": "passed",
+        "wall_s": 9.33802254800139
+      },
+      "driver_sha256": "8578fb964b9aeacf22d8add7cb9a9dba2a766f85d28e40b8956e35969ce69f1b",
+      "format": {
+        "exit_code": 0,
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.0644007610007975
+      },
+      "helper_sha256": "86abab6a41fccb2f8a2b973e3a2f9d73404c55ec79ac3482829ca6174286cf6d",
+      "identity_and_scope_validated": true,
+      "model_calls": 0,
+      "packages": [
+        "jev"
+      ],
+      "passed": true,
+      "phases": {
+        "export_s": 0.1003425969993259,
+        "git_snapshot_s": 0.21981030900133192,
+        "seed_copy_s": 0.11978235199967457,
+        "seed_validation_s": 0.18184327299968572,
+        "setup_s": 0.6996124729994335
+      },
+      "retained_files_sha256": "a87e2bcd359a5ff29f0531c9fa0e896b610718a6dc2dbda45ad02ea299ea6d74",
+      "role": "reference",
+      "schema": "openagents.delegation.ordinary-eligibility.v1",
+      "scratch_absent": true,
+      "seed_manifest_sha256": "9cba61c2a281260710a678f7fa6004e3277f59effb5941a4364b47ee729c56f0",
+      "snapshot_commit": "bd38eb0319e0bed348f1e488a873a1ec0ba00e26",
+      "source_archive_sha256": "3a736e4d8e5adaebd5699804b28b6d110c77230583904f58f08caf456f6ee338",
+      "source_commit": "c427943a5c84ba5938a3549f24b27de551812a37",
+      "status": "complete",
+      "test": {
+        "exit_code": 0,
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.816421890998754
+      },
+      "total_timeout_s": 240,
+      "total_wall_s": 11.137996733999898
+    },
+    {
+      "accepted": false,
+      "alias": "alternative-gamma",
+      "attempt": "qualification-base-v1",
+      "calibration_classification": "base_rejected_by_independent_behavior",
+      "candidate_manifest_sha256": "d5c140ab8a0e5e92e1829387a52944a6ca8d6e038640c850cc905f6821bfdeb3",
+      "cargo_features": [
+        "jev/blocking"
+      ],
+      "checker_sha256": "575a283ba8d4e09005b75ad8d81977eb532cc6c0bf2d47eaf80bca0bb62fbb9f",
+      "checks_sha256": "397031b3863bdc6963125d01fa2d0ef4e03e507d18ef3565fe945b34ee941bb2",
+      "cleanup_outside_acceptance_timer": true,
+      "cleanup_s": 0.09657791099925817,
+      "completed": true,
+      "error_code": null,
+      "execution_closed": true,
+      "format": {
+        "exit_code": 0,
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.06462264199944912
+      },
+      "helper_sha256": "86abab6a41fccb2f8a2b973e3a2f9d73404c55ec79ac3482829ca6174286cf6d",
+      "identity_validated": true,
+      "independent": {
+        "compile": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 0.3149035169990384
+        },
+        "passed": false,
+        "status": "failed",
+        "test": {
+          "exit_code": 101,
+          "passed": false,
+          "status": "failed",
+          "wall_s": 0.11471317400173575
+        },
+        "wall_s": 0.43411830799959716
+      },
+      "independent_test_counts": [
+        {
+          "failed": 3,
+          "passed": 1
+        }
+      ],
+      "model_calls": 0,
+      "ordinary": {
+        "compile": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 8.932147592999172
+        },
+        "passed": true,
+        "status": "passed",
+        "test": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 0.765562113998385
+        },
+        "wall_s": 9.704747195000891
+      },
+      "phases": {
+        "apply_candidate_s": 0.0001302839991694782,
+        "export_s": 0.08143166700028814,
+        "git_snapshot_s": 0.21449877200029732,
+        "seed_copy_s": 0.1037954349994834,
+        "seed_validation_s": 0.182149935999405,
+        "setup_s": 0.6555106039995735
+      },
+      "retained_files_sha256": "8f53a3a1c6c234d9145dcbf11c6e8d2a4b25430e2e757c22c80e008abb0a973d",
+      "role": "base",
+      "scope": {
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.010285771999406279
+      },
+      "scope_validated": true,
+      "scratch_absent": true,
+      "seed_policy": "cargo-reported-libraries-v1",
+      "snapshot_commit": "bd38eb0319e0bed348f1e488a873a1ec0ba00e26",
+      "source_archive_sha256": "3a736e4d8e5adaebd5699804b28b6d110c77230583904f58f08caf456f6ee338",
+      "source_commit": "c427943a5c84ba5938a3549f24b27de551812a37",
+      "source_mtime_policy": "changed_and_injected_only_verified_base_seed",
+      "status": "complete",
+      "target_seed_manifest_sha256": "9cba61c2a281260710a678f7fa6004e3277f59effb5941a4364b47ee729c56f0",
+      "total_wall_s": 10.935300229000859
+    },
+    {
+      "accepted": false,
+      "alias": "alternative-gamma",
+      "attempt": "qualification-negative-control-1-v1",
+      "calibration_classification": "compiled_negative_control_rejected",
+      "candidate_manifest_sha256": "c7a439fc896bb085127cd49e6fedee467e6f662d0f32e70ff1b29756e82202e9",
+      "cargo_features": [
+        "jev/blocking"
+      ],
+      "checker_sha256": "575a283ba8d4e09005b75ad8d81977eb532cc6c0bf2d47eaf80bca0bb62fbb9f",
+      "checks_sha256": "b76cf5ed4d607eb29676900987eddf7168f52721929602285bcfb99e23d8359d",
+      "cleanup_outside_acceptance_timer": true,
+      "cleanup_s": 0.09377315499841643,
+      "completed": true,
+      "error_code": null,
+      "execution_closed": true,
+      "format": {
+        "exit_code": 0,
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.11474175900002592
+      },
+      "helper_sha256": "86abab6a41fccb2f8a2b973e3a2f9d73404c55ec79ac3482829ca6174286cf6d",
+      "identity_validated": true,
+      "independent": {
+        "compile": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 0.315012871998988
+        },
+        "passed": false,
+        "status": "failed",
+        "test": {
+          "exit_code": 101,
+          "passed": false,
+          "status": "failed",
+          "wall_s": 0.16469608599982166
+        },
+        "wall_s": 0.4842162679997273
+      },
+      "independent_test_counts": [
+        {
+          "failed": 1,
+          "passed": 3
+        }
+      ],
+      "model_calls": 0,
+      "ordinary": {
+        "compile": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 10.085745506999956
+        },
+        "passed": false,
+        "status": "failed",
+        "test": {
+          "exit_code": 101,
+          "passed": false,
+          "status": "failed",
+          "wall_s": 0.5655597830009356
+        },
+        "wall_s": 10.660854554000252
+      },
+      "phases": {
+        "apply_candidate_s": 0.0020126869985688245,
+        "export_s": 0.09078381400104263,
+        "git_snapshot_s": 0.23510594099934679,
+        "seed_copy_s": 0.11510693400123273,
+        "seed_validation_s": 0.2892393579986674,
+        "setup_s": 0.8565336139999999
+      },
+      "retained_files_sha256": "480df8d137f4841579af24af7c337ee6ffbdda33363a0b87f367c396fa4508a1",
+      "role": "negative-control-1",
+      "scope": {
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.010885028999837232
+      },
+      "scope_validated": true,
+      "scratch_absent": true,
+      "seed_policy": "cargo-reported-libraries-v1",
+      "snapshot_commit": "bd38eb0319e0bed348f1e488a873a1ec0ba00e26",
+      "source_archive_sha256": "3a736e4d8e5adaebd5699804b28b6d110c77230583904f58f08caf456f6ee338",
+      "source_commit": "c427943a5c84ba5938a3549f24b27de551812a37",
+      "source_mtime_policy": "changed_and_injected_only_verified_base_seed",
+      "status": "complete",
+      "target_seed_manifest_sha256": "9cba61c2a281260710a678f7fa6004e3277f59effb5941a4364b47ee729c56f0",
+      "total_wall_s": 12.189757825000925
+    },
+    {
+      "accepted": false,
+      "alias": "alternative-gamma",
+      "attempt": "qualification-negative-control-2-v1",
+      "calibration_classification": "compiled_negative_control_rejected",
+      "candidate_manifest_sha256": "635f89b2fd41056cafb75c5eb2427d85b787f346b3661a96ab4aa1f4b7d09bb2",
+      "cargo_features": [
+        "jev/blocking"
+      ],
+      "checker_sha256": "575a283ba8d4e09005b75ad8d81977eb532cc6c0bf2d47eaf80bca0bb62fbb9f",
+      "checks_sha256": "03ff51baaa7040bd71f29a4c49059f81e3138b2d3fb4466426386ce813b24511",
+      "cleanup_outside_acceptance_timer": true,
+      "cleanup_s": 0.08733600500090688,
+      "completed": true,
+      "error_code": null,
+      "execution_closed": true,
+      "format": {
+        "exit_code": 0,
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.11465360399961355
+      },
+      "helper_sha256": "86abab6a41fccb2f8a2b973e3a2f9d73404c55ec79ac3482829ca6174286cf6d",
+      "identity_validated": true,
+      "independent": {
+        "compile": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 0.31674496400046337
+        },
+        "passed": false,
+        "status": "failed",
+        "test": {
+          "exit_code": 101,
+          "passed": false,
+          "status": "failed",
+          "wall_s": 0.11456103199998324
+        },
+        "wall_s": 0.43647860499913804
+      },
+      "independent_test_counts": [
+        {
+          "failed": 2,
+          "passed": 2
+        }
+      ],
+      "model_calls": 0,
+      "ordinary": {
+        "compile": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 9.283405249998395
+        },
+        "passed": true,
+        "status": "passed",
+        "test": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 0.8158780509984354
+        },
+        "wall_s": 10.1091030890002
+      },
+      "phases": {
+        "apply_candidate_s": 0.0019726439986698097,
+        "export_s": 0.08870417199977965,
+        "git_snapshot_s": 0.20887343699905614,
+        "seed_copy_s": 0.10448506900138455,
+        "seed_validation_s": 0.17874532299902057,
+        "setup_s": 0.6568970870011981
+      },
+      "retained_files_sha256": "0aa3f1329de0c9d90c749f2c2e5b853ac306ea28fd6dfc93c190baeab183a902",
+      "role": "negative-control-2",
+      "scope": {
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.010754775001259986
+      },
+      "scope_validated": true,
+      "scratch_absent": true,
+      "seed_policy": "cargo-reported-libraries-v1",
+      "snapshot_commit": "bd38eb0319e0bed348f1e488a873a1ec0ba00e26",
+      "source_archive_sha256": "3a736e4d8e5adaebd5699804b28b6d110c77230583904f58f08caf456f6ee338",
+      "source_commit": "c427943a5c84ba5938a3549f24b27de551812a37",
+      "source_mtime_policy": "changed_and_injected_only_verified_base_seed",
+      "status": "complete",
+      "target_seed_manifest_sha256": "9cba61c2a281260710a678f7fa6004e3277f59effb5941a4364b47ee729c56f0",
+      "total_wall_s": 11.386900688999958
+    },
+    {
+      "accepted": true,
+      "alias": "alternative-gamma",
+      "attempt": "qualification-reference-v1",
+      "calibration_classification": "reference_accepted",
+      "candidate_manifest_sha256": "e20f960edb0a1347d120b2764b0e825d5c555c16962d431b119e9450b2a0c09f",
+      "cargo_features": [
+        "jev/blocking"
+      ],
+      "checker_sha256": "575a283ba8d4e09005b75ad8d81977eb532cc6c0bf2d47eaf80bca0bb62fbb9f",
+      "checks_sha256": "91487854cc335ae6fe25ccb1defbb5c0ddba050e61f502c2edd8c72f19980d2b",
+      "cleanup_outside_acceptance_timer": true,
+      "cleanup_s": 0.09646277600040776,
+      "completed": true,
+      "error_code": null,
+      "execution_closed": true,
+      "format": {
+        "exit_code": 0,
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.0645570900014718
+      },
+      "helper_sha256": "86abab6a41fccb2f8a2b973e3a2f9d73404c55ec79ac3482829ca6174286cf6d",
+      "identity_validated": true,
+      "independent": {
+        "compile": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 0.31513642499885464
+        },
+        "passed": true,
+        "status": "passed",
+        "test": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 0.16502090299945849
+        },
+        "wall_s": 0.4846503519984253
+      },
+      "independent_test_counts": [
+        {
+          "failed": 0,
+          "passed": 4
+        }
+      ],
+      "model_calls": 0,
+      "ordinary": {
+        "compile": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 9.339387754998825
+        },
+        "passed": true,
+        "status": "passed",
+        "test": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 0.8159813519996533
+        },
+        "wall_s": 10.405489042001136
+      },
+      "phases": {
+        "apply_candidate_s": 0.002119057000527391,
+        "export_s": 0.0956041040008131,
+        "git_snapshot_s": 0.21911089999957767,
+        "seed_copy_s": 0.10630225999921095,
+        "seed_validation_s": 0.17659965200073202,
+        "setup_s": 0.6754724309994344
+      },
+      "retained_files_sha256": "9f7526587d763169fd5a0605230e83f79f97f6caefd3122d5f42113faa2c44b2",
+      "role": "reference",
+      "scope": {
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.010870209000131581
+      },
+      "scope_validated": true,
+      "scratch_absent": true,
+      "seed_policy": "cargo-reported-libraries-v1",
+      "snapshot_commit": "bd38eb0319e0bed348f1e488a873a1ec0ba00e26",
+      "source_archive_sha256": "3a736e4d8e5adaebd5699804b28b6d110c77230583904f58f08caf456f6ee338",
+      "source_commit": "c427943a5c84ba5938a3549f24b27de551812a37",
+      "source_mtime_policy": "changed_and_injected_only_verified_base_seed",
+      "status": "complete",
+      "target_seed_manifest_sha256": "9cba61c2a281260710a678f7fa6004e3277f59effb5941a4364b47ee729c56f0",
+      "total_wall_s": 11.688363534000018
+    }
+  ],
+  "cargo_features": [
+    "jev/blocking"
+  ],
+  "compatibility_contract": {
+    "legacy_score_without_probabilities_positive_case": true,
+    "live_feature_enabled": false,
+    "pinned_path": "docs/decision-models/2026-09-20-score-contract.md",
+    "preserves_selected_calibration_semantics": true
+  },
+  "control_coverage": {
+    "both_compiled": true,
+    "incremental_coverage_demonstrated": "The independent check detects omission of typed request-response validation while the ordinary suite passes this one compiled control.",
+    "numeric_control": {
+      "independent_rejected": true,
+      "ordinary_rejected": true
+    },
+    "request_validation_control": {
+      "independent_rejected": true,
+      "ordinary_passed": true
+    }
+  },
+  "date": "2026-10-03",
+  "dependency_provisioning": {
+    "nu-ansi-term-provision.json": {
+      "bytes": 29597,
+      "cargo_commands": 0,
+      "cargo_lock_sha256": "163d1e0bd3949eb2227ff5bd9a2fd1c6b1ecbc9b0d46e3535fe8786ac6b6571c",
+      "crate": "nu-ansi-term",
+      "elapsed_s": 0.046107615999062546,
+      "model_calls": 0,
+      "ordinary_check_network_policy": "unchanged_offline",
+      "provider_calls": 0,
+      "schema": "openagents.delegation.dependency-provision.v1",
+      "sha256": "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5",
+      "source_commit": "c427943a5c84ba5938a3549f24b27de551812a37",
+      "version": "0.50.3"
+    },
+    "nu-ansi-term-unpack.json": {
+      "cargo_commands": 0,
+      "crate": "nu-ansi-term",
+      "elapsed_s": 0.0031294889995479025,
+      "files": 28,
+      "model_calls": 0,
+      "reason": "The namespace registry is intentionally read-only; verified package source must be unpacked by trusted setup.",
+      "schema": "openagents.delegation.dependency-unpack.v1",
+      "sha256": "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5",
+      "version": "0.50.3"
+    },
+    "tracing-dev-provision.json": {
+      "cargo_commands": 0,
+      "cargo_lock_sha256": "163d1e0bd3949eb2227ff5bd9a2fd1c6b1ecbc9b0d46e3535fe8786ac6b6571c",
+      "elapsed_s": 0.13940729499881854,
+      "model_calls": 0,
+      "ordinary_check_network_policy": "unchanged_offline",
+      "records": [
+        {
+          "bytes": 213773,
+          "crate": "tracing-subscriber",
+          "downloaded": true,
+          "sha256": "cb7f578e5945fb242538965c2d0b04418d38ec25c79d160cd279bf0731c8d319",
+          "unpacked": true,
+          "version": "0.3.23"
+        },
+        {
+          "bytes": 29597,
+          "crate": "nu-ansi-term",
+          "downloaded": false,
+          "sha256": "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5",
+          "unpacked": false,
+          "version": "0.50.3"
+        },
+        {
+          "bytes": 58227,
+          "crate": "sharded-slab",
+          "downloaded": true,
+          "sha256": "f40ca3c46823713e0d4209592e8d6e826aa57e928f09752619fc696c499637f6",
+          "unpacked": true,
+          "version": "0.1.7"
+        },
+        {
+          "bytes": 32694,
+          "crate": "smallvec",
+          "downloaded": false,
+          "sha256": "ba467056f1b547ed52077911161fc86985becbc60e8e1857c8a144dab0def891",
+          "unpacked": false,
+          "version": "1.16.1"
+        },
+        {
+          "bytes": 16361,
+          "crate": "thread_local",
+          "downloaded": true,
+          "sha256": "1ad99c4c6d32803332c548b1af0540b357b3f5fc0be8f6c6bfe8b2e6ae784070",
+          "unpacked": true,
+          "version": "1.1.10"
+        },
+        {
+          "bytes": 63967,
+          "crate": "tracing-core",
+          "downloaded": false,
+          "sha256": "db97caf9d906fbde555dd62fa95ddba9eecfd14cb388e4f491a66d74cd5fb79a",
+          "unpacked": false,
+          "version": "0.1.36"
+        },
+        {
+          "bytes": 17561,
+          "crate": "tracing-log",
+          "downloaded": true,
+          "sha256": "ee855f1f400bd0e5c02d150ae5de3840039a3f54b025156404e34c23c03f47c3",
+          "unpacked": true,
+          "version": "0.2.0"
+        },
+        {
+          "bytes": 14025,
+          "crate": "lazy_static",
+          "downloaded": false,
+          "sha256": "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe",
+          "unpacked": false,
+          "version": "1.5.0"
+        },
+        {
+          "bytes": 53395,
+          "crate": "log",
+          "downloaded": false,
+          "sha256": "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6",
+          "unpacked": false,
+          "version": "0.4.34"
+        },
+        {
+          "bytes": 35010,
+          "crate": "once_cell",
+          "downloaded": false,
+          "sha256": "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50",
+          "unpacked": false,
+          "version": "1.21.4"
+        },
+        {
+          "bytes": 9578,
+          "crate": "cfg-if",
+          "downloaded": false,
+          "sha256": "4e7648175b45a9a48536d676f68d918270699102aa8dab5496df06904c914600",
+          "unpacked": false,
+          "version": "1.0.5"
+        }
+      ],
+      "schema": "openagents.delegation.dependency-provision.v1",
+      "scope": "Pinned non-platform tracing-subscriber dev-dependency family"
+    }
+  },
+  "final_checker_sha256": "575a283ba8d4e09005b75ad8d81977eb532cc6c0bf2d47eaf80bca0bb62fbb9f",
+  "gate": {
+    "build_profile": {
+      "CARGO_PROFILE_DEV_DEBUG": "0",
+      "CARGO_PROFILE_TEST_DEBUG": "0"
+    },
+    "format_check_without_rewrite": true,
+    "independent_check_required": true,
+    "network": "Private loopback only during checks; no external network or provider credentials.",
+    "ordinary_package_tests_required": true,
+    "seed_policy": "cargo-reported-libraries-v1",
+    "source_mtime_policy": "changed_and_injected_only_verified_base_seed",
+    "source_scope_required": true,
+    "toolchain": "Rust 1.97.1, Linux x86_64; exact Cargo/rustc/rustdoc versions retained in seed attempts.",
+    "total_timeout_s": 240
+  },
+  "issue": 9424,
+  "issue_url": "https://github.com/OpenAgentsInc/openagents/issues/9424",
+  "limits": [
+    "Single Linux calibration per final base/reference/control; no stability or flakiness rate estimated.",
+    "Issue-derived fresh native task at a reconstructed pre-fix source, not an observed clean Claude-session replay.",
+    "Older than the initial recent-week search; admitted by the authorized second bounded screen.",
+    "Qualification establishes feasibility and selected behavior sensitivity, not exhaustive correctness or a treatment benefit.",
+    "Native execution and acceptance caches coexisting at the endpoint remain unmeasured for this task.",
+    "A12 SDK slice only: A22 deadlines already exist at the source. Full Coder/Gym/CoderBench consumer regression coverage is outside this gate."
+  ],
+  "model_calls": 0,
+  "original_panel_unchanged": true,
+  "packages": [
+    "jev"
+  ],
+  "provider_calls": 0,
+  "public_requirement_provenance": {
+    "historical_window_limit": "Older than the initial recent-week search; admitted by the second bounded screen before any scored executor calls.",
+    "instruction_scope": "The registered isolated task gate replaces broader historical workspace verification or deployment instructions.",
+    "issue_body_sha256": "d845475194ca65eb78804b5328ae010ecf2d28fa27607e9a5a8e4bb7802f1e8f",
+    "issue_body_version_note": "Retrieved public body retained; issue edit history was not reconstructed, so byte identity with the original assignment is not claimed.",
+    "issue_record_sha256": "3d77c368726126e6591149337962960b2dcd75572c94b6ea27d8442f0ba11248",
+    "observed_clean_claude_launch": false,
+    "provenance_class": "public_issue_native_trial_not_observed_session_replay",
+    "public_issue_observed_on": "2026-10-03",
+    "scope": "Remaining A12 portion of a two-finding public issue: validate typed numeric answers and request-aware type/coverage/option identity while retaining raw compatibility. A22 retry deadline is already present in the selected source; do not count this as replaying the whole original issue.",
+    "source_policy": "Use the exact reference parent for a new native trial. This is a reconstructed pre-fix revision, not an observed agent launch. The issue audit source is retained separately.",
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/9424"
+  },
+  "public_task_manifest_sha256": "a06ff5c883e57a8bac3cafc88444d6987b80b4a5b3c7efaf4c0354d080a8050d",
+  "retention": {
+    "private_checker_and_reference_contents_published": false,
+    "private_evidence_archive_bytes": 202879,
+    "private_evidence_archive_sha256": "5890a1409987d3d0e121c126663caf332df780b5a356958d0d0d6e738abc2139",
+    "scratch_absent_after_closed_attempts": true,
+    "seed_archives_and_shared_target_preserved": true,
+    "verified_attempts": [
+      {
+        "attempt": "ordinary-base-v1",
+        "retained_manifest_sha256": "7b4d34a7f830f1ec59e9051939a3a891eeab1de79bc938d379ae1c6af4746817",
+        "verified_files": 13
+      },
+      {
+        "attempt": "ordinary-reference-v1",
+        "retained_manifest_sha256": "a87e2bcd359a5ff29f0531c9fa0e896b610718a6dc2dbda45ad02ea299ea6d74",
+        "verified_files": 13
+      },
+      {
+        "attempt": "qualification-base-v1",
+        "retained_manifest_sha256": "8f53a3a1c6c234d9145dcbf11c6e8d2a4b25430e2e757c22c80e008abb0a973d",
+        "verified_files": 21
+      },
+      {
+        "attempt": "qualification-negative-control-1-v1",
+        "retained_manifest_sha256": "480df8d137f4841579af24af7c337ee6ffbdda33363a0b87f367c396fa4508a1",
+        "verified_files": 21
+      },
+      {
+        "attempt": "qualification-negative-control-2-v1",
+        "retained_manifest_sha256": "0aa3f1329de0c9d90c749f2c2e5b853ac306ea28fd6dfc93c190baeab183a902",
+        "verified_files": 21
+      },
+      {
+        "attempt": "qualification-reference-v1",
+        "retained_manifest_sha256": "9f7526587d763169fd5a0605230e83f79f97f6caefd3122d5f42113faa2c44b2",
+        "verified_files": 21
+      }
+    ],
+    "verified_retained_attempt_files": 110
+  },
+  "schema": "openagents.delegation.eligibility-calibration.v1",
+  "scored_executor_calls": 0,
+  "seed_attempts": [
+    {
+      "archive_entries": 1236,
+      "archive_wall_s": 0.05331162000038603,
+      "attempt": "base-seed",
+      "build_wall_s": 0.11376849899897934,
+      "error": "The historical baseline did not build",
+      "error_type": "ValueError",
+      "exit_code": 101,
+      "export_wall_s": 0.08059556599982898,
+      "git_snapshot_wall_s": 0.20197673899929214,
+      "retained_cleanup": {
+        "post-failure-cleanup.json": {
+          "outside_attempt_timer": true,
+          "scratch_absent": true,
+          "shared_target_preserved": true,
+          "source_archive_preserved": true,
+          "wall_s": 0.06502940999962448
+        }
+      },
+      "schema": "openagents.delegation.seed-build.v1",
+      "setup_failure_reason": "Offline registry lacked nu-ansi-term 0.50.3.",
+      "snapshot_commit": "bd38eb0319e0bed348f1e488a873a1ec0ba00e26",
+      "source_archive_bytes": 19752960,
+      "source_bytes": 18832825,
+      "source_commit": "c427943a5c84ba5938a3549f24b27de551812a37",
+      "source_mtimes_refreshed_unix_ns": 1791019134919364674,
+      "status": "infrastructure_error",
+      "toolchain": {
+        "cargo": "cargo 1.97.1 (c980f4866 2026-06-30)",
+        "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)\nbinary: rustc\ncommit-hash: 8bab26f4f68e0e26f0bb7960be334d5b520ea452\ncommit-date: 2026-07-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.97.1\nLLVM version: 22.1.6",
+        "rustdoc": "rustdoc 1.97.1 (8bab26f4f 2026-07-14)\nbinary: rustdoc\ncommit-hash: 8bab26f4f68e0e26f0bb7960be334d5b520ea452\ncommit-date: 2026-07-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.97.1\nLLVM version: 22.1.6"
+      },
+      "total_wall_s": 0.512623334001546
+    },
+    {
+      "archive_entries": 1236,
+      "archive_wall_s": 0.05705059699903359,
+      "attempt": "base-seed-v2",
+      "build_wall_s": 0.11391775099946244,
+      "error": "The historical baseline did not build",
+      "error_type": "ValueError",
+      "exit_code": 101,
+      "export_wall_s": 0.09394092900038231,
+      "git_snapshot_wall_s": 0.20905269799914095,
+      "retained_cleanup": {
+        "post-failure-cleanup.json": {
+          "outside_attempt_timer": true,
+          "scratch_absent": true,
+          "shared_target_preserved": true,
+          "source_archive_preserved": true,
+          "wall_s": 0.047603694001736585
+        }
+      },
+      "schema": "openagents.delegation.seed-build.v1",
+      "setup_failure_reason": "The verified crate archive existed, but Cargo could not unpack it into the intentionally read-only registry.",
+      "snapshot_commit": "bd38eb0319e0bed348f1e488a873a1ec0ba00e26",
+      "source_archive_bytes": 19752960,
+      "source_bytes": 18832825,
+      "source_commit": "c427943a5c84ba5938a3549f24b27de551812a37",
+      "source_mtimes_refreshed_unix_ns": 1791019303693549534,
+      "status": "infrastructure_error",
+      "toolchain": {
+        "cargo": "cargo 1.97.1 (c980f4866 2026-06-30)",
+        "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)\nbinary: rustc\ncommit-hash: 8bab26f4f68e0e26f0bb7960be334d5b520ea452\ncommit-date: 2026-07-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.97.1\nLLVM version: 22.1.6",
+        "rustdoc": "rustdoc 1.97.1 (8bab26f4f 2026-07-14)\nbinary: rustdoc\ncommit-hash: 8bab26f4f68e0e26f0bb7960be334d5b520ea452\ncommit-date: 2026-07-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.97.1\nLLVM version: 22.1.6"
+      },
+      "total_wall_s": 0.5432024959991395
+    },
+    {
+      "archive_entries": 1236,
+      "archive_wall_s": 0.07880426699921372,
+      "attempt": "base-seed-v3",
+      "build_wall_s": 0.2141549859989027,
+      "error": "The historical baseline did not build",
+      "error_type": "ValueError",
+      "exit_code": 101,
+      "export_wall_s": 0.08832986199922743,
+      "git_snapshot_wall_s": 0.23947502099872509,
+      "retained_cleanup": {
+        "post-failure-cleanup.json": {
+          "outside_attempt_timer": true,
+          "scratch_absent": true,
+          "shared_target_preserved": true,
+          "source_archive_preserved": true,
+          "wall_s": 0.04764763799903449
+        }
+      },
+      "schema": "openagents.delegation.seed-build.v1",
+      "setup_failure_reason": "After trusted unpacking, the next offline dependency, sharded-slab 0.1.7, was absent.",
+      "snapshot_commit": "bd38eb0319e0bed348f1e488a873a1ec0ba00e26",
+      "source_archive_bytes": 19752960,
+      "source_bytes": 18832825,
+      "source_commit": "c427943a5c84ba5938a3549f24b27de551812a37",
+      "source_mtimes_refreshed_unix_ns": 1791019490967236733,
+      "status": "infrastructure_error",
+      "toolchain": {
+        "cargo": "cargo 1.97.1 (c980f4866 2026-06-30)",
+        "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)\nbinary: rustc\ncommit-hash: 8bab26f4f68e0e26f0bb7960be334d5b520ea452\ncommit-date: 2026-07-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.97.1\nLLVM version: 22.1.6",
+        "rustdoc": "rustdoc 1.97.1 (8bab26f4f 2026-07-14)\nbinary: rustdoc\ncommit-hash: 8bab26f4f68e0e26f0bb7960be334d5b520ea452\ncommit-date: 2026-07-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.97.1\nLLVM version: 22.1.6"
+      },
+      "total_wall_s": 0.7399543960000301
+    },
+    {
+      "archive_entries": 1236,
+      "archive_wall_s": 0.059223287000349956,
+      "attempt": "base-seed-v4",
+      "build_wall_s": 4.725427033999949,
+      "exit_code": 0,
+      "export_wall_s": 0.0906738099984068,
+      "git_snapshot_wall_s": 0.22566202599955432,
+      "recompiled_workspace_units": 16,
+      "retained_cleanup": {
+        "post-build-cleanup.json": {
+          "outside_build_timer": true,
+          "seed_preserved": true,
+          "shared_target_preserved": true,
+          "status": "complete",
+          "wall_s": 0.03332485899954918
+        }
+      },
+      "schema": "openagents.delegation.seed-build.v1",
+      "seed_bytes": 296925328,
+      "seed_files": 811,
+      "seed_manifest_sha256": "9cba61c2a281260710a678f7fa6004e3277f59effb5941a4364b47ee729c56f0",
+      "selected_seed_bytes": 296925328,
+      "snapshot_commit": "bd38eb0319e0bed348f1e488a873a1ec0ba00e26",
+      "source_archive_bytes": 19752960,
+      "source_bytes": 18832825,
+      "source_commit": "c427943a5c84ba5938a3549f24b27de551812a37",
+      "source_mtimes_refreshed_unix_ns": 1791019719470320974,
+      "status": "complete",
+      "toolchain": {
+        "cargo": "cargo 1.97.1 (c980f4866 2026-06-30)",
+        "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)\nbinary: rustc\ncommit-hash: 8bab26f4f68e0e26f0bb7960be334d5b520ea452\ncommit-date: 2026-07-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.97.1\nLLVM version: 22.1.6",
+        "rustdoc": "rustdoc 1.97.1 (8bab26f4f 2026-07-14)\nbinary: rustdoc\ncommit-hash: 8bab26f4f68e0e26f0bb7960be334d5b520ea452\ncommit-date: 2026-07-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.97.1\nLLVM version: 22.1.6"
+      },
+      "total_wall_s": 5.813792504000958
+    }
+  ],
+  "seed_validator_sha256": "0135097f1e92d46fddf7da57cf4c3b0d4ea3efc489d57f74ef1291e405406d0f",
+  "source_commit": "c427943a5c84ba5938a3549f24b27de551812a37",
+  "state": "qualified_prospective_replacement"
+}

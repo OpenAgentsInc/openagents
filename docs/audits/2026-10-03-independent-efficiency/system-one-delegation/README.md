@@ -11,10 +11,10 @@ returned HTTP 402. Its [receipt](jev-capability-refusal.json) records a
 deterministic fallback and unknown cost. A provider model listing does not
 establish funded inference. The single-trial coordinator now connects
 preparation, native execution, final acceptance, and the complete endpoint
-clock. Its offline tests pass. Linux preflight accepts the first historical
-reference, but ordinary-suite failures and a timeout leave the other three
-original tasks unqualified. Task eligibility, funded provider access,
-current native capability checks, and final registration remain prerequisites.
+clock. Its offline tests pass. Linux preflight qualifies the first original
+task and three replacements; ordinary-suite failures and a timeout leave
+the other three original tasks unqualified. Funded provider access,
+current native integration checks, and final registration remain prerequisites.
 The protocol remains unsealed.
 
 ## The comparison being prepared
@@ -92,6 +92,27 @@ after a 4.772-second index build and produces a readable
 observation, kept separate from the original 20. Exact source spans match, but
 two available units are omitted from the delivered pack and one larger function
 exceeds the candidate-size limit. The unchanged policy's limits remain visible.
+
+The older, smaller beta and gamma snapshots also receive one unchanged-policy
+preview each, after qualification:
+
+| Task | Separate index build | Preview process | Delivered brief |
+| --- | ---: | ---: | --- |
+| [Beta: trace recovery](alternative-beta/README.md) | 0.565 s | 0.264 s | [16,239 bytes](alternative-beta/preview/briefing.md) |
+| [Gamma: SDK validation](alternative-gamma/README.md) | 0.514 s | 0.264 s | [16,278 bytes](alternative-gamma/preview/briefing.md) |
+
+These are single observations with no cache flush, Cargo contention, or model
+call. They do not extend the original 20-run latency distribution or establish
+coverage or executor improvement. The adjacent receipts retain exact inputs,
+candidate pools, source verification, and omissions.
+
+**The new previews expose weak retrieval.** Beta omits the ATIF reader and
+writer implementations from its pool. Gamma contains no unit from `jev/src`;
+only two delivered units are within `jev`, and both are tests. A semantic
+reranker cannot restore those missing implementations. Executors retain file
+tools to recover missing evidence, but no measured outcome yet shows whether
+the supplied pack helps or adds work. Fast, faithful extraction is insufficient
+evidence for adopting this preparation policy.
 
 The independent [component recomputation](recompute_components.py) verifies
 the frozen file and preview hashes and reprices the actual native capability
@@ -206,10 +227,19 @@ and a smaller-library replacement cannot establish a large-workspace win.
 source fails the independent behavior checks, and two compiled incorrect fixes
 are rejected. Its eight retained attempts include two invalid checker-fixture
 runs; those do not count as behavioral evidence. The
-[second bounded screen](selection-screen-2.md) proposes two further library
-tasks for qualification. Their sources are older than the original recent-week
-window, and no matching fresh Claude launch was established. These are public
-issue trials, not reconstructed observations of clean Claude sessions.
+[second bounded screen](selection-screen-2.md) adds qualified
+[beta trace recovery](eligibility-beta.md) and
+[gamma SDK validation](eligibility-gamma.md). Each reference passes its full
+gate, each original source fails the independent checks, and two compiled
+incorrect fixes are rejected. Gamma includes the explicit `jev/blocking`
+feature. Its second incorrect fix passes ordinary tests but fails independent
+checks, demonstrating additional coverage for that specific omission.
+
+Beta and gamma are older than the original recent-week window, and no matching
+fresh Claude launch was established. These are public issue trials, not
+reconstructed observations of clean Claude sessions. Calibration errors and
+missing offline dependencies remain in their records. Neither qualification
+nor a known reference fix counts as a native executor outcome.
 
 The [calibration report](calibration.md) and [24 retained attempt rows](calibration.json)
 record four reserve base failures, four historical-reference passes, and
@@ -228,12 +258,20 @@ Known calibration subprocess time is 653.686 seconds of building and
 486.281 seconds of checking, including invalid attempts. Interrupted time
 and preparation, orchestration, and authoring costs remain unmeasured.
 
-The [public task manifest](public-task-manifest.json) binds the four source
+The original [public task manifest](public-task-manifest.json) binds four source
 commits, normalized public behavior, allowed paths, issue provenance, and
 repository instruction hashes. One task is in `coder-boundary`; three are
 in `coder`. These are bounded historical issue slices. In particular,
 #10301 is still open at the manifest snapshot; this study makes no claim
 about resolving the live issue.
+
+The [prospective replacement record](replacement-panel.json) now binds A,
+alpha, beta, and gamma in a separate
+[public manifest](replacement-public-task-manifest.json) and
+[48-run draft](replacement-draft-schedule.json). The draft has a new study UUID;
+none of its attempt identities reuse the original draft. The treatment, quality
+gates, thresholds, budget, and deadlines remain unchanged. It is unsealed and
+does not authorize model execution.
 
 The coordinator sees provisional issue numbers and brief labels before
 full policy coding. Policy improvements use development task #10167 only.
@@ -251,8 +289,9 @@ and time at equal measured quality, not better correctness.
 ## Remaining work
 
 Restore funded Jev access and retain a successful bounded capability call.
-Finish task eligibility, current native model capabilities, cache seeds,
-executable bindings, and the final schedule before sealing the
+Resolve or bound the refused request's unknown charge before claiming complete
+accounting. Bind the qualified replacements, current native model capabilities,
+cache seeds, executables, and the final schedule before sealing the
 protocol. Then run the entire registered panel, preserving
 failures, unused preparation, all provider calls, and elapsed time through
 independent acceptance. No partial no-Jev panel substitutes for that test.

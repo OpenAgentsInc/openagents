@@ -1,0 +1,69 @@
+{
+  "schema": "openagents.delegation-study.preparation.v1",
+  "source_commit": "c427943a5c84ba5938a3549f24b27de551812a37",
+  "policy": "syntax-units-v2",
+  "mode": "deterministic",
+  "issue_sha256": "61cc75c9fa12d618c3f2e4f86b4359d3a533424dee5a890d6a355639f0acbc66",
+  "index_sha256": "8ad495961aca627dc8f811381f077ee5b6ef1ad4724a710d4609fed63bd947a8",
+  "script_sha256": "20868f9bbfdc3002a6345e9e4fddfa0b7cdb3e164e11d74af0ad488813389c6b",
+  "briefing_sha256": "5391469af7902d93db87501d950a45a499eaa27e54fea53332156288648d79f1",
+  "briefing_bytes": 16278,
+  "selection": [
+    "c01",
+    "c02",
+    "c03",
+    "c04",
+    "c05",
+    "c06",
+    "c07",
+    "c08"
+  ],
+  "candidate_sha256": "3ce491acd5973c052be7bc1ea234ffe3d81be0680e4caca910cfb6e90b178f10",
+  "coverage": {
+    "files_read": 24,
+    "eligible_units": 1241,
+    "candidate_units": 14,
+    "oversized_units": [
+      {
+        "path": "docs/audits/2026-09-19-codebase-audit/reproduce.rs",
+        "name": "main",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder/src/delegate.rs",
+        "name": "Delegator::run",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/gym/src/bin/gym.rs",
+        "name": "compare_command",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/gym/src/ab.rs",
+        "name": "Rule::v2",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/coder/src/agent.rs",
+        "name": "Agent::turn",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/nostr-relay/src/store/mod.rs",
+        "name": "Store::admit_inner",
+        "reason": "unit exceeds 6000 bytes"
+      },
+      {
+        "path": "crates/nostr-relay/src/store/mod.rs",
+        "name": "Store::manage",
+        "reason": "unit exceeds 6000 bytes"
+      }
+    ],
+    "pool_policy": "24 lexically ranked Rust files; up to 32 complete declarations; 28 KiB state"
+  },
+  "system_one": null,
+  "source_selection_wall_s": 0.1976702390002174,
+  "wall_s": 0.19947864200003096,
+  "index_build_accounting": "Separate shared cold preparation; the timed call includes index load and source validation."
+}

@@ -1,0 +1,87 @@
+{
+  "schema": "openagents.delegation.alternative-preview.v1",
+  "task_id": "alternative-gamma",
+  "source_commit": "c427943a5c84ba5938a3549f24b27de551812a37",
+  "started_at": "2026-10-03T09:43:13.282276+00:00",
+  "status": "complete",
+  "index": {
+    "process_wall_s": 0.5143847199997253,
+    "exit_code": 0,
+    "sha256": "8ad495961aca627dc8f811381f077ee5b6ef1ad4724a710d4609fed63bd947a8",
+    "bytes": 3830159,
+    "indexed_files": 485
+  },
+  "preview": {
+    "process_wall_s": 0.26419751300090866,
+    "exit_code": 0,
+    "reported_wall_s": 0.19947864200003096,
+    "source_selection_wall_s": 0.1976702390002174,
+    "briefing_bytes": 16278,
+    "briefing_sha256": "5391469af7902d93db87501d950a45a499eaa27e54fea53332156288648d79f1",
+    "preparation_sha256": "d6263873766036d598c5b10892b29d2b7331d558c7a801b32981910e088ef173",
+    "candidate_sha256": "3ce491acd5973c052be7bc1ea234ffe3d81be0680e4caca910cfb6e90b178f10",
+    "policy": "syntax-units-v2",
+    "coverage": {
+      "files_read": 24,
+      "eligible_units": 1241,
+      "candidate_units": 14,
+      "oversized_units": [
+        {
+          "path": "docs/audits/2026-09-19-codebase-audit/reproduce.rs",
+          "name": "main",
+          "reason": "unit exceeds 6000 bytes"
+        },
+        {
+          "path": "crates/coder/src/delegate.rs",
+          "name": "Delegator::run",
+          "reason": "unit exceeds 6000 bytes"
+        },
+        {
+          "path": "crates/gym/src/bin/gym.rs",
+          "name": "compare_command",
+          "reason": "unit exceeds 6000 bytes"
+        },
+        {
+          "path": "crates/gym/src/ab.rs",
+          "name": "Rule::v2",
+          "reason": "unit exceeds 6000 bytes"
+        },
+        {
+          "path": "crates/coder/src/agent.rs",
+          "name": "Agent::turn",
+          "reason": "unit exceeds 6000 bytes"
+        },
+        {
+          "path": "crates/nostr-relay/src/store/mod.rs",
+          "name": "Store::admit_inner",
+          "reason": "unit exceeds 6000 bytes"
+        },
+        {
+          "path": "crates/nostr-relay/src/store/mod.rs",
+          "name": "Store::manage",
+          "reason": "unit exceeds 6000 bytes"
+        }
+      ],
+      "pool_policy": "24 lexically ranked Rust files; up to 32 complete declarations; 28 KiB state"
+    },
+    "selection_count": 8
+  },
+  "model_calls": 0,
+  "paid_cost_usd": 0,
+  "cargo_calls": 0,
+  "timing_scope": "One process measurement per phase; separate index construction. No operating-system cache flush; do not pool with original 20 previews or alpha. Cargo was released before this sequential preview pair.",
+  "binary_sha256": "cfe8027a1c2aa1278483e4f38b45819bd19933b3d6703f51aa02110d8212c3a1",
+  "prepare_sha256": "20868f9bbfdc3002a6345e9e4fddfa0b7cdb3e164e11d74af0ad488813389c6b",
+  "issue_sha256": "61cc75c9fa12d618c3f2e4f86b4359d3a533424dee5a890d6a355639f0acbc66",
+  "finished_at": "2026-10-03T09:43:14.067622+00:00",
+  "validation": {
+    "all_candidate_file_digests_and_exact_spans_match_source": true,
+    "candidate_units_checked": 14,
+    "input_index_script_payload_digests_match": true,
+    "briefing_within_16384_bytes": true,
+    "retained_archive_sha256": "a5b4d007298bb7a3fa7b193816eb6ad79ee0e7994df5d2335d30db0d5be9aeab",
+    "retained_archive_bytes": 780951,
+    "index_retention": "Retained privately; reconstruct with pinned source, frozen binary, and documented command."
+  },
+  "qualification_note": "Separate no-model Linux qualification completed before this preview. This is not a scored native result."
+}

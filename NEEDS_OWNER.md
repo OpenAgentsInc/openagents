@@ -8,9 +8,11 @@ HTTP 402; the new 48-session comparison has not started. Tell the audit agent
 when access is ready so it can verify a real answer and finish registration
 before execution. The refusal has unknown billed usage. See the
 [study status](docs/audits/2026-10-03-independent-efficiency/system-one-delegation/README.md).
-The experiment remains incomplete. The single-trial runner and independent
-checker are implemented; measured Linux feasibility and final registration
-also need to finish before scored runs.
+The experiment remains incomplete. The runner has 143 passing offline tests;
+four historical tasks have qualified on isolated Linux. Current native
+integration checks, complete accounting for the refused request, and final
+registration still need to finish before scored runs. Qualification and preview
+results are retained separately from the unrun coding comparison.
 
 ## Desktop composer (#10004)
 
