@@ -306,3 +306,15 @@ fn the_welcome_card_names_every_ready_agent_here() {
         std::thread::sleep(Duration::from_millis(50));
     }
 }
+
+#[test]
+fn the_terminal_without_a_terminal_points_at_chat_send() {
+    let home = tempfile::tempdir().unwrap();
+    let output = openagents(home.path(), &["terminal"]);
+    assert_eq!(output.status.code(), Some(64));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("needs a terminal"), "{stderr}");
+    assert!(stderr.contains("openagents chat send"), "{stderr}");
+    assert!(!stderr.contains("os error"), "{stderr}");
+    assert!(!stderr.contains("usage:"), "{stderr}");
+}

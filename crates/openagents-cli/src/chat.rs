@@ -166,6 +166,8 @@ const SWITCHES: &[&str] = &["scratch", "local", "all", "run-coder", "no-run"];
 
 pub(crate) enum Failure {
     Usage(String),
+    /// A usage error the whole usage would only bury: one line, exit 64.
+    Refused(String),
     Failed(String),
 }
 
@@ -282,25 +284,22 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
     match result {
         Ok(code) => code,
         Err(Failure::Usage(message)) => output.usage("chat", &message, USAGE),
+        Err(Failure::Refused(message)) => output.refuse("chat", &message),
         Err(Failure::Failed(message)) => output.fail("chat", &message),
     }
 }
 
 async fn dispatch(output: &Output, command: &str, args: &Args) -> Result<u8, Failure> {
-    let thread = args.option("thread").map(str::to_owned);
-    if let Some(id) = &thread
-        && !client::thread_id(id)
-    {
-        return Err(Failure::Usage(
-            "a thread ID is 32 lowercase hex characters".into(),
-        ));
-    }
+    let mut printer = Printer::new(output);
+    let thread = match args.option("thread") {
+        Some(id) if !client::thread_id(id) => Some(named_thread(args, id, &mut printer).await?),
+        other => other.map(str::to_owned),
+    };
     let needs_thread = |thread: &Option<String>| {
         thread
             .clone()
             .ok_or_else(|| Failure::Usage(format!("`chat {command}` needs --thread ID")))
     };
-    let mut printer = Printer::new(output);
     match command {
         "work" => {
             no_positional(args)?;
@@ -433,6 +432,33 @@ async fn dispatch(output: &Output, command: &str, args: &Args) -> Result<u8, Fai
         _ => Err(Failure::Usage(format!("unknown command `{command}`"))),
     }
 }
+
+/// The thread `arg` names when it isn't a whole ID: a unique ID prefix or
+/// a title, as `openagents terminal --resume` takes.
+async fn named_thread(
+    args: &Args,
+    arg: &str,
+    printer: &mut Printer<'_>,
+) -> Result<String, Failure> {
+    if args.switch("scratch") {
+        return Err(Failure::Refused(
+            "a --scratch thread is named by its whole 32-character ID".into(),
+        ));
+    }
+    let mut client = open(args, None, false, printer).await?;
+    let (rows, _) = client.threads(true, NAMED_THREADS_MAX).await?;
+    openagents_terminal::picker::resolve(&rows, arg)
+        .map(|row| row.id.clone())
+        .ok_or_else(|| {
+            Failure::Refused(format!(
+                "no single thread is named `{arg}`; give its ID, a unique ID prefix, \
+                 or its title (`openagents chat threads` lists them)"
+            ))
+        })
+}
+
+/// How many threads a prefix or title is matched against.
+const NAMED_THREADS_MAX: usize = 500;
 
 /// The exit code an operation ends with.
 fn code(ended: Ended) -> u8 {

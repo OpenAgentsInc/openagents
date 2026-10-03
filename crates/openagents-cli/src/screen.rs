@@ -11,7 +11,7 @@
 //! Coder settings.
 
 use std::collections::HashMap;
-use std::io::Read;
+use std::io::{IsTerminal, Read};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
@@ -130,6 +130,12 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
             "terminal",
             "--computer goes without --scratch, --local, or --socket",
             USAGE,
+        );
+    }
+    if !(std::io::stdin().is_terminal() && std::io::stdout().is_terminal()) {
+        return output.refuse(
+            "terminal",
+            "OpenAgents Terminal needs a terminal; from a script use `openagents chat send`",
         );
     }
     let scratch = args.switch("scratch");
