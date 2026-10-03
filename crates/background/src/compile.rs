@@ -255,7 +255,14 @@ pub struct Context {
     /// message names none.
     pub project: Option<PathBuf>,
     pub clock: Clock,
+    /// The words come from `add`: only a new rule may come of them, never
+    /// a change to a listed one.
+    pub new_only: bool,
 }
+
+/// The new-rule kinds that only tell the person something and delete
+/// nothing (ids in [`WHAT`]).
+const TELLS: &[&str] = &["disk_alert", "task_failed", "task_ended"];
 
 /// The questions the compiler asks, over the rules there are now.
 #[must_use]
@@ -426,17 +433,35 @@ pub fn from_answers(
             .filter(|(_, p)| COMPILE.yes(*p))
             .map(|(answer, _)| answer.to_owned())
     };
-    let settled = match intent.filter(|(_, p)| COMPILE.yes(*p)) {
-        Some((intent, _)) => Some(intent),
-        None => match (sure("rule").as_deref(), sure("what"), sure("change")) {
-            (Some("new"), Some(what), _) if what != "unsupported" => Some("define".to_owned()),
-            (Some(rule), _, Some(change))
-                if rule != "new" && change != "other" && rules.iter().any(|r| r.id == rule) =>
-            {
-                Some("edit".to_owned())
+    // A sure "tell me" reading is a new rule that only notifies: asking to
+    // be told is never asking a rule that deletes to delete sooner, and it
+    // is already standing, so it needs no "keep happening?" question.
+    let tells = sure("what").filter(|what| TELLS.contains(&what.as_str()));
+    let deletes = |id: &str| rules.iter().any(|rule| rule.id == id && rule.cleans());
+    let settled = if context.new_only {
+        Some("define".to_owned())
+    } else {
+        match intent.filter(|(_, p)| COMPILE.yes(*p)) {
+            Some((intent, _)) if intent == "edit" && tells.is_some() => {
+                match sure("rule").as_deref() {
+                    Some(rule) if rule != "new" && !deletes(rule) => Some(intent),
+                    _ => Some("define".to_owned()),
+                }
             }
-            _ => None,
-        },
+            Some((intent, _)) => Some(intent),
+            None => match (sure("rule").as_deref(), sure("what"), sure("change")) {
+                (Some("new"), Some(what), _) if what != "unsupported" => Some("define".to_owned()),
+                (Some(rule), Some(_), _) if tells.is_some() && deletes(rule) => {
+                    Some("define".to_owned())
+                }
+                (Some(rule), _, Some(change))
+                    if rule != "new" && change != "other" && rules.iter().any(|r| r.id == rule) =>
+                {
+                    Some("edit".to_owned())
+                }
+                _ => None,
+            },
+        }
     };
     let Some(intent) = settled else {
         return Compiled::Question {
@@ -1266,6 +1291,55 @@ pub fn save_draft(layout: &Layout, draft: &Draft) -> Result<(), String> {
 /// Forget a draft (a question replaced it, or it was applied).
 pub fn drop_draft(layout: &Layout, id: &str) {
     let _ = std::fs::remove_file(layout.drafts().join(format!("{}.json", draft_id(id))));
+}
+
+/// A question a thread's words led to, kept so the answer is read with
+/// them: the answer alone ("keep it as a background rule") says too
+/// little, and drafting from it would ask the same question again.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Pending {
+    pub message: String,
+    pub question: String,
+    pub asked: u64,
+}
+
+/// How long a question waits for its answer.
+pub const PENDING_SECS: u64 = 3600;
+
+fn pending_path(layout: &Layout, id: &str) -> PathBuf {
+    layout
+        .drafts()
+        .join(format!("{}.question.json", draft_id(id)))
+}
+
+/// Keep the words a question was asked about, under the thread's id.
+///
+/// # Errors
+/// The write failed.
+pub fn save_pending(layout: &Layout, id: &str, pending: &Pending) -> Result<(), String> {
+    let bytes = serde_json::to_vec_pretty(pending).map_err(|error| error.to_string())?;
+    write_atomic(&pending_path(layout, id), &bytes).map_err(|error| error.to_string())
+}
+
+/// Take the question waiting under `id`, while it is fresh; it is
+/// forgotten either way.
+pub fn take_pending(layout: &Layout, id: &str, now: u64) -> Option<Pending> {
+    let path = pending_path(layout, id);
+    let pending: Option<Pending> = std::fs::read(&path)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok());
+    let _ = std::fs::remove_file(&path);
+    pending.filter(|pending| now.saturating_sub(pending.asked) <= PENDING_SECS)
+}
+
+/// The words to compile when `answer` answers `pending`: the request,
+/// then the question and its answer.
+#[must_use]
+pub fn answered(pending: &Pending, answer: &str) -> String {
+    format!(
+        "{}\nAsked: {}\nThe user answered: {answer}",
+        pending.message, pending.question
+    )
 }
 
 /// How long a draft waits to be confirmed.

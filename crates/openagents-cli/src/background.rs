@@ -416,6 +416,7 @@ pub(crate) fn compile_words(
     message: &str,
     thread: &str,
     project: Option<PathBuf>,
+    new_only: bool,
 ) -> Result<(Vec<String>, Option<String>, Value), String> {
     use background::compile::{self, Compiled, Context};
     let judge = JevJudge::from_env().ok_or(
@@ -426,7 +427,15 @@ pub(crate) fn compile_words(
         thread: thread.to_owned(),
         project,
         clock,
+        new_only,
     };
+    // An answer to the question this thread was just asked is read with
+    // the words that led to it.
+    let words = match compile::take_pending(layout, thread, clock.now) {
+        Some(pending) => compile::answered(&pending, message),
+        None => message.to_owned(),
+    };
+    let message = words.as_str();
     let compiled = compile::compile(layout, message, &context, &judge)?;
     match compiled {
         Compiled::Draft(draft) => {
@@ -449,6 +458,15 @@ pub(crate) fn compile_words(
         }
         Compiled::Question { text, readings } => {
             compile::drop_draft(layout, thread);
+            compile::save_pending(
+                layout,
+                thread,
+                &compile::Pending {
+                    message: message.to_owned(),
+                    question: text.clone(),
+                    asked: clock.now,
+                },
+            )?;
             let value = json!({
                 "question": text,
                 "readings": readings,
@@ -483,9 +501,14 @@ fn from_words(
         None => message.clone(),
     };
     let id = format!("cli-{}", background::paths::now());
-    let (lines, drafted, mut value) =
-        compile_words(layout, &text, &id, std::env::current_dir().ok())
-            .map_err(Failure::Refused)?;
+    let (lines, drafted, mut value) = compile_words(
+        layout,
+        &text,
+        &id,
+        std::env::current_dir().ok(),
+        edit.is_none(),
+    )
+    .map_err(Failure::Refused)?;
     if let Some(draft) = drafted.as_deref()
         && args.switch("yes")
     {
@@ -533,6 +556,7 @@ fn draft(output: &Output, layout: &Layout, args: &Args) -> Result<(), Failure> {
         &message,
         &background::compile::draft_id(&id),
         project,
+        false,
     )
     .map_err(Failure::Refused)?;
     output.emit(&value, |_| lines.join("\n"));
@@ -1047,6 +1071,7 @@ mod tests {
             thread: "eval".into(),
             project: Some(dir.path().join("work/openagents")),
             clock: background::engine::Clock::here(),
+            new_only: false,
         };
         let (mut rows, mut right, mut kinds) = (0, 0, 0);
         for row in set["rows"].as_array().unwrap() {

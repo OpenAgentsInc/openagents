@@ -113,6 +113,7 @@ fn context(project: Option<&Path>) -> Context {
         thread: "thread-1".into(),
         project: project.map(Path::to_owned),
         clock: clock(TEN_AM),
+        new_only: false,
     }
 }
 
@@ -1009,4 +1010,110 @@ fn a_checkout_is_fast_forwarded_only_when_clean_and_not_ahead() {
     // Not a checkout.
     let none = engine::fast_forward("~/work", None, home, false);
     assert_eq!(none.outcome, StepOutcome::Skipped);
+}
+
+// Shakeout #10308, #10309: asking to be told is a new rule that deletes
+// nothing, and an answer is read with the words it answers.
+
+#[test]
+fn tell_me_when_the_disk_is_low_never_edits_the_rule_that_deletes() {
+    let s = scratch();
+    // Jev reads an edit of the disk rule's level, but also a sure "tell
+    // me": the rule that deletes is left alone and a notify rule drafted.
+    let stand = Stand(vec![
+        ("intent", "edit", 0.8),
+        ("rule", "disk", 0.8),
+        ("change", "free_level", 0.8),
+        ("what", "disk_alert", 0.9),
+        ("when", "unstated", 0.8),
+        ("part_of_day", "unstated", 0.8),
+    ]);
+    let draft = drafted(compiled(
+        &s.layout,
+        "tell me when the disk is under 50 GB",
+        stand,
+    ));
+    assert_eq!(draft.kind, Kind::Define);
+    assert_eq!(draft.rule.id, "low-disk-50gb");
+    assert!(draft.before.is_none());
+    assert!(
+        draft
+            .rule
+            .actions
+            .iter()
+            .all(|action| matches!(action, Action::Notify { .. })),
+        "{:?}",
+        draft.rule.actions
+    );
+}
+
+#[test]
+fn a_sure_tell_me_needs_no_keep_happening_question() {
+    let s = scratch();
+    let stand = Stand(vec![
+        ("intent", "define", 0.4),
+        ("rule", "disk", 0.9),
+        ("what", "disk_alert", 0.9),
+        ("when", "unstated", 0.8),
+        ("part_of_day", "unstated", 0.8),
+    ]);
+    let draft = drafted(compiled(
+        &s.layout,
+        "tell me when the disk is under 50 GB",
+        stand,
+    ));
+    assert_eq!(draft.kind, Kind::Define);
+    assert_eq!(draft.rule.id, "low-disk-50gb");
+}
+
+#[test]
+fn add_only_ever_drafts_a_new_rule() {
+    let s = scratch();
+    let home = s.layout.home.clone();
+    let mut context = context(Some(&home.join("work/openagents")));
+    context.new_only = true;
+    // Even a sure edit reading drafts a new rule when the words came from
+    // `add`.
+    let stand = Stand(vec![
+        ("intent", "edit", 0.95),
+        ("rule", "disk", 0.95),
+        ("change", "free_level", 0.9),
+        ("what", "free_space", 0.9),
+        ("when", "unstated", 0.8),
+        ("part_of_day", "unstated", 0.8),
+    ]);
+    let draft = drafted(compile::compile(&s.layout, "keep 80 GB free", &context, &stand).unwrap());
+    assert_eq!(draft.kind, Kind::Define);
+    assert_eq!(draft.rule.id, "keep-free-80gb");
+    assert!(draft.before.is_none());
+}
+
+#[test]
+fn an_answer_is_read_with_the_question_it_answers() {
+    let s = scratch();
+    let pending = compile::Pending {
+        message: "tell me when the disk is under 50 GB".into(),
+        question: "Should this keep happening on its own as a background rule, or be done \
+                   once now?"
+            .into(),
+        asked: TEN_AM,
+    };
+    compile::save_pending(&s.layout, "thread-1", &pending).unwrap();
+    let taken = compile::take_pending(&s.layout, "thread-1", TEN_AM + 60).unwrap();
+    assert_eq!(taken, pending);
+    let words = compile::answered(&taken, "keep it as a background rule");
+    assert!(
+        words.starts_with("tell me when the disk is under 50 GB\n"),
+        "{words}"
+    );
+    assert!(
+        words.ends_with("The user answered: keep it as a background rule"),
+        "{words}"
+    );
+    // Taken once; a stale question is forgotten, not answered.
+    assert!(compile::take_pending(&s.layout, "thread-1", TEN_AM + 60).is_none());
+    compile::save_pending(&s.layout, "thread-1", &pending).unwrap();
+    assert!(
+        compile::take_pending(&s.layout, "thread-1", TEN_AM + compile::PENDING_SECS + 1).is_none()
+    );
 }
