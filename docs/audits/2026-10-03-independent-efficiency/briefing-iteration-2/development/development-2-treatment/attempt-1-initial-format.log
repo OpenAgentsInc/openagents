@@ -1,0 +1,35 @@
+Diff in <VERIFICATION_ROOT>/repo/crates/background/src/git.rs:108:
+     use std::os::unix::ffi::OsStrExt;
+ 
+     let parts: Vec<&[u8]> = relative.split(|&byte| byte == b'/').collect();
+-    if parts.iter().any(|part| part.is_empty() || *part == b".." || *part == b".") {
++    if parts
++        .iter()
++        .any(|part| part.is_empty() || *part == b".." || *part == b".")
++    {
+         return false;
+     }
+     let mut at = top.to_owned();
+Diff in <VERIFICATION_ROOT>/repo/crates/background/src/tests.rs:348:
+ #[test]
+ fn ignored_user_files_keep_a_worktree_and_ignored_caches_do_not() {
+     let home = Home::new();
+-    let names = [
+-        "caches", "private", "named", "linked", "dsdir", "spaced",
+-    ];
++    let names = ["caches", "private", "named", "linked", "dsdir", "spaced"];
+     let (repo, trees) = repo(&home, &names);
+     std::fs::write(
+         repo.join(".git/info/exclude"),
+Diff in <VERIFICATION_ROOT>/repo/crates/background/src/tests.rs:357:
+         "private/\ntarget\nnode_modules\n.cargo-target*\n.DS_Store\n*.secret\n",
+     )
+     .unwrap();
+-    let [caches, private, named, linked, dsdir, spaced] =
+-        [&trees[0], &trees[1], &trees[2], &trees[3], &trees[4], &trees[5]];
++    let [caches, private, named, linked, dsdir, spaced] = [
++        &trees[0], &trees[1], &trees[2], &trees[3], &trees[4], &trees[5],
++    ];
+ 
+     // Only recognized caches, including nested ones, and a `.DS_Store` file.
+     std::fs::create_dir_all(caches.join("target/debug")).unwrap();

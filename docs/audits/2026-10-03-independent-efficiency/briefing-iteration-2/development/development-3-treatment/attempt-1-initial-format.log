@@ -1,0 +1,12 @@
+Diff in <VERIFICATION_ROOT>/repo/crates/background/src/tests.rs:395:
+     }
+     assert_eq!(std::fs::read(&data).unwrap(), b"precious\ncontents ");
+     assert_eq!(std::fs::read(private.join(".env")).unwrap(), b"TOKEN=x");
+-    assert_eq!(std::fs::read(file_target.join("target")).unwrap(), b"not a cache");
++    assert_eq!(
++        std::fs::read(file_target.join("target")).unwrap(),
++        b"not a cache"
++    );
+     assert!(linked.join("node_modules").is_symlink());
+     assert!(outside.join("keep").exists());
+     assert!(ds_dir.join(".DS_Store/notes").exists());

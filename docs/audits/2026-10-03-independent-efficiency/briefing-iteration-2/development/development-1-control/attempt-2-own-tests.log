@@ -1,0 +1,36 @@
+   Compiling background v0.1.0 (<VERIFICATION_ROOT>/repo/crates/background)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.05s
+     Running unittests src/lib.rs (<TARGET>/debug/deps/background-5b301c85314de4c1)
+
+running 22 tests
+test rule::tests::thresholds_on_small_and_large_volumes ... ok
+test inuse::tests::a_held_lock_is_reported_and_a_free_one_is_taken ... ok
+test paths::tests::deny_wins_and_symlinks_are_refused ... ok
+test rule::tests::the_built_in_rule_is_valid_and_digested ... ok
+test store::tests::a_saved_rule_gets_a_new_version ... ok
+test tests::cooldown_waits_and_an_emergency_does_not ... ok
+test paths::tests::measure_counts_blocks_and_never_follows_links ... ok
+test tests::a_held_slot_lock_or_cargo_lock_keeps_a_directory ... ok
+test tests::symlinks_are_not_followed_and_other_volumes_are_refused ... ok
+test tests::ended_tasks_targets_go_and_running_tasks_targets_stay ... ok
+test inuse::tests::a_child_with_an_open_file_shows_in_the_snapshot ... ok
+test tests::a_process_with_an_open_file_inside_keeps_it ... ok
+test tests::the_trash_empties_only_in_an_emergency ... ok
+test view::tests::dates ... ok
+test volume::tests::statvfs_reads_a_plausible_volume ... ok
+test tests::a_checkout_target_needs_cachedir_tag_and_git_ignore ... ok
+test tests::the_dry_run_is_the_executed_plan_and_records_match_deletions ... ok
+test tests::classes_run_in_order_oldest_first_until_the_goal ... ok
+test tests::the_deny_list_beats_every_class ... ok
+test tests::ignored_data_keeps_a_worktree_and_ignored_caches_do_not ... ok
+test tests::unsaved_worktrees_stay_and_a_clean_pushed_one_goes_and_comes_back ... ok
+test store::tests::the_log_rotates_and_reads_back_in_order ... ok
+
+test result: ok. 22 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.40s
+
+   Doc-tests background
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

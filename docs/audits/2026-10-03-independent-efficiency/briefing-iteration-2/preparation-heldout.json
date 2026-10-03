@@ -1,0 +1,19 @@
+{
+  "schema": "openagents.briefing-replay.preparation.v1",
+  "variant": "explicit-scope-with-conditional-git-probe-v2",
+  "revision": "f29611f211747884b4f508db80634d3f6df2a5e9",
+  "binary_sha256": "c120da45111d784183dc391bd5445d78fd9f701a0342d2f9c57110c22f086b3d",
+  "issue_sha256": "a9c1a22140a29be42b7775a5ca31f27b60a0b6b7a0dce161711469fa2a171c3f",
+  "index_sha256": "e3d9f987eca049a0d1f7bf682f2045959c3e0855dea28887475491dc75e573c5",
+  "prepare_sha256": "94800d48971e71820a2e8396a55b6117b21b20079b95609c4aa78b5591371017",
+  "probe_sha256": "deb29f4f103ca2781d890e3588aaddebec70c8438f33e7f9140d02da359ab56f",
+  "facts_requested": true,
+  "probe_triggered": false,
+  "payload_bytes": 16202,
+  "payload_sha256": "cc5c8d45adfce27ef591feee629d51bc5358dd9e4c9cbc4c5014753fe88108bc",
+  "timings": {
+    "cold_index_s": 1.1366513539999232,
+    "warm_preview_s": 0.1987855990000753
+  },
+  "paid_model_calls": 0
+}

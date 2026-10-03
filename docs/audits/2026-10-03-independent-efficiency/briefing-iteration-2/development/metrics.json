@@ -1,0 +1,1583 @@
+{
+  "schema": "openagents.briefing-replay.public-panel.v1",
+  "panel": "development",
+  "registration_sha256": "54d5fd9573a88e8c5a566908610f1afbbdc911ce5a54ed7dfcd8e67d127e60de",
+  "source_commit": "4705102273140a5f381fb75e17a29965662629c8",
+  "preparation": {
+    "warm_brief_wall_s": 0.29851194599996234,
+    "paid_brief_cost_usd": 0.0,
+    "measurement_sha256": "bd6b435b6e68d3c2dda47bd292ad8e3c35cfcb66f1bc31fafd511a0273918a9c",
+    "payload_sha256": "73f2bbc506691337fee1619b55db3e61f6aabff06bc4b877c7d48f6c5dfed444",
+    "payload_bytes": 13890,
+    "warm_preview_s": 0.26864167999997335,
+    "runtime_probe_s": 0.029870265999988987,
+    "policy": "Apply this frozen measured warm preparation to each treatment endpoint; machine charges are not measured."
+  },
+  "shared_setup": {
+    "cold_index_wall_s": 2.068322445,
+    "cold_index_cost_usd": null,
+    "machine_cost_usd": null,
+    "engineering_cost_usd": null,
+    "warmup": {
+      "label": "warmup-development",
+      "registered": false,
+      "condition": "control",
+      "final_result_available": true,
+      "status": "complete",
+      "accepted": false,
+      "completed": true,
+      "attempts": [
+        {
+          "attempt": 1,
+          "cumulative_cost_usd_list_estimate": 0.1971828,
+          "incremental_cost_usd_list_estimate": 0.1971828,
+          "model_success": true,
+          "reported_check_passed": null,
+          "num_turns_per_input": 1,
+          "duration_api_ms_per_input": 1163,
+          "usage_per_input": {
+            "cache_creation_input_tokens": 24547,
+            "cache_read_input_tokens": 3594,
+            "input_tokens": 2,
+            "output_tokens": 4,
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 24547,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "output_tokens_details": {
+              "thinking_tokens": 0
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            }
+          },
+          "checks": []
+        }
+      ],
+      "artifacts": {},
+      "input_consistency_errors": [],
+      "artifact_errors": [],
+      "source_commit": "4705102273140a5f381fb75e17a29965662629c8",
+      "instructions_sha256": "9b2263b8a61955ab13d45283688fb37f08dce9bbb5f5b304e0f2e6c87c2c7761",
+      "common_input_sha256": "74e74a18b5ebca3e3d5aec65d98b8934ce0f77e8558ad4a92f99084e7d4563fa",
+      "prompt_sha256": "12b0d37d7a4e8745605b4fdf31f34f4d53615f99d775a34806442cdf43cbc1f7",
+      "suffix_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "model": "claude-opus-5-5",
+      "effort": "medium",
+      "timeout": false,
+      "tool_counts": {},
+      "tool_calls": 0,
+      "event_scan": {
+        "available": true,
+        "bytes_scanned": 4270,
+        "malformed_lines": 0,
+        "truncated_tail": false
+      },
+      "attempt_count": 1,
+      "first_attempt_check_passed": null,
+      "final_model_usage_cumulative": {
+        "claude-opus-5-5": {
+          "cacheCreationInputTokens": 24547,
+          "cacheReadInputTokens": 3594,
+          "contextWindow": 1000000,
+          "costUSD": 0.1971828,
+          "inputTokens": 2,
+          "maxOutputTokens": 128000,
+          "outputTokens": 4,
+          "thinkingTokens": 0,
+          "webSearchRequests": 0
+        }
+      },
+      "cost_usd_list_estimate": 0.1971828,
+      "cost_complete": true,
+      "cost_status": "complete_cli_report",
+      "repair_cost_usd_list_estimate": null,
+      "paid_brief_cost_usd": 0.0,
+      "cost_with_preparation_usd_list_estimate": 0.1971828,
+      "warm_brief_wall_s": 0.0,
+      "agent_wall_s": 2.436961416999992,
+      "checks_wall_s": 0.0,
+      "preparation_wall_s": 153.935416334,
+      "wall_s": 2.436961416999992,
+      "total_wall_with_preparation_s": 156.372377751
+    }
+  },
+  "runs": [
+    {
+      "label": "development-1-control",
+      "registered": true,
+      "condition": "control",
+      "final_result_available": true,
+      "status": "complete",
+      "accepted": true,
+      "completed": true,
+      "attempts": [
+        {
+          "attempt": 1,
+          "cumulative_cost_usd_list_estimate": 0.7213132000000002,
+          "incremental_cost_usd_list_estimate": 0.7213132000000002,
+          "model_success": true,
+          "reported_check_passed": false,
+          "num_turns_per_input": 23,
+          "duration_api_ms_per_input": 147778,
+          "usage_per_input": {
+            "cache_creation_input_tokens": 37638,
+            "cache_read_input_tokens": 726046,
+            "input_tokens": 30,
+            "output_tokens": 13744,
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 37638,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "output_tokens_details": {
+              "thinking_tokens": 5326
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            }
+          },
+          "checks": [
+            {
+              "name": "initial-format",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.11444415500000105,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "background",
+                "--",
+                "--check"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "development-1-control/attempt-1-initial-format.log"
+            },
+            {
+              "name": "autoformat",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.11467978399991807,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "background"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "development-1-control/attempt-1-autoformat.log"
+            },
+            {
+              "name": "format",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.11462317899986374,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "background",
+                "--",
+                "--check"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "development-1-control/attempt-1-format.log"
+            },
+            {
+              "name": "own-tests",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 3.424083663999909,
+              "command": [
+                "cargo",
+                "test",
+                "-p",
+                "background",
+                "--offline"
+              ],
+              "test_summaries": [
+                {
+                  "passed": 22,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 0,
+                  "failed": 0,
+                  "ignored": 0
+                }
+              ],
+              "failed_test_names": [],
+              "log": "development-1-control/attempt-1-own-tests.log"
+            },
+            {
+              "name": "acceptance",
+              "exit_code": 101,
+              "timed_out": false,
+              "wall_s": 1.918895720999899,
+              "command": [
+                "cargo",
+                "+1.97.1",
+                "test",
+                "--manifest-path",
+                "<VERIFICATION_ROOT>/checks/<RUN_ID>/1/harness/Cargo.toml",
+                "--offline",
+                "--test",
+                "acceptance",
+                "--",
+                "--test-threads=1"
+              ],
+              "test_summaries": [
+                {
+                  "passed": 6,
+                  "failed": 11,
+                  "ignored": 0
+                }
+              ],
+              "failed_test_names": [
+                "disposable_caches_do_not_hide_ignored_user_data",
+                "extension_cache_named_symlink_is_kept_without_following_it",
+                "extension_ds_store_directory_with_user_data_is_kept",
+                "extension_ignored_filename_with_newline_is_kept",
+                "extension_ignored_private_directory_with_spaces_is_kept",
+                "extension_regular_file_named_node_modules_is_kept",
+                "extension_regular_file_named_target_is_kept",
+                "extension_regular_file_with_cargo_target_prefix_is_kept",
+                "extension_unknown_ignored_parent_stays_even_when_it_contains_cache_names",
+                "ignored_dotenv_is_kept_with_a_useful_reason",
+                "ignored_private_directory_is_kept_with_its_contents"
+              ],
+              "log": "development-1-control/attempt-1-acceptance.log"
+            }
+          ]
+        },
+        {
+          "attempt": 2,
+          "cumulative_cost_usd_list_estimate": 1.0501630000000002,
+          "incremental_cost_usd_list_estimate": 0.32884979999999997,
+          "model_success": true,
+          "reported_check_passed": true,
+          "num_turns_per_input": 8,
+          "duration_api_ms_per_input": 223557,
+          "usage_per_input": {
+            "cache_creation_input_tokens": 12709,
+            "cache_read_input_tokens": 435549,
+            "input_tokens": 12,
+            "output_tokens": 7001,
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 12709,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "output_tokens_details": {
+              "thinking_tokens": 2404
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            }
+          },
+          "checks": [
+            {
+              "name": "initial-format",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.06380641099985951,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "background",
+                "--",
+                "--check"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "development-1-control/attempt-2-initial-format.log"
+            },
+            {
+              "name": "autoformat",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.06394314499993925,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "background"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "development-1-control/attempt-2-autoformat.log"
+            },
+            {
+              "name": "format",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.0638805290000164,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "background",
+                "--",
+                "--check"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "development-1-control/attempt-2-format.log"
+            },
+            {
+              "name": "own-tests",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 2.574127198000042,
+              "command": [
+                "cargo",
+                "test",
+                "-p",
+                "background",
+                "--offline"
+              ],
+              "test_summaries": [
+                {
+                  "passed": 22,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 0,
+                  "failed": 0,
+                  "ignored": 0
+                }
+              ],
+              "failed_test_names": [],
+              "log": "development-1-control/attempt-2-own-tests.log"
+            },
+            {
+              "name": "acceptance",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 1.4166323429999466,
+              "command": [
+                "cargo",
+                "+1.97.1",
+                "test",
+                "--manifest-path",
+                "<VERIFICATION_ROOT>/checks/<RUN_ID>/2/harness/Cargo.toml",
+                "--offline",
+                "--test",
+                "acceptance",
+                "--",
+                "--test-threads=1"
+              ],
+              "test_summaries": [
+                {
+                  "passed": 17,
+                  "failed": 0,
+                  "ignored": 0
+                }
+              ],
+              "failed_test_names": [],
+              "log": "development-1-control/attempt-2-acceptance.log"
+            }
+          ]
+        }
+      ],
+      "artifacts": {
+        "development-1-control/attempt-1-initial-format.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "development-1-control/attempt-1-autoformat.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "development-1-control/attempt-1-format.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "development-1-control/attempt-1-own-tests.log": {
+          "sha256": "519abebaa57b977f1c7eaf34c745ee1f3f8973d603298d537dc3079a37177622",
+          "original_sha256": "3d535a16873520a32d20e49371cade22e087d6e56aff1e34d7c49ed2a12c29a5",
+          "redacted": true,
+          "bytes": 1936
+        },
+        "development-1-control/attempt-1-acceptance.log": {
+          "sha256": "37d353fab30e2ed8b976db6939632c858447c8727026a1012daa1aa5e817ea34",
+          "original_sha256": "1296e1d9ec9a3f0344a9f428b67f3701fc1186b65f09165fcc645301f35c1cdb",
+          "redacted": true,
+          "bytes": 5061
+        },
+        "development-1-control/attempt-2-initial-format.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "development-1-control/attempt-2-autoformat.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "development-1-control/attempt-2-format.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "development-1-control/attempt-2-own-tests.log": {
+          "sha256": "39214e4b69c6ca3987348ca0ebc42dc9f061ade47752d228f4edd4b3b4c9501b",
+          "original_sha256": "8204b741c38ee2f6279596219962e905cd905d924e2072b84b793df486008e8f",
+          "redacted": true,
+          "bytes": 1936
+        },
+        "development-1-control/attempt-2-acceptance.log": {
+          "sha256": "970bbe119b1982a26e3b17ae44b58a7ecce4008e1e369c59fb9499612ca9ce81",
+          "original_sha256": "432b0fb8f6b2547d4026cdf627cc75e6e1e7dd17ffa0510c09345c597d09d312",
+          "redacted": true,
+          "bytes": 1507
+        },
+        "development-1-control/candidate-1.patch": {
+          "sha256": "f3ee636706dc867c9a64cfbdbece09771d15d50f58b092d341c609f6baa980d2",
+          "original_sha256": "f3ee636706dc867c9a64cfbdbece09771d15d50f58b092d341c609f6baa980d2",
+          "redacted": false,
+          "bytes": 11861,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "bea6d914ddb478af9fd7c67d7b0ab0213c233675fd33584f99c16d218a4f3e54"
+        },
+        "development-1-control/candidate-2.patch": {
+          "sha256": "ebb91d2eb9e33fa0c2f62c53738196e543d171cfe0beb390b32ec7e661aeeea2",
+          "original_sha256": "ebb91d2eb9e33fa0c2f62c53738196e543d171cfe0beb390b32ec7e661aeeea2",
+          "redacted": false,
+          "bytes": 12427,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "afb3b93e3c633bed7ced39a9e7a5ea083f18375a5130350bbb58d71fae5950c1"
+        },
+        "development-1-control/final-candidate.patch": {
+          "sha256": "ebb91d2eb9e33fa0c2f62c53738196e543d171cfe0beb390b32ec7e661aeeea2",
+          "original_sha256": "ebb91d2eb9e33fa0c2f62c53738196e543d171cfe0beb390b32ec7e661aeeea2",
+          "redacted": false,
+          "bytes": 12427,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "afb3b93e3c633bed7ced39a9e7a5ea083f18375a5130350bbb58d71fae5950c1"
+        },
+        "development-1-control/normalized-candidate-1.patch": {
+          "sha256": "f3ee636706dc867c9a64cfbdbece09771d15d50f58b092d341c609f6baa980d2",
+          "original_sha256": "f3ee636706dc867c9a64cfbdbece09771d15d50f58b092d341c609f6baa980d2",
+          "redacted": false,
+          "bytes": 11861,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "bea6d914ddb478af9fd7c67d7b0ab0213c233675fd33584f99c16d218a4f3e54"
+        },
+        "development-1-control/normalized-candidate-2.patch": {
+          "sha256": "ebb91d2eb9e33fa0c2f62c53738196e543d171cfe0beb390b32ec7e661aeeea2",
+          "original_sha256": "ebb91d2eb9e33fa0c2f62c53738196e543d171cfe0beb390b32ec7e661aeeea2",
+          "redacted": false,
+          "bytes": 12427,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "afb3b93e3c633bed7ced39a9e7a5ea083f18375a5130350bbb58d71fae5950c1"
+        }
+      },
+      "input_consistency_errors": [],
+      "artifact_errors": [],
+      "source_commit": "4705102273140a5f381fb75e17a29965662629c8",
+      "instructions_sha256": "9b2263b8a61955ab13d45283688fb37f08dce9bbb5f5b304e0f2e6c87c2c7761",
+      "common_input_sha256": "21bee85dcc8a1d5cc6e6984379f98193b200237a753b4c5c2a76499698d49d60",
+      "prompt_sha256": "d0a51a8b7f931f13ea8352e9b3612a6f0b51f904db5520c510106818aa9c63a9",
+      "suffix_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "model": "claude-opus-5-5",
+      "effort": "medium",
+      "timeout": false,
+      "tool_counts": {
+        "Edit": 16,
+        "Glob": 1,
+        "Grep": 5,
+        "Read": 7
+      },
+      "tool_calls": 29,
+      "event_scan": {
+        "available": true,
+        "bytes_scanned": 670203,
+        "malformed_lines": 0,
+        "truncated_tail": false
+      },
+      "attempt_count": 2,
+      "first_attempt_check_passed": false,
+      "final_model_usage_cumulative": {
+        "claude-opus-5-5": {
+          "cacheCreationInputTokens": 50347,
+          "cacheReadInputTokens": 1161595,
+          "contextWindow": 1000000,
+          "costUSD": 1.0501630000000002,
+          "inputTokens": 42,
+          "maxOutputTokens": 128000,
+          "outputTokens": 20745,
+          "thinkingTokens": 7730,
+          "webSearchRequests": 0
+        }
+      },
+      "cost_usd_list_estimate": 1.0501630000000002,
+      "cost_complete": true,
+      "cost_status": "complete_cli_report",
+      "repair_cost_usd_list_estimate": 0.32884979999999997,
+      "paid_brief_cost_usd": 0.0,
+      "cost_with_preparation_usd_list_estimate": 1.0501630000000002,
+      "warm_brief_wall_s": 0.0,
+      "agent_wall_s": 224.487201834,
+      "checks_wall_s": 32.50967641600002,
+      "preparation_wall_s": 3.9846848750000006,
+      "wall_s": 256.99687825,
+      "total_wall_with_preparation_s": 260.98156312500004
+    },
+    {
+      "label": "development-2-treatment",
+      "registered": true,
+      "condition": "treatment",
+      "final_result_available": true,
+      "status": "complete",
+      "accepted": true,
+      "completed": true,
+      "attempts": [
+        {
+          "attempt": 1,
+          "cumulative_cost_usd_list_estimate": 0.6968652000000002,
+          "incremental_cost_usd_list_estimate": 0.6968652000000002,
+          "model_success": true,
+          "reported_check_passed": false,
+          "num_turns_per_input": 23,
+          "duration_api_ms_per_input": 112757,
+          "usage_per_input": {
+            "cache_creation_input_tokens": 40172,
+            "cache_read_input_tokens": 630466,
+            "input_tokens": 24,
+            "output_tokens": 12465,
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 40172,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "output_tokens_details": {
+              "thinking_tokens": 4359
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            }
+          },
+          "checks": [
+            {
+              "name": "initial-format",
+              "exit_code": 1,
+              "timed_out": false,
+              "wall_s": 0.0637657140000556,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "background",
+                "--",
+                "--check"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "development-2-treatment/attempt-1-initial-format.log"
+            },
+            {
+              "name": "autoformat",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.06386243399992964,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "background"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "development-2-treatment/attempt-1-autoformat.log"
+            },
+            {
+              "name": "format",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.06391459299993585,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "background",
+                "--",
+                "--check"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "development-2-treatment/attempt-1-format.log"
+            },
+            {
+              "name": "own-tests",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 2.6188532030000715,
+              "command": [
+                "cargo",
+                "test",
+                "-p",
+                "background",
+                "--offline"
+              ],
+              "test_summaries": [
+                {
+                  "passed": 22,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 0,
+                  "failed": 0,
+                  "ignored": 0
+                }
+              ],
+              "failed_test_names": [],
+              "log": "development-2-treatment/attempt-1-own-tests.log"
+            },
+            {
+              "name": "acceptance",
+              "exit_code": 101,
+              "timed_out": false,
+              "wall_s": 1.4669155340000088,
+              "command": [
+                "cargo",
+                "+1.97.1",
+                "test",
+                "--manifest-path",
+                "<VERIFICATION_ROOT>/checks/<RUN_ID>/1/harness/Cargo.toml",
+                "--offline",
+                "--test",
+                "acceptance",
+                "--",
+                "--test-threads=1"
+              ],
+              "test_summaries": [
+                {
+                  "passed": 6,
+                  "failed": 11,
+                  "ignored": 0
+                }
+              ],
+              "failed_test_names": [
+                "disposable_caches_do_not_hide_ignored_user_data",
+                "extension_cache_named_symlink_is_kept_without_following_it",
+                "extension_ds_store_directory_with_user_data_is_kept",
+                "extension_ignored_filename_with_newline_is_kept",
+                "extension_ignored_private_directory_with_spaces_is_kept",
+                "extension_regular_file_named_node_modules_is_kept",
+                "extension_regular_file_named_target_is_kept",
+                "extension_regular_file_with_cargo_target_prefix_is_kept",
+                "extension_unknown_ignored_parent_stays_even_when_it_contains_cache_names",
+                "ignored_dotenv_is_kept_with_a_useful_reason",
+                "ignored_private_directory_is_kept_with_its_contents"
+              ],
+              "log": "development-2-treatment/attempt-1-acceptance.log"
+            }
+          ]
+        },
+        {
+          "attempt": 2,
+          "cumulative_cost_usd_list_estimate": 0.9127422000000002,
+          "incremental_cost_usd_list_estimate": 0.21587699999999999,
+          "model_success": true,
+          "reported_check_passed": true,
+          "num_turns_per_input": 10,
+          "duration_api_ms_per_input": 142422,
+          "usage_per_input": {
+            "cache_creation_input_tokens": 8215,
+            "cache_read_input_tokens": 436945,
+            "input_tokens": 12,
+            "output_tokens": 3136,
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 8215,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "output_tokens_details": {
+              "thinking_tokens": 567
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            }
+          },
+          "checks": [
+            {
+              "name": "initial-format",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.06370445899983679,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "background",
+                "--",
+                "--check"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "development-2-treatment/attempt-2-initial-format.log"
+            },
+            {
+              "name": "autoformat",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.06387289500003135,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "background"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "development-2-treatment/attempt-2-autoformat.log"
+            },
+            {
+              "name": "format",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.06389419500010263,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "background",
+                "--",
+                "--check"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "development-2-treatment/attempt-2-format.log"
+            },
+            {
+              "name": "own-tests",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 2.569149540999888,
+              "command": [
+                "cargo",
+                "test",
+                "-p",
+                "background",
+                "--offline"
+              ],
+              "test_summaries": [
+                {
+                  "passed": 22,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 0,
+                  "failed": 0,
+                  "ignored": 0
+                }
+              ],
+              "failed_test_names": [],
+              "log": "development-2-treatment/attempt-2-own-tests.log"
+            },
+            {
+              "name": "acceptance",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 1.3163825569999972,
+              "command": [
+                "cargo",
+                "+1.97.1",
+                "test",
+                "--manifest-path",
+                "<VERIFICATION_ROOT>/checks/<RUN_ID>/2/harness/Cargo.toml",
+                "--offline",
+                "--test",
+                "acceptance",
+                "--",
+                "--test-threads=1"
+              ],
+              "test_summaries": [
+                {
+                  "passed": 17,
+                  "failed": 0,
+                  "ignored": 0
+                }
+              ],
+              "failed_test_names": [],
+              "log": "development-2-treatment/attempt-2-acceptance.log"
+            }
+          ]
+        }
+      ],
+      "artifacts": {
+        "development-2-treatment/attempt-1-initial-format.log": {
+          "sha256": "7185ff0e47cbe30ad710895631ce3117590487a1a205e85b77c6bb5db8b0b32d",
+          "original_sha256": "8b34991763fa121331e697ae117d91018a0a5806a99e51d14105c074c2790bf3",
+          "redacted": true,
+          "bytes": 1506
+        },
+        "development-2-treatment/attempt-1-autoformat.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "development-2-treatment/attempt-1-format.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "development-2-treatment/attempt-1-own-tests.log": {
+          "sha256": "a234711fa8b2bb546631806e58b3b3eb12037f8d5a7d3a6f7f6c0f8499535492",
+          "original_sha256": "a90bab555de92195fdd0de5c6e60c24adc08bcd52eb8ca4c5b0ca3b5ace68564",
+          "redacted": true,
+          "bytes": 1941
+        },
+        "development-2-treatment/attempt-1-acceptance.log": {
+          "sha256": "f2dcd50d520320ea9000f9f5a3736bcb483efa2c181245fb998fe3cec7200896",
+          "original_sha256": "d8a2bc1aa30a5b804c6028c09104f26a393aab65d2b7d16ee515632b5090a081",
+          "redacted": true,
+          "bytes": 5172
+        },
+        "development-2-treatment/attempt-2-initial-format.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "development-2-treatment/attempt-2-autoformat.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "development-2-treatment/attempt-2-format.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "development-2-treatment/attempt-2-own-tests.log": {
+          "sha256": "559759bf2f40d37db2f10f720afc2df56388f61eaf2136e4d84515ff8828555a",
+          "original_sha256": "8863b65a89dbbddd7f71fc62cffc99c931fa1ff645501e4b624b7d50ce2eac58",
+          "redacted": true,
+          "bytes": 1941
+        },
+        "development-2-treatment/attempt-2-acceptance.log": {
+          "sha256": "abffdf08b08570559b22e1e6bbd701ef00f41e78634399708e2e499430c10a68",
+          "original_sha256": "f15b0aaecc8444fffc91dcc9240ae986a4e6e9ba1e92bffa8836618834c66f48",
+          "redacted": true,
+          "bytes": 1507
+        },
+        "development-2-treatment/candidate-1.patch": {
+          "sha256": "c9162570c4674078312100f2f655db88cd19df396f0c77377ecb6a33ca63311c",
+          "original_sha256": "c9162570c4674078312100f2f655db88cd19df396f0c77377ecb6a33ca63311c",
+          "redacted": false,
+          "bytes": 12795,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "4d4bdff166d8bd2c5d661d03c1fcab214059717cc21c84f66865d0772eb42333"
+        },
+        "development-2-treatment/candidate-2.patch": {
+          "sha256": "815b08aedc6e2e32f789fc83e2669c9a261253c753cd3f20a72fc07e7d19c1b5",
+          "original_sha256": "815b08aedc6e2e32f789fc83e2669c9a261253c753cd3f20a72fc07e7d19c1b5",
+          "redacted": false,
+          "bytes": 13174,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "fa1602a7042f7dc4adead7bf04bec5e6e5239efcad771e91594b8571cba2d1fa"
+        },
+        "development-2-treatment/final-candidate.patch": {
+          "sha256": "815b08aedc6e2e32f789fc83e2669c9a261253c753cd3f20a72fc07e7d19c1b5",
+          "original_sha256": "815b08aedc6e2e32f789fc83e2669c9a261253c753cd3f20a72fc07e7d19c1b5",
+          "redacted": false,
+          "bytes": 13174,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "fa1602a7042f7dc4adead7bf04bec5e6e5239efcad771e91594b8571cba2d1fa"
+        },
+        "development-2-treatment/normalized-candidate-1.patch": {
+          "sha256": "fd14eeb1520a707b8b70ba5de4895933f6a5038999a09766f3c0385eb398d902",
+          "original_sha256": "fd14eeb1520a707b8b70ba5de4895933f6a5038999a09766f3c0385eb398d902",
+          "redacted": false,
+          "bytes": 12811,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "51c59b0680cbc0b30d3e12bbae3ac004b79b3e6de0853641d4b00f9b4562068b"
+        },
+        "development-2-treatment/normalized-candidate-2.patch": {
+          "sha256": "815b08aedc6e2e32f789fc83e2669c9a261253c753cd3f20a72fc07e7d19c1b5",
+          "original_sha256": "815b08aedc6e2e32f789fc83e2669c9a261253c753cd3f20a72fc07e7d19c1b5",
+          "redacted": false,
+          "bytes": 13174,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "fa1602a7042f7dc4adead7bf04bec5e6e5239efcad771e91594b8571cba2d1fa"
+        }
+      },
+      "input_consistency_errors": [],
+      "artifact_errors": [],
+      "source_commit": "4705102273140a5f381fb75e17a29965662629c8",
+      "instructions_sha256": "9b2263b8a61955ab13d45283688fb37f08dce9bbb5f5b304e0f2e6c87c2c7761",
+      "common_input_sha256": "21bee85dcc8a1d5cc6e6984379f98193b200237a753b4c5c2a76499698d49d60",
+      "prompt_sha256": "67060f9dfe389ee1af6a18ca07492a9f1437cd1ae450d14235248ac24853a4fd",
+      "suffix_sha256": "3f26768e77bc16a6113c9ad2a7fcc055ffec86bac8538cdf70c609518365e904",
+      "model": "claude-opus-5-5",
+      "effort": "medium",
+      "timeout": false,
+      "tool_counts": {
+        "Edit": 18,
+        "Grep": 4,
+        "Read": 9
+      },
+      "tool_calls": 31,
+      "event_scan": {
+        "available": true,
+        "bytes_scanned": 545643,
+        "malformed_lines": 0,
+        "truncated_tail": false
+      },
+      "attempt_count": 2,
+      "first_attempt_check_passed": false,
+      "final_model_usage_cumulative": {
+        "claude-opus-5-5": {
+          "cacheCreationInputTokens": 48387,
+          "cacheReadInputTokens": 1067411,
+          "contextWindow": 1000000,
+          "costUSD": 0.9127422000000002,
+          "inputTokens": 36,
+          "maxOutputTokens": 128000,
+          "outputTokens": 15601,
+          "thinkingTokens": 4926,
+          "webSearchRequests": 0
+        }
+      },
+      "cost_usd_list_estimate": 0.9127422000000002,
+      "cost_complete": true,
+      "cost_status": "complete_cli_report",
+      "repair_cost_usd_list_estimate": 0.21587699999999999,
+      "paid_brief_cost_usd": 0.0,
+      "cost_with_preparation_usd_list_estimate": 0.9127422000000002,
+      "warm_brief_wall_s": 0.29851194599996234,
+      "agent_wall_s": 143.473354959,
+      "checks_wall_s": 28.056142791000013,
+      "preparation_wall_s": 3.72402325,
+      "wall_s": 171.52949775000002,
+      "total_wall_with_preparation_s": 175.55203294599997
+    },
+    {
+      "label": "development-3-treatment",
+      "registered": true,
+      "condition": "treatment",
+      "final_result_available": true,
+      "status": "complete",
+      "accepted": true,
+      "completed": true,
+      "attempts": [
+        {
+          "attempt": 1,
+          "cumulative_cost_usd_list_estimate": 0.5936176,
+          "incremental_cost_usd_list_estimate": 0.5936176,
+          "model_success": true,
+          "reported_check_passed": false,
+          "num_turns_per_input": 20,
+          "duration_api_ms_per_input": 99099,
+          "usage_per_input": {
+            "cache_creation_input_tokens": 32816,
+            "cache_read_input_tokens": 588968,
+            "input_tokens": 24,
+            "output_tokens": 10660,
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 32816,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "output_tokens_details": {
+              "thinking_tokens": 4498
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            }
+          },
+          "checks": [
+            {
+              "name": "initial-format",
+              "exit_code": 1,
+              "timed_out": false,
+              "wall_s": 0.06379196099987894,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "background",
+                "--",
+                "--check"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "development-3-treatment/attempt-1-initial-format.log"
+            },
+            {
+              "name": "autoformat",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.06386463799981357,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "background"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "development-3-treatment/attempt-1-autoformat.log"
+            },
+            {
+              "name": "format",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.06381154800010336,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "background",
+                "--",
+                "--check"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "development-3-treatment/attempt-1-format.log"
+            },
+            {
+              "name": "own-tests",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 2.5684056329996565,
+              "command": [
+                "cargo",
+                "test",
+                "-p",
+                "background",
+                "--offline"
+              ],
+              "test_summaries": [
+                {
+                  "passed": 22,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 0,
+                  "failed": 0,
+                  "ignored": 0
+                }
+              ],
+              "failed_test_names": [],
+              "log": "development-3-treatment/attempt-1-own-tests.log"
+            },
+            {
+              "name": "acceptance",
+              "exit_code": 101,
+              "timed_out": false,
+              "wall_s": 1.2160766669999248,
+              "command": [
+                "cargo",
+                "+1.97.1",
+                "test",
+                "--manifest-path",
+                "<VERIFICATION_ROOT>/checks/<RUN_ID>/1/harness/Cargo.toml",
+                "--offline",
+                "--test",
+                "acceptance",
+                "--",
+                "--test-threads=1"
+              ],
+              "test_summaries": [
+                {
+                  "passed": 6,
+                  "failed": 11,
+                  "ignored": 0
+                }
+              ],
+              "failed_test_names": [
+                "disposable_caches_do_not_hide_ignored_user_data",
+                "extension_cache_named_symlink_is_kept_without_following_it",
+                "extension_ds_store_directory_with_user_data_is_kept",
+                "extension_ignored_filename_with_newline_is_kept",
+                "extension_ignored_private_directory_with_spaces_is_kept",
+                "extension_regular_file_named_node_modules_is_kept",
+                "extension_regular_file_named_target_is_kept",
+                "extension_regular_file_with_cargo_target_prefix_is_kept",
+                "extension_unknown_ignored_parent_stays_even_when_it_contains_cache_names",
+                "ignored_dotenv_is_kept_with_a_useful_reason",
+                "ignored_private_directory_is_kept_with_its_contents"
+              ],
+              "log": "development-3-treatment/attempt-1-acceptance.log"
+            }
+          ]
+        },
+        {
+          "attempt": 2,
+          "cumulative_cost_usd_list_estimate": 0.7097289999999999,
+          "incremental_cost_usd_list_estimate": 0.11611139999999998,
+          "model_success": true,
+          "reported_check_passed": true,
+          "num_turns_per_input": 6,
+          "duration_api_ms_per_input": 115564,
+          "usage_per_input": {
+            "cache_creation_input_tokens": 5594,
+            "cache_read_input_tokens": 190377,
+            "input_tokens": 6,
+            "output_tokens": 1663,
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 5594,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "output_tokens_details": {
+              "thinking_tokens": 369
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            }
+          },
+          "checks": [
+            {
+              "name": "initial-format",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.06381713200016748,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "background",
+                "--",
+                "--check"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "development-3-treatment/attempt-2-initial-format.log"
+            },
+            {
+              "name": "autoformat",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.06390103900002941,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "background"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "development-3-treatment/attempt-2-autoformat.log"
+            },
+            {
+              "name": "format",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.11404224399984741,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "background",
+                "--",
+                "--check"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "development-3-treatment/attempt-2-format.log"
+            },
+            {
+              "name": "own-tests",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 2.673226988999886,
+              "command": [
+                "cargo",
+                "test",
+                "-p",
+                "background",
+                "--offline"
+              ],
+              "test_summaries": [
+                {
+                  "passed": 22,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 0,
+                  "failed": 0,
+                  "ignored": 0
+                }
+              ],
+              "failed_test_names": [],
+              "log": "development-3-treatment/attempt-2-own-tests.log"
+            },
+            {
+              "name": "acceptance",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 1.3665997150001203,
+              "command": [
+                "cargo",
+                "+1.97.1",
+                "test",
+                "--manifest-path",
+                "<VERIFICATION_ROOT>/checks/<RUN_ID>/2/harness/Cargo.toml",
+                "--offline",
+                "--test",
+                "acceptance",
+                "--",
+                "--test-threads=1"
+              ],
+              "test_summaries": [
+                {
+                  "passed": 17,
+                  "failed": 0,
+                  "ignored": 0
+                }
+              ],
+              "failed_test_names": [],
+              "log": "development-3-treatment/attempt-2-acceptance.log"
+            }
+          ]
+        }
+      ],
+      "artifacts": {
+        "development-3-treatment/attempt-1-initial-format.log": {
+          "sha256": "6338010f9051708ac15d893138e1219bfb9b2834b4608a9f073db46d1b3d8c51",
+          "original_sha256": "8867d176685f5228fa13e6fe2a371ae1736429a0bb637b244558f67e260a7f40",
+          "redacted": true,
+          "bytes": 574
+        },
+        "development-3-treatment/attempt-1-autoformat.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "development-3-treatment/attempt-1-format.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "development-3-treatment/attempt-1-own-tests.log": {
+          "sha256": "6b77904ad6e9a5bff75f4843d8df398dba8909f327afe4808a62bc20025dcb71",
+          "original_sha256": "6d9aed5484511ff3db7c78c87a46cd554cb08af836d2c3237514d30389806c10",
+          "redacted": true,
+          "bytes": 1936
+        },
+        "development-3-treatment/attempt-1-acceptance.log": {
+          "sha256": "2cdd00cf509f2363cf6d72f54c13116215ada8057dbaead4d5139cd0750e7b7c",
+          "original_sha256": "ac063be1182c6bbdcca55659e75cf1fa72dfb79ddc1104caf6ad9c8294c95434",
+          "redacted": true,
+          "bytes": 5162
+        },
+        "development-3-treatment/attempt-2-initial-format.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "development-3-treatment/attempt-2-autoformat.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "development-3-treatment/attempt-2-format.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "development-3-treatment/attempt-2-own-tests.log": {
+          "sha256": "4452fe17ee48e680ab918ae98ef1d31a4139bf1b3e53b125848441bc387f1571",
+          "original_sha256": "9688c9040bc9c8d9aa0a9a29fbda3a6b2fec2b982befe662b0ec373a67cbe2d4",
+          "redacted": true,
+          "bytes": 1936
+        },
+        "development-3-treatment/attempt-2-acceptance.log": {
+          "sha256": "b9c04a84f047df3dfc82cc261503e78025c8a9090842770c3d66520fab26493b",
+          "original_sha256": "3b28f9780b0ccae1e88fc565a5a7885c7c4f7a1df6524fcceb0b46d77ae21236",
+          "redacted": true,
+          "bytes": 1507
+        },
+        "development-3-treatment/candidate-1.patch": {
+          "sha256": "76912dfd21ba511fdbebaae5c47108e57827b4b585d91d1a1d6d65f0fcbf4a69",
+          "original_sha256": "76912dfd21ba511fdbebaae5c47108e57827b4b585d91d1a1d6d65f0fcbf4a69",
+          "redacted": false,
+          "bytes": 11225,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "9a06c5b55b4d15cabd727f4b75858642c1231a80417dc1e6b246f78d4b661b51"
+        },
+        "development-3-treatment/candidate-2.patch": {
+          "sha256": "d9b0d1df26b1ebf9a10ddcd9eb492955a7df0ec2abc759b5830d2bb908a13462",
+          "original_sha256": "d9b0d1df26b1ebf9a10ddcd9eb492955a7df0ec2abc759b5830d2bb908a13462",
+          "redacted": false,
+          "bytes": 11492,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "d0ec29654fc45a27945e26aaaf5e4bde3da4513b7bfdab8773c9e99bd1515c00"
+        },
+        "development-3-treatment/final-candidate.patch": {
+          "sha256": "d9b0d1df26b1ebf9a10ddcd9eb492955a7df0ec2abc759b5830d2bb908a13462",
+          "original_sha256": "d9b0d1df26b1ebf9a10ddcd9eb492955a7df0ec2abc759b5830d2bb908a13462",
+          "redacted": false,
+          "bytes": 11492,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "d0ec29654fc45a27945e26aaaf5e4bde3da4513b7bfdab8773c9e99bd1515c00"
+        },
+        "development-3-treatment/normalized-candidate-1.patch": {
+          "sha256": "75a60c76d02293d7fdac8006deef9238a96c843d7c5efb4da6d95353d717b9ab",
+          "original_sha256": "75a60c76d02293d7fdac8006deef9238a96c843d7c5efb4da6d95353d717b9ab",
+          "redacted": false,
+          "bytes": 11250,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "95854bd51dd4c6bb71b2fdc9badf96391bb606dfdde843bc0ae31d4c5bfc058b"
+        },
+        "development-3-treatment/normalized-candidate-2.patch": {
+          "sha256": "d9b0d1df26b1ebf9a10ddcd9eb492955a7df0ec2abc759b5830d2bb908a13462",
+          "original_sha256": "d9b0d1df26b1ebf9a10ddcd9eb492955a7df0ec2abc759b5830d2bb908a13462",
+          "redacted": false,
+          "bytes": 11492,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "d0ec29654fc45a27945e26aaaf5e4bde3da4513b7bfdab8773c9e99bd1515c00"
+        }
+      },
+      "input_consistency_errors": [],
+      "artifact_errors": [],
+      "source_commit": "4705102273140a5f381fb75e17a29965662629c8",
+      "instructions_sha256": "9b2263b8a61955ab13d45283688fb37f08dce9bbb5f5b304e0f2e6c87c2c7761",
+      "common_input_sha256": "21bee85dcc8a1d5cc6e6984379f98193b200237a753b4c5c2a76499698d49d60",
+      "prompt_sha256": "67060f9dfe389ee1af6a18ca07492a9f1437cd1ae450d14235248ac24853a4fd",
+      "suffix_sha256": "3f26768e77bc16a6113c9ad2a7fcc055ffec86bac8538cdf70c609518365e904",
+      "model": "claude-opus-5-5",
+      "effort": "medium",
+      "timeout": false,
+      "tool_counts": {
+        "Edit": 14,
+        "Grep": 5,
+        "Read": 5
+      },
+      "tool_calls": 24,
+      "event_scan": {
+        "available": true,
+        "bytes_scanned": 469286,
+        "malformed_lines": 0,
+        "truncated_tail": false
+      },
+      "attempt_count": 2,
+      "first_attempt_check_passed": false,
+      "final_model_usage_cumulative": {
+        "claude-opus-5-5": {
+          "cacheCreationInputTokens": 38410,
+          "cacheReadInputTokens": 779345,
+          "contextWindow": 1000000,
+          "costUSD": 0.7097289999999999,
+          "inputTokens": 30,
+          "maxOutputTokens": 128000,
+          "outputTokens": 12323,
+          "thinkingTokens": 4867,
+          "webSearchRequests": 0
+        }
+      },
+      "cost_usd_list_estimate": 0.7097289999999999,
+      "cost_complete": true,
+      "cost_status": "complete_cli_report",
+      "repair_cost_usd_list_estimate": 0.11611139999999998,
+      "paid_brief_cost_usd": 0.0,
+      "cost_with_preparation_usd_list_estimate": 0.7097289999999999,
+      "warm_brief_wall_s": 0.29851194599996234,
+      "agent_wall_s": 116.25274616699998,
+      "checks_wall_s": 27.185727457999988,
+      "preparation_wall_s": 3.9034777910000003,
+      "wall_s": 143.43847362499997,
+      "total_wall_with_preparation_s": 147.64046336199993
+    },
+    {
+      "label": "development-4-control",
+      "registered": true,
+      "condition": "control",
+      "final_result_available": false,
+      "status": "in_progress_or_interrupted",
+      "accepted": false,
+      "completed": false,
+      "attempts": [],
+      "artifacts": {},
+      "input_consistency_errors": [],
+      "artifact_errors": [],
+      "source_commit": "4705102273140a5f381fb75e17a29965662629c8",
+      "instructions_sha256": "9b2263b8a61955ab13d45283688fb37f08dce9bbb5f5b304e0f2e6c87c2c7761",
+      "common_input_sha256": "21bee85dcc8a1d5cc6e6984379f98193b200237a753b4c5c2a76499698d49d60",
+      "prompt_sha256": "d0a51a8b7f931f13ea8352e9b3612a6f0b51f904db5520c510106818aa9c63a9",
+      "suffix_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "model": "claude-opus-5-5",
+      "effort": "medium",
+      "timeout": false,
+      "tool_counts": {
+        "Glob": 1,
+        "Grep": 3,
+        "Read": 4
+      },
+      "tool_calls": 8,
+      "event_scan": {
+        "available": true,
+        "bytes_scanned": 80897,
+        "malformed_lines": 0,
+        "truncated_tail": false
+      },
+      "attempt_count": 0,
+      "first_attempt_check_passed": null,
+      "final_model_usage_cumulative": {},
+      "cost_usd_list_estimate": null,
+      "cost_complete": false,
+      "cost_status": "partial_observation",
+      "repair_cost_usd_list_estimate": null,
+      "paid_brief_cost_usd": 0.0,
+      "cost_with_preparation_usd_list_estimate": null,
+      "warm_brief_wall_s": 0.0,
+      "agent_wall_s": null,
+      "checks_wall_s": null,
+      "preparation_wall_s": 3.770070333,
+      "wall_s": null,
+      "total_wall_with_preparation_s": null
+    },
+    {
+      "label": "development-5-control",
+      "registered": true,
+      "condition": "control",
+      "final_result_available": false,
+      "status": "missing",
+      "accepted": false,
+      "completed": false,
+      "attempts": [],
+      "artifacts": {}
+    },
+    {
+      "label": "development-6-treatment",
+      "registered": true,
+      "condition": "treatment",
+      "final_result_available": false,
+      "status": "missing",
+      "accepted": false,
+      "completed": false,
+      "attempts": [],
+      "artifacts": {}
+    },
+    {
+      "label": "development-7-treatment",
+      "registered": true,
+      "condition": "treatment",
+      "final_result_available": false,
+      "status": "missing",
+      "accepted": false,
+      "completed": false,
+      "attempts": [],
+      "artifacts": {}
+    },
+    {
+      "label": "development-8-control",
+      "registered": true,
+      "condition": "control",
+      "final_result_available": false,
+      "status": "missing",
+      "accepted": false,
+      "completed": false,
+      "attempts": [],
+      "artifacts": {}
+    }
+  ],
+  "comparison": {
+    "verdict": "pending",
+    "registered_runs": 8,
+    "final_results": 3,
+    "pairs": [
+      {
+        "pair": 1,
+        "control": "development-1-control",
+        "treatment": "development-2-treatment",
+        "both_final": true,
+        "control_accepted": true,
+        "treatment_accepted": true,
+        "treatment_cost_ratio": 0.8691433615543492,
+        "same_common_input": true
+      },
+      {
+        "pair": 2,
+        "control": "development-4-control",
+        "treatment": "development-3-treatment",
+        "both_final": false,
+        "control_accepted": false,
+        "treatment_accepted": true,
+        "treatment_cost_ratio": null,
+        "same_common_input": true
+      },
+      {
+        "pair": 3,
+        "control": "development-5-control",
+        "treatment": "development-6-treatment",
+        "both_final": false,
+        "control_accepted": false,
+        "treatment_accepted": false,
+        "treatment_cost_ratio": null,
+        "same_common_input": null
+      },
+      {
+        "pair": 4,
+        "control": "development-8-control",
+        "treatment": "development-7-treatment",
+        "both_final": false,
+        "control_accepted": false,
+        "treatment_accepted": false,
+        "treatment_cost_ratio": null,
+        "same_common_input": null
+      }
+    ],
+    "conditions": {
+      "control": {
+        "accepted": 1,
+        "final_results": 1,
+        "complete_cost_observations": 1,
+        "median_cost_usd_list_estimate": 1.0501630000000002,
+        "median_total_wall_s": 260.98156312500004
+      },
+      "treatment": {
+        "accepted": 2,
+        "final_results": 2,
+        "complete_cost_observations": 2,
+        "median_cost_usd_list_estimate": 0.8112356000000001,
+        "median_total_wall_s": 161.59624815399997
+      }
+    },
+    "early_futility_eligible": false,
+    "pending_reason": "The registered four-pair panel is incomplete."
+  },
+  "privacy": "Only selected counters, sanitized checker logs, and candidate patches are exported. No raw streams, model prose, thinking, tool input/results, or init/account metadata.",
+  "cost_accounting": {
+    "registered_runs_known_cli_cost_usd_list_estimate": 2.6726342,
+    "unregistered_runs_known_cli_cost_usd_list_estimate": 0,
+    "shared_warmup_known_cli_cost_usd_list_estimate": 0.1971828,
+    "all_observed_known_cli_cost_usd_list_estimate": 2.8698170000000003,
+    "complete_for_observed_runs": false,
+    "note": "Known cumulative reports are counted once per run, including failures. Missing or interrupted usage can make this total a lower bound. Machine and engineering costs are not measured."
+  }
+}

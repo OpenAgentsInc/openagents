@@ -5,6 +5,15 @@ The first four fresh candidates all missed a nested ignored-cache case. Their
 own tests passed, and the original briefing did not include the faulty function.
 That result is retained. Issue #10166 is development data for this round.
 
+## Results in progress
+
+The [development panel](development/README.md) retains every registered row,
+with metrics, logs, and raw and formatted patches. The panel is incomplete;
+there is no declared win. The first control and two treatment runs are
+accepted after one repair each. The first pair reduced the CLI cost estimate
+by 13.1% and total wall time by 32.7%. Those observations alone do not pass
+the registered gate.
+
 ## Theses
 
 1. **Prepare the exact source before asking for reasoning.** Explicit issue
@@ -88,11 +97,23 @@ bytes and does not trigger the Git probe. Its cold index took 1.137 seconds.
 These are initial measured samples, not latency percentiles or an arbitrary
 GitHub-issue guarantee. Network issue retrieval and compilation are separate.
 
+Ten further development preparation samples, taken while historical
+dependencies compiled, ranged from 0.371 to 0.747 seconds for preview plus
+probe. The cold filesystem export used for the common instruction warmup took
+153.9 seconds; the first scored export took 4.0 seconds. These are benchmark
+setup costs, distinct from briefing latency.
+
 The development checker retains the original seven cases and adds ten
 explicit filesystem-safety cases disclosed to both arms. The unfixed source
 passes 6/17. An independently reviewed reference passes 17/17. The historical
 fix is only a positive control for the original requirements; the extensions
 must not be described as failures of its original acceptance contract.
+
+The Gym base passes its 611 existing tests and one independent preservation
+control; four independent assertions fail. The historical fix passes its
+613 existing tests and all five independent checks. The final pinned verifier
+export reproduces the base result. The initial missing dependency was fetched
+before scored runs and retained as an infrastructure setup failure.
 
 The focused packer passes 51 targeted Rust tests and formatting on Boat.
 The two new metadata tests cover ambiguous declarations and disabled
@@ -109,3 +130,22 @@ runs, preparation, and verification are recorded separately. Failed
 candidates remain in the results and cannot be called cost through acceptance.
 Raw model streams, account metadata, and private conversation records remain
 outside the repository.
+
+## Further hypotheses to test independently
+
+The first pair suggests several distinct experiments. None changes the
+registered treatment during this panel.
+
+| Component | Hypothesis | Isolated measurement |
+| --- | --- | --- |
+| Evidence within an explicit file | Rank declarations and document sections inside named files without admitting unrelated repository-wide matches. | Exact required-span coverage, missing helper references, bytes, and preparation time on pinned tasks. |
+| Complete test setup | Supply the existing fixture constructor and relevant tests together, so the agent need not rediscover how to create a valid repository or run record. | Fixture completeness and additional discovery calls, followed by independent acceptance. |
+| Public acceptance contract | Preserve explicit diagnostic and safety requirements in a compact checklist with source references. | Missed requirements and repairs; only public task/specification requirements can feed the checklist. Hidden checker contents remain evaluation evidence. |
+| Runtime observations | Cache bounded synthetic observations by tool version, source identity, and probe digest. | Probe latency, cache invalidation, and a source-pack-only versus source-pack-plus-probe ablation. |
+| Source coverage gate | Admit a briefing only when it contains the required complete source units; otherwise report the gap or request a targeted read. | Irrelevant bytes avoided and missed necessary context; test the abstention rule before testing agent savings. |
+
+The development probe bundle needs an ablation before attributing a saving to
+syntax selection or runtime facts. A System One reranker would be a separate
+arm over the same frozen candidate pool. Its calls, latency, and cost belong
+in the treatment total. It must beat the deterministic selection baseline
+before replacing it.

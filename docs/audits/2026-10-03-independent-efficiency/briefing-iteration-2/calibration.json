@@ -1,0 +1,150 @@
+{
+  "development": {
+    "base": {
+      "source_commit": "4705102273140a5f381fb75e17a29965662629c8",
+      "passed": false,
+      "checks": [
+        {
+          "name": "initial-format",
+          "exit_code": 0,
+          "wall_s": 0.11457581500008018,
+          "timed_out": false
+        },
+        {
+          "name": "autoformat",
+          "exit_code": 0,
+          "wall_s": 0.11455993599997782,
+          "timed_out": false
+        },
+        {
+          "name": "format",
+          "exit_code": 0,
+          "wall_s": 0.11462175199994817,
+          "timed_out": false
+        },
+        {
+          "name": "own-tests",
+          "exit_code": 0,
+          "wall_s": 2.020476828000028,
+          "timed_out": false
+        },
+        {
+          "name": "acceptance",
+          "exit_code": 101,
+          "wall_s": 1.9193716269999186,
+          "timed_out": false
+        }
+      ]
+    },
+    "reference": {
+      "source_commit": "4705102273140a5f381fb75e17a29965662629c8",
+      "passed": true,
+      "checks": [
+        {
+          "name": "initial-format",
+          "exit_code": 0,
+          "wall_s": 0.11460954799986212,
+          "timed_out": false
+        },
+        {
+          "name": "autoformat",
+          "exit_code": 0,
+          "wall_s": 0.11436998799990761,
+          "timed_out": false
+        },
+        {
+          "name": "format",
+          "exit_code": 0,
+          "wall_s": 0.1147544199998265,
+          "timed_out": false
+        },
+        {
+          "name": "own-tests",
+          "exit_code": 0,
+          "wall_s": 3.576985521000097,
+          "timed_out": false
+        },
+        {
+          "name": "acceptance",
+          "exit_code": 0,
+          "wall_s": 2.019562624999935,
+          "timed_out": false
+        }
+      ]
+    }
+  },
+  "heldout": {
+    "base": {
+      "source_commit": "f29611f211747884b4f508db80634d3f6df2a5e9",
+      "passed": false,
+      "checks": [
+        {
+          "name": "initial-format",
+          "exit_code": 0,
+          "wall_s": 0.7159782500000347,
+          "timed_out": false
+        },
+        {
+          "name": "autoformat",
+          "exit_code": 0,
+          "wall_s": 0.6654452620000484,
+          "timed_out": false
+        },
+        {
+          "name": "format",
+          "exit_code": 0,
+          "wall_s": 0.6655758270001115,
+          "timed_out": false
+        },
+        {
+          "name": "own-tests",
+          "exit_code": 0,
+          "wall_s": 83.07368253599998,
+          "timed_out": false
+        },
+        {
+          "name": "acceptance",
+          "exit_code": 101,
+          "wall_s": 17.91866745099992,
+          "timed_out": false
+        }
+      ]
+    },
+    "reference": {
+      "source_commit": "f29611f211747884b4f508db80634d3f6df2a5e9",
+      "passed": true,
+      "checks": [
+        {
+          "name": "initial-format",
+          "exit_code": 0,
+          "wall_s": 0.7658491950001007,
+          "timed_out": false
+        },
+        {
+          "name": "autoformat",
+          "exit_code": 0,
+          "wall_s": 0.7159370130000298,
+          "timed_out": false
+        },
+        {
+          "name": "format",
+          "exit_code": 0,
+          "wall_s": 0.6654721300001256,
+          "timed_out": false
+        },
+        {
+          "name": "own-tests",
+          "exit_code": 0,
+          "wall_s": 70.69953497400002,
+          "timed_out": false
+        },
+        {
+          "name": "acceptance",
+          "exit_code": 0,
+          "wall_s": 12.197846069999969,
+          "timed_out": false
+        }
+      ]
+    }
+  }
+}
