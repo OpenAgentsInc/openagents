@@ -50,9 +50,11 @@ it. Each issue runs on a Boat sandbox of its own.
    the warm target (not `--locked`). Building in a fresh template sandbox
    failed on 2026-10-02 while its files were still streaming in (`can't
    find crate` for rlibs the template holds, `Permission denied` in the
-   slot), so the default does not build. When the template left
-   `~/.openagents` owned by root (#10219), the run re-executes itself as
-   root in the same `HOME`.
+   slot), so the default does not build. Before anything runs, the
+   directories a template sandbox comes back with owned by root (`~/.cargo`,
+   `~/.openagents`, parts of the warm slot) are given back to the user, the
+   same repair `boat-template probe` does (#10219,
+   `docs/deployment/boat-template.md`; about 20 s).
 6. **The issue flow** runs there: `openagents chat work --local --json
    --issues N --parallel 1` — the same flow as on a Mac: claim comment,
    worktree of `origin/main`, engine turn, checks, the multi-machine landing

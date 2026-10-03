@@ -315,15 +315,6 @@ fn run_script(issue: u64, land: Option<Land>, build: bool) -> String {
     };
     format!(
         r#"set -uo pipefail
-# The 2026-10-02 template left ~/.openagents (the warm target, the task
-# store) owned by root (#10219), and chown -R over it takes many minutes
-# while its files stream in: run as root there, in the same HOME.
-if [ "$(id -u)" != 0 ]; then
-  for d in "$HOME/.openagents" "$HOME/.openagents/targets" "$HOME"/.openagents/targets/*/debug "$HOME"/.openagents/targets/*/debug/.fingerprint; do
-    [ "$(stat -c %u "$d" 2>/dev/null)" = 0 ] && exec sudo -n HOME="$HOME" bash "$0"
-  done
-fi
-[ "$(id -u)" = 0 ] && git config --global --add safe.directory '*'
 if [ -f {ENV_FILE} ]; then set -a; . {ENV_FILE}; set +a; rm -f {ENV_FILE}; fi
 export PATH="$HOME/.cargo/bin:/usr/local/cargo/bin:$HOME/.grok/bin:$HOME/.local/bin:/usr/local/bin:$PATH" CARGO_INCREMENTAL=0
 [ -z "${{RUSTUP_HOME:-}}" ] && [ -d /usr/local/rustup ] && export RUSTUP_HOME=/usr/local/rustup
@@ -619,13 +610,29 @@ fn not_reachable_yet(error: &boat::Error) -> bool {
         if matches!(api.code(), Some("sandbox_direct_failed" | "sandbox_starting")))
 }
 
-/// Waits until `id` is ready and starts commands.
+/// A sandbox from a template comes back with directories under `HOME`
+/// owned by root (`~/.cargo`, `~/.openagents`, parts of the warm slot);
+/// until they are the user's again, builds fail with `Permission denied`
+/// and detached commands are refused. The same repair as `boat-template
+/// probe` (#10219, `docs/deployment/boat-template.md`): about 20 s.
+const REPAIR_OWNERSHIP: &str =
+    "sudo -n find \"$HOME\" -xdev -user root -exec chown -h \"$(id -u):$(id -g)\" {} +";
+
+/// Waits until `id` is ready and runs commands, then repairs ownership.
 async fn ready(client: &boat::Client, id: &str) -> Result<(), String> {
     client
         .wait_until_ready(id, &wait(Duration::from_secs(600), Duration::from_secs(3)))
         .await
         .map_err(|e| format!("{id} did not become ready: {}", why(&e)))?;
-    reachable(client, id).await
+    reachable(client, id).await?;
+    match sh(client, id, REPAIR_OWNERSHIP.into()).await {
+        Ok(done) if done.exit_code == Some(0) => Ok(()),
+        Ok(done) => Err(format!(
+            "repairing ownership on {id} exited {:?}",
+            done.exit_code
+        )),
+        Err(e) => Err(format!("repairing ownership on {id}: {}", why(&e))),
+    }
 }
 
 /// Waits until `id` runs a command: `true`, once every two seconds, up to
@@ -651,7 +658,7 @@ async fn sh(client: &boat::Client, id: &str, command: String) -> boat::Result<Co
             sandbox_id: id.into(),
             body: CommandRequest {
                 command,
-                timeout_seconds: Some(120),
+                timeout_seconds: Some(300),
                 ..Default::default()
             },
             ..Default::default()
