@@ -1,7 +1,7 @@
 //! Terminal keys onto editor commands.
 //!
 //! The mapping is readline where readline exists — `Ctrl-A`/`Ctrl-E` for the
-//! line edges, `Ctrl-W`/`Ctrl-K`/`Ctrl-U` for the deletes, `Alt-B`/`Alt-F`
+//! line edges, `Ctrl-W`/`Ctrl-K` for the line deletes, `Ctrl-U` to clear the draft, `Alt-B`/`Alt-F`
 //! for word motion, `Up`/`Down` for wrapped rows and history — and the
 //! terminal's own keys where it does not: `Home`, `End`, `Backspace`,
 //! `Delete`, arrows. `Enter` submits; `Alt-Enter` and `Ctrl-J` put a newline
@@ -60,7 +60,7 @@ pub fn handle_key(editor: &mut Editor, width: usize, key: &KeyEvent) -> Composer
             ComposerAction::Edited
         }
         (KeyCode::Char('u'), _, true) => {
-            editor.kill_line_start();
+            editor.clear();
             ComposerAction::Edited
         }
         (KeyCode::Char('b'), true, _) | (KeyCode::Char('b'), _, true) => {
@@ -212,6 +212,28 @@ mod tests {
             &modified(KeyCode::Char('u'), KeyModifiers::CONTROL),
         );
         assert!(editor.is_empty());
+    }
+
+    #[test]
+    fn ctrl_u_clears_every_line_without_submitting_or_recording_it() {
+        let mut editor = Editor::new();
+        editor.insert_str("submitted");
+        editor.take();
+        editor.insert_str("first\n世界\nlast");
+        editor.left();
+        editor.home();
+        assert_eq!(
+            handle_key(
+                &mut editor,
+                40,
+                &modified(KeyCode::Char('u'), KeyModifiers::CONTROL)
+            ),
+            ComposerAction::Edited
+        );
+        assert!(editor.is_empty());
+        assert_eq!(editor.caret(), 0);
+        handle_key(&mut editor, 40, &key(KeyCode::Up));
+        assert_eq!(editor.text(), "submitted");
     }
 
     #[test]

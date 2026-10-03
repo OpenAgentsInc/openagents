@@ -558,6 +558,9 @@ fn untrash(trashed: &Path, to: &Path) -> Result<(), String> {
 #[must_use]
 pub fn describe(plan: &Plan, home: &Path, kept: bool) -> Vec<String> {
     let mut lines = Vec::new();
+    if plan.volumes.iter().all(|volume| volume.items.is_empty()) {
+        lines.push("Nothing qualifies for cleanup now.".to_owned());
+    }
     for volume in &plan.volumes {
         // A pruning rule cleans whatever qualifies, whatever the free
         // space: its levels are the `ALWAYS` sentinel, not words for anyone.

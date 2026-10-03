@@ -122,3 +122,64 @@ fn a_plugin_that_asks_for_more_than_the_host_grants_is_never_on() {
     );
     assert_eq!(rules(home.path()), vec!["disk"]);
 }
+
+fn plain_command(home: &Path, args: &[&str]) -> String {
+    let out = Command::new(env!("CARGO_BIN_EXE_openagents"))
+        .args(args)
+        .env("HOME", home)
+        .env_remove("OPENAGENTS_HOME")
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    String::from_utf8(out.stdout).unwrap()
+}
+
+#[test]
+fn show_is_plain_json_is_raw_and_empty_dry_runs_say_nothing_qualifies() {
+    let home = tempfile::tempdir().unwrap();
+    let text = plain_command(home.path(), &["background", "show", "worktrees"]);
+    let layout = background::Layout::new(home.path(), None).unwrap();
+    let rule = background::store::load(&layout, "worktrees").unwrap();
+    for line in background::compile::describe(&rule) {
+        assert!(text.contains(&line), "{text}");
+    }
+    assert!(!text.contains("\"trigger\""), "{text}");
+    assert!(text.contains(&rule.digest()), "{text}");
+    let (ok, raw) = openagents(home.path(), &["background", "show", "worktrees"]);
+    assert!(ok);
+    assert_eq!(raw["rule"], serde_json::to_value(&rule).unwrap());
+    assert_eq!(raw["digest"], rule.digest());
+    let dry = plain_command(
+        home.path(),
+        &["background", "run", "worktrees", "--dry-run"],
+    );
+    assert!(dry.contains("Nothing qualifies"), "{dry}");
+    assert!(dry.contains("nothing is deleted"), "{dry}");
+}
+
+#[test]
+fn the_resume_hint_skips_disk_when_its_plugin_is_on() {
+    let home = tempfile::tempdir().unwrap();
+    let source = home.path().join("src/disk-cleanup");
+    plugin(&source, |_| {});
+    assert!(
+        openagents(
+            home.path(),
+            &["plugin", "install", source.to_str().unwrap()]
+        )
+        .0
+    );
+    assert!(openagents(home.path(), &["plugin", "enable", "disk-cleanup"]).0);
+    let text = plain_command(home.path(), &["background", "list"]);
+    assert!(
+        !text
+            .lines()
+            .any(|line| line == "Turn a paused rule on: openagents background resume disk"),
+        "{text}"
+    );
+    assert!(text.contains("disk-cleanup"), "{text}");
+}

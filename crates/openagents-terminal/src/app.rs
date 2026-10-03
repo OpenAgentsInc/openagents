@@ -367,6 +367,7 @@ impl App {
 
     /// Clear the transcript and everything about the thread, for another.
     pub fn switch(&mut self, thread: String, fresh: bool) {
+        self.editor.clear();
         self.thread = thread;
         self.fresh = fresh;
         self.transcript = transcript(self.ladder);

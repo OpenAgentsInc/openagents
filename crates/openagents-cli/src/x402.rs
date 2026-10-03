@@ -228,6 +228,15 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
     let Some((command, rest)) = words.split_first() else {
         return output.usage("x402", "a command is required", USAGE);
     };
+    if rest.first().is_some_and(|word| word == "--help") {
+        if command == "node" {
+            return crate::x402_node::run(output, rest);
+        }
+        if let Some(usage) = crate::argv::command_usage("x402", command, USAGE) {
+            println!("{usage}");
+            return 0;
+        }
+    }
     match command.as_str() {
         "--help" | "-h" | "help" => {
             println!("{USAGE}");

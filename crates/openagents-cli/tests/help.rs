@@ -161,3 +161,39 @@ fn an_unknown_issue_command_is_refused_before_gh_runs() {
     assert!(stderr.contains("unknown command `list`"), "{stderr}");
     assert!(!stderr.contains("gh"), "{stderr}");
 }
+
+#[test]
+#[cfg(unix)]
+fn money_subcommands_show_their_own_usage() {
+    for (command, usage, detail) in [
+        (
+            vec!["x402", "node"],
+            "usage: openagents x402 node COMMAND",
+            "init [--network NET]",
+        ),
+        (
+            vec!["x402", "fetch"],
+            "usage: openagents x402 fetch URL",
+            "--pay-with wallet|node|phone",
+        ),
+        (
+            vec!["wallet", "send"],
+            "usage: openagents wallet send TO",
+            "--yes",
+        ),
+    ] {
+        for flag in ["--help", "-h"] {
+            let mut args = command.clone();
+            args.push(flag);
+            let (code, text, stderr) = run(&args);
+            assert_eq!(code, Some(0), "{stderr}");
+            assert!(text.starts_with(usage), "{text}");
+            assert!(text.contains(detail), "{text}");
+        }
+        let mut args = vec!["help"];
+        args.extend(command.clone());
+        let (code, text, stderr) = run(&args);
+        assert_eq!(code, Some(0), "{stderr}");
+        assert!(text.starts_with(usage), "{text}");
+    }
+}

@@ -28,6 +28,7 @@ pub fn normalize_help(arguments: &mut Vec<String>) {
     let group = arguments[0].as_str();
     let nested = arguments.get(1).map(String::as_str);
     let depth = match (group, nested) {
+        ("x402" | "wallet", Some(command)) if index > 1 && !command.starts_with('-') => 2,
         ("plugin" | "plugins" | "ext", Some("test" | "eval" | "defaults" | "run"))
         | ("host", Some("spend"))
             if index > 1 =>
@@ -64,4 +65,21 @@ mod tests {
             assert_eq!(words, expected);
         }
     }
+}
+
+/// A command's existing syntax and description, without the other commands.
+pub fn command_usage(group: &str, command: &str, usage: &str) -> Option<String> {
+    let prefix = format!("  {command}");
+    let lines: Vec<_> = usage.lines().collect();
+    let start = lines.iter().position(|line| {
+        line.strip_prefix(&prefix)
+            .is_some_and(|rest| rest.is_empty() || rest.starts_with(' '))
+    })?;
+    let end = (start + 1..lines.len())
+        .find(|&i| !lines[i].starts_with("    "))
+        .unwrap_or(lines.len());
+    Some(format!(
+        "usage: openagents {group} {}",
+        lines[start..end].join("\n").trim_start()
+    ))
 }

@@ -2176,3 +2176,29 @@ fn an_old_background_notice_says_its_age() {
     assert_eq!(app.unseen_notices, 1);
     assert_eq!(app.notices[1], "1m ago · Freed 3 GB.");
 }
+
+#[test]
+fn multiline_drafts_clear_whole_and_do_not_follow_a_thread_switch() {
+    let mut app = app();
+    app.paste("first\nsecond\nthird");
+    app.editor.left();
+    app.editor.home();
+    let clear = KeyEvent::new(KeyCode::Char('u'), KeyModifiers::CONTROL);
+    assert!(app.key(&clear, 80).is_empty());
+    assert!(app.editor.is_empty());
+    assert_eq!(app.editor.caret(), 0);
+    assert!(app.take_sent().is_none());
+    app.paste("old thread\ndraft");
+    assert_eq!(
+        app.key(
+            &KeyEvent::new(KeyCode::Char('n'), KeyModifiers::CONTROL),
+            80
+        ),
+        vec![Action::New]
+    );
+    app.switch("new-thread".into(), true);
+    assert!(app.editor.is_empty());
+    assert_eq!(app.editor.caret(), 0);
+    app.paste("new draft");
+    assert_eq!(app.editor.text(), "new draft");
+}

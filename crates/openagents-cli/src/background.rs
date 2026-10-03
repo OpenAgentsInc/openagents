@@ -156,7 +156,14 @@ fn list(output: &Output, layout: &Layout) -> Result<(), Failure> {
     let rows = view::list(layout);
     output.emit(&json!({ "rules": rows }), |_| {
         let mut lines: Vec<String> = rows.iter().map(view::Row::line).collect();
-        if let Some(paused) = rows.iter().find(|row| row.error.is_none() && !row.enabled) {
+        if let Some(paused) = rows.iter().find(|row| {
+            row.error.is_none()
+                && !row.enabled
+                && !(row.id == "disk"
+                    && background::plugins::enabled(layout)
+                        .iter()
+                        .any(|plugin| plugin.ends_with(":disk-cleanup")))
+        }) {
             lines.push(format!(
                 "Turn a paused rule on: openagents background resume {}",
                 paused.id
@@ -176,7 +183,7 @@ fn show(output: &Output, layout: &Layout, id: &str) -> Result<(), Failure> {
             rule.name,
             rule.version,
             rule.digest(),
-            serde_json::to_string_pretty(&rule).unwrap_or_default()
+            background::compile::describe(&rule).join("\n")
         )
     });
     Ok(())
@@ -1023,7 +1030,7 @@ pub(crate) fn act(
             let mut lines = vec![format!("{} · version {}", rule.name, rule.version)];
             lines.extend(background::compile::describe(&rule));
             lines.push(format!(
-                "Its full definition: openagents background show {}",
+                "Its full definition: openagents --json background show {}",
                 rule.id
             ));
             Ok(lines)

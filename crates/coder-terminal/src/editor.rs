@@ -245,6 +245,16 @@ impl Editor {
         true
     }
 
+    /// Clear the whole draft without adding it to submitted history.
+    pub fn clear(&mut self) {
+        self.text.clear();
+        self.caret = 0;
+        self.scroll = 0;
+        self.preferred_column = None;
+        self.history_index = None;
+        self.stash.clear();
+    }
+
     /// Ends the draft: pushes it to history and returns it. An empty draft
     /// returns an empty string and enters no history.
     pub fn take(&mut self) -> String {
