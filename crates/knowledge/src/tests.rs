@@ -650,3 +650,67 @@ async fn semantic_floor_filters_before_limit_and_rejects_zero_vectors() {
         assert_eq!(result.hits.len(), expected, "cosine {similarity}");
     }
 }
+
+#[test]
+fn bm25_ignores_function_words_but_keeps_content_terms() {
+    let entries = base().entries;
+    assert_eq!(
+        bm25(&entries, "HOW do I find the kernel?"),
+        bm25(&entries, "find kernel")
+    );
+    assert_eq!(
+        bm25(&entries, "the and how do I for a"),
+        vec![0.0; entries.len()]
+    );
+    assert_eq!(
+        bm25(&entries, "how do I pay for a plugin"),
+        vec![0.0; entries.len()]
+    );
+}
+
+#[tokio::test]
+async fn lexical_scores_use_a_fixed_transform_not_the_best_hit() {
+    let base = base();
+    let raw = bm25(&base.entries, "kernel");
+    let expected = raw[0] / (1.0 + raw[0]);
+    let retriever = Retriever::<Fake>::lexical(base, "test");
+    let result = retriever.search("kernel", 3).await;
+    assert_eq!(result.hits.len(), 1);
+    assert_eq!(result.hits[0].lexical, expected);
+    assert_eq!(result.hits[0].score, expected);
+    assert!(expected > 0.0 && expected < 1.0);
+    assert_eq!(
+        result.hits,
+        retriever.search("how do I use the kernel", 3).await.hits
+    );
+}
+
+#[tokio::test]
+async fn bundled_lexical_search_rejects_unrelated_questions_and_keeps_technical_hits() {
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../knowledge");
+    let base = Base::load(&dir, false).unwrap();
+    let lexical = Retriever::<Fake>::lexical(base.clone(), "no key");
+    let failed = Retriever::new(base, Fake::new(true), None);
+    for query in [
+        "hello",
+        "wallet",
+        "zzzqqq",
+        "how do I pay for a plugin",
+        "pay plugin price sats",
+        "how do I for a",
+        "",
+    ] {
+        assert!(lexical.search(query, 3).await.hits.is_empty(), "{query}");
+        assert!(failed.search(query, 3).await.hits.is_empty(), "{query}");
+    }
+    for query in ["docker", "coq", "mmd", "how do I use docker"] {
+        let result = lexical.search(query, 3).await;
+        assert!(!result.hits.is_empty(), "{query}");
+        assert!(
+            result
+                .hits
+                .iter()
+                .all(|hit| hit.score > 0.0 && hit.score < 1.0)
+        );
+    }
+}

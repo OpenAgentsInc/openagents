@@ -90,7 +90,14 @@ fn overrides_are_not_seeded() {
 #[test]
 fn no_key_no_match_prints_one_hint_and_no_zero_score_rows() {
     let home = tempfile::tempdir().unwrap();
-    for query in ["hello", "wallet", "zzzqqq"] {
+    for query in [
+        "hello",
+        "wallet",
+        "zzzqqq",
+        "how do I pay for a plugin",
+        "HOW do I pay for a plugin?",
+        "how do I for a",
+    ] {
         let out = run(home.path(), &["kb", "search", query], None);
         assert!(out.status.success(), "{}", text(&out));
         let rendered = text(&out);

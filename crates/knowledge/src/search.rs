@@ -2,7 +2,7 @@
 //! [`Entry::search_text`], combined with cosine similarity over embeddings
 //! when an embedder is available.
 //!
-//! BM25 is divided by the best entry's score and averaged with raw cosine
+//! BM25 uses the fixed transform `s / (1 + s)` and is averaged with raw cosine
 //! similarity. Semantic results must clear an absolute relevance floor;
 //! being the nearest entry in an unrelated corpus is not enough. When there's
 //! no embedder, or the embeddings call fails, the ranking is BM25 alone, and
@@ -72,7 +72,12 @@ pub fn bm25_texts(texts: &[String], query: &str) -> Vec<f64> {
         return Vec::new();
     }
     let average = documents.iter().map(Vec::len).sum::<usize>() as f64 / count;
-    let terms: HashSet<String> = words(query).into_iter().collect();
+    // Ignore grammatical words, while retaining technical names and commands.
+    // This list applies only to query terms; documents retain their full text.
+    let terms: HashSet<String> = words(query)
+        .into_iter()
+        .filter(|word| !is_stopword(word))
+        .collect();
     let mut frequency: HashMap<&str, usize> = HashMap::new();
     for document in &documents {
         let unique: HashSet<&str> = document.iter().map(String::as_str).collect();
@@ -99,6 +104,74 @@ pub fn bm25_texts(texts: &[String], query: &str) -> Vec<f64> {
                 .sum()
         })
         .collect()
+}
+
+/// Common English function words that don't establish query relevance.
+fn is_stopword(word: &str) -> bool {
+    matches!(
+        word,
+        "a" | "an"
+            | "and"
+            | "are"
+            | "as"
+            | "at"
+            | "be"
+            | "been"
+            | "being"
+            | "but"
+            | "by"
+            | "can"
+            | "could"
+            | "did"
+            | "do"
+            | "does"
+            | "for"
+            | "from"
+            | "had"
+            | "has"
+            | "have"
+            | "how"
+            | "i"
+            | "if"
+            | "in"
+            | "into"
+            | "is"
+            | "it"
+            | "its"
+            | "me"
+            | "my"
+            | "of"
+            | "on"
+            | "or"
+            | "our"
+            | "should"
+            | "so"
+            | "than"
+            | "that"
+            | "the"
+            | "their"
+            | "them"
+            | "there"
+            | "these"
+            | "they"
+            | "this"
+            | "those"
+            | "to"
+            | "was"
+            | "we"
+            | "were"
+            | "what"
+            | "when"
+            | "where"
+            | "which"
+            | "who"
+            | "why"
+            | "will"
+            | "with"
+            | "would"
+            | "you"
+            | "your"
+    )
 }
 
 /// The cosine similarity of two vectors, or 0 when either is all zeros.
@@ -600,7 +673,7 @@ pub struct Hit {
     pub id: String,
     /// The combined score, 0 through 1.
     pub score: f64,
-    /// BM25 scaled by the best entry's score.
+    /// BM25 bounded by the fixed transform `s / (1 + s)`.
     pub lexical: f64,
     /// Raw cosine similarity when embeddings were used.
     pub semantic: Option<f64>,
@@ -688,11 +761,7 @@ impl<E: Embed> Retriever<E> {
     pub async fn search(&self, query: &str, limit: usize) -> Search {
         let entries = &self.base.entries;
         let raw = bm25(entries, query);
-        let best = raw.iter().copied().fold(0.0_f64, f64::max);
-        let lexical: Vec<f64> = raw
-            .iter()
-            .map(|s| if best > 0.0 { s / best } else { 0.0 })
-            .collect();
+        let lexical: Vec<f64> = raw.iter().map(|s| s / (1.0 + s)).collect();
         let failed = self.failed.lock().ok().and_then(|f| f.clone());
         let (semantic, usd, lexical_only) = match (&self.embedder, failed) {
             (None, _) => (None, Some(0.0), Some(self.missing.clone())),
