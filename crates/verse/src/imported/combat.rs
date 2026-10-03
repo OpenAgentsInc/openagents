@@ -343,6 +343,38 @@ pub fn drive(game: &mut Game, dt: f32) -> Result<[f32; 2], String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn moving_cultists_walk_and_death_playback_never_rewinds() {
+        let scene = Scene::from_json(include_bytes!(
+            "../../../../assets/verse/wow/anthropic.json"
+        ))
+        .unwrap();
+        let mut game = Game::combat(scene, true).unwrap();
+        for _ in 0..180 {
+            game.tick(0.1, [0.0; 2]).unwrap();
+        }
+        let mut walked = false;
+        let mut cast = false;
+        let mut deaths = BTreeMap::new();
+        for _ in 0..2400 {
+            game.tick(1.0 / 30.0, [0.0; 2]).unwrap();
+            for a in game
+                .frame()
+                .actors
+                .into_iter()
+                .filter(|a| a.actor.model == "cultist")
+            {
+                walked |= a.animation == 4;
+                cast |= a.animation == 52;
+                if a.animation == 1 {
+                    if let Some(previous) = deaths.insert(a.actor.id, a.animation_time) {
+                        assert!(a.animation_time >= previous);
+                    }
+                }
+            }
+        }
+        assert!(walked && cast && !deaths.is_empty());
+    }
     fn run() -> Game {
         let scene = Scene::from_json(include_bytes!(
             "../../../../assets/verse/wow/anthropic.json"

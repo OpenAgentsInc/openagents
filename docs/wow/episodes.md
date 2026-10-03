@@ -276,3 +276,19 @@ checks, `--combat-proof OUTPUT.png TIME` captures an encounter time between
 20 and 120 seconds. The [agent combat recording](../../bench/wow/2026-10-03/verse-agent-combat.mp4)
 ends in a close defeat: the adventurer falls after killing nine cultists, with
 Claude at 4/400 health. Pending attacks finish without changing that result.
+
+NPC locomotion selects the imported walking clip from actual encounter motion.
+Clip changes blend local translations, quaternion rotations, and scales before
+bone hierarchy evaluation; interrupted transitions begin from the current
+blended pose. Bow attachments use the same blended hand palette. Death clips
+play once and keep their final pose.
+
+Refresh private assets with `wow-import --ui-only` to import Classic fire,
+smoke, glow, spark, ribbon, rune, and web textures. Verse renders these through
+camera-facing particles, velocity-aligned ribbons, and ground projections with
+alpha or additive blending and no depth writes. Smoke sorts from back to front;
+trails and impact sparks fade over their lifetimes. The shield uses a transparent
+shell. The [updated combat recording](../../bench/wow/2026-10-03/verse-smooth-combat.mp4)
+comes directly from the native renderer. These are authored chamber effects,
+not complete playback of every Classic M2 emitter feature. Source textures
+remain outside Git.

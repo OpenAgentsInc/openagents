@@ -132,6 +132,9 @@ pub struct Game {
     pub impacts: Vec<(Vec3, f32, u8)>,
     pub moving: bool,
     locomotion: [f32; 2],
+    npc_motion: BTreeMap<u64, Vec3>,
+    npc_yaw: BTreeMap<u64, f32>,
+    npc_deaths: BTreeMap<u64, (f32, Vec3)>,
 }
 impl Game {
     /// Uses the retained simulation's cooldown tuning for action-button swipes.
@@ -185,6 +188,9 @@ impl Game {
             impacts: vec![],
             moving: false,
             locomotion: [0.0; 2],
+            npc_motion: BTreeMap::new(),
+            npc_yaw: BTreeMap::new(),
+            npc_deaths: BTreeMap::new(),
         })
     }
     pub fn unlocked(&self) -> bool {
@@ -236,6 +242,21 @@ impl Game {
                     a.health = source.hp.max(0) as u32;
                     a.actor.position = source.pos.into();
                     if let Some(e) = &self.encounter {
+                        a.animation = if self
+                            .npc_motion
+                            .get(&a.actor.id)
+                            .is_some_and(|v| v.length_squared() > 0.01)
+                        {
+                            4
+                        } else {
+                            0
+                        };
+                        let pace = if a.animation == 4 && a.actor.id % 3 == 0 {
+                            2.0
+                        } else {
+                            1.0
+                        };
+                        a.animation_time = self.time * pace + a.actor.id as f32 * 0.19;
                         if let Some(cast) = e
                             .casts
                             .iter()
@@ -252,7 +273,11 @@ impl Game {
                             a.animation_time = self.time - e.released[&a.actor.id];
                         }
                         let direction = self.player - a.actor.position;
-                        a.actor.yaw = (-direction.x).atan2(-direction.z);
+                        a.actor.yaw = self
+                            .npc_yaw
+                            .get(&a.actor.id)
+                            .copied()
+                            .unwrap_or_else(|| (-direction.x).atan2(-direction.z));
                     }
                     if self.controls.held(*id) {
                         a.animation = 0;
@@ -264,13 +289,26 @@ impl Game {
                     }
                     if !source.alive {
                         a.animation = 1;
-                        a.animation_time = 0.8;
+                        a.animation_time = self
+                            .npc_deaths
+                            .get(&a.actor.id)
+                            .map_or(0.0, |(at, _)| self.time - at);
                     }
                 } else {
                     a.health = 0;
+                    a.actor.yaw = self
+                        .npc_yaw
+                        .get(&a.actor.id)
+                        .copied()
+                        .unwrap_or(a.actor.yaw);
                     a.animation = 1;
-                    a.animation_time = 1.8;
-                    if let Some(e) = &self.encounter {
+                    a.animation_time = self
+                        .npc_deaths
+                        .get(&a.actor.id)
+                        .map_or(2.0, |(at, _)| self.time - at);
+                    if let Some((_, position)) = self.npc_deaths.get(&a.actor.id) {
+                        a.actor.position = *position;
+                    } else if let Some(e) = &self.encounter {
                         if let Some(position) = e.positions.get(&a.actor.id) {
                             a.actor.position = *position;
                         }
@@ -308,6 +346,11 @@ impl Game {
         {
             return Err("Invalid play input".into());
         }
+        let previous = self
+            .encounter
+            .as_ref()
+            .map(|e| e.positions.clone())
+            .unwrap_or_default();
         self.time += dt;
         if !self.unlocked() {
             return Ok(());
@@ -392,6 +435,62 @@ impl Game {
         if let Some(mut encounter) = self.encounter.take() {
             encounter.step(self, dt)?;
             self.encounter = Some(encounter);
+        }
+        if dt > 0.0 {
+            if let Some(e) = &self.encounter {
+                for (id, position) in &e.positions {
+                    self.npc_motion.insert(
+                        *id,
+                        (*position - previous.get(id).copied().unwrap_or(*position)) / dt,
+                    );
+                }
+            }
+        }
+        let snapshot = self.snapshot();
+        if self.encounter.is_some() {
+            for actor in &self.scene.actors {
+                let Some(source) = self
+                    .ids
+                    .get(&actor.id)
+                    .and_then(|id| snapshot.actors.iter().find(|s| s.id == *id))
+                else {
+                    continue;
+                };
+                if !source.alive {
+                    continue;
+                }
+                let motion = self
+                    .npc_motion
+                    .get(&actor.id)
+                    .copied()
+                    .unwrap_or(Vec3::ZERO);
+                let direction = if motion.length_squared() > 0.01 {
+                    motion
+                } else {
+                    self.player - Vec3::from(source.pos)
+                };
+                let target = (-direction.x).atan2(-direction.z);
+                let yaw = self.npc_yaw.entry(actor.id).or_insert(actor.yaw);
+                let delta = (target - *yaw + std::f32::consts::PI)
+                    .rem_euclid(std::f32::consts::TAU)
+                    - std::f32::consts::PI;
+                *yaw += delta.clamp(-5.0 * dt, 5.0 * dt);
+            }
+        }
+        for (actor, source) in &self.ids {
+            let state = snapshot.actors.iter().find(|s| s.id == *source);
+            if state.is_none_or(|s| !s.alive) {
+                let position = state.map(|s| Vec3::from(s.pos)).or_else(|| {
+                    self.encounter
+                        .as_ref()
+                        .and_then(|e| e.positions.get(actor).copied())
+                });
+                if let Some(position) = position {
+                    self.npc_deaths
+                        .entry(*actor)
+                        .or_insert((self.time, position));
+                }
+            }
         }
         self.impacts.retain(|(_, at, _)| self.time - at < 0.6);
         Ok(())

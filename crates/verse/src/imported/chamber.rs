@@ -15,6 +15,7 @@ pub fn instances(pack: &Pack, frame: &verse_wow::director::Frame) -> Vec<Instanc
         .iter()
         .filter(|a| a.visible)
         .map(|a| Instance {
+            actor: Some(a.actor.id),
             model: a.actor.model.clone(),
             transform: Mat4::from_translation(a.actor.position)
                 * Mat4::from_rotation_y(a.actor.yaw)
@@ -44,6 +45,7 @@ pub fn instances(pack: &Pack, frame: &verse_wow::director::Frame) -> Vec<Instanc
                 * Mat4::from_rotation_z(std::f32::consts::FRAC_PI_2)
                 * Mat4::from_rotation_y(-std::f32::consts::FRAC_PI_2);
             actors.push(Instance {
+                actor: None,
                 model: "bow".into(),
                 transform,
                 animation: 0,
@@ -54,6 +56,7 @@ pub fn instances(pack: &Pack, frame: &verse_wow::director::Frame) -> Vec<Instanc
     }
     for arrow in &frame.projectiles {
         actors.push(Instance {
+            actor: None,
             model: "arrow".into(),
             transform: Mat4::from_translation(arrow.position)
                 * Mat4::from_quat(Quat::from_rotation_arc(-Vec3::Z, arrow.direction))
@@ -127,6 +130,7 @@ pub fn static_instances(pack: &Pack, origin: Vec3) -> Vec<Instance> {
     pack.placements
         .iter()
         .map(|p| Instance {
+            actor: None,
             model: p.model.clone(),
             transform: conversion
                 * Mat4::from_scale_rotation_translation(
@@ -167,6 +171,45 @@ pub fn lighting(origin: Vec3) -> super::lighting::Lighting {
         });
     }
     lights
+}
+fn particle_quad() -> (Vec<verse_wow::assets::Vertex>, Vec<u32>) {
+    use verse_wow::assets::Vertex;
+    let vertices = [
+        ([-1.0, -1.0, 0.0], [0.0, 1.0]),
+        ([1.0, -1.0, 0.0], [1.0, 1.0]),
+        ([1.0, 1.0, 0.0], [1.0, 0.0]),
+        ([-1.0, 1.0, 0.0], [0.0, 0.0]),
+    ]
+    .into_iter()
+    .map(|(position, uv)| Vertex {
+        position,
+        normal: [0.0, 0.0, 1.0],
+        uv,
+        joints: [0; 4],
+        weights: [1.0, 0.0, 0.0, 0.0],
+    })
+    .collect();
+    (vertices, vec![0, 1, 2, 0, 2, 3])
+}
+fn particle_texture(pack: &mut Pack, dir: &std::path::Path, name: &str) -> Result<usize, String> {
+    use sha2::{Digest, Sha256};
+    let file = format!("{name}.png");
+    if let Some(i) = pack.textures.iter().position(|t| t.file == file) {
+        return Ok(i);
+    }
+    let bytes = std::fs::read(dir.join(&file))
+        .map_err(|e| format!("Import Classic particle textures with wow-import --ui-only: {e}"))?;
+    let reader = png::Decoder::new(std::io::Cursor::new(&bytes))
+        .read_info()
+        .map_err(|e| e.to_string())?;
+    let i = pack.textures.len();
+    pack.textures.push(verse_wow::assets::Texture {
+        file,
+        sha256: format!("{:x}", Sha256::digest(&bytes)),
+        width: reader.info().width,
+        height: reader.info().height,
+    });
+    Ok(i)
 }
 pub fn add_effect_models(pack: &mut Pack, dir: &std::path::Path) -> Result<(), String> {
     use sha2::{Digest, Sha256};
@@ -222,26 +265,111 @@ pub fn add_effect_models(pack: &mut Pack, dir: &std::path::Path) -> Result<(), S
         ("effect-shadow", [0.7, 0.05, 1.0]),
         ("effect-light", [1.0, 0.85, 0.45]),
     ] {
+        let sprite = match name {
+            "effect-fire" | "effect-impact" => Some("particle-fire"),
+            "effect-force" | "effect-light" => Some("particle-arcane"),
+            "effect-mist" => Some("particle-smoke"),
+            "effect-web" => Some("particle-web"),
+            "effect-grease" => Some("particle-smoke"),
+            "effect-shadow" => Some("particle-shadow"),
+            _ => None,
+        };
+        let texture = if let Some(sprite) = sprite {
+            particle_texture(pack, dir, sprite)?
+        } else {
+            texture
+        };
+        let (mesh, triangles) = if sprite.is_some() {
+            particle_quad()
+        } else {
+            (vertices.clone(), indices.clone())
+        };
         pack.models.insert(
             name.into(),
             Model {
-                source: format!("verse/procedural/{name}"),
+                source: format!(
+                    "verse/{}/{name}",
+                    if ["effect-web", "effect-grease"].contains(&name) {
+                        "ground"
+                    } else if sprite.is_some() {
+                        "particles"
+                    } else {
+                        "procedural"
+                    }
+                ),
                 source_sha256: format!("{:x}", Sha256::digest(name.as_bytes())),
                 height: 2.0,
                 bones: vec![],
                 clips: vec![],
                 attachments: vec![],
                 surfaces: vec![Surface {
-                    vertices: vertices.clone(),
-                    indices: indices.clone(),
+                    vertices: mesh,
+                    indices: triangles,
                     texture,
-                    blend: if name == "effect-grease" { 2 } else { 3 },
+                    blend: if ["effect-grease", "effect-web", "effect-mist"].contains(&name) {
+                        2
+                    } else {
+                        3
+                    },
                     emissive: true,
-                    tint: color,
+                    tint: if name == "effect-grease" {
+                        [0.1, 0.075, 0.04]
+                    } else if sprite.is_some() {
+                        [1.0; 3]
+                    } else {
+                        color
+                    },
                 }],
             },
         );
     }
+    for (name, image, blend, tint) in [
+        ("particle-smoke", "particle-smoke", 2, [0.28, 0.22, 0.2]),
+        ("particle-spark", "particle-spark", 3, [1.0, 0.65, 0.2]),
+    ] {
+        let texture = particle_texture(pack, dir, image)?;
+        let (vertices, indices) = particle_quad();
+        pack.models.insert(
+            name.into(),
+            Model {
+                source: format!("verse/particles/{name}"),
+                source_sha256: format!("{:x}", Sha256::digest(name.as_bytes())),
+                height: 2.0,
+                bones: vec![],
+                clips: vec![],
+                attachments: vec![],
+                surfaces: vec![Surface {
+                    vertices,
+                    indices,
+                    texture,
+                    blend,
+                    emissive: true,
+                    tint,
+                }],
+            },
+        );
+    }
+    let texture = particle_texture(pack, dir, "particle-ribbon")?;
+    let (mesh, triangles) = particle_quad();
+    pack.models.insert(
+        "effect-ribbon".into(),
+        Model {
+            source: "verse/ribbon/effect-ribbon".into(),
+            source_sha256: format!("{:x}", Sha256::digest(b"effect-ribbon")),
+            height: 2.0,
+            bones: vec![],
+            clips: vec![],
+            attachments: vec![],
+            surfaces: vec![Surface {
+                vertices: mesh,
+                indices: triangles,
+                texture,
+                blend: 3,
+                emissive: true,
+                tint: [1.0; 3],
+            }],
+        },
+    );
     // Thin luminous rings keep the shield transparent around the character.
     for (name, planes, color) in [
         ("effect-rune", 1, [0.8, 0.04, 0.65]),
@@ -294,6 +422,24 @@ pub fn add_effect_models(pack: &mut Pack, dir: &std::path::Path) -> Result<(), S
             },
         );
     }
+    let texture = particle_texture(pack, dir, "particle-rune")?;
+    let (quad, triangles) = particle_quad();
+    pack.models.get_mut("effect-rune").unwrap().surfaces[0] = Surface {
+        vertices: quad,
+        indices: triangles,
+        texture,
+        blend: 3,
+        emissive: true,
+        tint: [0.65, 0.15, 0.85],
+    };
+    pack.models.get_mut("effect-rune").unwrap().source = "verse/ground/effect-rune".into();
+    let mut wave = pack.models["effect-rune"].clone();
+    wave.source = "verse/ground/effect-wave".into();
+    wave.surfaces[0].tint = [0.2, 0.55, 1.0];
+    pack.models.insert("effect-wave".into(), wave);
+    let shell = &mut pack.models.get_mut("effect-shield").unwrap().surfaces[0];
+    shell.vertices = vertices;
+    shell.indices = indices;
     pack.validate()
 }
 pub fn spell_instances(game: &super::play::Game) -> Vec<Instance> {
@@ -306,6 +452,7 @@ pub fn spell_instances(game: &super::play::Game) -> Vec<Instance> {
             0.15
         };
         out.push(Instance {
+            actor: None,
             model: if force { "effect-force" } else { "effect-fire" }.into(),
             transform: Mat4::from_translation(p.pos.into()) * Mat4::from_scale(Vec3::splat(scale)),
             animation: 0,
@@ -314,6 +461,7 @@ pub fn spell_instances(game: &super::play::Game) -> Vec<Instance> {
         });
         for trail in 1..4 {
             out.push(Instance {
+                actor: None,
                 model: if force { "effect-force" } else { "effect-fire" }.into(),
                 transform: Mat4::from_translation(
                     Vec3::from(p.pos) - Vec3::from(p.vel).normalize_or_zero() * trail as f32 * 0.2,
@@ -330,7 +478,7 @@ pub fn spell_instances(game: &super::play::Game) -> Vec<Instance> {
         let (model, scale, alpha) = match area.kind {
             Utility::MistyStep => ("effect-mist", Vec3::new(0.9, 1.7, 0.9), left / 0.7),
             Utility::Thunderwave => (
-                "effect-force",
+                "effect-wave",
                 Vec3::new((0.7 - left) * 7.0 + 0.2, 0.5, (0.7 - left) * 7.0 + 0.2),
                 left / 0.7,
             ),
@@ -339,46 +487,26 @@ pub fn spell_instances(game: &super::play::Game) -> Vec<Instance> {
             Utility::Light | Utility::Shield => continue,
         };
         out.push(Instance {
+            actor: None,
             model: model.into(),
             transform: Mat4::from_translation(area.position + Vec3::Y * 0.12)
-                * Mat4::from_scale(scale),
+                * if matches!(
+                    area.kind,
+                    Utility::Web | Utility::Grease | Utility::Thunderwave
+                ) {
+                    Mat4::from_rotation_x(-std::f32::consts::FRAC_PI_2)
+                        * Mat4::from_scale(Vec3::new(scale.x, scale.z, 1.0))
+                } else {
+                    Mat4::from_scale(scale)
+                },
             animation: 0,
             time: game.time,
             emission: Vec3::splat(alpha),
         });
-        if area.kind == Utility::Web {
-            out.pop();
-            let point = |radius: f32, i: usize| {
-                let angle = i as f32 * std::f32::consts::TAU / 12.0;
-                area.position
-                    + Vec3::new(
-                        angle.cos() * radius,
-                        0.18 + 0.08 * (angle * 3.0).sin(),
-                        angle.sin() * radius,
-                    )
-            };
-            let mut strand = |a: Vec3, b: Vec3| {
-                let delta = b - a;
-                out.push(Instance {
-                    model: "effect-web".into(),
-                    transform: Mat4::from_translation((a + b) * 0.5)
-                        * Mat4::from_quat(Quat::from_rotation_arc(Vec3::X, delta.normalize()))
-                        * Mat4::from_scale(Vec3::new(delta.length() * 0.5, 0.017, 0.017)),
-                    animation: 0,
-                    time: game.time,
-                    emission: Vec3::splat(0.7),
-                });
-            };
-            for i in 0..12 {
-                strand(area.position + Vec3::Y * 0.3, point(3.048, i));
-                for radius in [0.6, 1.2, 1.8, 2.4, 3.048] {
-                    strand(point(radius, i), point(radius, (i + 1) % 12));
-                }
-            }
-        }
     }
     if let Some(position) = game.controls.light {
         out.push(Instance {
+            actor: None,
             model: "effect-light".into(),
             transform: Mat4::from_translation(position) * Mat4::from_scale(Vec3::splat(0.12)),
             animation: 0,
@@ -388,6 +516,7 @@ pub fn spell_instances(game: &super::play::Game) -> Vec<Instance> {
     }
     if game.controls.shield > 0 && game.time < game.controls.shield_until {
         out.push(Instance {
+            actor: None,
             model: "effect-shield".into(),
             transform: Mat4::from_translation(game.player + Vec3::Y * 1.05)
                 * Mat4::from_rotation_y(game.time * 0.7)
@@ -397,11 +526,25 @@ pub fn spell_instances(game: &super::play::Game) -> Vec<Instance> {
             emission: Vec3::splat(0.8),
         });
     }
+    if game.controls.shield > 0 && game.time < game.controls.shield_until {
+        for n in 0..6 {
+            let angle = game.time * 1.3 + n as f32 * std::f32::consts::TAU / 6.0;
+            let center = game.player
+                + Vec3::new(
+                    angle.cos() * 1.05,
+                    1.05 + (angle * 2.0).sin() * 0.8,
+                    angle.sin() * 1.05,
+                );
+            out.push(particle("effect-force", center, 0.18, 0.5, game.time));
+        }
+    }
     if let Some(encounter) = &game.encounter {
         for cast in &encounter.casts {
             out.push(Instance {
+                actor: None,
                 model: "effect-rune".into(),
                 transform: Mat4::from_translation(cast.target + Vec3::Y * 0.08)
+                    * Mat4::from_rotation_x(-std::f32::consts::FRAC_PI_2)
                     * Mat4::from_scale(Vec3::splat(cast.radius)),
                 animation: 0,
                 time: game.time,
@@ -417,6 +560,7 @@ pub fn spell_instances(game: &super::play::Game) -> Vec<Instance> {
             };
             let size = if cast.boss { 0.55 } else { 0.23 };
             out.push(Instance {
+                actor: None,
                 model: "effect-shadow".into(),
                 transform: Mat4::from_translation(position) * Mat4::from_scale(Vec3::splat(size)),
                 animation: 0,
@@ -425,16 +569,16 @@ pub fn spell_instances(game: &super::play::Game) -> Vec<Instance> {
             });
             if game.time >= cast.release {
                 let direction = (cast.target + Vec3::Y - cast.origin).normalize_or_zero();
-                for tail in 1..4 {
-                    out.push(Instance {
-                        model: "effect-shadow".into(),
-                        transform: Mat4::from_translation(position - direction * tail as f32 * 0.3)
-                            * Mat4::from_scale(Vec3::splat(size * (1.0 - tail as f32 * 0.18))),
-                        animation: 0,
-                        time: game.time,
-                        emission: Vec3::ONE,
-                    });
-                }
+                out.push(Instance {
+                    actor: None,
+                    model: "effect-ribbon".into(),
+                    transform: Mat4::from_translation(position - direction * 0.65)
+                        * Mat4::from_quat(Quat::from_rotation_arc(Vec3::Y, direction))
+                        * Mat4::from_scale(Vec3::new(size * 0.7, 0.85, 1.0)),
+                    animation: 0,
+                    time: game.time,
+                    emission: Vec3::splat(0.75),
+                });
             }
         }
     }
@@ -446,6 +590,7 @@ pub fn spell_instances(game: &super::play::Game) -> Vec<Instance> {
             0.15 + elapsed * 1.8
         };
         out.push(Instance {
+            actor: None,
             model: "effect-impact".into(),
             transform: Mat4::from_translation(*position) * Mat4::from_scale(Vec3::splat(scale)),
             animation: 0,
@@ -453,7 +598,64 @@ pub fn spell_instances(game: &super::play::Game) -> Vec<Instance> {
             emission: Vec3::splat((1.0 - elapsed / 0.6).max(0.0)),
         });
     }
+    for p in &game.snapshot().projectiles {
+        if p.kind == verse_ruins::Spell::MagicMissile {
+            continue;
+        }
+        let direction = Vec3::from(p.vel).normalize_or_zero();
+        for n in 0..8 {
+            let age = (n as f32 + 0.5) * 0.045;
+            let phase = game.time * 8.0 + n as f32 * 2.4 + p.id as f32;
+            let center = Vec3::from(p.pos) - direction * Vec3::from(p.vel).length() * age
+                + Vec3::new(phase.sin(), age * 3.0, phase.cos()) * age * 0.4;
+            out.push(particle(
+                "effect-fire",
+                center,
+                0.12 + age * 0.25,
+                1.0 - age / 0.5,
+                game.time,
+            ));
+            if n % 2 == 0 {
+                out.push(particle(
+                    "particle-smoke",
+                    center + Vec3::Y * age,
+                    0.2 + age,
+                    age * 0.65,
+                    game.time,
+                ));
+            }
+        }
+    }
+    for (position, at, kind) in &game.impacts {
+        let age = game.time - at;
+        for n in 0..if *kind == 1 { 16 } else { 6 } {
+            let seed = *at * 7.31 + position.dot(Vec3::new(0.17, 0.31, 0.73)) + n as f32 * 2.39996;
+            let direction =
+                Vec3::new(seed.cos(), 0.2 + (seed * 1.7).sin().abs(), seed.sin()).normalize();
+            let speed = if *kind == 1 { 6.0 } else { 2.0 };
+            let center = *position + direction * speed * age - Vec3::Y * age * age * 3.0;
+            out.push(particle(
+                "particle-spark",
+                center,
+                0.05 + 0.08 * (1.0 - age / 0.6),
+                (1.0 - age / 0.6).max(0.0),
+                game.time,
+            ));
+        }
+    }
+    // The actor palette has a fixed budget; retain primary spell and area cues first.
+    out.truncate(220);
     out
+}
+fn particle(model: &str, position: Vec3, radius: f32, opacity: f32, time: f32) -> Instance {
+    Instance {
+        actor: None,
+        model: model.into(),
+        transform: Mat4::from_translation(position) * Mat4::from_scale(Vec3::splat(radius)),
+        animation: 0,
+        time,
+        emission: Vec3::splat(opacity.clamp(0.0, 1.0)),
+    }
 }
 
 /// Renders model headshots through the owned GPU pipeline for unit-frame portraits.
@@ -474,6 +676,7 @@ pub fn portrait_atlas(dir: &std::path::Path, pack: &Pack) -> Result<Atlas, Strin
         let mut pixels = renderer.draw(
             view,
             &[Instance {
+                actor: None,
                 model: name.into(),
                 transform: basis(),
                 animation: 0,
@@ -499,4 +702,36 @@ pub fn portrait_atlas(dir: &std::path::Path, pack: &Pack) -> Result<Atlas, Strin
         atlas.add_sprite(&format!("portrait-{name}"), 128, 128, &pixels)?;
     }
     Ok(atlas)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn simultaneous_impacts_keep_a_finite_deterministic_particle_budget() {
+        let scene = verse_wow::director::Scene::from_json(include_bytes!(
+            "../../../../assets/verse/wow/anthropic.json"
+        ))
+        .unwrap();
+        let mut game = super::super::play::Game::new(scene).unwrap();
+        game.time = 30.0;
+        game.impacts = (0..100)
+            .map(|n| (Vec3::new(n as f32 * 0.01, 1.0, 0.0), 29.8, 1))
+            .collect();
+        let first = spell_instances(&game);
+        let second = spell_instances(&game);
+        assert!(first.len() <= 220);
+        assert!(
+            first
+                .iter()
+                .all(|i| i.transform.is_finite() && i.emission.is_finite())
+        );
+        assert!(first.iter().any(|i| i.model == "particle-spark"));
+        assert!(
+            first
+                .iter()
+                .zip(second)
+                .all(|(a, b)| a.model == b.model && a.transform == b.transform)
+        );
+    }
 }

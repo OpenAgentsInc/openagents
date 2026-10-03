@@ -28,6 +28,7 @@ use wgpu::util::DeviceExt;
 
 #[derive(Clone, Debug)]
 pub struct Instance {
+    pub actor: Option<u64>,
     pub model: String,
     pub transform: Mat4,
     pub animation: u16,
@@ -103,6 +104,7 @@ pub struct Renderer {
     models: HashMap<String, Vec<Batch>>,
     static_batches: Vec<Batch>,
     actors: Vec<Actor>,
+    playback: HashMap<(u64, String), animation::Playback>,
     ui_pipeline: wgpu::RenderPipeline,
     ui_group: wgpu::BindGroup,
     _ui_screen: wgpu::Buffer,
@@ -198,6 +200,15 @@ fn make_pose(pack: &Pack, instance: Option<&Instance>) -> Pose {
             .starts_with("verse/procedural/")
         {
             pose.params = [1.0, i.emission.x.clamp(0.0, 1.0), i.time, 0.0];
+        }
+        if pack.models[&i.model].source.starts_with("verse/particles/") {
+            pose.params = [2.0, i.emission.x.clamp(0.0, 1.0), i.time, 0.0];
+        }
+        if pack.models[&i.model].source.starts_with("verse/ground/") {
+            pose.params = [3.0, i.emission.x.clamp(0.0, 1.0), i.time, 0.0];
+        }
+        if pack.models[&i.model].source.starts_with("verse/ribbon/") {
+            pose.params = [4.0, i.emission.x.clamp(0.0, 1.0), i.time, 0.0];
         }
         for (dst, m) in
             pose.bones
@@ -574,6 +585,7 @@ impl Renderer {
             ui_group,
             _ui_screen: ui_screen,
             ui_buffer,
+            playback: HashMap::new(),
             adapter_name,
         })
     }
@@ -631,12 +643,50 @@ impl Renderer {
             0,
             bytemuck::bytes_of(&make_pose(&self.pack, None)),
         );
+        self.playback.retain(|(id, model), _| {
+            instances
+                .iter()
+                .any(|i| i.actor == Some(*id) && i.model == *model)
+        });
+        let mut adventurer_pose: Option<Pose> = None;
         for (i, instance) in instances.iter().enumerate() {
-            self.queue.write_buffer(
-                &self.actors[i + 1].buffer,
-                0,
-                bytemuck::bytes_of(&make_pose(&self.pack, Some(instance))),
-            );
+            let mut palette = make_pose(&self.pack, Some(instance));
+            if let Some(id) = instance.actor {
+                let bones = self
+                    .playback
+                    .entry((id, instance.model.clone()))
+                    .or_default()
+                    .update(
+                        &self.pack.models[&instance.model],
+                        instance.animation,
+                        instance.time,
+                        lighting.time,
+                    );
+                for (dst, bone) in palette.bones.iter_mut().zip(bones) {
+                    *dst = bone.to_cols_array_2d();
+                }
+            }
+            if instance.model == "adventurer" {
+                adventurer_pose = Some(palette);
+            }
+            if instance.model == "bow" {
+                if let (Some(parent), Some(hand)) = (
+                    adventurer_pose,
+                    self.pack.models["adventurer"]
+                        .attachments
+                        .iter()
+                        .find(|a| a.id == 2),
+                ) {
+                    let transform = Mat4::from_cols_array_2d(&parent.model)
+                        * Mat4::from_cols_array_2d(&parent.bones[hand.bone])
+                        * Mat4::from_translation(hand.position.into())
+                        * Mat4::from_rotation_z(std::f32::consts::FRAC_PI_2)
+                        * Mat4::from_rotation_y(-std::f32::consts::FRAC_PI_2);
+                    palette.model = transform.to_cols_array_2d();
+                }
+            }
+            self.queue
+                .write_buffer(&self.actors[i + 1].buffer, 0, bytemuck::bytes_of(&palette));
         }
         let mut encoder = self.device.create_command_encoder(&Default::default());
         for layer in 0..lighting.lights.len().min(lighting.shadowed).min(4) * 6 {
@@ -706,7 +756,17 @@ impl Renderer {
                 {
                     self.draw_batch(&mut pass, batch);
                 }
-                for (i, instance) in instances.iter().enumerate() {
+                let mut order: Vec<_> = instances.iter().enumerate().collect();
+                if blend == 2 {
+                    order.sort_by(|(_, a), (_, b)| {
+                        b.transform
+                            .w_axis
+                            .truncate()
+                            .distance_squared(view.eye)
+                            .total_cmp(&a.transform.w_axis.truncate().distance_squared(view.eye))
+                    });
+                }
+                for (i, instance) in order {
                     pass.set_bind_group(2, &self.actors[i + 1].group, &[]);
                     for batch in self.models[&instance.model]
                         .iter()

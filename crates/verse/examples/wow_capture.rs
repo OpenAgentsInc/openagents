@@ -19,6 +19,7 @@ fn main() -> Result<(), String> {
         .placements
         .iter()
         .map(|p| Instance {
+            actor: None,
             model: p.model.clone(),
             transform: conversion
                 * Mat4::from_scale_rotation_translation(

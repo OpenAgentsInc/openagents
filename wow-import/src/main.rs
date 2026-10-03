@@ -355,6 +355,26 @@ fn main() -> Result<()> {
         encoder.set_depth(png::BitDepth::Eight);
         encoder.write_header()?.write_image_data(&rgba)?;
     }
+    for (name, source) in [
+        ("particle-fire", "Spells\\Fire1.blp"),
+        ("particle-smoke", "Spells\\SmokeToon01.blp"),
+        ("particle-arcane", "Spells\\Blue_GlowB.blp"),
+        ("particle-shadow", "Spells\\Purple_Glow2.blp"),
+        ("particle-spark", "Spells\\GlowStar_Yellow.blp"),
+        ("particle-rune", "Spells\\AuraRune256.blp"),
+        ("particle-web", "Spells\\SpiderWebs01.blp"),
+        ("particle-ribbon", "Spells\\RibbonBlur1beA_Purple.blp"),
+    ] {
+        let (w, h, rgba) = f::read_texture_rgba(&mut import.chain, source)?;
+        let mut encoder = png::Encoder::new(
+            std::fs::File::create(dir.join(format!("{name}.png")))?,
+            w,
+            h,
+        );
+        encoder.set_color(png::ColorType::Rgba);
+        encoder.set_depth(png::BitDepth::Eight);
+        encoder.write_header()?.write_image_data(&rgba)?;
+    }
     if args.next().as_deref() == Some("--ui-only") {
         return Ok(());
     }

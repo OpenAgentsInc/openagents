@@ -12,6 +12,24 @@ struct In { @location(0) pos:vec3<f32>,@location(1) normal:vec3<f32>,@location(2
 struct Out { @builtin(position) clip:vec4<f32>,@location(0) pos:vec3<f32>,@location(1) normal:vec3<f32>,@location(2) uv:vec2<f32>,@location(3) tint:vec3<f32> };
 @vertex fn vs(v:In)->Out {
  let skin=pose.bones[v.joints.x]*v.weights.x+pose.bones[v.joints.y]*v.weights.y+pose.bones[v.joints.z]*v.weights.z+pose.bones[v.joints.w]*v.weights.w;
+ if pose.params.x>1.5 && pose.params.x<2.5 {
+  let center=pose.model[3].xyz;
+  let forward=normalize(frame.eye.xyz-center);
+  let reference=select(vec3(0.0,1.0,0.0),vec3(0.0,0.0,1.0),abs(forward.y)>0.99);
+  let right=normalize(cross(reference,forward));
+  let up=cross(forward,right);
+  let world=center+right*v.pos.x*length(pose.model[0].xyz)+up*v.pos.y*length(pose.model[1].xyz);
+  var o:Out;o.clip=frame.view*vec4(world,1.0);o.pos=world;o.normal=forward;o.uv=v.uv;o.tint=v.tint;return o;
+ }
+ if pose.params.x>3.5 {
+  let center=pose.model[3].xyz;let axis=pose.model[1].xyz;
+  let forward=normalize(frame.eye.xyz-center);
+  let tangent=normalize(axis);let cross_axis=cross(tangent,forward);
+  let reference=select(vec3(1.0,0.0,0.0),vec3(0.0,1.0,0.0),abs(tangent.x)>0.99);
+  let side=select(cross(tangent,reference),cross_axis,length(cross_axis)>0.001);
+  let world=center+normalize(side)*v.pos.x*length(pose.model[0].xyz)+axis*v.pos.y;
+  var o:Out;o.clip=frame.view*vec4(world,1.0);o.pos=world;o.normal=forward;o.uv=v.uv;o.tint=v.tint;return o;
+ }
  let model=pose.model*skin;let world=model*vec4(v.pos,1.0);var o:Out;o.clip=frame.view*world;o.pos=world.xyz;o.normal=normalize((model*vec4(v.normal,0.0)).xyz);o.uv=v.uv;o.tint=v.tint;return o;
 }
 @fragment fn shadow_fs(v:Out){
@@ -29,6 +47,11 @@ fn occlusion(index:u32,p:vec3<f32>,normal:vec3<f32>)->f32{
 }
 fn tone(x:vec3<f32>)->vec3<f32>{return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14),vec3(0.0),vec3(1.0));}
 @fragment fn fs(v:Out,@builtin(front_facing) front:bool)->@location(0) vec4<f32>{
+ if pose.params.x>1.5 {
+  let tex=textureSample(image,tex_sampler,v.uv);
+  let color=tex.rgb*1.6;
+  return vec4(color*v.tint,tex.a*pose.params.y);
+ }
  if pose.params.x>0.5 {
   let facing=abs(dot(normalize(v.normal),normalize(frame.eye.xyz-v.pos)));
   let rim=pow(1.0-facing,1.5);

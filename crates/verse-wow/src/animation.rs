@@ -27,46 +27,68 @@ fn vector(keys: &[(f32, [f32; 3])], t: f32, default: [f32; 3]) -> Vec3 {
     let (a, b, f) = pair(keys, t, default);
     Vec3::from(a).lerp(Vec3::from(b), f)
 }
-/// Produce model-space skin matrices; a missing clip uses the rest pose.
-pub fn pose(model: &Model, animation: u16, time: f32) -> Vec<Mat4> {
+#[derive(Clone, Copy)]
+struct Local {
+    translation: Vec3,
+    rotation: Quat,
+    scale: Vec3,
+}
+fn sample(model: &Model, animation: u16, time: f32) -> Vec<Local> {
     let clip = model
         .clips
         .iter()
         .find(|c| c.id == animation)
         .or_else(|| model.clips.iter().find(|c| c.id == 0));
     let time = clip.map_or(0.0, |c| {
-        if time.is_finite() {
-            if c.id == 1 {
-                // Classic's Death clip plays once and holds its final pose.
-                time.clamp(0.0, c.duration)
-            } else {
-                time.max(0.0) % c.duration
-            }
-        } else {
+        if !time.is_finite() || c.duration <= 0.0 {
             0.0
+        } else if c.id == 1 {
+            time.clamp(0.0, c.duration)
+        } else {
+            time.max(0.0) % c.duration
         }
     });
+    model
+        .bones
+        .iter()
+        .enumerate()
+        .map(|(i, _)| {
+            let keys = clip.and_then(|c| c.bones.iter().find(|k| k.bone == i));
+            keys.map_or(
+                Local {
+                    translation: Vec3::ZERO,
+                    rotation: Quat::IDENTITY,
+                    scale: Vec3::ONE,
+                },
+                |k| {
+                    let (a, b, f) = pair(&k.rotation, time, [0.0, 0.0, 0.0, 1.0]);
+                    let q = |v| {
+                        let q = Quat::from_array(v);
+                        if q.length_squared() > 0.00001 {
+                            q.normalize()
+                        } else {
+                            Quat::IDENTITY
+                        }
+                    };
+                    Local {
+                        translation: vector(&k.translation, time, [0.0; 3]),
+                        rotation: q(a).slerp(q(b), f),
+                        scale: vector(&k.scale, time, [1.0; 3]),
+                    }
+                },
+            )
+        })
+        .collect()
+}
+fn matrices(model: &Model, locals: &[Local]) -> Vec<Mat4> {
     let mut result = vec![Mat4::IDENTITY; model.bones.len().max(1)];
     for (i, bone) in model.bones.iter().enumerate() {
-        let keys = clip.and_then(|c| c.bones.iter().find(|k| k.bone == i));
-        let pivot = Vec3::from(bone.pivot);
-        let local = if let Some(k) = keys {
-            let (a, b, f) = pair(&k.rotation, time, [0.0, 0.0, 0.0, 1.0]);
-            let q = |v| {
-                let q = Quat::from_array(v);
-                if q.length_squared() > 0.00001 {
-                    q.normalize()
-                } else {
-                    Quat::IDENTITY
-                }
-            };
-            Mat4::from_translation(pivot + vector(&k.translation, time, [0.0; 3]))
-                * Mat4::from_quat(q(a).slerp(q(b), f))
-                * Mat4::from_scale(vector(&k.scale, time, [1.0; 3]))
-                * Mat4::from_translation(-pivot)
-        } else {
-            Mat4::IDENTITY
-        };
+        let p = Vec3::from(bone.pivot);
+        let l = locals[i];
+        let local = Mat4::from_translation(p + l.translation)
+            * Mat4::from_quat(l.rotation)
+            * Mat4::from_scale(l.scale)
+            * Mat4::from_translation(-p);
         result[i] = if bone.parent >= 0 {
             result[bone.parent as usize] * local
         } else {
@@ -75,10 +97,97 @@ pub fn pose(model: &Model, animation: u16, time: f32) -> Vec<Mat4> {
     }
     result
 }
+/// Produce model-space skin matrices; a missing clip uses the rest pose.
+pub fn pose(model: &Model, animation: u16, time: f32) -> Vec<Mat4> {
+    matrices(model, &sample(model, animation, time))
+}
+/// Interruptible clip blending in local space, before parent transforms accumulate.
+#[derive(Default)]
+pub struct Playback {
+    clip: Option<u16>,
+    clock: f32,
+    changed: f32,
+    from: Vec<Local>,
+    current: Vec<Local>,
+}
+impl Playback {
+    pub fn update(&mut self, model: &Model, animation: u16, time: f32, clock: f32) -> Vec<Mat4> {
+        let target = sample(model, animation, time);
+        if self.current.len() != target.len() || clock < self.clock {
+            self.clip = None;
+            self.current = target.clone();
+        }
+        if self.clip != Some(animation) {
+            self.from = self.current.clone();
+            self.changed = clock;
+            if self.clip.is_none() {
+                self.changed -= 0.25;
+            }
+            self.clip = Some(animation);
+        }
+        let duration = if animation == 1 { 0.12 } else { 0.22 };
+        let f = ((clock - self.changed) / duration).clamp(0.0, 1.0);
+        let f = f * f * (3.0 - 2.0 * f);
+        self.current = self
+            .from
+            .iter()
+            .zip(target)
+            .map(|(a, b)| Local {
+                translation: a.translation.lerp(b.translation, f),
+                rotation: a.rotation.slerp(b.rotation, f),
+                scale: a.scale.lerp(b.scale, f),
+            })
+            .collect();
+        self.clock = clock;
+        matrices(model, &self.current)
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::assets::{Bone, BoneKeys, Clip};
+    #[test]
+    fn interrupted_transitions_preserve_pose_and_rotation_length() {
+        let model = Model {
+            source: String::new(),
+            source_sha256: String::new(),
+            height: 1.0,
+            surfaces: vec![],
+            attachments: vec![],
+            bones: vec![Bone {
+                parent: -1,
+                pivot: [0.0; 3],
+            }],
+            clips: [0, 4, 52]
+                .into_iter()
+                .enumerate()
+                .map(|(i, id)| Clip {
+                    id,
+                    duration: 1.0,
+                    bones: vec![BoneKeys {
+                        bone: 0,
+                        translation: vec![(0.0, [i as f32, 0.0, 0.0])],
+                        rotation: vec![(0.0, Quat::from_rotation_y(i as f32).to_array())],
+                        scale: vec![],
+                    }],
+                })
+                .collect(),
+        };
+        let mut playback = Playback::default();
+        let idle = playback.update(&model, 0, 0.0, 0.0)[0];
+        let start = playback.update(&model, 4, 0.0, 0.1)[0];
+        assert!(idle.abs_diff_eq(start, 0.00001));
+        let middle = playback.update(&model, 4, 0.1, 0.21)[0];
+        assert!((middle.w_axis.x - 0.5).abs() < 0.001);
+        let interrupt = playback.update(&model, 52, 0.0, 0.21)[0];
+        assert!(middle.abs_diff_eq(interrupt, 0.00001));
+        let blended = playback.update(&model, 52, 0.1, 0.32)[0];
+        assert!((blended.x_axis.truncate().length() - 1.0).abs() < 0.00001);
+        let end = playback.update(&model, 52, 0.3, 0.5)[0];
+        assert!((end.w_axis.x - 2.0).abs() < 0.001);
+        let reset = playback.update(&model, 0, 0.0, 0.0)[0];
+        assert!(reset.abs_diff_eq(idle, 0.00001));
+    }
     #[test]
     fn death_holds_the_final_pose_while_idle_keeps_looping() {
         let mut model = Model {
