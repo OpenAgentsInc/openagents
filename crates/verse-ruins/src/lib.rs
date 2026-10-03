@@ -347,6 +347,16 @@ impl Simulation {
         Ok(())
     }
 
+    /// Returns the source spell's cooldown duration for HUD progress.
+    pub fn cooldown_duration(&self, spell: Spell) -> f32 {
+        let spec = match spell {
+            Spell::Firebolt => &self.source.specs.spells.firebolt,
+            Spell::MagicMissile => &self.source.specs.spells.magic_missile,
+            Spell::Fireball => &self.source.specs.spells.fireball,
+        };
+        spec.cd_s.max(spec.gcd_s)
+    }
+
     pub fn snapshot(&self) -> Snapshot {
         let pc = self.source.pc_actor.and_then(|id| self.source.ecs.get(id));
         let player = pc.map_or(

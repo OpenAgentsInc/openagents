@@ -246,3 +246,14 @@ only when it was not dragged. This matches the input modes and default rate
 parameters; OS pointer acceleration is platform-dependent. Full imported-dungeon
 camera collision, jumping, swimming, and configurable client CVars are separate
 from this chamber movement implementation.
+
+The playable HUD uses the private 1.12 client's main-bar artwork, mirrored
+gryphon caps, twelve 36×36 action slots with six-unit gaps, and 232×100
+portrait frames with 119×12 health and mana fills. Layout scales from a
+768-pixel reference height. Friz Quadrata supplies labels; Arial Narrow
+supplies hotkeys and resource numbers. Portrait headshots are rendered by the
+owned GPU pipeline. Cooldowns use radial swipes driven by source spell tuning.
+The [native HUD capture](../../bench/wow/2026-10-03/verse-classic-hud.png)
+shows the result. Refresh private assets with `wow-import --ui-only`.
+Menu and bag artwork is decorative; this chamber has no inventory, experience,
+or character-level system. Imported fonts and UI textures remain outside Git.

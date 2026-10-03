@@ -125,6 +125,11 @@ pub struct Game {
     locomotion: [f32; 2],
 }
 impl Game {
+    /// Uses the retained simulation's cooldown tuning for action-button swipes.
+    pub fn cooldown_duration(&self, spell: verse_ruins::Spell) -> f32 {
+        self.simulation.cooldown_duration(spell)
+    }
+
     pub fn new(mut scene: Scene) -> Result<Self, String> {
         scene
             .cues

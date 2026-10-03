@@ -322,6 +322,9 @@ impl ApplicationHandler for App {
                                 self.activate(ability);
                                 return;
                             }
+                            if overlay::chrome_at(self.cursor[0], self.cursor[1], 1280.0, 720.0) {
+                                return;
+                            }
                             self.pending_select = true;
                             self.dragged = 0.0;
                         }
@@ -402,7 +405,7 @@ fn main() -> Result<(), String> {
         .iter()
         .map(|(id, m)| (id.clone(), m.height))
         .collect();
-    let atlas = chamber::classic_atlas(&dir)?;
+    let atlas = chamber::portrait_atlas(&dir, &pack)?;
     let mut app = App {
         window: None,
         presenter: None,

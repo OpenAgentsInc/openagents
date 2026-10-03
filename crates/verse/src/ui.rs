@@ -69,6 +69,7 @@ pub struct Atlas {
     pub pixels: Vec<u8>,
     pub rgba: Option<Vec<u8>>,
     pub sprites: std::collections::BTreeMap<String, ([f32; 2], [f32; 2])>,
+    fonts: std::collections::BTreeMap<String, Atlas>,
     glyphs: Vec<(char, Glyph)>,
     /// Default glyph advance in pixels; proportional glyphs retain their own metrics.
     pub advance: f32,
@@ -93,6 +94,7 @@ impl Atlas {
             pixels: Vec::new(),
             rgba: None,
             sprites: self.sprites.clone(),
+            fonts: Default::default(),
             glyphs: self
                 .glyphs
                 .iter()
@@ -226,6 +228,7 @@ impl Atlas {
             pixels,
             rgba: None,
             sprites: Default::default(),
+            fonts: Default::default(),
             glyphs,
             advance,
             line: (lines.ascent + lines.descent + lines.leading).ceil(),
@@ -281,6 +284,14 @@ impl Atlas {
             a[1] *= ratio;
             b[1] *= ratio;
         }
+        for font in self.fonts.values_mut() {
+            for (_, glyph) in &mut font.glyphs {
+                glyph.uv0[1] *= ratio;
+                glyph.uv1[1] *= ratio;
+            }
+            font.solid[1] *= ratio;
+            font.height = new;
+        }
         self.solid[1] *= ratio;
         self.sprites.insert(
             name.into(),
@@ -295,6 +306,35 @@ impl Atlas {
         self.height = new;
         self.rgba = Some(rgba);
         Ok(())
+    }
+
+    /// Packs another font into this atlas while retaining its own metrics.
+    pub fn add_font(&mut self, name: &str, bytes: &[u8], px: f32) -> Result<(), String> {
+        let mut font = Self::from_font(bytes, px)?;
+        let rgba: Vec<u8> = font
+            .pixels
+            .iter()
+            .flat_map(|a| [255, 255, 255, *a])
+            .collect();
+        let sprite = format!("font:{name}");
+        self.add_sprite(&sprite, font.width, font.height, &rgba)?;
+        let (a, b) = self.sprites[&sprite];
+        for (_, g) in &mut font.glyphs {
+            for uv in [&mut g.uv0, &mut g.uv1] {
+                uv[0] = a[0] + uv[0] * (b[0] - a[0]);
+                uv[1] = a[1] + uv[1] * (b[1] - a[1]);
+            }
+        }
+        font.solid = self.solid;
+        font.width = self.width;
+        font.height = self.height;
+        font.pixels.clear();
+        self.fonts.insert(name.into(), font);
+        Ok(())
+    }
+    /// Returns a named font layout, falling back to the primary font.
+    pub fn font(&self, name: &str) -> &Self {
+        self.fonts.get(name).unwrap_or(self)
     }
 
     fn glyph(&self, c: char) -> Option<&Glyph> {
@@ -471,6 +511,61 @@ impl UiBatch {
         }
     }
 
+    /// Draws a normalized crop of a sprite; reversed coordinates mirror it.
+    pub fn image_region(
+        &mut self,
+        atlas: &Atlas,
+        name: &str,
+        rect: [f32; 4],
+        uv: [f32; 4],
+        color: [f32; 4],
+    ) {
+        if let Some((a, b)) = atlas.sprites.get(name) {
+            let map = |u: f32, v: f32| [a[0] + u * (b[0] - a[0]), a[1] + v * (b[1] - a[1])];
+            self.quad(
+                [rect[0], rect[1]],
+                [rect[0] + rect[2], rect[1] + rect[3]],
+                map(uv[0], uv[2]),
+                map(uv[1], uv[3]),
+                color,
+            );
+        }
+    }
+    /// Draws the remaining clockwise cooldown sector inside a square icon.
+    pub fn cooldown(&mut self, atlas: &Atlas, rect: [f32; 3], remaining: f32) {
+        let remaining = remaining.clamp(0.0, 1.0);
+        if remaining == 0.0 {
+            return;
+        }
+        let start = (1.0 - remaining) * std::f32::consts::TAU;
+        let mut angles = vec![start];
+        for corner in [0.25, 0.75, 1.25, 1.75] {
+            let angle = corner * std::f32::consts::PI;
+            if angle > start {
+                angles.push(angle);
+            }
+        }
+        angles.push(std::f32::consts::TAU);
+        let center = [rect[0] + rect[2] * 0.5, rect[1] + rect[2] * 0.5];
+        let vertex = |p| UiVertex {
+            pos: p,
+            uv: atlas.solid,
+            color: [0.0, 0.0, 0.0, 0.65],
+        };
+        let edge = |angle: f32| {
+            let (s, c) = angle.sin_cos();
+            let r = rect[2] * 0.5 / s.abs().max(c.abs());
+            [center[0] + s * r, center[1] - c * r]
+        };
+        for pair in angles.windows(2) {
+            self.vertices.extend_from_slice(&[
+                vertex(center),
+                vertex(edge(pair[0])),
+                vertex(edge(pair[1])),
+            ]);
+        }
+    }
+
     /// A straight stroke from `a` to `b`, `w` pixels wide.
     pub fn line(&mut self, atlas: &Atlas, a: [f32; 2], b: [f32; 2], w: f32, color: [f32; 4]) {
         let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
@@ -613,5 +708,68 @@ mod tests {
         let lines = atlas.wrap("abcdefghijklmnopqrstuvwxyz", width);
         assert_eq!(lines.len(), 3);
         assert!(lines.iter().all(|l| l.chars().count() <= 10));
+    }
+}
+
+#[cfg(test)]
+mod sprite_layout_tests {
+    use super::*;
+    #[test]
+    fn additional_fonts_survive_atlas_growth_and_cropped_images_keep_uvs() {
+        let mut atlas = Atlas::new(18.0);
+        atlas.add_font("numbers", FONT, 12.0).unwrap();
+        let glyph = atlas.font("numbers").glyph('8').unwrap();
+        let pixel_y = glyph.uv0[1] * atlas.height as f32;
+        atlas
+            .add_sprite("wide", 8, 512, &vec![255; 8 * 512 * 4])
+            .unwrap();
+        assert!(
+            (atlas.font("numbers").glyph('8').unwrap().uv0[1] * atlas.height as f32 - pixel_y)
+                .abs()
+                < 0.01
+        );
+        let (a, b) = atlas.sprites["wide"];
+        let mut batch = UiBatch::default();
+        batch.image_region(
+            &atlas,
+            "wide",
+            [0.0, 0.0, 50.0, 12.0],
+            [0.0, 0.5, 0.0, 1.0],
+            [1.0; 4],
+        );
+        assert!(
+            batch
+                .vertices
+                .iter()
+                .all(|v| v.uv[0] <= a[0] + (b[0] - a[0]) * 0.5)
+        );
+        batch.vertices.clear();
+        batch.image_region(
+            &atlas,
+            "wide",
+            [0.0, 0.0, 50.0, 12.0],
+            [1.0, 0.0, 0.0, 1.0],
+            [1.0; 4],
+        );
+        assert_eq!(batch.vertices[0].uv[0], b[0]);
+    }
+    #[test]
+    fn cooldown_sector_area_matches_remaining_fraction_at_half_and_full() {
+        let atlas = Atlas::new(12.0);
+        for (fraction, area) in [(0.0, 0.0), (0.5, 648.0), (1.0, 1296.0)] {
+            let mut batch = UiBatch::default();
+            batch.cooldown(&atlas, [0.0, 0.0, 36.0], fraction);
+            let measured: f32 = batch
+                .vertices
+                .chunks(3)
+                .map(|v| {
+                    let a = v[0].pos;
+                    let b = v[1].pos;
+                    let c = v[2].pos;
+                    ((b[0] - a[0]) * (c[1] - a[1]) - (c[0] - a[0]) * (b[1] - a[1])).abs() * 0.5
+                })
+                .sum();
+            assert!((measured - area).abs() < 0.01);
+        }
     }
 }

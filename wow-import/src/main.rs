@@ -223,6 +223,10 @@ fn main() -> Result<()> {
         dir.join("FRIZQT__.TTF"),
         import.chain.read_file("Fonts\\FRIZQT__.TTF")?,
     )?;
+    std::fs::write(
+        dir.join("ARIALN.TTF"),
+        import.chain.read_file("Fonts\\ARIALN.TTF")?,
+    )?;
     for (name, source) in [
         (
             "nameplate-border",
@@ -241,6 +245,76 @@ fn main() -> Result<()> {
         encoder.write_header()?.write_image_data(&rgba)?;
     }
     for (name, source) in [
+        (
+            "main-bar",
+            "Interface\\MainMenuBar\\UI-MainMenuBar-Dwarf.blp",
+        ),
+        (
+            "end-cap",
+            "Interface\\MainMenuBar\\UI-MainMenuBar-EndCap-Dwarf.blp",
+        ),
+        ("empty-slot", "Interface\\Buttons\\UI-Quickslot.blp"),
+        (
+            "unit-frame",
+            "Interface\\TargetingFrame\\UI-TargetingFrame.blp",
+        ),
+        (
+            "elite-frame",
+            "Interface\\TargetingFrame\\UI-TargetingFrame-Elite.blp",
+        ),
+        (
+            "unit-name",
+            "Interface\\TargetingFrame\\UI-TargetingFrame-LevelBackground.blp",
+        ),
+        (
+            "unit-skull",
+            "Interface\\TargetingFrame\\UI-TargetingFrame-Skull.blp",
+        ),
+        (
+            "page-up",
+            "Interface\\MainMenuBar\\UI-MainMenu-ScrollUpButton-Up.blp",
+        ),
+        (
+            "page-down",
+            "Interface\\MainMenuBar\\UI-MainMenu-ScrollDownButton-Up.blp",
+        ),
+        ("backpack", "Interface\\Buttons\\Button-Backpack-Up.blp"),
+        (
+            "bag-empty",
+            "Interface\\PaperDoll\\UI-PaperDoll-Slot-Bag.blp",
+        ),
+        (
+            "micro-character",
+            "Interface\\Buttons\\UI-MicroButtonCharacter-Up.blp",
+        ),
+        (
+            "micro-spellbook",
+            "Interface\\Buttons\\UI-MicroButton-Spellbook-Up.blp",
+        ),
+        (
+            "micro-talents",
+            "Interface\\Buttons\\UI-MicroButton-Talents-Up.blp",
+        ),
+        (
+            "micro-quest",
+            "Interface\\Buttons\\UI-MicroButton-Quest-Up.blp",
+        ),
+        (
+            "micro-socials",
+            "Interface\\Buttons\\UI-MicroButton-Socials-Up.blp",
+        ),
+        (
+            "micro-world",
+            "Interface\\Buttons\\UI-MicroButton-World-Up.blp",
+        ),
+        (
+            "micro-mainmenu",
+            "Interface\\Buttons\\UI-MicroButton-MainMenu-Up.blp",
+        ),
+        (
+            "micro-help",
+            "Interface\\Buttons\\UI-MicroButton-Help-Up.blp",
+        ),
         ("action-frame", "Interface\\Buttons\\UI-Quickslot2.blp"),
         ("bow-icon", "Interface\\Icons\\INV_Weapon_Bow_07.blp"),
         (

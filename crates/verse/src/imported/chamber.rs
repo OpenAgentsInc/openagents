@@ -71,6 +71,25 @@ pub fn classic_atlas(dir: &std::path::Path) -> Result<Atlas, String> {
         .map_err(|e| format!("Import Classic UI assets with wow-import --ui-only: {e}"))?;
     let mut atlas = Atlas::from_font(&font, 18.0)?;
     for name in [
+        "main-bar",
+        "end-cap",
+        "empty-slot",
+        "unit-frame",
+        "elite-frame",
+        "unit-name",
+        "unit-skull",
+        "page-up",
+        "page-down",
+        "backpack",
+        "bag-empty",
+        "micro-character",
+        "micro-spellbook",
+        "micro-talents",
+        "micro-quest",
+        "micro-socials",
+        "micro-world",
+        "micro-mainmenu",
+        "micro-help",
         "status-bar",
         "nameplate-border",
         "action-frame",
@@ -93,15 +112,12 @@ pub fn classic_atlas(dir: &std::path::Path) -> Result<Atlas, String> {
         if info.color_type != png::ColorType::Rgba {
             return Err("Expected RGBA UI sprite".into());
         }
-        if name == "nameplate-border" {
-            if info.height != 32 || info.width != 128 {
-                return Err("Unexpected Classic nameplate dimensions".into());
-            }
-            atlas.add_sprite(name, 128, 16, &rgba[128 * 16 * 4..128 * 32 * 4])?;
-        } else {
-            atlas.add_sprite(name, info.width, info.height, &rgba[..info.buffer_size()])?;
-        }
+        atlas.add_sprite(name, info.width, info.height, &rgba[..info.buffer_size()])?;
     }
+    atlas.add_font("small", &font, 10.0)?;
+    let numbers = std::fs::read(dir.join("ARIALN.TTF")).map_err(|e| e.to_string())?;
+    atlas.add_font("hotkey", &numbers, 12.0)?;
+    atlas.add_font("numbers", &numbers, 14.0)?;
     Ok(atlas)
 }
 
@@ -332,4 +348,49 @@ pub fn spell_instances(game: &super::play::Game) -> Vec<Instance> {
         });
     }
     out
+}
+
+/// Renders model headshots through the owned GPU pipeline for unit-frame portraits.
+pub fn portrait_atlas(dir: &std::path::Path, pack: &Pack) -> Result<Atlas, String> {
+    use super::{Renderer, lighting::Lighting};
+    use crate::{render::View, ui::UiBatch};
+    let mut atlas = classic_atlas(dir)?;
+    let mut renderer = Renderer::new(pack.clone(), dir, 128, 128, &atlas, &[])?;
+    for name in ["adventurer", "cultist", "claude"] {
+        let height = pack.models[name].height * 0.9144;
+        let target = Vec3::Y * height * if name == "claude" { 0.82 } else { 0.92 };
+        let eye = target - Vec3::Z * height * 0.4;
+        let view = View {
+            view_proj: Mat4::perspective_rh(35.0_f32.to_radians(), 1.0, 0.01, 30.0)
+                * Mat4::look_at_rh(eye, target, Vec3::Y),
+            eye,
+        };
+        let mut pixels = renderer.draw(
+            view,
+            &[Instance {
+                model: name.into(),
+                transform: basis(),
+                animation: 0,
+                time: 0.0,
+                emission: Vec3::ONE,
+            }],
+            &UiBatch::default(),
+            &Lighting {
+                ambient: Vec3::splat(0.75),
+                density: 0.0,
+                shadowed: 0,
+                fog: Vec3::splat(0.015),
+                ..Lighting::default()
+            },
+        )?;
+        for y in 0..128 {
+            for x in 0..128 {
+                let distance =
+                    ((x as f32 + 0.5 - 64.0).powi(2) + (y as f32 + 0.5 - 64.0).powi(2)).sqrt();
+                pixels[(y * 128 + x) * 4 + 3] = ((64.0 - distance).clamp(0.0, 1.0) * 255.0) as u8;
+            }
+        }
+        atlas.add_sprite(&format!("portrait-{name}"), 128, 128, &pixels)?;
+    }
+    Ok(atlas)
 }
