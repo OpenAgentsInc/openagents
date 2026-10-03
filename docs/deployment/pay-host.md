@@ -116,7 +116,7 @@ sudo journalctl -u openagents-pay-payouts -f     # one JSON line per payout step
 
 An `unknown` payout whose wallet has no record of its reference keeps its
 shares reserved (a crash between dispatch and the wallet's own record looks
-the same as a send that never started). Check it with `pay wallet lookup
+the same as a send that never started). Check it with `pay x402 node lookup
 HASH` (Lightning) or the Spark wallet's payments before doing anything by
 hand.
 
@@ -230,18 +230,21 @@ sudo systemctl status openagents-pay
 sudo systemctl restart openagents-pay           # the seed is fetched again before each start
 sudo systemctl stop openagents-pay
 sudo journalctl -u openagents-pay -f            # node events as JSON lines
+sudo systemctl status openagents-pay-payouts openagents-pay-flow
 sudo journalctl -u openagents-pay-backup -n 20
 ```
 
-Run any wallet command as the service user with the environment file; it
-acts through the resident:
+Run any node command as the service user with the environment file; it
+acts through the resident. Since `29f3ac33d6` the node's commands are
+`openagents x402 node …` (`openagents wallet` is the person's Spark wallet;
+the unit's `wallet serve` still starts the node under its old name):
 
 ```sh
 pay() { sudo -u openagents-pay env $(sudo grep -v '^#' /etc/openagents-pay/openagents-pay.env | xargs) \
   /opt/openagents-pay/current/openagents --json "$@"; }
-pay wallet info              # node id (payTo), balances, channels, last backup
-pay wallet channel list
-pay wallet lookup PAYMENT_HASH
+pay x402 node info           # node id (payTo), balances, channels, last backup
+pay x402 node channel list
+pay x402 node lookup PAYMENT_HASH
 ```
 
 ## Health
@@ -318,12 +321,12 @@ the payment about 45 seconds meanwhile, and on Mutinynet the open took about
 60 seconds and the payment failed back. The mainnet check:
 
 ```sh
-pay wallet invoice --msat 2000000 --request-hash $(openssl rand -hex 32)
+pay x402 node invoice --msat 2000000 --request-hash $(openssl rand -hex 32)
 ```
 
 Pay the `bolt11` from any mainnet wallet, then watch `journalctl -u
 openagents-pay -f` for `channel_pending`, `channel_ready`, and the payment,
-and `pay wallet lookup PAYMENT_HASH`. Either it settles (the open fit in the
+and `pay x402 node lookup PAYMENT_HASH`. Either it settles (the open fit in the
 hold), or the payer sees a failure and the channel is open anyway, and a
 second invoice is an ordinary one that settles at once. Record which, with
 the times, below.
@@ -334,3 +337,4 @@ the times, below.
 | --- | --- |
 | 2026-10-02 | `oa-pay-1` provisioned and built from `869fbe155c` (`openagents 1.0.0-rc.2`). Node `0343a0f10d0856187ad55e8e64427b8902479ef510d9f5587ba6f124280db32e27` (the `payTo`) initialised on bitcoin with `--lsp mdk` (LSPS4 peer `02a63339…473b`); seed generated on the host and stored in Secret Manager. Synced to block 969,621; first encrypted backup uploaded and decrypted back as a check; the unit came back by itself after the stop and resize to `e2-small`; health `healthy`. |
 | 2026-10-02 | First-receive invoice issued: 2,000 sats, payment hash `55421ae0230a630201fce522fc6f63e46d1341e93f4032547d8f979249749cae`, expiry 7 days, with the LSPS4 route hint. Paying it is an owner step (workspace `NEEDS_OWNER.md`); record here whether it settled inside MDK's 45 s hold or failed back while the channel opened. |
+| 2026-10-03 | Payout worker and flow server deployed (#10190). Release `29f3ac33d6` (built in `rust:1.97.1-bookworm` on a Boat sandbox; `openagents` sha256 `f4608d20…51ed9bf`, `pay-host` sha256 `05cbda9d…a11b01`) is `current`; the node restarted on it with the same node id. Ledger created empty at `ledger/ledger.sqlite`. Payout Spark wallet made on the host, seed stored in `openagents-pay-spark-seed` (versions readable and addable by the host's account only); its Spark address is `spark1pgss8je5hl8eprmtgml379sdxewt82pnsvazh7jf8xlu7c5gkkcljp3j2lzey0`, balance 0. `openagents-pay-payouts` and `openagents-pay-flow` enabled and running. Internal address `10.128.0.46` reserved as `oa-pay-1-internal`. Cloud Run `coder` revision `coder-web-3a46b3c415-pay` (Direct VPC egress, `private-ranges-only`, `OPENAGENTS_WEB_PAY_HOST=http://10.128.0.46:4400`) took 100% of traffic; `coder-web-3a46b3c415` is the rollback. `openagents.com/stats` shows "No payments yet" and `/api/flow/stream` holds open. No payout has been sent: the receiver has no channel or balance yet, so the first real payout is the owner's end-to-end step (#10199). |

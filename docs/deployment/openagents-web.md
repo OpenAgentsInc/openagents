@@ -55,10 +55,22 @@ Live (2026-10-02, after 23:30 UTC): revision `coder-web-3a46b3c415`
 rollback (`--to-revisions coder-web-79692f5e9a=100`). The automation
 account was refused `actAs` on the runtime account again, although that
 account's policy lists it as `roles/iam.serviceAccountUser`; the revision
-was applied as `chris@`. No pay host is wired yet (`OPENAGENTS_WEB_PAY_HOST`
-is unset), so `/api/flow/*` and `/api/stats` answer `503`, `/live` says the
-stream is unreachable, and `/stats` says the statistics are unreachable,
-until a pay host runs beside the site.
+was applied as `chris@`.
+
+Pay host wired (2026-10-03, #10190): revision `coder-web-3a46b3c415-pay`
+(the same image) serves 100% of the traffic; `coder-web-3a46b3c415` is the
+rollback (`--to-revisions coder-web-3a46b3c415=100`). The `web` container
+has `OPENAGENTS_WEB_PAY_HOST=http://10.128.0.46:4400`, the `pay-host`
+server on `oa-pay-1`, so `/api/flow/*` and `/api/stats` answer from the
+real ledger and `/stats` says "No payments yet" instead of unreachable. The
+pay host has no public address: the service has Direct VPC egress on the
+`default` network and subnet with `private-ranges-only` (template
+annotations `run.googleapis.com/network-interfaces:
+'[{"network":"default","subnetwork":"default"}]'` and
+`run.googleapis.com/vpc-access-egress: private-ranges-only`), so only
+private-range traffic takes the VPC and everything else leaves as before.
+Keep both annotations and the variable in the copied spec for every later
+site build. See [pay host](pay-host.md#flow-and-stats-for-the-website-10195).
 
 ## Ported and complete
 
