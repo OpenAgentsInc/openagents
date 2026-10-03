@@ -490,6 +490,9 @@ pub(crate) fn list(output: &Output, words: &[String], usage: &str) -> u8 {
     let Some(path) = ledger_path(&args) else {
         return output.usage("pay", "payout-list needs --ledger FILE", usage);
     };
+    if !path.is_file() {
+        return output.fail("pay", &format!("no ledger at {}", path.display()));
+    }
     let ledger = match Ledger::open(&path) {
         Ok(ledger) => ledger,
         Err(e) => return output.fail("pay", &format!("{}: {e}", path.display())),
@@ -503,6 +506,9 @@ pub(crate) fn list(output: &Output, words: &[String], usage: &str) -> u8 {
         Ok(payouts) => payouts,
         Err(e) => return output.fail("pay", &e.to_string()),
     };
+    if payouts.is_empty() && !output.json() {
+        println!("No payouts.");
+    }
     for p in payouts {
         output.line(
             &json!({"id": p.id, "party": p.party, "rail": p.rail, "state": p.state.as_str(),

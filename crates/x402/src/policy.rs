@@ -81,11 +81,24 @@ pub enum Source {
     Default,
 }
 
+impl Source {
+    /// Where a ceiling came from, as a person reads it.
+    #[must_use]
+    pub fn from(self) -> &'static str {
+        match self {
+            Self::Flag => "from --max-msat",
+            Self::Capability => "the policy's ceiling for this capability",
+            Self::Provider => "the policy's ceiling for this provider",
+            Self::Default => "the policy's default ceiling",
+        }
+    }
+}
+
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum PolicyError {
     #[error("no --max-msat and the policy has no ceiling for this call")]
     NoCeiling,
-    #[error("the resource costs {amount_msat} msat, above the ceiling {max_msat} ({set_by:?})")]
+    #[error("the resource costs {amount_msat} msat, above the ceiling {max_msat} ({})", set_by.from())]
     AboveCeiling {
         amount_msat: u64,
         max_msat: u64,

@@ -21,7 +21,7 @@ use serde_json::json;
 
 use crate::pay_hosted::{Hosted, HostedSpec};
 use crate::pay_plugin::{Invoke, LedgerSink, PluginSource, ROLE, RegistrySource};
-use crate::x402::{Node, fail_wallet, open_wallet, replay_dir, toll_floor, x402_home};
+use crate::x402::{Node, open_wallet, replay_dir, toll_floor, x402_home};
 use crate::{Args, Output};
 #[cfg(test)]
 use coder::cli_route::tree::{Declared, Effect};
@@ -699,7 +699,7 @@ fn serve(output: &Output, words: &[String]) -> u8 {
 
     let (wallet, wallet_config) = match open_wallet() {
         Ok(opened) => opened,
-        Err(error) => return fail_wallet(output, error),
+        Err(error) => return output.fail("pay", &error.to_string()),
     };
     let stop_wallet = |message: &str| {
         let _ = wallet.stop();

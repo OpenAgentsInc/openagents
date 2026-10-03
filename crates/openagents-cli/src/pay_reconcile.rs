@@ -275,6 +275,9 @@ pub(crate) fn reconcile(output: &Output, words: &[String], usage: &str) -> u8 {
     else {
         return output.usage("pay", "reconcile needs --ledger FILE", usage);
     };
+    if !path.is_file() {
+        return output.fail("pay", &format!("no ledger at {}", path.display()));
+    }
     let spark_home = args
         .option("spark-home")
         .map(PathBuf::from)
@@ -375,7 +378,9 @@ pub(crate) fn reconcile(output: &Output, words: &[String], usage: &str) -> u8 {
         }
         text.trim_end().to_owned()
     });
-    0
+    // A run that could not read a wallet checked nothing there; say so in
+    // the exit status as well as the report.
+    u8::from(report.state == State::Unknown)
 }
 
 #[cfg(test)]
