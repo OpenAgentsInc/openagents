@@ -121,6 +121,29 @@ impl Controls {
         target: Option<Vec3>,
         teleport: Option<Vec3>,
     ) -> Result<Vec3, String> {
+        self.cast_with_visibility(
+            simulation,
+            spell,
+            time,
+            player,
+            direction,
+            target,
+            teleport,
+            |_| true,
+        )
+    }
+    /// Filters directional damage through the caller's world visibility query.
+    pub fn cast_with_visibility(
+        &mut self,
+        simulation: &mut Simulation,
+        spell: Utility,
+        time: f32,
+        player: Vec3,
+        direction: Vec3,
+        target: Option<Vec3>,
+        teleport: Option<Vec3>,
+        visible: impl Fn(Vec3) -> bool,
+    ) -> Result<Vec3, String> {
         if teleport.is_some_and(|p| !p.is_finite() || spell != Utility::MistyStep)
             || !time.is_finite()
             || time < 0.0
@@ -187,6 +210,7 @@ impl Controls {
                         && actor.faction != "player"
                         && (0.0..=4.572).contains(&forward)
                         && side.abs() <= 2.286
+                        && visible(actor.pos.into())
                     {
                         simulation.bow_impact(actor.id, 9)?;
                         let push = direction * 3.048;

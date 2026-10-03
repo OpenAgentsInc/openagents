@@ -1,0 +1,21 @@
+{
+  "schema": "openagents.verse.navigation.v1",
+  "asset_pack": "verse-original-ritual-v1",
+  "start": [
+    17.0,
+    0.0,
+    -13.0
+  ],
+  "target": [
+    13.0,
+    0.0,
+    -13.0
+  ],
+  "cultist_final": [
+    14.50448989868164,
+    0.0,
+    -14.058663368225098
+  ],
+  "player_hp": 100,
+  "renderer": "native GPU frames"
+}

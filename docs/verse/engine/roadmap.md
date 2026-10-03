@@ -38,6 +38,12 @@ deterministic static box navigation in `physics`. Cultists route around columns,
 and shared sweeps constrain their placement and control displacements. This is
 a visibility graph for a flat primitive room, not a crowd solver or navmesh.
 
+[#10431](https://github.com/OpenAgentsInc/openagents/issues/10431) applies static
+visibility to targeted attacks, delayed bow/cast rechecks, directional damage,
+and hostile cast/impact admission. Obstructed cultists navigate toward a firing
+position. Full projectile CCD and explosion-radius occlusion remain separate
+work; this slice does not replace the retained projectile solver.
+
 This delivers the visual procedural milestone of VE-1/VE-3, not the complete
 VE-0–VE-6 roadmap. Portable authority extraction, original
 rules replacement, service persistence, and multiplayer remain implementation

@@ -78,6 +78,17 @@ impl Game {
     }
 }
 impl Encounter {
+    /// Delays new hostile casts for a bounded local scene fixture.
+    pub fn postpone_casts_until(&mut self, until: f32) -> Result<(), String> {
+        if !until.is_finite() || !(0. ..=600.).contains(&until) {
+            return Err("Invalid hostile cast delay".into());
+        }
+        for ready in self.ready.values_mut() {
+            *ready = ready.max(until);
+        }
+        Ok(())
+    }
+
     pub fn reset_actor(&mut self, actor: u64, time: f32) {
         self.casts.retain(|c| c.actor != actor);
         self.released.remove(&actor);
@@ -147,7 +158,9 @@ impl Encounter {
             }
             if game.time >= cast.impact {
                 let delta = game.player - cast.target;
-                if Vec3::new(delta.x, 0.0, delta.z).length() <= cast.radius {
+                if Vec3::new(delta.x, 0.0, delta.z).length() <= cast.radius
+                    && game.attack_clear(cast.origin, game.player + Vec3::Y * 1.4)
+                {
                     let (damage, absorbed) = game.hostile_hit(cast.damage)?;
                     self.damage += damage;
                     self.absorbed += absorbed;
@@ -177,7 +190,11 @@ impl Encounter {
             if !boss
                 && !blocked
                 && !casting
-                && distance > if actor.actor.id % 3 == 0 { 3.5 } else { 10.0 }
+                && (distance > if actor.actor.id % 3 == 0 { 3.5 } else { 10.0 }
+                    || !game.attack_clear(
+                        actor.actor.position + Vec3::Y * 1.4,
+                        game.player + Vec3::Y * 1.4,
+                    ))
             {
                 let position = self
                     .positions
@@ -192,11 +209,15 @@ impl Encounter {
             if blocked || casting || game.time < self.ready[&actor.actor.id] {
                 continue;
             }
+            let origin = actor.actor.position + Vec3::Y * if boss { 4.0 } else { 1.4 };
+            if !game.attack_clear(origin, game.player + Vec3::Y * 1.4) {
+                continue;
+            }
             let windup = if boss { 1.3 } else { 1.0 };
             let release = game.time + windup;
             self.casts.push(EnemyCast {
                 actor: actor.actor.id,
-                origin: actor.actor.position + Vec3::Y * if boss { 4.0 } else { 1.4 },
+                origin,
                 target: game.player,
                 started: game.time,
                 release,
@@ -532,5 +553,79 @@ mod tests {
         }
         assert!(game.encounter.as_ref().unwrap().used.is_empty());
         assert!(game.snapshot().player.hp < 100);
+    }
+}
+
+#[cfg(test)]
+mod obstruction_tests {
+    use super::*;
+    fn original_scene() -> Scene {
+        Scene::from_json(include_bytes!(
+            "../../../../assets/verse/original/ritual.json"
+        ))
+        .unwrap()
+    }
+    #[test]
+    fn cover_blocks_a_released_hostile_impact() {
+        let mut game = Game::combat(original_scene(), false).unwrap();
+        game.time = 21.;
+        game.player = Vec3::new(13., 0., -13.);
+        let mut encounter = game.encounter.take().unwrap();
+        for ready in encounter.ready.values_mut() {
+            *ready = f32::INFINITY;
+        }
+        encounter.casts.push(EnemyCast {
+            actor: 2,
+            origin: Vec3::new(17., 1.4, -13.),
+            target: game.player,
+            started: 19.,
+            release: 20.,
+            impact: 21.,
+            damage: 8,
+            radius: 1.6,
+            boss: false,
+        });
+        encounter.step(&mut game, 0.1).unwrap();
+        assert_eq!(game.snapshot().player.hp, 100);
+        assert_eq!(encounter.damage, 0);
+        assert_eq!(encounter.dodged, 1);
+    }
+    #[test]
+    fn an_obstructed_cultist_routes_instead_of_casting_through_a_column() {
+        let mut scene = original_scene();
+        scene
+            .actors
+            .iter_mut()
+            .find(|a| a.model == "adventurer")
+            .unwrap()
+            .position = Vec3::new(13., 0., -13.);
+        scene
+            .actors
+            .iter_mut()
+            .find(|a| a.id == 2)
+            .unwrap()
+            .position = Vec3::new(17., 0., -13.);
+        let mut game = Game::combat(scene, false).unwrap();
+        game.time = 20.;
+        game.tick(0.1, [0.; 2]).unwrap();
+        assert!(
+            !game
+                .encounter
+                .as_ref()
+                .unwrap()
+                .casts
+                .iter()
+                .any(|c| c.actor == 2)
+        );
+        for _ in 0..40 {
+            game.tick(0.1, [0.; 2]).unwrap();
+        }
+        let cultist = game
+            .frame()
+            .actors
+            .into_iter()
+            .find(|a| a.actor.id == 2)
+            .unwrap();
+        assert!((cultist.actor.position.z + 13.).abs() > 1.);
     }
 }

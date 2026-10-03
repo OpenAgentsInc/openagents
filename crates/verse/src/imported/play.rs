@@ -106,6 +106,7 @@ pub struct Arrow {
 }
 #[derive(Clone, Debug)]
 pub struct Casting {
+    pub aim: Vec3,
     pub ability: Ability,
     pub started: f32,
     pub ends: f32,
@@ -193,6 +194,15 @@ impl Game {
                 - glam::DVec3::Y * 0.9)
                 .as_vec3(),
         )
+    }
+    pub(super) fn attack_clear(&self, start: Vec3, end: Vec3) -> bool {
+        physics::kinematic::sweep_box(
+            start.as_dvec3(),
+            glam::DVec3::splat(0.12),
+            (end - start).as_dvec3(),
+            &self.colliders,
+        )
+        .is_ok_and(|hit| hit.is_none())
     }
     fn camera_eye(&self, anchor: Vec3, desired: Vec3) -> Vec3 {
         let delta = (desired - anchor).as_dvec3();
@@ -517,12 +527,16 @@ impl Game {
             }
         }
         let mut remaining = Vec::new();
-        for arrow in self.arrows.drain(..) {
+        for arrow in std::mem::take(&mut self.arrows) {
+            if !self.attack_clear(arrow.start, arrow.end) {
+                continue;
+            }
             if self.time >= arrow.impact {
-                if source_actors
-                    .iter()
-                    .any(|a| a.id == self.ids[&arrow.target] && a.alive)
-                {
+                if source_actors.iter().any(|a| {
+                    a.id == self.ids[&arrow.target]
+                        && a.alive
+                        && self.attack_clear(arrow.start, Vec3::from(a.pos) + Vec3::Y * 1.1)
+                }) {
                     self.simulation.bow_impact(self.ids[&arrow.target], 6)?;
                 }
                 self.impacts.push((arrow.end, self.time, 0));
@@ -533,12 +547,16 @@ impl Game {
         self.arrows = remaining;
         if self.casting.as_ref().is_some_and(|c| self.time >= c.ends) {
             let cast = self.casting.take().unwrap();
-            self.simulation.cast(
-                cast.ability.spell().unwrap(),
-                cast.origin.to_array(),
-                cast.direction.to_array(),
-            )?;
-            self.last_cast = Some((cast.ability, self.time));
+            if self.attack_clear(cast.origin, cast.aim) {
+                self.simulation.cast(
+                    cast.ability.spell().unwrap(),
+                    cast.origin.to_array(),
+                    cast.direction.to_array(),
+                )?;
+                self.last_cast = Some((cast.ability, self.time));
+            } else {
+                self.message = "Cast blocked by chamber geometry".into();
+            }
         }
         self.simulation.tick(dt, self.player.to_array(), self.yaw)?;
         for effect in self.snapshot().effects {
@@ -744,13 +762,22 @@ impl Game {
                 .into_iter()
                 .find(|a| a.actor.id == self.selected && a.health > 0)
                 .map(|a| a.actor.position);
+            if matches!(spell, Utility::Web | Utility::Grease)
+                && target.is_some_and(|p| {
+                    !self.attack_clear(self.player + Vec3::Y * 1.4, p + Vec3::Y * 1.1)
+                })
+            {
+                return Err("Target is blocked by chamber geometry".into());
+            }
             let direction = Vec3::new(-self.yaw.sin(), 0.0, -self.yaw.cos());
             let teleport = if spell == Utility::MistyStep && !self.colliders.is_empty() {
                 Some(self.move_player(self.player, direction * 9.144)?)
             } else {
                 None
             };
-            let destination = self.controls.cast_with_teleport(
+            let colliders = &self.colliders;
+            let origin = self.player + Vec3::Y * 1.4;
+            let destination = self.controls.cast_with_visibility(
                 &mut self.simulation,
                 spell,
                 self.time,
@@ -758,6 +785,15 @@ impl Game {
                 direction,
                 target,
                 teleport,
+                |position| {
+                    physics::kinematic::sweep_box(
+                        origin.as_dvec3(),
+                        glam::DVec3::splat(0.12),
+                        (position + Vec3::Y * 1.1 - origin).as_dvec3(),
+                        colliders,
+                    )
+                    .is_ok_and(|hit| hit.is_none())
+                },
             )?;
             self.player = destination;
             self.record_ability(ability);
@@ -781,6 +817,9 @@ impl Game {
         if start.distance(end) > range {
             return Err("Target is out of range".into());
         }
+        if !self.attack_clear(start, end) {
+            return Err("Target is blocked by chamber geometry".into());
+        }
         if let Some(spell) = ability.spell() {
             let state = self.snapshot();
             let gate = state.abilities.iter().find(|a| a.id == spell).unwrap();
@@ -800,6 +839,7 @@ impl Game {
                 )?;
             } else {
                 self.casting = Some(Casting {
+                    aim: end,
                     ability,
                     started: self.time,
                     ends: self.time + 1.0,
@@ -1220,5 +1260,89 @@ mod original_collision_tests {
             assert!(!(position.x > 13.95 && position.x < 16.05 && (position.z + 13.).abs() < 1.05));
         }
         assert!(detoured && position.distance(target) < 0.02);
+    }
+    #[test]
+    fn obstructed_player_attacks_do_not_spend_resources_or_start_casts() {
+        let mut g = game();
+        g.player = Vec3::new(13., 0., -13.);
+        g.selected = 2;
+        g.simulation
+            .place_chamber_actor(g.ids[&2], [17., 0., -13.], 0.)
+            .unwrap();
+        for ability in [
+            Ability::Bow,
+            Ability::FireBolt,
+            Ability::MagicMissile,
+            Ability::Fireball,
+            Ability::Web,
+            Ability::Grease,
+        ] {
+            assert!(g.activate(ability).is_err());
+        }
+        assert_eq!(g.snapshot().player.mana, 20);
+        assert!(g.casting.is_none());
+        assert_eq!(g.bow_ready, 0.);
+        assert!(g.arrows.is_empty());
+    }
+    fn intervening_wall() -> physics::kinematic::Aabb {
+        physics::kinematic::Aabb {
+            min: glam::DVec3::new(-3., 0., -15.1),
+            max: glam::DVec3::new(3., 8., -14.9),
+        }
+    }
+    #[test]
+    fn delayed_bow_and_spell_recheck_obstruction() {
+        let mut g = game();
+        g.activate(Ability::Bow).unwrap();
+        g.colliders.push(intervening_wall());
+        let hp = g
+            .frame()
+            .actors
+            .into_iter()
+            .find(|a| a.actor.id == g.selected)
+            .unwrap()
+            .health;
+        for _ in 0..12 {
+            g.tick(0.1, [0.; 2]).unwrap();
+        }
+        assert_eq!(
+            g.frame()
+                .actors
+                .into_iter()
+                .find(|a| a.actor.id == g.selected)
+                .unwrap()
+                .health,
+            hp
+        );
+        assert!(g.arrows.is_empty());
+        let mut g = game();
+        g.activate(Ability::MagicMissile).unwrap();
+        g.colliders.push(intervening_wall());
+        for _ in 0..12 {
+            g.tick(0.1, [0.; 2]).unwrap();
+        }
+        assert_eq!(g.snapshot().player.mana, 20);
+        assert_eq!(g.snapshot().counters.casts, 0);
+    }
+    #[test]
+    fn thunderwave_does_not_damage_a_cultist_behind_a_column() {
+        let mut g = game();
+        g.player = Vec3::new(13., 0., -13.);
+        g.yaw = -std::f32::consts::FRAC_PI_2;
+        g.selected = 2;
+        g.simulation
+            .place_chamber_actor(g.ids[&2], [17., 0., -13.], 0.)
+            .unwrap();
+        g.activate(Ability::Thunderwave).unwrap();
+        assert_eq!(
+            g.frame()
+                .actors
+                .into_iter()
+                .find(|a| a.actor.id == 2)
+                .unwrap()
+                .health,
+            100
+        );
+        assert_eq!(g.snapshot().player.mana, 20 - Utility::Thunderwave.cost());
     }
 }

@@ -476,13 +476,14 @@ pub fn run(original_default: bool) -> Result<(), String> {
     let mode = args.next();
     if matches!(
         mode.as_deref(),
-        Some("--demo" | "--utility-demo" | "--combat-demo")
+        Some("--demo" | "--utility-demo" | "--combat-demo" | "--navigation-demo")
     ) {
         return demo(
             &mut app,
             PathBuf::from(args.next().ok_or("Expected demo.mp4")?),
             mode.as_deref() == Some("--utility-demo"),
             mode.as_deref() == Some("--combat-demo"),
+            mode.as_deref() == Some("--navigation-demo"),
         );
     }
     if matches!(mode.as_deref(), Some("--agent" | "--combat")) {
@@ -522,10 +523,46 @@ pub fn run(original_default: bool) -> Result<(), String> {
     event_loop.run_app(&mut app).map_err(|e| e.to_string())
 }
 
-fn demo(app: &mut App, output: PathBuf, utility: bool, combat: bool) -> Result<(), String> {
+fn demo(
+    app: &mut App,
+    output: PathBuf,
+    utility: bool,
+    combat: bool,
+    navigation: bool,
+) -> Result<(), String> {
     use std::io::Write;
     if combat {
         app.game = Game::combat(app.game.scene.clone(), true)?;
+    }
+    if navigation {
+        if app.pack.source_revision != "verse-original-ritual-v1" {
+            return Err("Navigation capture requires original geometry".into());
+        }
+        let mut scene = app.game.scene.clone();
+        scene
+            .actors
+            .iter_mut()
+            .find(|a| a.id == 14)
+            .unwrap()
+            .position = Vec3::new(13., 0., -13.);
+        scene
+            .actors
+            .iter_mut()
+            .find(|a| a.id == 2)
+            .unwrap()
+            .position = Vec3::new(17., 0., -13.);
+        scene.validate()?;
+        app.game = Game::combat(scene, false)?;
+        app.game.time = 20.;
+        app.game
+            .encounter
+            .as_mut()
+            .unwrap()
+            .postpone_casts_until(32.)?;
+        app.game.yaw = -std::f32::consts::FRAC_PI_2;
+        app.game.camera.yaw = app.game.yaw;
+        app.game.camera.pitch = 0.15;
+        app.game.camera.distance = 7.;
     }
     for _ in 0..if app.pack.source_revision == "verse-original-ritual-v1" {
         0
@@ -574,7 +611,13 @@ fn demo(app: &mut App, output: PathBuf, utility: bool, combat: bool) -> Result<(
         .spawn()
         .map_err(|e| e.to_string())?;
     let mut pipe = encoder.stdin.take().ok_or("Missing encoder input")?;
-    for frame in 0..if combat { 3600 } else { 480 } {
+    for frame in 0..if combat {
+        3600
+    } else if navigation {
+        300
+    } else {
+        480
+    } {
         app.game.tick(1.0 / 30.0, [0.0, 0.0])?;
         let sequence = if utility {
             [
@@ -594,7 +637,7 @@ fn demo(app: &mut App, output: PathBuf, utility: bool, combat: bool) -> Result<(
             ]
         };
         for (at, ability) in sequence {
-            if !combat && frame == at {
+            if !combat && !navigation && frame == at {
                 if ability == Ability::Thunderwave {
                     let target = app
                         .game
@@ -619,6 +662,22 @@ fn demo(app: &mut App, output: PathBuf, utility: bool, combat: bool) -> Result<(
                 frame as f32 / 30.0,
                 app.game.snapshot().player.hp
             );
+        }
+        if navigation && frame == 299 {
+            save_png(&output.with_extension("png"), &pixels)?;
+            let position = app
+                .game
+                .frame()
+                .actors
+                .into_iter()
+                .find(|a| a.actor.id == 2)
+                .unwrap()
+                .actor
+                .position;
+            if (position.z + 13.).abs() < 1. {
+                return Err("Navigation capture did not show a column detour".into());
+            }
+            std::fs::write(output.with_extension("json"),serde_json::to_vec_pretty(&serde_json::json!({"schema":"openagents.verse.navigation.v1","asset_pack":app.pack.source_revision,"start":[17.,0.,-13.],"target":[13.,0.,-13.],"cultist_final":position,"player_hp":app.game.snapshot().player.hp,"renderer":"native GPU frames"})).map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;
         }
         if combat {
             let encounter = app.game.encounter.as_ref().unwrap();

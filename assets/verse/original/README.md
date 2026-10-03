@@ -23,6 +23,10 @@ cargo run -p verse --features imported-desktop --example verse_play -- \
   --combat-demo /tmp/verse-original.mp4
 ```
 
+To inspect a cultist routing around a column, use `--navigation-demo` with an
+output video path. That ten-second fixture postpones new hostile casts while
+showing the actual navigation and movement.
+
 Recording requires `ffmpeg`. It encodes the renderer's frames without color
 grading. The adjacent JSON records actual combat outcomes and the asset pack
 revision. Each process generates its pack under its own temporary directory.
@@ -53,6 +57,12 @@ Cultists use bounded static box navigation to route around columns, and their
 movement and control displacements respect the same room solids. This has no
 crowd solver or dynamic-obstacle avoidance.
 
-Capsules, stairs, slopes, gravity, and projectile collision remain
+Player target admission, delayed bow/cast rechecks, directional Thunderwave
+damage, and hostile cast/impact checks use static world visibility. Rejected
+targeted casts do not spend mana or start cooldowns. Obstructed cultists route
+toward a clear firing position.
+
+Capsules, stairs, slopes, gravity, full projectile continuous collision, and
+explosion-radius occlusion remain
 future work. Further engine extraction, durable saves, and multiplayer remain on
 the engine roadmap and #10406/#10407.
