@@ -156,7 +156,7 @@ fn list(output: &Output, layout: &Layout) -> Result<(), Failure> {
     let rows = view::list(layout);
     let host = background::presence::summary(layout);
     output.emit(&json!({ "rules": rows, "host": host }), |_| {
-        let mut lines: Vec<String> = rows.iter().map(view::Row::line).collect();
+        let mut lines: Vec<String> = rows.iter().map(list_line).collect();
         if let Some(host) = &host {
             lines.push(host.clone());
         }
@@ -176,6 +176,19 @@ fn list(output: &Output, layout: &Layout) -> Result<(), Failure> {
         lines.join("\n")
     });
     Ok(())
+}
+
+/// A rule's line in `background list`: its id, then what it does in words
+/// (its name), so a newcomer can tell what they would turn on (#10320).
+fn list_line(row: &view::Row) -> String {
+    let full = row.line();
+    if row.name.is_empty() || row.name == row.id {
+        return full;
+    }
+    match full.strip_prefix(&format!("{} · ", row.id)) {
+        Some(rest) => format!("{} ({}) · {rest}", row.id, row.name),
+        None => full,
+    }
 }
 
 fn show(output: &Output, layout: &Layout, id: &str) -> Result<(), Failure> {
@@ -1140,6 +1153,30 @@ pub(crate) fn watchers() -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_list_line_says_what_the_rule_does() {
+        let row = view::Row {
+            id: "worktrees".into(),
+            name: "Stale worktree pruning".into(),
+            version: 1,
+            digest: String::new(),
+            enabled: false,
+            paused_until: None,
+            state: background::store::RuleState::default(),
+            plugin: None,
+            error: None,
+        };
+        assert_eq!(
+            list_line(&row),
+            "worktrees (Stale worktree pruning) · paused · not run yet"
+        );
+        let same = view::Row {
+            name: "worktrees".into(),
+            ..row
+        };
+        assert_eq!(list_line(&same), "worktrees · paused · not run yet");
+    }
 
     /// The compiler's labeled set (`crates/background/fixtures/compile-v1.json`)
     /// against hosted Jev: run with `BACKGROUND_COMPILE_EVAL=1` and

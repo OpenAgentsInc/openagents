@@ -324,6 +324,7 @@ pub async fn run(arguments: &[String]) -> u8 {
         Ok(store) => store,
         Err(error) => return failure(error.code(), error),
     };
+    let listing = matches!(options.operation, Operation::List);
     let result = match options.operation {
         Operation::Submit(_) | Operation::Cancel(_) | Operation::Correct(_) => store
             .apply(bytes.as_deref().expect("mutation input was validated"))
@@ -332,12 +333,14 @@ pub async fn run(arguments: &[String]) -> u8 {
         Operation::Show(id) => store.show(&id).map(|task| json!(task)),
         _ => unreachable!("owner operation dispatched above"),
     };
-    // A person at a terminal reads "No tasks." where a script reads `[]`.
-    if let Ok(Value::Array(tasks)) = &result
-        && tasks.is_empty()
+    // A person at a terminal reads a short table ("No tasks." when empty)
+    // where a script reads the JSON; the full records are `task show ID`
+    // (#10320: the JSON of every task ran to megabytes).
+    if listing
+        && let Ok(Value::Array(tasks)) = &result
         && std::io::IsTerminal::is_terminal(&std::io::stdout())
     {
-        println!("No tasks.");
+        println!("{}", task_table(tasks));
         return 0;
     }
     match result {
@@ -436,6 +439,41 @@ fn start_owner(directory: &std::path::Path, grant: &str) -> u8 {
     }
 }
 
+/// `task list` for a person: one line per task, newest last.
+fn task_table(tasks: &[Value]) -> String {
+    if tasks.is_empty() {
+        return "No tasks.".to_owned();
+    }
+    let text = |value: &Value| value.as_str().unwrap_or("-").to_owned();
+    let mut lines = vec![format!(
+        "{} task{}. Full record: openagents task show ID.",
+        tasks.len(),
+        if tasks.len() == 1 { "" } else { "s" }
+    )];
+    for task in tasks {
+        let id: String = text(&task["task_id"]).chars().take(12).collect();
+        let title = task["intent"]["title"]
+            .as_str()
+            .filter(|title| !title.trim().is_empty())
+            .or_else(|| task["intent"]["prompt"].as_str())
+            .unwrap_or("")
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+        let title: String = if title.chars().count() > 60 {
+            format!("{}…", title.chars().take(59).collect::<String>())
+        } else {
+            title
+        };
+        lines.push(format!(
+            "{id}  {:<9} {:<10} {title}",
+            text(&task["status"]),
+            text(&task["execution"]),
+        ));
+    }
+    lines.join("\n")
+}
+
 fn output(value: &Value) -> u8 {
     let stdout = std::io::stdout();
     let mut out = stdout.lock();
@@ -455,6 +493,27 @@ fn output(value: &Value) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_person_reads_task_list_as_a_short_table() {
+        assert_eq!(task_table(&[]), "No tasks.");
+        let task = serde_json::json!({
+            "task_id": "0123456789abcdef",
+            "status": "finished",
+            "execution": "succeeded",
+            "intent": {"title": "", "prompt": "Fix the   failing\ntest in parser.rs"},
+        });
+        let text = task_table(&[task]);
+        assert!(
+            text.starts_with("1 task. Full record: openagents task show ID."),
+            "{text}"
+        );
+        assert!(
+            text.contains("0123456789ab  finished  succeeded  Fix the failing test in parser.rs"),
+            "{text}"
+        );
+        assert!(!text.contains("intent"), "{text}");
+    }
 
     fn args(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| (*value).to_string()).collect()

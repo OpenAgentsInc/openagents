@@ -96,6 +96,33 @@ pub fn load_or_create(dir: &Path, profile: &str) -> Result<Identity, String> {
     })
 }
 
+/// Loads the key for `profile` from `dir` when one exists; otherwise a new
+/// key held only in memory, never written. For commands that only read
+/// (a relay still wants a signed AUTH), so reading never creates an
+/// identity on disk (#10320).
+///
+/// # Errors
+///
+/// Returns a message when the profile name is unusable or a stored key is
+/// unreadable or invalid.
+pub fn load_or_ephemeral(dir: &Path, profile: &str) -> Result<Identity, String> {
+    check_profile(profile)?;
+    if dir.join(format!("{profile}.key")).exists() {
+        return load_or_create(dir, profile);
+    }
+    let hex = fresh_secret()?;
+    let bytes: Vec<u8> = (0..hex.len())
+        .step_by(2)
+        .filter_map(|i| u8::from_str_radix(hex.get(i..i + 2)?, 16).ok())
+        .collect();
+    let array: [u8; 32] = bytes
+        .try_into()
+        .map_err(|_| "cannot make a temporary key".to_owned())?;
+    let secret = secp256k1::SecretKey::from_byte_array(array)
+        .map_err(|e| format!("cannot make a temporary key: {e}"))?;
+    Identity::from_secret(profile, secret)
+}
+
 fn fresh_secret() -> Result<String, String> {
     loop {
         // The system's generator through `rand`, which reads the
@@ -158,6 +185,19 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("verse-id-{name}-{}", random_hex(6)));
         let _ = std::fs::remove_dir_all(&dir);
         dir
+    }
+
+    #[test]
+    fn reading_never_writes_a_key_but_uses_one_that_exists() {
+        let dir = scratch("reader");
+        let temporary = load_or_ephemeral(&dir, "alice").expect("temporary");
+        assert!(!dir.join("alice.key").exists(), "a reader created a key");
+        let again = load_or_ephemeral(&dir, "alice").expect("temporary");
+        assert_ne!(temporary.signer.pubkey(), again.signer.pubkey());
+        let saved = load_or_create(&dir, "alice").expect("created");
+        let read = load_or_ephemeral(&dir, "alice").expect("loaded");
+        assert_eq!(saved.signer.pubkey(), read.signer.pubkey());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -170,9 +170,15 @@ fn ls(output: &Output, store: &Path, worktrees: &Path, sizes: bool) {
     };
     let mut rows = Vec::with_capacity(found.len());
     for (((name, path), saved), size) in found.iter().zip(saved).zip(sized) {
-        let saved = match saved {
-            Ok(_) => "nothing unsaved".to_owned(),
-            Err(why) => why,
+        // A spare is Coder's own ready-made checkout: removing it loses
+        // nothing a person made, whatever git says about its commits.
+        let saved = if spare(name) {
+            "nothing (Coder's spare)".to_owned()
+        } else {
+            match saved {
+                Ok(_) => "nothing unsaved".to_owned(),
+                Err(why) => why,
+            }
         };
         let task = task_of(name, &tasks);
         rows.push(json!({
@@ -202,6 +208,15 @@ fn ls(output: &Output, store: &Path, worktrees: &Path, sizes: bool) {
     output.emit(&value, |_| render(worktrees, &rows, &archived));
 }
 
+/// "1 worktree", "2 worktrees".
+fn count(n: usize) -> String {
+    if n == 1 {
+        "1 worktree".to_owned()
+    } else {
+        format!("{n} worktrees")
+    }
+}
+
 fn render(worktrees: &Path, rows: &[Value], archived: &[Value]) -> String {
     let text = |value: &Value, key: &str| value[key].as_str().unwrap_or("-").to_owned();
     let mut out = Vec::new();
@@ -212,13 +227,13 @@ fn render(worktrees: &Path, rows: &[Value], archived: &[Value]) -> String {
         let total: u64 = rows.iter().filter_map(|row| row["bytes"].as_u64()).sum();
         out.push(if sized {
             format!(
-                "{} worktrees in {}, {}.",
-                rows.len(),
+                "{} in {}, {}.",
+                count(rows.len()),
                 worktrees.display(),
                 paths::bytes(total)
             )
         } else {
-            format!("{} worktrees in {}.", rows.len(), worktrees.display())
+            format!("{} in {}.", count(rows.len()), worktrees.display())
         });
         let mut table = vec![
             ["NAME", "STATE", "SIZE", "AGE", "IF REMOVED"]
@@ -431,6 +446,20 @@ mod tests {
     fn force_needs_the_name_typed_exactly() {
         assert!(confirm("proj-0123456789ab", Some("proj-0123456789ab")).is_ok());
         assert!(confirm("proj-0123456789ab", Some("proj")).is_err());
+    }
+
+    #[test]
+    fn one_worktree_is_singular_and_a_spare_reads_as_disposable() {
+        assert_eq!(count(1), "1 worktree");
+        assert_eq!(count(2), "2 worktrees");
+        let rows = vec![json!({
+            "name": "openagents.spare-0123ab", "state": "spare", "bytes": null,
+            "age_seconds": 60, "unsaved": "nothing (Coder's spare)",
+        })];
+        let text = render(Path::new("/w"), &rows, &[]);
+        assert!(text.starts_with("1 worktree in /w."), "{text}");
+        assert!(text.contains("nothing (Coder's spare)"), "{text}");
+        assert!(!text.contains("commits not on any remote"), "{text}");
     }
 
     #[test]

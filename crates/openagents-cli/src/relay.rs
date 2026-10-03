@@ -242,6 +242,17 @@ pub fn identity_for(profile: Option<&str>) -> Result<verse::identity::Identity, 
     verse::identity::load_or_create(&verse::identity::home(), &profile)
 }
 
+/// The identity a read-only command signs relay AUTH with: the profile's
+/// key when one exists, else a temporary key that is never saved, so
+/// reading creates no identity on disk (#10320).
+pub fn reader_identity_for(profile: Option<&str>) -> Result<verse::identity::Identity, String> {
+    let profile = profile
+        .map(str::to_owned)
+        .or_else(|| std::env::var("OPENAGENTS_PROFILE").ok())
+        .unwrap_or_else(|| "default".to_owned());
+    verse::identity::load_or_ephemeral(&verse::identity::home(), &profile)
+}
+
 pub fn unix_now() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

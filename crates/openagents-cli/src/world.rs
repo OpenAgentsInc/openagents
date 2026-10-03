@@ -209,7 +209,17 @@ pub struct Context {
 
 impl Context {
     pub fn open(args: &Args) -> Result<Self, String> {
-        let identity = identity_for(args.option("as"))?;
+        Self::open_as(args, false)
+    }
+
+    /// Opens the context; a `read_only` command signs with the existing key
+    /// or a temporary one, never creating an identity on disk (#10320).
+    pub fn open_as(args: &Args, read_only: bool) -> Result<Self, String> {
+        let identity = if read_only {
+            crate::relay::reader_identity_for(args.option("as"))?
+        } else {
+            identity_for(args.option("as"))?
+        };
         let signer = identity.signer.clone();
         let world = args
             .option("world")
@@ -355,7 +365,11 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
             Err(message) => output.fail("verse", &message),
         };
     }
-    let mut context = match Context::open(&args) {
+    let read_only = matches!(
+        command.as_str(),
+        "who" | "look" | "nearby" | "chat" | "tail"
+    );
+    let mut context = match Context::open_as(&args, read_only) {
         Ok(context) => context,
         Err(message) => return output.fail("verse", &message),
     };

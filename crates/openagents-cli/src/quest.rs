@@ -11,7 +11,7 @@ use nostr::xp as kinds;
 use serde_json::{Value, json};
 use verse::xp::{QuestRow, Snapshot, level_of, load_trust, missing, my_keys, snapshot};
 
-use crate::relay::{Client, DEFAULT_WAIT, identity_for, relay_url, unix_now};
+use crate::relay::{Client, DEFAULT_WAIT, relay_url, unix_now};
 use crate::{Args, Output, out};
 
 /// Most events asked for per kind group, as the desktop client asks.
@@ -39,7 +39,7 @@ pub struct Reading {
 /// fetch the quest, entry, and evidence events the trusted awards name,
 /// then derive.
 pub fn read(args: &Args) -> Result<Reading, String> {
-    let identity = identity_for(args.option("as"))?;
+    let identity = crate::relay::reader_identity_for(args.option("as"))?;
     let referees: Vec<String> = args
         .options("referee")
         .into_iter()
@@ -161,7 +161,7 @@ pub fn verify_card(output: &Output, args: &Args) -> Result<u8, String> {
         .positional()
         .get(1)
         .ok_or("name the card: openagents xp verify-card <card.json | naddr1… | ->")?;
-    let identity = identity_for(args.option("as"))?;
+    let identity = crate::relay::reader_identity_for(args.option("as"))?;
     let explicit = args
         .option("xp-relay")
         .map(str::to_owned)
