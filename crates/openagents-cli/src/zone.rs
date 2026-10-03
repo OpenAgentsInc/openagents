@@ -241,9 +241,9 @@ impl Sim {
             self.elapsed += self.dt;
             if self.elapsed - start > self.timeout {
                 return Err(format!(
-                    "did not arrive within {:.0} s (at {:?})",
+                    "did not arrive within {:.0} s (at {})",
                     self.timeout,
-                    self.station.astronaut().pos.to_array()
+                    tenths(&json!(self.station.astronaut().pos.to_array()))
                 ));
             }
         }
@@ -363,6 +363,30 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
     }
 }
 
+/// A result value as short text with positions to 0.1 m, the precision the
+/// status line uses: `depot [-12.0, -6.0, 1.0], jig [...]`, never 15-digit
+/// floats or raw JSON.
+fn tenths(value: &Value) -> String {
+    match value {
+        Value::Number(n) => match n.as_f64() {
+            Some(f) if n.is_f64() => format!("{f:.1}"),
+            _ => n.to_string(),
+        },
+        Value::Array(items) => format!(
+            "[{}]",
+            items.iter().map(tenths).collect::<Vec<_>>().join(", ")
+        ),
+        Value::Object(map) => map
+            .iter()
+            .map(|(key, value)| format!("{key} {}", tenths(value)))
+            .collect::<Vec<_>>()
+            .join(", "),
+        Value::String(text) => text.clone(),
+        Value::Null => "-".into(),
+        Value::Bool(b) => b.to_string(),
+    }
+}
+
 fn info(output: &Output) -> u8 {
     let station = Station::new();
     output.emit(
@@ -402,7 +426,7 @@ fn info(output: &Output) -> u8 {
             }
             format!(
                 "Lagrange 1 construction zone\nlandmarks: {}\n{}\n{}",
-                value["landmarks"],
+                tenths(&value["landmarks"]),
                 out::table(&rows),
                 render_snapshot(&value["status"])
             )
@@ -485,12 +509,12 @@ fn local(output: &Output, args: &Args, plan: Option<Vec<Verb>>) -> Result<u8, St
                                 "  {:<16} {:<10} {}",
                                 part["kind"].as_str().unwrap_or(""),
                                 part["state"].as_str().unwrap_or(""),
-                                part["pos"]
+                                tenths(&part["pos"])
                             ))
                             .collect::<Vec<_>>()
                             .join("\n")
                     ),
-                    (result, _) => format!(" -> {result}"),
+                    (result, _) => format!(" -> {}", tenths(result)),
                 }
             );
         }
@@ -501,12 +525,16 @@ fn local(output: &Output, args: &Args, plan: Option<Vec<Verb>>) -> Result<u8, St
         }
     }
     let final_status = snapshot_json(&sim.station);
+    // A run that ended on `status` already printed this snapshot.
+    let ended_on_status = steps
+        .last()
+        .is_some_and(|step: &Value| step["result"].get("status").is_some());
     if output.json() {
         output.line(
             &json!({ "done": !failed, "elapsed_s": sim.elapsed, "status": final_status, "parts": part_json(&sim.station) }),
             |_| String::new(),
         );
-    } else {
+    } else if !ended_on_status {
         println!("{}", render_snapshot(&final_status));
     }
     Ok(if failed { crate::EXIT_FAILURE } else { 0 })
@@ -606,12 +634,14 @@ fn listen(output: &Output, args: &Args) -> Result<u8, String> {
     let mut context = crate::world::Context::open(args)?;
     let world = context.world.clone();
     let me = context.pubkey().to_owned();
+    let mut heard = 0usize;
     context.client.subscribe(
         vec![json!({ "kinds": [mv::COMMAND_KIND], "#w": [world], "#p": [me] })],
         true,
         wait,
         |event| {
             if let Ok(Received::Command { pubkey, command, .. }) = mv::decode(event, &world) {
+                heard += 1;
                 let verb = Verb::from_wire(&command);
                 output.line(
                     &json!({ "from": pubkey, "zone": command.zone, "id": command.id, "verb": verb.to_json() }),
@@ -628,6 +658,9 @@ fn listen(output: &Output, args: &Args) -> Result<u8, String> {
         },
     )?;
     context.client.close();
+    if heard == 0 && !output.json() {
+        println!("Nothing arrived in {} s.", wait.as_secs());
+    }
     Ok(0)
 }
 
@@ -660,5 +693,16 @@ mod tests {
         }
         let snapshot = sim.station.snapshot();
         assert_eq!(snapshot.installed, snapshot.total, "{:?}", snapshot.message);
+    }
+}
+
+#[cfg(test)]
+mod tenths_tests {
+    use super::*;
+
+    #[test]
+    fn positions_read_to_a_tenth_of_a_metre() {
+        let value = json!({"arrived": [-9.994880006050906, 4.577540077412383, 1]});
+        assert_eq!(tenths(&value), "arrived [-10.0, 4.6, 1]");
     }
 }

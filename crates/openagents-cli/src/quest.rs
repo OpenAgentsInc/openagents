@@ -267,6 +267,22 @@ fn season_word(opens_at: u64, closes_at: u64, now: u64) -> &'static str {
     }
 }
 
+/// Awards counted out of those found, and the quest's award limit: `0/0`
+/// read as "none possible", so no awards and no limit say so in words.
+fn awards_cell(row: &Value) -> String {
+    let counted = row["counted"].as_u64().unwrap_or(0);
+    let awards = row["awards"].as_u64().unwrap_or(0);
+    let limit = match row["max_awards"].as_u64() {
+        Some(max) => format!("max {max}"),
+        None => "no limit".to_owned(),
+    };
+    if awards == 0 {
+        format!("none yet ({limit})")
+    } else {
+        format!("{counted} of {awards} counted ({limit})")
+    }
+}
+
 fn render_quests(value: &Value) -> String {
     let Some(rows) = value["quests"].as_array() else {
         return String::new();
@@ -297,10 +313,7 @@ fn render_quests(value: &Value) -> String {
                     now
                 )
             ),
-            match row["max_awards"].as_u64() {
-                Some(max) => format!("{}/{} (max {max})", row["counted"], row["awards"]),
-                None => format!("{}/{}", row["counted"], row["awards"]),
-            },
+            awards_cell(row),
             match (
                 row["trusted"].as_bool().unwrap_or(false),
                 row["conflict"].as_bool().unwrap_or(false),
@@ -502,5 +515,18 @@ mod tests {
         assert_eq!(value["level"], 1);
         assert_eq!(value["curve"], "trainer-curve-v1");
         assert_eq!(value["next_level_at"], verse::xp::xp_to_reach(2));
+    }
+}
+
+#[cfg(test)]
+mod awards_cell_tests {
+    use super::*;
+
+    #[test]
+    fn no_awards_and_no_limit_read_in_words() {
+        let row = json!({"counted": 0, "awards": 0, "max_awards": null});
+        assert_eq!(awards_cell(&row), "none yet (no limit)");
+        let row = json!({"counted": 2, "awards": 3, "max_awards": 10});
+        assert_eq!(awards_cell(&row), "2 of 3 counted (max 10)");
     }
 }

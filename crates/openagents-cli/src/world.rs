@@ -380,12 +380,59 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
     }
 }
 
+/// Offline entities whose last state is older than this are left out of
+/// the text listing (`--json` keeps every one).
+const STALE_OFFLINE_MS: u64 = 24 * 60 * 60 * 1000;
+
 fn render_rows(value: &Value) -> String {
+    render_rows_at(value, unix_now().saturating_mul(1000))
+}
+
+/// The listing as text: one row per publisher (its entities, such as an
+/// `agent` and its `avatar`, together), people who are here first, and
+/// long-offline entities counted rather than listed.
+fn render_rows_at(value: &Value, now_ms: u64) -> String {
     let Some(rows) = value["entities"].as_array() else {
         return String::new();
     };
-    if rows.is_empty() {
-        return "nobody here".into();
+    let state_rank = |row: &Value| match (
+        row["live"].as_bool().unwrap_or(false),
+        row["online"].as_bool().unwrap_or(false),
+    ) {
+        (true, _) => 0,
+        (false, true) => 1,
+        (false, false) => 2,
+    };
+    // Group by publisher, keeping the first (nearest) row's order.
+    let mut groups: Vec<(String, Vec<&Value>)> = Vec::new();
+    for row in rows {
+        let pubkey = row["pubkey"].as_str().unwrap_or("").to_owned();
+        match groups.iter_mut().find(|(key, _)| *key == pubkey) {
+            Some((_, members)) => members.push(row),
+            None => groups.push((pubkey, vec![row])),
+        }
+    }
+    let mut hidden = 0usize;
+    let mut kept: Vec<(u8, usize, Vec<&Value>)> = Vec::new();
+    for (index, (_, members)) in groups.into_iter().enumerate() {
+        let rank = members.iter().map(|row| state_rank(row)).min().unwrap_or(2);
+        let newest = members
+            .iter()
+            .filter_map(|row| row["t"].as_u64())
+            .max()
+            .unwrap_or(0);
+        if rank == 2 && now_ms.saturating_sub(newest) > STALE_OFFLINE_MS {
+            hidden += 1;
+            continue;
+        }
+        kept.push((rank, index, members));
+    }
+    kept.sort_by_key(|(rank, index, _)| (*rank, *index));
+    if kept.is_empty() {
+        return match hidden {
+            0 => "Nobody here.".into(),
+            n => format!("Nobody here now ({n} offline for over a day; --json lists them)."),
+        };
     }
     let mut table = vec![vec![
         "distance".to_owned(),
@@ -395,7 +442,8 @@ fn render_rows(value: &Value) -> String {
         "state".to_owned(),
         "pubkey".to_owned(),
     ]];
-    for row in rows {
+    for (rank, _, members) in &kept {
+        let row = members[0];
         let pos = row["pos"]
             .as_array()
             .map(|pos| {
@@ -405,26 +453,44 @@ fn render_rows(value: &Value) -> String {
                     .join(",")
             })
             .unwrap_or_default();
+        let name = members
+            .iter()
+            .find_map(|row| {
+                row["name"]
+                    .as_str()
+                    .filter(|name| !name.is_empty() && *name != "-")
+            })
+            .unwrap_or("(unnamed)");
+        let mut roles: Vec<&str> = members
+            .iter()
+            .filter_map(|row| row["role"].as_str())
+            .filter(|role| !role.is_empty())
+            .collect();
+        roles.dedup();
         table.push(vec![
             row["distance"]
                 .as_f64()
                 .map(|d| format!("{d:.1}m"))
                 .unwrap_or_default(),
-            row["name"].as_str().unwrap_or("-").to_owned(),
-            row["role"].as_str().unwrap_or("").to_owned(),
+            name.to_owned(),
+            roles.join("+"),
             pos,
-            match (
-                row["live"].as_bool().unwrap_or(false),
-                row["online"].as_bool().unwrap_or(false),
-            ) {
-                (true, _) => "live".to_owned(),
-                (false, true) => "online".to_owned(),
-                (false, false) => "offline".to_owned(),
-            },
+            match rank {
+                0 => "live",
+                1 => "online",
+                _ => "offline",
+            }
+            .to_owned(),
             row["pubkey"].as_str().unwrap_or("").to_owned(),
         ]);
     }
-    out::table(&table)
+    let mut text = out::table(&table);
+    if hidden > 0 {
+        text.push_str(&format!(
+            "\n{hidden} more offline for over a day; --json lists them."
+        ));
+    }
+    text
 }
 
 fn who(output: &Output, context: &mut Context, args: &Args) -> Result<u8, String> {
@@ -544,6 +610,7 @@ fn tail(output: &Output, context: &mut Context, wait: u64) -> Result<u8, String>
     let wait = Duration::from_secs(if wait == 0 { 30 } else { wait });
     let world = context.world.clone();
     let mut scene = Scene::default();
+    let mut shown = 0usize;
     context.client.subscribe(
         vec![json!({
             "kinds": [mv::FRAME_KIND, mv::GESTURE_KIND, mv::STATE_KIND, mv::CHAT_KIND],
@@ -557,6 +624,7 @@ fn tail(output: &Output, context: &mut Context, wait: u64) -> Result<u8, String>
                 if let Ok(line) = mv::decode_chat(event, &world) {
                     let mut value = chat_value(&line);
                     value["type"] = "chat".into();
+                    shown += 1;
                     output.line(&value, render_chat);
                 }
                 return;
@@ -564,6 +632,7 @@ fn tail(output: &Output, context: &mut Context, wait: u64) -> Result<u8, String>
             let Some(received) = scene.absorb(event, &world) else {
                 return;
             };
+            shown += 1;
             let value = match received {
                 Received::Frame { pubkey, frame } => json!({
                     "type": "frame", "pubkey": pubkey, "t": frame.t,
@@ -632,6 +701,9 @@ fn tail(output: &Output, context: &mut Context, wait: u64) -> Result<u8, String>
             });
         },
     )?;
+    if shown == 0 && !output.json() {
+        println!("Nothing arrived in {} s.", wait.as_secs());
+    }
     Ok(0)
 }
 
@@ -649,7 +721,7 @@ fn me(output: &Output, context: &mut Context) -> Result<u8, String> {
             let state = &value["state"];
             if state.is_null() {
                 format!(
-                    "{} has no state in {}",
+                    "{} hasn't entered {} yet. Enter it with: openagents verse move 0,0,0",
                     value["pubkey"].as_str().unwrap_or(""),
                     value["world"].as_str().unwrap_or("")
                 )
@@ -940,4 +1012,39 @@ fn leave(output: &Output, context: &mut Context) -> Result<u8, String> {
     } else {
         crate::EXIT_FAILURE
     })
+}
+
+#[cfg(test)]
+mod listing_tests {
+    use super::*;
+
+    #[test]
+    fn a_publishers_entities_share_one_row_and_long_offline_ones_are_counted() {
+        let now = 10 * STALE_OFFLINE_MS;
+        let value = json!({ "entities": [
+            {"pubkey": "aa", "entity": "agent", "role": "agent", "name": "Ada",
+             "pos": [0.0, 0.0, 0.0], "distance": 1.0, "online": true, "live": false, "t": now},
+            {"pubkey": "aa", "entity": "avatar", "role": "avatar", "name": null,
+             "pos": [0.0, 0.0, 0.0], "distance": 1.0, "online": true, "live": false, "t": now},
+            {"pubkey": "bb", "entity": "avatar", "role": "avatar", "name": "Old Test",
+             "pos": [1.0, 0.0, 0.0], "distance": 0.5, "online": false, "live": false, "t": 1},
+            {"pubkey": "cc", "entity": "avatar", "role": "avatar", "name": "-",
+             "pos": [2.0, 0.0, 0.0], "distance": 2.0, "online": false, "live": false, "t": now},
+        ]});
+        let text = render_rows_at(&value, now);
+        assert_eq!(text.matches("Ada").count(), 1, "{text}");
+        assert!(text.contains("agent+avatar"), "{text}");
+        assert!(!text.contains("Old Test"), "{text}");
+        assert!(text.contains("(unnamed)"), "{text}");
+        assert!(text.contains("1 more offline for over a day"), "{text}");
+        assert!(
+            text.find("Ada").unwrap() < text.find("(unnamed)").unwrap(),
+            "{text}"
+        );
+    }
+
+    #[test]
+    fn an_empty_place_says_so() {
+        assert_eq!(render_rows_at(&json!({"entities": []}), 0), "Nobody here.");
+    }
 }
