@@ -27,8 +27,12 @@ checks, and one repair. Its eight development runs all finish successfully;
 the briefing reduces median cost by 12.4%, below the 20% prospective win
 threshold. Its unchanged held-out panel also misses that gate: all final
 patches pass the registered checks, with 12.6% lower median estimated cost and
-7.5% lower recorded time. Source review identifies additional untested order
-conflicts in both arms. A separately registered
+7.5% lower recorded time. A later
+[executed diagnostic](briefing-iteration-2/posthoc-execution.md) confirms order
+conflicts in three of those eight final patches: five pass both added cases,
+including three controls and two briefed candidates. The original scores remain
+unchanged; these small post hoc counts do not establish a causal quality effect.
+A separately registered
 [model and structured-briefing experiment](briefing-model-factorial/README.md)
 finds a bounded win on a fresh historical issue: **Sonnet without a brief costs
 47.1% less than Opus, with a 5.8% faster median recorded endpoint and 4/4
@@ -59,9 +63,11 @@ experiments, including concrete roles for TypeSafe judgments.
 
 The [System One and native delegation study](system-one-delegation/README.md)
 collects the supporting and contrary evidence, adds frozen source-packing
-previews on four historical tasks, and prepares a six-arm native comparison.
+previews, and qualifies four historical tasks for a six-arm native comparison.
 Its [evidence synthesis](system-one-delegation/evidence-synthesis.md) separates
 the demonstrated configuration gains from the unproven incremental Jev gain.
+Two fast replacement previews omit core implementation evidence, which a
+semantic reranker cannot restore from their candidate pools.
 Scored execution remains blocked by a real Jev request returning HTTP 402;
 the new preparation timings and broker capability check are component results.
 

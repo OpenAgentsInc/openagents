@@ -43,15 +43,21 @@ descriptive; they do not separate the brief's causal effect from cache reuse,
 patch size, repairs, or model variation in this small panel. Thinking tokens
 are retained separately in the CLI record and are not added to output tokens.
 
-Source review finds a broader quality limitation in both arms: some accepted
-patches can still select different equal-rank copies or conflicting manifest
-marks when input order reverses. The frozen checker covers retained-versus-live
-precedence but omits those conflicts. The [independent audit](heldout-audit.json)
-identifies affected candidates and source evidence. The
-[post hoc counterexample tests](posthoc_equal_rank.rs) are prepared but have
-not been compiled or executed; they do not change registered scores. The
-historical reference sorts sources and copy candidates and avoids these gaps
-by static inspection. Passing this panel is not proof of complete correctness.
+The [executed post hoc diagnostic](posthoc-execution.md) confirms a broader
+quality limitation in both arms: three previously accepted patches select
+different equal-rank copies or conflicting manifest marks when input order
+reverses. The frozen checker covers retained-versus-live precedence but omits
+those conflicts. The unchanged [counterexample tests](posthoc_equal_rank.rs)
+pass on the historical reference and fail on the original source. Five of
+eight final candidates pass both added cases: three of four controls and two
+of four briefed candidates.
+
+These are descriptive post hoc counts from one small task panel, not a causal
+estimate of briefing's quality effect. The original registered scores remain
+unchanged. The earlier [independent audit](heldout-audit.json) retains its
+then-unexecuted static findings; the new result separately confirms all three
+affected candidates. Passing the frozen panel is not proof of complete
+correctness.
 
 The next [model and structured-briefing experiment](../briefing-model-factorial/README.md)
 separates a less expensive executor from the brief's contribution. Its reserve,

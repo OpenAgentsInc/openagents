@@ -1,0 +1,7 @@
+
+running 2 tests
+test conflicting_manifest_marks_resolve_the_same_way_in_both_orders ... ok
+test equal_rank_divergent_copies_choose_the_same_record_in_both_orders ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

@@ -1,0 +1,29 @@
+
+running 2 tests
+test conflicting_manifest_marks_resolve_the_same_way_in_both_orders ... FAILED
+test equal_rank_divergent_copies_choose_the_same_record_in_both_orders ... FAILED
+
+failures:
+
+---- conflicting_manifest_marks_resolve_the_same_way_in_both_orders stdout ----
+
+thread 'conflicting_manifest_marks_resolve_the_same_way_in_both_orders' (<pid>) panicked at <diagnostic>/posthoc_equal_rank.rs:107:9:
+assertion `left == right` failed
+  left: Some("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+ right: Some("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- equal_rank_divergent_copies_choose_the_same_record_in_both_orders stdout ----
+
+thread 'equal_rank_divergent_copies_choose_the_same_record_in_both_orders' (<pid>) panicked at <diagnostic>/posthoc_equal_rank.rs:81:9:
+assertion `left == right` failed
+  left: Some(0.0)
+ right: Some(1.0)
+
+
+failures:
+    conflicting_manifest_marks_resolve_the_same_way_in_both_orders
+    equal_rank_divergent_copies_choose_the_same_record_in_both_orders
+
+test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

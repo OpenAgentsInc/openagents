@@ -1,0 +1,1285 @@
+{
+  "schema": "openagents.briefing-replay.posthoc-execution.v1",
+  "status": "completed",
+  "diagnostic_only": true,
+  "original_scores_unchanged": true,
+  "new_model_calls": 0,
+  "interpretation": "Descriptive post hoc counts on eight retained final patches from one task; not a causal quality estimate or a revision of the registered verdict.",
+  "source": {
+    "base_commit": "f29611f211747884b4f508db80634d3f6df2a5e9",
+    "reference_commit": "47ad4d73dae2d927f919ff1ef6d880c9df4bcedc",
+    "reference_parent": "c470ef20a163429a620bc3399a3495070b5b621e",
+    "reference_scope": "Exact retained five-file reference overlay; relevant source closure unchanged between original base and reference parent.",
+    "archive_sha256": "0e8c4ab6ed0f8a4324a0c434ab3111be33a738de6565a90fe5d04bac36241560",
+    "archive_bytes": 463640205,
+    "reference_parent_source_equivalence": {
+      "argv": [
+        "git",
+        "diff",
+        "--exit-code",
+        "f29611f211747884b4f508db80634d3f6df2a5e9",
+        "c470ef20a163429a620bc3399a3495070b5b621e",
+        "--",
+        "crates/gym",
+        "crates/knowledge",
+        "crates/jev",
+        "Cargo.lock"
+      ],
+      "exit_code": 0
+    }
+  },
+  "published_inputs": [
+    {
+      "path": "heldout-audit.json",
+      "sha256": "fac8f0906187f8fe80cabaae330c3c8fc21a0bf5758344c8a2c497fa836c3759"
+    },
+    {
+      "path": "heldout/metrics.json",
+      "sha256": "97f82674d3260e1708dab2f732066064bed3f50bf25eb777d9223adc8cc8ab02"
+    },
+    {
+      "path": "posthoc_equal_rank.rs",
+      "sha256": "7fe37bbb5d06c251f5f938000917e485ac15021fe2f5cda84f953fae470b6293"
+    }
+  ],
+  "candidate_patch_bindings": [
+    {
+      "variant": "1-control",
+      "public_patch": "heldout/heldout-1-control/final-candidate.patch",
+      "public_patch_sha256": "65a84a1e045b061f63822a757117e155959c38d465caffef8512f14dc616db31",
+      "private_final_payload_sha256": "2f456d0674713936e337173f6144dcba0990ac118f33f0b30002f3b3481b4098",
+      "canonical_candidate_sha256": "01527df4763524a8c19dc9f6098c261d901b446b881ee761742ccdd074c2761c"
+    },
+    {
+      "variant": "2-treatment",
+      "public_patch": "heldout/heldout-2-treatment/final-candidate.patch",
+      "public_patch_sha256": "07245eec761b96f087fd669198a229771b417f35fc43e8252d5573ccb98918c5",
+      "private_final_payload_sha256": "1800eb110cf1a960f76ca8bc5cbff61495ceebeb5f601eddecc741de73fc8506",
+      "canonical_candidate_sha256": "14015444813585598407f1aa1553b13ff2fa56417e69f2a97d50d5853218b4e2"
+    },
+    {
+      "variant": "3-treatment",
+      "public_patch": "heldout/heldout-3-treatment/final-candidate.patch",
+      "public_patch_sha256": "ad5cd5af9bb5b17f3064dc93c35f6da8831920a610b405d43d82feb6222c5621",
+      "private_final_payload_sha256": "2603c57d23e1895a9dc362750f121ca3887ed8ed29cce2123cc344a8846af129",
+      "canonical_candidate_sha256": "bd132b02949c11fd9729f0c160a2546496e1ec8697b70fce84b669aa3ae646bf"
+    },
+    {
+      "variant": "4-control",
+      "public_patch": "heldout/heldout-4-control/final-candidate.patch",
+      "public_patch_sha256": "b3657e16a2402ec3cd2eed923377a48d7ac9aff8f28b0a0856cc39064ef94e6d",
+      "private_final_payload_sha256": "20cd5947a90cfb806e3c42bf1b0ef8e06713db4a50ac9e6ab0c1486b0edcb803",
+      "canonical_candidate_sha256": "e1df668f448bd0ac3dc9407f540fc90445f23bf94886270f2516de15beb6547a"
+    },
+    {
+      "variant": "5-control",
+      "public_patch": "heldout/heldout-5-control/final-candidate.patch",
+      "public_patch_sha256": "22fbf81d37a46460de92636b39bc0f11fdeaefba508a0aff7e70e677e3215790",
+      "private_final_payload_sha256": "3dbedc9cc80a12dc80eab46af6d3822a8d2d3b08f24d7a45514f8ff40269da6e",
+      "canonical_candidate_sha256": "6b496ddcaa2aae5375733dea6cf102c61d79197ed09ec1162fe2ad07adc653ff"
+    },
+    {
+      "variant": "6-treatment",
+      "public_patch": "heldout/heldout-6-treatment/final-candidate.patch",
+      "public_patch_sha256": "9902f9e2a9c623f4773c45fcb0221df0f018669107a10807df83873f12a0e418",
+      "private_final_payload_sha256": "72482806573f945347024af4afc2ecf162708fc6a5643ff79e8aec7dd10e6e61",
+      "canonical_candidate_sha256": "3166c17671cd1ec23e37cf45ce497017ae6bc482f301ac3f4038286c654a1960"
+    },
+    {
+      "variant": "7-treatment",
+      "public_patch": "heldout/heldout-7-treatment/final-candidate.patch",
+      "public_patch_sha256": "24ba27984c49df306a5ef30808d227e8700c52af50681efc262d4c553247bbd6",
+      "private_final_payload_sha256": "9ad08b1547ddb50a14fa51bc68c828d734ea68b59cbb172ee8c07f89406869af",
+      "canonical_candidate_sha256": "d8680562a7ce59f41fc4a49bd41c10cf893ec4a55c4e39ece36aac5fcee077cc"
+    },
+    {
+      "variant": "8-control",
+      "public_patch": "heldout/heldout-8-control/final-candidate.patch",
+      "public_patch_sha256": "424c0c317a7e1238b90d0121b6ea909c8ccabd82c239b34b36560f98bad6d963",
+      "private_final_payload_sha256": "8483553d8f27838c5db19769000d9bec6167fc83f13a1b9cfd2ee5c413cf72b0",
+      "canonical_candidate_sha256": "8e367333412579963fcc2eebdc05dcad4cd3a0f6fc1b83b158eec18bc0736f47"
+    }
+  ],
+  "fixture": {
+    "path": "posthoc_equal_rank.rs",
+    "sha256": "7fe37bbb5d06c251f5f938000917e485ac15021fe2f5cda84f953fae470b6293",
+    "changed": false,
+    "repairs": 0,
+    "cases": 2
+  },
+  "private_evidence": {
+    "plan_sha256": "369275e17d63c27cb12b2ea30f1e38abab69da0a9ab0b75726355779e5777b00",
+    "driver_sha256": "feef7eec4772dfaa36a7ad0233e7dfb738914fd5e97fd0a563b1aa3c3ac46b94",
+    "raw_summary_sha256": "270dddc8deb163e134917703b5a9ca3cfc2225775a741b693f233693846b953d",
+    "patch_validation_sha256": "1292152bdf06c32c632443c2948534c9605f0871b009600153203a973f2be3fc",
+    "transfer_receipt_sha256": "4494af47daaba9a74e5941211ccc1e1144977185e7bb77d1895191284c6ad415",
+    "process_exit_receipt_sha256": "aaa18cdf4ccdc2386183a9f9faacf6c6accf154612d5f5785e7ab6d8d2fc380c",
+    "closure_receipt_sha256": "08dc0dc5a60a1be7f3f1b98039253dcf2365e8bacee475c415db9e7b6202d00c",
+    "note": "Full raw records, exact normalized candidate files, source archive, driver, manifest, and lock remain retained locally. Public logs redact temporary paths and thread IDs."
+  },
+  "execution": {
+    "started_utc": "2026-10-03T09:50:13.108159+00:00",
+    "finished_utc": "2026-10-03T09:51:52.511366+00:00",
+    "toolchain": {
+      "cargo": "cargo 1.97.1 (c980f4866 2026-06-30)",
+      "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)"
+    },
+    "kernel": "Linux 6.8.0-117-generic x86_64",
+    "environment": {
+      "PATH": "<toolchain>:/usr/local/bin:/usr/bin:/bin",
+      "CARGO_HOME": "<cargo-home>",
+      "RUSTUP_HOME": "<rustup-home>",
+      "RUSTC": "<toolchain>/rustc",
+      "RUSTDOC": "<toolchain>/rustdoc",
+      "CARGO_TARGET_DIR": "<shared-target>",
+      "GIT_CONFIG_GLOBAL": "/dev/null",
+      "GIT_CONFIG_NOSYSTEM": "1",
+      "GIT_TERMINAL_PROMPT": "0",
+      "LC_ALL": "C.UTF-8",
+      "CARGO_BUILD_JOBS": "3",
+      "CARGO_INCREMENTAL": "0",
+      "CARGO_NET_OFFLINE": "true",
+      "CARGO_PROFILE_DEV_DEBUG": "0",
+      "CARGO_PROFILE_TEST_DEBUG": "0"
+    },
+    "compile_timeout_s": 300,
+    "test_timeout_s": 30,
+    "order": [
+      "base",
+      "reference",
+      "1-control",
+      "2-treatment",
+      "3-treatment",
+      "4-control",
+      "5-control",
+      "6-treatment",
+      "7-treatment",
+      "8-control"
+    ],
+    "attempts_per_variant": 1,
+    "retries": 0,
+    "offline": true,
+    "scratch_home_per_variant": true,
+    "shared_target_lock_held": true,
+    "closure": {
+      "driver_exit_code": 0,
+      "shared_target_lock_reacquired_after_exit": true,
+      "all_40_raw_logs_verified_after_download": true,
+      "remote_driver_plan_fixture_match_frozen_inputs": true
+    },
+    "freshness": "Before each compile, restore the exact base files, apply the retained normalized overlay, and refresh Gym source and fixture mtimes. Every compile reported gym fresh=false and fixture fresh=false. Run only the executable returned by that compile, whose SHA-256 is recorded.",
+    "dependency_lock": "Copy the pinned workspace lock into the standalone harness; resolve offline. All registry/Git package identities remain within the source lock; every variant uses the same resolved lock.",
+    "source_lock_sha256": "81dec39384fa14359699e821c9b35284a5b6186f2ffb8f6f82cea45dd4a61813",
+    "harness_manifest_sha256": "8d8a80126366aadc7c2638817997c313dff0626001b52002dbd300296ca06d42",
+    "resolved_lock_sha256": "5ada5ad89013d7f36e24f162e8f2182d673f77b33fa375e7834344ad85e3c705",
+    "build_profile_note": "Uses the current shared sandbox cache profile, with debug info disabled; this diagnostic does not compare timing with scored runs.",
+    "driver_wall_s": 99.40320754051208,
+    "export_wall_s": 4.126755597000738,
+    "compile_total_wall_s": 95.03203503999794,
+    "test_total_wall_s": 0.03456408000238298,
+    "archive_upload_wall_s": 252.8567645,
+    "timing_note": "Diagnostic timing is not an agent endpoint or an efficiency comparison. Archive upload excludes small input transfer, local archive creation, and final evidence download."
+  },
+  "counts": {
+    "all_variants": 10,
+    "all_cases": 20,
+    "all_passed_cases": 13,
+    "all_failed_cases": 7,
+    "retained_candidates": 8,
+    "retained_candidates_pass_both": 5,
+    "by_arm": {
+      "control": {
+        "variants": 4,
+        "pass_both": 3,
+        "passed_cases": 6,
+        "cases": 8
+      },
+      "briefing": {
+        "variants": 4,
+        "pass_both": 2,
+        "passed_cases": 5,
+        "cases": 8
+      }
+    }
+  },
+  "setup_failures": [],
+  "variants": [
+    {
+      "variant": "base",
+      "payload_sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "status": "completed",
+      "files": [
+        {
+          "path": "crates/gym/src/runs.rs",
+          "sha256": "9be2ff59c9d1054a8258d1c9331245aa4e7e89306787589b00b09992704ea4d1"
+        },
+        {
+          "path": "crates/gym/src/runs_beats_winner.rs",
+          "sha256": "b470a90ef0d80381b8d7eefdfd048378a3fa783c87d079dc3cea9b116222cd42"
+        },
+        {
+          "path": "crates/gym/src/runs_microcoder.rs",
+          "sha256": "22e507f627557a2dae0c39cb57017f0e0b5c9d146dec9c68ad44df115e1aac8e"
+        },
+        {
+          "path": "docs/coder/beat-fable-showcase.md",
+          "sha256": "60681d73f083f5ee7ef670fcf4644f2811903325f17ff4d3eb621954ca974f60"
+        },
+        {
+          "path": "docs/gym/terminal-bench-cli.md",
+          "sha256": "ee93527faa6b41fe4aa1eb1c78ae5d948b69f4e92e507f10ab6111956bf8d8b1"
+        }
+      ],
+      "resolved_lock_sha256": "5ada5ad89013d7f36e24f162e8f2182d673f77b33fa375e7834344ad85e3c705",
+      "resolved_external_packages_match_source_lock": true,
+      "gym_fresh": [
+        false
+      ],
+      "fixture_fresh": [
+        false
+      ],
+      "test_executable_sha256": "892a28c6e61bd41df7ac24b2824ea4296f0fa52981c268cf4372d6e128e77751",
+      "cases": [
+        {
+          "test": "conflicting_manifest_marks_resolve_the_same_way_in_both_orders",
+          "outcome": "FAILED"
+        },
+        {
+          "test": "equal_rank_divergent_copies_choose_the_same_record_in_both_orders",
+          "outcome": "FAILED"
+        }
+      ],
+      "passed": 0,
+      "failed": 2,
+      "canonical_candidate_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "arm": null,
+      "raw_artifacts": {
+        "compile.stdout": {
+          "sha256": "e0cfe1296ae339707eef9604c8aa9529498a43039a099a33853b4ff2954de944",
+          "bytes": 132958,
+          "retained_privately": true
+        },
+        "compile.stderr": {
+          "sha256": "0cb9af38079b9649e2edab99cb73bc510df6ae988c700ce4560267b30f8d47ec",
+          "bytes": 5113,
+          "retained_privately": true
+        },
+        "test.stdout": {
+          "sha256": "47bb1d1feb04ec4fae742ddea1ed6a03753bb621beff186f647f1e538c86ffba",
+          "bytes": 1125,
+          "retained_privately": true
+        },
+        "test.stderr": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0,
+          "retained_privately": true
+        }
+      },
+      "compile": {
+        "exit_code": 0,
+        "timed_out": false,
+        "wall_s": 23.213206492999234,
+        "argv": [
+          "<toolchain>/cargo",
+          "test",
+          "--manifest-path",
+          "<harness>/Cargo.toml",
+          "--offline",
+          "--no-run",
+          "--message-format=json",
+          "--test",
+          "posthoc_equal_rank"
+        ],
+        "public_log": {
+          "path": "posthoc-execution-logs/base-compile.log",
+          "sha256": "d783b91d5a94a02886b533a569428399fd3988c919d22d14d1e4853465c30fb4",
+          "bytes": 4656
+        }
+      },
+      "test": {
+        "exit_code": 101,
+        "timed_out": false,
+        "wall_s": 0.0034304889995837584,
+        "argv": [
+          "<shared-target>/debug/deps/posthoc_equal_rank-47e5890e4a26801b",
+          "--test-threads=1"
+        ],
+        "public_log": {
+          "path": "posthoc-execution-logs/base-test.log",
+          "sha256": "a5841e4439b6aafd17bb6afc6130bf88031c2a4082688de233f304c290389226",
+          "bytes": 1059
+        }
+      }
+    },
+    {
+      "variant": "reference",
+      "payload_sha256": "b73bc5de5bcda793d8c17f49238f6c1b578d9fe9547a833e67d7d13b6a79f2b4",
+      "status": "completed",
+      "files": [
+        {
+          "path": "crates/gym/src/runs.rs",
+          "sha256": "bf2dabd2adf56f8e4a455812d0d101ad458c17a2c94fd6ddfecb553d9f08fbd4"
+        },
+        {
+          "path": "crates/gym/src/runs_beats_winner.rs",
+          "sha256": "848466dccff0d161ed4757c2aae70039edc104d609876d3f30509b6b59f4267d"
+        },
+        {
+          "path": "crates/gym/src/runs_microcoder.rs",
+          "sha256": "b7d400b403148d5aae5c1e47c5f9470aed4c584ae0098daac71f59c86a15e7d4"
+        },
+        {
+          "path": "docs/coder/beat-fable-showcase.md",
+          "sha256": "007fe47d2acbae5c1ab814d1efe6d8d8ef43597bb4300962ddf958c1e4f4520d"
+        },
+        {
+          "path": "docs/gym/terminal-bench-cli.md",
+          "sha256": "6b8e8408f3bae744fbc089926e00819d5ac8167388ae8e06dad7002cdfb3fa70"
+        }
+      ],
+      "resolved_lock_sha256": "5ada5ad89013d7f36e24f162e8f2182d673f77b33fa375e7834344ad85e3c705",
+      "resolved_external_packages_match_source_lock": true,
+      "gym_fresh": [
+        false
+      ],
+      "fixture_fresh": [
+        false
+      ],
+      "test_executable_sha256": "9c863dd6e420cccbcff81b3de1ffd51c5573767a831aafbdb14b7af3e2eeb45f",
+      "cases": [
+        {
+          "test": "conflicting_manifest_marks_resolve_the_same_way_in_both_orders",
+          "outcome": "ok"
+        },
+        {
+          "test": "equal_rank_divergent_copies_choose_the_same_record_in_both_orders",
+          "outcome": "ok"
+        }
+      ],
+      "passed": 2,
+      "failed": 0,
+      "canonical_candidate_sha256": "6225059cc2c35eacd893741ddf7ee90ff8232184b067f385f65e852e3da1bd69",
+      "arm": null,
+      "raw_artifacts": {
+        "compile.stdout": {
+          "sha256": "c625de62f401fde1f8a0f467d25272d7d084a9c65df80c8f5298b21010c7687b",
+          "bytes": 132801,
+          "retained_privately": true
+        },
+        "compile.stderr": {
+          "sha256": "ab5d2889b6c3b0eb7e9f9a7104fc90d08400fc4c66b3e0aaeccec743dbcd0a08",
+          "bytes": 259,
+          "retained_privately": true
+        },
+        "test.stdout": {
+          "sha256": "58c0330bb808e95295e6eb8268b7b809253c939be6f3887a1d31c54cb405726f",
+          "bytes": 266,
+          "retained_privately": true
+        },
+        "test.stderr": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0,
+          "retained_privately": true
+        }
+      },
+      "compile": {
+        "exit_code": 0,
+        "timed_out": false,
+        "wall_s": 8.029980547999003,
+        "argv": [
+          "<toolchain>/cargo",
+          "test",
+          "--manifest-path",
+          "<harness>/Cargo.toml",
+          "--offline",
+          "--no-run",
+          "--message-format=json",
+          "--test",
+          "posthoc_equal_rank"
+        ],
+        "public_log": {
+          "path": "posthoc-execution-logs/reference-compile.log",
+          "sha256": "1beb8d00f11d870bac6737bb4b947effe15914bc4db80e7119f2796e44561d30",
+          "bytes": 170
+        }
+      },
+      "test": {
+        "exit_code": 0,
+        "timed_out": false,
+        "wall_s": 0.003459964000285254,
+        "argv": [
+          "<shared-target>/debug/deps/posthoc_equal_rank-47e5890e4a26801b",
+          "--test-threads=1"
+        ],
+        "public_log": {
+          "path": "posthoc-execution-logs/reference-test.log",
+          "sha256": "58c0330bb808e95295e6eb8268b7b809253c939be6f3887a1d31c54cb405726f",
+          "bytes": 266
+        }
+      }
+    },
+    {
+      "variant": "1-control",
+      "payload_sha256": "2f456d0674713936e337173f6144dcba0990ac118f33f0b30002f3b3481b4098",
+      "status": "completed",
+      "files": [
+        {
+          "path": "crates/gym/src/runs.rs",
+          "sha256": "a1a01ed6823dbb4936f5fb516e5be88a776fac847d0e905ae271ad1c7029a18a"
+        },
+        {
+          "path": "crates/gym/src/runs_beats_winner.rs",
+          "sha256": "e9720d27c69ef3d9357fa81cf87633d2de14122e5c3ff0756766ae145ca43991"
+        },
+        {
+          "path": "crates/gym/src/runs_microcoder.rs",
+          "sha256": "9defb9c012143e843d0540430643b37d0e70adff37c89d685514fd2562c7d0ff"
+        },
+        {
+          "path": "docs/coder/beat-fable-showcase.md",
+          "sha256": "f02a20cf4e2b34f2e2c50a27fd861cf7a5bc9c364badb7e0a2a2381555b2dfca"
+        },
+        {
+          "path": "docs/gym/terminal-bench-cli.md",
+          "sha256": "a9a5469cc69035cd13d19901a91e42e54e42db5b5055371f162d171985628a84"
+        }
+      ],
+      "resolved_lock_sha256": "5ada5ad89013d7f36e24f162e8f2182d673f77b33fa375e7834344ad85e3c705",
+      "resolved_external_packages_match_source_lock": true,
+      "gym_fresh": [
+        false
+      ],
+      "fixture_fresh": [
+        false
+      ],
+      "test_executable_sha256": "fcf81d4903d9d92622f6252c3adbc0aace446f6ade40bae686934e16341451b9",
+      "cases": [
+        {
+          "test": "conflicting_manifest_marks_resolve_the_same_way_in_both_orders",
+          "outcome": "ok"
+        },
+        {
+          "test": "equal_rank_divergent_copies_choose_the_same_record_in_both_orders",
+          "outcome": "ok"
+        }
+      ],
+      "passed": 2,
+      "failed": 0,
+      "canonical_candidate_sha256": "01527df4763524a8c19dc9f6098c261d901b446b881ee761742ccdd074c2761c",
+      "arm": "control",
+      "raw_artifacts": {
+        "compile.stdout": {
+          "sha256": "7745fb99fd4dfa7ad285b09e87d3f6e3845465b36df31d08a8740eba59268b75",
+          "bytes": 132801,
+          "retained_privately": true
+        },
+        "compile.stderr": {
+          "sha256": "d3f429e475d8755032b6dd5f5be983f5506717f3b48e3a11a91d09a4330cbf75",
+          "bytes": 259,
+          "retained_privately": true
+        },
+        "test.stdout": {
+          "sha256": "58c0330bb808e95295e6eb8268b7b809253c939be6f3887a1d31c54cb405726f",
+          "bytes": 266,
+          "retained_privately": true
+        },
+        "test.stderr": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0,
+          "retained_privately": true
+        }
+      },
+      "compile": {
+        "exit_code": 0,
+        "timed_out": false,
+        "wall_s": 7.880612158000076,
+        "argv": [
+          "<toolchain>/cargo",
+          "test",
+          "--manifest-path",
+          "<harness>/Cargo.toml",
+          "--offline",
+          "--no-run",
+          "--message-format=json",
+          "--test",
+          "posthoc_equal_rank"
+        ],
+        "public_log": {
+          "path": "posthoc-execution-logs/1-control-compile.log",
+          "sha256": "2273cfad2f54c822dcffcb9f14526fb408f9bd2a432319417cd2cfba43563ab0",
+          "bytes": 170
+        }
+      },
+      "test": {
+        "exit_code": 0,
+        "timed_out": false,
+        "wall_s": 0.003425740000238875,
+        "argv": [
+          "<shared-target>/debug/deps/posthoc_equal_rank-47e5890e4a26801b",
+          "--test-threads=1"
+        ],
+        "public_log": {
+          "path": "posthoc-execution-logs/1-control-test.log",
+          "sha256": "58c0330bb808e95295e6eb8268b7b809253c939be6f3887a1d31c54cb405726f",
+          "bytes": 266
+        }
+      }
+    },
+    {
+      "variant": "2-treatment",
+      "payload_sha256": "1800eb110cf1a960f76ca8bc5cbff61495ceebeb5f601eddecc741de73fc8506",
+      "status": "completed",
+      "files": [
+        {
+          "path": "crates/gym/src/runs.rs",
+          "sha256": "19132ba7c82eaccba708f54553760362e8e16c3593565fb483ec0542a3e790a8"
+        },
+        {
+          "path": "crates/gym/src/runs_beats_winner.rs",
+          "sha256": "c62618cb657940683d81079d94fb46f7b76a7a2f56f998f6ae41a40e11f1d9fd"
+        },
+        {
+          "path": "crates/gym/src/runs_microcoder.rs",
+          "sha256": "3f333dc8eb7637cdc3af352609fd13e950181ddb3e200292c0a575e54fed48d7"
+        },
+        {
+          "path": "docs/coder/beat-fable-showcase.md",
+          "sha256": "d3c8c46660ea50d33674321e5cc92223c83dc2ef13806c2c4411eede9c986ebb"
+        },
+        {
+          "path": "docs/gym/terminal-bench-cli.md",
+          "sha256": "5ed7e3fcc3b167acc651c68a4976ac98e02071cf52274daff871b86c4594b109"
+        }
+      ],
+      "resolved_lock_sha256": "5ada5ad89013d7f36e24f162e8f2182d673f77b33fa375e7834344ad85e3c705",
+      "resolved_external_packages_match_source_lock": true,
+      "gym_fresh": [
+        false
+      ],
+      "fixture_fresh": [
+        false
+      ],
+      "test_executable_sha256": "57798499611d1ad2e21feac9f1ed0511f5454c101f776d3ad3307a962108f7f5",
+      "cases": [
+        {
+          "test": "conflicting_manifest_marks_resolve_the_same_way_in_both_orders",
+          "outcome": "ok"
+        },
+        {
+          "test": "equal_rank_divergent_copies_choose_the_same_record_in_both_orders",
+          "outcome": "ok"
+        }
+      ],
+      "passed": 2,
+      "failed": 0,
+      "canonical_candidate_sha256": "14015444813585598407f1aa1553b13ff2fa56417e69f2a97d50d5853218b4e2",
+      "arm": "briefing",
+      "raw_artifacts": {
+        "compile.stdout": {
+          "sha256": "bd7df7e4e30255468c4d784678ccc5f04b5a3cf6f6a8eaf2a201f90e87203fa1",
+          "bytes": 132801,
+          "retained_privately": true
+        },
+        "compile.stderr": {
+          "sha256": "2865856bda866ae24e5bab366cca5c155e1ed214974ce6e4fc56f449551eb31e",
+          "bytes": 259,
+          "retained_privately": true
+        },
+        "test.stdout": {
+          "sha256": "58c0330bb808e95295e6eb8268b7b809253c939be6f3887a1d31c54cb405726f",
+          "bytes": 266,
+          "retained_privately": true
+        },
+        "test.stderr": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0,
+          "retained_privately": true
+        }
+      },
+      "compile": {
+        "exit_code": 0,
+        "timed_out": false,
+        "wall_s": 8.131861822999781,
+        "argv": [
+          "<toolchain>/cargo",
+          "test",
+          "--manifest-path",
+          "<harness>/Cargo.toml",
+          "--offline",
+          "--no-run",
+          "--message-format=json",
+          "--test",
+          "posthoc_equal_rank"
+        ],
+        "public_log": {
+          "path": "posthoc-execution-logs/2-treatment-compile.log",
+          "sha256": "3c8ac4ca0f097c813fee52a1b426f0a449cd19f0b8fb6f2e53f3b3a87f383acd",
+          "bytes": 170
+        }
+      },
+      "test": {
+        "exit_code": 0,
+        "timed_out": false,
+        "wall_s": 0.0035437309998087585,
+        "argv": [
+          "<shared-target>/debug/deps/posthoc_equal_rank-47e5890e4a26801b",
+          "--test-threads=1"
+        ],
+        "public_log": {
+          "path": "posthoc-execution-logs/2-treatment-test.log",
+          "sha256": "58c0330bb808e95295e6eb8268b7b809253c939be6f3887a1d31c54cb405726f",
+          "bytes": 266
+        }
+      }
+    },
+    {
+      "variant": "3-treatment",
+      "payload_sha256": "2603c57d23e1895a9dc362750f121ca3887ed8ed29cce2123cc344a8846af129",
+      "status": "completed",
+      "files": [
+        {
+          "path": "crates/gym/src/runs.rs",
+          "sha256": "3ca1f49d7a9c615296c7b356c9aa8875aa71a49c2a99218ce70d4c1a20eb87d1"
+        },
+        {
+          "path": "crates/gym/src/runs_beats_winner.rs",
+          "sha256": "2faf9db1e5e9c0b316f2a033c6a623eb6edf75318aaeb3dbf4fda216cb46f6c3"
+        },
+        {
+          "path": "crates/gym/src/runs_microcoder.rs",
+          "sha256": "e2787035dd4632eafc86970a5a1bcef1f8b33e3e7624459d662a4d0fdba716c7"
+        },
+        {
+          "path": "docs/coder/beat-fable-showcase.md",
+          "sha256": "00c8ef2b77f4d649f6650df2ddd2e63b82b942057932c501c2f45f4e95cd373b"
+        },
+        {
+          "path": "docs/gym/terminal-bench-cli.md",
+          "sha256": "de0b5dc6e241412495da86f8beda6c5bd80f33ab3584d486837f69719b4e0e9b"
+        }
+      ],
+      "resolved_lock_sha256": "5ada5ad89013d7f36e24f162e8f2182d673f77b33fa375e7834344ad85e3c705",
+      "resolved_external_packages_match_source_lock": true,
+      "gym_fresh": [
+        false
+      ],
+      "fixture_fresh": [
+        false
+      ],
+      "test_executable_sha256": "52cbc85d8fdbfa24987d2ec519c0f132c60983211a781ad6f8368e1818bed6e6",
+      "cases": [
+        {
+          "test": "conflicting_manifest_marks_resolve_the_same_way_in_both_orders",
+          "outcome": "ok"
+        },
+        {
+          "test": "equal_rank_divergent_copies_choose_the_same_record_in_both_orders",
+          "outcome": "ok"
+        }
+      ],
+      "passed": 2,
+      "failed": 0,
+      "canonical_candidate_sha256": "bd132b02949c11fd9729f0c160a2546496e1ec8697b70fce84b669aa3ae646bf",
+      "arm": "briefing",
+      "raw_artifacts": {
+        "compile.stdout": {
+          "sha256": "861681aeee98beafd6bcc06217a6aac60f991d673bdf98cd8a06a761f72865c7",
+          "bytes": 132801,
+          "retained_privately": true
+        },
+        "compile.stderr": {
+          "sha256": "090e16fa22f905d5a1c7e4e5ece3f19f21cb0d0246112380390b42c9d00d9c41",
+          "bytes": 259,
+          "retained_privately": true
+        },
+        "test.stdout": {
+          "sha256": "58c0330bb808e95295e6eb8268b7b809253c939be6f3887a1d31c54cb405726f",
+          "bytes": 266,
+          "retained_privately": true
+        },
+        "test.stderr": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0,
+          "retained_privately": true
+        }
+      },
+      "compile": {
+        "exit_code": 0,
+        "timed_out": false,
+        "wall_s": 7.981038526000702,
+        "argv": [
+          "<toolchain>/cargo",
+          "test",
+          "--manifest-path",
+          "<harness>/Cargo.toml",
+          "--offline",
+          "--no-run",
+          "--message-format=json",
+          "--test",
+          "posthoc_equal_rank"
+        ],
+        "public_log": {
+          "path": "posthoc-execution-logs/3-treatment-compile.log",
+          "sha256": "cc67751141fa6c2dae3c6c947979afc40e1382165d3fdfbd205a5af665f32f4d",
+          "bytes": 170
+        }
+      },
+      "test": {
+        "exit_code": 0,
+        "timed_out": false,
+        "wall_s": 0.003476023000985151,
+        "argv": [
+          "<shared-target>/debug/deps/posthoc_equal_rank-47e5890e4a26801b",
+          "--test-threads=1"
+        ],
+        "public_log": {
+          "path": "posthoc-execution-logs/3-treatment-test.log",
+          "sha256": "58c0330bb808e95295e6eb8268b7b809253c939be6f3887a1d31c54cb405726f",
+          "bytes": 266
+        }
+      }
+    },
+    {
+      "variant": "4-control",
+      "payload_sha256": "20cd5947a90cfb806e3c42bf1b0ef8e06713db4a50ac9e6ab0c1486b0edcb803",
+      "status": "completed",
+      "files": [
+        {
+          "path": "crates/gym/src/runs.rs",
+          "sha256": "a0533063ad5369eadcb9db83b29bd83901fb249e512928ee8abc4d995b880e97"
+        },
+        {
+          "path": "crates/gym/src/runs_beats_winner.rs",
+          "sha256": "6edec3b95284259f6b90277e5bd7bbd1a12e3775ed9af42864aeac9da21b35b8"
+        },
+        {
+          "path": "crates/gym/src/runs_microcoder.rs",
+          "sha256": "83709ad15b5aadca4b371ef03715f1a07d4e18a9b00d9fa5aa1bc7882d663465"
+        },
+        {
+          "path": "docs/coder/beat-fable-showcase.md",
+          "sha256": "a062679fd73ec7be7fffbd46352a98cd1003466925112537b0304e2ad90267c5"
+        },
+        {
+          "path": "docs/gym/terminal-bench-cli.md",
+          "sha256": "015afb9c13d6141252392af8974d3cca53c76965142c722a4317f5f88ff8cfdb"
+        }
+      ],
+      "resolved_lock_sha256": "5ada5ad89013d7f36e24f162e8f2182d673f77b33fa375e7834344ad85e3c705",
+      "resolved_external_packages_match_source_lock": true,
+      "gym_fresh": [
+        false
+      ],
+      "fixture_fresh": [
+        false
+      ],
+      "test_executable_sha256": "ad4ee4dc6aa35e4262428c01efc8cbb561b4743c2c7e2b082bd7ad3bcbb8675f",
+      "cases": [
+        {
+          "test": "conflicting_manifest_marks_resolve_the_same_way_in_both_orders",
+          "outcome": "FAILED"
+        },
+        {
+          "test": "equal_rank_divergent_copies_choose_the_same_record_in_both_orders",
+          "outcome": "FAILED"
+        }
+      ],
+      "passed": 0,
+      "failed": 2,
+      "canonical_candidate_sha256": "e1df668f448bd0ac3dc9407f540fc90445f23bf94886270f2516de15beb6547a",
+      "arm": "control",
+      "raw_artifacts": {
+        "compile.stdout": {
+          "sha256": "99939e32ed106c5bdf579b7ff60aad2e22c76345dc93f222d5b7eafadf9b57bb",
+          "bytes": 132801,
+          "retained_privately": true
+        },
+        "compile.stderr": {
+          "sha256": "5089759360ef58f36e7c34e74506657f030d0b02baaf9f878a597c0896b3c5c5",
+          "bytes": 259,
+          "retained_privately": true
+        },
+        "test.stdout": {
+          "sha256": "ef46dc934e016236fb20c5523c61ebbbded3ba1c7570e62edb249814771202ed",
+          "bytes": 1235,
+          "retained_privately": true
+        },
+        "test.stderr": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0,
+          "retained_privately": true
+        }
+      },
+      "compile": {
+        "exit_code": 0,
+        "timed_out": false,
+        "wall_s": 7.729095652999604,
+        "argv": [
+          "<toolchain>/cargo",
+          "test",
+          "--manifest-path",
+          "<harness>/Cargo.toml",
+          "--offline",
+          "--no-run",
+          "--message-format=json",
+          "--test",
+          "posthoc_equal_rank"
+        ],
+        "public_log": {
+          "path": "posthoc-execution-logs/4-control-compile.log",
+          "sha256": "6fd7c4700d1c8f64e5b49bd0a2ec1484de41c011dbf7972e5d54dc5db162c64c",
+          "bytes": 170
+        }
+      },
+      "test": {
+        "exit_code": 101,
+        "timed_out": false,
+        "wall_s": 0.003425720000450383,
+        "argv": [
+          "<shared-target>/debug/deps/posthoc_equal_rank-47e5890e4a26801b",
+          "--test-threads=1"
+        ],
+        "public_log": {
+          "path": "posthoc-execution-logs/4-control-test.log",
+          "sha256": "8b98df3b0b30a68b81264876daab518fb47791eda81942700ae4a9982a64249c",
+          "bytes": 1169
+        }
+      }
+    },
+    {
+      "variant": "5-control",
+      "payload_sha256": "3dbedc9cc80a12dc80eab46af6d3822a8d2d3b08f24d7a45514f8ff40269da6e",
+      "status": "completed",
+      "files": [
+        {
+          "path": "crates/gym/src/runs.rs",
+          "sha256": "6302e8029e12aff06ac4943b4d1ba7f2b6496ead722e922cfaa6cac5ce0bd061"
+        },
+        {
+          "path": "crates/gym/src/runs_beats_winner.rs",
+          "sha256": "f75d28b6c89591fe0d74d39b9dfd068d43649c1edb5bb8b5a3275d32f7a824bb"
+        },
+        {
+          "path": "crates/gym/src/runs_microcoder.rs",
+          "sha256": "b20db9977aeabe8385ae0dd8dd9d8d742e5954aea6864e48f130598415e3206e"
+        },
+        {
+          "path": "docs/coder/beat-fable-showcase.md",
+          "sha256": "ce687536db193fa3749bea71a89e71d030930a998354c487125119972efeda96"
+        },
+        {
+          "path": "docs/gym/terminal-bench-cli.md",
+          "sha256": "176a4cbde2bbfdccdfd6cb6f85020e0761194bdac0f95051f166c24f7b5250b1"
+        }
+      ],
+      "resolved_lock_sha256": "5ada5ad89013d7f36e24f162e8f2182d673f77b33fa375e7834344ad85e3c705",
+      "resolved_external_packages_match_source_lock": true,
+      "gym_fresh": [
+        false
+      ],
+      "fixture_fresh": [
+        false
+      ],
+      "test_executable_sha256": "43c957217fefa09abdc58ea963b485fee9edb0a374195d5215e1a625ba351344",
+      "cases": [
+        {
+          "test": "conflicting_manifest_marks_resolve_the_same_way_in_both_orders",
+          "outcome": "ok"
+        },
+        {
+          "test": "equal_rank_divergent_copies_choose_the_same_record_in_both_orders",
+          "outcome": "ok"
+        }
+      ],
+      "passed": 2,
+      "failed": 0,
+      "canonical_candidate_sha256": "6b496ddcaa2aae5375733dea6cf102c61d79197ed09ec1162fe2ad07adc653ff",
+      "arm": "control",
+      "raw_artifacts": {
+        "compile.stdout": {
+          "sha256": "eed1733dc23e09de7b3382cef59261176cc3041fc2da4af885e2fcd929d7dbe5",
+          "bytes": 132801,
+          "retained_privately": true
+        },
+        "compile.stderr": {
+          "sha256": "3c4d591a65178d5559111d811a3ca85e557861079ceb17a96b00e8624994996d",
+          "bytes": 259,
+          "retained_privately": true
+        },
+        "test.stdout": {
+          "sha256": "58c0330bb808e95295e6eb8268b7b809253c939be6f3887a1d31c54cb405726f",
+          "bytes": 266,
+          "retained_privately": true
+        },
+        "test.stderr": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0,
+          "retained_privately": true
+        }
+      },
+      "compile": {
+        "exit_code": 0,
+        "timed_out": false,
+        "wall_s": 7.827713282000332,
+        "argv": [
+          "<toolchain>/cargo",
+          "test",
+          "--manifest-path",
+          "<harness>/Cargo.toml",
+          "--offline",
+          "--no-run",
+          "--message-format=json",
+          "--test",
+          "posthoc_equal_rank"
+        ],
+        "public_log": {
+          "path": "posthoc-execution-logs/5-control-compile.log",
+          "sha256": "6cab7b38c0cf5118a207fee50e08b07d04a02d1230cedeaee4d88755d0947479",
+          "bytes": 170
+        }
+      },
+      "test": {
+        "exit_code": 0,
+        "timed_out": false,
+        "wall_s": 0.0034113140009139897,
+        "argv": [
+          "<shared-target>/debug/deps/posthoc_equal_rank-47e5890e4a26801b",
+          "--test-threads=1"
+        ],
+        "public_log": {
+          "path": "posthoc-execution-logs/5-control-test.log",
+          "sha256": "58c0330bb808e95295e6eb8268b7b809253c939be6f3887a1d31c54cb405726f",
+          "bytes": 266
+        }
+      }
+    },
+    {
+      "variant": "6-treatment",
+      "payload_sha256": "72482806573f945347024af4afc2ecf162708fc6a5643ff79e8aec7dd10e6e61",
+      "status": "completed",
+      "files": [
+        {
+          "path": "crates/gym/src/runs.rs",
+          "sha256": "4b8d704b69723d518ab01f7bf1deb36cbb412337ad348de6b5200b6987e42ba9"
+        },
+        {
+          "path": "crates/gym/src/runs_beats_winner.rs",
+          "sha256": "a02458474d22d0a84029a192854b05f2c59834504e05f91b9edd0761982facdc"
+        },
+        {
+          "path": "crates/gym/src/runs_microcoder.rs",
+          "sha256": "e1ba198ad9e28b08ef4e2030d31e32953287284d117ea493e4a2bd6664b7bacb"
+        },
+        {
+          "path": "docs/coder/beat-fable-showcase.md",
+          "sha256": "dda4c7c0e23135b35ac48ef1eea741f807f1f0e29b7feaa7ac4572704290455d"
+        },
+        {
+          "path": "docs/gym/terminal-bench-cli.md",
+          "sha256": "4ad4d0fed86c6d19360c2be8bc380eb8e4df859286236af0ecefa22467f1bfbe"
+        }
+      ],
+      "resolved_lock_sha256": "5ada5ad89013d7f36e24f162e8f2182d673f77b33fa375e7834344ad85e3c705",
+      "resolved_external_packages_match_source_lock": true,
+      "gym_fresh": [
+        false
+      ],
+      "fixture_fresh": [
+        false
+      ],
+      "test_executable_sha256": "6173bb812e3d0b854f4282c5d7d882c172e447c6a3b05b0dcafd94e6893701b8",
+      "cases": [
+        {
+          "test": "conflicting_manifest_marks_resolve_the_same_way_in_both_orders",
+          "outcome": "ok"
+        },
+        {
+          "test": "equal_rank_divergent_copies_choose_the_same_record_in_both_orders",
+          "outcome": "FAILED"
+        }
+      ],
+      "passed": 1,
+      "failed": 1,
+      "canonical_candidate_sha256": "3166c17671cd1ec23e37cf45ce497017ae6bc482f301ac3f4038286c654a1960",
+      "arm": "briefing",
+      "raw_artifacts": {
+        "compile.stdout": {
+          "sha256": "33e41b4ff55a6ec2cc2488e6bfa7753fbb99b878a2a9632c2ed67ddd4fc8d24a",
+          "bytes": 132801,
+          "retained_privately": true
+        },
+        "compile.stderr": {
+          "sha256": "abe6d72d313c65b72cafdbb56bad7dd691e453e89e71154f3bcebfc24fb9f6f3",
+          "bytes": 259,
+          "retained_privately": true
+        },
+        "test.stdout": {
+          "sha256": "f6e6464961fedef77781277a679b8a24d28b96c281d1d1fd186c6d11666ec10f",
+          "bytes": 768,
+          "retained_privately": true
+        },
+        "test.stderr": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0,
+          "retained_privately": true
+        }
+      },
+      "compile": {
+        "exit_code": 0,
+        "timed_out": false,
+        "wall_s": 8.130855204999534,
+        "argv": [
+          "<toolchain>/cargo",
+          "test",
+          "--manifest-path",
+          "<harness>/Cargo.toml",
+          "--offline",
+          "--no-run",
+          "--message-format=json",
+          "--test",
+          "posthoc_equal_rank"
+        ],
+        "public_log": {
+          "path": "posthoc-execution-logs/6-treatment-compile.log",
+          "sha256": "13ebe008be76705795c526a015335cad7aca5275015cf5e0a1852709de92441e",
+          "bytes": 170
+        }
+      },
+      "test": {
+        "exit_code": 101,
+        "timed_out": false,
+        "wall_s": 0.00343610100026126,
+        "argv": [
+          "<shared-target>/debug/deps/posthoc_equal_rank-47e5890e4a26801b",
+          "--test-threads=1"
+        ],
+        "public_log": {
+          "path": "posthoc-execution-logs/6-treatment-test.log",
+          "sha256": "b9ee5c13935f78dfa790e704e1d00eb413437c7aef4006a251f3031a4fd51d78",
+          "bytes": 735
+        }
+      }
+    },
+    {
+      "variant": "7-treatment",
+      "payload_sha256": "9ad08b1547ddb50a14fa51bc68c828d734ea68b59cbb172ee8c07f89406869af",
+      "status": "completed",
+      "files": [
+        {
+          "path": "crates/gym/src/runs.rs",
+          "sha256": "6470861d4e61f271b0edfa75001151ecc67d18529cd3d309fc970a2060240d5a"
+        },
+        {
+          "path": "crates/gym/src/runs_beats_winner.rs",
+          "sha256": "def72c5b7a71e11f41ad5e019c8b3f65e5f4d17d7b4138969c2754d1565ab834"
+        },
+        {
+          "path": "crates/gym/src/runs_microcoder.rs",
+          "sha256": "5dfb3c284385922bd7fe51a5d847036c595b71a5af892b057f916a4c860290ac"
+        },
+        {
+          "path": "docs/coder/beat-fable-showcase.md",
+          "sha256": "6f6c13fa52c72b7816eee0ccc015e4e1dd491a6e233f54aa4f297fe838f61b1c"
+        },
+        {
+          "path": "docs/gym/terminal-bench-cli.md",
+          "sha256": "fb638a19b5c4f4712adf0090a0d0d6afba42c2bd075136af7940f60b599d7f65"
+        }
+      ],
+      "resolved_lock_sha256": "5ada5ad89013d7f36e24f162e8f2182d673f77b33fa375e7834344ad85e3c705",
+      "resolved_external_packages_match_source_lock": true,
+      "gym_fresh": [
+        false
+      ],
+      "fixture_fresh": [
+        false
+      ],
+      "test_executable_sha256": "da04d4305d787a1fc00f581ae32e822c50215e792060fcaf732e289b72c661b4",
+      "cases": [
+        {
+          "test": "conflicting_manifest_marks_resolve_the_same_way_in_both_orders",
+          "outcome": "FAILED"
+        },
+        {
+          "test": "equal_rank_divergent_copies_choose_the_same_record_in_both_orders",
+          "outcome": "FAILED"
+        }
+      ],
+      "passed": 0,
+      "failed": 2,
+      "canonical_candidate_sha256": "d8680562a7ce59f41fc4a49bd41c10cf893ec4a55c4e39ece36aac5fcee077cc",
+      "arm": "briefing",
+      "raw_artifacts": {
+        "compile.stdout": {
+          "sha256": "71be6f2176f33464b2b8f762db4650ea612551c12fb65a5bb0eaef486db0d988",
+          "bytes": 132801,
+          "retained_privately": true
+        },
+        "compile.stderr": {
+          "sha256": "68268038b795104a0cafc0e8d8f9e8545d6bf39120e7f232080ad1e5c73f12d6",
+          "bytes": 259,
+          "retained_privately": true
+        },
+        "test.stdout": {
+          "sha256": "282ade4d099ce129d2971448dbcc33ebaf36f56ba0e5dfe749f5faa981df96f2",
+          "bytes": 1235,
+          "retained_privately": true
+        },
+        "test.stderr": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0,
+          "retained_privately": true
+        }
+      },
+      "compile": {
+        "exit_code": 0,
+        "timed_out": false,
+        "wall_s": 7.827674011999989,
+        "argv": [
+          "<toolchain>/cargo",
+          "test",
+          "--manifest-path",
+          "<harness>/Cargo.toml",
+          "--offline",
+          "--no-run",
+          "--message-format=json",
+          "--test",
+          "posthoc_equal_rank"
+        ],
+        "public_log": {
+          "path": "posthoc-execution-logs/7-treatment-compile.log",
+          "sha256": "624bce1cafe9a931812a7190fb4162551238dca7e27299efda2f340447505f99",
+          "bytes": 170
+        }
+      },
+      "test": {
+        "exit_code": 101,
+        "timed_out": false,
+        "wall_s": 0.003502405999824987,
+        "argv": [
+          "<shared-target>/debug/deps/posthoc_equal_rank-47e5890e4a26801b",
+          "--test-threads=1"
+        ],
+        "public_log": {
+          "path": "posthoc-execution-logs/7-treatment-test.log",
+          "sha256": "8b98df3b0b30a68b81264876daab518fb47791eda81942700ae4a9982a64249c",
+          "bytes": 1169
+        }
+      }
+    },
+    {
+      "variant": "8-control",
+      "payload_sha256": "8483553d8f27838c5db19769000d9bec6167fc83f13a1b9cfd2ee5c413cf72b0",
+      "status": "completed",
+      "files": [
+        {
+          "path": "crates/gym/src/runs.rs",
+          "sha256": "494f980b92bdde4e02795a966acb249a38b1674c51e0cace3b4a5a9c63a30ec8"
+        },
+        {
+          "path": "crates/gym/src/runs_beats_winner.rs",
+          "sha256": "62539d36eb5e70522667efd9c0b569ef3a188d36afafca5b96d7aef7954d6786"
+        },
+        {
+          "path": "crates/gym/src/runs_microcoder.rs",
+          "sha256": "0f9b32a48ba9aaa2ec4468fd6d7bd1b4c9971146d78db8756fa79ffe4fa62b70"
+        },
+        {
+          "path": "docs/coder/beat-fable-showcase.md",
+          "sha256": "cc654b2443e0f8667a7f969c7a50f780603be82dd3861a3d3d2c6c66a3781642"
+        },
+        {
+          "path": "docs/gym/terminal-bench-cli.md",
+          "sha256": "df08a8b3ac700fbfa699f591c7ca167871be68785094292b260f686e322c6ec1"
+        }
+      ],
+      "resolved_lock_sha256": "5ada5ad89013d7f36e24f162e8f2182d673f77b33fa375e7834344ad85e3c705",
+      "resolved_external_packages_match_source_lock": true,
+      "gym_fresh": [
+        false
+      ],
+      "fixture_fresh": [
+        false
+      ],
+      "test_executable_sha256": "7f5c36e554c0c26f4d810ee73c495615035ca0129c2c7be133ce243a579b44c0",
+      "cases": [
+        {
+          "test": "conflicting_manifest_marks_resolve_the_same_way_in_both_orders",
+          "outcome": "ok"
+        },
+        {
+          "test": "equal_rank_divergent_copies_choose_the_same_record_in_both_orders",
+          "outcome": "ok"
+        }
+      ],
+      "passed": 2,
+      "failed": 0,
+      "canonical_candidate_sha256": "8e367333412579963fcc2eebdc05dcad4cd3a0f6fc1b83b158eec18bc0736f47",
+      "arm": "control",
+      "raw_artifacts": {
+        "compile.stdout": {
+          "sha256": "c11433e79f377068a1757714784b424f37781b5fc0f45e384729ccc4c4e3de82",
+          "bytes": 132801,
+          "retained_privately": true
+        },
+        "compile.stderr": {
+          "sha256": "07f22380678578b3ef93daecad94315ee9e813c313b46f610725ba5bf5e24ff5",
+          "bytes": 259,
+          "retained_privately": true
+        },
+        "test.stdout": {
+          "sha256": "58c0330bb808e95295e6eb8268b7b809253c939be6f3887a1d31c54cb405726f",
+          "bytes": 266,
+          "retained_privately": true
+        },
+        "test.stderr": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0,
+          "retained_privately": true
+        }
+      },
+      "compile": {
+        "exit_code": 0,
+        "timed_out": false,
+        "wall_s": 8.279997339999682,
+        "argv": [
+          "<toolchain>/cargo",
+          "test",
+          "--manifest-path",
+          "<harness>/Cargo.toml",
+          "--offline",
+          "--no-run",
+          "--message-format=json",
+          "--test",
+          "posthoc_equal_rank"
+        ],
+        "public_log": {
+          "path": "posthoc-execution-logs/8-control-compile.log",
+          "sha256": "00ab942aa006a380ee56c3bfdf0d7eae4d34c41503e15216768722465a3c4cdc",
+          "bytes": 170
+        }
+      },
+      "test": {
+        "exit_code": 0,
+        "timed_out": false,
+        "wall_s": 0.003452592000030563,
+        "argv": [
+          "<shared-target>/debug/deps/posthoc_equal_rank-47e5890e4a26801b",
+          "--test-threads=1"
+        ],
+        "public_log": {
+          "path": "posthoc-execution-logs/8-control-test.log",
+          "sha256": "58c0330bb808e95295e6eb8268b7b809253c939be6f3887a1d31c54cb405726f",
+          "bytes": 266
+        }
+      }
+    }
+  ],
+  "limitations": [
+    "The two cases were prepared after candidate review and are not an independent random sample of possible defects.",
+    "Each variant is executed once; this measures the fixed counterexamples, not general reliability.",
+    "Assertions stop at the first mismatch in each test. A failing row does not enumerate every affected field or reader.",
+    "The original ordinary suite and five-case acceptance were not rerun; their retained scores are unchanged.",
+    "No source, fixture, candidate, or registered gate was repaired during this diagnostic. No model calls were made."
+  ]
+}
