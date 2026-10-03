@@ -180,6 +180,36 @@ impl Run {
     }
 }
 
+/// Keep child processes away from inherited stores, credentials, and the
+/// macOS login keychain. Only the fixture's home and system tools are used.
+fn isolated_command(exe: &str, home: &Path) -> Command {
+    std::fs::create_dir_all(home.join("tmp")).unwrap();
+    let mut command = Command::new(exe);
+    command
+        .env_clear()
+        .env("HOME", home)
+        .env("TMPDIR", home.join("tmp"))
+        .env("PATH", "/usr/bin:/bin")
+        .env("OPENAGENTS_KEY_STORE", "file");
+    command
+}
+
+#[test]
+fn chat_command_has_only_fixture_environment() {
+    let home = tempfile::tempdir().unwrap();
+    let command = isolated_command(env!("CARGO_BIN_EXE_openagents"), home.path());
+    let vars: std::collections::BTreeMap<_, _> = command
+        .get_envs()
+        .map(|(key, value)| (key.to_str().unwrap(), value.unwrap().to_str().unwrap()))
+        .collect();
+    assert_eq!(vars.len(), 4);
+    assert_eq!(vars["HOME"], home.path().to_str().unwrap());
+    assert_eq!(vars["TMPDIR"], home.path().join("tmp").to_str().unwrap());
+    assert_eq!(vars["OPENAGENTS_KEY_STORE"], "file");
+    assert_eq!(vars["PATH"], "/usr/bin:/bin");
+    assert!(home.path().join("tmp").is_dir());
+}
+
 /// `openagents ARGS` with a temporary HOME and the fixture relay and worker.
 async fn openagents(home: &Path, relay: &str, worker: &str, args: &[&str]) -> Run {
     let exe = env!("CARGO_BIN_EXE_openagents");
@@ -188,13 +218,9 @@ async fn openagents(home: &Path, relay: &str, worker: &str, args: &[&str]) -> Ru
     tokio::task::spawn_blocking(move || {
         // The command runs outside any Git checkout: a coding reply then
         // never starts Coder in this repository.
-        let output = Command::new(exe)
+        let output = isolated_command(exe, &home)
             .args(&args)
             .current_dir(&home)
-            .env("HOME", &home)
-            .env("TMPDIR", home.join("tmp"))
-            .env_remove("OPENAGENTS_CHAT_HOME")
-            .env_remove("XDG_RUNTIME_DIR")
             .env("OPENAGENTS_CHAT_RELAY", &relay)
             .env("OPENAGENTS_CHAT_WORKER", &worker)
             .stdin(std::process::Stdio::null())
@@ -256,8 +282,22 @@ async fn chat_streams_routes_continues_threads_and_exports_atif() {
             .get("project")
             .is_none()
     );
-    // The scratch store is its own, and nothing was written under HOME.
-    assert!(!home.path().join(".openagents").exists());
+    // Scratch chat does not create a persistent chat store. Startup may
+    // create the hosted Jev credential, but only inside this test's HOME.
+    assert!(!home.path().join(".openagents/chat").exists());
+    let decision = home.path().join(".openagents/decision.key");
+    let key = std::fs::read_to_string(&decision).unwrap();
+    assert!(
+        SecretKey::from_byte_array(
+            (0..32)
+                .map(|at| u8::from_str_radix(&key[at * 2..at * 2 + 2], 16).unwrap())
+                .collect::<Vec<_>>()
+                .try_into()
+                .unwrap()
+        )
+        .is_ok()
+    );
+    assert!(!phone.stdout.contains(key.trim()) && !phone.stderr.contains(key.trim()));
 
     // A streamed general answer, in this command's own store.
     let haiku = run!("--json", "chat", "--local", "Write a haiku about rain");
@@ -692,9 +732,9 @@ async fn settings_change_the_local_run_and_the_defaults_change_nothing() {
 async fn live_chat_answers_from_product_knowledge() {
     let home = tempfile::tempdir().unwrap();
     let exe = env!("CARGO_BIN_EXE_openagents");
-    let output = Command::new(exe)
+    let output = isolated_command(exe, home.path())
+        .current_dir(home.path())
         .args(["--json", "chat", "--scratch", "How do I connect a phone"])
-        .env("HOME", home.path())
         .env_remove("OPENAGENTS_CHAT_RELAY")
         .env_remove("OPENAGENTS_CHAT_WORKER")
         .output()
