@@ -60,7 +60,7 @@ pub mod settings;
 pub mod shadow;
 pub mod spare;
 pub mod steer;
-pub(crate) mod targets;
+pub mod targets;
 pub use targets::facts as background_facts;
 pub mod usage;
 pub mod view;
@@ -1324,11 +1324,38 @@ fn read_identities(dir: &Path) -> Result<(Vec<Identity>, u64), Error> {
     Ok((identities, complete as u64))
 }
 
+/// How many times a lock-free read reopens a file a writer replaced
+/// between the read's open and its identity check.
+const REPLACED_RETRIES: u32 = 200;
+
+/// [`private_open`] for a file writers replace by rename while readers hold
+/// no lock (a task file). A writer that renames a new file over `path`
+/// between this open and its identity check makes the path name a
+/// different file than the one opened: that is a replacement, not an
+/// unsafe path, while the path is still a regular file, so the read opens
+/// it again (#10301, #10355). A path that stays unsafe is still refused.
+fn open_replaced_file(path: &Path) -> Result<File, Error> {
+    let mut attempt = 0;
+    loop {
+        match private_open(path, false, false) {
+            Err(Error::UnsafePath)
+                if attempt < REPLACED_RETRIES
+                    && std::fs::symlink_metadata(path)
+                        .is_ok_and(|meta| meta.is_file() && !meta.file_type().is_symlink()) =>
+            {
+                attempt += 1;
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            other => return other,
+        }
+    }
+}
+
 /// Read and validate the task file at `path` for task `id`: replay its
 /// commands and owner events in sequence order and compare the task and
 /// every receipt. `None` when the file does not exist.
 fn read_task_file(path: &Path, id: &str) -> Result<Option<TaskFile>, Error> {
-    let file = match private_open(path, false, false) {
+    let file = match open_replaced_file(path) {
         Ok(file) => file,
         Err(Error::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(error) => return Err(error),

@@ -1400,6 +1400,49 @@ fn full_access(grant: &[u8]) -> Vec<u8> {
     serde_json::to_vec(&grant).unwrap()
 }
 
+/// A full-access run on a host whose every build slot is taken still
+/// starts, building in its worktree (#10301): refusing it read as "another
+/// process holds the task store lock" when more runs than slots started.
+#[tokio::test]
+async fn full_access_starts_when_every_build_slot_is_taken() {
+    let (_root, store, grant) = fixture();
+    let workspace = Store::open(&store)
+        .unwrap()
+        .show("fixture")
+        .unwrap()
+        .intent
+        .workspace
+        .path;
+    let common = std::process::Command::new("git")
+        .args(["rev-parse", "--path-format=absolute", "--git-common-dir"])
+        .current_dir(&workspace)
+        .output()
+        .unwrap();
+    let common = std::path::PathBuf::from(String::from_utf8_lossy(&common.stdout).trim());
+    let store_dir = store.canonicalize().unwrap();
+    let mut held = Vec::new();
+    while let Ok(lease) = coder::task::targets::Lease::acquire(&store_dir, &common) {
+        held.push(lease);
+    }
+    assert!(!held.is_empty());
+    let host = Host::admit(&store, &full_access(&grant)).await.unwrap();
+    let built = host
+        .command(
+            "printf %s \"${CARGO_TARGET_DIR:-worktree}\"",
+            Duration::from_secs(20),
+        )
+        .await
+        .unwrap();
+    assert_eq!(built.exit, Some(0), "{}", built.output);
+    assert!(
+        held.iter()
+            .all(|lease| !built.output.contains(&*lease.path.to_string_lossy())),
+        "{}",
+        built.output
+    );
+    host.finish("fixture_complete", false, json!({})).unwrap();
+}
+
 /// The `fix-git` case (#10247): a full-access command, and a whole coding
 /// agent approving its own tools, `cd` into the checkout the worktree was
 /// made from and commit or merge there. Every write there fails and the

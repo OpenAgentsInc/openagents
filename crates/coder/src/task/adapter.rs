@@ -777,11 +777,11 @@ impl Host {
         };
         // Every access that builds takes a slot, so its builds stay in the
         // slot budget instead of the worktree (#10293); a run under the
-        // boundary has no toolchain to build with.
+        // boundary has no toolchain to build with. A run that finds every
+        // slot taken builds in its worktree, as it did before it had slots:
+        // more runs than slots is normal on a busy host, and refusing it
+        // read as a busy task store (#10301).
         let target = match configuration.access {
-            Access::Full => Some(super::targets::Lease::acquire(&owner.dir, &git_directory)?),
-            // A run under this computer's toolchains that finds every slot
-            // taken builds in its worktree, as it did before it had slots.
             access if builds(access) => {
                 match super::targets::Lease::acquire(&owner.dir, &git_directory) {
                     Ok(lease) => Some(lease),

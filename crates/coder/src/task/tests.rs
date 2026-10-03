@@ -725,6 +725,77 @@ fn concurrent_writer_child() {
     );
 }
 
+/// The writer process of [`a_reader_never_mistakes_a_replaced_task_file_for_an_unsafe_path`].
+#[test]
+#[ignore = "run by its parent test in a separate process"]
+fn replacing_writer_child() {
+    let Ok(job) = std::env::var("CODER_TASK_STORE_REPLACER") else {
+        return;
+    };
+    let (dir, rounds) = job.split_once('|').unwrap();
+    let rounds: u64 = rounds.parse().unwrap();
+    for round in 1..=rounds {
+        let bytes = correct_with(&format!("replace-{round}"), "shared", round, "Again.");
+        Store::open(Path::new(dir)).unwrap().apply(&bytes).unwrap();
+    }
+    println!("replaced {rounds}");
+}
+
+/// A reader holds no lock, and a writer in another process replaces the
+/// task file by rename: a read that opened the old file and then found the
+/// path naming the new one must read again, never refuse the store as
+/// "private regular files and a real directory" (#10355, #10301).
+#[test]
+fn a_reader_never_mistakes_a_replaced_task_file_for_an_unsafe_path() {
+    const ROUNDS: u64 = 60;
+    let dir = private_dir();
+    Store::open(dir.path())
+        .unwrap()
+        .apply(&submit("create-shared", "shared"))
+        .unwrap();
+    let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+        .args([
+            "task::tests::replacing_writer_child",
+            "--exact",
+            "--ignored",
+            "--nocapture",
+            "--test-threads=1",
+        ])
+        .env(
+            "CODER_TASK_STORE_REPLACER",
+            format!("{}|{ROUNDS}", dir.path().display()),
+        )
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .unwrap();
+    let store = Store::open(dir.path()).unwrap();
+    let mut reads = 0u64;
+    let mut failures = Vec::new();
+    while child.try_wait().unwrap().is_none() {
+        match store.show("shared") {
+            Ok(_) => reads += 1,
+            Err(error) => failures.push(error.to_string()),
+        }
+    }
+    let output = child.wait_with_output().unwrap();
+    assert!(
+        output.status.success(),
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        failures.is_empty(),
+        "{} of {} reads failed: {:?}",
+        failures.len(),
+        reads + failures.len() as u64,
+        failures.first()
+    );
+    assert!(reads > 0);
+    assert_eq!(store.show("shared").unwrap().revision, ROUNDS + 1);
+}
+
 #[test]
 fn processes_writing_different_tasks_never_wait_on_each_other() {
     const PROCESSES: usize = 8;
