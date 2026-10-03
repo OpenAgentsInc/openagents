@@ -2561,9 +2561,11 @@ mod tests {
         // Git knows the worktree at the task's path, not the spare's.
         let listed = git_out(&top, &["worktree", "list", "--porcelain"]).unwrap();
         assert!(listed.contains(&record.worktree), "{listed}");
-        // A new spare follows, at the commit the start used.
+        // A new spare follows, at the commit the start used. It is there
+        // once its maker has repaired Git's record of it and let go.
+        let checkout = run.project(&top).unwrap();
         let deadline = Instant::now() + Duration::from_secs(60);
-        while !spare.join("a.txt").exists() {
+        while !spare::ready(&run.worktrees, &checkout.top, &checkout.name) {
             assert!(Instant::now() < deadline, "no new spare");
             std::thread::sleep(Duration::from_millis(100));
         }

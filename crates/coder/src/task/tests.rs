@@ -719,6 +719,10 @@ fn concurrent_writer_child() {
         assert_eq!(receipt.revision, round + 1);
     }
     println!("slowest-micros {}", slowest.as_micros());
+    println!(
+        "task-lock-waits {}",
+        super::TASK_LOCK_WAITS.load(std::sync::atomic::Ordering::Relaxed)
+    );
 }
 
 #[test]
@@ -748,6 +752,7 @@ fn processes_writing_different_tasks_never_wait_on_each_other() {
         })
         .collect();
     let mut slowest = 0u128;
+    let mut waits = 0u64;
     for child in children {
         let output = child.wait_with_output().unwrap();
         let stdout = String::from_utf8_lossy(&output.stdout);
@@ -764,11 +769,22 @@ fn processes_writing_different_tasks_never_wait_on_each_other() {
             .parse()
             .unwrap();
         slowest = slowest.max(micros);
+        waits += stdout
+            .lines()
+            .find_map(|line| line.split("task-lock-waits ").nth(1))
+            .unwrap_or_else(|| panic!("the child reports its task lock waits: {stdout}"))
+            .trim()
+            .parse::<u64>()
+            .unwrap();
     }
     println!("slowest open+apply across {PROCESSES} processes: {slowest} us");
-    // No process waited out another's write: each operation is one small
-    // file replacement and one identity append.
-    assert!(slowest < 1_000_000, "{slowest} us");
+    // No process waited out another's write: each task has its own write
+    // lock, so no writer ever found one held. Only the identity append is
+    // shared, one small write under the stable lock. Time is not the check:
+    // on a loaded machine one durable write alone can take a second
+    // (#10286); the bound only catches a writer stuck behind another.
+    assert_eq!(waits, 0, "a writer waited on another task's write lock");
+    assert!(slowest < 30_000_000, "{slowest} us");
     let tasks = Store::open(dir.path()).unwrap().list().unwrap();
     assert_eq!(tasks.len(), PROCESSES);
     assert!(tasks.iter().all(|task| task.revision == ROUNDS + 1));

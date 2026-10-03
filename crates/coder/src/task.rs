@@ -926,6 +926,14 @@ impl Store {
     fn lock_task(&self, id: &str) -> Result<File, Error> {
         let path = self.dir.join(TASK_DIR).join(format!("{id}.lock"));
         let lock = open_lock(&path)?;
+        #[cfg(test)]
+        match lock.try_lock() {
+            Ok(()) => lock.unlock()?,
+            Err(std::fs::TryLockError::WouldBlock) => {
+                TASK_LOCK_WAITS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            }
+            Err(std::fs::TryLockError::Error(_)) => {}
+        }
         take_lock(&lock, self.wait)?;
         verify_same_file(&path, &lock)?;
         Ok(lock)
@@ -1057,6 +1065,12 @@ impl Store {
 pub fn present(dir: &Path) -> bool {
     dir.join(STORE_FILE).is_file() || dir.join(LEGACY_STORE_FILE).is_file()
 }
+
+/// How many times this process found a task's write lock held by another
+/// writer: what writers of different tasks must never do.
+#[cfg(test)]
+pub(crate) static TASK_LOCK_WAITS: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
 
 /// Wait up to `wait` for `lock`'s exclusive OS lock.
 fn take_lock(lock: &File, wait: Duration) -> Result<(), Error> {

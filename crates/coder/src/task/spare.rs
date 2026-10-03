@@ -63,6 +63,13 @@ pub fn path(worktrees: &Path, top: &Path, name: &str) -> PathBuf {
     worktrees.join(format!("{name}.spare-{}", key(top)))
 }
 
+/// Whether the project's spare is there and finished: no preparation holds
+/// its lock, so Git's record of it is repaired.
+#[must_use]
+pub fn ready(worktrees: &Path, top: &Path, name: &str) -> bool {
+    path(worktrees, top, name).exists() && !held(&lock_path(worktrees, top, name))
+}
+
 fn lock_path(worktrees: &Path, top: &Path, name: &str) -> PathBuf {
     worktrees.join(format!(".{name}.spare-{}.lock", key(top)))
 }
@@ -92,10 +99,12 @@ pub fn take(
 ) -> Option<PathBuf> {
     let spare = path(worktrees, top, name);
     // A spare being made now is ready sooner than a fresh worktree would
-    // be, and making both at once slows each.
+    // be, and making both at once slows each. A spare already renamed into
+    // place is still being made until its maker repairs Git's record and
+    // lets go of the lock: Git rewrites its `.git` file then (#10286).
     let lock = lock_path(worktrees, top, name);
     let waiting = std::time::Instant::now();
-    while !spare.exists() && held(&lock) && waiting.elapsed() < WAIT {
+    while held(&lock) && waiting.elapsed() < WAIT {
         std::thread::sleep(Duration::from_millis(50));
     }
     // The rename is the claim: only one start can make it.
