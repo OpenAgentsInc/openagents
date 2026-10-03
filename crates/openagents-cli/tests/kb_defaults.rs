@@ -86,3 +86,29 @@ fn overrides_are_not_seeded() {
     }
     assert_eq!(std::fs::read_dir(entries.path()).unwrap().count(), 0);
 }
+
+#[test]
+fn no_key_no_match_prints_one_hint_and_no_zero_score_rows() {
+    let home = tempfile::tempdir().unwrap();
+    for query in ["hello", "wallet", "zzzqqq"] {
+        let out = run(home.path(), &["kb", "search", query], None);
+        assert!(out.status.success(), "{}", text(&out));
+        let rendered = text(&out);
+        assert!(
+            rendered.contains(&format!("No entries match \"{query}\".")),
+            "{rendered}"
+        );
+        assert_eq!(rendered.matches("ranked by words alone:").count(), 1);
+        assert_eq!(
+            rendered
+                .matches("openagents settings provider-key set openrouter")
+                .count(),
+            1
+        );
+        assert!(!rendered.contains("(0.000)"), "{rendered}");
+        let json = run(home.path(), &["--json", "kb", "search", query], None);
+        assert!(json.status.success(), "{}", text(&json));
+        let value: serde_json::Value = serde_json::from_slice(&json.stdout).unwrap();
+        assert!(value["hits"].as_array().unwrap().is_empty());
+    }
+}

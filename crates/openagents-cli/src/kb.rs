@@ -114,3 +114,27 @@ fn render(command: &str, value: &Value) -> String {
         _ => String::new(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn semantic_search_with_no_relevant_hits_draws_the_empty_state() {
+        for query in ["zzzqqq", "how do I pay for a plugin"] {
+            let rendered = render(
+                "search",
+                &json!({
+                    "source": "bundled entries", "query": query,
+                    "hits": [], "lexical_only": null, "provider": "openrouter"
+                }),
+            );
+            assert_eq!(
+                rendered,
+                format!("entries: bundled entries\nNo entries match \"{query}\".")
+            );
+            assert!(!rendered.contains("ranked by words alone"));
+        }
+    }
+}

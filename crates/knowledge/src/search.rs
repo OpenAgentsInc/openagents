@@ -2,10 +2,11 @@
 //! [`Entry::search_text`], combined with cosine similarity over embeddings
 //! when an embedder is available.
 //!
-//! Both scores are scaled to 0 through 1 across the base before they're
-//! averaged: BM25 by dividing by the best entry's score, and cosine
-//! similarity by its range. When there's no embedder, or the embeddings
-//! call fails, the ranking is BM25 alone, and the result says why.
+//! BM25 is divided by the best entry's score and averaged with raw cosine
+//! similarity. Semantic results must clear an absolute relevance floor;
+//! being the nearest entry in an unrelated corpus is not enough. When there's
+//! no embedder, or the embeddings call fails, the ranking is BM25 alone, and
+//! the result says why.
 //!
 //! [`Embedder`] reaches `text-embedding-3-small` on OpenAI's API when an
 //! OpenAI key is set up (`OPENAI_API_KEY` or `~/.openagents/openai.json`),
@@ -33,6 +34,12 @@ use crate::{Base, Entry, digest};
 const K1: f64 = 1.2;
 /// BM25's length normalization.
 const B: f64 = 0.75;
+
+/// Minimum raw cosine for semantic search. Corpus-relative normalization
+/// makes even an unrelated nearest neighbor score 1. Keep admission on the
+/// absolute scale instead; the corpus regression tests cover weak neighbors
+/// and strong semantic-only matches separately.
+pub const MIN_SEMANTIC_SIMILARITY: f64 = 0.4;
 
 /// Characters of a query that are embedded, at most.
 pub const QUERY_CHARS: usize = 12_000;
@@ -450,7 +457,12 @@ impl Embedder {
             return theirs;
         }
         Embedder::openai().or_else(|openai| {
-            Embedder::openrouter().map_err(|openrouter| format!("{openai}; {openrouter}"))
+            Embedder::openrouter().map_err(|openrouter| {
+                let hint = "openagents settings provider-key set openrouter";
+                // Both providers can recommend the same setup command.
+                let openai = openai.replace(&format!("; or run {hint}"), "");
+                format!("{openai}; {openrouter}")
+            })
         })
     }
 
@@ -590,7 +602,7 @@ pub struct Hit {
     pub score: f64,
     /// BM25 scaled by the best entry's score.
     pub lexical: f64,
-    /// Cosine similarity, before scaling, when embeddings were used.
+    /// Raw cosine similarity when embeddings were used.
     pub semantic: Option<f64>,
 }
 
@@ -707,37 +719,24 @@ impl<E: Embed> Retriever<E> {
                 }
             },
         };
-        let scaled: Option<Vec<f64>> = semantic.as_ref().map(|s| {
-            let low = s.iter().copied().fold(f64::INFINITY, f64::min);
-            let high = s.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-            s.iter()
-                .map(|v| {
-                    if high > low {
-                        (v - low) / (high - low)
-                    } else {
-                        0.0
-                    }
-                })
-                .collect()
-        });
         let mut hits: Vec<Hit> = entries
             .iter()
             .enumerate()
             .map(|(i, entry)| Hit {
                 id: entry.id.clone(),
-                score: match &scaled {
-                    Some(scaled) => (lexical[i] + scaled[i]) / 2.0,
+                score: match &semantic {
+                    Some(semantic) => (lexical[i] + semantic[i].clamp(0.0, 1.0)) / 2.0,
                     None => lexical[i],
                 },
                 lexical: lexical[i],
                 semantic: semantic.as_ref().map(|s| s[i]),
             })
             .collect();
-        // Ranked by words alone, an entry sharing no word with the query
-        // scores 0: it doesn't match, so it isn't a result.
-        if scaled.is_none() {
-            hits.retain(|hit| hit.score > 0.0);
-        }
+        // Filter before limiting. Relative rank is not evidence of relevance.
+        hits.retain(|hit| match hit.semantic {
+            Some(similarity) => similarity.is_finite() && similarity >= MIN_SEMANTIC_SIMILARITY,
+            None => hit.score > 0.0,
+        });
         hits.sort_by(|a, b| b.score.total_cmp(&a.score));
         hits.truncate(limit);
         Search {

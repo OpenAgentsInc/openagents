@@ -586,3 +586,67 @@ fn the_route_map_snapshot_lists_this_knowledge() {
         "{stale}"
     );
 }
+
+/// Fixed raw cosines against the bundled corpus, with no provider or key.
+struct CorpusCosines {
+    similarity: f32,
+}
+
+impl Embed for CorpusCosines {
+    fn model(&self) -> &str {
+        "corpus-cosines"
+    }
+
+    async fn embed(
+        &self,
+        inputs: Vec<String>,
+    ) -> Result<(Vec<Vec<f32>>, Option<f64>), crate::search::EmbedError> {
+        Ok((
+            inputs
+                .iter()
+                .map(|text| {
+                    if text.contains('\n') {
+                        vec![self.similarity, (1.0 - self.similarity.powi(2)).sqrt()]
+                    } else {
+                        vec![1.0, 0.0]
+                    }
+                })
+                .collect(),
+            Some(0.0),
+        ))
+    }
+}
+
+#[tokio::test]
+async fn semantic_search_requires_absolute_relevance_even_with_word_overlap() {
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../knowledge");
+    let base = Base::load(&dir, false).unwrap();
+    let retriever = Retriever::new(base, CorpusCosines { similarity: 0.3 }, None);
+    for query in ["zzzqqq", "how do I pay for a plugin", "docker"] {
+        let result = retriever.search(query, 3).await;
+        assert!(result.lexical_only.is_none());
+        assert!(result.hits.is_empty(), "{query}: {:?}", result.hits);
+    }
+}
+
+#[tokio::test]
+async fn a_strong_semantic_only_match_survives_a_flat_corpus() {
+    let retriever = Retriever::new(base(), CorpusCosines { similarity: 0.8 }, None);
+    let result = retriever.search("zzzqqq", 2).await;
+    assert_eq!(result.hits.len(), 2);
+    assert!(
+        result
+            .hits
+            .iter()
+            .all(|hit| hit.lexical == 0.0 && hit.score > 0.0)
+    );
+}
+
+#[tokio::test]
+async fn semantic_floor_filters_before_limit_and_rejects_zero_vectors() {
+    for (similarity, expected) in [(0.0, 0), (0.399, 0), (0.401, 1)] {
+        let retriever = Retriever::new(base(), CorpusCosines { similarity }, None);
+        let result = retriever.search("zzzqqq", 1).await;
+        assert_eq!(result.hits.len(), expected, "cosine {similarity}");
+    }
+}
