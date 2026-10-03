@@ -734,6 +734,11 @@ impl<E: Embed> Retriever<E> {
                 semantic: semantic.as_ref().map(|s| s[i]),
             })
             .collect();
+        // Ranked by words alone, an entry sharing no word with the query
+        // scores 0: it doesn't match, so it isn't a result.
+        if scaled.is_none() {
+            hits.retain(|hit| hit.score > 0.0);
+        }
         hits.sort_by(|a, b| b.score.total_cmp(&a.score));
         hits.truncate(limit);
         Search {

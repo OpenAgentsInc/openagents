@@ -431,6 +431,9 @@ async fn search(o: &Options) -> Result<u8, String> {
                 .map_or("cost unknown".to_string(), |usd| format!("${usd:.8}"))
         ),
     }
+    if search.hits.is_empty() {
+        println!("No entries match \"{query}\".");
+    }
     for (rank, hit) in search.hits.iter().enumerate() {
         let entry = retriever.base.get(&hit.id).ok_or("an entry went missing")?;
         println!(

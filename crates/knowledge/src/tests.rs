@@ -201,6 +201,16 @@ async fn embeddings_lift_an_entry_that_shares_no_word_with_the_query() {
 }
 
 #[tokio::test]
+async fn ranked_by_words_alone_an_entry_sharing_no_word_is_no_result() {
+    let lexical = Retriever::<Fake>::lexical(base(), "test");
+    let none = lexical.search("zebra xylophone", 3).await;
+    assert!(none.hits.is_empty(), "{:?}", none.hits);
+    let some = lexical.search("kernel", 3).await;
+    assert!(!some.hits.is_empty());
+    assert!(some.hits.iter().all(|hit| hit.score > 0.0));
+}
+
+#[tokio::test]
 async fn entry_vectors_are_cached_on_disk_by_digest() {
     let path = scratch("cache").join("embeddings.json");
     let first = Retriever::new(base(), Fake::new(false), Some(path.clone()));
@@ -228,7 +238,8 @@ fn second_embedder(retriever: &Retriever<Fake>) -> &Fake {
 async fn a_failed_embeddings_call_falls_back_to_words() {
     let retriever = Retriever::new(base(), Fake::new(true), None);
     let search = retriever.search("mmd", 2).await;
-    assert_eq!(search.hits.len(), 2);
+    // Only entries that share a word with the query are results.
+    assert_eq!(search.hits.len(), 1);
     assert_eq!(search.hits[0].id, "stats.mmd");
     // Whether the failed call was billed isn't known, so it isn't $0.
     assert_eq!(search.usd, None);

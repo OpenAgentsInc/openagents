@@ -62,6 +62,12 @@ fn render(command: &str, value: &Value) -> String {
             if let Some(reason) = value["lexical_only"].as_str() {
                 lines.push(format!("ranked by words alone: {reason}"));
             }
+            if value["hits"].as_array().is_none_or(Vec::is_empty) {
+                lines.push(format!(
+                    "No entries match \"{}\".",
+                    value["query"].as_str().unwrap_or("")
+                ));
+            }
             lines.extend(value["hits"].as_array().into_iter().flatten().map(|hit| {
                 format!(
                     "{}: {} ({:.3})",
