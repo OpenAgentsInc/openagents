@@ -168,6 +168,15 @@ pub trait Hub: Send + Sync {
         let _ = (item, option);
         Ok(())
     }
+    /// Adds the issue to `project`'s numbered project. `Ok(false)` when
+    /// there is no numbered project to add it to.
+    ///
+    /// # Errors
+    /// Why it was not added.
+    fn add_item(&self, repository: &str, number: u64, project: &Project) -> Result<bool, String> {
+        let _ = (repository, number, project);
+        Ok(false)
+    }
     /// The repository's project issues in project order, or `None` when
     /// the repository has no project to order by.
     ///
@@ -362,7 +371,7 @@ fn status<H: Hub + ?Sized>(
     targets: &[String],
     said: &mut Vec<String>,
 ) {
-    let items = match hub.items(repository, number, &project.field) {
+    let mut items = match hub.items(repository, number, &project.field) {
         Ok(items) => items,
         Err(why) => {
             if let Some(line) = unreadable_projects(repository, &why) {
@@ -371,6 +380,20 @@ fn status<H: Hub + ?Sized>(
             return;
         }
     };
+    // A configured project should hold every issue Coder works: add one
+    // that is not on any open project yet, then move it like the rest.
+    if items.is_empty() && project.number.is_some() {
+        match hub.add_item(repository, number, project) {
+            Ok(true) => match hub.items(repository, number, &project.field) {
+                Ok(added) => items = added,
+                Err(why) => said.push(format!(
+                    "Added #{number} to the project, but could not read it back: {why}"
+                )),
+            },
+            Ok(false) => {}
+            Err(why) => said.push(format!("Could not add #{number} to the project: {why}")),
+        }
+    }
     for item in items {
         if item.field.is_none() {
             continue;
@@ -582,6 +605,14 @@ const SET_STATUS: &str = r"mutation($project: ID!, $item: ID!, $field: ID!, $opt
     value: {singleSelectOptionId: $option}}) { projectV2Item { id } }
 }";
 
+const ISSUE_ID: &str = r"query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) { issue(number: $number) { id } }
+}";
+
+const ADD_ITEM: &str = r"mutation($project: ID!, $content: ID!) {
+  addProjectV2ItemById(input: {projectId: $project, contentId: $content}) { item { id } }
+}";
+
 const LINKED: &str = r"query($owner: String!, $name: String!) {
   repository(owner: $owner, name: $name) { projectsV2(first: 20) { nodes { id closed } } }
 }";
@@ -786,6 +817,49 @@ impl Hub for Gh {
             ],
         )?)
         .map(|_| ())
+    }
+
+    fn add_item(&self, repository: &str, number: u64, project: &Project) -> Result<bool, String> {
+        if project.number.is_none() {
+            return Ok(false);
+        }
+        let Some(project_id) = Gh::project_id(repository, project)? else {
+            return Ok(false);
+        };
+        let (owner, name) = split(repository)?;
+        let issue = json(&gh(
+            None,
+            &[
+                "api",
+                "graphql",
+                "-f",
+                &format!("query={ISSUE_ID}"),
+                "-f",
+                &format!("owner={owner}"),
+                "-f",
+                &format!("name={name}"),
+                "-F",
+                &format!("number={number}"),
+            ],
+        )?)?;
+        let content = issue["data"]["repository"]["issue"]["id"]
+            .as_str()
+            .ok_or("the issue has no id")?
+            .to_owned();
+        json(&gh(
+            None,
+            &[
+                "api",
+                "graphql",
+                "-f",
+                &format!("query={ADD_ITEM}"),
+                "-f",
+                &format!("project={project_id}"),
+                "-f",
+                &format!("content={content}"),
+            ],
+        )?)
+        .map(|_| true)
     }
 
     fn board(&self, repository: &str, project: &Project) -> Result<Option<Vec<Queued>>, String> {

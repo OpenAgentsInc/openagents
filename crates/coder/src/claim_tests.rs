@@ -69,6 +69,26 @@ fn with_a_project_a_claim_moves_the_status_and_release_moves_it_back() {
 }
 
 #[test]
+fn a_claim_adds_an_issue_missing_from_the_numbered_project_and_moves_it() {
+    let github = Fake::with_project("octo", &["Todo", "In progress", "Done"]);
+    github.issue(9, None, &[], &[]);
+    let numbered = Project {
+        number: Some(19),
+        ..Project::default()
+    };
+    let said = claim(&github, REPO, 9, &body(), &numbered);
+    let state = github.state(9);
+    assert!(state.on_project, "the claim put the issue on the project");
+    assert_eq!(state.status.as_deref(), Some("In progress"));
+    assert!(said.contains(&"Moved #9 to \"In progress\" on the project \"Board\".".to_owned()));
+
+    // Without a numbered project, an issue off every project stays off.
+    github.issue(10, None, &[], &[]);
+    claim(&github, REPO, 10, &body(), &Project::default());
+    assert!(!github.state(10).on_project);
+}
+
+#[test]
 fn an_in_progress_status_is_a_claim_until_released_or_old() {
     let project = Project::default();
     let item = |status: &str, at: u64| Item {

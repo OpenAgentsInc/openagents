@@ -169,6 +169,16 @@ impl Hub for Fake {
         })
     }
 
+    fn add_item(&self, _: &str, number: u64, project: &Project) -> Result<bool, String> {
+        if project.number.is_none() || self.options.is_none() {
+            return Ok(false);
+        }
+        self.with(number, |state| {
+            state.on_project = true;
+            true
+        })
+    }
+
     fn set_status(&self, item: &Item, option: &str) -> Result<(), String> {
         let number: u64 = item
             .item
