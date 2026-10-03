@@ -2215,6 +2215,11 @@ impl Follow {
                 }
                 return Ok((out, State::Running));
             };
+            // An owner that died never removed the worktree at its turn's
+            // end (#10291); a later follow does, once (#10334).
+            if result.ending == owner::OWNER_ENDED && task.turn() == self.turn {
+                let _ = super::retire::retire(&self.store, &self.task);
+            }
             // An issue flow checks and lands after its latest turn: that
             // turn's ending waits for the flow's, which it carries.
             self.notes(flow.as_ref(), self.turn, &mut out);
