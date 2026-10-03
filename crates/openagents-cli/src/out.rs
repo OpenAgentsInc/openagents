@@ -50,6 +50,16 @@ impl Output {
     }
 
     /// Report a usage error, print `usage`, and return the usage exit code.
+    /// A usage error in one line, for mistakes the whole usage would only
+    /// bury: points at `openagents COMMAND --help` instead.
+    pub fn refuse(self, command: &str, message: &str) -> u8 {
+        eprintln!("openagents {command}: {message}");
+        if self.json {
+            println!("{}", serde_json::json!({ "error": message, "usage": true }));
+        }
+        EXIT_USAGE
+    }
+
     pub fn usage(self, command: &str, message: &str, usage: &str) -> u8 {
         eprintln!("openagents {command}: {message}\n\n{usage}");
         if self.json {

@@ -182,6 +182,65 @@ impl From<client::Error> for Failure {
     }
 }
 
+/// The `openagents chat` commands; any other first word starts a message.
+const COMMANDS: &[&str] = &[
+    "send",
+    "threads",
+    "read",
+    "export",
+    "run-coder",
+    "run-command",
+    "follow",
+    "stop",
+    "answer",
+    "work",
+    "apply",
+];
+
+/// The command `word` is a typo of: within one edit of a name of up to six
+/// letters or two of a longer one. Only the command names are compared,
+/// nothing about what the message means.
+fn near_command(word: &str) -> Option<&'static str> {
+    if word.contains(char::is_whitespace) || word.len() < 3 {
+        return None;
+    }
+    let word = word.to_lowercase();
+    COMMANDS
+        .iter()
+        .map(|name| (*name, edit_distance(&word, name)))
+        .filter(|(name, distance)| {
+            *distance > 0 && *distance <= if name.len() <= 6 { 1 } else { 2 }
+        })
+        .min_by_key(|(_, distance)| *distance)
+        .map(|(name, _)| name)
+}
+
+/// Edit distance between two short words, counting a swap of neighbours
+/// as one edit (`sned` is one from `send`).
+fn edit_distance(a: &str, b: &str) -> usize {
+    let a: Vec<char> = a.chars().collect();
+    let b: Vec<char> = b.chars().collect();
+    let mut d = vec![vec![0usize; b.len() + 1]; a.len() + 1];
+    for (i, row) in d.iter_mut().enumerate() {
+        row[0] = i;
+    }
+    for j in 0..=b.len() {
+        d[0][j] = j;
+    }
+    for i in 1..=a.len() {
+        for j in 1..=b.len() {
+            let cost = usize::from(a[i - 1] != b[j - 1]);
+            d[i][j] = (d[i - 1][j] + 1)
+                .min(d[i][j - 1] + 1)
+                .min(d[i - 1][j - 1] + cost);
+            if i > 1 && j > 1 && a[i - 1] == b[j - 2] && a[i - 2] == b[j - 1] {
+                d[i][j] = d[i][j].min(d[i - 2][j - 2] + 1);
+            }
+        }
+    }
+    d[a.len()][b.len()]
+}
+
 pub fn run(output: &Output, words: &[String]) -> u8 {
     let Some(first) = words.first() else {
         return output.usage("chat", "a message or a command is required", USAGE);
@@ -191,8 +250,20 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
             println!("{USAGE}");
             return 0;
         }
-        "send" | "threads" | "read" | "export" | "run-coder" | "run-command" | "follow"
-        | "stop" | "answer" | "work" | "apply" => (first.as_str(), &words[1..]),
+        name if COMMANDS.contains(&name) => (name, &words[1..]),
+        // A word one or two edits from a command's name is a typo of it,
+        // not the start of a message: `chat sned hi`.
+        word if near_command(word).is_some() => {
+            let near = near_command(word).unwrap_or_default();
+            let message = words.join(" ");
+            return output.refuse(
+                "chat",
+                &format!(
+                    "unknown command `{word}`; did you mean `openagents chat {near}`? \
+                     To send this as a message: openagents chat send \"{message}\""
+                ),
+            );
+        }
         // `openagents chat MESSAGE` is `openagents chat send MESSAGE`.
         _ => ("send", words),
     };
@@ -1067,6 +1138,21 @@ mod tests {
             shown.contains("  Committed as 5ab07fa; 3 tests passed."),
             "{shown}"
         );
+    }
+
+    #[test]
+    fn a_typo_of_a_command_name_is_caught_and_messages_are_not() {
+        assert_eq!(near_command("sned"), Some("send"));
+        assert_eq!(near_command("thread"), Some("threads"));
+        assert_eq!(near_command("folow"), Some("follow"));
+        assert_eq!(near_command("expotr"), Some("export"));
+        // Exact names are commands, not typos; ordinary first words pass.
+        assert_eq!(near_command("send"), None);
+        for word in [
+            "How", "hello", "explain", "what", "fix", "Can", "reply", "sned hi",
+        ] {
+            assert_eq!(near_command(word), None, "{word}");
+        }
     }
 
     #[test]
