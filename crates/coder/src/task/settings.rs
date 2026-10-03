@@ -59,7 +59,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 
 use super::adapter::Access;
-use super::autostart::{ClaudeRuns, Route};
+use super::autostart::{ClaudeRuns, CodexRuns, Route};
 use super::capacity::Provider;
 use super::usage;
 
@@ -379,6 +379,13 @@ pub struct Coder {
     /// `toolchains` or `boundary` Claude Code runs the loop.
     #[serde(default, skip_serializing_if = "ClaudeRuns::is_default")]
     pub claude: ClaudeRuns,
+    /// How Codex takes a turn (#10250): `session`, one `codex exec` session
+    /// briefed by Jev on the headless core prompt at medium effort, or
+    /// `loop`, Microcoder's step loop. A file names it only when the person
+    /// chose other than the default. `session` applies under full access;
+    /// under `toolchains` or `boundary` Codex runs the loop.
+    #[serde(default, skip_serializing_if = "CodexRuns::is_default")]
+    pub codex: CodexRuns,
 }
 
 impl Default for Coder {
@@ -393,6 +400,7 @@ impl Default for Coder {
             shadow_percent: None,
             shadow_budget_cents: None,
             claude: ClaudeRuns::default(),
+            codex: CodexRuns::default(),
         }
     }
 }
@@ -605,7 +613,7 @@ impl Default for Settings {
 
 /// The flat keys [`Settings::get`] and [`Settings::set`] take.
 #[must_use]
-pub const fn keys() -> [&'static str; 10] {
+pub const fn keys() -> [&'static str; 11] {
     [
         "coder.providers",
         "coder.disabled",
@@ -616,6 +624,7 @@ pub const fn keys() -> [&'static str; 10] {
         "coder.shadow",
         "coder.shadow_budget_usd",
         "coder.claude",
+        "coder.codex",
         "models.payer",
     ]
 }
@@ -714,6 +723,7 @@ impl Settings {
                 cents % 100
             ))),
             "coder.claude" => json!(coder.claude.as_str()),
+            "coder.codex" => json!(coder.codex.as_str()),
             "models.payer" => json!(self.models.payer.as_str()),
             _ => return Err(unknown(key)),
         })
@@ -824,6 +834,7 @@ impl Settings {
                 };
             }
             "coder.claude" => coder.claude = ClaudeRuns::parse(value)?,
+            "coder.codex" => coder.codex = CodexRuns::parse(value)?,
             _ => return Err(unknown(key)),
         }
         coder.validate()?;
@@ -869,6 +880,7 @@ impl Settings {
             "coder.shadow" => coder.shadow_percent = default.shadow_percent,
             "coder.shadow_budget_usd" => coder.shadow_budget_cents = default.shadow_budget_cents,
             "coder.claude" => coder.claude = default.claude,
+            "coder.codex" => coder.codex = default.codex,
             "models.payer" => self.models.payer = model_access::Mode::Ours,
             _ => return Err(unknown(key)),
         }

@@ -319,6 +319,7 @@ async fn desktop_handoff_keeps_the_phone_prompt_project_policy_and_restart_ident
             usage_probe: None,
             access: adapter::Access::Boundary,
             claude: coder::task::autostart::ClaudeRuns::default(),
+            codex: coder::task::autostart::CodexRuns::default(),
         },
     };
     policy.save(&root).unwrap();

@@ -70,6 +70,7 @@ fn a_run_admitted_from_codex_home_finds_the_same_login() {
         usage_probe: None,
         access: adapter::Access::Boundary,
         claude: coder::task::autostart::ClaudeRuns::default(),
+        codex: coder::task::autostart::CodexRuns::default(),
     };
     let grant = temp.path().join("grant.json");
     let store = temp.path().join("store");

@@ -659,6 +659,10 @@ enum AgentEngine {
     /// ([`claude_session`], #10246): a Claude route whose endpoint is
     /// [`claude_session::CLAUDE_SESSION_ENDPOINT`].
     ClaudeSession,
+    /// One lean Codex session briefed by Jev, `codex exec --json`
+    /// ([`codex_session`], #10250): a Codex route whose endpoint is
+    /// [`codex_session::CODEX_SESSION_ENDPOINT`].
+    CodexSession,
 }
 
 impl AgentEngine {
@@ -672,6 +676,11 @@ impl AgentEngine {
             {
                 Some(AgentEngine::ClaudeSession)
             }
+            Provider::Codex
+                if route.generation_endpoint == codex_session::CODEX_SESSION_ENDPOINT =>
+            {
+                Some(AgentEngine::CodexSession)
+            }
             Provider::Codex | Provider::Claude | Provider::Vertex => None,
         }
     }
@@ -682,6 +691,7 @@ impl AgentEngine {
             AgentEngine::OpenCode => Provider::OpenCode,
             AgentEngine::Grok => Provider::Grok,
             AgentEngine::ClaudeSession => Provider::Claude,
+            AgentEngine::CodexSession => Provider::Codex,
         }
     }
 
@@ -692,6 +702,7 @@ impl AgentEngine {
             AgentEngine::OpenCode => "OpenCode",
             AgentEngine::Grok => "Grok Build",
             AgentEngine::ClaudeSession => "Claude Code",
+            AgentEngine::CodexSession => "Codex",
         }
     }
 
@@ -702,6 +713,7 @@ impl AgentEngine {
             AgentEngine::OpenCode => "opencode",
             AgentEngine::Grok => "grok",
             AgentEngine::ClaudeSession => "claude_session",
+            AgentEngine::CodexSession => "codex_session",
         }
     }
 
@@ -712,6 +724,9 @@ impl AgentEngine {
             AgentEngine::Grok => grok::binary().map_err(|why| (StartCause::Grok, why)),
             AgentEngine::ClaudeSession => {
                 claude_session::binary().map_err(|why| (StartCause::Claude, why))
+            }
+            AgentEngine::CodexSession => {
+                codex_session::binary().map_err(|why| (StartCause::Codex, why))
             }
         }
     }
@@ -728,6 +743,7 @@ impl AgentEngine {
             AgentEngine::OpenCode => opencode::turn(host, route, program, recipe).await,
             AgentEngine::Grok => grok::turn(host, route, program, recipe).await,
             AgentEngine::ClaudeSession => claude_session::turn(host, route, program, recipe).await,
+            AgentEngine::CodexSession => codex_session::turn(host, route, program, recipe).await,
         }
     }
 }
@@ -847,19 +863,28 @@ pub async fn execute(
         (stages, unavailable)
     } else {
         let mut unavailable = unavailable;
-        // A lean Claude Code session takes its input as text, so a task
-        // with images runs Claude in the loop, which takes them natively.
+        // A lean Claude Code or Codex session takes its input as text, so
+        // a task with images runs the engine in the loop, which takes them
+        // natively.
         let stages = stages
             .into_iter()
             .map(|stage| match stage {
-                Stage::Agent(AgentEngine::ClaudeSession, route, program) => {
+                Stage::Agent(
+                    engine @ (AgentEngine::ClaudeSession | AgentEngine::CodexSession),
+                    route,
+                    program,
+                ) => {
                     let looped = GrantRoute {
-                        generation_endpoint: crate::claude::ENDPOINT.to_owned(),
+                        generation_endpoint: if engine == AgentEngine::ClaudeSession {
+                            crate::claude::ENDPOINT.to_owned()
+                        } else {
+                            codex_transport::codex::BASE_URL.to_owned()
+                        },
                         ..route.clone()
                     };
                     match client(&looped, config.access, &session) {
                         Ok(client) => Stage::Loop(vec![(looped, client)]),
-                        Err(_) => Stage::Agent(AgentEngine::ClaudeSession, route, program),
+                        Err(_) => Stage::Agent(engine, route, program),
                     }
                 }
                 stage => stage,
@@ -1228,9 +1253,11 @@ fn private_spec(host: &Host, spec: acp_client::process::Spec) -> acp_client::pro
 }
 
 pub mod claude_session;
+pub mod codex_session;
 mod devin;
 mod grok;
 pub mod launch;
+mod lean_session;
 mod native;
 mod opencode;
 pub(crate) mod recipe;

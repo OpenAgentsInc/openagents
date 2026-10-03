@@ -149,6 +149,54 @@ pub struct Engine {
     /// [`ClaudeRuns::default`].
     #[serde(default, skip_serializing_if = "ClaudeRuns::is_default")]
     pub claude: ClaudeRuns,
+    /// How a Codex route runs (#10250): one lean `codex exec` session
+    /// briefed by Jev, or Microcoder's step loop. Absent means the default,
+    /// [`CodexRuns::default`].
+    #[serde(default, skip_serializing_if = "CodexRuns::is_default")]
+    pub codex: CodexRuns,
+}
+
+/// How a Codex route takes a turn (#10250).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CodexRuns {
+    /// One `codex exec` session, briefed by Jev, on the headless core
+    /// system prompt at the route's effort (medium by default, low for a
+    /// question). Under full access only: under the boundary or toolchains
+    /// a Codex route runs the loop, whose commands the host bounds.
+    Session,
+    /// Microcoder's step loop: each step is one Codex request that returns
+    /// one action, and the host runs the commands.
+    #[default]
+    Loop,
+}
+
+impl CodexRuns {
+    /// The setting's word.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            CodexRuns::Session => "session",
+            CodexRuns::Loop => "loop",
+        }
+    }
+
+    /// The setting from its word.
+    ///
+    /// # Errors
+    /// A sentence naming the two words when `text` is neither.
+    pub fn parse(text: &str) -> Result<Self, String> {
+        match text.trim() {
+            "session" | "lean" | "lean_session" | "lean-session" => Ok(CodexRuns::Session),
+            "loop" | "microcoder" => Ok(CodexRuns::Loop),
+            other => Err(format!("`{other}` is not session or loop")),
+        }
+    }
+
+    #[must_use]
+    pub fn is_default(&self) -> bool {
+        *self == CodexRuns::default()
+    }
 }
 
 /// How a Claude Code route takes a turn (#10246).
@@ -508,13 +556,18 @@ impl Policy {
             ))
             .then(|| route.effort.clone().or_else(|| engine.effort.clone()))
             .flatten(),
-            // A Claude route runs as one lean session when the owner
-            // chose it and the run has full access (#10246).
+            // A Claude or Codex route runs as one lean session when the
+            // owner chose it and the run has full access (#10246, #10250).
             generation_endpoint: if route.provider == Provider::Claude
                 && engine.claude == ClaudeRuns::Session
                 && engine.access == adapter::Access::Full
             {
                 super::capacity::CLAUDE_SESSION_ENDPOINT.into()
+            } else if route.provider == Provider::Codex
+                && engine.codex == CodexRuns::Session
+                && engine.access == adapter::Access::Full
+            {
+                super::capacity::CODEX_SESSION_ENDPOINT.into()
             } else {
                 route.provider.endpoint().into()
             },
@@ -2222,6 +2275,7 @@ fn cli_inner(args: &[String]) -> std::result::Result<(), String> {
                         adapter::Access::Boundary
                     },
                     claude: ClaudeRuns::default(),
+                    codex: CodexRuns::default(),
                 };
                 let threshold = take_one(&mut values, "--usage-threshold")?;
                 let mut engine = engine;
@@ -2671,6 +2725,7 @@ mod tests {
                 usage_probe: None,
                 access: adapter::Access::Boundary,
                 claude: ClaudeRuns::default(),
+                codex: CodexRuns::default(),
             },
             changed_at: 1,
         }
@@ -4495,6 +4550,7 @@ mod tests {
                 usage_probe: None,
                 access: adapter::Access::Full,
                 claude: ClaudeRuns::default(),
+                codex: CodexRuns::default(),
             }
         };
         let grant = temp.path().join("grant.json");

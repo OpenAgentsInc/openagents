@@ -689,6 +689,7 @@ async fn solve(url: &str, options: Options) -> Result<(), String> {
             prompt_cache_ttl: env("CLAUDE_CODE_PROMPT_CACHE_TTL")
                 .map(|ttl| ttl.trim().to_string())
                 .filter(|ttl| !ttl.is_empty()),
+            codex_config: Vec::new(),
             system: None,
             episode: coder_one::deadline::Deadline::unbounded(),
             gate: None,

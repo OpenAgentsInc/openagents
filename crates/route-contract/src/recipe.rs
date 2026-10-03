@@ -141,8 +141,12 @@ const ENGINE_CACHE: Setting = Setting::EnginesOwn("the agent's own prompt cachin
 /// session (#10246) instead of Microcoder's loop.
 pub const CLAUDE_SESSION: &str = "claude-session";
 
+/// The engine name of a Codex route that runs as one lean `codex exec`
+/// session (#10250) instead of Microcoder's loop.
+pub const CODEX_SESSION: &str = "codex-session";
+
 /// Every engine's row, task-route engines first.
-pub const ENGINES: [EngineRecipe; 8] = [
+pub const ENGINES: [EngineRecipe; 9] = [
     EngineRecipe {
         engine: "codex",
         runs_as: Runs::MicrocoderLoop,
@@ -199,6 +203,30 @@ pub const ENGINES: [EngineRecipe; 8] = [
             "replaced (--system-prompt-file) with the headless core sections",
         ),
         prompt_cache: Setting::Applied("five minutes (CLAUDE_CODE_PROMPT_CACHE_TTL=5m)"),
+        checks: Setting::Applied(
+            "Jev picks and the host freezes checks as on a loop; the session is told them, and the host runs them once the session ends",
+        ),
+    },
+    EngineRecipe {
+        engine: CODEX_SESSION,
+        runs_as: Runs::Cli,
+        briefing: BRIEFING,
+        knowledge: KNOWLEDGE,
+        effort_setting: Setting::Applied(
+            "Codex's model_reasoning_effort: medium, the owner's gpt-6.1-sol default, low for a question",
+        ),
+        effort: Effort {
+            question: Some("low"),
+            change: Some("medium"),
+            hard: Some("medium"),
+        },
+        tools: Setting::EnginesOwn("Codex's own tools; codex exec has no tool-list setting"),
+        system_prompt: Setting::Applied(
+            "replaced (model_instructions_file) with the headless core sections",
+        ),
+        prompt_cache: Setting::EnginesOwn(
+            "Codex's own per-session prompt cache; it has no TTL setting",
+        ),
         checks: Setting::Applied(
             "Jev picks and the host freezes checks as on a loop; the session is told them, and the host runs them once the session ends",
         ),
@@ -352,6 +380,12 @@ mod tests {
         assert!(session.briefing.applied() && session.checks.applied());
         assert_eq!(
             effort(CLAUDE_SESSION, Some(TaskClass::Change), Some("low")).as_deref(),
+            Some("medium")
+        );
+        let codex = engine(CODEX_SESSION).expect("a row for the lean Codex session");
+        assert!(codex.briefing.applied() && codex.checks.applied());
+        assert_eq!(
+            effort(CODEX_SESSION, Some(TaskClass::Hard), Some("medium")).as_deref(),
             Some("medium")
         );
         for name in ["claude-code-cli", "codex-cli"] {

@@ -272,6 +272,7 @@ async fn demonstrate_in(agent: Agent, binary: &Path, scratch: &Path) -> Result<V
         effort: None,
         tools: None,
         prompt_cache_ttl: None,
+        codex_config: Vec::new(),
         system: None,
         episode: crate::deadline::Deadline::unbounded(),
         gate: None,

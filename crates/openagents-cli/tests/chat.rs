@@ -520,6 +520,7 @@ async fn settings_change_the_local_run_and_the_defaults_change_nothing() {
             "coder.shadow": null,
             "coder.shadow_budget_usd": null,
             "coder.claude": "session",
+            "coder.codex": "loop",
             "models.payer": "ours",
         })
     );

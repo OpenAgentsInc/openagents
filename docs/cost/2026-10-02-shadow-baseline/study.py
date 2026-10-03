@@ -9,6 +9,12 @@ Arms:
   routed-codex-off   routed to Codex, recipe off
   routed-claude-lean routed to Claude Code as one lean session (#10246):
                      coder.claude = session, recipe on
+  raw-codex          raw Codex CLI (`codex exec`) on the owner's Codex default,
+                     gpt-6.1-sol at medium effort, standard tier (#10250)
+  routed-codex-loop  routed to Codex, Microcoder's loop (coder.codex = loop),
+                     recipe on, binaries from the #10250 commit
+  routed-codex-session routed to Codex as one lean `codex exec` session
+                     (coder.codex = session), recipe on (#10250)
 
 Usage:
   study.py prepare
@@ -38,6 +44,10 @@ OA = os.path.join(HOME, "coder-runner/openagents")
 OFF_SHIM = os.path.join(BASE, "bin/microcoder-recipe-off")
 # #10246: the lean arm runs binaries built from the commit that added it.
 LEAN_OA = os.path.join(BASE, "bin-lean/openagents")
+# #10250: the Codex session arms run binaries built from the commit that added it.
+CODEX_SESSION_OA = os.path.join(BASE, "bin-codexsess/openagents")
+# The owner's Codex default (#10250): the raw arm runs it, as the routes do.
+CODEX_MODEL, CODEX_EFFORT = "gpt-6.1-sol", "medium"
 SRC = os.path.join(BASE, "src")
 PY = shutil.which("python3")
 TIMEOUT = 3600
@@ -326,7 +336,53 @@ def settings_file(engine):
         settings = json.load(open(settings_file("claude")))
         settings.setdefault("coder", {})["claude"] = "session"
         json.dump(settings, open(path, "w"), indent=1)
+    if engine in ("codex-loop", "codex-session") and not os.path.exists(path):
+        # #10250: Codex only, as Microcoder's loop or one lean session.
+        settings = json.load(open(settings_file("codex")))
+        settings.setdefault("coder", {})["codex"] = engine.split("-", 1)[1]
+        json.dump(settings, open(path, "w"), indent=1)
     return path
+
+
+def codex_usd(uncached, cached, output):
+    """gpt-6.1-sol list price: $2 / $0.20 cached / $10 per million tokens."""
+    return (uncached * 2.0 + cached * 0.20 + output * 10.0) / 1e6
+
+
+def run_raw_codex(prompt, cwd, d):
+    start = time.time()
+    cmd = ["codex", "exec", "--json", "--dangerously-bypass-approvals-and-sandbox", "--skip-git-repo-check",
+           "-m", CODEX_MODEL, "-c", f"model_reasoning_effort={CODEX_EFFORT}", "-c", 'service_tier="default"', prompt]
+    try:
+        r = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=TIMEOUT, stdin=subprocess.DEVNULL)
+        out, err, code = r.stdout, r.stderr, r.returncode
+    except subprocess.TimeoutExpired as e:
+        out, err, code = (e.stdout or b"").decode() if isinstance(e.stdout, bytes) else (e.stdout or ""), "timeout", -1
+    wall = time.time() - start
+    open(os.path.join(d, "out.ndjson"), "w").write(out)
+    open(os.path.join(d, "err.txt"), "w").write(err)
+    inp = cached = output = turns = items = 0
+    ending = None
+    for ln in out.splitlines():
+        try:
+            ev = json.loads(ln)
+        except ValueError:
+            continue
+        if ev.get("type") == "turn.completed":
+            u = ev.get("usage") or {}
+            inp += u.get("input_tokens", 0)
+            cached += u.get("cached_input_tokens", 0)
+            output += u.get("output_tokens", 0)
+            turns += 1
+            ending = "turn.completed"
+        elif ev.get("type") == "turn.failed":
+            ending = "turn.failed"
+        elif ev.get("type") == "item.completed":
+            items += 1
+    cost = codex_usd(inp - cached, cached, output)
+    return dict(wall_s=wall, exit=code, work=cwd, cost_usd=cost, engine_usd=cost, jev_usd=0.0,
+                turns=turns, steps=items, input_tokens=inp, uncached_input=inp - cached, cache_read=cached,
+                cache_write=0, output_tokens=output, models=[CODEX_MODEL], ending=ending, effort=CODEX_EFFORT)
 
 
 def run_raw_claude(prompt, cwd, d):
@@ -400,8 +456,9 @@ def atif_summary(task_dir):
                         s["cache_write"] += u.get("cache_creation_input_tokens", 0)
                         s["output_tokens"] += u.get("output_tokens", 0)
                         s["requests"] += 1
-            if er and er.get("kind") == "claude_session":
+            if er and er.get("kind") in ("claude_session", "codex_session"):
                 # #10246: one lean Claude Code session; its own list-price cost.
+                # #10250: one lean Codex session; the list-price estimate from its usage.
                 r = er.get("result") or {}
                 s["engine_usd"] += r.get("cost_usd") or 0
                 s["input_tokens"] += (r.get("input_tokens") or 0) + (r.get("cache_read_input_tokens") or 0) + (r.get("cache_creation_input_tokens") or 0)
@@ -412,7 +469,7 @@ def atif_summary(task_dir):
                 s["steps"] += r.get("num_turns") or 0
                 s["ending"] = r.get("status")
             ei = e.get("effect_intent") or e.get("effect")
-            if isinstance(ei, dict) and ei.get("kind") == "claude_session":
+            if isinstance(ei, dict) and ei.get("kind") in ("claude_session", "codex_session"):
                 s["effort"] = (ei.get("arguments") or {}).get("effort")
             m = (e.get("microcoder") or {}).get("event") or {}
             if m.get("event") == "ended":
@@ -433,7 +490,7 @@ def run_routed(engine, recipe_on, prompt, cwd, d):
                OPENAGENTS_CHAT_HOME=os.path.join(d, "chat"))
     if not recipe_on:
         env["OPENAGENTS_CODER_CONTROLLER"] = OFF_SHIM
-    oa = LEAN_OA if engine == "claude-lean" else OA
+    oa = LEAN_OA if engine == "claude-lean" else CODEX_SESSION_OA if engine.startswith("codex-") else OA
     start = time.time()
     try:
         r = subprocess.run([oa, "chat", "send", "--local", "--json", "--timeout", str(TIMEOUT), prompt],
@@ -504,6 +561,9 @@ ARMS = {
     "routed-claude-off": lambda p, c, d: run_routed("claude", False, p, c, d),
     "routed-codex-off": lambda p, c, d: run_routed("codex", False, p, c, d),
     "routed-claude-lean": lambda p, c, d: run_routed("claude-lean", True, p, c, d),
+    "raw-codex": lambda p, c, d: run_raw_codex(p, c, d),
+    "routed-codex-loop": lambda p, c, d: run_routed("codex-loop", True, p, c, d),
+    "routed-codex-session": lambda p, c, d: run_routed("codex-session", True, p, c, d),
 }
 
 

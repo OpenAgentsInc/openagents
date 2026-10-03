@@ -1978,6 +1978,10 @@ pub struct Cli {
     /// for the child. `None` removes any inherited value, so the child runs
     /// the CLI's default.
     pub prompt_cache_ttl: Option<String>,
+    /// Codex settings a watched session ([`Cli::live_command`]) passes as
+    /// `-c key=value`, such as `service_tier="default"`; empty for every
+    /// other agent and for [`Cli::command`].
+    pub codex_config: Vec<String>,
     /// The system prompt variant (`exec.system`); `None` runs the CLI's
     /// own default prompt.
     pub system: Option<crate::system::Variant>,
@@ -2233,6 +2237,9 @@ impl Cli {
                     if !setting.is_empty() {
                         args.extend(["-c".to_string(), setting]);
                     }
+                }
+                for setting in &self.codex_config {
+                    args.extend(["-c".to_string(), setting.clone()]);
                 }
                 args.extend([
                     "--dangerously-bypass-approvals-and-sandbox".to_string(),
