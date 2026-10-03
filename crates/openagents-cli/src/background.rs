@@ -33,7 +33,8 @@ pub(crate) const USAGE: &str = "usage: openagents background COMMAND [OPTIONS]
   pause ID [--until TIME]
                   Stop the rule, until TIME (2h, 1d, 2026-10-03, or seconds
                   since the epoch) or until resumed.
-  resume ID       Start the rule again.
+  resume ID       Turn the rule on again: a paused rule, or one that ships
+                  paused.
   run ID [--dry-run]
                   Run the rule now; --dry-run shows exactly what it would
                   delete and why, and what it keeps, changing nothing.
@@ -153,10 +154,14 @@ fn layout(args: &Args) -> Result<Layout, String> {
 fn list(output: &Output, layout: &Layout) -> Result<(), Failure> {
     let rows = view::list(layout);
     output.emit(&json!({ "rules": rows }), |_| {
-        rows.iter()
-            .map(view::Row::line)
-            .collect::<Vec<_>>()
-            .join("\n")
+        let mut lines: Vec<String> = rows.iter().map(view::Row::line).collect();
+        if let Some(paused) = rows.iter().find(|row| row.error.is_none() && !row.enabled) {
+            lines.push(format!(
+                "Turn a paused rule on: openagents background resume {}",
+                paused.id
+            ));
+        }
+        lines.join("\n")
     });
     Ok(())
 }

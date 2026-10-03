@@ -33,18 +33,37 @@ impl Row {
     pub fn line(&self) -> String {
         let status = match (&self.error, self.enabled, self.paused_until) {
             (Some(error), ..) => format!("broken: {error}"),
-            (None, false, _) => "off".to_owned(),
-            (None, true, Some(until)) if until > now() => "paused".to_owned(),
+            // One word for a rule not running: `pause` and `resume` are the
+            // commands that change it.
+            (None, false, _) => "paused".to_owned(),
+            (None, true, Some(until)) if until > now() => format!("paused until {}", date(until)),
             (None, true, _) => "on".to_owned(),
         };
         let mut line = format!("{} · {status}", self.id);
         if let Some(free) = self.state.free {
             line.push_str(&format!(" · {} free", bytes(free)));
         }
-        if let Some(result) = &self.state.last_result {
-            line.push_str(&format!(" · {result}"));
+        match (&self.state.last_result, self.state.last_run) {
+            (Some(result), Some(at)) => line.push_str(&format!(" · {} {result}", ago(at, now()))),
+            (Some(result), None) => line.push_str(&format!(" · {result}")),
+            (None, _) if self.error.is_none() => line.push_str(" · not run yet"),
+            (None, _) => {}
         }
         line
+    }
+}
+
+/// When `at` was, from `now`, for a list line: "just now", "5 min ago",
+/// "3 h ago", "2 days ago", or the date.
+#[must_use]
+pub fn ago(at: u64, now: u64) -> String {
+    let secs = now.saturating_sub(at);
+    match secs {
+        0..60 => "just now:".to_owned(),
+        60..3600 => format!("{} min ago:", secs / 60),
+        3600..86_400 => format!("{} h ago:", secs / 3600),
+        86_400..1_209_600 => format!("{} days ago:", secs / 86_400),
+        _ => format!("on {}:", date(at)),
     }
 }
 
@@ -255,6 +274,33 @@ pub fn date(secs: u64) -> String {
 #[cfg(test)]
 mod tests {
     use crate::paths::Layout;
+
+    #[test]
+    fn a_list_line_says_paused_and_when_the_last_result_was() {
+        let row = |enabled: bool, last: Option<(u64, &str)>| super::Row {
+            id: "worktrees".into(),
+            name: "Worktrees".into(),
+            version: 1,
+            digest: String::new(),
+            enabled,
+            paused_until: None,
+            state: crate::store::RuleState {
+                last_run: last.map(|(at, _)| at),
+                last_result: last.map(|(_, result)| result.to_owned()),
+                ..Default::default()
+            },
+            plugin: None,
+            error: None,
+        };
+        assert_eq!(row(false, None).line(), "worktrees · paused · not run yet");
+        let at = super::now() - 2 * 3600;
+        assert_eq!(
+            row(true, Some((at, "Nothing to clean."))).line(),
+            "worktrees · on · 2 h ago: Nothing to clean."
+        );
+        assert_eq!(super::ago(100, 100 + 3 * 86_400), "3 days ago:");
+        assert_eq!(super::ago(100, 130), "just now:");
+    }
 
     #[test]
     fn watchers_are_the_rules_on_while_a_runner_holds_its_lock() {

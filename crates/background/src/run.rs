@@ -559,19 +559,30 @@ fn untrash(trashed: &Path, to: &Path) -> Result<(), String> {
 pub fn describe(plan: &Plan, home: &Path, kept: bool) -> Vec<String> {
     let mut lines = Vec::new();
     for volume in &plan.volumes {
-        lines.push(format!(
-            "{}: {} free of {}; cleans below {}, stops at {}{}.",
-            show(&volume.root, home),
-            bytes(volume.space.free),
-            bytes(volume.space.total),
-            bytes(volume.start),
-            bytes(volume.stop),
-            if volume.needed == 0 {
-                ", nothing needed now".to_owned()
-            } else {
-                format!("; aims to free {}", bytes(volume.needed))
-            }
-        ));
+        // A pruning rule cleans whatever qualifies, whatever the free
+        // space: its levels are the `ALWAYS` sentinel, not words for anyone.
+        if volume.start >= crate::rule::ALWAYS {
+            lines.push(format!(
+                "{}: {} free of {}; removes whatever qualifies, whatever the free space.",
+                show(&volume.root, home),
+                bytes(volume.space.free),
+                bytes(volume.space.total),
+            ));
+        } else {
+            lines.push(format!(
+                "{}: {} free of {}; cleans below {}, stops at {}{}.",
+                show(&volume.root, home),
+                bytes(volume.space.free),
+                bytes(volume.space.total),
+                bytes(volume.start),
+                bytes(volume.stop),
+                if volume.needed == 0 {
+                    ", nothing needed now".to_owned()
+                } else {
+                    format!("; aims to free {}", bytes(volume.needed))
+                }
+            ));
+        }
         for item in &volume.items {
             lines.push(format!(
                 "  {} {:>7}  {}  ({})",

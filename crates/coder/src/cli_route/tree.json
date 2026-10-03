@@ -5462,7 +5462,7 @@
                 ]
               }
             ],
-            "summary": "Start the rule again.",
+            "summary": "Turn the rule on again: a paused rule, or one that ships paused.",
             "effect": "local_write",
             "runs_on": "connected_computer"
           }
