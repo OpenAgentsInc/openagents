@@ -41,6 +41,7 @@ openagents chat read --thread ID
 openagents chat export --thread ID
 openagents chat run-coder --thread ID
 openagents chat run-command --thread ID
+openagents chat apply --thread ID
 openagents chat work --issues NUMBERS|LABEL [--parallel N] [--land main|pr] [--on boat]
 ```
 
@@ -52,7 +53,8 @@ Every command also takes `--scratch`, `--local`, and `--socket PATH`, and
   (`echo "What is the Gym?" | openagents chat -`). A message that is itself
   a command word (`threads`, `read`) needs `send`.
 - `threads` lists threads newest first; `--all` includes archived ones.
-- `read` prints a thread's turns, every page of them.
+- `read` prints a thread's turns, every page of them, then how each Coder
+  turn ended and its answer (`--json`: `coder_turns`).
 - `export` prints the thread as its `ATIF-v1.8` trajectory
   ([below](#threads-as-atif)). The command checks the document with
   `crates/atif` before it prints it.
@@ -70,6 +72,11 @@ Every command also takes `--scratch`, `--local`, and `--socket PATH`, and
   something on this computer waits for `run-command` (in OpenAgents
   Terminal, Enter); a command that moves money or shows a secret never runs
   from the chat.
+- `apply` brings the thread's Coder change into the checkout it was made
+  from, uncommitted, for you to review and commit there: the worktree's
+  whole change from the task's base, new files included, applied with a
+  three-way merge. It refuses a checkout with changes of its own and
+  never commits or pushes (#10343).
 - `work` hands several GitHub issues to Coder, one issue flow each
   ([below](#working-a-github-issue)).
 
