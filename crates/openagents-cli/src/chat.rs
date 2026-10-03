@@ -921,6 +921,9 @@ async fn threads(
 }
 
 fn read(output: &Output, client: &Client, thread: &openagents_chat::thread::Thread) {
+    // What Coder did on each of its turns (#10332): the thread's own turns
+    // hold only the messages and acknowledgements.
+    let endings = client.coder_endings(&thread.summary.id, thread);
     output.emit(
         &json!({
             "thread": thread.summary.id,
@@ -930,6 +933,7 @@ fn read(output: &Output, client: &Client, thread: &openagents_chat::thread::Thre
             "failure": thread.failure,
             "coder": thread.summary.coder,
             "turns": thread.turns,
+            "coder_turns": endings,
         }),
         |value| {
             let mut out = format!("{}\n", value["title"].as_str().unwrap_or(""));
@@ -949,6 +953,12 @@ fn read(output: &Output, client: &Client, thread: &openagents_chat::thread::Thre
                     turn["text"].as_str().unwrap_or("")
                 ));
             }
+            if !endings.is_empty() {
+                out.push_str("\nCoder:\n");
+                for ending in &endings {
+                    out.push_str(&coder_turn(ending));
+                }
+            }
             if value["busy"] == true {
                 out.push_str("\n(a reply is streaming)\n");
             }
@@ -964,9 +974,70 @@ fn read(output: &Output, client: &Client, thread: &openagents_chat::thread::Thre
     );
 }
 
+/// One ended Coder turn as `chat read` shows it: how it ended, then its
+/// answer, indented.
+fn coder_turn(ending: &openagents_chat::coder_events::CoderEvent) -> String {
+    use openagents_chat::coder_events::CoderEvent;
+    let Some(text) = openagents_chat::coder_events::text(ending) else {
+        return String::new();
+    };
+    let mut out = String::new();
+    let mut lines = text.lines();
+    if let Some(header) = lines.next() {
+        out.push_str(&format!("\n{header}\n"));
+    }
+    for line in lines {
+        out.push_str(&format!("{line}\n"));
+    }
+    if let CoderEvent::Result(result) = ending
+        && !result.summary.trim().is_empty()
+    {
+        for line in result.summary.trim().lines() {
+            if line.trim().is_empty() {
+                out.push('\n');
+            } else {
+                out.push_str(&format!("  {line}\n"));
+            }
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_coder_turn_reads_as_its_outcome_and_answer() {
+        use openagents_chat::coder_events::{CoderEvent, FileChange, Finished};
+        let shown = coder_turn(&CoderEvent::Result(Finished {
+            turn: 2,
+            summary: "Committed as 5ab07fa; 3 tests passed.".into(),
+            files_changed: vec![FileChange {
+                path: "calc.py".into(),
+                status: "modified".into(),
+                added: Some(2),
+                removed: Some(2),
+                patch: None,
+                patch_cut: 0,
+            }],
+            insertions: 2,
+            deletions: 2,
+            worktree: "/w".into(),
+            trajectory: "/t".into(),
+            issue: None,
+            cost_microusd: None,
+        }));
+        assert!(
+            shown.contains("Coder finished turn 2: 1 file changed"),
+            "{shown}"
+        );
+        assert!(shown.contains("modified calc.py (+2 -2)"), "{shown}");
+        assert!(
+            shown.contains("  Committed as 5ab07fa; 3 tests passed."),
+            "{shown}"
+        );
+    }
 
     #[test]
     fn messages_come_from_words_and_are_bounded() {

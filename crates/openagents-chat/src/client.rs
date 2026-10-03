@@ -419,6 +419,10 @@ pub trait Coder: Send + Sync {
     }
     /// What the task's last turn did, once it ended (#10094).
     fn result(&self, store: &Path, task: &str) -> Option<CoderRun>;
+    /// How each of the task's ended turns ended, oldest first (#10332).
+    fn endings(&self, _store: &Path, _task: &str) -> Vec<CoderEvent> {
+        Vec::new()
+    }
     /// How the `openagents` command `argv` (without the program's name)
     /// that a reply proposed may run here (#10170), read from this
     /// computer's own command tree, never from the worker's word.
@@ -1134,6 +1138,15 @@ impl Client {
             .take(limit)
             .collect();
         Ok((rows, first.list_total))
+    }
+
+    /// How each of the thread's Coder turns ended, when its task store on
+    /// this computer holds them: what `chat read` shows (#10332).
+    pub fn coder_endings(&self, id: &str, thread: &Thread) -> Vec<CoderEvent> {
+        let Some(coder) = &thread.summary.coder else {
+            return Vec::new();
+        };
+        self.coder.endings(&self.store(id), &coder.task)
     }
 
     /// The thread's Coder task, every turn's trajectory, when its task

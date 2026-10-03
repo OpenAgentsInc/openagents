@@ -1661,6 +1661,29 @@ pub fn result_in(store: Option<&Path>, task: &str) -> Option<openagents_chat::ro
     None
 }
 
+/// How each of `task`'s ended turns ended, oldest first: what `chat read`
+/// shows of Coder's work (#10332). A turn still running is left out.
+pub fn endings_in(store: Option<&Path>, task: &str) -> Vec<CoderEvent> {
+    let store = store.map_or_else(default_store, Path::to_path_buf);
+    let mut follow = Local::new(store).follow(task, None, None);
+    let mut endings = Vec::new();
+    for _ in 0..64 {
+        let Ok((more, state)) = follow.poll() else {
+            break;
+        };
+        let caught_up = more.is_empty();
+        endings.extend(
+            more.into_iter()
+                .map(|line| line.event)
+                .filter(CoderEvent::ends_turn),
+        );
+        if state != State::Running || caught_up {
+            break;
+        }
+    }
+    endings
+}
+
 /// How long [`ready_here`] keeps its answer, in seconds.
 pub const READY_EVERY: u64 = 15;
 

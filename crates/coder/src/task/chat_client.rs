@@ -361,6 +361,10 @@ impl Coder for Here {
         local::result_in(Some(store), task)
     }
 
+    fn endings(&self, store: &Path, task: &str) -> Vec<openagents_chat::coder_events::CoderEvent> {
+        local::endings_in(Some(store), task)
+    }
+
     /// A command a reply proposed runs only as this build's own command
     /// tree declares it (#10170): read-only commands at once, commands
     /// that change something here after a confirm, and money, secrets,
