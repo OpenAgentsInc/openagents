@@ -44,6 +44,14 @@ engineering time, and machine charges are unmeasured. These are list-price
 estimates, not bills or evidence of net engineering return. Scope and accounting
 remain separate from the original source audit below.
 
+The [Claude startup follow-up](claude-startup-followup.md) reviews the newer
+#10254/#10279 implementation and independently confirms the standing lean
+Claude result: 0.45× raw cost and 0.86× recorded time on seven familiar tasks.
+It identifies the existing `Ahead` integration point, preparation lifecycle
+and accounting gaps, and the settings and timing boundaries to hold fixed in
+the next experiment. This updates the implementation context without changing
+the original audit's source snapshot or the historical replay results.
+
 The [new iteration theses](iteration-theses.md) turn the observed retrieval,
 fixture, verification, and routing gaps into six independently testable
 experiments, including concrete roles for TypeSafe judgments.

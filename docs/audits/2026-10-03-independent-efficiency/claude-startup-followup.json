@@ -1,0 +1,357 @@
+{
+  "schema": "openagents.audit.standing-followup.v1",
+  "source_snapshot": "2ce591f1af2f06052911fe976e73dfb84eb0c158",
+  "source": {
+    "path": "../../../bench/efficiency/results/2026-10-03b.jsonl",
+    "sha256": "71e0da4b5037bd101cf85f3a9a163802baa0b19add57882f37cd4c9e78810e5c"
+  },
+  "grid_complete_unique": true,
+  "row_count": 84,
+  "all_cost_components_reconcile": true,
+  "total_recorded_list_price_usd": 13.331699179999996,
+  "arms": {
+    "raw-claude": {
+      "n": 21,
+      "passed": 21,
+      "cost": 6.242232399999999,
+      "cost_per_pass": 0.29724916190476186,
+      "wall_sum": 1179.012041568756,
+      "wall_median": 40.91144943237305,
+      "engine_cost": 6.242232399999999,
+      "jev_cost": 0.0
+    },
+    "raw-codex": {
+      "n": 21,
+      "passed": 21,
+      "cost": 2.3155259999999998,
+      "cost_per_pass": 0.11026314285714285,
+      "wall_sum": 1309.1763689517975,
+      "wall_median": 36.76949381828308,
+      "engine_cost": 2.3155259999999998,
+      "jev_cost": 0.0
+    },
+    "routed-default": {
+      "n": 21,
+      "passed": 21,
+      "cost": 1.972324096,
+      "cost_per_pass": 0.09392019504761905,
+      "wall_sum": 2160.171262741089,
+      "wall_median": 75.39482498168945,
+      "engine_cost": 1.9180167999999997,
+      "jev_cost": 0.054307296000000005
+    },
+    "routed-lean": {
+      "n": 21,
+      "passed": 21,
+      "cost": 2.8016166839999994,
+      "cost_per_pass": 0.13341031828571426,
+      "wall_sum": 1012.3872830867767,
+      "wall_median": 34.492889642715454,
+      "engine_cost": 2.7964721999999997,
+      "jev_cost": 0.005144484000000002
+    }
+  },
+  "comparisons": {
+    "routed-lean/raw-claude": {
+      "cost_usd": {
+        "ratio_of_sum_task_means": 0.44881646572466605,
+        "within_task_95": [
+          0.3892215332974532,
+          0.516835332577007
+        ],
+        "task_cluster_plus_within_95": [
+          0.3465571257706509,
+          0.5637325740815634
+        ]
+      },
+      "wall_s": {
+        "ratio_of_sum_task_means": 0.8586742521643174,
+        "within_task_95": [
+          0.7441672245376963,
+          0.9864547784549479
+        ],
+        "task_cluster_plus_within_95": [
+          0.6531885278704251,
+          1.1055638931854443
+        ]
+      }
+    },
+    "routed-default/raw-claude": {
+      "cost_usd": {
+        "ratio_of_sum_task_means": 0.3159645411471703,
+        "within_task_95": [
+          0.2824777779568096,
+          0.3517208066407422
+        ],
+        "task_cluster_plus_within_95": [
+          0.23835683070524502,
+          0.39263356528693
+        ]
+      },
+      "wall_s": {
+        "ratio_of_sum_task_means": 1.8321876169023967,
+        "within_task_95": [
+          1.6095627412271951,
+          2.072395243739952
+        ],
+        "task_cluster_plus_within_95": [
+          1.4477274948985015,
+          2.5254616622700135
+        ]
+      }
+    },
+    "routed-default/raw-codex": {
+      "cost_usd": {
+        "ratio_of_sum_task_means": 0.8517823146878938,
+        "within_task_95": [
+          0.7836760467105673,
+          0.9244289592162195
+        ],
+        "task_cluster_plus_within_95": [
+          0.7241282801137169,
+          1.1178255635989902
+        ]
+      },
+      "wall_s": {
+        "ratio_of_sum_task_means": 1.650023109163395,
+        "within_task_95": [
+          1.517164790815419,
+          1.7996413647293654
+        ],
+        "task_cluster_plus_within_95": [
+          1.4053475680423297,
+          2.115912460875033
+        ]
+      }
+    },
+    "raw-codex/raw-claude": {
+      "cost_usd": {
+        "ratio_of_sum_task_means": 0.37094517660060206,
+        "within_task_95": [
+          0.33271225532970405,
+          0.41109829096867284
+        ],
+        "task_cluster_plus_within_95": [
+          0.22828299085666748,
+          0.5219880017980226
+        ]
+      },
+      "wall_s": {
+        "ratio_of_sum_task_means": 1.1104011857333103,
+        "within_task_95": [
+          0.9684328765921205,
+          1.2620880586928713
+        ],
+        "task_cluster_plus_within_95": [
+          0.7700869775268578,
+          1.447259098643114
+        ]
+      }
+    }
+  },
+  "tasks": {
+    "bottle-etag": {
+      "lean_rawclaude_cost": 0.3393768145041135,
+      "lean_rawclaude_time": 0.5403498727999974,
+      "routed_rawcodex_cost": 1.03070070185505,
+      "routed_rawcodex_time": 2.1727669358148693,
+      "lines": {
+        "raw-claude": [
+          1,
+          2,
+          3
+        ],
+        "raw-codex": [
+          4,
+          5,
+          6
+        ],
+        "routed-default": [
+          7,
+          8,
+          9
+        ],
+        "routed-lean": [
+          10,
+          11,
+          12
+        ]
+      }
+    },
+    "build-cython-ext": {
+      "lean_rawclaude_cost": 0.6084859741908186,
+      "lean_rawclaude_time": 0.9894278791938631,
+      "routed_rawcodex_cost": 0.6892181709380157,
+      "routed_rawcodex_time": 1.305955369784181,
+      "lines": {
+        "raw-claude": [
+          13,
+          14,
+          15
+        ],
+        "raw-codex": [
+          16,
+          17,
+          18
+        ],
+        "routed-default": [
+          19,
+          20,
+          21
+        ],
+        "routed-lean": [
+          22,
+          23,
+          24
+        ]
+      }
+    },
+    "fix-code-vulnerability": {
+      "lean_rawclaude_cost": 0.4398083916078649,
+      "lean_rawclaude_time": 1.368802166789771,
+      "routed_rawcodex_cost": 0.7107920170418045,
+      "routed_rawcodex_time": 1.6583945158237017,
+      "lines": {
+        "raw-claude": [
+          25,
+          26,
+          27
+        ],
+        "raw-codex": [
+          28,
+          29,
+          30
+        ],
+        "routed-default": [
+          31,
+          32,
+          33
+        ],
+        "routed-lean": [
+          34,
+          35,
+          36
+        ]
+      }
+    },
+    "fix-git": {
+      "lean_rawclaude_cost": 0.517472057782442,
+      "lean_rawclaude_time": 1.564757004845161,
+      "routed_rawcodex_cost": 1.282442360180931,
+      "routed_rawcodex_time": 2.6989572987484567,
+      "lines": {
+        "raw-claude": [
+          37,
+          38,
+          39
+        ],
+        "raw-codex": [
+          40,
+          41,
+          42
+        ],
+        "routed-default": [
+          43,
+          44,
+          45
+        ],
+        "routed-lean": [
+          46,
+          47,
+          48
+        ]
+      }
+    },
+    "headless-terminal": {
+      "lean_rawclaude_cost": 0.3826010573608504,
+      "lean_rawclaude_time": 0.6749502398599192,
+      "routed_rawcodex_cost": 1.1077411105860322,
+      "routed_rawcodex_time": 1.7591245419871937,
+      "lines": {
+        "raw-claude": [
+          49,
+          50,
+          51
+        ],
+        "raw-codex": [
+          52,
+          53,
+          54
+        ],
+        "routed-default": [
+          55,
+          56,
+          57
+        ],
+        "routed-lean": [
+          58,
+          59,
+          60
+        ]
+      }
+    },
+    "mi-one": {
+      "lean_rawclaude_cost": 0.33241606308617294,
+      "lean_rawclaude_time": 0.8657614826176515,
+      "routed_rawcodex_cost": 0.9362158343525863,
+      "routed_rawcodex_time": 1.5618276604703052,
+      "lines": {
+        "raw-claude": [
+          61,
+          62,
+          63
+        ],
+        "raw-codex": [
+          64,
+          65,
+          66
+        ],
+        "routed-default": [
+          67,
+          68,
+          69
+        ],
+        "routed-lean": [
+          70,
+          71,
+          72
+        ]
+      }
+    },
+    "mi-seekable": {
+      "lean_rawclaude_cost": 0.3709072084555262,
+      "lean_rawclaude_time": 0.8634025261307888,
+      "routed_rawcodex_cost": 1.0398581096357695,
+      "routed_rawcodex_time": 1.902744768186531,
+      "lines": {
+        "raw-claude": [
+          73,
+          74,
+          75
+        ],
+        "raw-codex": [
+          76,
+          77,
+          78
+        ],
+        "routed-default": [
+          79,
+          80,
+          81
+        ],
+        "routed-lean": [
+          82,
+          83,
+          84
+        ]
+      }
+    }
+  },
+  "method": {
+    "point": "Ratio of sums of per-task means, computed independently from rows without importing the product or study calculation functions.",
+    "bootstrap": "Python random.Random(20261003), 10000 resamples per comparison/metric. Within each task and arm, draw 3 trials with replacement. Sorted interval indices 249 and 9749.",
+    "task_sensitivity": "Additionally draw 7 shared task labels with replacement per resample; then sample trials within the selected tasks. Retrospective sensitivity only; no new gate or unseen-task guarantee.",
+    "cost": "Recorded CLI list-price engine cost plus recorded Jev/embedding cost; not an invoice. Router, issue judgment, and unused speculative work are not fully counted.",
+    "time": "Recorded arm wall time; excludes subsequent external check, template copying, and environment setup."
+  }
+}
