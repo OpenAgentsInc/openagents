@@ -211,7 +211,7 @@ projects, and what the run's commands may reach.
   CLI can refuse a newer grant with "the execution grant has an invalid
   shape" (#10074); build or install `microcoder` with `openagents`. The
   run is under an execution grant, reaching what `coder.access` allows
-  (`full` by default: no sandbox, and every step approved, #10104), with the
+  (`full` by default: no sandbox, and Coder runs every step without asking, #10104), with the
   same failover and the same ATIF trajectory per turn. The shared code is
   [`coder::task::local`](../../crates/coder/src/task/local.rs).
 - **No step or time budget.** A run ends only when Coder finishes (or asks
@@ -670,7 +670,7 @@ form.
   `chat` subcommands.
 - A scratch thread is never moved into the host.
 - Local runs reach what `coder.access` allows: `full` by default (no
-  sandbox, every step approved, #10104). Under `boundary` or `toolchains`,
+  sandbox, Coder runs every step without asking, #10104). Under `boundary` or `toolchains`,
   on macOS the boundary cannot load Xcode's `xcrun`, so `/usr/bin/python3`
   (the Xcode shim) fails inside it; Coder finds another interpreter, such as
   `/Library/Developer/CommandLineTools/usr/bin/python3`, or says it could

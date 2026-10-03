@@ -33,7 +33,7 @@ Settings only turn an agent off or change the order.
 | `coder.start` | `at_once`, `ask_first` | `at_once` | Whether a coding reply starts Coder at once, or only offers **Run Coder**. It decides for your phone's requests to this computer too. |
 | `coder.usage_threshold_percent` | 1 to 100, or `off` | `90` | How full an agent's usage window can read before Coder moves on to the next agent. With `off`, Coder moves on only when an agent turns it away. |
 | `coder.projects` | folders | none: any Git checkout | Which folders hold your projects. Coder runs only in a checkout inside one of them, and the Mac app tries them when a chat names no project. |
-| `coder.access` | `full`, `toolchains`, `boundary` | `full` | What Coder's commands may reach. `full`: your own access, with every step approved. `toolchains`: writes only in Coder's worktree, with this computer's developer programs and the network. `boundary`: the plain sandbox. |
+| `coder.access` | `full`, `toolchains`, `boundary` | `full` | What Coder's commands may reach. `full`: your own access; Coder runs every step without asking. `toolchains`: writes only in Coder's worktree, with this computer's developer programs and the network. `boundary`: the plain sandbox. |
 
 Examples:
 

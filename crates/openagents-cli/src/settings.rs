@@ -38,7 +38,8 @@ Keys:
   coder.usage_threshold_percent   1 to 100, or off (default 90).
   coder.projects                  Folders whose Git checkouts are projects,
                                   comma-separated; empty is any (default).
-  coder.access                    full, toolchains, or boundary (default full: every step approved).
+  coder.access                    full, toolchains, or boundary (default full: Coder runs every
+                                  step without asking).
   coder.shadow                    1 to 100: that percent of finished Coder runs also run once
                                   through the raw engine, to record what they would have
                                   cost (openagents shadow report); or off (default off).

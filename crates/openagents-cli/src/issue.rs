@@ -137,7 +137,9 @@ fn place(named: Option<&str>) -> Result<(String, Policy), String> {
     };
     let repository = match (named, &top) {
         (Some(named), _) => named.to_owned(),
-        (None, Some(top)) => Gh.repository(top)?,
+        (None, Some(top)) => Gh.repository(top).map_err(|_| {
+            "This checkout's origin isn't a GitHub repository; pass --repo OWNER/NAME.".to_owned()
+        })?,
         (None, None) => {
             return Err("run this in a checkout of the repository, or pass --repo".into());
         }
