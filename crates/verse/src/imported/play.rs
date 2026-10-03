@@ -103,6 +103,7 @@ pub struct Arrow {
     pub fired: f32,
     pub impact: f32,
     pub target: u64,
+    pub life: verse_engine::core::LifeId,
 }
 #[derive(Clone, Debug)]
 pub struct Casting {
@@ -136,6 +137,7 @@ pub struct Game {
     simulation: Simulation,
     pub controls: Controls,
     ids: BTreeMap<u64, u32>,
+    lives: BTreeMap<u64, verse_engine::core::LifeId>,
     arrows: Vec<Arrow>,
     pub bow_ready: f32,
     pub last_cast: Option<(Ability, f32)>,
@@ -277,6 +279,19 @@ impl Game {
             message: String::new(),
             simulation,
             controls: Controls::default(),
+            lives: ids
+                .keys()
+                .map(|id| {
+                    (
+                        *id,
+                        verse_engine::core::LifeId {
+                            instance: 0,
+                            actor: *id,
+                            generation: 0,
+                        },
+                    )
+                })
+                .collect(),
             ids,
             arrows: vec![],
             bow_ready: 0.0,
@@ -550,6 +565,9 @@ impl Game {
         }
         let mut remaining = Vec::new();
         for arrow in std::mem::take(&mut self.arrows) {
+            if self.lives.get(&arrow.target) != Some(&arrow.life) {
+                continue;
+            }
             if !self.attack_clear(arrow.start, arrow.end) {
                 continue;
             }
@@ -687,11 +705,13 @@ impl Game {
             .cloned()
             .collect();
         for actor in due {
+            let next_life = self.lives[&actor.id].next()?;
             let old = self.ids[&actor.id];
             let source = self
                 .simulation
                 .spawn_chamber_actor(actor.position.to_array(), actor.health as i32)?;
             self.ids.insert(actor.id, source);
+            self.lives.insert(actor.id, next_life);
             self.observed_health.remove(&old);
             self.observed_health.insert(source, actor.health as i32);
             self.controls.forget_actor(old);
@@ -883,6 +903,7 @@ impl Game {
                 fired: self.time,
                 impact: self.time + start.distance(end) / 24.0,
                 target: self.selected,
+                life: self.lives[&self.selected],
             });
         }
         self.record_ability(ability);
@@ -926,6 +947,7 @@ mod tests {
             .unwrap()
             .clone();
         for _ in 0..2 {
+            let old_life = g.lives[&cultist.id];
             let old = g.ids[&cultist.id];
             g.simulation.bow_impact(old, 1000).unwrap();
             g.tick(0.0, [0.0; 2]).unwrap();
@@ -949,6 +971,25 @@ mod tests {
             g.time = died + 60.0;
             g.tick(0.0, [0.0; 2]).unwrap();
             assert_ne!(g.ids[&cultist.id], old);
+            assert_eq!(g.lives[&cultist.id], old_life.next().unwrap());
+            g.arrows.push(Arrow {
+                start: cultist.position + Vec3::Y,
+                end: cultist.position + Vec3::Y,
+                fired: died,
+                impact: g.time,
+                target: cultist.id,
+                life: old_life,
+            });
+            g.tick(0.0, [0.0; 2]).unwrap();
+            assert_eq!(
+                g.snapshot()
+                    .actors
+                    .iter()
+                    .find(|a| a.id == g.ids[&cultist.id])
+                    .unwrap()
+                    .hp,
+                cultist.health as i32,
+            );
             assert!(!g.npc_deaths.contains_key(&cultist.id));
             assert!(!g.observed_health.contains_key(&old));
             let frame = g.frame();

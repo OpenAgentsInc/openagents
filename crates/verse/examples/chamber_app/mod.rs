@@ -27,7 +27,7 @@ struct App {
     atlas: Atlas,
     game: Game,
     last: Instant,
-    agent_time: f32,
+    schedule: verse_engine::core::FixedSchedule,
     keys: HashSet<KeyCode>,
     cursor: [f32; 2],
     controls: ClassicControls,
@@ -50,7 +50,7 @@ impl App {
         }
     }
     fn render(&mut self) -> Result<Vec<u8>, String> {
-        let dt = self.last.elapsed().as_secs_f32().min(0.1);
+        let elapsed = self.last.elapsed().as_secs_f64();
         self.last = Instant::now();
         let key = |k| self.keys.contains(&k);
         let held = Held {
@@ -61,21 +61,19 @@ impl App {
             strafe_left: key(KeyCode::KeyQ),
             strafe_right: key(KeyCode::KeyE),
         };
-        let movement = if self.game.unlocked() && !self.game.agent_controlled {
-            self.controls
-                .step(held, dt, &mut self.game.yaw, &mut self.game.camera)
-        } else {
-            [0.0; 2]
-        };
-        if self.game.agent_controlled {
-            self.agent_time += dt;
-            while self.agent_time >= 1.0 / 30.0 {
-                self.game.tick(1.0 / 30.0, [0.0; 2])?;
-                self.agent_time -= 1.0 / 30.0;
-            }
-        } else {
-            self.agent_time = 0.0;
-            self.game.tick(dt, movement)?;
+        let batch = self.schedule.advance(elapsed)?;
+        for _ in 0..batch.steps {
+            let movement = if self.game.unlocked() && !self.game.agent_controlled {
+                self.controls.step(
+                    held,
+                    batch.seconds,
+                    &mut self.game.yaw,
+                    &mut self.game.camera,
+                )
+            } else {
+                [0.0; 2]
+            };
+            self.game.tick(batch.seconds, movement)?;
         }
         self.draw_frame()
     }
@@ -254,7 +252,8 @@ impl ApplicationHandler for App {
                                             .expect("The loaded chamber admits combat");
                                     self.game.time = self.game.scene.cut_at
                                         - if key == KeyCode::F2 { 3.0 } else { 0.0 };
-                                    self.agent_time = 0.0;
+                                    self.schedule = verse_engine::core::FixedSchedule::new(30, 3)
+                                        .expect("The chamber uses a valid fixed schedule");
                                     self.controls.clear();
                                     self.keys.clear();
                                     self.pending_select = false;
@@ -522,7 +521,7 @@ pub fn run(original_default: bool) -> Result<(), String> {
         atlas,
         game,
         last: Instant::now(),
-        agent_time: 0.0,
+        schedule: verse_engine::core::FixedSchedule::new(30, 3)?,
         keys: HashSet::new(),
         cursor: [0.0; 2],
         controls: ClassicControls::default(),

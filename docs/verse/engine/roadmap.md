@@ -25,6 +25,13 @@ for Claude. Restricted Bestiary source files remain outside the public repo.
 
 ## Original scene implementation
 
+[#10435](https://github.com/OpenAgentsInc/openagents/issues/10435) adds portable
+generation-safe entity storage, respawn life IDs, and a bounded fixed schedule.
+Native player and controller modes now share 30 Hz stepping with a three-step
+catch-up limit and recorded dropped time. Chamber arrows carry target life IDs
+and cannot damage a later respawn. This starts VE-0; authority extraction,
+generation fencing for other effects, and physics substep integration remain.
+
 [#10426](https://github.com/OpenAgentsInc/openagents/issues/10426) implements the
 first asset-free procedural scene. The `verse_play` native example generates an
 original chamber, skeletal placeholder actors, weapons, particles, and UI
