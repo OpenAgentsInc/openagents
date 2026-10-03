@@ -160,6 +160,10 @@ pub struct Input<'a> {
     /// Code session reads the workspace itself, faster than the survey
     /// takes, and skips it (#10254).
     pub survey: bool,
+    /// The groundwork prepared for this request before the run started
+    /// ([`ahead`], #10279). Used only without the survey, and only when it
+    /// was prepared for this exact request ([`Ahead::fits`]).
+    pub ahead: Option<Ahead>,
 }
 
 /// One candidate check and Jev's probability.
@@ -394,112 +398,119 @@ pub async fn prepare(input: Input<'_>) -> Prepared {
     );
     let mode = input.jev.clone().map_or(JevMode::Off, JevMode::Live);
 
-    // The class: one request, two questions.
-    let (class, class_record) = match &input.jev {
-        Some(_) => {
-            let asked = crate::component::jev::ask(
-                &mode,
-                &recorder,
-                Ask {
-                    component: "recipe.class",
-                    name: "jev_recipe_class",
-                    id: "jev_recipe_class-1".to_owned(),
-                    state: class_state(input.request, input.earlier),
-                    questions: class_questions(),
-                    parent: None,
-                    deadline: None,
-                },
+    // Without the survey the class, the knowledge, and the checks read only
+    // the request, so their Jev requests go out together (#10279): the
+    // groundwork then waits on one round trip instead of three. With the
+    // survey the class goes first, since a question skips the survey.
+    let concurrent = !input.survey && input.jev.is_some();
+    let mut ahead_record = Value::Null;
+    let (class, class_record, judge, knowledge, knowledge_record, candidates, checks_error) =
+        if concurrent {
+            let judge = policy
+                .judge(
+                    input.jev.clone(),
+                    input.workdir.to_path_buf(),
+                    &state.issue,
+                    recorder.clone(),
+                )
+                .probe_v2(false);
+            let work = match input.ahead.as_ref() {
+                Some(ahead) if ahead.fits(&input) => {
+                    // Asked while the router judged the message: its Jev
+                    // steps, and so its cost, are this run's.
+                    for step in &ahead.steps {
+                        recorder.push(step.clone());
+                    }
+                    ahead_record = json!({"used": true, "seconds": ahead.seconds});
+                    ahead.groundwork()
+                }
+                other => {
+                    if other.is_some() {
+                        ahead_record = json!({"used": false,
+                            "why": "it was prepared for another request or knowledge base"});
+                    }
+                    groundwork(
+                        &mode,
+                        &recorder,
+                        input.request,
+                        input.earlier,
+                        input.workdir,
+                        &input.knowledge_dirs,
+                    )
+                    .await
+                }
+            };
+            (
+                work.class,
+                work.class_record,
+                judge,
+                work.knowledge,
+                work.knowledge_record,
+                work.candidates,
+                work.checks_error,
             )
-            .await;
-            let (asks_only, hard) = (asked.noul("asks_only"), asked.noul("hard"));
-            let class = class_of(asks_only, hard);
+        } else {
+            let (class, class_record) =
+                ask_class(&mode, &recorder, input.request, input.earlier).await;
+            let question = class == Some(TaskClass::Question);
+            // The survey: the read-only battery (never the v2 setup pack,
+            // which installs what the request names) and Jev's file survey.
+            let mut judge = policy
+                .judge(
+                    input.jev.clone(),
+                    input.workdir.to_path_buf(),
+                    &state.issue,
+                    recorder.clone(),
+                )
+                .probe_v2(false);
+            if input.survey && !question {
+                judge.survey(&mut state).await;
+            }
+            // Knowledge: the search's candidates, kept or not by Jev.
+            let (knowledge, knowledge_record) = if question || input.jev.is_none() {
+                (
+                    Knowledge::NONE,
+                    json!({"skipped": if question { "a question" } else { "no Jev for this run" }}),
+                )
+            } else {
+                let requirements: Vec<String> = judge
+                    .requirements
+                    .requirements
+                    .iter()
+                    .take(crate::briefing_jev::MAX_REQUIREMENTS)
+                    .map(|r| r.text.split_whitespace().collect::<Vec<_>>().join(" "))
+                    .collect();
+                select_knowledge(
+                    &mode,
+                    &recorder,
+                    &words,
+                    &requirements,
+                    &input.knowledge_dirs,
+                )
+                .await
+            };
+            // Checks: candidates from the request and the survey, judged in
+            // one request.
+            let surveyed: Vec<String> = state.survey.iter().map(|file| file.path.clone()).collect();
+            let candidates = if question || input.jev.is_none() {
+                Vec::new()
+            } else {
+                check_candidates(input.request, &surveyed, input.workdir)
+            };
+            let (candidates, checks_error) =
+                ask_checks(&mode, &recorder, input.request, candidates).await;
             (
                 class,
-                json!({"set": CLASS_SET, "hard_at": HARD_AT, "asks_only": asks_only, "hard": hard,
-                    "class": class.map(TaskClass::word), "error": asked.error}),
+                class_record,
+                judge,
+                knowledge,
+                knowledge_record,
+                candidates,
+                checks_error,
             )
-        }
-        None => (None, json!({"skipped": "no Jev for this run"})),
-    };
+        };
     let question = class == Some(TaskClass::Question);
-
-    // The survey: the read-only battery (never the v2 setup pack, which
-    // installs what the request names) and Jev's file survey.
-    let mut judge = policy
-        .judge(
-            input.jev.clone(),
-            input.workdir.to_path_buf(),
-            &state.issue,
-            recorder.clone(),
-        )
-        .probe_v2(false);
-    let survey = !question && input.survey;
-    if survey {
-        judge.survey(&mut state).await;
-    }
-
-    // Knowledge: the search's candidates, kept or not by Jev.
-    let (knowledge, knowledge_record) = if question || input.jev.is_none() {
-        (
-            Knowledge::NONE,
-            json!({"skipped": if question { "a question" } else { "no Jev for this run" }}),
-        )
-    } else {
-        let requirements: Vec<String> = judge
-            .requirements
-            .requirements
-            .iter()
-            .take(crate::briefing_jev::MAX_REQUIREMENTS)
-            .map(|r| r.text.split_whitespace().collect::<Vec<_>>().join(" "))
-            .collect();
-        select_knowledge(
-            &mode,
-            &recorder,
-            &words,
-            &requirements,
-            &input.knowledge_dirs,
-        )
-        .await
-    };
-
-    // Checks: candidates from the request and the survey, judged in one
-    // request.
-    let surveyed: Vec<String> = state.survey.iter().map(|file| file.path.clone()).collect();
-    let mut candidates = if question || input.jev.is_none() {
-        Vec::new()
-    } else {
-        check_candidates(input.request, &surveyed, input.workdir)
-    };
-    let mut checks_error = None;
-    if !candidates.is_empty() {
-        let mut questions = jev::Questions::new();
-        for i in 0..candidates.len() {
-            questions = questions.with(&format!("check_{i}"), jev::Noul::new(CHECK));
-        }
-        let asked = crate::component::jev::ask(
-            &mode,
-            &recorder,
-            Ask {
-                component: "recipe.checks",
-                name: "jev_recipe_checks",
-                id: "jev_recipe_checks-1".to_owned(),
-                state: json!({
-                    "request": crate::judge::clip(input.request, 6_000),
-                    "candidates": candidates.iter().enumerate()
-                        .map(|(i, c)| json!({"id": format!("check_{i}"), "command": c.command, "from": c.from}))
-                        .collect::<Vec<_>>(),
-                }),
-                questions,
-                parent: None,
-                deadline: None,
-            },
-        )
-        .await;
-        for (i, candidate) in candidates.iter_mut().enumerate() {
-            candidate.p = asked.noul(&format!("check_{i}"));
-        }
-        checks_error = asked.error.clone();
-    }
+    let survey = input.survey && !question;
     let checks = keep_checks(&candidates);
 
     // The briefing.
@@ -546,6 +557,7 @@ pub async fn prepare(input: Input<'_>) -> Prepared {
         "version": RECIPE_VERSION,
         "class": class_record,
         "survey": survey,
+        "ahead": ahead_record,
         "briefing": briefing.record(),
         "knowledge": knowledge_record,
         "checks": {"set": CHECK, "keep": CHECK_KEEP, "candidates": candidates,
@@ -567,6 +579,386 @@ pub async fn prepare(input: Input<'_>) -> Prepared {
         jev_usd,
         lines,
     }
+}
+
+/// What the groundwork judged from the request alone: the class, the
+/// knowledge, and the checks.
+struct Groundwork {
+    class: Option<TaskClass>,
+    class_record: Value,
+    knowledge: Knowledge,
+    knowledge_record: Value,
+    candidates: Vec<Candidate>,
+    checks_error: Option<String>,
+}
+
+/// The class, the knowledge, and the checks of a request without the
+/// survey. They read only the request, so their Jev requests go out
+/// together (#10279) and the groundwork waits on one round trip, not one
+/// after another. A question carries no knowledge and freezes no checks;
+/// those requests already went out, and their cost is counted.
+async fn groundwork(
+    mode: &JevMode,
+    recorder: &Recorder,
+    request: &str,
+    earlier: &str,
+    workdir: &Path,
+    knowledge_dirs: &[PathBuf],
+) -> Groundwork {
+    let words = crate::terminal::instruction(request, earlier);
+    let candidates = check_candidates(request, &[], workdir);
+    let ((class, class_record), (knowledge, knowledge_record), (candidates, checks_error)) = tokio::join!(
+        ask_class(mode, recorder, request, earlier),
+        select_knowledge(mode, recorder, &words, &[], knowledge_dirs),
+        ask_checks(mode, recorder, request, candidates),
+    );
+    if class == Some(TaskClass::Question) {
+        let asked = json!({"knowledge": knowledge_record, "checks": candidates});
+        return Groundwork {
+            class,
+            class_record,
+            knowledge: Knowledge::NONE,
+            knowledge_record: json!({"skipped": "a question", "asked_concurrently": asked}),
+            candidates: Vec::new(),
+            checks_error,
+        };
+    }
+    Groundwork {
+        class,
+        class_record,
+        knowledge,
+        knowledge_record,
+        candidates,
+        checks_error,
+    }
+}
+
+/// The record an [`Ahead`] file carries.
+pub const AHEAD_SCHEMA: &str = "openagents.coder.delegate-recipe-ahead.v1";
+
+/// The folder of a task store that holds groundwork prepared ahead.
+pub const AHEAD_DIR: &str = "recipe-ahead";
+
+/// How long a run waits for groundwork still being prepared ahead before
+/// it asks Jev itself.
+pub const AHEAD_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// A marker older than this belongs to a preparation that died.
+const AHEAD_STALE: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// The groundwork of a request without the survey, prepared before the run
+/// starts (#10279): the chat asks it while its router judges the message,
+/// so a lean Claude Code session's start waits on neither. The run uses it
+/// only for the exact request and conversation it was prepared for, with
+/// the same knowledge bases; otherwise it asks Jev itself. Its Jev steps
+/// join the run's record and cost.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct Ahead {
+    pub schema: String,
+    pub request: String,
+    pub earlier: String,
+    /// The knowledge bases it searched ([`knowledge_dirs`] of the
+    /// checkout; a run's worktree has the same project folder).
+    pub knowledge_dirs: Vec<PathBuf>,
+    pub class: Option<String>,
+    pub class_record: Value,
+    pub knowledge: AheadKnowledge,
+    pub knowledge_record: Value,
+    pub candidates: Vec<AheadCandidate>,
+    pub checks_error: Option<String>,
+    /// The Jev steps it recorded, with their usage.
+    pub steps: Vec<Step>,
+    pub seconds: f64,
+}
+
+/// [`Knowledge`] as an [`Ahead`] file keeps it, with what serde leaves out.
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
+pub struct AheadKnowledge {
+    pub note: Option<String>,
+    /// Each entry with Jev's probability.
+    pub entries: Vec<(Entry, Option<f64>)>,
+    pub kept_note: Option<String>,
+    pub flagged: Vec<(String, f64)>,
+}
+
+/// A [`Candidate`] as an [`Ahead`] file keeps it.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct AheadCandidate {
+    pub command: String,
+    pub from: String,
+    pub p: Option<f64>,
+}
+
+impl Ahead {
+    /// Whether a run's groundwork may use it: the same request, the same
+    /// conversation before it, and the same knowledge bases (the shared one,
+    /// and a project folder in both or neither).
+    #[must_use]
+    pub fn fits(&self, input: &Input<'_>) -> bool {
+        self.schema == AHEAD_SCHEMA
+            && self.request == input.request
+            && self.earlier == input.earlier
+            && self.knowledge_dirs.len() == input.knowledge_dirs.len()
+            && self.knowledge_dirs.first() == input.knowledge_dirs.first()
+    }
+
+    fn groundwork(&self) -> Groundwork {
+        let kept_note = self.knowledge.kept_note.as_deref().and_then(|note| {
+            [&crate::briefing_jev::V1, &crate::briefing_jev::V2]
+                .into_iter()
+                .map(|set| set.kept_note)
+                .find(|known| *known == note)
+        });
+        Groundwork {
+            class: match self.class.as_deref() {
+                Some("question") => Some(TaskClass::Question),
+                Some("change") => Some(TaskClass::Change),
+                Some("hard") => Some(TaskClass::Hard),
+                _ => None,
+            },
+            class_record: self.class_record.clone(),
+            knowledge: Knowledge {
+                note: self.knowledge.note.clone(),
+                entries: self
+                    .knowledge
+                    .entries
+                    .iter()
+                    .map(|(entry, jev)| Entry {
+                        jev: *jev,
+                        ..entry.clone()
+                    })
+                    .collect(),
+                kept_note,
+                flagged: self
+                    .knowledge
+                    .flagged
+                    .iter()
+                    .map(|(text, p)| crate::briefing_knowledge::Flagged {
+                        text: text.clone(),
+                        p: *p,
+                    })
+                    .collect(),
+            },
+            knowledge_record: self.knowledge_record.clone(),
+            candidates: self
+                .candidates
+                .iter()
+                .map(|c| Candidate {
+                    command: c.command.clone(),
+                    from: if c.from == "survey" {
+                        "survey"
+                    } else {
+                        "request"
+                    },
+                    p: c.p,
+                })
+                .collect(),
+            checks_error: self.checks_error.clone(),
+        }
+    }
+
+    /// Where the groundwork for `request` after `earlier` is kept in the
+    /// task store `store`.
+    #[must_use]
+    pub fn path(store: &Path, request: &str, earlier: &str) -> PathBuf {
+        use sha2::{Digest, Sha256};
+        let digest = Sha256::digest(json!([request, earlier]).to_string().as_bytes());
+        let name: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
+        store.join(AHEAD_DIR).join(format!("{name}.json"))
+    }
+
+    /// The marker that says the groundwork at `path` is being prepared.
+    fn pending(path: &Path) -> PathBuf {
+        path.with_extension("pending")
+    }
+
+    /// Say the groundwork at `path` is being prepared, and clear what
+    /// earlier preparations left that no run took.
+    pub fn begin(path: &Path) {
+        if let Some(dir) = path.parent() {
+            let _ = std::fs::create_dir_all(dir);
+            if let Ok(entries) = std::fs::read_dir(dir) {
+                for entry in entries.flatten() {
+                    let old = entry
+                        .metadata()
+                        .and_then(|meta| meta.modified())
+                        .ok()
+                        .and_then(|at| at.elapsed().ok())
+                        .is_some_and(|age| age > AHEAD_STALE);
+                    if old {
+                        let _ = std::fs::remove_file(entry.path());
+                    }
+                }
+            }
+        }
+        let _ = std::fs::write(Self::pending(path), b"");
+    }
+
+    /// Keep the groundwork at `path` for the run, or, with none, say it
+    /// will not come.
+    pub fn finish(path: &Path, ahead: Option<&Ahead>) {
+        if let Some(ahead) = ahead
+            && let Ok(text) = serde_json::to_vec(ahead)
+        {
+            let _ = crate::record::write_atomic(path, &text);
+        }
+        let _ = std::fs::remove_file(Self::pending(path));
+    }
+
+    /// The groundwork kept for `request` after `earlier` in `store`, taken
+    /// so no other run uses it. While it is still being prepared, waits up
+    /// to `wait` for it.
+    pub async fn take(
+        store: &Path,
+        request: &str,
+        earlier: &str,
+        wait: std::time::Duration,
+    ) -> Option<Ahead> {
+        let path = Self::path(store, request, earlier);
+        let pending = Self::pending(&path);
+        let started = Instant::now();
+        loop {
+            if let Ok(text) = std::fs::read(&path) {
+                let _ = std::fs::remove_file(&path);
+                return serde_json::from_slice(&text).ok();
+            }
+            let preparing = std::fs::metadata(&pending)
+                .and_then(|meta| meta.modified())
+                .ok()
+                .and_then(|at| at.elapsed().ok())
+                .is_some_and(|age| age < AHEAD_STALE);
+            if !preparing || started.elapsed() >= wait {
+                return None;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+        }
+    }
+}
+
+/// Prepare the groundwork of `request` after `earlier` in `workdir`
+/// without the survey, before its run starts ([`Ahead`]).
+pub async fn ahead(
+    workdir: &Path,
+    request: &str,
+    earlier: &str,
+    jev: jev::Client,
+    knowledge_dirs: Vec<PathBuf>,
+) -> Ahead {
+    let started = Instant::now();
+    let _quiet = crate::say::capture(Box::new(|_| {}));
+    let recorder = Recorder::default();
+    let mode = JevMode::Live(jev);
+    let work = groundwork(&mode, &recorder, request, earlier, workdir, &knowledge_dirs).await;
+    Ahead {
+        schema: AHEAD_SCHEMA.to_owned(),
+        request: request.to_owned(),
+        earlier: earlier.to_owned(),
+        knowledge_dirs,
+        class: work.class.map(|class| class.word().to_owned()),
+        class_record: work.class_record,
+        knowledge: AheadKnowledge {
+            note: work.knowledge.note.clone(),
+            entries: work
+                .knowledge
+                .entries
+                .iter()
+                .map(|entry| (entry.clone(), entry.jev))
+                .collect(),
+            kept_note: work.knowledge.kept_note.map(str::to_owned),
+            flagged: work
+                .knowledge
+                .flagged
+                .iter()
+                .map(|flag| (flag.text.clone(), flag.p))
+                .collect(),
+        },
+        knowledge_record: work.knowledge_record,
+        candidates: work
+            .candidates
+            .iter()
+            .map(|c| AheadCandidate {
+                command: c.command.clone(),
+                from: c.from.to_owned(),
+                p: c.p,
+            })
+            .collect(),
+        checks_error: work.checks_error,
+        steps: recorder.steps(),
+        seconds: started.elapsed().as_secs_f64(),
+    }
+}
+
+/// Jev's class of the request: one request, two questions.
+async fn ask_class(
+    mode: &JevMode,
+    recorder: &Recorder,
+    request: &str,
+    earlier: &str,
+) -> (Option<TaskClass>, Value) {
+    if matches!(mode, JevMode::Off) {
+        return (None, json!({"skipped": "no Jev for this run"}));
+    }
+    let asked = crate::component::jev::ask(
+        mode,
+        recorder,
+        Ask {
+            component: "recipe.class",
+            name: "jev_recipe_class",
+            id: "jev_recipe_class-1".to_owned(),
+            state: class_state(request, earlier),
+            questions: class_questions(),
+            parent: None,
+            deadline: None,
+        },
+    )
+    .await;
+    let (asks_only, hard) = (asked.noul("asks_only"), asked.noul("hard"));
+    let class = class_of(asks_only, hard);
+    (
+        class,
+        json!({"set": CLASS_SET, "hard_at": HARD_AT, "asks_only": asks_only, "hard": hard,
+            "class": class.map(TaskClass::word), "error": asked.error}),
+    )
+}
+
+/// Jev's probability for each candidate check, in one request; none when
+/// there are no candidates.
+async fn ask_checks(
+    mode: &JevMode,
+    recorder: &Recorder,
+    request: &str,
+    mut candidates: Vec<Candidate>,
+) -> (Vec<Candidate>, Option<String>) {
+    if candidates.is_empty() {
+        return (candidates, None);
+    }
+    let mut questions = jev::Questions::new();
+    for i in 0..candidates.len() {
+        questions = questions.with(&format!("check_{i}"), jev::Noul::new(CHECK));
+    }
+    let asked = crate::component::jev::ask(
+        mode,
+        recorder,
+        Ask {
+            component: "recipe.checks",
+            name: "jev_recipe_checks",
+            id: "jev_recipe_checks-1".to_owned(),
+            state: json!({
+                "request": crate::judge::clip(request, 6_000),
+                "candidates": candidates.iter().enumerate()
+                    .map(|(i, c)| json!({"id": format!("check_{i}"), "command": c.command, "from": c.from}))
+                    .collect::<Vec<_>>(),
+            }),
+            questions,
+            parent: None,
+            deadline: None,
+        },
+    )
+    .await;
+    for (i, candidate) in candidates.iter_mut().enumerate() {
+        candidate.p = asked.noul(&format!("check_{i}"));
+    }
+    (candidates, asked.error)
 }
 
 /// Searches `dirs` with `instruction` and asks Jev which hits to keep, with
@@ -762,6 +1154,7 @@ mod tests {
             resumed: false,
             knowledge_dirs: vec![dir.path().join("knowledge")],
             survey: true,
+            ahead: None,
         })
         .await;
         assert_eq!(prepared.class, None);
@@ -798,6 +1191,7 @@ mod tests {
             resumed: false,
             knowledge_dirs: vec![dir.path().join("knowledge")],
             survey: false,
+            ahead: None,
         })
         .await;
         assert_eq!(prepared.record["survey"], false);
@@ -805,6 +1199,153 @@ mod tests {
         assert!(prepared.briefing.text.contains(UNSURVEYED_DIRECTIONS));
         assert!(!prepared.briefing.text.contains(DIRECTIONS));
         assert!(!prepared.briefing.text.contains("test_x.py"));
+    }
+
+    /// A local Jev that answers every noul question after `delay`, and
+    /// counts how many requests it held at once.
+    fn slow_jev(
+        delay: std::time::Duration,
+    ) -> (
+        String,
+        std::sync::Arc<std::sync::atomic::AtomicUsize>,
+        std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    ) {
+        use std::io::{BufRead, BufReader, Read, Write};
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let (now, most) = (Arc::new(AtomicUsize::new(0)), Arc::new(AtomicUsize::new(0)));
+        let total = Arc::new(AtomicUsize::new(0));
+        let (seen, counted) = (most.clone(), total.clone());
+        std::thread::spawn(move || {
+            for socket in listener.incoming() {
+                let Ok(mut socket) = socket else { return };
+                let (now, most, total) = (now.clone(), most.clone(), total.clone());
+                std::thread::spawn(move || {
+                    let mut reader = BufReader::new(socket.try_clone().unwrap());
+                    let mut length = 0;
+                    loop {
+                        let mut line = String::new();
+                        if reader.read_line(&mut line).unwrap_or(0) == 0 || line == "\r\n" {
+                            break;
+                        }
+                        if let Some((name, value)) = line.split_once(':')
+                            && name.eq_ignore_ascii_case("content-length")
+                        {
+                            length = value.trim().parse().unwrap_or(0);
+                        }
+                    }
+                    let mut body = vec![0; length];
+                    reader.read_exact(&mut body).unwrap();
+                    let body: Value = serde_json::from_slice(&body).unwrap();
+                    total.fetch_add(1, Ordering::SeqCst);
+                    let at = now.fetch_add(1, Ordering::SeqCst) + 1;
+                    most.fetch_max(at, Ordering::SeqCst);
+                    std::thread::sleep(delay);
+                    now.fetch_sub(1, Ordering::SeqCst);
+                    let answers: serde_json::Map<String, Value> = body["questions"]
+                        .as_object()
+                        .unwrap()
+                        .keys()
+                        .map(|id| {
+                            let p = if id.starts_with("check_") { 0.95 } else { 0.1 };
+                            (id.clone(), json!({"type": "noul", "noul": p}))
+                        })
+                        .collect();
+                    let reply = json!({"model": "jev-1.13.0", "answers": answers,
+                        "usage": {"input_tokens": 100, "output_tokens": 0}})
+                    .to_string();
+                    let _ = write!(
+                        socket,
+                        "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{reply}",
+                        reply.len()
+                    );
+                });
+            }
+        });
+        (base, seen, counted)
+    }
+
+    /// Without the survey the class and the checks go to Jev together
+    /// (#10279), and the result is what asking one after the other gave.
+    #[tokio::test(flavor = "current_thread")]
+    async fn without_the_survey_the_class_and_checks_are_asked_at_once() {
+        let dir = tempfile::tempdir().unwrap();
+        let (base, most, _) = slow_jev(std::time::Duration::from_millis(300));
+        let jev = jev::Client::new(jev::Config::local(&base, "jev-1.13.0")).unwrap();
+        let prepared = prepare(Input {
+            workdir: dir.path(),
+            request: "Fix it and keep `python3 -m unittest` passing.",
+            earlier: "",
+            jev: Some(jev),
+            resumed: false,
+            knowledge_dirs: vec![dir.path().join("knowledge")],
+            survey: false,
+            ahead: None,
+        })
+        .await;
+        assert_eq!(prepared.class, Some(TaskClass::Change));
+        assert_eq!(prepared.checks, vec!["python3 -m unittest".to_owned()]);
+        assert_eq!(prepared.record["survey"], false);
+        assert_eq!(
+            most.load(std::sync::atomic::Ordering::SeqCst),
+            2,
+            "the class and the checks were asked at the same time"
+        );
+        assert!(prepared.jev_usd.is_some_and(|usd| usd > 0.0));
+    }
+
+    /// Groundwork prepared ahead (#10279) goes through the task store once,
+    /// and a run uses it, asking Jev nothing more and counting its cost,
+    /// only for the request it was prepared for.
+    #[tokio::test(flavor = "current_thread")]
+    async fn groundwork_prepared_ahead_is_used_only_for_its_own_request() {
+        use std::sync::atomic::Ordering;
+        let dir = tempfile::tempdir().unwrap();
+        let (base, _, total) = slow_jev(std::time::Duration::from_millis(10));
+        let jev = jev::Client::new(jev::Config::local(&base, "jev-1.13.0")).unwrap();
+        let request = "Fix it and keep `python3 -m unittest` passing.";
+        let dirs = vec![dir.path().join("knowledge")];
+        let prepared = ahead(dir.path(), request, "", jev.clone(), dirs.clone()).await;
+        assert_eq!(total.load(Ordering::SeqCst), 2);
+        let store = dir.path().join("tasks");
+        let path = Ahead::path(&store, request, "");
+        Ahead::begin(&path);
+        assert!(
+            Ahead::take(&store, request, "", std::time::Duration::ZERO)
+                .await
+                .is_none()
+        );
+        Ahead::finish(&path, Some(&prepared));
+        let taken = Ahead::take(&store, request, "", AHEAD_WAIT).await.unwrap();
+        assert!(Ahead::take(&store, request, "", AHEAD_WAIT).await.is_none());
+
+        let input = |request, ahead| Input {
+            workdir: dir.path(),
+            request,
+            earlier: "",
+            jev: Some(jev.clone()),
+            resumed: false,
+            knowledge_dirs: dirs.clone(),
+            survey: false,
+            ahead,
+        };
+        let used = prepare(input(request, Some(taken.clone()))).await;
+        assert_eq!(
+            total.load(Ordering::SeqCst),
+            2,
+            "no request beyond the ahead"
+        );
+        assert_eq!(used.record["ahead"]["used"], true);
+        assert_eq!(used.class, Some(TaskClass::Change));
+        assert_eq!(used.checks, vec!["python3 -m unittest".to_owned()]);
+        assert!(used.jev_usd.is_some_and(|usd| usd > 0.0));
+
+        let other = prepare(input("Fix `make check`.", Some(taken))).await;
+        assert_eq!(other.record["ahead"]["used"], false);
+        assert_eq!(total.load(Ordering::SeqCst), 4);
+        assert_eq!(other.checks, vec!["make check".to_owned()]);
     }
 
     #[tokio::test(flavor = "current_thread")]

@@ -387,6 +387,12 @@ pub trait Coder: Send + Sync {
     /// The GitHub issue of `dir`'s repository the message asks to work, as
     /// Jev judges it after routing, if any.
     fn issue(&self, request: &str, earlier: &str, dir: &Path) -> Option<Box<dyn Issue>>;
+    /// Prepare, in the background, what a run started on `prompt` in the
+    /// checkout `dir` reads only from its request, while the router still
+    /// judges the message (#10279): the delegate recipe's groundwork, when
+    /// the run would start on the lean Claude Code session. The run takes
+    /// it from `store` only for that exact prompt. Doing nothing is right.
+    fn ahead(&self, _store: &Path, _dir: &Path, _prompt: &str) {}
     /// Follow `task` from its first event. `hint` goes on a question.
     fn follow(&self, store: &Path, task: &str, chat: &str, hint: Option<String>)
     -> Box<dyn Follow>;
@@ -836,6 +842,20 @@ pub struct Client {
     /// written to the thread's journal at each move, and settled with the
     /// task owner's dispositions when the operation ends.
     routing: Option<RouteRecord>,
+    /// Jev's issue judgment of the message being sent, started beside the
+    /// router's (#10279).
+    issue_ahead: Option<IssueAhead>,
+}
+
+/// Jev's judgment of whether a message asks to work a GitHub issue,
+/// started when the message is sent instead of after the router's reply,
+/// so a Coder start waits on one Jev round trip, not two in a row
+/// (#10279). It is used only for the request and conversation it was
+/// asked of; a start that reads the thread differently asks again.
+struct IssueAhead {
+    request: String,
+    earlier: String,
+    judged: tokio::task::JoinHandle<Option<Box<dyn Issue>>>,
 }
 
 impl Client {
@@ -871,6 +891,7 @@ impl Client {
                 interrupt: interrupt.clone(),
                 hint,
                 routing: None,
+                issue_ahead: None,
             }
             .warmed()
         };
@@ -945,6 +966,7 @@ impl Client {
             interrupt: options.interrupt,
             hint: options.hint,
             routing: None,
+            issue_ahead: None,
         }
         .warmed()
     }
@@ -964,6 +986,7 @@ impl Client {
             interrupt: options.interrupt,
             hint: options.hint,
             routing: None,
+            issue_ahead: None,
         }
         .warmed()
     }
@@ -986,6 +1009,7 @@ impl Client {
             interrupt: options.interrupt,
             hint: options.hint,
             routing: None,
+            issue_ahead: None,
         }
     }
 
@@ -1128,7 +1152,9 @@ impl Client {
     pub async fn run(&mut self, op: Op, sink: &mut Sink<'_>) -> Result<Ended, Error> {
         let thread = op.thread().to_owned();
         self.routing = None;
+        self.issue_ahead = None;
         let ended = self.operate(op, sink).await;
+        self.issue_ahead = None;
         self.settle(&thread).await;
         ended
     }
@@ -1283,6 +1309,7 @@ impl Client {
                 return Ok(Ended::Refused);
             }
         };
+        self.judge_ahead(id, &sent, run);
         sink(Event::Accepted {
             thread: id.to_owned(),
             request: request.clone(),
@@ -2079,6 +2106,41 @@ impl Client {
     /// Accept the thread's offer to run Coder: here when the client runs
     /// in a checkout, else through the host's own handoff, the one the
     /// desktop's Run Coder uses.
+    /// Start, while the router judges the message just sent, the Jev work
+    /// a Coder start on this computer would wait for after it (#10279):
+    /// the issue judgment, and the recipe's groundwork on the prompt the
+    /// start would hand over ([`Coder::ahead`]). Only when Coder runs at
+    /// once (`run`), the thread has no Coder task that would take the
+    /// message instead, and this client runs in a folder. A reply that
+    /// routes elsewhere leaves them unused: a few Jev requests, a fraction
+    /// of a cent; a start whose thread reads differently asks again.
+    fn judge_ahead(&mut self, id: &str, sent: &Snapshot, run: bool) {
+        if !run || sent.coder.is_some() || matches!(self.backend, Backend::Computer { .. }) {
+            return;
+        }
+        let Some(dir) = self.dir.clone() else {
+            return;
+        };
+        let (request, earlier) = asked_of(&sent.turns);
+        if request.trim().is_empty() {
+            return;
+        }
+        // The prompt [`Client::start`] hands over, when the thread holds no
+        // more than this snapshot shows and the reply names no engine.
+        if sent.start == 0 && plugin_step(&sent.turns).is_none() {
+            let (prompt, _) = handoff("", &sent.turns);
+            self.coder.ahead(&self.store(id), &dir, &prompt);
+        }
+        let coder = self.coder.clone();
+        let (asked, before) = (request.clone(), earlier.clone());
+        let judged = tokio::task::spawn_blocking(move || coder.issue(&asked, &before, &dir));
+        self.issue_ahead = Some(IssueAhead {
+            request,
+            earlier,
+            judged,
+        });
+    }
+
     async fn run_coder(&mut self, id: &str, sink: &mut Sink<'_>) -> Ended {
         let snapshot = match self
             .apply(Command::Read {
@@ -2328,11 +2390,18 @@ impl Client {
         // asks to work a GitHub issue, choosing among the references the
         // messages name (a bounded field read only after routing).
         let (request, earlier) = asked_of(&thread.turns);
-        let (coder, dir) = (self.coder.clone(), here.clone());
-        let issue = tokio::task::spawn_blocking(move || coder.issue(&request, &earlier, &dir))
-            .await
-            .ok()
-            .flatten();
+        let issue = match self.issue_ahead.take() {
+            Some(ahead) if ahead.request == request && ahead.earlier == earlier => {
+                ahead.judged.await.ok().flatten()
+            }
+            _ => {
+                let (coder, dir) = (self.coder.clone(), here.clone());
+                tokio::task::spawn_blocking(move || coder.issue(&request, &earlier, &dir))
+                    .await
+                    .ok()
+                    .flatten()
+            }
+        };
         if let Some(issue) = issue {
             return self.start_issue(id, &here, issue, sink).await;
         }

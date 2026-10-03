@@ -766,6 +766,21 @@ impl Local {
         Some(self.forecast(&policy, asked).0)
     }
 
+    /// Whether a run started now, with no engine asked for, would begin on
+    /// the lean Claude Code session (#10246): the settings run Claude that
+    /// way with full access, and Claude Code is who [`Local::predict`] says
+    /// would run. Its delegate recipe skips the survey, so its groundwork
+    /// reads only the request and can be prepared before the run (#10279).
+    #[must_use]
+    pub fn starts_lean_claude(&self) -> bool {
+        let Ok(settings) = self.settings() else {
+            return false;
+        };
+        settings.claude == autostart::ClaudeRuns::Session
+            && settings.access == adapter::Access::Full
+            && matches!(self.predict(None), Some(Runner::Runs { provider, .. }) if provider == "claude")
+    }
+
     /// Every coding agent on this computer and its state, for the chat's
     /// context and the welcome card (#10113): first the engines not turned
     /// off, in the order Coder tries them, then each one the person turned

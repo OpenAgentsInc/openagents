@@ -74,6 +74,9 @@ struct FakeCoder {
     steered: Mutex<Vec<String>>,
     /// What a pickup finds: the issue it picked, or why none is free.
     picks: Option<Result<(u64, String), String>>,
+    /// Each issue judgment asked: the request, the conversation before
+    /// it, and when.
+    judged: Mutex<Vec<(String, String, std::time::Instant)>>,
 }
 
 /// An issue a pickup chose, or the reason it found none (number 0).
@@ -140,7 +143,12 @@ impl Coder for FakeCoder {
             worktree: "/tmp/demo-t1".into(),
         })
     }
-    fn issue(&self, _: &str, _: &str, _: &Path) -> Option<Box<dyn Issue>> {
+    fn issue(&self, request: &str, earlier: &str, _: &Path) -> Option<Box<dyn Issue>> {
+        self.judged.lock().unwrap().push((
+            request.to_owned(),
+            earlier.to_owned(),
+            std::time::Instant::now(),
+        ));
         Some(match self.picks.clone()? {
             Ok((number, title)) => Box::new(Picked(number, Ok(title))),
             Err(why) => Box::new(Picked(0, Err(why))),
@@ -321,6 +329,47 @@ async fn a_coding_reply_starts_coder_at_once_and_streams_its_events() {
         started[0].1,
         Some(nostr::cj_conversation::Engine::ClaudeCode)
     );
+}
+
+/// Jev's issue judgment starts when the message is sent, beside the
+/// router's judgment, not after the reply (#10279), and it is asked once.
+/// A send that only offers asks nothing.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_issue_judgment_starts_while_the_router_judges() {
+    let dir = tempfile::tempdir().unwrap();
+    let door = Arc::new(Worker {
+        contexts: Arc::default(),
+        coding: true,
+    });
+    let coder = Arc::new(FakeCoder::default());
+    let client = in_process(door.clone(), options(dir.path()), coder.clone());
+    let began = std::time::Instant::now();
+    let (events, _, _) =
+        drain(client.stream(send(&new_id(), "fix the build", Start::Settings))).await;
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, Event::Coder { accepted: true, .. })),
+        "{events:?}"
+    );
+    let judged = coder.judged.lock().unwrap().clone();
+    assert_eq!(judged.len(), 1, "{judged:?}");
+    assert_eq!(
+        (judged[0].0.as_str(), judged[0].1.as_str()),
+        ("fix the build", "")
+    );
+    // The worker answers after 200 ms; the judgment began before that.
+    assert!(
+        judged[0].2.duration_since(began) < Duration::from_millis(150),
+        "{:?}",
+        judged[0].2.duration_since(began)
+    );
+    assert_eq!(coder.started.lock().unwrap().len(), 1);
+
+    let coder = Arc::new(FakeCoder::default());
+    let client = in_process(door, options(dir.path()), coder.clone());
+    let _ = drain(client.stream(send(&new_id(), "fix the build", Start::OfferOnly))).await;
+    assert!(coder.judged.lock().unwrap().is_empty());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

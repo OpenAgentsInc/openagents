@@ -283,6 +283,48 @@ impl Coder for Here {
         )
     }
 
+    /// The delegate recipe's groundwork for `prompt`, prepared on a thread
+    /// of its own while the router judges the message (#10279), when a run
+    /// started now would begin on the lean Claude Code session, whose
+    /// recipe reads only the request. It is kept in the task store for the
+    /// run's owner ([`coder_delegate::recipe::Ahead`]); without Jev or a
+    /// checkout nothing is prepared.
+    fn ahead(&self, store: &Path, dir: &Path, prompt: &str) {
+        let (store, dir, prompt) = (store.to_path_buf(), dir.to_path_buf(), prompt.to_owned());
+        let _ = std::thread::Builder::new()
+            .name("coder-recipe-ahead".into())
+            .spawn(move || {
+                if !Self::runner(&store).starts_lean_claude() {
+                    return;
+                }
+                let Ok(checkout) = local::checkout(&dir) else {
+                    return;
+                };
+                let (Some(jev), _) =
+                    crate::delegate_door::jev_from(&crate::delegate_door::env_value)
+                else {
+                    return;
+                };
+                let Ok(runtime) = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                else {
+                    return;
+                };
+                use coder_delegate::recipe::{Ahead, ahead, knowledge_dirs};
+                let path = Ahead::path(&store, &prompt, "");
+                Ahead::begin(&path);
+                let prepared = runtime.block_on(ahead(
+                    &checkout.top,
+                    &prompt,
+                    "",
+                    jev,
+                    knowledge_dirs(&checkout.top),
+                ));
+                Ahead::finish(&path, Some(&prepared));
+            });
+    }
+
     fn follow(
         &self,
         store: &Path,

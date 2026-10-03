@@ -65,6 +65,19 @@ impl Recipe {
     pub(crate) async fn prepare(host: &Host, jev: Option<jev::Client>, survey: bool) -> Recipe {
         let (request, earlier) = split_prompt(host.prompt(), &host.engine_prompt());
         let workdir = host.workspace().to_path_buf();
+        // Without the survey, the chat may have prepared the groundwork
+        // while its router judged the message (#10279).
+        let ahead = if survey || jev.is_none() {
+            None
+        } else {
+            coder_delegate::recipe::Ahead::take(
+                host.store(),
+                &request,
+                &earlier,
+                coder_delegate::recipe::AHEAD_WAIT,
+            )
+            .await
+        };
         let prepared = coder_delegate::recipe::prepare(coder_delegate::recipe::Input {
             workdir: &workdir,
             request: &request,
@@ -73,6 +86,7 @@ impl Recipe {
             resumed: false,
             knowledge_dirs: coder_delegate::recipe::knowledge_dirs(&workdir),
             survey,
+            ahead,
         })
         .await;
         let mut frozen = Vec::new();
