@@ -81,9 +81,12 @@ reset spectator or unrelated player accounts.
 ## Verification on October 3, 2026
 
 The native build and all map/vmap extraction passed. DBC extraction produced
-158 tables; map extraction produced 2,429 terrain tiles. The Northshire mmap
-(`0004832.mmtile`) was generated, with full-realm navigation generation running
-under `logs/mmaps.log`. Authentication and world entry from the Mac over
+158 tables; map extraction produced 2,429 terrain tiles. Full-realm navigation
+generation completed successfully: 41 map headers and 1,742 tiles, including
+Northshire (`0004832.mmtile`). The retained private log is `logs/mmaps.log`.
+Client data and extracted outputs occupy 8.1 GiB; the realm databases occupy
+340 MiB. A fresh backup and restart passed after generation.
+Authentication and world entry from the Mac over
 Tailscale passed: a disposable Human Warrior entered map 0 and decoded 51
 entities. The character was deleted through the character-select protocol.
 A private SQL backup passed `gzip -t`, and the database and realm restarted.
