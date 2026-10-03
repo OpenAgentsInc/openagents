@@ -44,7 +44,16 @@ pub const SNAPSHOT_DIGESTS: &str = "snapshot-digests.bin";
 /// (#10237): what the person reads is "disk full", not that Coder's
 /// process ended.
 pub const DISK_FULL: &str = "disk_full";
+/// The ending of a run whose command ended (on its deadline, most often)
+/// with its processes not confirmed gone (#10281): the turn ends, since
+/// Coder doesn't run beside processes it can't account for, but as that
+/// fault, never as a stop the person asked for.
+pub const PROCESS_CLEANUP_UNKNOWN: &str = "process_cleanup_unknown";
 const TRACE_LIMIT: usize = 48 * 1024 * 1024;
+/// How long a command's process group, not yet empty when the supervisor
+/// ended it, is given to empty before its cleanup counts as unknown
+/// (#10281).
+const GROUP_SETTLE: Duration = Duration::from_secs(10);
 const STEP_LIMIT: usize = 8 * 1024 * 1024;
 
 /// The supported first repository profile is explicit about absent features.
@@ -565,6 +574,30 @@ pub struct CommandObservation {
     pub group_clear: bool,
 }
 
+/// Whether the process group `group` empties within `wait`, read every
+/// `every`: a killed process stays in its group until it is reaped, which
+/// a loaded host can take longer than the supervisor's grace to do. A
+/// group with no identifier is never confirmed clear. Off Unix, where a
+/// group is a job only its supervisor sees, nothing more is learned.
+async fn group_settles(group: Option<i32>, wait: Duration, every: Duration) -> bool {
+    let Some(group) = group else {
+        return false;
+    };
+    if !cfg!(unix) {
+        return false;
+    }
+    let started = Instant::now();
+    loop {
+        if !supervise::running(group) {
+            return true;
+        }
+        if started.elapsed() >= wait {
+            return false;
+        }
+        tokio::time::sleep(every).await;
+    }
+}
+
 /// A single task owner. It is deliberately neither serializable nor cloneable.
 pub struct Host {
     target: Option<super::targets::Lease>,
@@ -605,6 +638,9 @@ pub struct Host {
     /// The disk filled past [`owner::STORAGE_FULL_WAIT`] while the run
     /// kept its evidence (#10237): its result says so.
     disk_full: Cell<bool>,
+    /// A command ended with its processes not confirmed gone (#10281):
+    /// the run ends as [`PROCESS_CLEANUP_UNKNOWN`].
+    cleanup_unknown: Cell<bool>,
     /// How long, and how often, a trace write waits out a full disk.
     evidence_wait: Cell<(Duration, Duration)>,
     /// Trace writes still to fail as on a full disk ([`Host::fill_disk`]).
@@ -949,6 +985,7 @@ impl Host {
             output_incomplete: Cell::new(false),
             fault: RefCell::new(None),
             disk_full: Cell::new(false),
+            cleanup_unknown: Cell::new(false),
             evidence_wait: Cell::new((owner::STORAGE_FULL_WAIT, Duration::from_secs(2))),
             full_writes: Cell::new(0),
             cost: Cell::new(owner::Cost::default()),
@@ -1557,17 +1594,32 @@ impl Host {
             tokio::time::sleep(Duration::from_millis(25)).await;
         };
         stdout.extend_from_slice(&ended.rest.bytes);
-        self.group_clear.set(ended.group_clear);
+        // The supervisor waits only its short grace for a killed group to
+        // empty; on a loaded host the group's last processes can take
+        // longer to be reaped (#10281), so a group not yet clear is given
+        // a few seconds more before the run counts its cleanup unknown.
+        let group_clear = ended.group_clear
+            || group_settles(ended.group, GROUP_SETTLE, Duration::from_millis(50)).await;
+        self.group_clear.set(group_clear);
         self.output_incomplete.set(
             self.output_incomplete.get() || ended.stderr.truncated || !ended.rest.gaps.is_empty(),
         );
         self.result(sequence,"command",json!({"ending":ended.ending.to_string(),"exit":ended.ending.code(),
-            "group_clear":ended.group_clear,"requested_stop":ended.requested,"stdout_tail":ended.rest.bytes,
+            "group_clear":group_clear,"requested_stop":ended.requested,"stdout_tail":ended.rest.bytes,
             "stdout_tail_offset":ended.rest.offset,"stdout_bytes":ended.stdout_bytes,"stderr":ended.stderr.text,
             "stderr_bytes":ended.stderr.bytes,"stderr_truncated":ended.stderr.truncated,
             "seconds":ended.elapsed.as_secs_f64(),"memory":format!("{:?}",ended.memory)}))?;
-        if !ended.group_clear {
-            self.fail("supervised process cleanup is unknown");
+        if !group_clear {
+            self.cleanup_unknown.set(true);
+            let why = if matches!(ended.ending, supervise::Ending::TimedOut) {
+                format!(
+                    "a command ran past its {}s deadline and its processes could not be confirmed gone",
+                    deadline.as_secs()
+                )
+            } else {
+                "a command's processes could not be confirmed gone".to_owned()
+            };
+            self.fail(why);
         }
         let mut output = String::from_utf8_lossy(&stdout).into_owned();
         if !ended.stderr.text.is_empty() {
@@ -1579,7 +1631,7 @@ impl Host {
             timed_out: matches!(ended.ending, supervise::Ending::TimedOut),
             seconds: ended.elapsed.as_secs_f64(),
             output,
-            group_clear: ended.group_clear,
+            group_clear,
         })
     }
 
@@ -1591,9 +1643,11 @@ impl Host {
 
     /// Seal the same task journal and trace; the adapter never sets checks passed.
     pub fn finish(self, ending: &str, completed: bool, summary: Value) -> Result<Task, Error> {
-        // A full disk ends the run as a failure, never as a stop the person
-        // asked for (#10237); a stop they did ask for still reads as one.
-        let stopped = if self.disk_full.get() {
+        // A full disk, or a command whose processes weren't confirmed
+        // gone, ends the run as a failure, never as a stop the person
+        // asked for (#10237, #10281); a stop they did ask for still reads
+        // as one.
+        let stopped = if self.disk_full.get() || self.cleanup_unknown.get() {
             self.stopped.get()
                 || Store::open(&self.owner.dir)
                     .and_then(|store| store.show(&self.task.task_id))
@@ -1643,6 +1697,8 @@ impl Host {
         }
         let ending = if self.disk_full.get() {
             DISK_FULL
+        } else if self.cleanup_unknown.get() && !stopped {
+            PROCESS_CLEANUP_UNKNOWN
         } else {
             ending
         };
@@ -1738,5 +1794,37 @@ mod source_snapshot_tests {
         );
         // Incomplete refuses even when the pin would match.
         assert!(source_snapshot_refusal(&partial, Some(&partial.digest())).is_some());
+    }
+}
+
+#[cfg(all(test, unix))]
+mod group_settle_tests {
+    use super::*;
+
+    /// #10281: a group not clear when the supervisor gave up is read again
+    /// for a while before the run counts its cleanup unknown: a group that
+    /// empties counts as clear, one that stays doesn't, and a group with
+    /// no identifier is never confirmed.
+    #[tokio::test]
+    async fn a_group_is_given_time_to_empty_before_cleanup_counts_unknown() {
+        let every = Duration::from_millis(10);
+        // This test's own process group stays running.
+        // SAFETY: getpgrp has no preconditions.
+        let own = unsafe { libc::getpgrp() };
+        assert!(!group_settles(Some(own), Duration::from_millis(50), every).await);
+        assert!(!group_settles(None, Duration::from_millis(50), every).await);
+        // A child in its own group that exits within the wait.
+        let mut child = {
+            use std::os::unix::process::CommandExt;
+            std::process::Command::new("sleep")
+                .arg("0.2")
+                .process_group(0)
+                .spawn()
+                .unwrap()
+        };
+        let group = i32::try_from(child.id()).unwrap();
+        let reaper = std::thread::spawn(move || child.wait());
+        assert!(group_settles(Some(group), Duration::from_secs(5), every).await);
+        reaper.join().unwrap().unwrap();
     }
 }

@@ -841,6 +841,9 @@ pub struct Mapper {
     /// about how it stopped, from the adapter's summary.
     stopped: Option<String>,
     started: Option<u64>,
+    /// The last command this turn that ran past its deadline, and its
+    /// seconds: what a `process_cleanup_unknown` ending names (#10281).
+    timed_out: Option<(String, f64)>,
 }
 
 impl Mapper {
@@ -1067,6 +1070,9 @@ impl Mapper {
                     let exit = result["exit"].as_i64().and_then(|n| i32::try_from(n).ok());
                     let timed_out = result["timed_out"].as_bool().unwrap_or(false);
                     let took = result["seconds"].as_f64().unwrap_or(0.0);
+                    if timed_out {
+                        self.timed_out = Some((command.clone(), took));
+                    }
                     // The command itself is the step before; `output` names it.
                     let summary = match (exit, timed_out) {
                         (_, true) => format!("timed out after {took:.1}s"),
@@ -1226,6 +1232,21 @@ impl Mapper {
                         "the coding agent stopped after the host refused a tool it asked to run.".to_owned()
                     })
                 ),
+            }),
+            // A command's processes weren't confirmed gone, so the host
+            // ended the turn; nobody stopped the task (#10281).
+            "process_cleanup_unknown" => CoderEvent::Failure(Failure {
+                turn,
+                message: match &self.timed_out {
+                    Some((command, seconds)) => format!(
+                        "Coder stopped before finishing: `{}` ran past its deadline ({seconds:.0}s) and its processes could not be confirmed gone, so Coder ended the turn rather than run beside them. Nobody stopped the task.",
+                        bounded(command.lines().next().unwrap_or(""), 120).0
+                    ),
+                    None => "Coder stopped before finishing: a command's processes could not be confirmed gone, so Coder ended the turn rather than run beside them. Nobody stopped the task.".to_owned(),
+                },
+                ending: Some(ending.into()),
+                resets_at: None,
+                issue: None,
             }),
             "no_capacity" => CoderEvent::Failure(Failure {
                 turn,
@@ -2204,6 +2225,36 @@ mod tests {
         assert!(output.truncated && output.text.len() <= MAX_OUTPUT + 3);
         assert_eq!(parse_iso("1970-01-01T00:00:01.500Z"), Some(1500));
         assert_eq!(utc(1_791_050_823), "2026-10-03 18:07 UTC");
+    }
+
+    /// #10281: a command that ran past its deadline with its processes not
+    /// confirmed gone ends the turn as that fault, naming the command, and
+    /// never as a stop the person asked for.
+    #[test]
+    fn a_cleanup_fault_names_the_timed_out_command() {
+        let mut mapper = Mapper::new(1, None);
+        mapper.step(&step(
+            1,
+            "system",
+            "ran",
+            mc(json!({"event": "ran", "step": 1, "result": {"command": "cargo test -p coder follower_\necho done", "exit": null, "timed_out": true, "seconds": 300.4, "output": ""}})),
+        ));
+        let end = mapper.end("process_cleanup_unknown", vec![], "", "", None);
+        assert_eq!(end.name(), "failure");
+        let CoderEvent::Failure(failure) = &end else {
+            panic!("{end:?}")
+        };
+        assert!(
+            failure
+                .message
+                .contains("`cargo test -p coder follower_` ran past its deadline (300s)"),
+            "{}",
+            failure.message
+        );
+        assert!(failure.message.contains("Nobody stopped the task."));
+        assert_eq!(failure.ending.as_deref(), Some("process_cleanup_unknown"));
+        let unnamed = Mapper::new(1, None).end("process_cleanup_unknown", vec![], "", "", None);
+        assert_eq!(unnamed.name(), "failure");
     }
 
     /// When the person asked for an engine, the runner says so first, and
