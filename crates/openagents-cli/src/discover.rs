@@ -21,9 +21,9 @@ const AGENT_CARD_PATH: &str = "/.well-known/agent-card.json";
 const SKILLS_INDEX_PATH: &str = "/.well-known/agent-skills/index.json";
 
 pub(crate) const USAGE: &str = "usage: openagents discover [OPTIONS]
-  Print the well-known agent card and agent-skills index for an origin.
-  --origin URL        Origin to describe (default https://openagents.com).
-  --fetch             Also GET both documents from the origin and report
+  Print the discovery documents this checkout would serve (not a live card).
+  --origin URL        Origin for preview URLs and fetching (default https://openagents.com).
+  --fetch             GET and show the origin's documents, and report
                       whether each matches what this checkout serves.
   --timeout SECONDS   How long to wait for the origin under --fetch
                       (default 8).
@@ -106,6 +106,7 @@ fn origin(flag: Option<&str>) -> Result<String, String> {
 fn local(origin: &str) -> Value {
     json!({
         "origin": origin,
+        "source": "checkout-preview",
         "agent_card_url": format!("{origin}{AGENT_CARD_PATH}"),
         "skills_index_url": format!("{origin}{SKILLS_INDEX_PATH}"),
         "agent_card": discovery::site::agent_card(origin),
@@ -143,53 +144,67 @@ async fn get(client: &reqwest::Client, url: &str) -> Result<Value, String> {
         .map_err(|error| format!("{url}: not JSON: {error}"))
 }
 
-fn render(value: &Value) -> String {
+fn render_documents(value: &Value) -> Vec<String> {
     let card = &value["agent_card"];
+    let mut lines = Vec::new();
+    if value.get("agent_card").is_some() {
+        lines.extend([
+            format!(
+                "agent card  {}",
+                value["agent_card_url"].as_str().unwrap_or("")
+            ),
+            format!("  name      {}", card["name"].as_str().unwrap_or("")),
+            format!("  version   {}", card["version"].as_str().unwrap_or("")),
+            format!(
+                "  protocol  {}",
+                card["protocolVersion"].as_str().unwrap_or("")
+            ),
+        ]);
+        if let Some(interfaces) = card["supportedInterfaces"].as_array() {
+            for interface in interfaces {
+                lines.push(format!(
+                    "  interface {} {}",
+                    interface["protocolVersion"].as_str().unwrap_or(""),
+                    interface["url"].as_str().unwrap_or("")
+                ));
+            }
+        }
+        if let Some(skills) = card["skills"].as_array() {
+            for skill in skills {
+                lines.push(format!(
+                    "  skill     {:<22} {}",
+                    skill["id"].as_str().unwrap_or(""),
+                    skill["description"].as_str().unwrap_or("")
+                ));
+            }
+        }
+    }
+    if value.get("skills_index").is_some() {
+        lines.push(format!(
+            "skills      {}",
+            value["skills_index_url"].as_str().unwrap_or("")
+        ));
+        if let Some(skills) = value["skills_index"]["skills"].as_array() {
+            for skill in skills {
+                lines.push(format!(
+                    "  {:<24} {} {}",
+                    skill["name"].as_str().unwrap_or(""),
+                    skill["digest"].as_str().unwrap_or(""),
+                    skill["url"].as_str().unwrap_or("")
+                ));
+            }
+        }
+    }
+    lines
+}
+
+fn render(value: &Value) -> String {
     let mut lines = vec![
-        format!("origin      {}", value["origin"].as_str().unwrap_or("")),
-        format!(
-            "agent card  {}",
-            value["agent_card_url"].as_str().unwrap_or("")
-        ),
-        format!("  name      {}", card["name"].as_str().unwrap_or("")),
-        format!("  version   {}", card["version"].as_str().unwrap_or("")),
-        format!(
-            "  protocol  {}",
-            card["protocolVersion"].as_str().unwrap_or("")
-        ),
+        format!("preview origin  {}", value["origin"].as_str().unwrap_or("")),
+        "This checkout would serve the following documents; these are not fetched from the origin."
+            .to_owned(),
     ];
-    if let Some(interfaces) = card["supportedInterfaces"].as_array() {
-        for interface in interfaces {
-            lines.push(format!(
-                "  interface {} {}",
-                interface["protocolVersion"].as_str().unwrap_or(""),
-                interface["url"].as_str().unwrap_or("")
-            ));
-        }
-    }
-    if let Some(skills) = card["skills"].as_array() {
-        for skill in skills {
-            lines.push(format!(
-                "  skill     {:<22} {}",
-                skill["id"].as_str().unwrap_or(""),
-                skill["description"].as_str().unwrap_or("")
-            ));
-        }
-    }
-    lines.push(format!(
-        "skills      {}",
-        value["skills_index_url"].as_str().unwrap_or("")
-    ));
-    if let Some(skills) = value["skills_index"]["skills"].as_array() {
-        for skill in skills {
-            lines.push(format!(
-                "  {:<24} {} {}",
-                skill["name"].as_str().unwrap_or(""),
-                skill["digest"].as_str().unwrap_or(""),
-                skill["url"].as_str().unwrap_or("")
-            ));
-        }
-    }
+    lines.extend(render_documents(value));
     if let Some(remote) = value["remote"].as_object() {
         for (name, entry) in remote {
             let state = if let Some(error) = entry["error"].as_str() {
@@ -200,6 +215,18 @@ fn render(value: &Value) -> String {
                 "differs from this checkout".to_owned()
             };
             lines.push(format!("remote      {name:<13} {state}"));
+            if let Some(document) = entry.get("document") {
+                lines.push(format!(
+                    "Fetched from {}:",
+                    entry["url"].as_str().unwrap_or("")
+                ));
+                let documents = if name == "agent_card" {
+                    json!({"agent_card": document, "agent_card_url": entry["url"]})
+                } else {
+                    json!({"skills_index": document, "skills_index_url": entry["url"]})
+                };
+                lines.extend(render_documents(&documents));
+            }
         }
     }
     lines.join("\n")
@@ -241,7 +268,9 @@ mod tests {
         );
         assert!(skill["digest"].as_str().unwrap().starts_with("sha256:"));
         let text = render(&report);
-        assert!(text.contains("origin      https://example.test"));
+        assert!(text.contains("preview origin  https://example.test"));
+        assert!(text.contains("not fetched from the origin"));
+        assert_eq!(report["source"], "checkout-preview");
         assert!(text.contains("openagents-decision-api"));
     }
 

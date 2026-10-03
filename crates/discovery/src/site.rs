@@ -152,12 +152,16 @@ pub fn escape(text: &str) -> String {
         .replace('\'', "&#39;")
 }
 
-/// The A2A agent card for this service, with the served origin folded
-/// into the interface URL. The service answers typed-decision calls
+/// The A2A agent card for this service. Public website origins advertise
+/// the decision API host; self-hosted services use their own origin. The service answers typed-decision calls
 /// over HTTP+JSON; it does not speak A2A message flows — the card
 /// names what exists, and `capabilities` declines what does not.
 #[must_use]
 pub fn agent_card(origin: &str) -> Value {
+    let endpoint_origin = match origin.trim_end_matches('/') {
+        "https://openagents.com" | "https://api.openagents.com" => "https://api.typesafe.ai",
+        other => other,
+    };
     json!({
         "name": "OpenAgents decision API",
         "description": "An HTTP service that answers typed questions (yes/no, choice, and score) with probabilities, and classifies batches of text. Calls need an API key.",
@@ -167,10 +171,10 @@ pub fn agent_card(origin: &str) -> Value {
             "organization": "OpenAgents",
             "url": "https://github.com/OpenAgentsInc/openagents",
         },
-        "url": format!("{origin}/v1/systemone"),
+        "url": format!("{endpoint_origin}/v1/systemone"),
         "supportedInterfaces": [
-            {"url": format!("{origin}/v1/systemone"), "protocolBinding": "HTTP+JSON", "protocolVersion": "openagents.systemone.v1"},
-            {"url": format!("{origin}/v1/classify"), "protocolBinding": "HTTP+JSON", "protocolVersion": "openagents.classify.v1"},
+            {"url": format!("{endpoint_origin}/v1/systemone"), "protocolBinding": "HTTP+JSON", "protocolVersion": "openagents.systemone.v1"},
+            {"url": format!("{endpoint_origin}/v1/classify"), "protocolBinding": "HTTP+JSON", "protocolVersion": "openagents.classify.v1"},
         ],
         "capabilities": {
             "streaming": false,
@@ -320,4 +324,38 @@ pub fn mcp_card(tools: Value) -> Value {
 #[must_use]
 pub fn mcp_tools() -> Value {
     serde_json::from_str(MCP_TOOLS).expect("mcp-tools.json is valid JSON")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn public_cards_advertise_the_decision_api_not_the_website() {
+        for origin in ["https://openagents.com", "https://api.openagents.com"] {
+            let card = agent_card(origin);
+            assert_eq!(card["url"], "https://api.typesafe.ai/v1/systemone");
+            assert_eq!(card["supportedInterfaces"][0]["url"], card["url"]);
+            assert_eq!(
+                card["supportedInterfaces"][1]["url"],
+                "https://api.typesafe.ai/v1/classify"
+            );
+            assert!(
+                card["skills"][0]["description"]
+                    .as_str()
+                    .unwrap()
+                    .contains("yes/no")
+            );
+        }
+    }
+
+    #[test]
+    fn self_hosted_cards_keep_their_own_endpoints() {
+        let card = agent_card("http://localhost:8080");
+        assert_eq!(card["url"], "http://localhost:8080/v1/systemone");
+        assert_eq!(
+            card["supportedInterfaces"][1]["url"],
+            "http://localhost:8080/v1/classify"
+        );
+    }
 }
