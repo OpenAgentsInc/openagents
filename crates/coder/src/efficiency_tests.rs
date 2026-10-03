@@ -130,10 +130,11 @@ fn every_published_study_parses_and_traces_to_its_rows() {
         assert_eq!(rows.len(), lines, "{}: every row reads", p.name);
     }
     let all = studies(&[]);
-    // The #10209 study with the #10246 lean arm: 126 runs, raw Claude Code
-    // 21/21 for $6.24.
+    // The #10209 study with the #10246 lean arm and #10250's three Codex
+    // arms: 189 runs, raw Claude Code 21/21 for $6.24.
     let first = &all[0];
-    assert_eq!(first["runs"], 126);
+    assert_eq!(first["runs"], 189);
+    assert_eq!(first["arms"].as_array().unwrap().len(), 9);
     let raw = &first["arms"][0];
     assert_eq!(raw["arm"], BASELINE);
     assert_eq!(raw["passed"], 21);

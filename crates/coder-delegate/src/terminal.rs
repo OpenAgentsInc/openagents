@@ -351,6 +351,9 @@ pub fn boundary(
     } else {
         coder_boundary::Boundary::writing(workdir)
     };
+    // A boundary names only paths that exist, and a turn's artifacts
+    // directory is new: make it before naming it.
+    let _ = std::fs::create_dir_all(artifacts);
     spec = spec.writable(artifacts);
     let home = std::env::var_os("HOME").map(PathBuf::from);
     // The CLIs keep their session state, settings, and caches here.
@@ -1064,6 +1067,18 @@ echo '{"type":"result","subtype":"success","is_error":false,"num_turns":1,"resul
             progress,
             Progress::Line(line) if line.contains("couldn't resume session gone")
         )));
+    }
+
+    #[test]
+    fn a_turns_new_artifacts_directory_is_made_before_the_boundary_names_it() {
+        let dir = tempfile::tempdir().unwrap();
+        if boundary(true, Path::new("/"), &std::env::temp_dir()).is_err() {
+            // No boundary backend on this host.
+            return;
+        }
+        let artifacts = dir.path().join("delegate").join("1791004701152-1");
+        boundary(true, dir.path(), &artifacts).unwrap();
+        assert!(artifacts.is_dir());
     }
 
     #[test]

@@ -948,12 +948,21 @@ pub const BANNED: &[&str] = &[
     "hex",
 ];
 
+/// Product names that hold a banned word on purpose: bring-your-own-keys
+/// (`docs/byok/2026-10-02-byok-openrouter.md`) names a person's own API
+/// keys "Your keys". Longest first. "Key" anywhere else ("Your Nostr key",
+/// "secret key") stays banned.
+pub const NAMES: &[&str] = &["your own keys", "use my keys", "your keys", "my keys"];
+
 /// The banned words in `text`, each once, in order: whole words or their
-/// plurals ("traces"), in any case. This checks words we show, after the
-/// route was chosen; it routes nothing.
+/// plurals ("traces"), in any case, outside the product [`NAMES`]. This
+/// checks words we show, after the route was chosen; it routes nothing.
 #[must_use]
 pub fn jargon_all(text: &str) -> Vec<&'static str> {
-    let lower = text.to_lowercase();
+    let mut lower = text.to_lowercase();
+    for name in NAMES {
+        lower = lower.replace(name, " ");
+    }
     let mut found: Vec<&'static str> = Vec::new();
     for word in lower
         .split(|c: char| !(c.is_alphanumeric() || c == '-' || c == '₿'))
@@ -1699,6 +1708,17 @@ mod tests {
             cited.invented,
             vec!["gym:result:ffffffff", "gym:note:made-up"]
         );
+    }
+
+    /// "Your keys" names a person's own API keys; any other key is still
+    /// a banned word.
+    #[test]
+    fn your_keys_is_a_name_and_any_other_key_is_banned() {
+        assert_eq!(jargon("Your own keys"), None);
+        assert_eq!(jargon("Account, then Your keys: add a key"), Some("key"));
+        assert_eq!(jargon("Turn on Use my keys for everything"), None);
+        assert_eq!(jargon_all("Your Nostr key"), ["nostr", "key"]);
+        assert_eq!(jargon("Back up your secret keys"), Some("key"));
     }
 
     /// The reply the phone showed in #9944, and replies shaped like the
