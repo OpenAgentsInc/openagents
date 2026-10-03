@@ -181,9 +181,10 @@ fi
 # The wrapper Cargo always runs. It is one constant path, so turning sccache
 # on or off never changes a fingerprint. It bypasses sccache when the boot
 # check (or an operator) left /run/oa-coder-host/no-sccache, or when
-# OA_SCCACHE=0.
+# OA_SCCACHE=0. Bash preserves Cargo's CARGO_BIN_EXE_* environment variables
+# when a binary name contains a hyphen; dash drops those variables.
 as_root tee /usr/local/bin/oa-rustc-wrapper >/dev/null <<'WRAPPER'
-#!/bin/sh
+#!/usr/bin/env bash
 if [ "${OA_SCCACHE:-1}" != 0 ] && [ ! -e /run/oa-coder-host/no-sccache ] && [ -x /usr/local/bin/sccache ]; then
   exec /usr/local/bin/sccache "$@"
 fi
