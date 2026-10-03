@@ -1,0 +1,14 @@
+[package]
+name = "briefing-replay-acceptance"
+version = "0.0.0"
+edition = "2024"
+[workspace]
+[dependencies]
+coder-connect = { path = "{REPO}/crates/coder-connect" }
+secp256k1 = { version = "0.31.1", features = ["rand"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "net", "sync", "io-util"] }
+serde_json = "1"
+tempfile = "3"
+[[test]]
+name = "acceptance"
+path = "{CHECKER}"

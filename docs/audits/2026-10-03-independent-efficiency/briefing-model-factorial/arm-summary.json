@@ -1,0 +1,82 @@
+{
+  "schema": "openagents.briefing.factorial-descriptive-summary.v1",
+  "source": {
+    "path": "briefing-model-factorial/results/metrics.json",
+    "sha256": "8911fd926f1b27fe2df64da079f8a75f42e16ff8cc9decbf1734b79b9dc3b533"
+  },
+  "scope": "Descriptive arm summaries. The registered comparisons remain in results/metrics.json. Component medians do not add to the median total.",
+  "arms": [
+    {
+      "arm": "A",
+      "final_accepted": 4,
+      "first_attempt_accepted": 3,
+      "total_cli_cost_usd_list_estimate": 1.7909072,
+      "total_repair_cli_cost_usd_list_estimate": 0.14195819999999992,
+      "transport_retry_count": 0,
+      "medians": {
+        "cost_with_preparation_usd_list_estimate": 0.45328979999999996,
+        "total_wall_with_preparation_s": 121.78226743700003,
+        "agent_wall_s": 79.71828583249993,
+        "checks_wall_s": 31.623621875499936,
+        "preparation_wall_s": 13.816741750000034,
+        "tool_calls": 16.0,
+        "read_calls": 4.5,
+        "search_calls": 5.5
+      }
+    },
+    {
+      "arm": "B",
+      "final_accepted": 4,
+      "first_attempt_accepted": 4,
+      "total_cli_cost_usd_list_estimate": 2.026483,
+      "total_repair_cli_cost_usd_list_estimate": 0.0,
+      "transport_retry_count": 0,
+      "medians": {
+        "cost_with_preparation_usd_list_estimate": 0.5420756,
+        "total_wall_with_preparation_s": 130.46516454099958,
+        "agent_wall_s": 83.9776839795,
+        "checks_wall_s": 27.26598402100001,
+        "preparation_wall_s": 31.384542708499964,
+        "tool_calls": 17.5,
+        "read_calls": 4.5,
+        "search_calls": 6.5
+      }
+    },
+    {
+      "arm": "C",
+      "final_accepted": 4,
+      "first_attempt_accepted": 1,
+      "total_cli_cost_usd_list_estimate": 0.9021184000000001,
+      "total_repair_cli_cost_usd_list_estimate": 0.1950146,
+      "transport_retry_count": 0,
+      "medians": {
+        "cost_with_preparation_usd_list_estimate": 0.23987410000000003,
+        "total_wall_with_preparation_s": 114.67249195799997,
+        "agent_wall_s": 48.757483978500034,
+        "checks_wall_s": 53.20741366699997,
+        "preparation_wall_s": 12.707594312499964,
+        "tool_calls": 13.5,
+        "read_calls": 4.0,
+        "search_calls": 4.5
+      }
+    },
+    {
+      "arm": "D",
+      "final_accepted": 4,
+      "first_attempt_accepted": 0,
+      "total_cli_cost_usd_list_estimate": 0.6997388,
+      "total_repair_cli_cost_usd_list_estimate": 0.20797400000000002,
+      "transport_retry_count": 0,
+      "medians": {
+        "cost_with_preparation_usd_list_estimate": 0.1567382,
+        "total_wall_with_preparation_s": 108.7491753109997,
+        "agent_wall_s": 40.834904812999866,
+        "checks_wall_s": 60.71913441649997,
+        "preparation_wall_s": 9.869563916999965,
+        "tool_calls": 7.5,
+        "read_calls": 2.0,
+        "search_calls": 1.5
+      }
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+Diff in <VERIFICATION_ROOT>/repo/crates/coder-connect/src/direct/watch.rs:217:
+         return;
+     }
+     let folder = matches!(event.kind, EventKind::Create(CreateKind::Folder));
+-    for path in event
+-        .paths
+-        .iter()
+-        .filter(|path| folder || relevant(path))
+-    {
++    for path in event.paths.iter().filter(|path| folder || relevant(path)) {
+         let name = path.file_name().unwrap_or_default();
+         let listing = match event.kind {
+             // A new folder may already hold chats the platform began

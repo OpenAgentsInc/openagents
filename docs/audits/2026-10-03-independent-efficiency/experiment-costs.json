@@ -1,0 +1,139 @@
+{
+  "schema": "openagents.briefing.experiment-cli-costs.v1",
+  "scope": "Known executor CLI list-price estimates for these three replay rounds, their warmups, availability probes, and accounting smoke. Each final cumulative estimate includes failures and repairs once.",
+  "categories": [
+    {
+      "category": "round_1_scored",
+      "sessions": 4,
+      "cost_usd_list_estimate": 2.7749178000000003,
+      "sources": [
+        {
+          "path": "historical-replay-10166/baseline/metrics.json",
+          "sha256": "4c5dbfc02b50be7e4de24dea47c559095a787ebcf455ac762a5e24af333b62bb"
+        },
+        {
+          "path": "historical-replay-10166/briefing/metrics.json",
+          "sha256": "5f459772b1d1be91000a34028b2caef6965d5d673389cebaa7d3b25b640c13ff"
+        },
+        {
+          "path": "historical-replay-10166/briefing-2/metrics.json",
+          "sha256": "72c6a3b260496327be1539e9dd15cd97f7f555ea1fb10168e38c780b29f8d960"
+        },
+        {
+          "path": "historical-replay-10166/baseline-2/metrics.json",
+          "sha256": "de178a29a728d8a9d4cc36da8c088110db1a1f0f06191bbfcb9b5e5981716515"
+        }
+      ]
+    },
+    {
+      "category": "round_2_development_scored",
+      "sessions": 8,
+      "cost_usd_list_estimate": 6.639616,
+      "sources": [
+        {
+          "path": "briefing-iteration-2/development/metrics.json",
+          "sha256": "e5ef290a751b4d88db243b824e50f318ba7b24180a0b8f4866dbd2fa9ccc8ef0"
+        }
+      ]
+    },
+    {
+      "category": "round_2_development_warmup",
+      "sessions": 1,
+      "cost_usd_list_estimate": 0.1971828,
+      "sources": [
+        {
+          "path": "briefing-iteration-2/development/metrics.json",
+          "sha256": "e5ef290a751b4d88db243b824e50f318ba7b24180a0b8f4866dbd2fa9ccc8ef0"
+        }
+      ]
+    },
+    {
+      "category": "round_2_heldout_scored",
+      "sessions": 8,
+      "cost_usd_list_estimate": 8.2070822,
+      "sources": [
+        {
+          "path": "briefing-iteration-2/heldout/metrics.json",
+          "sha256": "97f82674d3260e1708dab2f732066064bed3f50bf25eb777d9223adc8cc8ab02"
+        }
+      ]
+    },
+    {
+      "category": "round_2_heldout_warmup",
+      "sessions": 1,
+      "cost_usd_list_estimate": 0.11636679999999999,
+      "sources": [
+        {
+          "path": "briefing-iteration-2/heldout/metrics.json",
+          "sha256": "97f82674d3260e1708dab2f732066064bed3f50bf25eb777d9223adc8cc8ab02"
+        }
+      ]
+    },
+    {
+      "category": "round_3_original_scored_including_invalid_block",
+      "sessions": 16,
+      "cost_usd_list_estimate": 5.6952538,
+      "sources": [
+        {
+          "path": "briefing-model-factorial/results-original/metrics.json",
+          "sha256": "7ac11b5db1b1a33c96e5f0ac705409bea0b0c55dc96404ecda1819927e8e9675"
+        }
+      ]
+    },
+    {
+      "category": "round_3_replacement_block_4_scored",
+      "sessions": 4,
+      "cost_usd_list_estimate": 1.4434146,
+      "sources": [
+        {
+          "path": "briefing-model-factorial/results/metrics.json",
+          "sha256": "8911fd926f1b27fe2df64da079f8a75f42e16ff8cc9decbf1734b79b9dc3b533"
+        }
+      ],
+      "note": "Only the four new runs add expenditure. Copied blocks 1-3 are already charged in the original panel."
+    },
+    {
+      "category": "round_3_warmups",
+      "sessions": 2,
+      "cost_usd_list_estimate": 0.3462816,
+      "sources": [
+        {
+          "path": "briefing-model-factorial/results/metrics.json",
+          "sha256": "8911fd926f1b27fe2df64da079f8a75f42e16ff8cc9decbf1734b79b9dc3b533"
+        }
+      ]
+    },
+    {
+      "category": "model_availability_probes",
+      "sessions": 2,
+      "cost_usd_list_estimate": 0.017074,
+      "sources": [
+        {
+          "path": "briefing-model-factorial/availability.json",
+          "sha256": "5d4f4af46bcc3a10df6667605efc9550b3df11c584ae4c35ec6e561ab551eba7"
+        }
+      ]
+    },
+    {
+      "category": "persistent_process_accounting_smoke",
+      "sessions": 1,
+      "cost_usd_list_estimate": 0.0122446,
+      "sources": [
+        {
+          "path": "briefing-model-factorial/stream-accounting-smoke.json",
+          "sha256": "31b22d149a48042e75ffb96eebe2b10fdaa70ee30385c80fd31a570ec5fe7e72"
+        }
+      ]
+    }
+  ],
+  "total_sessions": 47,
+  "scored_sessions": 40,
+  "total_known_cli_cost_usd_list_estimate": 25.4494342,
+  "excluded_unmeasured": [
+    "Audit and orchestration model usage",
+    "Engineering time",
+    "Machine and storage charges",
+    "Original historical conversation charges"
+  ],
+  "limitation": "This is neither a verified invoice nor the total cost of the research. Cost totals combine expenditure only; outcomes and gates are never pooled across rounds."
+}

@@ -1,0 +1,20 @@
+{
+  "schema": "openagents.briefing.stream-accounting-smoke.v1",
+  "purpose": "Verify two inputs in one persistent process report cumulative cost. No scored task, source, or checker was supplied.",
+  "private_record_sha256": "382d1c87a4cda79926de232b6d2bd0b94997779529b85a13169bfc1e9d656a15",
+  "wall_s": 3.500731791,
+  "terminal_results": [
+    {
+      "subtype": "success",
+      "cost": 0.0111022,
+      "turns": 1
+    },
+    {
+      "subtype": "success",
+      "cost": 0.0122446,
+      "turns": 1
+    }
+  ],
+  "accounted_cost_usd_list_estimate": 0.0122446,
+  "policy": "Count only the last cumulative estimate, never the sum of terminal cumulative estimates."
+}

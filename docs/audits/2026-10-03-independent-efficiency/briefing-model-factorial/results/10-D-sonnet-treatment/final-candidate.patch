@@ -1,0 +1,40 @@
+diff --git a/crates/coder-connect/src/direct/watch.rs b/crates/coder-connect/src/direct/watch.rs
+--- a/crates/coder-connect/src/direct/watch.rs
++++ b/crates/coder-connect/src/direct/watch.rs
+@@ -12,7 +12,7 @@
+ //! `archive.json`, or a change the platform could not name. Reads never
+ //! count, so a host reading a chat cannot nudge itself.
+ 
+-use notify::event::{EventKind, ModifyKind};
++use notify::event::{CreateKind, EventKind, ModifyKind};
+ use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
+ use std::collections::{HashMap, HashSet};
+ use std::path::{Path, PathBuf};
+@@ -215,9 +215,26 @@
+         }
+         return;
+     }
+-    for path in event.paths.iter().filter(|path| relevant(path)) {
++    // A new folder can hold chats written before the platform watches it
++    // (inotify adds the watch after the create), so it counts as a change of
++    // the list, whatever its name.
++    // A folder moved in, or created whole with chats in it, counts too.
++    let arrived = |path: &Path| {
++        structural
++            && !matches!(event.kind, EventKind::Remove(_))
++            && (matches!(event.kind, EventKind::Create(CreateKind::Folder)) || path.is_dir())
++    };
++    for path in event
++        .paths
++        .iter()
++        .filter(|path| arrived(path) || relevant(path))
++    {
+         let name = path.file_name().unwrap_or_default();
+         let listing = match event.kind {
++            _ if arrived(path) => {
++                // Unlike a file, a folder is announced every time it appears.
++                true
++            }
+             EventKind::Create(_) => {
+                 let mut announced = lock(&routes.announced);
+                 if announced.len() >= ANNOUNCED {

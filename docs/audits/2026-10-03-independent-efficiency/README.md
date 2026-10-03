@@ -29,8 +29,20 @@ patches pass the registered checks, with 12.6% lower median estimated cost and
 7.5% lower recorded time. Source review identifies additional untested order
 conflicts in both arms. A separately registered
 [model and structured-briefing experiment](briefing-model-factorial/README.md)
-continues the investigation. These later studies do run paid executor sessions; their
-scope and accounting are documented separately from the original audit.
+finds a bounded win on a fresh historical issue: **Sonnet without a brief costs
+47.1% less than Opus, with a 5.8% faster median recorded endpoint and 4/4
+accepted patches in both arms.** All eight controls also pass a separate
+retrospective deeper-import check. The brief reduces Sonnet's median cost by
+another 34.7%, but that extra check confirms a missed notification in one
+briefed patch. Carry forward the cheaper executor with independent checks;
+improve and retest briefing coverage before making it a default.
+
+These later studies run paid executor sessions. The [experiment ledger](experiment-costs.json)
+retains $25.4494 in known executor/probe CLI estimates across 47 sessions,
+including failed rounds and an invalid block's replacement. Audit model usage,
+engineering time, and machine charges are unmeasured. These are list-price
+estimates, not bills or evidence of net engineering return. Scope and accounting
+remain separate from the original source audit below.
 
 The [new iteration theses](iteration-theses.md) turn the observed retrieval,
 fixture, verification, and routing gaps into six independently testable

@@ -1,0 +1,65 @@
+diff --git a/crates/coder-connect/src/direct/watch.rs b/crates/coder-connect/src/direct/watch.rs
+--- a/crates/coder-connect/src/direct/watch.rs
++++ b/crates/coder-connect/src/direct/watch.rs
+@@ -9,7 +9,8 @@
+ //!
+ //! Only changes that can change a chat or the chat list count: a `.jsonl`
+ //! file (every harness's transcripts and title indexes), Coder's
+-//! `archive.json`, or a change the platform could not name. Reads never
++//! `archive.json`, a folder that appears (it may already hold chats that no
++//! event names), or a change the platform could not name. Reads never
+ //! count, so a host reading a chat cannot nudge itself.
+ 
+ use notify::event::{EventKind, ModifyKind};
+@@ -215,7 +216,17 @@
+         }
+         return;
+     }
+-    for path in event.paths.iter().filter(|path| relevant(path)) {
++    for path in event.paths.iter() {
++        if structural && !matches!(event.kind, EventKind::Remove(_)) && path.is_dir() {
++            // A folder that appears may already hold chats: inotify watches it
++            // only after it exists, so files written first raise no event of
++            // their own. The list changed.
++            route(path, true);
++            continue;
++        }
++        if !relevant(path) {
++            continue;
++        }
+         let name = path.file_name().unwrap_or_default();
+         let listing = match event.kind {
+             EventKind::Create(_) => {
+@@ -231,15 +242,20 @@
+             }
+             _ => structural || name == "session_index.jsonl" || name == "archive.json",
+         };
+-        for subscriber in lock(&routes.subscribers).values() {
+-            if subscriber
+-                .roots
+-                .iter()
+-                .any(|(given, canonical)| path.starts_with(canonical) || path.starts_with(given))
+-                && let Some(inbox) = subscriber.inbox.upgrade()
+-            {
+-                inbox.touch(listing);
+-            }
+-        }
+-    }
+-}
++        route(path, listing);
++    }
++}
++
++/// Mark every connection that watches a root containing `path`.
++fn route(path: &Path, listing: bool) {
++    for subscriber in lock(&routes().subscribers).values() {
++        if subscriber
++            .roots
++            .iter()
++            .any(|(given, canonical)| path.starts_with(canonical) || path.starts_with(given))
++            && let Some(inbox) = subscriber.inbox.upgrade()
++        {
++            inbox.touch(listing);
++        }
++    }
++}

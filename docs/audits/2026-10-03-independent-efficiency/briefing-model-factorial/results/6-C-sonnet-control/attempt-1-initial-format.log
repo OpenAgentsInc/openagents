@@ -1,0 +1,17 @@
+Diff in <VERIFICATION_ROOT>/repo/crates/coder-connect/src/direct/watch.rs:230:
+             };
+             if folder {
+                 for subscriber in lock(&routes.subscribers).values() {
+-                    if subscriber
+-                        .roots
+-                        .iter()
+-                        .any(|(given, canonical)| {
+-                            path.starts_with(canonical) || path.starts_with(given)
+-                        })
+-                        && let Some(inbox) = subscriber.inbox.upgrade()
++                    if subscriber.roots.iter().any(|(given, canonical)| {
++                        path.starts_with(canonical) || path.starts_with(given)
++                    }) && let Some(inbox) = subscriber.inbox.upgrade()
+                     {
+                         inbox.touch(true);
+                     }

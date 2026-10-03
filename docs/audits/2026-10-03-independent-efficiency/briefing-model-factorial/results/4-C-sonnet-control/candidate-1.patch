@@ -1,0 +1,65 @@
+diff --git a/crates/coder-connect/src/direct/watch.rs b/crates/coder-connect/src/direct/watch.rs
+--- a/crates/coder-connect/src/direct/watch.rs
++++ b/crates/coder-connect/src/direct/watch.rs
+@@ -9,10 +9,11 @@
+ //!
+ //! Only changes that can change a chat or the chat list count: a `.jsonl`
+ //! file (every harness's transcripts and title indexes), Coder's
+-//! `archive.json`, or a change the platform could not name. Reads never
++//! `archive.json`, a new folder (which can already hold chats), or a change
++//! the platform could not name. Reads never
+ //! count, so a host reading a chat cannot nudge itself.
+ 
+-use notify::event::{EventKind, ModifyKind};
++use notify::event::{CreateKind, EventKind, ModifyKind};
+ use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
+ use std::collections::{HashMap, HashSet};
+ use std::path::{Path, PathBuf};
+@@ -215,7 +216,15 @@
+         }
+         return;
+     }
+-    for path in event.paths.iter().filter(|path| relevant(path)) {
++    // A new folder can already hold chats: a platform that watches folders
++    // one by one (inotify) starts on it only after this event, and misses a
++    // file written in the meantime.
++    let folder = matches!(event.kind, EventKind::Create(CreateKind::Folder));
++    for path in event
++        .paths
++        .iter()
++        .filter(|path| folder || relevant(path))
++    {
+         let name = path.file_name().unwrap_or_default();
+         let listing = match event.kind {
+             EventKind::Create(_) => {
+diff --git a/crates/coder-connect/src/tests/direct.rs b/crates/coder-connect/src/tests/direct.rs
+--- a/crates/coder-connect/src/tests/direct.rs
++++ b/crates/coder-connect/src/tests/direct.rs
+@@ -403,6 +403,27 @@
+ }
+ 
+ #[tokio::test]
++async fn a_new_folder_nudges_the_catalog_even_if_its_chat_is_written_before_it_is_watched() {
++    let f = Fixture::new("wss://relay.example/");
++    let address = listener(Arc::new(f.host())).await;
++    let client = Arc::new(f.client());
++    client.set_direct(Some(address));
++    let mut changes = client.changes();
++    client
++        .observe(Query::Catalog(CatalogRequest::default()))
++        .await
++        .unwrap();
++    // The folder alone is reported, so a file written into it before the
++    // platform watches it (inotify) cannot go unannounced.
++    std::fs::create_dir_all(f.root.join("sessions/2026/02/03")).unwrap();
++    let change = tokio::time::timeout(std::time::Duration::from_secs(4), changes.recv())
++        .await
++        .expect("a nudge")
++        .unwrap();
++    assert_eq!(change, Change::Catalog);
++}
++
++#[tokio::test]
+ async fn a_coder_only_host_watches_only_the_coder_task_directory() {
+     let f = Fixture::new("wss://relay.example/");
+     let tasks = f.root.parent().unwrap().join("tasks");

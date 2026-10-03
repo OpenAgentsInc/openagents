@@ -1,0 +1,9 @@
+{"elapsed_s":0.25525325,"phase":"setup"}
+{"binary":{"sha256":"6eab8333fe2121553100d8f40bfada384a3e989b94f947e18ba6677a6fcb41ea","version":"2.1.287"},"binary_binding_ok":true,"ordinal":13,"phase":"before","verification_elapsed_s":0.329128458}
+{"binary":{"sha256":"6eab8333fe2121553100d8f40bfada384a3e989b94f947e18ba6677a6fcb41ea","version":"2.1.287"},"binary_binding_ok":true,"ordinal":13,"phase":"after","verification_elapsed_s":0.2834573750000118}
+{"binary":{"sha256":"6eab8333fe2121553100d8f40bfada384a3e989b94f947e18ba6677a6fcb41ea","version":"2.1.287"},"binary_binding_ok":true,"ordinal":14,"phase":"before","verification_elapsed_s":0.2735443329999896}
+{"binary":{"sha256":"6eab8333fe2121553100d8f40bfada384a3e989b94f947e18ba6677a6fcb41ea","version":"2.1.287"},"binary_binding_ok":true,"ordinal":14,"phase":"after","verification_elapsed_s":0.31610841700000947}
+{"binary":{"sha256":"6eab8333fe2121553100d8f40bfada384a3e989b94f947e18ba6677a6fcb41ea","version":"2.1.287"},"binary_binding_ok":true,"ordinal":15,"phase":"before","verification_elapsed_s":0.2744315420000021}
+{"binary":{"sha256":"6eab8333fe2121553100d8f40bfada384a3e989b94f947e18ba6677a6fcb41ea","version":"2.1.287"},"binary_binding_ok":true,"ordinal":15,"phase":"after","verification_elapsed_s":0.31339075000005323}
+{"binary":{"sha256":"6eab8333fe2121553100d8f40bfada384a3e989b94f947e18ba6677a6fcb41ea","version":"2.1.287"},"binary_binding_ok":true,"ordinal":16,"phase":"before","verification_elapsed_s":0.2800344999999993}
+{"binary":{"sha256":"6eab8333fe2121553100d8f40bfada384a3e989b94f947e18ba6677a6fcb41ea","version":"2.1.287"},"binary_binding_ok":true,"ordinal":16,"phase":"after","verification_elapsed_s":0.2708462090000694}

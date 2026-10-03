@@ -1,0 +1,90 @@
+diff --git a/crates/coder-connect/src/direct/watch.rs b/crates/coder-connect/src/direct/watch.rs
+--- a/crates/coder-connect/src/direct/watch.rs
++++ b/crates/coder-connect/src/direct/watch.rs
+@@ -9,10 +9,11 @@
+ //!
+ //! Only changes that can change a chat or the chat list count: a `.jsonl`
+ //! file (every harness's transcripts and title indexes), Coder's
+-//! `archive.json`, or a change the platform could not name. Reads never
++//! `archive.json`, a new folder (which may already hold chats), or a change
++//! the platform could not name. Reads never
+ //! count, so a host reading a chat cannot nudge itself.
+ 
+-use notify::event::{EventKind, ModifyKind};
++use notify::event::{CreateKind, EventKind, ModifyKind};
+ use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
+ use std::collections::{HashMap, HashSet};
+ use std::path::{Path, PathBuf};
+@@ -215,6 +216,33 @@
+         }
+         return;
+     }
++    if matches!(
++        event.kind,
++        EventKind::Create(_) | EventKind::Modify(ModifyKind::Name(_))
++    ) {
++        // A new folder (a Codex chat's new day), created or moved in, can
++        // already hold chats that were written before the platform began
++        // watching inside it, such as on Linux, where a watch is added only
++        // after the folder appears. Those chats never report their own
++        // creation, so the folder's appearance marks the chat list changed.
++        for path in &event.paths {
++            let folder = match event.kind {
++                EventKind::Create(CreateKind::Folder) => true,
++                EventKind::Create(CreateKind::File) => false,
++                _ => path.is_dir(),
++            };
++            if folder {
++                for subscriber in lock(&routes.subscribers).values() {
++                    if subscriber.roots.iter().any(|(given, canonical)| {
++                        path.starts_with(canonical) || path.starts_with(given)
++                    }) && let Some(inbox) = subscriber.inbox.upgrade()
++                    {
++                        inbox.touch(true);
++                    }
++                }
++            }
++        }
++    }
+     for path in event.paths.iter().filter(|path| relevant(path)) {
+         let name = path.file_name().unwrap_or_default();
+         let listing = match event.kind {
+diff --git a/crates/coder-connect/src/tests/direct.rs b/crates/coder-connect/src/tests/direct.rs
+--- a/crates/coder-connect/src/tests/direct.rs
++++ b/crates/coder-connect/src/tests/direct.rs
+@@ -403,6 +403,35 @@
+ }
+ 
+ #[tokio::test]
++async fn a_new_nested_folder_that_already_holds_a_chat_nudges_the_catalog() {
++    let f = Fixture::new("wss://relay.example/");
++    let address = listener(Arc::new(f.host())).await;
++    let client = Arc::new(f.client());
++    client.set_direct(Some(address));
++    let mut changes = client.changes();
++    client
++        .observe(Query::Catalog(CatalogRequest::default()))
++        .await
++        .unwrap();
++    // The chat is written before any watch could exist inside its new
++    // folders, so only the folder's creation can announce it.
++    let staging = f.root.parent().unwrap().join("staging-month");
++    let day = staging.join("02");
++    std::fs::create_dir_all(&day).unwrap();
++    std::fs::write(
++        day.join("three.jsonl"),
++        b"{\"type\":\"session_meta\",\"payload\":{\"id\":\"third-chat\"}}\n",
++    )
++    .unwrap();
++    std::fs::rename(&staging, f.root.join("sessions/2026/02")).unwrap();
++    let change = tokio::time::timeout(std::time::Duration::from_secs(4), changes.recv())
++        .await
++        .expect("a nudge")
++        .unwrap();
++    assert_eq!(change, Change::Catalog);
++}
++
++#[tokio::test]
+ async fn a_coder_only_host_watches_only_the_coder_task_directory() {
+     let f = Fixture::new("wss://relay.example/");
+     let tasks = f.root.parent().unwrap().join("tasks");

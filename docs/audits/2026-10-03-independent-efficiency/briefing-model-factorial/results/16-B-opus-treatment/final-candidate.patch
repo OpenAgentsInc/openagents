@@ -1,0 +1,120 @@
+diff --git a/crates/coder-connect/src/direct/watch.rs b/crates/coder-connect/src/direct/watch.rs
+--- a/crates/coder-connect/src/direct/watch.rs
++++ b/crates/coder-connect/src/direct/watch.rs
+@@ -9,10 +9,11 @@
+ //!
+ //! Only changes that can change a chat or the chat list count: a `.jsonl`
+ //! file (every harness's transcripts and title indexes), Coder's
+-//! `archive.json`, or a change the platform could not name. Reads never
++//! `archive.json`, a folder that appears (it can hold a chat the platform
++//! never reported), or a change the platform could not name. Reads never
+ //! count, so a host reading a chat cannot nudge itself.
+ 
+-use notify::event::{EventKind, ModifyKind};
++use notify::event::{CreateKind, EventKind, ModifyKind};
+ use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
+ use std::collections::{HashMap, HashSet};
+ use std::path::{Path, PathBuf};
+@@ -99,6 +100,14 @@
+     /// Each root as given and as the platform names it.
+     roots: Vec<(PathBuf, PathBuf)>,
+     inbox: Weak<Inbox>,
++}
++
++impl Subscriber {
++    fn watches(&self, path: &Path) -> bool {
++        self.roots
++            .iter()
++            .any(|(given, canonical)| path.starts_with(canonical) || path.starts_with(given))
++    }
+ }
+ 
+ /// The platform watcher. Only subscribing and unsubscribing lock it; a
+@@ -215,6 +224,24 @@
+         }
+         return;
+     }
++    // A folder that appears is a listing change whatever it holds: a
++    // platform that watches a new folder only once it reports it (inotify)
++    // misses a chat written into it before then.
++    let folder = match event.kind {
++        EventKind::Create(CreateKind::Folder) => true,
++        EventKind::Modify(ModifyKind::Name(_)) => event.paths.iter().any(|path| path.is_dir()),
++        _ => false,
++    };
++    if folder {
++        for subscriber in lock(&routes.subscribers).values() {
++            if event.paths.iter().any(|path| subscriber.watches(path))
++                && let Some(inbox) = subscriber.inbox.upgrade()
++            {
++                inbox.touch(true);
++            }
++        }
++        return;
++    }
+     for path in event.paths.iter().filter(|path| relevant(path)) {
+         let name = path.file_name().unwrap_or_default();
+         let listing = match event.kind {
+@@ -232,10 +259,7 @@
+             _ => structural || name == "session_index.jsonl" || name == "archive.json",
+         };
+         for subscriber in lock(&routes.subscribers).values() {
+-            if subscriber
+-                .roots
+-                .iter()
+-                .any(|(given, canonical)| path.starts_with(canonical) || path.starts_with(given))
++            if subscriber.watches(path)
+                 && let Some(inbox) = subscriber.inbox.upgrade()
+             {
+                 inbox.touch(listing);
+@@ -243,3 +267,50 @@
+         }
+     }
+ }
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use notify::event::RenameMode;
++
++    #[test]
++    fn a_new_folder_under_a_root_changes_the_listing() {
++        // Routed without the platform watcher, so only these events arrive.
++        let dir = tempfile::tempdir().unwrap();
++        let root = dir.path().canonicalize().unwrap();
++        let inbox = Arc::new(Inbox::default());
++        let id = routes()
++            .next
++            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
++        lock(&routes().subscribers).insert(
++            id,
++            Subscriber {
++                roots: vec![(root.clone(), root.clone())],
++                inbox: Arc::downgrade(&inbox),
++            },
++        );
++        // A folder outside every root changes nothing here.
++        let elsewhere = tempfile::tempdir().unwrap();
++        deliver(
++            &Event::new(EventKind::Create(CreateKind::Folder))
++                .add_path(elsewhere.path().join("2026")),
++        );
++        assert_eq!(inbox.take(), Touched::default());
++        // The platform reports a new day's folder, but not the chat written
++        // into it before the platform watched the folder.
++        let day = root.join("sessions/2026/01/02");
++        std::fs::create_dir_all(&day).unwrap();
++        deliver(&Event::new(EventKind::Create(CreateKind::Folder)).add_path(day.clone()));
++        assert_eq!(
++            inbox.take(),
++            Touched {
++                any: true,
++                listing: true
++            }
++        );
++        // A folder renamed into a root is new to the list as well.
++        deliver(&Event::new(EventKind::Modify(ModifyKind::Name(RenameMode::To))).add_path(day));
++        assert!(inbox.take().listing);
++        lock(&routes().subscribers).remove(&id);
++    }
++}

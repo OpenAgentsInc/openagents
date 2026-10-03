@@ -1,0 +1,87 @@
+diff --git a/crates/coder-connect/src/direct/watch.rs b/crates/coder-connect/src/direct/watch.rs
+--- a/crates/coder-connect/src/direct/watch.rs
++++ b/crates/coder-connect/src/direct/watch.rs
+@@ -197,6 +197,27 @@
+         || path.file_name().is_some_and(|n| n == "archive.json")
+ }
+ 
++/// The most folder levels looked into under a new folder.
++const DEPTH: usize = 4;
++
++/// Add the files under `directory` to `into`.
++fn found_in(directory: &Path, into: &mut Vec<PathBuf>, depth: usize) {
++    if depth >= DEPTH {
++        return;
++    }
++    let Ok(entries) = std::fs::read_dir(directory) else {
++        return;
++    };
++    for entry in entries.flatten().take(1024) {
++        let path = entry.path();
++        if entry.file_type().is_ok_and(|t| t.is_dir()) {
++            found_in(&path, into, depth + 1);
++        } else {
++            into.push(path);
++        }
++    }
++}
++
+ fn deliver(event: &Event) {
+     if matches!(event.kind, EventKind::Access(_)) {
+         return;
+@@ -215,7 +236,18 @@
+         }
+         return;
+     }
+-    for path in event.paths.iter().filter(|path| relevant(path)) {
++    // A recursive watch on Linux adds a new folder's watch only after the
++    // folder exists, so a chat written into it at once is never reported.
++    // Look inside a new folder for what it already holds.
++    let mut paths: Vec<PathBuf> = event.paths.clone();
++    if matches!(event.kind, EventKind::Create(_)) {
++        for path in &event.paths {
++            if path.is_dir() {
++                found_in(path, &mut paths, 0);
++            }
++        }
++    }
++    for path in paths.iter().filter(|path| relevant(path)) {
+         let name = path.file_name().unwrap_or_default();
+         let listing = match event.kind {
+             EventKind::Create(_) => {
+diff --git a/crates/coder-connect/src/tests/direct.rs b/crates/coder-connect/src/tests/direct.rs
+--- a/crates/coder-connect/src/tests/direct.rs
++++ b/crates/coder-connect/src/tests/direct.rs
+@@ -403,6 +403,32 @@
+ }
+ 
+ #[tokio::test]
++async fn a_chat_written_into_a_new_nested_folder_at_once_still_nudges_the_catalog() {
++    let f = Fixture::new("wss://relay.example/");
++    let address = listener(Arc::new(f.host())).await;
++    let client = Arc::new(f.client());
++    client.set_direct(Some(address));
++    let mut changes = client.changes();
++    client
++        .observe(Query::Catalog(CatalogRequest::default()))
++        .await
++        .unwrap();
++    // The file lands before a recursive watcher can watch its new folders.
++    let day = f.root.join("sessions/2027/03/04");
++    std::fs::create_dir_all(&day).unwrap();
++    std::fs::write(
++        day.join("nested.jsonl"),
++        b"{\"type\":\"session_meta\",\"payload\":{\"id\":\"nested-chat\"}}\n",
++    )
++    .unwrap();
++    let change = tokio::time::timeout(std::time::Duration::from_secs(4), changes.recv())
++        .await
++        .expect("a nudge")
++        .unwrap();
++    assert_eq!(change, Change::Catalog);
++}
++
++#[tokio::test]
+ async fn a_coder_only_host_watches_only_the_coder_task_directory() {
+     let f = Fixture::new("wss://relay.example/");
+     let tasks = f.root.parent().unwrap().join("tasks");

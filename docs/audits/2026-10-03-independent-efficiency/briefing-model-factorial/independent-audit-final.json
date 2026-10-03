@@ -1,0 +1,933 @@
+{
+  "schema": "openagents.briefing.independent-final-factorial-audit.v1",
+  "date_utc": "2026-10-03",
+  "report": {
+    "path": "results/metrics.json",
+    "sha256": "8911fd926f1b27fe2df64da079f8a75f42e16ff8cc9decbf1734b79b9dc3b533"
+  },
+  "replacement_registration_sha256": "7e311a55656e9cf2eefe86f1e2ffdd5ffe8e8319b09d27b106cfb2c05fbe955c",
+  "public_replacement_registration_sha256": "541fb34dcea79887b4ee483ffb87ae77d09ad3796656c105cdd137371d925db0",
+  "original_plan_sha256": "90f8091db08d7fc77a062f4a713bd0b526b8501faffde1cbbf7941399d26fa27",
+  "source_commit": "aeb7f9fb19e0d56c13400702894172ae472e3bcf",
+  "prospective_publication_commit": "54c2f8763047a20810a7e4b791dca0831d3856c5",
+  "method": {
+    "independent_numeric_script_sha256": "9a7199e5fb3bd9bfd1eed110f8e02a7a6668151e8bc01025bac23c3c56d0f77b",
+    "independent_lineage_script_sha256": "e4d5b63812af20d3a23a2ebdccdf0d54625056245c87ada81526c90979724352",
+    "public_binding_script_sha256": "1018114fdb1fbed058af1126a00ac926d90ee39b16dd36cff0a03afdf71d2cf7",
+    "report_runner_coordinator_gate_functions_imported": false,
+    "cost": "Last cumulative CLI terminal cost once per completed session; repair cost is the cumulative increment.",
+    "endpoint": "wall_s + preparation_wall_s + warm_brief_wall_s, with the frozen warm brief term only for B/D.",
+    "numeric_tolerance": "0.000000001",
+    "notes": [
+      "Copied records have new filesystem times; chronological checks use originals for old runs and new records for replacements.",
+      "Original blocks bind CLI version only. Replacement pre/post checks additionally bind executable bytes.",
+      "Completion receipt and eight binary checks are required beyond the unchanged panel reporter.",
+      "Wrapper setup and binary verification overhead are recorded outside the unchanged endpoint.",
+      "No runner, coordinator, or report gate functions are imported. Numeric routines come only from the independent recomputation."
+    ]
+  },
+  "validity": {
+    "all_16_effective_results_complete": true,
+    "all_costs_complete": true,
+    "copied_files": 176,
+    "copied_bytes": 3794768,
+    "all_copied_source_and_destination_hashes_match": true,
+    "registered_inputs_and_committed_instructions_match": true,
+    "original_16_event_result_and_arm_hashes_unchanged": true,
+    "completion_receipt_sha256": "3ba21c8bd60c508be5c5b7ac8dd05e5627e29e95326ef1bb5901810517ebb8c2",
+    "binary_check_events_sha256": "9ff54726443029d5c1155d74728c91083028cb632d2e8ae80e14ffc7465a19f2",
+    "eight_before_after_binary_checks_pass": true,
+    "new_ordinals": [
+      13,
+      14,
+      15,
+      16
+    ],
+    "no_additional_warmups": true,
+    "lineage_problems": [],
+    "valid_for_gate_evaluation": true,
+    "public_report_matches_independent_calculations": true
+  },
+  "cost_accounting": {
+    "original_scored_sessions": 16,
+    "new_final_sessions": 4,
+    "original_scored_usd": "5.69525379999999999",
+    "reused_first12_usd": "3.97583280000000001",
+    "discarded_original_block4_usd": "1.71942099999999998",
+    "new_complete_cost_usd": "1.44341460000000003",
+    "new_known_cost_lower_bound_usd": "1.44341460000000003",
+    "effective_known_scored_usd": "5.41924740000000004",
+    "all_unique_known_scored_usd": "7.13866840000000002",
+    "warmups_counted_once_usd": "0.3462816",
+    "all_unique_known_scored_plus_warmups_usd": "7.48495000000000002",
+    "copied_runs_additional_cost_usd": "0",
+    "complete": true,
+    "note": "Use original16 plus new4 for expenditure. Effective comparison uses original12 plus new4. The reused12 and two warmups are not charged twice."
+  },
+  "effective_panel_totals": {
+    "scored_final_records": 16,
+    "scored_cost_usd": "5.41924740000000004",
+    "scored_known_lower_bound_usd": "5.41924740000000004",
+    "unfinished_rows": 0,
+    "shared_warmup_cost_usd": "0.3462816",
+    "scored_plus_warmups_usd": "5.76552900000000004",
+    "scored_endpoint_s": "1976.20474257299735836",
+    "naive_cumulative_sum_overcount_usd": "1.39513720000000005",
+    "transport_retry_records": 0,
+    "retried_http_responses": 0,
+    "scheduled_backoff_s": 0,
+    "retry_call_elapsed_s": "0"
+  },
+  "arms": {
+    "A": {
+      "final_records": 4,
+      "expected_records": 4,
+      "accepted": 4,
+      "first_attempt_accepted": 3,
+      "repairs": 1,
+      "total_cost_usd": "1.79090719999999999",
+      "median_cost_usd": "0.453289799999999995",
+      "total_endpoint_s": "543.086164331999995",
+      "median_endpoint_s": "121.782267437000024",
+      "final_cumulative_usage_totals": {
+        "inputTokens": 102,
+        "outputTokens": 30990,
+        "cacheReadInputTokens": 2242456,
+        "cacheCreationInputTokens": 90276,
+        "thinkingTokens": 12002
+      },
+      "repair_increment_cost_usd": "0.14195819999999995"
+    },
+    "B": {
+      "final_records": 4,
+      "expected_records": 4,
+      "accepted": 4,
+      "first_attempt_accepted": 4,
+      "repairs": 0,
+      "total_cost_usd": "2.0264830",
+      "median_cost_usd": "0.5420756",
+      "total_endpoint_s": "559.35883616299854568",
+      "median_endpoint_s": "130.46516454099957992",
+      "final_cumulative_usage_totals": {
+        "inputTokens": 88,
+        "outputTokens": 34113,
+        "cacheReadInputTokens": 2149555,
+        "cacheCreationInputTokens": 114245,
+        "thinkingTokens": 12522
+      },
+      "repair_increment_cost_usd": "0"
+    },
+    "C": {
+      "final_records": 4,
+      "expected_records": 4,
+      "accepted": 4,
+      "first_attempt_accepted": 1,
+      "repairs": 3,
+      "total_cost_usd": "0.90211840000000003",
+      "median_cost_usd": "0.239874100000000015",
+      "total_endpoint_s": "445.074717082000015",
+      "median_endpoint_s": "114.672491957999969",
+      "final_cumulative_usage_totals": {
+        "inputTokens": 82,
+        "outputTokens": 20145,
+        "cacheReadInputTokens": 1761102,
+        "cacheCreationInputTokens": 87071,
+        "thinkingTokens": 5137
+      },
+      "repair_increment_cost_usd": "0.19501459999999998"
+    },
+    "D": {
+      "final_records": 4,
+      "expected_records": 4,
+      "accepted": 4,
+      "first_attempt_accepted": 0,
+      "repairs": 4,
+      "total_cost_usd": "0.69973880000000002",
+      "median_cost_usd": "0.15673820000000001",
+      "total_endpoint_s": "428.68502499599880268",
+      "median_endpoint_s": "108.74917531099971442",
+      "final_cumulative_usage_totals": {
+        "inputTokens": 62,
+        "outputTokens": 14926,
+        "cacheReadInputTokens": 1320834,
+        "cacheCreationInputTokens": 71547,
+        "thinkingTokens": 4234
+      },
+      "repair_increment_cost_usd": "0.20797400000000002"
+    }
+  },
+  "comparisons": [
+    {
+      "target": "D",
+      "baseline": "A",
+      "registered_cost_gate": true,
+      "complete": true,
+      "clear_cost_win": true,
+      "median_cost_ratio": "0.3457792343882434851366524725",
+      "median_cost_reduction_fraction": "0.6542207656117565148633475275",
+      "median_endpoint_ratio": "0.8929803788327184567731272600",
+      "paired": [
+        {
+          "block": 1,
+          "cost_difference_usd": "-0.33222179999999993",
+          "cost_ratio": "0.3207176120926414050365026013",
+          "endpoint_difference_s": "-70.55979775000032108",
+          "cheaper": true
+        },
+        {
+          "block": 2,
+          "cost_difference_usd": "-0.26088140000000004",
+          "cost_ratio": "0.3751373646114269751869581835",
+          "endpoint_difference_s": "-17.77515733400025208",
+          "cheaper": true
+        },
+        {
+          "block": 3,
+          "cost_difference_usd": "-0.36498120000000003",
+          "cost_ratio": "0.2946206351678908109265606211",
+          "endpoint_difference_s": "-36.17931908400031408",
+          "cheaper": true
+        },
+        {
+          "block": 4,
+          "cost_difference_usd": "-0.13308399999999997",
+          "cost_ratio": "0.6372766366623040962959611580",
+          "endpoint_difference_s": "10.11313483199969492",
+          "cheaper": true
+        }
+      ],
+      "criteria": {
+        "both_accept_four": true,
+        "median_cost_at_least_20_percent_lower": true,
+        "cheaper_in_at_least_three_blocks": true,
+        "median_endpoint_at_most_1_10": true,
+        "bindings_and_accounting_valid": true
+      }
+    },
+    {
+      "target": "C",
+      "baseline": "A",
+      "registered_cost_gate": true,
+      "complete": true,
+      "clear_cost_win": true,
+      "median_cost_ratio": "0.5291848614286048740693576320",
+      "median_cost_reduction_fraction": "0.4708151385713951259306423680",
+      "median_endpoint_ratio": "0.9416189595691502529627430059",
+      "paired": [
+        {
+          "block": 1,
+          "cost_difference_usd": "-0.26171399999999992",
+          "cost_ratio": "0.4648824644596277834930964391",
+          "endpoint_difference_s": "-77.41796216700010",
+          "cheaper": true
+        },
+        {
+          "block": 2,
+          "cost_difference_usd": "-0.16511740000000004",
+          "cost_ratio": "0.6045111161144137652503589334",
+          "endpoint_difference_s": "7.241316625000091",
+          "cheaper": true
+        },
+        {
+          "block": 3,
+          "cost_difference_usd": "-0.3665746",
+          "cost_ratio": "0.2915411574306170512696129722",
+          "endpoint_difference_s": "-72.617801374999990",
+          "cheaper": true
+        },
+        {
+          "block": 4,
+          "cost_difference_usd": "-0.0953828",
+          "cost_ratio": "0.7400320848444081283786251486",
+          "endpoint_difference_s": "44.782999667000019",
+          "cheaper": true
+        }
+      ],
+      "criteria": {
+        "both_accept_four": true,
+        "median_cost_at_least_20_percent_lower": true,
+        "cheaper_in_at_least_three_blocks": true,
+        "median_endpoint_at_most_1_10": true,
+        "bindings_and_accounting_valid": true
+      }
+    },
+    {
+      "target": "D",
+      "baseline": "C",
+      "registered_cost_gate": true,
+      "complete": true,
+      "clear_cost_win": true,
+      "median_cost_ratio": "0.6534186058436488149355053853",
+      "median_cost_reduction_fraction": "0.3465813941563511850644946147",
+      "median_endpoint_ratio": "0.9483457929110868814203953051",
+      "paired": [
+        {
+          "block": 1,
+          "cost_difference_usd": "-0.07050780000000001",
+          "cost_ratio": "0.6898896745125429017807149633",
+          "endpoint_difference_s": "6.85816441699977892",
+          "cheaper": true
+        },
+        {
+          "block": 2,
+          "cost_difference_usd": "-0.0957640",
+          "cost_ratio": "0.6205632197844083989276683284",
+          "endpoint_difference_s": "-25.01647395900034308",
+          "cheaper": true
+        },
+        {
+          "block": 3,
+          "cost_difference_usd": "0.00159339999999997",
+          "cost_ratio": "1.010562754721883940953577972",
+          "endpoint_difference_s": "36.43848229099967592",
+          "cheaper": false
+        },
+        {
+          "block": 4,
+          "cost_difference_usd": "-0.03770119999999997",
+          "cost_ratio": "0.8611473066012963714563305605",
+          "endpoint_difference_s": "-34.66986483500032408",
+          "cheaper": true
+        }
+      ],
+      "criteria": {
+        "both_accept_four": true,
+        "median_cost_at_least_20_percent_lower": true,
+        "cheaper_in_at_least_three_blocks": true,
+        "median_endpoint_at_most_1_10": true,
+        "bindings_and_accounting_valid": true
+      }
+    },
+    {
+      "target": "B",
+      "baseline": "A",
+      "registered_cost_gate": false,
+      "complete": true,
+      "clear_cost_win": false,
+      "median_cost_ratio": "1.195869838677155334135798320",
+      "median_cost_reduction_fraction": "-0.195869838677155334135798320",
+      "median_endpoint_ratio": "1.071298533741715408892047941",
+      "paired": [
+        {
+          "block": 1,
+          "cost_difference_usd": "0.03112680000000005",
+          "cost_ratio": "1.063643888004684845885794811",
+          "endpoint_difference_s": "-17.44554504300033108",
+          "cheaper": false
+        },
+        {
+          "block": 2,
+          "cost_difference_usd": "-0.04634500000000004",
+          "cost_ratio": "0.8889945437387125437488161744",
+          "endpoint_difference_s": "27.87688270799970192",
+          "cheaper": true
+        },
+        {
+          "block": 3,
+          "cost_difference_usd": "0.0465214",
+          "cost_ratio": "1.089909385971388339265911569",
+          "endpoint_difference_s": "-9.98830641700055208",
+          "cheaper": false
+        },
+        {
+          "block": 4,
+          "cost_difference_usd": "0.2042726",
+          "cost_ratio": "1.556749455304438076413823629",
+          "endpoint_difference_s": "15.82964058299973192",
+          "cheaper": false
+        }
+      ],
+      "criteria": {
+        "both_accept_four": true,
+        "median_cost_at_least_20_percent_lower": false,
+        "cheaper_in_at_least_three_blocks": false,
+        "median_endpoint_at_most_1_10": true,
+        "bindings_and_accounting_valid": true
+      }
+    },
+    {
+      "target": "D",
+      "baseline": "B",
+      "registered_cost_gate": false,
+      "complete": true,
+      "clear_cost_win": true,
+      "median_cost_ratio": "0.2891445399866734639965348007",
+      "median_cost_reduction_fraction": "0.7108554600133265360034651993",
+      "median_endpoint_ratio": "0.8335495202385962135333069470",
+      "paired": [
+        {
+          "block": 1,
+          "cost_difference_usd": "-0.36334859999999998",
+          "cost_ratio": "0.3015272458287550432099382474",
+          "endpoint_difference_s": "-53.11425270699999000",
+          "cheaper": true
+        },
+        {
+          "block": 2,
+          "cost_difference_usd": "-0.2145364",
+          "cost_ratio": "0.4219793779990677799421808022",
+          "endpoint_difference_s": "-45.65204004199995400",
+          "cheaper": true
+        },
+        {
+          "block": 3,
+          "cost_difference_usd": "-0.41150260000000003",
+          "cost_ratio": "0.2703166327036521352723341989",
+          "endpoint_difference_s": "-26.19101266699976200",
+          "cheaper": true
+        },
+        {
+          "block": 4,
+          "cost_difference_usd": "-0.33735659999999997",
+          "cost_ratio": "0.4093636483962528283810840394",
+          "endpoint_difference_s": "-5.71650575100003700",
+          "cheaper": true
+        }
+      ],
+      "criteria": {
+        "both_accept_four": true,
+        "median_cost_at_least_20_percent_lower": true,
+        "cheaper_in_at_least_three_blocks": true,
+        "median_endpoint_at_most_1_10": true,
+        "bindings_and_accounting_valid": true
+      }
+    }
+  ],
+  "rows": [
+    {
+      "ordinal": 1,
+      "block": 1,
+      "arm": "A",
+      "model": "claude-opus-5-5",
+      "cli_version": "2.1.287",
+      "completed": true,
+      "accepted": true,
+      "first_attempt_accepted": false,
+      "cost_complete": true,
+      "cost_usd": "0.48907759999999995",
+      "repair_cost_usd": "0.14195819999999995",
+      "endpoint_s": "191.767798250",
+      "result_sha256": "d7ff35db008c6ce4d04a0d6ebdbbc8062885687fb786d235585a3b89e93b3cd0",
+      "events_sha256": "f416ff6c98def2018f9e1c669af2cf55382fe1f06648ef39bd9d8225b57ec862",
+      "arm_record_sha256": "affc88ae72e7b70f4927444b663be701c7f465ad5900f4201187547c58143cc5",
+      "transport_retries": []
+    },
+    {
+      "ordinal": 2,
+      "block": 1,
+      "arm": "B",
+      "model": "claude-opus-5-5",
+      "cli_version": "2.1.287",
+      "completed": true,
+      "accepted": true,
+      "first_attempt_accepted": true,
+      "cost_complete": true,
+      "cost_usd": "0.5202044",
+      "repair_cost_usd": null,
+      "endpoint_s": "174.32225320699966892",
+      "result_sha256": "cf5e92dc10101f2ce21e59e7460f8b1b15f16fdb6adc7f45cd5a37ab59623c16",
+      "events_sha256": "c78649bcf16e675f834214b3065768ae79b4dbb72e5e69bc85a38ef0a8045be5",
+      "arm_record_sha256": "805c4633c5a7484955ec69c3f2e24d3c47291fe6834adda323b4034d9711bf1d",
+      "transport_retries": []
+    },
+    {
+      "ordinal": 3,
+      "block": 1,
+      "arm": "D",
+      "model": "claude-sonnet-5-5",
+      "cli_version": "2.1.287",
+      "completed": true,
+      "accepted": true,
+      "first_attempt_accepted": false,
+      "cost_complete": true,
+      "cost_usd": "0.15685580000000002",
+      "repair_cost_usd": "0.05844140000000002",
+      "endpoint_s": "121.20800049999967892",
+      "result_sha256": "41f7d4b5836fcfa8b30375b7343b29349c43a413d2579d7a4b7245b1bff8002f",
+      "events_sha256": "a3b8ef221fe523d60c7ae8ad3a7640a2ca75de9e0322391474835be0b1224e4b",
+      "arm_record_sha256": "623566ff85aa4e25e467e978d6e7ec086ff9a0b1559858bbe063ce4ae7632228",
+      "transport_retries": []
+    },
+    {
+      "ordinal": 4,
+      "block": 1,
+      "arm": "C",
+      "model": "claude-sonnet-5-5",
+      "cli_version": "2.1.287",
+      "completed": true,
+      "accepted": true,
+      "first_attempt_accepted": false,
+      "cost_complete": true,
+      "cost_usd": "0.22736360000000003",
+      "repair_cost_usd": "0.05688820000000000",
+      "endpoint_s": "114.34983608299990",
+      "result_sha256": "ea41afa4397db4cd5e8493daf967c426bba15ad1689179c6f2a4a9b78aeaa910",
+      "events_sha256": "037aa3afb8c4cb902e112c2bfd24a59201ebab71465a498e5d571902216ca55c",
+      "arm_record_sha256": "42475f94f35fa241906dc4fbef0d541c2fd0081cf4a1e91f59741b09302542fb",
+      "transport_retries": []
+    },
+    {
+      "ordinal": 5,
+      "block": 2,
+      "arm": "B",
+      "model": "claude-opus-5-5",
+      "cli_version": "2.1.287",
+      "completed": true,
+      "accepted": true,
+      "first_attempt_accepted": true,
+      "cost_complete": true,
+      "cost_usd": "0.371157",
+      "repair_cost_usd": null,
+      "endpoint_s": "135.63071391599964892",
+      "result_sha256": "ff1b414fc2e18f57ff5dffa71e1eb67ed3b84c30159ec8ccfc5dbbe9a66c54e3",
+      "events_sha256": "213ca3791c8423cfab135130648384dc6eeb769359bcbce4fef44962259090f3",
+      "arm_record_sha256": "aad5813b0cabf8e6b106dfbd3dabb325930ebb73a90fbbdc35fe930ed1843844",
+      "transport_retries": []
+    },
+    {
+      "ordinal": 6,
+      "block": 2,
+      "arm": "C",
+      "model": "claude-sonnet-5-5",
+      "cli_version": "2.1.287",
+      "completed": true,
+      "accepted": true,
+      "first_attempt_accepted": false,
+      "cost_complete": true,
+      "cost_usd": "0.2523846",
+      "repair_cost_usd": "0.06770539999999998",
+      "endpoint_s": "114.995147833000038",
+      "result_sha256": "222d70d9896bdd5c7ca5e3721d4e83d1b6ec16056f787f889c40d58bf3c913a8",
+      "events_sha256": "72635e642ff0b4bd3f0784580aa068dad6b1e47c117b19e4f3ccad1f5df53fe9",
+      "arm_record_sha256": "f6e52d9a63e512c3b48c97ffd57f18aaa8296263a1dcdc8efb017405a37c263e",
+      "transport_retries": []
+    },
+    {
+      "ordinal": 7,
+      "block": 2,
+      "arm": "A",
+      "model": "claude-opus-5-5",
+      "cli_version": "2.1.287",
+      "completed": true,
+      "accepted": true,
+      "first_attempt_accepted": true,
+      "cost_complete": true,
+      "cost_usd": "0.41750200000000004",
+      "repair_cost_usd": null,
+      "endpoint_s": "107.753831207999947",
+      "result_sha256": "7126d84e1e907c54c1aa57ae0f74ab0c7fce66dbd4295670c2193d1b3c2c9373",
+      "events_sha256": "422fba791aac8763e96b1ed45cb045ee6c0dd45de3379db6d0e46b201ca80120",
+      "arm_record_sha256": "216aaad42376ec89bdc01a59b932afa2329632a24c5cd0e2cc4b402b6b6fcfc5",
+      "transport_retries": []
+    },
+    {
+      "ordinal": 8,
+      "block": 2,
+      "arm": "D",
+      "model": "claude-sonnet-5-5",
+      "cli_version": "2.1.287",
+      "completed": true,
+      "accepted": true,
+      "first_attempt_accepted": false,
+      "cost_complete": true,
+      "cost_usd": "0.1566206",
+      "repair_cost_usd": "0.0565104",
+      "endpoint_s": "89.97867387399969492",
+      "result_sha256": "00b376441375c9f6eb480a3b9a12fca006ad773c6359748ab2f33a47842042ae",
+      "events_sha256": "1b5e79be0f73146f70f20a89d9319b863ac7d96f6ff0ef01371f26517440a5bf",
+      "arm_record_sha256": "14d03fe98c1d4e1386e35138d8cd9d2e086bd1a3b8047017f9a5aec5bce40b87",
+      "transport_retries": []
+    },
+    {
+      "ordinal": 9,
+      "block": 3,
+      "arm": "C",
+      "model": "claude-sonnet-5-5",
+      "cli_version": "2.1.287",
+      "completed": true,
+      "accepted": true,
+      "first_attempt_accepted": true,
+      "cost_complete": true,
+      "cost_usd": "0.1508508",
+      "repair_cost_usd": null,
+      "endpoint_s": "62.670120208000073",
+      "result_sha256": "42cc20d4815cbcae46913f6880fd9ff48414b4d8d990581d04a267b521c0a10a",
+      "events_sha256": "af2f8cac37756cf3dabc76dca9b6d9898c6d144860c30a92389110ead5732e14",
+      "arm_record_sha256": "ae3feaafd2f9fee6793f97164eb1c5e65cf32f36c2d9f74cc4116d5356ef63ea",
+      "transport_retries": []
+    },
+    {
+      "ordinal": 10,
+      "block": 3,
+      "arm": "D",
+      "model": "claude-sonnet-5-5",
+      "cli_version": "2.1.287",
+      "completed": true,
+      "accepted": true,
+      "first_attempt_accepted": false,
+      "cost_complete": true,
+      "cost_usd": "0.15244419999999997",
+      "repair_cost_usd": "0.05554959999999997",
+      "endpoint_s": "99.10860249899974892",
+      "result_sha256": "162a22c1226f7a8ae887bcf15bbfcdcb018d380365101d70e32ba34163370a67",
+      "events_sha256": "b290c718a71c67f0e9ed0727bca38e431830304b3d9594f9c1814985e4f6ebef",
+      "arm_record_sha256": "4a58d7c428a32a44a94eb2fd552f1f626f837f01458c03c385a3adc9715edf9f",
+      "transport_retries": []
+    },
+    {
+      "ordinal": 11,
+      "block": 3,
+      "arm": "B",
+      "model": "claude-opus-5-5",
+      "cli_version": "2.1.287",
+      "completed": true,
+      "accepted": true,
+      "first_attempt_accepted": true,
+      "cost_complete": true,
+      "cost_usd": "0.5639468",
+      "repair_cost_usd": null,
+      "endpoint_s": "125.29961516599951092",
+      "result_sha256": "c4ecb6f996f72119f2cd95bfb71fc2759782a89c804132c3e10754e5d8fbba6f",
+      "events_sha256": "a929e6ad5a3563f469b26c498f5b3b01dc185557c19af2bd3fc042561fb822e3",
+      "arm_record_sha256": "4c684c0bbba9ffb66301bc7a4a2000229c890517140cdcca53306e8db9ec705e",
+      "transport_retries": []
+    },
+    {
+      "ordinal": 12,
+      "block": 3,
+      "arm": "A",
+      "model": "claude-opus-5-5",
+      "cli_version": "2.1.287",
+      "completed": true,
+      "accepted": true,
+      "first_attempt_accepted": true,
+      "cost_complete": true,
+      "cost_usd": "0.5174254",
+      "repair_cost_usd": null,
+      "endpoint_s": "135.287921583000063",
+      "result_sha256": "6fb15da44e197265d846e418b48b9030187727f0c5a5e20c3af1028cf43d6716",
+      "events_sha256": "06dd15346e3b5a06f4876f720daca4f458be75c5334a1a2946a6948214319ee3",
+      "arm_record_sha256": "285b1ff1646ae2df48d6b96090fb7c924cbe192d454f7d2ce91f471402f37739",
+      "transport_retries": []
+    },
+    {
+      "ordinal": 13,
+      "block": 4,
+      "arm": "D",
+      "model": "claude-sonnet-5-5",
+      "cli_version": "2.1.287",
+      "completed": true,
+      "accepted": true,
+      "first_attempt_accepted": false,
+      "cost_complete": true,
+      "cost_usd": "0.23381820000000003",
+      "repair_cost_usd": "0.03747260000000003",
+      "endpoint_s": "118.38974812299967992",
+      "result_sha256": "49698b48cda21304796fa769aa56abf0feae555d699cc5b7d57661c253e03ca6",
+      "events_sha256": "5a6f4b16469a0453492108fc7238ef5e397d466c84d6af8041e0734fbbb1b8ed",
+      "arm_record_sha256": "bb4f0d363976674add44aa31a8c3600e867b3470080e8f4d3b54816899552d1f",
+      "transport_retries": []
+    },
+    {
+      "ordinal": 14,
+      "block": 4,
+      "arm": "A",
+      "model": "claude-opus-5-5",
+      "cli_version": "2.1.287",
+      "completed": true,
+      "accepted": true,
+      "first_attempt_accepted": true,
+      "cost_complete": true,
+      "cost_usd": "0.3669022",
+      "repair_cost_usd": null,
+      "endpoint_s": "108.276613290999985",
+      "result_sha256": "e2fec7091a3fda8a3f8eeebb76cdad75d116ab25a2c7b71092eb15cd148e5dc0",
+      "events_sha256": "f04e7f4c95ccf38b822e99ee3d2f3831caf23e414391939ee86afad13f389bc0",
+      "arm_record_sha256": "465397aa7bada279fd770c02ba577f219a25625b363fdd1fb911cd181c017bb5",
+      "transport_retries": []
+    },
+    {
+      "ordinal": 15,
+      "block": 4,
+      "arm": "C",
+      "model": "claude-sonnet-5-5",
+      "cli_version": "2.1.287",
+      "completed": true,
+      "accepted": true,
+      "first_attempt_accepted": false,
+      "cost_complete": true,
+      "cost_usd": "0.2715194",
+      "repair_cost_usd": "0.0704210",
+      "endpoint_s": "153.059612958000004",
+      "result_sha256": "274f0446f2380ee46b318ccc16dee171b235a26974f1ccbf4ea03f0d6d6585ca",
+      "events_sha256": "10374b9a111ae189e056ff90a77d731d89ead70f5886ab0d8a78180ac31c31f5",
+      "arm_record_sha256": "bcee67fcc69eaf1a00f126bef47878899310cd8f04d3987a9b6dbc10fc182334",
+      "transport_retries": []
+    },
+    {
+      "ordinal": 16,
+      "block": 4,
+      "arm": "B",
+      "model": "claude-opus-5-5",
+      "cli_version": "2.1.287",
+      "completed": true,
+      "accepted": true,
+      "first_attempt_accepted": true,
+      "cost_complete": true,
+      "cost_usd": "0.5711748",
+      "repair_cost_usd": null,
+      "endpoint_s": "124.10625387399971692",
+      "result_sha256": "f0c3c780e8c64b8f845ba397473ce015d6253a38ea686e0dcfddbcaf5fbec369",
+      "events_sha256": "4bb1d9c02eaa050925e303f267201f875b494c93a98298b462617708f652df56",
+      "arm_record_sha256": "1bae03b44b88113a1240cc6308bf68b3274224cfaa396e6729c7f5eee4dceac6",
+      "transport_retries": []
+    }
+  ],
+  "warmups": [
+    {
+      "label": "warmup-opus",
+      "model": "claude-opus-5-5",
+      "cli_version": "2.1.287",
+      "cost_usd": "0.2306148",
+      "endpoint_s": "44.593581707999995",
+      "raw_tool_calls": 0,
+      "result_sha256": "763cd910290c042badf4d18a4ba155f4fb70ca1a1cb4a2a0d16fc8d4442bf0aa",
+      "events_sha256": "d93b3646038cda8a300121ba71f87525b90950542bc5bf2837d7f88f61ffea41"
+    },
+    {
+      "label": "warmup-sonnet",
+      "model": "claude-sonnet-5-5",
+      "cli_version": "2.1.287",
+      "cost_usd": "0.1156668",
+      "endpoint_s": "15.3436229989999967",
+      "raw_tool_calls": 0,
+      "result_sha256": "6ec7df248d2af588f42d72c0547ac1ac8983daa14fa0172f0b343ff758bee8b7",
+      "events_sha256": "5b84f5dfe05e37677548dfaef1fd0d35ffed01cef2f7d6fc4b5d937ee952599f"
+    }
+  ],
+  "replacement_binary_events": [
+    {
+      "elapsed_s": "0.25525325",
+      "phase": "setup"
+    },
+    {
+      "binary": {
+        "sha256": "6eab8333fe2121553100d8f40bfada384a3e989b94f947e18ba6677a6fcb41ea",
+        "version": "2.1.287"
+      },
+      "binary_binding_ok": true,
+      "ordinal": 13,
+      "phase": "before",
+      "verification_elapsed_s": "0.329128458"
+    },
+    {
+      "binary": {
+        "sha256": "6eab8333fe2121553100d8f40bfada384a3e989b94f947e18ba6677a6fcb41ea",
+        "version": "2.1.287"
+      },
+      "binary_binding_ok": true,
+      "ordinal": 13,
+      "phase": "after",
+      "verification_elapsed_s": "0.2834573750000118"
+    },
+    {
+      "binary": {
+        "sha256": "6eab8333fe2121553100d8f40bfada384a3e989b94f947e18ba6677a6fcb41ea",
+        "version": "2.1.287"
+      },
+      "binary_binding_ok": true,
+      "ordinal": 14,
+      "phase": "before",
+      "verification_elapsed_s": "0.2735443329999896"
+    },
+    {
+      "binary": {
+        "sha256": "6eab8333fe2121553100d8f40bfada384a3e989b94f947e18ba6677a6fcb41ea",
+        "version": "2.1.287"
+      },
+      "binary_binding_ok": true,
+      "ordinal": 14,
+      "phase": "after",
+      "verification_elapsed_s": "0.31610841700000947"
+    },
+    {
+      "binary": {
+        "sha256": "6eab8333fe2121553100d8f40bfada384a3e989b94f947e18ba6677a6fcb41ea",
+        "version": "2.1.287"
+      },
+      "binary_binding_ok": true,
+      "ordinal": 15,
+      "phase": "before",
+      "verification_elapsed_s": "0.2744315420000021"
+    },
+    {
+      "binary": {
+        "sha256": "6eab8333fe2121553100d8f40bfada384a3e989b94f947e18ba6677a6fcb41ea",
+        "version": "2.1.287"
+      },
+      "binary_binding_ok": true,
+      "ordinal": 15,
+      "phase": "after",
+      "verification_elapsed_s": "0.31339075000005323"
+    },
+    {
+      "binary": {
+        "sha256": "6eab8333fe2121553100d8f40bfada384a3e989b94f947e18ba6677a6fcb41ea",
+        "version": "2.1.287"
+      },
+      "binary_binding_ok": true,
+      "ordinal": 16,
+      "phase": "before",
+      "verification_elapsed_s": "0.2800344999999993"
+    },
+    {
+      "binary": {
+        "sha256": "6eab8333fe2121553100d8f40bfada384a3e989b94f947e18ba6677a6fcb41ea",
+        "version": "2.1.287"
+      },
+      "binary_binding_ok": true,
+      "ordinal": 16,
+      "phase": "after",
+      "verification_elapsed_s": "0.2708462090000694"
+    }
+  ],
+  "replacement_wrapper_timing": {
+    "arm_timings": [
+      {
+        "after_binary_verification_elapsed_s": "0.2834573750000118",
+        "before_binary_verification_elapsed_s": "0.329128458",
+        "coordinator_elapsed_s": "131.702356666",
+        "ordinal": 13,
+        "preflight_elapsed_s": "0.522218083"
+      },
+      {
+        "after_binary_verification_elapsed_s": "0.31610841700000947",
+        "before_binary_verification_elapsed_s": "0.2735443329999896",
+        "coordinator_elapsed_s": "138.049897333",
+        "ordinal": 14,
+        "preflight_elapsed_s": "0.5885432089999938"
+      },
+      {
+        "after_binary_verification_elapsed_s": "0.31339075000005323",
+        "before_binary_verification_elapsed_s": "0.2744315420000021",
+        "coordinator_elapsed_s": "164.89600266600002",
+        "ordinal": 15,
+        "preflight_elapsed_s": "0.6279965410000159"
+      },
+      {
+        "after_binary_verification_elapsed_s": "0.2708462090000694",
+        "before_binary_verification_elapsed_s": "0.2800344999999993",
+        "coordinator_elapsed_s": "136.13046425",
+        "ordinal": 16,
+        "preflight_elapsed_s": "0.563818958000013"
+      }
+    ],
+    "completed_ordinals": [
+      13,
+      14,
+      15,
+      16
+    ],
+    "elapsed_s": "574.727787042",
+    "final_validation_elapsed_s": "0.2046336670000528",
+    "initial_setup_elapsed_s": "0.25525325",
+    "original_plan_sha256": "90f8091db08d7fc77a062f4a713bd0b526b8501faffde1cbbf7941399d26fa27",
+    "registration_sha256": "7e311a55656e9cf2eefe86f1e2ffdd5ffe8e8319b09d27b106cfb2c05fbe955c",
+    "schema": "openagents.briefing.replacement-complete.v1",
+    "timing_note": "Wrapper overhead is separate from the unchanged runner endpoint. Preflight includes the before-binary check. Elapsed time excludes completion-receipt serialization.",
+    "wrapper_overhead_elapsed_s": "3.9490661270000373"
+  },
+  "limitations": [
+    "Four blocks reuse one historical task; the comparison does not establish performance across tasks.",
+    "Original blocks bind reported CLI version only. Executable bytes are additionally bound for the four replacement runs.",
+    "Costs are CLI list-price estimates, not independently verified subscription charges.",
+    "The endpoint omits final artifact capture, deletion, and serialization. Replacement wrapper overhead is separately retained.",
+    "Requested medium effort does not imply equal computation across models.",
+    "Warmup and cache state were shared and not isolated for each run.",
+    "Gate validity covers the frozen acceptance checks; separate source review can identify behavior outside those checks."
+  ],
+  "descriptive_summary_audit": {
+    "path": "arm-summary.json",
+    "sha256": "7a74b8adbf59ce862124ec670dd6de8c30c6699c5def3b571baef6ed968f19cb",
+    "all_arm_cost_time_tool_read_search_medians_match": true,
+    "all_arm_accepted_first_attempt_repair_retry_totals_match": true,
+    "method": "Recompute medians from each raw-derived row; count tool use from raw assistant events and require unique tool IDs. Search calls are Grep plus Glob."
+  },
+  "cross_round_expenditure_audit": {
+    "path": "../experiment-costs.json",
+    "sha256": "63cc6da8b2a662860abd47a8e7db2fd6e6193bd3e7507781bde3bc24209f5926",
+    "independent_details_sha256": "49829828dc44fe6b28eca3cdf6f1a3080d3ca03279ba11242829e3f4e9424128",
+    "independent_script_sha256": "cce5c4bf590ffd6201b16a60956eba8f03e467e7dee99494dbda760bba20c683",
+    "all_categories_match": true,
+    "sessions": 47,
+    "scored_sessions": 40,
+    "total_known_cli_cost_usd_list_estimate": "25.4494342000000005106",
+    "categories": [
+      {
+        "category": "round_1_scored",
+        "sessions": 4,
+        "cost_usd_list_estimate": "2.7749178000000003",
+        "evidence": "Last cumulative terminal event, matched against the final result record."
+      },
+      {
+        "category": "round_2_development_scored",
+        "sessions": 8,
+        "cost_usd_list_estimate": "6.6396159999999999",
+        "evidence": "Last cumulative terminal event, matched against the final result record."
+      },
+      {
+        "category": "round_2_development_warmup",
+        "sessions": 1,
+        "cost_usd_list_estimate": "0.1971828",
+        "evidence": "Last cumulative terminal event, matched against the final result record."
+      },
+      {
+        "category": "round_2_heldout_scored",
+        "sessions": 8,
+        "cost_usd_list_estimate": "8.2070822000000003",
+        "evidence": "Last cumulative terminal event, matched against the final result record."
+      },
+      {
+        "category": "round_2_heldout_warmup",
+        "sessions": 1,
+        "cost_usd_list_estimate": "0.11636679999999999",
+        "evidence": "Last cumulative terminal event, matched against the final result record."
+      },
+      {
+        "category": "round_3_original_scored_including_invalid_block",
+        "sessions": 16,
+        "cost_usd_list_estimate": "5.69525379999999999",
+        "evidence": "Last cumulative terminal event, matched against the final result record."
+      },
+      {
+        "category": "round_3_replacement_block_4_scored",
+        "sessions": 4,
+        "cost_usd_list_estimate": "1.44341460000000003",
+        "evidence": "Last cumulative terminal event, matched against the final result record."
+      },
+      {
+        "category": "round_3_warmups",
+        "sessions": 2,
+        "cost_usd_list_estimate": "0.3462816",
+        "evidence": "Last cumulative terminal event, matched against the final result record."
+      },
+      {
+        "category": "model_availability_probes",
+        "sessions": 2,
+        "cost_usd_list_estimate": "0.0170740000000000006",
+        "evidence": "Retained availability summaries reconciled to their cumulative per-model usage. Raw probe streams are not asserted available."
+      },
+      {
+        "category": "persistent_process_accounting_smoke",
+        "sessions": 1,
+        "cost_usd_list_estimate": "0.0122446",
+        "evidence": "Last cumulative terminal event, not the sum of its two input-turn results."
+      }
+    ],
+    "limitations": [
+      "Availability probes are checked against retained summary and per-model usage, not independent raw streams.",
+      "Timing component medians need not sum to the median endpoint.",
+      "The ledger is known executor expenditure; orchestration, engineering, infrastructure, and historical-conversation costs remain unmeasured."
+    ]
+  }
+}

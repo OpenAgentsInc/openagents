@@ -1,0 +1,81 @@
+diff --git a/crates/coder-connect/src/direct/watch.rs b/crates/coder-connect/src/direct/watch.rs
+--- a/crates/coder-connect/src/direct/watch.rs
++++ b/crates/coder-connect/src/direct/watch.rs
+@@ -9,10 +9,14 @@
+ //!
+ //! Only changes that can change a chat or the chat list count: a `.jsonl`
+ //! file (every harness's transcripts and title indexes), Coder's
+-//! `archive.json`, or a change the platform could not name. Reads never
++//! `archive.json`, or a change the platform could not name. A folder that
++//! appears or is renamed under a root also counts as a change to the list:
++//! a platform that watches each folder separately, such as Linux inotify,
++//! starts watching a new folder only after it reports it, so a chat written
++//! into a new day's folder at once is never reported by itself. Reads never
+ //! count, so a host reading a chat cannot nudge itself.
+ 
+-use notify::event::{EventKind, ModifyKind};
++use notify::event::{CreateKind, EventKind, ModifyKind};
+ use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
+ use std::collections::{HashMap, HashSet};
+ use std::path::{Path, PathBuf};
+@@ -215,9 +219,15 @@
+         }
+         return;
+     }
+-    for path in event.paths.iter().filter(|path| relevant(path)) {
++    for path in &event.paths {
++        let folder = matches!(event.kind, EventKind::Create(CreateKind::Folder))
++            || (structural && path.is_dir());
++        if !folder && !relevant(path) {
++            continue;
++        }
+         let name = path.file_name().unwrap_or_default();
+         let listing = match event.kind {
++            _ if folder => true,
+             EventKind::Create(_) => {
+                 let mut announced = lock(&routes.announced);
+                 if announced.len() >= ANNOUNCED {
+@@ -243,3 +253,43 @@
+         }
+     }
+ }
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use notify::event::RenameMode;
++
++    #[test]
++    fn a_new_folder_under_a_root_changes_the_list() {
++        let dir = tempfile::tempdir().unwrap();
++        let root = dir.path().join("sessions");
++        let moved = root.join("2026/01/03");
++        std::fs::create_dir_all(&moved).unwrap();
++        let root = root.canonicalize().unwrap();
++        let inbox = Arc::new(Inbox::default());
++        let _subscription = subscribe(vec![root.clone()], &inbox);
++        inbox.take();
++        // A file that is neither a chat nor the archive changes nothing.
++        deliver(
++            &Event::new(EventKind::Create(CreateKind::File)).add_path(root.join("notes.txt")),
++        );
++        assert_eq!(inbox.take(), Touched::default());
++        // Inotify watches a new folder only after reporting it, so a chat
++        // written into it at once goes unreported: the folder itself counts.
++        deliver(
++            &Event::new(EventKind::Create(CreateKind::Folder))
++                .add_path(root.join("2026/01/02")),
++        );
++        let changed = Touched {
++            any: true,
++            listing: true,
++        };
++        assert_eq!(inbox.take(), changed);
++        // So does a folder moved in under the root.
++        deliver(
++            &Event::new(EventKind::Modify(ModifyKind::Name(RenameMode::To)))
++                .add_path(moved.canonicalize().unwrap()),
++        );
++        assert_eq!(inbox.take(), changed);
++    }
++}

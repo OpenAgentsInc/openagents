@@ -1,0 +1,25 @@
+   Compiling coder-connect v0.1.0 (<VERIFICATION_ROOT>/repo/crates/coder-connect)
+   Compiling briefing-replay-acceptance v0.0.0 (<VERIFICATION_ROOT>/depth-diagnostic/7-A-opus-control/harness)
+warning: methods `expect_catalog` and `stage` are never used
+   --> <VERIFICATION_ROOT>/depth-diagnostic/deep_import.rs:119:14
+    |
+ 34 | impl Endpoint {
+    | ------------- methods in this implementation
+...
+119 |     async fn expect_catalog(&mut self) {
+    |              ^^^^^^^^^^^^^^
+...
+136 |     fn stage(&self, directory: &str, chat: &str) -> PathBuf {
+    |        ^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: `briefing-replay-acceptance` (test "acceptance") generated 1 warning
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.84s
+     Running <VERIFICATION_ROOT>/depth-diagnostic/deep_import.rs (<TARGET>/debug/deps/acceptance-de84dadec62cec58)
+
+running 1 test
+test a_catalog_visible_deep_import_notifies_without_child_writes ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.34s
+

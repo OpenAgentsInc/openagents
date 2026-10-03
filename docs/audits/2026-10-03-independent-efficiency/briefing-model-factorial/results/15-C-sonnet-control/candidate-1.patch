@@ -1,0 +1,61 @@
+diff --git a/crates/coder-connect/src/direct/watch.rs b/crates/coder-connect/src/direct/watch.rs
+--- a/crates/coder-connect/src/direct/watch.rs
++++ b/crates/coder-connect/src/direct/watch.rs
+@@ -9,10 +9,11 @@
+ //!
+ //! Only changes that can change a chat or the chat list count: a `.jsonl`
+ //! file (every harness's transcripts and title indexes), Coder's
+-//! `archive.json`, or a change the platform could not name. Reads never
++//! `archive.json`, a new folder (a platform can start watching it after a
++//! chat file in it is written), or a change the platform could not name. Reads never
+ //! count, so a host reading a chat cannot nudge itself.
+ 
+-use notify::event::{EventKind, ModifyKind};
++use notify::event::{CreateKind, EventKind, ModifyKind};
+ use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
+ use std::collections::{HashMap, HashSet};
+ use std::path::{Path, PathBuf};
+@@ -215,9 +216,18 @@
+         }
+         return;
+     }
+-    for path in event.paths.iter().filter(|path| relevant(path)) {
++    let folder = matches!(event.kind, EventKind::Create(CreateKind::Folder));
++    for path in event
++        .paths
++        .iter()
++        .filter(|path| folder || relevant(path))
++    {
+         let name = path.file_name().unwrap_or_default();
+         let listing = match event.kind {
++            // A new folder may already hold chats the platform began
++            // watching too late to report, such as a Codex day folder, so
++            // it counts as a change of the list.
++            EventKind::Create(CreateKind::Folder) => true,
+             EventKind::Create(_) => {
+                 let mut announced = lock(&routes.announced);
+                 if announced.len() >= ANNOUNCED {
+@@ -243,3 +253,23 @@
+         }
+     }
+ }
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[tokio::test]
++    async fn a_new_folder_marks_the_list_changed_without_a_chat_file_event() {
++        let temp = tempfile::tempdir().unwrap();
++        let inbox = Arc::new(Inbox::default());
++        let subscription = subscribe(vec![temp.path().to_path_buf()], &inbox);
++        assert!(subscription.complete);
++        // Only the folder is created: a file written into it before the
++        // platform watched it would report nothing.
++        std::fs::create_dir_all(temp.path().join("2026/01/02")).unwrap();
++        tokio::time::timeout(std::time::Duration::from_secs(5), inbox.changed())
++            .await
++            .expect("a change");
++        assert!(inbox.take().listing);
++    }
++}
