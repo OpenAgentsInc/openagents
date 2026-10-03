@@ -39,6 +39,9 @@ pub const SCHEMA: &str = "openagents.coder.events.v1";
 pub const MAX_OUTPUT: usize = 4 * 1024;
 /// The most bytes of text a [`Step`] event carries.
 pub const MAX_TEXT: usize = 2 * 1024;
+/// What a person reads when a turn ended because its owner process died
+/// and the task store ended the run for it (#10248).
+pub const OWNER_ENDED_MESSAGE: &str = "Coder's process ended unexpectedly.";
 
 /// One thing a Coder task did, said, or became.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -1229,6 +1232,15 @@ impl Mapper {
                 message: unavailable(resets_at),
                 ending: Some(ending.into()),
                 resets_at,
+                issue: None,
+            }),
+            // The task store ended a run whose owner process died
+            // (`coder::task::owner::OWNER_ENDED`, #10248).
+            "owner_process_ended" => CoderEvent::Failure(Failure {
+                turn,
+                message: OWNER_ENDED_MESSAGE.into(),
+                ending: Some(ending.into()),
+                resets_at: None,
                 issue: None,
             }),
             other => {

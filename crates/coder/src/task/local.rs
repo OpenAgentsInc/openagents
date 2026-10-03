@@ -1942,6 +1942,9 @@ impl Follow {
             };
             let mut record = record(&self.store, &self.task);
             let flow = super::issue_run::load(&self.store, &self.task);
+            // An issue flow whose process is gone never finishes: its
+            // turn's ending does not wait for it (#10248).
+            let orphan = flow.as_ref().is_some_and(super::issue_run::orphaned);
             if let Some(state) = self.ended {
                 let runs = task.earlier.len() + usize::from(task.run.is_some());
                 if task.turn() > self.turn && runs >= self.turn {
@@ -1988,7 +1991,7 @@ impl Follow {
                     return Ok((out, State::Running));
                 };
                 self.notes(flow.as_ref(), self.turn, &mut out);
-                if flow.as_ref().is_some_and(|flow| !flow.finished) {
+                if !orphan && flow.as_ref().is_some_and(|flow| !flow.finished) {
                     return Ok((out, State::Running));
                 }
                 let event = match &flow {
@@ -2018,13 +2021,24 @@ impl Follow {
                 self.line(event, &mut out);
             }
             let Some(result) = &run.result else {
+                // A run whose owner process died never records a result
+                // (#10248): the store ends it once the owner's lock is free
+                // and no process group it recorded is left, so the wait
+                // ends with that ending instead of lasting forever. A live
+                // owner holds its lock, so this never ends a running turn.
+                if self.turn == runs.len()
+                    && Store::open(&self.store)
+                        .is_ok_and(|mut store| store.settle(&self.task).is_ok_and(|t| t.is_some()))
+                {
+                    continue;
+                }
                 return Ok((out, State::Running));
             };
             // An issue flow checks and lands after its latest turn: that
             // turn's ending waits for the flow's, which it carries.
             self.notes(flow.as_ref(), self.turn, &mut out);
             let last = task.turn() == self.turn;
-            if last && flow.as_ref().is_some_and(|flow| !flow.finished) {
+            if last && !orphan && flow.as_ref().is_some_and(|flow| !flow.finished) {
                 return Ok((out, State::Running));
             }
             let flow = flow.filter(|_| last);
@@ -2068,6 +2082,20 @@ impl Follow {
                     if let CoderEvent::Result(finished) = &mut end {
                         finished.cost_microusd = result.cost_microusd;
                     }
+                    // The flow's process died before it checked and
+                    // landed this turn: nothing landed, whatever the
+                    // turn did (#10248).
+                    let end = if last && orphan {
+                        CoderEvent::Failure(coder_events::Failure {
+                            turn: self.turn,
+                            message: coder_events::OWNER_ENDED_MESSAGE.into(),
+                            ending: Some(owner::OWNER_ENDED.into()),
+                            resets_at: None,
+                            issue: None,
+                        })
+                    } else {
+                        end
+                    };
                     let end = match &flow {
                         Some(flow) => flow.ending(end),
                         None => end,

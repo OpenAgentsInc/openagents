@@ -1279,3 +1279,6 @@ mod tests;
 // owner, with a retained patch and an independent check.
 #[cfg(all(test, unix))]
 mod route_tests;
+// `chat send` following a task whose owner process died (#10248).
+#[cfg(all(test, unix))]
+mod follow_tests;

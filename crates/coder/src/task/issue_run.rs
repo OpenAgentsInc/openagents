@@ -195,7 +195,7 @@ pub fn load(store: &Path, task: &str) -> Option<Flow> {
         .filter(|flow| flow.schema == FLOW_SCHEMA && flow.task == task)
 }
 
-fn save(store: &Path, flow: &Flow) -> Result<(), String> {
+pub(crate) fn save(store: &Path, flow: &Flow) -> Result<(), String> {
     let bytes = serde_json::to_vec_pretty(flow).map_err(|e| e.to_string())?;
     super::autostart::write_private(&flow_path(store, &flow.task), &bytes)
 }
