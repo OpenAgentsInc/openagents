@@ -1,6 +1,7 @@
 //! Player input after the cinematic handoff, backed by retained Ruins combat.
 use glam::Vec3;
 use std::collections::BTreeMap;
+use verse_ruins::chamber_spells::{Controls, Utility};
 use verse_ruins::{Simulation, Snapshot, Spell};
 use verse_wow::director::{Action, Frame, Scene};
 
@@ -10,13 +11,23 @@ pub enum Ability {
     FireBolt,
     MagicMissile,
     Fireball,
+    MistyStep,
+    Thunderwave,
+    Web,
+    Grease,
+    Light,
 }
 impl Ability {
-    pub const ALL: [Self; 4] = [
+    pub const ALL: [Self; 9] = [
         Self::Bow,
         Self::FireBolt,
         Self::MagicMissile,
         Self::Fireball,
+        Self::MistyStep,
+        Self::Thunderwave,
+        Self::Web,
+        Self::Grease,
+        Self::Light,
     ];
     pub fn label(self) -> &'static str {
         match self {
@@ -24,6 +35,11 @@ impl Ability {
             Self::FireBolt => "Fire Bolt",
             Self::MagicMissile => "Magic Missile",
             Self::Fireball => "Fireball",
+            Self::MistyStep => "Misty Step",
+            Self::Thunderwave => "Thunderwave",
+            Self::Web => "Web",
+            Self::Grease => "Grease",
+            Self::Light => "Light",
         }
     }
     pub fn icon(self) -> &'static str {
@@ -32,11 +48,41 @@ impl Ability {
             Self::FireBolt => "fire-bolt-icon",
             Self::MagicMissile => "magic-missile-icon",
             Self::Fireball => "fireball-icon",
+            Self::MistyStep => "misty-step-icon",
+            Self::Thunderwave => "thunderwave-icon",
+            Self::Web => "web-icon",
+            Self::Grease => "grease-icon",
+            Self::Light => "light-icon",
+        }
+    }
+    pub fn utility(self) -> Option<Utility> {
+        match self {
+            Self::MistyStep => Some(Utility::MistyStep),
+            Self::Thunderwave => Some(Utility::Thunderwave),
+            Self::Web => Some(Utility::Web),
+            Self::Grease => Some(Utility::Grease),
+            Self::Light => Some(Utility::Light),
+            _ => None,
+        }
+    }
+    pub fn description(self) -> &'static str {
+        match self {
+            Self::MistyStep => "Blink forward 30 feet",
+            Self::Thunderwave => "Close wave: damage and push",
+            Self::Web => "Target area: restrain for 12 seconds",
+            Self::Grease => "Target area: knock down for 10 seconds",
+            Self::Light => "Place a light on the chamber floor",
+            _ => "Attack the selected target",
         }
     }
     pub fn spell(self) -> Option<Spell> {
         match self {
-            Self::Bow => None,
+            Self::Bow
+            | Self::MistyStep
+            | Self::Thunderwave
+            | Self::Web
+            | Self::Grease
+            | Self::Light => None,
             Self::FireBolt => Some(Spell::Firebolt),
             Self::MagicMissile => Some(Spell::MagicMissile),
             Self::Fireball => Some(Spell::Fireball),
@@ -67,6 +113,7 @@ pub struct Game {
     pub selected: u64,
     pub message: String,
     simulation: Simulation,
+    pub controls: Controls,
     ids: BTreeMap<u64, u32>,
     arrows: Vec<Arrow>,
     pub bow_ready: f32,
@@ -110,6 +157,7 @@ impl Game {
             selected,
             message: String::new(),
             simulation,
+            controls: Controls::default(),
             ids,
             arrows: vec![],
             bow_ready: 0.0,
@@ -153,6 +201,15 @@ impl Game {
             } else if let Some(id) = self.ids.get(&a.actor.id) {
                 if let Some(source) = snapshot.actors.iter().find(|s| s.id == *id) {
                     a.health = source.hp.max(0) as u32;
+                    a.actor.position = source.pos.into();
+                    if self.controls.held(*id) {
+                        a.animation = 0;
+                        a.animation_time = 0.0;
+                    }
+                    if self.controls.prone(a.actor.position, self.time) {
+                        a.animation = 12;
+                        a.animation_time = 1.0;
+                    }
                     if !source.alive {
                         a.animation = 1;
                         a.animation_time = 0.8;
@@ -199,7 +256,9 @@ impl Game {
             if let Some(id) = self.ids.get(&a.actor.id) {
                 self.simulation.place_chamber_actor(
                     *id,
-                    a.actor.position.to_array(),
+                    self.controls
+                        .position(*id, a.actor.position, self.time)
+                        .to_array(),
                     a.actor.yaw,
                 )?;
             }
@@ -253,6 +312,26 @@ impl Game {
         }
         if self.casting.is_some() {
             return Err("A spell is already being cast".into());
+        }
+        if let Some(spell) = ability.utility() {
+            let target = self
+                .frame()
+                .actors
+                .into_iter()
+                .find(|a| a.actor.id == self.selected && a.health > 0)
+                .map(|a| a.actor.position);
+            let direction = Vec3::new(-self.yaw.sin(), 0.0, -self.yaw.cos());
+            self.player = self.controls.cast(
+                &mut self.simulation,
+                spell,
+                self.time,
+                self.player,
+                direction,
+                target,
+            )?;
+            self.last_cast = Some((ability, self.time));
+            self.message = format!("{}: {}", ability.label(), ability.description());
+            return Ok(());
         }
         let target = self
             .frame()
@@ -326,6 +405,87 @@ mod tests {
             .unwrap(),
         )
         .unwrap()
+    }
+    #[test]
+    fn utility_spells_share_resources_and_change_presented_world_state() {
+        let mut g = game();
+        assert!(g.activate(Ability::Light).is_err());
+        for _ in 0..201 {
+            g.tick(0.1, [0.0; 2]).unwrap();
+        }
+        g.selected = u64::MAX;
+        g.activate(Ability::Light).unwrap();
+        assert!(g.controls.light.is_some());
+        let before = g.player;
+        g.activate(Ability::MistyStep).unwrap();
+        assert!(g.player.distance(before) > 9.0);
+        assert_eq!(g.snapshot().player.mana, 18);
+        assert!(g.activate(Ability::MistyStep).is_err());
+        g.selected = 2;
+        g.activate(Ability::Web).unwrap();
+        g.tick(0.1, [0.0; 2]).unwrap();
+        let rooted = g
+            .frame()
+            .actors
+            .iter()
+            .find(|a| a.actor.id == 2)
+            .unwrap()
+            .actor
+            .position;
+        for _ in 0..40 {
+            g.tick(0.1, [0.0; 2]).unwrap();
+        }
+        assert_eq!(
+            g.frame()
+                .actors
+                .iter()
+                .find(|a| a.actor.id == 2)
+                .unwrap()
+                .actor
+                .position,
+            rooted
+        );
+        g.activate(Ability::Grease).unwrap();
+        assert_eq!(
+            g.frame()
+                .actors
+                .iter()
+                .find(|a| a.actor.id == 2)
+                .unwrap()
+                .animation,
+            12
+        );
+        g.player = rooted - Vec3::Z * 3.0;
+        let hp = g
+            .frame()
+            .actors
+            .iter()
+            .find(|a| a.actor.id == 2)
+            .unwrap()
+            .health;
+        g.activate(Ability::Thunderwave).unwrap();
+        assert_eq!(
+            g.frame()
+                .actors
+                .iter()
+                .find(|a| a.actor.id == 2)
+                .unwrap()
+                .health,
+            hp - 9
+        );
+        assert_eq!(g.snapshot().player.hp, 100);
+        g.tick(0.1, [0.0; 2]).unwrap();
+        assert!(
+            g.frame()
+                .actors
+                .iter()
+                .find(|a| a.actor.id == 2)
+                .unwrap()
+                .actor
+                .position
+                .distance(rooted)
+                > 3.0
+        );
     }
     #[test]
     fn handoff_enforces_input_gate_and_retains_spell_damage_and_mana() {

@@ -73,7 +73,25 @@ impl App {
         actors.extend(chamber::spell_instances(&self.game));
         let mut lighting = chamber::lighting(position_from_wow(self.game.scene.origin_wow));
         lighting.time = self.game.time;
-        for p in self.game.snapshot().projectiles.iter().take(2) {
+        if let Some(position) = self.game.controls.light {
+            lighting.lights.push(Light {
+                position,
+                color: Vec3::new(1.0, 0.85, 0.55),
+                intensity: 35.0,
+                range: 12.192,
+            });
+        }
+        for p in
+            self.game
+                .snapshot()
+                .projectiles
+                .iter()
+                .take(if self.game.controls.light.is_some() {
+                    1
+                } else {
+                    2
+                })
+        {
             lighting.lights.push(Light {
                 position: p.pos.into(),
                 color: if p.kind == verse_ruins::Spell::MagicMissile {
@@ -173,6 +191,11 @@ impl ApplicationHandler for App {
                                 KeyCode::Digit2 => self.activate(Ability::FireBolt),
                                 KeyCode::Digit3 => self.activate(Ability::MagicMissile),
                                 KeyCode::Digit4 => self.activate(Ability::Fireball),
+                                KeyCode::Digit5 => self.activate(Ability::MistyStep),
+                                KeyCode::Digit6 => self.activate(Ability::Thunderwave),
+                                KeyCode::Digit7 => self.activate(Ability::Web),
+                                KeyCode::Digit8 => self.activate(Ability::Grease),
+                                KeyCode::Digit9 => self.activate(Ability::Light),
                                 _ => {}
                             }
                         }
@@ -285,10 +308,11 @@ fn main() -> Result<(), String> {
         proof: None,
     };
     let mode = args.next();
-    if mode.as_deref() == Some("--demo") {
+    if matches!(mode.as_deref(), Some("--demo" | "--utility-demo")) {
         return demo(
             &mut app,
             PathBuf::from(args.next().ok_or("Expected demo.mp4")?),
+            mode.as_deref() == Some("--utility-demo"),
         );
     }
     if mode.as_deref() == Some("--proof") {
@@ -306,7 +330,7 @@ fn main() -> Result<(), String> {
     event_loop.run_app(&mut app).map_err(|e| e.to_string())
 }
 
-fn demo(app: &mut App, output: PathBuf) -> Result<(), String> {
+fn demo(app: &mut App, output: PathBuf, utility: bool) -> Result<(), String> {
     use std::io::Write;
     for _ in 0..180 {
         app.game.tick(0.1, [0.0, 0.0])?;
@@ -353,13 +377,36 @@ fn demo(app: &mut App, output: PathBuf) -> Result<(), String> {
     let mut pipe = encoder.stdin.take().ok_or("Missing encoder input")?;
     for frame in 0..480 {
         app.game.tick(1.0 / 30.0, [0.0, 0.0])?;
-        for (at, ability) in [
-            (90, Ability::Bow),
-            (150, Ability::FireBolt),
-            (225, Ability::MagicMissile),
-            (330, Ability::Fireball),
-        ] {
+        let sequence = if utility {
+            [
+                (90, Ability::Light),
+                (150, Ability::MistyStep),
+                (225, Ability::Web),
+                (300, Ability::Grease),
+                (390, Ability::Thunderwave),
+            ]
+        } else {
+            [
+                (90, Ability::Bow),
+                (150, Ability::FireBolt),
+                (225, Ability::MagicMissile),
+                (330, Ability::Fireball),
+                (999, Ability::Bow),
+            ]
+        };
+        for (at, ability) in sequence {
             if frame == at {
+                if ability == Ability::Thunderwave {
+                    let target = app
+                        .game
+                        .frame()
+                        .actors
+                        .into_iter()
+                        .find(|a| a.actor.id == app.game.selected)
+                        .ok_or("Missing target")?;
+                    app.game.player = target.actor.position - glam::Vec3::Z * 3.0;
+                    app.game.yaw = std::f32::consts::PI;
+                }
                 app.game.activate(ability)?;
                 eprintln!("Activated {:?} at {}", ability, app.game.time);
             }

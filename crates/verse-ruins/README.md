@@ -31,6 +31,13 @@ instances. Its terrain spans ±150 meters and uses a 129 × 129 height grid.
 The separately downloaded Ruins model pack is owned by Verse's asset loader;
 this crate does not fetch models, own a renderer, or connect to a relay.
 
+The authored `chamber_spells` module reimplements Misty Step, Thunderwave, Web,
+Grease, and Light from the sibling SRD 5.2.1 guide. It debits the retained mana
+pool and changes the same actor health and positions. It adds deterministic
+local control durations and cooldowns without changing the vendored forest
+schedule. See `docs/wow/episodes.md` for the real-time adaptations and omissions;
+SRD attribution is retained in `NOTICE`.
+
 ## Host boundary
 
 `Simulation::new` spawns the source player and Wizard Woods population.

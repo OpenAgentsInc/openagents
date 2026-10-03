@@ -78,6 +78,11 @@ pub fn classic_atlas(dir: &std::path::Path) -> Result<Atlas, String> {
         "fire-bolt-icon",
         "magic-missile-icon",
         "fireball-icon",
+        "misty-step-icon",
+        "thunderwave-icon",
+        "web-icon",
+        "grease-icon",
+        "light-icon",
     ] {
         let decoder = png::Decoder::new(std::io::BufReader::new(
             std::fs::File::open(dir.join(format!("{name}.png"))).map_err(|e| e.to_string())?,
@@ -194,6 +199,10 @@ pub fn add_effect_models(pack: &mut Pack, dir: &std::path::Path) -> Result<(), S
         ("effect-fire", [1.0, 0.15, 0.015]),
         ("effect-force", [0.18, 0.25, 1.0]),
         ("effect-impact", [1.0, 0.14, 0.015]),
+        ("effect-mist", [0.5, 0.8, 1.0]),
+        ("effect-web", [0.7, 0.8, 0.9]),
+        ("effect-grease", [0.15, 0.12, 0.07]),
+        ("effect-light", [1.0, 0.85, 0.45]),
     ] {
         pack.models.insert(
             name.into(),
@@ -208,7 +217,7 @@ pub fn add_effect_models(pack: &mut Pack, dir: &std::path::Path) -> Result<(), S
                     vertices: vertices.clone(),
                     indices: indices.clone(),
                     texture,
-                    blend: 3,
+                    blend: if name == "effect-grease" { 2 } else { 3 },
                     emissive: true,
                     tint: color,
                 }],
@@ -244,6 +253,68 @@ pub fn spell_instances(game: &super::play::Game) -> Vec<Instance> {
                 emission: Vec3::ONE,
             });
         }
+    }
+    use verse_ruins::chamber_spells::Utility;
+    for area in game.controls.areas.iter().filter(|a| a.until > game.time) {
+        let left = area.until - game.time;
+        let (model, scale, alpha) = match area.kind {
+            Utility::MistyStep => ("effect-mist", Vec3::new(0.9, 1.7, 0.9), left / 0.7),
+            Utility::Thunderwave => (
+                "effect-force",
+                Vec3::new((0.7 - left) * 7.0 + 0.2, 0.5, (0.7 - left) * 7.0 + 0.2),
+                left / 0.7,
+            ),
+            Utility::Web => ("effect-web", Vec3::new(3.048, 0.08, 3.048), 0.5),
+            Utility::Grease => ("effect-grease", Vec3::new(1.524, 0.045, 1.524), 0.8),
+            Utility::Light => continue,
+        };
+        out.push(Instance {
+            model: model.into(),
+            transform: Mat4::from_translation(area.position + Vec3::Y * 0.12)
+                * Mat4::from_scale(scale),
+            animation: 0,
+            time: game.time,
+            emission: Vec3::splat(alpha),
+        });
+        if area.kind == Utility::Web {
+            out.pop();
+            let point = |radius: f32, i: usize| {
+                let angle = i as f32 * std::f32::consts::TAU / 12.0;
+                area.position
+                    + Vec3::new(
+                        angle.cos() * radius,
+                        0.18 + 0.08 * (angle * 3.0).sin(),
+                        angle.sin() * radius,
+                    )
+            };
+            let mut strand = |a: Vec3, b: Vec3| {
+                let delta = b - a;
+                out.push(Instance {
+                    model: "effect-web".into(),
+                    transform: Mat4::from_translation((a + b) * 0.5)
+                        * Mat4::from_quat(Quat::from_rotation_arc(Vec3::X, delta.normalize()))
+                        * Mat4::from_scale(Vec3::new(delta.length() * 0.5, 0.017, 0.017)),
+                    animation: 0,
+                    time: game.time,
+                    emission: Vec3::splat(0.7),
+                });
+            };
+            for i in 0..12 {
+                strand(area.position + Vec3::Y * 0.3, point(3.048, i));
+                for radius in [0.6, 1.2, 1.8, 2.4, 3.048] {
+                    strand(point(radius, i), point(radius, (i + 1) % 12));
+                }
+            }
+        }
+    }
+    if let Some(position) = game.controls.light {
+        out.push(Instance {
+            model: "effect-light".into(),
+            transform: Mat4::from_translation(position) * Mat4::from_scale(Vec3::splat(0.12)),
+            animation: 0,
+            time: game.time,
+            emission: Vec3::ONE,
+        });
     }
     for (position, at, kind) in &game.impacts {
         let elapsed = game.time - at;

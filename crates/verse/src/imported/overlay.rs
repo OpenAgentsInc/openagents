@@ -279,6 +279,9 @@ pub fn action_bar(
             let (ready, cd) = if let Some(spell) = ability.spell() {
                 let gate = snapshot.abilities.iter().find(|a| a.id == spell).unwrap();
                 (gate.ready, gate.cooldown_remaining)
+            } else if let Some(spell) = ability.utility() {
+                let cd = game.controls.cooldown(spell, game.time);
+                (cd == 0.0 && snapshot.player.mana >= spell.cost(), cd)
             } else {
                 (
                     game.time >= game.bow_ready,
@@ -322,7 +325,7 @@ pub fn action_bar(
         &small,
         left,
         y + 48.0,
-        "1 Bow   2 Fire Bolt   3 Magic Missile   4 Fireball   Tab Target",
+        "1-9 Cast   Tab Target   WASD Move   Right drag Turn",
         [0.9, 0.8, 0.6, 1.0],
     );
     let health = snapshot.player.hp as f32 / snapshot.player.max_hp as f32;
@@ -418,8 +421,13 @@ pub fn action_bar(
         let cost = ability
             .spell()
             .and_then(|spell| snapshot.abilities.iter().find(|a| a.id == spell))
-            .map_or(0, |a| a.cost);
-        let text = format!("{}  ·  {} mana", ability.label(), cost);
+            .map_or_else(|| ability.utility().map_or(0, |s| s.cost()), |a| a.cost);
+        let text = format!(
+            "{} · {} mana · {}",
+            ability.label(),
+            cost,
+            ability.description()
+        );
         outlined(
             ui,
             atlas,
@@ -453,7 +461,7 @@ mod action_tests {
                 Some(*ability)
             );
         }
-        assert_eq!(action_at(left + 5.0 * 46.0, 680.0, 1280.0, 720.0), None);
+        assert_eq!(action_at(left + 10.0 * 46.0, 680.0, 1280.0, 720.0), None);
         assert_eq!(action_at(left, 600.0, 1280.0, 720.0), None);
     }
 }

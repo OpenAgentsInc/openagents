@@ -244,6 +244,17 @@ fn main() -> Result<()> {
         ("action-frame", "Interface\\Buttons\\UI-Quickslot2.blp"),
         ("bow-icon", "Interface\\Icons\\INV_Weapon_Bow_07.blp"),
         (
+            "misty-step-icon",
+            "Interface\\Icons\\Spell_Arcane_Blink.blp",
+        ),
+        (
+            "thunderwave-icon",
+            "Interface\\Icons\\Spell_Nature_ThunderClap.blp",
+        ),
+        ("web-icon", "Interface\\Icons\\Spell_Nature_Web.blp"),
+        ("grease-icon", "Interface\\Icons\\Spell_Nature_Slow.blp"),
+        ("light-icon", "Interface\\Icons\\Spell_Holy_InnerFire.blp"),
+        (
             "fire-bolt-icon",
             "Interface\\Icons\\Spell_Fire_FlameBolt.blp",
         ),

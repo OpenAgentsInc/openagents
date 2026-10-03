@@ -1,12 +1,14 @@
 //! Portable adapter over the retained Ruins of Atlantis Wizard Woods simulation.
 //!
 //! Gameplay runs in the original server_core ECS schedule. This adapter owns
-//! validated host inputs and finite snapshots, not a replacement combat system.
+//! validated host inputs and finite snapshots. The chamber utility module adds
+//! reimplemented SRD control effects over the same health and resource state.
 
 use glam::Vec3;
 use serde::Serialize;
 use server_core::{ActorKind, Faction, ServerState, SpellId};
 
+pub mod chamber_spells;
 pub mod scene;
 
 pub use client_core::controller::PlayerController as Controller;
@@ -320,6 +322,28 @@ impl Simulation {
         self.source
             .enqueue_cast(Vec3::from(origin), direction.normalize(), spell.source());
         self.counters.casts = self.counters.casts.saturating_add(1);
+        Ok(())
+    }
+
+    /// Debits the retained resource pool for an admitted chamber spell.
+    pub fn spend_chamber_mana(&mut self, cost: i32) -> Result<(), String> {
+        if !(0..=20).contains(&cost) {
+            return Err("Invalid spell cost".into());
+        }
+        let pc = self
+            .source
+            .pc_actor
+            .and_then(|id| self.source.ecs.get_mut(id))
+            .ok_or("Missing player")?;
+        if !pc.hp.alive() {
+            return Err("The player is defeated".into());
+        }
+        let pool = pc.pool.as_mut().ok_or("Missing mana pool")?;
+        if pool.mana < cost {
+            return Err("Not enough mana".into());
+        }
+        pool.mana -= cost;
+        self.counters.casts += 1;
         Ok(())
     }
 

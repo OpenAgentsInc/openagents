@@ -200,3 +200,25 @@ handoff and all four actions through the same input-facing gameplay methods.
 Append `--demo OUTPUT.mp4` to reproduce it, or `--proof OUTPUT.png` for a native
 window capture. Chamber movement is bounded locally; this does not replace
 realm authority or provide collision navigation for the full imported dungeon.
+
+
+The SRD 5.2.1 catalog in `ruinsofatlantis/docs/srd/03-spells/README.md`
+provides the utility spell references. The chamber reimplements five more wizard
+spells in `verse-ruins::chamber_spells`: **5** Misty Step blinks forward up to
+30 feet within the local floor bounds, **6** Thunderwave damages and pushes
+nearby enemies in a forward cube, **7** Web restrains the selected target area,
+**8** Grease knocks down actors in a target area, and **9** Light places a warm
+light on the floor. Light illuminates world geometry through the owned renderer.
+Web and Grease affect scripted locomotion as well as actor presentation.
+SRD attribution remains in `crates/verse-ruins/NOTICE`.
+
+These are deterministic real-time adaptations: Thunderwave deals 9 damage
+without tabletop saving throws, Web lasts 12 seconds with one active web,
+and Grease lasts 10 seconds. The displayed mana costs and cooldowns are MMO
+tuning. The local runtime does not implement escape checks, concentration
+checks, fire destruction of webs, or full dungeon visibility tests for teleport
+placement. Light lasts one hour and replaces the previous light. The Classic
+icons require another `--ui-only` import; imported art remains private.
+The [utility spell video](../../bench/wow/2026-10-03/verse-utility-spells.mp4)
+shows all five effects. Append `--utility-demo OUTPUT.mp4` to record them through the same
+playable runtime. The recorder stages a close-range Thunderwave position.
