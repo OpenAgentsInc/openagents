@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 use background::git::{self, Undo};
 
 use super::Store;
+use super::retire::Retired;
 
 /// One task's worktree.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -89,51 +90,49 @@ pub fn archive(store: &Path, task: &str) -> Result<String, String> {
         .and_then(|store| store.list())
         .map_err(|error| error.to_string())?
         .into_iter()
-        .find(|found| found.task_id == task)
-        .ok_or_else(|| "There is no such task here.".to_owned())?;
-    if !found.ended() {
-        return Err("This task is still going, so its worktree stays.".into());
+        .any(|found| found.task_id == task);
+    if !found {
+        return Err("There is no such task here.".into());
     }
-    let record = super::local::record(store, task)
-        .ok_or_else(|| "This task has no worktree on this computer.".to_owned())?;
-    let path = PathBuf::from(&record.worktree);
-    if !path.is_dir() {
-        return Err("This task's worktree is already gone.".into());
+    if super::local::record(store, task).is_none() {
+        return Err("This task has no worktree on this computer.".into());
     }
-    let undo = git::removable(&path).map_err(|why| format!("Kept the worktree: it {}.", why))?;
-    // The repository's own teardown runs first (#10297); a failed one
-    // keeps the worktree.
-    let name = path.file_name().map_or_else(
-        || "worktree".into(),
-        |name| name.to_string_lossy().into_owned(),
-    );
-    super::worktree_hooks::teardown(
-        Path::new(&record.checkout),
-        &path,
-        &super::local::hooks_log(store, &name, "teardown"),
-    )
-    .map_err(|why| format!("Kept the worktree: its teardown failed: {why}"))?;
-    let bytes = serde_json::to_vec_pretty(&undo).map_err(|error| error.to_string())?;
-    super::autostart::write_private(&undo_path(store, task), &bytes)?;
-    git::remove(&undo).map_err(|why| format!("Git kept the worktree: {why}"))?;
-    Ok(format!(
-        "Archived the worktree of task {}; what brings it back is kept.",
-        &task[..task.len().min(8)]
-    ))
+    // The same removal a task's end makes (#10291): the repository's
+    // teardown, then the worktree, with what recreates it kept in the
+    // run's record, so a follow-up brings it back by itself.
+    match super::retire::retire(store, task) {
+        Retired::Removed => Ok(format!(
+            "Archived the worktree of task {}; what brings it back is kept.",
+            &task[..task.len().min(8)]
+        )),
+        Retired::NotEnded => Err("This task is still going, so its worktree stays.".into()),
+        Retired::Absent => Err("This task's worktree is already gone.".into()),
+        Retired::Kept(why) => Err(format!("Kept the worktree: {why}.")),
+    }
 }
 
-/// Recreate the worktree [`archive`] removed for `task`. The words to show.
+/// Recreate the worktree [`archive`] (or the task's end) removed for
+/// `task`. The words to show.
 ///
 /// # Errors
 /// It was not archived here, or Git refused.
 pub fn restore(store: &Path, task: &str) -> Result<String, String> {
+    // An archive made before the run's record kept it.
     let path = undo_path(store, task);
-    let bytes = std::fs::read(&path)
-        .map_err(|_| "This task's worktree was not archived here.".to_owned())?;
-    let undo: Undo = serde_json::from_slice(&bytes).map_err(|error| error.to_string())?;
-    git::restore(&undo)?;
-    let _ = std::fs::remove_file(&path);
-    Ok(format!("Restored the worktree at {}.", undo.path.display()))
+    if let Ok(bytes) = std::fs::read(&path) {
+        let undo: Undo = serde_json::from_slice(&bytes).map_err(|error| error.to_string())?;
+        git::restore(&undo)?;
+        let _ = std::fs::remove_file(&path);
+        return Ok(format!("Restored the worktree at {}.", undo.path.display()));
+    }
+    let archived =
+        super::local::record(store, task).is_some_and(|record| record.archived.is_some());
+    if !archived {
+        return Err("This task's worktree was not archived here.".into());
+    }
+    let record = super::retire::ensure(store, task)?
+        .ok_or_else(|| "This task's worktree was not archived here.".to_owned())?;
+    Ok(format!("Restored the worktree at {}.", record.worktree))
 }
 
 fn undo_path(store: &Path, task: &str) -> PathBuf {
