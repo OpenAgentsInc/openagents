@@ -46,7 +46,51 @@ pub trait Worker<X> {
     fn runs(&self) -> Option<PathBuf> {
         None
     }
+
+    /// The directory a worktree lent by a local checkout goes in, when it
+    /// isn't the run's own directory: Coder puts it with its tasks'
+    /// worktrees, where their cleanup and listing find it (#10299).
+    fn worktrees(&self) -> Option<PathBuf> {
+        None
+    }
+
+    /// Puts the run's checkout away once a published flow has ended, and
+    /// returns whether it is gone. By default a worktree whose branch
+    /// opened a pull request is removed; nothing else is.
+    fn release(&self, ended: &Ended<'_>) -> bool {
+        let Some(source) = ended.source.filter(|_| ended.opened) else {
+            return false;
+        };
+        // The branch is pushed, so the worktree has nothing left to keep.
+        command(
+            source,
+            "git",
+            &[
+                "worktree",
+                "remove",
+                "--force",
+                &ended.workdir.to_string_lossy(),
+            ],
+        )
+        .is_ok()
+    }
 }
+
+/// A published issue flow's checkout once the flow has ended, as
+/// [`Worker::release`] sees it.
+pub struct Ended<'a> {
+    /// The checkout the flow worked in.
+    pub workdir: &'a Path,
+    /// The local checkout that lent it as a worktree, when one did.
+    pub source: Option<&'a Path>,
+    /// The flow's branch.
+    pub branch: &'a str,
+    /// Whether the flow opened a pull request from the branch.
+    pub opened: bool,
+}
+
+/// What a flow that changed nothing says in place of a pull request.
+pub const NOTHING_CHANGED: &str = "Nothing changed, so there's no pull request.";
 
 /// Where a run's checkout goes by default: `~/.openagents/coder-one/runs`.
 #[must_use]
@@ -472,19 +516,21 @@ pub async fn work<X: Clone, W: Worker<X>>(
     } else {
         keep(&workdir, &remaining)
     };
-    if outcome
-        .as_ref()
-        .is_ok_and(|line| line.starts_with("Opened"))
-        && let Some(source) = &source
-    {
-        // The branch is pushed, so the worktree has nothing left to keep.
-        let _ = command(
-            source,
-            "git",
-            &["worktree", "remove", "--force", &workdir.to_string_lossy()],
-        );
-    }
+    // Only a published flow puts its checkout away: without `publish` the
+    // evaluation grades the changes where they are.
+    let released = publish
+        && worker.release(&Ended {
+            workdir: &workdir,
+            source: source.as_deref(),
+            branch: &branch,
+            opened: outcome
+                .as_ref()
+                .is_ok_and(|line| line.starts_with("Opened")),
+        });
     let closing = match outcome {
+        Ok(line) if line == NOTHING_CHANGED && !released => {
+            format!("{line} The checkout is in {}.", workdir.display())
+        }
         Ok(line) => line,
         Err(why) => format!(
             "Coder couldn't open a pull request ({why}). The changes are in {}.",
@@ -559,7 +605,6 @@ fn prepare<X: Clone, W: Worker<X>>(
         .map_or(0, |elapsed| elapsed.as_secs());
     let runs = worker.runs().or_else(runs_dir).ok_or("HOME is not set")?;
     let run_dir = runs.join(format!("{}-{number}-{stamp}", repository.replace('/', "-")));
-    let workdir = run_dir.join("repo");
     std::fs::create_dir_all(&run_dir)
         .map_err(|error| format!("cannot create {}: {error}", run_dir.display()))?;
     let branch = format!("coder/issue-{number}-{stamp}");
@@ -567,6 +612,15 @@ fn prepare<X: Clone, W: Worker<X>>(
     // a checkout take seconds, and a push from full history is quick. A
     // shallow clone took 16 s, and pushing from it 50 s more.
     let source = local_checkout(&request.workdir, &repository);
+    let workdir = match (&source, worker.worktrees()) {
+        (Some(_), Some(worktrees)) => {
+            std::fs::create_dir_all(&worktrees)
+                .map_err(|error| format!("cannot create {}: {error}", worktrees.display()))?;
+            let name = repository.rsplit('/').next().unwrap_or(&repository);
+            worktrees.join(format!("{name}-issue-{number}-{stamp}"))
+        }
+        _ => run_dir.join("repo"),
+    };
     if let Some(source) = &source {
         let base = default_branch(source);
         say!(
@@ -702,10 +756,7 @@ pub fn land(
         .map_err(|error| format!("cannot run git: {error}"))?
         .success();
     if !changed {
-        return Ok(format!(
-            "Nothing changed, so there's no pull request. The checkout is in {}.",
-            workdir.display()
-        ));
+        return Ok(NOTHING_CHANGED.to_string());
     }
     let stat = command(workdir, "git", &["diff", "--cached", "--shortstat"])?;
     say!("issue ▸ {}", stat.trim());
