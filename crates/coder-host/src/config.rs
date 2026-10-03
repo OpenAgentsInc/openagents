@@ -253,6 +253,10 @@ impl Config {
     /// listener or with a name that is not a DNS name, a bad workspace, or a
     /// zero period.
     pub fn validate(&self) -> Result<()> {
+        #[cfg(unix)]
+        if let Some(control) = &self.control {
+            crate::control::socket::validate_path(&control.path)?;
+        }
         self.primary()?;
         if self.relays.len() > coder_reach::directory::MAX_RELAYS {
             return Err(Error::Config("serve takes at most eight relays".into()));

@@ -171,6 +171,14 @@ pub async fn start(config: Config, tasks: Arc<dyn Tasks>) -> Result<Running> {
         coder_access::host::ensure_parent(&config.access)?;
         access.init(&coder_reach::pubkey(&owner))?;
     }
+    if config.keys.is_none() && !access.state_path().exists() {
+        return Err(Error::Config(
+            "the host access store is not initialized (no owner or host key). \
+             Start a new host with `openagents host serve --keys \"$HOME/.openagents/connect\" --iroh`; \
+             this creates its keys and owner on first start."
+                .into(),
+        ));
+    }
     let authority = Arc::new(Authority::open(access)?);
     let secret = authority.signing_key()?;
     let host_key = coder_reach::pubkey(&secret);

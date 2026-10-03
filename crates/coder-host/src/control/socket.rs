@@ -108,6 +108,20 @@ pub fn own_uid() -> u32 {
     unsafe { libc::geteuid() }
 }
 
+/// Check the socket address length before opening keys or binding listeners.
+pub(crate) fn validate_path(path: &Path) -> Result<()> {
+    // A Unix socket address holds at most 104 bytes on macOS and 108 on
+    // Linux, terminator included.
+    if path.as_os_str().len() >= 104 {
+        return Err(Error::Config(format!(
+            "the control socket path is too long ({} bytes; at most 103): pass --control-socket PATH with a shorter path, \
+             such as /tmp/openagents-host.sock",
+            path.as_os_str().len()
+        )));
+    }
+    Ok(())
+}
+
 /// Bind the socket at `path`, admitting peers whose user ID is `uid`.
 ///
 /// The directory is created with mode `0700`, or must already be a
@@ -129,15 +143,7 @@ pub async fn bind(path: &Path, uid: u32) -> Result<Bound> {
             uid,
         });
     }
-    // A Unix socket address holds at most 104 bytes on macOS and 108 on
-    // Linux, terminator included.
-    if path.as_os_str().len() >= 104 {
-        return Err(failed(&format!(
-            "path is too long ({} bytes; at most 103): pass --control-socket with a shorter path, \
-             such as /tmp/openagents-host.sock",
-            path.as_os_str().len()
-        )));
-    }
+    validate_path(path)?;
     let directory = path
         .parent()
         .ok_or_else(|| failed("path has no directory"))?;
