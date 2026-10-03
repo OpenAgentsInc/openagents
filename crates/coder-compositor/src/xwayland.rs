@@ -363,6 +363,30 @@ impl Coder {
         }
     }
 
+    /// Gives one float the size its client asked for, keeping the center
+    /// where it was, and lays the desk out again.
+    fn resize_float(&mut self, id: WinId, w: Option<u32>, h: Option<u32>) {
+        let desk = self.desk_of(id).unwrap_or(self.manager.workspace() + 1);
+        let Some(tile) = self.manager.tiles().into_iter().find(|tile| tile.id == id) else {
+            return;
+        };
+        let placed = self.placed(desk, tile);
+        let width = w.map_or(placed.width, |w| w.min(i32::MAX as u32) as i32);
+        let height = h.map_or(placed.height, |h| h.min(i32::MAX as u32) as i32);
+        if (width, height) == (placed.width, placed.height) {
+            return;
+        }
+        let target = Placed {
+            x: placed.x + (placed.width - width) / 2,
+            y: placed.y + (placed.height - height) / 2,
+            width,
+            height,
+        };
+        let rect = self.normalized(desk, target);
+        self.manager.place_float(id, rect);
+        self.after_layout();
+    }
+
     /// Sends one X11 window the rectangle the layout gives it, which is the
     /// answer to a client that asked for another.
     fn configure_to_layout(&self, surface: &X11Surface) -> bool {
@@ -436,6 +460,15 @@ impl XwmHandler for Coder {
         h: Option<u32>,
         _reorder: Option<Reorder>,
     ) {
+        // A float takes the size it asks for, about the same center. A
+        // program that fixes its own size, such as Battle.net's login
+        // window, draws nothing at any other size.
+        if (w.is_some() || h.is_some())
+            && let Some(id) = self.id_of_x11(&window)
+            && self.manager.is_floating(id)
+        {
+            self.resize_float(id, w, h);
+        }
         // A window the layout holds is answered with the rectangle the
         // layout gives it. The layout crate moves a float too, through
         // `shape` and the chords, so a float is answered the same way.
