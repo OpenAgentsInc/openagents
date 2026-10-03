@@ -162,9 +162,22 @@ fn main() {
                                 text.starts_with('.') && text.len() <= 255,
                                 "invalid setup command"
                             );
+                            s.setup_feedback.clear();
                             s.writer.send_chat(text)?;
                             s.pump(Duration::from_millis(500))?;
-                            Ok(json!({"sent":true}))
+                            ensure!(
+                                !s.setup_feedback.iter().any(|line| {
+                                    let line = line.to_ascii_lowercase();
+                                    line.contains("command is not available")
+                                        || line.contains("there is no such command")
+                                        || line.starts_with("syntax")
+                                        || line.starts_with("you cannot")
+                                        || line.starts_with("failed")
+                                }),
+                                "setup command refused: {:?}",
+                                s.setup_feedback
+                            );
+                            Ok(json!({"sent":true,"feedback":s.setup_feedback}))
                         }
                         _ => bail!("unknown operation"),
                     }

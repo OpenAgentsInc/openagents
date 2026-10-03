@@ -24,7 +24,11 @@ On CoderOS, use `VOYAGER_WOW_LEASE_LOCAL=1`. Its default lease directory is
 `$HOME/wow-gym/leases`, the same directory Mac helpers reach through the
 manifest's `wow.lease_host` (`coderos-4080`). `VOYAGER_WOW_LEASE_DIR` can override
 that local directory for an isolated test realm; every host using one realm
-must coordinate through the same directory. SSH must work noninteractively.
+must coordinate through the same directory. SSH must work noninteractively. `realm.sh` installs `lease.sh` under the private
+realm root. For a Boat-only SSH key, use an `authorized_keys` forced command
+`restrict,command="env WOW_LEASE_ACCOUNTS=GYM1,GYM2 /home/christopherdavid/wow-gym/lease.sh --ssh"`
+and assign only those accounts in its manifest. The forced command accepts
+lease requests only and never evaluates client shell text.
 A coordinator outage refuses new work. Losing a held lease retires an active
 helper within its 250 ms authority polling interval after SSH reports failure;
 SSH keepalives bound transport-loss detection to about ten seconds.
@@ -38,7 +42,9 @@ and verifies the character before giving programs control. If the server still
 considers the character online, reset fails safely; retry after logout settles.
 Do not unlink lock files, because an existing holder locks the old inode.
 
-Trusted setup holds the separate `GYMSETUP` account lease. WoW skill stores are
+Trusted setup holds the separate `GYMSETUP` account lease. Its realm grant is
+level 4 (`SEC_BASIC_ADMIN`), the minimum the pinned server requires for quest
+seeding. Ordinary accounts have no grant. WoW skill stores are
 partitioned by world digest and account, so simultaneous episodes cannot race
 on a skill index. Episode artifacts remain separate even when the manifest and
 account are reused. Credentials stay in private files; never bake them into

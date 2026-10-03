@@ -75,9 +75,7 @@ impl Lease {
             #[cfg(not(unix))]
             return Err(Error::episode("local realm leases require Unix"));
         }
-        let script = format!(
-            "umask 077; mkdir -p \"$HOME/wow-gym/leases\"; exec flock -n \"$HOME/wow-gym/leases/{key}.lock\" sh -c 'echo acquired; cat >/dev/null'"
-        );
+        let script = format!("$HOME/wow-gym/lease.sh {key}");
         let mut child = Command::new("ssh")
             .args([
                 "-o",

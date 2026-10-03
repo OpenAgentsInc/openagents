@@ -7,6 +7,8 @@ here="$(cd "$(dirname "$0")" && pwd)"
 core_rev=0e3ff01e76d4758e8a7c3108b2717cc785ed56fa
 export WOW_GYM_ROOT="$root"
 mkdir -p "$root/logs" "$root/tmp"
+if ! [ "$here/lease.sh" -ef "$root/lease.sh" ]; then cp "$here/lease.sh" "$root/lease.sh"; fi
+chmod 700 "$root/lease.sh"
 case "${1:-}" in
 build)
   if [ ! -d "$root/core/.git" ]; then git clone https://github.com/vmangos/core.git "$root/core"; fi

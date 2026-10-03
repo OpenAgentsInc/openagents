@@ -64,9 +64,9 @@ for number in range(21):
     inner = hashlib.sha1((name + ':' + secret).encode()).digest()
     x = int.from_bytes(hashlib.sha1(bytes(salt) + inner).digest(), 'little')
     verifier = pow(7, x, prime)
-    sql("INSERT INTO account (username,v,s,gmlevel) VALUES ('" + name + "','" + format(verifier, 'X') + "','" + format(int.from_bytes(salt, 'little'), 'X') + "'," + ('3' if number == 0 else '0') + ");", 'realmd')
+    sql("INSERT INTO account (username,v,s,gmlevel) VALUES ('" + name + "','" + format(verifier, 'X') + "','" + format(int.from_bytes(salt, 'little'), 'X') + "'," + ('4' if number == 0 else '0') + ");", 'realmd')
     accounts.append({'account': name, 'password': secret})
-sql("INSERT INTO account_access (id,gmlevel,RealmID) SELECT id,3,1 FROM account WHERE username='GYMSETUP';", 'realmd')
+sql("INSERT INTO account_access (id,gmlevel,RealmID) SELECT id,4,1 FROM account WHERE username='GYMSETUP';", 'realmd')
 (root / 'accounts.json').write_text(json.dumps(accounts, indent=2) + '\n')
 for binary in ['realmd', 'mangosd']:
     template = (root / 'install/etc' / (binary + '.conf.dist')).read_text()

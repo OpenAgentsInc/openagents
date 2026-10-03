@@ -25,6 +25,7 @@ pub struct Live {
     pub writer: WorldWriter,
     pub state: State,
     pub setup: bool,
+    pub setup_feedback: Vec<String>,
     join_args: Value,
     events: mpsc::Receiver<Result<Vec<SessionEvent>>>,
     closed: Arc<AtomicBool>,
@@ -185,6 +186,7 @@ impl Live {
             writer,
             state,
             setup,
+            setup_feedback: Vec::new(),
             join_args: args.clone(),
             events,
             closed,
@@ -399,7 +401,12 @@ impl Live {
                     self.state.speed = speed;
                 }
             }
-            SessionEvent::Chat(chat) => emit(json!({"event":"chat","text":chat.text})),
+            SessionEvent::Chat(chat) => {
+                if self.setup && chat.chat_type == 0x0A && self.setup_feedback.len() < 32 {
+                    self.setup_feedback.push(chat.text.clone());
+                }
+                emit(json!({"event":"chat","text":chat.text}));
+            }
             SessionEvent::LevelUp(info) => emit(json!({"event":"level_up","level":info.level})),
             SessionEvent::QuestComplete(q) => {
                 if self.state.turned_in.len() < 1024 && !self.state.turned_in.contains(&q.quest_id)
