@@ -365,6 +365,10 @@ impl Coder for Here {
         local::endings_in(Some(store), task)
     }
 
+    fn apply(&self, store: &Path, task: &str) -> Result<(std::path::PathBuf, Vec<String>), String> {
+        super::apply::apply(store, task).map(|applied| (applied.checkout, applied.files))
+    }
+
     /// A command a reply proposed runs only as this build's own command
     /// tree declares it (#10170): read-only commands at once, commands
     /// that change something here after a confirm, and money, secrets,

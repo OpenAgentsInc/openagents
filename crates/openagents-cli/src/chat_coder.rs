@@ -83,6 +83,13 @@ pub(super) fn show(output: &Output, tools: &mut Stream, line: &Line) {
             println!("worktree: {}", result.worktree);
             if let Some(issue) = &result.issue {
                 println!("{}", issue.line());
+            } else if !result.files_changed.is_empty()
+                && let Some(thread) = &line.thread
+            {
+                // Where the change is, and how to bring it here (#10343).
+                eprintln!(
+                    "The change is in Coder's worktree. Apply it to your checkout with: openagents chat apply --thread {thread}"
+                );
             }
             let _ = std::io::stdout().flush();
         }

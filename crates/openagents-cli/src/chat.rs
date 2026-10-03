@@ -68,6 +68,10 @@ pub(crate) const USAGE: &str = "usage: openagents chat COMMAND [OPTIONS]
         Print a thread's turns.
   export --thread ID
         Print the thread as an ATIF-v1.8 trajectory whose session_id is ID.
+  apply --thread ID
+        Bring the thread's Coder change into the checkout it was made from,
+        uncommitted, so you can review and commit it there. The checkout
+        must have no changes of its own.
   run-coder --thread ID
         Run Coder on this computer for the thread's last offer, as send does.
         When the message asks Coder to work a GitHub issue of this
@@ -143,6 +147,7 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("stop", Effect::Publishes),
     Declared::computer("answer", Effect::Publishes),
     Declared::computer("work", Effect::Publishes),
+    Declared::computer("apply", Effect::LocalWrite),
 ];
 
 const OPTIONS: &[&str] = &[
@@ -187,7 +192,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
             return 0;
         }
         "send" | "threads" | "read" | "export" | "run-coder" | "run-command" | "follow"
-        | "stop" | "answer" | "work" => (first.as_str(), &words[1..]),
+        | "stop" | "answer" | "work" | "apply" => (first.as_str(), &words[1..]),
         // `openagents chat MESSAGE` is `openagents chat send MESSAGE`.
         _ => ("send", words),
     };
@@ -306,6 +311,31 @@ async fn dispatch(output: &Output, command: &str, args: &Args) -> Result<u8, Fai
                 eprintln!("thread {id}");
             }
             Ok(0)
+        }
+        "apply" => {
+            no_positional(args)?;
+            let id = needs_thread(&thread)?;
+            let mut client = open(args, Some(&id), false, &mut printer).await?;
+            let whole = client.collect(&id).await?;
+            match client.apply_coder(&id, &whole) {
+                Ok((checkout, files)) => {
+                    output.emit(
+                        &json!({"thread": id, "checkout": checkout, "files": files}),
+                        |_| {
+                            let mut out = format!(
+                                "Applied Coder's change to {}, uncommitted:",
+                                checkout.display()
+                            );
+                            for file in &files {
+                                out.push_str(&format!("\n  {file}"));
+                            }
+                            out
+                        },
+                    );
+                    Ok(0)
+                }
+                Err(why) => Err(failed(why)),
+            }
         }
         "run-coder" | "run-command" | "follow" | "stop" | "answer" => {
             if command != "answer" {

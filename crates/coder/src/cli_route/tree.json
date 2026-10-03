@@ -3275,6 +3275,37 @@
           }
         },
         {
+          "name": "apply",
+          "leaf": {
+            "path": [
+              "chat",
+              "apply"
+            ],
+            "usage": [
+              "apply --thread ID"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "apply"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "thread",
+                    "value": "ID",
+                    "open": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Bring the thread's Coder change into the checkout it was made from, uncommitted, so you can review and commit it there. The checkout must have no changes of its own.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
           "name": "run-coder",
           "leaf": {
             "path": [

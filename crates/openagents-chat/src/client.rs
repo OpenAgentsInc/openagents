@@ -423,6 +423,14 @@ pub trait Coder: Send + Sync {
     fn endings(&self, _store: &Path, _task: &str) -> Vec<CoderEvent> {
         Vec::new()
     }
+    /// Carry the task's change into the checkout it came from, uncommitted
+    /// (#10343): that checkout and the files changed.
+    ///
+    /// # Errors
+    /// Why it could not.
+    fn apply(&self, _store: &Path, _task: &str) -> Result<(PathBuf, Vec<String>), String> {
+        Err("Coder's changes can be applied only on the computer that made them.".into())
+    }
     /// How the `openagents` command `argv` (without the program's name)
     /// that a reply proposed may run here (#10170), read from this
     /// computer's own command tree, never from the worker's word.
@@ -1138,6 +1146,18 @@ impl Client {
             .take(limit)
             .collect();
         Ok((rows, first.list_total))
+    }
+
+    /// Carry the thread's Coder change into the checkout it was made from
+    /// (#10343).
+    ///
+    /// # Errors
+    /// The thread has no Coder task, or the change could not be applied.
+    pub fn apply_coder(&self, id: &str, thread: &Thread) -> Result<(PathBuf, Vec<String>), String> {
+        let Some(coder) = &thread.summary.coder else {
+            return Err("This thread has no Coder work to apply.".into());
+        };
+        self.coder.apply(&self.store(id), &coder.task)
     }
 
     /// How each of the thread's Coder turns ended, when its task store on

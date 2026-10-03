@@ -34,6 +34,7 @@ pub mod autostart;
 /// (#10105): `microcoder_loop::account`, so readings and holds follow the
 /// login they were about.
 pub use microcoder_loop::account;
+pub mod apply;
 pub mod capacity;
 pub mod chat_client;
 pub mod checks;
