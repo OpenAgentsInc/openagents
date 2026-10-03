@@ -567,3 +567,179 @@ fn the_checks_run_outside_the_landing_lock_so_others_land_meanwhile() {
     );
     assert_eq!(run(&remote, &["rev-list", "--count", "main"]), "4");
 }
+
+struct Repairing {
+    worktree: PathBuf,
+    calls: usize,
+    checks: usize,
+    red: bool,
+    fail: bool,
+}
+
+impl Hooks for Repairing {
+    fn fix_conflict(&mut self, request: &str) -> Result<(), String> {
+        self.calls += 1;
+        assert!(
+            request.contains("first changes docs/readme.md"),
+            "{request}"
+        );
+        assert!(
+            request.contains("second changes docs/readme.md"),
+            "{request}"
+        );
+        assert!(request.contains("<<<<<<<"), "{request}");
+        assert!(request.contains("=======") && request.contains(">>>>>>>"));
+        assert!(request.contains("# One") && request.contains("# Two"));
+        if self.fail {
+            return Err("engine could not repair".into());
+        }
+        write(&self.worktree, "docs/readme.md", "# One and Two\n");
+        Ok(())
+    }
+    fn check(&mut self) -> Vec<String> {
+        self.checks += 1;
+        assert_eq!(run(&self.worktree, &["status", "--porcelain"]), "");
+        if self.red {
+            vec!["resolved change fails checks".into()]
+        } else {
+            vec![]
+        }
+    }
+    fn note(&mut self, _: &str) {}
+    fn stopping(&self) -> bool {
+        false
+    }
+}
+
+#[test]
+fn conflicting_origin_gets_one_fix_turn_and_checks_before_landing() {
+    for (red, fail) in [(false, false), (true, false), (false, true)] {
+        let dir = tempfile::tempdir().unwrap();
+        let remote = origin(dir.path());
+        let first = host(dir.path(), &remote, "first", "docs/readme.md", "# One\n");
+        let second = host(dir.path(), &remote, "second", "docs/readme.md", "# Two\n");
+        land(&plan(&first), &mut Counting::default()).unwrap();
+        let tip = run(&remote, &["rev-parse", "main"]);
+        let original = run(&second, &["rev-parse", "HEAD"]);
+        let mut hooks = Repairing {
+            worktree: second.clone(),
+            calls: 0,
+            checks: 0,
+            red,
+            fail,
+        };
+        let result = land(&plan(&second), &mut hooks);
+        assert_eq!(hooks.calls, 1);
+        assert_eq!(hooks.checks, usize::from(!fail));
+        if fail {
+            assert!(matches!(result.unwrap_err().failure, Failure::Conflict(_)));
+            assert_eq!(run(&second, &["rev-parse", "HEAD"]), original);
+        } else if red {
+            assert!(matches!(result.unwrap_err().failure, Failure::Red(_)));
+        } else {
+            let landed = result.unwrap();
+            assert!(matches!(
+                landed.attempts[0].recheck,
+                Recheck::Ran { passed: true, .. }
+            ));
+            assert_eq!(run(&remote, &["rev-parse", "main"]), landed.commit);
+            assert_eq!(
+                run(&remote, &["show", "main:docs/readme.md"]),
+                "# One and Two"
+            );
+        }
+        if red || fail {
+            assert_eq!(run(&remote, &["rev-parse", "main"]), tip);
+        }
+        assert_eq!(run(&second, &["status", "--porcelain"]), "");
+    }
+}
+
+#[test]
+fn a_second_origin_conflict_does_not_get_another_engine_turn() {
+    struct Moving {
+        repair: Repairing,
+        remote: PathBuf,
+        root: PathBuf,
+    }
+    impl Hooks for Moving {
+        fn fix_conflict(&mut self, request: &str) -> Result<(), String> {
+            self.repair.fix_conflict(request)
+        }
+        fn check(&mut self) -> Vec<String> {
+            let problems = self.repair.check();
+            let newer = host(
+                &self.root,
+                &self.remote,
+                "newer",
+                "docs/readme.md",
+                "# Three\n",
+            );
+            land(&plan(&newer), &mut Counting::default()).unwrap();
+            problems
+        }
+        fn note(&mut self, _: &str) {}
+        fn stopping(&self) -> bool {
+            false
+        }
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let remote = origin(dir.path());
+    let first = host(dir.path(), &remote, "first", "docs/readme.md", "# One\n");
+    let second = host(dir.path(), &remote, "second", "docs/readme.md", "# Two\n");
+    land(&plan(&first), &mut Counting::default()).unwrap();
+    let mut hooks = Moving {
+        repair: Repairing {
+            worktree: second.clone(),
+            calls: 0,
+            checks: 0,
+            red: false,
+            fail: false,
+        },
+        remote: remote.clone(),
+        root: dir.path().to_owned(),
+    };
+    let not = land(&plan(&second), &mut hooks).unwrap_err();
+    assert!(matches!(not.failure, Failure::Conflict(_)));
+    assert_eq!(not.attempts.len(), 2);
+    assert_eq!(hooks.repair.calls, 1);
+    assert_eq!(hooks.repair.checks, 1);
+    assert_eq!(
+        run(&second, &["show", "HEAD:docs/readme.md"]),
+        "# One and Two"
+    );
+    assert_eq!(run(&remote, &["show", "main:docs/readme.md"]), "# Three");
+    assert_eq!(run(&second, &["status", "--porcelain"]), "");
+}
+
+#[test]
+fn unresolved_markers_after_the_fix_turn_abort_without_pushing() {
+    struct Unresolved(usize);
+    impl Hooks for Unresolved {
+        fn fix_conflict(&mut self, _: &str) -> Result<(), String> {
+            self.0 += 1;
+            Ok(())
+        }
+        fn check(&mut self) -> Vec<String> {
+            panic!("unresolved conflicts must not reach checks");
+        }
+        fn note(&mut self, _: &str) {}
+        fn stopping(&self) -> bool {
+            false
+        }
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let remote = origin(dir.path());
+    let first = host(dir.path(), &remote, "first", "docs/readme.md", "# One\n");
+    let second = host(dir.path(), &remote, "second", "docs/readme.md", "# Two\n");
+    land(&plan(&first), &mut Counting::default()).unwrap();
+    let tip = run(&remote, &["rev-parse", "main"]);
+    let original = run(&second, &["rev-parse", "HEAD"]);
+    let mut hooks = Unresolved(0);
+    let not = land(&plan(&second), &mut hooks).unwrap_err();
+    assert!(matches!(not.failure, Failure::Conflict(_)));
+    assert_eq!(hooks.0, 1);
+    assert_eq!(run(&remote, &["rev-parse", "main"]), tip);
+    assert_eq!(run(&second, &["rev-parse", "HEAD"]), original);
+    assert_eq!(run(&second, &["status", "--porcelain"]), "");
+}

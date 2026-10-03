@@ -24,7 +24,9 @@
 //! It gives up after [`Plan::attempts`] tries, or sooner when two pushes in
 //! a row are refused while the branch did not move (a hook, permissions, or
 //! a dead remote, not a race). Giving up, a conflict, or red checks leave
-//! the change committed in the worktree; nothing is ever forced.
+//! the change committed in the worktree; nothing is ever forced. A rebase
+//! conflict gets one engine repair turn with both commit histories and the
+//! conflict diff, followed by mandatory checks before landing resumes.
 //!
 //! These bounds apply only to the landing retry, never to a Coder run.
 
@@ -99,6 +101,11 @@ pub trait Hooks {
     /// returns the problems, empty when green. It may recommit the change,
     /// so the landing reads `HEAD` again after it.
     fn check(&mut self) -> Vec<String>;
+    /// Gives the engine one turn to resolve the active rebase conflicts.
+    /// The host stages the resolution and continues the rebase afterward.
+    fn fix_conflict(&mut self, _request: &str) -> Result<(), String> {
+        Err("No conflict-repair engine is available.".into())
+    }
     /// Reports a step of the landing as it happens.
     fn note(&mut self, text: &str);
     /// Whether the person who started the landing asked it to stop.
@@ -258,6 +265,8 @@ pub fn land(plan: &Plan<'_>, hooks: &mut dyn Hooks) -> Result<Landed, NotLanded>
     // The base the checks last passed on; the change's parent until a
     // rebase moves it.
     let mut tested_on: Option<String> = None;
+    // One engine repair turn for the entire landing.
+    let mut repaired = false;
     // Pushes refused in a row while the branch stayed where it was.
     let mut stuck = 0;
     let mut pushed_against: Option<String> = None;
@@ -337,24 +346,64 @@ pub fn land(plan: &Plan<'_>, hooks: &mut dyn Hooks) -> Result<Landed, NotLanded>
                 attempt.moved,
                 short(&upstream)
             ));
+            let mut fixed = false;
             if let Err(why) = git(plan.worktree, &["rebase", "-q", &upstream]) {
-                let _ = git(plan.worktree, &["rebase", "--abort"]);
-                attempts.push(attempt);
-                return fail(
-                    Failure::Conflict(format!(
-                        "The change conflicts with the newer `{branch}`: {}",
-                        clip(&why, 400)
-                    )),
-                    attempts,
-                );
+                let resolution = if repaired || hooks.stopping() {
+                    Err("The landing's one conflict fix turn is already used or stopped.".into())
+                } else {
+                    repaired = true;
+                    let request = conflict_request(plan.worktree, branch, &base, &upstream);
+                    hooks.note(
+                        "The rebase conflicts; Coder gives the engine one conflict fix turn.",
+                    );
+                    drop(gate.take());
+                    hooks.fix_conflict(&request).and_then(|()| {
+                        if hooks.stopping() {
+                            return Err("Stopped before continuing the rebase.".into());
+                        }
+                        git(plan.worktree, &["diff", "--check"])?;
+                        git(plan.worktree, &["diff", "--cached", "--check"])?;
+                        git(plan.worktree, &["add", "-A"])?;
+                        git(
+                            plan.worktree,
+                            &["-c", "core.editor=true", "rebase", "--continue"],
+                        )?;
+                        Ok(())
+                    })
+                };
+                if let Err(repair) = resolution {
+                    let _ = git(plan.worktree, &["rebase", "--abort"]);
+                    attempts.push(attempt);
+                    return fail(
+                        if hooks.stopping() {
+                            Failure::Stopped
+                        } else {
+                            Failure::Conflict(format!(
+                                "The change conflicts with the newer `{branch}` after conflict repair: {} ({})",
+                                clip(&why, 400),
+                                clip(&repair, 400)
+                            ))
+                        },
+                        attempts,
+                    );
+                }
+                fixed = true;
             }
-            match affects(plan.worktree, &base, &upstream) {
+            match if fixed {
+                Some("the engine resolved rebase conflicts".to_owned())
+            } else {
+                affects(plan.worktree, &base, &upstream)
+            } {
                 Some(why) => {
                     hooks.note(&format!("Coder runs the checks again: {why}."));
                     // The checks run outside the landing lock, so other runs
                     // here can land meanwhile.
                     drop(gate.take());
                     let problems = hooks.check();
+                    if hooks.stopping() {
+                        attempts.push(attempt);
+                        return fail(Failure::Stopped, attempts);
+                    }
                     let passed = problems.is_empty();
                     attempt.recheck = Recheck::Ran { why, passed };
                     if !passed {
@@ -436,7 +485,36 @@ pub fn land(plan: &Plan<'_>, hooks: &mut dyn Hooks) -> Result<Landed, NotLanded>
             }
         }
     }
-    unreachable!("the loop returns on its last attempt")
+    fail(
+        Failure::GaveUp(format!(
+            "`{branch}` kept moving during checks; landing exhausted {} attempt(s).",
+            plan.attempts.max(1)
+        )),
+        attempts,
+    )
+}
+
+/// Captures the active conflict before the engine changes it.
+fn conflict_request(worktree: &Path, branch: &str, base: &str, upstream: &str) -> String {
+    let ours = git(
+        worktree,
+        &["log", "--format=%h %B", &format!("{base}..ORIG_HEAD")],
+    )
+    .unwrap_or_default();
+    let theirs = git(
+        worktree,
+        &["log", "--format=%h %B", &format!("{base}..{upstream}")],
+    )
+    .unwrap_or_default();
+    let markers = git(worktree, &["diff", "--no-ext-diff", "--cc"]).unwrap_or_default();
+    format!(
+        "Resolve the active rebase conflicts onto `{branch}` in one fix turn. Preserve the intent \
+         of both sides. Remove conflict markers and resolve any deleted files. Do not commit, \
+         abort, or continue the rebase, and do not push. The host stages your resolution, \
+         continues the rebase, runs the repository checks, and retries landing.\n\n\
+         Change commit messages:\n{ours}\n\nNewer {branch} commit messages:\n{theirs}\n\n\
+         Conflict markers and both sides:\n{markers}"
+    )
 }
 
 /// Sleeps `wait`, waking to see whether to stop; false when asked to.

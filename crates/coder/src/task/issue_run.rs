@@ -2269,6 +2269,26 @@ impl Run<'_> {
 /// to staged (the checks read the staged diff), the checks run, and the
 /// change is committed again with its message.
 impl landing::Hooks for Run<'_> {
+    fn fix_conflict(&mut self, request: &str) -> Result<(), String> {
+        let store = self.work.store.clone();
+        let task = self.record.task.clone();
+        let stopping = || stop_requested(&store, &task);
+        if !local::await_checks(&store, &task, &stopping, POLL)? {
+            return Err("Stopped before the conflict fix turn.".into());
+        }
+        self.work.local.answer(&task, request)?;
+        self.turn += 1;
+        self.rounds += 1;
+        match self.wait() {
+            Turn::Finished { summary } => {
+                self.summaries.push(summary);
+                Ok(())
+            }
+            Turn::Stopped(why) | Turn::Failed(why) => Err(why),
+            Turn::Asked(text) => Err(format!("The conflict fix turn asked a question: {text}")),
+        }
+    }
+
     fn check(&mut self) -> Vec<String> {
         let held = local::git_out(self.worktree, &["rev-parse", "HEAD"])
             .map(|head| head.trim().to_owned())
