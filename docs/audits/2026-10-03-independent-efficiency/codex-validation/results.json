@@ -1,0 +1,297 @@
+{
+ "runs": 72,
+ "arms": {
+  "raw-codex": {
+   "n": 18,
+   "passed": 18,
+   "pass_ci": [
+    0.824,
+    1.0
+   ],
+   "total_cost": 2.0634,
+   "cost_per_checked": 0.1146,
+   "median_wall_s": 42.8,
+   "median_wall_passed_s": 42.8,
+   "median_outside_engine_s": null,
+   "jev_usd": 0,
+   "failures": []
+  },
+  "routed-codex": {
+   "n": 18,
+   "passed": 17,
+   "pass_ci": [
+    0.742,
+    0.99
+   ],
+   "total_cost": 1.5477,
+   "cost_per_checked": 0.091,
+   "median_wall_s": 75.2,
+   "median_wall_passed_s": 74.8,
+   "median_outside_engine_s": 2.0,
+   "jev_usd": 0.0293,
+   "failures": [
+    "schemelike-metacircular-eval#3"
+   ]
+  },
+  "raw-claude": {
+   "n": 18,
+   "passed": 18,
+   "pass_ci": [
+    0.824,
+    1.0
+   ],
+   "total_cost": 6.5266,
+   "cost_per_checked": 0.3626,
+   "median_wall_s": 21.9,
+   "median_wall_passed_s": 21.9,
+   "median_outside_engine_s": null,
+   "jev_usd": 0,
+   "failures": []
+  },
+  "routed-lean": {
+   "n": 18,
+   "passed": 18,
+   "pass_ci": [
+    0.824,
+    1.0
+   ],
+   "total_cost": 3.7865,
+   "cost_per_checked": 0.2104,
+   "median_wall_s": 27.1,
+   "median_wall_passed_s": 27.1,
+   "median_outside_engine_s": 2.0,
+   "jev_usd": 0.0013,
+   "failures": []
+  }
+ },
+ "ratios": {
+  "routed-codex/raw-codex": {
+   "cost": {
+    "ratio": 0.75,
+    "lo": 0.591,
+    "hi": 1.077,
+    "pairs": 18
+   },
+   "wall": {
+    "ratio": 2.286,
+    "lo": 1.887,
+    "hi": 2.551,
+    "pairs": 18
+   }
+  },
+  "routed-lean/raw-claude": {
+   "cost": {
+    "ratio": 0.58,
+    "lo": 0.479,
+    "hi": 0.658,
+    "pairs": 18
+   },
+   "wall": {
+    "ratio": 1.137,
+    "lo": 0.737,
+    "hi": 2.041,
+    "pairs": 18
+   }
+  },
+  "raw-codex/raw-claude": {
+   "cost": {
+    "ratio": 0.316,
+    "lo": 0.205,
+    "hi": 0.49,
+    "pairs": 18
+   },
+   "wall": {
+    "ratio": 0.6,
+    "lo": 0.407,
+    "hi": 1.658,
+    "pairs": 18
+   }
+  },
+  "routed-codex/raw-claude": {
+   "cost": {
+    "ratio": 0.237,
+    "lo": 0.194,
+    "hi": 0.304,
+    "pairs": 18
+   },
+   "wall": {
+    "ratio": 1.371,
+    "lo": 0.942,
+    "hi": 3.162,
+    "pairs": 18
+   }
+  },
+  "routed-lean/raw-codex": {
+   "cost": {
+    "ratio": 1.835,
+    "lo": 1.227,
+    "hi": 2.923,
+    "pairs": 18
+   },
+   "wall": {
+    "ratio": 1.896,
+    "lo": 0.976,
+    "hi": 3.292,
+    "pairs": 18
+   }
+  }
+ },
+ "per_task": {
+  "constraints-scheduling": {
+   "raw-codex": {
+    "passed": 3,
+    "n": 3,
+    "median_wall_s": 32.0,
+    "cost": 0.1139
+   },
+   "routed-codex": {
+    "passed": 3,
+    "n": 3,
+    "median_wall_s": 75.5,
+    "cost": 0.1707
+   },
+   "raw-claude": {
+    "passed": 3,
+    "n": 3,
+    "median_wall_s": 19.0,
+    "cost": 0.5363
+   },
+   "routed-lean": {
+    "passed": 3,
+    "n": 3,
+    "median_wall_s": 26.4,
+    "cost": 0.2649
+   }
+  },
+  "distribution-search": {
+   "raw-codex": {
+    "passed": 3,
+    "n": 3,
+    "median_wall_s": 45.0,
+    "cost": 0.1215
+   },
+   "routed-codex": {
+    "passed": 3,
+    "n": 3,
+    "median_wall_s": 67.9,
+    "cost": 0.1094
+   },
+   "raw-claude": {
+    "passed": 3,
+    "n": 3,
+    "median_wall_s": 42.6,
+    "cost": 0.5581
+   },
+   "routed-lean": {
+    "passed": 3,
+    "n": 3,
+    "median_wall_s": 37.0,
+    "cost": 0.3428
+   }
+  },
+  "log-summary-date-ranges": {
+   "raw-codex": {
+    "passed": 3,
+    "n": 3,
+    "median_wall_s": 31.7,
+    "cost": 0.118
+   },
+   "routed-codex": {
+    "passed": 3,
+    "n": 3,
+    "median_wall_s": 55.8,
+    "cost": 0.1006
+   },
+   "raw-claude": {
+    "passed": 3,
+    "n": 3,
+    "median_wall_s": 18.1,
+    "cost": 0.522
+   },
+   "routed-lean": {
+    "passed": 3,
+    "n": 3,
+    "median_wall_s": 23.1,
+    "cost": 0.2653
+   }
+  },
+  "polyglot-c-py": {
+   "raw-codex": {
+    "passed": 3,
+    "n": 3,
+    "median_wall_s": 63.8,
+    "cost": 0.17
+   },
+   "routed-codex": {
+    "passed": 3,
+    "n": 3,
+    "median_wall_s": 111.5,
+    "cost": 0.1708
+   },
+   "raw-claude": {
+    "passed": 3,
+    "n": 3,
+    "median_wall_s": 30.3,
+    "cost": 0.5013
+   },
+   "routed-lean": {
+    "passed": 3,
+    "n": 3,
+    "median_wall_s": 27.8,
+    "cost": 0.2261
+   }
+  },
+  "regex-log": {
+   "raw-codex": {
+    "passed": 3,
+    "n": 3,
+    "median_wall_s": 31.8,
+    "cost": 0.1058
+   },
+   "routed-codex": {
+    "passed": 3,
+    "n": 3,
+    "median_wall_s": 60.2,
+    "cost": 0.1066
+   },
+   "raw-claude": {
+    "passed": 3,
+    "n": 3,
+    "median_wall_s": 17.7,
+    "cost": 0.4274
+   },
+   "routed-lean": {
+    "passed": 3,
+    "n": 3,
+    "median_wall_s": 19.3,
+    "cost": 0.1718
+   }
+  },
+  "schemelike-metacircular-eval": {
+   "raw-codex": {
+    "passed": 3,
+    "n": 3,
+    "median_wall_s": 471.3,
+    "cost": 1.4342
+   },
+   "routed-codex": {
+    "passed": 2,
+    "n": 3,
+    "median_wall_s": 1299.8,
+    "cost": 0.8897
+   },
+   "raw-claude": {
+    "passed": 3,
+    "n": 3,
+    "median_wall_s": 1139.4,
+    "cost": 3.9815
+   },
+   "routed-lean": {
+    "passed": 3,
+    "n": 3,
+    "median_wall_s": 893.4,
+    "cost": 2.5156
+   }
+  }
+ }
+}
