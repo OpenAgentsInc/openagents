@@ -1,0 +1,37 @@
+# The pay front's route file on oa-pay-1 (`openagents pay serve`, #10186),
+# installed as /etc/openagents-pay/routes.toml. See
+# docs/deployment/pay-host.md, "The pay front".
+#
+# api.openagents.com's load balancer sends these paths here (backend
+# oa-pay-front-backend, zonal NEG oa-pay-front-neg on port 8402):
+#   POST /v1/plugins/{id}/invoke     a published plugin, paid per call (#10193)
+#   GET|POST /x/{resource}           author-hosted resources (#10194)
+#   POST /v1/resources               an author registers one (NIP-98 signed)
+#   GET  /v1/paid-key                the key the OpenAgents-Paid header is signed with
+# Every other api.openagents.com path stays on the API service.
+
+public_url = "https://api.openagents.com"
+# The VPC address, not loopback: the load balancer's proxies reach the
+# instance from 35.191.0.0/16 and 130.211.0.0/22 (firewall
+# oa-pay-front-from-lb); the instance has no external address.
+listen = "0.0.0.0:8402"
+expiry_secs = 600
+# One settlement sink: crates/pay-ledger. The replay store and the challenge
+# key stay under OPENAGENTS_X402_HOME (/var/lib/openagents-pay/x402), which
+# the hourly backup copies.
+ledger = "/var/lib/openagents-pay/ledger/ledger.sqlite"
+plugin_cache = "/var/lib/openagents-pay/x402/plugins"
+
+[[route]]
+id = "plugin-invoke"
+path = "/v1/plugins/{id}/invoke"
+method = "POST"
+# The endpoint part; the release's fee_msat is added and named in the 402.
+price_sats = 5
+registry = "wss://relay.openagents.com"
+mime = "application/json"
+description = "One run of a published OpenAgents plugin"
+
+[hosted]
+registry = "/var/lib/openagents-pay/x402/hosted.ndjson"
+key_file = "/var/lib/openagents-pay/x402/paid-header.key"

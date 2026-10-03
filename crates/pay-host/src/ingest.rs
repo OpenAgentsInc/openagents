@@ -29,6 +29,27 @@ impl Store {
         Ok(())
     }
 
+    /// Whether the package `id` (`<publisher>:<slug>`) has a registered
+    /// publication signed by its publisher.
+    pub(crate) fn published(&self, id: &str) -> bool {
+        let publisher = id.split_once(':').map_or("", |(publisher, _)| publisher);
+        self.db
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name='flow_publication')",
+                [],
+                |r| r.get::<_, bool>(0),
+            )
+            .unwrap_or(false)
+            && self
+                .db
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM flow_publication WHERE plugin=? AND party=?)",
+                    params![id, publisher],
+                    |r| r.get::<_, bool>(0),
+                )
+                .unwrap_or(false)
+    }
+
     fn ingest_tables(&self) -> Result<(), Error> {
         self.db.execute_batch("CREATE TABLE IF NOT EXISTS flow_publication(plugin TEXT NOT NULL,party TEXT NOT NULL,npub TEXT NOT NULL,PRIMARY KEY(plugin,party));
             CREATE TABLE IF NOT EXISTS flow_cursor(source TEXT PRIMARY KEY,seq INTEGER NOT NULL);")?;
@@ -79,11 +100,7 @@ impl Store {
             ))
         })? {
             let (plugin, party, npub) = row?;
-            let projected = if safe_id(&plugin) {
-                plugin
-            } else {
-                self.alias("plugin", &plugin, None)
-            };
+            let projected = self.public_plugin(&plugin);
             if projected != public_plugin {
                 continue;
             }
@@ -105,13 +122,7 @@ impl Store {
         plugin: Option<&str>,
     ) -> Result<SourceRecord, Error> {
         let at = at.checked_mul(1000).ok_or("Ledger time overflow")?;
-        let plugin = plugin.map(|id| {
-            if safe_id(id) {
-                id.to_owned()
-            } else {
-                self.alias("plugin", id, None)
-            }
-        });
+        let plugin = plugin.map(|id| self.public_plugin(id));
         let node = plugin
             .as_ref()
             .map(|id| format!("plugin:{id}"))

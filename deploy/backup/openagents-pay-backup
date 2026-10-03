@@ -1,12 +1,12 @@
 #!/bin/sh
-# One encrypted backup of the central receiver: `openagents wallet backup`
+# One encrypted backup of the central receiver: `openagents x402 node backup`
 # (seed, config.json, a consistent VACUUM INTO snapshot of the channel
 # store, with its digest manifest), the x402 replay store, and the ledger
 # directory when present. The tar is encrypted to an age recipient whose
 # identity is not on this host, kept on the data disk, and uploaded to a
 # bucket the host can write to but not read or delete from.
 #
-# Runs as openagents-pay beside the resident node; `wallet backup` is safe
+# Runs as openagents-pay beside the resident node; `x402 node backup` is safe
 # while the node writes. Plaintext exists only in a 0700 work directory on
 # the data disk and is removed on every exit.
 #
@@ -42,7 +42,7 @@ work="$(mktemp -d "${backups}/.work.XXXXXX")"
 trap 'rm -rf -- "${work}"' EXIT HUP INT TERM
 
 # 1. The wallet: seed, config, channel store snapshot, digest manifest.
-"${openagents}" --json wallet backup "${work}/unit/wallet" > "${work}/wallet.json" \
+"${openagents}" --json x402 node backup "${work}/unit/wallet" > "${work}/wallet.json" \
     || fail "wallet backup failed"
 jq -e '.store == true' "${work}/wallet.json" > /dev/null \
     || fail "wallet backup holds no channel store"

@@ -1,0 +1,70 @@
+[Unit]
+Description=OpenAgents pay front (openagents pay serve: paid plugin calls and hosted resources)
+Documentation=https://github.com/OpenAgentsInc/openagents/blob/main/docs/deployment/pay-host.md
+After=openagents-pay.service network-online.target
+Requires=openagents-pay.service
+Wants=network-online.target
+RequiresMountsFor=/var/lib/openagents-pay
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=openagents-pay
+Group=openagents-pay
+EnvironmentFile=/etc/openagents-pay/openagents-pay.env
+# The receiver wallet is reached through the resident's control.sock
+# (openagents-pay.service), never opened here. The replay store, challenge
+# key, plugin cache, and hosted registry are under OPENAGENTS_X402_HOME;
+# settlements go to the ledger named in the route file.
+ExecStartPre=/usr/bin/test -x /opt/openagents-pay/current/openagents
+ExecStartPre=/usr/bin/test -S /var/lib/openagents-pay/wallet/control.sock
+ExecStart=/opt/openagents-pay/current/openagents --json pay serve --routes /etc/openagents-pay/routes.toml
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=30
+KillSignal=SIGTERM
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=openagents-pay-front
+
+# It listens on 8402 for api.openagents.com's load balancer (firewall
+# oa-pay-front-from-lb) and reaches out to the relay and blob server for
+# plugin releases and to hosted upstreams.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+StateDirectory=openagents-pay
+StateDirectoryMode=0700
+ReadWritePaths=/var/lib/openagents-pay
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+DevicePolicy=closed
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+ProcSubset=pid
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+# Plugin guests run in wasmtime, whose compiler maps code pages writable
+# and then executable; MemoryDenyWriteExecute would refuse that.
+MemoryDenyWriteExecute=false
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+CapabilityBoundingSet=
+AmbientCapabilities=
+KeyringMode=private
+RemoveIPC=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

@@ -7,7 +7,7 @@
 #   openagents-pay-seed fetch   Write the seed to /run/openagents-pay/seed
 #                               (tmpfs, owner openagents-pay, mode 0400).
 #                               The unit's ExecStartPre runs this.
-#   openagents-pay-seed store   One time, after `openagents wallet init`
+#   openagents-pay-seed store   One time, after `openagents x402 node init`
 #                               generated a fresh seed on this host: add it
 #                               as the secret's first version, read it back
 #                               and compare digests, then shred the file and

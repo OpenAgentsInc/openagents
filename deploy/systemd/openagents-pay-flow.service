@@ -23,8 +23,14 @@ Environment=OPENAGENTS_PAY_RECONCILIATION=/var/lib/openagents-pay/reconcile/late
 # VPC egress; firewall oa-pay-flow-from-vpc admits only 10.128.0.0/20 on
 # this port. It serves read-only public projections and nothing else.
 Environment=OPENAGENTS_PAY_LISTEN=0.0.0.0:4400
+# Signed plugin listings (one event JSON per line) whose plugins /live and
+# /stats name by slug and whose authors show by npub; any other registry
+# plugin stays a salted alias. scripts/payments-demo.sh --publish --operator
+# appends one.
+Environment=OPENAGENTS_PAY_PUBLICATIONS=/var/lib/openagents-pay/flow/publications.ndjson
 ExecStartPre=/usr/bin/test -r /var/lib/openagents-pay/ledger/ledger.sqlite
 ExecStartPre=/usr/bin/install -d -m 0700 /var/lib/openagents-pay/flow
+ExecStartPre=/usr/bin/touch /var/lib/openagents-pay/flow/publications.ndjson
 ExecStart=/opt/openagents-pay/current/pay-host
 Restart=on-failure
 RestartSec=5

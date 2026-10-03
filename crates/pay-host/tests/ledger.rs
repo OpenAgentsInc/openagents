@@ -443,3 +443,63 @@ fn publishing_one_plugin_does_not_reveal_unrelated_author_earnings() {
     assert_eq!(public.earnings_sats.msat(), 10_000);
     assert_eq!(private.earnings_sats.msat(), 19_000);
 }
+
+#[test]
+fn a_registered_registry_plugin_is_named_by_its_slug_on_its_topology_node() {
+    // The pay front records a paid invoke under the registry id
+    // `<publisher>:<slug>`. Once its signed listing is registered, the flow
+    // names it by the slug, as the design's `"plugin":"explain-error"`, so
+    // /live places the dot on the committed `plugin-explain-error` node and
+    // the author shows by npub; the publisher's hex key never appears.
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("ledger.sqlite");
+    let mut ledger = Ledger::open(&path).unwrap();
+    let author = publication().pubkey;
+    let plugin = format!("{author}:explain-error");
+    ledger
+        .record_call(&CallRecord {
+            at: START,
+            route: "plugin-invoke".into(),
+            resource: "route:plugin-invoke".into(),
+            plugin_id: Some(plugin.clone()),
+            release_id: Some("cd".repeat(32)),
+            outcome: "challenged".into(),
+            paid: false,
+            price_msat: Some(15_000),
+        })
+        .unwrap();
+    ledger
+        .record_settlement(input(
+            "private-paid-invoke",
+            Some(&plugin),
+            15_000,
+            Split::Plugin {
+                author: author.clone(),
+                fee_msat: 10_000,
+            },
+        ))
+        .unwrap();
+    let source =
+        rusqlite::Connection::open_with_flags(&path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .unwrap();
+    let mut flow =
+        Store::from_connection(rusqlite::Connection::open_in_memory().unwrap(), [7; 32]).unwrap();
+    flow.register_publication(&publication()).unwrap();
+    flow.sync_sources(&source).unwrap();
+    let events = flow.since(0).unwrap();
+    assert!(!events.is_empty());
+    for event in &events {
+        assert_eq!(event.plugin.as_deref(), Some("explain-error"));
+        assert_eq!(event.node, "plugin:explain-error");
+    }
+    let npub = nostr::nip19::encode_npub(&hex::decode(&author).unwrap().try_into().unwrap());
+    assert!(
+        events
+            .iter()
+            .filter(|e| e.kind == EventType::Share)
+            .any(|e| e.author.as_deref() == Some(npub.as_str()))
+    );
+    let stats = flow.stats(START * 1000 + 1_000).unwrap();
+    assert_eq!(stats.per_plugin["explain-error"].calls, 1);
+    assert!(!serde_json::to_string(&events).unwrap().contains(&author));
+}

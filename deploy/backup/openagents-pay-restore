@@ -11,7 +11,7 @@
 #      holds anything (never restore over a live channel store: an older
 #      store can broadcast a revoked commitment and lose the channel);
 #   2. decrypts and unpacks into a root-only staging directory;
-#   3. runs `openagents wallet restore`, which checks every digest;
+#   3. runs `openagents x402 node restore`, which checks every digest;
 #   4. checks the restored seed equals the Secret Manager seed, then replaces
 #      the file with the symlink the unit expects;
 #   5. leaves the replay store and the ledger alone when live copies exist.
@@ -59,7 +59,7 @@ chown -R "${user}:${user}" "${staging}"
 
 install -d -o "${user}" -g "${user}" -m 0700 "${home}"
 runuser -u "${user}" -- env OPENAGENTS_WALLET_HOME="${home}" HOME="${state}" \
-    "${openagents}" --json wallet restore "${staging}/wallet" > /dev/null \
+    "${openagents}" --json x402 node restore "${staging}/wallet" > /dev/null \
     || fail "wallet restore refused the backup"
 
 # The seed must be the one the unit will fetch; then it leaves the disk.

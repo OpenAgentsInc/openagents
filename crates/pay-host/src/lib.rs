@@ -234,6 +234,24 @@ impl Store {
                 .collect::<String>()
         )
     }
+    /// A plugin id as the public flow names it: the id itself when it is
+    /// safe; the slug of a registry id (`<publisher hex>:<slug>`) whose
+    /// signed listing or release was registered (`register_publication`),
+    /// as the design's `"plugin":"explain-error"`; otherwise a salted alias.
+    fn public_plugin(&self, id: &str) -> String {
+        if safe_id(id) {
+            return id.to_owned();
+        }
+        if let Some((publisher, slug)) = id.split_once(':')
+            && publisher.len() == 64
+            && publisher.bytes().all(|b| b.is_ascii_hexdigit())
+            && safe_id(slug)
+            && self.published(id)
+        {
+            return slug.to_owned();
+        }
+        self.alias("plugin", id, None)
+    }
     pub fn record(&mut self, record: SourceRecord) -> Result<FlowEvent, Error> {
         if let Some(json) = self
             .db
