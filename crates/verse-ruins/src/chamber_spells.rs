@@ -108,7 +108,21 @@ impl Controls {
         direction: Vec3,
         target: Option<Vec3>,
     ) -> Result<Vec3, String> {
-        if !time.is_finite()
+        self.cast_with_teleport(simulation, spell, time, player, direction, target, None)
+    }
+    /// Uses a caller-admitted teleport destination before spending resources.
+    pub fn cast_with_teleport(
+        &mut self,
+        simulation: &mut Simulation,
+        spell: Utility,
+        time: f32,
+        player: Vec3,
+        direction: Vec3,
+        target: Option<Vec3>,
+        teleport: Option<Vec3>,
+    ) -> Result<Vec3, String> {
+        if teleport.is_some_and(|p| !p.is_finite() || spell != Utility::MistyStep)
+            || !time.is_finite()
             || time < 0.0
             || !player.is_finite()
             || !direction.is_finite()
@@ -133,9 +147,12 @@ impl Controls {
         let direction = Vec3::new(direction.x, 0.0, direction.z).normalize_or_zero();
         let mut destination = player;
         if spell == Utility::MistyStep {
-            destination += direction * 9.144;
-            destination.x = destination.x.clamp(-12.0, 12.0);
-            destination.z = destination.z.clamp(-25.0, 12.0);
+            destination = teleport.unwrap_or_else(|| {
+                let mut p = player + direction * 9.144;
+                p.x = p.x.clamp(-12.0, 12.0);
+                p.z = p.z.clamp(-25.0, 12.0);
+                p
+            });
             if simulation.snapshot().actors.iter().any(|a| {
                 a.alive && a.faction != "player" && horizontal(destination, a.pos.into()) < 1.0
             }) {

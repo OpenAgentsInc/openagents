@@ -40,6 +40,10 @@ The shared renderer, director, controls, and existing local combat adapter remai
 in their current modules. Generic packs, animation, and cinematic contracts now live in `verse-engine`;
 `verse-wow` re-exports them for compatibility. Gameplay still uses the retained `verse-ruins` adapter;
 this milestone does not replace it with a new portable authority service.
-Movement currently uses the adapter's bounded floor rather than colliding with
-chamber columns. Engine extraction, physical character queries, durable saves,
+The scene uses an explicit `original-chamber-v1` collision profile. Player movement
+and Misty Step sweep an axis-aligned character box against the same authored
+boxes used to draw walls and columns, with wall sliding. Teleport occupancy,
+resource admission, and arrival effects use the collision-admitted endpoint.
+Capsules, stairs, slopes, gravity, NPC navigation, and projectile collision remain
+future work. Further engine extraction, durable saves,
 and multiplayer remain on the engine roadmap and #10406/#10407.

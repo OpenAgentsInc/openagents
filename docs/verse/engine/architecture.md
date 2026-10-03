@@ -95,8 +95,10 @@ and re-exports the engine modules for existing adapters. [`verse-ruins`](../../.
 wraps retained source combat. These are useful evidence and transition paths;
 they are not the final engine boundary.
 
-The local chamber copies player positions into the simulation, uses rectangular
-movement bounds, and resolves encounter state in the client. Retained collision
+The local chamber copies player positions into the simulation and resolves
+encounter state in the client. The imported fixture retains rectangular movement
+bounds; the original scene uses shared authored box solids with continuous
+sweeps and wall sliding for player movement and teleports. Retained collision
 has an unimplemented capsule-versus-OBB path. The existing multiplayer plaza
 presence is distinct from authoritative combat. The researched
 [#10406 plan](https://github.com/OpenAgentsInc/openagents/issues/10406#issuecomment-5973821300)

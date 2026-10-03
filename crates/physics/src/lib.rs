@@ -40,6 +40,7 @@ pub mod clock;
 pub mod collision;
 pub mod contact;
 pub mod joint;
+pub mod kinematic;
 pub mod ledger;
 pub mod modal;
 pub mod oracle;

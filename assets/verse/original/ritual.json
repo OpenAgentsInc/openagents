@@ -295,5 +295,6 @@
       "target": 2,
       "damage": 6
     }
-  ]
+  ],
+  "collision_profile": "original-chamber-v1"
 }

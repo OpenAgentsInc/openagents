@@ -23,8 +23,14 @@ pack, skeletal animation, and cinematic contracts into `crates/verse-engine`.
 The renderer and original scene consume that headless crate directly; the WoW
 adapter preserves its old API through re-exports.
 
+[#10428](https://github.com/OpenAgentsInc/openagents/issues/10428) adds continuous
+axis-aligned box sweep and wall sliding queries to `physics`. The original scene
+shares room solids between rendering and collision. Movement and Misty Step use
+those queries; a thin obstacle cannot be crossed by a large displacement. This
+is primitive box collision, not the full capsule/mesh controller of VE-2.
+
 This delivers the visual procedural milestone of VE-1/VE-3, not the complete
-VE-0–VE-6 roadmap. Column collision, portable authority extraction, original
+VE-0–VE-6 roadmap. Portable authority extraction, original
 rules replacement, service persistence, and multiplayer remain implementation
 work. #10406 and #10407 stay open for their full acceptance.
 

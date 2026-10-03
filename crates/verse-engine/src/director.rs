@@ -33,6 +33,8 @@ pub struct Cue {
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Scene {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub collision_profile: Option<String>,
     pub version: u32,
     pub duration: f32,
     pub origin_wow: [f32; 3],
@@ -83,7 +85,11 @@ impl Scene {
         Ok(s)
     }
     pub fn validate(&self) -> Result<(), String> {
-        if self.version != 1
+        if self
+            .collision_profile
+            .as_ref()
+            .is_some_and(|p| p.len() > 64)
+            || self.version != 1
             || !self.duration.is_finite()
             || self.duration <= 0.0
             || self.duration > 600.0

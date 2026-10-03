@@ -122,6 +122,7 @@ pub struct DamageNumber {
     pub serial: u64,
 }
 pub struct Game {
+    colliders: Vec<physics::kinematic::Aabb>,
     pub scene: Scene,
     pub encounter: Option<super::combat::Encounter>,
     pub agent_controlled: bool,
@@ -149,6 +150,22 @@ pub struct Game {
     npc_deaths: BTreeMap<u64, (f32, Vec3)>,
 }
 impl Game {
+    fn move_player(&self, position: Vec3, delta: Vec3) -> Result<Vec3, String> {
+        if self.colliders.is_empty() {
+            let mut p = position + delta;
+            p.x = p.x.clamp(-12., 12.);
+            p.z = p.z.clamp(-25., 12.);
+            return Ok(p);
+        }
+        let center = position.as_dvec3() + glam::DVec3::Y * 0.9;
+        let moved = physics::kinematic::move_and_slide(
+            center,
+            glam::DVec3::new(0.35, 0.9, 0.35),
+            delta.as_dvec3(),
+            &self.colliders,
+        )?;
+        Ok((moved - glam::DVec3::Y * 0.9).as_vec3())
+    }
     /// Uses the retained simulation's cooldown tuning for action-button swipes.
     pub fn cooldown_duration(&self, spell: verse_ruins::Spell) -> f32 {
         self.simulation.cooldown_duration(spell)
@@ -186,7 +203,13 @@ impl Game {
             .iter()
             .map(|a| (a.id, a.hp.max(0)))
             .collect();
+        let colliders = match scene.collision_profile.as_deref() {
+            None => vec![],
+            Some("original-chamber-v1") => super::original::colliders(),
+            Some(_) => return Err("Unsupported scene collision profile".into()),
+        };
         Ok(Self {
+            colliders,
             scene,
             encounter: None,
             agent_controlled: false,
@@ -412,9 +435,7 @@ impl Game {
         if self.moving && self.casting.take().is_some() {
             self.message = "Cast interrupted by movement".into();
         }
-        self.player += delta;
-        self.player.x = self.player.x.clamp(-12.0, 12.0);
-        self.player.z = self.player.z.clamp(-25.0, 12.0);
+        self.player = self.move_player(self.player, delta)?;
         let source_actors = self.snapshot().actors;
         for a in self.scene.frame(self.time).actors {
             if let Some(id) = self.ids.get(&a.actor.id) {
@@ -667,14 +688,21 @@ impl Game {
                 .find(|a| a.actor.id == self.selected && a.health > 0)
                 .map(|a| a.actor.position);
             let direction = Vec3::new(-self.yaw.sin(), 0.0, -self.yaw.cos());
-            self.player = self.controls.cast(
+            let teleport = if spell == Utility::MistyStep && !self.colliders.is_empty() {
+                Some(self.move_player(self.player, direction * 9.144)?)
+            } else {
+                None
+            };
+            let destination = self.controls.cast_with_teleport(
                 &mut self.simulation,
                 spell,
                 self.time,
                 self.player,
                 direction,
                 target,
+                teleport,
             )?;
+            self.player = destination;
             self.record_ability(ability);
             self.last_cast = Some((ability, self.time));
             self.message = format!("{}: {}", ability.label(), ability.description());
@@ -1063,5 +1091,47 @@ mod interruption_tests {
                 .health,
             health - 6
         );
+    }
+}
+
+#[cfg(test)]
+mod original_collision_tests {
+    use super::*;
+    fn game() -> Game {
+        let scene = Scene::from_json(include_bytes!(
+            "../../../../assets/verse/original/ritual.json"
+        ))
+        .unwrap();
+        let mut game = Game::new(scene).unwrap();
+        game.time = 21.;
+        game
+    }
+    #[test]
+    fn original_player_stops_at_column_and_slides_along_its_face() {
+        let mut g = game();
+        g.player = Vec3::new(13., 0., -13.);
+        g.yaw = -std::f32::consts::FRAC_PI_2;
+        for _ in 0..20 {
+            g.tick(0.1, [0., 1.]).unwrap();
+        }
+        assert!(g.player.x < 13.951 && g.player.x > 13.94);
+        let slid = g.move_player(g.player, Vec3::new(2., 0., 2.)).unwrap();
+        assert!(slid.z > -11.01 && slid.x < 13.951);
+    }
+    #[test]
+    fn blink_uses_collision_admitted_destination_and_matching_effect() {
+        let mut g = game();
+        g.player = Vec3::new(13., 0., -13.);
+        g.yaw = -std::f32::consts::FRAC_PI_2;
+        g.activate(Ability::MistyStep).unwrap();
+        assert!(g.player.x < 13.951 && g.player.x > 13.94);
+        assert_eq!(g.controls.areas.last().unwrap().position, g.player);
+        assert_eq!(g.snapshot().player.mana, 18);
+    }
+    #[test]
+    fn scene_refuses_unknown_collision_profiles() {
+        let mut scene = game().scene;
+        scene.collision_profile = Some("unknown".into());
+        assert!(Game::new(scene).is_err());
     }
 }
