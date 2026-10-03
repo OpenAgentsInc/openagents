@@ -105,3 +105,14 @@ credentials, and Wine state are not.
 The [recorded sequence](../../bench/wow/2026-10-03/anthropic-ritual.mp4) runs for
 72 seconds. Its [cue log](../../bench/wow/2026-10-03/anthropic-film-events.json)
 records the actual dialogue, camera cut, and five bow shots.
+
+The [cinematic version](../../bench/wow/2026-10-03/anthropic-ritual-cinematic.mp4)
+adds deeper shadows, warmer highlights, a vignette, and soft bloom around bright
+light sources. This is a video grade; it does not change the live game's
+lighting. To reproduce it, run:
+
+```sh
+python3 scripts/wow/grade-scene.py \
+  bench/wow/2026-10-03/anthropic-ritual.mp4 \
+  bench/wow/2026-10-03/anthropic-ritual-cinematic.mp4
+```
