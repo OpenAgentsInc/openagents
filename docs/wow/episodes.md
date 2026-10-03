@@ -143,3 +143,26 @@ actors have head-anchored red health bars. Directed arrow impacts reduce the
 target's displayed health. These scene impacts are local cinematic state, not
 realm combat authority. Pass a time in seconds as the capture's third argument
 to inspect a cue, for example `51.2` for an arrow in flight.
+
+The [Verse ritual video](../../bench/wow/2026-10-03/verse-anthropic-ritual.mp4)
+contains 72 seconds at 1280 × 720 and 30 frames per second. The cinematic
+camera opens on Claude and 12 cultists, then cuts behind the adventurer at
+20 seconds. Seven programmed yells precede five directed bow shots. Every
+frame time is checked for 13 visible red hostile nameplates.
+
+To record the full scene, pass an `.mp4` output path to the same command:
+
+```sh
+CARGO_TARGET_DIR="$HOME/work/openagents-target-agent1" cargo run -p verse \
+  --no-default-features --features capture --example wow_capture -- \
+  "$HOME/wow-gym/verse-assets/pack.json" \
+  bench/wow/2026-10-03/verse-anthropic-ritual.mp4
+```
+
+The recorder streams owned GPU frames into FFmpeg for H.264 encoding. It uses
+no grading, subtitle filter, screen automation, or Blizzard executable. The
+private imported asset pack stays outside the repository. The new renderer
+owns geometry submission, skeletal poses, materials, lighting, shadows,
+camera state, and overlays. Realm authority and authored replacement content
+remain tracked in [#10406](https://github.com/OpenAgentsInc/openagents/issues/10406)
+and [#10407](https://github.com/OpenAgentsInc/openagents/issues/10407).

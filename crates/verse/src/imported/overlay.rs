@@ -120,3 +120,69 @@ pub fn cinematic(
     }
     ui
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn ritual_keeps_all_thirteen_hostile_bars_in_both_camera_shots() {
+        let scene = verse_wow::director::Scene::from_json(include_bytes!(
+            "../../../../assets/verse/wow/anthropic.json"
+        ))
+        .unwrap();
+        let atlas = Atlas::new(16.0);
+        let heights = BTreeMap::from([
+            ("claude".into(), 3.8556),
+            ("cultist".into(), 2.333),
+            ("adventurer".into(), 2.0153),
+        ]);
+        for index in 0..2160 {
+            let time = index as f32 / 30.0;
+            let frame = scene.frame(time);
+            let ui = cinematic(
+                &atlas,
+                &frame,
+                &heights,
+                frame.view_projection(1280.0 / 720.0),
+                1280.0,
+                720.0,
+            );
+            let red = ui
+                .vertices
+                .iter()
+                .filter(|v| v.color == [0.8, 0.015, 0.01, 1.0])
+                .count();
+            assert_eq!(red, 13 * 6, "time {time}");
+            let bars: Vec<_> = ui
+                .vertices
+                .iter()
+                .filter(|v| v.color == [0.8, 0.015, 0.01, 1.0])
+                .collect();
+            let bounds: Vec<_> = bars
+                .chunks(6)
+                .map(|b| {
+                    (
+                        b.iter().map(|v| v.pos[0]).fold(f32::INFINITY, f32::min),
+                        b.iter().map(|v| v.pos[1]).fold(f32::INFINITY, f32::min),
+                        b.iter().map(|v| v.pos[0]).fold(f32::NEG_INFINITY, f32::max),
+                        b.iter().map(|v| v.pos[1]).fold(f32::NEG_INFINITY, f32::max),
+                    )
+                })
+                .collect();
+            for (i, a) in bounds.iter().enumerate() {
+                for b in &bounds[i + 1..] {
+                    assert!(
+                        !(a.0 < b.2 && a.2 > b.0 && a.1 < b.3 && a.3 > b.1),
+                        "Overlapping bars at {time}"
+                    );
+                }
+            }
+
+            assert!(
+                ui.vertices
+                    .iter()
+                    .all(|v| v.pos.iter().all(|x| x.is_finite()))
+            );
+        }
+    }
+}

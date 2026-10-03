@@ -89,8 +89,14 @@ impl Importer {
         let mut surfaces = Vec::new();
         let mut height = 0.0f32;
         for mut sub in subs {
-            if sub.texture.is_none() && sub.char_slot==Some(f::CharSkinSlot::Object){
-                sub.texture=skins.iter().flatten().next().map(|skin|format!("{}\\{}.blp",path.rsplit_once('\\').map_or("",|p|p.0),skin));
+            if sub.texture.is_none() && sub.char_slot == Some(f::CharSkinSlot::Object) {
+                sub.texture = skins.iter().flatten().next().map(|skin| {
+                    format!(
+                        "{}\\{}.blp",
+                        path.rsplit_once('\\').map_or("", |p| p.0),
+                        skin
+                    )
+                });
             }
             if matches!(sub.blend, f::ModelBlend::Mod | f::ModelBlend::Mod2x) {
                 continue;
@@ -296,9 +302,17 @@ fn main() -> Result<()> {
         eprintln!("animation {id}: {:?}", anim.name(id));
     }
     eprintln!("arrow display: {:?}", items.get(5996));
-    let arrow=items.get(5996).context("Arrow display")?;
-    let arrow_path=format!("Item\\ObjectComponents\\Ammo\\{}",arrow.model[1].as_ref().context("Arrow model")?);
-    import.model("arrow",&arrow_path,&[arrow.model_texture[1].clone()],false)?;
+    let arrow = items.get(5996).context("Arrow display")?;
+    let arrow_path = format!(
+        "Item\\ObjectComponents\\Ammo\\{}",
+        arrow.model[1].as_ref().context("Arrow model")?
+    );
+    import.model(
+        "arrow",
+        &arrow_path,
+        &[arrow.model_texture[1].clone()],
+        false,
+    )?;
     import.pack.validate().map_err(anyhow::Error::msg)?;
     serde_json::to_writer(std::fs::File::create(dir.join("pack.json"))?, &import.pack)?;
     println!(
