@@ -144,7 +144,7 @@ impl Scene {
         let mut a = a.clone();
         if a.model == "adventurer" {
             a.position.z += ((time - self.cut_at) / 4.0).clamp(0.0, 1.0) * 5.0;
-        } else if a.model == "cultist" && time > self.cut_at + 2.0 {
+        } else if a.model.starts_with("cultist") && time > self.cut_at + 2.0 {
             let panic = ((time - self.cut_at - 2.0) / 5.0).clamp(0.0, 1.0);
             a.yaw = 0.0;
             a.position.x += a.position.x.signum() * panic * 1.2;
@@ -188,7 +188,10 @@ impl Scene {
             let actor = self.actor_at(a, time);
             let mut animation = 0;
             let mut animation_time = time + a.id as f32 * 0.19;
-            if actor.model == "cultist" && time > self.cut_at + 2.0 && time < self.cut_at + 7.0 {
+            if actor.model.starts_with("cultist")
+                && time > self.cut_at + 2.0
+                && time < self.cut_at + 7.0
+            {
                 animation = 5;
             }
             if actor.model == "adventurer" {
@@ -320,6 +323,33 @@ mod tests {
                 .count(),
             13
         );
+    }
+    #[test]
+    fn outfitted_cultist_variants_keep_the_same_cinematic_motion() {
+        let reference = scene();
+        let expected = reference
+            .frame(26.)
+            .actors
+            .into_iter()
+            .find(|a| a.actor.id == 2)
+            .unwrap();
+        for model in [
+            "cultist-female",
+            "cultist-peasant",
+            "cultist-peasant-female",
+        ] {
+            let mut variant = scene();
+            variant.actors.iter_mut().find(|a| a.id == 2).unwrap().model = model.into();
+            let actual = variant
+                .frame(26.)
+                .actors
+                .into_iter()
+                .find(|a| a.actor.id == 2)
+                .unwrap();
+            assert_eq!(actual.actor.position, expected.actor.position);
+            assert_eq!(actual.actor.yaw, expected.actor.yaw);
+            assert_eq!(actual.animation, expected.animation);
+        }
     }
     #[test]
     fn cues_cannot_target_missing_actors() {

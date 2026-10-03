@@ -425,6 +425,15 @@ pub fn run(original_default: bool) -> Result<(), String> {
     } else {
         "male-ranger".into()
     };
+    let bestiary = if let Some(i) = inputs.iter().position(|a| a == "--bestiary") {
+        inputs.remove(i);
+        if i >= inputs.len() {
+            return Err("Expected monster.glb".into());
+        }
+        Some(PathBuf::from(inputs.remove(i)))
+    } else {
+        std::env::var_os("HOME").map(PathBuf::from).map(|home| home.join("Downloads/Bestiary - Dungeon Monsters Kit[Standard]/Bestiary - Dungeon Monsters Kit[Standard]/Exports/GLB (Godot-Unreal)/Puglin.glb")).filter(|p| p.exists())
+    };
     let mut args = inputs.into_iter();
     let input = args.next().ok_or("Expected pack.json or --original")?;
     let original = input == "--original";
@@ -455,6 +464,17 @@ pub fn run(original_default: bool) -> Result<(), String> {
         )?;
         pack.source_revision = "verse-universal-ritual-v1".into();
     }
+    if original && !greybox {
+        if let Some(path) = &bestiary {
+            verse::imported::characters::install_bestiary(
+                &mut pack,
+                &dir,
+                path,
+                &PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../assets/verse/characters/quaternius/animations.glb"),
+            )?;
+        }
+    }
     if !original {
         chamber::add_effect_models(&mut pack, &dir)?;
     }
@@ -476,6 +496,11 @@ pub fn run(original_default: bool) -> Result<(), String> {
                     .into();
                 index += 1;
             }
+        }
+    }
+    if pack.source_revision == "verse-bestiary-ritual-v1" {
+        if let Some(claude) = scene.actors.iter_mut().find(|a| a.model == "claude") {
+            claude.scale = 6.0 / (pack.models["claude"].height * 0.9144);
         }
     }
     let game = Game::new(scene)?;
@@ -727,7 +752,7 @@ fn demo(
             }
             if encounter.ended.is_some_and(|at| app.game.time - at >= 5.0) {
                 save_png(&output.with_extension("png"), &pixels)?;
-                let evidence = serde_json::json!({"schema":"openagents.verse.agent-combat.v1","asset_pack":app.pack.source_revision,"controller":"local observation-driven tactical controller","control_mode":"agent","time":app.game.time,"ended_at":encounter.ended,"player":app.game.snapshot().player,"boss_remaining":encounter.boss_remaining,"boss_max":encounter.boss_max,"cultists_defeated":encounter.kills,"damage_taken":encounter.damage,"shield_absorbed":encounter.absorbed,"dodged":encounter.dodged,"enemy_casts":encounter.enemy_casts,"ability_uses":encounter.used,"renderer":"owned native GPU pipeline; no grading; no chat-input automation"});
+                let evidence = serde_json::json!({"schema":"openagents.verse.agent-combat.v1","asset_pack":app.pack.source_revision,"controller":"local observation-driven tactical controller","control_mode":"agent","time":app.game.time,"ended_at":encounter.ended,"player":app.game.snapshot().player,"boss_remaining":encounter.boss_remaining,"boss_max":encounter.boss_max,"cultists_defeated":encounter.kills,"damage_taken":encounter.damage,"shield_absorbed":encounter.absorbed,"dodged":encounter.dodged,"enemy_casts":encounter.enemy_casts,"ability_uses":encounter.used,"boss_model":{"source":app.pack.models["claude"].source,"sha256":app.pack.models["claude"].source_sha256,"height_m":app.game.scene.actors.iter().find(|a|a.model=="claude").unwrap().scale * app.pack.models["claude"].height * 0.9144},"renderer":"owned native GPU pipeline; no grading; no chat-input automation"});
                 std::fs::write(
                     output.with_extension("json"),
                     serde_json::to_vec_pretty(&evidence).map_err(|e| e.to_string())?,

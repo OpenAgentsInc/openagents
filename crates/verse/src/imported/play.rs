@@ -146,6 +146,8 @@ pub struct Game {
     observed_health: BTreeMap<u32, i32>,
     pub moving: bool,
     locomotion: [f32; 2],
+    motion_clock: f32,
+    npc_motion_clock: BTreeMap<u64, f32>,
     npc_motion: BTreeMap<u64, Vec3>,
     npc_yaw: BTreeMap<u64, f32>,
     npc_deaths: BTreeMap<u64, (f32, Vec3)>,
@@ -286,6 +288,8 @@ impl Game {
             observed_health,
             moving: false,
             locomotion: [0.0; 2],
+            motion_clock: 0.,
+            npc_motion_clock: BTreeMap::new(),
             npc_motion: BTreeMap::new(),
             npc_yaw: BTreeMap::new(),
             npc_deaths: BTreeMap::new(),
@@ -308,7 +312,11 @@ impl Game {
                 a.animation_time = self.time + a.actor.id as f32 * 0.19;
             }
             if a.actor.model == "adventurer" {
-                a.animation_time = self.time;
+                a.animation_time = if self.moving {
+                    self.motion_clock
+                } else {
+                    self.time
+                };
                 a.actor.position = self.player;
                 a.actor.yaw = self.yaw;
                 if snapshot.player.hp == 0 {
@@ -321,7 +329,15 @@ impl Game {
                     continue;
                 }
                 a.animation = if self.moving {
-                    if self.locomotion[1] < 0.0 { 13 } else { 5 }
+                    if self.scene.collision_profile.is_some()
+                        && self.locomotion[0].abs() > self.locomotion[1].abs()
+                    {
+                        if self.locomotion[0] < 0. { 14 } else { 15 }
+                    } else if self.locomotion[1] < 0.0 {
+                        13
+                    } else {
+                        5
+                    }
                 } else {
                     109
                 };
@@ -351,12 +367,14 @@ impl Game {
                         } else {
                             0
                         };
-                        let pace = if a.animation == 4 && a.actor.id % 3 == 0 {
-                            2.0
+                        a.animation_time = if a.animation == 4 {
+                            self.npc_motion_clock
+                                .get(&a.actor.id)
+                                .copied()
+                                .unwrap_or(0.)
                         } else {
-                            1.0
+                            self.time + a.actor.id as f32 * 0.19
                         };
-                        a.animation_time = self.time * pace + a.actor.id as f32 * 0.19;
                         if let Some(cast) = e
                             .casts
                             .iter()
@@ -494,7 +512,11 @@ impl Game {
         if self.moving && self.casting.take().is_some() {
             self.message = "Cast interrupted by movement".into();
         }
+        let previous_player = self.player;
         self.player = self.move_player(self.player, delta)?;
+        let travelled = self.player.distance(previous_player);
+        self.motion_clock += travelled / speed;
+        self.moving = travelled > 0.00001;
         let source_actors = self.snapshot().actors;
         for a in self.scene.frame(self.time).actors {
             if let Some(id) = self.ids.get(&a.actor.id) {
@@ -570,6 +592,8 @@ impl Game {
         if dt > 0.0 {
             if let Some(e) = &self.encounter {
                 for (id, position) in &e.positions {
+                    *self.npc_motion_clock.entry(*id).or_default() +=
+                        position.distance(previous.get(id).copied().unwrap_or(*position)) / 2.4;
                     self.npc_motion.insert(
                         *id,
                         (*position - previous.get(id).copied().unwrap_or(*position)) / dt,
@@ -673,6 +697,7 @@ impl Game {
             self.controls.forget_actor(old);
             self.npc_deaths.remove(&actor.id);
             self.npc_motion.remove(&actor.id);
+            self.npc_motion_clock.remove(&actor.id);
             self.npc_yaw.remove(&actor.id);
             self.arrows.retain(|a| a.target != actor.id);
             self.damage_numbers.retain(|n| n.actor != actor.id);
@@ -1212,8 +1237,35 @@ mod original_collision_tests {
             g.tick(0.1, [0., 1.]).unwrap();
         }
         assert!(g.player.x < 13.951 && g.player.x > 13.94);
+        let stopped_clock = g.motion_clock;
+        g.tick(0.1, [0., 1.]).unwrap();
+        assert!(!g.moving);
+        assert!((g.motion_clock - stopped_clock).abs() < 0.00001);
         let slid = g.move_player(g.player, Vec3::new(2., 0., 2.)).unwrap();
         assert!(slid.z > -11.01 && slid.x < 13.951);
+    }
+    #[test]
+    fn owned_locomotion_selects_backward_and_strafe_states_from_actual_motion() {
+        let mut g = game();
+        g.player = Vec3::new(0., 0., -16.);
+        for (movement, clip) in [
+            ([0., -1.], 13),
+            ([-1., 0.], 14),
+            ([1., 0.], 15),
+            ([0., 1.], 5),
+        ] {
+            let previous = g.motion_clock;
+            g.tick(0.05, movement).unwrap();
+            let player = g
+                .frame()
+                .actors
+                .into_iter()
+                .find(|a| a.actor.model == "adventurer")
+                .unwrap();
+            assert_eq!(player.animation, clip);
+            assert!(g.motion_clock > previous);
+            assert_eq!(player.animation_time, g.motion_clock);
+        }
     }
     #[test]
     fn blink_uses_collision_admitted_destination_and_matching_effect() {

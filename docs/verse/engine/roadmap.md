@@ -18,6 +18,11 @@ the procedural fixture. See the [character sources and usage](../../../assets/ve
 This character pipeline uses no Blizzard assets and does not complete world
 service authority or general retargeting for unrelated skeletons.
 
+[#10433](https://github.com/OpenAgentsInc/openagents/issues/10433) replaces
+mismatched humanoid clips with authored gaits and combat poses, advances gait
+clocks from admitted travel, and loads a giant locally licensed Bestiary Puglin
+for Claude. Restricted Bestiary source files remain outside the public repo.
+
 ## Original scene implementation
 
 [#10426](https://github.com/OpenAgentsInc/openagents/issues/10426) implements the

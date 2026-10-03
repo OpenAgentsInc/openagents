@@ -35,13 +35,35 @@ The chamber, spell effects, UI graphics, bow, and arrows remain original.
 `verse::imported::characters::import` imports another retained modular part or
 hair mesh. `compose` binds its named joints onto an existing rig. `retarget_clip`
 adds any named animation from `animations.glb` under a caller-selected state ID;
-`animations.json` lists all 43 available clips. The default scene maps locomotion,
-combat idle, blocking, casting, and gesture states to that library and blends
-transitions in local skeletal space. The Standard library has no dedicated
-run, bow, death, or magic-casting clips. Walk/cast/block mappings use the supplied
-carry, throw, and shield clips. Archery uses authored two-bone arm poses, and
-death uses an authored root fall that holds its final pose. No chat input drives
-these animations or the cinematic dialogue.
+`animations.json` lists all 43 available clips. The default scene uses authored walk, run, backpedal, strafe, guard, and spell
+poses on the actual rig, with two-bone limb solving, level feet, contact/swing
+phases, relaxed fingers, and local-space transition blending. Gait clocks follow
+collision-admitted travel distance. The Standard library has no dedicated run,
+bow, death, or magic-casting clips; carry, zombie-walk, and overhand-throw clips
+no longer substitute for humanoid movement or casting. Library clips still
+provide gestures and finger poses. Archery uses authored arm poses, and death
+uses an authored fall with a held final pose. No chat input drives animations.
+
+## Local Bestiary monster
+
+The downloaded Bestiary – Dungeon Monsters Kit Standard supplies Puglin and Imp.
+It uses [Quaternius Asset License v1.0](https://quaternius.com/license.html), which
+permits incorporated game/video products and restricts standalone asset
+redistribution. Its source files are not retained in this public repository.
+
+`verse_play` discovers the extracted Puglin GLB in the downloaded pack on this
+computer and uses it for a six-meter Claude. On another computer, supply your
+licensed local file with `--bestiary /path/to/Puglin.glb`. With no local Bestiary,
+the CC0 Ranger boss remains available. The importer gives the creature breathing motion in its native
+hunched posture and the shared combat action states. Combat recordings include its
+source digest and rendered height.
+
+Record the six humanoid rigs and their locomotion/combat transitions with:
+
+```sh
+cargo run -p verse --features imported-desktop --example universal_characters -- \
+  /tmp/verse-animations.mp4
+```
 
 The engine uses rest transforms and inverse-bind matrices, following the
 [Khronos glTF skinning contract](https://github.com/KhronosGroup/glTF-Tutorials/blob/main/gltfTutorial/gltfTutorial_020_Skins.md).

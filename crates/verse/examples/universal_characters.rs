@@ -28,7 +28,7 @@ fn main() -> Result<(), String> {
         view_proj: Mat4::perspective_rh(30_f32.to_radians(), 1600. / 560., 0.01, 50.)
             * Mat4::look_at_rh(eye, Vec3::Y * 0.9, Vec3::Y),
     };
-    let instances: Vec<_> = characters::APPEARANCES
+    let mut instances: Vec<_> = characters::APPEARANCES
         .iter()
         .enumerate()
         .map(|(i, name)| Instance {
@@ -58,6 +58,74 @@ fn main() -> Result<(), String> {
         shadowed: 0,
         ..Lighting::default()
     };
+    if output.extension().is_some_and(|e| e == "mp4") {
+        use std::io::Write;
+        let mut encoder = std::process::Command::new("ffmpeg")
+            .args([
+                "-y",
+                "-loglevel",
+                "error",
+                "-f",
+                "rawvideo",
+                "-pixel_format",
+                "rgba",
+                "-video_size",
+                "1600x560",
+                "-framerate",
+                "30",
+                "-i",
+                "pipe:0",
+                "-an",
+                "-c:v",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p",
+            ])
+            .arg(&output)
+            .stdin(std::process::Stdio::piped())
+            .spawn()
+            .map_err(|e| e.to_string())?;
+        let mut input = encoder.stdin.take().ok_or("Missing video input")?;
+        for (segment, (id, label)) in [
+            (0, "Idle"),
+            (4, "Walk"),
+            (5, "Run"),
+            (13, "Backpedal"),
+            (14, "Strafe left"),
+            (15, "Strafe right"),
+            (25, "Guard"),
+            (51, "Combat ready"),
+            (52, "Spell windup"),
+            (53, "Spell release"),
+            (109, "Bow ready"),
+            (46, "Bow release"),
+            (1, "Fall and corpse"),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            for frame in 0..90 {
+                let time = frame as f32 / 30.;
+                let mut lighting = lighting.clone();
+                lighting.time = segment as f32 * 3. + time;
+                for (i, actor) in instances.iter_mut().enumerate() {
+                    actor.actor = Some(i as u64 + 1);
+                    actor.animation = id;
+                    actor.time = time;
+                }
+                let mut labels = ui.clone();
+                labels.text(&atlas, 660., 45., label, [1., 0.85, 0.5, 1.]);
+                let pixels = renderer.draw(view, &instances, &labels, &lighting)?;
+                input.write_all(&pixels).map_err(|e| e.to_string())?;
+            }
+        }
+        drop(input);
+        if !encoder.wait().map_err(|e| e.to_string())?.success() {
+            return Err("Animation recording failed".into());
+        }
+        std::fs::remove_dir_all(dir).map_err(|e| e.to_string())?;
+        return Ok(());
+    }
     let pixels = renderer.draw(view, &instances, &ui, &lighting)?;
     let mut encoder = png::Encoder::new(
         std::fs::File::create(output).map_err(|e| e.to_string())?,

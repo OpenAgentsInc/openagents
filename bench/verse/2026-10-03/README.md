@@ -70,3 +70,27 @@ six rigs and every mapped state, finite skin palettes and bounds, head/outfit
 composition, and named-clip loading. These captures use no video grading and no
 Blizzard assets. Normal and roughness source images are retained but are not yet
 used by the current material shader.
+
+## Revised motion and Bestiary capture
+
+#10433 replaces zombie backpedaling, carry locomotion, and throw-based spell
+poses with authored limb motion. `improved-animations.mp4` shows 39 seconds of
+idle, walk, run, backward movement, left/right strafe, guard, combat readiness,
+spell windup/release, bow readiness/release, and fall/corpse poses across all six
+humanoid appearances. Playback blends state transitions, plants and lifts feet,
+and keeps ankle orientation level. Gait clocks advance from actual travel,
+including collision stops and NPC movement speed.
+
+`bestiary-combat.mp4` contains the full native cinematic battle with a six-meter
+Puglin as Claude. Its receipt includes the local monster source digest and
+rendered height. The Bestiary uses Quaternius Asset License v1.0; only code and
+rendered product evidence are retained here, not the restricted monster assets.
+The other retained character sources remain CC0. The monster has breathing motion in its native hunched
+posture, while cultists and the player use the revised humanoid poses.
+
+Validation: eight engine tests, 41 focused imported-scene tests, three native example builds,
+formatting, native animation inspection, and a native battle capture. New checks
+cover loop seams on all six rigs, backward/strafe state selection, motion clocks,
+and stopped locomotion against collision. These authored clips are a first
+rig-aware motion system; they do not add runtime terrain foot IK or a general
+animation graph.

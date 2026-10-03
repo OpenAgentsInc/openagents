@@ -192,6 +192,11 @@ fn actor(name: &str, robe: [f32; 3], monster: bool) -> Model {
             bones,
         });
     }
+    for id in [5, 13, 14, 15] {
+        let mut walk = m.clips.iter().find(|c| c.id == 4).unwrap().clone();
+        walk.id = id;
+        m.clips.push(walk);
+    }
     m.attachments.push(Attachment {
         id: 2,
         bone: 1,

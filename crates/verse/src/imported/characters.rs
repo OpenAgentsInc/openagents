@@ -1,4 +1,4 @@
-//! CC0 Universal character composition and glTF animation compilation.
+//! Licensed character composition and glTF animation compilation.
 use glam::{Mat4, Quat, Vec3};
 use sha2::{Digest, Sha256};
 use std::{collections::BTreeMap, path::Path};
@@ -369,13 +369,37 @@ pub fn compose(target: &mut Model, source: Model, head_only: bool) -> Result<(),
     }
     Ok(())
 }
+fn fingers(model: &Model) -> Vec<BoneKeys> {
+    let skin = model.skin.as_ref().unwrap();
+    model
+        .clips
+        .iter()
+        .find(|c| c.id == 250)
+        .map_or(vec![], |clip| {
+            clip.bones
+                .iter()
+                .filter(|b| {
+                    ["thumb", "index", "middle", "ring", "pinky"]
+                        .iter()
+                        .any(|prefix| skin.names[b.bone].starts_with(prefix))
+                })
+                .cloned()
+                .map(|mut b| {
+                    b.rotation.truncate(1);
+                    b.translation.truncate(1);
+                    b.scale.truncate(1);
+                    b
+                })
+                .collect()
+        })
+}
 fn archery(model: &mut Model) -> Result<(), String> {
     let skin = model.skin.as_ref().unwrap();
     let global = globals(model);
     let mut hold = Clip {
         id: 109,
         duration: 1.,
-        bones: vec![],
+        bones: fingers(model),
     };
     for side in ["l", "r"] {
         let find = |part| {
@@ -449,26 +473,236 @@ fn archery(model: &mut Model) -> Result<(), String> {
     model.clips.extend([hold, shot]);
     Ok(())
 }
-fn animations(model: &mut Model, path: &Path) -> Result<(), String> {
-    let states = [
-        (0, "Idle_Lantern_Loop"),
-        (1, "Slide_Loop"),
-        (4, "Walk_Carry_Loop"),
-        (5, "Walk_Carry_Loop"),
-        (13, "Zombie_Walk_Fwd_Loop"),
-        (46, "OverhandThrow"),
-        (100, "Slide_Loop"),
-        (109, "Idle_Shield_Loop"),
-        (25, "Sword_Block"),
-        (51, "Idle_Shield_Loop"),
-        (52, "OverhandThrow"),
-        (53, "Shield_OneShot"),
-        (64, "Idle_No_Loop"),
-        (68, "Yes"),
+/// Solves a named two-bone chain in glTF rest space, with a stable bend plane.
+fn chain(
+    model: &Model,
+    global: &[Mat4],
+    parts: [&str; 3],
+    side: &str,
+    target: Vec3,
+    bend: Vec3,
+    level_end: bool,
+) -> Result<Vec<(usize, Quat)>, String> {
+    let skin = model.skin.as_ref().ok_or("Character has no named skin")?;
+    let find = |name| {
+        skin.names
+            .iter()
+            .position(|n| n == &format!("{name}_{side}"))
+            .ok_or_else(|| format!("Missing motion joint {name}_{side}"))
+    };
+    let upper = find(parts[0])?;
+    let lower = find(parts[1])?;
+    let end = find(parts[2])?;
+    let origin = global[upper].transform_point3(Vec3::ZERO);
+    let elbow = global[lower].transform_point3(Vec3::ZERO);
+    let wrist = global[end].transform_point3(Vec3::ZERO);
+    let a = origin.distance(elbow);
+    let b = elbow.distance(wrist);
+    if a < 0.001 || b < 0.001 {
+        return Err("Degenerate motion chain".into());
+    }
+    let direction = (target - origin).normalize_or_zero();
+    let d = origin
+        .distance(target)
+        .clamp((a - b).abs() + 0.001, a + b - 0.001);
+    let target = origin + direction * d;
+    let bend = (bend - direction * bend.dot(direction)).normalize_or_zero();
+    let x = (a * a - b * b + d * d) / (2. * d);
+    let new_elbow = origin + direction * x + bend * (a * a - x * x).max(0.).sqrt();
+    let upper_world = Quat::from_rotation_arc(
+        (elbow - origin).normalize(),
+        (new_elbow - origin).normalize(),
+    ) * global[upper].to_scale_rotation_translation().1;
+    let lower_world = Quat::from_rotation_arc(
+        (wrist - elbow).normalize(),
+        (target - new_elbow).normalize(),
+    ) * global[lower].to_scale_rotation_translation().1;
+    let parent = model.bones[upper].parent as usize;
+    let mut result = vec![
+        (
+            upper,
+            global[parent].to_scale_rotation_translation().1.inverse() * upper_world,
+        ),
+        (lower, upper_world.inverse() * lower_world),
     ];
-    for (id, name) in states {
+    if level_end {
+        result.push((
+            end,
+            lower_world.inverse() * global[end].to_scale_rotation_translation().1,
+        ));
+    }
+    Ok(result)
+}
+fn humanoid_motion(model: &mut Model) -> Result<(), String> {
+    let skin = model.skin.as_ref().unwrap();
+    let rest_global = globals(model);
+    for (id, duration, stride) in [
+        (0, 3., 0.),
+        (4, 0.72, 0.40),
+        (5, 0.42, 0.53),
+        (13, 0.55, -0.34),
+        (14, 0.42, 0.45),
+        (15, 0.42, -0.45),
+        (25, 2., 0.),
+        (51, 2., 0.),
+        (52, 1., 0.),
+        (53, 1.1, 0.),
+    ] {
+        let mut tracks: BTreeMap<usize, BoneKeys> =
+            fingers(model).into_iter().map(|b| (b.bone, b)).collect();
+        for sample in 0..=32 {
+            let phase = sample as f32 / 32.;
+            let time = phase * duration;
+            let crouch = if matches!(id, 5 | 14 | 15) {
+                0.17
+            } else if stride != 0. {
+                0.10
+            } else if id == 25 || id == 51 {
+                0.035
+            } else {
+                0.
+            };
+            let mut global = rest_global.clone();
+            let pelvis = skin
+                .names
+                .iter()
+                .position(|n| n == "pelvis")
+                .ok_or("Missing pelvis")?;
+            let delta = Vec3::Y * (-crouch + 0.005 * (phase * std::f32::consts::TAU * 2.).sin());
+            for i in 0..model.bones.len() {
+                let mut ancestor = i;
+                while ancestor != pelvis && model.bones[ancestor].parent >= 0 {
+                    ancestor = model.bones[ancestor].parent as usize;
+                }
+                if ancestor == pelvis {
+                    global[i] = Mat4::from_translation(delta) * rest_global[i];
+                }
+            }
+            let parent = model.bones[pelvis].parent as usize;
+            let translation = Vec3::from(skin.rest[pelvis].translation)
+                + rest_global[parent].inverse().transform_vector3(delta);
+            tracks
+                .entry(pelvis)
+                .or_insert(BoneKeys {
+                    bone: pelvis,
+                    translation: vec![],
+                    rotation: vec![],
+                    scale: vec![],
+                })
+                .translation
+                .push((time, translation.to_array()));
+            for (side, offset) in [("l", 0.), ("r", 0.5)] {
+                let foot = skin
+                    .names
+                    .iter()
+                    .position(|n| n == &format!("foot_{side}"))
+                    .ok_or("Missing foot")?;
+                let p = (phase + offset) % 1.;
+                // Contact occupies most of the cycle; only the returning foot lifts.
+                let stance = if matches!(id, 5 | 14 | 15) {
+                    0.40
+                } else if id == 13 {
+                    0.30
+                } else {
+                    0.46
+                };
+                let (forward, lift) = if p < stance {
+                    (1. - 2. * p / stance, 0.)
+                } else {
+                    let swing = (p - stance) / (1. - stance);
+                    (
+                        -1. + 2. * swing,
+                        (swing * std::f32::consts::PI).sin()
+                            * if matches!(id, 5 | 14 | 15) {
+                                0.18
+                            } else {
+                                0.10
+                            },
+                    )
+                };
+                let target = rest_global[foot].transform_point3(Vec3::ZERO)
+                    + Vec3::new(
+                        0.,
+                        if stride == 0. { 0. } else { lift },
+                        if matches!(id, 14 | 15) {
+                            0.
+                        } else {
+                            forward * stride
+                        },
+                    )
+                    + if matches!(id, 14 | 15) {
+                        Vec3::X * forward * stride
+                    } else {
+                        Vec3::ZERO
+                    };
+                let legs = chain(
+                    model,
+                    &global,
+                    ["thigh", "calf", "foot"],
+                    side,
+                    target,
+                    Vec3::Z,
+                    true,
+                )?;
+                let upper = skin
+                    .names
+                    .iter()
+                    .position(|n| n == &format!("upperarm_{side}"))
+                    .unwrap();
+                let shoulder = global[upper].transform_point3(Vec3::ZERO);
+                let sign = shoulder.x.signum();
+                let pulse = (phase * std::f32::consts::PI).sin();
+                let target = match id {
+                    25 => shoulder + Vec3::new(-sign * 0.1, -0.12, 0.3),
+                    51 => shoulder + Vec3::new(sign * 0.08, -0.28, 0.28),
+                    52 => {
+                        shoulder + Vec3::new(sign * 0.10, -0.22 + pulse * 0.30, 0.3 + pulse * 0.12)
+                    }
+                    53 => shoulder + Vec3::new(sign * 0.07, -0.02, 0.52 - 0.15 * phase),
+                    5 | 14 | 15 => {
+                        shoulder + Vec3::new(sign * 0.07, -0.27, 0.16 - forward * stride * 0.55)
+                    }
+                    13 => shoulder + Vec3::new(sign * 0.09, -0.37, 0.12 - forward * stride * 0.6),
+                    _ => shoulder + Vec3::new(sign * 0.11, -0.48, 0.06 - forward * stride * 0.65),
+                };
+                let arms = chain(
+                    model,
+                    &global,
+                    ["upperarm", "lowerarm", "hand"],
+                    side,
+                    target,
+                    Vec3::new(sign, -0.25, -0.1),
+                    false,
+                )?;
+                for (bone, rotation) in legs.into_iter().chain(arms) {
+                    tracks
+                        .entry(bone)
+                        .or_insert(BoneKeys {
+                            bone,
+                            translation: vec![],
+                            rotation: vec![],
+                            scale: vec![],
+                        })
+                        .rotation
+                        .push((time, rotation.normalize().to_array()));
+                }
+            }
+        }
+        model.clips.retain(|c| c.id != id);
+        model.clips.push(Clip {
+            id,
+            duration,
+            bones: tracks.into_values().collect(),
+        });
+    }
+    Ok(())
+}
+fn animations(model: &mut Model, path: &Path) -> Result<(), String> {
+    for (id, name) in [(64, "Idle_No_Loop"), (68, "Yes")] {
         retarget_clip(model, path, id, name)?;
     }
+    retarget_clip(model, path, 250, "Idle_No_Loop")?;
+    humanoid_motion(model)?;
     // The Standard library has no death clip. Author a fall on its actual root rig.
     let skin = model.skin.as_ref().unwrap();
     if let Some(root) = skin.names.iter().position(|n| n == "root") {
@@ -503,6 +737,7 @@ fn animations(model: &mut Model, path: &Path) -> Result<(), String> {
         model.clips.extend([death, prone]);
     }
     archery(model)?;
+    model.clips.retain(|c| c.id != 250);
     let global = globals(model);
     let skin = model.skin.as_ref().unwrap();
     if let Some(bone) = skin.names.iter().position(|n| n == "hand_l") {
@@ -598,6 +833,19 @@ pub fn retarget_clip(model: &mut Model, path: &Path, id: u16, name: &str) -> Res
     });
     Ok(())
 }
+/// Installs a locally licensed Bestiary monster without redistributing source files.
+pub fn install_bestiary(
+    pack: &mut Pack,
+    dir: &Path,
+    path: &Path,
+    library: &Path,
+) -> Result<(), String> {
+    let mut monster = import(pack, dir, path)?;
+    animations(&mut monster, library)?;
+    pack.models.insert("claude".into(), monster);
+    pack.source_revision = "verse-bestiary-ritual-v1".into();
+    pack.validate()
+}
 /// Installs all six Standard appearances and binds the selected player outfit.
 pub fn install(pack: &mut Pack, dir: &Path, root: &Path, appearance: &str) -> Result<(), String> {
     if !APPEARANCES.contains(&appearance) {
@@ -682,7 +930,7 @@ mod tests {
         for name in APPEARANCES {
             let model = &pack.models[&format!("universal-{name}")];
             assert!(model.surfaces.iter().all(|s| !s.indices.is_empty()));
-            for id in [0, 1, 4, 5, 13, 25, 46, 51, 52, 53, 64, 68, 100, 109] {
+            for id in [0, 1, 4, 5, 13, 14, 15, 25, 46, 51, 52, 53, 64, 68, 100, 109] {
                 assert!(model.clips.iter().any(|c| c.id == id));
                 let pose = verse_engine::animation::pose(model, id, 0.7);
                 assert!(pose.iter().all(|m| m.is_finite()));
@@ -710,6 +958,15 @@ mod tests {
                     });
 
                 assert!(bounds.0 > -3. && bounds.1 < 4.);
+            }
+            for id in [4, 5, 13, 14, 15] {
+                let duration = model.clips.iter().find(|c| c.id == id).unwrap().duration;
+                let start = verse_engine::animation::pose(model, id, 0.);
+                let end = verse_engine::animation::pose(model, id, duration - 0.000001);
+                assert!(
+                    start.iter().zip(end).all(|(a, b)| a.abs_diff_eq(b, 0.001)),
+                    "Gait seam {name} {id}"
+                );
             }
             assert!(model.height > 1.5 && model.height < 3.);
         }
