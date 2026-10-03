@@ -135,6 +135,7 @@ pub(super) async fn work(output: &Output, args: &Args) -> Result<u8, Failure> {
                     .ok()
                     .filter(|t| !t.is_empty())
             }),
+            build: std::env::var("OA_BOAT_BUILD").is_ok_and(|v| v == "1"),
         };
         return super::boat::work(output, request).await;
     }

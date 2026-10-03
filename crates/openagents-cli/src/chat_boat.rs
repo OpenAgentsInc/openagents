@@ -117,6 +117,9 @@ pub(super) struct Request {
     pub logins: EngineLogins,
     /// A named snapshot to start from instead of the newest template.
     pub template: Option<String>,
+    /// Build `origin/main`'s `openagents` and `microcoder` in each sandbox
+    /// even when the template has them (`OA_BOAT_BUILD=1`).
+    pub build: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -303,7 +306,8 @@ pub(super) fn credentials(logins: EngineLogins) -> Result<Credentials, String> {
 /// The command a run's sandbox runs: read and delete the credentials, build
 /// `origin/main`'s CLI and engine on the warm target, and run the issue flow
 /// with NDJSON events. No credential appears in it.
-fn run_script(issue: u64, land: Option<Land>) -> String {
+fn run_script(issue: u64, land: Option<Land>, build: bool) -> String {
+    let build = if build { "1" } else { "" };
     let land = match land {
         Some(Land::Main) => " --land main",
         Some(Land::PullRequest) => " --land pr",
@@ -314,8 +318,10 @@ fn run_script(issue: u64, land: Option<Land>) -> String {
 # The 2026-10-02 template left ~/.openagents (the warm target, the task
 # store) owned by root (#10219), and chown -R over it takes many minutes
 # while its files stream in: run as root there, in the same HOME.
-if [ "$(id -u)" != 0 ] && [ "$(stat -c %u "$HOME/.openagents/targets" 2>/dev/null)" = 0 ]; then
-  exec sudo -n HOME="$HOME" bash "$0"
+if [ "$(id -u)" != 0 ]; then
+  for d in "$HOME/.openagents" "$HOME/.openagents/targets" "$HOME"/.openagents/targets/*/debug "$HOME"/.openagents/targets/*/debug/.fingerprint; do
+    [ "$(stat -c %u "$d" 2>/dev/null)" = 0 ] && exec sudo -n HOME="$HOME" bash "$0"
+  done
 fi
 [ "$(id -u)" = 0 ] && git config --global --add safe.directory '*'
 if [ -f {ENV_FILE} ]; then set -a; . {ENV_FILE}; set +a; rm -f {ENV_FILE}; fi
@@ -332,9 +338,13 @@ cd ~/openagents || {{ echo "boat: no clone at ~/openagents" >&2; exit 2; }}
 git fetch -q origin main && git checkout -q --detach origin/main || exit 2
 slot=$(jq -r .warm_target.slot ~/.openagents/coder-host.json 2>/dev/null)
 [ -n "$slot" ] && [ "$slot" != null ] || slot=$HOME/openagents/target
-echo "boat: building origin/main $(git rev-parse --short HEAD) on the warm target" >&2
-CARGO_TARGET_DIR="$slot" cargo build -q -p openagents-cli --bin openagents -p microcoder --bin microcoder >/tmp/oa-build.log 2>&1 \
-  || {{ tail -n 40 /tmp/oa-build.log >&2; exit 3; }}
+if [ -z "{build}" ] && [ -x "$slot/debug/openagents" ] && [ -x "$slot/debug/microcoder" ]; then
+  echo "boat: using the template's openagents and microcoder ($(jq -r .rev ~/.openagents/coder-host.json | cut -c1-10))" >&2
+else
+  echo "boat: building origin/main $(git rev-parse --short HEAD) on the warm target" >&2
+  CARGO_TARGET_DIR="$slot" cargo build -q -p openagents-cli --bin openagents -p microcoder --bin microcoder >/tmp/oa-build.log 2>&1 \
+    || {{ tail -n 40 /tmp/oa-build.log >&2; exit 3; }}
+fi
 mkdir -p ~/.oa-run/bin && cp "$slot/debug/openagents" "$slot/debug/microcoder" ~/.oa-run/bin/
 export OPENAGENTS_CODER_CONTROLLER=$HOME/.oa-run/bin/microcoder
 exec ~/.oa-run/bin/openagents chat work --local --json --issues {issue} --parallel 1{land}
@@ -1177,7 +1187,11 @@ async fn follow(
         return Err("the run's credentials could not be written".into());
     }
     let written = client
-        .write_text(id, RUN_SCRIPT, &run_script(issue, request.land))
+        .write_text(
+            id,
+            RUN_SCRIPT,
+            &run_script(issue, request.land, request.build),
+        )
         .await
         .map_err(|e| format!("the run's script could not be written: {}", why(&e)))?;
     if written.type_ != "file.written" {
@@ -1465,7 +1479,7 @@ mod tests {
 
     #[test]
     fn the_run_script_holds_no_credential_and_deletes_the_env_file_first() {
-        let script = run_script(10220, Some(Land::Main));
+        let script = run_script(10220, Some(Land::Main), false);
         let read = script.find(". /tmp/oa-run.env").unwrap();
         let removed = script.find("rm -f /tmp/oa-run.env").unwrap();
         let work = script.find("chat work").unwrap();
@@ -1475,7 +1489,7 @@ mod tests {
         for word in ["GH_TOKEN=", "XAI_API_KEY=", "ghp_", "gho_", "xai-"] {
             assert!(!script.contains(word), "{word}");
         }
-        assert!(run_script(1, None).ends_with("--parallel 1\n"));
+        assert!(run_script(1, None, true).ends_with("--parallel 1\n"));
     }
 
     #[test]

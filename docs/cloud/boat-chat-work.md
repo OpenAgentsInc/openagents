@@ -40,15 +40,16 @@ it. Each issue runs on a Boat sandbox of its own.
 4. **Credentials.** Written to `/tmp/oa-run.env` through the files API; the
    sandbox's command sources and deletes that file before anything else
    runs. See below.
-5. **Build.** When the template left `~/.openagents` owned by root (the
-   2026-10-02 template did, #10219; a `chown -R` over its warm target takes
-   many minutes while the files stream in), the run re-executes itself as
-   root in the same `HOME`. The sandbox fetches `origin/main` and builds `openagents` and
-   `microcoder` on the template's warm target (a delta build; not
-   `--locked`, so a `Cargo.lock` that lags a push does not stop the run),
-   copies them
-   out of the target slot, and points `OPENAGENTS_CODER_CONTROLLER` at that
-   `microcoder`.
+5. **Binaries.** The run uses the `openagents` and `microcoder` the
+   template built (`<slot>/debug/`, the template's `origin/main`), copied
+   out of the target slot, with `OPENAGENTS_CODER_CONTROLLER` pointing at
+   that `microcoder`. `OA_BOAT_BUILD=1` builds `origin/main`'s instead, on
+   the warm target (not `--locked`). Building in a fresh template sandbox
+   failed on 2026-10-02 while its files were still streaming in (`can't
+   find crate` for rlibs the template holds, `Permission denied` in the
+   slot), so the default does not build. When the template left
+   `~/.openagents` owned by root (#10219), the run re-executes itself as
+   root in the same `HOME`.
 6. **The issue flow** runs there: `openagents chat work --local --json
    --issues N --parallel 1` — the same flow as on a Mac: claim comment,
    worktree of `origin/main`, engine turn, checks, the multi-machine landing
