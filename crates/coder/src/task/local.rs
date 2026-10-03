@@ -153,10 +153,127 @@ pub fn hooks_log(store: &Path, name: &str, stage: &str) -> PathBuf {
     store.join("hooks").join(format!("{name}.{stage}.log"))
 }
 
+/// `remote.<name>.url` and `pushurl` values in `dir`'s repository that are
+/// relative local paths (`../origin.git`), made absolute against the main
+/// checkout: Git resolves a relative path from the directory it runs in,
+/// so from a task worktree elsewhere it names the wrong place (#10333).
+/// Each pair is a `url.<absolute>.insteadOf` key and the relative value,
+/// which Coder passes as `-c` or `GIT_CONFIG_*`;
+/// empty when every remote is a URL or an absolute path. Read once per
+/// directory.
+#[must_use]
+pub fn remote_overrides(dir: &Path) -> Vec<(String, String)> {
+    use std::sync::{Mutex, OnceLock};
+    static READ: OnceLock<Mutex<BTreeMap<PathBuf, Vec<(String, String)>>>> = OnceLock::new();
+    let read = READ.get_or_init(|| Mutex::new(BTreeMap::new()));
+    if let Some(known) = read.lock().ok().and_then(|read| read.get(dir).cloned()) {
+        return known;
+    }
+    let found = read_remote_overrides(dir);
+    if let Ok(mut read) = read.lock() {
+        read.insert(dir.to_path_buf(), found.clone());
+    }
+    found
+}
+
+fn read_remote_overrides(dir: &Path) -> Vec<(String, String)> {
+    let plain = |args: &[&str]| -> Option<String> {
+        let output = git()
+            .arg("-C")
+            .arg(coder_boundary::plain_path(dir))
+            .args(args)
+            .output()
+            .ok()?;
+        output
+            .status
+            .success()
+            .then(|| String::from_utf8_lossy(&output.stdout).into_owned())
+    };
+    let Some(listed) = plain(&["config", "--get-regexp", r"^remote\..*\.(push)?url$"]) else {
+        return Vec::new();
+    };
+    let Some(common) = plain(&["rev-parse", "--path-format=absolute", "--git-common-dir"]) else {
+        return Vec::new();
+    };
+    let common = PathBuf::from(common.trim());
+    // The main checkout holds the common directory as its `.git`; a bare
+    // repository resolves from the common directory itself.
+    let base = if common.file_name().is_some_and(|name| name == ".git") {
+        common
+            .parent()
+            .map_or_else(|| common.clone(), Path::to_path_buf)
+    } else {
+        common
+    };
+    listed
+        .lines()
+        .filter_map(|line| line.split_once(' '))
+        .filter(|(_, value)| relative_local(value))
+        .map(|(_, value)| {
+            let joined = base.join(value);
+            let absolute = std::fs::canonicalize(&joined).unwrap_or(joined);
+            // A second `remote.*.url` would add a URL, not replace one;
+            // `insteadOf` rewrites it wherever Git reads it.
+            (
+                format!("url.{}.insteadOf", absolute.display()),
+                value.to_owned(),
+            )
+        })
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect()
+}
+
+/// Whether a remote's URL is a relative local path: not a URL, not
+/// `host:path`, not absolute.
+fn relative_local(value: &str) -> bool {
+    let value = value.trim();
+    if value.is_empty() || value.contains("://") || Path::new(value).is_absolute() {
+        return false;
+    }
+    // `host:path` (scp-like) has a colon before any slash.
+    match (value.find(':'), value.find('/')) {
+        (Some(colon), Some(slash)) => colon > slash,
+        (Some(_), None) => false,
+        _ => true,
+    }
+}
+
+/// [`remote_overrides`] as `GIT_CONFIG_COUNT`/`KEY_n`/`VALUE_n` variables,
+/// numbered after `already` entries the environment carries.
+#[must_use]
+pub fn remote_override_environment(
+    dir: &Path,
+    already: usize,
+) -> Vec<(std::ffi::OsString, std::ffi::OsString)> {
+    let overrides = remote_overrides(dir);
+    if overrides.is_empty() {
+        return Vec::new();
+    }
+    let mut variables = vec![(
+        "GIT_CONFIG_COUNT".into(),
+        (already + overrides.len()).to_string().into(),
+    )];
+    for (at, (key, value)) in overrides.into_iter().enumerate() {
+        let n = already + at;
+        variables.push((format!("GIT_CONFIG_KEY_{n}").into(), key.into()));
+        variables.push((format!("GIT_CONFIG_VALUE_{n}").into(), value.into()));
+    }
+    variables
+}
+
 pub(crate) fn git_out(dir: &Path, args: &[&str]) -> Result<String, String> {
-    let output = git()
-        .arg("-C")
-        .arg(coder_boundary::plain_path(dir))
+    let mut command = git();
+    command.arg("-C").arg(coder_boundary::plain_path(dir));
+    if args
+        .first()
+        .is_some_and(|first| ["push", "fetch", "pull", "ls-remote", "remote"].contains(first))
+    {
+        for (key, value) in remote_overrides(dir) {
+            command.arg("-c").arg(format!("{key}={value}"));
+        }
+    }
+    let output = command
         .args(args)
         .output()
         .map_err(|_| "cannot run git".to_owned())?;
@@ -3786,3 +3903,7 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "local_remote_tests.rs"]
+mod remote_tests;

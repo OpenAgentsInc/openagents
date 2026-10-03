@@ -1226,6 +1226,22 @@ impl Host {
                         target.path.as_os_str().to_owned(),
                     ));
                 }
+                // A relative local remote resolves against the main
+                // checkout, not this worktree (#10333).
+                let already = environment
+                    .variables
+                    .iter()
+                    .find(|(key, _)| key == "GIT_CONFIG_COUNT")
+                    .and_then(|(_, value)| value.to_str()?.parse::<usize>().ok())
+                    .unwrap_or(0);
+                let overrides =
+                    super::local::remote_override_environment(self.workspace(), already);
+                if !overrides.is_empty() {
+                    environment
+                        .variables
+                        .retain(|(key, _)| key != "GIT_CONFIG_COUNT");
+                    environment.variables.extend(overrides);
+                }
                 let recorded = self.append(
                     &Step::said(
                         Source::System,
@@ -1491,6 +1507,12 @@ impl Host {
         if let Some(target) = &self.policy.target {
             variables.push(("CARGO_TARGET_DIR".into(), target.as_os_str().to_owned()));
         }
+        // A relative local remote resolves against the main checkout, not
+        // this worktree (#10333).
+        variables.extend(super::local::remote_override_environment(
+            self.workspace(),
+            0,
+        ));
         Ok(variables)
     }
 
