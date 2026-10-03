@@ -41,7 +41,7 @@ openagents chat read --thread ID
 openagents chat export --thread ID
 openagents chat run-coder --thread ID
 openagents chat run-command --thread ID
-openagents chat work --issues NUMBERS|LABEL [--parallel N] [--land main|pr]
+openagents chat work --issues NUMBERS|LABEL [--parallel N] [--land main|pr] [--on boat]
 ```
 
 Every command also takes `--scratch`, `--local`, and `--socket PATH`, and
@@ -395,6 +395,13 @@ ends with an `issue` line (`outcome`: `landed`, `pull_request`, `failed`,
 `message`, `thread`, `task`, `commits`), and the queue with `queue_done`.
 It exits 0 when every issue landed or was skipped. `--land main|pr`
 overrides the policy.
+
+`--on boat` runs each issue on a Boat sandbox of its own instead of this
+computer (`--parallel` up to 16); `--template NAME` and `--engine-logins
+api-keys|boat` go with it; under `--json` the extra events are
+`boat_sandbox`, `boat_seed` and `route_record`, and the final `issue` event
+adds `sandbox`, `wall_seconds`, `machine_seconds` and `cost_usd`; see
+[docs/cloud/boat-chat-work.md](../cloud/boat-chat-work.md).
 
 ### Claims
 
