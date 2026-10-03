@@ -1099,12 +1099,9 @@ impl Runner {
         {
             Ok(items) => items,
             Err(why) => {
-                note(
-                    &mut notes,
-                    format!(
-                        "Coder could not read #{number}'s projects ({why}); it reads the comments only."
-                    ),
-                );
+                if let Some(line) = crate::claim::unreadable_projects(&repository, &why) {
+                    note(&mut notes, line);
+                }
                 Vec::new()
             }
         };

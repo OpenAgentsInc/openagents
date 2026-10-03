@@ -226,3 +226,31 @@ fn the_board_answer_keeps_project_order_and_reads_blockers() {
         vec![(9, true), (1, false)]
     );
 }
+
+#[test]
+fn a_token_without_the_project_scope_is_said_once_and_the_claim_goes_on() {
+    let mut github = Fake::with_project("octo", &["Todo", "In Progress", "Done"]);
+    github.unreadable =
+        Some("Your token has not been granted the required scopes: read:project".to_owned());
+    github.issue(9, Some("Todo"), &[], &[]);
+    let project = Project::default();
+    let repository = "acme/unreadable-board";
+    let said = claim(&github, repository, 9, &body(), &project);
+    let state = github.state(9);
+    assert_eq!(state.comments.len(), 1, "the claim comment still lands");
+    assert_eq!(state.assignees, vec!["octo".to_owned()]);
+    assert_eq!(state.status.as_deref(), Some("Todo"), "the status stays");
+    let board: Vec<_> = said
+        .iter()
+        .filter(|line| line.contains("project board"))
+        .collect();
+    assert_eq!(board.len(), 1, "{said:?}");
+    assert!(board[0].contains("`project` scope"), "{}", board[0]);
+
+    // Release and close say nothing more about it.
+    let said = release(&github, repository, 9, Some(RELEASE_MARK), &project);
+    assert!(
+        !said.iter().any(|line| line.contains("project")),
+        "{said:?}"
+    );
+}

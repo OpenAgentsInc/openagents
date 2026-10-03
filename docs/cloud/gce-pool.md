@@ -124,6 +124,11 @@ The same reader as `--on boat` (`chat_boat::credentials`, engine logins
 | `OA_CODEX_API_KEY` (optional) | `OA_CODER_OPENAI_API_KEY`; Secret Manager `coder-openai-api-key` |
 | `OA_GIT_NAME`, `OA_GIT_EMAIL` | the same variables; `git config user.name/email` |
 
+`GH_TOKEN` needs the scopes `repo` and `project`, as for `--on boat`
+([boat-chat-work.md](boat-chat-work.md#credentials)): without `project` the
+run lands and closes but says once that it could not read the board, and the
+issue's Status stays where it was.
+
 They travel inside the run's script on ssh's standard input, never on a
 command line. The host saves the script with mode 600 and the script deletes
 its own file before anything else runs. Nothing is in the image.

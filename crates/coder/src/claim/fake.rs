@@ -34,6 +34,9 @@ pub struct Fake {
     pub order: Mutex<Vec<u64>>,
     /// The clock writes are stamped with.
     pub now: u64,
+    /// Why the projects cannot be read (a token without the `project`
+    /// scope), when they cannot.
+    pub unreadable: Option<String>,
 }
 
 impl Fake {
@@ -46,6 +49,7 @@ impl Fake {
             issues: Mutex::new(BTreeMap::new()),
             order: Mutex::new(Vec::new()),
             now: 1_000,
+            unreadable: None,
         }
     }
 
@@ -139,6 +143,9 @@ impl Hub for Fake {
     }
 
     fn items(&self, _: &str, number: u64, field: &str) -> Result<Vec<Item>, String> {
+        if let Some(why) = &self.unreadable {
+            return Err(why.clone());
+        }
         let Some(options) = &self.options else {
             return Ok(Vec::new());
         };

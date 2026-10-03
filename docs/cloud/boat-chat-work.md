@@ -109,6 +109,11 @@ reads and deletes first. That keeps credentials:
 | `OA_GIT_NAME`, `OA_GIT_EMAIL` | the same variables; this computer's `git config user.name/email` | commit identity |
 
 `coder-pool-git-token` is an owner OAuth token with push to the repository.
+It needs the scopes `repo` (claim comments, assignees, close, `git push`) and
+`project` (read and move the issue's Status on the OpenAgents board, project
+19; `read:project` alone reads it but cannot move it). Without `project` the
+run still lands, comments and closes; it says once that the board could not
+be read and leaves the Status as it was.
 A GitHub App installation token (Secret Manager `coder-github-app-key`, one
 hour, one repository) is the narrower follow-up; the reader above is the one
 place to change.

@@ -326,6 +326,33 @@ fn assignee<H: Hub + ?Sized>(
     }
 }
 
+/// The repositories whose projects this process could not read; each is
+/// said once, not on every claim, release and close.
+static UNREADABLE: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+/// What to say the first time `repository`'s projects cannot be read
+/// (`why`), or `None` when this process already said it. A token without
+/// the `project` scope reads like this: the flow goes on with comments
+/// and assignees, and the project status stays as it was.
+#[must_use]
+pub fn unreadable_projects(repository: &str, why: &str) -> Option<String> {
+    let mut said = UNREADABLE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if said.iter().any(|seen| seen == repository) {
+        return None;
+    }
+    said.push(repository.to_owned());
+    let scope = if why.contains("project") || why.contains("INSUFFICIENT_SCOPES") {
+        " The GitHub token needs the `project` scope (`read:project` to read it)."
+    } else {
+        ""
+    };
+    Some(format!(
+        "Could not read {repository}'s project board, so issue statuses there stay as they are: {why}.{scope} Claims go on with comments and assignees."
+    ))
+}
+
 /// Moves the issue's status to the first of `targets` each project has.
 fn status<H: Hub + ?Sized>(
     hub: &H,
@@ -338,7 +365,9 @@ fn status<H: Hub + ?Sized>(
     let items = match hub.items(repository, number, &project.field) {
         Ok(items) => items,
         Err(why) => {
-            said.push(format!("Could not read #{number}'s projects: {why}"));
+            if let Some(line) = unreadable_projects(repository, &why) {
+                said.push(line);
+            }
             return;
         }
     };
