@@ -33,13 +33,16 @@ pub(crate) const USAGE: &str = "usage: openagents eval COMMAND [OPTIONS]
       [--partition calibration|development]
                           Score each side of a store and judge them under a gate.
 Options:
-  --door NAME=URL         A door that answers POST /v1/systemone. Repeat for more.
+  --door NAME=URL         An origin or full POST /v1/systemone URL. Repeat for more.
   --timeout SECONDS       Wall time allowed for each door call, retries included.
   --suite FILE            A suite file; run defaults to the bundled support suite.
   --gate ID               A gate under crates/gym/gates/; defaults to the suite's.
   --record FILE           Append each row to this receipt-chained store.
   --store FILE            The store report and compare read.
   --baseline SIDE         The side compare judges the others against; default the first.
+Hosted Jev: --door jev-latest=https://api.typesafe.ai/v1/systemone
+Set TYPESAFE_API_KEY for this door. openagents.com is a discovery origin,
+not a hosted Jev HTTP door.
 The locked partition is never scored by a flag. A door that fails to answer
 leaves no row; the lost items are listed beside the rows and the run exits 1.";
 
@@ -309,11 +312,19 @@ async fn run_command(plan: RunPlan) -> Result<Value, String> {
     }
     let store = plan.record.as_deref().map(Store::at);
 
+    let mut recorded_rows = 0usize;
     let mut doors = Vec::new();
     for (name, url) in &plan.doors {
-        let config = Config::new()
-            .api_key("unused-by-a-local-door")
-            .base_url(url.clone())
+        let base = url.trim_end_matches('/');
+        let base = base.strip_suffix("/v1/systemone").unwrap_or(base);
+        let config = Config::new();
+        let config = if base == jev::doors::TYPESAFE_DOOR {
+            config
+        } else {
+            config.api_key("unused-by-a-local-door")
+        };
+        let config = config
+            .base_url(base)
             .default_model(name.clone())
             .timeout(plan.timeout)
             .retry(RetryPolicy {
@@ -350,6 +361,7 @@ async fn run_command(plan: RunPlan) -> Result<Value, String> {
                 Some(row) => {
                     if let Some(store) = &store {
                         append(store, &row)?;
+                        recorded_rows += 1;
                     }
                     rows.push(row);
                 }
@@ -395,7 +407,9 @@ async fn run_command(plan: RunPlan) -> Result<Value, String> {
         "partitions": plan.partitions.iter().map(|p| p.as_str()).collect::<Vec<_>>(),
         "items": items.len(),
         "timeout_seconds": plan.timeout.as_secs(),
-        "recorded_to": plan.record,
+        "recorded_to": plan.record.as_ref().filter(|_| recorded_rows > 0),
+        "record_requested": plan.record,
+        "recorded_rows": recorded_rows,
         "doors": results,
     }))
 }
@@ -688,6 +702,8 @@ fn render_run(value: &Value) -> String {
     )];
     if let Some(path) = value["recorded_to"].as_str() {
         lines.push(format!("recorded to {path}"));
+    } else if let Some(path) = value["record_requested"].as_str() {
+        lines.push(format!("nothing recorded to {path}: no rows were written"));
     }
     if value["complete"] == Value::Bool(false) {
         lines.push(
@@ -701,6 +717,13 @@ fn render_run(value: &Value) -> String {
             metrics_line(&door["metrics"]),
             door["lost"].as_array().map_or(0, Vec::len),
         ));
+        let mut reasons = BTreeMap::<String, usize>::new();
+        for loss in door["lost"].as_array().into_iter().flatten() {
+            *reasons.entry(text(loss, "detail")).or_default() += 1;
+        }
+        for (reason, count) in reasons {
+            lines.push(format!("  {count} lost: {reason}"));
+        }
     }
     lines.join("\n")
 }
@@ -788,6 +811,25 @@ mod tests {
     fn args(words: &[&str]) -> Args {
         let words: Vec<String> = words.iter().map(|w| (*w).to_owned()).collect();
         Args::parse(&words, &[]).unwrap()
+    }
+
+    #[test]
+    fn loss_reasons_are_grouped_per_door() {
+        let value = json!({
+            "doors": [
+                {"door": "a", "lost": [
+                    {"detail": "HTTP 404: POST http://example.test/v1/systemone"},
+                    {"detail": "timeout"},
+                    {"detail": "timeout"}
+                ]},
+                {"door": "b", "lost": [{"detail": "timeout"}]}
+            ]
+        });
+        let rendered = render_run(&value);
+        assert!(rendered.contains("  1 lost: HTTP 404: POST http://example.test/v1/systemone"));
+        assert!(rendered.contains("  2 lost: timeout"));
+        assert!(rendered.contains("  1 lost: timeout"));
+        assert!(!rendered.contains("recorded to"));
     }
 
     #[test]
