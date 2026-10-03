@@ -1,0 +1,15 @@
+[package]
+name = "verse-wow"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Portable imported-world state and cinematic direction for Verse"
+
+[dependencies]
+glam = { version = "0.30.10", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[lints]
+workspace = true
