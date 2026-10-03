@@ -1,0 +1,22 @@
+
+running 3 tests
+test clean_trace_remains_successful_evidence ... ok
+test form_feed_before_an_interior_record_is_not_successful_evidence ... ok
+test step_before_session_is_not_successful_evidence ... FAILED
+
+failures:
+
+---- step_before_session_is_not_successful_evidence stdout ----
+
+thread 'step_before_session_is_not_successful_evidence' (16) panicked at crates/coderbench/tests/posthoc_trace_integrity.rs:72:9:
+assertion `left != right` failed
+  left: Passed
+ right: Passed
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    step_before_session_is_not_successful_evidence
+
+test result: FAILED. 2 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

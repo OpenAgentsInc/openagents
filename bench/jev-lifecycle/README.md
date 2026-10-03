@@ -4,7 +4,8 @@ Small Python benchmark tools for source preparation, bounded evidence gathering,
 and patch review. Product code remains in Rust. This directory is separate from
 the frozen `bench/delegation-study` preparer and does not change product routing.
 
-Use Python 3.11 or later. Export `AI_GATEWAY_API_KEY` in the invoking process.
+Use Python 3.11 or later for the lifecycle tools; the clause review runner
+requires Python 3.13 or later. Export `AI_GATEWAY_API_KEY` in the invoking process.
 The client follows the repository's Vercel transport in `crates/jev/src/doors.rs`:
 `https://ai-gateway.vercel.sh/typesafe/v1/systemone`, model `typesafe-ai/jev`.
 It makes one request, disables redirects and environment proxies, and requests
@@ -61,10 +62,67 @@ before using these judgments in a workflow.
 contract questions over applied candidate source and is tailored to three
 exposed task families. It is not a general correctness checker.
 
+## Preview declaration selection
+
+`spans.py` separates metadata selection from source materialization. It reserves
+catalog positions for public operations, retains complete task clauses, and
+renders the same bounded source pack for deterministic and supplied Jev choices.
+This command makes no network calls:
+
+```sh
+python3 bench/jev-lifecycle/spans.py \
+  --repo . --rev SOURCE_COMMIT --index /path/to/index.json \
+  --task-manifest /path/to/public-tasks.json --task-id alternative-beta \
+  --output /path/to/new-span-preview
+```
+
+Read `deterministic-pack.md`. `state.json` and `questions.json` contain the exact
+semantic-selection input. Supply a retained gateway response with
+`--answers /path/to/response.json` to also write `jev-pack.md`. The preview does
+not claim complete dependency coverage. Required instructions and contracts
+must be supplied separately in full, as the native pilot does.
+
+## Run or inspect the native comparison
+
+The [native pilot protocol](../../docs/audits/2026-10-03-independent-efficiency/jev-native-pilot/protocol.md)
+defines a fixed 12-attempt comparison of bare Claude, deterministic lean
+delegation, and Jev source selection. It uses Linux isolation, pinned historical
+source, prebuilt Cargo seeds, independent checks, and a metered inference broker.
+It requires separately provisioned private credentials; it is not a command to
+run an unrestricted agent in the current checkout.
+
+`make_native_plan.py` freezes the staged inputs and schedule. Then
+`run_native_panel.py --plan PLAN --output NEW_DIRECTORY --credential-master PRIVATE_FILE --probe-result PROBE_RESULT`
+runs each registered attempt once. It stops on unknown accounting or unconfirmed cleanup. Never
+resume a partial plan by deleting outputs or replacing a failed attempt.
+
+Recompute retained outcomes without execution or network access:
+
+```sh
+python3 bench/jev-lifecycle/report_native_pilot.py \
+  --plan /path/to/evidence/plan/plan.json --configs /path/to/evidence/plan \
+  --runs /path/to/evidence/runs --panel /path/to/evidence/panel/panel.json \
+  --output /path/to/new-report
+python3 bench/jev-lifecycle/trace_summary.py \
+  --plan /path/to/evidence/plan/plan.json --runs /path/to/evidence/runs \
+  --output /path/to/new-trace-summary.json
+```
+
+The reporter verifies candidate, provider, prompt, configuration, and receipt
+bindings and preserves missing or invalid attempts. The trace summary counts
+visible tool requests and repeated command hashes. A requested action is not
+proof of execution; a repeated command is not automatically wasted work.
+
+The separate [clause review runner](clause-coverage/RUNNER.md) prepares complete
+changed source and public contracts for one advisory Choice per task clause.
+It freezes all requests before calls, skips oversized mandatory evidence, and
+preserves every candidate. Its answers do not accept or repair a native patch.
+
 ## Recompute and test
 
 ```sh
 python3 -m unittest discover -s bench/jev-lifecycle -v
+python3.13 -m unittest discover -s bench/jev-lifecycle/clause-coverage -v
 python3 bench/jev-lifecycle/report.py \
   --artifacts docs/audits/2026-10-03-independent-efficiency/jev-lifecycle \
   --output /tmp/jev-lifecycle-results.json
@@ -84,3 +142,7 @@ deadline. Interrupted calls retain a durable launch intent with unknown cost;
 inspect it before admitting more work. Private artifact permissions protect
 the exact state and responses during collection. Review artifacts before
 publishing them.
+
+The [completed native pilot](../../docs/audits/2026-10-03-independent-efficiency/jev-native-pilot/README.md)
+reports the measured savings and failed quality checks together. Its added
+trace diagnostic and advisory review are separate from registered native scores.

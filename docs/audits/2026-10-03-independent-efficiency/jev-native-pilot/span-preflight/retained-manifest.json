@@ -1,0 +1,58 @@
+{
+  "files": [
+    {
+      "path": "briefing.md",
+      "sha256": "bbeae9265f4733f626a79bf663075d601f00437e1e62badfe6ce078b9c97a521",
+      "bytes": 16043
+    },
+    {
+      "path": "catalog.json",
+      "sha256": "4166c0755f21e5075d94aebf393d97b43d7847bfef84c16c0407ef3eeb0dec5a",
+      "bytes": 86489
+    },
+    {
+      "path": "deterministic-briefing.md",
+      "sha256": "d5496ffe68b19d231319d7b9e7956bfad83f3905e649ac3d1cbc26b0bcfd3a39",
+      "bytes": 16204
+    },
+    {
+      "path": "deterministic-pack.json",
+      "sha256": "7cc7ff5794bae9be24abf3dc1e6fac303105d5e103b53cf933094c78e4f1ef1f",
+      "bytes": 37083
+    },
+    {
+      "path": "gateway-call/receipt.json",
+      "sha256": "1d1d86fffe1a48d9b8fc43190a5a4bde48b50b8e8847ceb7fd7855cf7e389a1e",
+      "bytes": 1896
+    },
+    {
+      "path": "gateway-call/request.json",
+      "sha256": "cb06ed2036eae9091d5b23bc4b939e1e94b029fb89e8e97d178646921f93473a",
+      "bytes": 62947
+    },
+    {
+      "path": "gateway-call/response.json",
+      "sha256": "6d358ca6ffaf3f4ed26d57108bb66debd5d592531d7b9153a30eedba9d79349a",
+      "bytes": 8591
+    },
+    {
+      "path": "gateway-receipt.json",
+      "sha256": "23397d324d18ddbde6752ae6604a47e248c79b77a72ff1cf1269e40345cace69",
+      "bytes": 2393
+    },
+    {
+      "path": "pack.json",
+      "sha256": "73a8884cadd894138f073c1e4ff8d732c22c252b1e5d7471efeb6cdffa5a5989",
+      "bytes": 34065
+    },
+    {
+      "path": "preparation.json",
+      "sha256": "23a0405a1512eda401ffec73ec65e51d25e397bf7ddffe9b67873678db42992f",
+      "bytes": 3271
+    }
+  ],
+  "omitted": [
+    "common-prompt.txt and prompt.txt; identical historical instructions are bound in the task manifest and native study inputs"
+  ],
+  "kind": "preflight_call_not_a_native_trial"
+}

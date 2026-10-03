@@ -1,0 +1,176 @@
+{
+  "method": "Review packets omitted arm identifiers and execution outcomes. Findings were written before joining the arm mapping. Findings are static, not new executed tests.",
+  "rows": [
+    {
+      "run_id": "86cdf87c-1a18-48d8-b02a-20bd32bc5c45",
+      "position": 1,
+      "arm": "bare",
+      "task_id": "alternative-beta",
+      "repetition": 1,
+      "blind_id": "e5fbf039-d10a-42a6-83c7-abcea67ff2b8",
+      "candidate_manifest_sha256": "a4d93bec527aae1138fc6cdfc11b24727b950a7dc93a4aa8f46acba95be546fd",
+      "findings": 2,
+      "finding_ids": [
+        "E1",
+        "E2"
+      ],
+      "findings_json_sha256": "395a69b7b278e86cc51a1449beb291a6c44de2ea10964b3bf8b3e02a05559c41"
+    },
+    {
+      "run_id": "e442d853-74da-4d6c-94e9-8deb8f2dea08",
+      "position": 2,
+      "arm": "deterministic",
+      "task_id": "alternative-beta",
+      "repetition": 1,
+      "blind_id": "55b78803-3d4f-4f24-aaa1-b50203311133",
+      "candidate_manifest_sha256": "8c40fc51ddfce76c9446b49b9035b23e023651c591b2a7a31daacdb2bd30c903",
+      "findings": 0,
+      "finding_ids": [],
+      "findings_json_sha256": "b8a4301befa99cac8c1d239e759e6b51d3e6d9d3dde7a57bcccbced0ac9a4d87"
+    },
+    {
+      "run_id": "a46f6766-e906-4a64-a467-c57bfefdb3ba",
+      "position": 3,
+      "arm": "jev",
+      "task_id": "alternative-beta",
+      "repetition": 1,
+      "blind_id": "b82d458b-c7a2-4c47-beae-6b51b6497309",
+      "candidate_manifest_sha256": "28219e0318d60a4c7280fa7145677c172b216b86a6f302b923adcd7d9165316f",
+      "findings": 1,
+      "finding_ids": [
+        "B1"
+      ],
+      "findings_json_sha256": "ad5888617f33eec861853a1468b03530fba915ecd6fd7de58db1d6572aa9bf1a"
+    },
+    {
+      "run_id": "876596da-236c-438e-91dd-a696291b766b",
+      "position": 4,
+      "arm": "jev",
+      "task_id": "alternative-gamma",
+      "repetition": 1,
+      "blind_id": "3a4d5159-4758-467f-b4b4-69b17471e97d",
+      "candidate_manifest_sha256": "75a76be9ec9fd49c87aae644d811efb6f1d9a5d0fcab6db47f3979faee1b2b16",
+      "findings": 2,
+      "finding_ids": [
+        "G1",
+        "G2"
+      ],
+      "findings_json_sha256": "b7e1a70e6a8bde67091e5dc5fdc422bfeb87b8f659d1d792373871068b3c80d6"
+    },
+    {
+      "run_id": "405edc88-0837-4efb-ab77-4a1a17fbb031",
+      "position": 5,
+      "arm": "bare",
+      "task_id": "alternative-gamma",
+      "repetition": 1,
+      "blind_id": "71ce8662-b5eb-417c-82df-8b399bd1524d",
+      "candidate_manifest_sha256": "db7ad76ba478fb4669ba4e2bc8163667ee3a8d66066134f4c87a925b24f100c4",
+      "findings": 2,
+      "finding_ids": [
+        "G1",
+        "G2"
+      ],
+      "findings_json_sha256": "a02531b542bbba6dd13e99eaf03a67bd322555b308ba0a32e8a3dbce1f502648"
+    },
+    {
+      "run_id": "3f2caadb-ccf7-496c-a4c5-d793b3d00321",
+      "position": 6,
+      "arm": "deterministic",
+      "task_id": "alternative-gamma",
+      "repetition": 1,
+      "blind_id": "6c7040bd-1bba-42d4-b592-512cce884302",
+      "candidate_manifest_sha256": "81f9f790f86e6339fe388fdd272ba61429bc0dfe7cb51ffa46cbd7dbd59bc58a",
+      "findings": 2,
+      "finding_ids": [
+        "G1",
+        "G2"
+      ],
+      "findings_json_sha256": "87cc50249e18961f13da6b827d9df4b983b83fcdd6afeefe86d5329b588cb57e"
+    },
+    {
+      "run_id": "3fb852b4-f4d8-4147-adaa-a1209cfa1917",
+      "position": 7,
+      "arm": "deterministic",
+      "task_id": "alternative-beta",
+      "repetition": 2,
+      "blind_id": "53b718d2-bdc7-414a-9be9-d8d808571c40",
+      "candidate_manifest_sha256": "f84dffa1084e0a773661ba0cc1db63144703fcaec5b958e590563ce4c31202cd",
+      "findings": 1,
+      "finding_ids": [
+        "B1"
+      ],
+      "findings_json_sha256": "4badb04248f3c2b626c618dc8ba2b988f62b700fd29467b784338c26f225c534"
+    },
+    {
+      "run_id": "af869a80-4277-4c0b-a4d7-b7b7c1d1d273",
+      "position": 8,
+      "arm": "jev",
+      "task_id": "alternative-beta",
+      "repetition": 2,
+      "blind_id": "9bafab36-254c-4d91-a4b6-0b80fe68a5fd",
+      "candidate_manifest_sha256": "f6cc0df83387e786adb3a41f9225f9bccf75d2df9355473f0dd109bac5992007",
+      "findings": 1,
+      "finding_ids": [
+        "B1"
+      ],
+      "findings_json_sha256": "e82a4796edea2f4bf8df8112c72b30492871c44317216ce979969dd74b30983a"
+    },
+    {
+      "run_id": "c2113cf1-68a0-41cb-ac09-af031f931f28",
+      "position": 9,
+      "arm": "bare",
+      "task_id": "alternative-beta",
+      "repetition": 2,
+      "blind_id": "254c1aad-1b48-4853-869f-a249fe121341",
+      "candidate_manifest_sha256": "328a211aa2cc6bba251bf3e6903d68cf2ae5b62c614a807f29d200c1e3b253c9",
+      "findings": 0,
+      "finding_ids": [],
+      "findings_json_sha256": "d68401e45fe3a117660d6706c7dbeccb537e5b5dff811d2956ad6df2fb08d0a8"
+    },
+    {
+      "run_id": "4d53401c-cace-4a0c-8768-442333d9820b",
+      "position": 10,
+      "arm": "bare",
+      "task_id": "alternative-gamma",
+      "repetition": 2,
+      "blind_id": "aea05ee2-d29f-4c2c-b824-453847b66afe",
+      "candidate_manifest_sha256": "305ac37bfab1c4f2f0dbe186a91dadfd2908e09788c854586feb6517bd62afa5",
+      "findings": 2,
+      "finding_ids": [
+        "G1",
+        "G2"
+      ],
+      "findings_json_sha256": "0742710cd60a1342088d17e8b39321de59428c50ce57d0d2ab39af4178606b48"
+    },
+    {
+      "run_id": "bcb7539d-3d80-44a5-af48-835e2fbc4e67",
+      "position": 11,
+      "arm": "deterministic",
+      "task_id": "alternative-gamma",
+      "repetition": 2,
+      "blind_id": "e03c48e5-b2cc-4e5b-a1db-b073bc6388f2",
+      "candidate_manifest_sha256": "8a33cd32bb4b0db9db6434a73c45214aa4e87b3e3651da5dca72f05f3614adf6",
+      "findings": 2,
+      "finding_ids": [
+        "G1",
+        "G2"
+      ],
+      "findings_json_sha256": "c408b105fb19a796e70c1c11c89e08e65f11b4f82ed2af25376537e93df3fc7c"
+    },
+    {
+      "run_id": "e1ff393a-fc48-48b0-ae41-a4313af8fdac",
+      "position": 12,
+      "arm": "jev",
+      "task_id": "alternative-gamma",
+      "repetition": 2,
+      "blind_id": "05a0357e-2307-40b6-a747-3d633ea22388",
+      "candidate_manifest_sha256": "a4ad5cbbb491f3afc8fe498794eb2e22a29cac294c72eee948b263f9840681f1",
+      "findings": 2,
+      "finding_ids": [
+        "G1",
+        "G2"
+      ],
+      "findings_json_sha256": "02c2db5349656f82fbcbf60c1ce321858042eedcf97d50562d7aad8d6e10b8bb"
+    }
+  ]
+}

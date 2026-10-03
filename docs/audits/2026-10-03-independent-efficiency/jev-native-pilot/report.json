@@ -1,0 +1,1727 @@
+{
+  "schema": "openagents.jev-lifecycle.native-pilot-report.v1",
+  "plan_sha256": "e8dde52655c0cf76ad60b02e9bf81739690113770c3d5164cdb0b305b2fa7824",
+  "status": "complete",
+  "scheduled_attempts": 12,
+  "rows": [
+    {
+      "position": 1,
+      "run_id": "86cdf87c-1a18-48d8-b02a-20bd32bc5c45",
+      "task_id": "alternative-beta",
+      "repetition": 1,
+      "arm": "bare",
+      "launched": true,
+      "final_receipt_present": true,
+      "final_receipt_file_present": true,
+      "status": "complete",
+      "reported_accepted": true,
+      "accepted": true,
+      "model_completed": true,
+      "execution_closed": true,
+      "cleanup_confirmed": true,
+      "safe_to_continue": true,
+      "accounting_complete": true,
+      "cost_lower_usd": 0.39154659999999997,
+      "cost_upper_usd": 0.39154659999999997,
+      "cost_usd": 0.39154659999999997,
+      "native_cost_lower_usd": 0.39154659999999997,
+      "native_cost_upper_usd": 0.39154659999999997,
+      "jev_cost_lower_usd": 0.0,
+      "jev_cost_upper_usd": 0.0,
+      "cli_reported_cost_usd": 0.39154659999999997,
+      "provider_calls": 12,
+      "unknown_provider_calls": 0,
+      "served_models": [
+        "claude-sonnet-5-5"
+      ],
+      "provider_usage": {
+        "cache_creation_input_tokens": 40680,
+        "cache_read_input_tokens": 576043,
+        "cache_write_1h_tokens": 40680,
+        "cache_write_5m_tokens": 0,
+        "input_tokens": 24,
+        "output_tokens": 11357
+      },
+      "checks_endpoint_wall_s": 252.713841854,
+      "observed_endpoint_wall_s": 252.999287452,
+      "endpoint_wall_s": 252.999287452,
+      "phase_wall_s": {
+        "acceptance": 66.43675200000007,
+        "final_cleanup": 0.2818531009997969,
+        "native": 181.68163720600023,
+        "preparation": 0.7279363040001954,
+        "native_scratch_release": 3.645262815,
+        "native_retained": 181.5189700689998,
+        "preparation_reported": 0.7036467789998824,
+        "gateway_call": null,
+        "catalog": null,
+        "materialization": null
+      },
+      "native_phases_s": {
+        "export_s": 3.802751597000224,
+        "git_snapshot_s": 3.750637814000129,
+        "target_seed_copy_s": 6.263732123999944,
+        "prepare_s": 15.554051224999967,
+        "executor_s": 160.140004803,
+        "capture_s": 4.641580354000325,
+        "provider_drain_s": 0.01041230100008761
+      },
+      "check_phases": {
+        "scope": {
+          "wall_s": 0.17748834399981206
+        },
+        "format": {
+          "wall_s": 0.2706191880001825
+        },
+        "ordinary": {
+          "wall_s": 49.2996724450004,
+          "compile_wall_s": 41.9231682970003,
+          "test_wall_s": 7.35541460200011
+        },
+        "independent": {
+          "wall_s": 1.4594396879997475,
+          "compile_wall_s": 1.0241018549995715,
+          "test_wall_s": 0.420085366999956
+        }
+      },
+      "check_setup_s": {
+        "apply_candidate_s": 0.022093673000199487,
+        "export_s": 3.515542984000149,
+        "git_snapshot_s": 4.712276507999832,
+        "seed_copy_s": 2.129775769999924,
+        "seed_validation_s": 4.091457024000192,
+        "setup_s": 14.986987292999856
+      },
+      "check_outcomes": {
+        "scope": true,
+        "format": true,
+        "ordinary": true,
+        "independent": true
+      },
+      "failed_stage": null,
+      "artifact_errors": [],
+      "telemetry_errors": [],
+      "pilot_sha256": "ef527d6d154ff67c5fe9e9d130bc2581822666ceec040a693f63f061624d86d0"
+    },
+    {
+      "position": 2,
+      "run_id": "e442d853-74da-4d6c-94e9-8deb8f2dea08",
+      "task_id": "alternative-beta",
+      "repetition": 1,
+      "arm": "deterministic",
+      "launched": true,
+      "final_receipt_present": true,
+      "final_receipt_file_present": true,
+      "status": "complete",
+      "reported_accepted": true,
+      "accepted": true,
+      "model_completed": true,
+      "execution_closed": true,
+      "cleanup_confirmed": true,
+      "safe_to_continue": true,
+      "accounting_complete": true,
+      "cost_lower_usd": 0.3609604,
+      "cost_upper_usd": 0.3609604,
+      "cost_usd": 0.3609604,
+      "native_cost_lower_usd": 0.3609604,
+      "native_cost_upper_usd": 0.3609604,
+      "jev_cost_lower_usd": 0.0,
+      "jev_cost_upper_usd": 0.0,
+      "cli_reported_cost_usd": 0.36096040000000007,
+      "provider_calls": 12,
+      "unknown_provider_calls": 0,
+      "served_models": [
+        "claude-sonnet-5-5"
+      ],
+      "provider_usage": {
+        "cache_creation_input_tokens": 45626,
+        "cache_read_input_tokens": 419892,
+        "cache_write_1h_tokens": 45626,
+        "cache_write_5m_tokens": 0,
+        "input_tokens": 24,
+        "output_tokens": 9443
+      },
+      "checks_endpoint_wall_s": 197.029160885,
+      "observed_endpoint_wall_s": 197.368601644,
+      "endpoint_wall_s": 197.368601644,
+      "phase_wall_s": {
+        "acceptance": 55.10362298700011,
+        "final_cleanup": 0.33630301199991663,
+        "native": 140.90200660599976,
+        "preparation": 0.6148700590001681,
+        "native_scratch_release": 0.289839944,
+        "native_retained": 140.77203046299974,
+        "preparation_reported": 0.6021290690000569,
+        "gateway_call": null,
+        "catalog": 0.20052644400038844,
+        "materialization": 0.08906153900034042
+      },
+      "native_phases_s": {
+        "export_s": 0.6999019660001977,
+        "git_snapshot_s": 0.7967085599998427,
+        "target_seed_copy_s": 2.1191751070000464,
+        "prepare_s": 4.8714518199999475,
+        "executor_s": 134.5799103319996,
+        "capture_s": 0.4474342749999778,
+        "provider_drain_s": 0.003938982999898144
+      },
+      "check_phases": {
+        "scope": {
+          "wall_s": 0.09879338800010373
+        },
+        "format": {
+          "wall_s": 0.26832410899987735
+        },
+        "ordinary": {
+          "wall_s": 49.111186074000216,
+          "compile_wall_s": 41.7898114919999,
+          "test_wall_s": 7.300946460999967
+        },
+        "independent": {
+          "wall_s": 1.5070268679996843,
+          "compile_wall_s": 1.0716226130002724,
+          "test_wall_s": 0.41951100100004624
+        }
+      },
+      "check_setup_s": {
+        "apply_candidate_s": 0.017011255999932473,
+        "export_s": 0.4421532940000361,
+        "git_snapshot_s": 0.8413191409999854,
+        "seed_copy_s": 0.5732989580001231,
+        "seed_validation_s": 1.5784087030001501,
+        "setup_s": 3.879680204000124
+      },
+      "check_outcomes": {
+        "scope": true,
+        "format": true,
+        "ordinary": true,
+        "independent": true
+      },
+      "failed_stage": null,
+      "artifact_errors": [],
+      "telemetry_errors": [],
+      "pilot_sha256": "d6d80eb061deca4af306f15eabada591830562b1f20626f4c0fefe75ba72c12c"
+    },
+    {
+      "position": 3,
+      "run_id": "a46f6766-e906-4a64-a467-c57bfefdb3ba",
+      "task_id": "alternative-beta",
+      "repetition": 1,
+      "arm": "jev",
+      "launched": true,
+      "final_receipt_present": true,
+      "final_receipt_file_present": true,
+      "status": "complete",
+      "reported_accepted": true,
+      "accepted": true,
+      "model_completed": true,
+      "execution_closed": true,
+      "cleanup_confirmed": true,
+      "safe_to_continue": true,
+      "accounting_complete": true,
+      "cost_lower_usd": 0.27280118400000003,
+      "cost_upper_usd": 0.27280118400000003,
+      "cost_usd": 0.27280118400000003,
+      "native_cost_lower_usd": 0.2716482,
+      "native_cost_upper_usd": 0.2716482,
+      "jev_cost_lower_usd": 0.001152984,
+      "jev_cost_upper_usd": 0.001152984,
+      "cli_reported_cost_usd": 0.2716482,
+      "provider_calls": 6,
+      "unknown_provider_calls": 0,
+      "served_models": [
+        "claude-sonnet-5-5"
+      ],
+      "provider_usage": {
+        "cache_creation_input_tokens": 39040,
+        "cache_read_input_tokens": 168021,
+        "cache_write_1h_tokens": 39040,
+        "cache_write_5m_tokens": 0,
+        "input_tokens": 12,
+        "output_tokens": 8186
+      },
+      "checks_endpoint_wall_s": 178.427725441,
+      "observed_endpoint_wall_s": 178.750432564,
+      "endpoint_wall_s": 178.750432564,
+      "phase_wall_s": {
+        "acceptance": 55.005046967,
+        "final_cleanup": 0.31859833299995444,
+        "native": 120.54329110899971,
+        "preparation": 2.4470843690000947,
+        "native_scratch_release": 0.31183988,
+        "native_retained": 120.41450085399993,
+        "preparation_reported": 2.4241491920001863,
+        "gateway_call": 1.9205541999999696,
+        "catalog": 0.24642986199978623,
+        "materialization": 0.0491970670000228
+      },
+      "native_phases_s": {
+        "export_s": 0.6888627040002575,
+        "git_snapshot_s": 0.7680266259999371,
+        "target_seed_copy_s": 2.062066603000403,
+        "prepare_s": 4.684666593000202,
+        "executor_s": 114.31935947700003,
+        "capture_s": 0.443047905000185,
+        "provider_drain_s": 0.003776671999730752
+      },
+      "check_phases": {
+        "scope": {
+          "wall_s": 0.0817556050001258
+        },
+        "format": {
+          "wall_s": 0.321258797000155
+        },
+        "ordinary": {
+          "wall_s": 48.807489343999805,
+          "compile_wall_s": 41.44285967800033,
+          "test_wall_s": 7.348635963000106
+        },
+        "independent": {
+          "wall_s": 1.7128790599999775,
+          "compile_wall_s": 1.2220232569998188,
+          "test_wall_s": 0.4709377429999222
+        }
+      },
+      "check_setup_s": {
+        "apply_candidate_s": 0.008020433000183402,
+        "export_s": 0.4679803119997814,
+        "git_snapshot_s": 0.7885465600002135,
+        "seed_copy_s": 0.5145096429996556,
+        "seed_validation_s": 1.655495905999942,
+        "setup_s": 3.836513625000407
+      },
+      "check_outcomes": {
+        "scope": true,
+        "format": true,
+        "ordinary": true,
+        "independent": true
+      },
+      "failed_stage": null,
+      "artifact_errors": [],
+      "telemetry_errors": [],
+      "pilot_sha256": "7c7279f1da5a59937eb93153ec96669b1338d365e86eecfeca5296573d3c1462"
+    },
+    {
+      "position": 4,
+      "run_id": "876596da-236c-438e-91dd-a696291b766b",
+      "task_id": "alternative-gamma",
+      "repetition": 1,
+      "arm": "jev",
+      "launched": true,
+      "final_receipt_present": true,
+      "final_receipt_file_present": true,
+      "status": "complete",
+      "reported_accepted": false,
+      "accepted": false,
+      "model_completed": true,
+      "execution_closed": true,
+      "cleanup_confirmed": true,
+      "safe_to_continue": true,
+      "accounting_complete": true,
+      "cost_lower_usd": 0.377563142,
+      "cost_upper_usd": 0.377563142,
+      "cost_usd": 0.377563142,
+      "native_cost_lower_usd": 0.3762296,
+      "native_cost_upper_usd": 0.3762296,
+      "jev_cost_lower_usd": 0.001333542,
+      "jev_cost_upper_usd": 0.001333542,
+      "cli_reported_cost_usd": 0.3762296,
+      "provider_calls": 8,
+      "unknown_provider_calls": 0,
+      "served_models": [
+        "claude-sonnet-5-5"
+      ],
+      "provider_usage": {
+        "cache_creation_input_tokens": 50790,
+        "cache_read_input_tokens": 293538,
+        "cache_write_1h_tokens": 50790,
+        "cache_write_5m_tokens": 0,
+        "input_tokens": 16,
+        "output_tokens": 11433
+      },
+      "checks_endpoint_wall_s": 174.120504072,
+      "observed_endpoint_wall_s": 174.443642554,
+      "endpoint_wall_s": 174.443642554,
+      "phase_wall_s": {
+        "acceptance": 45.82392077199984,
+        "final_cleanup": 0.31997273000024506,
+        "native": 126.72841842599973,
+        "preparation": 1.1153618880002796,
+        "native_scratch_release": 0.331060338,
+        "native_retained": 126.5814077140003,
+        "preparation_reported": 1.0981409650003116,
+        "gateway_call": 0.6174313569999867,
+        "catalog": 0.21680116999959864,
+        "materialization": 0.03956698100000722
+      },
+      "native_phases_s": {
+        "export_s": 0.7130597730001682,
+        "git_snapshot_s": 0.8559098870000525,
+        "target_seed_copy_s": 2.109211098999822,
+        "prepare_s": 4.866649645000052,
+        "executor_s": 119.9962814190003,
+        "capture_s": 0.5858333930000299,
+        "provider_drain_s": 0.004171270999904664
+      },
+      "check_phases": {
+        "scope": {
+          "wall_s": 0.11127011600001424
+        },
+        "format": {
+          "wall_s": 0.3701998250003271
+        },
+        "ordinary": {
+          "wall_s": 39.68304903299986,
+          "compile_wall_s": 37.68705410800021,
+          "test_wall_s": 1.9776864410000599
+        },
+        "independent": {
+          "wall_s": 1.7606429590000516,
+          "compile_wall_s": 1.323338713999874,
+          "test_wall_s": 0.4211677309999686
+        }
+      },
+      "check_setup_s": {
+        "apply_candidate_s": 0.012240478999956395,
+        "export_s": 0.5048834909998732,
+        "git_snapshot_s": 0.7868141200001446,
+        "seed_copy_s": 0.4209842730001583,
+        "seed_validation_s": 1.5086778859999868,
+        "setup_s": 3.6657016029998886
+      },
+      "check_outcomes": {
+        "scope": true,
+        "format": true,
+        "ordinary": true,
+        "independent": false
+      },
+      "failed_stage": null,
+      "artifact_errors": [],
+      "telemetry_errors": [],
+      "pilot_sha256": "0623d7c83251d232f3a5838f7160e148a30775e21f784e43602e273e26c5f721"
+    },
+    {
+      "position": 5,
+      "run_id": "405edc88-0837-4efb-ab77-4a1a17fbb031",
+      "task_id": "alternative-gamma",
+      "repetition": 1,
+      "arm": "bare",
+      "launched": true,
+      "final_receipt_present": true,
+      "final_receipt_file_present": true,
+      "status": "complete",
+      "reported_accepted": false,
+      "accepted": false,
+      "model_completed": true,
+      "execution_closed": true,
+      "cleanup_confirmed": true,
+      "safe_to_continue": true,
+      "accounting_complete": true,
+      "cost_lower_usd": 0.6664406,
+      "cost_upper_usd": 0.6664406,
+      "cost_usd": 0.6664406,
+      "native_cost_lower_usd": 0.6664406,
+      "native_cost_upper_usd": 0.6664406,
+      "jev_cost_lower_usd": 0.0,
+      "jev_cost_upper_usd": 0.0,
+      "cli_reported_cost_usd": 0.6664406,
+      "provider_calls": 18,
+      "unknown_provider_calls": 0,
+      "served_models": [
+        "claude-sonnet-5-5"
+      ],
+      "provider_usage": {
+        "cache_creation_input_tokens": 67425,
+        "cache_read_input_tokens": 1157663,
+        "cache_write_1h_tokens": 67425,
+        "cache_write_5m_tokens": 0,
+        "input_tokens": 34,
+        "output_tokens": 16514
+      },
+      "checks_endpoint_wall_s": 255.338822862,
+      "observed_endpoint_wall_s": 255.649847842,
+      "endpoint_wall_s": 255.649847842,
+      "phase_wall_s": {
+        "acceptance": 48.35062095500007,
+        "final_cleanup": 0.3073305039997649,
+        "native": 206.1980250480001,
+        "preparation": 0.24801761900016572,
+        "native_scratch_release": 0.400434197,
+        "native_retained": 206.08725095,
+        "preparation_reported": 0.23034153700018578,
+        "gateway_call": null,
+        "catalog": null,
+        "materialization": null
+      },
+      "native_phases_s": {
+        "export_s": 0.7027345739998054,
+        "git_snapshot_s": 0.8618393420001667,
+        "target_seed_copy_s": 1.7830801219997738,
+        "prepare_s": 4.406601698000031,
+        "executor_s": 200.16138404599997,
+        "capture_s": 0.531762749000336,
+        "provider_drain_s": 0.004313956999794755
+      },
+      "check_phases": {
+        "scope": {
+          "wall_s": 0.095572317999995
+        },
+        "format": {
+          "wall_s": 0.26915414500035695
+        },
+        "ordinary": {
+          "wall_s": 42.08296281699995,
+          "compile_wall_s": 40.08608953000021,
+          "test_wall_s": 1.9770112800001698
+        },
+        "independent": {
+          "wall_s": 1.7571105699998952,
+          "compile_wall_s": 1.2721035750000738,
+          "test_wall_s": 0.47111438000001726
+        }
+      },
+      "check_setup_s": {
+        "apply_candidate_s": 0.02031484500002989,
+        "export_s": 0.49996218500018585,
+        "git_snapshot_s": 0.8750697490004313,
+        "seed_copy_s": 0.4557460720002382,
+        "seed_validation_s": 1.6071846199997708,
+        "setup_s": 3.882206662000044
+      },
+      "check_outcomes": {
+        "scope": true,
+        "format": true,
+        "ordinary": true,
+        "independent": false
+      },
+      "failed_stage": null,
+      "artifact_errors": [],
+      "telemetry_errors": [],
+      "pilot_sha256": "5da1d4f4ab8987a7dc99542642e3ba40697bd6e9e05a51fde1e797dba42f005a"
+    },
+    {
+      "position": 6,
+      "run_id": "3f2caadb-ccf7-496c-a4c5-d793b3d00321",
+      "task_id": "alternative-gamma",
+      "repetition": 1,
+      "arm": "deterministic",
+      "launched": true,
+      "final_receipt_present": true,
+      "final_receipt_file_present": true,
+      "status": "complete",
+      "reported_accepted": false,
+      "accepted": false,
+      "model_completed": true,
+      "execution_closed": true,
+      "cleanup_confirmed": true,
+      "safe_to_continue": true,
+      "accounting_complete": true,
+      "cost_lower_usd": 0.3962988,
+      "cost_upper_usd": 0.3962988,
+      "cost_usd": 0.3962988,
+      "native_cost_lower_usd": 0.3962988,
+      "native_cost_upper_usd": 0.3962988,
+      "jev_cost_lower_usd": 0.0,
+      "jev_cost_upper_usd": 0.0,
+      "cli_reported_cost_usd": 0.3962988,
+      "provider_calls": 12,
+      "unknown_provider_calls": 0,
+      "served_models": [
+        "claude-sonnet-5-5"
+      ],
+      "provider_usage": {
+        "cache_creation_input_tokens": 48560,
+        "cache_read_input_tokens": 452504,
+        "cache_write_1h_tokens": 48560,
+        "cache_write_5m_tokens": 0,
+        "input_tokens": 24,
+        "output_tokens": 11151
+      },
+      "checks_endpoint_wall_s": 232.331834938,
+      "observed_endpoint_wall_s": 232.685154556,
+      "endpoint_wall_s": 232.685154556,
+      "phase_wall_s": {
+        "acceptance": 46.0066889310001,
+        "final_cleanup": 0.34942173899980844,
+        "native": 185.3080856669999,
+        "preparation": 0.5280092440002591,
+        "native_scratch_release": 0.362107824,
+        "native_retained": 185.178363213,
+        "preparation_reported": 0.5117416560001402,
+        "gateway_call": null,
+        "catalog": 0.21795742199992674,
+        "materialization": 0.08389053500013688
+      },
+      "native_phases_s": {
+        "export_s": 1.05813413199985,
+        "git_snapshot_s": 0.8266033340000831,
+        "target_seed_copy_s": 1.993786547000127,
+        "prepare_s": 5.260125751000032,
+        "executor_s": 178.489959516,
+        "capture_s": 0.4613537130003351,
+        "provider_drain_s": 0.004441890999714815
+      },
+      "check_phases": {
+        "scope": {
+          "wall_s": 0.08712235399980273
+        },
+        "format": {
+          "wall_s": 0.31907219499998973
+        },
+        "ordinary": {
+          "wall_s": 39.83238422699969,
+          "compile_wall_s": 37.83214305599995,
+          "test_wall_s": 1.976327704999676
+        },
+        "independent": {
+          "wall_s": 1.7136597199996686,
+          "compile_wall_s": 1.274971473000278,
+          "test_wall_s": 0.42166315200029203
+        }
+      },
+      "check_setup_s": {
+        "apply_candidate_s": 0.00876510199987024,
+        "export_s": 0.5037438790000124,
+        "git_snapshot_s": 0.8047014040002978,
+        "seed_copy_s": 0.5269980150001174,
+        "seed_validation_s": 1.524938506000126,
+        "setup_s": 3.7933154070001365
+      },
+      "check_outcomes": {
+        "scope": true,
+        "format": true,
+        "ordinary": true,
+        "independent": false
+      },
+      "failed_stage": null,
+      "artifact_errors": [],
+      "telemetry_errors": [],
+      "pilot_sha256": "da30430c7fea979b32e5c528074d741d58717eb780528c5b5c26d411da230744"
+    },
+    {
+      "position": 7,
+      "run_id": "3fb852b4-f4d8-4147-adaa-a1209cfa1917",
+      "task_id": "alternative-beta",
+      "repetition": 2,
+      "arm": "deterministic",
+      "launched": true,
+      "final_receipt_present": true,
+      "final_receipt_file_present": true,
+      "status": "complete",
+      "reported_accepted": true,
+      "accepted": true,
+      "model_completed": true,
+      "execution_closed": true,
+      "cleanup_confirmed": true,
+      "safe_to_continue": true,
+      "accounting_complete": true,
+      "cost_lower_usd": 0.3107,
+      "cost_upper_usd": 0.3107,
+      "cost_usd": 0.3107,
+      "native_cost_lower_usd": 0.3107,
+      "native_cost_upper_usd": 0.3107,
+      "jev_cost_lower_usd": 0.0,
+      "jev_cost_upper_usd": 0.0,
+      "cli_reported_cost_usd": 0.31070000000000003,
+      "provider_calls": 9,
+      "unknown_provider_calls": 0,
+      "served_models": [
+        "claude-sonnet-5-5"
+      ],
+      "provider_usage": {
+        "cache_creation_input_tokens": 38576,
+        "cache_read_input_tokens": 277950,
+        "cache_write_1h_tokens": 38576,
+        "cache_write_5m_tokens": 0,
+        "input_tokens": 18,
+        "output_tokens": 10077
+      },
+      "checks_endpoint_wall_s": 186.236916669,
+      "observed_endpoint_wall_s": 186.53358199,
+      "endpoint_wall_s": 186.53358199,
+      "phase_wall_s": {
+        "acceptance": 56.44618785300008,
+        "final_cleanup": 0.2936759659996824,
+        "native": 128.79234941799996,
+        "preparation": 0.5110862900000939,
+        "native_scratch_release": 0.365614399,
+        "native_retained": 128.66814660199998,
+        "preparation_reported": 0.49728478399993037,
+        "gateway_call": null,
+        "catalog": 0.21214220599995315,
+        "materialization": 0.0886467220002487
+      },
+      "native_phases_s": {
+        "export_s": 0.733263400999931,
+        "git_snapshot_s": 0.8902085520003311,
+        "target_seed_copy_s": 2.135536835000039,
+        "prepare_s": 4.848938134000036,
+        "executor_s": 122.23223129000007,
+        "capture_s": 0.6184648799999195,
+        "provider_drain_s": 0.004053535999901214
+      },
+      "check_phases": {
+        "scope": {
+          "wall_s": 0.08650375600018378
+        },
+        "format": {
+          "wall_s": 0.26846171799979857
+        },
+        "ordinary": {
+          "wall_s": 50.006682185000045,
+          "compile_wall_s": 42.635761926000214,
+          "test_wall_s": 7.353479910999795
+        },
+        "independent": {
+          "wall_s": 1.8261869510001816,
+          "compile_wall_s": 1.2284179970001787,
+          "test_wall_s": 0.5746899949999715
+        }
+      },
+      "check_setup_s": {
+        "apply_candidate_s": 0.0068602520000240474,
+        "export_s": 0.4657997669996803,
+        "git_snapshot_s": 0.8737359900001138,
+        "seed_copy_s": 0.5308515350002381,
+        "seed_validation_s": 1.7848781179995967,
+        "setup_s": 3.9935477789999823
+      },
+      "check_outcomes": {
+        "scope": true,
+        "format": true,
+        "ordinary": true,
+        "independent": true
+      },
+      "failed_stage": null,
+      "artifact_errors": [],
+      "telemetry_errors": [],
+      "pilot_sha256": "eb86a799894e0fab0fb85125654f1a06867a2773139f699c4ed1a204483f1aa4"
+    },
+    {
+      "position": 8,
+      "run_id": "af869a80-4277-4c0b-a4d7-b7b7c1d1d273",
+      "task_id": "alternative-beta",
+      "repetition": 2,
+      "arm": "jev",
+      "launched": true,
+      "final_receipt_present": true,
+      "final_receipt_file_present": true,
+      "status": "complete",
+      "reported_accepted": true,
+      "accepted": true,
+      "model_completed": true,
+      "execution_closed": true,
+      "cleanup_confirmed": true,
+      "safe_to_continue": true,
+      "accounting_complete": true,
+      "cost_lower_usd": 0.23940478399999998,
+      "cost_upper_usd": 0.23940478399999998,
+      "cost_usd": 0.23940478399999998,
+      "native_cost_lower_usd": 0.23825179999999999,
+      "native_cost_upper_usd": 0.23825179999999999,
+      "jev_cost_lower_usd": 0.001152984,
+      "jev_cost_upper_usd": 0.001152984,
+      "cli_reported_cost_usd": 0.23825179999999999,
+      "provider_calls": 7,
+      "unknown_provider_calls": 0,
+      "served_models": [
+        "claude-sonnet-5-5"
+      ],
+      "provider_usage": {
+        "cache_creation_input_tokens": 33708,
+        "cache_read_input_tokens": 193009,
+        "cache_write_1h_tokens": 33708,
+        "cache_write_5m_tokens": 0,
+        "input_tokens": 14,
+        "output_tokens": 6479
+      },
+      "checks_endpoint_wall_s": 174.204731806,
+      "observed_endpoint_wall_s": 174.585897282,
+      "endpoint_wall_s": 174.585897282,
+      "phase_wall_s": {
+        "acceptance": 54.707940428000256,
+        "final_cleanup": 0.3777430549998826,
+        "native": 117.20817183700001,
+        "preparation": 1.8645040470000822,
+        "native_scratch_release": 0.299136908,
+        "native_retained": 117.05670724499987,
+        "preparation_reported": 1.8486254939998616,
+        "gateway_call": 1.3103792259998954,
+        "catalog": 0.28064001799975813,
+        "materialization": 0.05519669800014526
+      },
+      "native_phases_s": {
+        "export_s": 0.7630936599998677,
+        "git_snapshot_s": 0.8678974340000423,
+        "target_seed_copy_s": 2.224439615999927,
+        "prepare_s": 5.015119778999633,
+        "executor_s": 110.59666267900002,
+        "capture_s": 0.5143285949998244,
+        "provider_drain_s": 0.0040521300002183125
+      },
+      "check_phases": {
+        "scope": {
+          "wall_s": 0.10382976999972016
+        },
+        "format": {
+          "wall_s": 0.2705766919998496
+        },
+        "ordinary": {
+          "wall_s": 48.26863576100004,
+          "compile_wall_s": 40.8992310550002,
+          "test_wall_s": 7.349958483000137
+        },
+        "independent": {
+          "wall_s": 1.6603721960000257,
+          "compile_wall_s": 1.1727630679997674,
+          "test_wall_s": 0.4711314820001462
+        }
+      },
+      "check_setup_s": {
+        "apply_candidate_s": 0.004500917000314075,
+        "export_s": 0.4979434179999771,
+        "git_snapshot_s": 0.8538446499997008,
+        "seed_copy_s": 0.5892886799997541,
+        "seed_validation_s": 1.8446309689998088,
+        "setup_s": 4.165519029999814
+      },
+      "check_outcomes": {
+        "scope": true,
+        "format": true,
+        "ordinary": true,
+        "independent": true
+      },
+      "failed_stage": null,
+      "artifact_errors": [],
+      "telemetry_errors": [],
+      "pilot_sha256": "f7a8c560e200268e7c5cf478ce21237bc792958b2e79576e8494b637d1e2fb92"
+    },
+    {
+      "position": 9,
+      "run_id": "c2113cf1-68a0-41cb-ac09-af031f931f28",
+      "task_id": "alternative-beta",
+      "repetition": 2,
+      "arm": "bare",
+      "launched": true,
+      "final_receipt_present": true,
+      "final_receipt_file_present": true,
+      "status": "complete",
+      "reported_accepted": true,
+      "accepted": true,
+      "model_completed": true,
+      "execution_closed": true,
+      "cleanup_confirmed": true,
+      "safe_to_continue": true,
+      "accounting_complete": true,
+      "cost_lower_usd": 0.3794228,
+      "cost_upper_usd": 0.3794228,
+      "cost_usd": 0.3794228,
+      "native_cost_lower_usd": 0.3794228,
+      "native_cost_upper_usd": 0.3794228,
+      "jev_cost_lower_usd": 0.0,
+      "jev_cost_upper_usd": 0.0,
+      "cli_reported_cost_usd": 0.3794228,
+      "provider_calls": 10,
+      "unknown_provider_calls": 0,
+      "served_models": [
+        "claude-sonnet-5-5"
+      ],
+      "provider_usage": {
+        "cache_creation_input_tokens": 42660,
+        "cache_read_input_tokens": 465514,
+        "cache_write_1h_tokens": 42660,
+        "cache_write_5m_tokens": 0,
+        "input_tokens": 20,
+        "output_tokens": 11564
+      },
+      "checks_endpoint_wall_s": 217.086239558,
+      "observed_endpoint_wall_s": 217.409064836,
+      "endpoint_wall_s": 217.409064836,
+      "phase_wall_s": {
+        "acceptance": 58.42126105699981,
+        "final_cleanup": 0.319769019999967,
+        "native": 158.0626458910001,
+        "preparation": 0.17344262799997523,
+        "native_scratch_release": 0.29603019,
+        "native_retained": 157.94597153999985,
+        "preparation_reported": 0.16130003100033719,
+        "gateway_call": null,
+        "catalog": null,
+        "materialization": null
+      },
+      "native_phases_s": {
+        "export_s": 0.7687655749996338,
+        "git_snapshot_s": 0.857603035000011,
+        "target_seed_copy_s": 2.2456816199996865,
+        "prepare_s": 5.065016988000025,
+        "executor_s": 151.54200793600012,
+        "capture_s": 0.4144472200000564,
+        "provider_drain_s": 0.007983293000052072
+      },
+      "check_phases": {
+        "scope": {
+          "wall_s": 0.10201090300006399
+        },
+        "format": {
+          "wall_s": 0.31982266700015316
+        },
+        "ordinary": {
+          "wall_s": 52.54040153100004,
+          "compile_wall_s": 45.17219264000005,
+          "test_wall_s": 7.349564908000048
+        },
+        "independent": {
+          "wall_s": 1.5112436290000915,
+          "compile_wall_s": 1.072481241999867,
+          "test_wall_s": 0.4204862569999932
+        }
+      },
+      "check_setup_s": {
+        "apply_candidate_s": 0.007746986999791261,
+        "export_s": 0.47843904000001203,
+        "git_snapshot_s": 0.7837325959999362,
+        "seed_copy_s": 0.5077460640000027,
+        "seed_validation_s": 1.508117965999645,
+        "setup_s": 3.707786747999762
+      },
+      "check_outcomes": {
+        "scope": true,
+        "format": true,
+        "ordinary": true,
+        "independent": true
+      },
+      "failed_stage": null,
+      "artifact_errors": [],
+      "telemetry_errors": [],
+      "pilot_sha256": "c35878f8437bfd93f0bde0929b32d10ecd5bee467c708ca5f5e1dc576b140782"
+    },
+    {
+      "position": 10,
+      "run_id": "4d53401c-cace-4a0c-8768-442333d9820b",
+      "task_id": "alternative-gamma",
+      "repetition": 2,
+      "arm": "bare",
+      "launched": true,
+      "final_receipt_present": true,
+      "final_receipt_file_present": true,
+      "status": "complete",
+      "reported_accepted": false,
+      "accepted": false,
+      "model_completed": true,
+      "execution_closed": true,
+      "cleanup_confirmed": true,
+      "safe_to_continue": true,
+      "accounting_complete": true,
+      "cost_lower_usd": 0.644667,
+      "cost_upper_usd": 0.644667,
+      "cost_usd": 0.644667,
+      "native_cost_lower_usd": 0.644667,
+      "native_cost_upper_usd": 0.644667,
+      "jev_cost_lower_usd": 0.0,
+      "jev_cost_upper_usd": 0.0,
+      "cli_reported_cost_usd": 0.6446669999999999,
+      "provider_calls": 11,
+      "unknown_provider_calls": 0,
+      "served_models": [
+        "claude-sonnet-5-5"
+      ],
+      "provider_usage": {
+        "cache_creation_input_tokens": 80842,
+        "cache_read_input_tokens": 782525,
+        "cache_write_1h_tokens": 80842,
+        "cache_write_5m_tokens": 0,
+        "input_tokens": 22,
+        "output_tokens": 16475
+      },
+      "checks_endpoint_wall_s": 246.988406426,
+      "observed_endpoint_wall_s": 247.368594036,
+      "endpoint_wall_s": 247.368594036,
+      "phase_wall_s": {
+        "acceptance": 45.90338446199985,
+        "final_cleanup": 0.37710138900001766,
+        "native": 200.41533851500026,
+        "preparation": 0.18613286499976311,
+        "native_scratch_release": 0.357229286,
+        "native_retained": 200.29836372100044,
+        "preparation_reported": 0.17209539899977244,
+        "gateway_call": null,
+        "catalog": null,
+        "materialization": null
+      },
+      "native_phases_s": {
+        "export_s": 0.7883030500001951,
+        "git_snapshot_s": 0.8133121989999381,
+        "target_seed_copy_s": 2.058444290999887,
+        "prepare_s": 4.90139944800012,
+        "executor_s": 193.94105936300002,
+        "capture_s": 0.47480273699966347,
+        "provider_drain_s": 0.004262505000042438
+      },
+      "check_phases": {
+        "scope": {
+          "wall_s": 0.11746028600009595
+        },
+        "format": {
+          "wall_s": 0.2691292089994022
+        },
+        "ordinary": {
+          "wall_s": 39.7378899410005,
+          "compile_wall_s": 37.73892131000048,
+          "test_wall_s": 1.9802644549999968
+        },
+        "independent": {
+          "wall_s": 1.6590029590006452,
+          "compile_wall_s": 1.2224287589997402,
+          "test_wall_s": 0.4209621740001239
+        }
+      },
+      "check_setup_s": {
+        "apply_candidate_s": 0.011103279999588267,
+        "export_s": 0.49720645399975183,
+        "git_snapshot_s": 0.8209857879992342,
+        "seed_copy_s": 0.5635620319999362,
+        "seed_validation_s": 1.6580998680001358,
+        "setup_s": 3.9439861000000747
+      },
+      "check_outcomes": {
+        "scope": true,
+        "format": true,
+        "ordinary": true,
+        "independent": false
+      },
+      "failed_stage": null,
+      "artifact_errors": [],
+      "telemetry_errors": [],
+      "pilot_sha256": "4130c570f35c4454c185300fcfaae558b981af24ab725ed51d300f1e3a0c4b2b"
+    },
+    {
+      "position": 11,
+      "run_id": "bcb7539d-3d80-44a5-af48-835e2fbc4e67",
+      "task_id": "alternative-gamma",
+      "repetition": 2,
+      "arm": "deterministic",
+      "launched": true,
+      "final_receipt_present": true,
+      "final_receipt_file_present": true,
+      "status": "complete",
+      "reported_accepted": false,
+      "accepted": false,
+      "model_completed": true,
+      "execution_closed": true,
+      "cleanup_confirmed": true,
+      "safe_to_continue": true,
+      "accounting_complete": true,
+      "cost_lower_usd": 0.4122536,
+      "cost_upper_usd": 0.4122536,
+      "cost_usd": 0.4122536,
+      "native_cost_lower_usd": 0.4122536,
+      "native_cost_upper_usd": 0.4122536,
+      "jev_cost_lower_usd": 0.0,
+      "jev_cost_upper_usd": 0.0,
+      "cli_reported_cost_usd": 0.4122536,
+      "provider_calls": 12,
+      "unknown_provider_calls": 0,
+      "served_models": [
+        "claude-sonnet-5-5"
+      ],
+      "provider_usage": {
+        "cache_creation_input_tokens": 53178,
+        "cache_read_input_tokens": 504068,
+        "cache_write_1h_tokens": 53178,
+        "cache_write_5m_tokens": 0,
+        "input_tokens": 24,
+        "output_tokens": 9868
+      },
+      "checks_endpoint_wall_s": 194.541306153,
+      "observed_endpoint_wall_s": 194.944888699,
+      "endpoint_wall_s": 194.944888699,
+      "phase_wall_s": {
+        "acceptance": 46.151474909999706,
+        "final_cleanup": 0.3984560569997484,
+        "native": 147.28773419700065,
+        "preparation": 0.5428439030001755,
+        "native_scratch_release": 0.416183811,
+        "native_retained": 147.17763900599948,
+        "preparation_reported": 0.5295362339993517,
+        "gateway_call": null,
+        "catalog": 0.24181290100023034,
+        "materialization": 0.09934765999969386
+      },
+      "native_phases_s": {
+        "export_s": 0.6646410140001535,
+        "git_snapshot_s": 0.8114916120002817,
+        "target_seed_copy_s": 1.69888892400013,
+        "prepare_s": 4.285551662999751,
+        "executor_s": 141.4184838379997,
+        "capture_s": 0.4736662900004376,
+        "provider_drain_s": 0.004400906000228133
+      },
+      "check_phases": {
+        "scope": {
+          "wall_s": 0.09324655999989773
+        },
+        "format": {
+          "wall_s": 0.32131761599976016
+        },
+        "ordinary": {
+          "wall_s": 39.57307796100031,
+          "compile_wall_s": 37.570279897000546,
+          "test_wall_s": 1.9843196519996127
+        },
+        "independent": {
+          "wall_s": 2.170222703000036,
+          "compile_wall_s": 1.5757838239997,
+          "test_wall_s": 0.5742990890003057
+        }
+      },
+      "check_setup_s": {
+        "apply_candidate_s": 0.007820433000233606,
+        "export_s": 0.4719013849999101,
+        "git_snapshot_s": 0.8167260939999323,
+        "seed_copy_s": 0.4442314999996597,
+        "seed_validation_s": 1.6165059439999823,
+        "setup_s": 3.769353258000592
+      },
+      "check_outcomes": {
+        "scope": true,
+        "format": true,
+        "ordinary": true,
+        "independent": false
+      },
+      "failed_stage": null,
+      "artifact_errors": [],
+      "telemetry_errors": [],
+      "pilot_sha256": "c288b37baeea3804faad5f9cec3b360d63d1a9b595f2c50781a3e7cb43810c9b"
+    },
+    {
+      "position": 12,
+      "run_id": "e1ff393a-fc48-48b0-ae41-a4313af8fdac",
+      "task_id": "alternative-gamma",
+      "repetition": 2,
+      "arm": "jev",
+      "launched": true,
+      "final_receipt_present": true,
+      "final_receipt_file_present": true,
+      "status": "complete",
+      "reported_accepted": false,
+      "accepted": false,
+      "model_completed": true,
+      "execution_closed": true,
+      "cleanup_confirmed": true,
+      "safe_to_continue": true,
+      "accounting_complete": true,
+      "cost_lower_usd": 0.460411942,
+      "cost_upper_usd": 0.460411942,
+      "cost_usd": 0.460411942,
+      "native_cost_lower_usd": 0.4590784,
+      "native_cost_upper_usd": 0.4590784,
+      "jev_cost_lower_usd": 0.001333542,
+      "jev_cost_upper_usd": 0.001333542,
+      "cli_reported_cost_usd": 0.4590784000000001,
+      "provider_calls": 18,
+      "unknown_provider_calls": 0,
+      "served_models": [
+        "claude-sonnet-5-5"
+      ],
+      "provider_usage": {
+        "cache_creation_input_tokens": 52365,
+        "cache_read_input_tokens": 739352,
+        "cache_write_1h_tokens": 52365,
+        "cache_write_5m_tokens": 0,
+        "input_tokens": 34,
+        "output_tokens": 10168
+      },
+      "checks_endpoint_wall_s": 208.134362066,
+      "observed_endpoint_wall_s": 208.443231906,
+      "endpoint_wall_s": 208.443231906,
+      "phase_wall_s": {
+        "acceptance": 47.33942835899961,
+        "final_cleanup": 0.30326211100054934,
+        "native": 159.05660880600044,
+        "preparation": 1.2262156030001279,
+        "native_scratch_release": 0.358067371,
+        "native_retained": 158.921375162,
+        "preparation_reported": 1.2096047209997778,
+        "gateway_call": 0.7593879420001031,
+        "catalog": 0.21527932499975577,
+        "materialization": 0.035283344999697874
+      },
+      "native_phases_s": {
+        "export_s": 0.7295265469992955,
+        "git_snapshot_s": 0.8113504900002226,
+        "target_seed_copy_s": 1.7746266359999936,
+        "prepare_s": 4.452398303999871,
+        "executor_s": 152.6570636789993,
+        "capture_s": 0.6491971659997944,
+        "provider_drain_s": 0.009220132999871566
+      },
+      "check_phases": {
+        "scope": {
+          "wall_s": 0.09783071699985157
+        },
+        "format": {
+          "wall_s": 0.26864904000012757
+        },
+        "ordinary": {
+          "wall_s": 40.88161292800032,
+          "compile_wall_s": 38.94133677100035,
+          "test_wall_s": 1.925124809999943
+        },
+        "independent": {
+          "wall_s": 1.7065969169998425,
+          "compile_wall_s": 1.2722376909996456,
+          "test_wall_s": 0.4196823049996965
+        }
+      },
+      "check_setup_s": {
+        "apply_candidate_s": 0.009022844999890367,
+        "export_s": 0.5154540910007199,
+        "git_snapshot_s": 0.8403093379993152,
+        "seed_copy_s": 0.5874800800002049,
+        "seed_validation_s": 1.7851486640001895,
+        "setup_s": 4.12796536299993
+      },
+      "check_outcomes": {
+        "scope": true,
+        "format": true,
+        "ordinary": true,
+        "independent": false
+      },
+      "failed_stage": null,
+      "artifact_errors": [],
+      "telemetry_errors": [],
+      "pilot_sha256": "0d093715f19596fede01f596c065e86e230a890021373ec5d0adec38cde61b6b"
+    }
+  ],
+  "arms": {
+    "bare": {
+      "assigned": 4,
+      "launched": 4,
+      "final_receipts": 4,
+      "accepted": 2,
+      "model_completed": 4,
+      "unstarted": 0,
+      "artifact_error_attempts": 0,
+      "failed_or_incomplete_receipts": 0,
+      "known_cost_attempts": 4,
+      "primary_time_attempts": 4,
+      "cost_lower_usd": 2.082077,
+      "cost_upper_usd": 2.082077,
+      "cost_usd": 2.082077,
+      "cost_per_accepted_usd": 1.0410385,
+      "cost_per_accepted_lower_usd": 1.0410385,
+      "cost_per_accepted_upper_usd": 1.0410385,
+      "mean_cost_usd": 0.52051925,
+      "mean_endpoint_wall_s": 243.3566985415,
+      "observed_mean_cost_usd": 0.52051925,
+      "observed_mean_endpoint_wall_s": 243.3566985415,
+      "phase_totals_s": {
+        "preparation": 1.3355294160000994,
+        "native": 746.3576466600007,
+        "acceptance": 219.1120184739998,
+        "native_scratch_release": 4.698956488,
+        "final_cleanup": 1.2860540139995464
+      }
+    },
+    "deterministic": {
+      "assigned": 4,
+      "launched": 4,
+      "final_receipts": 4,
+      "accepted": 2,
+      "model_completed": 4,
+      "unstarted": 0,
+      "artifact_error_attempts": 0,
+      "failed_or_incomplete_receipts": 0,
+      "known_cost_attempts": 4,
+      "primary_time_attempts": 4,
+      "cost_lower_usd": 1.4802127999999999,
+      "cost_upper_usd": 1.4802127999999999,
+      "cost_usd": 1.4802127999999999,
+      "cost_per_accepted_usd": 0.7401063999999999,
+      "cost_per_accepted_lower_usd": 0.7401063999999999,
+      "cost_per_accepted_upper_usd": 0.7401063999999999,
+      "mean_cost_usd": 0.37005319999999997,
+      "mean_endpoint_wall_s": 202.88305672225,
+      "observed_mean_cost_usd": 0.37005319999999997,
+      "observed_mean_endpoint_wall_s": 202.88305672225,
+      "phase_totals_s": {
+        "preparation": 2.1968094960006965,
+        "native": 602.2901758880002,
+        "acceptance": 203.707974681,
+        "native_scratch_release": 1.4337459780000001,
+        "final_cleanup": 1.3778567739991558
+      }
+    },
+    "jev": {
+      "assigned": 4,
+      "launched": 4,
+      "final_receipts": 4,
+      "accepted": 2,
+      "model_completed": 4,
+      "unstarted": 0,
+      "artifact_error_attempts": 0,
+      "failed_or_incomplete_receipts": 0,
+      "known_cost_attempts": 4,
+      "primary_time_attempts": 4,
+      "cost_lower_usd": 1.350181052,
+      "cost_upper_usd": 1.350181052,
+      "cost_usd": 1.350181052,
+      "cost_per_accepted_usd": 0.675090526,
+      "cost_per_accepted_lower_usd": 0.675090526,
+      "cost_per_accepted_upper_usd": 0.675090526,
+      "mean_cost_usd": 0.337545263,
+      "mean_endpoint_wall_s": 184.0558010765,
+      "observed_mean_cost_usd": 0.337545263,
+      "observed_mean_endpoint_wall_s": 184.0558010765,
+      "phase_totals_s": {
+        "preparation": 6.653165907000584,
+        "native": 523.5364901779999,
+        "acceptance": 202.8763365259997,
+        "native_scratch_release": 1.300104497,
+        "final_cleanup": 1.3195762290006314
+      }
+    }
+  },
+  "per_task": {
+    "alternative-beta": {
+      "bare": {
+        "assigned": 2,
+        "launched": 2,
+        "final_receipts": 2,
+        "accepted": 2,
+        "model_completed": 2,
+        "unstarted": 0,
+        "artifact_error_attempts": 0,
+        "failed_or_incomplete_receipts": 0,
+        "known_cost_attempts": 2,
+        "primary_time_attempts": 2,
+        "cost_lower_usd": 0.7709694,
+        "cost_upper_usd": 0.7709694,
+        "cost_usd": 0.7709694,
+        "cost_per_accepted_usd": 0.3854847,
+        "cost_per_accepted_lower_usd": 0.3854847,
+        "cost_per_accepted_upper_usd": 0.3854847,
+        "mean_cost_usd": 0.3854847,
+        "mean_endpoint_wall_s": 235.204176144,
+        "observed_mean_cost_usd": 0.3854847,
+        "observed_mean_endpoint_wall_s": 235.204176144,
+        "phase_totals_s": {
+          "preparation": 0.9013789320001706,
+          "native": 339.74428309700033,
+          "acceptance": 124.85801305699988,
+          "native_scratch_release": 3.9412930050000003,
+          "final_cleanup": 0.6016221209997639
+        }
+      },
+      "deterministic": {
+        "assigned": 2,
+        "launched": 2,
+        "final_receipts": 2,
+        "accepted": 2,
+        "model_completed": 2,
+        "unstarted": 0,
+        "artifact_error_attempts": 0,
+        "failed_or_incomplete_receipts": 0,
+        "known_cost_attempts": 2,
+        "primary_time_attempts": 2,
+        "cost_lower_usd": 0.6716603999999999,
+        "cost_upper_usd": 0.6716603999999999,
+        "cost_usd": 0.6716603999999999,
+        "cost_per_accepted_usd": 0.33583019999999997,
+        "cost_per_accepted_lower_usd": 0.33583019999999997,
+        "cost_per_accepted_upper_usd": 0.33583019999999997,
+        "mean_cost_usd": 0.33583019999999997,
+        "mean_endpoint_wall_s": 191.951091817,
+        "observed_mean_cost_usd": 0.33583019999999997,
+        "observed_mean_endpoint_wall_s": 191.951091817,
+        "phase_totals_s": {
+          "preparation": 1.125956349000262,
+          "native": 269.6943560239997,
+          "acceptance": 111.54981084000019,
+          "native_scratch_release": 0.6554543429999999,
+          "final_cleanup": 0.629978977999599
+        }
+      },
+      "jev": {
+        "assigned": 2,
+        "launched": 2,
+        "final_receipts": 2,
+        "accepted": 2,
+        "model_completed": 2,
+        "unstarted": 0,
+        "artifact_error_attempts": 0,
+        "failed_or_incomplete_receipts": 0,
+        "known_cost_attempts": 2,
+        "primary_time_attempts": 2,
+        "cost_lower_usd": 0.512205968,
+        "cost_upper_usd": 0.512205968,
+        "cost_usd": 0.512205968,
+        "cost_per_accepted_usd": 0.256102984,
+        "cost_per_accepted_lower_usd": 0.256102984,
+        "cost_per_accepted_upper_usd": 0.256102984,
+        "mean_cost_usd": 0.256102984,
+        "mean_endpoint_wall_s": 176.668164923,
+        "observed_mean_cost_usd": 0.256102984,
+        "observed_mean_endpoint_wall_s": 176.668164923,
+        "phase_totals_s": {
+          "preparation": 4.311588416000177,
+          "native": 237.75146294599972,
+          "acceptance": 109.71298739500025,
+          "native_scratch_release": 0.610976788,
+          "final_cleanup": 0.696341387999837
+        }
+      }
+    },
+    "alternative-gamma": {
+      "bare": {
+        "assigned": 2,
+        "launched": 2,
+        "final_receipts": 2,
+        "accepted": 0,
+        "model_completed": 2,
+        "unstarted": 0,
+        "artifact_error_attempts": 0,
+        "failed_or_incomplete_receipts": 0,
+        "known_cost_attempts": 2,
+        "primary_time_attempts": 2,
+        "cost_lower_usd": 1.3111076000000002,
+        "cost_upper_usd": 1.3111076000000002,
+        "cost_usd": 1.3111076000000002,
+        "cost_per_accepted_usd": null,
+        "cost_per_accepted_lower_usd": null,
+        "cost_per_accepted_upper_usd": null,
+        "mean_cost_usd": 0.6555538000000001,
+        "mean_endpoint_wall_s": 251.509220939,
+        "observed_mean_cost_usd": 0.6555538000000001,
+        "observed_mean_endpoint_wall_s": 251.509220939,
+        "phase_totals_s": {
+          "preparation": 0.43415048399992884,
+          "native": 406.61336356300035,
+          "acceptance": 94.25400541699992,
+          "native_scratch_release": 0.757663483,
+          "final_cleanup": 0.6844318929997826
+        }
+      },
+      "deterministic": {
+        "assigned": 2,
+        "launched": 2,
+        "final_receipts": 2,
+        "accepted": 0,
+        "model_completed": 2,
+        "unstarted": 0,
+        "artifact_error_attempts": 0,
+        "failed_or_incomplete_receipts": 0,
+        "known_cost_attempts": 2,
+        "primary_time_attempts": 2,
+        "cost_lower_usd": 0.8085524,
+        "cost_upper_usd": 0.8085524,
+        "cost_usd": 0.8085524,
+        "cost_per_accepted_usd": null,
+        "cost_per_accepted_lower_usd": null,
+        "cost_per_accepted_upper_usd": null,
+        "mean_cost_usd": 0.4042762,
+        "mean_endpoint_wall_s": 213.8150216275,
+        "observed_mean_cost_usd": 0.4042762,
+        "observed_mean_endpoint_wall_s": 213.8150216275,
+        "phase_totals_s": {
+          "preparation": 1.0708531470004345,
+          "native": 332.59581986400053,
+          "acceptance": 92.1581638409998,
+          "native_scratch_release": 0.778291635,
+          "final_cleanup": 0.7478777959995568
+        }
+      },
+      "jev": {
+        "assigned": 2,
+        "launched": 2,
+        "final_receipts": 2,
+        "accepted": 0,
+        "model_completed": 2,
+        "unstarted": 0,
+        "artifact_error_attempts": 0,
+        "failed_or_incomplete_receipts": 0,
+        "known_cost_attempts": 2,
+        "primary_time_attempts": 2,
+        "cost_lower_usd": 0.837975084,
+        "cost_upper_usd": 0.837975084,
+        "cost_usd": 0.837975084,
+        "cost_per_accepted_usd": null,
+        "cost_per_accepted_lower_usd": null,
+        "cost_per_accepted_upper_usd": null,
+        "mean_cost_usd": 0.418987542,
+        "mean_endpoint_wall_s": 191.44343723,
+        "observed_mean_cost_usd": 0.418987542,
+        "observed_mean_endpoint_wall_s": 191.44343723,
+        "phase_totals_s": {
+          "preparation": 2.3415774910004075,
+          "native": 285.7850272320002,
+          "acceptance": 93.16334913099945,
+          "native_scratch_release": 0.6891277090000001,
+          "final_cleanup": 0.6232348410007944
+        }
+      }
+    }
+  },
+  "comparisons": {
+    "jev/bare": {
+      "treatment": "jev",
+      "comparator": "bare",
+      "per_task": [
+        {
+          "task_id": "alternative-beta",
+          "means": {
+            "jev": {
+              "cost_usd": 0.256102984,
+              "endpoint_wall_s": 176.668164923
+            },
+            "bare": {
+              "cost_usd": 0.3854847,
+              "endpoint_wall_s": 235.204176144
+            }
+          }
+        },
+        {
+          "task_id": "alternative-gamma",
+          "means": {
+            "jev": {
+              "cost_usd": 0.418987542,
+              "endpoint_wall_s": 191.44343723
+            },
+            "bare": {
+              "cost_usd": 0.6555538000000001,
+              "endpoint_wall_s": 251.509220939
+            }
+          }
+        }
+      ],
+      "matched_pairs": [
+        {
+          "task_id": "alternative-beta",
+          "repetition": 1,
+          "cost_ratio": 0.696727245237221,
+          "cost_difference": -0.11874541599999994,
+          "time_ratio": 0.7065254387244597,
+          "time_difference": -74.24885488800001,
+          "lower_cost_and_time": true
+        },
+        {
+          "task_id": "alternative-beta",
+          "repetition": 2,
+          "cost_ratio": 0.6309710012155305,
+          "cost_difference": -0.14001801600000002,
+          "time_ratio": 0.8030295213941371,
+          "time_difference": -42.82316755400001,
+          "lower_cost_and_time": true
+        },
+        {
+          "task_id": "alternative-gamma",
+          "repetition": 1,
+          "cost_ratio": 0.5665368256375737,
+          "cost_difference": -0.28887745800000003,
+          "time_ratio": 0.6823537898673497,
+          "time_difference": -81.206205288,
+          "lower_cost_and_time": true
+        },
+        {
+          "task_id": "alternative-gamma",
+          "repetition": 2,
+          "cost_ratio": 0.714185683461384,
+          "cost_difference": -0.18425505799999997,
+          "time_ratio": 0.8426422631308843,
+          "time_difference": -38.925362129999996,
+          "lower_cost_and_time": true
+        }
+      ],
+      "aggregate_ratio_of_summed_task_means": {
+        "cost": 0.6484779631108744,
+        "time": 0.7563210800425643
+      },
+      "evaluable_pairs": 4,
+      "lower_cost_and_time_pairs": 4
+    },
+    "jev/deterministic": {
+      "treatment": "jev",
+      "comparator": "deterministic",
+      "per_task": [
+        {
+          "task_id": "alternative-beta",
+          "means": {
+            "jev": {
+              "cost_usd": 0.256102984,
+              "endpoint_wall_s": 176.668164923
+            },
+            "deterministic": {
+              "cost_usd": 0.33583019999999997,
+              "endpoint_wall_s": 191.951091817
+            }
+          }
+        },
+        {
+          "task_id": "alternative-gamma",
+          "means": {
+            "jev": {
+              "cost_usd": 0.418987542,
+              "endpoint_wall_s": 191.44343723
+            },
+            "deterministic": {
+              "cost_usd": 0.4042762,
+              "endpoint_wall_s": 213.8150216275
+            }
+          }
+        }
+      ],
+      "matched_pairs": [
+        {
+          "task_id": "alternative-beta",
+          "repetition": 1,
+          "cost_ratio": 0.7557648539839827,
+          "cost_difference": -0.08815921599999998,
+          "time_ratio": 0.9056680296414007,
+          "time_difference": -18.61816908,
+          "lower_cost_and_time": true
+        },
+        {
+          "task_id": "alternative-beta",
+          "repetition": 2,
+          "cost_ratio": 0.770533582233666,
+          "cost_difference": -0.071295216,
+          "time_ratio": 0.9359488807294737,
+          "time_difference": -11.947684707999997,
+          "lower_cost_and_time": true
+        },
+        {
+          "task_id": "alternative-gamma",
+          "repetition": 1,
+          "cost_ratio": 0.95272340466335,
+          "cost_difference": -0.01873565799999999,
+          "time_ratio": 0.7496982043691873,
+          "time_difference": -58.24151200199998,
+          "lower_cost_and_time": true
+        },
+        {
+          "task_id": "alternative-gamma",
+          "repetition": 2,
+          "cost_ratio": 1.1168172746096092,
+          "cost_difference": 0.04815834200000002,
+          "time_ratio": 1.0692418421282222,
+          "time_difference": 13.498343207000005,
+          "lower_cost_and_time": false
+        }
+      ],
+      "aggregate_ratio_of_summed_task_means": {
+        "cost": 0.9121533417357288,
+        "time": 0.9072014393418532
+      },
+      "evaluable_pairs": 4,
+      "lower_cost_and_time_pairs": 3
+    },
+    "deterministic/bare": {
+      "treatment": "deterministic",
+      "comparator": "bare",
+      "per_task": [
+        {
+          "task_id": "alternative-beta",
+          "means": {
+            "deterministic": {
+              "cost_usd": 0.33583019999999997,
+              "endpoint_wall_s": 191.951091817
+            },
+            "bare": {
+              "cost_usd": 0.3854847,
+              "endpoint_wall_s": 235.204176144
+            }
+          }
+        },
+        {
+          "task_id": "alternative-gamma",
+          "means": {
+            "deterministic": {
+              "cost_usd": 0.4042762,
+              "endpoint_wall_s": 213.8150216275
+            },
+            "bare": {
+              "cost_usd": 0.6555538000000001,
+              "endpoint_wall_s": 251.509220939
+            }
+          }
+        }
+      ],
+      "matched_pairs": [
+        {
+          "task_id": "alternative-beta",
+          "repetition": 1,
+          "cost_ratio": 0.9218836276448322,
+          "cost_difference": -0.030586199999999952,
+          "time_ratio": 0.7801152470891664,
+          "time_difference": -55.63068580800001,
+          "lower_cost_and_time": true
+        },
+        {
+          "task_id": "alternative-beta",
+          "repetition": 2,
+          "cost_ratio": 0.8188754075927961,
+          "cost_difference": -0.06872280000000003,
+          "time_ratio": 0.8579843813352926,
+          "time_difference": -30.87548284600001,
+          "lower_cost_and_time": true
+        },
+        {
+          "task_id": "alternative-gamma",
+          "repetition": 1,
+          "cost_ratio": 0.5946498457626981,
+          "cost_difference": -0.27014180000000004,
+          "time_ratio": 0.9101713007856239,
+          "time_difference": -22.964693286000028,
+          "lower_cost_and_time": true
+        },
+        {
+          "task_id": "alternative-gamma",
+          "repetition": 2,
+          "cost_ratio": 0.6394830199157084,
+          "cost_difference": -0.2324134,
+          "time_ratio": 0.788074530878521,
+          "time_difference": -52.423705337,
+          "lower_cost_and_time": true
+        }
+      ],
+      "aggregate_ratio_of_summed_task_means": {
+        "cost": 0.7109308637480746,
+        "time": 0.833685934836316
+      },
+      "evaluable_pairs": 4,
+      "lower_cost_and_time_pairs": 4
+    }
+  },
+  "directional_win_gates": {
+    "complete_valid_panel": true,
+    "jev_accepts_all_four": false,
+    "jev_accepts_no_fewer": true,
+    "cost_reduction_10pct_vs_bare": true,
+    "time_reduction_10pct_vs_bare": true,
+    "three_of_four_joint_pairs_vs_bare": true,
+    "cost_reduction_10pct_vs_deterministic": false,
+    "time_reduction_10pct_vs_deterministic": false,
+    "three_of_four_joint_pairs_vs_deterministic": true
+  },
+  "directional_pilot_win": false,
+  "panel_receipt": {
+    "sha256": "18da75fb0ea72d697bf3592b1f862f6896284063420c36981b524674b79403bb",
+    "status": "complete",
+    "recorded_attempts": 12,
+    "complete_valid": true,
+    "known_prior_cost_usd": 4.912470852,
+    "artifact_errors": []
+  },
+  "unregistered_attempts": [],
+  "panel_known_cost_lower_usd": 4.912470852,
+  "setup_and_capability_costs_included": false,
+  "limits": [
+    "Exposed development tasks; no general superiority claim.",
+    "Provider costs are priced usage estimates plus gateway-reported Jev cost, not subscription invoices.",
+    "CLI totals are retained for reconciliation and never added as a second charge.",
+    "Primary means require every registered task repetition; observed partial means are labeled separately.",
+    "Checker behavior is not rerun; retained candidate identities and completed check receipts are validated. Source export and public task identity rely on the frozen runner receipts bound to the registered archive.",
+    "A complete valid panel requires the serial driver receipt and its ordered attempt digests.",
+    "Initial setup, capability probing, machine and engineering costs are separate."
+  ]
+}

@@ -1,0 +1,48 @@
+{
+  "blind_directory": "71ce8662-b5eb-417c-82df-8b399bd1524d",
+  "candidate_manifest_sha256": "db7ad76ba478fb4669ba4e2bc8163667ee3a8d66066134f4c87a925b24f100c4",
+  "source_commit": "c427943a5c84ba5938a3549f24b27de551812a37",
+  "source_archive_sha256": "3a736e4d8e5adaebd5699804b28b6d110c77230583904f58f08caf456f6ee338",
+  "blinding": "No plan, arm mapping, native transcript, run result, or check result inspected. Review completed during the unchanged panel; not supplied to executors.",
+  "method": "Canonical payload/change identity and original file hashes verified. Full unified diffs and affected control flow inspected. Candidate and checker code were not executed. No Cargo, models, or remote jobs.",
+  "frozen_acceptance": "not_inspected",
+  "independent_review": "A second reviewer inspected only this anonymized packet and pinned public source, then supplied static findings; no outcome data was shared.",
+  "verdict": "Two material response-validation gaps are visible statically. Existing assertions remain; two transport cases now use the explicit unchecked API.",
+  "findings": [
+    {
+      "id": "G1",
+      "classification": "demonstrated_static_contract_gap",
+      "priority": "P2",
+      "path": "crates/jev/src/validate.rs",
+      "lines": [
+        108,
+        139
+      ],
+      "title": "Strict decoding accepts a Score with no bounded rubric",
+      "evidence": "check_score bounds only legend keys at 112\u2013114. Its upper score bound is conditional on a maximum response level being present (126\u2013136). Empty legend plus omitted probabilities therefore requires only finite score >= 0; it never checks a maximum level or requires a usable rubric.",
+      "trigger": "Call public SystemOneResponse::decode on {\"model\":\"m\",\"answers\":{\"q\":{\"type\":\"score\",\"score\":1e100,\"confidence\":0.5,\"legend\":{}}}}. A second example is legend:{} with probabilities:{\"99\":1.0}, score:99: the level-10 cap applies only to legend keys.",
+      "inferred_behavior": "Both responses pass the strict per-answer decoder and return typed Score answers outside the documented maximum of ten levels. A matching typed Score request can reject the later numeric bound, but direct decode has no such second pass; extra Score answers accompanying a different valid requested question also receive only this insufficient first pass.",
+      "contract": "The task requires finite numeric ranges and Score legend bounds before typed decisions return. An omitted probability distribution is a supported legacy shape, but that does not justify an unbounded score when the response supplies no usable rubric.",
+      "execution": "Static source inference only; no decoder, candidate, or checker execution."
+    },
+    {
+      "id": "G2",
+      "classification": "demonstrated_static_contract_gap",
+      "priority": "P2",
+      "path": "crates/jev/src/client.rs",
+      "lines": [
+        255,
+        260
+      ],
+      "title": "Request-aware validation uses the pre-override question set",
+      "evidence": "SystemOneRequest documents that extra_body replaces SDK-written fields (56\u201358). body() serializes self.questions (135\u2013138), then merges extra_body last (140\u2013142). The existing system_one entrypoint sends that prepared body but validates the response against request.questions, which can differ from the wire questions.",
+      "trigger": "Construct a valid request with question q of type Noul, then supply extra_body.questions.q as a valid Choice over a and b. Return a valid Choice answer for q.",
+      "inferred_behavior": "The checked API rejects the valid Choice reply because the original field still says Noul. Conversely, a valid Noul response is accepted although the actual sent question was Choice. The blocking wrapper shares the same path.",
+      "contract": "The task requires request-aware answer type, coverage, and identity checks. The supported last-write body override must either be accounted for by validation or explicitly rejected before sending at this strict boundary.",
+      "execution": "Static source inference only; no HTTP or candidate execution."
+    }
+  ],
+  "tests": "No material assertion removal or relaxation found. Existing fixture question IDs, Choice names, and level counts now match the served response. Existing assertions continue checking those values. Two array/null-state transport cases switch to system_one_unchecked (tests/client.rs:1513 and 1516), preserving request-body assertions but removing direct checked-path coverage for those cases. Six new integration tests cover malformed values, compatible selected-answer cases, request-aware validation, and async/blocking boundaries. The two counterexamples above are absent from those new cases.",
+  "scope": "Seven changed/added files stay under crates/jev. No checker files, unrelated packages, dependencies, deletions, or existing-file modes changed. New validator and integration test files use mode 0600.",
+  "limits": "Unlike the other two SDK packets in this batch, this candidate wires request-aware validation into existing system_one, with explicit unchecked and raw compatibility paths. Non-argmax selected answers, fractional scores, and legacy Score without probabilities are preserved; no requirement that confidence equal the selected probability was imposed in this review. Its probability tolerance grows with the number of rounded entries; that documented policy was not labeled a defect solely because it is permissive. These static findings do not change frozen primary acceptance scores."
+}

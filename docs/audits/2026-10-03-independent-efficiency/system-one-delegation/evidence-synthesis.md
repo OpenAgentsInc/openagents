@@ -14,8 +14,9 @@ cost in the complete workflow.
 
 This synthesis combines the independently recomputed audit results with
 explicitly identified historical reports. It does not pool unlike trials or
-treat multiple reports of the same runs as new evidence. The new native
-panel has **zero scored sessions**. The owner's Vercel gateway configuration
+treat multiple reports of the same runs as new evidence. The unsealed
+48-session proposal has **zero scored sessions**; a separate 12-session native
+pilot is now complete. The owner's Vercel gateway configuration
 now answers a real Jev call; the separate
 [lifecycle pilot](../jev-lifecycle/README.md) records this transport's
 unversioned identity and tests deeper component integration.
@@ -27,8 +28,42 @@ demonstrated defects. Focused review catches some simple missing guards, but an
 overconstrained question inflates its initial apparent sensitivity; after fixing
 that question, it misses both tested directory-order defects. Separately, batching
 Git reads reduces source-assembly time while preserving the exact context and
-briefing bytes. These are useful component results and limitations, with zero
-new native executor outcomes.
+briefing bytes. These are component results; the later native outcomes are
+reported separately below.
+
+## October 3 follow-up: native selection and deeper checks
+
+The [12-session native pilot](../jev-native-pilot/README.md) uses Sonnet 5.5
+at requested medium effort on two exposed development tasks, with two
+repetitions each. Its arm labels are local to that pilot: A is bare Claude,
+B is the lean deterministic workflow, and C adds one Jev source-selection
+call to B. C has **35.2% lower measured inference cost and 24.4% lower elapsed
+time than A**. Against B, C has **8.8% lower cost and 9.3% lower time**. The
+primary endpoint includes preparation, independent checks, and confirmed
+scratch cleanup, but excludes final summary receipt serialization. All 12
+attempts and their costs remain included.
+
+Each arm passes **2/4** original acceptances: both trace tasks pass, and both
+SDK tasks fail. C misses the registered all-four quality requirement and
+both 10% improvements over B. It is cheaper and faster in three of four
+matched pairs against B; the second SDK pair is worse on both measures.
+This is scoped evidence of lower observed cost and time, with failed overall
+criteria and no quality improvement.
+
+The later trace diagnostic fails on the unchanged base and passes on the
+historical reference. Native A1, B2, C1, and C2 fail; A2 and B1 pass. All
+ordinary checks pass. Thus both C trace patches that passed the original
+checks fail deeper checks, while all six SDK patches already fail their
+original independent checks. These descriptive post hoc results preserve
+the original scores and do not estimate a causal quality effect.
+
+The separate advisory review makes **11 calls for $0.014120610** and returns
+zero `missing_handling` labels. It labels numeric and request-aware validation
+demonstrated in all six known-failing SDK patches. More complete source and
+clause-specific questions therefore do not establish a reliable completion
+judge here. The native round, probe, span preflight, and advisory review total
+**$5.085536146** in known inference usage, separate from prior experiment
+ledgers and machine or engineering costs.
 
 ## Evidence by claim
 
@@ -39,6 +74,7 @@ new native executor outcomes.
 | A cheaper executor can retain measured quality. | The [independent factorial](../briefing-model-factorial/README.md) finds Sonnet control 47.1% cheaper and 5.8% faster by median than Opus control; both pass 4/4 frozen acceptances and all eight controls pass the later deeper-import check. | A bounded model-choice win on one historical task, using common file tools and a verification-and-repair policy. This is not a full native-harness result or a Jev result. |
 | Better context can lower recorded cost and time. | The [second briefing iteration](../briefing-iteration-2/README.md) has all final candidates passing frozen checks, with 12.6% lower median cost and 7.5% lower median time on its held-out task. The [historical version arc](../../../terminal-bench/2026-09-24-version-arc.md) reports a log-summary context repair changing Luna from 0/3 to 3/3. | Promising bounded evidence. The first misses its 20% cost threshold, increases median tool calls and reads, and its [later diagnostic](../briefing-iteration-2/posthoc-execution.md) confirms order-dependent defects in three of eight final patches. It does not establish reduced discovery or complete correctness. The historical change also changes rendered guidance, so it does not isolate the packing algorithm. |
 | More briefing is reliably better. | In the factorial, the brief makes Opus 19.6% more expensive and 7.1% slower. It makes Sonnet cheaper, but a later diagnostic demonstrates a missed deeper-import notification in one briefed patch. The [first replay](../historical-replay-10166/README.md) has 0/4 independent acceptances despite all 22 ordinary tests passing when run externally afterward; those agents cannot execute commands. | Unsupported. Relevance and coverage matter more than the presence of a brief. Passing ordinary tests is insufficient. |
+| Jev selection improves an otherwise identical lean workflow. | The [12-session native pilot](../jev-native-pilot/README.md) observes C/B cost and time ratios of 0.9122 and 0.9072, with 2/4 original acceptances in both arms. Both Jev trace patches later fail deeper checks. | Lower observed cost and time on two exposed tasks, below the registered 10% thresholds. No accepted-quality or general superiority win. |
 | System One should participate at every step. | The [version arc](../../../terminal-bench/2026-09-24-version-arc.md) reports the four-task Gemini loop with Jev at 3/4, $0.250 and 478 seconds per task; the same loop without Jev reaches 4/4, $0.242 and 369 seconds. | This historical matched ablation supplies contrary evidence for unconditional per-step hints. It does not disprove a targeted preparation judgment. |
 | More control improves cost per accepted result. | The original audit independently recomputes the [matched controller study](../README.md#4-historical-evidence-that-changes-the-interpretation): 40.0% higher cost per accepted result, with an inconclusive pass gain. | Contrary evidence for restoring the entire older controller. Persistence and monitoring need separate justifications. |
 | A typed semantic judgment improves a useful decision. | The [stall study](../../../terminal-bench/2026-09-25-stall-detection.md) reports 30/35 correct detections, but 83% of its evaluation checkpoints are stalls. Jev confirmation reduces recall without a statistically distinguishable precision gain over code signals. | Accuracy must be measured against a relevant baseline and base rate. A high-looking percentage alone does not establish value. |
@@ -88,9 +124,10 @@ The resulting hypotheses have different implementation and measurement needs:
    coverage checks; it does not justify another arbitrary token cap.
 3. **Use System One for semantic uncertainty.** Candidate relevance,
    requirement-to-evidence matching, and deciding which bounded probe is
-   useful are plausible decisions. The first new ablation tests only
-   candidate ranking. It asks whether one batch changes downstream work
-   enough to cover its own latency, context, and cost.
+   useful are plausible decisions. The completed native pilot tests source
+   selection and records a modest incremental cost/time reduction, but misses
+   its success criteria. Later tests must count each judgment's downstream
+   work, latency, context, and cost while preserving required behavior.
 4. **Keep execution focused.** A lean prompt and six native tools can reduce
    fixed context while preserving file edits and shell checks. Shell access
    remains broad execution authority; a short tool list is not a security
@@ -179,16 +216,17 @@ execution paths differ.
 | Environment and history facts | Correctness against pinned Git objects and fresh probes; cache invalidation after each input changes | Does the packet remove repeated discovery without inducing a stale assumption? |
 | Task workspace contents | On the same commit, compare the full export with a declared package, dependency, instruction, and fixture closure; run the same checks against both | Does smaller staging reduce setup time without repairs caused by missing files? Retain fallbacks and all construction costs. |
 | AST candidate retrieval | Repeated-output identity, useful declaration recall on separately labeled tasks, required dependency omissions, latency and size | Does the agent read less while retaining acceptance and reviewed behavior? |
-| Jev ranking | Paired ranking quality on the exact same pool, semantic relevance, one-call latency and actual usage | Compare C/B and F/E under the frozen protocol; do not credit the deterministic pack to Jev. |
+| Jev ranking | Paired ranking quality on the exact same pool, semantic relevance, one-call latency and actual usage | The completed native pilot compares C/B. The unsealed six-arm proposal would compare C/B and F/E; do not credit the deterministic pack to Jev. |
 | Briefing coverage | Deliberately omit a dependency, fixture, or requirement; measure which omissions the validator detects | Does adding coverage reduce independent defects enough to repay larger context or additional retrieval? |
-| Prompt and tool constraints | Fixed prompt bytes, actual tool definitions, served model and effort records | Compare B/A and E/D. This first panel estimates a bundle; a later panel can separate prompt, tool count, and packing. |
+| Prompt and tool constraints | Fixed prompt bytes, actual tool definitions, served model and requested effort records | The six-arm proposal compares B/A and E/D; the completed native pilot compares B/A. Both estimate a bundle; a later panel can separate prompt, tool count, and packing. |
 | Independent acceptance | Base fails, historical reference passes, and plausible wrong implementations fail | Compare final acceptance and demonstrated defects, with check latency and cost included. |
 | Preparation in advance | Freshness races, cancellation, abandoned requests, cache-hit behavior, and duplicate-charge accounting | Compare demand preparation with the same work done ahead of time, including discarded speculation. |
 
-The current warm component measurements cover output identity, elapsed time,
+The original warm component measurements cover output identity, elapsed time,
 and size. They do **not** establish retrieval recall, dependency coverage,
-semantic ranking quality, or executor improvement. No treatment tuning used
-reserve executor outcomes because no such outcomes exist.
+semantic ranking quality, or executor improvement. That packing policy froze
+before executor outcomes. The later native pilot uses a separate selector and
+labels the inspected tasks as exposed development tasks.
 
 The qualified [alpha task's preview](alternative-alpha/README.md) supplies a
 concrete coverage diagnostic. Two available source units are omitted from the
@@ -205,8 +243,9 @@ previews strengthen that warning. Both take about 0.264 seconds, but beta's
 pool omits the ATIF reader and writer implementations, and gamma's pool has
 no unit from `jev/src`. Those declarations exist in the index. This is a
 failure to supply obvious implementation evidence, even though every retained
-source span is accurate. It is not a measured coding failure: the executor can
-still inspect files, and no executor trial has run.
+source span is accurate. Those previews alone do not measure coding failure:
+the executor can still inspect files. The later native pilot uses a new
+declaration catalog and reports its delivered context and outcomes separately.
 
 The next retrieval hypothesis should therefore precede semantic ranking:
 preserve explicit package and file anchors, include the relevant implementation
@@ -215,16 +254,19 @@ recall and required-reading coverage separately from exact-span fidelity and
 latency. A semantic judge can prioritize uncertain relevance after deterministic
 retrieval makes necessary evidence available. These inspected tasks now supply
 development feedback for any future revision; they cannot remain unseen
-confirmation tasks for a policy tuned to their omissions. The current treatment
-and its retained previews remain unchanged.
+confirmation tasks for a policy tuned to their omissions. The original
+treatment and its retained previews remain unchanged; the native pilot's
+[next context proposal](../jev-native-pilot/next-context-policy.md) separates
+role budgets, caller/callee evidence, and clause coverage for future tests.
 
 Workspace staging is another deterministic hypothesis prompted by the measured
 1.5 GB source exports and their Git snapshot costs. A dependency graph alone
 is insufficient: build scripts, included files, runtime fixtures, repository
 instructions, and tests that inspect directory contents also need coverage. Test export
 completeness before measuring agent performance, and fall back to the full tree
-when the required file set is unknown. This is a future matched experiment;
-none of this panel's source exports are reduced.
+when the required file set is unknown. Those earlier measurements use full
+exports. The native pilot binds its own archives and does not isolate staging;
+that remains a future matched experiment.
 
 Some public tasks already name a file or function. A semantic ranker may add
 little when deterministic retrieval finds that evidence directly. This panel
@@ -235,7 +277,8 @@ an independent confirmation.
 
 ## What would change the recommendation
 
-The [prospective design](protocol.md) preselects F, lean Sonnet with one Jev
+The unsealed [48-session prospective design](protocol.md), still with zero
+scored attempts, preselects F, lean Sonnet with one Jev
 ranking call. It must beat E, the identical deterministic workflow, and A,
 native Opus, with complete accounting and independent quality gates. C/B
 checks whether the same ranking helps Opus. B/A and E/D estimate the lean

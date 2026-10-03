@@ -75,3 +75,86 @@ that relevant evidence exists in TypeSafe's
 its [independent question batching](https://docs.typesafe.ai/patterns/fan-out).
 The [gateway contract](https://vercel.com/docs/ai-gateway/sdks-and-apis/typesafe)
 defines this transport and its usage fields.
+
+## Metadata span selection follow-up
+
+This separate development experiment selects declaration pointers before loading
+source bodies into model state. The earlier preparation records and source
+assembler remain unchanged. The exposed alpha, beta, and gamma tasks remain
+development evidence; no native outcome may tune this policy after its freeze.
+
+The initial catalog admits at most 64 implementation functions, 16 test functions,
+and eight explicitly named contract documents from the pinned public task scope.
+It uses qualified names, repository paths, declaration kinds, AST ranges, and
+bounded signatures; function bodies do not affect admission. Within the 64
+implementation slots, up to 32 are reserved for public operation-shaped functions.
+A function qualifies when its signature is externally public and it takes a
+non-receiver argument, is async, takes mutable or by-value `self`, or returns a
+`Result`. Conventional `new`, `default`, `with_capacity`, `from_*`, and `with_*`
+constructors/builders do not enter that reserved tier. This is a declared
+syntactic heuristic, not proof of an API's meaning.
+
+The remaining implementation slots use the original lexical name/path order over
+all unselected functions, preserving access to private helpers. Tests and documents
+use lexical ordering. Each file receives one turn before its remaining functions
+inside each selection group. At most 48 scoped Rust files are read for signatures;
+immutable blob size and digest checks still apply. Only the first 512 UTF-8 bytes
+of each signature enter model state, with truncation explicitly labeled. Git must
+read each bounded blob to recover those signatures; this is not zero source I/O.
+All cap and parse omissions are counted. Test roles come from test paths and
+namespaces and do not establish that a function is an executable test. Types and
+constants are outside this function-pointer catalog.
+
+Each exact task sentence receives an independent Choice over the same catalog
+plus `none`. An optional Score per pointer supplies a second ordering signal.
+Sentence splitting preserves the public task; it does not infer a complete
+requirement decomposition. Questions select useful next reads, not satisfied
+requirements. Metadata cannot establish the behavior of an unseen body.
+
+Both deterministic and semantic arms use the same catalog and 16,384-byte rendered
+budget. The deterministic arm uses lexical clause matches. Code orders pointers
+by clause-selection count, then supplied Scores or lexical rank, with stable ties.
+It materializes at most 24 source pointers after selection. Exact explicit
+contracts receive an identical rendered allowance of at most 3,072 bytes total,
+divided equally by document count and placed first. Excerpts are labeled partial;
+complete applicable instructions are supplied separately in both native arms.
+
+Code verifies immutable Git blob identities, file size/hash bindings, and line
+ranges before rendering. A function of at most 6,000 bytes is retained whole when
+it fits. Larger functions receive a labeled, complete-line leading slice of at
+most 2,400 bytes and a pointer to the full span. A unit that does not fit is
+recorded as omitted. Source text, provenance headers, and fences all count toward
+the rendered limit. Catalog state is capped at 64 KiB and refused rather than
+silently shortened. Record catalog construction, materialization, call cost, and
+call latency separately and include all of them in later native endpoints.
+
+The source-pointer design follows TypeSafe's
+[pre-parsed value extraction](https://docs.typesafe.ai/cookbooks/pre_parsed_value_extraction_cookbook):
+code enumerates exact candidates and copies the selected source. Its
+[hierarchical classification example](https://docs.typesafe.ai/cookbooks/hierarchical_classification)
+shows why early candidate pruning can lose a valid destination. This experiment
+uses a bounded flat declaration catalog; it does not implement the cookbook's
+beam search. The [Choice contract](https://docs.typesafe.ai/primitives/choice)
+allows up to 255 options, so this catalog plus `none` fits within that limit.
+
+Before model calls, the exposed-task checks informed two admission revisions.
+The first lexical metadata catalog still omitted two low-overlap gamma entry
+points. Prioritizing every public operation recovered those entries but displaced
+internal helpers. The final policy reserves only 32 implementation slots for the
+public-operation tier and fills the remainder lexically. This is development
+iteration informed by known source-coverage gaps, not unseen-task validation.
+
+The final catalogs admit all previously recorded named units: alpha four of four,
+beta three of three, and gamma four of four. This does not mean the 16 KiB packs
+include them: the deterministic pack contains complete `Host::request_enrollment`
+for alpha and `Log::append` for beta, and none of gamma's four named boundaries.
+The remaining source-selection question is therefore still open. The selector reads only public task and pinned source inputs. Developers had
+already inspected these tasks and their known coverage gaps; this remains
+development tuning. No native outcome informed the policy.
+
+Single local catalog/materialization observations were 0.675/0.213 seconds for
+alpha, 0.344/0.162 seconds for beta, and 0.302/0.185 seconds for gamma. The largest
+request, including the optional per-pointer Scores, was 107,144 bytes. These are
+pre-call feasibility observations, not repeated latency estimates. Rendered
+source uses complete enclosing lines and adjacent single-line attributes or doc
+comments; it does not claim to reproduce only the AST's exact byte interval.

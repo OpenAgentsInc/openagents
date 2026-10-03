@@ -1,0 +1,173 @@
+{
+  "schema": "openagents.jev-lifecycle.beta-posthoc-summary.v1",
+  "post_hoc": true,
+  "primary_scores_unchanged": true,
+  "diagnostic_sha256": "d91083ae434b72265e688b0a2061d626efb6f701337503fa85e79b294e83f062",
+  "runner_sha256": "8e45be9045d67844ee909d27e5ea48f7b599c82b39c165eee0e7a2f47957e958",
+  "diagnostic_receipt_sha256": "4b0dd1e57af3a5052f8a5c2ba7905965354070b1e38b66d26be52d611db4ccb7",
+  "primary_report_sha256": "42ea25a6cad9d0eb11d96300957b4d54ec4ad1c46a38fbc2e3b9ae60be36bcac",
+  "model_calls": 0,
+  "total_wall_s": 465.9808029329997,
+  "cleanup_confirmed_attempts": 8,
+  "arms": {
+    "A": {
+      "primary_passes": 2,
+      "primary_attempts": 4,
+      "beta_primary_passes": 2,
+      "beta_attempts": 2,
+      "beta_diagnostic_passes": 1,
+      "primary_and_applicable_diagnostic_passes": 1
+    },
+    "B": {
+      "primary_passes": 2,
+      "primary_attempts": 4,
+      "beta_primary_passes": 2,
+      "beta_attempts": 2,
+      "beta_diagnostic_passes": 1,
+      "primary_and_applicable_diagnostic_passes": 1
+    },
+    "C": {
+      "primary_passes": 2,
+      "primary_attempts": 4,
+      "beta_primary_passes": 2,
+      "beta_attempts": 2,
+      "beta_diagnostic_passes": 0,
+      "primary_and_applicable_diagnostic_passes": 0
+    }
+  },
+  "attempts": [
+    {
+      "label": "Historical reference",
+      "log": "logs/historical_reference.log",
+      "candidate_manifest_sha256": "c31e5762254b629d3229966cdd747a75218485800bd1c11aecd6593fa474ff34",
+      "source_run_id": null,
+      "primary_accepted": null,
+      "diagnostic_passed": true,
+      "failed_tests": [],
+      "passed_tests": [
+        "clean_trace_remains_successful_evidence",
+        "form_feed_before_an_interior_record_is_not_successful_evidence",
+        "step_before_session_is_not_successful_evidence"
+      ],
+      "wall_s": 56.8002864099999,
+      "cleanup_confirmed": true
+    },
+    {
+      "label": "Unmodified base",
+      "log": "logs/unmodified_base.log",
+      "candidate_manifest_sha256": "7f163d0add09a975f596c80cda7acf7a05fd83f5e74a97cb2490779562ef1331",
+      "source_run_id": null,
+      "primary_accepted": null,
+      "diagnostic_passed": false,
+      "failed_tests": [
+        "step_before_session_is_not_successful_evidence"
+      ],
+      "passed_tests": [
+        "clean_trace_remains_successful_evidence",
+        "form_feed_before_an_interior_record_is_not_successful_evidence"
+      ],
+      "wall_s": 55.39264198000001,
+      "cleanup_confirmed": true
+    },
+    {
+      "label": "A beta 1",
+      "log": "logs/A-beta-1.log",
+      "candidate_manifest_sha256": "a4d93bec527aae1138fc6cdfc11b24727b950a7dc93a4aa8f46acba95be546fd",
+      "source_run_id": "86cdf87c-1a18-48d8-b02a-20bd32bc5c45",
+      "primary_accepted": true,
+      "diagnostic_passed": false,
+      "failed_tests": [
+        "form_feed_before_an_interior_record_is_not_successful_evidence"
+      ],
+      "passed_tests": [
+        "clean_trace_remains_successful_evidence",
+        "step_before_session_is_not_successful_evidence"
+      ],
+      "wall_s": 56.18498612300027,
+      "cleanup_confirmed": true
+    },
+    {
+      "label": "B beta 1",
+      "log": "logs/B-beta-1.log",
+      "candidate_manifest_sha256": "8c40fc51ddfce76c9446b49b9035b23e023651c591b2a7a31daacdb2bd30c903",
+      "source_run_id": "e442d853-74da-4d6c-94e9-8deb8f2dea08",
+      "primary_accepted": true,
+      "diagnostic_passed": true,
+      "failed_tests": [],
+      "passed_tests": [
+        "clean_trace_remains_successful_evidence",
+        "form_feed_before_an_interior_record_is_not_successful_evidence",
+        "step_before_session_is_not_successful_evidence"
+      ],
+      "wall_s": 60.32776160400044,
+      "cleanup_confirmed": true
+    },
+    {
+      "label": "C beta 1",
+      "log": "logs/C-beta-1.log",
+      "candidate_manifest_sha256": "28219e0318d60a4c7280fa7145677c172b216b86a6f302b923adcd7d9165316f",
+      "source_run_id": "a46f6766-e906-4a64-a467-c57bfefdb3ba",
+      "primary_accepted": true,
+      "diagnostic_passed": false,
+      "failed_tests": [
+        "step_before_session_is_not_successful_evidence"
+      ],
+      "passed_tests": [
+        "clean_trace_remains_successful_evidence",
+        "form_feed_before_an_interior_record_is_not_successful_evidence"
+      ],
+      "wall_s": 61.06130892500005,
+      "cleanup_confirmed": true
+    },
+    {
+      "label": "B beta 2",
+      "log": "logs/B-beta-2.log",
+      "candidate_manifest_sha256": "f84dffa1084e0a773661ba0cc1db63144703fcaec5b958e590563ce4c31202cd",
+      "source_run_id": "3fb852b4-f4d8-4147-adaa-a1209cfa1917",
+      "primary_accepted": true,
+      "diagnostic_passed": false,
+      "failed_tests": [
+        "form_feed_before_an_interior_record_is_not_successful_evidence"
+      ],
+      "passed_tests": [
+        "clean_trace_remains_successful_evidence",
+        "step_before_session_is_not_successful_evidence"
+      ],
+      "wall_s": 57.79279366999981,
+      "cleanup_confirmed": true
+    },
+    {
+      "label": "C beta 2",
+      "log": "logs/C-beta-2.log",
+      "candidate_manifest_sha256": "f6cc0df83387e786adb3a41f9225f9bccf75d2df9355473f0dd109bac5992007",
+      "source_run_id": "af869a80-4277-4c0b-a4d7-b7b7c1d1d273",
+      "primary_accepted": true,
+      "diagnostic_passed": false,
+      "failed_tests": [
+        "form_feed_before_an_interior_record_is_not_successful_evidence"
+      ],
+      "passed_tests": [
+        "clean_trace_remains_successful_evidence",
+        "step_before_session_is_not_successful_evidence"
+      ],
+      "wall_s": 58.04752915200061,
+      "cleanup_confirmed": true
+    },
+    {
+      "label": "A beta 2",
+      "log": "logs/A-beta-2.log",
+      "candidate_manifest_sha256": "328a211aa2cc6bba251bf3e6903d68cf2ae5b62c614a807f29d200c1e3b253c9",
+      "source_run_id": "c2113cf1-68a0-41cb-ac09-af031f931f28",
+      "primary_accepted": true,
+      "diagnostic_passed": true,
+      "failed_tests": [],
+      "passed_tests": [
+        "clean_trace_remains_successful_evidence",
+        "form_feed_before_an_interior_record_is_not_successful_evidence",
+        "step_before_session_is_not_successful_evidence"
+      ],
+      "wall_s": 57.41071702199952,
+      "cleanup_confirmed": true
+    }
+  ]
+}

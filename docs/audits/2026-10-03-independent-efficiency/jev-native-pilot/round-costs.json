@@ -1,0 +1,45 @@
+{
+  "schema": "openagents.efficiency.native-pilot-costs.v1",
+  "components": [
+    {
+      "component": "native Claude sessions",
+      "usd": "4.907497800",
+      "basis": "priced broker usage",
+      "evidence": "report.json"
+    },
+    {
+      "component": "native Jev preparation",
+      "usd": "0.004973052",
+      "basis": "gateway-reported usage",
+      "evidence": "report.json"
+    },
+    {
+      "component": "Sonnet capability probe",
+      "usd": "0.157791700",
+      "basis": "priced broker usage",
+      "evidence": "native-evidence.tgz"
+    },
+    {
+      "component": "Jev span preflight",
+      "usd": "0.001152984",
+      "basis": "gateway-reported usage",
+      "evidence": "span-preflight"
+    },
+    {
+      "component": "Jev advisory clause review",
+      "usd": "0.014120610",
+      "basis": "gateway-reported usage",
+      "evidence": "clause-review/execution.json"
+    }
+  ],
+  "known_inference_usd": "5.085536146",
+  "unknown_inference_charges_in_this_round": 0,
+  "invoice_reconciled": false,
+  "excluded": [
+    "Initial indexes, source exports, tool installation and Cargo seed provisioning",
+    "Machine, storage and orchestration model costs",
+    "Engineering and review labor",
+    "Earlier experiment ledgers and the earlier direct-TypeSafe refusal"
+  ],
+  "posthoc_trace_diagnostic_model_calls": 0
+}

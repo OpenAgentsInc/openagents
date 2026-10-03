@@ -1,0 +1,637 @@
+{
+  "catalog_sha256": "cac2720d2b52a72dcce922c56af4b14ad99ef42c95e362ac8d4495c02dba0ee0",
+  "choices": {
+    "r01": "s06",
+    "r02": "s06",
+    "r03": "s06",
+    "r04": "s06",
+    "r05": "s06",
+    "r06": "s41",
+    "r07": "s06",
+    "r08": "s81",
+    "r09": "none",
+    "r10": "none"
+  },
+  "omissions": [
+    {
+      "id": "s80",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s04",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s05",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s09",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s10",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s11",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s12",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s13",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s14",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s15",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s16",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s17",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s18",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s19",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s20",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s21",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s22",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s23",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s24",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s25",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s26",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s27",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s28",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s29",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s30",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s31",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s32",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s35",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s36",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s37",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s38",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s42",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s43",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s44",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s45",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s46",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s47",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s48",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s49",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s50",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s51",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s52",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s53",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s54",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s55",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s56",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s57",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s58",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s59",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s60",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s61",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s62",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s63",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s64",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s74",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s75",
+      "reason": "read_pointer_limit"
+    },
+    {
+      "id": "s03",
+      "reason": "pack_byte_budget"
+    },
+    {
+      "id": "s08",
+      "reason": "pack_byte_budget"
+    },
+    {
+      "id": "s33",
+      "reason": "pack_byte_budget"
+    },
+    {
+      "id": "s34",
+      "reason": "pack_byte_budget"
+    },
+    {
+      "id": "s39",
+      "reason": "pack_byte_budget"
+    },
+    {
+      "id": "s40",
+      "reason": "pack_byte_budget"
+    },
+    {
+      "id": "s68",
+      "reason": "pack_byte_budget"
+    },
+    {
+      "id": "s69",
+      "reason": "pack_byte_budget"
+    },
+    {
+      "id": "s70",
+      "reason": "pack_byte_budget"
+    },
+    {
+      "id": "s71",
+      "reason": "pack_byte_budget"
+    },
+    {
+      "id": "s72",
+      "reason": "pack_byte_budget"
+    },
+    {
+      "id": "s73",
+      "reason": "pack_byte_budget"
+    },
+    {
+      "id": "s79",
+      "reason": "pack_byte_budget"
+    }
+  ],
+  "payload_bytes": 16043,
+  "policy": "supplied_metadata_judgments",
+  "read_files": 11,
+  "read_pointers": 25,
+  "selected": [
+    {
+      "baseline_score": 15,
+      "blob": "85914b6b156f297fde9f1ca85344edd1542a2a50",
+      "completeness": "partial_file",
+      "end_byte": 8504,
+      "end_line": 69,
+      "explicit_file": true,
+      "file_bytes": 8504,
+      "file_lines": 200,
+      "file_sha256": "b7570fc3dd4c74d377ad003e7a8c8d49e4901f620feb6cb2737db63c645390ca",
+      "full_end_line": 200,
+      "full_start_line": 1,
+      "id": "s81",
+      "kind": "document",
+      "name": "docs/coder/traces.md",
+      "path": "docs/coder/traces.md",
+      "public_api_tier": 0,
+      "role": "document",
+      "source_bytes": 2709,
+      "source_sha256": "8e0b317f15f736ff06452f5fd26964acb62d1e872799b1218ae8b793691a90b2",
+      "start_byte": 0,
+      "start_line": 1,
+      "unit_bytes": 8504
+    },
+    {
+      "baseline_score": 6,
+      "blob": "07376e31683e0b2c99caa5853cdf1cfd0aa31ee0",
+      "completeness": "complete_declaration",
+      "end_byte": 10659,
+      "end_line": 306,
+      "explicit_file": false,
+      "file_bytes": 18862,
+      "file_lines": 519,
+      "file_sha256": "68f164446044a59b4b8b1199253acdcedc2fec0f65f2e1e540636b3ea94104f6",
+      "full_end_line": 306,
+      "full_start_line": 231,
+      "id": "s06",
+      "kind": "function_item",
+      "name": "read",
+      "path": "crates/atif/src/log.rs",
+      "public_api_tier": 2,
+      "role": "implementation",
+      "signature": "pub fn read(path: &Path) -> io::Result<Recording> ",
+      "signature_complete": true,
+      "signature_sha256": "5435981c19fb4f59afcc1bfc0f7aba2352947fee61438150f05ead1e5b4ddf02",
+      "source_bytes": 2810,
+      "source_sha256": "44d97529740286640de490821250fa0f10dc126adbba40f425cf62c542f6340d",
+      "start_byte": 8038,
+      "start_line": 225,
+      "unit_bytes": 2621
+    },
+    {
+      "baseline_score": 6,
+      "blob": "fc62b67bb082bad555b56b92dffbc2a196994f40",
+      "completeness": "complete_declaration",
+      "end_byte": 51263,
+      "end_line": 1290,
+      "explicit_file": false,
+      "file_bytes": 57777,
+      "file_lines": 1464,
+      "file_sha256": "1fcf6ce2bf972972471a6dfeaf4c0a1c469b1b6183b211b515a483c51fa98178",
+      "full_end_line": 1290,
+      "full_start_line": 1269,
+      "id": "s41",
+      "kind": "function_item",
+      "name": "Task::judge_record",
+      "path": "crates/coderbench/src/lib.rs",
+      "public_api_tier": 0,
+      "role": "implementation",
+      "signature": "fn judge_record(&self, run: &Observed, faults: &mut Vec<Fault>) ",
+      "signature_complete": true,
+      "signature_sha256": "78c623e147599ea4ad088753c0f3b13c6eebbb1986e31788670f4bad8401d608",
+      "source_bytes": 883,
+      "source_sha256": "03bf1df916a03520c527c4afe4d139561eb2d30b6fbad93d80d9e1c88d12f467",
+      "start_byte": 50483,
+      "start_line": 1267,
+      "unit_bytes": 780
+    },
+    {
+      "baseline_score": 10,
+      "blob": "7e7b759c279e51ec96d2dab456cb82fb5490eaef",
+      "completeness": "complete_declaration",
+      "end_byte": 32818,
+      "end_line": 878,
+      "explicit_file": false,
+      "file_bytes": 38133,
+      "file_lines": 1006,
+      "file_sha256": "133234ece9e73a75b3d5572eae57c1889b47eaa758db45e84b8eb3c206a6b4bb",
+      "full_end_line": 878,
+      "full_start_line": 849,
+      "id": "s65",
+      "kind": "function_item",
+      "name": "tests::a_decision_call_records_the_door_and_the_state_it_read",
+      "path": "crates/atif/src/document.rs",
+      "public_api_tier": 0,
+      "role": "test",
+      "signature": "fn a_decision_call_records_the_door_and_the_state_it_read() ",
+      "signature_complete": true,
+      "signature_sha256": "b1f57c0182b7bb8c8fad223c136f3f420a9a149e5a0b0afa2e9926e020e50df5",
+      "source_bytes": 1544,
+      "source_sha256": "b0935206d0aadf7edc6d201c65609479142df37ba2fcc864a8f79ec4b2d8984b",
+      "start_byte": 31422,
+      "start_line": 846,
+      "unit_bytes": 1396
+    },
+    {
+      "baseline_score": 10,
+      "blob": "07376e31683e0b2c99caa5853cdf1cfd0aa31ee0",
+      "completeness": "complete_declaration",
+      "end_byte": 17264,
+      "end_line": 480,
+      "explicit_file": false,
+      "file_bytes": 18862,
+      "file_lines": 519,
+      "file_sha256": "68f164446044a59b4b8b1199253acdcedc2fec0f65f2e1e540636b3ea94104f6",
+      "full_end_line": 480,
+      "full_start_line": 474,
+      "id": "s66",
+      "kind": "function_item",
+      "name": "tests::a_file_with_no_session_record_is_refused",
+      "path": "crates/atif/src/log.rs",
+      "public_api_tier": 0,
+      "role": "test",
+      "signature": "fn a_file_with_no_session_record_is_refused() ",
+      "signature_complete": true,
+      "signature_sha256": "003a7c5ce8bedca77195d003cab84197d2aa21a68975e945741db607d4edba10",
+      "source_bytes": 465,
+      "source_sha256": "03b9ab3d5c6f0f70c907b33e78cbc782761b5b1051c55dbb58c937a472d78000",
+      "start_byte": 16919,
+      "start_line": 471,
+      "unit_bytes": 345
+    },
+    {
+      "baseline_score": 10,
+      "blob": "0c9dd910b0753d02ed9ae3ae73ef94fdb9e5e0c2",
+      "completeness": "complete_declaration",
+      "end_byte": 7517,
+      "end_line": 207,
+      "explicit_file": false,
+      "file_bytes": 24661,
+      "file_lines": 685,
+      "file_sha256": "c4d2e8ffb6f319f4c84834217f4df7249f5278648105dac3e789df47da165976",
+      "full_end_line": 207,
+      "full_start_line": 196,
+      "id": "s67",
+      "kind": "function_item",
+      "name": "a_torn_trace_is_unverifiable",
+      "path": "crates/coderbench/tests/negative.rs",
+      "public_api_tier": 0,
+      "role": "test",
+      "signature": "fn a_torn_trace_is_unverifiable() ",
+      "signature_complete": true,
+      "signature_sha256": "e96e8e795f1c1ed49a745d3246cb3b36b5072239d89d137d54428fc3cc3c6fd4",
+      "source_bytes": 816,
+      "source_sha256": "71f49365dfc4c521a1775d4185183780adb1b07258cf45a4caaaa986dacf5585",
+      "start_byte": 6831,
+      "start_line": 193,
+      "unit_bytes": 686
+    },
+    {
+      "baseline_score": 10,
+      "blob": "7e7b759c279e51ec96d2dab456cb82fb5490eaef",
+      "completeness": "complete_declaration",
+      "end_byte": 35645,
+      "end_line": 946,
+      "explicit_file": false,
+      "file_bytes": 38133,
+      "file_lines": 1006,
+      "file_sha256": "133234ece9e73a75b3d5572eae57c1889b47eaa758db45e84b8eb3c206a6b4bb",
+      "full_end_line": 946,
+      "full_start_line": 935,
+      "id": "s76",
+      "kind": "function_item",
+      "name": "tests::repeated_shell_commands_report_as_waste",
+      "path": "crates/atif/src/document.rs",
+      "public_api_tier": 0,
+      "role": "test",
+      "signature": "fn repeated_shell_commands_report_as_waste() ",
+      "signature_complete": true,
+      "signature_sha256": "94bf1bb6c1a5ce2edd63b173ac83bf063b0a2c7cdd6a8834456a714cda71496c",
+      "source_bytes": 717,
+      "source_sha256": "f644caa59f32c8d34e154300d7f2dd8e516665144f7846e4c1b8e650773c83da",
+      "start_byte": 35091,
+      "start_line": 932,
+      "unit_bytes": 554
+    },
+    {
+      "baseline_score": 10,
+      "blob": "07376e31683e0b2c99caa5853cdf1cfd0aa31ee0",
+      "completeness": "complete_declaration",
+      "end_byte": 18859,
+      "end_line": 518,
+      "explicit_file": false,
+      "file_bytes": 18862,
+      "file_lines": 519,
+      "file_sha256": "68f164446044a59b4b8b1199253acdcedc2fec0f65f2e1e540636b3ea94104f6",
+      "full_end_line": 518,
+      "full_start_line": 514,
+      "id": "s77",
+      "kind": "function_item",
+      "name": "tests::a_session_id_leads_with_its_start_time",
+      "path": "crates/atif/src/log.rs",
+      "public_api_tier": 0,
+      "role": "test",
+      "signature": "fn a_session_id_leads_with_its_start_time() ",
+      "signature_complete": true,
+      "signature_sha256": "c7ea491d94451028101cb8ed01eb122a94e9c3f0208ba8c342be644066616adf",
+      "source_bytes": 300,
+      "source_sha256": "28b24a144ce5013b7fadba3fbb6cc0134b61905934548c49932eee67cc076286",
+      "start_byte": 18637,
+      "start_line": 512,
+      "unit_bytes": 222
+    },
+    {
+      "baseline_score": 10,
+      "blob": "0c9dd910b0753d02ed9ae3ae73ef94fdb9e5e0c2",
+      "completeness": "complete_declaration",
+      "end_byte": 8099,
+      "end_line": 221,
+      "explicit_file": false,
+      "file_bytes": 24661,
+      "file_lines": 685,
+      "file_sha256": "c4d2e8ffb6f319f4c84834217f4df7249f5278648105dac3e789df47da165976",
+      "full_end_line": 221,
+      "full_start_line": 212,
+      "id": "s78",
+      "kind": "function_item",
+      "name": "a_trace_without_an_end_record_is_a_fault",
+      "path": "crates/coderbench/tests/negative.rs",
+      "public_api_tier": 0,
+      "role": "test",
+      "signature": "fn a_trace_without_an_end_record_is_a_fault() ",
+      "signature_complete": true,
+      "signature_sha256": "96f29e1bdae94368e1d8cfb986754a3e90c329f797d6fc7acd68bc66bcbc6435",
+      "source_bytes": 581,
+      "source_sha256": "d357c6eae891a96e0ba70bd6ad47a0888d047bdaac36d1696c723f55802a02e9",
+      "start_byte": 7624,
+      "start_line": 209,
+      "unit_bytes": 475
+    },
+    {
+      "baseline_score": 6,
+      "blob": "7e7b759c279e51ec96d2dab456cb82fb5490eaef",
+      "completeness": "complete_declaration",
+      "end_byte": 12047,
+      "end_line": 334,
+      "explicit_file": false,
+      "file_bytes": 38133,
+      "file_lines": 1006,
+      "file_sha256": "133234ece9e73a75b3d5572eae57c1889b47eaa758db45e84b8eb3c206a6b4bb",
+      "full_end_line": 334,
+      "full_start_line": 323,
+      "id": "s01",
+      "kind": "function_item",
+      "name": "Session::opening",
+      "path": "crates/atif/src/document.rs",
+      "public_api_tier": 2,
+      "role": "implementation",
+      "signature": "pub fn opening(id: &str, model: &str, door: &str, repository: &str, version: &str) -> Self ",
+      "signature_complete": true,
+      "signature_sha256": "8caa6031912b5d22b0de7607a4dded0fda985147034db3bfcede6d489e576d6b",
+      "source_bytes": 556,
+      "source_sha256": "2f117d750d2395b0192323df8c5e41580920e87f0b88b11ea0fa2257ed044eff",
+      "start_byte": 11629,
+      "start_line": 320,
+      "unit_bytes": 418
+    },
+    {
+      "baseline_score": 6,
+      "blob": "07376e31683e0b2c99caa5853cdf1cfd0aa31ee0",
+      "completeness": "complete_declaration",
+      "end_byte": 5635,
+      "end_line": 155,
+      "explicit_file": false,
+      "file_bytes": 18862,
+      "file_lines": 519,
+      "file_sha256": "68f164446044a59b4b8b1199253acdcedc2fec0f65f2e1e540636b3ea94104f6",
+      "full_end_line": 155,
+      "full_start_line": 151,
+      "id": "s02",
+      "kind": "function_item",
+      "name": "Log::append",
+      "path": "crates/atif/src/log.rs",
+      "public_api_tier": 2,
+      "role": "implementation",
+      "signature": "pub fn append(&mut self, step: &Step) -> io::Result<()> ",
+      "signature_complete": true,
+      "signature_sha256": "02d859ae41524994f5d2f0d903e47b8e2dfad819e5fe4d680beb97b77155cf3e",
+      "source_bytes": 450,
+      "source_sha256": "44bd930e8e81412ef51c471e627ad88ba398df758e451a34dd7c97c5ef7617ba",
+      "start_byte": 5451,
+      "start_line": 144,
+      "unit_bytes": 184
+    },
+    {
+      "baseline_score": 6,
+      "blob": "07376e31683e0b2c99caa5853cdf1cfd0aa31ee0",
+      "completeness": "complete_declaration",
+      "end_byte": 12290,
+      "end_line": 354,
+      "explicit_file": false,
+      "file_bytes": 18862,
+      "file_lines": 519,
+      "file_sha256": "68f164446044a59b4b8b1199253acdcedc2fec0f65f2e1e540636b3ea94104f6",
+      "full_end_line": 354,
+      "full_start_line": 347,
+      "id": "s07",
+      "kind": "function_item",
+      "name": "session_id",
+      "path": "crates/atif/src/log.rs",
+      "public_api_tier": 2,
+      "role": "implementation",
+      "signature": "pub fn session_id(at: u64) -> String ",
+      "signature_complete": true,
+      "signature_sha256": "b8b7152f5947fd412f4eb9d7bf1cfedcfe8833f17c2f405719fb42b1d88bd64e",
+      "source_bytes": 651,
+      "source_sha256": "a161621fd1541c64c5434ff01d53bb5d77e1df5bb2d2a7c12f92a0afe2f281d2",
+      "start_byte": 11953,
+      "start_line": 340,
+      "unit_bytes": 337
+    }
+  ],
+  "selected_ids": [
+    "s81",
+    "s06",
+    "s41",
+    "s65",
+    "s66",
+    "s67",
+    "s76",
+    "s77",
+    "s78",
+    "s01",
+    "s02",
+    "s07"
+  ],
+  "sha256": "bbeae9265f4733f626a79bf663075d601f00437e1e62badfe6ce078b9c97a521",
+  "text": "## Prepared source spans\n\nSource commit: `7ec5f6e83d018ab2f25d7a61ff695de81f2f55f6`. Complete applicable instructions are supplied separately. Partial evidence and omissions are explicit; a selected span does not prove requirement or dependency coverage.\n\n### s81 docs/coder/traces.md:1-69 \u2014 docs/coder/traces.md\n\ndocument; partial_file. Full span: 1-200. Blob: `85914b6b156f297fde9f1ca85344edd1542a2a50`. File SHA-256: `b7570fc3dd4c74d377ad003e7a8c8d49e4901f620feb6cb2737db63c645390ca`.\n\n````text\n# Traces\n\nEvery Coder Terminal conversation writes itself to a local ATIF trace as\nit runs. Nothing uploads, nothing phones home, and nothing has to be\nasked for: a conversation on your machine leaves a file on your machine.\n\nStatus: implemented in `crates/atif` (the format and the log) and\n`crates/coder` (`trace.rs`, wired through `agent.rs` and `main.rs`).\n\n## Why this exists\n\n`crates/coder` used to persist nothing. The transcript lived in `Agent`\nfor the life of the process and went when the terminal exited. So when\n[issue #9379](https://github.com/OpenAgentsInc/openagents/issues/9379)\nset out to score `classify.rs` on real `coder` turns, there were none to\nscore, and the suite had to be harvested from a different agent's session\nrecord instead \u2014 95 states measuring something adjacent to `coder` rather\nthan `coder`. Every measurement this repository has made rests on suites\nwritten for the purpose. The one workload this repository owns was the\none it could not see.\n\nA trace is the other half of the Gym's picture:\n\n- **Rows** are per-decision, receipt-chained, and comparable across\n  doors. They say what one door answered for one state.\n- **Traces** are per-episode and ordered. They say what happened *next*,\n  which is what an outcome label is derived from.\n\n## Where the traces go\n\n```text\n~/.openagents/traces/<session>.atif.jsonl\n```\n\nOne file per session, the directory and the files readable only by you.\nThe name leads with the session's UTC start time, so listing the\ndirectory lists your history:\n\n```text\n20260919T142233Z-4f1a9c02.atif.jsonl\n```\n\nThree settings change that:\n\n| Setting | Effect |\n| --- | --- |\n| `CODER_TRACE_DIR=<path>` | Write traces to `<path>` instead. |\n| `CODER_TRACE=off` | Record nothing. `0`, `no`, and `false` also work. |\n| `--trace <path>` | Write this session to that file. |\n\nWith `HOME` unset and no `CODER_TRACE_DIR`, there is nowhere to write and\nrecording is off.\n\n`--trace` is the one a script wants: it names the file, so a caller reads\nthe trace back without globbing a directory. Naming a file is a request to\nrecord, so it outranks `CODER_TRACE=off`, and a file that cannot be opened\nends the run rather than producing an unrecorded session. The flag works\nin both modes \u2014 see [`headless.md`](headless.md).\n\nThe terminal says which of those it is on the first detail line of a\nsession, so you never have to guess. Press `\u2325V` or type `/verbose` to see\nit.\n\n## What is recorded\n\n| Step | When |\n| --- | --- |\n| `user` | You submit a draft. |\n| `system` | The instructions a generation was given, recorded when they change rather than once a turn; and any note about what the host could not do, such as a missing `TYPESAFE_API_KEY`. |\n````\n\n### s06 crates/atif/src/log.rs:225-306 \u2014 read\n\nimplementation; complete_declaration. Full span: 231-306. Blob: `07376e31683e0b2c99caa5853cdf1cfd0aa31ee0`. File SHA-256: `68f164446044a59b4b8b1199253acdcedc2fec0f65f2e1e540636b3ea94104f6`.\n\n```text\n/// Reads a session log.\n///\n/// # Errors\n///\n/// Returns the underlying filesystem error, or an `InvalidData` error when\n/// the file holds no session record and so is not a session log.\npub fn read(path: &Path) -> io::Result<Recording> {\n    let file = File::open(path)?;\n    let mut opened: Option<(u64, Session)> = None;\n    let mut steps: Vec<Step> = Vec::new();\n    let mut closed: Option<(u64, String)> = None;\n    let mut unreadable_lines = 0usize;\n    for line in BufReader::new(file).lines() {\n        let line = line?;\n        if line.trim().is_empty() {\n            continue;\n        }\n        let Ok(record) = serde_json::from_str::<Map<String, Value>>(&line) else {\n            unreadable_lines += 1;\n            continue;\n        };\n        let at = record.get(\"at\").and_then(Value::as_u64).unwrap_or_default();\n        match record.get(\"record\").and_then(Value::as_str) {\n            Some(\"session\") => {\n                match record\n                    .get(\"session\")\n                    .cloned()\n                    .and_then(|value| serde_json::from_value::<Session>(value).ok())\n                {\n                    Some(session) => opened = Some((at, session)),\n                    None => unreadable_lines += 1,\n                }\n            }\n            Some(\"step\") => match record\n                .get(\"step\")\n                .cloned()\n                .and_then(|value| serde_json::from_value::<Step>(value).ok())\n            {\n                Some(step) => steps.push(step),\n                None => unreadable_lines += 1,\n            },\n            Some(\"end\") => {\n                let state = record\n                    .get(\"state\")\n                    .and_then(Value::as_str)\n                    .unwrap_or(ENDED)\n                    .to_string();\n                closed = Some((at, state));\n            }\n            _ => unreadable_lines += 1,\n        }\n    }\n    let Some((started, mut session)) = opened else {\n        return Err(io::Error::new(\n            io::ErrorKind::InvalidData,\n            format!(\"{} holds no session record\", path.display()),\n        ));\n    };\n    let last = closed\n        .as_ref()\n        .map(|(at, _)| *at)\n        .or_else(|| steps.last().map(|step| step.at))\n        .unwrap_or(started);\n    session.seconds = last.saturating_sub(started) / 1_000;\n    session.state = match &closed {\n        Some((_, state)) => state.clone(),\n        None => INTERRUPTED.to_string(),\n    };\n    if session.directive.is_empty() {\n        session.directive = steps\n            .iter()\n            .find(|step| step.source == document::Source::User)\n            .map(|step| step.message.clone())\n            .unwrap_or_default();\n    }\n    Ok(Recording {\n        session,\n        steps,\n        unreadable_lines,\n        path: path.to_path_buf(),\n    })\n}\n```\n\n### s41 crates/coderbench/src/lib.rs:1267-1290 \u2014 Task::judge_record\n\nimplementation; complete_declaration. Full span: 1269-1290. Blob: `fc62b67bb082bad555b56b92dffbc2a196994f40`. File SHA-256: `1fcf6ce2bf972972471a6dfeaf4c0a1c469b1b6183b211b515a483c51fa98178`.\n\n```text\n    /// Whether the record is whole, and whether the episode ended a way the\n    /// task allows.\n    fn judge_record(&self, run: &Observed, faults: &mut Vec<Fault>) {\n        if !run.closed {\n            faults.push(Fault::Unfinished);\n        }\n        if run.unreadable_lines > 0 {\n            faults.push(Fault::TornTrace {\n                lines: run.unreadable_lines,\n            });\n        }\n        let allowed = self.grade.allowed();\n        if allowed.iter().any(|word| word == run.ending.word()) {\n            return;\n        }\n        match &run.ending {\n            Ending::Unobserved => faults.push(Fault::EndingUnobserved { allowed }),\n            Ending::Closed => faults.push(Fault::EndingUnstated { allowed }),\n            found => faults.push(Fault::Ended {\n                found: found.word().to_string(),\n                allowed,\n            }),\n        }\n    }\n```\n\n### s65 crates/atif/src/document.rs:846-878 \u2014 tests::a_decision_call_records_the_door_and_the_state_it_read\n\ntest; complete_declaration. Full span: 849-878. Blob: `7e7b759c279e51ec96d2dab456cb82fb5490eaef`. File SHA-256: `133234ece9e73a75b3d5572eae57c1889b47eaa758db45e84b8eb3c206a6b4bb`.\n\n```text\n    /// A decision call records which door answered, what it was asked, what\n    /// it said, and the digest of the state it read.\n    #[test]\n    fn a_decision_call_records_the_door_and_the_state_it_read() {\n        let state = json!({\"task\": \"list the crates\", \"transcript\": []});\n        let request = json!({\n            \"state\": state,\n            \"model\": \"jev-latest\",\n            \"questions\": {\"action\": {\"type\": \"choice\"}, \"risk\": {\"type\": \"score\"}},\n        });\n        let call = Decision {\n            id: \"call-2\".to_string(),\n            name: \"classify\".to_string(),\n            door: \"https://api.typesafe.ai\".to_string(),\n            model: \"jev-latest\".to_string(),\n            request,\n            answers: json!({\"action\": {\"choice\": \"respond\", \"confidence\": 0.8}}),\n            route: Some(\"respond\".to_string()),\n            error: None,\n            milliseconds: 240,\n        }\n        .call();\n        assert!(call.is_decision());\n        assert_eq!(call.extra[\"door\"], \"https://api.typesafe.ai\");\n        assert_eq!(call.extra[\"state_digest\"], digest(&state));\n        assert_eq!(call.extra[\"question_ids\"], json!([\"action\", \"risk\"]));\n        assert_eq!(call.extra[\"route\"], \"respond\");\n        assert_eq!(call.extra[\"answers\"][\"action\"][\"choice\"], \"respond\");\n        assert_eq!(call.outcome, Outcome::Completed);\n        // The arguments hold the state, so the question and the answer read\n        // back together without a second file.\n        assert_eq!(call.arguments[\"state\"][\"task\"], \"list the crates\");\n    }\n```\n\n### s66 crates/atif/src/log.rs:471-480 \u2014 tests::a_file_with_no_session_record_is_refused\n\ntest; complete_declaration. Full span: 474-480. Blob: `07376e31683e0b2c99caa5853cdf1cfd0aa31ee0`. File SHA-256: `68f164446044a59b4b8b1199253acdcedc2fec0f65f2e1e540636b3ea94104f6`.\n\n```text\n    /// A file that is not a session log says so rather than reading back as\n    /// an empty session.\n    #[test]\n    fn a_file_with_no_session_record_is_refused() {\n        let dir = tempfile::tempdir().unwrap();\n        let path = dir.path().join(\"not-a-trace.atif.jsonl\");\n        fs::write(&path, \"{\\\"record\\\":\\\"step\\\",\\\"step\\\":{}}\\n\").unwrap();\n        let error = read(&path).unwrap_err();\n        assert_eq!(error.kind(), io::ErrorKind::InvalidData);\n    }\n```\n\n### s67 crates/coderbench/tests/negative.rs:193-207 \u2014 a_torn_trace_is_unverifiable\n\ntest; complete_declaration. Full span: 196-207. Blob: `0c9dd910b0753d02ed9ae3ae73ef94fdb9e5e0c2`. File SHA-256: `c4d2e8ffb6f319f4c84834217f4df7249f5278648105dac3e789df47da165976`.\n\n```text\n/// A trace with a line that did not read back is a trace with a hole in it,\n/// and a hole is unknown rather than fine.\n#[test]\nfn a_torn_trace_is_unverifiable() {\n    let directory = tempfile::tempdir().unwrap();\n    let lines: Vec<String> = authored_text().lines().map(str::to_string).collect();\n    // A line the writer did not finish, which is what a session killed\n    // mid-write leaves behind.\n    let torn = r#\"{\"record\": \"step\", \"step\": {\"at\": 1789869709018, \"source\": \"Agent\", \"mess\"#;\n    let mut with_hole = lines.clone();\n    with_hole.insert(lines.len() - 1, torn.to_string());\n    let judgment = task().judge(&observed(directory.path(), \"torn\", &with_hole.join(\"\\n\")));\n    assert_eq!(judgment.verdict, Verdict::Unverifiable);\n    assert_eq!(judgment.faults, vec![Fault::TornTrace { lines: 1 }]);\n}\n```\n\n### s76 crates/atif/src/document.rs:932-946 \u2014 tests::repeated_shell_commands_report_as_waste\n\ntest; complete_declaration. Full span: 935-946. Blob: `7e7b759c279e51ec96d2dab456cb82fb5490eaef`. File SHA-256: `133234ece9e73a75b3d5572eae57c1889b47eaa758db45e84b8eb3c206a6b4bb`.\n\n```text\n    /// A pipeline is what its first program does, and a repeated command is\n    /// counted once as work and once as the cost of doing it again.\n    #[test]\n    fn repeated_shell_commands_report_as_waste() {\n        let mut second = a_shell_call(\"cargo test -p atif\", \"ok\");\n        second.id = \"call-2\".to_string();\n        let steps = vec![\n            Step::called(a_shell_call(\"cargo test -p atif\", \"ok\")),\n            Step::called(second),\n        ];\n        let waste = &document(&a_session(), &steps)[\"final_metrics\"][\"extra\"][\"waste\"];\n        assert_eq!(waste[\"repeated_calls\"], 1);\n        assert_eq!(waste[\"repeated\"][0][\"executions\"], 2);\n        assert_eq!(waste[\"repeated\"][0][\"wasted_ms\"], 12);\n    }\n```\n\n### s77 crates/atif/src/log.rs:512-518 \u2014 tests::a_session_id_leads_with_its_start_time\n\ntest; complete_declaration. Full span: 514-518. Blob: `07376e31683e0b2c99caa5853cdf1cfd0aa31ee0`. File SHA-256: `68f164446044a59b4b8b1199253acdcedc2fec0f65f2e1e540636b3ea94104f6`.\n\n```text\n    /// A session identifier leads with the time it started.\n    #[test]\n    fn a_session_id_leads_with_its_start_time() {\n        let id = session_id(1_758_290_553_123);\n        assert!(id.starts_with(\"20250919T140233Z-\"), \"{id}\");\n        assert_eq!(id.len(), \"20250919T140233Z-\".len() + 8);\n    }\n```\n\n### s78 crates/coderbench/tests/negative.rs:209-221 \u2014 a_trace_without_an_end_record_is_a_fault\n\ntest; complete_declaration. Full span: 212-221. Blob: `0c9dd910b0753d02ed9ae3ae73ef94fdb9e5e0c2`. File SHA-256: `c4d2e8ffb6f319f4c84834217f4df7249f5278648105dac3e789df47da165976`.\n\n```text\n/// A trace with no end record is a session that never closed, whatever the\n/// steps in it say.\n#[test]\nfn a_trace_without_an_end_record_is_a_fault() {\n    let directory = tempfile::tempdir().unwrap();\n    let lines: Vec<String> = authored_text().lines().map(str::to_string).collect();\n    let stopped = lines[..lines.len() - 1].join(\"\\n\");\n    let run = observed(directory.path(), \"stopped\", &stopped);\n    assert!(!run.closed);\n    let judgment = task().judge(&run);\n    assert_eq!(judgment.verdict, Verdict::Failed);\n    assert_eq!(judgment.faults, vec![Fault::Unfinished]);\n}\n```\n\n### s01 crates/atif/src/document.rs:320-334 \u2014 Session::opening\n\nimplementation; complete_declaration. Full span: 323-334. Blob: `7e7b759c279e51ec96d2dab456cb82fb5490eaef`. File SHA-256: `133234ece9e73a75b3d5572eae57c1889b47eaa758db45e84b8eb3c206a6b4bb`.\n\n```text\n    /// A session with the fields that are known when it opens, and the\n    /// rest left for the reader to compute.\n    #[must_use]\n    pub fn opening(id: &str, model: &str, door: &str, repository: &str, version: &str) -> Self {\n        Session {\n            id: id.to_string(),\n            model: model.to_string(),\n            door: door.to_string(),\n            repository: repository.to_string(),\n            directive: String::new(),\n            state: String::new(),\n            seconds: 0,\n            version: version.to_string(),\n        }\n    }\n```\n\n### s02 crates/atif/src/log.rs:144-155 \u2014 Log::append\n\nimplementation; complete_declaration. Full span: 151-155. Blob: `07376e31683e0b2c99caa5853cdf1cfd0aa31ee0`. File SHA-256: `68f164446044a59b4b8b1199253acdcedc2fec0f65f2e1e540636b3ea94104f6`.\n\n```text\n    /// Appends one step and syncs it to disk.\n    ///\n    /// # Errors\n    ///\n    /// Returns the underlying filesystem error. A caller that cannot record\n    /// should say so and carry on: a trace is evidence about a conversation,\n    /// not a part of it.\n    pub fn append(&mut self, step: &Step) -> io::Result<()> {\n        write_line(&mut self.file, &json!({ \"record\": \"step\", \"step\": step }))?;\n        self.steps += 1;\n        Ok(())\n    }\n```\n\n### s07 crates/atif/src/log.rs:340-354 \u2014 session_id\n\nimplementation; complete_declaration. Full span: 347-354. Blob: `07376e31683e0b2c99caa5853cdf1cfd0aa31ee0`. File SHA-256: `68f164446044a59b4b8b1199253acdcedc2fec0f65f2e1e540636b3ea94104f6`.\n\n```text\n/// A session identifier: the UTC start time, then eight hex digits that\n/// separate two sessions started in the same second.\n///\n/// The time leads so that a directory listing is a history, and the file\n/// name is the identifier so that a document and the file it came from\n/// cannot drift apart.\n#[must_use]\npub fn session_id(at: u64) -> String {\n    let nanos = std::time::SystemTime::now()\n        .duration_since(std::time::UNIX_EPOCH)\n        .map(|since| since.subsec_nanos())\n        .unwrap_or_default();\n    let salt = u64::from(nanos) ^ (u64::from(std::process::id()) << 19);\n    format!(\"{}-{:08x}\", document::stamp(at), salt as u32)\n}\n```\n",
+  "wall_s": 0.1293961249757558
+}

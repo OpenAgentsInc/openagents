@@ -1,0 +1,2901 @@
+{
+  "schema": "openagents.jev-lifecycle.clause-review-analysis.v1",
+  "source_hashes": {
+    "registration.json": "b8e63a4649cb7040c0534eb5ef4ad09b80c97d68fb0d6ca0cb4a222524308451",
+    "execution.json": "32ff544510c4e31115b29adde1f0cc234662eb7df09ad6a1b1e0219135a31991"
+  },
+  "validation_counts": {
+    "registration_execution_binding": 1,
+    "freeze_binding": 1,
+    "frozen_prototype": 3,
+    "frozen_import_closure": 5,
+    "runner_binding": 2,
+    "bound_evidence": 78,
+    "original_plan_binding": 1,
+    "ended_panel_binding": 1,
+    "original_order": 1,
+    "execution_order": 1,
+    "preparation_binding": 12,
+    "slot_identity": 12,
+    "registered_request_binding": 11,
+    "exact_sent_request_bytes": 11,
+    "request_digest_chain": 11,
+    "request_byte_bound": 11,
+    "response_binding": 11,
+    "receipt_binding": 11,
+    "complete_answer_keys": 11,
+    "model_alias": 11,
+    "one_successful_call": 11,
+    "known_cost_binding": 11,
+    "full_source_self_binding": 60,
+    "candidate_source_binding": 28,
+    "pinned_source_exact_bytes": 32,
+    "valid_label": 116,
+    "skip_no_call": 1,
+    "candidate_payload_exact_bytes": 28
+  },
+  "validation_errors": [],
+  "scheduled_candidates": 12,
+  "called_candidates": 11,
+  "skipped_candidates": 1,
+  "requested_clauses": 116,
+  "answered_clauses": 116,
+  "label_counts": {
+    "demonstrated": 69,
+    "non_code_requirement": 27,
+    "insufficient_evidence": 20,
+    "missing_handling": 0
+  },
+  "by_task_labels": {
+    "alternative-beta": {
+      "demonstrated": 33,
+      "non_code_requirement": 10,
+      "insufficient_evidence": 7
+    },
+    "alternative-gamma": {
+      "demonstrated": 36,
+      "insufficient_evidence": 13,
+      "non_code_requirement": 17
+    }
+  },
+  "cost_usd": 0.01412061,
+  "cost_decimal": "0.014120610",
+  "accounting_complete": true,
+  "application_calls": 11,
+  "gateway_attempts": 11,
+  "provider_attempts": 12,
+  "final_providers": {
+    "typesafe-ai": 10,
+    "digitalocean": 1
+  },
+  "usage": {
+    "input_tokens": 336205,
+    "output_tokens": 7428
+  },
+  "timing_s": {
+    "preparation_batch": 3.257709584198892,
+    "execution_batch": 8.037671624915674,
+    "sum_preparation_execution": 11.295381209114566,
+    "summed_call": 7.990538958925754,
+    "summed_gateway": 7.982529500266537,
+    "mean_call": 0.726412632629614,
+    "min_call": 0.6312297091353685,
+    "median_call": 0.6861594158690423,
+    "max_call": 0.8907052921131253
+  },
+  "rows": [
+    {
+      "position": 1,
+      "run_id": "86cdf87c-1a18-48d8-b02a-20bd32bc5c45",
+      "task_id": "alternative-beta",
+      "arm": "bare",
+      "repetition": 1,
+      "ready": true,
+      "primary_accepted": true,
+      "preparation_status": "ready",
+      "preparation_wall_s": 0.2871650829911232,
+      "mandatory_request_bytes": 123856,
+      "required_source_bytes": 88634,
+      "contract_bytes": 8504,
+      "omissions": [
+        {
+          "path": "crates/coderbench/tests/negative.rs",
+          "role": "changed_supporting_file",
+          "status": "optional_request_byte_bound"
+        },
+        {
+          "path": "crates/atif/src/document.rs",
+          "role": "unchanged_public_entrypoint",
+          "status": "optional_request_byte_bound"
+        },
+        {
+          "path": "crates/coderbench/src/preflight.rs",
+          "role": "unchanged_public_entrypoint",
+          "status": "optional_request_byte_bound"
+        },
+        {
+          "path": "crates/coderbench/src/drive.rs",
+          "role": "unchanged_public_entrypoint",
+          "status": "optional_request_byte_bound"
+        }
+      ],
+      "labels": {
+        "r01": "demonstrated",
+        "r02": "demonstrated",
+        "r03": "demonstrated",
+        "r04": "demonstrated",
+        "r05": "demonstrated",
+        "r06": "demonstrated",
+        "r07": "demonstrated",
+        "r08": "non_code_requirement",
+        "r09": "insufficient_evidence",
+        "r10": "non_code_requirement"
+      },
+      "answers": {
+        "r01": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.59,
+          "probabilities": {
+            "missing_handling": 0.07,
+            "insufficient_evidence": 0.23,
+            "demonstrated": 0.7,
+            "non_code_requirement": 0
+          }
+        },
+        "r02": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.89,
+          "probabilities": {
+            "missing_handling": 0.07,
+            "insufficient_evidence": 0.01,
+            "demonstrated": 0.92,
+            "non_code_requirement": 0
+          }
+        },
+        "r03": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.98,
+          "probabilities": {
+            "missing_handling": 0.01,
+            "insufficient_evidence": 0.01,
+            "demonstrated": 0.98,
+            "non_code_requirement": 0
+          }
+        },
+        "r04": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.96,
+          "probabilities": {
+            "missing_handling": 0.02,
+            "insufficient_evidence": 0.01,
+            "demonstrated": 0.97,
+            "non_code_requirement": 0
+          }
+        },
+        "r05": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.99,
+          "probabilities": {
+            "missing_handling": 0,
+            "insufficient_evidence": 0.01,
+            "demonstrated": 0.99,
+            "non_code_requirement": 0
+          }
+        },
+        "r06": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.75,
+          "probabilities": {
+            "missing_handling": 0.08,
+            "insufficient_evidence": 0.1,
+            "demonstrated": 0.81,
+            "non_code_requirement": 0
+          }
+        },
+        "r07": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.4,
+          "probabilities": {
+            "missing_handling": 0.02,
+            "insufficient_evidence": 0.43,
+            "demonstrated": 0.55,
+            "non_code_requirement": 0
+          }
+        },
+        "r08": {
+          "type": "choice",
+          "choice": "non_code_requirement",
+          "confidence": 0.92,
+          "probabilities": {
+            "missing_handling": 0,
+            "insufficient_evidence": 0.04,
+            "demonstrated": 0.02,
+            "non_code_requirement": 0.94
+          }
+        },
+        "r09": {
+          "type": "choice",
+          "choice": "insufficient_evidence",
+          "confidence": 0.37,
+          "probabilities": {
+            "missing_handling": 0.06,
+            "insufficient_evidence": 0.53,
+            "demonstrated": 0.06,
+            "non_code_requirement": 0.35
+          }
+        },
+        "r10": {
+          "type": "choice",
+          "choice": "non_code_requirement",
+          "confidence": 0.7,
+          "probabilities": {
+            "missing_handling": 0.01,
+            "insufficient_evidence": 0.1,
+            "demonstrated": 0.11,
+            "non_code_requirement": 0.78
+          }
+        }
+      },
+      "request_bytes": 123898,
+      "request_sha256": "609a9315bd753526e415730151f4b64f502666964ddae9c532170f81e03ea5da",
+      "response_sha256": "75da368d9755b78f9f3476f4f2490de25e8fbafbdde56a396ffe4097db78a021",
+      "receipt_sha256": "da853bcb03740ba252f357b16eececa85e6a0283d7b1b8f2375168b155c8d3f6",
+      "label_counts": {
+        "demonstrated": 7,
+        "non_code_requirement": 2,
+        "insufficient_evidence": 1
+      },
+      "clauses": {
+        "r01": "Fix public audit finding A13 in `crates/atif` and its `crates/coderbench` consumer.",
+        "r02": "Read newline-delimited bytes before UTF-8 decoding so a torn final multibyte record preserves the valid prefix for interactive viewing.",
+        "r03": "Report unreadable records and interruption, and distinguish tolerant recovery from the stronger integrity needed for benchmark evidence.",
+        "r04": "Specify and enforce lifecycle behavior for repeated session headers or end records, records after end, append after closure, and malformed interior records.",
+        "r05": "Add property or table-driven tests truncating a non-ASCII final record at every byte.",
+        "r06": "Strict CoderBench ingestion must reject or mark damaged or incomplete evidence unverifiable and must not convert recovery into a successful grade.",
+        "r07": "Preserve valid ATIF fixture compatibility and the retained transcript archive.",
+        "r08": "Read `docs/coder/traces.md`.",
+        "r09": "Work only within `crates/atif/` and `crates/coderbench/`; run their ordinary tests and formatting checks.",
+        "r10": "Documentation outside these packages and operational work are outside this isolated trial."
+      },
+      "call_wall_s": 0.8125417500268668,
+      "gateway_wall_s": 0.8115075409878045,
+      "cost_usd": 0.001252944,
+      "usage": {
+        "input_tokens": 29832,
+        "output_tokens": 638
+      },
+      "provider_attempts": 1,
+      "model_attempts": 1,
+      "final_provider": "typesafe-ai",
+      "resolved_provider": "digitalocean",
+      "source_files": [
+        {
+          "path": "crates/atif/src/log.rs",
+          "role": "changed_implementation",
+          "origin": "candidate",
+          "bytes": 30097,
+          "sha256": "ca8f4629a9ed1312b6c1c40db290f06765083c9e5ffd11e266734f814307f5d7"
+        },
+        {
+          "path": "crates/coderbench/src/lib.rs",
+          "role": "changed_implementation",
+          "origin": "candidate",
+          "bytes": 58537,
+          "sha256": "c6817ab292970e8dcf102f882e487d3786936b1a52652b0ce1c0b0ce52161e9c"
+        }
+      ],
+      "pinned_contracts": [
+        {
+          "path": "docs/coder/traces.md",
+          "bytes": 8504,
+          "sha256": "b7570fc3dd4c74d377ad003e7a8c8d49e4901f620feb6cb2737db63c645390ca"
+        }
+      ]
+    },
+    {
+      "position": 2,
+      "run_id": "e442d853-74da-4d6c-94e9-8deb8f2dea08",
+      "task_id": "alternative-beta",
+      "arm": "deterministic",
+      "repetition": 1,
+      "ready": true,
+      "primary_accepted": true,
+      "preparation_status": "ready",
+      "preparation_wall_s": 0.29557583411224186,
+      "mandatory_request_bytes": 121490,
+      "required_source_bytes": 85998,
+      "contract_bytes": 8504,
+      "omissions": [
+        {
+          "path": "crates/coderbench/tests/negative.rs",
+          "role": "changed_supporting_file",
+          "status": "optional_request_byte_bound"
+        },
+        {
+          "path": "crates/atif/src/document.rs",
+          "role": "unchanged_public_entrypoint",
+          "status": "optional_request_byte_bound"
+        },
+        {
+          "path": "crates/coderbench/src/preflight.rs",
+          "role": "unchanged_public_entrypoint",
+          "status": "optional_request_byte_bound"
+        },
+        {
+          "path": "crates/coderbench/src/drive.rs",
+          "role": "unchanged_public_entrypoint",
+          "status": "optional_request_byte_bound"
+        }
+      ],
+      "labels": {
+        "r01": "demonstrated",
+        "r02": "demonstrated",
+        "r03": "demonstrated",
+        "r04": "demonstrated",
+        "r05": "demonstrated",
+        "r06": "demonstrated",
+        "r07": "demonstrated",
+        "r08": "non_code_requirement",
+        "r09": "insufficient_evidence",
+        "r10": "non_code_requirement"
+      },
+      "answers": {
+        "r01": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.79,
+          "probabilities": {
+            "demonstrated": 0.84,
+            "missing_handling": 0.03,
+            "insufficient_evidence": 0.13,
+            "non_code_requirement": 0
+          }
+        },
+        "r02": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.97,
+          "probabilities": {
+            "demonstrated": 0.99,
+            "missing_handling": 0.01,
+            "insufficient_evidence": 0,
+            "non_code_requirement": 0
+          }
+        },
+        "r03": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.99,
+          "probabilities": {
+            "demonstrated": 1,
+            "missing_handling": 0,
+            "insufficient_evidence": 0,
+            "non_code_requirement": 0
+          }
+        },
+        "r04": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.99,
+          "probabilities": {
+            "demonstrated": 1,
+            "missing_handling": 0,
+            "insufficient_evidence": 0,
+            "non_code_requirement": 0
+          }
+        },
+        "r05": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.98,
+          "probabilities": {
+            "demonstrated": 0.99,
+            "missing_handling": 0,
+            "insufficient_evidence": 0.01,
+            "non_code_requirement": 0
+          }
+        },
+        "r06": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.9,
+          "probabilities": {
+            "demonstrated": 0.93,
+            "missing_handling": 0.04,
+            "insufficient_evidence": 0.03,
+            "non_code_requirement": 0
+          }
+        },
+        "r07": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.47,
+          "probabilities": {
+            "demonstrated": 0.61,
+            "missing_handling": 0.01,
+            "insufficient_evidence": 0.38,
+            "non_code_requirement": 0
+          }
+        },
+        "r08": {
+          "type": "choice",
+          "choice": "non_code_requirement",
+          "confidence": 0.85,
+          "probabilities": {
+            "demonstrated": 0.02,
+            "missing_handling": 0,
+            "insufficient_evidence": 0.08,
+            "non_code_requirement": 0.9
+          }
+        },
+        "r09": {
+          "type": "choice",
+          "choice": "insufficient_evidence",
+          "confidence": 0.37,
+          "probabilities": {
+            "demonstrated": 0.07,
+            "missing_handling": 0.04,
+            "insufficient_evidence": 0.53,
+            "non_code_requirement": 0.36
+          }
+        },
+        "r10": {
+          "type": "choice",
+          "choice": "non_code_requirement",
+          "confidence": 0.71,
+          "probabilities": {
+            "demonstrated": 0.1,
+            "missing_handling": 0.01,
+            "insufficient_evidence": 0.11,
+            "non_code_requirement": 0.78
+          }
+        }
+      },
+      "request_bytes": 124795,
+      "request_sha256": "ad966ede7e7470c877f9675a3ab2027c76cb628509ad5fded2f77ed1c1b705f1",
+      "response_sha256": "8a8e1bc3d5d7aaef9a9a1b497afbc1ce31ad71754a2dc01fe562a5d2b12d4d81",
+      "receipt_sha256": "16fde2764626ecf5ee576fcfee8894e7111af0eec22252983a45cdfed157ec26",
+      "label_counts": {
+        "demonstrated": 7,
+        "non_code_requirement": 2,
+        "insufficient_evidence": 1
+      },
+      "clauses": {
+        "r01": "Fix public audit finding A13 in `crates/atif` and its `crates/coderbench` consumer.",
+        "r02": "Read newline-delimited bytes before UTF-8 decoding so a torn final multibyte record preserves the valid prefix for interactive viewing.",
+        "r03": "Report unreadable records and interruption, and distinguish tolerant recovery from the stronger integrity needed for benchmark evidence.",
+        "r04": "Specify and enforce lifecycle behavior for repeated session headers or end records, records after end, append after closure, and malformed interior records.",
+        "r05": "Add property or table-driven tests truncating a non-ASCII final record at every byte.",
+        "r06": "Strict CoderBench ingestion must reject or mark damaged or incomplete evidence unverifiable and must not convert recovery into a successful grade.",
+        "r07": "Preserve valid ATIF fixture compatibility and the retained transcript archive.",
+        "r08": "Read `docs/coder/traces.md`.",
+        "r09": "Work only within `crates/atif/` and `crates/coderbench/`; run their ordinary tests and formatting checks.",
+        "r10": "Documentation outside these packages and operational work are outside this isolated trial."
+      },
+      "call_wall_s": 0.6436467501334846,
+      "gateway_wall_s": 0.6432624999433756,
+      "cost_usd": 0.001269954,
+      "usage": {
+        "input_tokens": 30237,
+        "output_tokens": 638
+      },
+      "provider_attempts": 1,
+      "model_attempts": 1,
+      "final_provider": "typesafe-ai",
+      "resolved_provider": "digitalocean",
+      "source_files": [
+        {
+          "path": "crates/atif/src/log.rs",
+          "role": "changed_implementation",
+          "origin": "candidate",
+          "bytes": 27304,
+          "sha256": "2e11ddeb8e23631461b3d675475adf3e9d57659ad6be0a18f95ff6f465805b73"
+        },
+        {
+          "path": "crates/coderbench/src/lib.rs",
+          "role": "changed_implementation",
+          "origin": "candidate",
+          "bytes": 58694,
+          "sha256": "7af7b06df3bec1e10236a8847590595a7d860a6352d491a959d0950f2934f7aa"
+        },
+        {
+          "path": "crates/coderbench/tests/common/mod.rs",
+          "role": "changed_supporting_file",
+          "origin": "candidate",
+          "bytes": 2842,
+          "sha256": "d37b47ad44162303bf026349b2d2431fb2417a548699b126c01e654c070639a6"
+        }
+      ],
+      "pinned_contracts": [
+        {
+          "path": "docs/coder/traces.md",
+          "bytes": 8504,
+          "sha256": "b7570fc3dd4c74d377ad003e7a8c8d49e4901f620feb6cb2737db63c645390ca"
+        }
+      ]
+    },
+    {
+      "position": 3,
+      "run_id": "a46f6766-e906-4a64-a467-c57bfefdb3ba",
+      "task_id": "alternative-beta",
+      "arm": "jev",
+      "repetition": 1,
+      "ready": true,
+      "primary_accepted": true,
+      "preparation_status": "ready",
+      "preparation_wall_s": 0.23125070799142122,
+      "mandatory_request_bytes": 120008,
+      "required_source_bytes": 85249,
+      "contract_bytes": 8504,
+      "omissions": [
+        {
+          "path": "crates/atif/src/document.rs",
+          "role": "unchanged_public_entrypoint",
+          "status": "optional_request_byte_bound"
+        },
+        {
+          "path": "crates/coderbench/src/preflight.rs",
+          "role": "unchanged_public_entrypoint",
+          "status": "optional_request_byte_bound"
+        },
+        {
+          "path": "crates/coderbench/src/drive.rs",
+          "role": "unchanged_public_entrypoint",
+          "status": "optional_request_byte_bound"
+        }
+      ],
+      "labels": {
+        "r01": "demonstrated",
+        "r02": "demonstrated",
+        "r03": "demonstrated",
+        "r04": "demonstrated",
+        "r05": "demonstrated",
+        "r06": "demonstrated",
+        "r07": "insufficient_evidence",
+        "r08": "non_code_requirement",
+        "r09": "insufficient_evidence",
+        "r10": "non_code_requirement"
+      },
+      "answers": {
+        "r01": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.67,
+          "probabilities": {
+            "insufficient_evidence": 0.21,
+            "non_code_requirement": 0,
+            "missing_handling": 0.03,
+            "demonstrated": 0.76
+          }
+        },
+        "r02": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.99,
+          "probabilities": {
+            "insufficient_evidence": 0,
+            "non_code_requirement": 0,
+            "missing_handling": 0,
+            "demonstrated": 1
+          }
+        },
+        "r03": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.99,
+          "probabilities": {
+            "insufficient_evidence": 0,
+            "non_code_requirement": 0,
+            "missing_handling": 0,
+            "demonstrated": 1
+          }
+        },
+        "r04": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.99,
+          "probabilities": {
+            "insufficient_evidence": 0,
+            "non_code_requirement": 0,
+            "missing_handling": 0.01,
+            "demonstrated": 0.99
+          }
+        },
+        "r05": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.99,
+          "probabilities": {
+            "insufficient_evidence": 0.01,
+            "non_code_requirement": 0,
+            "missing_handling": 0,
+            "demonstrated": 0.99
+          }
+        },
+        "r06": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.94,
+          "probabilities": {
+            "insufficient_evidence": 0.03,
+            "non_code_requirement": 0,
+            "missing_handling": 0.01,
+            "demonstrated": 0.96
+          }
+        },
+        "r07": {
+          "type": "choice",
+          "choice": "insufficient_evidence",
+          "confidence": 0.33,
+          "probabilities": {
+            "insufficient_evidence": 0.49,
+            "non_code_requirement": 0.01,
+            "missing_handling": 0.01,
+            "demonstrated": 0.49
+          }
+        },
+        "r08": {
+          "type": "choice",
+          "choice": "non_code_requirement",
+          "confidence": 0.85,
+          "probabilities": {
+            "insufficient_evidence": 0.09,
+            "non_code_requirement": 0.89,
+            "missing_handling": 0,
+            "demonstrated": 0.02
+          }
+        },
+        "r09": {
+          "type": "choice",
+          "choice": "insufficient_evidence",
+          "confidence": 0.27,
+          "probabilities": {
+            "insufficient_evidence": 0.45,
+            "non_code_requirement": 0.44,
+            "missing_handling": 0.02,
+            "demonstrated": 0.09
+          }
+        },
+        "r10": {
+          "type": "choice",
+          "choice": "non_code_requirement",
+          "confidence": 0.74,
+          "probabilities": {
+            "insufficient_evidence": 0.1,
+            "non_code_requirement": 0.8,
+            "missing_handling": 0.01,
+            "demonstrated": 0.09
+          }
+        }
+      },
+      "request_bytes": 120039,
+      "request_sha256": "18833b63c06df91f1690de18a60e2a81e077fc0d35eb248de5c982793c3a1ed4",
+      "response_sha256": "37c6006f59688d44b9427eac9b45e5ad2f4d820ac952b9991307165d240f552e",
+      "receipt_sha256": "6537a6abf2710904724fe13f97473229aba72bdd67d2bcc1d40d12db5b4c3df0",
+      "label_counts": {
+        "demonstrated": 6,
+        "insufficient_evidence": 2,
+        "non_code_requirement": 2
+      },
+      "clauses": {
+        "r01": "Fix public audit finding A13 in `crates/atif` and its `crates/coderbench` consumer.",
+        "r02": "Read newline-delimited bytes before UTF-8 decoding so a torn final multibyte record preserves the valid prefix for interactive viewing.",
+        "r03": "Report unreadable records and interruption, and distinguish tolerant recovery from the stronger integrity needed for benchmark evidence.",
+        "r04": "Specify and enforce lifecycle behavior for repeated session headers or end records, records after end, append after closure, and malformed interior records.",
+        "r05": "Add property or table-driven tests truncating a non-ASCII final record at every byte.",
+        "r06": "Strict CoderBench ingestion must reject or mark damaged or incomplete evidence unverifiable and must not convert recovery into a successful grade.",
+        "r07": "Preserve valid ATIF fixture compatibility and the retained transcript archive.",
+        "r08": "Read `docs/coder/traces.md`.",
+        "r09": "Work only within `crates/atif/` and `crates/coderbench/`; run their ordinary tests and formatting checks.",
+        "r10": "Documentation outside these packages and operational work are outside this isolated trial."
+      },
+      "call_wall_s": 0.673129792092368,
+      "gateway_wall_s": 0.6725313339848071,
+      "cost_usd": 0.001206828,
+      "usage": {
+        "input_tokens": 28734,
+        "output_tokens": 641
+      },
+      "provider_attempts": 1,
+      "model_attempts": 1,
+      "final_provider": "typesafe-ai",
+      "resolved_provider": "digitalocean",
+      "source_files": [
+        {
+          "path": "crates/atif/src/log.rs",
+          "role": "changed_implementation",
+          "origin": "candidate",
+          "bytes": 26683,
+          "sha256": "3e3c4322937d35e1dab33fde13a324487b1978cb2785875426ea8d4e40abc3c1"
+        },
+        {
+          "path": "crates/coderbench/src/lib.rs",
+          "role": "changed_implementation",
+          "origin": "candidate",
+          "bytes": 58566,
+          "sha256": "ca2e8f8032183afeb2e16caa41fac86e74974e58bdca22514ca1adb233f11245"
+        }
+      ],
+      "pinned_contracts": [
+        {
+          "path": "docs/coder/traces.md",
+          "bytes": 8504,
+          "sha256": "b7570fc3dd4c74d377ad003e7a8c8d49e4901f620feb6cb2737db63c645390ca"
+        }
+      ]
+    },
+    {
+      "position": 4,
+      "run_id": "876596da-236c-438e-91dd-a696291b766b",
+      "task_id": "alternative-gamma",
+      "arm": "jev",
+      "repetition": 1,
+      "ready": true,
+      "primary_accepted": false,
+      "preparation_status": "ready",
+      "preparation_wall_s": 0.2506669170688838,
+      "mandatory_request_bytes": 95438,
+      "required_source_bytes": 60232,
+      "contract_bytes": 6073,
+      "omissions": [
+        {
+          "path": "crates/jev/tests/validation.rs",
+          "role": "changed_supporting_file",
+          "status": "optional_request_byte_bound"
+        },
+        {
+          "path": "crates/jev/src/retry.rs",
+          "role": "unchanged_public_entrypoint",
+          "status": "optional_request_byte_bound"
+        },
+        {
+          "path": "crates/jev/src/error.rs",
+          "role": "unchanged_public_entrypoint",
+          "status": "optional_request_byte_bound"
+        }
+      ],
+      "labels": {
+        "r01": "demonstrated",
+        "r02": "demonstrated",
+        "r03": "demonstrated",
+        "r04": "demonstrated",
+        "r05": "insufficient_evidence",
+        "r06": "insufficient_evidence",
+        "r07": "demonstrated",
+        "r08": "demonstrated",
+        "r09": "non_code_requirement",
+        "r10": "non_code_requirement",
+        "r11": "non_code_requirement"
+      },
+      "answers": {
+        "r01": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.39,
+          "probabilities": {
+            "demonstrated": 0.54,
+            "missing_handling": 0.16,
+            "insufficient_evidence": 0.3,
+            "non_code_requirement": 0
+          }
+        },
+        "r02": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.84,
+          "probabilities": {
+            "demonstrated": 0.88,
+            "missing_handling": 0.1,
+            "insufficient_evidence": 0.02,
+            "non_code_requirement": 0
+          }
+        },
+        "r03": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.88,
+          "probabilities": {
+            "demonstrated": 0.91,
+            "missing_handling": 0.06,
+            "insufficient_evidence": 0.03,
+            "non_code_requirement": 0
+          }
+        },
+        "r04": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.95,
+          "probabilities": {
+            "demonstrated": 0.96,
+            "missing_handling": 0.01,
+            "insufficient_evidence": 0.03,
+            "non_code_requirement": 0
+          }
+        },
+        "r05": {
+          "type": "choice",
+          "choice": "insufficient_evidence",
+          "confidence": 0.65,
+          "probabilities": {
+            "demonstrated": 0.02,
+            "missing_handling": 0.23,
+            "insufficient_evidence": 0.75,
+            "non_code_requirement": 0
+          }
+        },
+        "r06": {
+          "type": "choice",
+          "choice": "insufficient_evidence",
+          "confidence": 0.31,
+          "probabilities": {
+            "demonstrated": 0.26,
+            "missing_handling": 0.11,
+            "insufficient_evidence": 0.47,
+            "non_code_requirement": 0.16
+          }
+        },
+        "r07": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.76,
+          "probabilities": {
+            "demonstrated": 0.82,
+            "missing_handling": 0.01,
+            "insufficient_evidence": 0.05,
+            "non_code_requirement": 0.12
+          }
+        },
+        "r08": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.78,
+          "probabilities": {
+            "demonstrated": 0.84,
+            "missing_handling": 0,
+            "insufficient_evidence": 0.08,
+            "non_code_requirement": 0.08
+          }
+        },
+        "r09": {
+          "type": "choice",
+          "choice": "non_code_requirement",
+          "confidence": 0.33,
+          "probabilities": {
+            "demonstrated": 0.06,
+            "missing_handling": 0.03,
+            "insufficient_evidence": 0.42,
+            "non_code_requirement": 0.49
+          }
+        },
+        "r10": {
+          "type": "choice",
+          "choice": "non_code_requirement",
+          "confidence": 0.63,
+          "probabilities": {
+            "demonstrated": 0.03,
+            "missing_handling": 0,
+            "insufficient_evidence": 0.24,
+            "non_code_requirement": 0.73
+          }
+        },
+        "r11": {
+          "type": "choice",
+          "choice": "non_code_requirement",
+          "confidence": 0.9,
+          "probabilities": {
+            "demonstrated": 0.02,
+            "missing_handling": 0,
+            "insufficient_evidence": 0.06,
+            "non_code_requirement": 0.92
+          }
+        }
+      },
+      "request_bytes": 125296,
+      "request_sha256": "f0a28e9c10bbe5d938da0c8e6a6d9c1d82d50b7983ef725b0794dbafc52ca64b",
+      "response_sha256": "507ddeb9a029a63d1117da8a551ea52bac9a7c89eb06fa67b7c0cdbeda79565d",
+      "receipt_sha256": "436f95160b98a42a4ab00e3a0f358c3bf3ef4f937a8184702ad779737a39ccd5",
+      "label_counts": {
+        "demonstrated": 6,
+        "insufficient_evidence": 2,
+        "non_code_requirement": 3
+      },
+      "clauses": {
+        "r01": "Implement the remaining A12 portion of public issue 9424 in `crates/jev`.",
+        "r02": "Validate finite numeric ranges, probability mass within a documented tolerance, selected option identities, and score legend bounds before returning typed decisions.",
+        "r03": "At the typed request-aware boundary, validate required answer coverage, answer types, and option identities.",
+        "r04": "Invalid answers must return structured validation errors; preserve a separate raw compatibility path.",
+        "r05": "Cover Noul, Choice, and Score malformed responses and valid compatibility cases through async and blocking clients with bounded local mocks.",
+        "r06": "Read `.agents/skills/typesafe-ai/SKILL.md` and the pinned `docs/decision-models/2026-09-20-score-contract.md`; preserve that selected-answer and calibrated-score contract when interpreting confidence and probabilities.",
+        "r07": "This task does not choose model thresholds or call a provider.",
+        "r08": "A22 whole-call deadlines are already implemented at this source and are outside this task.",
+        "r09": "Work only within `crates/jev/`; run ordinary tests with `--features jev/blocking` and formatting checks.",
+        "r10": "Do not enable the live feature.",
+        "r11": "Broader consumer regression checks and deployment are outside this isolated SDK trial."
+      },
+      "call_wall_s": 0.6861594158690423,
+      "gateway_wall_s": 0.6855484580155462,
+      "cost_usd": 0.001308552,
+      "usage": {
+        "input_tokens": 31156,
+        "output_tokens": 705
+      },
+      "provider_attempts": 1,
+      "model_attempts": 1,
+      "final_provider": "typesafe-ai",
+      "resolved_provider": "digitalocean",
+      "source_files": [
+        {
+          "path": "crates/jev/src/answers.rs",
+          "role": "changed_implementation",
+          "origin": "candidate",
+          "bytes": 25056,
+          "sha256": "99543221959bb9c80ba4f9560c1dca2c6e6db53008ee7e02601363264f98cd9a"
+        },
+        {
+          "path": "crates/jev/src/client.rs",
+          "role": "changed_implementation",
+          "origin": "candidate",
+          "bytes": 26361,
+          "sha256": "e8d42f05c8f811dc8f2bcc124f83b92b81a3dde26b58b242ccdd1977136df155"
+        },
+        {
+          "path": "crates/jev/src/lib.rs",
+          "role": "changed_implementation",
+          "origin": "candidate",
+          "bytes": 8815,
+          "sha256": "5551638894c63b2f5f84cdef0236ba3a1df5292ce687cbf95a0345456f0d4ecb"
+        },
+        {
+          "path": "crates/jev/src/questions.rs",
+          "role": "unchanged_public_entrypoint",
+          "origin": "pinned_base",
+          "bytes": 16702,
+          "sha256": "dfa7fb6681c7915bfd7401f4c451325614f5f85d6d656767cd701dd1655f6c83"
+        },
+        {
+          "path": "crates/jev/src/config.rs",
+          "role": "unchanged_public_entrypoint",
+          "origin": "pinned_base",
+          "bytes": 6945,
+          "sha256": "fa70ba3028ebff45d8a9bac2180900d86e5286b6f536255cca42ec8e97009f78"
+        },
+        {
+          "path": "crates/jev/src/models.rs",
+          "role": "unchanged_public_entrypoint",
+          "origin": "pinned_base",
+          "bytes": 4195,
+          "sha256": "47aee34621c1ab932b352ac08ec13ff628bb1314a5326a608552571e996bbe9d"
+        }
+      ],
+      "pinned_contracts": [
+        {
+          "path": "docs/decision-models/2026-09-20-score-contract.md",
+          "bytes": 6073,
+          "sha256": "a8c612095723bf3599ae4d618aeff8ae18e3b5a05e868c07f26e623126e20c60"
+        }
+      ]
+    },
+    {
+      "position": 5,
+      "run_id": "405edc88-0837-4efb-ab77-4a1a17fbb031",
+      "task_id": "alternative-gamma",
+      "arm": "bare",
+      "repetition": 1,
+      "ready": true,
+      "primary_accepted": false,
+      "preparation_status": "ready",
+      "preparation_wall_s": 0.3077096671331674,
+      "mandatory_request_bytes": 98043,
+      "required_source_bytes": 61518,
+      "contract_bytes": 6073,
+      "omissions": [
+        {
+          "path": "crates/jev/tests/blocking.rs",
+          "role": "changed_supporting_file",
+          "status": "optional_request_byte_bound"
+        },
+        {
+          "path": "crates/jev/tests/client.rs",
+          "role": "changed_supporting_file",
+          "status": "optional_request_byte_bound"
+        },
+        {
+          "path": "crates/jev/tests/validation.rs",
+          "role": "changed_supporting_file",
+          "status": "optional_request_byte_bound"
+        },
+        {
+          "path": "crates/jev/src/retry.rs",
+          "role": "unchanged_public_entrypoint",
+          "status": "optional_request_byte_bound"
+        },
+        {
+          "path": "crates/jev/src/error.rs",
+          "role": "unchanged_public_entrypoint",
+          "status": "optional_request_byte_bound"
+        }
+      ],
+      "labels": {
+        "r01": "demonstrated",
+        "r02": "demonstrated",
+        "r03": "demonstrated",
+        "r04": "demonstrated",
+        "r05": "insufficient_evidence",
+        "r06": "insufficient_evidence",
+        "r07": "demonstrated",
+        "r08": "demonstrated",
+        "r09": "non_code_requirement",
+        "r10": "non_code_requirement",
+        "r11": "non_code_requirement"
+      },
+      "answers": {
+        "r01": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.56,
+          "probabilities": {
+            "insufficient_evidence": 0.22,
+            "missing_handling": 0.1,
+            "non_code_requirement": 0,
+            "demonstrated": 0.68
+          }
+        },
+        "r02": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.85,
+          "probabilities": {
+            "insufficient_evidence": 0.01,
+            "missing_handling": 0.1,
+            "non_code_requirement": 0,
+            "demonstrated": 0.89
+          }
+        },
+        "r03": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.97,
+          "probabilities": {
+            "insufficient_evidence": 0.01,
+            "missing_handling": 0.01,
+            "non_code_requirement": 0,
+            "demonstrated": 0.98
+          }
+        },
+        "r04": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.99,
+          "probabilities": {
+            "demonstrated": 0.99,
+            "missing_handling": 0,
+            "non_code_requirement": 0,
+            "insufficient_evidence": 0.01
+          }
+        },
+        "r05": {
+          "type": "choice",
+          "choice": "insufficient_evidence",
+          "confidence": 0.77,
+          "probabilities": {
+            "demonstrated": 0.09,
+            "missing_handling": 0.08,
+            "non_code_requirement": 0,
+            "insufficient_evidence": 0.83
+          }
+        },
+        "r06": {
+          "type": "choice",
+          "choice": "insufficient_evidence",
+          "confidence": 0.38,
+          "probabilities": {
+            "demonstrated": 0.28,
+            "missing_handling": 0.06,
+            "non_code_requirement": 0.13,
+            "insufficient_evidence": 0.53
+          }
+        },
+        "r07": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.78,
+          "probabilities": {
+            "demonstrated": 0.84,
+            "missing_handling": 0.02,
+            "non_code_requirement": 0.09,
+            "insufficient_evidence": 0.05
+          }
+        },
+        "r08": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.74,
+          "probabilities": {
+            "demonstrated": 0.81,
+            "missing_handling": 0,
+            "non_code_requirement": 0.1,
+            "insufficient_evidence": 0.09
+          }
+        },
+        "r09": {
+          "type": "choice",
+          "choice": "non_code_requirement",
+          "confidence": 0.41,
+          "probabilities": {
+            "demonstrated": 0.06,
+            "missing_handling": 0.02,
+            "non_code_requirement": 0.56,
+            "insufficient_evidence": 0.36
+          }
+        },
+        "r10": {
+          "type": "choice",
+          "choice": "non_code_requirement",
+          "confidence": 0.56,
+          "probabilities": {
+            "demonstrated": 0.04,
+            "missing_handling": 0.01,
+            "non_code_requirement": 0.66,
+            "insufficient_evidence": 0.29
+          }
+        },
+        "r11": {
+          "type": "choice",
+          "choice": "non_code_requirement",
+          "confidence": 0.86,
+          "probabilities": {
+            "demonstrated": 0.03,
+            "missing_handling": 0,
+            "non_code_requirement": 0.9,
+            "insufficient_evidence": 0.07
+          }
+        }
+      },
+      "request_bytes": 127922,
+      "request_sha256": "7f708407d23832567d5b21de4fa047c8b914bbe758389f7f84d45709501a6317",
+      "response_sha256": "6bdcc5ac7c5a721c35821640a158099ccbaf88834d9627a5c618e8e2184241d6",
+      "receipt_sha256": "71aecc017814ede700de7bfbc27d92dc60c903a276ce69ee27ed4656a0dc116d",
+      "label_counts": {
+        "demonstrated": 6,
+        "insufficient_evidence": 2,
+        "non_code_requirement": 3
+      },
+      "clauses": {
+        "r01": "Implement the remaining A12 portion of public issue 9424 in `crates/jev`.",
+        "r02": "Validate finite numeric ranges, probability mass within a documented tolerance, selected option identities, and score legend bounds before returning typed decisions.",
+        "r03": "At the typed request-aware boundary, validate required answer coverage, answer types, and option identities.",
+        "r04": "Invalid answers must return structured validation errors; preserve a separate raw compatibility path.",
+        "r05": "Cover Noul, Choice, and Score malformed responses and valid compatibility cases through async and blocking clients with bounded local mocks.",
+        "r06": "Read `.agents/skills/typesafe-ai/SKILL.md` and the pinned `docs/decision-models/2026-09-20-score-contract.md`; preserve that selected-answer and calibrated-score contract when interpreting confidence and probabilities.",
+        "r07": "This task does not choose model thresholds or call a provider.",
+        "r08": "A22 whole-call deadlines are already implemented at this source and are outside this task.",
+        "r09": "Work only within `crates/jev/`; run ordinary tests with `--features jev/blocking` and formatting checks.",
+        "r10": "Do not enable the live feature.",
+        "r11": "Broader consumer regression checks and deployment are outside this isolated SDK trial."
+      },
+      "call_wall_s": 0.8880484579131007,
+      "gateway_wall_s": 0.8874711671378464,
+      "cost_usd": 0.001361598,
+      "usage": {
+        "input_tokens": 32419,
+        "output_tokens": 705
+      },
+      "provider_attempts": 2,
+      "model_attempts": 1,
+      "final_provider": "typesafe-ai",
+      "resolved_provider": "digitalocean",
+      "source_files": [
+        {
+          "path": "crates/jev/src/answers.rs",
+          "role": "changed_implementation",
+          "origin": "candidate",
+          "bytes": 18595,
+          "sha256": "3bf7dbfffe49c1a4e04075b2257f26fed5e7e8c588f62cf4969f77d8d4adcabb"
+        },
+        {
+          "path": "crates/jev/src/client.rs",
+          "role": "changed_implementation",
+          "origin": "candidate",
+          "bytes": 25734,
+          "sha256": "9f53423531746bec53e77b385c8a45b029af0fd7ffcbb13be3a515814b1123cd"
+        },
+        {
+          "path": "crates/jev/src/lib.rs",
+          "role": "changed_implementation",
+          "origin": "candidate",
+          "bytes": 8802,
+          "sha256": "9e2def4eaf1b5be1b5db33a8b7b4b0af7a0dc8455e7303f2c5d2acdcd6c84a6b"
+        },
+        {
+          "path": "crates/jev/src/validate.rs",
+          "role": "changed_implementation",
+          "origin": "candidate",
+          "bytes": 8387,
+          "sha256": "dcd4ba0c10a036b5424258a2673e3f353fb074adc2c983f6565cb6a74e3ceb1d"
+        },
+        {
+          "path": "crates/jev/src/questions.rs",
+          "role": "unchanged_public_entrypoint",
+          "origin": "pinned_base",
+          "bytes": 16702,
+          "sha256": "dfa7fb6681c7915bfd7401f4c451325614f5f85d6d656767cd701dd1655f6c83"
+        },
+        {
+          "path": "crates/jev/src/config.rs",
+          "role": "unchanged_public_entrypoint",
+          "origin": "pinned_base",
+          "bytes": 6945,
+          "sha256": "fa70ba3028ebff45d8a9bac2180900d86e5286b6f536255cca42ec8e97009f78"
+        },
+        {
+          "path": "crates/jev/src/models.rs",
+          "role": "unchanged_public_entrypoint",
+          "origin": "pinned_base",
+          "bytes": 4195,
+          "sha256": "47aee34621c1ab932b352ac08ec13ff628bb1314a5326a608552571e996bbe9d"
+        }
+      ],
+      "pinned_contracts": [
+        {
+          "path": "docs/decision-models/2026-09-20-score-contract.md",
+          "bytes": 6073,
+          "sha256": "a8c612095723bf3599ae4d618aeff8ae18e3b5a05e868c07f26e623126e20c60"
+        }
+      ]
+    },
+    {
+      "position": 6,
+      "run_id": "3f2caadb-ccf7-496c-a4c5-d793b3d00321",
+      "task_id": "alternative-gamma",
+      "arm": "deterministic",
+      "repetition": 1,
+      "ready": true,
+      "primary_accepted": false,
+      "preparation_status": "ready",
+      "preparation_wall_s": 0.2110430838074535,
+      "mandatory_request_bytes": 83248,
+      "required_source_bytes": 49030,
+      "contract_bytes": 6073,
+      "omissions": [
+        {
+          "path": "crates/jev/tests/validation.rs",
+          "role": "changed_supporting_file",
+          "status": "optional_request_byte_bound"
+        },
+        {
+          "path": "crates/jev/src/error.rs",
+          "role": "unchanged_public_entrypoint",
+          "status": "optional_request_byte_bound"
+        }
+      ],
+      "labels": {
+        "r01": "demonstrated",
+        "r02": "demonstrated",
+        "r03": "demonstrated",
+        "r04": "demonstrated",
+        "r05": "insufficient_evidence",
+        "r06": "insufficient_evidence",
+        "r07": "demonstrated",
+        "r08": "demonstrated",
+        "r09": "non_code_requirement",
+        "r10": "insufficient_evidence",
+        "r11": "non_code_requirement"
+      },
+      "answers": {
+        "r01": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.32,
+          "probabilities": {
+            "demonstrated": 0.5,
+            "insufficient_evidence": 0.46,
+            "missing_handling": 0.04,
+            "non_code_requirement": 0
+          }
+        },
+        "r02": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.89,
+          "probabilities": {
+            "demonstrated": 0.92,
+            "insufficient_evidence": 0.04,
+            "missing_handling": 0.04,
+            "non_code_requirement": 0
+          }
+        },
+        "r03": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.82,
+          "probabilities": {
+            "demonstrated": 0.87,
+            "insufficient_evidence": 0.08,
+            "missing_handling": 0.05,
+            "non_code_requirement": 0
+          }
+        },
+        "r04": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.89,
+          "probabilities": {
+            "demonstrated": 0.92,
+            "insufficient_evidence": 0.08,
+            "missing_handling": 0,
+            "non_code_requirement": 0
+          }
+        },
+        "r05": {
+          "type": "choice",
+          "choice": "insufficient_evidence",
+          "confidence": 0.82,
+          "probabilities": {
+            "demonstrated": 0.02,
+            "insufficient_evidence": 0.86,
+            "missing_handling": 0.12,
+            "non_code_requirement": 0
+          }
+        },
+        "r06": {
+          "type": "choice",
+          "choice": "insufficient_evidence",
+          "confidence": 0.4,
+          "probabilities": {
+            "demonstrated": 0.25,
+            "insufficient_evidence": 0.55,
+            "missing_handling": 0.07,
+            "non_code_requirement": 0.13
+          }
+        },
+        "r07": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.61,
+          "probabilities": {
+            "demonstrated": 0.72,
+            "insufficient_evidence": 0.11,
+            "missing_handling": 0.01,
+            "non_code_requirement": 0.16
+          }
+        },
+        "r08": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.85,
+          "probabilities": {
+            "demonstrated": 0.89,
+            "insufficient_evidence": 0.08,
+            "missing_handling": 0,
+            "non_code_requirement": 0.03
+          }
+        },
+        "r09": {
+          "type": "choice",
+          "choice": "non_code_requirement",
+          "confidence": 0.34,
+          "probabilities": {
+            "demonstrated": 0.05,
+            "insufficient_evidence": 0.44,
+            "missing_handling": 0.01,
+            "non_code_requirement": 0.5
+          }
+        },
+        "r10": {
+          "type": "choice",
+          "choice": "insufficient_evidence",
+          "confidence": 0.39,
+          "probabilities": {
+            "demonstrated": 0.04,
+            "insufficient_evidence": 0.53,
+            "missing_handling": 0.01,
+            "non_code_requirement": 0.42
+          }
+        },
+        "r11": {
+          "type": "choice",
+          "choice": "non_code_requirement",
+          "confidence": 0.88,
+          "probabilities": {
+            "demonstrated": 0.03,
+            "insufficient_evidence": 0.06,
+            "missing_handling": 0,
+            "non_code_requirement": 0.91
+          }
+        }
+      },
+      "request_bytes": 122819,
+      "request_sha256": "d827e1ffce5a1eba2a2de3f47e267814edc3884b2e9eb2cac0fd8fdb9715b0f7",
+      "response_sha256": "8698186dfdb43118e2e07d77d5a178ce40c7a4044e8333d329103ef8589c0c6b",
+      "receipt_sha256": "484838d3ceab63fef37dd5a41bf510c00e54d58580b5fd5bda1d931542c886df",
+      "label_counts": {
+        "demonstrated": 6,
+        "insufficient_evidence": 3,
+        "non_code_requirement": 2
+      },
+      "clauses": {
+        "r01": "Implement the remaining A12 portion of public issue 9424 in `crates/jev`.",
+        "r02": "Validate finite numeric ranges, probability mass within a documented tolerance, selected option identities, and score legend bounds before returning typed decisions.",
+        "r03": "At the typed request-aware boundary, validate required answer coverage, answer types, and option identities.",
+        "r04": "Invalid answers must return structured validation errors; preserve a separate raw compatibility path.",
+        "r05": "Cover Noul, Choice, and Score malformed responses and valid compatibility cases through async and blocking clients with bounded local mocks.",
+        "r06": "Read `.agents/skills/typesafe-ai/SKILL.md` and the pinned `docs/decision-models/2026-09-20-score-contract.md`; preserve that selected-answer and calibrated-score contract when interpreting confidence and probabilities.",
+        "r07": "This task does not choose model thresholds or call a provider.",
+        "r08": "A22 whole-call deadlines are already implemented at this source and are outside this task.",
+        "r09": "Work only within `crates/jev/`; run ordinary tests with `--features jev/blocking` and formatting checks.",
+        "r10": "Do not enable the live feature.",
+        "r11": "Broader consumer regression checks and deployment are outside this isolated SDK trial."
+      },
+      "call_wall_s": 0.8907052921131253,
+      "gateway_wall_s": 0.8901020830962807,
+      "cost_usd": 0.001266888,
+      "usage": {
+        "input_tokens": 30164,
+        "output_tokens": 707
+      },
+      "provider_attempts": 1,
+      "model_attempts": 1,
+      "final_provider": "digitalocean",
+      "resolved_provider": "digitalocean",
+      "source_files": [
+        {
+          "path": "crates/jev/src/answers.rs",
+          "role": "changed_implementation",
+          "origin": "candidate",
+          "bytes": 23255,
+          "sha256": "c906ef82c465bb912e6544e340bbed2d4130e397c0b4aa53766827d9a5ec495e"
+        },
+        {
+          "path": "crates/jev/src/client.rs",
+          "role": "changed_implementation",
+          "origin": "candidate",
+          "bytes": 25775,
+          "sha256": "cfaebd8754409cab4f6799d9c31417a6d49bcf8328df35ed4e354b1a2814f1d1"
+        },
+        {
+          "path": "crates/jev/src/questions.rs",
+          "role": "unchanged_public_entrypoint",
+          "origin": "pinned_base",
+          "bytes": 16702,
+          "sha256": "dfa7fb6681c7915bfd7401f4c451325614f5f85d6d656767cd701dd1655f6c83"
+        },
+        {
+          "path": "crates/jev/src/config.rs",
+          "role": "unchanged_public_entrypoint",
+          "origin": "pinned_base",
+          "bytes": 6945,
+          "sha256": "fa70ba3028ebff45d8a9bac2180900d86e5286b6f536255cca42ec8e97009f78"
+        },
+        {
+          "path": "crates/jev/src/retry.rs",
+          "role": "unchanged_public_entrypoint",
+          "origin": "pinned_base",
+          "bytes": 9128,
+          "sha256": "7248982511c6bfe6183f479f1788284378ad702b04bc416819b6f4a58f76e9ba"
+        },
+        {
+          "path": "crates/jev/src/models.rs",
+          "role": "unchanged_public_entrypoint",
+          "origin": "pinned_base",
+          "bytes": 4195,
+          "sha256": "47aee34621c1ab932b352ac08ec13ff628bb1314a5326a608552571e996bbe9d"
+        }
+      ],
+      "pinned_contracts": [
+        {
+          "path": "docs/decision-models/2026-09-20-score-contract.md",
+          "bytes": 6073,
+          "sha256": "a8c612095723bf3599ae4d618aeff8ae18e3b5a05e868c07f26e623126e20c60"
+        }
+      ]
+    },
+    {
+      "position": 7,
+      "run_id": "3fb852b4-f4d8-4147-adaa-a1209cfa1917",
+      "task_id": "alternative-beta",
+      "arm": "deterministic",
+      "repetition": 2,
+      "ready": true,
+      "primary_accepted": true,
+      "preparation_status": "ready",
+      "preparation_wall_s": 0.2600794159807265,
+      "mandatory_request_bytes": 123495,
+      "required_source_bytes": 88219,
+      "contract_bytes": 8504,
+      "omissions": [
+        {
+          "path": "crates/coderbench/tests/negative.rs",
+          "role": "changed_supporting_file",
+          "status": "optional_request_byte_bound"
+        },
+        {
+          "path": "crates/atif/src/document.rs",
+          "role": "unchanged_public_entrypoint",
+          "status": "optional_request_byte_bound"
+        },
+        {
+          "path": "crates/coderbench/src/preflight.rs",
+          "role": "unchanged_public_entrypoint",
+          "status": "optional_request_byte_bound"
+        },
+        {
+          "path": "crates/coderbench/src/drive.rs",
+          "role": "unchanged_public_entrypoint",
+          "status": "optional_request_byte_bound"
+        }
+      ],
+      "labels": {
+        "r05": "demonstrated",
+        "r07": "demonstrated",
+        "r10": "non_code_requirement",
+        "r02": "demonstrated",
+        "r03": "demonstrated",
+        "r06": "demonstrated",
+        "r08": "non_code_requirement",
+        "r09": "insufficient_evidence",
+        "r01": "demonstrated",
+        "r04": "demonstrated"
+      },
+      "answers": {
+        "r05": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.98,
+          "probabilities": {
+            "non_code_requirement": 0,
+            "missing_handling": 0,
+            "demonstrated": 0.99,
+            "insufficient_evidence": 0.01
+          }
+        },
+        "r07": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.4,
+          "probabilities": {
+            "missing_handling": 0.01,
+            "non_code_requirement": 0.01,
+            "demonstrated": 0.55,
+            "insufficient_evidence": 0.43
+          }
+        },
+        "r10": {
+          "type": "choice",
+          "choice": "non_code_requirement",
+          "confidence": 0.69,
+          "probabilities": {
+            "missing_handling": 0.01,
+            "non_code_requirement": 0.77,
+            "demonstrated": 0.1,
+            "insufficient_evidence": 0.12
+          }
+        },
+        "r02": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.98,
+          "probabilities": {
+            "missing_handling": 0,
+            "non_code_requirement": 0,
+            "demonstrated": 0.99,
+            "insufficient_evidence": 0.01
+          }
+        },
+        "r03": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.99,
+          "probabilities": {
+            "missing_handling": 0,
+            "non_code_requirement": 0,
+            "demonstrated": 1,
+            "insufficient_evidence": 0
+          }
+        },
+        "r06": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.89,
+          "probabilities": {
+            "missing_handling": 0.03,
+            "non_code_requirement": 0,
+            "demonstrated": 0.92,
+            "insufficient_evidence": 0.05
+          }
+        },
+        "r08": {
+          "type": "choice",
+          "choice": "non_code_requirement",
+          "confidence": 0.83,
+          "probabilities": {
+            "missing_handling": 0,
+            "non_code_requirement": 0.88,
+            "demonstrated": 0.02,
+            "insufficient_evidence": 0.1
+          }
+        },
+        "r09": {
+          "type": "choice",
+          "choice": "insufficient_evidence",
+          "confidence": 0.33,
+          "probabilities": {
+            "missing_handling": 0.05,
+            "non_code_requirement": 0.39,
+            "demonstrated": 0.07,
+            "insufficient_evidence": 0.49
+          }
+        },
+        "r01": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.65,
+          "probabilities": {
+            "non_code_requirement": 0,
+            "missing_handling": 0.04,
+            "demonstrated": 0.74,
+            "insufficient_evidence": 0.22
+          }
+        },
+        "r04": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.99,
+          "probabilities": {
+            "non_code_requirement": 0,
+            "missing_handling": 0,
+            "demonstrated": 0.99,
+            "insufficient_evidence": 0.01
+          }
+        }
+      },
+      "request_bytes": 123537,
+      "request_sha256": "01860a63b76bac75b5a743c63384ba3db122e6c077064e43ef01bb59b5923774",
+      "response_sha256": "9ec5959d7550e4d4e4dfbe3a6259f1ec1e672b15a3029981704b8ec47de4a1fd",
+      "receipt_sha256": "a918149f8a32224eb5b77ce6607dec1bb2bb2357c6060544a0b1b1fb59117f01",
+      "label_counts": {
+        "demonstrated": 7,
+        "non_code_requirement": 2,
+        "insufficient_evidence": 1
+      },
+      "clauses": {
+        "r01": "Fix public audit finding A13 in `crates/atif` and its `crates/coderbench` consumer.",
+        "r02": "Read newline-delimited bytes before UTF-8 decoding so a torn final multibyte record preserves the valid prefix for interactive viewing.",
+        "r03": "Report unreadable records and interruption, and distinguish tolerant recovery from the stronger integrity needed for benchmark evidence.",
+        "r04": "Specify and enforce lifecycle behavior for repeated session headers or end records, records after end, append after closure, and malformed interior records.",
+        "r05": "Add property or table-driven tests truncating a non-ASCII final record at every byte.",
+        "r06": "Strict CoderBench ingestion must reject or mark damaged or incomplete evidence unverifiable and must not convert recovery into a successful grade.",
+        "r07": "Preserve valid ATIF fixture compatibility and the retained transcript archive.",
+        "r08": "Read `docs/coder/traces.md`.",
+        "r09": "Work only within `crates/atif/` and `crates/coderbench/`; run their ordinary tests and formatting checks.",
+        "r10": "Documentation outside these packages and operational work are outside this isolated trial."
+      },
+      "call_wall_s": 0.7175668748095632,
+      "gateway_wall_s": 0.7166215830948204,
+      "cost_usd": 0.00124887,
+      "usage": {
+        "input_tokens": 29735,
+        "output_tokens": 638
+      },
+      "provider_attempts": 1,
+      "model_attempts": 1,
+      "final_provider": "typesafe-ai",
+      "resolved_provider": "digitalocean",
+      "source_files": [
+        {
+          "path": "crates/atif/src/log.rs",
+          "role": "changed_implementation",
+          "origin": "candidate",
+          "bytes": 29622,
+          "sha256": "6ef91a64507f9106e662c774472557b3b5eebe7b41aed241fc259233aec81179"
+        },
+        {
+          "path": "crates/coderbench/src/lib.rs",
+          "role": "changed_implementation",
+          "origin": "candidate",
+          "bytes": 58597,
+          "sha256": "2d53011dd1833c1f21fa0c85c45ccc1d57512f67e96acb798d0de307471c5158"
+        }
+      ],
+      "pinned_contracts": [
+        {
+          "path": "docs/coder/traces.md",
+          "bytes": 8504,
+          "sha256": "b7570fc3dd4c74d377ad003e7a8c8d49e4901f620feb6cb2737db63c645390ca"
+        }
+      ]
+    },
+    {
+      "position": 8,
+      "run_id": "af869a80-4277-4c0b-a4d7-b7b7c1d1d273",
+      "task_id": "alternative-beta",
+      "arm": "jev",
+      "repetition": 2,
+      "ready": true,
+      "primary_accepted": true,
+      "preparation_status": "ready",
+      "preparation_wall_s": 0.22544820816256106,
+      "mandatory_request_bytes": 118284,
+      "required_source_bytes": 83533,
+      "contract_bytes": 8504,
+      "omissions": [
+        {
+          "path": "crates/atif/src/document.rs",
+          "role": "unchanged_public_entrypoint",
+          "status": "optional_request_byte_bound"
+        },
+        {
+          "path": "crates/coderbench/src/preflight.rs",
+          "role": "unchanged_public_entrypoint",
+          "status": "optional_request_byte_bound"
+        },
+        {
+          "path": "crates/coderbench/src/drive.rs",
+          "role": "unchanged_public_entrypoint",
+          "status": "optional_request_byte_bound"
+        }
+      ],
+      "labels": {
+        "r01": "demonstrated",
+        "r02": "demonstrated",
+        "r03": "demonstrated",
+        "r04": "demonstrated",
+        "r05": "demonstrated",
+        "r06": "demonstrated",
+        "r07": "insufficient_evidence",
+        "r08": "non_code_requirement",
+        "r09": "insufficient_evidence",
+        "r10": "non_code_requirement"
+      },
+      "answers": {
+        "r01": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.7,
+          "probabilities": {
+            "insufficient_evidence": 0.18,
+            "demonstrated": 0.78,
+            "non_code_requirement": 0,
+            "missing_handling": 0.04
+          }
+        },
+        "r02": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.97,
+          "probabilities": {
+            "insufficient_evidence": 0.01,
+            "demonstrated": 0.97,
+            "non_code_requirement": 0,
+            "missing_handling": 0.02
+          }
+        },
+        "r03": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.98,
+          "probabilities": {
+            "insufficient_evidence": 0.01,
+            "demonstrated": 0.99,
+            "non_code_requirement": 0,
+            "missing_handling": 0
+          }
+        },
+        "r04": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.98,
+          "probabilities": {
+            "insufficient_evidence": 0.01,
+            "demonstrated": 0.98,
+            "non_code_requirement": 0,
+            "missing_handling": 0.01
+          }
+        },
+        "r05": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.99,
+          "probabilities": {
+            "insufficient_evidence": 0.01,
+            "demonstrated": 0.99,
+            "non_code_requirement": 0,
+            "missing_handling": 0
+          }
+        },
+        "r06": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.92,
+          "probabilities": {
+            "insufficient_evidence": 0.04,
+            "demonstrated": 0.94,
+            "non_code_requirement": 0,
+            "missing_handling": 0.02
+          }
+        },
+        "r07": {
+          "type": "choice",
+          "choice": "insufficient_evidence",
+          "confidence": 0.33,
+          "probabilities": {
+            "insufficient_evidence": 0.49,
+            "demonstrated": 0.49,
+            "non_code_requirement": 0.01,
+            "missing_handling": 0.01
+          }
+        },
+        "r08": {
+          "type": "choice",
+          "choice": "non_code_requirement",
+          "confidence": 0.85,
+          "probabilities": {
+            "insufficient_evidence": 0.09,
+            "demonstrated": 0.02,
+            "non_code_requirement": 0.89,
+            "missing_handling": 0
+          }
+        },
+        "r09": {
+          "type": "choice",
+          "choice": "insufficient_evidence",
+          "confidence": 0.34,
+          "probabilities": {
+            "insufficient_evidence": 0.51,
+            "demonstrated": 0.07,
+            "missing_handling": 0.02,
+            "non_code_requirement": 0.4
+          }
+        },
+        "r10": {
+          "type": "choice",
+          "choice": "non_code_requirement",
+          "confidence": 0.76,
+          "probabilities": {
+            "insufficient_evidence": 0.07,
+            "demonstrated": 0.11,
+            "non_code_requirement": 0.8099999999999999,
+            "missing_handling": 0.01
+          }
+        }
+      },
+      "request_bytes": 118315,
+      "request_sha256": "ad2b1d98a0d42283191c28b0afbf966f573112d913c198c81a07f9b00ec3804f",
+      "response_sha256": "3a88094954ed459caa725006f782c3e71c67b94fb90303be69a0787058dcfd0d",
+      "receipt_sha256": "c365b7d63dd421146b2a2f31bc927a450c2fd0ed2efdcf2891fb53a901fd67be",
+      "label_counts": {
+        "demonstrated": 6,
+        "insufficient_evidence": 2,
+        "non_code_requirement": 2
+      },
+      "clauses": {
+        "r01": "Fix public audit finding A13 in `crates/atif` and its `crates/coderbench` consumer.",
+        "r02": "Read newline-delimited bytes before UTF-8 decoding so a torn final multibyte record preserves the valid prefix for interactive viewing.",
+        "r03": "Report unreadable records and interruption, and distinguish tolerant recovery from the stronger integrity needed for benchmark evidence.",
+        "r04": "Specify and enforce lifecycle behavior for repeated session headers or end records, records after end, append after closure, and malformed interior records.",
+        "r05": "Add property or table-driven tests truncating a non-ASCII final record at every byte.",
+        "r06": "Strict CoderBench ingestion must reject or mark damaged or incomplete evidence unverifiable and must not convert recovery into a successful grade.",
+        "r07": "Preserve valid ATIF fixture compatibility and the retained transcript archive.",
+        "r08": "Read `docs/coder/traces.md`.",
+        "r09": "Work only within `crates/atif/` and `crates/coderbench/`; run their ordinary tests and formatting checks.",
+        "r10": "Documentation outside these packages and operational work are outside this isolated trial."
+      },
+      "call_wall_s": 0.6496571248862892,
+      "gateway_wall_s": 0.6489432919770479,
+      "cost_usd": 0.001188894,
+      "usage": {
+        "input_tokens": 28307,
+        "output_tokens": 641
+      },
+      "provider_attempts": 1,
+      "model_attempts": 1,
+      "final_provider": "typesafe-ai",
+      "resolved_provider": "digitalocean",
+      "source_files": [
+        {
+          "path": "crates/atif/src/log.rs",
+          "role": "changed_implementation",
+          "origin": "candidate",
+          "bytes": 24949,
+          "sha256": "66d0aaca8f65ff5aa25fa29375001fecac7534fd35d06d16091189d426e7da7d"
+        },
+        {
+          "path": "crates/coderbench/src/lib.rs",
+          "role": "changed_implementation",
+          "origin": "candidate",
+          "bytes": 58584,
+          "sha256": "479badc480954aff8dbd5349032dcbe209961e49680bf75d08286a218a2c5602"
+        }
+      ],
+      "pinned_contracts": [
+        {
+          "path": "docs/coder/traces.md",
+          "bytes": 8504,
+          "sha256": "b7570fc3dd4c74d377ad003e7a8c8d49e4901f620feb6cb2737db63c645390ca"
+        }
+      ]
+    },
+    {
+      "position": 9,
+      "run_id": "c2113cf1-68a0-41cb-ac09-af031f931f28",
+      "task_id": "alternative-beta",
+      "arm": "bare",
+      "repetition": 2,
+      "ready": false,
+      "primary_accepted": true,
+      "preparation_status": "skipped_mandatory_request_bound",
+      "preparation_wall_s": 0.3225155840627849,
+      "mandatory_request_bytes": 148403,
+      "required_source_bytes": 110657,
+      "contract_bytes": 8504,
+      "omissions": [
+        {
+          "path": "crates/coderbench/tests/negative.rs",
+          "role": "changed_supporting_file",
+          "status": "not_admitted_mandatory_oversize"
+        },
+        {
+          "path": "crates/coderbench/tests/torn_trace.rs",
+          "role": "changed_supporting_file",
+          "status": "not_admitted_mandatory_oversize"
+        },
+        {
+          "path": "crates/atif/src/document.rs",
+          "role": "unchanged_public_entrypoint",
+          "status": "not_admitted_mandatory_oversize"
+        },
+        {
+          "path": "crates/coderbench/src/preflight.rs",
+          "role": "unchanged_public_entrypoint",
+          "status": "not_admitted_mandatory_oversize"
+        },
+        {
+          "path": "crates/coderbench/src/drive.rs",
+          "role": "unchanged_public_entrypoint",
+          "status": "not_admitted_mandatory_oversize"
+        }
+      ],
+      "labels": {},
+      "answers": {}
+    },
+    {
+      "position": 10,
+      "run_id": "4d53401c-cace-4a0c-8768-442333d9820b",
+      "task_id": "alternative-gamma",
+      "arm": "bare",
+      "repetition": 2,
+      "ready": true,
+      "primary_accepted": false,
+      "preparation_status": "ready",
+      "preparation_wall_s": 0.30898074992001057,
+      "mandatory_request_bytes": 95759,
+      "required_source_bytes": 59891,
+      "contract_bytes": 6073,
+      "omissions": [
+        {
+          "path": "crates/jev/README.md",
+          "role": "changed_supporting_file",
+          "status": "optional_request_byte_bound"
+        },
+        {
+          "path": "crates/jev/tests/blocking.rs",
+          "role": "changed_supporting_file",
+          "status": "optional_request_byte_bound"
+        },
+        {
+          "path": "crates/jev/tests/validation.rs",
+          "role": "changed_supporting_file",
+          "status": "optional_request_byte_bound"
+        },
+        {
+          "path": "crates/jev/src/retry.rs",
+          "role": "unchanged_public_entrypoint",
+          "status": "optional_request_byte_bound"
+        },
+        {
+          "path": "crates/jev/src/error.rs",
+          "role": "unchanged_public_entrypoint",
+          "status": "optional_request_byte_bound"
+        }
+      ],
+      "labels": {
+        "r01": "demonstrated",
+        "r02": "demonstrated",
+        "r03": "demonstrated",
+        "r04": "demonstrated",
+        "r05": "insufficient_evidence",
+        "r06": "insufficient_evidence",
+        "r07": "demonstrated",
+        "r08": "demonstrated",
+        "r09": "non_code_requirement",
+        "r10": "non_code_requirement",
+        "r11": "non_code_requirement"
+      },
+      "answers": {
+        "r01": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.5,
+          "probabilities": {
+            "demonstrated": 0.63,
+            "missing_handling": 0.1,
+            "insufficient_evidence": 0.27,
+            "non_code_requirement": 0
+          }
+        },
+        "r02": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.91,
+          "probabilities": {
+            "demonstrated": 0.9299999999999999,
+            "missing_handling": 0.05,
+            "insufficient_evidence": 0.02,
+            "non_code_requirement": 0
+          }
+        },
+        "r03": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.93,
+          "probabilities": {
+            "demonstrated": 0.95,
+            "missing_handling": 0.04,
+            "insufficient_evidence": 0.01,
+            "non_code_requirement": 0
+          }
+        },
+        "r04": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.96,
+          "probabilities": {
+            "demonstrated": 0.97,
+            "missing_handling": 0,
+            "insufficient_evidence": 0.03,
+            "non_code_requirement": 0
+          }
+        },
+        "r05": {
+          "type": "choice",
+          "choice": "insufficient_evidence",
+          "confidence": 0.73,
+          "probabilities": {
+            "demonstrated": 0.06,
+            "missing_handling": 0.14,
+            "insufficient_evidence": 0.8,
+            "non_code_requirement": 0
+          }
+        },
+        "r06": {
+          "type": "choice",
+          "choice": "insufficient_evidence",
+          "confidence": 0.36,
+          "probabilities": {
+            "demonstrated": 0.25,
+            "missing_handling": 0.06,
+            "insufficient_evidence": 0.51,
+            "non_code_requirement": 0.18
+          }
+        },
+        "r07": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.7,
+          "probabilities": {
+            "demonstrated": 0.77,
+            "missing_handling": 0.02,
+            "insufficient_evidence": 0.07,
+            "non_code_requirement": 0.14
+          }
+        },
+        "r08": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.75,
+          "probabilities": {
+            "demonstrated": 0.82,
+            "missing_handling": 0,
+            "insufficient_evidence": 0.08,
+            "non_code_requirement": 0.1
+          }
+        },
+        "r09": {
+          "type": "choice",
+          "choice": "non_code_requirement",
+          "confidence": 0.37,
+          "probabilities": {
+            "demonstrated": 0.09,
+            "missing_handling": 0.02,
+            "insufficient_evidence": 0.37,
+            "non_code_requirement": 0.52
+          }
+        },
+        "r10": {
+          "type": "choice",
+          "choice": "non_code_requirement",
+          "confidence": 0.59,
+          "probabilities": {
+            "demonstrated": 0.03,
+            "missing_handling": 0,
+            "insufficient_evidence": 0.27,
+            "non_code_requirement": 0.7
+          }
+        },
+        "r11": {
+          "type": "choice",
+          "choice": "non_code_requirement",
+          "confidence": 0.85,
+          "probabilities": {
+            "demonstrated": 0.03,
+            "missing_handling": 0,
+            "insufficient_evidence": 0.08,
+            "non_code_requirement": 0.89
+          }
+        }
+      },
+      "request_bytes": 125639,
+      "request_sha256": "d1de6c5a108057d5c53d74d6f36f7804597eeb88e6abf09a8cd106291f8a8e1f",
+      "response_sha256": "d3b11ece173f4c88ec34335f2dc9986356efbbd6c7ad37200fa08cb727d23afe",
+      "receipt_sha256": "18404f0496d1cd8fdacf0ed398e28b1828089121ad2f12e0c0734007a57afaa6",
+      "label_counts": {
+        "demonstrated": 6,
+        "insufficient_evidence": 2,
+        "non_code_requirement": 3
+      },
+      "clauses": {
+        "r01": "Implement the remaining A12 portion of public issue 9424 in `crates/jev`.",
+        "r02": "Validate finite numeric ranges, probability mass within a documented tolerance, selected option identities, and score legend bounds before returning typed decisions.",
+        "r03": "At the typed request-aware boundary, validate required answer coverage, answer types, and option identities.",
+        "r04": "Invalid answers must return structured validation errors; preserve a separate raw compatibility path.",
+        "r05": "Cover Noul, Choice, and Score malformed responses and valid compatibility cases through async and blocking clients with bounded local mocks.",
+        "r06": "Read `.agents/skills/typesafe-ai/SKILL.md` and the pinned `docs/decision-models/2026-09-20-score-contract.md`; preserve that selected-answer and calibrated-score contract when interpreting confidence and probabilities.",
+        "r07": "This task does not choose model thresholds or call a provider.",
+        "r08": "A22 whole-call deadlines are already implemented at this source and are outside this task.",
+        "r09": "Work only within `crates/jev/`; run ordinary tests with `--features jev/blocking` and formatting checks.",
+        "r10": "Do not enable the live feature.",
+        "r11": "Broader consumer regression checks and deployment are outside this isolated SDK trial."
+      },
+      "call_wall_s": 0.6312297091353685,
+      "gateway_wall_s": 0.6302570421248674,
+      "cost_usd": 0.001323,
+      "usage": {
+        "input_tokens": 31500,
+        "output_tokens": 705
+      },
+      "provider_attempts": 1,
+      "model_attempts": 1,
+      "final_provider": "typesafe-ai",
+      "resolved_provider": "digitalocean",
+      "source_files": [
+        {
+          "path": "crates/jev/src/answers.rs",
+          "role": "changed_implementation",
+          "origin": "candidate",
+          "bytes": 25274,
+          "sha256": "2b7f9a324661ea63a7cdda03241dc9ce90fdeeb6e1d539abd70b593344b92441"
+        },
+        {
+          "path": "crates/jev/src/client.rs",
+          "role": "changed_implementation",
+          "origin": "candidate",
+          "bytes": 25748,
+          "sha256": "0fd06f6eea6882f65d59d44dc08140ceeb4e3596cfa19fd699a1b3b1430da9c2"
+        },
+        {
+          "path": "crates/jev/src/lib.rs",
+          "role": "changed_implementation",
+          "origin": "candidate",
+          "bytes": 8869,
+          "sha256": "23b392f73be07c61a2079451dc4fdc3ade46209d0d10994b81ee59f3534f5c09"
+        },
+        {
+          "path": "crates/jev/src/questions.rs",
+          "role": "unchanged_public_entrypoint",
+          "origin": "pinned_base",
+          "bytes": 16702,
+          "sha256": "dfa7fb6681c7915bfd7401f4c451325614f5f85d6d656767cd701dd1655f6c83"
+        },
+        {
+          "path": "crates/jev/src/config.rs",
+          "role": "unchanged_public_entrypoint",
+          "origin": "pinned_base",
+          "bytes": 6945,
+          "sha256": "fa70ba3028ebff45d8a9bac2180900d86e5286b6f536255cca42ec8e97009f78"
+        },
+        {
+          "path": "crates/jev/src/models.rs",
+          "role": "unchanged_public_entrypoint",
+          "origin": "pinned_base",
+          "bytes": 4195,
+          "sha256": "47aee34621c1ab932b352ac08ec13ff628bb1314a5326a608552571e996bbe9d"
+        }
+      ],
+      "pinned_contracts": [
+        {
+          "path": "docs/decision-models/2026-09-20-score-contract.md",
+          "bytes": 6073,
+          "sha256": "a8c612095723bf3599ae4d618aeff8ae18e3b5a05e868c07f26e623126e20c60"
+        }
+      ]
+    },
+    {
+      "position": 11,
+      "run_id": "bcb7539d-3d80-44a5-af48-835e2fbc4e67",
+      "task_id": "alternative-gamma",
+      "arm": "deterministic",
+      "repetition": 2,
+      "ready": true,
+      "primary_accepted": false,
+      "preparation_status": "ready",
+      "preparation_wall_s": 0.2738921248819679,
+      "mandatory_request_bytes": 82385,
+      "required_source_bytes": 47535,
+      "contract_bytes": 6073,
+      "omissions": [
+        {
+          "path": "crates/jev/tests/client.rs",
+          "role": "changed_supporting_file",
+          "status": "optional_request_byte_bound"
+        },
+        {
+          "path": "crates/jev/tests/validation.rs",
+          "role": "changed_supporting_file",
+          "status": "optional_request_byte_bound"
+        },
+        {
+          "path": "crates/jev/src/error.rs",
+          "role": "unchanged_public_entrypoint",
+          "status": "optional_request_byte_bound"
+        }
+      ],
+      "labels": {
+        "r01": "demonstrated",
+        "r02": "demonstrated",
+        "r03": "demonstrated",
+        "r04": "demonstrated",
+        "r05": "insufficient_evidence",
+        "r06": "insufficient_evidence",
+        "r07": "demonstrated",
+        "r08": "demonstrated",
+        "r09": "non_code_requirement",
+        "r10": "non_code_requirement",
+        "r11": "non_code_requirement"
+      },
+      "answers": {
+        "r01": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.36,
+          "probabilities": {
+            "demonstrated": 0.52,
+            "insufficient_evidence": 0.32,
+            "missing_handling": 0.16,
+            "non_code_requirement": 0
+          }
+        },
+        "r02": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.86,
+          "probabilities": {
+            "missing_handling": 0.09,
+            "insufficient_evidence": 0.02,
+            "demonstrated": 0.89,
+            "non_code_requirement": 0
+          }
+        },
+        "r03": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.73,
+          "probabilities": {
+            "missing_handling": 0.16,
+            "insufficient_evidence": 0.04,
+            "demonstrated": 0.8,
+            "non_code_requirement": 0
+          }
+        },
+        "r04": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.95,
+          "probabilities": {
+            "missing_handling": 0.01,
+            "insufficient_evidence": 0.03,
+            "demonstrated": 0.96,
+            "non_code_requirement": 0
+          }
+        },
+        "r05": {
+          "type": "choice",
+          "choice": "insufficient_evidence",
+          "confidence": 0.6,
+          "probabilities": {
+            "missing_handling": 0.13,
+            "insufficient_evidence": 0.7,
+            "demonstrated": 0.17,
+            "non_code_requirement": 0
+          }
+        },
+        "r06": {
+          "type": "choice",
+          "choice": "insufficient_evidence",
+          "confidence": 0.38,
+          "probabilities": {
+            "missing_handling": 0.08,
+            "insufficient_evidence": 0.53,
+            "demonstrated": 0.25,
+            "non_code_requirement": 0.14
+          }
+        },
+        "r07": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.68,
+          "probabilities": {
+            "missing_handling": 0.02,
+            "insufficient_evidence": 0.07,
+            "demonstrated": 0.77,
+            "non_code_requirement": 0.14
+          }
+        },
+        "r08": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.77,
+          "probabilities": {
+            "missing_handling": 0,
+            "insufficient_evidence": 0.08,
+            "demonstrated": 0.83,
+            "non_code_requirement": 0.09
+          }
+        },
+        "r09": {
+          "type": "choice",
+          "choice": "non_code_requirement",
+          "confidence": 0.33,
+          "probabilities": {
+            "demonstrated": 0.12,
+            "insufficient_evidence": 0.35,
+            "missing_handling": 0.02,
+            "non_code_requirement": 0.51
+          }
+        },
+        "r10": {
+          "type": "choice",
+          "choice": "non_code_requirement",
+          "confidence": 0.68,
+          "probabilities": {
+            "missing_handling": 0,
+            "insufficient_evidence": 0.21,
+            "demonstrated": 0.03,
+            "non_code_requirement": 0.76
+          }
+        },
+        "r11": {
+          "type": "choice",
+          "choice": "non_code_requirement",
+          "confidence": 0.87,
+          "probabilities": {
+            "missing_handling": 0,
+            "insufficient_evidence": 0.06,
+            "demonstrated": 0.03,
+            "non_code_requirement": 0.91
+          }
+        }
+      },
+      "request_bytes": 128911,
+      "request_sha256": "deb3e5e8b18b74da2d2fb6646e3d356158e521c6925bfbcb272526d849099e82",
+      "response_sha256": "151315eb288aa2aad9c03fd5513e5e0c6b5400561ec6593f9d8c781d06365ebd",
+      "receipt_sha256": "e8125174ff98e5230589e7235ef83fc357fd391722ffc5759789e1db4dd8a232",
+      "label_counts": {
+        "demonstrated": 6,
+        "insufficient_evidence": 2,
+        "non_code_requirement": 3
+      },
+      "clauses": {
+        "r01": "Implement the remaining A12 portion of public issue 9424 in `crates/jev`.",
+        "r02": "Validate finite numeric ranges, probability mass within a documented tolerance, selected option identities, and score legend bounds before returning typed decisions.",
+        "r03": "At the typed request-aware boundary, validate required answer coverage, answer types, and option identities.",
+        "r04": "Invalid answers must return structured validation errors; preserve a separate raw compatibility path.",
+        "r05": "Cover Noul, Choice, and Score malformed responses and valid compatibility cases through async and blocking clients with bounded local mocks.",
+        "r06": "Read `.agents/skills/typesafe-ai/SKILL.md` and the pinned `docs/decision-models/2026-09-20-score-contract.md`; preserve that selected-answer and calibrated-score contract when interpreting confidence and probabilities.",
+        "r07": "This task does not choose model thresholds or call a provider.",
+        "r08": "A22 whole-call deadlines are already implemented at this source and are outside this task.",
+        "r09": "Work only within `crates/jev/`; run ordinary tests with `--features jev/blocking` and formatting checks.",
+        "r10": "Do not enable the live feature.",
+        "r11": "Broader consumer regression checks and deployment are outside this isolated SDK trial."
+      },
+      "call_wall_s": 0.6661222919356078,
+      "gateway_wall_s": 0.6655614578630775,
+      "cost_usd": 0.00134652,
+      "usage": {
+        "input_tokens": 32060,
+        "output_tokens": 705
+      },
+      "provider_attempts": 1,
+      "model_attempts": 1,
+      "final_provider": "typesafe-ai",
+      "resolved_provider": "digitalocean",
+      "source_files": [
+        {
+          "path": "crates/jev/src/answers.rs",
+          "role": "changed_implementation",
+          "origin": "candidate",
+          "bytes": 23070,
+          "sha256": "4b413c1ee9d728ff2edbaf496ddc1a86fe3575def8a10e99ed0e61c0c017941c"
+        },
+        {
+          "path": "crates/jev/src/client.rs",
+          "role": "changed_implementation",
+          "origin": "candidate",
+          "bytes": 24465,
+          "sha256": "93d1e50e8ae4d7a900c3265f9ad09609f86d27b1cc56c9985f1665081dc2f143"
+        },
+        {
+          "path": "crates/jev/src/questions.rs",
+          "role": "unchanged_public_entrypoint",
+          "origin": "pinned_base",
+          "bytes": 16702,
+          "sha256": "dfa7fb6681c7915bfd7401f4c451325614f5f85d6d656767cd701dd1655f6c83"
+        },
+        {
+          "path": "crates/jev/src/config.rs",
+          "role": "unchanged_public_entrypoint",
+          "origin": "pinned_base",
+          "bytes": 6945,
+          "sha256": "fa70ba3028ebff45d8a9bac2180900d86e5286b6f536255cca42ec8e97009f78"
+        },
+        {
+          "path": "crates/jev/src/retry.rs",
+          "role": "unchanged_public_entrypoint",
+          "origin": "pinned_base",
+          "bytes": 9128,
+          "sha256": "7248982511c6bfe6183f479f1788284378ad702b04bc416819b6f4a58f76e9ba"
+        },
+        {
+          "path": "crates/jev/src/models.rs",
+          "role": "unchanged_public_entrypoint",
+          "origin": "pinned_base",
+          "bytes": 4195,
+          "sha256": "47aee34621c1ab932b352ac08ec13ff628bb1314a5326a608552571e996bbe9d"
+        },
+        {
+          "path": "crates/jev/tests/blocking.rs",
+          "role": "changed_supporting_file",
+          "origin": "candidate",
+          "bytes": 6344,
+          "sha256": "e23b71afaebaea34f5493e783f9dc23a1c5f69a7c26b9bc99807758e74cb9619"
+        }
+      ],
+      "pinned_contracts": [
+        {
+          "path": "docs/decision-models/2026-09-20-score-contract.md",
+          "bytes": 6073,
+          "sha256": "a8c612095723bf3599ae4d618aeff8ae18e3b5a05e868c07f26e623126e20c60"
+        }
+      ]
+    },
+    {
+      "position": 12,
+      "run_id": "e1ff393a-fc48-48b0-ae41-a4313af8fdac",
+      "task_id": "alternative-gamma",
+      "arm": "jev",
+      "repetition": 2,
+      "ready": true,
+      "primary_accepted": false,
+      "preparation_status": "ready",
+      "preparation_wall_s": 0.2732277500908822,
+      "mandatory_request_bytes": 81740,
+      "required_source_bytes": 46910,
+      "contract_bytes": 6073,
+      "omissions": [
+        {
+          "path": "crates/jev/tests/blocking.rs",
+          "role": "changed_supporting_file",
+          "status": "optional_request_byte_bound"
+        },
+        {
+          "path": "crates/jev/tests/client.rs",
+          "role": "changed_supporting_file",
+          "status": "optional_request_byte_bound"
+        },
+        {
+          "path": "crates/jev/tests/validation.rs",
+          "role": "changed_supporting_file",
+          "status": "optional_request_byte_bound"
+        },
+        {
+          "path": "crates/jev/src/models.rs",
+          "role": "unchanged_public_entrypoint",
+          "status": "optional_request_byte_bound"
+        }
+      ],
+      "labels": {
+        "r01": "demonstrated",
+        "r02": "demonstrated",
+        "r03": "demonstrated",
+        "r04": "demonstrated",
+        "r05": "insufficient_evidence",
+        "r06": "insufficient_evidence",
+        "r07": "demonstrated",
+        "r08": "demonstrated",
+        "r09": "non_code_requirement",
+        "r10": "non_code_requirement",
+        "r11": "non_code_requirement"
+      },
+      "answers": {
+        "r01": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.47,
+          "probabilities": {
+            "insufficient_evidence": 0.28,
+            "non_code_requirement": 0,
+            "missing_handling": 0.11,
+            "demonstrated": 0.61
+          }
+        },
+        "r02": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.87,
+          "probabilities": {
+            "insufficient_evidence": 0.01,
+            "non_code_requirement": 0,
+            "demonstrated": 0.91,
+            "missing_handling": 0.08
+          }
+        },
+        "r03": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.96,
+          "probabilities": {
+            "insufficient_evidence": 0.01,
+            "non_code_requirement": 0,
+            "missing_handling": 0.02,
+            "demonstrated": 0.97
+          }
+        },
+        "r04": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.9,
+          "probabilities": {
+            "insufficient_evidence": 0.06,
+            "non_code_requirement": 0,
+            "missing_handling": 0.02,
+            "demonstrated": 0.92
+          }
+        },
+        "r05": {
+          "type": "choice",
+          "choice": "insufficient_evidence",
+          "confidence": 0.74,
+          "probabilities": {
+            "insufficient_evidence": 0.81,
+            "non_code_requirement": 0,
+            "demonstrated": 0.09,
+            "missing_handling": 0.1
+          }
+        },
+        "r06": {
+          "type": "choice",
+          "choice": "insufficient_evidence",
+          "confidence": 0.38,
+          "probabilities": {
+            "insufficient_evidence": 0.53,
+            "non_code_requirement": 0.15,
+            "demonstrated": 0.23,
+            "missing_handling": 0.09
+          }
+        },
+        "r07": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.69,
+          "probabilities": {
+            "insufficient_evidence": 0.07,
+            "non_code_requirement": 0.14,
+            "missing_handling": 0.02,
+            "demonstrated": 0.77
+          }
+        },
+        "r08": {
+          "type": "choice",
+          "choice": "demonstrated",
+          "confidence": 0.76,
+          "probabilities": {
+            "insufficient_evidence": 0.09,
+            "non_code_requirement": 0.08,
+            "missing_handling": 0,
+            "demonstrated": 0.83
+          }
+        },
+        "r09": {
+          "type": "choice",
+          "choice": "non_code_requirement",
+          "confidence": 0.34,
+          "probabilities": {
+            "insufficient_evidence": 0.38,
+            "non_code_requirement": 0.51,
+            "demonstrated": 0.1,
+            "missing_handling": 0.01
+          }
+        },
+        "r10": {
+          "type": "choice",
+          "choice": "non_code_requirement",
+          "confidence": 0.67,
+          "probabilities": {
+            "insufficient_evidence": 0.22,
+            "non_code_requirement": 0.74,
+            "missing_handling": 0.01,
+            "demonstrated": 0.03
+          }
+        },
+        "r11": {
+          "type": "choice",
+          "choice": "non_code_requirement",
+          "confidence": 0.88,
+          "probabilities": {
+            "insufficient_evidence": 0.06,
+            "non_code_requirement": 0.91,
+            "demonstrated": 0.03,
+            "missing_handling": 0
+          }
+        }
+      },
+      "request_bytes": 129776,
+      "request_sha256": "bfc70727ced998e04fecd21e2ec34ea8f618bbb4a012c33a0b851a0805db4e75",
+      "response_sha256": "bf8f28621afaa881f8967eff6532aba28a2aa5daafcfff49722299d1042b84d5",
+      "receipt_sha256": "3b195f369e1e3ae7f00547becd73237b6ecd5102b377d224405fc3dc9b663f94",
+      "label_counts": {
+        "demonstrated": 6,
+        "insufficient_evidence": 2,
+        "non_code_requirement": 3
+      },
+      "clauses": {
+        "r01": "Implement the remaining A12 portion of public issue 9424 in `crates/jev`.",
+        "r02": "Validate finite numeric ranges, probability mass within a documented tolerance, selected option identities, and score legend bounds before returning typed decisions.",
+        "r03": "At the typed request-aware boundary, validate required answer coverage, answer types, and option identities.",
+        "r04": "Invalid answers must return structured validation errors; preserve a separate raw compatibility path.",
+        "r05": "Cover Noul, Choice, and Score malformed responses and valid compatibility cases through async and blocking clients with bounded local mocks.",
+        "r06": "Read `.agents/skills/typesafe-ai/SKILL.md` and the pinned `docs/decision-models/2026-09-20-score-contract.md`; preserve that selected-answer and calibrated-score contract when interpreting confidence and probabilities.",
+        "r07": "This task does not choose model thresholds or call a provider.",
+        "r08": "A22 whole-call deadlines are already implemented at this source and are outside this task.",
+        "r09": "Work only within `crates/jev/`; run ordinary tests with `--features jev/blocking` and formatting checks.",
+        "r10": "Do not enable the live feature.",
+        "r11": "Broader consumer regression checks and deployment are outside this isolated SDK trial."
+      },
+      "call_wall_s": 0.7317315000109375,
+      "gateway_wall_s": 0.7307230420410633,
+      "cost_usd": 0.001346562,
+      "usage": {
+        "input_tokens": 32061,
+        "output_tokens": 705
+      },
+      "provider_attempts": 1,
+      "model_attempts": 1,
+      "final_provider": "typesafe-ai",
+      "resolved_provider": "digitalocean",
+      "source_files": [
+        {
+          "path": "crates/jev/src/answers.rs",
+          "role": "changed_implementation",
+          "origin": "candidate",
+          "bytes": 22330,
+          "sha256": "2cb49739c454df8435c0e2d893d842b54202a1ddd386b637722d84b8215d7320"
+        },
+        {
+          "path": "crates/jev/src/client.rs",
+          "role": "changed_implementation",
+          "origin": "candidate",
+          "bytes": 24580,
+          "sha256": "9dd04cdcda573f947dfcd24271ebd7f1865b4f0805f7467f40aafb69e79d9b9a"
+        },
+        {
+          "path": "crates/jev/src/questions.rs",
+          "role": "unchanged_public_entrypoint",
+          "origin": "pinned_base",
+          "bytes": 16702,
+          "sha256": "dfa7fb6681c7915bfd7401f4c451325614f5f85d6d656767cd701dd1655f6c83"
+        },
+        {
+          "path": "crates/jev/src/config.rs",
+          "role": "unchanged_public_entrypoint",
+          "origin": "pinned_base",
+          "bytes": 6945,
+          "sha256": "fa70ba3028ebff45d8a9bac2180900d86e5286b6f536255cca42ec8e97009f78"
+        },
+        {
+          "path": "crates/jev/src/retry.rs",
+          "role": "unchanged_public_entrypoint",
+          "origin": "pinned_base",
+          "bytes": 9128,
+          "sha256": "7248982511c6bfe6183f479f1788284378ad702b04bc416819b6f4a58f76e9ba"
+        },
+        {
+          "path": "crates/jev/src/error.rs",
+          "role": "unchanged_public_entrypoint",
+          "origin": "pinned_base",
+          "bytes": 12366,
+          "sha256": "816c6d2bfa73b037a2e0be77fd7213bf7890cd87ebe8aeada6d6c6efccc4e11b"
+        }
+      ],
+      "pinned_contracts": [
+        {
+          "path": "docs/decision-models/2026-09-20-score-contract.md",
+          "bytes": 6073,
+          "sha256": "a8c612095723bf3599ae4d618aeff8ae18e3b5a05e868c07f26e623126e20c60"
+        }
+      ]
+    }
+  ],
+  "limits": [
+    "Posthoc exposed panel; no independently frozen per-clause correctness labels.",
+    "Primary acceptance is not exhaustive correctness; no accuracy or false-positive rate computed.",
+    "Posthoc beta executable receipts were joined only after review responses were fixed; primary scores unchanged, no native or review repair."
+  ],
+  "internal_fallbacks": [
+    {
+      "position": 5,
+      "first_provider": "digitalocean",
+      "first_http_status": 503,
+      "final_provider": "typesafe-ai",
+      "final_http_status": 200,
+      "application_attempts": 1,
+      "provider_attempts": 2
+    }
+  ],
+  "gamma_evidence_note": "Every gamma review included complete current answers.rs and client.rs and complete pinned score contract; TypeSafe skill is an applicable_instruction_path, not a required_public_reading, so this frozen review policy did not include it.",
+  "posthoc_beta": {
+    "diagnostic_sha256": "4b0dd1e57af3a5052f8a5c2ba7905965354070b1e38b66d26be52d611db4ccb7",
+    "checker_digest": "d91083ae434b72265e688b0a2061d626efb6f701337503fa85e79b294e83f062",
+    "status": "complete",
+    "post_hoc": true,
+    "primary_scores_unchanged": true,
+    "model_calls": 0,
+    "attempts": [
+      {
+        "role": "historical_reference",
+        "blind_id": "02e47880-16f2-407b-bd40-2cdc29316108",
+        "passed": true,
+        "compile_passed": true,
+        "log_hashes": {
+          "checks.json": "91f9e7ba182544d19878b4e40e808d2a1ea34ae5a6bc6ed79e570420ba9ed8e7",
+          "independent-test.stdout": "18df37f14b8f7737c7f8353244d80e512dec71f32b8c3c4e3a197c6fdbccffb3"
+        },
+        "failed_public_diagnostic_cases": []
+      },
+      {
+        "role": "unmodified_base",
+        "blind_id": "95c44973-88aa-47a6-ba89-430a47f868db",
+        "passed": false,
+        "compile_passed": true,
+        "log_hashes": {
+          "checks.json": "0c72c3ca83242e752d674f918a26f366e1747ba1433496d42c602523e23215cd",
+          "independent-test.stdout": "64905b23cd48041b82057674588968205082f28664346a729135dc8ad02e4dfb"
+        },
+        "failed_public_diagnostic_cases": [
+          "step_before_session_is_not_successful_evidence"
+        ]
+      },
+      {
+        "role": "native_candidate",
+        "blind_id": "942f9f9b-dfb9-47f4-a1e2-ed7993d1fae2",
+        "passed": false,
+        "compile_passed": true,
+        "log_hashes": {
+          "checks.json": "6119fc7dac3b56a5ab55383a445bf02e248de4c151ea4dd48864bca4d39fac12",
+          "independent-test.stdout": "51e87a692b9459dfcd7013098b6ff36b210508ee1ceb7d624748448b0f1c63ff"
+        },
+        "failed_public_diagnostic_cases": [
+          "form_feed_before_an_interior_record_is_not_successful_evidence"
+        ],
+        "position": 1,
+        "review_called": true,
+        "missing_handling_labels": 0,
+        "r04": "demonstrated",
+        "r06": "demonstrated"
+      },
+      {
+        "role": "native_candidate",
+        "blind_id": "74256a8c-a082-4d41-aedb-cec06a391526",
+        "passed": true,
+        "compile_passed": true,
+        "log_hashes": {
+          "checks.json": "d72de72a10cd59b707ef29c6fec0014c68b2c581d9a00f39004e7b24741151ad",
+          "independent-test.stdout": "6c675e4651ed8b7a8678297449cff329db840a887ba62878dae62f080a0d9694"
+        },
+        "failed_public_diagnostic_cases": [],
+        "position": 2,
+        "review_called": true,
+        "missing_handling_labels": 0,
+        "r04": "demonstrated",
+        "r06": "demonstrated"
+      },
+      {
+        "role": "native_candidate",
+        "blind_id": "a2b43075-7036-43d2-b0dd-debc2d4675a5",
+        "passed": false,
+        "compile_passed": true,
+        "log_hashes": {
+          "checks.json": "3fa29e25447ab3fd54bb2818d0d56fef20fdf35e02155844c2d44985fd43ea4c",
+          "independent-test.stdout": "c332ee90a8ef78977951b26c822aa2f96f076a1b0c76f85ca1e30404caf946dc"
+        },
+        "failed_public_diagnostic_cases": [
+          "step_before_session_is_not_successful_evidence"
+        ],
+        "position": 3,
+        "review_called": true,
+        "missing_handling_labels": 0,
+        "r04": "demonstrated",
+        "r06": "demonstrated"
+      },
+      {
+        "role": "native_candidate",
+        "blind_id": "c115db2b-1f56-4581-9515-1e0841e5d075",
+        "passed": false,
+        "compile_passed": true,
+        "log_hashes": {
+          "checks.json": "23f2e18d34d2b65c41b0802f5ddc0231a804c976ee6e42dd0928058ff966d56a",
+          "independent-test.stdout": "51e87a692b9459dfcd7013098b6ff36b210508ee1ceb7d624748448b0f1c63ff"
+        },
+        "failed_public_diagnostic_cases": [
+          "form_feed_before_an_interior_record_is_not_successful_evidence"
+        ],
+        "position": 7,
+        "review_called": true,
+        "missing_handling_labels": 0,
+        "r04": "demonstrated",
+        "r06": "demonstrated"
+      },
+      {
+        "role": "native_candidate",
+        "blind_id": "06c0041d-42a9-4bb4-b856-8ece3b061b5a",
+        "passed": false,
+        "compile_passed": true,
+        "log_hashes": {
+          "checks.json": "95483afd44f7721223a046010caa513527ed62eaadfc9bcdfd339e3595a50a9e",
+          "independent-test.stdout": "1f11a7c43bd75fef74d2cc0c5bb7563cac0684bc19c2c59ba937948932f69284"
+        },
+        "failed_public_diagnostic_cases": [
+          "form_feed_before_an_interior_record_is_not_successful_evidence"
+        ],
+        "position": 8,
+        "review_called": true,
+        "missing_handling_labels": 0,
+        "r04": "demonstrated",
+        "r06": "demonstrated"
+      },
+      {
+        "role": "native_candidate",
+        "blind_id": "fa0979f6-5bd5-4bd8-abd7-e3f0e9460a05",
+        "passed": true,
+        "compile_passed": true,
+        "log_hashes": {
+          "checks.json": "194890a063652f8fa3091e22e25422b8bc213567ff3f839bc2d718255928f906",
+          "independent-test.stdout": "18df37f14b8f7737c7f8353244d80e512dec71f32b8c3c4e3a197c6fdbccffb3"
+        },
+        "failed_public_diagnostic_cases": [],
+        "position": 9,
+        "review_called": false,
+        "missing_handling_labels": 0,
+        "r04": null,
+        "r06": null
+      }
+    ],
+    "known_failing_reviewed_candidates_with_gamma": 10,
+    "concrete_missing_handling_flags_among_these": 0,
+    "interpretation": "Descriptive posthoc triangulation; not a pre-registered accuracy estimate or a revision to primary scores."
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "blind_directory": "b82d458b-c7a2-4c47-beae-6b51b6497309",
+  "candidate_manifest_sha256": "28219e0318d60a4c7280fa7145677c172b216b86a6f302b923adcd7d9165316f",
+  "source_commit": "7ec5f6e83d018ab2f25d7a61ff695de81f2f55f6",
+  "source_archive_sha256": "e1b8e91c47efe40b4f2526d69ae5ad9ca64b11a9b74d4e5b91b8613b9e2aa971",
+  "blinding": "No plan, arm mapping, native transcript, run result, or check result inspected. Review completed during the unchanged panel; not supplied to executors.",
+  "method": "Canonical payload/change identity and original file hashes verified. Full unified diffs and affected control flow inspected. No Cargo, model, test, or remote execution.",
+  "frozen_acceptance": "not_inspected",
+  "verdict": "One material incomplete lifecycle check is demonstrated by source control flow.",
+  "findings": [
+    {
+      "id": "B1",
+      "classification": "demonstrated_static_contract_gap",
+      "priority": "P2",
+      "path": "crates/atif/src/log.rs",
+      "lines": [
+        344,
+        350
+      ],
+      "title": "A step before its session header remains verified evidence",
+      "evidence": "The step branch unconditionally pushes a parsed Step without checking opened.is_none(). The only lifecycle counters cover repeated headers, repeated ends and records after end (208\u2013226). verified() checks ended, unreadable_lines and those counters (265\u2013271).",
+      "trigger": "Take a clean session/step/end trace and move its first step before the session header, leaving the step content and later step order unchanged.",
+      "inferred_behavior": "The reader retains the same step, later admits the header, and reads the end. unreadable_lines and lifecycle.violations() remain zero, so verified() returns true. observe() copies these same counters (coderbench/src/lib.rs:1373\u20131388), and judge_record only rejects their nonzero values (1278\u20131293). A clean trace\u2019s grade is therefore unchanged by this invalid header ordering.",
+      "contract": "The pinned base log format states that the session record comes first (base crates/atif/src/log.rs:28). The candidate itself claims to validate the order session, step*, end (244) and that verified evidence has records in order (265\u2013267). The public task requires lifecycle integrity and strict handling of damaged evidence.",
+      "execution": "Static inference only; no counterexample or Cargo test was run."
+    }
+  ],
+  "tests": "No existing tests or assertions were removed or relaxed. Four new ATIF tests cover byte truncation, a malformed interior JSON record, several post-end violations, and append after finish. No consumer regression test was added in this patch. The new lifecycle test\u2019s duplicate header is after the end; it does not cover a step before the first header.",
+  "scope": "Two modified source files within the allowed crates. Changes are focused on log reading/writing and consumer integrity state. No unrelated edits, dependency changes, deletions, or mode changes.",
+  "limits": "The issue text enumerates several lifecycle cases without exhaustively listing all record orders; this finding is grounded in the existing public format and the candidate\u2019s new verified() contract, not a demand to copy a reference implementation. Parseable final records without LF are deliberately accepted; that is not marked a defect."
+}

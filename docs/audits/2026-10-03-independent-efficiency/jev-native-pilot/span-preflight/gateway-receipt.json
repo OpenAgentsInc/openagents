@@ -1,0 +1,73 @@
+{
+  "accounting_error": null,
+  "answers_valid": true,
+  "attempts": 1,
+  "cost_status": "gateway_reported",
+  "cost_usd": 0.001152984,
+  "cost_usd_decimal": "0.001152984",
+  "endpoint": "https://ai-gateway.vercel.sh/typesafe/v1/systemone",
+  "error_type": null,
+  "finished_at": "2026-10-03T12:47:06.710648Z",
+  "gateway_metadata": {
+    "cost": "0.001152984",
+    "gatewayCost": "0.001152984",
+    "generationId": "gen_01M40WVJMJ71XE2AWW7H25B87H",
+    "inferenceCost": "0.001152984",
+    "inputInferenceCost": "0.001152984",
+    "marketCost": "0.001152984",
+    "outputInferenceCost": "0",
+    "routing": {
+      "canonicalSlug": "typesafe-ai/jev",
+      "fallbacksAvailable": [
+        "typesafe-ai"
+      ],
+      "finalProvider": "typesafe-ai",
+      "modelAttemptCount": 1,
+      "modelAttempts": [
+        {
+          "canonicalSlug": "typesafe-ai/jev",
+          "providerAttemptCount": 1,
+          "providerAttempts": [
+            {
+              "credentialType": "system",
+              "endTime": 1791031626714,
+              "provider": "typesafe-ai",
+              "startTime": 1791031626422,
+              "statusCode": 200,
+              "success": true
+            }
+          ],
+          "success": true
+        }
+      ],
+      "originalModelId": "typesafe-ai/jev",
+      "planningReasoning": "System credentials planned for: digitalocean, typesafe-ai. Total execution order: typesafe-ai(system) \u2192 digitalocean(system)",
+      "resolvedProvider": "digitalocean",
+      "totalProviderAttemptCount": 1
+    },
+    "surchargeCost": "0"
+  },
+  "http_status": 200,
+  "launch_intent_at": "2026-10-03T12:47:05.968551Z",
+  "model_identity": "unversioned_gateway_alias",
+  "outcome": "answered",
+  "request_bytes": 62947,
+  "request_sha256": "cb06ed2036eae9091d5b23bc4b939e1e94b029fb89e8e97d178646921f93473a",
+  "requested_model": "typesafe-ai/jev",
+  "response_artifact": "response.json",
+  "response_bytes": 8591,
+  "response_headers": {
+    "x-vercel-id": "cle1::cle1::s9kmc-1791031626302-afcfe8b61384"
+  },
+  "response_sha256": "6d358ca6ffaf3f4ed26d57108bb66debd5d592531d7b9153a30eedba9d79349a",
+  "returned_model": "typesafe-ai/jev",
+  "schema": "jev.gateway.call.v1",
+  "started_at": "2026-10-03T12:47:05.955977Z",
+  "status": "answered",
+  "usage": {
+    "input_tokens": 27452,
+    "output_tokens": 7539
+  },
+  "version_pinned": false,
+  "wall_s": 0.7546906669158489
+}

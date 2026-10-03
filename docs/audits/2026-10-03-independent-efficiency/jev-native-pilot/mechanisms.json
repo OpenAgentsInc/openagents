@@ -1,0 +1,2259 @@
+{
+  "schema": "openagents.jev-native-pilot.mechanism-notes.v1",
+  "inputs": {
+    "report/report.json": "42ea25a6cad9d0eb11d96300957b4d54ec4ad1c46a38fbc2e3b9ae60be36bcac",
+    "traces.json": "0f6c6665abebc5e6fd3d592a55b7d7a8eb7da10791b23aa3e7e3058d31f453c9"
+  },
+  "scope": "Read-only descriptive analysis of original native panel; no pending clause review outputs read.",
+  "rows": [
+    {
+      "position": 1,
+      "run_id": "86cdf87c-1a18-48d8-b02a-20bd32bc5c45",
+      "task_id": "alternative-beta",
+      "arm": "bare",
+      "repetition": 1,
+      "accepted": true,
+      "cost_usd": 0.39154659999999997,
+      "provider_calls": 12,
+      "provider_usage": {
+        "cache_creation_input_tokens": 40680,
+        "cache_read_input_tokens": 576043,
+        "cache_write_1h_tokens": 40680,
+        "cache_write_5m_tokens": 0,
+        "input_tokens": 24,
+        "output_tokens": 11357
+      },
+      "phase_wall_s": {
+        "acceptance": 66.43675200000007,
+        "final_cleanup": 0.2818531009997969,
+        "native": 181.68163720600023,
+        "preparation": 0.7279363040001954,
+        "native_scratch_release": 3.645262815,
+        "native_retained": 181.5189700689998,
+        "preparation_reported": 0.7036467789998824,
+        "gateway_call": null,
+        "catalog": null,
+        "materialization": null
+      },
+      "native_phases_s": {
+        "export_s": 3.802751597000224,
+        "git_snapshot_s": 3.750637814000129,
+        "target_seed_copy_s": 6.263732123999944,
+        "prepare_s": 15.554051224999967,
+        "executor_s": 160.140004803,
+        "capture_s": 4.641580354000325,
+        "provider_drain_s": 0.01041230100008761
+      },
+      "endpoint_wall_s": 252.999287452,
+      "check_outcomes": {
+        "scope": true,
+        "format": true,
+        "ordinary": true,
+        "independent": true
+      },
+      "inference_requests": 12,
+      "count_token_requests": 0,
+      "first_input_context_tokens": 35178,
+      "last_input_context_tokens": 60893,
+      "mean_input_context_tokens": 51395.583333333336,
+      "provider_request_wall_sum_s": 77.01531068900067,
+      "prompt_bytes": 22266,
+      "assistant_messages": 12,
+      "tool_counts": {
+        "Bash": 11
+      },
+      "bash_unclassified": 4,
+      "literal_shell_actions": {
+        "cargo_fmt": 2,
+        "cargo_test": 2,
+        "literal_command_positions": 37,
+        "other_command": 5,
+        "shell_edit": 1,
+        "shell_read": 17,
+        "shell_search": 10
+      },
+      "repeated_exact_bash": 0,
+      "jev_cost_usd": 0.0
+    },
+    {
+      "position": 2,
+      "run_id": "e442d853-74da-4d6c-94e9-8deb8f2dea08",
+      "task_id": "alternative-beta",
+      "arm": "deterministic",
+      "repetition": 1,
+      "accepted": true,
+      "cost_usd": 0.3609604,
+      "provider_calls": 12,
+      "provider_usage": {
+        "cache_creation_input_tokens": 45626,
+        "cache_read_input_tokens": 419892,
+        "cache_write_1h_tokens": 45626,
+        "cache_write_5m_tokens": 0,
+        "input_tokens": 24,
+        "output_tokens": 9443
+      },
+      "phase_wall_s": {
+        "acceptance": 55.10362298700011,
+        "final_cleanup": 0.33630301199991663,
+        "native": 140.90200660599976,
+        "preparation": 0.6148700590001681,
+        "native_scratch_release": 0.289839944,
+        "native_retained": 140.77203046299974,
+        "preparation_reported": 0.6021290690000569,
+        "gateway_call": null,
+        "catalog": 0.20052644400038844,
+        "materialization": 0.08906153900034042
+      },
+      "native_phases_s": {
+        "export_s": 0.6999019660001977,
+        "git_snapshot_s": 0.7967085599998427,
+        "target_seed_copy_s": 2.1191751070000464,
+        "prepare_s": 4.8714518199999475,
+        "executor_s": 134.5799103319996,
+        "capture_s": 0.4474342749999778,
+        "provider_drain_s": 0.003938982999898144
+      },
+      "endpoint_wall_s": 197.368601644,
+      "check_outcomes": {
+        "scope": true,
+        "format": true,
+        "ordinary": true,
+        "independent": true
+      },
+      "inference_requests": 12,
+      "count_token_requests": 0,
+      "first_input_context_tokens": 23544,
+      "last_input_context_tokens": 45628,
+      "mean_input_context_tokens": 38795.166666666664,
+      "provider_request_wall_sum_s": 66.53822132699997,
+      "prompt_bytes": 38472,
+      "assistant_messages": 12,
+      "tool_counts": {
+        "Bash": 11
+      },
+      "bash_unclassified": 3,
+      "literal_shell_actions": {
+        "cargo_fmt": 4,
+        "cargo_test": 3,
+        "literal_command_positions": 51,
+        "other_command": 9,
+        "shell_edit": 3,
+        "shell_read": 22,
+        "shell_search": 10
+      },
+      "repeated_exact_bash": 0,
+      "jev_cost_usd": 0.0,
+      "pack": {
+        "payload_bytes": 16204,
+        "briefing_sha256": "d5496ffe68b19d231319d7b9e7956bfad83f3905e649ac3d1cbc26b0bcfd3a39",
+        "catalog_sha256": "cac2720d2b52a72dcce922c56af4b14ad99ef42c95e362ac8d4495c02dba0ee0",
+        "roles_bytes": {
+          "implementation": 3690,
+          "test": 5418,
+          "document": 2709
+        },
+        "omissions": {
+          "read_pointer_limit": 56,
+          "pack_byte_budget": 10
+        },
+        "selected": [
+          {
+            "name": "docs/coder/traces.md",
+            "path": "docs/coder/traces.md",
+            "start_line": 1,
+            "end_line": 69,
+            "role": "document",
+            "completeness": "partial_file",
+            "source_bytes": 2709
+          },
+          {
+            "name": "tests::a_decision_call_records_the_door_and_the_state_it_read",
+            "path": "crates/atif/src/document.rs",
+            "start_line": 846,
+            "end_line": 878,
+            "role": "test",
+            "completeness": "complete_declaration",
+            "source_bytes": 1544
+          },
+          {
+            "name": "tests::a_file_with_no_session_record_is_refused",
+            "path": "crates/atif/src/log.rs",
+            "start_line": 471,
+            "end_line": 480,
+            "role": "test",
+            "completeness": "complete_declaration",
+            "source_bytes": 465
+          },
+          {
+            "name": "tests::a_session_id_leads_with_its_start_time",
+            "path": "crates/atif/src/log.rs",
+            "start_line": 512,
+            "end_line": 518,
+            "role": "test",
+            "completeness": "complete_declaration",
+            "source_bytes": 300
+          },
+          {
+            "name": "Task::judge_checks",
+            "path": "crates/coderbench/src/lib.rs",
+            "start_line": 1194,
+            "end_line": 1214,
+            "role": "implementation",
+            "completeness": "complete_declaration",
+            "source_bytes": 743
+          },
+          {
+            "name": "the_golden_reads_back_as_atif",
+            "path": "crates/coderbench/tests/devin_fan_out_six.rs",
+            "start_line": 19,
+            "end_line": 37,
+            "role": "test",
+            "completeness": "complete_declaration",
+            "source_bytes": 796
+          },
+          {
+            "name": "a_torn_trace_is_unverifiable",
+            "path": "crates/coderbench/tests/negative.rs",
+            "start_line": 193,
+            "end_line": 207,
+            "role": "test",
+            "completeness": "complete_declaration",
+            "source_bytes": 816
+          },
+          {
+            "name": "tests::repeated_shell_commands_report_as_waste",
+            "path": "crates/atif/src/document.rs",
+            "start_line": 932,
+            "end_line": 946,
+            "role": "test",
+            "completeness": "complete_declaration",
+            "source_bytes": 717
+          },
+          {
+            "name": "a_trace_without_an_end_record_is_a_fault",
+            "path": "crates/coderbench/tests/negative.rs",
+            "start_line": 209,
+            "end_line": 221,
+            "role": "test",
+            "completeness": "complete_declaration",
+            "source_bytes": 581
+          },
+          {
+            "name": "Session::opening",
+            "path": "crates/atif/src/document.rs",
+            "start_line": 320,
+            "end_line": 334,
+            "role": "implementation",
+            "completeness": "complete_declaration",
+            "source_bytes": 556
+          },
+          {
+            "name": "Log::append",
+            "path": "crates/atif/src/log.rs",
+            "start_line": 144,
+            "end_line": 155,
+            "role": "implementation",
+            "completeness": "complete_declaration",
+            "source_bytes": 450
+          },
+          {
+            "name": "find_coder",
+            "path": "crates/coderbench/src/drive.rs",
+            "start_line": 109,
+            "end_line": 134,
+            "role": "implementation",
+            "completeness": "complete_declaration",
+            "source_bytes": 986
+          },
+          {
+            "name": "session_id",
+            "path": "crates/atif/src/log.rs",
+            "start_line": 340,
+            "end_line": 354,
+            "role": "implementation",
+            "completeness": "complete_declaration",
+            "source_bytes": 651
+          },
+          {
+            "name": "Grade::allowed",
+            "path": "crates/coderbench/src/lib.rs",
+            "start_line": 265,
+            "end_line": 274,
+            "role": "implementation",
+            "completeness": "complete_declaration",
+            "source_bytes": 304
+          },
+          {
+            "name": "coderbench",
+            "path": "crates/coderbench/tests/harness.rs",
+            "start_line": 26,
+            "end_line": 32,
+            "role": "test",
+            "completeness": "complete_declaration",
+            "source_bytes": 199
+          }
+        ]
+      }
+    },
+    {
+      "position": 3,
+      "run_id": "a46f6766-e906-4a64-a467-c57bfefdb3ba",
+      "task_id": "alternative-beta",
+      "arm": "jev",
+      "repetition": 1,
+      "accepted": true,
+      "cost_usd": 0.27280118400000003,
+      "provider_calls": 6,
+      "provider_usage": {
+        "cache_creation_input_tokens": 39040,
+        "cache_read_input_tokens": 168021,
+        "cache_write_1h_tokens": 39040,
+        "cache_write_5m_tokens": 0,
+        "input_tokens": 12,
+        "output_tokens": 8186
+      },
+      "phase_wall_s": {
+        "acceptance": 55.005046967,
+        "final_cleanup": 0.31859833299995444,
+        "native": 120.54329110899971,
+        "preparation": 2.4470843690000947,
+        "native_scratch_release": 0.31183988,
+        "native_retained": 120.41450085399993,
+        "preparation_reported": 2.4241491920001863,
+        "gateway_call": 1.9205541999999696,
+        "catalog": 0.24642986199978623,
+        "materialization": 0.0491970670000228
+      },
+      "native_phases_s": {
+        "export_s": 0.6888627040002575,
+        "git_snapshot_s": 0.7680266259999371,
+        "target_seed_copy_s": 2.062066603000403,
+        "prepare_s": 4.684666593000202,
+        "executor_s": 114.31935947700003,
+        "capture_s": 0.443047905000185,
+        "provider_drain_s": 0.003776671999730752
+      },
+      "endpoint_wall_s": 178.750432564,
+      "check_outcomes": {
+        "scope": true,
+        "format": true,
+        "ordinary": true,
+        "independent": true
+      },
+      "inference_requests": 6,
+      "count_token_requests": 0,
+      "first_input_context_tokens": 23231,
+      "last_input_context_tokens": 43829,
+      "mean_input_context_tokens": 34512.166666666664,
+      "provider_request_wall_sum_s": 58.8570395680008,
+      "prompt_bytes": 38311,
+      "assistant_messages": 6,
+      "tool_counts": {
+        "Bash": 2,
+        "Grep": 2,
+        "Read": 7
+      },
+      "bash_unclassified": 2,
+      "literal_shell_actions": {},
+      "repeated_exact_bash": 0,
+      "jev_cost_usd": 0.001152984,
+      "pack": {
+        "payload_bytes": 16043,
+        "briefing_sha256": "bbeae9265f4733f626a79bf663075d601f00437e1e62badfe6ce078b9c97a521",
+        "catalog_sha256": "cac2720d2b52a72dcce922c56af4b14ad99ef42c95e362ac8d4495c02dba0ee0",
+        "roles_bytes": {
+          "implementation": 5350,
+          "test": 4423,
+          "document": 2709
+        },
+        "omissions": {
+          "read_pointer_limit": 56,
+          "pack_byte_budget": 13
+        },
+        "selected": [
+          {
+            "name": "docs/coder/traces.md",
+            "path": "docs/coder/traces.md",
+            "start_line": 1,
+            "end_line": 69,
+            "role": "document",
+            "completeness": "partial_file",
+            "source_bytes": 2709
+          },
+          {
+            "name": "read",
+            "path": "crates/atif/src/log.rs",
+            "start_line": 225,
+            "end_line": 306,
+            "role": "implementation",
+            "completeness": "complete_declaration",
+            "source_bytes": 2810
+          },
+          {
+            "name": "Task::judge_record",
+            "path": "crates/coderbench/src/lib.rs",
+            "start_line": 1267,
+            "end_line": 1290,
+            "role": "implementation",
+            "completeness": "complete_declaration",
+            "source_bytes": 883
+          },
+          {
+            "name": "tests::a_decision_call_records_the_door_and_the_state_it_read",
+            "path": "crates/atif/src/document.rs",
+            "start_line": 846,
+            "end_line": 878,
+            "role": "test",
+            "completeness": "complete_declaration",
+            "source_bytes": 1544
+          },
+          {
+            "name": "tests::a_file_with_no_session_record_is_refused",
+            "path": "crates/atif/src/log.rs",
+            "start_line": 471,
+            "end_line": 480,
+            "role": "test",
+            "completeness": "complete_declaration",
+            "source_bytes": 465
+          },
+          {
+            "name": "a_torn_trace_is_unverifiable",
+            "path": "crates/coderbench/tests/negative.rs",
+            "start_line": 193,
+            "end_line": 207,
+            "role": "test",
+            "completeness": "complete_declaration",
+            "source_bytes": 816
+          },
+          {
+            "name": "tests::repeated_shell_commands_report_as_waste",
+            "path": "crates/atif/src/document.rs",
+            "start_line": 932,
+            "end_line": 946,
+            "role": "test",
+            "completeness": "complete_declaration",
+            "source_bytes": 717
+          },
+          {
+            "name": "tests::a_session_id_leads_with_its_start_time",
+            "path": "crates/atif/src/log.rs",
+            "start_line": 512,
+            "end_line": 518,
+            "role": "test",
+            "completeness": "complete_declaration",
+            "source_bytes": 300
+          },
+          {
+            "name": "a_trace_without_an_end_record_is_a_fault",
+            "path": "crates/coderbench/tests/negative.rs",
+            "start_line": 209,
+            "end_line": 221,
+            "role": "test",
+            "completeness": "complete_declaration",
+            "source_bytes": 581
+          },
+          {
+            "name": "Session::opening",
+            "path": "crates/atif/src/document.rs",
+            "start_line": 320,
+            "end_line": 334,
+            "role": "implementation",
+            "completeness": "complete_declaration",
+            "source_bytes": 556
+          },
+          {
+            "name": "Log::append",
+            "path": "crates/atif/src/log.rs",
+            "start_line": 144,
+            "end_line": 155,
+            "role": "implementation",
+            "completeness": "complete_declaration",
+            "source_bytes": 450
+          },
+          {
+            "name": "session_id",
+            "path": "crates/atif/src/log.rs",
+            "start_line": 340,
+            "end_line": 354,
+            "role": "implementation",
+            "completeness": "complete_declaration",
+            "source_bytes": 651
+          }
+        ]
+      }
+    },
+    {
+      "position": 4,
+      "run_id": "876596da-236c-438e-91dd-a696291b766b",
+      "task_id": "alternative-gamma",
+      "arm": "jev",
+      "repetition": 1,
+      "accepted": false,
+      "cost_usd": 0.377563142,
+      "provider_calls": 8,
+      "provider_usage": {
+        "cache_creation_input_tokens": 50790,
+        "cache_read_input_tokens": 293538,
+        "cache_write_1h_tokens": 50790,
+        "cache_write_5m_tokens": 0,
+        "input_tokens": 16,
+        "output_tokens": 11433
+      },
+      "phase_wall_s": {
+        "acceptance": 45.82392077199984,
+        "final_cleanup": 0.31997273000024506,
+        "native": 126.72841842599973,
+        "preparation": 1.1153618880002796,
+        "native_scratch_release": 0.331060338,
+        "native_retained": 126.5814077140003,
+        "preparation_reported": 1.0981409650003116,
+        "gateway_call": 0.6174313569999867,
+        "catalog": 0.21680116999959864,
+        "materialization": 0.03956698100000722
+      },
+      "native_phases_s": {
+        "export_s": 0.7130597730001682,
+        "git_snapshot_s": 0.8559098870000525,
+        "target_seed_copy_s": 2.109211098999822,
+        "prepare_s": 4.866649645000052,
+        "executor_s": 119.9962814190003,
+        "capture_s": 0.5858333930000299,
+        "provider_drain_s": 0.004171270999904664
+      },
+      "endpoint_wall_s": 174.443642554,
+      "check_outcomes": {
+        "scope": true,
+        "format": true,
+        "ordinary": true,
+        "independent": false
+      },
+      "inference_requests": 8,
+      "count_token_requests": 0,
+      "first_input_context_tokens": 25928,
+      "last_input_context_tokens": 55579,
+      "mean_input_context_tokens": 43043,
+      "provider_request_wall_sum_s": 73.44707836599946,
+      "prompt_bytes": 46405,
+      "assistant_messages": 8,
+      "tool_counts": {
+        "Bash": 7
+      },
+      "bash_unclassified": 2,
+      "literal_shell_actions": {
+        "cargo_fmt": 1,
+        "cargo_test": 1,
+        "literal_command_positions": 26,
+        "other_command": 3,
+        "shell_read": 16,
+        "shell_search": 5
+      },
+      "repeated_exact_bash": 0,
+      "jev_cost_usd": 0.001333542,
+      "pack": {
+        "payload_bytes": 16226,
+        "briefing_sha256": "e689492a85a5cb25c41edc11edeebd304fa9e4d5af7a362b147267226af323bb",
+        "catalog_sha256": "760565423194f2128db468ac7736cdfa5d6af976483e11fe46439acfe5d27fbd",
+        "roles_bytes": {
+          "implementation": 3291,
+          "test": 7430,
+          "document": 2390
+        },
+        "omissions": {
+          "read_pointer_limit": 56,
+          "pack_byte_budget": 16
+        },
+        "selected": [
+          {
+            "name": ".agents/skills/typesafe-ai/SKILL.md",
+            "path": ".agents/skills/typesafe-ai/SKILL.md",
+            "start_line": 1,
+            "end_line": 23,
+            "role": "document",
+            "completeness": "partial_file",
+            "source_bytes": 1208
+          },
+          {
+            "name": "docs/decision-models/2026-09-20-score-contract.md",
+            "path": "docs/decision-models/2026-09-20-score-contract.md",
+            "start_line": 1,
+            "end_line": 23,
+            "role": "document",
+            "completeness": "partial_file",
+            "source_bytes": 1182
+          },
+          {
+            "name": "SystemOneResponse::decode",
+            "path": "crates/jev/src/answers.rs",
+            "start_line": 169,
+            "end_line": 198,
+            "role": "implementation",
+            "completeness": "complete_declaration",
+            "source_bytes": 1167
+          },
+          {
+            "name": "decode_answer",
+            "path": "crates/jev/src/answers.rs",
+            "start_line": 303,
+            "end_line": 347,
+            "role": "implementation",
+            "completeness": "complete_declaration",
+            "source_bytes": 1892
+          },
+          {
+            "name": "a_noul_cannot_name_an_option_outside_yes_and_no",
+            "path": "crates/jev/tests/selected_answer.rs",
+            "start_line": 14,
+            "end_line": 24,
+            "role": "test",
+            "completeness": "complete_declaration",
+            "source_bytes": 514
+          },
+          {
+            "name": "a_field_that_does_not_read_is_named_by_a_dotted_path",
+            "path": "crates/jev/tests/answers.rs",
+            "start_line": 235,
+            "end_line": 304,
+            "role": "test",
+            "completeness": "complete_declaration",
+            "source_bytes": 2709
+          },
+          {
+            "name": "the_blocking_call_holds_the_same_whole_call_deadline",
+            "path": "crates/jev/tests/blocking.rs",
+            "start_line": 133,
+            "end_line": 167,
+            "role": "test",
+            "completeness": "complete_declaration",
+            "source_bytes": 1406
+          },
+          {
+            "name": "one_request_reaches_the_api_and_its_answers_read",
+            "path": "crates/jev/tests/live.rs",
+            "start_line": 34,
+            "end_line": 87,
+            "role": "test",
+            "completeness": "complete_declaration",
+            "source_bytes": 2067
+          },
+          {
+            "name": "a_request_names_the_model_the_call_asks_for",
+            "path": "crates/jev/tests/client.rs",
+            "start_line": 332,
+            "end_line": 349,
+            "role": "test",
+            "completeness": "complete_declaration",
+            "source_bytes": 734
+          },
+          {
+            "name": "RawResponse::request_id",
+            "path": "crates/jev/src/answers.rs",
+            "start_line": 145,
+            "end_line": 151,
+            "role": "implementation",
+            "completeness": "complete_declaration",
+            "source_bytes": 232
+          }
+        ]
+      }
+    },
+    {
+      "position": 5,
+      "run_id": "405edc88-0837-4efb-ab77-4a1a17fbb031",
+      "task_id": "alternative-gamma",
+      "arm": "bare",
+      "repetition": 1,
+      "accepted": false,
+      "cost_usd": 0.6664406,
+      "provider_calls": 18,
+      "provider_usage": {
+        "cache_creation_input_tokens": 67425,
+        "cache_read_input_tokens": 1157663,
+        "cache_write_1h_tokens": 67425,
+        "cache_write_5m_tokens": 0,
+        "input_tokens": 34,
+        "output_tokens": 16514
+      },
+      "phase_wall_s": {
+        "acceptance": 48.35062095500007,
+        "final_cleanup": 0.3073305039997649,
+        "native": 206.1980250480001,
+        "preparation": 0.24801761900016572,
+        "native_scratch_release": 0.400434197,
+        "native_retained": 206.08725095,
+        "preparation_reported": 0.23034153700018578,
+        "gateway_call": null,
+        "catalog": null,
+        "materialization": null
+      },
+      "native_phases_s": {
+        "export_s": 0.7027345739998054,
+        "git_snapshot_s": 0.8618393420001667,
+        "target_seed_copy_s": 1.7830801219997738,
+        "prepare_s": 4.406601698000031,
+        "executor_s": 200.16138404599997,
+        "capture_s": 0.531762749000336,
+        "provider_drain_s": 0.004313956999794755
+      },
+      "endpoint_wall_s": 255.649847842,
+      "check_outcomes": {
+        "scope": true,
+        "format": true,
+        "ordinary": true,
+        "independent": false
+      },
+      "inference_requests": 17,
+      "count_token_requests": 1,
+      "first_input_context_tokens": 37791,
+      "last_input_context_tokens": 87638,
+      "mean_input_context_tokens": 72066,
+      "provider_request_wall_sum_s": 114.08213443000159,
+      "prompt_bytes": 30177,
+      "assistant_messages": 17,
+      "tool_counts": {
+        "Bash": 17
+      },
+      "bash_unclassified": 5,
+      "literal_shell_actions": {
+        "cargo_test": 5,
+        "literal_command_positions": 48,
+        "other_command": 5,
+        "shell_edit": 2,
+        "shell_read": 25,
+        "shell_search": 11
+      },
+      "repeated_exact_bash": 0,
+      "jev_cost_usd": 0.0
+    },
+    {
+      "position": 6,
+      "run_id": "3f2caadb-ccf7-496c-a4c5-d793b3d00321",
+      "task_id": "alternative-gamma",
+      "arm": "deterministic",
+      "repetition": 1,
+      "accepted": false,
+      "cost_usd": 0.3962988,
+      "provider_calls": 12,
+      "provider_usage": {
+        "cache_creation_input_tokens": 48560,
+        "cache_read_input_tokens": 452504,
+        "cache_write_1h_tokens": 48560,
+        "cache_write_5m_tokens": 0,
+        "input_tokens": 24,
+        "output_tokens": 11151
+      },
+      "phase_wall_s": {
+        "acceptance": 46.0066889310001,
+        "final_cleanup": 0.34942173899980844,
+        "native": 185.3080856669999,
+        "preparation": 0.5280092440002591,
+        "native_scratch_release": 0.362107824,
+        "native_retained": 185.178363213,
+        "preparation_reported": 0.5117416560001402,
+        "gateway_call": null,
+        "catalog": 0.21795742199992674,
+        "materialization": 0.08389053500013688
+      },
+      "native_phases_s": {
+        "export_s": 1.05813413199985,
+        "git_snapshot_s": 0.8266033340000831,
+        "target_seed_copy_s": 1.993786547000127,
+        "prepare_s": 5.260125751000032,
+        "executor_s": 178.489959516,
+        "capture_s": 0.4613537130003351,
+        "provider_drain_s": 0.004441890999714815
+      },
+      "endpoint_wall_s": 232.685154556,
+      "check_outcomes": {
+        "scope": true,
+        "format": true,
+        "ordinary": true,
+        "independent": false
+      },
+      "inference_requests": 12,
+      "count_token_requests": 0,
+      "first_input_context_tokens": 25974,
+      "last_input_context_tokens": 53349,
+      "mean_input_context_tokens": 41757.333333333336,
+      "provider_request_wall_sum_s": 89.70910558100059,
+      "prompt_bytes": 46283,
+      "assistant_messages": 12,
+      "tool_counts": {
+        "Bash": 12
+      },
+      "bash_unclassified": 3,
+      "literal_shell_actions": {
+        "cargo_clippy": 1,
+        "cargo_fmt": 1,
+        "cargo_test": 3,
+        "literal_command_positions": 47,
+        "other_command": 5,
+        "shell_read": 23,
+        "shell_search": 14
+      },
+      "repeated_exact_bash": 0,
+      "jev_cost_usd": 0.0,
+      "pack": {
+        "payload_bytes": 16104,
+        "briefing_sha256": "6e3fe47ddacabc3a8dc03f3e1ef005ca5f4ce16cdd2b65e79eef41aa573ae6ce",
+        "catalog_sha256": "760565423194f2128db468ac7736cdfa5d6af976483e11fe46439acfe5d27fbd",
+        "roles_bytes": {
+          "implementation": 483,
+          "test": 9796,
+          "document": 2390
+        },
+        "omissions": {
+          "read_pointer_limit": 56,
+          "pack_byte_budget": 15
+        },
+        "selected": [
+          {
+            "name": ".agents/skills/typesafe-ai/SKILL.md",
+            "path": ".agents/skills/typesafe-ai/SKILL.md",
+            "start_line": 1,
+            "end_line": 23,
+            "role": "document",
+            "completeness": "partial_file",
+            "source_bytes": 1208
+          },
+          {
+            "name": "docs/decision-models/2026-09-20-score-contract.md",
+            "path": "docs/decision-models/2026-09-20-score-contract.md",
+            "start_line": 1,
+            "end_line": 23,
+            "role": "document",
+            "completeness": "partial_file",
+            "source_bytes": 1182
+          },
+          {
+            "name": "a_noul_cannot_name_an_option_outside_yes_and_no",
+            "path": "crates/jev/tests/selected_answer.rs",
+            "start_line": 14,
+            "end_line": 24,
+            "role": "test",
+            "completeness": "complete_declaration",
+            "source_bytes": 514
+          },
+          {
+            "name": "the_blocking_call_holds_the_same_whole_call_deadline",
+            "path": "crates/jev/tests/blocking.rs",
+            "start_line": 133,
+            "end_line": 167,
+            "role": "test",
+            "completeness": "complete_declaration",
+            "source_bytes": 1406
+          },
+          {
+            "name": "a_field_that_does_not_read_is_named_by_a_dotted_path",
+            "path": "crates/jev/tests/answers.rs",
+            "start_line": 235,
+            "end_line": 304,
+            "role": "test",
+            "completeness": "complete_declaration",
+            "source_bytes": 2709
+          },
+          {
+            "name": "a_request_names_the_model_the_call_asks_for",
+            "path": "crates/jev/tests/client.rs",
+            "start_line": 332,
+            "end_line": 349,
+            "role": "test",
+            "completeness": "complete_declaration",
+            "source_bytes": 734
+          },
+          {
+            "name": "the_live_account_lists_its_models",
+            "path": "crates/jev/tests/live.rs",
+            "start_line": 89,
+            "end_line": 103,
+            "role": "test",
+            "completeness": "complete_declaration",
+            "source_bytes": 457
+          },
+          {
+            "name": "a_question_written_out_as_json_fails_the_checks_the_python_sdk_runs",
+            "path": "crates/jev/tests/questions.rs",
+            "start_line": 249,
+            "end_line": 274,
+            "role": "test",
+            "completeness": "complete_declaration",
+            "source_bytes": 923
+          },
+          {
+            "name": "one_request_reaches_the_api_and_its_answers_read",
+            "path": "crates/jev/tests/live.rs",
+            "start_line": 34,
+            "end_line": 87,
+            "role": "test",
+            "completeness": "complete_declaration",
+            "source_bytes": 2067
+          },
+          {
+            "name": "the_budget_bounds_the_raw_call_the_same_way",
+            "path": "crates/jev/tests/client.rs",
+            "start_line": 821,
+            "end_line": 846,
+            "role": "test",
+            "completeness": "complete_declaration",
+            "source_bytes": 986
+          },
+          {
+            "name": "Models::list_raw",
+            "path": "crates/jev/src/models.rs",
+            "start_line": 98,
+            "end_line": 108,
+            "role": "implementation",
+            "completeness": "complete_declaration",
+            "source_bytes": 483
+          }
+        ]
+      }
+    },
+    {
+      "position": 7,
+      "run_id": "3fb852b4-f4d8-4147-adaa-a1209cfa1917",
+      "task_id": "alternative-beta",
+      "arm": "deterministic",
+      "repetition": 2,
+      "accepted": true,
+      "cost_usd": 0.3107,
+      "provider_calls": 9,
+      "provider_usage": {
+        "cache_creation_input_tokens": 38576,
+        "cache_read_input_tokens": 277950,
+        "cache_write_1h_tokens": 38576,
+        "cache_write_5m_tokens": 0,
+        "input_tokens": 18,
+        "output_tokens": 10077
+      },
+      "phase_wall_s": {
+        "acceptance": 56.44618785300008,
+        "final_cleanup": 0.2936759659996824,
+        "native": 128.79234941799996,
+        "preparation": 0.5110862900000939,
+        "native_scratch_release": 0.365614399,
+        "native_retained": 128.66814660199998,
+        "preparation_reported": 0.49728478399993037,
+        "gateway_call": null,
+        "catalog": 0.21214220599995315,
+        "materialization": 0.0886467220002487
+      },
+      "native_phases_s": {
+        "export_s": 0.733263400999931,
+        "git_snapshot_s": 0.8902085520003311,
+        "target_seed_copy_s": 2.135536835000039,
+        "prepare_s": 4.848938134000036,
+        "executor_s": 122.23223129000007,
+        "capture_s": 0.6184648799999195,
+        "provider_drain_s": 0.004053535999901214
+      },
+      "endpoint_wall_s": 186.53358199,
+      "check_outcomes": {
+        "scope": true,
+        "format": true,
+        "ordinary": true,
+        "independent": true
+      },
+      "inference_requests": 9,
+      "count_token_requests": 0,
+      "first_input_context_tokens": 23546,
+      "last_input_context_tokens": 43365,
+      "mean_input_context_tokens": 35171.555555555555,
+      "provider_request_wall_sum_s": 65.16312612299953,
+      "prompt_bytes": 38472,
+      "assistant_messages": 9,
+      "tool_counts": {
+        "Bash": 8
+      },
+      "bash_unclassified": 3,
+      "literal_shell_actions": {
+        "literal_command_positions": 23,
+        "other_command": 2,
+        "shell_read": 15,
+        "shell_search": 6
+      },
+      "repeated_exact_bash": 0,
+      "jev_cost_usd": 0.0,
+      "pack": {
+        "payload_bytes": 16204,
+        "briefing_sha256": "d5496ffe68b19d231319d7b9e7956bfad83f3905e649ac3d1cbc26b0bcfd3a39",
+        "catalog_sha256": "cac2720d2b52a72dcce922c56af4b14ad99ef42c95e362ac8d4495c02dba0ee0",
+        "roles_bytes": {
+          "implementation": 3690,
+          "test": 5418,
+          "document": 2709
+        },
+        "omissions": {
+          "read_pointer_limit": 56,
+          "pack_byte_budget": 10
+        },
+        "selected": [
+          {
+            "name": "docs/coder/traces.md",
+            "path": "docs/coder/traces.md",
+            "start_line": 1,
+            "end_line": 69,
+            "role": "document",
+            "completeness": "partial_file",
+            "source_bytes": 2709
+          },
+          {
+            "name": "tests::a_decision_call_records_the_door_and_the_state_it_read",
+            "path": "crates/atif/src/document.rs",
+            "start_line": 846,
+            "end_line": 878,
+            "role": "test",
+            "completeness": "complete_declaration",
+            "source_bytes": 1544
+          },
+          {
+            "name": "tests::a_file_with_no_session_record_is_refused",
+            "path": "crates/atif/src/log.rs",
+            "start_line": 471,
+            "end_line": 480,
+            "role": "test",
+            "completeness": "complete_declaration",
+            "source_bytes": 465
+          },
+          {
+            "name": "tests::a_session_id_leads_with_its_start_time",
+            "path": "crates/atif/src/log.rs",
+            "start_line": 512,
+            "end_line": 518,
+            "role": "test",
+            "completeness": "complete_declaration",
+            "source_bytes": 300
+          },
+          {
+            "name": "Task::judge_checks",
+            "path": "crates/coderbench/src/lib.rs",
+            "start_line": 1194,
+            "end_line": 1214,
+            "role": "implementation",
+            "completeness": "complete_declaration",
+            "source_bytes": 743
+          },
+          {
+            "name": "the_golden_reads_back_as_atif",
+            "path": "crates/coderbench/tests/devin_fan_out_six.rs",
+            "start_line": 19,
+            "end_line": 37,
+            "role": "test",
+            "completeness": "complete_declaration",
+            "source_bytes": 796
+          },
+          {
+            "name": "a_torn_trace_is_unverifiable",
+            "path": "crates/coderbench/tests/negative.rs",
+            "start_line": 193,
+            "end_line": 207,
+            "role": "test",
+            "completeness": "complete_declaration",
+            "source_bytes": 816
+          },
+          {
+            "name": "tests::repeated_shell_commands_report_as_waste",
+            "path": "crates/atif/src/document.rs",
+            "start_line": 932,
+            "end_line": 946,
+            "role": "test",
+            "completeness": "complete_declaration",
+            "source_bytes": 717
+          },
+          {
+            "name": "a_trace_without_an_end_record_is_a_fault",
+            "path": "crates/coderbench/tests/negative.rs",
+            "start_line": 209,
+            "end_line": 221,
+            "role": "test",
+            "completeness": "complete_declaration",
+            "source_bytes": 581
+          },
+          {
+            "name": "Session::opening",
+            "path": "crates/atif/src/document.rs",
+            "start_line": 320,
+            "end_line": 334,
+            "role": "implementation",
+            "completeness": "complete_declaration",
+            "source_bytes": 556
+          },
+          {
+            "name": "Log::append",
+            "path": "crates/atif/src/log.rs",
+            "start_line": 144,
+            "end_line": 155,
+            "role": "implementation",
+            "completeness": "complete_declaration",
+            "source_bytes": 450
+          },
+          {
+            "name": "find_coder",
+            "path": "crates/coderbench/src/drive.rs",
+            "start_line": 109,
+            "end_line": 134,
+            "role": "implementation",
+            "completeness": "complete_declaration",
+            "source_bytes": 986
+          },
+          {
+            "name": "session_id",
+            "path": "crates/atif/src/log.rs",
+            "start_line": 340,
+            "end_line": 354,
+            "role": "implementation",
+            "completeness": "complete_declaration",
+            "source_bytes": 651
+          },
+          {
+            "name": "Grade::allowed",
+            "path": "crates/coderbench/src/lib.rs",
+            "start_line": 265,
+            "end_line": 274,
+            "role": "implementation",
+            "completeness": "complete_declaration",
+            "source_bytes": 304
+          },
+          {
+            "name": "coderbench",
+            "path": "crates/coderbench/tests/harness.rs",
+            "start_line": 26,
+            "end_line": 32,
+            "role": "test",
+            "completeness": "complete_declaration",
+            "source_bytes": 199
+          }
+        ]
+      }
+    },
+    {
+      "position": 8,
+      "run_id": "af869a80-4277-4c0b-a4d7-b7b7c1d1d273",
+      "task_id": "alternative-beta",
+      "arm": "jev",
+      "repetition": 2,
+      "accepted": true,
+      "cost_usd": 0.23940478399999998,
+      "provider_calls": 7,
+      "provider_usage": {
+        "cache_creation_input_tokens": 33708,
+        "cache_read_input_tokens": 193009,
+        "cache_write_1h_tokens": 33708,
+        "cache_write_5m_tokens": 0,
+        "input_tokens": 14,
+        "output_tokens": 6479
+      },
+      "phase_wall_s": {
+        "acceptance": 54.707940428000256,
+        "final_cleanup": 0.3777430549998826,
+        "native": 117.20817183700001,
+        "preparation": 1.8645040470000822,
+        "native_scratch_release": 0.299136908,
+        "native_retained": 117.05670724499987,
+        "preparation_reported": 1.8486254939998616,
+        "gateway_call": 1.3103792259998954,
+        "catalog": 0.28064001799975813,
+        "materialization": 0.05519669800014526
+      },
+      "native_phases_s": {
+        "export_s": 0.7630936599998677,
+        "git_snapshot_s": 0.8678974340000423,
+        "target_seed_copy_s": 2.224439615999927,
+        "prepare_s": 5.015119778999633,
+        "executor_s": 110.59666267900002,
+        "capture_s": 0.5143285949998244,
+        "provider_drain_s": 0.0040521300002183125
+      },
+      "endpoint_wall_s": 174.585897282,
+      "check_outcomes": {
+        "scope": true,
+        "format": true,
+        "ordinary": true,
+        "independent": true
+      },
+      "inference_requests": 7,
+      "count_token_requests": 0,
+      "first_input_context_tokens": 23233,
+      "last_input_context_tokens": 38497,
+      "mean_input_context_tokens": 32390.14285714286,
+      "provider_request_wall_sum_s": 51.3043382299993,
+      "prompt_bytes": 38311,
+      "assistant_messages": 7,
+      "tool_counts": {
+        "Bash": 6
+      },
+      "bash_unclassified": 2,
+      "literal_shell_actions": {
+        "cargo_test": 1,
+        "literal_command_positions": 18,
+        "other_command": 3,
+        "shell_read": 9,
+        "shell_search": 5
+      },
+      "repeated_exact_bash": 0,
+      "jev_cost_usd": 0.001152984,
+      "pack": {
+        "payload_bytes": 16043,
+        "briefing_sha256": "bbeae9265f4733f626a79bf663075d601f00437e1e62badfe6ce078b9c97a521",
+        "catalog_sha256": "cac2720d2b52a72dcce922c56af4b14ad99ef42c95e362ac8d4495c02dba0ee0",
+        "roles_bytes": {
+          "implementation": 5350,
+          "test": 4423,
+          "document": 2709
+        },
+        "omissions": {
+          "read_pointer_limit": 56,
+          "pack_byte_budget": 13
+        },
+        "selected": [
+          {
+            "name": "docs/coder/traces.md",
+            "path": "docs/coder/traces.md",
+            "start_line": 1,
+            "end_line": 69,
+            "role": "document",
+            "completeness": "partial_file",
+            "source_bytes": 2709
+          },
+          {
+            "name": "read",
+            "path": "crates/atif/src/log.rs",
+            "start_line": 225,
+            "end_line": 306,
+            "role": "implementation",
+            "completeness": "complete_declaration",
+            "source_bytes": 2810
+          },
+          {
+            "name": "Task::judge_record",
+            "path": "crates/coderbench/src/lib.rs",
+            "start_line": 1267,
+            "end_line": 1290,
+            "role": "implementation",
+            "completeness": "complete_declaration",
+            "source_bytes": 883
+          },
+          {
+            "name": "tests::a_decision_call_records_the_door_and_the_state_it_read",
+            "path": "crates/atif/src/document.rs",
+            "start_line": 846,
+            "end_line": 878,
+            "role": "test",
+            "completeness": "complete_declaration",
+            "source_bytes": 1544
+          },
+          {
+            "name": "tests::a_file_with_no_session_record_is_refused",
+            "path": "crates/atif/src/log.rs",
+            "start_line": 471,
+            "end_line": 480,
+            "role": "test",
+            "completeness": "complete_declaration",
+            "source_bytes": 465
+          },
+          {
+            "name": "a_torn_trace_is_unverifiable",
+            "path": "crates/coderbench/tests/negative.rs",
+            "start_line": 193,
+            "end_line": 207,
+            "role": "test",
+            "completeness": "complete_declaration",
+            "source_bytes": 816
+          },
+          {
+            "name": "tests::repeated_shell_commands_report_as_waste",
+            "path": "crates/atif/src/document.rs",
+            "start_line": 932,
+            "end_line": 946,
+            "role": "test",
+            "completeness": "complete_declaration",
+            "source_bytes": 717
+          },
+          {
+            "name": "tests::a_session_id_leads_with_its_start_time",
+            "path": "crates/atif/src/log.rs",
+            "start_line": 512,
+            "end_line": 518,
+            "role": "test",
+            "completeness": "complete_declaration",
+            "source_bytes": 300
+          },
+          {
+            "name": "a_trace_without_an_end_record_is_a_fault",
+            "path": "crates/coderbench/tests/negative.rs",
+            "start_line": 209,
+            "end_line": 221,
+            "role": "test",
+            "completeness": "complete_declaration",
+            "source_bytes": 581
+          },
+          {
+            "name": "Session::opening",
+            "path": "crates/atif/src/document.rs",
+            "start_line": 320,
+            "end_line": 334,
+            "role": "implementation",
+            "completeness": "complete_declaration",
+            "source_bytes": 556
+          },
+          {
+            "name": "Log::append",
+            "path": "crates/atif/src/log.rs",
+            "start_line": 144,
+            "end_line": 155,
+            "role": "implementation",
+            "completeness": "complete_declaration",
+            "source_bytes": 450
+          },
+          {
+            "name": "session_id",
+            "path": "crates/atif/src/log.rs",
+            "start_line": 340,
+            "end_line": 354,
+            "role": "implementation",
+            "completeness": "complete_declaration",
+            "source_bytes": 651
+          }
+        ]
+      }
+    },
+    {
+      "position": 9,
+      "run_id": "c2113cf1-68a0-41cb-ac09-af031f931f28",
+      "task_id": "alternative-beta",
+      "arm": "bare",
+      "repetition": 2,
+      "accepted": true,
+      "cost_usd": 0.3794228,
+      "provider_calls": 10,
+      "provider_usage": {
+        "cache_creation_input_tokens": 42660,
+        "cache_read_input_tokens": 465514,
+        "cache_write_1h_tokens": 42660,
+        "cache_write_5m_tokens": 0,
+        "input_tokens": 20,
+        "output_tokens": 11564
+      },
+      "phase_wall_s": {
+        "acceptance": 58.42126105699981,
+        "final_cleanup": 0.319769019999967,
+        "native": 158.0626458910001,
+        "preparation": 0.17344262799997523,
+        "native_scratch_release": 0.29603019,
+        "native_retained": 157.94597153999985,
+        "preparation_reported": 0.16130003100033719,
+        "gateway_call": null,
+        "catalog": null,
+        "materialization": null
+      },
+      "native_phases_s": {
+        "export_s": 0.7687655749996338,
+        "git_snapshot_s": 0.857603035000011,
+        "target_seed_copy_s": 2.2456816199996865,
+        "prepare_s": 5.065016988000025,
+        "executor_s": 151.54200793600012,
+        "capture_s": 0.4144472200000564,
+        "provider_drain_s": 0.007983293000052072
+      },
+      "endpoint_wall_s": 217.409064836,
+      "check_outcomes": {
+        "scope": true,
+        "format": true,
+        "ordinary": true,
+        "independent": true
+      },
+      "inference_requests": 10,
+      "count_token_requests": 0,
+      "first_input_context_tokens": 35174,
+      "last_input_context_tokens": 62873,
+      "mean_input_context_tokens": 50819.4,
+      "provider_request_wall_sum_s": 90.93700408400036,
+      "prompt_bytes": 22266,
+      "assistant_messages": 10,
+      "tool_counts": {
+        "Bash": 9
+      },
+      "bash_unclassified": 3,
+      "literal_shell_actions": {
+        "cargo_test": 1,
+        "literal_command_positions": 32,
+        "other_command": 3,
+        "shell_read": 17,
+        "shell_search": 11
+      },
+      "repeated_exact_bash": 0,
+      "jev_cost_usd": 0.0
+    },
+    {
+      "position": 10,
+      "run_id": "4d53401c-cace-4a0c-8768-442333d9820b",
+      "task_id": "alternative-gamma",
+      "arm": "bare",
+      "repetition": 2,
+      "accepted": false,
+      "cost_usd": 0.644667,
+      "provider_calls": 11,
+      "provider_usage": {
+        "cache_creation_input_tokens": 80842,
+        "cache_read_input_tokens": 782525,
+        "cache_write_1h_tokens": 80842,
+        "cache_write_5m_tokens": 0,
+        "input_tokens": 22,
+        "output_tokens": 16475
+      },
+      "phase_wall_s": {
+        "acceptance": 45.90338446199985,
+        "final_cleanup": 0.37710138900001766,
+        "native": 200.41533851500026,
+        "preparation": 0.18613286499976311,
+        "native_scratch_release": 0.357229286,
+        "native_retained": 200.29836372100044,
+        "preparation_reported": 0.17209539899977244,
+        "gateway_call": null,
+        "catalog": null,
+        "materialization": null
+      },
+      "native_phases_s": {
+        "export_s": 0.7883030500001951,
+        "git_snapshot_s": 0.8133121989999381,
+        "target_seed_copy_s": 2.058444290999887,
+        "prepare_s": 4.90139944800012,
+        "executor_s": 193.94105936300002,
+        "capture_s": 0.47480273699966347,
+        "provider_drain_s": 0.004262505000042438
+      },
+      "endpoint_wall_s": 247.368594036,
+      "check_outcomes": {
+        "scope": true,
+        "format": true,
+        "ordinary": true,
+        "independent": false
+      },
+      "inference_requests": 11,
+      "count_token_requests": 0,
+      "first_input_context_tokens": 37789,
+      "last_input_context_tokens": 101055,
+      "mean_input_context_tokens": 78489.90909090909,
+      "provider_request_wall_sum_s": 122.46052202000146,
+      "prompt_bytes": 30177,
+      "assistant_messages": 11,
+      "tool_counts": {
+        "Bash": 8,
+        "Read": 7
+      },
+      "bash_unclassified": 5,
+      "literal_shell_actions": {
+        "cargo_test": 1,
+        "literal_command_positions": 17,
+        "other_command": 6,
+        "shell_read": 6,
+        "shell_search": 4
+      },
+      "repeated_exact_bash": 0,
+      "jev_cost_usd": 0.0
+    },
+    {
+      "position": 11,
+      "run_id": "bcb7539d-3d80-44a5-af48-835e2fbc4e67",
+      "task_id": "alternative-gamma",
+      "arm": "deterministic",
+      "repetition": 2,
+      "accepted": false,
+      "cost_usd": 0.4122536,
+      "provider_calls": 12,
+      "provider_usage": {
+        "cache_creation_input_tokens": 53178,
+        "cache_read_input_tokens": 504068,
+        "cache_write_1h_tokens": 53178,
+        "cache_write_5m_tokens": 0,
+        "input_tokens": 24,
+        "output_tokens": 9868
+      },
+      "phase_wall_s": {
+        "acceptance": 46.151474909999706,
+        "final_cleanup": 0.3984560569997484,
+        "native": 147.28773419700065,
+        "preparation": 0.5428439030001755,
+        "native_scratch_release": 0.416183811,
+        "native_retained": 147.17763900599948,
+        "preparation_reported": 0.5295362339993517,
+        "gateway_call": null,
+        "catalog": 0.24181290100023034,
+        "materialization": 0.09934765999969386
+      },
+      "native_phases_s": {
+        "export_s": 0.6646410140001535,
+        "git_snapshot_s": 0.8114916120002817,
+        "target_seed_copy_s": 1.69888892400013,
+        "prepare_s": 4.285551662999751,
+        "executor_s": 141.4184838379997,
+        "capture_s": 0.4736662900004376,
+        "provider_drain_s": 0.004400906000228133
+      },
+      "endpoint_wall_s": 194.944888699,
+      "check_outcomes": {
+        "scope": true,
+        "format": true,
+        "ordinary": true,
+        "independent": false
+      },
+      "inference_requests": 12,
+      "count_token_requests": 0,
+      "first_input_context_tokens": 25973,
+      "last_input_context_tokens": 57967,
+      "mean_input_context_tokens": 46439.166666666664,
+      "provider_request_wall_sum_s": 74.4196647079998,
+      "prompt_bytes": 46283,
+      "assistant_messages": 12,
+      "tool_counts": {
+        "Bash": 11
+      },
+      "bash_unclassified": 4,
+      "literal_shell_actions": {
+        "cargo_fmt": 2,
+        "cargo_test": 3,
+        "literal_command_positions": 45,
+        "other_command": 10,
+        "shell_edit": 3,
+        "shell_read": 16,
+        "shell_search": 11
+      },
+      "repeated_exact_bash": 0,
+      "jev_cost_usd": 0.0,
+      "pack": {
+        "payload_bytes": 16104,
+        "briefing_sha256": "6e3fe47ddacabc3a8dc03f3e1ef005ca5f4ce16cdd2b65e79eef41aa573ae6ce",
+        "catalog_sha256": "760565423194f2128db468ac7736cdfa5d6af976483e11fe46439acfe5d27fbd",
+        "roles_bytes": {
+          "implementation": 483,
+          "test": 9796,
+          "document": 2390
+        },
+        "omissions": {
+          "read_pointer_limit": 56,
+          "pack_byte_budget": 15
+        },
+        "selected": [
+          {
+            "name": ".agents/skills/typesafe-ai/SKILL.md",
+            "path": ".agents/skills/typesafe-ai/SKILL.md",
+            "start_line": 1,
+            "end_line": 23,
+            "role": "document",
+            "completeness": "partial_file",
+            "source_bytes": 1208
+          },
+          {
+            "name": "docs/decision-models/2026-09-20-score-contract.md",
+            "path": "docs/decision-models/2026-09-20-score-contract.md",
+            "start_line": 1,
+            "end_line": 23,
+            "role": "document",
+            "completeness": "partial_file",
+            "source_bytes": 1182
+          },
+          {
+            "name": "a_noul_cannot_name_an_option_outside_yes_and_no",
+            "path": "crates/jev/tests/selected_answer.rs",
+            "start_line": 14,
+            "end_line": 24,
+            "role": "test",
+            "completeness": "complete_declaration",
+            "source_bytes": 514
+          },
+          {
+            "name": "the_blocking_call_holds_the_same_whole_call_deadline",
+            "path": "crates/jev/tests/blocking.rs",
+            "start_line": 133,
+            "end_line": 167,
+            "role": "test",
+            "completeness": "complete_declaration",
+            "source_bytes": 1406
+          },
+          {
+            "name": "a_field_that_does_not_read_is_named_by_a_dotted_path",
+            "path": "crates/jev/tests/answers.rs",
+            "start_line": 235,
+            "end_line": 304,
+            "role": "test",
+            "completeness": "complete_declaration",
+            "source_bytes": 2709
+          },
+          {
+            "name": "a_request_names_the_model_the_call_asks_for",
+            "path": "crates/jev/tests/client.rs",
+            "start_line": 332,
+            "end_line": 349,
+            "role": "test",
+            "completeness": "complete_declaration",
+            "source_bytes": 734
+          },
+          {
+            "name": "the_live_account_lists_its_models",
+            "path": "crates/jev/tests/live.rs",
+            "start_line": 89,
+            "end_line": 103,
+            "role": "test",
+            "completeness": "complete_declaration",
+            "source_bytes": 457
+          },
+          {
+            "name": "a_question_written_out_as_json_fails_the_checks_the_python_sdk_runs",
+            "path": "crates/jev/tests/questions.rs",
+            "start_line": 249,
+            "end_line": 274,
+            "role": "test",
+            "completeness": "complete_declaration",
+            "source_bytes": 923
+          },
+          {
+            "name": "one_request_reaches_the_api_and_its_answers_read",
+            "path": "crates/jev/tests/live.rs",
+            "start_line": 34,
+            "end_line": 87,
+            "role": "test",
+            "completeness": "complete_declaration",
+            "source_bytes": 2067
+          },
+          {
+            "name": "the_budget_bounds_the_raw_call_the_same_way",
+            "path": "crates/jev/tests/client.rs",
+            "start_line": 821,
+            "end_line": 846,
+            "role": "test",
+            "completeness": "complete_declaration",
+            "source_bytes": 986
+          },
+          {
+            "name": "Models::list_raw",
+            "path": "crates/jev/src/models.rs",
+            "start_line": 98,
+            "end_line": 108,
+            "role": "implementation",
+            "completeness": "complete_declaration",
+            "source_bytes": 483
+          }
+        ]
+      }
+    },
+    {
+      "position": 12,
+      "run_id": "e1ff393a-fc48-48b0-ae41-a4313af8fdac",
+      "task_id": "alternative-gamma",
+      "arm": "jev",
+      "repetition": 2,
+      "accepted": false,
+      "cost_usd": 0.460411942,
+      "provider_calls": 18,
+      "provider_usage": {
+        "cache_creation_input_tokens": 52365,
+        "cache_read_input_tokens": 739352,
+        "cache_write_1h_tokens": 52365,
+        "cache_write_5m_tokens": 0,
+        "input_tokens": 34,
+        "output_tokens": 10168
+      },
+      "phase_wall_s": {
+        "acceptance": 47.33942835899961,
+        "final_cleanup": 0.30326211100054934,
+        "native": 159.05660880600044,
+        "preparation": 1.2262156030001279,
+        "native_scratch_release": 0.358067371,
+        "native_retained": 158.921375162,
+        "preparation_reported": 1.2096047209997778,
+        "gateway_call": 0.7593879420001031,
+        "catalog": 0.21527932499975577,
+        "materialization": 0.035283344999697874
+      },
+      "native_phases_s": {
+        "export_s": 0.7295265469992955,
+        "git_snapshot_s": 0.8113504900002226,
+        "target_seed_copy_s": 1.7746266359999936,
+        "prepare_s": 4.452398303999871,
+        "executor_s": 152.6570636789993,
+        "capture_s": 0.6491971659997944,
+        "provider_drain_s": 0.009220132999871566
+      },
+      "endpoint_wall_s": 208.443231906,
+      "check_outcomes": {
+        "scope": true,
+        "format": true,
+        "ordinary": true,
+        "independent": false
+      },
+      "inference_requests": 17,
+      "count_token_requests": 1,
+      "first_input_context_tokens": 25934,
+      "last_input_context_tokens": 57154,
+      "mean_input_context_tokens": 46573.58823529412,
+      "provider_request_wall_sum_s": 94.22983155499878,
+      "prompt_bytes": 46405,
+      "assistant_messages": 17,
+      "tool_counts": {
+        "Bash": 17
+      },
+      "bash_unclassified": 5,
+      "literal_shell_actions": {
+        "cargo_fmt": 3,
+        "cargo_test": 2,
+        "literal_command_positions": 48,
+        "other_command": 5,
+        "shell_edit": 1,
+        "shell_read": 24,
+        "shell_search": 13
+      },
+      "repeated_exact_bash": 0,
+      "jev_cost_usd": 0.001333542,
+      "pack": {
+        "payload_bytes": 16226,
+        "briefing_sha256": "e689492a85a5cb25c41edc11edeebd304fa9e4d5af7a362b147267226af323bb",
+        "catalog_sha256": "760565423194f2128db468ac7736cdfa5d6af976483e11fe46439acfe5d27fbd",
+        "roles_bytes": {
+          "implementation": 3291,
+          "test": 7430,
+          "document": 2390
+        },
+        "omissions": {
+          "read_pointer_limit": 56,
+          "pack_byte_budget": 16
+        },
+        "selected": [
+          {
+            "name": ".agents/skills/typesafe-ai/SKILL.md",
+            "path": ".agents/skills/typesafe-ai/SKILL.md",
+            "start_line": 1,
+            "end_line": 23,
+            "role": "document",
+            "completeness": "partial_file",
+            "source_bytes": 1208
+          },
+          {
+            "name": "docs/decision-models/2026-09-20-score-contract.md",
+            "path": "docs/decision-models/2026-09-20-score-contract.md",
+            "start_line": 1,
+            "end_line": 23,
+            "role": "document",
+            "completeness": "partial_file",
+            "source_bytes": 1182
+          },
+          {
+            "name": "SystemOneResponse::decode",
+            "path": "crates/jev/src/answers.rs",
+            "start_line": 169,
+            "end_line": 198,
+            "role": "implementation",
+            "completeness": "complete_declaration",
+            "source_bytes": 1167
+          },
+          {
+            "name": "decode_answer",
+            "path": "crates/jev/src/answers.rs",
+            "start_line": 303,
+            "end_line": 347,
+            "role": "implementation",
+            "completeness": "complete_declaration",
+            "source_bytes": 1892
+          },
+          {
+            "name": "a_noul_cannot_name_an_option_outside_yes_and_no",
+            "path": "crates/jev/tests/selected_answer.rs",
+            "start_line": 14,
+            "end_line": 24,
+            "role": "test",
+            "completeness": "complete_declaration",
+            "source_bytes": 514
+          },
+          {
+            "name": "a_field_that_does_not_read_is_named_by_a_dotted_path",
+            "path": "crates/jev/tests/answers.rs",
+            "start_line": 235,
+            "end_line": 304,
+            "role": "test",
+            "completeness": "complete_declaration",
+            "source_bytes": 2709
+          },
+          {
+            "name": "the_blocking_call_holds_the_same_whole_call_deadline",
+            "path": "crates/jev/tests/blocking.rs",
+            "start_line": 133,
+            "end_line": 167,
+            "role": "test",
+            "completeness": "complete_declaration",
+            "source_bytes": 1406
+          },
+          {
+            "name": "one_request_reaches_the_api_and_its_answers_read",
+            "path": "crates/jev/tests/live.rs",
+            "start_line": 34,
+            "end_line": 87,
+            "role": "test",
+            "completeness": "complete_declaration",
+            "source_bytes": 2067
+          },
+          {
+            "name": "a_request_names_the_model_the_call_asks_for",
+            "path": "crates/jev/tests/client.rs",
+            "start_line": 332,
+            "end_line": 349,
+            "role": "test",
+            "completeness": "complete_declaration",
+            "source_bytes": 734
+          },
+          {
+            "name": "RawResponse::request_id",
+            "path": "crates/jev/src/answers.rs",
+            "start_line": 145,
+            "end_line": 151,
+            "role": "implementation",
+            "completeness": "complete_declaration",
+            "source_bytes": 232
+          }
+        ]
+      }
+    }
+  ],
+  "arms": {
+    "bare": {
+      "attempts": 4,
+      "accepted": 2,
+      "cost_usd": 2.082077,
+      "usage": {
+        "cache_creation_input_tokens": 231607,
+        "cache_read_input_tokens": 2981745,
+        "cache_write_1h_tokens": 231607,
+        "cache_write_5m_tokens": 0,
+        "input_tokens": 100,
+        "output_tokens": 55910
+      },
+      "cost_components_usd": {
+        "input_usd": 0.0002,
+        "cache_write_1h_usd": 0.926428,
+        "cache_read_usd": 0.596349,
+        "output_usd": 0.5591,
+        "jev_usd": 0.0
+      },
+      "inference_requests": 50,
+      "count_token_requests": 1,
+      "assistant_messages": 50,
+      "tool_counts": {
+        "Bash": 45,
+        "Read": 7
+      },
+      "literal_shell_actions": {
+        "cargo_fmt": 2,
+        "cargo_test": 9,
+        "literal_command_positions": 134,
+        "other_command": 19,
+        "shell_edit": 3,
+        "shell_read": 65,
+        "shell_search": 36
+      },
+      "bash_unclassified": 17,
+      "phase_means_s": {
+        "preparation": 0.33388235400002486,
+        "native": 186.58941166500017,
+        "acceptance": 54.77800461849995,
+        "native_scratch_release": 1.174739122,
+        "final_cleanup": 0.3215135034998866
+      },
+      "executor_mean_s": 176.44611403700003,
+      "endpoint_mean_s": 243.3566985415,
+      "provider_request_wall_sum_s": 404.4949712230041,
+      "first_input_context_mean_tokens": 36483,
+      "last_input_context_mean_tokens": 78114.75
+    },
+    "deterministic": {
+      "attempts": 4,
+      "accepted": 2,
+      "cost_usd": 1.4802127999999999,
+      "usage": {
+        "cache_creation_input_tokens": 185940,
+        "cache_read_input_tokens": 1654414,
+        "cache_write_1h_tokens": 185940,
+        "cache_write_5m_tokens": 0,
+        "input_tokens": 90,
+        "output_tokens": 40539
+      },
+      "cost_components_usd": {
+        "input_usd": 0.00018,
+        "cache_write_1h_usd": 0.74376,
+        "cache_read_usd": 0.33088280000000003,
+        "output_usd": 0.40539,
+        "jev_usd": 0.0
+      },
+      "inference_requests": 45,
+      "count_token_requests": 0,
+      "assistant_messages": 45,
+      "tool_counts": {
+        "Bash": 42
+      },
+      "literal_shell_actions": {
+        "cargo_fmt": 7,
+        "cargo_test": 9,
+        "literal_command_positions": 166,
+        "other_command": 26,
+        "shell_edit": 6,
+        "shell_read": 76,
+        "shell_search": 41,
+        "cargo_clippy": 1
+      },
+      "bash_unclassified": 13,
+      "phase_means_s": {
+        "preparation": 0.5492023740001741,
+        "native": 150.57254397200006,
+        "acceptance": 50.92699367025,
+        "native_scratch_release": 0.35843649450000004,
+        "final_cleanup": 0.34446419349978896
+      },
+      "executor_mean_s": 144.18014624399984,
+      "endpoint_mean_s": 202.88305672225,
+      "provider_request_wall_sum_s": 295.8301177389999,
+      "first_input_context_mean_tokens": 24759.25,
+      "last_input_context_mean_tokens": 50077.25
+    },
+    "jev": {
+      "attempts": 4,
+      "accepted": 2,
+      "cost_usd": 1.350181052,
+      "usage": {
+        "cache_creation_input_tokens": 175903,
+        "cache_read_input_tokens": 1393920,
+        "cache_write_1h_tokens": 175903,
+        "cache_write_5m_tokens": 0,
+        "input_tokens": 76,
+        "output_tokens": 36266
+      },
+      "cost_components_usd": {
+        "input_usd": 0.000152,
+        "cache_write_1h_usd": 0.703612,
+        "cache_read_usd": 0.278784,
+        "output_usd": 0.36266,
+        "jev_usd": 0.004973052
+      },
+      "inference_requests": 38,
+      "count_token_requests": 1,
+      "assistant_messages": 38,
+      "tool_counts": {
+        "Bash": 32,
+        "Grep": 2,
+        "Read": 7
+      },
+      "literal_shell_actions": {
+        "cargo_fmt": 4,
+        "cargo_test": 4,
+        "literal_command_positions": 92,
+        "other_command": 11,
+        "shell_read": 49,
+        "shell_search": 23,
+        "shell_edit": 1
+      },
+      "bash_unclassified": 11,
+      "phase_means_s": {
+        "preparation": 1.663291476750146,
+        "native": 130.88412254449997,
+        "acceptance": 50.719084131499926,
+        "native_scratch_release": 0.32502612425,
+        "final_cleanup": 0.32989405725015786
+      },
+      "executor_mean_s": 124.39234181349991,
+      "endpoint_mean_s": 184.0558010765,
+      "provider_request_wall_sum_s": 277.83828771899834,
+      "first_input_context_mean_tokens": 24581.5,
+      "last_input_context_mean_tokens": 48764.75
+    }
+  },
+  "per_task": {
+    "alternative-beta": {
+      "bare": {
+        "attempts": 2,
+        "accepted": 2,
+        "cost_usd": 0.7709694,
+        "usage": {
+          "cache_creation_input_tokens": 83340,
+          "cache_read_input_tokens": 1041557,
+          "cache_write_1h_tokens": 83340,
+          "cache_write_5m_tokens": 0,
+          "input_tokens": 44,
+          "output_tokens": 22921
+        },
+        "cost_components_usd": {
+          "input_usd": 8.8e-05,
+          "cache_write_1h_usd": 0.33336,
+          "cache_read_usd": 0.20831140000000004,
+          "output_usd": 0.22921,
+          "jev_usd": 0.0
+        },
+        "inference_requests": 22,
+        "count_token_requests": 0,
+        "assistant_messages": 22,
+        "tool_counts": {
+          "Bash": 20
+        },
+        "literal_shell_actions": {
+          "cargo_fmt": 2,
+          "cargo_test": 3,
+          "literal_command_positions": 69,
+          "other_command": 8,
+          "shell_edit": 1,
+          "shell_read": 34,
+          "shell_search": 21
+        },
+        "bash_unclassified": 7,
+        "phase_means_s": {
+          "preparation": 0.4506894660000853,
+          "native": 169.87214154850017,
+          "acceptance": 62.42900652849994,
+          "native_scratch_release": 1.9706465025000002,
+          "final_cleanup": 0.30081106049988193
+        },
+        "executor_mean_s": 155.84100636950006,
+        "endpoint_mean_s": 235.204176144,
+        "provider_request_wall_sum_s": 167.95231477300104,
+        "first_input_context_mean_tokens": 35176,
+        "last_input_context_mean_tokens": 61883
+      },
+      "deterministic": {
+        "attempts": 2,
+        "accepted": 2,
+        "cost_usd": 0.6716603999999999,
+        "usage": {
+          "cache_creation_input_tokens": 84202,
+          "cache_read_input_tokens": 697842,
+          "cache_write_1h_tokens": 84202,
+          "cache_write_5m_tokens": 0,
+          "input_tokens": 42,
+          "output_tokens": 19520
+        },
+        "cost_components_usd": {
+          "input_usd": 8.4e-05,
+          "cache_write_1h_usd": 0.336808,
+          "cache_read_usd": 0.13956839999999998,
+          "output_usd": 0.1952,
+          "jev_usd": 0.0
+        },
+        "inference_requests": 21,
+        "count_token_requests": 0,
+        "assistant_messages": 21,
+        "tool_counts": {
+          "Bash": 19
+        },
+        "literal_shell_actions": {
+          "cargo_fmt": 4,
+          "cargo_test": 3,
+          "literal_command_positions": 74,
+          "other_command": 11,
+          "shell_edit": 3,
+          "shell_read": 37,
+          "shell_search": 16
+        },
+        "bash_unclassified": 6,
+        "phase_means_s": {
+          "preparation": 0.562978174500131,
+          "native": 134.84717801199986,
+          "acceptance": 55.774905420000096,
+          "native_scratch_release": 0.32772717149999997,
+          "final_cleanup": 0.3149894889997995
+        },
+        "executor_mean_s": 128.40607081099984,
+        "endpoint_mean_s": 191.951091817,
+        "provider_request_wall_sum_s": 131.7013474499995,
+        "first_input_context_mean_tokens": 23545,
+        "last_input_context_mean_tokens": 44496.5
+      },
+      "jev": {
+        "attempts": 2,
+        "accepted": 2,
+        "cost_usd": 0.512205968,
+        "usage": {
+          "cache_creation_input_tokens": 72748,
+          "cache_read_input_tokens": 361030,
+          "cache_write_1h_tokens": 72748,
+          "cache_write_5m_tokens": 0,
+          "input_tokens": 26,
+          "output_tokens": 14665
+        },
+        "cost_components_usd": {
+          "input_usd": 5.2e-05,
+          "cache_write_1h_usd": 0.290992,
+          "cache_read_usd": 0.072206,
+          "output_usd": 0.14665,
+          "jev_usd": 0.002305968
+        },
+        "inference_requests": 13,
+        "count_token_requests": 0,
+        "assistant_messages": 13,
+        "tool_counts": {
+          "Bash": 8,
+          "Grep": 2,
+          "Read": 7
+        },
+        "literal_shell_actions": {
+          "cargo_test": 1,
+          "literal_command_positions": 18,
+          "other_command": 3,
+          "shell_read": 9,
+          "shell_search": 5
+        },
+        "bash_unclassified": 4,
+        "phase_means_s": {
+          "preparation": 2.1557942080000885,
+          "native": 118.87573147299986,
+          "acceptance": 54.85649369750013,
+          "native_scratch_release": 0.305488394,
+          "final_cleanup": 0.3481706939999185
+        },
+        "executor_mean_s": 112.45801107800003,
+        "endpoint_mean_s": 176.668164923,
+        "provider_request_wall_sum_s": 110.1613777980001,
+        "first_input_context_mean_tokens": 23232,
+        "last_input_context_mean_tokens": 41163
+      }
+    },
+    "alternative-gamma": {
+      "bare": {
+        "attempts": 2,
+        "accepted": 0,
+        "cost_usd": 1.3111076000000002,
+        "usage": {
+          "cache_creation_input_tokens": 148267,
+          "cache_read_input_tokens": 1940188,
+          "cache_write_1h_tokens": 148267,
+          "cache_write_5m_tokens": 0,
+          "input_tokens": 56,
+          "output_tokens": 32989
+        },
+        "cost_components_usd": {
+          "input_usd": 0.000112,
+          "cache_write_1h_usd": 0.593068,
+          "cache_read_usd": 0.38803760000000004,
+          "output_usd": 0.32989,
+          "jev_usd": 0.0
+        },
+        "inference_requests": 28,
+        "count_token_requests": 1,
+        "assistant_messages": 28,
+        "tool_counts": {
+          "Bash": 25,
+          "Read": 7
+        },
+        "literal_shell_actions": {
+          "cargo_test": 6,
+          "literal_command_positions": 65,
+          "other_command": 11,
+          "shell_edit": 2,
+          "shell_read": 31,
+          "shell_search": 15
+        },
+        "bash_unclassified": 10,
+        "phase_means_s": {
+          "preparation": 0.21707524199996442,
+          "native": 203.30668178150017,
+          "acceptance": 47.12700270849996,
+          "native_scratch_release": 0.3788317415,
+          "final_cleanup": 0.3422159464998913
+        },
+        "executor_mean_s": 197.0512217045,
+        "endpoint_mean_s": 251.509220939,
+        "provider_request_wall_sum_s": 236.54265645000305,
+        "first_input_context_mean_tokens": 37790,
+        "last_input_context_mean_tokens": 94346.5
+      },
+      "deterministic": {
+        "attempts": 2,
+        "accepted": 0,
+        "cost_usd": 0.8085524,
+        "usage": {
+          "cache_creation_input_tokens": 101738,
+          "cache_read_input_tokens": 956572,
+          "cache_write_1h_tokens": 101738,
+          "cache_write_5m_tokens": 0,
+          "input_tokens": 48,
+          "output_tokens": 21019
+        },
+        "cost_components_usd": {
+          "input_usd": 9.6e-05,
+          "cache_write_1h_usd": 0.406952,
+          "cache_read_usd": 0.19131440000000002,
+          "output_usd": 0.21019,
+          "jev_usd": 0.0
+        },
+        "inference_requests": 24,
+        "count_token_requests": 0,
+        "assistant_messages": 24,
+        "tool_counts": {
+          "Bash": 23
+        },
+        "literal_shell_actions": {
+          "cargo_clippy": 1,
+          "cargo_fmt": 3,
+          "cargo_test": 6,
+          "literal_command_positions": 92,
+          "other_command": 15,
+          "shell_read": 39,
+          "shell_search": 25,
+          "shell_edit": 3
+        },
+        "bash_unclassified": 7,
+        "phase_means_s": {
+          "preparation": 0.5354265735002173,
+          "native": 166.29790993200027,
+          "acceptance": 46.0790819204999,
+          "native_scratch_release": 0.3891458175,
+          "final_cleanup": 0.3739388979997784
+        },
+        "executor_mean_s": 159.95422167699985,
+        "endpoint_mean_s": 213.8150216275,
+        "provider_request_wall_sum_s": 164.12877028900039,
+        "first_input_context_mean_tokens": 25973.5,
+        "last_input_context_mean_tokens": 55658
+      },
+      "jev": {
+        "attempts": 2,
+        "accepted": 0,
+        "cost_usd": 0.837975084,
+        "usage": {
+          "cache_creation_input_tokens": 103155,
+          "cache_read_input_tokens": 1032890,
+          "cache_write_1h_tokens": 103155,
+          "cache_write_5m_tokens": 0,
+          "input_tokens": 50,
+          "output_tokens": 21601
+        },
+        "cost_components_usd": {
+          "input_usd": 0.0001,
+          "cache_write_1h_usd": 0.41262,
+          "cache_read_usd": 0.206578,
+          "output_usd": 0.21601,
+          "jev_usd": 0.002667084
+        },
+        "inference_requests": 25,
+        "count_token_requests": 1,
+        "assistant_messages": 25,
+        "tool_counts": {
+          "Bash": 24
+        },
+        "literal_shell_actions": {
+          "cargo_fmt": 4,
+          "cargo_test": 3,
+          "literal_command_positions": 74,
+          "other_command": 8,
+          "shell_read": 40,
+          "shell_search": 18,
+          "shell_edit": 1
+        },
+        "bash_unclassified": 7,
+        "phase_means_s": {
+          "preparation": 1.1707887455002037,
+          "native": 142.8925136160001,
+          "acceptance": 46.581674565499725,
+          "native_scratch_release": 0.34456385450000004,
+          "final_cleanup": 0.3116174205003972
+        },
+        "executor_mean_s": 136.3266725489998,
+        "endpoint_mean_s": 191.44343723,
+        "provider_request_wall_sum_s": 167.67690992099824,
+        "first_input_context_mean_tokens": 25931,
+        "last_input_context_mean_tokens": 56366.5
+      }
+    }
+  }
+}

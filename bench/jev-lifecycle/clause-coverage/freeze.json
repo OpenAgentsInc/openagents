@@ -1,0 +1,67 @@
+{
+  "schema": "openagents.jev-lifecycle.clause-review-freeze.v1",
+  "status": "frozen_before_actual_candidate_preparation_and_calls",
+  "created_at": "2026-10-03T13:19:15.452299+00:00",
+  "prototype": {
+    "coverage_review.py": {
+      "sha256": "79070adb5a9b45caa99d204191684c9f3a6b15d84bb2dec10f16ac72a7fd57b7",
+      "bytes": 14916
+    },
+    "test_coverage_review.py": {
+      "sha256": "3294dd0c2b8a9ee0a4474001b8991d73f8aa227776f307ad8c78a6e89d38d0cd",
+      "bytes": 9384
+    },
+    "protocol.md": {
+      "sha256": "2274230d06f89d686103bab77cb2df4a07fee36460e295597117ad43bd6e769c",
+      "bytes": 9946
+    }
+  },
+  "imported_modules": {
+    "bench/jev-lifecycle/context.py": {
+      "sha256": "46af0a61281924f6447d31c28754815c7b09124506446b2dbfeaa70ed0d3e8a6",
+      "bytes": 23719
+    },
+    "bench/jev-lifecycle/gateway.py": {
+      "sha256": "602ebdb605a5c177dbdf0a9e0198ab104c9ad7adad2f42f20890d731c048071e",
+      "bytes": 15596
+    },
+    "bench/delegation-study/candidate.py": {
+      "sha256": "66a848a33e59f38703a03237294c318c14c5b7b8515eb9423efbb8b91f782373",
+      "bytes": 4750
+    },
+    "bench/delegation-study/seed_manifest.py": {
+      "sha256": "0135097f1e92d46fddf7da57cf4c3b0d4ea3efc489d57f74ef1291e405406d0f",
+      "bytes": 4612
+    },
+    "bench/delegation-study/capture_limits.py": {
+      "sha256": "78a5dc5c4dce6e93941f606114d839fb291529e4ce96a0799706731472d06601",
+      "bytes": 2206
+    }
+  },
+  "original_native_plan": {
+    "sha256": "e8dde52655c0cf76ad60b02e9bf81739690113770c3d5164cdb0b305b2fa7824",
+    "bytes": 10525
+  },
+  "policy": {
+    "maximum_candidate_slots": 12,
+    "order": "original_native_panel_order",
+    "maximum_application_calls_per_ready_candidate": 1,
+    "maximum_application_calls_total": 12,
+    "observed_cost_admission_stop_usd": 0.05,
+    "unknown_cost_stops_admission": true,
+    "socket_timeout_s": 30,
+    "outer_call_timeout_s": 90,
+    "request_bytes": 131072,
+    "mandatory_full_changed_implementation_and_pinned_contracts": true,
+    "skip_oversized_mandatory_requests": true,
+    "no_native_repairs_or_score_changes": true
+  },
+  "verification": {
+    "synthetic_tests": 7,
+    "status": "passed",
+    "python_compile": "passed",
+    "actual_candidates_read": 0,
+    "model_calls": 0
+  },
+  "scope": "Private advisory component prototype; coordinator must bind all actual request digests and enforce call admission before execution."
+}

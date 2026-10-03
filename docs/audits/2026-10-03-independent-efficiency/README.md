@@ -65,21 +65,47 @@ The [System One and native delegation study](system-one-delegation/README.md)
 collects the supporting and contrary evidence, adds frozen source-packing
 previews, and qualifies four historical tasks for a six-arm native comparison.
 Its [evidence synthesis](system-one-delegation/evidence-synthesis.md) separates
-the demonstrated configuration gains from the unproven incremental Jev gain.
+the observed configuration and selection gains from unsupported quality claims.
 Two fast replacement previews omit core implementation evidence, which a
 semantic reranker cannot restore from their candidate pools.
 The direct TypeSafe request returned HTTP 402. The owner's gateway configuration
 subsequently produced a [real Jev answer](jev-lifecycle/capability/receipt.json)
 in 0.641 seconds with $0.000020664 reported usage. The new
 [lifecycle pilot](jev-lifecycle/README.md) tests preparation, source probes,
-and patch review through that unversioned gateway alias. The native comparison
-still has zero scored sessions; these are component experiments.
+and patch review through that unversioned gateway alias. The unsealed 48-session
+proposal still has zero scored sessions; the lifecycle pilot measures components.
 Its 53 real calls report $0.026275620 in usage. Batching four independent
 questions reduces API cost by 73.4% and time by 70.3% in two paired blocks.
 Source ranking recovers one missing implementation unit, while review fails
 to distinguish order-dependence defects after correcting an overconstrained
 question. Batched Git reads speed up context assembly without changing its
 output. The complete warm CLI meets the one-second target on six of nine runs.
+
+### October 3 follow-up: 12 native coding sessions
+
+The separate [native Jev selection pilot](jev-native-pilot/README.md) compares
+bare Sonnet 5.5 (A), a lean deterministic workflow (B), and the same lean
+workflow with Jev source selection (C) on two exposed development tasks,
+with two repetitions per arm. C has **35.2% lower measured cost and 24.4%
+lower elapsed time than A**, and **8.8% lower cost and 9.3% lower time than
+B**. All attempts remain included. Each arm passes **2/4** original
+acceptances, and the registered win criteria fail. The timer includes final
+checks and confirmed scratch cleanup, ending before final summary receipt
+serialization.
+
+The additional trace diagnostic fails on the unchanged base and passes on the
+historical reference. Among the six native trace patches, A1, B2, C1, and C2
+fail; A2 and B1 pass. All ordinary checks pass. Both C trace patches that
+passed the original gate therefore fail these deeper checks; all six SDK
+patches already fail the original independent gate. These post hoc findings
+leave original scores unchanged and establish no quality win.
+
+A separate advisory review answers 11 calls for **$0.014120610** and emits
+zero `missing_handling` labels. The new round retains **$5.085536146** in
+known inference usage, including its capability probe, span preflight, and
+advisory review. This accounting is separate from the earlier $25.4494
+experiment ledger and excludes machine and engineering costs. These follow-up
+results do not change the original audit's source snapshot or findings below.
 
 ## Executive assessment
 

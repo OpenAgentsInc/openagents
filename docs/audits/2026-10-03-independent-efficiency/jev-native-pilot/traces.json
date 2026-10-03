@@ -1,0 +1,1138 @@
+{
+  "schema": "openagents.jev-lifecycle.native-panel-traces.v1",
+  "plan_sha256": "e8dde52655c0cf76ad60b02e9bf81739690113770c3d5164cdb0b305b2fa7824",
+  "scheduled_attempts": 12,
+  "available_traces": 12,
+  "rows": [
+    {
+      "position": 1,
+      "run_id": "86cdf87c-1a18-48d8-b02a-20bd32bc5c45",
+      "task_id": "alternative-beta",
+      "repetition": 1,
+      "arm": "bare",
+      "trace": {
+        "schema": "openagents.jev-lifecycle.native-trace-summary.v1",
+        "available": true,
+        "status": "complete",
+        "source_sha256": "c659e4dbc336b4cf3d1f3d782542b208d9c5abfc02a6188a51ef4e91a2793fbb",
+        "bytes_scanned": 150729,
+        "parse_errors": {},
+        "scanned_prefix_sha256": "c659e4dbc336b4cf3d1f3d782542b208d9c5abfc02a6188a51ef4e91a2793fbb",
+        "event_counts": {
+          "assistant": 20,
+          "other": 2,
+          "result": 1,
+          "system": 22,
+          "user": 11
+        },
+        "assistant_records": 20,
+        "unique_assistant_message_ids": 12,
+        "fallback_assistant_event_uuids": 0,
+        "assistant_records_without_identity": 0,
+        "assistant_count_has_all_message_ids": true,
+        "tool_use_occurrences": 11,
+        "tool_counts_have_all_ids": true,
+        "lanes": {
+          "root": {
+            "unique_assistant_message_ids": 12,
+            "tool_use_occurrences": 11,
+            "tool_names": {
+              "Bash": 11
+            },
+            "direct_read_tools": 0,
+            "direct_search_tools": 0,
+            "direct_edit_tools": 0,
+            "delegation_tools": 0
+          },
+          "child": {
+            "unique_assistant_message_ids": 0,
+            "tool_use_occurrences": 0,
+            "tool_names": {},
+            "direct_read_tools": 0,
+            "direct_search_tools": 0,
+            "direct_edit_tools": 0,
+            "delegation_tools": 0
+          }
+        },
+        "tool_results": {
+          "observed_ids": 11,
+          "matching_tool_ids": 11,
+          "error_ids": 0,
+          "tool_uses_without_result": 0
+        },
+        "bash": {
+          "calls": 11,
+          "classified_calls": 7,
+          "unclassified_calls": 4,
+          "literal_requested_actions": {
+            "cargo_fmt": 2,
+            "cargo_test": 2,
+            "literal_command_positions": 37,
+            "other_command": 5,
+            "shell_edit": 1,
+            "shell_read": 17,
+            "shell_search": 10
+          },
+          "calls_by_requested_category": {
+            "cargo_fmt": 1,
+            "cargo_test": 2,
+            "literal_command_positions": 7,
+            "other_command": 4,
+            "shell_edit": 1,
+            "shell_read": 6,
+            "shell_search": 7
+          },
+          "unique_exact_payloads": 11,
+          "repeated_exact_payload_groups": [],
+          "repeat_occurrences_after_first": 0
+        },
+        "cli_reported_num_turns": 12,
+        "root_result_records": 1,
+        "analysis_wall_s": 0.00146883400157094,
+        "limits": [
+          "Completeness describes parsing, not session completion or patch acceptance.",
+          "Assistant message IDs and CLI-reported turns have different definitions.",
+          "Counts cover visible stream records; child activity may be absent from the parent stream.",
+          "Stream deltas are not counted in addition to complete assistant records.",
+          "Shell actions are literal requests, not proof of execution, completion, or passing tests. Conditional chains may stop early.",
+          "One Bash call may request multiple actions; unsupported shell forms and script internals remain unclassified.",
+          "Exact repeated commands can be justified by edits, retries, or changed state; they are not a waste estimate.",
+          "This summary attributes no billed tokens, cost, or elapsed runtime to individual tools."
+        ]
+      }
+    },
+    {
+      "position": 2,
+      "run_id": "e442d853-74da-4d6c-94e9-8deb8f2dea08",
+      "task_id": "alternative-beta",
+      "repetition": 1,
+      "arm": "deterministic",
+      "trace": {
+        "schema": "openagents.jev-lifecycle.native-trace-summary.v1",
+        "available": true,
+        "status": "complete",
+        "source_sha256": "8cb2a834cf81af506bb1dd0516782c4803b3e13c31a073686fba48463b698bc7",
+        "bytes_scanned": 155103,
+        "parse_errors": {},
+        "scanned_prefix_sha256": "8cb2a834cf81af506bb1dd0516782c4803b3e13c31a073686fba48463b698bc7",
+        "event_counts": {
+          "assistant": 18,
+          "other": 2,
+          "result": 1,
+          "system": 17,
+          "user": 11
+        },
+        "assistant_records": 18,
+        "unique_assistant_message_ids": 12,
+        "fallback_assistant_event_uuids": 0,
+        "assistant_records_without_identity": 0,
+        "assistant_count_has_all_message_ids": true,
+        "tool_use_occurrences": 11,
+        "tool_counts_have_all_ids": true,
+        "lanes": {
+          "root": {
+            "unique_assistant_message_ids": 12,
+            "tool_use_occurrences": 11,
+            "tool_names": {
+              "Bash": 11
+            },
+            "direct_read_tools": 0,
+            "direct_search_tools": 0,
+            "direct_edit_tools": 0,
+            "delegation_tools": 0
+          },
+          "child": {
+            "unique_assistant_message_ids": 0,
+            "tool_use_occurrences": 0,
+            "tool_names": {},
+            "direct_read_tools": 0,
+            "direct_search_tools": 0,
+            "direct_edit_tools": 0,
+            "delegation_tools": 0
+          }
+        },
+        "tool_results": {
+          "observed_ids": 11,
+          "matching_tool_ids": 11,
+          "error_ids": 0,
+          "tool_uses_without_result": 0
+        },
+        "bash": {
+          "calls": 11,
+          "classified_calls": 8,
+          "unclassified_calls": 3,
+          "literal_requested_actions": {
+            "cargo_fmt": 4,
+            "cargo_test": 3,
+            "literal_command_positions": 51,
+            "other_command": 9,
+            "shell_edit": 3,
+            "shell_read": 22,
+            "shell_search": 10
+          },
+          "calls_by_requested_category": {
+            "cargo_fmt": 2,
+            "cargo_test": 3,
+            "literal_command_positions": 8,
+            "other_command": 7,
+            "shell_edit": 2,
+            "shell_read": 8,
+            "shell_search": 8
+          },
+          "unique_exact_payloads": 11,
+          "repeated_exact_payload_groups": [],
+          "repeat_occurrences_after_first": 0
+        },
+        "cli_reported_num_turns": 12,
+        "root_result_records": 1,
+        "analysis_wall_s": 0.0016067498363554478,
+        "limits": [
+          "Completeness describes parsing, not session completion or patch acceptance.",
+          "Assistant message IDs and CLI-reported turns have different definitions.",
+          "Counts cover visible stream records; child activity may be absent from the parent stream.",
+          "Stream deltas are not counted in addition to complete assistant records.",
+          "Shell actions are literal requests, not proof of execution, completion, or passing tests. Conditional chains may stop early.",
+          "One Bash call may request multiple actions; unsupported shell forms and script internals remain unclassified.",
+          "Exact repeated commands can be justified by edits, retries, or changed state; they are not a waste estimate.",
+          "This summary attributes no billed tokens, cost, or elapsed runtime to individual tools."
+        ]
+      }
+    },
+    {
+      "position": 3,
+      "run_id": "a46f6766-e906-4a64-a467-c57bfefdb3ba",
+      "task_id": "alternative-beta",
+      "repetition": 1,
+      "arm": "jev",
+      "trace": {
+        "schema": "openagents.jev-lifecycle.native-trace-summary.v1",
+        "available": true,
+        "status": "complete",
+        "source_sha256": "33feb8157b57eb67dd4f6d3f5a150cc2fe7ad1efd5b44375c3cbccae87cc37fd",
+        "bytes_scanned": 141691,
+        "parse_errors": {},
+        "scanned_prefix_sha256": "33feb8157b57eb67dd4f6d3f5a150cc2fe7ad1efd5b44375c3cbccae87cc37fd",
+        "event_counts": {
+          "assistant": 15,
+          "other": 2,
+          "result": 1,
+          "system": 15,
+          "user": 11
+        },
+        "assistant_records": 15,
+        "unique_assistant_message_ids": 6,
+        "fallback_assistant_event_uuids": 0,
+        "assistant_records_without_identity": 0,
+        "assistant_count_has_all_message_ids": true,
+        "tool_use_occurrences": 11,
+        "tool_counts_have_all_ids": true,
+        "lanes": {
+          "root": {
+            "unique_assistant_message_ids": 6,
+            "tool_use_occurrences": 11,
+            "tool_names": {
+              "Bash": 2,
+              "Grep": 2,
+              "Read": 7
+            },
+            "direct_read_tools": 7,
+            "direct_search_tools": 2,
+            "direct_edit_tools": 0,
+            "delegation_tools": 0
+          },
+          "child": {
+            "unique_assistant_message_ids": 0,
+            "tool_use_occurrences": 0,
+            "tool_names": {},
+            "direct_read_tools": 0,
+            "direct_search_tools": 0,
+            "direct_edit_tools": 0,
+            "delegation_tools": 0
+          }
+        },
+        "tool_results": {
+          "observed_ids": 11,
+          "matching_tool_ids": 11,
+          "error_ids": 0,
+          "tool_uses_without_result": 0
+        },
+        "bash": {
+          "calls": 2,
+          "classified_calls": 0,
+          "unclassified_calls": 2,
+          "literal_requested_actions": {},
+          "calls_by_requested_category": {},
+          "unique_exact_payloads": 2,
+          "repeated_exact_payload_groups": [],
+          "repeat_occurrences_after_first": 0
+        },
+        "cli_reported_num_turns": 12,
+        "root_result_records": 1,
+        "analysis_wall_s": 0.0005627500358968973,
+        "limits": [
+          "Completeness describes parsing, not session completion or patch acceptance.",
+          "Assistant message IDs and CLI-reported turns have different definitions.",
+          "Counts cover visible stream records; child activity may be absent from the parent stream.",
+          "Stream deltas are not counted in addition to complete assistant records.",
+          "Shell actions are literal requests, not proof of execution, completion, or passing tests. Conditional chains may stop early.",
+          "One Bash call may request multiple actions; unsupported shell forms and script internals remain unclassified.",
+          "Exact repeated commands can be justified by edits, retries, or changed state; they are not a waste estimate.",
+          "This summary attributes no billed tokens, cost, or elapsed runtime to individual tools."
+        ]
+      }
+    },
+    {
+      "position": 4,
+      "run_id": "876596da-236c-438e-91dd-a696291b766b",
+      "task_id": "alternative-gamma",
+      "repetition": 1,
+      "arm": "jev",
+      "trace": {
+        "schema": "openagents.jev-lifecycle.native-trace-summary.v1",
+        "available": true,
+        "status": "complete",
+        "source_sha256": "837985e1b70b290c6bd88808f147c0db83ff772104b53d0f0f5620e7b4b57a16",
+        "bytes_scanned": 196015,
+        "parse_errors": {},
+        "scanned_prefix_sha256": "837985e1b70b290c6bd88808f147c0db83ff772104b53d0f0f5620e7b4b57a16",
+        "event_counts": {
+          "assistant": 12,
+          "other": 2,
+          "result": 1,
+          "system": 19,
+          "user": 7
+        },
+        "assistant_records": 12,
+        "unique_assistant_message_ids": 8,
+        "fallback_assistant_event_uuids": 0,
+        "assistant_records_without_identity": 0,
+        "assistant_count_has_all_message_ids": true,
+        "tool_use_occurrences": 7,
+        "tool_counts_have_all_ids": true,
+        "lanes": {
+          "root": {
+            "unique_assistant_message_ids": 8,
+            "tool_use_occurrences": 7,
+            "tool_names": {
+              "Bash": 7
+            },
+            "direct_read_tools": 0,
+            "direct_search_tools": 0,
+            "direct_edit_tools": 0,
+            "delegation_tools": 0
+          },
+          "child": {
+            "unique_assistant_message_ids": 0,
+            "tool_use_occurrences": 0,
+            "tool_names": {},
+            "direct_read_tools": 0,
+            "direct_search_tools": 0,
+            "direct_edit_tools": 0,
+            "delegation_tools": 0
+          }
+        },
+        "tool_results": {
+          "observed_ids": 7,
+          "matching_tool_ids": 7,
+          "error_ids": 0,
+          "tool_uses_without_result": 0
+        },
+        "bash": {
+          "calls": 7,
+          "classified_calls": 5,
+          "unclassified_calls": 2,
+          "literal_requested_actions": {
+            "cargo_fmt": 1,
+            "cargo_test": 1,
+            "literal_command_positions": 26,
+            "other_command": 3,
+            "shell_read": 16,
+            "shell_search": 5
+          },
+          "calls_by_requested_category": {
+            "cargo_fmt": 1,
+            "cargo_test": 1,
+            "literal_command_positions": 5,
+            "other_command": 2,
+            "shell_read": 5,
+            "shell_search": 3
+          },
+          "unique_exact_payloads": 7,
+          "repeated_exact_payload_groups": [],
+          "repeat_occurrences_after_first": 0
+        },
+        "cli_reported_num_turns": 8,
+        "root_result_records": 1,
+        "analysis_wall_s": 0.001054250169545412,
+        "limits": [
+          "Completeness describes parsing, not session completion or patch acceptance.",
+          "Assistant message IDs and CLI-reported turns have different definitions.",
+          "Counts cover visible stream records; child activity may be absent from the parent stream.",
+          "Stream deltas are not counted in addition to complete assistant records.",
+          "Shell actions are literal requests, not proof of execution, completion, or passing tests. Conditional chains may stop early.",
+          "One Bash call may request multiple actions; unsupported shell forms and script internals remain unclassified.",
+          "Exact repeated commands can be justified by edits, retries, or changed state; they are not a waste estimate.",
+          "This summary attributes no billed tokens, cost, or elapsed runtime to individual tools."
+        ]
+      }
+    },
+    {
+      "position": 5,
+      "run_id": "405edc88-0837-4efb-ab77-4a1a17fbb031",
+      "task_id": "alternative-gamma",
+      "repetition": 1,
+      "arm": "bare",
+      "trace": {
+        "schema": "openagents.jev-lifecycle.native-trace-summary.v1",
+        "available": true,
+        "status": "complete",
+        "source_sha256": "ed5e6c587fe0fde36ebea999eb99cb0fbe5297172256c151a70d053550013111",
+        "bytes_scanned": 331576,
+        "parse_errors": {},
+        "scanned_prefix_sha256": "ed5e6c587fe0fde36ebea999eb99cb0fbe5297172256c151a70d053550013111",
+        "event_counts": {
+          "assistant": 29,
+          "other": 2,
+          "result": 1,
+          "system": 43,
+          "user": 17
+        },
+        "assistant_records": 29,
+        "unique_assistant_message_ids": 17,
+        "fallback_assistant_event_uuids": 0,
+        "assistant_records_without_identity": 0,
+        "assistant_count_has_all_message_ids": true,
+        "tool_use_occurrences": 17,
+        "tool_counts_have_all_ids": true,
+        "lanes": {
+          "root": {
+            "unique_assistant_message_ids": 17,
+            "tool_use_occurrences": 17,
+            "tool_names": {
+              "Bash": 17
+            },
+            "direct_read_tools": 0,
+            "direct_search_tools": 0,
+            "direct_edit_tools": 0,
+            "delegation_tools": 0
+          },
+          "child": {
+            "unique_assistant_message_ids": 0,
+            "tool_use_occurrences": 0,
+            "tool_names": {},
+            "direct_read_tools": 0,
+            "direct_search_tools": 0,
+            "direct_edit_tools": 0,
+            "delegation_tools": 0
+          }
+        },
+        "tool_results": {
+          "observed_ids": 17,
+          "matching_tool_ids": 17,
+          "error_ids": 0,
+          "tool_uses_without_result": 0
+        },
+        "bash": {
+          "calls": 17,
+          "classified_calls": 12,
+          "unclassified_calls": 5,
+          "literal_requested_actions": {
+            "cargo_test": 5,
+            "literal_command_positions": 48,
+            "other_command": 5,
+            "shell_edit": 2,
+            "shell_read": 25,
+            "shell_search": 11
+          },
+          "calls_by_requested_category": {
+            "cargo_test": 5,
+            "literal_command_positions": 12,
+            "other_command": 3,
+            "shell_edit": 2,
+            "shell_read": 11,
+            "shell_search": 6
+          },
+          "unique_exact_payloads": 17,
+          "repeated_exact_payload_groups": [],
+          "repeat_occurrences_after_first": 0
+        },
+        "cli_reported_num_turns": 18,
+        "root_result_records": 1,
+        "analysis_wall_s": 0.002005624817684293,
+        "limits": [
+          "Completeness describes parsing, not session completion or patch acceptance.",
+          "Assistant message IDs and CLI-reported turns have different definitions.",
+          "Counts cover visible stream records; child activity may be absent from the parent stream.",
+          "Stream deltas are not counted in addition to complete assistant records.",
+          "Shell actions are literal requests, not proof of execution, completion, or passing tests. Conditional chains may stop early.",
+          "One Bash call may request multiple actions; unsupported shell forms and script internals remain unclassified.",
+          "Exact repeated commands can be justified by edits, retries, or changed state; they are not a waste estimate.",
+          "This summary attributes no billed tokens, cost, or elapsed runtime to individual tools."
+        ]
+      }
+    },
+    {
+      "position": 6,
+      "run_id": "3f2caadb-ccf7-496c-a4c5-d793b3d00321",
+      "task_id": "alternative-gamma",
+      "repetition": 1,
+      "arm": "deterministic",
+      "trace": {
+        "schema": "openagents.jev-lifecycle.native-trace-summary.v1",
+        "available": true,
+        "status": "complete",
+        "source_sha256": "4d2d278d6e9bd78bf1ce5bd7246b41697b4a49cb2e67c8669d9e375f1ec2068a",
+        "bytes_scanned": 192625,
+        "parse_errors": {},
+        "scanned_prefix_sha256": "4d2d278d6e9bd78bf1ce5bd7246b41697b4a49cb2e67c8669d9e375f1ec2068a",
+        "event_counts": {
+          "assistant": 20,
+          "other": 2,
+          "result": 1,
+          "system": 31,
+          "user": 12
+        },
+        "assistant_records": 20,
+        "unique_assistant_message_ids": 12,
+        "fallback_assistant_event_uuids": 0,
+        "assistant_records_without_identity": 0,
+        "assistant_count_has_all_message_ids": true,
+        "tool_use_occurrences": 12,
+        "tool_counts_have_all_ids": true,
+        "lanes": {
+          "root": {
+            "unique_assistant_message_ids": 12,
+            "tool_use_occurrences": 12,
+            "tool_names": {
+              "Bash": 12
+            },
+            "direct_read_tools": 0,
+            "direct_search_tools": 0,
+            "direct_edit_tools": 0,
+            "delegation_tools": 0
+          },
+          "child": {
+            "unique_assistant_message_ids": 0,
+            "tool_use_occurrences": 0,
+            "tool_names": {},
+            "direct_read_tools": 0,
+            "direct_search_tools": 0,
+            "direct_edit_tools": 0,
+            "delegation_tools": 0
+          }
+        },
+        "tool_results": {
+          "observed_ids": 12,
+          "matching_tool_ids": 12,
+          "error_ids": 0,
+          "tool_uses_without_result": 0
+        },
+        "bash": {
+          "calls": 12,
+          "classified_calls": 9,
+          "unclassified_calls": 3,
+          "literal_requested_actions": {
+            "cargo_clippy": 1,
+            "cargo_fmt": 1,
+            "cargo_test": 3,
+            "literal_command_positions": 47,
+            "other_command": 5,
+            "shell_read": 23,
+            "shell_search": 14
+          },
+          "calls_by_requested_category": {
+            "cargo_clippy": 1,
+            "cargo_fmt": 1,
+            "cargo_test": 3,
+            "literal_command_positions": 9,
+            "other_command": 2,
+            "shell_read": 9,
+            "shell_search": 8
+          },
+          "unique_exact_payloads": 12,
+          "repeated_exact_payload_groups": [],
+          "repeat_occurrences_after_first": 0
+        },
+        "cli_reported_num_turns": 13,
+        "root_result_records": 1,
+        "analysis_wall_s": 0.0015301660168915987,
+        "limits": [
+          "Completeness describes parsing, not session completion or patch acceptance.",
+          "Assistant message IDs and CLI-reported turns have different definitions.",
+          "Counts cover visible stream records; child activity may be absent from the parent stream.",
+          "Stream deltas are not counted in addition to complete assistant records.",
+          "Shell actions are literal requests, not proof of execution, completion, or passing tests. Conditional chains may stop early.",
+          "One Bash call may request multiple actions; unsupported shell forms and script internals remain unclassified.",
+          "Exact repeated commands can be justified by edits, retries, or changed state; they are not a waste estimate.",
+          "This summary attributes no billed tokens, cost, or elapsed runtime to individual tools."
+        ]
+      }
+    },
+    {
+      "position": 7,
+      "run_id": "3fb852b4-f4d8-4147-adaa-a1209cfa1917",
+      "task_id": "alternative-beta",
+      "repetition": 2,
+      "arm": "deterministic",
+      "trace": {
+        "schema": "openagents.jev-lifecycle.native-trace-summary.v1",
+        "available": true,
+        "status": "complete",
+        "source_sha256": "17252e693a24abe8dccd48bf449c025c39bbf4bf8d13b9005cbbb41a099d9b91",
+        "bytes_scanned": 117488,
+        "parse_errors": {},
+        "scanned_prefix_sha256": "17252e693a24abe8dccd48bf449c025c39bbf4bf8d13b9005cbbb41a099d9b91",
+        "event_counts": {
+          "assistant": 14,
+          "other": 2,
+          "result": 1,
+          "system": 13,
+          "user": 8
+        },
+        "assistant_records": 14,
+        "unique_assistant_message_ids": 9,
+        "fallback_assistant_event_uuids": 0,
+        "assistant_records_without_identity": 0,
+        "assistant_count_has_all_message_ids": true,
+        "tool_use_occurrences": 8,
+        "tool_counts_have_all_ids": true,
+        "lanes": {
+          "root": {
+            "unique_assistant_message_ids": 9,
+            "tool_use_occurrences": 8,
+            "tool_names": {
+              "Bash": 8
+            },
+            "direct_read_tools": 0,
+            "direct_search_tools": 0,
+            "direct_edit_tools": 0,
+            "delegation_tools": 0
+          },
+          "child": {
+            "unique_assistant_message_ids": 0,
+            "tool_use_occurrences": 0,
+            "tool_names": {},
+            "direct_read_tools": 0,
+            "direct_search_tools": 0,
+            "direct_edit_tools": 0,
+            "delegation_tools": 0
+          }
+        },
+        "tool_results": {
+          "observed_ids": 8,
+          "matching_tool_ids": 8,
+          "error_ids": 0,
+          "tool_uses_without_result": 0
+        },
+        "bash": {
+          "calls": 8,
+          "classified_calls": 5,
+          "unclassified_calls": 3,
+          "literal_requested_actions": {
+            "literal_command_positions": 23,
+            "other_command": 2,
+            "shell_read": 15,
+            "shell_search": 6
+          },
+          "calls_by_requested_category": {
+            "literal_command_positions": 5,
+            "other_command": 2,
+            "shell_read": 5,
+            "shell_search": 3
+          },
+          "unique_exact_payloads": 8,
+          "repeated_exact_payload_groups": [],
+          "repeat_occurrences_after_first": 0
+        },
+        "cli_reported_num_turns": 9,
+        "root_result_records": 1,
+        "analysis_wall_s": 0.0008951670024544001,
+        "limits": [
+          "Completeness describes parsing, not session completion or patch acceptance.",
+          "Assistant message IDs and CLI-reported turns have different definitions.",
+          "Counts cover visible stream records; child activity may be absent from the parent stream.",
+          "Stream deltas are not counted in addition to complete assistant records.",
+          "Shell actions are literal requests, not proof of execution, completion, or passing tests. Conditional chains may stop early.",
+          "One Bash call may request multiple actions; unsupported shell forms and script internals remain unclassified.",
+          "Exact repeated commands can be justified by edits, retries, or changed state; they are not a waste estimate.",
+          "This summary attributes no billed tokens, cost, or elapsed runtime to individual tools."
+        ]
+      }
+    },
+    {
+      "position": 8,
+      "run_id": "af869a80-4277-4c0b-a4d7-b7b7c1d1d273",
+      "task_id": "alternative-beta",
+      "repetition": 2,
+      "arm": "jev",
+      "trace": {
+        "schema": "openagents.jev-lifecycle.native-trace-summary.v1",
+        "available": true,
+        "status": "complete",
+        "source_sha256": "5aa4cafd8b32206d75c5805f3124798ecac00fb241e3328d933560d9ab2658d3",
+        "bytes_scanned": 87766,
+        "parse_errors": {},
+        "scanned_prefix_sha256": "5aa4cafd8b32206d75c5805f3124798ecac00fb241e3328d933560d9ab2658d3",
+        "event_counts": {
+          "assistant": 10,
+          "other": 2,
+          "result": 1,
+          "system": 12,
+          "user": 6
+        },
+        "assistant_records": 10,
+        "unique_assistant_message_ids": 7,
+        "fallback_assistant_event_uuids": 0,
+        "assistant_records_without_identity": 0,
+        "assistant_count_has_all_message_ids": true,
+        "tool_use_occurrences": 6,
+        "tool_counts_have_all_ids": true,
+        "lanes": {
+          "root": {
+            "unique_assistant_message_ids": 7,
+            "tool_use_occurrences": 6,
+            "tool_names": {
+              "Bash": 6
+            },
+            "direct_read_tools": 0,
+            "direct_search_tools": 0,
+            "direct_edit_tools": 0,
+            "delegation_tools": 0
+          },
+          "child": {
+            "unique_assistant_message_ids": 0,
+            "tool_use_occurrences": 0,
+            "tool_names": {},
+            "direct_read_tools": 0,
+            "direct_search_tools": 0,
+            "direct_edit_tools": 0,
+            "delegation_tools": 0
+          }
+        },
+        "tool_results": {
+          "observed_ids": 6,
+          "matching_tool_ids": 6,
+          "error_ids": 1,
+          "tool_uses_without_result": 0
+        },
+        "bash": {
+          "calls": 6,
+          "classified_calls": 4,
+          "unclassified_calls": 2,
+          "literal_requested_actions": {
+            "cargo_test": 1,
+            "literal_command_positions": 18,
+            "other_command": 3,
+            "shell_read": 9,
+            "shell_search": 5
+          },
+          "calls_by_requested_category": {
+            "cargo_test": 1,
+            "literal_command_positions": 4,
+            "other_command": 3,
+            "shell_read": 3,
+            "shell_search": 4
+          },
+          "unique_exact_payloads": 6,
+          "repeated_exact_payload_groups": [],
+          "repeat_occurrences_after_first": 0
+        },
+        "cli_reported_num_turns": 7,
+        "root_result_records": 1,
+        "analysis_wall_s": 0.0006853330414742231,
+        "limits": [
+          "Completeness describes parsing, not session completion or patch acceptance.",
+          "Assistant message IDs and CLI-reported turns have different definitions.",
+          "Counts cover visible stream records; child activity may be absent from the parent stream.",
+          "Stream deltas are not counted in addition to complete assistant records.",
+          "Shell actions are literal requests, not proof of execution, completion, or passing tests. Conditional chains may stop early.",
+          "One Bash call may request multiple actions; unsupported shell forms and script internals remain unclassified.",
+          "Exact repeated commands can be justified by edits, retries, or changed state; they are not a waste estimate.",
+          "This summary attributes no billed tokens, cost, or elapsed runtime to individual tools."
+        ]
+      }
+    },
+    {
+      "position": 9,
+      "run_id": "c2113cf1-68a0-41cb-ac09-af031f931f28",
+      "task_id": "alternative-beta",
+      "repetition": 2,
+      "arm": "bare",
+      "trace": {
+        "schema": "openagents.jev-lifecycle.native-trace-summary.v1",
+        "available": true,
+        "status": "complete",
+        "source_sha256": "b8fc7c5267e8ecc9acd8b7546d455299b5400929c33e0bb214f2eea77f7fdb95",
+        "bytes_scanned": 159433,
+        "parse_errors": {},
+        "scanned_prefix_sha256": "b8fc7c5267e8ecc9acd8b7546d455299b5400929c33e0bb214f2eea77f7fdb95",
+        "event_counts": {
+          "assistant": 16,
+          "other": 2,
+          "result": 1,
+          "system": 15,
+          "user": 9
+        },
+        "assistant_records": 16,
+        "unique_assistant_message_ids": 10,
+        "fallback_assistant_event_uuids": 0,
+        "assistant_records_without_identity": 0,
+        "assistant_count_has_all_message_ids": true,
+        "tool_use_occurrences": 9,
+        "tool_counts_have_all_ids": true,
+        "lanes": {
+          "root": {
+            "unique_assistant_message_ids": 10,
+            "tool_use_occurrences": 9,
+            "tool_names": {
+              "Bash": 9
+            },
+            "direct_read_tools": 0,
+            "direct_search_tools": 0,
+            "direct_edit_tools": 0,
+            "delegation_tools": 0
+          },
+          "child": {
+            "unique_assistant_message_ids": 0,
+            "tool_use_occurrences": 0,
+            "tool_names": {},
+            "direct_read_tools": 0,
+            "direct_search_tools": 0,
+            "direct_edit_tools": 0,
+            "delegation_tools": 0
+          }
+        },
+        "tool_results": {
+          "observed_ids": 9,
+          "matching_tool_ids": 9,
+          "error_ids": 0,
+          "tool_uses_without_result": 0
+        },
+        "bash": {
+          "calls": 9,
+          "classified_calls": 6,
+          "unclassified_calls": 3,
+          "literal_requested_actions": {
+            "cargo_test": 1,
+            "literal_command_positions": 32,
+            "other_command": 3,
+            "shell_read": 17,
+            "shell_search": 11
+          },
+          "calls_by_requested_category": {
+            "cargo_test": 1,
+            "literal_command_positions": 6,
+            "other_command": 2,
+            "shell_read": 5,
+            "shell_search": 6
+          },
+          "unique_exact_payloads": 9,
+          "repeated_exact_payload_groups": [],
+          "repeat_occurrences_after_first": 0
+        },
+        "cli_reported_num_turns": 10,
+        "root_result_records": 1,
+        "analysis_wall_s": 0.0011499999091029167,
+        "limits": [
+          "Completeness describes parsing, not session completion or patch acceptance.",
+          "Assistant message IDs and CLI-reported turns have different definitions.",
+          "Counts cover visible stream records; child activity may be absent from the parent stream.",
+          "Stream deltas are not counted in addition to complete assistant records.",
+          "Shell actions are literal requests, not proof of execution, completion, or passing tests. Conditional chains may stop early.",
+          "One Bash call may request multiple actions; unsupported shell forms and script internals remain unclassified.",
+          "Exact repeated commands can be justified by edits, retries, or changed state; they are not a waste estimate.",
+          "This summary attributes no billed tokens, cost, or elapsed runtime to individual tools."
+        ]
+      }
+    },
+    {
+      "position": 10,
+      "run_id": "4d53401c-cace-4a0c-8768-442333d9820b",
+      "task_id": "alternative-gamma",
+      "repetition": 2,
+      "arm": "bare",
+      "trace": {
+        "schema": "openagents.jev-lifecycle.native-trace-summary.v1",
+        "available": true,
+        "status": "complete",
+        "source_sha256": "a81ffca97916475cf98601c58f1705ea8d8780f2dc374e24c5f7179805fdeb4c",
+        "bytes_scanned": 380456,
+        "parse_errors": {},
+        "scanned_prefix_sha256": "a81ffca97916475cf98601c58f1705ea8d8780f2dc374e24c5f7179805fdeb4c",
+        "event_counts": {
+          "assistant": 24,
+          "other": 2,
+          "result": 1,
+          "system": 40,
+          "user": 15
+        },
+        "assistant_records": 24,
+        "unique_assistant_message_ids": 11,
+        "fallback_assistant_event_uuids": 0,
+        "assistant_records_without_identity": 0,
+        "assistant_count_has_all_message_ids": true,
+        "tool_use_occurrences": 15,
+        "tool_counts_have_all_ids": true,
+        "lanes": {
+          "root": {
+            "unique_assistant_message_ids": 11,
+            "tool_use_occurrences": 15,
+            "tool_names": {
+              "Bash": 8,
+              "Read": 7
+            },
+            "direct_read_tools": 7,
+            "direct_search_tools": 0,
+            "direct_edit_tools": 0,
+            "delegation_tools": 0
+          },
+          "child": {
+            "unique_assistant_message_ids": 0,
+            "tool_use_occurrences": 0,
+            "tool_names": {},
+            "direct_read_tools": 0,
+            "direct_search_tools": 0,
+            "direct_edit_tools": 0,
+            "delegation_tools": 0
+          }
+        },
+        "tool_results": {
+          "observed_ids": 15,
+          "matching_tool_ids": 15,
+          "error_ids": 0,
+          "tool_uses_without_result": 0
+        },
+        "bash": {
+          "calls": 8,
+          "classified_calls": 3,
+          "unclassified_calls": 5,
+          "literal_requested_actions": {
+            "cargo_test": 1,
+            "literal_command_positions": 17,
+            "other_command": 6,
+            "shell_read": 6,
+            "shell_search": 4
+          },
+          "calls_by_requested_category": {
+            "cargo_test": 1,
+            "literal_command_positions": 3,
+            "other_command": 3,
+            "shell_read": 3,
+            "shell_search": 2
+          },
+          "unique_exact_payloads": 8,
+          "repeated_exact_payload_groups": [],
+          "repeat_occurrences_after_first": 0
+        },
+        "cli_reported_num_turns": 16,
+        "root_result_records": 1,
+        "analysis_wall_s": 0.001349625177681446,
+        "limits": [
+          "Completeness describes parsing, not session completion or patch acceptance.",
+          "Assistant message IDs and CLI-reported turns have different definitions.",
+          "Counts cover visible stream records; child activity may be absent from the parent stream.",
+          "Stream deltas are not counted in addition to complete assistant records.",
+          "Shell actions are literal requests, not proof of execution, completion, or passing tests. Conditional chains may stop early.",
+          "One Bash call may request multiple actions; unsupported shell forms and script internals remain unclassified.",
+          "Exact repeated commands can be justified by edits, retries, or changed state; they are not a waste estimate.",
+          "This summary attributes no billed tokens, cost, or elapsed runtime to individual tools."
+        ]
+      }
+    },
+    {
+      "position": 11,
+      "run_id": "bcb7539d-3d80-44a5-af48-835e2fbc4e67",
+      "task_id": "alternative-gamma",
+      "repetition": 2,
+      "arm": "deterministic",
+      "trace": {
+        "schema": "openagents.jev-lifecycle.native-trace-summary.v1",
+        "available": true,
+        "status": "complete",
+        "source_sha256": "d81f16354c88b087ba5ddc6505dd7a98a4a21098e93cddc28d261be8ee33aa71",
+        "bytes_scanned": 215326,
+        "parse_errors": {},
+        "scanned_prefix_sha256": "d81f16354c88b087ba5ddc6505dd7a98a4a21098e93cddc28d261be8ee33aa71",
+        "event_counts": {
+          "assistant": 20,
+          "other": 2,
+          "result": 1,
+          "system": 29,
+          "user": 11
+        },
+        "assistant_records": 20,
+        "unique_assistant_message_ids": 12,
+        "fallback_assistant_event_uuids": 0,
+        "assistant_records_without_identity": 0,
+        "assistant_count_has_all_message_ids": true,
+        "tool_use_occurrences": 11,
+        "tool_counts_have_all_ids": true,
+        "lanes": {
+          "root": {
+            "unique_assistant_message_ids": 12,
+            "tool_use_occurrences": 11,
+            "tool_names": {
+              "Bash": 11
+            },
+            "direct_read_tools": 0,
+            "direct_search_tools": 0,
+            "direct_edit_tools": 0,
+            "delegation_tools": 0
+          },
+          "child": {
+            "unique_assistant_message_ids": 0,
+            "tool_use_occurrences": 0,
+            "tool_names": {},
+            "direct_read_tools": 0,
+            "direct_search_tools": 0,
+            "direct_edit_tools": 0,
+            "delegation_tools": 0
+          }
+        },
+        "tool_results": {
+          "observed_ids": 11,
+          "matching_tool_ids": 11,
+          "error_ids": 0,
+          "tool_uses_without_result": 0
+        },
+        "bash": {
+          "calls": 11,
+          "classified_calls": 7,
+          "unclassified_calls": 4,
+          "literal_requested_actions": {
+            "cargo_fmt": 2,
+            "cargo_test": 3,
+            "literal_command_positions": 45,
+            "other_command": 10,
+            "shell_edit": 3,
+            "shell_read": 16,
+            "shell_search": 11
+          },
+          "calls_by_requested_category": {
+            "cargo_fmt": 1,
+            "cargo_test": 3,
+            "literal_command_positions": 7,
+            "other_command": 5,
+            "shell_edit": 2,
+            "shell_read": 5,
+            "shell_search": 6
+          },
+          "unique_exact_payloads": 11,
+          "repeated_exact_payload_groups": [],
+          "repeat_occurrences_after_first": 0
+        },
+        "cli_reported_num_turns": 12,
+        "root_result_records": 1,
+        "analysis_wall_s": 0.0014516250230371952,
+        "limits": [
+          "Completeness describes parsing, not session completion or patch acceptance.",
+          "Assistant message IDs and CLI-reported turns have different definitions.",
+          "Counts cover visible stream records; child activity may be absent from the parent stream.",
+          "Stream deltas are not counted in addition to complete assistant records.",
+          "Shell actions are literal requests, not proof of execution, completion, or passing tests. Conditional chains may stop early.",
+          "One Bash call may request multiple actions; unsupported shell forms and script internals remain unclassified.",
+          "Exact repeated commands can be justified by edits, retries, or changed state; they are not a waste estimate.",
+          "This summary attributes no billed tokens, cost, or elapsed runtime to individual tools."
+        ]
+      }
+    },
+    {
+      "position": 12,
+      "run_id": "e1ff393a-fc48-48b0-ae41-a4313af8fdac",
+      "task_id": "alternative-gamma",
+      "repetition": 2,
+      "arm": "jev",
+      "trace": {
+        "schema": "openagents.jev-lifecycle.native-trace-summary.v1",
+        "available": true,
+        "status": "complete",
+        "source_sha256": "1c4647ecb1d40e3ca9d5d348ac329ec8abfe343eedaee3301e1f7daee1716b43",
+        "bytes_scanned": 199841,
+        "parse_errors": {},
+        "scanned_prefix_sha256": "1c4647ecb1d40e3ca9d5d348ac329ec8abfe343eedaee3301e1f7daee1716b43",
+        "event_counts": {
+          "assistant": 27,
+          "other": 2,
+          "result": 1,
+          "system": 31,
+          "user": 17
+        },
+        "assistant_records": 27,
+        "unique_assistant_message_ids": 17,
+        "fallback_assistant_event_uuids": 0,
+        "assistant_records_without_identity": 0,
+        "assistant_count_has_all_message_ids": true,
+        "tool_use_occurrences": 17,
+        "tool_counts_have_all_ids": true,
+        "lanes": {
+          "root": {
+            "unique_assistant_message_ids": 17,
+            "tool_use_occurrences": 17,
+            "tool_names": {
+              "Bash": 17
+            },
+            "direct_read_tools": 0,
+            "direct_search_tools": 0,
+            "direct_edit_tools": 0,
+            "delegation_tools": 0
+          },
+          "child": {
+            "unique_assistant_message_ids": 0,
+            "tool_use_occurrences": 0,
+            "tool_names": {},
+            "direct_read_tools": 0,
+            "direct_search_tools": 0,
+            "direct_edit_tools": 0,
+            "delegation_tools": 0
+          }
+        },
+        "tool_results": {
+          "observed_ids": 17,
+          "matching_tool_ids": 17,
+          "error_ids": 0,
+          "tool_uses_without_result": 0
+        },
+        "bash": {
+          "calls": 17,
+          "classified_calls": 12,
+          "unclassified_calls": 5,
+          "literal_requested_actions": {
+            "cargo_fmt": 3,
+            "cargo_test": 2,
+            "literal_command_positions": 48,
+            "other_command": 5,
+            "shell_edit": 1,
+            "shell_read": 24,
+            "shell_search": 13
+          },
+          "calls_by_requested_category": {
+            "cargo_fmt": 2,
+            "cargo_test": 2,
+            "literal_command_positions": 12,
+            "other_command": 4,
+            "shell_edit": 1,
+            "shell_read": 10,
+            "shell_search": 8
+          },
+          "unique_exact_payloads": 17,
+          "repeated_exact_payload_groups": [],
+          "repeat_occurrences_after_first": 0
+        },
+        "cli_reported_num_turns": 18,
+        "root_result_records": 1,
+        "analysis_wall_s": 0.0015352079644799232,
+        "limits": [
+          "Completeness describes parsing, not session completion or patch acceptance.",
+          "Assistant message IDs and CLI-reported turns have different definitions.",
+          "Counts cover visible stream records; child activity may be absent from the parent stream.",
+          "Stream deltas are not counted in addition to complete assistant records.",
+          "Shell actions are literal requests, not proof of execution, completion, or passing tests. Conditional chains may stop early.",
+          "One Bash call may request multiple actions; unsupported shell forms and script internals remain unclassified.",
+          "Exact repeated commands can be justified by edits, retries, or changed state; they are not a waste estimate.",
+          "This summary attributes no billed tokens, cost, or elapsed runtime to individual tools."
+        ]
+      }
+    }
+  ],
+  "interpretation": "Descriptive activity evidence. Missing or partial traces do not count as zero activity."
+}
