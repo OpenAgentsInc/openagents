@@ -65,7 +65,7 @@ pub use launcher::{
     Start,
 };
 pub use ssh::{Destination, Resolved};
-pub use tunnel::Tunnel;
+pub use tunnel::{Tunnel, forward};
 
 /// The fixed script sent to `sh -s` on the remote machine.
 pub const REMOTE_SCRIPT: &str = include_str!("remote.sh");

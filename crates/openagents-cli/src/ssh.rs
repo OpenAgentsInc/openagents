@@ -28,9 +28,10 @@ pub(crate) const USAGE: &str = "usage: openagents ssh COMMAND [OPTIONS]
       [--timeout SECONDS] [--rights LIST]
         Install the pinned coder release over ssh, start or adopt the host,
         and redeem its invitation on this device.
-  tunnel USER@HOST [--timeout SECONDS] [--for SECONDS]
+  tunnel USER@HOST [--port PORT] [--timeout SECONDS] [--for SECONDS]
         Forward a local loopback port to the host until SECONDS pass, the
-        tunnel ends, or you press Ctrl-C.
+        tunnel ends, or you press Ctrl-C. Without `add`, pass --port: the
+        port the host listens on there.
   remove USER@HOST [--timeout SECONDS]
         Stop the host if `add` started it, or detach if it was already
         running.
@@ -39,7 +40,11 @@ to its SHA-256 when `add` runs. --relay defaults to OPENAGENTS_RELAY or
 wss://relay.openagents.com. --timeout bounds the whole command (default 300
 for add, 60 otherwise). --rights is the invitation's rights (default all).
 Options: --ssh PROGRAM (default ssh on PATH), --store DIR (default
-~/.openagents/coder-computers), --same-machine, --loopback-test.";
+~/.openagents/coder-computers), --same-machine, --loopback-test.
+These are the advanced path, for a host started from a pinned release you
+supply. To set up a computer you reach over SSH, use `openagents connect
+--ssh USER@HOST`: it installs openagents there, starts its host, and pairs
+this computer in one step.";
 
 /// What each command above does and where the phone runs it, for the
 /// chat router's command tree (`coder::cli_route::tree`).
@@ -175,11 +180,17 @@ fn recorded(args: &Args, destination: &str) -> Result<Record, Failure> {
     load_records(&path)?
         .hosts
         .remove(destination)
-        .ok_or_else(|| {
-            Failure::Refused(format!(
-                "no SSH host recorded for {destination}; run `openagents ssh add {destination}` first"
-            ))
-        })
+        .ok_or_else(|| Failure::Refused(unrecorded(destination)))
+}
+
+/// Why `destination` has no record, and what to do instead.
+fn unrecorded(destination: &str) -> String {
+    format!(
+        "`openagents ssh add` set up no host at {destination}. A computer paired with \
+         `openagents connect --ssh` or `computer link` needs no tunnel: reach it with \
+         `openagents computer`. To forward to a port a host already listens on there, \
+         pass --port PORT."
+    )
 }
 
 fn parse_os(text: &str) -> Option<Os> {
@@ -504,7 +515,18 @@ fn wait_for_link(
 }
 
 fn tunnel(output: &Output, args: &Args, destination: &str) -> Result<u8, Failure> {
-    let record = recorded(args, destination)?;
+    let port = match args.option("port") {
+        Some(_) => match args.number("port", 0).map_err(Failure::Usage)? {
+            port @ 1..=65535 => Some(u16::try_from(port).unwrap_or(u16::MAX)),
+            _ => return Err(Failure::Usage("--port is 1 to 65535".into())),
+        },
+        None => None,
+    };
+    let path = records_path(args);
+    let record = load_records(&path)?.hosts.remove(destination);
+    if record.is_none() && port.is_none() {
+        return Err(Failure::Refused(unrecorded(destination)));
+    }
     let wait = timeout(args, 60)?;
     let hold = match args.option("for") {
         Some(_) => Some(Duration::from_secs(
@@ -513,12 +535,27 @@ fn tunnel(output: &Output, args: &Args, destination: &str) -> Result<u8, Failure
         None => None,
     };
     let deadline = Instant::now() + wait;
-    let launcher = launcher(args, destination, &record)?;
-    let (host, mut tunnel) = bounded(deadline, "ssh tunnel", move || {
-        let host = launcher.up()?;
-        let tunnel = launcher.connect(&host)?;
-        Ok((host, tunnel))
-    })?;
+    let (host, mut tunnel) = match (&record, port) {
+        // A port names the listener: forward to it without touching the host.
+        (_, Some(port)) => {
+            let program = args.option("ssh").unwrap_or("ssh").to_owned();
+            let target = destination.to_owned();
+            let tunnel = bounded(deadline, "ssh tunnel", move || {
+                Ok(coder_ssh::forward(&target, program, port)?)
+            })?;
+            (Value::Null, tunnel)
+        }
+        (Some(record), None) => {
+            let launcher = launcher(args, destination, record)?;
+            let (host, tunnel) = bounded(deadline, "ssh tunnel", move || {
+                let host = launcher.up()?;
+                let tunnel = launcher.connect(&host)?;
+                Ok((host, tunnel))
+            })?;
+            (host_json(&host), tunnel)
+        }
+        (None, None) => unreachable!("refused above"),
+    };
     tunnel.ready(deadline.saturating_duration_since(Instant::now()))?;
     // SAFETY: the handler only stores to an atomic, which is
     // async-signal-safe.
@@ -533,8 +570,8 @@ fn tunnel(output: &Output, args: &Args, destination: &str) -> Result<u8, Failure
         "local_port": tunnel.local_port(),
         "remote_port": tunnel.remote_port(),
         "pid": tunnel.pid(),
-        "host": host_json(&host),
-        "computer": record.computer,
+        "host": host,
+        "computer": record.as_ref().and_then(|record| record.computer.clone()),
     });
     output.line(&opened, |value| {
         format!(

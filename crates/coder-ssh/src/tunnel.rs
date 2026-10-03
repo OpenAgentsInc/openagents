@@ -46,6 +46,27 @@ fn reserve() -> Result<u16, Error> {
     Ok(listener.local_addr()?.port())
 }
 
+/// Forwards a reserved local loopback port to `remote_port` on a host
+/// `destination` already runs, without installing or starting anything
+/// there. `program` is the `ssh` to run; it runs in batch mode.
+///
+/// # Errors
+///
+/// Refuses a destination `ssh` could read as an option, and fails when no
+/// local port is free or `ssh` cannot start.
+pub fn forward(
+    destination: &str,
+    program: impl Into<std::path::PathBuf>,
+    remote_port: u16,
+) -> Result<Tunnel, Error> {
+    let ssh = crate::ssh::Ssh {
+        program: program.into(),
+        destination: crate::ssh::Destination::parse(destination)?,
+        prompter: None,
+    };
+    Tunnel::open(&ssh, remote_port)
+}
+
 impl Tunnel {
     pub(crate) fn open(ssh: &Ssh, remote_port: u16) -> Result<Self, Error> {
         let local_port = reserve()?;

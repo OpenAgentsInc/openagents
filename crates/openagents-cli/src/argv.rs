@@ -31,6 +31,8 @@ pub fn normalize_help(arguments: &mut Vec<String>) {
         ("x402" | "wallet", Some(command)) if index > 1 && !command.starts_with('-') => 2,
         ("plugin" | "plugins" | "ext", Some("test" | "eval" | "defaults" | "run"))
         | ("host", Some("spend"))
+        | ("connect", Some("--ssh"))
+        | ("computer" | "computers", Some("link" | "redeem"))
             if index > 1 =>
         {
             2
@@ -59,6 +61,18 @@ mod tests {
                 vec!["chat", "send", "--", "--help"],
             ),
             (vec!["chat", "send", "help"], vec!["chat", "send", "help"]),
+            (
+                vec!["connect", "--ssh", "--help"],
+                vec!["connect", "--ssh", "--help"],
+            ),
+            (
+                vec!["connect", "--ssh", "box", "-h"],
+                vec!["connect", "--ssh", "--help"],
+            ),
+            (
+                vec!["computer", "link", "--ssh", "--help"],
+                vec!["computer", "link", "--help"],
+            ),
         ] {
             let mut words = input.into_iter().map(str::to_owned).collect();
             normalize_help(&mut words);

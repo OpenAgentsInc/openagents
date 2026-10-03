@@ -6084,7 +6084,7 @@
               "tunnel"
             ],
             "usage": [
-              "tunnel USER@HOST [--timeout SECONDS] [--for SECONDS]"
+              "tunnel USER@HOST [--port PORT] [--timeout SECONDS] [--for SECONDS]"
             ],
             "forms": [
               {
@@ -6096,6 +6096,13 @@
                   {
                     "kind": "positional",
                     "name": "USER@HOST"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "port",
+                    "value": "PORT",
+                    "open": true,
+                    "optional": true
                   },
                   {
                     "kind": "option",
@@ -6114,7 +6121,7 @@
                 ]
               }
             ],
-            "summary": "Forward a local loopback port to the host until SECONDS pass, the tunnel ends, or you press Ctrl-C.",
+            "summary": "Forward a local loopback port to the host until SECONDS pass, the tunnel ends, or you press Ctrl-C. Without `add`, pass --port: the port the host listens on there.",
             "effect": "long_running",
             "runs_on": "connected_computer"
           }
@@ -6199,9 +6206,23 @@
         },
         {
           "kind": "option",
+          "name": "port",
+          "value": "PORT",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
           "name": "for",
           "value": "SECONDS",
           "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "port:",
           "optional": true,
           "repeated": true
         },

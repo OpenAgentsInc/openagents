@@ -24,7 +24,8 @@ pub(crate) const USAGE: &str = "usage: openagents computer COMMAND [OPTIONS]
   show HOST                 One host: grant, devices, pending enrollments, workspaces.
   link CODE                 Pair with a computer: its `openagents connect invite --text`
                             code, or a coder-host: invitation (QR text or paste).
-  link --ssh USER@HOST      Install or adopt a host over ssh and redeem its invitation.
+  link --ssh USER@HOST      The desktop app's ssh pairing; on the command line use
+                            `openagents connect --ssh USER@HOST`.
   approve HOST ENROLLMENT --code CODE [--rights standard|admin|all|LIST] [--days N]
                             Approve a headless host's enrollment request.
   deny HOST ENROLLMENT
@@ -57,6 +58,15 @@ pub(crate) const USAGE: &str = "usage: openagents computer COMMAND [OPTIONS]
 Options: --store DIR (default ~/.openagents/coder-computers), --wait SECONDS
 (how long to wait for the host's link; default 15), --same-machine
 (hosts run on this computer; allows loopback routes), --loopback-test.";
+
+const LINK_USAGE: &str = "usage: openagents computer link CODE [--wait SECONDS]
+       openagents computer link --ssh USER@HOST [--wait SECONDS]
+Pair this device with a computer. CODE is that computer's `openagents connect
+invite --text` code, or a coder-host: invitation (QR text or paste). --ssh
+asks the running host's ssh launcher (the desktop app's) to install or adopt a
+host there; from the command line, `openagents connect --ssh USER@HOST` does
+the whole setup in one step. --wait is how long to wait for the link (default
+15, 120 with --ssh).";
 
 /// What each command above does and where the phone runs it, for the
 /// chat router's command tree (`coder::cli_route::tree`).
@@ -262,6 +272,14 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
     };
     if matches!(command.as_str(), "--help" | "-h" | "help") {
         println!("{USAGE}");
+        return 0;
+    }
+    if matches!(command.as_str(), "link" | "redeem")
+        && rest
+            .iter()
+            .any(|word| matches!(word.as_str(), "--help" | "-h"))
+    {
+        println!("{LINK_USAGE}");
         return 0;
     }
     let args = match Args::parse(

@@ -33,8 +33,8 @@ pub const USAGE: &str = "usage: openagents connect COMMAND [--socket PATH]
                                  reads an nsec or hex secret key from stdin
 The host must be running with its control socket (`openagents host
 serve --control`, or the OpenAgents desktop app). --socket names another socket.
---ssh sets up a headless computer over SSH and pairs this computer with it;
-see `openagents connect --ssh --help`.";
+--ssh sets up a computer you reach over SSH and pairs this computer with it:
+the way to add a headless computer. See `openagents connect --ssh --help`.";
 
 /// What each `connect` command does. `invite` and `remove` change who can
 /// reach this computer, so the phone does them on its computers screen;
