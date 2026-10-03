@@ -214,6 +214,11 @@ fn main() -> ExitCode {
             return ExitCode::from(EXIT_USAGE);
         }
     }
+    // `openagents help GROUP [COMMAND]` is `openagents GROUP [COMMAND] --help`.
+    if arguments.len() > 1 && arguments[0] == "help" {
+        arguments.remove(0);
+        arguments.push("--help".into());
+    }
     argv::normalize_help(&mut arguments);
     let output = Output::new(json);
     let Some((command, rest)) = arguments.split_first() else {
@@ -252,7 +257,10 @@ fn main() -> ExitCode {
         "connect" => connect::run(&output, &rest),
         "verse" => world::run(&output, &rest),
         // `openagents xp …` is `openagents verse xp …`.
-        "xp" if rest.first().is_some_and(|word| word == "--help") => world::run(&output, &rest),
+        "xp" if rest.first().is_some_and(|word| word == "--help") => {
+            println!("{}", world::xp_usage());
+            0
+        }
         "xp" => world::run(
             &output,
             &std::iter::once("xp".to_owned())

@@ -44,8 +44,9 @@ pub const USAGE: &str = "usage: openagents mcp serve [--timeout SECONDS]
   serve    Serve every command group as an MCP tool over stdio. A tool
            call `GROUP {\"args\": [...]}` runs `openagents --json GROUP ARGS...`
            with no stdin and returns its document; a nonzero exit is an
-           error result. --timeout bounds one call (default 120).
-usage: openagents completions SHELL
+           error result. --timeout bounds one call (default 120).";
+
+pub const COMPLETIONS_USAGE: &str = "usage: openagents completions SHELL
   SHELL is bash, zsh, or fish. Prints a completion script for the command
   groups and --json to stdout; source it or save it where the shell reads.";
 
@@ -149,7 +150,7 @@ pub fn run(output: &Output, words: &[String], usage: &str) -> u8 {
 /// `openagents completions SHELL`.
 pub fn completions(output: &Output, words: &[String], usage: &str) -> u8 {
     let Some(shell) = words.first() else {
-        return output.usage("completions", "SHELL is required", USAGE);
+        return output.usage("completions", "SHELL is required", COMPLETIONS_USAGE);
     };
     let names: Vec<String> = groups(usage).into_iter().map(|g| g.name).collect();
     let script = match shell.as_str() {
@@ -157,14 +158,14 @@ pub fn completions(output: &Output, words: &[String], usage: &str) -> u8 {
         "zsh" => zsh(&names),
         "fish" => fish(&names),
         "--help" | "-h" | "help" => {
-            println!("{USAGE}");
+            println!("{COMPLETIONS_USAGE}");
             return 0;
         }
         other => {
             return output.usage(
                 "completions",
                 &format!("unknown shell `{other}`; bash, zsh, or fish"),
-                USAGE,
+                COMPLETIONS_USAGE,
             );
         }
     };

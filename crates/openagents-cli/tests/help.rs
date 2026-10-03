@@ -99,3 +99,66 @@ fn subcommand_help_exits_successfully() {
         }
     }
 }
+
+fn run(args: &[&str]) -> (Option<i32>, String, String) {
+    let home = tempfile::tempdir().unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_openagents"))
+        .args(args)
+        .env("HOME", home.path())
+        .env("TMPDIR", home.path())
+        .env("OPENAGENTS_CHAT_HOME", home.path().join("chat"))
+        .env("OPENAGENTS_SETTINGS", home.path().join("settings.json"))
+        // No gh on PATH: a command that asks gh first fails differently.
+        .env("PATH", home.path())
+        .env_remove("XDG_RUNTIME_DIR")
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    (
+        output.status.code(),
+        String::from_utf8_lossy(&output.stdout).into_owned(),
+        String::from_utf8_lossy(&output.stderr).into_owned(),
+    )
+}
+
+#[test]
+fn help_group_prints_the_groups_own_help() {
+    for group in [
+        "chat",
+        "wallet",
+        "plugin",
+        "issue",
+        "xp",
+        "mcp",
+        "completions",
+    ] {
+        let (code, by_word, _) = run(&["help", group]);
+        assert_eq!(code, Some(0), "help {group}");
+        let (_, by_flag, _) = run(&[group, "--help"]);
+        assert_eq!(by_word, by_flag, "help {group} differs from {group} --help");
+    }
+}
+
+#[test]
+fn each_group_prints_only_its_own_usage() {
+    let (_, mcp, _) = run(&["mcp", "--help"]);
+    let (_, completions, _) = run(&["completions", "--help"]);
+    assert!(mcp.contains("openagents mcp serve") && !mcp.contains("completions SHELL"));
+    assert!(
+        completions.contains("openagents completions SHELL") && !completions.contains("mcp serve")
+    );
+    let (_, xp, _) = run(&["xp", "--help"]);
+    assert!(xp.starts_with("usage: openagents xp"), "{xp}");
+    assert!(
+        !xp.contains("gesture"),
+        "xp help lists verse commands: {xp}"
+    );
+}
+
+#[test]
+fn an_unknown_issue_command_is_refused_before_gh_runs() {
+    let (code, _, stderr) = run(&["issue", "list"]);
+    assert_eq!(code, Some(64), "{stderr}");
+    assert!(stderr.contains("unknown command `list`"), "{stderr}");
+    assert!(!stderr.contains("gh"), "{stderr}");
+}

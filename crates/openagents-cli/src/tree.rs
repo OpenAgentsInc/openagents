@@ -49,14 +49,11 @@ const VERSION: &[Declared] = &[Declared::computer("", Effect::ReadOnly)];
 const MCP: &[Declared] = &[Declared::computer("serve", Effect::LongRunning)];
 const COMPLETIONS: &[Declared] = &[Declared::computer("", Effect::ReadOnly)];
 
-/// The `completions` syntax line, which `mcp::USAGE` carries after
-/// `mcp`'s; the prose under it is not syntax.
+/// The `completions` syntax line; the prose under it is not syntax.
 fn completions_usage() -> &'static str {
-    let usage = crate::mcp::USAGE;
-    usage
-        .find("usage: openagents completions")
-        .map(|at| &usage[at..])
-        .and_then(|text| text.lines().next())
+    crate::mcp::COMPLETIONS_USAGE
+        .lines()
+        .next()
         .unwrap_or("usage: openagents completions SHELL")
 }
 

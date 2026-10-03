@@ -53,6 +53,32 @@ Options for every command: --as PROFILE (key), --relay URL, --world ID
 --xp-relay URL (default VERSE_XP_RELAY, then the world relay) and
 --referee KEY to trust another referee for this reading.";
 
+/// `openagents xp --help`: the xp rows of [`USAGE`] under xp's own usage
+/// line, and the options they take.
+pub(crate) fn xp_usage() -> String {
+    let mut text = vec!["usage: openagents xp [--pubkey KEY]... | verify-card CARD".to_owned()];
+    let mut in_xp = false;
+    for line in USAGE.lines().skip(1) {
+        if let Some(row) = line.strip_prefix("  ")
+            && !row.starts_with(' ')
+        {
+            in_xp = row.starts_with("xp ");
+        }
+        if !line.starts_with(' ') {
+            break;
+        }
+        if in_xp && !line.contains("Also openagents xp verify-card") {
+            text.push(line.replacen("  xp ", "  ", 1));
+        }
+    }
+    text.push(
+        "Options: --as PROFILE (key), --xp-relay URL (default VERSE_XP_RELAY, then\n\
+         the world relay), --referee KEY to trust another referee for this reading."
+            .to_owned(),
+    );
+    text.join("\n")
+}
+
 /// What each command above does and where the phone runs it, for the
 /// chat router's command tree (`coder::cli_route::tree`).
 #[cfg(test)]

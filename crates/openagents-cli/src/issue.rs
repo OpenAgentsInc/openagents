@@ -49,6 +49,13 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         println!("{USAGE}");
         return 0;
     }
+    // Refuse an unknown command before anything asks gh about the checkout.
+    if !matches!(
+        command.as_str(),
+        "claim" | "release" | "done" | "status" | "pickup"
+    ) {
+        return output.usage("issue", &format!("unknown command `{command}`"), USAGE);
+    }
     let args = match Args::parse(rest, &[]) {
         Ok(args) => args,
         Err(message) => return output.usage("issue", &message, USAGE),
