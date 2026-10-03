@@ -161,6 +161,9 @@ conversation records remain outside the repository.
 
 ## Further hypotheses to test independently
 
+The [iteration theses](../iteration-theses.md) give each mechanism an isolated
+metric, executor comparison, and explicit failure condition.
+
 The development panel suggests several distinct experiments. None changes the
 registered treatment during this panel.
 

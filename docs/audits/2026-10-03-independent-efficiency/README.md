@@ -29,6 +29,10 @@ threshold. An unchanged held-out panel and a separately planned
 investigation. These later studies do run paid executor sessions; their
 scope and accounting are documented separately from the original audit.
 
+The [new iteration theses](iteration-theses.md) turn the observed retrieval,
+fixture, verification, and routing gaps into six independently testable
+experiments, including concrete roles for TypeSafe judgments.
+
 ## Executive assessment
 
 **Some of the earlier context and delegation work is missing from the
