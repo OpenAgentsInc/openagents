@@ -243,7 +243,7 @@ fn serve_chats(
             .await
             .is_err()
         {
-            eprintln!("coder host: chat history stopped");
+            eprintln!("openagents host: chat history stopped");
         }
     }))
 }

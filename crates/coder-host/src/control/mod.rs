@@ -181,14 +181,14 @@ pub(crate) async fn serve(shared: Arc<Shared>, bound: Bound) {
     let slots = Arc::new(Semaphore::new(CONNECTIONS));
     loop {
         let stream = match pipe
-            .accept(|refusal| eprintln!("coder host: refused a control client: {refusal}"))
+            .accept(|refusal| eprintln!("openagents host: refused a control client: {refusal}"))
             .await
         {
             Ok(stream) => stream,
             Err(error) => {
                 // A pipe that cannot make its next instance cannot serve
                 // anyone; wait rather than spin.
-                eprintln!("coder host: the control pipe failed: {error}");
+                eprintln!("openagents host: the control pipe failed: {error}");
                 tokio::time::sleep(std::time::Duration::from_secs(1)).await;
                 continue;
             }

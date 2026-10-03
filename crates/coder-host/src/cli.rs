@@ -654,7 +654,7 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
         workspaces = settings.workspaces.clone();
     }
     for line in check_workspaces(&workspaces, root) {
-        eprintln!("coder host: {line}");
+        eprintln!("openagents host: {line}");
     }
     let listen = match options
         .one("--listen")?
@@ -843,32 +843,32 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
         crate::background::start(&tasks_dir);
     }
     if let Some(address) = running.iroh_addr() {
-        eprintln!("coder host: iroh endpoint {}", address.id);
+        eprintln!("openagents host: iroh endpoint {}", address.id);
     }
     if let Some(path) = running.control_path() {
-        eprintln!("coder host: control socket {}", path.display());
+        eprintln!("openagents host: control socket {}", path.display());
     }
     eprintln!(
-        "coder host: serving {} at generation {} on {}",
+        "openagents host: serving {} at generation {} on {}",
         running.host_key(),
         running.generation(),
         running.local_addr()
     );
     if let (Some(address), Some(url)) = (running.websocket_addr(), running.websocket_url()) {
-        eprintln!("coder host: WebSocket direct channels on {address} as {url}");
+        eprintln!("openagents host: WebSocket direct channels on {address} as {url}");
     }
     if let Some(admission) = admission {
         let chats = admission.chats.is_some();
         match crate::tailnet::start(admission, running.host_key()).await {
             Ok(address) => {
                 eprintln!(
-                    "coder host: tailnet admission on {address}{}",
+                    "openagents host: tailnet admission on {address}{}",
                     if chats { " with chats" } else { "" }
                 );
                 running.set_tailnet(crate::serve::Tailnet::On { address, chats });
             }
             Err(error) => {
-                eprintln!("coder host: tailnet admission is off: {error}");
+                eprintln!("openagents host: tailnet admission is off: {error}");
                 running.set_tailnet(crate::serve::Tailnet::Off {
                     reason: error.to_string(),
                 });
@@ -878,11 +878,11 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
     let restart = tokio::select! {
         () = wait_for_stop() => false,
         () = running.restart_requested() => {
-            eprintln!("coder host: starting again to serve the changed settings");
+            eprintln!("openagents host: starting again to serve the changed settings");
             true
         }
         () = restart_when_idle(restart_signal, &running) => {
-            eprintln!("coder host: nobody is using it; starting again");
+            eprintln!("openagents host: nobody is using it; starting again");
             true
         }
     };
@@ -891,7 +891,7 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
     running.stop_taking_requests();
     if !running.drain(DRAIN).await {
         eprintln!(
-            "coder host: stopping with {} request(s) unanswered",
+            "openagents host: stopping with {} request(s) unanswered",
             running.in_flight()
         );
     }
@@ -927,7 +927,7 @@ const DRAIN: Duration = Duration::from_secs(10);
 /// changes nothing.
 async fn restart_when_idle(signal: RestartSignal, running: &crate::Running) {
     signal.wait().await;
-    eprintln!("coder host: asked to start again; waiting until nobody is using it");
+    eprintln!("openagents host: asked to start again; waiting until nobody is using it");
     running.until_idle().await;
 }
 

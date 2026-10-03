@@ -534,7 +534,7 @@ pub fn refresh_with(
     match write(dir, &learned, now, identify) {
         Ok(book) => book,
         Err(error) => {
-            eprintln!("coder host: usage probe: {error}");
+            eprintln!("openagents host: usage probe: {error}");
             let mut book = before;
             for (provider, outcome, account) in learned {
                 book.apply(provider, now, outcome, account);

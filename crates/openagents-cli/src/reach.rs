@@ -313,13 +313,19 @@ fn directory_json(snapshot: &Snapshot) -> Value {
 
 fn render_directory(value: &Value) -> String {
     let directory = &value["directory"];
-    let mut lines = vec![format!(
-        "directory: {}{}",
-        directory["state"].as_str().unwrap_or("unknown"),
-        directory["revision"]
-            .as_u64()
-            .map_or(String::new(), |revision| format!(" (revision {revision})"))
-    )];
+    let state = directory["state"].as_str().unwrap_or("unknown");
+    let revision = directory["revision"]
+        .as_u64()
+        .map_or(String::new(), |revision| format!(" (revision {revision})"));
+    let mut lines = vec![match state {
+        "no_owner_key" => "directory: this computer doesn't have your owner key; import it \
+             with `openagents connect owner import`"
+            .to_owned(),
+        "loading" => "directory: still reading".to_owned(),
+        "conflict" => format!("directory: changed elsewhere{revision}; read it again"),
+        "failed" => format!("directory: the last read failed{revision}; try again"),
+        other => format!("directory: {other}{revision}"),
+    }];
     let hosts = value["hosts"].as_array().map_or(&[][..], Vec::as_slice);
     if hosts.is_empty() {
         lines.push("no hosts listed".to_owned());

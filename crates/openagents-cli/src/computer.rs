@@ -169,8 +169,8 @@ fn host_json(
         "enrollment": enrollment_json(&host.enrollment),
         "rights_now": host.enrollment.rights(snapshot.now).map(rights_text),
         "link": host.link.as_ref().map(|link| json!({
-            "phase": format!("{:?}", link.phase),
-            "freshness": format!("{:?}", link.freshness),
+            "phase": phase_words(&link.phase),
+            "freshness": format!("{:?}", link.freshness).to_lowercase(),
             "enabled": link.enabled,
             "last_failure": link.last_failure.as_ref().map(|f| format!("{f:?}")),
         })),

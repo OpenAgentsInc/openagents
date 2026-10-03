@@ -10,6 +10,31 @@ use crate::{
 use nostr::domain::Event;
 use std::{collections::BTreeMap, path::PathBuf, time::Duration};
 
+/// The invitation lives five minutes, and a grant must outlive it, so
+/// a grant must be longer than this.
+const MIN_GRANT_SECS: u64 = 300;
+
+/// `YYYY-MM-DD HH:MM UTC` for Unix seconds.
+fn utc_date(unix: u64) -> String {
+    let days = (unix / 86_400) as i64;
+    let secs = unix % 86_400;
+    // Civil from days (Howard Hinnant's algorithm).
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = yoe + era * 400 + i64::from(month <= 2);
+    format!(
+        "{year:04}-{month:02}-{day:02} {:02}:{:02} UTC",
+        secs / 3600,
+        secs % 3600 / 60
+    )
+}
+
 fn bad(message: &str) -> Error {
     Error::new(ErrorCode::Malformed, message)
 }
@@ -141,6 +166,11 @@ pub async fn run(arguments: impl IntoIterator<Item = String>) -> Result<()> {
                 .map(|s| s.parse::<u64>().map_err(|_| bad("invalid grant lifetime")))
                 .transpose()?
                 .unwrap_or(86400);
+            if lifetime <= MIN_GRANT_SECS {
+                return Err(bad(&format!(
+                    "--expires-secs must be more than {MIN_GRANT_SECS}: the grant has to outlive the five-minute invitation"
+                )));
+            }
             args.finish()?;
             if config.codex.is_none() && config.claude.is_none() && config.coder.is_none() {
                 return Err(bad(
@@ -167,7 +197,8 @@ pub async fn run(arguments: impl IntoIterator<Item = String>) -> Result<()> {
                 .checked_add(lifetime)
                 .ok_or_else(|| bad("grant lifetime overflow"))?;
             println!(
-                "Relay: {relay}\nGrant expires at Unix time {expires}. This cannot run or control an agent."
+                "Relay: {relay}\nAccess expires {}. This cannot run or control an agent.",
+                utc_date(expires)
             );
             ensure_parent(&directory)?;
             let code = host.invite(&relay, config, now, expires)?;
@@ -197,6 +228,11 @@ pub async fn run(arguments: impl IntoIterator<Item = String>) -> Result<()> {
                 .map(|s| s.parse::<u64>().map_err(|_| bad("invalid grant lifetime")))
                 .transpose()?
                 .unwrap_or(86400);
+            if lifetime <= MIN_GRANT_SECS {
+                return Err(bad(&format!(
+                    "--expires-secs must be more than {MIN_GRANT_SECS}: the grant has to outlive the five-minute invitation"
+                )));
+            }
             args.finish()?;
             if args.once {
                 return Err(bad("--once belongs to serve"));
@@ -455,5 +491,17 @@ mod tests {
         assert_eq!(error.code, ErrorCode::Malformed);
         assert!(error.message.contains("no retained history roots"));
         assert!(!state.exists());
+    }
+}
+
+#[cfg(test)]
+mod date_tests {
+    use super::utc_date;
+
+    #[test]
+    fn a_grant_expiry_reads_as_a_utc_date() {
+        assert_eq!(utc_date(0), "1970-01-01 00:00 UTC");
+        assert_eq!(utc_date(1_791_014_920), "2026-10-03 08:08 UTC");
+        assert_eq!(utc_date(951_782_400), "2000-02-29 00:00 UTC");
     }
 }

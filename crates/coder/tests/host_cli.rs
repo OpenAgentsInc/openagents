@@ -308,7 +308,7 @@ async fn a_replaced_program_still_starts_again_after_a_project_change() {
     let deadline = Instant::now() + Duration::from_secs(30);
     while std::fs::read_to_string(&log)
         .unwrap_or_default()
-        .matches("coder host: serving")
+        .matches("openagents host: serving")
         .count()
         < 2
     {

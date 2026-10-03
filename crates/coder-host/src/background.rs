@@ -48,7 +48,7 @@ pub fn set_services(services: ServicesFn) {
 /// leaves it off.
 pub(crate) fn start(tasks: &Path) {
     if std::env::var("OPENAGENTS_BACKGROUND").is_ok_and(|value| value == "off") {
-        eprintln!("coder host: background rules are off (OPENAGENTS_BACKGROUND=off)");
+        eprintln!("openagents host: background rules are off (OPENAGENTS_BACKGROUND=off)");
         return;
     }
     let layout = match std::env::var_os("HOME")
@@ -58,7 +58,7 @@ pub(crate) fn start(tasks: &Path) {
     {
         Ok(layout) => layout,
         Err(error) => {
-            eprintln!("coder host: background rules are off: {error}");
+            eprintln!("openagents host: background rules are off: {error}");
             return;
         }
     };
@@ -72,10 +72,10 @@ pub(crate) fn start(tasks: &Path) {
         facts,
         JUDGE.get().cloned(),
         SERVICES.get().map(|make| make(tasks)),
-        Box::new(|line| eprintln!("coder host: {line}")),
+        Box::new(|line| eprintln!("openagents host: {line}")),
     );
     let _ = RUNNER.set((layout, handle));
-    eprintln!("coder host: background rules on");
+    eprintln!("openagents host: background rules on");
 }
 
 /// Answer a `background.*` operation.

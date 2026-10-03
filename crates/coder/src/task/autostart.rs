@@ -1121,7 +1121,7 @@ impl Autostart {
         entry.workspace = Some(workspace.into());
         entry.requested = requested.map(|provider| provider.as_str().to_owned());
         if let Err(error) = record(&self.root, &entry) {
-            eprintln!("coder host: auto-start: {error}");
+            eprintln!("openagents host: auto-start: {error}");
         }
     }
 
@@ -1216,7 +1216,7 @@ impl Autostart {
         let mut written = Vec::new();
         let mut write = |entry: Entry| {
             if let Err(error) = record(&self.root, &entry) {
-                eprintln!("coder host: auto-start: {error}");
+                eprintln!("openagents host: auto-start: {error}");
             }
             written.push(entry);
         };
@@ -1230,13 +1230,13 @@ impl Autostart {
                 Ok(store) => store,
                 Err(super::Error::Busy) => {
                     eprintln!(
-                        "coder host: auto-start: the task store stayed busy for {} seconds; the next sweep tries again",
+                        "openagents host: auto-start: the task store stayed busy for {} seconds; the next sweep tries again",
                         self.store_wait.as_secs()
                     );
                     return written;
                 }
                 Err(error) => {
-                    eprintln!("coder host: auto-start cannot open the task store: {error}");
+                    eprintln!("openagents host: auto-start cannot open the task store: {error}");
                     return written;
                 }
             };
@@ -1541,7 +1541,7 @@ fn end_without_capacity(
         .map_err(|e| e.to_string())
         .and_then(|bytes| store.apply(&bytes).map_err(|e| e.to_string()));
     if let Err(error) = applied {
-        eprintln!("coder host: auto-start cannot end a task without capacity: {error}");
+        eprintln!("openagents host: auto-start cannot end a task without capacity: {error}");
     }
 }
 
@@ -1566,7 +1566,7 @@ fn end_unstarted(store: &mut Store, task: &str, turn: u64, revision: u64, cause:
         .map_err(|e| e.to_string())
         .and_then(|bytes| store.apply(&bytes).map_err(|e| e.to_string()));
     if let Err(error) = applied {
-        eprintln!("coder host: auto-start cannot end a task that never started: {error}");
+        eprintln!("openagents host: auto-start cannot end a task that never started: {error}");
     }
 }
 

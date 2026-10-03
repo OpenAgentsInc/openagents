@@ -1131,13 +1131,13 @@ fn migrate_chat_home(shared: &Shared, home: &std::path::Path) {
     }
     match crate::control::migrate_chats(shared, home) {
         Ok(report) if report.moved > 0 => eprintln!(
-            "coder host: moved {} chat threads from {} into this host",
+            "openagents host: moved {} chat threads from {} into this host",
             report.moved,
             home.display()
         ),
         Ok(_) => {}
         Err(error) => eprintln!(
-            "coder host: chat threads in {} stay there for now: {error:?}",
+            "openagents host: chat threads in {} stay there for now: {error:?}",
             home.display()
         ),
     }

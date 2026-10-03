@@ -350,7 +350,7 @@ pub async fn start(settings: Settings, serving: &str) -> Result<SocketAddr> {
                 .await
                 .is_err()
             {
-                eprintln!("coder host: chat history stopped");
+                eprintln!("openagents host: chat history stopped");
             }
         });
     }
@@ -628,7 +628,7 @@ async fn answer(
             )
             .ok();
     }
-    eprintln!("coder host: tailnet admission for {}", owner.name);
+    eprintln!("openagents host: tailnet admission for {}", owner.name);
     reply
 }
 

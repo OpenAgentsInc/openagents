@@ -433,7 +433,7 @@ impl Tasks for Inbox {
                 now,
             ) {
                 Ok(continued) => self.continued(&continued),
-                Err(error) => eprintln!("coder host: device commands: {error}"),
+                Err(error) => eprintln!("openagents host: device commands: {error}"),
             }
         }
     }

@@ -248,7 +248,12 @@ async fn invite(output: &Output, socket: &Path, args: &[String]) -> Result<(), F
             );
             Ok(())
         }
-        None if stopped => Err(failed("stopped; the code is cancelled")),
+        None if stopped => {
+            output.emit(&json!({"connected": null, "cancelled": true}), |_| {
+                "Stopped. The code is cancelled; no phone was added.".into()
+            });
+            Ok(())
+        }
         None => Err(failed("no phone connected before the code expired")),
     }
 }
@@ -270,19 +275,82 @@ async fn devices(output: &Output, socket: &Path, args: &[String]) -> Result<(), 
             "LAST SEEN".to_owned(),
             "STATE".to_owned(),
         ]];
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs());
+        let mut removed = 0;
         for device in &devices {
+            if device.revoked {
+                removed += 1;
+                continue;
+            }
             rows.push(vec![
-                device.device.clone(),
-                device.rights.join(","),
+                short_key(&device.device),
+                rights_words(&device.rights),
                 device
                     .last_seen
-                    .map_or_else(|| "never".to_owned(), |at| at.to_string()),
-                if device.revoked { "removed" } else { "active" }.to_owned(),
+                    .map_or_else(|| "never".to_owned(), |at| ago(now, at)),
+                "active".to_owned(),
             ]);
         }
-        table(&rows)
+        let mut text = if rows.len() > 1 {
+            table(&rows)
+        } else {
+            "No active phones. Run `openagents connect invite`.".to_owned()
+        };
+        if removed > 0 {
+            text.push_str(&format!(
+                "\n{removed} removed {} not shown (`--json` lists them).",
+                if removed == 1 { "phone" } else { "phones" }
+            ));
+        }
+        text
     });
     Ok(())
+}
+
+/// A device key as a person reads it: the first and last few characters.
+fn short_key(key: &str) -> String {
+    if key.len() <= 16 {
+        return key.to_owned();
+    }
+    format!("{}…{}", &key[..8], &key[key.len() - 4..])
+}
+
+/// Device rights in plain words.
+fn rights_words(rights: &[String]) -> String {
+    let words: Vec<String> = rights
+        .iter()
+        .map(|right| {
+            match right.as_str() {
+                "access_read" => "read chats",
+                "access_admin" => "manage access",
+                other => {
+                    return other
+                        .strip_prefix("access_")
+                        .unwrap_or(other)
+                        .replace('_', " ");
+                }
+            }
+            .to_owned()
+        })
+        .collect();
+    if words.is_empty() {
+        "none".to_owned()
+    } else {
+        words.join(", ")
+    }
+}
+
+/// How long ago `at` was, relative to `now`, both Unix seconds.
+fn ago(now: u64, at: u64) -> String {
+    let secs = now.saturating_sub(at);
+    match secs {
+        0..=59 => "just now".to_owned(),
+        60..=3599 => format!("{} min ago", secs / 60),
+        3600..=86_399 => format!("{} h ago", secs / 3600),
+        _ => format!("{} days ago", secs / 86_400),
+    }
 }
 
 async fn remove(output: &Output, socket: &Path, args: &[String]) -> Result<(), Failure> {
@@ -466,5 +534,26 @@ mod tests {
         );
         assert_eq!(args, ["status"]);
         assert!(take_value(&mut vec!["--socket".into()], "--socket").is_err());
+    }
+}
+
+#[cfg(test)]
+mod device_words_tests {
+    use super::{ago, rights_words, short_key};
+
+    #[test]
+    fn devices_read_in_plain_words() {
+        assert_eq!(
+            short_key(&"a".repeat(64)),
+            format!("{}…{}", "a".repeat(8), "a".repeat(4))
+        );
+        assert_eq!(
+            rights_words(&["access_read".into(), "access_admin".into()]),
+            "read chats, manage access"
+        );
+        assert_eq!(rights_words(&[]), "none");
+        assert_eq!(ago(1000, 990), "just now");
+        assert_eq!(ago(10_000, 10_000 - 7200), "2 h ago");
+        assert_eq!(ago(1_000_000, 1_000_000 - 3 * 86_400), "3 days ago");
     }
 }
