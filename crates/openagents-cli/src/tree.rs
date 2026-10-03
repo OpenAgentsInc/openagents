@@ -159,6 +159,11 @@ pub fn help() -> Vec<GroupHelp<'static>> {
             Some(crate::background::USAGE),
             crate::background::EFFECTS,
         ),
+        group(
+            "worktree",
+            Some(crate::worktree::USAGE),
+            crate::worktree::EFFECTS,
+        ),
         group("ssh", Some(crate::ssh::USAGE), crate::ssh::EFFECTS),
         group(
             "boat",

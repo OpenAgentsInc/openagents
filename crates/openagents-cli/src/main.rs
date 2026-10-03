@@ -73,6 +73,8 @@ mod terminal;
 mod tree;
 #[cfg(unix)]
 mod wallet;
+#[cfg(unix)]
+mod worktree;
 mod world;
 #[cfg(unix)]
 mod x402;
@@ -111,6 +113,8 @@ Coder:
   settings     What Coder may use on this computer: providers, ask first, and more.
   service      Install, update, and roll back the resident host service.
   background   The host's background rules, built in and from plugins turned on here.
+  worktree     Coder's task worktrees here: list them with size and what removing
+               would lose, archive an ended task's, and restore an archived one.
   ssh          Start or adopt a host over SSH and tunnel to it.
   boat         Build and test this checkout's change on a Boat sandbox, not here.
   shadow       What a sample of Coder runs would have cost through the raw engine
@@ -280,6 +284,8 @@ fn main() -> ExitCode {
         "service" => service::run(&output, &rest),
         #[cfg(unix)]
         "background" => background::run(&output, &rest),
+        #[cfg(unix)]
+        "worktree" | "worktrees" => worktree::run(&output, &rest),
         "settings" => settings::run(&output, &rest),
         "boat" => boat_run::run(&output, &rest),
         "shadow" => shadow::run(&output, &rest),
@@ -298,7 +304,8 @@ fn main() -> ExitCode {
         // service manager, the resident wallet, Unix file modes, and the
         // system ssh's process groups.
         #[cfg(not(unix))]
-        "background" | "connect" | "labor" | "service" | "ssh" | "wallet" | "x402" | "pay" => {
+        "background" | "worktree" | "worktrees" | "connect" | "labor" | "service" | "ssh"
+        | "wallet" | "x402" | "pay" => {
             eprintln!("openagents {command}: not available on Windows; run it from macOS or Linux");
             EXIT_FAILURE
         }

@@ -135,6 +135,115 @@ pub fn restore(store: &Path, task: &str) -> Result<String, String> {
     Ok(format!("Restored the worktree at {}.", record.worktree))
 }
 
+/// Throw away what [`archive`] would keep the worktree for: its
+/// uncommitted changes and every untracked or ignored file, which are
+/// deleted for good. Commits not on a remote, and a stash made on it,
+/// still keep it. Only the person's typed confirmation should lead here
+/// (`openagents worktree archive --force`, #10294); [`archive`] follows.
+///
+/// # Errors
+/// The task is still going or has no worktree here, or Git refused.
+pub fn discard_unsaved(store: &Path, task: &str) -> Result<(), String> {
+    let ended = Store::open_waiting(store, std::time::Duration::from_secs(30))
+        .and_then(|store| store.list())
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .find(|found| found.task_id == task)
+        .map(|found| found.ended())
+        .ok_or_else(|| "There is no such task here.".to_owned())?;
+    if !ended {
+        return Err("This task is still going, so its worktree stays.".into());
+    }
+    let record = super::local::record(store, task)
+        .ok_or_else(|| "This task has no worktree on this computer.".to_owned())?;
+    let path = PathBuf::from(&record.worktree);
+    if !path.join(".git").is_file() {
+        return Err("This task's worktree is already gone.".into());
+    }
+    for args in [&["reset", "--hard", "--quiet"][..], &["clean", "-fdxq"][..]] {
+        let output = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&path)
+            .args(args)
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .stdin(std::process::Stdio::null())
+            .output()
+            .map_err(|error| format!("git: {error}"))?;
+        if !output.status.success() {
+            return Err(format!(
+                "Git kept the worktree: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// A task worktree [`archive`] or the task's end removed, which
+/// [`restore`] recreates.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Archived {
+    pub task: String,
+    pub path: PathBuf,
+    pub commit: String,
+    /// When it was removed, in Unix seconds (0 when not recorded).
+    pub at: u64,
+}
+
+/// Every removed task worktree [`restore`] can bring back, newest first:
+/// the runs' records (#10291) and archives made before them.
+#[must_use]
+pub fn archived(store: &Path) -> Vec<Archived> {
+    let mut out = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(store.join("local")) {
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let Some(task) = name.to_str().and_then(|name| name.strip_suffix(".json")) else {
+                continue;
+            };
+            let Some(record) = super::local::record(store, task) else {
+                continue;
+            };
+            if let Some(gone) = &record.archived {
+                out.push(Archived {
+                    task: record.task.clone(),
+                    path: PathBuf::from(&record.worktree),
+                    commit: gone.commit.clone(),
+                    at: gone.removed_at,
+                });
+            }
+        }
+    }
+    if let Ok(entries) = std::fs::read_dir(store.join("archived-worktrees")) {
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let Some(task) = name.to_str().and_then(|name| name.strip_suffix(".json")) else {
+                continue;
+            };
+            let Some(undo) = std::fs::read(entry.path())
+                .ok()
+                .and_then(|bytes| serde_json::from_slice::<Undo>(&bytes).ok())
+            else {
+                continue;
+            };
+            let at = entry
+                .metadata()
+                .and_then(|meta| meta.modified())
+                .ok()
+                .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+                .map_or(0, |since| since.as_secs());
+            out.push(Archived {
+                task: task.to_owned(),
+                path: undo.path,
+                commit: undo.commit,
+                at,
+            });
+        }
+    }
+    out.sort_by(|a, b| b.at.cmp(&a.at).then_with(|| a.task.cmp(&b.task)));
+    out
+}
+
 fn undo_path(store: &Path, task: &str) -> PathBuf {
     store
         .join("archived-worktrees")
@@ -302,12 +411,30 @@ mod tests {
         );
         assert!(!worktree.exists());
         assert!(list(&store).unwrap().is_empty());
+        let gone = archived(&store);
+        assert_eq!(gone.len(), 1);
+        assert_eq!(gone[0].task, "t1");
+        assert_eq!(gone[0].path, worktree);
         assert!(
             restore(&store, "t1")
                 .unwrap()
                 .starts_with("Restored the worktree")
         );
         assert!(worktree.join("README").exists());
+        assert!(archived(&store).is_empty());
+
+        // With the person's confirmation, unsaved files go for good and
+        // the worktree archives; the committed state comes back.
+        std::fs::write(worktree.join("notes"), "mine").unwrap();
+        std::fs::write(worktree.join("README"), "changed").unwrap();
+        discard_unsaved(&store, "t1").unwrap();
+        assert!(!worktree.join("notes").exists());
+        archive(&store, "t1").unwrap();
+        restore(&store, "t1").unwrap();
+        assert_eq!(
+            std::fs::read_to_string(worktree.join("README")).unwrap(),
+            "hi"
+        );
     }
 
     #[test]
