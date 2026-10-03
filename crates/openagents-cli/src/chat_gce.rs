@@ -113,7 +113,7 @@ d=$(dirname "$0")
   fi
   oa_build || return $?
   cd "$HOME/openagents" || return 2
-  OPENAGENTS_CODER_CONTROLLER=$HOME/.oa-pool/bin/microcoder \
+  OPENAGENTS_CODER_CONTROLLER=$HOME/.oa-pool/bin/microcoder OPENAGENTS_CODER_PLACEMENT=gce \
     "$HOME/.oa-pool/bin/openagents" chat work --local --json --issues {issue} --parallel 1{land}
 }}
 main; rc=$?
@@ -734,6 +734,7 @@ mod tests {
         assert!(script.contains("$(seq 0 1)"));
         assert!(script.contains("--issues 10225 --parallel 1 --land main"));
         assert!(script.contains("OPENAGENTS_CODER_CONTROLLER"));
+        assert!(script.contains("OPENAGENTS_CODER_PLACEMENT=gce"));
         assert!(script.contains("return 75"));
         // The remote command line carries no credential: only the script
         // sent on standard input does.

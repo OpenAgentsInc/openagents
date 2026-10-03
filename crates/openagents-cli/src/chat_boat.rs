@@ -385,6 +385,7 @@ fi
 # streaming in (a 2 GB copy took over 13 minutes once), and a later build
 # into the slot replaces the files, never the running inodes.
 export OPENAGENTS_CODER_CONTROLLER="$slot/debug/microcoder"
+export OPENAGENTS_CODER_PLACEMENT=boat
 "$slot/debug/openagents" chat work --local --json --issues {issue} --parallel 1{land}
 "#
     )
@@ -1552,6 +1553,7 @@ mod tests {
         assert!(setup < read && FORK_READY.contains("ascii-lazyfs"));
         assert!(script.ends_with("--issues 10220 --parallel 1 --land main\n"));
         assert!(script.contains("OPENAGENTS_CODER_CONTROLLER"));
+        assert!(script.contains("OPENAGENTS_CODER_PLACEMENT=boat"));
         for word in ["GH_TOKEN=", "ghp_", "gho_", "xai-"] {
             assert!(!script.contains(word), "{word}");
         }

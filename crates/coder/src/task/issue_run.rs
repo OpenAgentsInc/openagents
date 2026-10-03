@@ -1143,9 +1143,10 @@ impl Runner {
             Land::PullRequest => "opens a pull request when the checks pass".to_owned(),
         };
         let claim = format!(
-            "Claimed: Coder is working on this from an OpenAgents chat on this computer (task \
-             `{}`), in its own worktree of `{base}`. It runs the repository's checks, {land}, \
-             and comments the evidence here.\n\n{CLAIM_MARK} task={} -->",
+            "Claimed: Coder is working on this from an OpenAgents chat {} (task `{}`), in its \
+             own worktree of `{base}`. It runs the repository's checks, {land}, and comments \
+             the evidence here.\n\n{CLAIM_MARK} task={} -->",
+            placement().claim,
             &record.task[..12],
             record.task
         );
@@ -1945,14 +1946,15 @@ impl Run<'_> {
             .collect();
         format!(
             "**Run**: task `{}`, {turns} turn(s) ({} fix turn(s)) on {}, from an OpenAgents chat \
-             on the owner's computer.",
+             {}.",
             &self.record.task[..12],
             self.rounds,
             if providers.is_empty() {
                 "a local provider".to_owned()
             } else {
                 providers.join(", ")
-            }
+            },
+            placement().run
         )
     }
 
@@ -2198,3 +2200,37 @@ fn clip(text: &str, max: usize) -> String {
 #[cfg(test)]
 #[path = "issue_run_tests.rs"]
 mod tests;
+
+/// The variable `chat work --on boat|gce` sets on the machine it runs an
+/// issue's flow on, naming that placement for the issue's comments.
+pub const PLACEMENT_ENV: &str = "OPENAGENTS_CODER_PLACEMENT";
+
+/// Where the issue's comments say the run is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Placement {
+    /// For the claim, said by the machine itself.
+    pub claim: &'static str,
+    /// For the evidence's run line.
+    pub run: &'static str,
+}
+
+fn placement() -> Placement {
+    placement_named(std::env::var(PLACEMENT_ENV).ok().as_deref())
+}
+
+pub(crate) fn placement_named(name: Option<&str>) -> Placement {
+    match name {
+        Some("boat") => Placement {
+            claim: "on a Boat sandbox",
+            run: "on a Boat sandbox",
+        },
+        Some("gce") => Placement {
+            claim: "on a GCE pool host",
+            run: "on a GCE pool host",
+        },
+        _ => Placement {
+            claim: "on this computer",
+            run: "on the owner's computer",
+        },
+    }
+}

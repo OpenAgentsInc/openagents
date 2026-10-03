@@ -931,3 +931,13 @@ fn a_claim_whose_task_ended_is_stale_and_released_but_live_landed_and_foreign_on
     };
     assert!(stale_claims(dir.path(), &released, now, 6).is_empty());
 }
+
+#[test]
+fn the_comments_name_where_the_run_is() {
+    use super::placement_named;
+    assert_eq!(placement_named(None).claim, "on this computer");
+    assert_eq!(placement_named(None).run, "on the owner's computer");
+    assert_eq!(placement_named(Some("boat")).claim, "on a Boat sandbox");
+    assert_eq!(placement_named(Some("gce")).run, "on a GCE pool host");
+    assert_eq!(placement_named(Some("other")).claim, "on this computer");
+}
