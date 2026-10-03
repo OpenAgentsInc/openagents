@@ -192,3 +192,7 @@ About $8 a month, list prices, us-central1:
 
 A host started from the image costs what its machine and disk cost; the
 image adds nothing per boot.
+
+## See also
+
+- [Boat template runbook](boat-template.md): the daily template `oa-coder-main-<date>` is built by the same `scripts/cloud/coder-host-setup.sh --warm`.
