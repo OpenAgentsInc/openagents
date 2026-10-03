@@ -23,6 +23,7 @@ pub mod decision;
 pub mod delegate;
 pub mod environment;
 pub mod files;
+pub mod git_fetch;
 pub mod guests;
 pub mod issue;
 pub mod judge;

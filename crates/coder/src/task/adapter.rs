@@ -513,6 +513,13 @@ fn command_path(
     boundary.search_path(&std::env::join_paths(entries).unwrap_or_default())
 }
 
+/// Whether a run with `access` builds, and so takes a build slot: full
+/// access and this computer's toolchains do; the boundary has no
+/// toolchain to build with.
+fn builds(access: Access) -> bool {
+    matches!(access, Access::Full | Access::Toolchains)
+}
+
 /// What a run's command boundary is built from at admission.
 #[derive(Clone, Debug)]
 struct CommandPolicy {
@@ -522,6 +529,9 @@ struct CommandPolicy {
     store: PathBuf,
     git_directory: PathBuf,
     access: Access,
+    /// The run's leased build slot, which a run under this computer's
+    /// toolchains may write (#10293).
+    target: Option<PathBuf>,
 }
 
 impl CommandPolicy {
@@ -529,8 +539,8 @@ impl CommandPolicy {
     /// writes it) and a private scratch, the task store and the common Git
     /// directory sealed, reads confined to the workspace, the system, the
     /// granted shell, `reads`, and, under [`Access::Toolchains`], this
-    /// computer's toolchains and the Git directory; no network under
-    /// [`Access::Boundary`].
+    /// computer's toolchains and the Git directory, and the run's build
+    /// slot; no network under [`Access::Boundary`].
     fn spec(
         &self,
         toolchains: Option<&coder_boundary::Toolchains>,
@@ -553,6 +563,9 @@ impl CommandPolicy {
         // sealed against writes.
         if toolchains.is_some() {
             spec = spec.readable(&self.git_directory);
+        }
+        if let Some(target) = &self.target {
+            spec = spec.writable(target);
         }
         for read in reads {
             spec = spec.readable(read);
@@ -762,10 +775,21 @@ impl Host {
         } else {
             None
         };
-        let target = if configuration.access == Access::Full {
-            Some(super::targets::Lease::acquire(&owner.dir, &git_directory)?)
-        } else {
-            None
+        // Every access that builds takes a slot, so its builds stay in the
+        // slot budget instead of the worktree (#10293); a run under the
+        // boundary has no toolchain to build with.
+        let target = match configuration.access {
+            Access::Full => Some(super::targets::Lease::acquire(&owner.dir, &git_directory)?),
+            // A run under this computer's toolchains that finds every slot
+            // taken builds in its worktree, as it did before it had slots.
+            access if builds(access) => {
+                match super::targets::Lease::acquire(&owner.dir, &git_directory) {
+                    Ok(lease) => Some(lease),
+                    Err(Error::Busy) => None,
+                    Err(error) => return Err(error),
+                }
+            }
+            _ => None,
         };
         // The owner's login environment, for a full-access run, is read in
         // the background: nothing before the first command needs it, and
@@ -819,6 +843,9 @@ impl Host {
             store: owner.dir.clone(),
             git_directory: git_directory.clone(),
             access: configuration.access,
+            target: (configuration.access == Access::Toolchains)
+                .then(|| target.as_ref().map(|lease| lease.path.clone()))
+                .flatten(),
         };
         let boundary =
             if configuration.access != Access::Full || cfg!(unix) {
@@ -1461,6 +1488,9 @@ impl Host {
         if cfg!(windows) {
             variables.push(("USERPROFILE".into(), scratch.into()));
         }
+        if let Some(target) = &self.policy.target {
+            variables.push(("CARGO_TARGET_DIR".into(), target.as_os_str().to_owned()));
+        }
         Ok(variables)
     }
 
@@ -1834,5 +1864,48 @@ mod group_settle_tests {
         let reaper = std::thread::spawn(move || child.wait());
         assert!(group_settles(Some(group), Duration::from_secs(5), every).await);
         reaper.join().unwrap().unwrap();
+    }
+}
+
+#[cfg(test)]
+mod slot_tests {
+    use super::*;
+
+    #[test]
+    fn every_access_that_builds_takes_a_slot() {
+        assert!(builds(Access::Full));
+        assert!(builds(Access::Toolchains));
+        assert!(!builds(Access::Boundary));
+    }
+
+    #[test]
+    fn a_toolchains_run_may_write_its_build_slot() {
+        let dir = tempfile::tempdir().unwrap();
+        let workspace = dir.path().join("workspace");
+        let store = dir.path().join("tasks");
+        let git = dir.path().join("git");
+        let slot = dir.path().join("targets").join("project-slot-0");
+        for path in [&workspace, &store, &git, &slot] {
+            std::fs::create_dir_all(path).unwrap();
+        }
+        let policy = CommandPolicy {
+            workspace: workspace.clone(),
+            write_workspace: true,
+            program: PathBuf::from("/bin/sh"),
+            store,
+            git_directory: git,
+            access: Access::Toolchains,
+            target: Some(slot.clone()),
+        };
+        // Where the boundary cannot be built here, there is nothing to read.
+        let Ok(boundary) = policy.spec(None, &[]).build() else {
+            return;
+        };
+        let slot = slot.canonicalize().unwrap();
+        assert!(
+            boundary.writable().contains(&slot),
+            "{:?}",
+            boundary.writable()
+        );
     }
 }

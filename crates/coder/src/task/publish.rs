@@ -604,11 +604,8 @@ fn on_remote(worktree: &Path, branch: &str, commit: &str) -> Result<bool, String
     if tip == commit {
         return Ok(true);
     }
-    local::git_out(
-        worktree,
-        &["fetch", "-q", "origin", &format!("refs/heads/{branch}")],
-    )
-    .map_err(|why| clip(&why, 300))?;
+    coder_delegate::git_fetch::fetch(worktree, &[&format!("refs/heads/{branch}")], local::git_out)
+        .map_err(|why| clip(&why, 300))?;
     Ok(local::git_out(worktree, &["merge-base", "--is-ancestor", commit, &tip]).is_ok())
 }
 

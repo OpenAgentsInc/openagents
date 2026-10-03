@@ -221,34 +221,16 @@ fn git(worktree: &Path, args: &[&str]) -> Result<String, String> {
     local::git_out(worktree, args).map(|out| out.trim().to_owned())
 }
 
-/// Serializes fetches across processes and worktrees sharing Git's refs.
-/// The lock file stays in the common Git directory so callers always
-/// lock the same file.
+/// Serializes fetches across processes and worktrees sharing Git's refs,
+/// as `coder_delegate::git_fetch` explains.
 pub(super) fn fetch(worktree: &Path, branch: &str) -> Result<(), String> {
-    let lock = fetch_lock(worktree)?;
-    lock.lock()
-        .map_err(|error| format!("cannot lock the repository for fetch: {error}"))?;
-    let result = git(worktree, &["fetch", "-q", "origin", branch]).map(|_| ());
-    // Another thread may fork while the lock is held. Unlock explicitly
-    // so its child cannot retain the lock until it closes inherited files.
-    let unlocked = lock
-        .unlock()
-        .map_err(|error| format!("cannot release the repository's fetch lock: {error}"));
-    result.and(unlocked)
+    coder_delegate::git_fetch::fetch(worktree, &[branch], git)
 }
 
+/// The repository's fetch lock, for callers that wait on it with their own
+/// timeout (`freshen`).
 pub(super) fn fetch_lock(worktree: &Path) -> Result<std::fs::File, String> {
-    let common = git(
-        worktree,
-        &["rev-parse", "--path-format=absolute", "--git-common-dir"],
-    )?;
-    std::fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .open(Path::new(&common).join("openagents-fetch.lock"))
-        .map_err(|error| format!("cannot open the repository's fetch lock: {error}"))
+    coder_delegate::git_fetch::lock_file(worktree, git)
 }
 
 /// Lands the change committed at `plan.worktree`'s `HEAD` on

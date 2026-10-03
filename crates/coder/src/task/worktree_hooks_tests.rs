@@ -1,4 +1,5 @@
 use super::*;
+use std::process::Command;
 
 fn git(dir: &Path, args: &[&str]) -> String {
     let output = Command::new("git")
