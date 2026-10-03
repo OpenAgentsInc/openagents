@@ -705,6 +705,11 @@ fn log(home: &Path, args: &Args) -> Result<Value, Failure> {
         .map(Value::to_string)
         .collect::<Vec<_>>()
         .join("\n");
+    let text = if text.is_empty() {
+        "No playtest log entries yet.".to_owned()
+    } else {
+        text
+    };
     Ok(json!({"entries": entries, "text": text}))
 }
 

@@ -83,8 +83,14 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
                 wait
             });
             let mut client = Client::connect(&url, signer);
+            // A tail asks for stored events and then live ones; a relay can
+            // send the same event in both, so each id prints once.
+            let mut seen = std::collections::HashSet::new();
             let outcome = client.subscribe(vec![filter], live, wait, |event| {
-                output.line(&serde_json::to_value(event).unwrap_or(Value::Null), summary);
+                let value = serde_json::to_value(event).unwrap_or(Value::Null);
+                if first_sighting(&mut seen, &value) {
+                    output.line(&value, summary);
+                }
             });
             match outcome {
                 Ok(()) => 0,
@@ -178,13 +184,34 @@ fn report_publish(output: &Output, result: Result<Published, String>) -> u8 {
     }
 }
 
+/// Whether `value`'s id is new to `seen`; events without an id always print.
+fn first_sighting(seen: &mut std::collections::HashSet<String>, value: &Value) -> bool {
+    match value["id"].as_str() {
+        Some(id) => seen.insert(id.to_owned()),
+        None => true,
+    }
+}
+
+/// `2026-10-03 14:05 UTC` for Unix seconds; JSON output keeps the raw number.
+pub fn when(at: u64) -> String {
+    let minutes = (at % 86_400) / 60;
+    format!(
+        "{} {:02}:{:02} UTC",
+        crate::wallet::date(at),
+        minutes / 60,
+        minutes % 60
+    )
+}
+
 /// A short text line for an event.
 pub fn summary(value: &Value) -> String {
     let content = value["content"].as_str().unwrap_or("");
     let short: String = content.chars().take(80).collect();
     format!(
         "{} kind={} {} {}",
-        value["created_at"],
+        value["created_at"]
+            .as_u64()
+            .map_or_else(|| value["created_at"].to_string(), when),
         value["kind"],
         value["pubkey"]
             .as_str()
@@ -496,5 +523,32 @@ impl Client {
 
     pub fn close(mut self) {
         self.link.shutdown(Duration::from_millis(100));
+    }
+}
+
+#[cfg(test)]
+mod shakeout_tests {
+    use super::*;
+
+    #[test]
+    fn a_tail_prints_each_event_once() {
+        let mut seen = std::collections::HashSet::new();
+        let event = json!({"id": "abc", "created_at": 1, "kind": 1});
+        assert!(first_sighting(&mut seen, &event));
+        assert!(!first_sighting(&mut seen, &event));
+        assert!(first_sighting(&mut seen, &json!({"kind": 1})));
+    }
+
+    #[test]
+    fn event_lines_show_a_readable_time() {
+        assert_eq!(when(1_790_996_212), "2026-10-03 02:56 UTC");
+        let line = summary(&json!({
+            "created_at": 1_790_996_212u64, "kind": 1,
+            "pubkey": "3e7e662614f5aaaa", "content": "hi"
+        }));
+        assert!(
+            line.starts_with("2026-10-03 02:56 UTC kind=1 3e7e662614f5 hi"),
+            "{line}"
+        );
     }
 }

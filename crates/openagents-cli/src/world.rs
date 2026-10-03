@@ -500,7 +500,9 @@ fn chat_value(line: &mv::ChatLine) -> Value {
 fn render_chat(value: &Value) -> String {
     format!(
         "{} [{}] {}: {}",
-        value["created_at"],
+        value["created_at"]
+            .as_u64()
+            .map_or_else(|| value["created_at"].to_string(), crate::relay::when),
         value["channel"].as_str().unwrap_or("room"),
         value["pubkey"]
             .as_str()

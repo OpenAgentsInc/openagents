@@ -437,7 +437,7 @@ fn clock(at: u64) -> String {
 }
 
 /// `2026-10-02` for Unix seconds, in UTC.
-fn date(at: u64) -> String {
+pub(crate) fn date(at: u64) -> String {
     let days = i64::try_from(at / 86_400).unwrap_or(0);
     // Howard Hinnant's civil-from-days.
     let z = days + 719_468;
