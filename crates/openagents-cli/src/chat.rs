@@ -1009,13 +1009,21 @@ async fn threads(
                     title,
                 ]);
             }
-            format!(
-                "{}\n{} threads in {} ({})",
-                table(&table_rows),
-                value["total"],
-                value["backend"].as_str().unwrap_or(""),
+            let total = value["total"].as_u64().unwrap_or(0);
+            let noun = if total == 1 { "thread" } else { "threads" };
+            let place = match value["backend"].as_str() {
+                Some("host") => "in this computer's host",
+                _ => "stored on this computer",
+            };
+            let summary = format!(
+                "{total} {noun} {place} at {}",
                 value["at"].as_str().unwrap_or("")
-            )
+            );
+            if table_rows.len() > 1 {
+                format!("{}\n{summary}", table(&table_rows))
+            } else {
+                summary
+            }
         },
     );
     Ok(0)

@@ -126,6 +126,15 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
                 return code;
             }
             let values = loaded.values();
+            // What an empty list means, in words: the order Coder tries,
+            // nothing turned off, every project.
+            let order = loaded
+                .coder
+                .provider_list()
+                .into_iter()
+                .map(settings::provider_name)
+                .collect::<Vec<_>>()
+                .join(", ");
             output.emit(
                 &json!({ "path": file.display().to_string(), "exists": file.exists(), "settings": values }),
                 |value| {
@@ -133,7 +142,18 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
                         .as_object()
                         .map(|map| {
                             map.iter()
-                                .map(|(key, value)| format!("{key:<30} {}", render(value)))
+                                .map(|(key, value)| {
+                                    let empty = value.as_array().is_some_and(Vec::is_empty);
+                                    let shown = match key.as_str() {
+                                        "coder.providers" if empty => format!("{order} (default)"),
+                                        "coder.disabled" if empty => "none".to_owned(),
+                                        "coder.projects" if empty => {
+                                            "every Git checkout (default)".to_owned()
+                                        }
+                                        _ => render(value),
+                                    };
+                                    format!("{key:<30} {shown}")
+                                })
                                 .collect::<Vec<_>>()
                                 .join("\n")
                         })

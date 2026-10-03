@@ -82,20 +82,23 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
             output.emit(&json!({ "profiles": profiles }), |value| {
                 value["profiles"]
                     .as_array()
-                    .map(|profiles| {
-                        profiles
-                            .iter()
-                            .map(|profile| {
-                                format!(
-                                    "{} {}",
-                                    profile["profile"].as_str().unwrap_or(""),
-                                    profile["pubkey"].as_str().unwrap_or("")
-                                )
-                            })
-                            .collect::<Vec<_>>()
-                            .join("\n")
-                    })
-                    .unwrap_or_default()
+                    .filter(|profiles| !profiles.is_empty())
+                    .map_or_else(
+                        || "No keys yet; `openagents key show` creates one.".to_owned(),
+                        |profiles| {
+                            profiles
+                                .iter()
+                                .map(|profile| {
+                                    format!(
+                                        "{} {}",
+                                        profile["profile"].as_str().unwrap_or(""),
+                                        profile["pubkey"].as_str().unwrap_or("")
+                                    )
+                                })
+                                .collect::<Vec<_>>()
+                                .join("\n")
+                        },
+                    )
             });
             0
         }

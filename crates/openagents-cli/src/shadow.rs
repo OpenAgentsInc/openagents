@@ -95,6 +95,20 @@ fn money(value: &Value) -> String {
 }
 
 fn text(report: &Value, finished_now: u64) -> String {
+    if report["records"].as_u64() == Some(0) {
+        let on = coder::task::settings::load()
+            .ok()
+            .and_then(|settings| settings.coder.shadow_percent)
+            .is_some();
+        return if on {
+            "No shadow baselines have finished yet.".into()
+        } else {
+            "No shadow baselines yet: shadow runs are off. \
+             `openagents settings set coder.shadow 10` runs 10% of finished Coder runs again \
+             through the raw engine."
+                .into()
+        };
+    }
     let cost = &report["cost_usd"];
     let wall = &report["wall_s"];
     let saving = |side: &Value| {
@@ -105,10 +119,10 @@ fn text(report: &Value, finished_now: u64) -> String {
     let number = |value: &Value| {
         value
             .as_f64()
-            .map_or_else(|| "n/a".into(), |v| format!("{v:.1}"))
+            .map_or_else(|| "n/a".into(), |v| format!("{v:.1} s"))
     };
     format!(
-        "{} records ({} finished now)\ncost, {} pairs: routed {} vs raw {} in all; medians {} vs {}; saving {}\nwall time, {} pairs: routed {} s vs raw {} s in all; medians {} s vs {} s; saving {}\nkept checks: routed {} passed, {} failed; raw {} passed, {} failed",
+        "{} records ({} finished now)\ncost, {} pairs: routed {} vs raw {} in all; medians {} vs {}; saving {}\nwall time, {} pairs: routed {} vs raw {} in all; medians {} vs {}; saving {}\nkept checks: routed {} passed, {} failed; raw {} passed, {} failed",
         report["records"],
         finished_now,
         cost["n"],

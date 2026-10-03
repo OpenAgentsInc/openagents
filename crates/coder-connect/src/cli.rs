@@ -415,7 +415,7 @@ fn update_display(host: &Host, display: &mut Option<pairing_ui::Display>) -> Res
 pub async fn pair(arguments: &[String]) -> Result<()> {
     if arguments.len() == 1 && matches!(arguments[0].as_str(), "--help" | "-h" | "help") {
         println!(
-            "openagents pair [--relay URL] [--codex-root PATH] [--claude-root PATH] [--coder-root PATH] [--no-codex] [--no-claude] [--expires-secs 86400] [--no-browser] [--state PATH]\nShow a QR code for read-only phone access to existing Codex and Claude chats. Keep this command running after pairing."
+            "usage: openagents pair [--relay URL] [--codex-root PATH] [--claude-root PATH] [--coder-root PATH] [--no-codex] [--no-claude] [--expires-secs 86400] [--no-browser] [--state PATH]\nShow a QR code for read-only phone access to existing Codex and Claude chats. Keep this command running after pairing."
         );
         return Ok(());
     }

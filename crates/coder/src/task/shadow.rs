@@ -571,8 +571,9 @@ pub fn report(records: &[Value]) -> Value {
         .map(|(a, b)| (a / 1000.0, b / 1000.0))
         .collect();
     let side = |pairs: &[(f64, f64)]| {
-        let routed: f64 = pairs.iter().map(|p| p.0).sum();
-        let baseline: f64 = pairs.iter().map(|p| p.1).sum();
+        // An empty float sum is -0.0; adding 0.0 makes it 0.
+        let routed: f64 = pairs.iter().map(|p| p.0).sum::<f64>() + 0.0;
+        let baseline: f64 = pairs.iter().map(|p| p.1).sum::<f64>() + 0.0;
         json!({
             "n": pairs.len(),
             "routed_total": routed,

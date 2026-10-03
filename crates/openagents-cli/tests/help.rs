@@ -22,9 +22,8 @@ fn assert_help(command: &[&str], flag: &str) {
         Some(0),
         "{command:?} {flag}: {stdout}\n{stderr}"
     );
-    // Delegated host/task usage uses the coder name; pair's usage has no prefix.
     assert!(
-        stdout.to_lowercase().contains("usage") || stdout.starts_with("openagents pair "),
+        stdout.to_lowercase().contains("usage"),
         "{command:?} {flag}: {stdout}"
     );
     assert!(stderr.is_empty(), "{command:?} {flag}: {stderr}");

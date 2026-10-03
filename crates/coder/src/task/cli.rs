@@ -10,19 +10,19 @@ const EXIT_USAGE: u8 = 64;
 
 pub const USAGE: &str = "\
 Usage:
-  coder task submit --file COMMAND.json [--store DIRECTORY]
-  coder task cancel --file COMMAND.json [--store DIRECTORY]
-  coder task correct --file COMMAND.json [--store DIRECTORY]
-  coder task check TASK_ID [--store DIRECTORY]
-  coder task list [--store DIRECTORY]
-  coder task show TASK_ID [--store DIRECTORY]
-  coder task start --grant GRANT.json [--store DIRECTORY]
-  coder task execute --grant GRANT.json [--store DIRECTORY]
-  coder task recover TASK_ID [--store DIRECTORY]
-  coder task view TASK_ID [--limit 100] [--cursor JSON] [--store DIRECTORY]
-  coder task artifact TASK_ID --path RELATIVE_PATH [--store DIRECTORY]
-  coder task archive TASK_ID --reason TEXT [--store DIRECTORY]
-  coder task restore TASK_ID [--store DIRECTORY]
+  openagents task submit --file COMMAND.json [--store DIRECTORY]
+  openagents task cancel --file COMMAND.json [--store DIRECTORY]
+  openagents task correct --file COMMAND.json [--store DIRECTORY]
+  openagents task check TASK_ID [--store DIRECTORY]
+  openagents task list [--store DIRECTORY]
+  openagents task show TASK_ID [--store DIRECTORY]
+  openagents task start --grant GRANT.json [--store DIRECTORY]
+  openagents task execute --grant GRANT.json [--store DIRECTORY]
+  openagents task recover TASK_ID [--store DIRECTORY]
+  openagents task view TASK_ID [--limit 100] [--cursor JSON] [--store DIRECTORY]
+  openagents task artifact TASK_ID --path RELATIVE_PATH [--store DIRECTORY]
+  openagents task archive TASK_ID --reason TEXT [--store DIRECTORY]
+  openagents task restore TASK_ID [--store DIRECTORY]
 
 Submit and cancel read the exact versioned command bytes from a file (or -
 for stdin). Keep the same command ID and file bytes when retrying. Cancellation
@@ -332,6 +332,14 @@ pub async fn run(arguments: &[String]) -> u8 {
         Operation::Show(id) => store.show(&id).map(|task| json!(task)),
         _ => unreachable!("owner operation dispatched above"),
     };
+    // A person at a terminal reads "No tasks." where a script reads `[]`.
+    if let Ok(Value::Array(tasks)) = &result
+        && tasks.is_empty()
+        && std::io::IsTerminal::is_terminal(&std::io::stdout())
+    {
+        println!("No tasks.");
+        return 0;
+    }
     match result {
         Ok(value) => output(&value),
         Err(error) => failure(error.code(), error),

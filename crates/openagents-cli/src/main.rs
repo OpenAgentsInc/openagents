@@ -452,12 +452,18 @@ fn doctor(output: &Output) -> u8 {
                 "relay     {}",
                 value["default_relay"].as_str().unwrap_or("")
             ),
-            format!("world     {}", value["world"].as_str().unwrap_or("")),
+            format!(
+                "world     {} (the Verse world `openagents verse` joins)",
+                value["world"].as_str().unwrap_or("")
+            ),
         ];
         let chat = &value["chat"];
         lines.push(format!(
             "chat           {} ({})",
-            chat["backend"].as_str().unwrap_or(""),
+            match chat["backend"].as_str() {
+                Some("host") => "in this computer's host",
+                _ => "stored on this computer",
+            },
             if chat["host_running"].as_bool().unwrap_or(false) {
                 chat["host_socket"].as_str().unwrap_or("").to_owned()
             } else {
