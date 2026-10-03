@@ -4,6 +4,7 @@ use std::{collections::HashSet, path::PathBuf, sync::Arc, time::Instant};
 use verse::{
     imported::{
         Renderer, WindowPresenter, chamber,
+        controls::{ClassicControls, Held},
         lighting::Light,
         overlay,
         play::{Ability, Game},
@@ -14,10 +15,10 @@ use verse::{
 use verse_wow::{assets::Pack, director::Scene, position_from_wow};
 use winit::{
     application::ApplicationHandler,
-    event::{ElementState, MouseButton, WindowEvent},
+    event::{DeviceEvent, DeviceId, ElementState, MouseButton, MouseScrollDelta, WindowEvent},
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
     keyboard::{KeyCode, PhysicalKey},
-    window::{Window, WindowId},
+    window::{CursorGrabMode, Window, WindowId},
 };
 struct App {
     window: Option<Arc<Window>>,
@@ -29,7 +30,12 @@ struct App {
     last: Instant,
     keys: HashSet<KeyCode>,
     cursor: [f32; 2],
-    right: bool,
+    controls: ClassicControls,
+    pointer: [f64; 2],
+    captured: bool,
+    raw_pointer: bool,
+    pending_select: bool,
+    dragged: f64,
     heights: std::collections::BTreeMap<String, f32>,
     dir: PathBuf,
     proof: Option<PathBuf>,
@@ -43,15 +49,62 @@ impl App {
     fn render(&mut self) -> Result<Vec<u8>, String> {
         let dt = self.last.elapsed().as_secs_f32().min(0.1);
         self.last = Instant::now();
-        let key = |k| if self.keys.contains(&k) { 1.0 } else { 0.0 };
-        self.game.tick(
-            dt,
-            [
-                key(KeyCode::KeyD) - key(KeyCode::KeyA),
-                key(KeyCode::KeyW) - key(KeyCode::KeyS),
-            ],
-        )?;
+        let key = |k| self.keys.contains(&k);
+        let held = Held {
+            forward: key(KeyCode::KeyW) || key(KeyCode::ArrowUp),
+            backward: key(KeyCode::KeyS) || key(KeyCode::ArrowDown),
+            turn_left: key(KeyCode::KeyA) || key(KeyCode::ArrowLeft),
+            turn_right: key(KeyCode::KeyD) || key(KeyCode::ArrowRight),
+            strafe_left: key(KeyCode::KeyQ),
+            strafe_right: key(KeyCode::KeyE),
+        };
+        let movement = if self.game.unlocked() {
+            self.controls
+                .step(held, dt, &mut self.game.yaw, &mut self.game.camera)
+        } else {
+            [0.0; 2]
+        };
+        self.game.tick(dt, movement)?;
         self.draw_frame()
+    }
+    fn capture_pointer(&mut self) {
+        let wanted = self.controls.looking();
+        if wanted == self.captured {
+            return;
+        }
+        let Some(window) = &self.window else {
+            return;
+        };
+        self.captured = wanted;
+        if wanted {
+            self.raw_pointer = window
+                .set_cursor_grab(CursorGrabMode::Locked)
+                .or_else(|_| window.set_cursor_grab(CursorGrabMode::Confined))
+                .is_ok();
+            window.set_cursor_visible(false);
+            if !self.raw_pointer {
+                let size = window.inner_size();
+                let _ = window.set_cursor_position(winit::dpi::PhysicalPosition::new(
+                    size.width as f64 * 0.5,
+                    size.height as f64 * 0.5,
+                ));
+            }
+        } else {
+            let _ = window.set_cursor_grab(CursorGrabMode::None);
+            window.set_cursor_visible(true);
+            let _ = window.set_cursor_position(winit::dpi::PhysicalPosition::new(
+                self.pointer[0],
+                self.pointer[1],
+            ));
+        }
+    }
+    fn mouse_motion(&mut self, delta: [f64; 2]) {
+        if !self.game.unlocked() {
+            return;
+        }
+        self.dragged += delta[0].abs() + delta[1].abs();
+        self.controls
+            .motion(delta, &mut self.game.yaw, &mut self.game.camera);
     }
     fn draw_frame(&mut self) -> Result<Vec<u8>, String> {
         let frame = self.game.frame();
@@ -172,12 +225,26 @@ impl ApplicationHandler for App {
             event_loop.exit();
         }
     }
+    fn device_event(
+        &mut self,
+        _event_loop: &ActiveEventLoop,
+        _device_id: DeviceId,
+        event: DeviceEvent,
+    ) {
+        if self.captured && self.raw_pointer {
+            if let DeviceEvent::MouseMotion { delta } = event {
+                self.mouse_motion([delta.0, delta.1]);
+            }
+        }
+    }
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Focused(false) => {
                 self.keys.clear();
-                self.right = false;
+                self.controls.clear();
+                self.pending_select = false;
+                self.capture_pointer();
             }
             WindowEvent::KeyboardInput { event, .. } => {
                 if let PhysicalKey::Code(key) = event.physical_key {
@@ -186,6 +253,11 @@ impl ApplicationHandler for App {
                         if !event.repeat {
                             match key {
                                 KeyCode::Escape => event_loop.exit(),
+                                KeyCode::NumLock => {
+                                    if self.game.unlocked() {
+                                        self.controls.autorun = !self.controls.autorun;
+                                    }
+                                }
                                 KeyCode::Tab => self.game.cycle_target(),
                                 KeyCode::Digit1 => self.activate(Ability::Bow),
                                 KeyCode::Digit2 => self.activate(Ability::FireBolt),
@@ -206,28 +278,67 @@ impl ApplicationHandler for App {
             }
             WindowEvent::CursorMoved { position, .. } => {
                 let size = self.window.as_ref().unwrap().inner_size();
-                let next = [
-                    position.x as f32 / size.width.max(1) as f32 * 1280.0,
-                    position.y as f32 / size.height.max(1) as f32 * 720.0,
-                ];
-                if self.right && self.game.unlocked() {
-                    self.game.yaw -= (next[0] - self.cursor[0]) * 0.006;
-                }
-                self.cursor = next;
-            }
-            WindowEvent::MouseInput { state, button, .. } => match button {
-                MouseButton::Right => self.right = state == ElementState::Pressed,
-                MouseButton::Left if state == ElementState::Pressed => {
-                    if let Some(ability) =
-                        overlay::action_at(self.cursor[0], self.cursor[1], 1280.0, 720.0)
-                    {
-                        self.activate(ability);
-                    } else if self.game.unlocked() {
-                        self.select();
+                if self.captured {
+                    if !self.raw_pointer {
+                        let center = [size.width as f64 * 0.5, size.height as f64 * 0.5];
+                        let delta = [position.x - center[0], position.y - center[1]];
+                        if delta[0].abs() + delta[1].abs() > 0.5 {
+                            self.mouse_motion(delta);
+                            let _ = self.window.as_ref().unwrap().set_cursor_position(
+                                winit::dpi::PhysicalPosition::new(center[0], center[1]),
+                            );
+                        }
                     }
+                } else {
+                    self.pointer = [position.x, position.y];
+                    self.cursor = [
+                        position.x as f32 / size.width.max(1) as f32 * 1280.0,
+                        position.y as f32 / size.height.max(1) as f32 * 720.0,
+                    ];
                 }
-                _ => {}
-            },
+            }
+            WindowEvent::MouseWheel { delta, .. } if self.game.unlocked() => {
+                let steps = match delta {
+                    MouseScrollDelta::LineDelta(_, y) => y,
+                    MouseScrollDelta::PixelDelta(p) => p.y as f32 / 40.0,
+                };
+                self.game.camera.zoom(steps);
+            }
+            WindowEvent::MouseInput { state, button, .. } if self.game.unlocked() => {
+                let down = state == ElementState::Pressed;
+                match button {
+                    MouseButton::Right => {
+                        if down {
+                            self.pending_select = false;
+                        }
+                        self.controls
+                            .button(true, down, &mut self.game.yaw, &self.game.camera);
+                    }
+                    MouseButton::Left => {
+                        if down && !self.controls.looking() {
+                            if let Some(ability) =
+                                overlay::action_at(self.cursor[0], self.cursor[1], 1280.0, 720.0)
+                            {
+                                self.activate(ability);
+                                return;
+                            }
+                            self.pending_select = true;
+                            self.dragged = 0.0;
+                        }
+                        if !down && self.pending_select {
+                            if self.dragged < 4.0 {
+                                self.select();
+                            }
+                            self.pending_select = false;
+                        }
+                        self.controls
+                            .button(false, down, &mut self.game.yaw, &self.game.camera);
+                    }
+                    MouseButton::Back if down => self.controls.autorun = !self.controls.autorun,
+                    _ => {}
+                }
+                self.capture_pointer();
+            }
             WindowEvent::RedrawRequested => {
                 match self.render() {
                     Ok(pixels) => {
@@ -302,7 +413,12 @@ fn main() -> Result<(), String> {
         last: Instant::now(),
         keys: HashSet::new(),
         cursor: [0.0; 2],
-        right: false,
+        controls: ClassicControls::default(),
+        pointer: [0.0; 2],
+        captured: false,
+        raw_pointer: false,
+        pending_select: false,
+        dragged: 0.0,
         heights,
         dir,
         proof: None,
@@ -406,6 +522,7 @@ fn demo(app: &mut App, output: PathBuf, utility: bool) -> Result<(), String> {
                         .ok_or("Missing target")?;
                     app.game.player = target.actor.position - glam::Vec3::Z * 3.0;
                     app.game.yaw = std::f32::consts::PI;
+                    app.game.camera.yaw = app.game.yaw;
                 }
                 app.game.activate(ability)?;
                 eprintln!("Activated {:?} at {}", ability, app.game.time);

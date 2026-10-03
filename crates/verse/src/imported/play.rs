@@ -110,6 +110,7 @@ pub struct Game {
     pub time: f32,
     pub player: Vec3,
     pub yaw: f32,
+    pub camera: super::controls::Camera,
     pub selected: u64,
     pub message: String,
     simulation: Simulation,
@@ -121,6 +122,7 @@ pub struct Game {
     pub casting: Option<Casting>,
     pub impacts: Vec<(Vec3, f32, u8)>,
     pub moving: bool,
+    locomotion: [f32; 2],
 }
 impl Game {
     pub fn new(mut scene: Scene) -> Result<Self, String> {
@@ -154,6 +156,7 @@ impl Game {
             time: 0.0,
             player,
             yaw: std::f32::consts::PI,
+            camera: super::controls::Camera::default(),
             selected,
             message: String::new(),
             simulation,
@@ -165,6 +168,7 @@ impl Game {
             casting: None,
             impacts: vec![],
             moving: false,
+            locomotion: [0.0; 2],
         })
     }
     pub fn unlocked(&self) -> bool {
@@ -187,7 +191,11 @@ impl Game {
                 a.animation_time = self.time;
                 a.actor.position = self.player;
                 a.actor.yaw = self.yaw;
-                a.animation = if self.moving { 5 } else { 109 };
+                a.animation = if self.moving {
+                    if self.locomotion[1] < 0.0 { 13 } else { 5 }
+                } else {
+                    109
+                };
                 if let Some(cast) = &self.casting {
                     a.animation = 52;
                     a.animation_time = self.time - cast.started;
@@ -207,7 +215,7 @@ impl Game {
                         a.animation_time = 0.0;
                     }
                     if self.controls.prone(a.actor.position, self.time) {
-                        a.animation = 12;
+                        a.animation = 100;
                         a.animation_time = 1.0;
                     }
                     if !source.alive {
@@ -217,9 +225,18 @@ impl Game {
                 }
             }
         }
-        let forward = Vec3::new(-self.yaw.sin(), 0.0, -self.yaw.cos());
-        frame.eye = self.player - forward * 5.5 + Vec3::new(0.9, 2.5, 0.0);
-        frame.target = self.player + forward * 17.0 + Vec3::Y * 2.8;
+        let direction = self.camera.direction();
+        let anchor = self.player + Vec3::Y * 1.4;
+        frame.eye = anchor - direction * self.camera.distance;
+        frame.eye.y = frame.eye.y.max(0.25);
+        frame.target = frame.eye + direction * 20.0;
+        if self.camera.distance < 0.2 {
+            for actor in &mut frame.actors {
+                if actor.actor.model == "adventurer" {
+                    actor.visible = false;
+                }
+            }
+        }
         frame.projectiles = self
             .arrows
             .iter()
@@ -244,8 +261,16 @@ impl Game {
         }
         let forward = Vec3::new(-self.yaw.sin(), 0.0, -self.yaw.cos());
         let right = Vec3::new(-forward.z, 0.0, forward.x);
-        let delta = (right * movement[0] + forward * movement[1]).normalize_or_zero() * dt * 4.0;
+        let input = Vec3::new(
+            movement[0].clamp(-1.0, 1.0),
+            0.0,
+            movement[1].clamp(-1.0, 1.0),
+        );
+        let input = input / input.length().max(1.0);
+        let speed = if input.z < 0.0 { 4.1148 } else { 6.4008 };
+        let delta = (right * input.x + forward * input.z) * dt * speed;
         self.moving = delta.length_squared() > 0.0;
+        self.locomotion = movement;
         if self.moving && self.casting.take().is_some() {
             self.message = "Cast interrupted by movement".into();
         }
@@ -407,6 +432,29 @@ mod tests {
         .unwrap()
     }
     #[test]
+    fn classic_movement_uses_backpedal_speed_and_never_boosts_diagonals() {
+        let mut g = game();
+        for _ in 0..201 {
+            g.tick(0.1, [0.0; 2]).unwrap();
+        }
+        let before = g.player;
+        g.tick(0.1, [0.0, 1.0]).unwrap();
+        assert!((g.player.distance(before) - 6.4008 * 0.1).abs() < 0.001);
+        let before = g.player;
+        g.tick(0.1, [0.0, -1.0]).unwrap();
+        assert!((g.player.distance(before) - 4.1148 * 0.1).abs() < 0.001);
+        let before = g.player;
+        g.tick(0.1, [1.0, 1.0]).unwrap();
+        assert!((g.player.distance(before) - 6.4008 * 0.1).abs() < 0.001);
+        let projection = g.frame().view_projection(1280.0 / 720.0);
+        let before = g.player;
+        g.tick(0.1, [1.0, 0.0]).unwrap();
+        assert!(
+            (projection * (g.player - before).extend(0.0)).x > 0.0,
+            "Right strafe must move toward screen right"
+        );
+    }
+    #[test]
     fn utility_spells_share_resources_and_change_presented_world_state() {
         let mut g = game();
         assert!(g.activate(Ability::Light).is_err());
@@ -453,7 +501,7 @@ mod tests {
                 .find(|a| a.actor.id == 2)
                 .unwrap()
                 .animation,
-            12
+            100
         );
         g.player = rooted - Vec3::Z * 3.0;
         let hp = g

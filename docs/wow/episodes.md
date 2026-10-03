@@ -192,8 +192,11 @@ CARGO_TARGET_DIR="$HOME/work/openagents-target-agent1" cargo run -p verse \
 
 Use **1** for the bow, **2** for Fire Bolt, **3** for Magic Missile, and **4**
 for Fireball, or click their icons. **Tab** cycles living targets; click an NPC
-to select it. **WASD** moves within the chamber; drag with the right mouse button
-to turn. **Escape** closes the window. Refresh the private UI assets with the
+to select it. **W/S** move forward and backward; **A/D** turn. **Q/E** strafe.
+Hold the right mouse button to steer; **A/D** then strafe. Hold the left button
+to orbit the camera independently. Hold both buttons to run forward, move the
+mouse vertically to change pitch, and use the wheel to zoom. The arrow keys
+mirror **WASD**; **Num Lock** or mouse button 4 toggles autorun. **Escape** closes the window. Refresh the private UI assets with the
 importer's `--ui-only` mode to obtain the original Classic button frames and icons.
 The [spell demo](../../bench/wow/2026-10-03/verse-wizard-actions.mp4) records the
 handoff and all four actions through the same input-facing gameplay methods.
@@ -222,3 +225,24 @@ icons require another `--ui-only` import; imported art remains private.
 The [utility spell video](../../bench/wow/2026-10-03/verse-utility-spells.mp4)
 shows all five effects. Append `--utility-demo OUTPUT.mp4` to record them through the same
 playable runtime. The recorder stages a close-range Thunderwave position.
+
+
+The movement bindings follow Blizzard's [Classic manual](https://bnetcmsus-a.akamaihd.net/cms/template_resource/263A8NGR8HLZ1556919642368.pdf)
+and the private client's `Interface/FrameXML/Bindings.xml`. The authored control
+module reimplements the 1.12 camera rate law documented in the pinned
+[Benilla camera reference](https://github.com/samwhosung/benilla/blob/cf891dc3756a36dc0af4376f861ffb0c847ba5e9/crates/benilla-app/src/player/camera.rs):
+default yaw is 180 degrees per 800 pointer units and pitch is 90 degrees per
+600 units, with an 89-degree pitch limit. Keyboard turning runs at 180 degrees
+per second, reduced to 75% while translating. Run and backpedal speeds are
+7 and 4.5 yards per second, converted to Verse meters. Diagonals preserve speed.
+The wheel changes the zoom target by one yard per notch and glides at 8.33 yards
+per second up to the default 15-yard limit. Smart follow recenters camera yaw
+on movement input changes using the reference cosine transition.
+
+World mouse drags capture and hide the pointer, then restore its original
+position on release. Focus loss clears held input and releases capture. An
+action-bar click does not start a camera drag; a world click selects on release
+only when it was not dragged. This matches the input modes and default rate
+parameters; OS pointer acceleration is platform-dependent. Full imported-dungeon
+camera collision, jumping, swimming, and configurable client CVars are separate
+from this chamber movement implementation.

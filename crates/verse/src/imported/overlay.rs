@@ -325,7 +325,7 @@ pub fn action_bar(
         &small,
         left,
         y + 48.0,
-        "1-9 Cast   Tab Target   WASD Move   Right drag Turn",
+        "1-9 Cast   Tab Target   W/S Move   A/D Turn   Q/E Strafe",
         [0.9, 0.8, 0.6, 1.0],
     );
     let health = snapshot.player.hp as f32 / snapshot.player.max_hp as f32;
