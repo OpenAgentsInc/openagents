@@ -1,0 +1,666 @@
+--- a/crates/jev/src/answers.rs
++++ b/crates/jev/src/answers.rs
+@@ -5,6 +5,15 @@
+ //! is skipped with a warning rather than failing the call, an unknown field is
+ //! ignored, and a field the SDK cannot read is named by a dotted path such as
+ //! `answers.tone.confidence`.
++//!
++//! Reading is also where the numbers are held to their contract. A
++//! probability is finite and from 0 to 1, a distribution's mass is 1 within
++//! [`MASS_TOLERANCE`] per entry, a picked option is one the distribution
++//! names, and a score lies within its legend. A door that sends a Noul of
++//! `-2.0` is not read as a typed answer; the bytes stay on the raw response.
++//! [`SystemOneResponse::check_against`] then holds a response to the request
++//! that produced it: every question answered in its own type, and every
++//! option and level named the way the question named it.
+ 
+ use std::borrow::Cow;
+ use std::collections::BTreeMap;
+@@ -17,7 +26,15 @@
+ 
+ use crate::Result;
+ use crate::error::{Error, REQUEST_ID_HEADER, ResponseBody};
+-use crate::questions::Entry;
++use crate::questions::{Entry, Question, Questions};
++
++/// How far from 1 a distribution's mass may fall, per entry.
++///
++/// The API reports each probability rounded to two decimals, so a
++/// distribution of `n` entries may carry `n` half-cents of rounding. A
++/// distribution is read when its mass is within `MASS_TOLERANCE × n` of 1,
++/// and never tighter than one cent.
++pub const MASS_TOLERANCE: f64 = 0.005;
+ 
+ /// The probability that the answer to a Noul question is yes.
+ #[derive(Debug, Clone, PartialEq, Deserialize)]
+@@ -273,6 +290,67 @@
+         })
+     }
+ 
++    /// Hold the response to the request that produced it.
++    ///
++    /// Every question must be answered in its own type. A Choice answer
++    /// must name exactly the question's options, and a Score answer's
++    /// legend and probabilities exactly the question's levels. A
++    /// [`Question::Raw`] is held only to being answered, since the SDK does
++    /// not read its options.
++    ///
++    /// # Errors
++    ///
++    /// Returns [`Error::MissingAnswer`] for a question with no answer,
++    /// [`Error::AnswerType`] for one answered in another type, and
++    /// [`Error::ResponseValidation`] naming the option or level at fault.
++    pub fn check_against(&self, questions: &Questions) -> Result<()> {
++        for (id, question) in questions.iter() {
++            let answer = self.answer(id)?;
++            match (question, answer) {
++                (Question::Noul(_), Answer::Noul(_)) | (Question::Raw(_), _) => {}
++                (Question::Choice(asked), Answer::Choice(answer)) => {
++                    let same = asked.criteria.len() == answer.probabilities.len()
++                        && asked
++                            .criteria
++                            .keys()
++                            .all(|option| answer.probabilities.contains_key(option));
++                    if !same {
++                        let field = answer
++                            .probabilities
++                            .keys()
++                            .find(|option| !asked.criteria.contains_key(*option))
++                            .map_or_else(
++                                || "probabilities".to_string(),
++                                |option| format!("probabilities.{option}"),
++                            );
++                        return Err(self.mismatch_field(id, &field));
++                    }
++                }
++                (Question::Score(asked), Answer::Score(answer)) => {
++                    let levels = asked.criteria.len();
++                    if !names_every_level(answer.legend.keys(), levels) {
++                        return Err(self.mismatch_field(id, "legend"));
++                    }
++                    if !answer.probabilities.is_empty()
++                        && !names_every_level(answer.probabilities.keys(), levels)
++                    {
++                        return Err(self.mismatch_field(id, "probabilities"));
++                    }
++                }
++                (Question::Noul(_), found) => return Err(mismatch(id, "noul", found)),
++                (Question::Choice(_), found) => return Err(mismatch(id, "choice", found)),
++                (Question::Score(_), found) => return Err(mismatch(id, "score", found)),
++            }
++        }
++        Ok(())
++    }
++
++    /// The validation error for an answer field that does not match the
++    /// question.
++    fn mismatch_field(&self, id: &str, field: &str) -> Error {
++        validation(&self.raw, format!("answers.{id}.{field}"))
++    }
++
+     /// One answer of any type.
+     fn answer(&self, id: &str) -> Result<&Answer> {
+         self.answers
+@@ -310,25 +388,22 @@
+     match kind.as_str() {
+         "noul" => {
+             let answer: NoulAnswer = read(raw, id, body, NOUL_FIELDS)?;
+-            if answer
+-                .selected
+-                .as_deref()
+-                .is_some_and(|option| !matches!(option, "no" | "yes"))
+-            {
+-                return Err(validation(raw, format!("answers.{id}.selected")));
++            if let Some(field) = noul_fault(&answer) {
++                return Err(validation(raw, format!("answers.{id}.{field}")));
+             }
+             Ok(Some(Answer::Noul(answer)))
+         }
+-        "choice" => read(raw, id, body, CHOICE_FIELDS).map(|answer| Some(Answer::Choice(answer))),
++        "choice" => {
++            let answer: ChoiceAnswer = read(raw, id, body, CHOICE_FIELDS)?;
++            if let Some(field) = choice_fault(&answer) {
++                return Err(validation(raw, format!("answers.{id}.{field}")));
++            }
++            Ok(Some(Answer::Choice(answer)))
++        }
+         "score" => {
+             let answer: ScoreAnswer = read(raw, id, body, SCORE_FIELDS)?;
+-            if let Some(selected) = &answer.selected {
+-                let valid = selected.parse::<u32>().ok().is_some_and(|level| {
+-                    level.to_string() == *selected && answer.probabilities.contains_key(&level)
+-                });
+-                if !valid {
+-                    return Err(validation(raw, format!("answers.{id}.selected")));
+-                }
++            if let Some(field) = score_fault(&answer) {
++                return Err(validation(raw, format!("answers.{id}.{field}")));
+             }
+             Ok(Some(Answer::Score(answer)))
+         }
+@@ -344,6 +419,111 @@
+             Ok(None)
+         }
+     }
++}
++
++/// Whether a level map's keys are exactly `0..levels`: as many keys as
++/// levels, each below the count, with no repeats possible in a map.
++fn names_every_level<'a>(keys: impl ExactSizeIterator<Item = &'a u32>, levels: usize) -> bool {
++    keys.len() == levels && keys.into_iter().all(|level| (*level as usize) < levels)
++}
++
++/// Whether a number is a probability: finite, from 0 to 1.
++fn is_probability(value: f64) -> bool {
++    value.is_finite() && (0.0..=1.0).contains(&value)
++}
++
++/// The first entry of a distribution that is not a probability, or
++/// `probabilities` itself when the entries do not sum to 1 within tolerance.
++/// An empty distribution is not checked; the API leaves one out on some
++/// Score answers.
++fn mass_fault<'a, K: std::fmt::Display>(
++    probabilities: impl ExactSizeIterator<Item = (K, &'a f64)>,
++) -> Option<String> {
++    let entries = probabilities.len();
++    if entries == 0 {
++        return None;
++    }
++    let mut mass = 0.0;
++    for (key, value) in probabilities {
++        if !is_probability(*value) {
++            return Some(format!("probabilities.{key}"));
++        }
++        mass += value;
++    }
++    let allowed = (MASS_TOLERANCE * entries as f64).max(0.01);
++    ((mass - 1.0).abs() > allowed).then(|| "probabilities".to_string())
++}
++
++/// The field of a Noul answer that breaks the contract, if one does.
++fn noul_fault(answer: &NoulAnswer) -> Option<&'static str> {
++    if answer
++        .selected
++        .as_deref()
++        .is_some_and(|option| !matches!(option, "no" | "yes"))
++    {
++        return Some("selected");
++    }
++    None
++}
++
++/// The field of a Choice answer that breaks the contract, if one does: a
++/// confidence or probability out of range, a mass away from 1, an empty
++/// distribution, or a choice the distribution does not name.
++fn choice_fault(answer: &ChoiceAnswer) -> Option<String> {
++    if !is_probability(answer.confidence) {
++        return Some("confidence".to_string());
++    }
++    if answer.probabilities.is_empty() {
++        return Some("probabilities".to_string());
++    }
++    if let Some(field) = mass_fault(answer.probabilities.iter()) {
++        return Some(field);
++    }
++    if !answer.probabilities.contains_key(&answer.choice) {
++        return Some("choice".to_string());
++    }
++    None
++}
++
++/// The field of a Score answer that breaks the contract, if one does: an
++/// empty legend, a confidence or probability out of range, a mass away
++/// from 1, a probability for a level the legend lacks, a score outside the
++/// legend's levels, or a selected level the distribution does not name.
++fn score_fault(answer: &ScoreAnswer) -> Option<String> {
++    let (Some(lowest), Some(highest)) = (
++        answer.legend.keys().next(),
++        answer.legend.keys().next_back(),
++    ) else {
++        return Some("legend".to_string());
++    };
++    if !is_probability(answer.confidence) {
++        return Some("confidence".to_string());
++    }
++    if !answer.score.is_finite()
++        || answer.score < f64::from(*lowest)
++        || answer.score > f64::from(*highest)
++    {
++        return Some("score".to_string());
++    }
++    if let Some(level) = answer
++        .probabilities
++        .keys()
++        .find(|level| !answer.legend.contains_key(level))
++    {
++        return Some(format!("probabilities.{level}"));
++    }
++    if let Some(field) = mass_fault(answer.probabilities.iter()) {
++        return Some(field);
++    }
++    if let Some(selected) = &answer.selected {
++        let valid = selected.parse::<u32>().ok().is_some_and(|level| {
++            level.to_string() == *selected && answer.probabilities.contains_key(&level)
++        });
++        if !valid {
++            return Some("selected".to_string());
++        }
++    }
++    None
+ }
+ 
+ /// One answer of a known type, or the first field that stopped it.
+--- a/crates/jev/src/client.rs
++++ b/crates/jev/src/client.rs
+@@ -250,11 +250,18 @@
+     /// before any request. Returns [`Error::Api`], [`Error::Connection`], or
+     /// [`Error::Timeout`] when the call fails after its retries or runs out
+     /// of budget, and [`Error::ResponseValidation`] when the answers do not
+-    /// read.
++    /// read or do not hold to their numeric contract. Returns
++    /// [`Error::MissingAnswer`] or [`Error::AnswerType`] when a question
++    /// went unanswered or was answered in another type; a Choice or Score
++    /// answered over other options than the question named is
++    /// [`Error::ResponseValidation`]. A caller that wants the bytes
++    /// regardless reads [`Client::system_one_raw`].
+     pub async fn system_one(&self, request: SystemOneRequest) -> Result<SystemOneResponse> {
+         let prepared = self.prepare_system_one(&request)?;
+         let raw = self.send_read(&prepared).await?;
+-        SystemOneResponse::decode(raw)
++        let response = SystemOneResponse::decode(raw)?;
++        response.check_against(&request.questions)?;
++        Ok(response)
+     }
+ 
+     /// Ask questions about one state and hand back the response unread, for a
+--- a/crates/jev/src/lib.rs
++++ b/crates/jev/src/lib.rs
+@@ -206,7 +206,8 @@
+ mod transport;
+ 
+ pub use answers::{
+-    Answer, ChoiceAnswer, NoulAnswer, RawResponse, ScoreAnswer, SystemOneResponse, Usage,
++    Answer, ChoiceAnswer, MASS_TOLERANCE, NoulAnswer, RawResponse, ScoreAnswer, SystemOneResponse,
++    Usage,
+ };
+ #[cfg(feature = "blocking")]
+ pub use client::BlockingClient;
+--- a/crates/jev/tests/blocking.rs
++++ b/crates/jev/tests/blocking.rs
+@@ -81,13 +81,18 @@
+     let mut options = IndexMap::new();
+     options.insert("billing".to_string(), Some(Entry::from("Money questions")));
+     options.insert("technical".to_string(), Some(Entry::from("Broken things")));
++    options.insert("other".to_string(), None);
+     let questions = Questions::new()
+         .with("department", Choice::new("Which team?", options))
+         .with(
+             "severity",
+             Score::new(
+                 "How severe?",
+-                vec![Some(Entry::from("Cosmetic")), Some(Entry::from("Blocking"))],
++                vec![
++                    Some(Entry::from("Cosmetic")),
++                    Some(Entry::from("Impaired")),
++                    Some(Entry::from("Blocking")),
++                ],
+             ),
+         )
+         .with("requestsRefund", Noul::new("Is a refund asked for?"));
+--- a/crates/jev/tests/client.rs
++++ b/crates/jev/tests/client.rs
+@@ -279,7 +279,10 @@
+ fn asking() -> SystemOneRequest {
+     SystemOneRequest::new(
+         "I was charged twice for one order.",
+-        Questions::new().with("refund", Noul::new("Does the customer want money back?")),
++        Questions::new().with(
++            "requestsRefund",
++            Noul::new("Does the customer want money back?"),
++        ),
+     )
+ }
+ 
+@@ -325,7 +328,7 @@
+     let body = seen.first().ok_or("the server read one request")?.json()?;
+     assert_eq!(body["state"], json!("I was charged twice for one order."));
+     assert_eq!(body["model"], json!("jev-latest"));
+-    assert_eq!(body["questions"]["refund"]["type"], json!("noul"));
++    assert_eq!(body["questions"]["requestsRefund"]["type"], json!("noul"));
+     Ok(())
+ }
+ 
+@@ -1055,7 +1058,7 @@
+     let body = asking().body("jev-latest")?;
+     assert_eq!(body["state"], json!("I was charged twice for one order."));
+     assert_eq!(body["model"], json!("jev-latest"));
+-    assert_eq!(body["questions"]["refund"]["type"], json!("noul"));
++    assert_eq!(body["questions"]["requestsRefund"]["type"], json!("noul"));
+ 
+     // A model the request names wins over the caller's default, and a field
+     // merged in last lands beside the three.
+@@ -1503,20 +1506,23 @@
+     let array = SystemOneRequest::new(
+         json!(["part one", "part two"]),
+         Questions::new().with(
+-            "q",
++            "requestsRefund",
+             Noul::new(json!(["Is this two parts?", {"note": "yes it is"}])),
+         ),
+     );
+     client.system_one(array).await?;
+ 
+-    let null = SystemOneRequest::new(Entry::Null, Questions::new().with("q", Noul::new("x?")));
++    let null = SystemOneRequest::new(
++        Entry::Null,
++        Questions::new().with("requestsRefund", Noul::new("x?")),
++    );
+     client.system_one(null).await?;
+ 
+     let seen = seen.lock().await;
+     let first = seen[0].json()?;
+     assert_eq!(first["state"], json!(["part one", "part two"]));
+     assert_eq!(
+-        first["questions"]["q"]["instructions"],
++        first["questions"]["requestsRefund"]["instructions"],
+         json!(["Is this two parts?", {"note": "yes it is"}])
+     );
+     let second = seen[1].json()?;
+@@ -1542,6 +1548,6 @@
+     assert_eq!(body["state"], serde_json::Value::Null);
+     assert_eq!(body["future_option"], serde_json::Value::Null);
+     assert_eq!(body["nested"], json!({"enabled": true}));
+-    assert_eq!(body["questions"]["refund"]["type"], json!("noul"));
+-    Ok(())
+-}
++    assert_eq!(body["questions"]["requestsRefund"]["type"], json!("noul"));
++    Ok(())
++}
+--- a/crates/jev/tests/invariants.rs
++++ b/crates/jev/tests/invariants.rs
+@@ -0,0 +1,266 @@
++//! The numeric contract a typed answer holds to, and the request-aware check
++//! that a response answered the questions it was asked. Each malformed door
++//! here sends a body that reads as JSON of the right shape, so the only
++//! thing between it and a typed answer is the contract.
++
++use indexmap::IndexMap;
++use jev::{Choice, Error, Noul, Questions, RawResponse, Score, SystemOneResponse};
++use serde_json::{Value, json};
++
++fn decode(answer: Value) -> jev::Result<SystemOneResponse> {
++    SystemOneResponse::decode(RawResponse {
++        status: 200,
++        headers: Default::default(),
++        bytes: serde_json::to_vec(&json!({"model":"fixture","answers":{"q":answer}})).unwrap(),
++    })
++}
++
++/// The dotted path a body's first fault is named by.
++fn fault(answer: Value) -> String {
++    match decode(answer) {
++        Err(Error::ResponseValidation { field_path, .. }) => field_path,
++        Err(other) => panic!("another error: {other}"),
++        Ok(_) => panic!("the answer was read"),
++    }
++}
++
++fn choice(choice: &str, confidence: f64, probabilities: Value) -> Value {
++    json!({"type":"choice","choice":choice,"confidence":confidence,"probabilities":probabilities})
++}
++
++fn score(score: f64, confidence: f64, probabilities: Value) -> Value {
++    json!({"type":"score","score":score,"confidence":confidence,
++        "legend":{"0":"calm","1":"annoyed","2":"angry"},"probabilities":probabilities})
++}
++
++#[test]
++fn a_noul_is_a_probability() {
++    for bad in [-2.0, 1.01, -0.0001, f64::MAX] {
++        assert_eq!(fault(json!({"type":"noul","noul":bad})), "answers.q.noul");
++    }
++    for edge in [0.0, 1.0, 0.5] {
++        assert!(decode(json!({"type":"noul","noul":edge})).is_ok());
++    }
++}
++
++#[test]
++fn a_choice_confidence_is_a_probability() {
++    let spread = json!({"a":0.5,"b":0.5});
++    assert_eq!(
++        fault(choice("a", 1.5, spread.clone())),
++        "answers.q.confidence"
++    );
++    assert_eq!(
++        fault(choice("a", -0.1, spread.clone())),
++        "answers.q.confidence"
++    );
++    assert!(decode(choice("a", 0.0, spread)).is_ok());
++}
++
++#[test]
++fn a_choice_distribution_is_one_of_probabilities_that_sum_to_one() {
++    assert_eq!(
++        fault(choice("a", 0.5, json!({"a":-0.5,"b":1.5}))),
++        "answers.q.probabilities.a"
++    );
++    assert_eq!(
++        fault(choice("a", 0.5, json!({"a":0.9,"b":0.9}))),
++        "answers.q.probabilities"
++    );
++    assert_eq!(
++        fault(choice("a", 0.5, json!({"a":0.1,"b":0.1}))),
++        "answers.q.probabilities"
++    );
++    assert_eq!(
++        fault(choice("a", 0.5, json!({}))),
++        "answers.q.probabilities"
++    );
++}
++
++#[test]
++fn a_rounded_distribution_is_within_tolerance() {
++    // Three entries at two decimals may miss 1 by up to a cent and a half.
++    assert!(decode(choice("a", 0.5, json!({"a":0.33,"b":0.33,"c":0.33}))).is_ok());
++    assert!(decode(choice("a", 0.5, json!({"a":0.34,"b":0.34,"c":0.33}))).is_ok());
++    assert_eq!(
++        fault(choice("a", 0.5, json!({"a":0.34,"b":0.34,"c":0.34}))),
++        "answers.q.probabilities"
++    );
++}
++
++#[test]
++fn a_choice_names_an_option_the_distribution_carries() {
++    assert_eq!(
++        fault(choice("c", 0.5, json!({"a":0.5,"b":0.5}))),
++        "answers.q.choice"
++    );
++    assert_eq!(
++        fault(choice("A", 0.5, json!({"a":0.5,"b":0.5}))),
++        "answers.q.choice"
++    );
++}
++
++#[test]
++fn a_score_lies_within_its_legend() {
++    let spread = json!({"0":0.2,"1":0.3,"2":0.5});
++    assert_eq!(fault(score(-0.1, 0.5, spread.clone())), "answers.q.score");
++    assert_eq!(fault(score(2.1, 0.5, spread.clone())), "answers.q.score");
++    assert_eq!(
++        fault(score(f64::NAN, 0.5, spread.clone())),
++        "answers.q.score"
++    );
++    assert!(decode(score(0.0, 0.5, spread.clone())).is_ok());
++    assert!(decode(score(2.0, 0.5, spread.clone())).is_ok());
++    assert!(decode(score(1.3, 0.5, spread)).is_ok());
++}
++
++#[test]
++fn a_score_confidence_is_a_probability() {
++    let spread = json!({"0":0.2,"1":0.3,"2":0.5});
++    assert_eq!(fault(score(1.0, 1.2, spread)), "answers.q.confidence");
++}
++
++#[test]
++fn a_score_distribution_names_only_legend_levels_and_sums_to_one() {
++    assert_eq!(
++        fault(score(1.0, 0.5, json!({"0":0.2,"1":0.3,"3":0.5}))),
++        "answers.q.probabilities.3"
++    );
++    assert_eq!(
++        fault(score(1.0, 0.5, json!({"0":0.2,"1":1.3,"2":0.5}))),
++        "answers.q.probabilities.1"
++    );
++    assert_eq!(
++        fault(score(1.0, 0.5, json!({"0":0.2,"1":0.3,"2":0.2}))),
++        "answers.q.probabilities"
++    );
++    // The API leaves the distribution off some Score answers.
++    assert!(decode(score(1.0, 0.5, json!({}))).is_ok());
++}
++
++#[test]
++fn a_score_needs_a_legend() {
++    assert_eq!(
++        fault(json!({"type":"score","score":0.0,"confidence":0.5,"legend":{}})),
++        "answers.q.legend"
++    );
++}
++
++#[test]
++fn a_faulty_answer_leaves_the_rest_of_the_body_unread() {
++    // The bytes are the caller's to inspect; the typed answers are not built.
++    let Err(Error::ResponseValidation { body, .. }) = decode(json!({"type":"noul","noul":-2.0}))
++    else {
++        panic!("the answer was read");
++    };
++    assert!(body.is_some());
++}
++
++/// The questions the documented response answers, with the options the
++/// documented response carries.
++fn asked() -> Questions {
++    let mut options = IndexMap::new();
++    for option in ["billing", "technical", "sales"] {
++        options.insert(option.to_string(), None);
++    }
++    Questions::new()
++        .with("department", Choice::new("Which team?", options))
++        .with(
++            "frustration",
++            Score::new("How upset?", vec![None, None, None]),
++        )
++        .with("is_urgent", Noul::new("Urgent?"))
++}
++
++fn documented() -> SystemOneResponse {
++    SystemOneResponse::decode(RawResponse {
++        status: 200,
++        headers: Default::default(),
++        bytes: serde_json::to_vec(&json!({
++            "model": "jev-latest",
++            "answers": {
++                "department": {
++                    "type": "choice",
++                    "choice": "technical",
++                    "probabilities": {"billing": 0.08, "technical": 0.85, "sales": 0.07},
++                    "confidence": 0.82,
++                },
++                "frustration": {
++                    "type": "score",
++                    "score": 1.6,
++                    "legend": {"0": "Calm", "1": "Frustrated", "2": "Very angry"},
++                    "probabilities": {"0": 0.05, "1": 0.3, "2": 0.65},
++                    "confidence": 0.78,
++                },
++                "is_urgent": {"type": "noul", "noul": 0.92},
++            },
++        }))
++        .unwrap(),
++    })
++    .unwrap()
++}
++
++#[test]
++fn the_documented_response_answers_the_documented_questions() {
++    documented().check_against(&asked()).unwrap();
++}
++
++#[test]
++fn a_question_without_an_answer_is_missing() {
++    let questions = asked().with("also", Noul::new("And this?"));
++    let error = documented().check_against(&questions).unwrap_err();
++    assert!(matches!(error, Error::MissingAnswer { id } if id == "also"));
++}
++
++#[test]
++fn a_question_answered_in_another_type_is_a_type_error() {
++    let mut options = IndexMap::new();
++    options.insert("yes".to_string(), None);
++    let questions = Questions::new().with("is_urgent", Choice::new("Urgent?", options));
++    let error = documented().check_against(&questions).unwrap_err();
++    assert!(matches!(
++        error,
++        Error::AnswerType { id, expected: "choice", found: "noul" } if id == "is_urgent"
++    ));
++}
++
++#[test]
++fn a_choice_answered_over_other_options_names_the_stranger() {
++    let mut options = IndexMap::new();
++    for option in ["billing", "technical"] {
++        options.insert(option.to_string(), None);
++    }
++    let questions = Questions::new().with("department", Choice::new("Which team?", options));
++    let error = documented().check_against(&questions).unwrap_err();
++    assert!(matches!(
++        error,
++        Error::ResponseValidation { field_path, .. }
++            if field_path == "answers.department.probabilities.sales"
++    ));
++}
++
++#[test]
++fn a_choice_answered_over_fewer_options_is_a_fault_too() {
++    let mut options = IndexMap::new();
++    for option in ["billing", "technical", "sales", "legal"] {
++        options.insert(option.to_string(), None);
++    }
++    let questions = Questions::new().with("department", Choice::new("Which team?", options));
++    let error = documented().check_against(&questions).unwrap_err();
++    assert!(matches!(
++        error,
++        Error::ResponseValidation { field_path, .. }
++            if field_path == "answers.department.probabilities"
++    ));
++}
++
++#[test]
++fn a_score_answered_over_other_levels_is_a_fault() {
++    let questions =
++        Questions::new().with("frustration", Score::new("How upset?", vec![None, None]));
++    let error = documented().check_against(&questions).unwrap_err();
++    assert!(matches!(
++        error,
++        Error::ResponseValidation { field_path, .. } if field_path == "answers.frustration.legend"
++    ));
++}
+--- a/crates/jev/tests/selected_answer.rs
++++ b/crates/jev/tests/selected_answer.rs
+@@ -27,14 +27,14 @@
+ fn a_score_must_name_an_actual_canonical_level() {
+     for selected in ["", "unknown", "2", "00", "-1"] {
+         let error = decode(json!({"type":"score","score":0.75,"confidence":0.0,
+-            "legend":{},"probabilities":{"0":0.25,"1":0.75},"selected":selected}))
++            "legend":{"0":"low","1":"high"},"probabilities":{"0":0.25,"1":0.75},"selected":selected}))
+         .unwrap_err();
+         assert!(
+             matches!(error, Error::ResponseValidation { field_path, .. } if field_path == "answers.q.selected")
+         );
+     }
+     let answer = decode(json!({"type":"score","score":0.75,"confidence":0.0,
+-        "legend":{},"probabilities":{"0":0.25,"1":0.75},"selected":"0"}))
++        "legend":{"0":"low","1":"high"},"probabilities":{"0":0.25,"1":0.75},"selected":"0"}))
+     .unwrap();
+     assert_eq!(answer.score("q").unwrap().selected.as_deref(), Some("0"));
+ }

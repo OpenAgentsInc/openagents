@@ -1,0 +1,95 @@
+{
+  "at": "2026-10-03T12:20:18.257946+00:00",
+  "condition": "Serial warm local CLI process, retained syntax index, no network or Jev; includes process startup, imports, manifest/index loading, assembly, output writes, process exit. Cold indexing and live GitHub fetch excluded.",
+  "rows": [
+    {
+      "task": "alternative-alpha",
+      "repetition": 1,
+      "process_wall_s": 1.0391922909766436,
+      "exit_code": 0,
+      "pipeline_reported_wall_s": 0.931686958996579,
+      "briefing_sha256": "ad6d102706aa51773bc132bb391cfcd6a76ebabe8340e7d8a52d436d3897ffad",
+      "same_briefing_as_original": true
+    },
+    {
+      "task": "alternative-beta",
+      "repetition": 1,
+      "process_wall_s": 0.4858877919614315,
+      "exit_code": 0,
+      "pipeline_reported_wall_s": 0.3888087079394609,
+      "briefing_sha256": "761354b211df79855868fb7a98a8d86c41c994ccb145d7507ed3317f2a979204",
+      "same_briefing_as_original": true
+    },
+    {
+      "task": "alternative-gamma",
+      "repetition": 1,
+      "process_wall_s": 0.44114320795051754,
+      "exit_code": 0,
+      "pipeline_reported_wall_s": 0.3440003329887986,
+      "briefing_sha256": "cbcded1a641247903e6a5d2775218a6397b67227a376bd8610d11edf50331b38",
+      "same_briefing_as_original": true
+    },
+    {
+      "task": "alternative-alpha",
+      "repetition": 2,
+      "process_wall_s": 1.0517225409857929,
+      "exit_code": 0,
+      "pipeline_reported_wall_s": 0.9531697498168796,
+      "briefing_sha256": "ad6d102706aa51773bc132bb391cfcd6a76ebabe8340e7d8a52d436d3897ffad",
+      "same_briefing_as_original": true
+    },
+    {
+      "task": "alternative-beta",
+      "repetition": 2,
+      "process_wall_s": 0.43230108404532075,
+      "exit_code": 0,
+      "pipeline_reported_wall_s": 0.34223312488757074,
+      "briefing_sha256": "761354b211df79855868fb7a98a8d86c41c994ccb145d7507ed3317f2a979204",
+      "same_briefing_as_original": true
+    },
+    {
+      "task": "alternative-gamma",
+      "repetition": 2,
+      "process_wall_s": 0.4080719999037683,
+      "exit_code": 0,
+      "pipeline_reported_wall_s": 0.317633000202477,
+      "briefing_sha256": "cbcded1a641247903e6a5d2775218a6397b67227a376bd8610d11edf50331b38",
+      "same_briefing_as_original": true
+    },
+    {
+      "task": "alternative-alpha",
+      "repetition": 3,
+      "process_wall_s": 1.054335332941264,
+      "exit_code": 0,
+      "pipeline_reported_wall_s": 0.9512518751434982,
+      "briefing_sha256": "ad6d102706aa51773bc132bb391cfcd6a76ebabe8340e7d8a52d436d3897ffad",
+      "same_briefing_as_original": true
+    },
+    {
+      "task": "alternative-beta",
+      "repetition": 3,
+      "process_wall_s": 0.4412877499125898,
+      "exit_code": 0,
+      "pipeline_reported_wall_s": 0.3522469170857221,
+      "briefing_sha256": "761354b211df79855868fb7a98a8d86c41c994ccb145d7507ed3317f2a979204",
+      "same_briefing_as_original": true
+    },
+    {
+      "task": "alternative-gamma",
+      "repetition": 3,
+      "process_wall_s": 0.40990283410064876,
+      "exit_code": 0,
+      "pipeline_reported_wall_s": 0.32237824983894825,
+      "briefing_sha256": "cbcded1a641247903e6a5d2775218a6397b67227a376bd8610d11edf50331b38",
+      "same_briefing_as_original": true
+    }
+  ],
+  "under_one_second": 6,
+  "total": 9,
+  "medians": {
+    "alternative-alpha": 1.0517225409857929,
+    "alternative-beta": 0.4412877499125898,
+    "alternative-gamma": 0.40990283410064876
+  },
+  "excluded_reason": "The unit-test process ran concurrently. Retained as a provisional observation, excluded from final timing."
+}

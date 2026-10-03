@@ -1,0 +1,33 @@
+{
+  "task": "A grant-retention change might keep delegated access working after its issuing device reenrolls, but must not restore explicitly revoked authority. Which reading establishes the authority contract first?",
+  "source_commit": "09f4e0915150f503e332c2b213d24f793c433f3b",
+  "source_context": {
+    "public_task": "Device re-enrollment in `crates/coder-access` keeps adding grants until the 128-grant bound prevents a new device from enrolling. Fix grant retention so a device that enrolls again has one live grant, and revoked or superseded grants do not prevent new enrollment. Preserve the bound for distinct live devices and preserve already-issued delegated access when its issuing device enrolls again. Delegation must still narrow authority and obey explicit revocation; re-enrollment must not revive authority that was revoked or removed. Preserve invitation retry behavior. Cover the public invitation and owner-approved enrollment paths with regression tests. Read the crate README and `nips/openagents/NIP-HOST.md`. Work only on the isolated code and tests in `crates/coder-access/`; host-store cleanup, deployment, owner devices, and changes outside this package are outside this trial.",
+    "candidate_readings": [
+      {
+        "key": "p",
+        "path": "crates/coder-access/src/host/mod.rs",
+        "start_line": 704,
+        "end_line": 785,
+        "description": "Device revocation and grant issuance, including retained-grant capacity.",
+        "source_blob_sha256": "7b0f8ed5041f0bc2929a03632e0a5245188416c1dbb2029924b5600ff001bced"
+      },
+      {
+        "key": "q",
+        "path": "nips/openagents/NIP-HOST.md",
+        "start_line": 266,
+        "end_line": 313,
+        "description": "Grant epochs, explicit revocation, and authority-narrowing delegation rules.",
+        "source_blob_sha256": "3da5fd0161b7096a4aeada96bdccd3fc3444734f205eda3919f85e1890c18210"
+      },
+      {
+        "key": "r",
+        "path": "crates/coder-access/src/host/enroll.rs",
+        "start_line": 78,
+        "end_line": 193,
+        "description": "Invitation creation, reverse-enrollment request creation, and pending status.",
+        "source_blob_sha256": "dc07b3a1d4a939660bee8c3b3b8d19539c38f06fee17c57b351cbb1a80f13f98"
+      }
+    ]
+  }
+}

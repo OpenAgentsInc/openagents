@@ -15,7 +15,20 @@ cost in the complete workflow.
 This synthesis combines the independently recomputed audit results with
 explicitly identified historical reports. It does not pool unlike trials or
 treat multiple reports of the same runs as new evidence. The new native
-panel has **zero scored sessions** while funded Jev access is unavailable.
+panel has **zero scored sessions**. The owner's Vercel gateway configuration
+now answers a real Jev call; the separate
+[lifecycle pilot](../jev-lifecycle/README.md) records this transport's
+unversioned identity and tests deeper component integration.
+
+That pilot records 53 successful typed calls with $0.026275620 reported usage.
+It supplies a concrete source-ranking gain and a two-block batching comparison
+with 73.4% lower API cost and 70.3% lower API time. Broad review misses all six
+demonstrated defects. Focused review catches some simple missing guards, but an
+overconstrained question inflates its initial apparent sensitivity; after fixing
+that question, it misses both tested directory-order defects. Separately, batching
+Git reads reduces source-assembly time while preserving the exact context and
+briefing bytes. These are useful component results and limitations, with zero
+new native executor outcomes.
 
 ## Evidence by claim
 

@@ -1,0 +1,68 @@
+{
+  "at": "2026-10-03T12:13:17.180213+00:00",
+  "manifest_sha256": "133e1feca761a4e4404e1ebf307557a0d3093d30d81006c23565f1b86a374ab0",
+  "code_sha256": "e4b1c5491030615d20cc82e832958eac4057ac8762997e787b3872210b5c56b5",
+  "protocol_sha256": "2109f4740c02e419a999073e962bc7235b93d6d7554a2c44ab72943ad85860c0",
+  "inputs": {
+    "R01": {
+      "input_sha256": "d60758e7091ce37b91d9446cd6e0c2e21355081eaab6342be45317968da77285",
+      "family": "beta",
+      "request_size_with_all_input_fields": 55221
+    },
+    "R02": {
+      "input_sha256": "6506e975013229e582a1b89691294a4fbcdab46fc5d3ec005ae48e5f25bd7b5e",
+      "family": "v2",
+      "request_size_with_all_input_fields": 64201
+    },
+    "R03": {
+      "input_sha256": "ccc64519f67480f4026baca8f81ccd0adcd1be498f3c4ec439516b49ab60a250",
+      "family": "v2",
+      "request_size_with_all_input_fields": 64447
+    },
+    "R04": {
+      "input_sha256": "f9c1f1ac82292e706b36638f73d8e70746cb57152d0cbb9f5567f086f57a2166",
+      "family": "gamma",
+      "request_size_with_all_input_fields": 64839
+    },
+    "R05": {
+      "input_sha256": "df2da395f072c264b7a55c3ac5ebf638bf46fca004a502c7669ddbfb0c313fc2",
+      "family": "beta",
+      "request_size_with_all_input_fields": 54811
+    },
+    "R06": {
+      "input_sha256": "a6cf87cc3da14dd9e30364eb63431048faac6e755539cc489acd9d0725c164f1",
+      "family": "v2",
+      "request_size_with_all_input_fields": 63962
+    },
+    "R07": {
+      "input_sha256": "2ddd5cca30adb33881a670937663fcb50d5b02036e28152565c6351cc676c788",
+      "family": "beta",
+      "request_size_with_all_input_fields": 55109
+    },
+    "R08": {
+      "input_sha256": "8ff18150a3a235ba79e1090da39745c24c0cc99e5ddd13c5c4fd9dd0db616693",
+      "family": "v2",
+      "request_size_with_all_input_fields": 63622
+    },
+    "R09": {
+      "input_sha256": "9060d194e4889453e0c885ef01eacfe63aecab4f0593fba2da188ea45bedcc07",
+      "family": "v2",
+      "request_size_with_all_input_fields": 63944
+    },
+    "R10": {
+      "input_sha256": "7118e1c3a1b78d7690e6a6b20abae96cc6dd6f64288b6b7f10c4ac8f8a356680",
+      "family": "gamma",
+      "request_size_with_all_input_fields": 64863
+    },
+    "R11": {
+      "input_sha256": "4750dc28428a8a7d73669036544161a0155ce399635fd436059aef18f8be3600",
+      "family": "gamma",
+      "request_size_with_all_input_fields": 64917
+    },
+    "R12": {
+      "input_sha256": "94c891b5c5155e04c038a1dc41e2b33fc058501709811d17b649312e95a5686e",
+      "family": "v2",
+      "request_size_with_all_input_fields": 64955
+    }
+  }
+}

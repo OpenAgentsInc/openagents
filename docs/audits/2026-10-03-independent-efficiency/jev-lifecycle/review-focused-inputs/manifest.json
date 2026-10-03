@@ -1,0 +1,1870 @@
+{
+  "schema": "openagents.jev.applied-review-development.v1",
+  "created_at": "2026-10-03T12:12:44.427823+00:00",
+  "development_only": true,
+  "same_cases_as_first_review": true,
+  "model_calls": 0,
+  "builder_sha256": "a82db815e378f3312399d17b057b469123650fe62a31a042bdca7470c8f54d3c",
+  "max_state_bytes": 65536,
+  "policies": {
+    "beta": {
+      "crates/atif/src/log.rs": [
+        [
+          "production",
+          null
+        ]
+      ],
+      "crates/atif/src/lib.rs": [
+        [
+          "production",
+          null
+        ]
+      ],
+      "crates/coderbench/src/lib.rs": [
+        [
+          "unit",
+          "^pub enum Ending \\{"
+        ],
+        [
+          "unit",
+          "^impl Ending \\{"
+        ],
+        [
+          "unit",
+          "^pub enum Fault \\{"
+        ],
+        [
+          "unit",
+          "^impl Fault \\{"
+        ],
+        [
+          "unit",
+          "^pub struct Judgment \\{"
+        ],
+        [
+          "unit",
+          "^impl Judgment \\{"
+        ],
+        [
+          "unit",
+          "^pub struct Observed \\{"
+        ],
+        [
+          "unit",
+          "^    pub fn judge\\("
+        ],
+        [
+          "unit",
+          "^    fn judge_record\\("
+        ],
+        [
+          "unit",
+          "^fn empty_answers\\("
+        ],
+        [
+          "unit",
+          "^pub fn observe\\("
+        ]
+      ]
+    },
+    "gamma": {
+      "crates/jev/src/answers.rs": [
+        [
+          "production",
+          null
+        ]
+      ],
+      "crates/jev/src/client.rs": [
+        [
+          "production",
+          null
+        ]
+      ],
+      "crates/jev/src/lib.rs": [
+        [
+          "tail",
+          "^mod answers;"
+        ]
+      ]
+    },
+    "v2": {
+      "crates/gym/src/runs_microcoder.rs": [
+        [
+          "prefix_before",
+          "^pub fn detail_lines\\("
+        ]
+      ],
+      "crates/gym/src/runs.rs": [
+        [
+          "unit",
+          "^pub struct Sources \\{"
+        ],
+        [
+          "unit",
+          "^pub struct Run \\{"
+        ],
+        [
+          "unit",
+          "^impl Run \\{"
+        ],
+        [
+          "unit",
+          "^pub struct Catalog \\{"
+        ],
+        [
+          "unit",
+          "^    pub fn load\\("
+        ],
+        [
+          "unit",
+          "^    pub fn refresh\\("
+        ]
+      ],
+      "crates/gym/src/runs_beats_winner.rs": [
+        [
+          "unit",
+          "^fn claimable\\("
+        ],
+        [
+          "unit",
+          "^pub fn beats_winner\\("
+        ]
+      ]
+    }
+  },
+  "contract_policies": {
+    "beta": {
+      "docs/coder/traces.md": [
+        [
+          "all",
+          null
+        ]
+      ]
+    },
+    "gamma": {
+      "docs/decision-models/2026-09-20-score-contract.md": [
+        [
+          "all",
+          null
+        ]
+      ]
+    },
+    "v2": {
+      "docs/gym/terminal-bench-cli.md": [
+        [
+          "section",
+          "## Read Microcoder runs"
+        ],
+        [
+          "section",
+          "### Beat the winner"
+        ]
+      ],
+      "docs/coder/beat-fable-showcase.md": [
+        [
+          "section",
+          "### Pass 2: adding the live run directory"
+        ],
+        [
+          "section",
+          "## Reproduce the claims"
+        ]
+      ]
+    }
+  },
+  "selection_note": "Family admission rules are identical across variants; no label, failure description, or observed result selects a source unit. Public production code and named public contract sections only. Complete functions use their formatted declaration and matching-indent closing brace; complete file prefixes stop at a declaration boundary.",
+  "source_private_manifest_sha256": "133e1feca761a4e4404e1ebf307557a0d3093d30d81006c23565f1b86a374ab0",
+  "prior_private_manifest_sha256": "2ce97654d51812ef95882694f037c9d1080bfd9911e59e9ff2ea50804fac0d5b",
+  "public_case_manifest": {
+    "path": "../review-cases.json",
+    "sha256": "75b86198a3ad989110f781f1cfefe2e44498062b690f2d43020eacaf95f5bb44"
+  },
+  "cases": [
+    {
+      "id": "R01",
+      "family": "beta",
+      "state_path": "R01.json",
+      "state_sha256": "d60758e7091ce37b91d9446cd6e0c2e21355081eaab6342be45317968da77285",
+      "state_bytes": 52992,
+      "source_commit": "7ec5f6e83d018ab2f25d7a61ff695de81f2f55f6",
+      "task_sha256": "ad60a32cf78b1f655649b700dffb05cb27f6c613b367d81e4b263428d682eb9a",
+      "source_spans": [
+        {
+          "path": "crates/atif/src/log.rs",
+          "origin": "applied_candidate",
+          "start_line": 1,
+          "end_line": 573,
+          "source_sha256": "a7c47bfabfa50d5d28a068f21674297bd9272ad70873f0ebee1b519849e5a1c3",
+          "span_sha256": "3efef3d071900e5fc97f9f4f5cd50466ab374b5301f69e7cc439260563599f57",
+          "selection": "production"
+        },
+        {
+          "path": "crates/atif/src/lib.rs",
+          "origin": "applied_candidate",
+          "start_line": 1,
+          "end_line": 65,
+          "source_sha256": "741314dfa98ac1209f295ac7301cbaa4b2a133d7fbfff03081af0efeff79036d",
+          "span_sha256": "741314dfa98ac1209f295ac7301cbaa4b2a133d7fbfff03081af0efeff79036d",
+          "selection": "production"
+        },
+        {
+          "path": "crates/coderbench/src/lib.rs",
+          "origin": "unchanged_base",
+          "start_line": 369,
+          "end_line": 394,
+          "source_sha256": "1fcf6ce2bf972972471a6dfeaf4c0a1c469b1b6183b211b515a483c51fa98178",
+          "span_sha256": "9bf276d3c8ad0beafe3680edf51f1a1b56397a198dc5dcd0fd2176b41a8dc377",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/coderbench/src/lib.rs",
+          "origin": "unchanged_base",
+          "start_line": 395,
+          "end_line": 410,
+          "source_sha256": "1fcf6ce2bf972972471a6dfeaf4c0a1c469b1b6183b211b515a483c51fa98178",
+          "span_sha256": "b3373abf2f1d401567c8d9f634612f9ddd9e2cb4b14f0ddb0f3c4ae35404bf8c",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/coderbench/src/lib.rs",
+          "origin": "unchanged_base",
+          "start_line": 431,
+          "end_line": 516,
+          "source_sha256": "1fcf6ce2bf972972471a6dfeaf4c0a1c469b1b6183b211b515a483c51fa98178",
+          "span_sha256": "51d005b40ba52be1fb5b58a75fcd8692ca69dfc23225b441ba7298696bf2e35a",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/coderbench/src/lib.rs",
+          "origin": "unchanged_base",
+          "start_line": 517,
+          "end_line": 566,
+          "source_sha256": "1fcf6ce2bf972972471a6dfeaf4c0a1c469b1b6183b211b515a483c51fa98178",
+          "span_sha256": "4ddd4c5ab2ee0036c4b148fde504a335cc291b8281d7910aeede9514582bd4e0",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/coderbench/src/lib.rs",
+          "origin": "unchanged_base",
+          "start_line": 678,
+          "end_line": 685,
+          "source_sha256": "1fcf6ce2bf972972471a6dfeaf4c0a1c469b1b6183b211b515a483c51fa98178",
+          "span_sha256": "77b75232eb1c0737973c2e4bd0edacac01ae70686c5ae489fc75a20bbdb48976",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/coderbench/src/lib.rs",
+          "origin": "unchanged_base",
+          "start_line": 686,
+          "end_line": 694,
+          "source_sha256": "1fcf6ce2bf972972471a6dfeaf4c0a1c469b1b6183b211b515a483c51fa98178",
+          "span_sha256": "b8008ab7b452c0d30249b4266df2dde538b97ada2d03ef4540e73d6f953b0b78",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/coderbench/src/lib.rs",
+          "origin": "unchanged_base",
+          "start_line": 695,
+          "end_line": 720,
+          "source_sha256": "1fcf6ce2bf972972471a6dfeaf4c0a1c469b1b6183b211b515a483c51fa98178",
+          "span_sha256": "7b96b618c17f9b3b5e5c7533d5e1364146d16642a43e836eb40c2f0969c739e6",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/coderbench/src/lib.rs",
+          "origin": "unchanged_base",
+          "start_line": 921,
+          "end_line": 954,
+          "source_sha256": "1fcf6ce2bf972972471a6dfeaf4c0a1c469b1b6183b211b515a483c51fa98178",
+          "span_sha256": "c03f750728a9d0ed8dcfe897a60e8c1e8add6811b7c342f849398b9224cf613f",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/coderbench/src/lib.rs",
+          "origin": "unchanged_base",
+          "start_line": 1266,
+          "end_line": 1290,
+          "source_sha256": "1fcf6ce2bf972972471a6dfeaf4c0a1c469b1b6183b211b515a483c51fa98178",
+          "span_sha256": "15eace67c21298b9ee3e9bcb8c70659d94f881c4093279795b121648966233d4",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/coderbench/src/lib.rs",
+          "origin": "unchanged_base",
+          "start_line": 1336,
+          "end_line": 1343,
+          "source_sha256": "1fcf6ce2bf972972471a6dfeaf4c0a1c469b1b6183b211b515a483c51fa98178",
+          "span_sha256": "aabdd7e91472fd20d7c5463384b4e9abe972d00c4bd203af1e7d3efff71aa20e",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/coderbench/src/lib.rs",
+          "origin": "unchanged_base",
+          "start_line": 1344,
+          "end_line": 1424,
+          "source_sha256": "1fcf6ce2bf972972471a6dfeaf4c0a1c469b1b6183b211b515a483c51fa98178",
+          "span_sha256": "7518560a5bb854a03bf2f1a27edf5534c1b9550f07aae5a15d27bd91581ad542",
+          "selection": "unit"
+        },
+        {
+          "path": "docs/coder/traces.md",
+          "origin": "unchanged_base",
+          "start_line": 1,
+          "end_line": 200,
+          "source_sha256": "b7570fc3dd4c74d377ad003e7a8c8d49e4901f620feb6cb2737db63c645390ca",
+          "span_sha256": "b7570fc3dd4c74d377ad003e7a8c8d49e4901f620feb6cb2737db63c645390ca",
+          "selection": "all"
+        }
+      ],
+      "derivation": "Verified candidate payload overlay",
+      "no_candidate_code_executed": true,
+      "source_input": {
+        "path": "../review-inputs/R01.json",
+        "sha256": "5c2de42e0fc3cca461186fb993e81c44654513e5f0f3d1b009cb6712ce1123b4",
+        "bytes": 48516
+      },
+      "derived_full_diff": {
+        "path": "../review-diffs/R01.patch",
+        "sha256": "34d433459cfd8ee19ea1f4a74cfb6445a5b6f7389feeb2ba91df47942c0442d7",
+        "bytes": 24360
+      },
+      "public_contract": {
+        "path": "../../system-one-delegation/alternative-beta/inputs/public-task-manifest.json",
+        "sha256": "a78647ec368dc9f6fb573915d9250bfe9ceb16edc1da9389e8576cc486c7a511",
+        "bytes": 3725
+      },
+      "candidate_binding": {
+        "payload": {
+          "sha256": "eb7e6b635f34383838b380c13bd8a69b6ffd1bf391852ac7d9c36dc7f6db2e86",
+          "bytes": 18908,
+          "retained_privately": true
+        },
+        "changes": {
+          "sha256": "5059bdc42f892548a2fd5fd851563e04a3364bf725cc63bf708630bcea636eae",
+          "bytes": 1902,
+          "retained_privately": true
+        },
+        "manifest_sha256": "34eb49f64b19b5a33a046dd37fc7ebeb6105af4e1985154cac1ad6d12f1b41b8"
+      },
+      "public_case_binding": {
+        "path": "../review-cases.json",
+        "manifest_sha256": "75b86198a3ad989110f781f1cfefe2e44498062b690f2d43020eacaf95f5bb44",
+        "case_id": "R01"
+      }
+    },
+    {
+      "id": "R02",
+      "family": "v2",
+      "state_path": "R02.json",
+      "state_sha256": "6506e975013229e582a1b89691294a4fbcdab46fc5d3ec005ae48e5f25bd7b5e",
+      "state_bytes": 62448,
+      "source_commit": "f29611f211747884b4f508db80634d3f6df2a5e9",
+      "task_sha256": "c6d0525dd9f7d8438e237984be0194366a747bf8c5e7e10e2557edd2b4e4e7cb",
+      "source_spans": [
+        {
+          "path": "crates/gym/src/runs_microcoder.rs",
+          "origin": "applied_candidate",
+          "start_line": 1,
+          "end_line": 878,
+          "source_sha256": "3f333dc8eb7637cdc3af352609fd13e950181ddb3e200292c0a575e54fed48d7",
+          "span_sha256": "2a147df419b8e96b2b46f523fec7d9ac31d3944432f8e8c5fe08da704c38ea4d",
+          "selection": "prefix_before"
+        },
+        {
+          "path": "crates/gym/src/runs.rs",
+          "origin": "applied_candidate",
+          "start_line": 33,
+          "end_line": 57,
+          "source_sha256": "19132ba7c82eaccba708f54553760362e8e16c3593565fb483ec0542a3e790a8",
+          "span_sha256": "db1197635bf1047ce46411faed65e6d510f577195bde712918b2dca667ee029f",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/gym/src/runs.rs",
+          "origin": "applied_candidate",
+          "start_line": 238,
+          "end_line": 283,
+          "source_sha256": "19132ba7c82eaccba708f54553760362e8e16c3593565fb483ec0542a3e790a8",
+          "span_sha256": "53e566867b883e6e74643d3a7b9009470bfaff88ec201eaf8a6fd3d66ccd8cac",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/gym/src/runs.rs",
+          "origin": "applied_candidate",
+          "start_line": 284,
+          "end_line": 333,
+          "source_sha256": "19132ba7c82eaccba708f54553760362e8e16c3593565fb483ec0542a3e790a8",
+          "span_sha256": "86ea17ff859bd70f828a13d68a2a306cfa9ec401cb60f0ad2972794098bd98ae",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/gym/src/runs.rs",
+          "origin": "applied_candidate",
+          "start_line": 343,
+          "end_line": 353,
+          "source_sha256": "19132ba7c82eaccba708f54553760362e8e16c3593565fb483ec0542a3e790a8",
+          "span_sha256": "03e5fa7299af06294408343091316cc751ad6e26d99b8df5d70bb8aa401832e3",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/gym/src/runs.rs",
+          "origin": "applied_candidate",
+          "start_line": 356,
+          "end_line": 373,
+          "source_sha256": "19132ba7c82eaccba708f54553760362e8e16c3593565fb483ec0542a3e790a8",
+          "span_sha256": "158290df76402b58c03cf9eba45e1127428746dfe554763928f2cbf4ea640afb",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/gym/src/runs.rs",
+          "origin": "applied_candidate",
+          "start_line": 374,
+          "end_line": 491,
+          "source_sha256": "19132ba7c82eaccba708f54553760362e8e16c3593565fb483ec0542a3e790a8",
+          "span_sha256": "a874944b0210fda4e1236ba0428107508c56391488c3ff6dd15a8288c92f9afa",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/gym/src/runs_beats_winner.rs",
+          "origin": "applied_candidate",
+          "start_line": 136,
+          "end_line": 145,
+          "source_sha256": "c62618cb657940683d81079d94fb46f7b76a7a2f56f998f6ae41a40e11f1d9fd",
+          "span_sha256": "ec0acfa90f439f36482bdb6d4ec91297edf29a227ddfbb79457cf2829705040b",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/gym/src/runs_beats_winner.rs",
+          "origin": "applied_candidate",
+          "start_line": 188,
+          "end_line": 254,
+          "source_sha256": "c62618cb657940683d81079d94fb46f7b76a7a2f56f998f6ae41a40e11f1d9fd",
+          "span_sha256": "e40cfb893629d25c66b5c9733b9d3f68ea3dbf2a1b86717633b0d0bd6dec7b7c",
+          "selection": "unit"
+        },
+        {
+          "path": "docs/gym/terminal-bench-cli.md",
+          "origin": "applied_candidate",
+          "start_line": 84,
+          "end_line": 151,
+          "source_sha256": "5ed7e3fcc3b167acc651c68a4976ac98e02071cf52274daff871b86c4594b109",
+          "span_sha256": "34cd48c1163d767162ca497f365c3f64dc2d9b68796b237ed741420c6c28c58f",
+          "selection": "section"
+        },
+        {
+          "path": "docs/gym/terminal-bench-cli.md",
+          "origin": "applied_candidate",
+          "start_line": 402,
+          "end_line": 446,
+          "source_sha256": "5ed7e3fcc3b167acc651c68a4976ac98e02071cf52274daff871b86c4594b109",
+          "span_sha256": "8e4dc99ebf240db99d3baa78d2ffc07a889756db07f52669573a12fc34f5a132",
+          "selection": "section"
+        },
+        {
+          "path": "docs/coder/beat-fable-showcase.md",
+          "origin": "applied_candidate",
+          "start_line": 81,
+          "end_line": 106,
+          "source_sha256": "d3c8c46660ea50d33674321e5cc92223c83dc2ef13806c2c4411eede9c986ebb",
+          "span_sha256": "3d87ec7c78dfc13d5e88ab1da8983dcb5540bb4eaf59c81f6c6075c9b9b285b4",
+          "selection": "section"
+        },
+        {
+          "path": "docs/coder/beat-fable-showcase.md",
+          "origin": "applied_candidate",
+          "start_line": 276,
+          "end_line": 290,
+          "source_sha256": "d3c8c46660ea50d33674321e5cc92223c83dc2ef13806c2c4411eede9c986ebb",
+          "span_sha256": "72afa833a79940c3534d1cf026663747305320d439f667795c16d8f88fed96e7",
+          "selection": "section"
+        }
+      ],
+      "derivation": "Verified retained patch applied with git apply --check to exact Git base file bytes",
+      "no_candidate_code_executed": true,
+      "source_input": {
+        "path": "../review-inputs/R02.json",
+        "sha256": "478e31616b2e2040cf5dc4e9f79334ceb4c6342e818ee8bf9befae0182d9c9cc",
+        "bytes": 43883
+      },
+      "derived_full_diff": {
+        "path": "../review-diffs/R02.patch",
+        "sha256": "07245eec761b96f087fd669198a229771b417f35fc43e8252d5573ccb98918c5",
+        "bytes": 17071
+      },
+      "public_contract": {
+        "source": "Public sanitized task retained in the state.task field; original provenance is the V2 public study.",
+        "task_text_sha256": "c6d0525dd9f7d8438e237984be0194366a747bf8c5e7e10e2557edd2b4e4e7cb",
+        "public_provenance_path": "docs/audits/2026-10-03-independent-efficiency/briefing-iteration-2/README.md"
+      },
+      "candidate_binding": {
+        "payload_sha256": "1800eb110cf1a960f76ca8bc5cbff61495ceebeb5f601eddecc741de73fc8506",
+        "canonical_candidate_sha256": "14015444813585598407f1aa1553b13ff2fa56417e69f2a97d50d5853218b4e2"
+      },
+      "public_case_binding": {
+        "path": "../review-cases.json",
+        "manifest_sha256": "75b86198a3ad989110f781f1cfefe2e44498062b690f2d43020eacaf95f5bb44",
+        "case_id": "R02"
+      }
+    },
+    {
+      "id": "R03",
+      "family": "v2",
+      "state_path": "R03.json",
+      "state_sha256": "ccc64519f67480f4026baca8f81ccd0adcd1be498f3c4ec439516b49ab60a250",
+      "state_bytes": 62694,
+      "source_commit": "f29611f211747884b4f508db80634d3f6df2a5e9",
+      "task_sha256": "c6d0525dd9f7d8438e237984be0194366a747bf8c5e7e10e2557edd2b4e4e7cb",
+      "source_spans": [
+        {
+          "path": "crates/gym/src/runs_microcoder.rs",
+          "origin": "applied_candidate",
+          "start_line": 1,
+          "end_line": 886,
+          "source_sha256": "b20db9977aeabe8385ae0dd8dd9d8d742e5954aea6864e48f130598415e3206e",
+          "span_sha256": "6ced13a65c1a4bd189850c0fac62f9ae75f8dc66f0336ed585aa1f2503a93382",
+          "selection": "prefix_before"
+        },
+        {
+          "path": "crates/gym/src/runs.rs",
+          "origin": "applied_candidate",
+          "start_line": 33,
+          "end_line": 57,
+          "source_sha256": "6302e8029e12aff06ac4943b4d1ba7f2b6496ead722e922cfaa6cac5ce0bd061",
+          "span_sha256": "db1197635bf1047ce46411faed65e6d510f577195bde712918b2dca667ee029f",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/gym/src/runs.rs",
+          "origin": "applied_candidate",
+          "start_line": 238,
+          "end_line": 283,
+          "source_sha256": "6302e8029e12aff06ac4943b4d1ba7f2b6496ead722e922cfaa6cac5ce0bd061",
+          "span_sha256": "53e566867b883e6e74643d3a7b9009470bfaff88ec201eaf8a6fd3d66ccd8cac",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/gym/src/runs.rs",
+          "origin": "applied_candidate",
+          "start_line": 284,
+          "end_line": 333,
+          "source_sha256": "6302e8029e12aff06ac4943b4d1ba7f2b6496ead722e922cfaa6cac5ce0bd061",
+          "span_sha256": "86ea17ff859bd70f828a13d68a2a306cfa9ec401cb60f0ad2972794098bd98ae",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/gym/src/runs.rs",
+          "origin": "applied_candidate",
+          "start_line": 343,
+          "end_line": 353,
+          "source_sha256": "6302e8029e12aff06ac4943b4d1ba7f2b6496ead722e922cfaa6cac5ce0bd061",
+          "span_sha256": "03e5fa7299af06294408343091316cc751ad6e26d99b8df5d70bb8aa401832e3",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/gym/src/runs.rs",
+          "origin": "applied_candidate",
+          "start_line": 356,
+          "end_line": 373,
+          "source_sha256": "6302e8029e12aff06ac4943b4d1ba7f2b6496ead722e922cfaa6cac5ce0bd061",
+          "span_sha256": "158290df76402b58c03cf9eba45e1127428746dfe554763928f2cbf4ea640afb",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/gym/src/runs.rs",
+          "origin": "applied_candidate",
+          "start_line": 374,
+          "end_line": 490,
+          "source_sha256": "6302e8029e12aff06ac4943b4d1ba7f2b6496ead722e922cfaa6cac5ce0bd061",
+          "span_sha256": "c0db17651fd95276c17e5141b218107a7c3963d38812862061985a16c6a60d47",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/gym/src/runs_beats_winner.rs",
+          "origin": "applied_candidate",
+          "start_line": 136,
+          "end_line": 145,
+          "source_sha256": "f75d28b6c89591fe0d74d39b9dfd068d43649c1edb5bb8b5a3275d32f7a824bb",
+          "span_sha256": "ec0acfa90f439f36482bdb6d4ec91297edf29a227ddfbb79457cf2829705040b",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/gym/src/runs_beats_winner.rs",
+          "origin": "applied_candidate",
+          "start_line": 188,
+          "end_line": 254,
+          "source_sha256": "f75d28b6c89591fe0d74d39b9dfd068d43649c1edb5bb8b5a3275d32f7a824bb",
+          "span_sha256": "e40cfb893629d25c66b5c9733b9d3f68ea3dbf2a1b86717633b0d0bd6dec7b7c",
+          "selection": "unit"
+        },
+        {
+          "path": "docs/gym/terminal-bench-cli.md",
+          "origin": "applied_candidate",
+          "start_line": 84,
+          "end_line": 150,
+          "source_sha256": "176a4cbde2bbfdccdfd6cb6f85020e0761194bdac0f95051f166c24f7b5250b1",
+          "span_sha256": "857f3df95bc065c2103eafdc17e57485a92a757ce22be21bb2b0ce65602afc98",
+          "selection": "section"
+        },
+        {
+          "path": "docs/gym/terminal-bench-cli.md",
+          "origin": "applied_candidate",
+          "start_line": 401,
+          "end_line": 447,
+          "source_sha256": "176a4cbde2bbfdccdfd6cb6f85020e0761194bdac0f95051f166c24f7b5250b1",
+          "span_sha256": "46838fe8225320a7a5c44e694bcd4f96cfb0ed9e2c13ca049187476c7e6c9f02",
+          "selection": "section"
+        },
+        {
+          "path": "docs/coder/beat-fable-showcase.md",
+          "origin": "applied_candidate",
+          "start_line": 81,
+          "end_line": 106,
+          "source_sha256": "ce687536db193fa3749bea71a89e71d030930a998354c487125119972efeda96",
+          "span_sha256": "3a335d4e25b6f6ff7e2f1727c8eaf6e33e83f762dff0ae901828f09d6314b6df",
+          "selection": "section"
+        },
+        {
+          "path": "docs/coder/beat-fable-showcase.md",
+          "origin": "applied_candidate",
+          "start_line": 276,
+          "end_line": 290,
+          "source_sha256": "ce687536db193fa3749bea71a89e71d030930a998354c487125119972efeda96",
+          "span_sha256": "72afa833a79940c3534d1cf026663747305320d439f667795c16d8f88fed96e7",
+          "selection": "section"
+        }
+      ],
+      "derivation": "Verified retained patch applied with git apply --check to exact Git base file bytes",
+      "no_candidate_code_executed": true,
+      "source_input": {
+        "path": "../review-inputs/R03.json",
+        "sha256": "a197eeafd5e921f75f66e8903ba791483931e5d2d91cc174227549f84ede6def",
+        "bytes": 43832
+      },
+      "derived_full_diff": {
+        "path": "../review-diffs/R03.patch",
+        "sha256": "22fbf81d37a46460de92636b39bc0f11fdeaefba508a0aff7e70e677e3215790",
+        "bytes": 17030
+      },
+      "public_contract": {
+        "source": "Public sanitized task retained in the state.task field; original provenance is the V2 public study.",
+        "task_text_sha256": "c6d0525dd9f7d8438e237984be0194366a747bf8c5e7e10e2557edd2b4e4e7cb",
+        "public_provenance_path": "docs/audits/2026-10-03-independent-efficiency/briefing-iteration-2/README.md"
+      },
+      "candidate_binding": {
+        "payload_sha256": "3dbedc9cc80a12dc80eab46af6d3822a8d2d3b08f24d7a45514f8ff40269da6e",
+        "canonical_candidate_sha256": "6b496ddcaa2aae5375733dea6cf102c61d79197ed09ec1162fe2ad07adc653ff"
+      },
+      "public_case_binding": {
+        "path": "../review-cases.json",
+        "manifest_sha256": "75b86198a3ad989110f781f1cfefe2e44498062b690f2d43020eacaf95f5bb44",
+        "case_id": "R03"
+      }
+    },
+    {
+      "id": "R04",
+      "family": "gamma",
+      "state_path": "R04.json",
+      "state_sha256": "f9c1f1ac82292e706b36638f73d8e70746cb57152d0cbb9f5567f086f57a2166",
+      "state_bytes": 62095,
+      "source_commit": "c427943a5c84ba5938a3549f24b27de551812a37",
+      "task_sha256": "4c32325abfa689942a088506f2bb6d393ea2310b85683c48dd351f6ab290be31",
+      "source_spans": [
+        {
+          "path": "crates/jev/src/answers.rs",
+          "origin": "applied_candidate",
+          "start_line": 1,
+          "end_line": 701,
+          "source_sha256": "5fbc9a458f8bb096b0f40e7b30d55ad4bf14383f2114f4dd9d523bf296027395",
+          "span_sha256": "5fbc9a458f8bb096b0f40e7b30d55ad4bf14383f2114f4dd9d523bf296027395",
+          "selection": "production"
+        },
+        {
+          "path": "crates/jev/src/client.rs",
+          "origin": "applied_candidate",
+          "start_line": 1,
+          "end_line": 719,
+          "source_sha256": "9c0ecba809d27fc8b797e39a2407bb3c02fb6acef91cef28edafdf3935693796",
+          "span_sha256": "9c0ecba809d27fc8b797e39a2407bb3c02fb6acef91cef28edafdf3935693796",
+          "selection": "production"
+        },
+        {
+          "path": "crates/jev/src/lib.rs",
+          "origin": "applied_candidate",
+          "start_line": 199,
+          "end_line": 258,
+          "source_sha256": "365c3a49ccd7c6661c208d42764d648bb59e2c8ead5000d2a5037264dafdbefb",
+          "span_sha256": "2942fed4220f70237d7df3b1a6498d64fe27cec892c279262a6249d34b72e8fa",
+          "selection": "tail"
+        },
+        {
+          "path": "docs/decision-models/2026-09-20-score-contract.md",
+          "origin": "unchanged_base",
+          "start_line": 1,
+          "end_line": 107,
+          "source_sha256": "a8c612095723bf3599ae4d618aeff8ae18e3b5a05e868c07f26e623126e20c60",
+          "span_sha256": "a8c612095723bf3599ae4d618aeff8ae18e3b5a05e868c07f26e623126e20c60",
+          "selection": "all"
+        }
+      ],
+      "derivation": "Verified candidate payload overlay",
+      "no_candidate_code_executed": true,
+      "source_input": {
+        "path": "../review-inputs/R04.json",
+        "sha256": "972177a81abe3d582097f2ed61c28b481629c42d9e12c81d32b51b218f7db770",
+        "bytes": 58368
+      },
+      "derived_full_diff": {
+        "path": "../review-diffs/R04.patch",
+        "sha256": "27d6d6e310becac6d7e6c84733a71ca776b41d8f58b2aa4e319c77c6a201bbce",
+        "bytes": 25749
+      },
+      "public_contract": {
+        "path": "../../system-one-delegation/alternative-gamma/inputs/public-task-manifest.json",
+        "sha256": "a06ff5c883e57a8bac3cafc88444d6987b80b4a5b3c7efaf4c0354d080a8050d",
+        "bytes": 4131
+      },
+      "candidate_binding": {
+        "payload": {
+          "sha256": "ec55ed359d09eccf77c291ee59e0ec9964925012e79f04e6de531f80ae5640f6",
+          "bytes": 29955,
+          "retained_privately": true
+        },
+        "changes": {
+          "sha256": "e97e3836b131b2ef7123a3f1e7955f9ade7b05742d877d5d7015db91772dbd06",
+          "bytes": 2479,
+          "retained_privately": true
+        },
+        "manifest_sha256": "c7a439fc896bb085127cd49e6fedee467e6f662d0f32e70ff1b29756e82202e9"
+      },
+      "public_case_binding": {
+        "path": "../review-cases.json",
+        "manifest_sha256": "75b86198a3ad989110f781f1cfefe2e44498062b690f2d43020eacaf95f5bb44",
+        "case_id": "R04"
+      }
+    },
+    {
+      "id": "R05",
+      "family": "beta",
+      "state_path": "R05.json",
+      "state_sha256": "df2da395f072c264b7a55c3ac5ebf638bf46fca004a502c7669ddbfb0c313fc2",
+      "state_bytes": 52582,
+      "source_commit": "7ec5f6e83d018ab2f25d7a61ff695de81f2f55f6",
+      "task_sha256": "ad60a32cf78b1f655649b700dffb05cb27f6c613b367d81e4b263428d682eb9a",
+      "source_spans": [
+        {
+          "path": "crates/atif/src/log.rs",
+          "origin": "applied_candidate",
+          "start_line": 1,
+          "end_line": 562,
+          "source_sha256": "7fa9484773c3fab64c96e75066ad330dc84361d4dc8b3fe3161866ab952233ef",
+          "span_sha256": "c2c42a7bce9434ed4c66f090af81617a3ead50d61177281f5d713e588c805152",
+          "selection": "production"
+        },
+        {
+          "path": "crates/atif/src/lib.rs",
+          "origin": "applied_candidate",
+          "start_line": 1,
+          "end_line": 65,
+          "source_sha256": "741314dfa98ac1209f295ac7301cbaa4b2a133d7fbfff03081af0efeff79036d",
+          "span_sha256": "741314dfa98ac1209f295ac7301cbaa4b2a133d7fbfff03081af0efeff79036d",
+          "selection": "production"
+        },
+        {
+          "path": "crates/coderbench/src/lib.rs",
+          "origin": "unchanged_base",
+          "start_line": 369,
+          "end_line": 394,
+          "source_sha256": "1fcf6ce2bf972972471a6dfeaf4c0a1c469b1b6183b211b515a483c51fa98178",
+          "span_sha256": "9bf276d3c8ad0beafe3680edf51f1a1b56397a198dc5dcd0fd2176b41a8dc377",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/coderbench/src/lib.rs",
+          "origin": "unchanged_base",
+          "start_line": 395,
+          "end_line": 410,
+          "source_sha256": "1fcf6ce2bf972972471a6dfeaf4c0a1c469b1b6183b211b515a483c51fa98178",
+          "span_sha256": "b3373abf2f1d401567c8d9f634612f9ddd9e2cb4b14f0ddb0f3c4ae35404bf8c",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/coderbench/src/lib.rs",
+          "origin": "unchanged_base",
+          "start_line": 431,
+          "end_line": 516,
+          "source_sha256": "1fcf6ce2bf972972471a6dfeaf4c0a1c469b1b6183b211b515a483c51fa98178",
+          "span_sha256": "51d005b40ba52be1fb5b58a75fcd8692ca69dfc23225b441ba7298696bf2e35a",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/coderbench/src/lib.rs",
+          "origin": "unchanged_base",
+          "start_line": 517,
+          "end_line": 566,
+          "source_sha256": "1fcf6ce2bf972972471a6dfeaf4c0a1c469b1b6183b211b515a483c51fa98178",
+          "span_sha256": "4ddd4c5ab2ee0036c4b148fde504a335cc291b8281d7910aeede9514582bd4e0",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/coderbench/src/lib.rs",
+          "origin": "unchanged_base",
+          "start_line": 678,
+          "end_line": 685,
+          "source_sha256": "1fcf6ce2bf972972471a6dfeaf4c0a1c469b1b6183b211b515a483c51fa98178",
+          "span_sha256": "77b75232eb1c0737973c2e4bd0edacac01ae70686c5ae489fc75a20bbdb48976",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/coderbench/src/lib.rs",
+          "origin": "unchanged_base",
+          "start_line": 686,
+          "end_line": 694,
+          "source_sha256": "1fcf6ce2bf972972471a6dfeaf4c0a1c469b1b6183b211b515a483c51fa98178",
+          "span_sha256": "b8008ab7b452c0d30249b4266df2dde538b97ada2d03ef4540e73d6f953b0b78",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/coderbench/src/lib.rs",
+          "origin": "unchanged_base",
+          "start_line": 695,
+          "end_line": 720,
+          "source_sha256": "1fcf6ce2bf972972471a6dfeaf4c0a1c469b1b6183b211b515a483c51fa98178",
+          "span_sha256": "7b96b618c17f9b3b5e5c7533d5e1364146d16642a43e836eb40c2f0969c739e6",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/coderbench/src/lib.rs",
+          "origin": "unchanged_base",
+          "start_line": 921,
+          "end_line": 954,
+          "source_sha256": "1fcf6ce2bf972972471a6dfeaf4c0a1c469b1b6183b211b515a483c51fa98178",
+          "span_sha256": "c03f750728a9d0ed8dcfe897a60e8c1e8add6811b7c342f849398b9224cf613f",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/coderbench/src/lib.rs",
+          "origin": "unchanged_base",
+          "start_line": 1266,
+          "end_line": 1290,
+          "source_sha256": "1fcf6ce2bf972972471a6dfeaf4c0a1c469b1b6183b211b515a483c51fa98178",
+          "span_sha256": "15eace67c21298b9ee3e9bcb8c70659d94f881c4093279795b121648966233d4",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/coderbench/src/lib.rs",
+          "origin": "unchanged_base",
+          "start_line": 1336,
+          "end_line": 1343,
+          "source_sha256": "1fcf6ce2bf972972471a6dfeaf4c0a1c469b1b6183b211b515a483c51fa98178",
+          "span_sha256": "aabdd7e91472fd20d7c5463384b4e9abe972d00c4bd203af1e7d3efff71aa20e",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/coderbench/src/lib.rs",
+          "origin": "unchanged_base",
+          "start_line": 1344,
+          "end_line": 1424,
+          "source_sha256": "1fcf6ce2bf972972471a6dfeaf4c0a1c469b1b6183b211b515a483c51fa98178",
+          "span_sha256": "7518560a5bb854a03bf2f1a27edf5534c1b9550f07aae5a15d27bd91581ad542",
+          "selection": "unit"
+        },
+        {
+          "path": "docs/coder/traces.md",
+          "origin": "unchanged_base",
+          "start_line": 1,
+          "end_line": 200,
+          "source_sha256": "b7570fc3dd4c74d377ad003e7a8c8d49e4901f620feb6cb2737db63c645390ca",
+          "span_sha256": "b7570fc3dd4c74d377ad003e7a8c8d49e4901f620feb6cb2737db63c645390ca",
+          "selection": "all"
+        }
+      ],
+      "derivation": "Verified candidate payload overlay",
+      "no_candidate_code_executed": true,
+      "source_input": {
+        "path": "../review-inputs/R05.json",
+        "sha256": "049c001fa17b435462b368e31d543de150214209e56504a66881225fda7daecf",
+        "bytes": 48077
+      },
+      "derived_full_diff": {
+        "path": "../review-diffs/R05.patch",
+        "sha256": "c629031f4a892c08a8eb5944138e7f7eea731fdaf71d48d12bc5def3963a17ad",
+        "bytes": 23935
+      },
+      "public_contract": {
+        "path": "../../system-one-delegation/alternative-beta/inputs/public-task-manifest.json",
+        "sha256": "a78647ec368dc9f6fb573915d9250bfe9ceb16edc1da9389e8576cc486c7a511",
+        "bytes": 3725
+      },
+      "candidate_binding": {
+        "payload": {
+          "sha256": "c1a125d4ff652cd01c4f7404862b9b8d6ed2c6e1ecc65447689abac519fb76fa",
+          "bytes": 18840,
+          "retained_privately": true
+        },
+        "changes": {
+          "sha256": "20d8b5cbf8e1cb68c576f1cb71089f33700765b294cf41c9048f993c4a4b20f9",
+          "bytes": 1902,
+          "retained_privately": true
+        },
+        "manifest_sha256": "d576eaad9644152d25adb4267d0f20e2ff9d709160cfdace898330b2a76b4f41"
+      },
+      "public_case_binding": {
+        "path": "../review-cases.json",
+        "manifest_sha256": "75b86198a3ad989110f781f1cfefe2e44498062b690f2d43020eacaf95f5bb44",
+        "case_id": "R05"
+      }
+    },
+    {
+      "id": "R06",
+      "family": "v2",
+      "state_path": "R06.json",
+      "state_sha256": "a6cf87cc3da14dd9e30364eb63431048faac6e755539cc489acd9d0725c164f1",
+      "state_bytes": 62209,
+      "source_commit": "f29611f211747884b4f508db80634d3f6df2a5e9",
+      "task_sha256": "c6d0525dd9f7d8438e237984be0194366a747bf8c5e7e10e2557edd2b4e4e7cb",
+      "source_spans": [
+        {
+          "path": "crates/gym/src/runs_microcoder.rs",
+          "origin": "applied_candidate",
+          "start_line": 1,
+          "end_line": 872,
+          "source_sha256": "83709ad15b5aadca4b371ef03715f1a07d4e18a9b00d9fa5aa1bc7882d663465",
+          "span_sha256": "bede8fc93580f709a293068b4b47825b8c928aea39e5ee4a5d47ac3086c03d89",
+          "selection": "prefix_before"
+        },
+        {
+          "path": "crates/gym/src/runs.rs",
+          "origin": "applied_candidate",
+          "start_line": 33,
+          "end_line": 57,
+          "source_sha256": "a0533063ad5369eadcb9db83b29bd83901fb249e512928ee8abc4d995b880e97",
+          "span_sha256": "db1197635bf1047ce46411faed65e6d510f577195bde712918b2dca667ee029f",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/gym/src/runs.rs",
+          "origin": "applied_candidate",
+          "start_line": 238,
+          "end_line": 283,
+          "source_sha256": "a0533063ad5369eadcb9db83b29bd83901fb249e512928ee8abc4d995b880e97",
+          "span_sha256": "53e566867b883e6e74643d3a7b9009470bfaff88ec201eaf8a6fd3d66ccd8cac",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/gym/src/runs.rs",
+          "origin": "applied_candidate",
+          "start_line": 284,
+          "end_line": 333,
+          "source_sha256": "a0533063ad5369eadcb9db83b29bd83901fb249e512928ee8abc4d995b880e97",
+          "span_sha256": "86ea17ff859bd70f828a13d68a2a306cfa9ec401cb60f0ad2972794098bd98ae",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/gym/src/runs.rs",
+          "origin": "applied_candidate",
+          "start_line": 343,
+          "end_line": 353,
+          "source_sha256": "a0533063ad5369eadcb9db83b29bd83901fb249e512928ee8abc4d995b880e97",
+          "span_sha256": "03e5fa7299af06294408343091316cc751ad6e26d99b8df5d70bb8aa401832e3",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/gym/src/runs.rs",
+          "origin": "applied_candidate",
+          "start_line": 356,
+          "end_line": 373,
+          "source_sha256": "a0533063ad5369eadcb9db83b29bd83901fb249e512928ee8abc4d995b880e97",
+          "span_sha256": "158290df76402b58c03cf9eba45e1127428746dfe554763928f2cbf4ea640afb",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/gym/src/runs.rs",
+          "origin": "applied_candidate",
+          "start_line": 374,
+          "end_line": 490,
+          "source_sha256": "a0533063ad5369eadcb9db83b29bd83901fb249e512928ee8abc4d995b880e97",
+          "span_sha256": "e3a6949a261ec033a836aa8e9df4318dfd831f9e78d006c4897372f004e109be",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/gym/src/runs_beats_winner.rs",
+          "origin": "applied_candidate",
+          "start_line": 136,
+          "end_line": 145,
+          "source_sha256": "6edec3b95284259f6b90277e5bd7bbd1a12e3775ed9af42864aeac9da21b35b8",
+          "span_sha256": "ec0acfa90f439f36482bdb6d4ec91297edf29a227ddfbb79457cf2829705040b",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/gym/src/runs_beats_winner.rs",
+          "origin": "applied_candidate",
+          "start_line": 188,
+          "end_line": 254,
+          "source_sha256": "6edec3b95284259f6b90277e5bd7bbd1a12e3775ed9af42864aeac9da21b35b8",
+          "span_sha256": "e40cfb893629d25c66b5c9733b9d3f68ea3dbf2a1b86717633b0d0bd6dec7b7c",
+          "selection": "unit"
+        },
+        {
+          "path": "docs/gym/terminal-bench-cli.md",
+          "origin": "applied_candidate",
+          "start_line": 84,
+          "end_line": 151,
+          "source_sha256": "015afb9c13d6141252392af8974d3cca53c76965142c722a4317f5f88ff8cfdb",
+          "span_sha256": "446114979aa589c005e162c394cb25bb8c91f2574fb44448faf8780f81aad1d7",
+          "selection": "section"
+        },
+        {
+          "path": "docs/gym/terminal-bench-cli.md",
+          "origin": "applied_candidate",
+          "start_line": 402,
+          "end_line": 446,
+          "source_sha256": "015afb9c13d6141252392af8974d3cca53c76965142c722a4317f5f88ff8cfdb",
+          "span_sha256": "8e4dc99ebf240db99d3baa78d2ffc07a889756db07f52669573a12fc34f5a132",
+          "selection": "section"
+        },
+        {
+          "path": "docs/coder/beat-fable-showcase.md",
+          "origin": "applied_candidate",
+          "start_line": 81,
+          "end_line": 106,
+          "source_sha256": "a062679fd73ec7be7fffbd46352a98cd1003466925112537b0304e2ad90267c5",
+          "span_sha256": "c7eb8ced208e797c16cb595bd54bc2f5da35ae53367fe3b3220d31b4f0d7353a",
+          "selection": "section"
+        },
+        {
+          "path": "docs/coder/beat-fable-showcase.md",
+          "origin": "applied_candidate",
+          "start_line": 276,
+          "end_line": 290,
+          "source_sha256": "a062679fd73ec7be7fffbd46352a98cd1003466925112537b0304e2ad90267c5",
+          "span_sha256": "72afa833a79940c3534d1cf026663747305320d439f667795c16d8f88fed96e7",
+          "selection": "section"
+        }
+      ],
+      "derivation": "Verified retained patch applied with git apply --check to exact Git base file bytes",
+      "no_candidate_code_executed": true,
+      "source_input": {
+        "path": "../review-inputs/R06.json",
+        "sha256": "4369c53c10c4ad05149896458b34f8c21380c1ca6473435046ec25324dab374d",
+        "bytes": 41090
+      },
+      "derived_full_diff": {
+        "path": "../review-diffs/R06.patch",
+        "sha256": "b3657e16a2402ec3cd2eed923377a48d7ac9aff8f28b0a0856cc39064ef94e6d",
+        "bytes": 14406
+      },
+      "public_contract": {
+        "source": "Public sanitized task retained in the state.task field; original provenance is the V2 public study.",
+        "task_text_sha256": "c6d0525dd9f7d8438e237984be0194366a747bf8c5e7e10e2557edd2b4e4e7cb",
+        "public_provenance_path": "docs/audits/2026-10-03-independent-efficiency/briefing-iteration-2/README.md"
+      },
+      "candidate_binding": {
+        "payload_sha256": "20cd5947a90cfb806e3c42bf1b0ef8e06713db4a50ac9e6ab0c1486b0edcb803",
+        "canonical_candidate_sha256": "e1df668f448bd0ac3dc9407f540fc90445f23bf94886270f2516de15beb6547a"
+      },
+      "public_case_binding": {
+        "path": "../review-cases.json",
+        "manifest_sha256": "75b86198a3ad989110f781f1cfefe2e44498062b690f2d43020eacaf95f5bb44",
+        "case_id": "R06"
+      }
+    },
+    {
+      "id": "R07",
+      "family": "beta",
+      "state_path": "R07.json",
+      "state_sha256": "2ddd5cca30adb33881a670937663fcb50d5b02036e28152565c6351cc676c788",
+      "state_bytes": 52880,
+      "source_commit": "7ec5f6e83d018ab2f25d7a61ff695de81f2f55f6",
+      "task_sha256": "ad60a32cf78b1f655649b700dffb05cb27f6c613b367d81e4b263428d682eb9a",
+      "source_spans": [
+        {
+          "path": "crates/atif/src/log.rs",
+          "origin": "applied_candidate",
+          "start_line": 1,
+          "end_line": 571,
+          "source_sha256": "62906200e0202a1b4c573ddc472e61baa5eeabcf086cc24bc0887447ca01cf07",
+          "span_sha256": "f78ff09377f8c130d7a1cfd82e4e2411d56d7a0bb206619961c5afbcd3ee60ed",
+          "selection": "production"
+        },
+        {
+          "path": "crates/atif/src/lib.rs",
+          "origin": "applied_candidate",
+          "start_line": 1,
+          "end_line": 65,
+          "source_sha256": "741314dfa98ac1209f295ac7301cbaa4b2a133d7fbfff03081af0efeff79036d",
+          "span_sha256": "741314dfa98ac1209f295ac7301cbaa4b2a133d7fbfff03081af0efeff79036d",
+          "selection": "production"
+        },
+        {
+          "path": "crates/coderbench/src/lib.rs",
+          "origin": "unchanged_base",
+          "start_line": 369,
+          "end_line": 394,
+          "source_sha256": "1fcf6ce2bf972972471a6dfeaf4c0a1c469b1b6183b211b515a483c51fa98178",
+          "span_sha256": "9bf276d3c8ad0beafe3680edf51f1a1b56397a198dc5dcd0fd2176b41a8dc377",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/coderbench/src/lib.rs",
+          "origin": "unchanged_base",
+          "start_line": 395,
+          "end_line": 410,
+          "source_sha256": "1fcf6ce2bf972972471a6dfeaf4c0a1c469b1b6183b211b515a483c51fa98178",
+          "span_sha256": "b3373abf2f1d401567c8d9f634612f9ddd9e2cb4b14f0ddb0f3c4ae35404bf8c",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/coderbench/src/lib.rs",
+          "origin": "unchanged_base",
+          "start_line": 431,
+          "end_line": 516,
+          "source_sha256": "1fcf6ce2bf972972471a6dfeaf4c0a1c469b1b6183b211b515a483c51fa98178",
+          "span_sha256": "51d005b40ba52be1fb5b58a75fcd8692ca69dfc23225b441ba7298696bf2e35a",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/coderbench/src/lib.rs",
+          "origin": "unchanged_base",
+          "start_line": 517,
+          "end_line": 566,
+          "source_sha256": "1fcf6ce2bf972972471a6dfeaf4c0a1c469b1b6183b211b515a483c51fa98178",
+          "span_sha256": "4ddd4c5ab2ee0036c4b148fde504a335cc291b8281d7910aeede9514582bd4e0",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/coderbench/src/lib.rs",
+          "origin": "unchanged_base",
+          "start_line": 678,
+          "end_line": 685,
+          "source_sha256": "1fcf6ce2bf972972471a6dfeaf4c0a1c469b1b6183b211b515a483c51fa98178",
+          "span_sha256": "77b75232eb1c0737973c2e4bd0edacac01ae70686c5ae489fc75a20bbdb48976",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/coderbench/src/lib.rs",
+          "origin": "unchanged_base",
+          "start_line": 686,
+          "end_line": 694,
+          "source_sha256": "1fcf6ce2bf972972471a6dfeaf4c0a1c469b1b6183b211b515a483c51fa98178",
+          "span_sha256": "b8008ab7b452c0d30249b4266df2dde538b97ada2d03ef4540e73d6f953b0b78",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/coderbench/src/lib.rs",
+          "origin": "unchanged_base",
+          "start_line": 695,
+          "end_line": 720,
+          "source_sha256": "1fcf6ce2bf972972471a6dfeaf4c0a1c469b1b6183b211b515a483c51fa98178",
+          "span_sha256": "7b96b618c17f9b3b5e5c7533d5e1364146d16642a43e836eb40c2f0969c739e6",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/coderbench/src/lib.rs",
+          "origin": "unchanged_base",
+          "start_line": 921,
+          "end_line": 954,
+          "source_sha256": "1fcf6ce2bf972972471a6dfeaf4c0a1c469b1b6183b211b515a483c51fa98178",
+          "span_sha256": "c03f750728a9d0ed8dcfe897a60e8c1e8add6811b7c342f849398b9224cf613f",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/coderbench/src/lib.rs",
+          "origin": "unchanged_base",
+          "start_line": 1266,
+          "end_line": 1290,
+          "source_sha256": "1fcf6ce2bf972972471a6dfeaf4c0a1c469b1b6183b211b515a483c51fa98178",
+          "span_sha256": "15eace67c21298b9ee3e9bcb8c70659d94f881c4093279795b121648966233d4",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/coderbench/src/lib.rs",
+          "origin": "unchanged_base",
+          "start_line": 1336,
+          "end_line": 1343,
+          "source_sha256": "1fcf6ce2bf972972471a6dfeaf4c0a1c469b1b6183b211b515a483c51fa98178",
+          "span_sha256": "aabdd7e91472fd20d7c5463384b4e9abe972d00c4bd203af1e7d3efff71aa20e",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/coderbench/src/lib.rs",
+          "origin": "unchanged_base",
+          "start_line": 1344,
+          "end_line": 1424,
+          "source_sha256": "1fcf6ce2bf972972471a6dfeaf4c0a1c469b1b6183b211b515a483c51fa98178",
+          "span_sha256": "7518560a5bb854a03bf2f1a27edf5534c1b9550f07aae5a15d27bd91581ad542",
+          "selection": "unit"
+        },
+        {
+          "path": "docs/coder/traces.md",
+          "origin": "unchanged_base",
+          "start_line": 1,
+          "end_line": 200,
+          "source_sha256": "b7570fc3dd4c74d377ad003e7a8c8d49e4901f620feb6cb2737db63c645390ca",
+          "span_sha256": "b7570fc3dd4c74d377ad003e7a8c8d49e4901f620feb6cb2737db63c645390ca",
+          "selection": "all"
+        }
+      ],
+      "derivation": "Verified candidate payload overlay",
+      "no_candidate_code_executed": true,
+      "source_input": {
+        "path": "../review-inputs/R07.json",
+        "sha256": "4bc7197c888e392ab369f8d3eb8d2625f63b72ac67bee604552fc1ed5c8590e0",
+        "bytes": 48402
+      },
+      "derived_full_diff": {
+        "path": "../review-diffs/R07.patch",
+        "sha256": "c8bc4f8ec38289dd57981f008bb6e924c2eac5608c6a6a9cd5e3265c8c61d880",
+        "bytes": 24248
+      },
+      "public_contract": {
+        "path": "../../system-one-delegation/alternative-beta/inputs/public-task-manifest.json",
+        "sha256": "a78647ec368dc9f6fb573915d9250bfe9ceb16edc1da9389e8576cc486c7a511",
+        "bytes": 3725
+      },
+      "candidate_binding": {
+        "payload": {
+          "sha256": "55e41de3062f116604ff6dcd54850622af2ac4e7aefefc28ebee1b8fbfc7d7c6",
+          "bytes": 18891,
+          "retained_privately": true
+        },
+        "changes": {
+          "sha256": "47b77f3430428dad7cb8f06681525e48bec1def069ae1d468adf6b7c9d96b919",
+          "bytes": 1902,
+          "retained_privately": true
+        },
+        "manifest_sha256": "c31e5762254b629d3229966cdd747a75218485800bd1c11aecd6593fa474ff34"
+      },
+      "public_case_binding": {
+        "path": "../review-cases.json",
+        "manifest_sha256": "75b86198a3ad989110f781f1cfefe2e44498062b690f2d43020eacaf95f5bb44",
+        "case_id": "R07"
+      }
+    },
+    {
+      "id": "R08",
+      "family": "v2",
+      "state_path": "R08.json",
+      "state_sha256": "8ff18150a3a235ba79e1090da39745c24c0cc99e5ddd13c5c4fd9dd0db616693",
+      "state_bytes": 61869,
+      "source_commit": "f29611f211747884b4f508db80634d3f6df2a5e9",
+      "task_sha256": "c6d0525dd9f7d8438e237984be0194366a747bf8c5e7e10e2557edd2b4e4e7cb",
+      "source_spans": [
+        {
+          "path": "crates/gym/src/runs_microcoder.rs",
+          "origin": "applied_candidate",
+          "start_line": 1,
+          "end_line": 852,
+          "source_sha256": "e2787035dd4632eafc86970a5a1bcef1f8b33e3e7624459d662a4d0fdba716c7",
+          "span_sha256": "900197c10cd1ca67c982faa6663ce8ae29a6e1f823121d1cca16afc81e5e6904",
+          "selection": "prefix_before"
+        },
+        {
+          "path": "crates/gym/src/runs.rs",
+          "origin": "applied_candidate",
+          "start_line": 33,
+          "end_line": 57,
+          "source_sha256": "3ca1f49d7a9c615296c7b356c9aa8875aa71a49c2a99218ce70d4c1a20eb87d1",
+          "span_sha256": "db1197635bf1047ce46411faed65e6d510f577195bde712918b2dca667ee029f",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/gym/src/runs.rs",
+          "origin": "applied_candidate",
+          "start_line": 238,
+          "end_line": 283,
+          "source_sha256": "3ca1f49d7a9c615296c7b356c9aa8875aa71a49c2a99218ce70d4c1a20eb87d1",
+          "span_sha256": "53e566867b883e6e74643d3a7b9009470bfaff88ec201eaf8a6fd3d66ccd8cac",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/gym/src/runs.rs",
+          "origin": "applied_candidate",
+          "start_line": 284,
+          "end_line": 333,
+          "source_sha256": "3ca1f49d7a9c615296c7b356c9aa8875aa71a49c2a99218ce70d4c1a20eb87d1",
+          "span_sha256": "86ea17ff859bd70f828a13d68a2a306cfa9ec401cb60f0ad2972794098bd98ae",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/gym/src/runs.rs",
+          "origin": "applied_candidate",
+          "start_line": 343,
+          "end_line": 353,
+          "source_sha256": "3ca1f49d7a9c615296c7b356c9aa8875aa71a49c2a99218ce70d4c1a20eb87d1",
+          "span_sha256": "03e5fa7299af06294408343091316cc751ad6e26d99b8df5d70bb8aa401832e3",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/gym/src/runs.rs",
+          "origin": "applied_candidate",
+          "start_line": 356,
+          "end_line": 373,
+          "source_sha256": "3ca1f49d7a9c615296c7b356c9aa8875aa71a49c2a99218ce70d4c1a20eb87d1",
+          "span_sha256": "158290df76402b58c03cf9eba45e1127428746dfe554763928f2cbf4ea640afb",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/gym/src/runs.rs",
+          "origin": "applied_candidate",
+          "start_line": 374,
+          "end_line": 489,
+          "source_sha256": "3ca1f49d7a9c615296c7b356c9aa8875aa71a49c2a99218ce70d4c1a20eb87d1",
+          "span_sha256": "5a0b4e5bfdf681f5339f22c8cf848af461dc01c9729295abe46fa7bf9879a8f3",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/gym/src/runs_beats_winner.rs",
+          "origin": "applied_candidate",
+          "start_line": 136,
+          "end_line": 145,
+          "source_sha256": "2faf9db1e5e9c0b316f2a033c6a623eb6edf75318aaeb3dbf4fda216cb46f6c3",
+          "span_sha256": "ec0acfa90f439f36482bdb6d4ec91297edf29a227ddfbb79457cf2829705040b",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/gym/src/runs_beats_winner.rs",
+          "origin": "applied_candidate",
+          "start_line": 188,
+          "end_line": 254,
+          "source_sha256": "2faf9db1e5e9c0b316f2a033c6a623eb6edf75318aaeb3dbf4fda216cb46f6c3",
+          "span_sha256": "e40cfb893629d25c66b5c9733b9d3f68ea3dbf2a1b86717633b0d0bd6dec7b7c",
+          "selection": "unit"
+        },
+        {
+          "path": "docs/gym/terminal-bench-cli.md",
+          "origin": "applied_candidate",
+          "start_line": 84,
+          "end_line": 151,
+          "source_sha256": "de0b5dc6e241412495da86f8beda6c5bd80f33ab3584d486837f69719b4e0e9b",
+          "span_sha256": "958856963e1d67538f54c76bfb6567eeff55af499c64fe9192dc56d3917dfdf3",
+          "selection": "section"
+        },
+        {
+          "path": "docs/gym/terminal-bench-cli.md",
+          "origin": "applied_candidate",
+          "start_line": 402,
+          "end_line": 448,
+          "source_sha256": "de0b5dc6e241412495da86f8beda6c5bd80f33ab3584d486837f69719b4e0e9b",
+          "span_sha256": "062a311bf24387d24ba8aeae5517cb0c6b0b7d9db42ffe6720013ee3cdf7d129",
+          "selection": "section"
+        },
+        {
+          "path": "docs/coder/beat-fable-showcase.md",
+          "origin": "applied_candidate",
+          "start_line": 81,
+          "end_line": 106,
+          "source_sha256": "00c8ef2b77f4d649f6650df2ddd2e63b82b942057932c501c2f45f4e95cd373b",
+          "span_sha256": "a74fec6e215100e2b3678859ddb9f71a704d0e4c925e9a38bf30ac3e1a4e603a",
+          "selection": "section"
+        },
+        {
+          "path": "docs/coder/beat-fable-showcase.md",
+          "origin": "applied_candidate",
+          "start_line": 276,
+          "end_line": 290,
+          "source_sha256": "00c8ef2b77f4d649f6650df2ddd2e63b82b942057932c501c2f45f4e95cd373b",
+          "span_sha256": "72afa833a79940c3534d1cf026663747305320d439f667795c16d8f88fed96e7",
+          "selection": "section"
+        }
+      ],
+      "derivation": "Verified retained patch applied with git apply --check to exact Git base file bytes",
+      "no_candidate_code_executed": true,
+      "source_input": {
+        "path": "../review-inputs/R08.json",
+        "sha256": "d07cbd4d630b220c66b1a92c5f185abd951b43160ab8d4286054a5e7f12f40fe",
+        "bytes": 42755
+      },
+      "derived_full_diff": {
+        "path": "../review-diffs/R08.patch",
+        "sha256": "ad5cd5af9bb5b17f3064dc93c35f6da8831920a610b405d43d82feb6222c5621",
+        "bytes": 16003
+      },
+      "public_contract": {
+        "source": "Public sanitized task retained in the state.task field; original provenance is the V2 public study.",
+        "task_text_sha256": "c6d0525dd9f7d8438e237984be0194366a747bf8c5e7e10e2557edd2b4e4e7cb",
+        "public_provenance_path": "docs/audits/2026-10-03-independent-efficiency/briefing-iteration-2/README.md"
+      },
+      "candidate_binding": {
+        "payload_sha256": "2603c57d23e1895a9dc362750f121ca3887ed8ed29cce2123cc344a8846af129",
+        "canonical_candidate_sha256": "bd132b02949c11fd9729f0c160a2546496e1ec8697b70fce84b669aa3ae646bf"
+      },
+      "public_case_binding": {
+        "path": "../review-cases.json",
+        "manifest_sha256": "75b86198a3ad989110f781f1cfefe2e44498062b690f2d43020eacaf95f5bb44",
+        "case_id": "R08"
+      }
+    },
+    {
+      "id": "R09",
+      "family": "v2",
+      "state_path": "R09.json",
+      "state_sha256": "9060d194e4889453e0c885ef01eacfe63aecab4f0593fba2da188ea45bedcc07",
+      "state_bytes": 62191,
+      "source_commit": "f29611f211747884b4f508db80634d3f6df2a5e9",
+      "task_sha256": "c6d0525dd9f7d8438e237984be0194366a747bf8c5e7e10e2557edd2b4e4e7cb",
+      "source_spans": [
+        {
+          "path": "crates/gym/src/runs_microcoder.rs",
+          "origin": "applied_candidate",
+          "start_line": 1,
+          "end_line": 866,
+          "source_sha256": "e1ba198ad9e28b08ef4e2030d31e32953287284d117ea493e4a2bd6664b7bacb",
+          "span_sha256": "6ffc74ad35e37f0c686066c18d8f732913af443bf45ce31cf4c13bcf38bc2fb2",
+          "selection": "prefix_before"
+        },
+        {
+          "path": "crates/gym/src/runs.rs",
+          "origin": "applied_candidate",
+          "start_line": 33,
+          "end_line": 58,
+          "source_sha256": "4b8d704b69723d518ab01f7bf1deb36cbb412337ad348de6b5200b6987e42ba9",
+          "span_sha256": "20df541bc23e6e77056da8b1cbb07f01bf01e3d60c5a4f79d28a9991355167f8",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/gym/src/runs.rs",
+          "origin": "applied_candidate",
+          "start_line": 239,
+          "end_line": 284,
+          "source_sha256": "4b8d704b69723d518ab01f7bf1deb36cbb412337ad348de6b5200b6987e42ba9",
+          "span_sha256": "53e566867b883e6e74643d3a7b9009470bfaff88ec201eaf8a6fd3d66ccd8cac",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/gym/src/runs.rs",
+          "origin": "applied_candidate",
+          "start_line": 285,
+          "end_line": 334,
+          "source_sha256": "4b8d704b69723d518ab01f7bf1deb36cbb412337ad348de6b5200b6987e42ba9",
+          "span_sha256": "86ea17ff859bd70f828a13d68a2a306cfa9ec401cb60f0ad2972794098bd98ae",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/gym/src/runs.rs",
+          "origin": "applied_candidate",
+          "start_line": 344,
+          "end_line": 354,
+          "source_sha256": "4b8d704b69723d518ab01f7bf1deb36cbb412337ad348de6b5200b6987e42ba9",
+          "span_sha256": "03e5fa7299af06294408343091316cc751ad6e26d99b8df5d70bb8aa401832e3",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/gym/src/runs.rs",
+          "origin": "applied_candidate",
+          "start_line": 357,
+          "end_line": 374,
+          "source_sha256": "4b8d704b69723d518ab01f7bf1deb36cbb412337ad348de6b5200b6987e42ba9",
+          "span_sha256": "158290df76402b58c03cf9eba45e1127428746dfe554763928f2cbf4ea640afb",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/gym/src/runs.rs",
+          "origin": "applied_candidate",
+          "start_line": 375,
+          "end_line": 498,
+          "source_sha256": "4b8d704b69723d518ab01f7bf1deb36cbb412337ad348de6b5200b6987e42ba9",
+          "span_sha256": "7b07784981b9442bc10b8f5307ec4df0e3d17a63ad8254dc7de2d9d33ae1ee4a",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/gym/src/runs_beats_winner.rs",
+          "origin": "applied_candidate",
+          "start_line": 136,
+          "end_line": 145,
+          "source_sha256": "a02458474d22d0a84029a192854b05f2c59834504e05f91b9edd0761982facdc",
+          "span_sha256": "ec0acfa90f439f36482bdb6d4ec91297edf29a227ddfbb79457cf2829705040b",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/gym/src/runs_beats_winner.rs",
+          "origin": "applied_candidate",
+          "start_line": 188,
+          "end_line": 254,
+          "source_sha256": "a02458474d22d0a84029a192854b05f2c59834504e05f91b9edd0761982facdc",
+          "span_sha256": "e40cfb893629d25c66b5c9733b9d3f68ea3dbf2a1b86717633b0d0bd6dec7b7c",
+          "selection": "unit"
+        },
+        {
+          "path": "docs/gym/terminal-bench-cli.md",
+          "origin": "applied_candidate",
+          "start_line": 84,
+          "end_line": 149,
+          "source_sha256": "4ad4d0fed86c6d19360c2be8bc380eb8e4df859286236af0ecefa22467f1bfbe",
+          "span_sha256": "899a0d3784ce8c87190216f329d3ebd9dd0f3de4480c2c2ce826dfddeaaf844d",
+          "selection": "section"
+        },
+        {
+          "path": "docs/gym/terminal-bench-cli.md",
+          "origin": "applied_candidate",
+          "start_line": 400,
+          "end_line": 444,
+          "source_sha256": "4ad4d0fed86c6d19360c2be8bc380eb8e4df859286236af0ecefa22467f1bfbe",
+          "span_sha256": "8e4dc99ebf240db99d3baa78d2ffc07a889756db07f52669573a12fc34f5a132",
+          "selection": "section"
+        },
+        {
+          "path": "docs/coder/beat-fable-showcase.md",
+          "origin": "applied_candidate",
+          "start_line": 81,
+          "end_line": 106,
+          "source_sha256": "dda4c7c0e23135b35ac48ef1eea741f807f1f0e29b7feaa7ac4572704290455d",
+          "span_sha256": "7c5c9f436f4b2c45b54bf2479cf5d94c24c23a248de89ec2665660fb3716eee8",
+          "selection": "section"
+        },
+        {
+          "path": "docs/coder/beat-fable-showcase.md",
+          "origin": "applied_candidate",
+          "start_line": 276,
+          "end_line": 290,
+          "source_sha256": "dda4c7c0e23135b35ac48ef1eea741f807f1f0e29b7feaa7ac4572704290455d",
+          "span_sha256": "72afa833a79940c3534d1cf026663747305320d439f667795c16d8f88fed96e7",
+          "selection": "section"
+        }
+      ],
+      "derivation": "Verified retained patch applied with git apply --check to exact Git base file bytes",
+      "no_candidate_code_executed": true,
+      "source_input": {
+        "path": "../review-inputs/R09.json",
+        "sha256": "cb1a7a635e17d0e1a3904eb7276a876a020d1341ddd8d5c6ba4b78f84229fdb5",
+        "bytes": 43548
+      },
+      "derived_full_diff": {
+        "path": "../review-diffs/R09.patch",
+        "sha256": "9902f9e2a9c623f4773c45fcb0221df0f018669107a10807df83873f12a0e418",
+        "bytes": 16764
+      },
+      "public_contract": {
+        "source": "Public sanitized task retained in the state.task field; original provenance is the V2 public study.",
+        "task_text_sha256": "c6d0525dd9f7d8438e237984be0194366a747bf8c5e7e10e2557edd2b4e4e7cb",
+        "public_provenance_path": "docs/audits/2026-10-03-independent-efficiency/briefing-iteration-2/README.md"
+      },
+      "candidate_binding": {
+        "payload_sha256": "72482806573f945347024af4afc2ecf162708fc6a5643ff79e8aec7dd10e6e61",
+        "canonical_candidate_sha256": "3166c17671cd1ec23e37cf45ce497017ae6bc482f301ac3f4038286c654a1960"
+      },
+      "public_case_binding": {
+        "path": "../review-cases.json",
+        "manifest_sha256": "75b86198a3ad989110f781f1cfefe2e44498062b690f2d43020eacaf95f5bb44",
+        "case_id": "R09"
+      }
+    },
+    {
+      "id": "R10",
+      "family": "gamma",
+      "state_path": "R10.json",
+      "state_sha256": "7118e1c3a1b78d7690e6a6b20abae96cc6dd6f64288b6b7f10c4ac8f8a356680",
+      "state_bytes": 62119,
+      "source_commit": "c427943a5c84ba5938a3549f24b27de551812a37",
+      "task_sha256": "4c32325abfa689942a088506f2bb6d393ea2310b85683c48dd351f6ab290be31",
+      "source_spans": [
+        {
+          "path": "crates/jev/src/answers.rs",
+          "origin": "applied_candidate",
+          "start_line": 1,
+          "end_line": 704,
+          "source_sha256": "41c2e46f0091397e3b872c7f1f66e5501281d4c498f3c0fa9b5c0a6808f942bc",
+          "span_sha256": "41c2e46f0091397e3b872c7f1f66e5501281d4c498f3c0fa9b5c0a6808f942bc",
+          "selection": "production"
+        },
+        {
+          "path": "crates/jev/src/client.rs",
+          "origin": "applied_candidate",
+          "start_line": 1,
+          "end_line": 718,
+          "source_sha256": "2e9da90c9c820477330513c90abb579070e16a821b47e103521de0aea8f13847",
+          "span_sha256": "2e9da90c9c820477330513c90abb579070e16a821b47e103521de0aea8f13847",
+          "selection": "production"
+        },
+        {
+          "path": "crates/jev/src/lib.rs",
+          "origin": "applied_candidate",
+          "start_line": 199,
+          "end_line": 258,
+          "source_sha256": "365c3a49ccd7c6661c208d42764d648bb59e2c8ead5000d2a5037264dafdbefb",
+          "span_sha256": "2942fed4220f70237d7df3b1a6498d64fe27cec892c279262a6249d34b72e8fa",
+          "selection": "tail"
+        },
+        {
+          "path": "docs/decision-models/2026-09-20-score-contract.md",
+          "origin": "unchanged_base",
+          "start_line": 1,
+          "end_line": 107,
+          "source_sha256": "a8c612095723bf3599ae4d618aeff8ae18e3b5a05e868c07f26e623126e20c60",
+          "span_sha256": "a8c612095723bf3599ae4d618aeff8ae18e3b5a05e868c07f26e623126e20c60",
+          "selection": "all"
+        }
+      ],
+      "derivation": "Verified candidate payload overlay",
+      "no_candidate_code_executed": true,
+      "source_input": {
+        "path": "../review-inputs/R10.json",
+        "sha256": "647a087339a75e8f2dc95f6d759ad07bf2d10cbca0514134307a63d81c4003a3",
+        "bytes": 58394
+      },
+      "derived_full_diff": {
+        "path": "../review-diffs/R10.patch",
+        "sha256": "a157d366c8525e0d03254e923abc2300314862f597b7188b67e66542bdc7ed24",
+        "bytes": 25771
+      },
+      "public_contract": {
+        "path": "../../system-one-delegation/alternative-gamma/inputs/public-task-manifest.json",
+        "sha256": "a06ff5c883e57a8bac3cafc88444d6987b80b4a5b3c7efaf4c0354d080a8050d",
+        "bytes": 4131
+      },
+      "candidate_binding": {
+        "payload": {
+          "sha256": "ab8bdd6e86c8d69bb79769d150fbe2e4f01e7e476526adfec976aa732c53e90b",
+          "bytes": 29952,
+          "retained_privately": true
+        },
+        "changes": {
+          "sha256": "797d52b9c642f736ff78049a13afd4da278cdf39f3c19e535c2fbe18f8af8546",
+          "bytes": 2479,
+          "retained_privately": true
+        },
+        "manifest_sha256": "635f89b2fd41056cafb75c5eb2427d85b787f346b3661a96ab4aa1f4b7d09bb2"
+      },
+      "public_case_binding": {
+        "path": "../review-cases.json",
+        "manifest_sha256": "75b86198a3ad989110f781f1cfefe2e44498062b690f2d43020eacaf95f5bb44",
+        "case_id": "R10"
+      }
+    },
+    {
+      "id": "R11",
+      "family": "gamma",
+      "state_path": "R11.json",
+      "state_sha256": "4750dc28428a8a7d73669036544161a0155ce399635fd436059aef18f8be3600",
+      "state_bytes": 62173,
+      "source_commit": "c427943a5c84ba5938a3549f24b27de551812a37",
+      "task_sha256": "4c32325abfa689942a088506f2bb6d393ea2310b85683c48dd351f6ab290be31",
+      "source_spans": [
+        {
+          "path": "crates/jev/src/answers.rs",
+          "origin": "applied_candidate",
+          "start_line": 1,
+          "end_line": 704,
+          "source_sha256": "41c2e46f0091397e3b872c7f1f66e5501281d4c498f3c0fa9b5c0a6808f942bc",
+          "span_sha256": "41c2e46f0091397e3b872c7f1f66e5501281d4c498f3c0fa9b5c0a6808f942bc",
+          "selection": "production"
+        },
+        {
+          "path": "crates/jev/src/client.rs",
+          "origin": "applied_candidate",
+          "start_line": 1,
+          "end_line": 719,
+          "source_sha256": "9c0ecba809d27fc8b797e39a2407bb3c02fb6acef91cef28edafdf3935693796",
+          "span_sha256": "9c0ecba809d27fc8b797e39a2407bb3c02fb6acef91cef28edafdf3935693796",
+          "selection": "production"
+        },
+        {
+          "path": "crates/jev/src/lib.rs",
+          "origin": "applied_candidate",
+          "start_line": 199,
+          "end_line": 258,
+          "source_sha256": "365c3a49ccd7c6661c208d42764d648bb59e2c8ead5000d2a5037264dafdbefb",
+          "span_sha256": "2942fed4220f70237d7df3b1a6498d64fe27cec892c279262a6249d34b72e8fa",
+          "selection": "tail"
+        },
+        {
+          "path": "docs/decision-models/2026-09-20-score-contract.md",
+          "origin": "unchanged_base",
+          "start_line": 1,
+          "end_line": 107,
+          "source_sha256": "a8c612095723bf3599ae4d618aeff8ae18e3b5a05e868c07f26e623126e20c60",
+          "span_sha256": "a8c612095723bf3599ae4d618aeff8ae18e3b5a05e868c07f26e623126e20c60",
+          "selection": "all"
+        }
+      ],
+      "derivation": "Verified candidate payload overlay",
+      "no_candidate_code_executed": true,
+      "source_input": {
+        "path": "../review-inputs/R11.json",
+        "sha256": "2a189db85f124dfbbb2b65b9711ad8680778fd96de8ea56448e27fb004550c73",
+        "bytes": 58449
+      },
+      "derived_full_diff": {
+        "path": "../review-diffs/R11.patch",
+        "sha256": "7d34defee04afc057697b294c3aad7ba9c4daca404076555fa3eae97c35582e9",
+        "bytes": 25825
+      },
+      "public_contract": {
+        "path": "../../system-one-delegation/alternative-gamma/inputs/public-task-manifest.json",
+        "sha256": "a06ff5c883e57a8bac3cafc88444d6987b80b4a5b3c7efaf4c0354d080a8050d",
+        "bytes": 4131
+      },
+      "candidate_binding": {
+        "payload": {
+          "sha256": "bcffb69e6f7847382d0eb1133bb0393786f91536016a4340bfc559898496a771",
+          "bytes": 29965,
+          "retained_privately": true
+        },
+        "changes": {
+          "sha256": "0c971624bc546567742285b5aa41d54e7b1bb2dfa476d792ccc509fc7720a553",
+          "bytes": 2479,
+          "retained_privately": true
+        },
+        "manifest_sha256": "e20f960edb0a1347d120b2764b0e825d5c555c16962d431b119e9450b2a0c09f"
+      },
+      "public_case_binding": {
+        "path": "../review-cases.json",
+        "manifest_sha256": "75b86198a3ad989110f781f1cfefe2e44498062b690f2d43020eacaf95f5bb44",
+        "case_id": "R11"
+      }
+    },
+    {
+      "id": "R12",
+      "family": "v2",
+      "state_path": "R12.json",
+      "state_sha256": "94c891b5c5155e04c038a1dc41e2b33fc058501709811d17b649312e95a5686e",
+      "state_bytes": 63202,
+      "source_commit": "f29611f211747884b4f508db80634d3f6df2a5e9",
+      "task_sha256": "c6d0525dd9f7d8438e237984be0194366a747bf8c5e7e10e2557edd2b4e4e7cb",
+      "source_spans": [
+        {
+          "path": "crates/gym/src/runs_microcoder.rs",
+          "origin": "applied_candidate",
+          "start_line": 1,
+          "end_line": 892,
+          "source_sha256": "9defb9c012143e843d0540430643b37d0e70adff37c89d685514fd2562c7d0ff",
+          "span_sha256": "ecc797727001f7af81d290ada16ff96b7a9b4518e8b7a44916eb554ae367aa3f",
+          "selection": "prefix_before"
+        },
+        {
+          "path": "crates/gym/src/runs.rs",
+          "origin": "applied_candidate",
+          "start_line": 33,
+          "end_line": 59,
+          "source_sha256": "a1a01ed6823dbb4936f5fb516e5be88a776fac847d0e905ae271ad1c7029a18a",
+          "span_sha256": "655d2a39885100d29432bfd380d8f02b2070405a30894715985ad67505d2a784",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/gym/src/runs.rs",
+          "origin": "applied_candidate",
+          "start_line": 240,
+          "end_line": 285,
+          "source_sha256": "a1a01ed6823dbb4936f5fb516e5be88a776fac847d0e905ae271ad1c7029a18a",
+          "span_sha256": "53e566867b883e6e74643d3a7b9009470bfaff88ec201eaf8a6fd3d66ccd8cac",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/gym/src/runs.rs",
+          "origin": "applied_candidate",
+          "start_line": 286,
+          "end_line": 335,
+          "source_sha256": "a1a01ed6823dbb4936f5fb516e5be88a776fac847d0e905ae271ad1c7029a18a",
+          "span_sha256": "86ea17ff859bd70f828a13d68a2a306cfa9ec401cb60f0ad2972794098bd98ae",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/gym/src/runs.rs",
+          "origin": "applied_candidate",
+          "start_line": 345,
+          "end_line": 355,
+          "source_sha256": "a1a01ed6823dbb4936f5fb516e5be88a776fac847d0e905ae271ad1c7029a18a",
+          "span_sha256": "03e5fa7299af06294408343091316cc751ad6e26d99b8df5d70bb8aa401832e3",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/gym/src/runs.rs",
+          "origin": "applied_candidate",
+          "start_line": 358,
+          "end_line": 375,
+          "source_sha256": "a1a01ed6823dbb4936f5fb516e5be88a776fac847d0e905ae271ad1c7029a18a",
+          "span_sha256": "158290df76402b58c03cf9eba45e1127428746dfe554763928f2cbf4ea640afb",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/gym/src/runs.rs",
+          "origin": "applied_candidate",
+          "start_line": 376,
+          "end_line": 499,
+          "source_sha256": "a1a01ed6823dbb4936f5fb516e5be88a776fac847d0e905ae271ad1c7029a18a",
+          "span_sha256": "c26b6a3574547e7375bd2eea5c4f64cea08de096a3c52f80646f166529694f63",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/gym/src/runs_beats_winner.rs",
+          "origin": "applied_candidate",
+          "start_line": 136,
+          "end_line": 145,
+          "source_sha256": "e9720d27c69ef3d9357fa81cf87633d2de14122e5c3ff0756766ae145ca43991",
+          "span_sha256": "ec0acfa90f439f36482bdb6d4ec91297edf29a227ddfbb79457cf2829705040b",
+          "selection": "unit"
+        },
+        {
+          "path": "crates/gym/src/runs_beats_winner.rs",
+          "origin": "applied_candidate",
+          "start_line": 188,
+          "end_line": 254,
+          "source_sha256": "e9720d27c69ef3d9357fa81cf87633d2de14122e5c3ff0756766ae145ca43991",
+          "span_sha256": "e40cfb893629d25c66b5c9733b9d3f68ea3dbf2a1b86717633b0d0bd6dec7b7c",
+          "selection": "unit"
+        },
+        {
+          "path": "docs/gym/terminal-bench-cli.md",
+          "origin": "applied_candidate",
+          "start_line": 84,
+          "end_line": 152,
+          "source_sha256": "a9a5469cc69035cd13d19901a91e42e54e42db5b5055371f162d171985628a84",
+          "span_sha256": "b5258a8f1b9171c4faacc3041778980f126817c9390378f9b4bbf8a2a83edc51",
+          "selection": "section"
+        },
+        {
+          "path": "docs/gym/terminal-bench-cli.md",
+          "origin": "applied_candidate",
+          "start_line": 403,
+          "end_line": 447,
+          "source_sha256": "a9a5469cc69035cd13d19901a91e42e54e42db5b5055371f162d171985628a84",
+          "span_sha256": "8e4dc99ebf240db99d3baa78d2ffc07a889756db07f52669573a12fc34f5a132",
+          "selection": "section"
+        },
+        {
+          "path": "docs/coder/beat-fable-showcase.md",
+          "origin": "applied_candidate",
+          "start_line": 81,
+          "end_line": 106,
+          "source_sha256": "f02a20cf4e2b34f2e2c50a27fd861cf7a5bc9c364badb7e0a2a2381555b2dfca",
+          "span_sha256": "ec650b93ff7a872dc79c8fb971d0e2e4f99da5ae1801b531d4bdebebf1a98aed",
+          "selection": "section"
+        },
+        {
+          "path": "docs/coder/beat-fable-showcase.md",
+          "origin": "applied_candidate",
+          "start_line": 276,
+          "end_line": 290,
+          "source_sha256": "f02a20cf4e2b34f2e2c50a27fd861cf7a5bc9c364badb7e0a2a2381555b2dfca",
+          "span_sha256": "72afa833a79940c3534d1cf026663747305320d439f667795c16d8f88fed96e7",
+          "selection": "section"
+        }
+      ],
+      "derivation": "Verified retained patch applied with git apply --check to exact Git base file bytes",
+      "no_candidate_code_executed": true,
+      "source_input": {
+        "path": "../review-inputs/R12.json",
+        "sha256": "e545cb6cf0727e917a89578031fff12ebc8400262a5818f68c2c5534a8d8487f",
+        "bytes": 45985
+      },
+      "derived_full_diff": {
+        "path": "../review-diffs/R12.patch",
+        "sha256": "65a84a1e045b061f63822a757117e155959c38d465caffef8512f14dc616db31",
+        "bytes": 19131
+      },
+      "public_contract": {
+        "source": "Public sanitized task retained in the state.task field; original provenance is the V2 public study.",
+        "task_text_sha256": "c6d0525dd9f7d8438e237984be0194366a747bf8c5e7e10e2557edd2b4e4e7cb",
+        "public_provenance_path": "docs/audits/2026-10-03-independent-efficiency/briefing-iteration-2/README.md"
+      },
+      "candidate_binding": {
+        "payload_sha256": "2f456d0674713936e337173f6144dcba0990ac118f33f0b30002f3b3481b4098",
+        "canonical_candidate_sha256": "01527df4763524a8c19dc9f6098c261d901b446b881ee761742ccdd074c2761c"
+      },
+      "public_case_binding": {
+        "path": "../review-cases.json",
+        "manifest_sha256": "75b86198a3ad989110f781f1cfefe2e44498062b690f2d43020eacaf95f5bb44",
+        "case_id": "R12"
+      }
+    }
+  ]
+}

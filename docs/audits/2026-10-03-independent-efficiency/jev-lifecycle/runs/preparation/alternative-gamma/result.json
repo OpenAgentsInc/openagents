@@ -1,0 +1,206 @@
+{
+  "task_id": "alternative-gamma",
+  "live": true,
+  "source_commit": "c427943a5c84ba5938a3549f24b27de551812a37",
+  "calls": [
+    {
+      "schema": "jev.gateway.call.v1",
+      "endpoint": "https://ai-gateway.vercel.sh/typesafe/v1/systemone",
+      "requested_model": "typesafe-ai/jev",
+      "returned_model": "typesafe-ai/jev",
+      "version_pinned": false,
+      "model_identity": "unversioned_gateway_alias",
+      "attempts": 1,
+      "started_at": "2026-10-03T12:08:01.543129Z",
+      "finished_at": "2026-10-03T12:08:02.218773Z",
+      "launch_intent_at": "2026-10-03T12:08:01.555213Z",
+      "outcome": "answered",
+      "answers_valid": true,
+      "http_status": 200,
+      "request_sha256": "a8343297a6085dd5a4d462d3d7cdd6a56a5797274981d17ae3637c3f12303572",
+      "request_bytes": 47022,
+      "response_sha256": "07c05ad66bc7347f16c0bc053162f77bb7c846428f5ad8bbc832d0d88163aa63",
+      "response_bytes": 8283,
+      "response_artifact": "response.json",
+      "response_headers": {
+        "x-vercel-id": "cle1::cle1::5t7vs-1791029281759-01bf061135ae"
+      },
+      "usage": {
+        "input_tokens": 14447,
+        "output_tokens": 1803
+      },
+      "gateway_metadata": {
+        "routing": {
+          "originalModelId": "typesafe-ai/jev",
+          "resolvedProvider": "digitalocean",
+          "fallbacksAvailable": [
+            "typesafe-ai"
+          ],
+          "planningReasoning": "System credentials planned for: digitalocean, typesafe-ai. Total execution order: typesafe-ai(system) → digitalocean(system)",
+          "canonicalSlug": "typesafe-ai/jev",
+          "finalProvider": "typesafe-ai",
+          "modelAttemptCount": 1,
+          "modelAttempts": [
+            {
+              "canonicalSlug": "typesafe-ai/jev",
+              "success": true,
+              "providerAttemptCount": 1,
+              "providerAttempts": [
+                {
+                  "provider": "typesafe-ai",
+                  "credentialType": "system",
+                  "success": true,
+                  "startTime": 1791029281855,
+                  "endTime": 1791029282202,
+                  "statusCode": 200
+                }
+              ]
+            }
+          ],
+          "totalProviderAttemptCount": 1
+        },
+        "cost": "0.000606774",
+        "marketCost": "0.000606774",
+        "surchargeCost": "0",
+        "gatewayCost": "0.000606774",
+        "inferenceCost": "0.000606774",
+        "inputInferenceCost": "0.000606774",
+        "outputInferenceCost": "0",
+        "generationId": "gen_01M40TM118Z8QFSB7XZAAQB27P"
+      },
+      "cost_usd": 0.000606774,
+      "cost_usd_decimal": "0.000606774",
+      "cost_status": "gateway_reported",
+      "accounting_error": null,
+      "error_type": null,
+      "status": "answered",
+      "wall_s": 0.6756581671070307
+    },
+    {
+      "schema": "jev.gateway.call.v1",
+      "endpoint": "https://ai-gateway.vercel.sh/typesafe/v1/systemone",
+      "requested_model": "typesafe-ai/jev",
+      "returned_model": "typesafe-ai/jev",
+      "version_pinned": false,
+      "model_identity": "unversioned_gateway_alias",
+      "attempts": 1,
+      "started_at": "2026-10-03T12:08:02.220816Z",
+      "finished_at": "2026-10-03T12:08:02.652835Z",
+      "launch_intent_at": "2026-10-03T12:08:02.230462Z",
+      "outcome": "answered",
+      "answers_valid": true,
+      "http_status": 200,
+      "request_sha256": "1d3ddb3003597b252dff5cc36f1b2a8823b952e0c48f3a12d2de03b8b40be924",
+      "request_bytes": 28162,
+      "response_sha256": "c75bdbd2d226438de865d7be82a02b6642194ecd98bfa758746131fdcabe611b",
+      "response_bytes": 1373,
+      "response_artifact": "response.json",
+      "response_headers": {
+        "x-vercel-id": "cle1::cle1::xb8vx-1791029282419-6c0d8e9f21f0"
+      },
+      "usage": {
+        "input_tokens": 10844,
+        "output_tokens": 252
+      },
+      "gateway_metadata": {
+        "routing": {
+          "originalModelId": "typesafe-ai/jev",
+          "resolvedProvider": "digitalocean",
+          "fallbacksAvailable": [
+            "typesafe-ai"
+          ],
+          "planningReasoning": "System credentials planned for: digitalocean, typesafe-ai. Total execution order: typesafe-ai(system) → digitalocean(system)",
+          "canonicalSlug": "typesafe-ai/jev",
+          "finalProvider": "typesafe-ai",
+          "modelAttemptCount": 1,
+          "modelAttempts": [
+            {
+              "canonicalSlug": "typesafe-ai/jev",
+              "success": true,
+              "providerAttemptCount": 1,
+              "providerAttempts": [
+                {
+                  "provider": "typesafe-ai",
+                  "credentialType": "system",
+                  "success": true,
+                  "startTime": 1791029282498,
+                  "endTime": 1791029282655,
+                  "statusCode": 200
+                }
+              ]
+            }
+          ],
+          "totalProviderAttemptCount": 1
+        },
+        "cost": "0.000455448",
+        "marketCost": "0.000455448",
+        "surchargeCost": "0",
+        "gatewayCost": "0.000455448",
+        "inferenceCost": "0.000455448",
+        "inputInferenceCost": "0.000455448",
+        "outputInferenceCost": "0",
+        "generationId": "gen_01M40TM1NFV8D7349655C3H8WB"
+      },
+      "cost_usd": 0.000455448,
+      "cost_usd_decimal": "0.000455448",
+      "cost_status": "gateway_reported",
+      "accounting_error": null,
+      "error_type": null,
+      "status": "answered",
+      "wall_s": 0.43202925007790327
+    }
+  ],
+  "deterministic_wall_s": 2.2814691660460085,
+  "ranking": "jev",
+  "requirement_map": {
+    "r01": {
+      "text": "Implement the remaining A12 portion of public issue 9424 in `crates/jev`.",
+      "candidate": "c10"
+    },
+    "r02": {
+      "text": "Validate finite numeric ranges, probability mass within a documented tolerance, selected option identities, and score legend bounds before returning typed decisions.",
+      "candidate": "c08"
+    },
+    "r03": {
+      "text": "At the typed request-aware boundary, validate required answer coverage, answer types, and option identities.",
+      "candidate": "c13"
+    },
+    "r04": {
+      "text": "Invalid answers must return structured validation errors; preserve a separate raw compatibility path.",
+      "candidate": "c13"
+    },
+    "r05": {
+      "text": "Cover Noul, Choice, and Score malformed responses and valid compatibility cases through async and blocking clients with bounded local mocks.",
+      "candidate": "c10"
+    },
+    "r06": {
+      "text": "Read `.agents/skills/typesafe-ai/SKILL.md` and the pinned `docs/decision-models/2026-09-20-score-contract.md`; preserve that selected-answer and calibrated-score contract when interpreting confidence and probabilities.",
+      "candidate": "c03"
+    },
+    "r07": {
+      "text": "This task does not choose model thresholds or call a provider.",
+      "candidate": "c03"
+    },
+    "r08": {
+      "text": "A22 whole-call deadlines are already implemented at this source and are outside this task.",
+      "candidate": "c02"
+    },
+    "r09": {
+      "text": "Work only within `crates/jev/`; run ordinary tests with `--features jev/blocking` and formatting checks.",
+      "candidate": "c02"
+    },
+    "r10": {
+      "text": "Do not enable the live feature.",
+      "candidate": "c08"
+    },
+    "r11": {
+      "text": "Broader consumer regression checks and deployment are outside this isolated SDK trial.",
+      "candidate": "none"
+    }
+  },
+  "missing_implementation_probability": 0.89,
+  "next_read": "f06",
+  "probe_path": ".agents/skills/typesafe-ai/SKILL.md",
+  "total_wall_s": 3.572257958119735,
+  "cost_usd": 0.001062222
+}

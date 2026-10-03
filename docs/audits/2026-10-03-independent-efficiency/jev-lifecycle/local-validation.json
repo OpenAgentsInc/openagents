@@ -1,0 +1,25 @@
+{
+  "at": "2026-10-03T12:22:05.606145+00:00",
+  "python": "3.13.12 (main, Feb  3 2026, 17:53:27) [Clang 17.0.0 (clang-1700.6.3.2)]",
+  "tests": 39,
+  "test_command": "python3.13 -m unittest discover -s bench/jev-lifecycle -v",
+  "test_log_sha256": "17636934929a6c9c90dd89d9735c0e250b3f19f6bf490cd9acb0c39679585af7",
+  "model_responses_revalidated": 53,
+  "credential_scan_files": 265,
+  "credential_found": false,
+  "module_sha256": {
+    "bench/jev-lifecycle/test_lifecycle.py": "1730a698977c0ec3e3eaf235cdc25ed540503e044262b2ee9e27a109847a835d",
+    "bench/jev-lifecycle/batching.py": "98b75882438ab42dd08566eb9efca87a7cd59edd301f2616ea815d7e76663bd2",
+    "bench/jev-lifecycle/gateway.py": "602ebdb605a5c177dbdf0a9e0198ab104c9ad7adad2f42f20890d731c048071e",
+    "bench/jev-lifecycle/test_gateway.py": "c07de6722f95758a09045f8c2f19b80deaba34a54e9167f07f570ff658cb2816",
+    "bench/jev-lifecycle/benchmark_context.py": "01c3a79bf2fc4c70732e0ff880b36afcbb14b9dd8aa6c1c9b8cc36dbb40081cf",
+    "bench/jev-lifecycle/context.py": "46af0a61281924f6447d31c28754815c7b09124506446b2dbfeaa70ed0d3e8a6",
+    "bench/jev-lifecycle/lifecycle.py": "a2cedd7a9378cf42ff1e972b2cdd0bc8be9ab0146344c1e6862c5e34bf5c1959",
+    "bench/jev-lifecycle/test_context.py": "3cb747237a12e168f416f61a99b82256649a677d4fbcae1fbd415bfcab9ab11e",
+    "bench/jev-lifecycle/focused_review.py": "e5956e356b4d353c3785ccccb7f7a2d648c8a2d57970f6c5c11d511e2b910f66",
+    "bench/jev-lifecycle/context-at-round-one.py": "4e4bc6acf510bb852af38bc47e1bc20f66e3d3a2817e00ff1dcb4762a2d20acc",
+    "bench/jev-lifecycle/report.py": "e283a3f7e9863ee27932b65a6d7c6062171dbd3ed997b7287f2f1eb195c18029"
+  },
+  "rust_changes": false,
+  "cargo_runs": 0
+}

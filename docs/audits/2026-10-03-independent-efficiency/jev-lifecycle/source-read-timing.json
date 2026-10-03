@@ -1,0 +1,341 @@
+{
+  "schema": "openagents.jev-lifecycle.source-read-timing.v1",
+  "model_calls": 0,
+  "source_hashes": {
+    "context-at-round-one.py": "4e4bc6acf510bb852af38bc47e1bc20f66e3d3a2817e00ff1dcb4762a2d20acc",
+    "context.py": "46af0a61281924f6447d31c28754815c7b09124506446b2dbfeaa70ed0d3e8a6"
+  },
+  "benchmark_sha256": "01c3a79bf2fc4c70732e0ff880b36afcbb14b9dd8aa6c1c9b8cc36dbb40081cf",
+  "warm_observations_per_implementation": 5,
+  "timing_boundary": "assemble only: includes source I/O, validation, selection and canonical index hashing; excludes process startup, input JSON loading, packing and output writes",
+  "order": "one warmup per implementation, then five pairs alternating original-first and batched-first",
+  "tasks": [
+    {
+      "id": "alternative-alpha",
+      "source_commit": "09f4e0915150f503e332c2b213d24f793c433f3b",
+      "index_sha256": "d0771eb093ec2224cc1ae562c3796949a48f76f9d74cbc0b5d10d4c4869354aa",
+      "candidate_pool_sha256": "2bb12b3b51452b50272becf17595943b8becf8332534f6db6f754ec5854467ba",
+      "manifest_sha256": "93075b5d1750c983305f57a0c2b44d18b595b3f699b3d8bf158af11af9d7e2e0",
+      "recorded_response_sha256": "6931bf13127c06c5a068006074fb72eecd06ff8334c139a3a733341ed59a2384",
+      "pack_sha256": {
+        "deterministic": "ad6d102706aa51773bc132bb391cfcd6a76ebabe8340e7d8a52d436d3897ffad",
+        "recorded_jev": "dd8199c873e75cbe046a0c5caa4ecc59914738d4dd06735606c28446bf7bd5c3"
+      },
+      "all_non_timing_fields_equal": true,
+      "warmup": {
+        "original": {
+          "assembly_s": 2.0222574998624623,
+          "deterministic_pack_s": 0.0007542499806731939,
+          "recorded_jev_pack_s": 0.0005727920215576887
+        },
+        "batched": {
+          "assembly_s": 0.7506380421109498,
+          "deterministic_pack_s": 0.0006437920965254307,
+          "recorded_jev_pack_s": 0.0005975000094622374
+        }
+      },
+      "observations": {
+        "original": [
+          {
+            "assembly_s": 2.052442583022639,
+            "deterministic_pack_s": 0.0006322090048342943,
+            "recorded_jev_pack_s": 0.0005500421393662691
+          },
+          {
+            "assembly_s": 2.0483405420091003,
+            "deterministic_pack_s": 0.0007015420123934746,
+            "recorded_jev_pack_s": 0.0006219169590622187
+          },
+          {
+            "assembly_s": 2.039111667079851,
+            "deterministic_pack_s": 0.0006621249485760927,
+            "recorded_jev_pack_s": 0.0007640831172466278
+          },
+          {
+            "assembly_s": 2.059728416148573,
+            "deterministic_pack_s": 0.0008645420894026756,
+            "recorded_jev_pack_s": 0.000621583079919219
+          },
+          {
+            "assembly_s": 2.1095884169917554,
+            "deterministic_pack_s": 0.0007023329380899668,
+            "recorded_jev_pack_s": 0.0006023750174790621
+          }
+        ],
+        "batched": [
+          {
+            "assembly_s": 0.7664580421987921,
+            "deterministic_pack_s": 0.0007355839479714632,
+            "recorded_jev_pack_s": 0.0006272080354392529
+          },
+          {
+            "assembly_s": 0.7836774999741465,
+            "deterministic_pack_s": 0.0006730419117957354,
+            "recorded_jev_pack_s": 0.0006010408978909254
+          },
+          {
+            "assembly_s": 0.8229772080667317,
+            "deterministic_pack_s": 0.0006923340260982513,
+            "recorded_jev_pack_s": 0.0005688751116394997
+          },
+          {
+            "assembly_s": 0.759678625036031,
+            "deterministic_pack_s": 0.0006068339571356773,
+            "recorded_jev_pack_s": 0.0005432500038295984
+          },
+          {
+            "assembly_s": 0.7993723340332508,
+            "deterministic_pack_s": 0.0017472081817686558,
+            "recorded_jev_pack_s": 0.0007332079112529755
+          }
+        ]
+      },
+      "median_assembly_s": {
+        "original": 2.052442583022639,
+        "batched": 0.7836774999741465
+      },
+      "median_reduction_fraction": 0.6181732407734291,
+      "assembly_range_s": {
+        "original": [
+          2.039111667079851,
+          2.1095884169917554
+        ],
+        "batched": [
+          0.759678625036031,
+          0.8229772080667317
+        ]
+      }
+    },
+    {
+      "id": "alternative-beta",
+      "source_commit": "7ec5f6e83d018ab2f25d7a61ff695de81f2f55f6",
+      "index_sha256": "75e5a9cf5166e0ff27033403dc06bd7cd2f20fb7aa4841a3db1cef79227d0c3b",
+      "candidate_pool_sha256": "a63a6c5f73ab83d9dbe0eb64af12d28539f90b6c254cb9d81584f957ca349643",
+      "manifest_sha256": "a78647ec368dc9f6fb573915d9250bfe9ceb16edc1da9389e8576cc486c7a511",
+      "recorded_response_sha256": "99b363e2c126c75fe29830a7ef26cc8b6bde138c7739408de220ab002ea1ac1a",
+      "pack_sha256": {
+        "deterministic": "761354b211df79855868fb7a98a8d86c41c994ccb145d7507ed3317f2a979204",
+        "recorded_jev": "846dfba975dff193abd6a3b0955c5b212a448a9debc7b5d9743fcb9de3723ef5"
+      },
+      "all_non_timing_fields_equal": true,
+      "warmup": {
+        "original": {
+          "assembly_s": 1.349176124902442,
+          "deterministic_pack_s": 0.0006252499297261238,
+          "recorded_jev_pack_s": 0.0005552500952035189
+        },
+        "batched": {
+          "assembly_s": 0.42568924999795854,
+          "deterministic_pack_s": 0.0006253749597817659,
+          "recorded_jev_pack_s": 0.0005949169863015413
+        }
+      },
+      "observations": {
+        "original": [
+          {
+            "assembly_s": 1.3194152910728008,
+            "deterministic_pack_s": 0.000862583052366972,
+            "recorded_jev_pack_s": 0.0007052919827401638
+          },
+          {
+            "assembly_s": 1.3289367088582367,
+            "deterministic_pack_s": 0.0006647908594459295,
+            "recorded_jev_pack_s": 0.0006008329801261425
+          },
+          {
+            "assembly_s": 1.3346037091687322,
+            "deterministic_pack_s": 0.0006302909459918737,
+            "recorded_jev_pack_s": 0.0005593749228864908
+          },
+          {
+            "assembly_s": 1.4280567499808967,
+            "deterministic_pack_s": 0.0009337090887129307,
+            "recorded_jev_pack_s": 0.0006237919442355633
+          },
+          {
+            "assembly_s": 1.3586752081755549,
+            "deterministic_pack_s": 0.0005992909427732229,
+            "recorded_jev_pack_s": 0.0005239581223577261
+          }
+        ],
+        "batched": [
+          {
+            "assembly_s": 0.43743537506088614,
+            "deterministic_pack_s": 0.0005595830734819174,
+            "recorded_jev_pack_s": 0.0005362080410122871
+          },
+          {
+            "assembly_s": 0.41801654105074704,
+            "deterministic_pack_s": 0.0006608341354876757,
+            "recorded_jev_pack_s": 0.0005839590448886156
+          },
+          {
+            "assembly_s": 0.40610887482762337,
+            "deterministic_pack_s": 0.0007710419595241547,
+            "recorded_jev_pack_s": 0.0008724580984562635
+          },
+          {
+            "assembly_s": 0.45926770893856883,
+            "deterministic_pack_s": 0.0005640001036226749,
+            "recorded_jev_pack_s": 0.0005201250314712524
+          },
+          {
+            "assembly_s": 0.4679786660708487,
+            "deterministic_pack_s": 0.000557333929464221,
+            "recorded_jev_pack_s": 0.0005361249204725027
+          }
+        ]
+      },
+      "median_assembly_s": {
+        "original": 1.3346037091687322,
+        "batched": 0.43743537506088614
+      },
+      "median_reduction_fraction": 0.6722357565352894,
+      "assembly_range_s": {
+        "original": [
+          1.3194152910728008,
+          1.4280567499808967
+        ],
+        "batched": [
+          0.40610887482762337,
+          0.4679786660708487
+        ]
+      }
+    },
+    {
+      "id": "alternative-gamma",
+      "source_commit": "c427943a5c84ba5938a3549f24b27de551812a37",
+      "index_sha256": "772c563dacdb48a6647f54a2d0f39ad0b73323542f9a3dc887d12471d1e9062c",
+      "candidate_pool_sha256": "d05d31eae0eb99015860a6958254f48a55144773557cc3ea2e071b88cf67c69e",
+      "manifest_sha256": "a06ff5c883e57a8bac3cafc88444d6987b80b4a5b3c7efaf4c0354d080a8050d",
+      "recorded_response_sha256": "07c05ad66bc7347f16c0bc053162f77bb7c846428f5ad8bbc832d0d88163aa63",
+      "pack_sha256": {
+        "deterministic": "cbcded1a641247903e6a5d2775218a6397b67227a376bd8610d11edf50331b38",
+        "recorded_jev": "ad58a509eaef59847d918b3dd2af3ca27c2ca88c121308967c8e1b9bb3444628"
+      },
+      "all_non_timing_fields_equal": true,
+      "warmup": {
+        "original": {
+          "assembly_s": 2.17301975004375,
+          "deterministic_pack_s": 0.000669082859531045,
+          "recorded_jev_pack_s": 0.0006002921145409346
+        },
+        "batched": {
+          "assembly_s": 0.3703317909967154,
+          "deterministic_pack_s": 0.0005743750371038914,
+          "recorded_jev_pack_s": 0.0005223329644650221
+        }
+      },
+      "observations": {
+        "original": [
+          {
+            "assembly_s": 2.2194382089655846,
+            "deterministic_pack_s": 0.000684250146150589,
+            "recorded_jev_pack_s": 0.000596167054027319
+          },
+          {
+            "assembly_s": 2.122911209007725,
+            "deterministic_pack_s": 0.0006030409131199121,
+            "recorded_jev_pack_s": 0.000539042055606842
+          },
+          {
+            "assembly_s": 2.0883625000715256,
+            "deterministic_pack_s": 0.0006584159564226866,
+            "recorded_jev_pack_s": 0.0005961249116808176
+          },
+          {
+            "assembly_s": 2.0318645420484245,
+            "deterministic_pack_s": 0.0006407080218195915,
+            "recorded_jev_pack_s": 0.0005925830919295549
+          },
+          {
+            "assembly_s": 2.228453791933134,
+            "deterministic_pack_s": 0.0008887918666005135,
+            "recorded_jev_pack_s": 0.0006409171037375927
+          }
+        ],
+        "batched": [
+          {
+            "assembly_s": 0.36799391685053706,
+            "deterministic_pack_s": 0.0005708748940378428,
+            "recorded_jev_pack_s": 0.0005326250102370977
+          },
+          {
+            "assembly_s": 0.3629639579448849,
+            "deterministic_pack_s": 0.0005672911647707224,
+            "recorded_jev_pack_s": 0.0005142081063240767
+          },
+          {
+            "assembly_s": 0.36935629206709564,
+            "deterministic_pack_s": 0.0005624580662697554,
+            "recorded_jev_pack_s": 0.0006870829965919256
+          },
+          {
+            "assembly_s": 0.3528885829728097,
+            "deterministic_pack_s": 0.0005661249160766602,
+            "recorded_jev_pack_s": 0.0005140001885592937
+          },
+          {
+            "assembly_s": 0.35496887494809926,
+            "deterministic_pack_s": 0.0006082078907638788,
+            "recorded_jev_pack_s": 0.0006982500199228525
+          }
+        ]
+      },
+      "median_assembly_s": {
+        "original": 2.122911209007725,
+        "batched": 0.3629639579448849
+      },
+      "median_reduction_fraction": 0.8290253702534556,
+      "assembly_range_s": {
+        "original": [
+          2.0318645420484245,
+          2.228453791933134
+        ],
+        "batched": [
+          0.3528885829728097,
+          0.36935629206709564
+        ]
+      }
+    }
+  ],
+  "status": "confirmed_serial_final_measurement",
+  "setup_attempts": [
+    {
+      "outcome": "test_import_failure",
+      "reason": "System Python3.9 has no tomllib; corrected to installed Python3.13 without changing implementation."
+    },
+    {
+      "outcome": "excluded_timing_launches",
+      "reason": "Two initial timing launches may have overlapped because the first tool process handle was not retained. One complete surviving artifact is preserved separately; the earlier artifact was not retained independently. Neither is used for the final timing claim.",
+      "retained_artifact": "source-read-timing-provisional.json"
+    },
+    {
+      "outcome": "final_serial_measurement",
+      "reason": "Confirmed no benchmark process remained before starting one new launch; one warmup and five alternating pairs per task."
+    }
+  ],
+  "focused_tests": {
+    "command": "python3.13 -m unittest discover -s bench/jev-lifecycle -p test_context.py",
+    "passed": 15,
+    "elapsed_s": 7.123,
+    "test_sha256": "3cb747237a12e168f416f61a99b82256649a677d4fbcae1fbd415bfcab9ab11e"
+  },
+  "measurement_host": {
+    "os": "macOS",
+    "python": "3.13",
+    "cache": "warm; one explicit warmup per implementation; OS cache not reset"
+  },
+  "bounds_and_tradeoff": {
+    "maximum_admitted_files": 48,
+    "maximum_file_bytes": 2097152,
+    "maximum_batch_source_bytes": 100663296,
+    "approximate_raw_batch_plus_copies_bytes": 201326592,
+    "actual_admitted_source_bytes": {
+      "alternative-alpha": 297992,
+      "alternative-beta": 231350,
+      "alternative-gamma": 259235
+    },
+    "peak_memory_measured": false
+  }
+}

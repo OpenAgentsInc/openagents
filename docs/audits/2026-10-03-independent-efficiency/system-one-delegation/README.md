@@ -8,13 +8,22 @@ thesis each result supports. Tracking:
 
 The new panel has **zero scored executor sessions**. One actual Jev request
 returned HTTP 402. Its [receipt](jev-capability-refusal.json) records a
-deterministic fallback and unknown cost. A provider model listing does not
-establish funded inference. The single-trial coordinator now connects
+deterministic fallback and unknown cost. A subsequent
+[gateway capability call](../jev-lifecycle/capability/receipt.json) succeeds
+with $0.000020664 reported usage. This resolves access through a different
+transport; it does not establish the original pinned model version or settle
+the refused request's charge. The separate
+[lifecycle pilot](../jev-lifecycle/README.md) uses that gateway alias and now
+retains 53 real component calls, costing $0.026275620 in reported usage.
+Its evidence-selection and batching gains do not establish a native coding
+win; the corrected review misses both tested order-dependence defects.
+The single-trial coordinator now connects
 preparation, native execution, final acceptance, and the complete endpoint
 clock. Its offline tests pass. Linux preflight qualifies the first original
 task and three replacements; ordinary-suite failures and a timeout leave
-the other three original tasks unqualified. Funded provider access,
-current native integration checks, and final registration remain prerequisites.
+the other three original tasks unqualified. A prospectively registered
+transport/model amendment, current native integration checks, and final
+registration remain prerequisites.
 The protocol remains unsealed.
 
 ## The comparison being prepared
@@ -288,7 +297,8 @@ and time at equal measured quality, not better correctness.
 
 ## Remaining work
 
-Restore funded Jev access and retain a successful bounded capability call.
+Register any use of the now-verified gateway alias prospectively; it does not
+prove that the original `jev-1.13.0` treatment ran.
 Resolve or bound the refused request's unknown charge before claiming complete
 accounting. Bind the qualified replacements, current native model capabilities,
 cache seeds, executables, and the final schedule before sealing the

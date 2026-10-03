@@ -1,0 +1,10 @@
+{
+  "created_at": "2026-10-03T12:06:33.987481+00:00",
+  "review_manifest_sha256": "2ce97654d51812ef95882694f037c9d1080bfd9911e59e9ff2ea50804fac0d5b",
+  "files": {
+    "bench/jev-lifecycle/gateway.py": "f5c1fb4518f5d30de86d7feb88e74f188fb2c31b4abfb7556e69c4573a16d0d1",
+    "bench/jev-lifecycle/lifecycle.py": "c3d6f8f4c2bd5752267752aeeaadc0662ab8a596bc32888e54ee79bd836d22b5",
+    "docs/audits/2026-10-03-independent-efficiency/jev-lifecycle/protocol.md": "5c535eaefef413336a666b05cb9991cdcf4676e3aded5bd2d22188d16808d54a"
+  },
+  "scored_native_sessions": 0
+}

@@ -1,0 +1,3325 @@
+{
+  "schema": "openagents.jev-lifecycle.context.v1",
+  "source_commit": "09f4e0915150f503e332c2b213d24f793c433f3b",
+  "task": {
+    "id": "alternative-alpha",
+    "title": "Device-access (NIP-HOST) grants fill up: one grant per live test run in coder-access/access.json",
+    "prompt": "Device re-enrollment in `crates/coder-access` keeps adding grants until the 128-grant bound prevents a new device from enrolling. Fix grant retention so a device that enrolls again has one live grant, and revoked or superseded grants do not prevent new enrollment. Preserve the bound for distinct live devices and preserve already-issued delegated access when its issuing device enrolls again. Delegation must still narrow authority and obey explicit revocation; re-enrollment must not revive authority that was revoked or removed. Preserve invitation retry behavior. Cover the public invitation and owner-approved enrollment paths with regression tests. Read the crate README and `nips/openagents/NIP-HOST.md`. Work only on the isolated code and tests in `crates/coder-access/`; host-store cleanup, deployment, owner devices, and changes outside this package are outside this trial.",
+    "packages": [
+      "coder-access"
+    ],
+    "allowed_paths": [
+      "crates/coder-access/"
+    ],
+    "required_public_readings": [
+      "crates/coder-access/README.md",
+      "nips/openagents/NIP-HOST.md"
+    ]
+  },
+  "candidates": [
+    {
+      "id": "c01",
+      "path": "crates/coder-access/src/host/enroll.rs",
+      "blob": "6bb26ba6f5647afaf4565595755ab4f79cdfdf31",
+      "file_sha256": "dc07b3a1d4a939660bee8c3b3b8d19539c38f06fee17c57b351cbb1a80f13f98",
+      "name": "Host::request_enrollment",
+      "role": "implementation",
+      "kind": "function_item",
+      "start_line": 102,
+      "end_line": 176,
+      "full_start_line": 102,
+      "full_end_line": 176,
+      "text": "    /// Start reverse enrollment. The request is persisted before the code is\n    /// returned for display. Publish the returned events to the relay.\n    pub fn request_enrollment(\n        &self,\n        relay: &str,\n        rights: Rights,\n        now: u64,\n    ) -> Result<PendingEnrollment> {\n        self.policy.validate(relay).map_err(Error::from)?;\n        let (mut store, secret, mut book) = self.open()?;\n        book.prune(now);\n        if book.enrollments.len() >= MAX_ENROLLMENTS {\n            return fail(Code::Bounds, \"enrollment request retention limit reached\");\n        }\n        let enrollment = Enrollment {\n            v: ENROLLMENT.into(),\n            requires: vec![],\n            enrollment: random_id(),\n            host: book.host.clone(),\n            owner: book.owner.clone(),\n            relay: relay.into(),\n            rights: rights.clone(),\n            issued_at: now,\n            expires_at: now + ENROLLMENT_LIFETIME,\n        };\n        enrollment.validate(self.policy)?;\n        let code = short_code();\n        let mut recipients = vec![book.owner.clone()];\n        for record in book.grants.values() {\n            let g = &record.grant;\n            if record.revoked_at.is_none()\n                && g.expires_at > now\n                && g.epoch == book.epoch(&g.device)\n                && g.rights.contains(Right::AccessAdmin)\n                && !recipients.contains(&g.device)\n                && recipients.len() < MAX_ENROLLMENT_RECIPIENTS\n            {\n                recipients.push(g.device.clone());\n            }\n        }\n        let events = recipients\n            .iter()\n            .map(|recipient| {\n                seal(\n                    &enrollment,\n                    ENROLLMENT,\n                    &secret,\n                    recipient,\n                    &enrollment.enrollment,\n                    now,\n                    enrollment.expires_at,\n                )\n            })\n            .collect::<Result<Vec<_>>>()?;\n        book.enrollments.insert(\n            enrollment.enrollment.clone(),\n            EnrollmentRecord {\n                artifact_digest: enrollment.digest()?,\n                code_digest: code_digest(&enrollment.enrollment, &code)?,\n                relay: relay.into(),\n                rights,\n                issued_at: now,\n                expires_at: enrollment.expires_at,\n                attempts: 0,\n                state: EnrollmentState::Pending {},\n            },\n        );\n        store.save(&book)?;\n        Ok(PendingEnrollment {\n            id: enrollment.enrollment,\n            code,\n            expires_at: enrollment.expires_at,\n            events,\n        })\n    }\n",
+      "source_sha256": "f8fef12d26b458ad08bee0c8aada9f51941d45f6372135a93836abfb5e2cad3b",
+      "completeness": "complete_declaration",
+      "admission_reasons": [
+        "package_scope"
+      ],
+      "baseline_score": 204
+    },
+    {
+      "id": "c02",
+      "path": "crates/coder-access/src/tests/flows.rs",
+      "blob": "80f26ad3064f83c24aec3241bbd87d07ef4c79d0",
+      "file_sha256": "47c553ce162ae0362cf481230ecb3e6c7c1a56acf25010773164b1ca3c0b3a5b",
+      "name": "a_task_command_reaches_the_owner_with_its_grant_and_epoch",
+      "role": "test",
+      "kind": "function_item",
+      "start_line": 574,
+      "end_line": 610,
+      "full_start_line": 574,
+      "full_end_line": 610,
+      "text": "#[tokio::test]\nasync fn a_task_command_reaches_the_owner_with_its_grant_and_epoch() {\n    let f = Fixture::served(0, false).await;\n    let (phone, operator) = f.enroll(\"standard\").await;\n    let Outcome::Dispatched { receipt } = operator.call(command()).await.unwrap() else {\n        panic!(\"dispatch expected\")\n    };\n    assert_eq!(receipt.operation, \"task.command\");\n    let entry = f.host().devices(now()).unwrap().remove(0);\n    let seen = f.recorder.seen();\n    assert_eq!(\n        seen[0].1,\n        format!(\"{} {} {}\", pubkey(&phone), entry.grant, entry.epoch)\n    );\n    // Emulation belongs to a steer only, and text stays bounded.\n    let Operation::CommandTask { mut command } = command() else {\n        unreachable!()\n    };\n    command.emulate = true;\n    assert!(\n        Operation::CommandTask {\n            command: command.clone()\n        }\n        .validate()\n        .is_err()\n    );\n    command.action = crate::CommandAction::Steer;\n    assert!(\n        Operation::CommandTask {\n            command: command.clone()\n        }\n        .validate()\n        .is_ok()\n    );\n    command.text = \"x\".repeat(16 * 1024 + 1);\n    assert!(Operation::CommandTask { command }.validate().is_err());\n}\n",
+      "source_sha256": "0191bd350e397c0b1321ea395254c3ef7befca4c93fe1b328c0a4d0b2c73950a",
+      "completeness": "complete_declaration",
+      "admission_reasons": [
+        "package_scope"
+      ],
+      "baseline_score": 176
+    },
+    {
+      "id": "c03",
+      "path": "nips/openagents/NIP-HOST.md",
+      "blob": "0f37d829075fd0eec50bce2156becdfffb274679",
+      "file_sha256": "3da5fd0161b7096a4aeada96bdccd3fc3444734f205eda3919f85e1890c18210",
+      "name": "nips/openagents/NIP-HOST.md",
+      "role": "document",
+      "kind": "document",
+      "start_line": 22,
+      "end_line": 48,
+      "full_start_line": 1,
+      "full_end_line": 710,
+      "text": "| [CJ](NIP-CJ.md) | The CAP binding below invokes HOST operations through CJ execution v1. A CJ `completed` result means the HOST operation answered; the embedded reply states whether it was admitted. |\n| [POL](NIP-POL.md) | Disclosure, action approvals, spending, and publication stay POL decisions. No HOST right approves a POL action, and `operate` does not raise a budget. |\n| [REACH](NIP-REACH.md) | Owner host directory, presence, reachability hints, and direct channels. A direct channel binds to one HOST grant ID and epoch. A route, address, or tailnet membership never grants access. The opt-in [tailnet admission](#tailnet-admission) uses Tailscale identity to hand out an invitation, never a grant. |\n| [TERM](NIP-TERM.md) | Terminal sessions, streams, and replay. TERM requires the HOST `terminal` right and defines no grant of its own. |\n| [RUN](NIP-RUN.md) and [ENV](NIP-ENV.md) | A task admitted through `task.create` is recorded and executed under the host's task owner, RUN, and ENV. HOST admission is not execution evidence. |\n| Official [NIP-46](../official/46.md) | A remote signer can hold the owner key. A permission to sign is not a HOST right; the host still checks the signer against its locally established owner. |\n| Block [NIP-OA](../block/NIP-OA.md) and [NIP-AA](../block/NIP-AA.md) | Relay admission for agent keys. Relay membership never admits a HOST operation. |\n\n## Encoding, principals, and limits\n\nEvery artifact defined below contains `v`, `requires: []`, and optional inert\n`meta` only where specified; this version specifies none. Reject unknown\nfields, enum values, versions, duplicate keys, and nonempty `requires`.\nCommon IDs are random 64-hex values. Pubkeys are 64-hex x-only keys.\nTimestamps are Unix seconds. Host time, not event `created_at`, enforces\nexpiry. Bodies are at most 128 KiB and use the common nesting limit.\n\nThere are three principals:\n\n- The **owner** is the key whose authority the host serves. The host\n  establishes the owner relationship locally, for example with an operator\n  command on that machine. An invitation, approval, relay event, or display\n  name cannot establish or change it. The owner holds every right at its host\n  without a grant. The host refuses a request signed by any other key without\n  a grant.\n- The **host** key signs grants, replies, and enrollment requests. It is\n  distinct from the owner key.\n",
+      "source_sha256": "11a6af558ba584ed9baa310c774d1f38f8238b6e147767d9325f22c7f6793526",
+      "completeness": "partial_file",
+      "admission_reasons": [
+        "explicit_file",
+        "oversized_declaration_read_pointer"
+      ],
+      "baseline_score": 1296
+    },
+    {
+      "id": "c04",
+      "path": "crates/coder-access/src/host/mod.rs",
+      "blob": "a341758ce82a21cc1b45aebf8d233288c9a1e6a5",
+      "file_sha256": "7b0f8ed5041f0bc2929a03632e0a5245188416c1dbb2029924b5600ff001bced",
+      "name": "Host::execute",
+      "role": "implementation",
+      "kind": "function_item",
+      "start_line": 425,
+      "end_line": 472,
+      "full_start_line": 401,
+      "full_end_line": 533,
+      "text": "            }),\n            Operation::Revoke { device } => {\n                revoke(book, device, now).map(|(epoch, grants)| Outcome::Revoked {\n                    device: device.clone(),\n                    epoch,\n                    grants,\n                })\n            }\n            Operation::ListWorkspaces {} => match dispatch.workspaces() {\n                Ok(mut workspaces) => {\n                    workspaces.sort();\n                    workspaces.dedup();\n                    let outcome = Outcome::Workspaces { workspaces };\n                    outcome.validate().map(|()| outcome)\n                }\n                Err(code) => Err(Error::new(code, \"the host lists no workspaces\")),\n            },\n            // Queue edits are idempotent: an exact retry after an uncertain\n            // save sets the same text, order, or lease again.\n            Operation::QueueTask { task, edit } => {\n                let grant = p.grant.as_deref().zip(request.epoch);\n                match dispatch.queue(&p.key, grant, task, edit) {\n                    Ok(queue) => {\n                        let outcome = Outcome::Queue { queue };\n                        match outcome.validate() {\n                            Ok(()) if outcome.answers(&request.op) => Ok(outcome),\n                            _ => Err(Error::new(\n                                Code::Unavailable,\n                                \"the task owner's queue is invalid\",\n                            )),\n                        }\n                    }\n                    Err(code) => Err(Error::new(code, \"the task owner refused the queue edit\")),\n                }\n            }\n            Operation::ListSpends { grant } => {\n                if grant.issuer != p.key || grant.grantee != book.host {\n                    Err(Error::new(\n                        Code::Forbidden,\n                        \"a spend grant must be the sender's own and name this host\",\n                    ))\n                } else {\n                    match dispatch.spends().map(|s| s.list(&p.key, grant, now)) {\n                        Some(Ok(spends)) => {\n                            let outcome = Outcome::Spends { spends };\n                            outcome.validate().map(|()| outcome)\n                        }\n                        Some(Err(code)) => Err(Error::new(code, \"the host refused the spend list\")),\n",
+      "source_sha256": "676b61561cd066ef446ed78c7f3304cdac0e03a256e65309868cb9d7baa6f1f7",
+      "completeness": "partial_declaration",
+      "admission_reasons": [
+        "package_scope",
+        "oversized_declaration_read_pointer"
+      ],
+      "baseline_score": 202
+    },
+    {
+      "id": "c05",
+      "path": "crates/coder-access/tests/capability.rs",
+      "blob": "fa6b5ff16578ccf8d9c09b3ea254d0f848854471",
+      "file_sha256": "dddd02369820cac2313da05782d41cd9ef55516847fae50d6112e2cf632105e5",
+      "name": "checked_in_manifest_is_the_one_a_host_builds_and_validates",
+      "role": "test",
+      "kind": "function_item",
+      "start_line": 33,
+      "end_line": 63,
+      "full_start_line": 33,
+      "full_end_line": 63,
+      "text": "#[test]\nfn checked_in_manifest_is_the_one_a_host_builds_and_validates() {\n    let (_, host) = fixture_host();\n    let fixture = checked_in();\n    let built = definition(&host, &[RELAY.to_owned()]);\n    assert_eq!(fixture[\"definition\"], built, \"regenerate the fixture\");\n\n    let parsed = cap::parse_definition(&fixture[\"definition\"]).expect(\"NIP-CAP validator\");\n    assert_eq!(parsed.profile, Profile::Adapter);\n    assert_eq!(parsed.transport, \"nostr-cj\");\n    assert_eq!(parsed.component, SLUG);\n    assert_eq!(parsed.idempotency, \"request_attempt\");\n    assert_eq!(\n        fixture[\"definition\"][\"binding_contract\"][\"operations\"],\n        json!(OPERATIONS)\n    );\n\n    // The schema references pin the checked-in schema documents, and the\n    // shared evaluator accepts both.\n    for (field, bytes) in [(\"input\", CALL_SCHEMA), (\"output\", ANSWER_SCHEMA)] {\n        let reference = &fixture[\"definition\"][field];\n        assert_eq!(reference[\"digest\"], digest_bytes(bytes));\n        assert_eq!(reference[\"size\"], bytes.len());\n        assert_eq!(reference[\"media_type\"], \"application/schema+json\");\n    }\n    let documents = BTreeMap::from([\n        (digest_bytes(CALL_SCHEMA), CALL_SCHEMA.to_vec()),\n        (digest_bytes(ANSWER_SCHEMA), ANSWER_SCHEMA.to_vec()),\n    ]);\n    prepare_closure(&documents).expect(\"the schemas use supported keywords\");\n}\n",
+      "source_sha256": "dd2a61c6632b86cdf5987b67dac2ddde7485d698b373beef97e4387fc777735d",
+      "completeness": "complete_declaration",
+      "admission_reasons": [
+        "package_scope"
+      ],
+      "baseline_score": 165
+    },
+    {
+      "id": "c06",
+      "path": "crates/coder-access/README.md",
+      "blob": "365d3f3cc4754796439c66632fe2a9e5a637af3e",
+      "file_sha256": "0b2d7ddf3063bbc5136326a62f210c3275ba8eb66b406d4885935d7c73af47ac",
+      "name": "crates/coder-access/README.md",
+      "role": "document",
+      "kind": "document",
+      "start_line": 1,
+      "end_line": 55,
+      "full_start_line": 1,
+      "full_end_line": 187,
+      "text": "# Coder Access\n\nCoder Access admits devices to one Coder host with host-wide, scoped rights.\nIt implements the [NIP-HOST draft](../../nips/openagents/NIP-HOST.md): host\ninvitations, reverse enrollment for a headless host, host-signed grants with\nrevocation epochs, delegation, device listing and revocation, and a typed\n`task.create` operation. Requests and replies are original signed private\n`3188` artifacts over NIP-42 authenticated relay connections. The resident\nhost in [`coder-host`](../coder-host/README.md) also carries them over direct\nchannels and inside NIP-CJ execution requests.\n\nThe host is the only issuer of access. An invitation, an approval, or relay\ndelivery introduces a device. Only the host's current grant record admits an\noperation, and every operation checks it again.\n\n## Rights\n\n| Right | Permits |\n| --- | --- |\n| `observe` | Session, task, and file reads under the disclosure policy. |\n| `operate` | Create, steer, and cancel tasks and sessions. |\n| `terminal` | Open and drive terminals. |\n| `review` | Write reviews and diffs. |\n| `access_read` | List enrolled devices. |\n| `access_admin` | Invite, approve, deny, cancel, and revoke, within held rights. |\n\nNo right implies another. The `standard` preset is `observe`, `operate`,\n`terminal`, and `review`. The `admin` preset is `access_read` and\n`access_admin`. A refusal for a missing right names that right.\n\n## Set up a host\n\nEstablish the owner on the host itself. Nothing received over a relay can do\nthis.\n\n```sh\ncargo run -p coder-access -- init --owner <owner-public-key>\n```\n\nThe owner key accepts lower-case hex or an `npub`. The placeholder is not a\nreal key. The command creates a host key and a private store under\n`~/.openagents/coder-access/`, or the directory passed with `--state` before\nthe command. The directory has mode `0700`; the key, lock, and state files\nhave mode `0600`. Initializing again with the same owner does nothing;\nanother owner is refused. To change the owner, create a new store.\n\n## Enroll a device with an invitation\n\n```sh\ncargo run -p coder-access -- invite --relay wss://relay.example/ --rights standard\n```\n\nThe host saves the invitation, then prints its ID and a `coder-host:` paste\nstring, and draws a QR code in the terminal. `--no-qr` skips the QR code.\nThe invitation admits one device and expires after five minutes. Show it\n",
+      "source_sha256": "e9bb32876d2a273778400ceb9dcaf7908cfd3ebb2bad98968b253291fa942ec2",
+      "completeness": "partial_file",
+      "admission_reasons": [
+        "explicit_file",
+        "package_scope",
+        "oversized_declaration_read_pointer"
+      ],
+      "baseline_score": 1267
+    },
+    {
+      "id": "c07",
+      "path": "crates/coder-access/src/spend.rs",
+      "blob": "3573cd45e1536169a06430172666095426a9044b",
+      "file_sha256": "974b7acd78b7183850972b6445b52207f6050e4e936211b646fe6c7b739e3b38",
+      "name": "Grant",
+      "role": "implementation",
+      "kind": "struct_item",
+      "start_line": 130,
+      "end_line": 165,
+      "full_start_line": 130,
+      "full_end_line": 165,
+      "text": "/// `openagents.spend-grant.v1`: what a host may ask the phone to pay.\n#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]\n#[serde(deny_unknown_fields)]\npub struct Grant {\n    pub v: String,\n    pub requires: Vec<String>,\n    /// 32-byte ID, lowercase hex.\n    pub grant: String,\n    /// The phone's device key.\n    pub issuer: String,\n    /// The host's key: the agent side that asks.\n    pub grantee: String,\n    pub wallet: WalletRef,\n    pub mode: Mode,\n    pub unit: String,\n    /// Ceiling for one payment, fees included.\n    pub per_payment_max: u64,\n    /// Rolling window in seconds and its ceiling, fees included.\n    pub period: u64,\n    pub period_max: u64,\n    /// Lifetime ceiling, fees included.\n    pub total_max: u64,\n    pub fee_max: FeeMax,\n    pub rails: Vec<Rail>,\n    /// Allowed payees: Lightning node keys (compressed, hex). Empty means\n    /// none, unless `any_payee` is set.\n    pub payees: Vec<String>,\n    /// Any payee may be asked for. Only in `request` mode, where the owner\n    /// sees the payee decoded from the invoice and approves each payment.\n    pub any_payee: bool,\n    pub purposes: Vec<Purpose>,\n    /// The grantee's epoch at the phone. Revocation advances it.\n    pub epoch: u64,\n    pub issued_at: u64,\n    pub expires_at: u64,\n}\n",
+      "source_sha256": "0778596dece91f5d58f70a44ef03d17b251cc21fd992b47d03446c67171733ce",
+      "completeness": "complete_declaration",
+      "admission_reasons": [
+        "package_scope"
+      ],
+      "baseline_score": 168
+    },
+    {
+      "id": "c08",
+      "path": "crates/coder-access/tests/cli.rs",
+      "blob": "e2e7532cedc0bc09ee8dd90dcf623fd291fb2717",
+      "file_sha256": "4493776a13d35dd930f030661dcea5413f9c5d757f05048935b87f8e65a72152",
+      "name": "cli_reverse_enrollment_is_approved_by_the_owner",
+      "role": "test",
+      "kind": "function_item",
+      "start_line": 111,
+      "end_line": 211,
+      "full_start_line": 111,
+      "full_end_line": 211,
+      "text": "#[tokio::test]\nasync fn cli_reverse_enrollment_is_approved_by_the_owner() {\n    use std::io::{BufRead, BufReader};\n    use std::os::unix::fs::OpenOptionsExt;\n    let (relay, _relay_task, _) = relay::start().await;\n    let temp = tempfile::tempdir().unwrap();\n    let state = temp.path().join(\"access\");\n    let owner = SecretKey::new(&mut secp256k1::rand::rng());\n    let init = stdout(&cli(&state, &[\"init\", \"--owner\", &pubkey(&owner)]));\n    let host = init\n        .lines()\n        .next()\n        .unwrap()\n        .strip_prefix(\"host \")\n        .unwrap()\n        .to_owned();\n    // A throwaway fixture key in a private file, as the CLI requires.\n    let key_file = temp.path().join(\"owner.key\");\n    let mut file = std::fs::OpenOptions::new()\n        .write(true)\n        .create_new(true)\n        .mode(0o600)\n        .open(&key_file)\n        .unwrap();\n    std::io::Write::write_all(&mut file, owner.display_secret().to_string().as_bytes()).unwrap();\n\n    let mut requester = Command::new(env!(\"CARGO_BIN_EXE_coder-access\"))\n        .arg(\"--state\")\n        .arg(&state)\n        .args([\n            \"--loopback-test\",\n            \"request\",\n            \"--relay\",\n            &relay,\n            \"--rights\",\n            \"observe,operate\",\n        ])\n        .stdout(Stdio::piped())\n        .stderr(Stdio::null())\n        .spawn()\n        .unwrap();\n    // Read on a blocking thread so the in-process relay keeps serving the publish.\n    let stdout = requester.stdout.take().unwrap();\n    let (enrollment, code, lines) = tokio::task::spawn_blocking(move || {\n        let mut lines = BufReader::new(stdout).lines();\n        let enrollment = lines.next().unwrap().unwrap();\n        let code = lines.next().unwrap().unwrap();\n        (enrollment, code, lines)\n    })\n    .await\n    .unwrap();\n    let code = code.strip_prefix(\"code \").unwrap().to_owned();\n    assert!(enrollment.starts_with(\"enrollment \"));\n\n    let laptop = SecretKey::new(&mut secp256k1::rand::rng());\n    let (relay_arg, state_arg, key_arg, host_arg) =\n        (relay.clone(), state.clone(), key_file.clone(), host.clone());\n    let device = pubkey(&laptop);\n    let approved = tokio::task::spawn_blocking(move || {\n        Command::new(env!(\"CARGO_BIN_EXE_coder-access\"))\n            .arg(\"--state\")\n            .arg(&state_arg)\n            .env(\"CODER_ACCESS_KEY_FILE\", &key_arg)\n            .args([\n                \"--loopback-test\",\n                \"approve\",\n                \"--relay\",\n                &relay_arg,\n                \"--host\",\n                &host_arg,\n                \"--device\",\n                &device,\n                \"--code\",\n                &code,\n            ])\n            .output()\n            .unwrap()\n    })\n    .await\n    .unwrap();\n    assert!(\n        approved.status.success(),\n        \"{}\",\n        String::from_utf8_lossy(&approved.stderr)\n    );\n    let authorization = serde_json::from_slice(&approved.stdout).unwrap();\n    let now = coder_access::unix_time().unwrap();\n    let access = Access::from_authorization(authorization, &laptop, &host, now, POLICY).unwrap();\n    assert_eq!(access.grant.rights.to_list(), \"observe,operate\");\n    let (status, rest) = tokio::task::spawn_blocking(move || {\n        let rest: Vec<_> = lines.map_while(|l| l.ok()).collect();\n        (requester.wait().unwrap(), rest)\n    })\n    .await\n    .unwrap();\n    assert!(status.success());\n    assert!(\n        rest.iter().any(|l| l.starts_with(\"approved device\")),\n        \"{rest:?}\"\n    );\n}\n",
+      "source_sha256": "c0cb8e70c00e7c57a28c1854bbb3e824047d9e3fafefd2ebf6d9cb68f76b676b",
+      "completeness": "complete_declaration",
+      "admission_reasons": [
+        "package_scope"
+      ],
+      "baseline_score": 158
+    },
+    {
+      "id": "c09",
+      "path": "crates/coder-access/src/protocol.rs",
+      "blob": "ab66f2bd00b62340b9d7292fba36ff300f4ddcd2",
+      "file_sha256": "bd52ee438da9f0fb08e86eeb228cb83ad8788b73dea9f2e555b4b46cb7dda041",
+      "name": "HostInvitation",
+      "role": "implementation",
+      "kind": "struct_item",
+      "start_line": 27,
+      "end_line": 28,
+      "full_start_line": 27,
+      "full_end_line": 28,
+      "text": "/// A parsed host invitation. It holds a temporary capability: never log it.\npub struct HostInvitation(pub(crate) Invitation);\n",
+      "source_sha256": "8094e8c46750ea634abfe39b3500c13bb6ce92bc9115a3121800a7573119b738",
+      "completeness": "complete_declaration",
+      "admission_reasons": [
+        "package_scope"
+      ],
+      "baseline_score": 161
+    },
+    {
+      "id": "c10",
+      "path": "crates/coder-access/src/spend/tests.rs",
+      "blob": "f1f9054a4e21afb81c178f399f115795ba8ed9dd",
+      "file_sha256": "35f365f045ac57140587435f2c774173e27666a634d7cac1b73aaea77876a555",
+      "name": "the_default_grant_asks_only_and_validates",
+      "role": "test",
+      "kind": "function_item",
+      "start_line": 56,
+      "end_line": 79,
+      "full_start_line": 56,
+      "full_end_line": 79,
+      "text": "#[test]\nfn the_default_grant_asks_only_and_validates() {\n    let grant = grant(0);\n    grant.validate().unwrap();\n    assert_eq!(grant.mode, Mode::Request);\n    assert!(grant.any_payee);\n    assert_eq!(grant.rails, [Rail::Lightning]);\n    let mut wide = grant.clone();\n    wide.fee_max.ppm = 1_000_001;\n    assert_eq!(wide.validate().unwrap_err().code, Code::Bounds);\n    let mut long = grant.clone();\n    long.expires_at = long.issued_at + MAX_GRANT_LIFETIME + 1;\n    assert_eq!(long.validate().unwrap_err().code, Code::Malformed);\n    let mut unsorted = grant.clone();\n    unsorted.purposes.reverse();\n    assert_eq!(unsorted.validate().unwrap_err().code, Code::Malformed);\n    let mut other = grant;\n    other.unit = \"sat\".into();\n    assert_eq!(other.validate().unwrap_err().code, Code::Unsupported);\n    // Unknown fields refuse.\n    let mut json = serde_json::to_value(super::tests::grant(0)).unwrap();\n    json[\"auto_approve_max\"] = 1.into();\n    assert!(serde_json::from_value::<Grant>(json).is_err());\n}\n",
+      "source_sha256": "ac9596c4acb8735311c3ec7e5c3a5275c6f50906eedc0fc29e5f91960aad4c44",
+      "completeness": "complete_declaration",
+      "admission_reasons": [
+        "package_scope"
+      ],
+      "baseline_score": 140
+    },
+    {
+      "id": "c11",
+      "path": "crates/coder-access/src/host/serve.rs",
+      "blob": "95bde5230d01d3662a2d558b8217ed1c63d57a43",
+      "file_sha256": "29bc806b2a2f1870e848e5d2915bb2ee9a42ebb109b95fdbd22d24478f78da25",
+      "name": "Host::publish",
+      "role": "implementation",
+      "kind": "function_item",
+      "start_line": 57,
+      "end_line": 72,
+      "full_start_line": 57,
+      "full_end_line": 72,
+      "text": "    /// Publish host-signed private artifacts, such as enrollment requests.\n    /// Each carries its own recipient; publication grants nothing.\n    pub async fn publish(&self, relay: &str, events: &[Event]) -> Result<()> {\n        self.policy.validate(relay).map_err(Error::from)?;\n        let secret = self.key()?;\n        let host = pubkey(&secret);\n        for event in events {\n            if event.pubkey != host {\n                return fail(Code::Forbidden, \"only host-signed artifacts are published\");\n            }\n            nostr_transport::artifacts::publish(relay, &secret, event)\n                .await\n                .map_err(|_| Error::new(Code::Transport, \"host artifact was not published\"))?;\n        }\n        Ok(())\n    }\n",
+      "source_sha256": "9ae7ae8a30bb1db488fc0e94edbca1697245759131df0e901bb67ce26873ea10",
+      "completeness": "complete_declaration",
+      "admission_reasons": [
+        "package_scope"
+      ],
+      "baseline_score": 160
+    },
+    {
+      "id": "c12",
+      "path": "crates/coder-access/src/tests/mod.rs",
+      "blob": "7c1ef737c5442cffab02ed7080a5b773fa75a9ac",
+      "file_sha256": "f02f34bc49e10e8a70e0f9784fb308bb36246813984dc43ff632b9da70b5058e",
+      "name": "Fixture::host",
+      "role": "test",
+      "kind": "function_item",
+      "start_line": 185,
+      "end_line": 187,
+      "full_start_line": 185,
+      "full_end_line": 187,
+      "text": "    pub fn host(&self) -> Host {\n        Host::new(&self.dir, POLICY)\n    }\n",
+      "source_sha256": "b29a66b3a08b7426fd44f12909ca9f49734a3835c7dfe9a278362ba52f130446",
+      "completeness": "complete_declaration",
+      "admission_reasons": [
+        "package_scope"
+      ],
+      "baseline_score": 133
+    },
+    {
+      "id": "c13",
+      "path": "crates/coder-access/src/cj.rs",
+      "blob": "c86da41eb7451b69e947032940843d3fba30589f",
+      "file_sha256": "806a9bec1c2da7bb0d6101aebb2e5df75069cd50c0e47ff5b6d7713098292622",
+      "name": "Capability::host",
+      "role": "implementation",
+      "kind": "function_item",
+      "start_line": 171,
+      "end_line": 175,
+      "full_start_line": 171,
+      "full_end_line": 175,
+      "text": "    /// The host key: the CJ worker.\n    #[must_use]\n    pub fn host(&self) -> &str {\n        &self.host\n    }\n",
+      "source_sha256": "9f663262ad9d6fe0e0944de5247dddfa59ff3eff243ac2a3acd75ef7233dde48",
+      "completeness": "complete_declaration",
+      "admission_reasons": [
+        "package_scope"
+      ],
+      "baseline_score": 151
+    },
+    {
+      "id": "c14",
+      "path": "crates/coder-access/src/spend/tests.rs",
+      "blob": "f1f9054a4e21afb81c178f399f115795ba8ed9dd",
+      "file_sha256": "35f365f045ac57140587435f2c774173e27666a634d7cac1b73aaea77876a555",
+      "name": "grant",
+      "role": "test",
+      "kind": "function_item",
+      "start_line": 13,
+      "end_line": 15,
+      "full_start_line": 13,
+      "full_end_line": 15,
+      "text": "fn grant(epoch: u64) -> Grant {\n    Grant::request_mode(id(0x10 + epoch as u8), PHONE, HOST, epoch, T0)\n}\n",
+      "source_sha256": "3a76091c72b92fcf583854844e902fa655d4f65f2cd86ef03f376389bbba0efc",
+      "completeness": "complete_declaration",
+      "admission_reasons": [
+        "package_scope"
+      ],
+      "baseline_score": 139
+    }
+  ],
+  "catalog": [
+    {
+      "id": "f01",
+      "path": "crates/coder-access/src/host/mod.rs",
+      "blob": "a341758ce82a21cc1b45aebf8d233288c9a1e6a5",
+      "file_sha256": "7b0f8ed5041f0bc2929a03632e0a5245188416c1dbb2029924b5600ff001bced",
+      "bytes": 29901,
+      "role": "implementation",
+      "reason": "candidate_state_budget",
+      "baseline_score": 149,
+      "suggested_start_line": 564
+    },
+    {
+      "id": "f02",
+      "path": "crates/coder-access/src/tests/flows.rs",
+      "blob": "80f26ad3064f83c24aec3241bbd87d07ef4c79d0",
+      "file_sha256": "47c553ce162ae0362cf481230ecb3e6c7c1a56acf25010773164b1ca3c0b3a5b",
+      "bytes": 24204,
+      "role": "test",
+      "reason": "candidate_state_budget",
+      "baseline_score": 116,
+      "suggested_start_line": 4
+    },
+    {
+      "id": "f03",
+      "path": "nips/openagents/NIP-HOST.md",
+      "blob": "0f37d829075fd0eec50bce2156becdfffb274679",
+      "file_sha256": "3da5fd0161b7096a4aeada96bdccd3fc3444734f205eda3919f85e1890c18210",
+      "bytes": 40511,
+      "role": "document",
+      "reason": "partial_unit_needs_targeted_read",
+      "baseline_score": 1148,
+      "suggested_start_line": 1
+    },
+    {
+      "id": "f04",
+      "path": "crates/coder-access/src/host/enroll.rs",
+      "blob": "6bb26ba6f5647afaf4565595755ab4f79cdfdf31",
+      "file_sha256": "dc07b3a1d4a939660bee8c3b3b8d19539c38f06fee17c57b351cbb1a80f13f98",
+      "bytes": 19863,
+      "role": "implementation",
+      "reason": "candidate_state_budget",
+      "baseline_score": 143,
+      "suggested_start_line": 96
+    },
+    {
+      "id": "f05",
+      "path": "crates/coder-access/tests/cli.rs",
+      "blob": "e2e7532cedc0bc09ee8dd90dcf623fd291fb2717",
+      "file_sha256": "4493776a13d35dd930f030661dcea5413f9c5d757f05048935b87f8e65a72152",
+      "bytes": 6953,
+      "role": "test",
+      "reason": "candidate_state_budget",
+      "baseline_score": 104,
+      "suggested_start_line": 31
+    },
+    {
+      "id": "f06",
+      "path": "crates/coder-access/README.md",
+      "blob": "365d3f3cc4754796439c66632fe2a9e5a637af3e",
+      "file_sha256": "0b2d7ddf3063bbc5136326a62f210c3275ba8eb66b406d4885935d7c73af47ac",
+      "bytes": 8459,
+      "role": "document",
+      "reason": "partial_unit_needs_targeted_read",
+      "baseline_score": 1134,
+      "suggested_start_line": 1
+    },
+    {
+      "id": "f07",
+      "path": "crates/coder-access/src/host/serve.rs",
+      "blob": "95bde5230d01d3662a2d558b8217ed1c63d57a43",
+      "file_sha256": "29bc806b2a2f1870e848e5d2915bb2ee9a42ebb109b95fdbd22d24478f78da25",
+      "bytes": 3360,
+      "role": "implementation",
+      "reason": "candidate_state_budget",
+      "baseline_score": 121,
+      "suggested_start_line": 75
+    },
+    {
+      "id": "f08",
+      "path": "crates/coder-access/src/spend/tests.rs",
+      "blob": "f1f9054a4e21afb81c178f399f115795ba8ed9dd",
+      "file_sha256": "35f365f045ac57140587435f2c774173e27666a634d7cac1b73aaea77876a555",
+      "bytes": 12843,
+      "role": "test",
+      "reason": "candidate_state_budget",
+      "baseline_score": 103,
+      "suggested_start_line": 6
+    },
+    {
+      "id": "f09",
+      "path": "crates/coder-access/src/cj.rs",
+      "blob": "c86da41eb7451b69e947032940843d3fba30589f",
+      "file_sha256": "806a9bec1c2da7bb0d6101aebb2e5df75069cd50c0e47ff5b6d7713098292622",
+      "bytes": 29706,
+      "role": "implementation",
+      "reason": "candidate_state_budget",
+      "baseline_score": 118,
+      "suggested_start_line": 291
+    },
+    {
+      "id": "f10",
+      "path": "crates/coder-access/tests/wire.rs",
+      "blob": "898f9fddb9985ce8bf13584d8316d84939641071",
+      "file_sha256": "3c08af6c59341ccd8a7c7a0e6346a45ea0900972e4f69168ddf5da265d8018f6",
+      "bytes": 6480,
+      "role": "test",
+      "reason": "candidate_state_budget",
+      "baseline_score": 103,
+      "suggested_start_line": 150
+    },
+    {
+      "id": "f11",
+      "path": "crates/coder-access/src/spend.rs",
+      "blob": "3573cd45e1536169a06430172666095426a9044b",
+      "file_sha256": "974b7acd78b7183850972b6445b52207f6050e4e936211b646fe6c7b739e3b38",
+      "bytes": 34783,
+      "role": "implementation",
+      "reason": "candidate_state_budget",
+      "baseline_score": 118,
+      "suggested_start_line": 221
+    },
+    {
+      "id": "f12",
+      "path": "crates/coder-access/src/tests/mod.rs",
+      "blob": "7c1ef737c5442cffab02ed7080a5b773fa75a9ac",
+      "file_sha256": "f02f34bc49e10e8a70e0f9784fb308bb36246813984dc43ff632b9da70b5058e",
+      "bytes": 9256,
+      "role": "test",
+      "reason": "candidate_state_budget",
+      "baseline_score": 99,
+      "suggested_start_line": 188
+    },
+    {
+      "id": "f13",
+      "path": "crates/coder-access/src/protocol.rs",
+      "blob": "ab66f2bd00b62340b9d7292fba36ff300f4ddcd2",
+      "file_sha256": "bd52ee438da9f0fb08e86eeb228cb83ad8788b73dea9f2e555b4b46cb7dda041",
+      "bytes": 33026,
+      "role": "implementation",
+      "reason": "candidate_state_budget",
+      "baseline_score": 116,
+      "suggested_start_line": 30
+    },
+    {
+      "id": "f14",
+      "path": "crates/coder-access/tests/capability.rs",
+      "blob": "fa6b5ff16578ccf8d9c09b3ea254d0f848854471",
+      "file_sha256": "dddd02369820cac2313da05782d41cd9ef55516847fae50d6112e2cf632105e5",
+      "bytes": 3988,
+      "role": "test",
+      "reason": "candidate_state_budget",
+      "baseline_score": 93,
+      "suggested_start_line": 65
+    },
+    {
+      "id": "f15",
+      "path": "crates/coder-access/src/main.rs",
+      "blob": "2fd2b0d14fa591d2d0419e47c8ae9406732ad828",
+      "file_sha256": "7f1ceb08c3d411bc955a744aff8c059abf8280b521f97456e092b9dac9caee7e",
+      "bytes": 13471,
+      "role": "implementation",
+      "reason": "candidate_state_budget",
+      "baseline_score": 110,
+      "suggested_start_line": 143
+    },
+    {
+      "id": "f16",
+      "path": "crates/coder-access/src/client.rs",
+      "blob": "0fd6e8fe319efb29f983da17b7ff6021eedb224f",
+      "file_sha256": "e65ad6a68e4d0f1e5ab5b66cb6d43ad71962305d6c6e8cfd3b9902645814bd88",
+      "bytes": 12695,
+      "role": "implementation",
+      "reason": "candidate_state_budget",
+      "baseline_score": 102,
+      "suggested_start_line": 29
+    },
+    {
+      "id": "f17",
+      "path": "crates/coder-access/src/lib.rs",
+      "blob": "7593d2a6350b13dcbe22a25bb8ffbad754c6ea10",
+      "file_sha256": "32ce2ab49ea4f2b2d7dca7ee0494bbaccf449f8e69a41e6bede8cb184d16300d",
+      "bytes": 3276,
+      "role": "implementation",
+      "reason": "candidate_state_budget",
+      "baseline_score": 98,
+      "suggested_start_line": 52
+    },
+    {
+      "id": "f18",
+      "path": "crates/coder-access/src/rights.rs",
+      "blob": "763a7d25ad5ca8e67cc2bf264bf27458ea95f902",
+      "file_sha256": "9963a2dff5a7319bc9f62c6efc0376d136d4253ffd8502d71bda1de1156c825a",
+      "bytes": 5217,
+      "role": "implementation",
+      "reason": "candidate_state_budget",
+      "baseline_score": 95,
+      "suggested_start_line": 131
+    }
+  ],
+  "coverage": {
+    "scoped_files": 18,
+    "files_read": 18,
+    "file_omissions": 0,
+    "eligible_units": 407,
+    "candidate_units": 14,
+    "candidate_roles": {
+      "implementation": 6,
+      "test": 6,
+      "document": 2
+    },
+    "omitted_units": 393,
+    "omission_reasons": {
+      "candidate_state_budget": 393
+    },
+    "oversized_units": 4,
+    "targeted_read_only_units": 0,
+    "parse_error_units": 0,
+    "catalog_total": 18,
+    "catalog_omitted": 0,
+    "missing_packages": [],
+    "unavailable_explicit_paths": [],
+    "complete_dependency_coverage_claimed": false
+  },
+  "oversized": [
+    {
+      "path": "crates/coder-access/src/host/mod.rs",
+      "name": "Host::execute",
+      "start_line": 401,
+      "end_line": 533,
+      "bytes": 6189
+    },
+    {
+      "path": "nips/openagents/NIP-HOST.md",
+      "name": "nips/openagents/NIP-HOST.md",
+      "start_line": 1,
+      "end_line": 710,
+      "bytes": 40511
+    },
+    {
+      "path": "crates/coder-access/README.md",
+      "name": "crates/coder-access/README.md",
+      "start_line": 1,
+      "end_line": 187,
+      "bytes": 8459
+    },
+    {
+      "path": "crates/coder-access/src/main.rs",
+      "name": "run",
+      "start_line": 143,
+      "end_line": 354,
+      "bytes": 8273
+    }
+  ],
+  "omissions": [
+    {
+      "path": "crates/coder-access/tests/wire.rs",
+      "name": "workspace_lists_are_sorted_distinct_and_bounded",
+      "start_line": 150,
+      "end_line": 180,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/client.rs",
+      "name": "Client::device",
+      "start_line": 29,
+      "end_line": 39,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/rights.rs",
+      "name": "tests::rights_are_closed_canonical_and_independent",
+      "start_line": 131,
+      "end_line": 158,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/main.rs",
+      "name": "run",
+      "start_line": 143,
+      "end_line": 354,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/tests/flows.rs",
+      "name": "redeem_then_same_device_retry_after_restart_and_other_device_refused",
+      "start_line": 4,
+      "end_line": 24,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/lib.rs",
+      "name": "Error::new",
+      "start_line": 52,
+      "end_line": 58,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/tests/flows.rs",
+      "name": "stale_epoch_and_copied_grants_refuse",
+      "start_line": 403,
+      "end_line": 459,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/rights.rs",
+      "name": "Rights::new",
+      "start_line": 71,
+      "end_line": 77,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/tests/flows.rs",
+      "name": "spend_lists_carry_the_senders_own_grant_and_need_operate",
+      "start_line": 612,
+      "end_line": 679,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/mod.rs",
+      "name": "Host::book",
+      "start_line": 564,
+      "end_line": 617,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/tests/flows.rs",
+      "name": "owner_is_established_locally_and_the_store_is_private",
+      "start_line": 515,
+      "end_line": 558,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/mod.rs",
+      "name": "Host::devices",
+      "start_line": 247,
+      "end_line": 251,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/tests/flows.rs",
+      "name": "observe_only_device_cannot_create_a_task_or_open_a_terminal",
+      "start_line": 84,
+      "end_line": 128,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/mod.rs",
+      "name": "Host::handle_with_clock",
+      "start_line": 301,
+      "end_line": 399,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/tests/capability.rs",
+      "name": "a_published_manifest_reads_back_only_from_its_host",
+      "start_line": 65,
+      "end_line": 95,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/mod.rs",
+      "name": "Host::touch",
+      "start_line": 261,
+      "end_line": 282,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/tests/flows.rs",
+      "name": "reverse_enrollment_approve_and_deny",
+      "start_line": 171,
+      "end_line": 255,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/mod.rs",
+      "name": "Host::init",
+      "start_line": 183,
+      "end_line": 216,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/tests/flows.rs",
+      "name": "administrator_lists_and_revokes_devices",
+      "start_line": 461,
+      "end_line": 513,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/enroll.rs",
+      "name": "Host::cancel_invitation",
+      "start_line": 96,
+      "end_line": 101,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/tests/flows.rs",
+      "name": "revocation_during_a_pending_request_refuses",
+      "start_line": 368,
+      "end_line": 401,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/enroll.rs",
+      "name": "Host::enrollment_status",
+      "start_line": 177,
+      "end_line": 193,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/enroll.rs",
+      "name": "Host::redeem",
+      "start_line": 195,
+      "end_line": 315,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/tests/flows.rs",
+      "name": "delegation_cannot_exceed_held_rights",
+      "start_line": 295,
+      "end_line": 330,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/mod.rs",
+      "name": "Host::new",
+      "start_line": 177,
+      "end_line": 182,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/tests/flows.rs",
+      "name": "delegated_approval_is_bounded_by_the_approver",
+      "start_line": 332,
+      "end_line": 366,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/mod.rs",
+      "name": "Host::public_key",
+      "start_line": 217,
+      "end_line": 219,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend/tests.rs",
+      "name": "HOST",
+      "start_line": 6,
+      "end_line": 6,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/mod.rs",
+      "name": "Host::state_path",
+      "start_line": 229,
+      "end_line": 233,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/tests/flows.rs",
+      "name": "crash_between_consumption_and_reply_returns_the_retained_reply",
+      "start_line": 52,
+      "end_line": 82,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/mod.rs",
+      "name": "Host::owner",
+      "start_line": 237,
+      "end_line": 240,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/tests/capability.rs",
+      "name": "fixture_host",
+      "start_line": 15,
+      "end_line": 22,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/mod.rs",
+      "name": "GrantRecord",
+      "start_line": 102,
+      "end_line": 112,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend/tests.rs",
+      "name": "every_check_refuses_with_its_own_code",
+      "start_line": 104,
+      "end_line": 192,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/mod.rs",
+      "name": "Host::signing_key",
+      "start_line": 223,
+      "end_line": 228,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/tests/flows.rs",
+      "name": "exact_retry_is_idempotent_and_a_reused_request_id_conflicts",
+      "start_line": 130,
+      "end_line": 169,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/mod.rs",
+      "name": "Host::revoke",
+      "start_line": 252,
+      "end_line": 260,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/tests/cli.rs",
+      "name": "cli_invites_serves_lists_and_revokes",
+      "start_line": 31,
+      "end_line": 109,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/mod.rs",
+      "name": "Host::seal_reply",
+      "start_line": 535,
+      "end_line": 562,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/tests/flows.rs",
+      "name": "wrong_codes_close_the_request_and_a_forged_digest_refuses",
+      "start_line": 257,
+      "end_line": 293,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/enroll.rs",
+      "name": "Host::invite",
+      "start_line": 79,
+      "end_line": 95,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend/tests.rs",
+      "name": "a_reservation_holds_the_amount_and_fee_until_settled_or_released",
+      "start_line": 194,
+      "end_line": 250,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/mod.rs",
+      "name": "MAX_GRANTS",
+      "start_line": 19,
+      "end_line": 19,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend/tests.rs",
+      "name": "revocation_advances_the_epoch_and_old_requests_are_stale",
+      "start_line": 286,
+      "end_line": 313,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/mod.rs",
+      "name": "Host",
+      "start_line": 172,
+      "end_line": 175,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/tests/flows.rs",
+      "name": "expired_and_cancelled_invitations_refuse",
+      "start_line": 26,
+      "end_line": 50,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/mod.rs",
+      "name": "Host::key",
+      "start_line": 220,
+      "end_line": 222,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/tests/wire.rs",
+      "name": "every_valid_fixture_validates_and_round_trips",
+      "start_line": 34,
+      "end_line": 89,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/mod.rs",
+      "name": "Host::open",
+      "start_line": 241,
+      "end_line": 246,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/tests/wire.rs",
+      "name": "every_invalid_fixture_refuses_with_its_code",
+      "start_line": 102,
+      "end_line": 117,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/mod.rs",
+      "name": "Host::handle_current",
+      "start_line": 293,
+      "end_line": 300,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend/tests.rs",
+      "name": "a_request_carries_its_exact_invoice_and_never_outlives_it",
+      "start_line": 81,
+      "end_line": 102,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/mod.rs",
+      "name": "Host::policy",
+      "start_line": 234,
+      "end_line": 236,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/tests/flows.rs",
+      "name": "command",
+      "start_line": 560,
+      "end_line": 572,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/mod.rs",
+      "name": "Host::handle",
+      "start_line": 284,
+      "end_line": 292,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/tests/mod.rs",
+      "name": "Fixture::owner_client",
+      "start_line": 188,
+      "end_line": 190,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/mod.rs",
+      "name": "devices",
+      "start_line": 681,
+      "end_line": 702,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/tests/wire.rs",
+      "name": "fixtures",
+      "start_line": 13,
+      "end_line": 20,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/enroll.rs",
+      "name": "IssuedInvitation",
+      "start_line": 63,
+      "end_line": 68,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend/tests.rs",
+      "name": "a_retried_request_reserves_once_and_a_reused_id_conflicts",
+      "start_line": 252,
+      "end_line": 284,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/mod.rs",
+      "name": "Book::issuer_current",
+      "start_line": 148,
+      "end_line": 161,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/tests/wire.rs",
+      "name": "refusal",
+      "start_line": 91,
+      "end_line": 100,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/mod.rs",
+      "name": "principal",
+      "start_line": 633,
+      "end_line": 679,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/tests/cli.rs",
+      "name": "cli",
+      "start_line": 12,
+      "end_line": 26,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/mod.rs",
+      "name": "issue",
+      "start_line": 741,
+      "end_line": 784,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend/tests.rs",
+      "name": "request",
+      "start_line": 28,
+      "end_line": 49,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/enroll.rs",
+      "name": "decide",
+      "start_line": 415,
+      "end_line": 556,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/tests/mod.rs",
+      "name": "exchange",
+      "start_line": 223,
+      "end_line": 245,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/mod.rs",
+      "name": "STORE_VERSION",
+      "start_line": 18,
+      "end_line": 18,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend/tests.rs",
+      "name": "only_a_matching_preimage_proves_a_paid_receipt",
+      "start_line": 315,
+      "end_line": 347,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/enroll.rs",
+      "name": "PendingEnrollment",
+      "start_line": 69,
+      "end_line": 76,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/tests/mod.rs",
+      "name": "Fixture::build",
+      "start_line": 123,
+      "end_line": 139,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/mod.rs",
+      "name": "STORE",
+      "start_line": 17,
+      "end_line": 17,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/tests/mod.rs",
+      "name": "Fixture::served",
+      "start_line": 140,
+      "end_line": 184,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/enroll.rs",
+      "name": "create_invitation",
+      "start_line": 318,
+      "end_line": 361,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend/tests.rs",
+      "name": "small",
+      "start_line": 51,
+      "end_line": 54,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/mod.rs",
+      "name": "revoke",
+      "start_line": 704,
+      "end_line": 739,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/tests/mod.rs",
+      "name": "SpendStub::list",
+      "start_line": 37,
+      "end_line": 48,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/enroll.rs",
+      "name": "EnrollmentState",
+      "start_line": 26,
+      "end_line": 40,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/tests/mod.rs",
+      "name": "forge",
+      "start_line": 247,
+      "end_line": 279,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/enroll.rs",
+      "name": "EnrollmentStatus",
+      "start_line": 54,
+      "end_line": 61,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/tests/wire.rs",
+      "name": "round_trip",
+      "start_line": 22,
+      "end_line": 32,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/mod.rs",
+      "name": "Book",
+      "start_line": 122,
+      "end_line": 133,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/tests/wire.rs",
+      "name": "every_operation_has_a_fixture",
+      "start_line": 119,
+      "end_line": 148,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "Grant::validate",
+      "start_line": 221,
+      "end_line": 286,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/tests/mod.rs",
+      "name": "Recorder::dispatch_as",
+      "start_line": 82,
+      "end_line": 96,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/mod.rs",
+      "name": "Dispatch::queue",
+      "start_line": 56,
+      "end_line": 67,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/tests/mod.rs",
+      "name": "Fixture::enroll",
+      "start_line": 213,
+      "end_line": 220,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "HostInvitation::parse",
+      "start_line": 30,
+      "end_line": 38,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/tests/cli.rs",
+      "name": "POLICY",
+      "start_line": 10,
+      "end_line": 10,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "Access",
+      "start_line": 106,
+      "end_line": 115,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/tests/cli.rs",
+      "name": "stdout",
+      "start_line": 27,
+      "end_line": 29,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "HostInvitation::host",
+      "start_line": 39,
+      "end_line": 41,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend/tests.rs",
+      "name": "T0",
+      "start_line": 4,
+      "end_line": 4,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "Grant::validate",
+      "start_line": 87,
+      "end_line": 103,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend/tests.rs",
+      "name": "PHONE",
+      "start_line": 5,
+      "end_line": 5,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "Access::verify",
+      "start_line": 138,
+      "end_line": 157,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend/tests.rs",
+      "name": "OTHER",
+      "start_line": 7,
+      "end_line": 7,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/enroll.rs",
+      "name": "InvitationRecord",
+      "start_line": 10,
+      "end_line": 24,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend/tests.rs",
+      "name": "id",
+      "start_line": 9,
+      "end_line": 11,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "Access::from_authorization",
+      "start_line": 117,
+      "end_line": 134,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend/tests.rs",
+      "name": "invoice",
+      "start_line": 17,
+      "end_line": 26,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/mod.rs",
+      "name": "Book::prune",
+      "start_line": 138,
+      "end_line": 147,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/tests/mod.rs",
+      "name": "SpendStub::settle",
+      "start_line": 49,
+      "end_line": 60,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "Grant",
+      "start_line": 68,
+      "end_line": 85,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/tests/mod.rs",
+      "name": "Recorder::spends",
+      "start_line": 64,
+      "end_line": 66,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/mod.rs",
+      "name": "Dispatch::dispatch_as",
+      "start_line": 39,
+      "end_line": 50,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/tests/mod.rs",
+      "name": "Fixture",
+      "start_line": 107,
+      "end_line": 117,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "HostInvitation::id",
+      "start_line": 42,
+      "end_line": 44,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/tests/mod.rs",
+      "name": "Fixture::local",
+      "start_line": 119,
+      "end_line": 122,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "HostInvitation::relay",
+      "start_line": 45,
+      "end_line": 47,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/tests/capability.rs",
+      "name": "checked_in",
+      "start_line": 24,
+      "end_line": 31,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "HostInvitation::expires_at",
+      "start_line": 48,
+      "end_line": 50,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/tests/wire.rs",
+      "name": "POLICY",
+      "start_line": 11,
+      "end_line": 11,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "DeviceEntry",
+      "start_line": 642,
+      "end_line": 658,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/tests/mod.rs",
+      "name": "SpendStub",
+      "start_line": 32,
+      "end_line": 35,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "Grant::request_mode",
+      "start_line": 187,
+      "end_line": 219,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/tests/mod.rs",
+      "name": "Recorder::dispatch",
+      "start_line": 67,
+      "end_line": 81,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/enroll.rs",
+      "name": "EnrollmentRecord",
+      "start_line": 41,
+      "end_line": 52,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/tests/mod.rs",
+      "name": "Fixture::invite",
+      "start_line": 191,
+      "end_line": 202,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/mod.rs",
+      "name": "Principal",
+      "start_line": 164,
+      "end_line": 170,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/tests/mod.rs",
+      "name": "Fixture::next_handled",
+      "start_line": 203,
+      "end_line": 212,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/enroll.rs",
+      "name": "MAX_INVITATION_REPLIES",
+      "start_line": 7,
+      "end_line": 7,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/tests/mod.rs",
+      "name": "key",
+      "start_line": 21,
+      "end_line": 23,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/enroll.rs",
+      "name": "MAX_ENROLLMENT_RECIPIENTS",
+      "start_line": 8,
+      "end_line": 8,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/tests/mod.rs",
+      "name": "Recorder",
+      "start_line": 28,
+      "end_line": 30,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/enroll.rs",
+      "name": "validate",
+      "start_line": 558,
+      "end_line": 594,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/tests/mod.rs",
+      "name": "POLICY",
+      "start_line": 19,
+      "end_line": 19,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/mod.rs",
+      "name": "Dispatch::workspaces",
+      "start_line": 51,
+      "end_line": 55,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/tests/mod.rs",
+      "name": "now",
+      "start_line": 24,
+      "end_line": 26,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "MAX_GRANT_LIFETIME",
+      "start_line": 33,
+      "end_line": 34,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/tests/mod.rs",
+      "name": "Recorder::seen",
+      "start_line": 99,
+      "end_line": 101,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/mod.rs",
+      "name": "SKEW",
+      "start_line": 24,
+      "end_line": 25,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/tests/mod.rs",
+      "name": "Recorder::count",
+      "start_line": 102,
+      "end_line": 104,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "GRANT",
+      "start_line": 14,
+      "end_line": 14,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/tests/mod.rs",
+      "name": "task",
+      "start_line": 281,
+      "end_line": 289,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "ACCESS",
+      "start_line": 15,
+      "end_line": 15,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/tests/mod.rs",
+      "name": "terminal",
+      "start_line": 290,
+      "end_line": 292,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/enroll.rs",
+      "name": "remote_invite",
+      "start_line": 363,
+      "end_line": 396,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/tests/capability.rs",
+      "name": "RELAY",
+      "start_line": 13,
+      "end_line": 13,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/mod.rs",
+      "name": "Dispatch::spends",
+      "start_line": 68,
+      "end_line": 71,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/mod.rs",
+      "name": "Book::epoch",
+      "start_line": 135,
+      "end_line": 137,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/mod.rs",
+      "name": "ensure_parent",
+      "start_line": 795,
+      "end_line": 811,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "GRANT",
+      "start_line": 30,
+      "end_line": 30,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/enroll.rs",
+      "name": "cancel",
+      "start_line": 398,
+      "end_line": 413,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "defaults::PER_PAYMENT_MAX",
+      "start_line": 170,
+      "end_line": 171,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/mod.rs",
+      "name": "SEEN_RESOLUTION",
+      "start_line": 26,
+      "end_line": 28,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/mod.rs",
+      "name": "Step",
+      "start_line": 620,
+      "end_line": 624,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/mod.rs",
+      "name": "same_digest",
+      "start_line": 786,
+      "end_line": 793,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "DeviceState",
+      "start_line": 635,
+      "end_line": 641,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/mod.rs",
+      "name": "MAX_INVITATIONS",
+      "start_line": 20,
+      "end_line": 20,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/mod.rs",
+      "name": "MAX_ENROLLMENTS",
+      "start_line": 21,
+      "end_line": 21,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/mod.rs",
+      "name": "MAX_REPLIES",
+      "start_line": 22,
+      "end_line": 22,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/mod.rs",
+      "name": "MAX_EPOCHS",
+      "start_line": 23,
+      "end_line": 23,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/mod.rs",
+      "name": "Unconnected",
+      "start_line": 94,
+      "end_line": 95,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/mod.rs",
+      "name": "Unconnected::dispatch",
+      "start_line": 97,
+      "end_line": 99,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/mod.rs",
+      "name": "Retained",
+      "start_line": 113,
+      "end_line": 121,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/mod.rs",
+      "name": "refused",
+      "start_line": 626,
+      "end_line": 631,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "MAX_GRANT_LIFETIME",
+      "start_line": 19,
+      "end_line": 19,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "Grant::admits_payee",
+      "start_line": 288,
+      "end_line": 290,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "Access::parse",
+      "start_line": 135,
+      "end_line": 137,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/main.rs",
+      "name": "DEFAULT_GRANT_SECS",
+      "start_line": 13,
+      "end_line": 13,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/cj.rs",
+      "name": "definition",
+      "start_line": 291,
+      "end_line": 324,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/cj.rs",
+      "name": "Capability::new",
+      "start_line": 96,
+      "end_line": 117,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/cj.rs",
+      "name": "RETENTION",
+      "start_line": 47,
+      "end_line": 49,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/cj.rs",
+      "name": "read_result",
+      "start_line": 665,
+      "end_line": 693,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "INVITATION_PREFIX",
+      "start_line": 11,
+      "end_line": 13,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/client.rs",
+      "name": "Client::access",
+      "start_line": 56,
+      "end_line": 58,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/client.rs",
+      "name": "Client::host",
+      "start_line": 59,
+      "end_line": 61,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "distinct",
+      "start_line": 833,
+      "end_line": 838,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/cj.rs",
+      "name": "check",
+      "start_line": 442,
+      "end_line": 518,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "Operation",
+      "start_line": 395,
+      "end_line": 469,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "Ledger::check",
+      "start_line": 696,
+      "end_line": 771,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "Enrollment",
+      "start_line": 160,
+      "end_line": 174,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "Enrollment::validate",
+      "start_line": 176,
+      "end_line": 186,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "Outcome",
+      "start_line": 668,
+      "end_line": 713,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/main.rs",
+      "name": "usage",
+      "start_line": 25,
+      "end_line": 38,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "ENROLLMENT",
+      "start_line": 18,
+      "end_line": 18,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "public",
+      "start_line": 830,
+      "end_line": 832,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "Refusal::describe",
+      "start_line": 453,
+      "end_line": 473,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/cj.rs",
+      "name": "PACKAGE",
+      "start_line": 41,
+      "end_line": 42,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/cj.rs",
+      "name": "exchange",
+      "start_line": 574,
+      "end_line": 595,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/cj.rs",
+      "name": "fetch_capability",
+      "start_line": 695,
+      "end_line": 750,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "INVITATION_LIFETIME",
+      "start_line": 21,
+      "end_line": 21,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "decode",
+      "start_line": 868,
+      "end_line": 871,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/cj.rs",
+      "name": "Capability::from_event",
+      "start_line": 119,
+      "end_line": 169,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/cj.rs",
+      "name": "Capability::manifest",
+      "start_line": 214,
+      "end_line": 233,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "SpendRequest",
+      "start_line": 325,
+      "end_line": 349,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "LEDGER_RETENTION",
+      "start_line": 670,
+      "end_line": 671,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "Ledger::reserve",
+      "start_line": 773,
+      "end_line": 818,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/cj.rs",
+      "name": "Capability",
+      "start_line": 85,
+      "end_line": 93,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/cj.rs",
+      "name": "intake",
+      "start_line": 407,
+      "end_line": 438,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/cj.rs",
+      "name": "Client::call_cj",
+      "start_line": 521,
+      "end_line": 529,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/serve.rs",
+      "name": "serve_once",
+      "start_line": 75,
+      "end_line": 96,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "Operation::validate",
+      "start_line": 515,
+      "end_line": 595,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "window",
+      "start_line": 839,
+      "end_line": 842,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "fresh",
+      "start_line": 843,
+      "end_line": 846,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/cj.rs",
+      "name": "OPERATIONS",
+      "start_line": 55,
+      "end_line": 74,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/cj.rs",
+      "name": "Intake",
+      "start_line": 326,
+      "end_line": 342,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/cj.rs",
+      "name": "Answering::answer",
+      "start_line": 353,
+      "end_line": 381,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/cj.rs",
+      "name": "Client::send_cj",
+      "start_line": 531,
+      "end_line": 541,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/cj.rs",
+      "name": "fixed",
+      "start_line": 771,
+      "end_line": 777,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "ENROLLMENT_LIFETIME",
+      "start_line": 22,
+      "end_line": 22,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "TaskCommand",
+      "start_line": 259,
+      "end_line": 277,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "Request",
+      "start_line": 598,
+      "end_line": 612,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "schema_of",
+      "start_line": 897,
+      "end_line": 912,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "LedgerEntry",
+      "start_line": 606,
+      "end_line": 633,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/cj.rs",
+      "name": "CALL_SCHEMA",
+      "start_line": 50,
+      "end_line": 51,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/cj.rs",
+      "name": "ANSWER_SCHEMA",
+      "start_line": 52,
+      "end_line": 54,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/cj.rs",
+      "name": "exchange_once",
+      "start_line": 597,
+      "end_line": 663,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "Enrollment::digest",
+      "start_line": 187,
+      "end_line": 190,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "open",
+      "start_line": 884,
+      "end_line": 896,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "Admitted",
+      "start_line": 651,
+      "end_line": 660,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/cj.rs",
+      "name": "Capability::request",
+      "start_line": 258,
+      "end_line": 271,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/cj.rs",
+      "name": "seal",
+      "start_line": 788,
+      "end_line": 808,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/host/serve.rs",
+      "name": "serve",
+      "start_line": 8,
+      "end_line": 54,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "Operation::required",
+      "start_line": 492,
+      "end_line": 514,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "Outcome::answers",
+      "start_line": 774,
+      "end_line": 800,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "SpendRequest::validate",
+      "start_line": 351,
+      "end_line": 381,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/cj.rs",
+      "name": "SLUG",
+      "start_line": 39,
+      "end_line": 40,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/cj.rs",
+      "name": "Capability::lock",
+      "start_line": 201,
+      "end_line": 212,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/cj.rs",
+      "name": "seal_execute",
+      "start_line": 274,
+      "end_line": 289,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/client.rs",
+      "name": "Client::owner",
+      "start_line": 40,
+      "end_line": 55,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/main.rs",
+      "name": "public_key",
+      "start_line": 106,
+      "end_line": 119,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "code_digest",
+      "start_line": 225,
+      "end_line": 231,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "CommandAction",
+      "start_line": 242,
+      "end_line": 257,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "QueueEdit",
+      "start_line": 307,
+      "end_line": 328,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "Request::validate",
+      "start_line": 614,
+      "end_line": 632,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "Outcome::validate",
+      "start_line": 719,
+      "end_line": 772,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "Context",
+      "start_line": 293,
+      "end_line": 306,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "Receipt::validate",
+      "start_line": 527,
+      "end_line": 555,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "Receipt::answers",
+      "start_line": 563,
+      "end_line": 582,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "Ledger::refuse",
+      "start_line": 820,
+      "end_line": 859,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/cj.rs",
+      "name": "Capability::execute",
+      "start_line": 235,
+      "end_line": 256,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/cj.rs",
+      "name": "Client::exchange_cj",
+      "start_line": 543,
+      "end_line": 571,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "QueueItem",
+      "start_line": 369,
+      "end_line": 382,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "schema",
+      "start_line": 821,
+      "end_line": 829,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "Mode",
+      "start_line": 49,
+      "end_line": 55,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "Receipt",
+      "start_line": 484,
+      "end_line": 506,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/cj.rs",
+      "name": "CALL",
+      "start_line": 43,
+      "end_line": 44,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/cj.rs",
+      "name": "ANSWER",
+      "start_line": 45,
+      "end_line": 46,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/cj.rs",
+      "name": "CONTEXT",
+      "start_line": 77,
+      "end_line": 77,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/cj.rs",
+      "name": "REQUIREMENTS",
+      "start_line": 78,
+      "end_line": 78,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/cj.rs",
+      "name": "Capability::id",
+      "start_line": 189,
+      "end_line": 193,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/client.rs",
+      "name": "OpenedEnrollment::approve",
+      "start_line": 276,
+      "end_line": 293,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "Origin",
+      "start_line": 59,
+      "end_line": 66,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "QueueLease",
+      "start_line": 360,
+      "end_line": 367,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "MAX_REQUEST_LIFETIME",
+      "start_line": 35,
+      "end_line": 36,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "LedgerEntry::held",
+      "start_line": 635,
+      "end_line": 648,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/cj.rs",
+      "name": "DIALECT",
+      "start_line": 79,
+      "end_line": 79,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/cj.rs",
+      "name": "Capability::relays",
+      "start_line": 177,
+      "end_line": 181,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/cj.rs",
+      "name": "Capability::definition",
+      "start_line": 183,
+      "end_line": 187,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/cj.rs",
+      "name": "Capability::target",
+      "start_line": 195,
+      "end_line": 199,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/cj.rs",
+      "name": "reference",
+      "start_line": 752,
+      "end_line": 759,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/cj.rs",
+      "name": "schema_ref",
+      "start_line": 761,
+      "end_line": 769,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "seal",
+      "start_line": 872,
+      "end_line": 883,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "MAX_LISTED",
+      "start_line": 37,
+      "end_line": 38,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "FeeMax",
+      "start_line": 102,
+      "end_line": 110,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "WalletRef",
+      "start_line": 122,
+      "end_line": 128,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "defaults::TOTAL_MAX",
+      "start_line": 176,
+      "end_line": 177,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "defaults::LIFETIME",
+      "start_line": 182,
+      "end_line": 183,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "Context::validate",
+      "start_line": 308,
+      "end_line": 322,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "SpendRequest::invoice",
+      "start_line": 383,
+      "end_line": 398,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "SpendRequest::digest",
+      "start_line": 400,
+      "end_line": 406,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "SpendRequest::id_for",
+      "start_line": 408,
+      "end_line": 415,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "Refusal",
+      "start_line": 428,
+      "end_line": 451,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "Remaining",
+      "start_line": 476,
+      "end_line": 482,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "Receipt::refused",
+      "start_line": 508,
+      "end_line": 525,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "Entry",
+      "start_line": 585,
+      "end_line": 591,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "Ledger",
+      "start_line": 662,
+      "end_line": 668,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "Ledger::held_since",
+      "start_line": 676,
+      "end_line": 683,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "Ledger::remaining",
+      "start_line": 685,
+      "end_line": 694,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "Ledger::settle",
+      "start_line": 873,
+      "end_line": 895,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "REQUEST",
+      "start_line": 16,
+      "end_line": 16,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "REPLY",
+      "start_line": 17,
+      "end_line": 17,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "Operation::name",
+      "start_line": 471,
+      "end_line": 491,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "Reply",
+      "start_line": 808,
+      "end_line": 819,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "encoded",
+      "start_line": 865,
+      "end_line": 867,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "State",
+      "start_line": 593,
+      "end_line": 604,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "hex32",
+      "start_line": 953,
+      "end_line": 961,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/cj.rs",
+      "name": "LOCK",
+      "start_line": 76,
+      "end_line": 76,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/cj.rs",
+      "name": "DEFINITION",
+      "start_line": 80,
+      "end_line": 80,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/cj.rs",
+      "name": "Answering::refuse",
+      "start_line": 383,
+      "end_line": 389,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/cj.rs",
+      "name": "Answering::seal",
+      "start_line": 391,
+      "end_line": 404,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/cj.rs",
+      "name": "malformed",
+      "start_line": 815,
+      "end_line": 817,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/main.rs",
+      "name": "signing_key",
+      "start_line": 120,
+      "end_line": 136,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "short_code",
+      "start_line": 193,
+      "end_line": 205,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "TaskCreate",
+      "start_line": 233,
+      "end_line": 240,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "TaskCommand::validate",
+      "start_line": 280,
+      "end_line": 301,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "Receipt",
+      "start_line": 659,
+      "end_line": 666,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "REQUEST",
+      "start_line": 31,
+      "end_line": 31,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "RECEIPT",
+      "start_line": 32,
+      "end_line": 32,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "Purpose::label",
+      "start_line": 84,
+      "end_line": 92,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "LEDGER_MAX",
+      "start_line": 672,
+      "end_line": 673,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "Ledger::prune",
+      "start_line": 916,
+      "end_line": 922,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "schema",
+      "start_line": 925,
+      "end_line": 930,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/cj.rs",
+      "name": "MAX_RELAYS",
+      "start_line": 81,
+      "end_line": 81,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/cj.rs",
+      "name": "EXCHANGE_TIMEOUT",
+      "start_line": 82,
+      "end_line": 82,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/cj.rs",
+      "name": "FETCH_TIMEOUT",
+      "start_line": 83,
+      "end_line": 83,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/cj.rs",
+      "name": "Answering",
+      "start_line": 344,
+      "end_line": 350,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/cj.rs",
+      "name": "Refusal",
+      "start_line": 440,
+      "end_line": 440,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/cj.rs",
+      "name": "same",
+      "start_line": 779,
+      "end_line": 786,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/cj.rs",
+      "name": "signer",
+      "start_line": 810,
+      "end_line": 813,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/main.rs",
+      "name": "default_state",
+      "start_line": 137,
+      "end_line": 141,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "normalize_code",
+      "start_line": 206,
+      "end_line": 224,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "QueueEdit::validate",
+      "start_line": 331,
+      "end_line": 357,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "text",
+      "start_line": 859,
+      "end_line": 864,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "UNIT",
+      "start_line": 39,
+      "end_line": 40,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "NETWORK",
+      "start_line": 41,
+      "end_line": 42,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "WALLET_KIND",
+      "start_line": 43,
+      "end_line": 44,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "MAX_PAYMENT",
+      "start_line": 45,
+      "end_line": 46,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "MAX_SAFE",
+      "start_line": 47,
+      "end_line": 47,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "Purpose",
+      "start_line": 57,
+      "end_line": 65,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "Purpose::ALL",
+      "start_line": 67,
+      "end_line": 72,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "Purpose::as_str",
+      "start_line": 73,
+      "end_line": 80,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "Purpose::parse",
+      "start_line": 81,
+      "end_line": 83,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "Rail",
+      "start_line": 95,
+      "end_line": 100,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "FeeMax::ceiling",
+      "start_line": 112,
+      "end_line": 119,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "defaults::PERIOD",
+      "start_line": 172,
+      "end_line": 173,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "defaults::PERIOD_MAX",
+      "start_line": 174,
+      "end_line": 175,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "defaults::FEE_ABSOLUTE",
+      "start_line": 178,
+      "end_line": 179,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "defaults::FEE_PPM",
+      "start_line": 180,
+      "end_line": 181,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "Settlement",
+      "start_line": 418,
+      "end_line": 426,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "Receipt::is_final",
+      "start_line": 557,
+      "end_line": 561,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "Ledger::fail",
+      "start_line": 861,
+      "end_line": 871,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "Ledger::trim",
+      "start_line": 897,
+      "end_line": 914,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "safe",
+      "start_line": 931,
+      "end_line": 936,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "node_key",
+      "start_line": 937,
+      "end_line": 947,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/spend.rs",
+      "name": "hex",
+      "start_line": 948,
+      "end_line": 952,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/client.rs",
+      "name": "open_enrollment",
+      "start_line": 301,
+      "end_line": 321,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "OriginKind",
+      "start_line": 53,
+      "end_line": 58,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/client.rs",
+      "name": "OpenedEnrollment",
+      "start_line": 268,
+      "end_line": 274,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/main.rs",
+      "name": "main",
+      "start_line": 15,
+      "end_line": 21,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "MAX_REQUEST_LIFETIME",
+      "start_line": 20,
+      "end_line": 20,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "MAX_CODE_ATTEMPTS",
+      "start_line": 23,
+      "end_line": 23,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "MAX_SAFE",
+      "start_line": 24,
+      "end_line": 24,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "CODE_ALPHABET",
+      "start_line": 25,
+      "end_line": 25,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "MAX_QUEUE",
+      "start_line": 304,
+      "end_line": 305,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "TaskQueue",
+      "start_line": 384,
+      "end_line": 393,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "MAX_WORKSPACES",
+      "start_line": 715,
+      "end_line": 716,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "ReplyResult",
+      "start_line": 802,
+      "end_line": 807,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "safe",
+      "start_line": 847,
+      "end_line": 852,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/protocol.rs",
+      "name": "digest",
+      "start_line": 853,
+      "end_line": 858,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/client.rs",
+      "name": "Client",
+      "start_line": 20,
+      "end_line": 27,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/client.rs",
+      "name": "finish_redeem",
+      "start_line": 231,
+      "end_line": 251,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/main.rs",
+      "name": "Args::parse",
+      "start_line": 45,
+      "end_line": 72,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/client.rs",
+      "name": "Client::prepare",
+      "start_line": 72,
+      "end_line": 104,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/client.rs",
+      "name": "exchange",
+      "start_line": 166,
+      "end_line": 188,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/client.rs",
+      "name": "prepare_redeem",
+      "start_line": 190,
+      "end_line": 230,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/client.rs",
+      "name": "OpenedEnrollment::deny",
+      "start_line": 294,
+      "end_line": 299,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/client.rs",
+      "name": "redeem",
+      "start_line": 252,
+      "end_line": 266,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/client.rs",
+      "name": "pending_enrollments",
+      "start_line": 322,
+      "end_line": 369,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/main.rs",
+      "name": "bad",
+      "start_line": 22,
+      "end_line": 24,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/main.rs",
+      "name": "Args::key",
+      "start_line": 94,
+      "end_line": 96,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/client.rs",
+      "name": "verify_reply",
+      "start_line": 118,
+      "end_line": 164,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/main.rs",
+      "name": "Args",
+      "start_line": 40,
+      "end_line": 43,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/main.rs",
+      "name": "Args::flag",
+      "start_line": 73,
+      "end_line": 76,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/main.rs",
+      "name": "Args::value",
+      "start_line": 77,
+      "end_line": 79,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/main.rs",
+      "name": "Args::required",
+      "start_line": 80,
+      "end_line": 83,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/main.rs",
+      "name": "Args::number",
+      "start_line": 84,
+      "end_line": 88,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/main.rs",
+      "name": "Args::rights",
+      "start_line": 89,
+      "end_line": 93,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/main.rs",
+      "name": "Args::finish",
+      "start_line": 97,
+      "end_line": 103,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/lib.rs",
+      "name": "Error::from",
+      "start_line": 77,
+      "end_line": 95,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/client.rs",
+      "name": "Client::verify_reply",
+      "start_line": 105,
+      "end_line": 107,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/client.rs",
+      "name": "Client::send",
+      "start_line": 108,
+      "end_line": 111,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/client.rs",
+      "name": "Pending",
+      "start_line": 12,
+      "end_line": 18,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/rights.rs",
+      "name": "Rights::standard",
+      "start_line": 78,
+      "end_line": 86,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/client.rs",
+      "name": "Client::policy",
+      "start_line": 66,
+      "end_line": 68,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/client.rs",
+      "name": "Client::secret",
+      "start_line": 69,
+      "end_line": 71,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/rights.rs",
+      "name": "Right",
+      "start_line": 5,
+      "end_line": 20,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/client.rs",
+      "name": "Client::relay",
+      "start_line": 62,
+      "end_line": 65,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/client.rs",
+      "name": "Client::call",
+      "start_line": 112,
+      "end_line": 115,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/lib.rs",
+      "name": "Error::missing",
+      "start_line": 59,
+      "end_line": 65,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/lib.rs",
+      "name": "unix_time",
+      "start_line": 100,
+      "end_line": 102,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/lib.rs",
+      "name": "fail",
+      "start_line": 97,
+      "end_line": 99,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/rights.rs",
+      "name": "Rights::parse_list",
+      "start_line": 91,
+      "end_line": 103,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/lib.rs",
+      "name": "Code",
+      "start_line": 24,
+      "end_line": 42,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/rights.rs",
+      "name": "Right::ALL",
+      "start_line": 22,
+      "end_line": 29,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/rights.rs",
+      "name": "Right::as_str",
+      "start_line": 30,
+      "end_line": 39,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/rights.rs",
+      "name": "Right::parse",
+      "start_line": 40,
+      "end_line": 45,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/lib.rs",
+      "name": "Result",
+      "start_line": 22,
+      "end_line": 22,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/lib.rs",
+      "name": "Error",
+      "start_line": 44,
+      "end_line": 50,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/lib.rs",
+      "name": "Error::fmt",
+      "start_line": 68,
+      "end_line": 73,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/rights.rs",
+      "name": "Rights",
+      "start_line": 48,
+      "end_line": 52,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/rights.rs",
+      "name": "Rights::all",
+      "start_line": 87,
+      "end_line": 90,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/rights.rs",
+      "name": "Rights::Error",
+      "start_line": 54,
+      "end_line": 54,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/rights.rs",
+      "name": "Rights::try_from",
+      "start_line": 55,
+      "end_line": 63,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/rights.rs",
+      "name": "Vec::from",
+      "start_line": 66,
+      "end_line": 68,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/rights.rs",
+      "name": "Rights::contains",
+      "start_line": 104,
+      "end_line": 106,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/rights.rs",
+      "name": "Rights::iter",
+      "start_line": 107,
+      "end_line": 109,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/rights.rs",
+      "name": "Rights::first_missing",
+      "start_line": 110,
+      "end_line": 113,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/rights.rs",
+      "name": "Rights::require",
+      "start_line": 114,
+      "end_line": 121,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/coder-access/src/rights.rs",
+      "name": "Rights::to_list",
+      "start_line": 122,
+      "end_line": 124,
+      "reason": "candidate_state_budget"
+    }
+  ],
+  "limits": {
+    "candidate_state_bytes": 28672,
+    "max_candidates": 32,
+    "max_files": 48,
+    "pack_bytes": 16384,
+    "unit_bytes": 6000,
+    "slice_bytes": 2400
+  },
+  "instruction_policy": "Optional source evidence only; supply complete applicable instructions separately.",
+  "index_sha256": "d0771eb093ec2224cc1ae562c3796949a48f76f9d74cbc0b5d10d4c4869354aa",
+  "candidate_pool_sha256": "2bb12b3b51452b50272becf17595943b8becf8332534f6db6f754ec5854467ba",
+  "candidate_state_bytes": 28591,
+  "wall_s": 2.1921992080751806
+}

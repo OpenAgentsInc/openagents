@@ -1,0 +1,1134 @@
+{
+  "schema": "openagents.jev.lifecycle-review-cases.public.v1",
+  "status": "inputs_and_labels_frozen_before_inference",
+  "private_manifest_sha256": "2ce97654d51812ef95882694f037c9d1080bfd9911e59e9ff2ea50804fac0d5b",
+  "contains_private_checker_content": false,
+  "contains_private_transcript_content": false,
+  "labels_are_for_offline_analysis_only": true,
+  "model_state_policy": {
+    "review_state_keys": [
+      "task",
+      "source_commit",
+      "diff",
+      "source_context"
+    ],
+    "next_read_state_keys": [
+      "task",
+      "source_commit",
+      "source_context"
+    ],
+    "forbidden": [
+      "labels",
+      "checker bodies",
+      "acceptance output",
+      "private transcript content",
+      "candidate role names",
+      "reference commit hints"
+    ],
+    "all_review_state_bytes_le": 65536,
+    "full_diffs_preserved": true,
+    "observed_checks_omitted": true
+  },
+  "review_label_interpretation": {
+    "defective": "Existing executed independent evidence demonstrates a contract failure for these exact bytes.",
+    "accepted_under_retained_checks": "The exact candidate passes the recorded checks. This is a negative control for known defects, not proof that no other defect exists."
+  },
+  "review_question_proposal": {
+    "type": "choice",
+    "instructions": "Review the proposed patch against the task and supplied pre-change source. Does the patch leave a concrete behavior defect that violates the task? Judge code behavior, not test names or patch length. If necessary context is absent, choose insufficient_context.",
+    "criteria": {
+      "defect": "The supplied code establishes a concrete behavior defect against the task.",
+      "no_demonstrated_defect": "The supplied code does not establish such a defect. This is not a proof of complete correctness.",
+      "insufficient_context": "Essential source or contract context is missing, so this review cannot decide."
+    }
+  },
+  "question_note": "Question proposal retained from case design. The runner separately freezes its actual review_state and review_questions, which add deterministic task clauses; do not confuse input-file hashes with outbound transformed-state hashes.",
+  "review_cases": [
+    {
+      "id": "R01",
+      "family": "beta",
+      "variant": "negative-control-2",
+      "label": "defective",
+      "demonstrated_defect": "A final invalid UTF-8 record aborts the entire read and loses the recoverable prefix.",
+      "state": {
+        "path": "docs/audits/2026-10-03-independent-efficiency/jev-lifecycle/review-inputs/R01.json",
+        "sha256": "5c2de42e0fc3cca461186fb993e81c44654513e5f0f3d1b009cb6712ce1123b4",
+        "bytes": 48516
+      },
+      "full_diff": {
+        "path": "docs/audits/2026-10-03-independent-efficiency/jev-lifecycle/review-diffs/R01.patch",
+        "sha256": "34d433459cfd8ee19ea1f4a74cfb6445a5b6f7389feeb2ba91df47942c0442d7",
+        "bytes": 24360
+      },
+      "source_commit": "7ec5f6e83d018ab2f25d7a61ff695de81f2f55f6",
+      "public_contract": {
+        "path": "docs/audits/2026-10-03-independent-efficiency/system-one-delegation/alternative-beta/inputs/public-task-manifest.json",
+        "sha256": "a78647ec368dc9f6fb573915d9250bfe9ceb16edc1da9389e8576cc486c7a511",
+        "bytes": 3725
+      },
+      "candidate_binding": {
+        "payload": {
+          "sha256": "eb7e6b635f34383838b380c13bd8a69b6ffd1bf391852ac7d9c36dc7f6db2e86",
+          "bytes": 18908,
+          "retained_privately": true
+        },
+        "changes": {
+          "sha256": "5059bdc42f892548a2fd5fd851563e04a3364bf725cc63bf708630bcea636eae",
+          "bytes": 1902,
+          "retained_privately": true
+        },
+        "manifest_sha256": "34eb49f64b19b5a33a046dd37fc7ebeb6105af4e1985154cac1ad6d12f1b41b8"
+      },
+      "label_evidence": {
+        "report": {
+          "path": "docs/audits/2026-10-03-independent-efficiency/system-one-delegation/eligibility-beta.json",
+          "sha256": "d1df0c62c256219ea8b1bb915da4ebfb006a4bc487c1092af9f14d0f7041ddce",
+          "bytes": 31569
+        },
+        "json_pointer": "/attempts/5",
+        "attempt": "qualification-negative-control-2-v2",
+        "independent_test_counts": [
+          {
+            "failed": 1,
+            "passed": 2
+          }
+        ],
+        "checker_sha256": "ee58a16d8975ee63b1f7a6911ee63e990a1e0355d0456c9b83da7febfea1ef01",
+        "ordinary_passed": false,
+        "independent_passed": false,
+        "completed": true,
+        "execution_closed": true
+      },
+      "omissions": [
+        "The supplied diff contains every changed file, including tests and documentation. Unchanged source is limited to the listed common pre-change spans; the rest of the repository is not included.",
+        "No observed test outcomes, checker text, role labels, private transcript content, or reference commit identifiers appear in the state."
+      ]
+    },
+    {
+      "id": "R02",
+      "family": "v2",
+      "variant": "2-treatment",
+      "label": "accepted_under_retained_checks",
+      "demonstrated_defect": null,
+      "state": {
+        "path": "docs/audits/2026-10-03-independent-efficiency/jev-lifecycle/review-inputs/R02.json",
+        "sha256": "478e31616b2e2040cf5dc4e9f79334ceb4c6342e818ee8bf9befae0182d9c9cc",
+        "bytes": 43883
+      },
+      "full_diff": {
+        "path": "docs/audits/2026-10-03-independent-efficiency/jev-lifecycle/review-diffs/R02.patch",
+        "sha256": "07245eec761b96f087fd669198a229771b417f35fc43e8252d5573ccb98918c5",
+        "bytes": 17071
+      },
+      "source_commit": "f29611f211747884b4f508db80634d3f6df2a5e9",
+      "public_contract": {
+        "source": "Public sanitized task retained in the state.task field; original provenance is the V2 public study.",
+        "task_text_sha256": "c6d0525dd9f7d8438e237984be0194366a747bf8c5e7e10e2557edd2b4e4e7cb",
+        "public_provenance_path": "docs/audits/2026-10-03-independent-efficiency/briefing-iteration-2/README.md"
+      },
+      "candidate_binding": {
+        "payload_sha256": "1800eb110cf1a960f76ca8bc5cbff61495ceebeb5f601eddecc741de73fc8506",
+        "canonical_candidate_sha256": "14015444813585598407f1aa1553b13ff2fa56417e69f2a97d50d5853218b4e2"
+      },
+      "label_evidence": {
+        "report": {
+          "path": "docs/audits/2026-10-03-independent-efficiency/briefing-iteration-2/posthoc-execution.json",
+          "sha256": "156e81a0d9bf7721579177256d750a96fc99dfd9b28e964c9665cbb81f83120a",
+          "bytes": 46550
+        },
+        "json_pointer": "/variants/3",
+        "cases": [
+          {
+            "test": "conflicting_manifest_marks_resolve_the_same_way_in_both_orders",
+            "outcome": "ok"
+          },
+          {
+            "test": "equal_rank_divergent_copies_choose_the_same_record_in_both_orders",
+            "outcome": "ok"
+          }
+        ],
+        "passed": 2,
+        "failed": 0,
+        "prior_frozen_acceptance_passed": true,
+        "ordinary_checks_previously_passed": true
+      },
+      "omissions": [
+        "The supplied diff contains every changed file, including tests and documentation. Unchanged source is limited to the listed common pre-change spans; the rest of the repository is not included.",
+        "No observed test outcomes, checker text, role labels, private transcript content, or reference commit identifiers appear in the state."
+      ]
+    },
+    {
+      "id": "R03",
+      "family": "v2",
+      "variant": "5-control",
+      "label": "accepted_under_retained_checks",
+      "demonstrated_defect": null,
+      "state": {
+        "path": "docs/audits/2026-10-03-independent-efficiency/jev-lifecycle/review-inputs/R03.json",
+        "sha256": "a197eeafd5e921f75f66e8903ba791483931e5d2d91cc174227549f84ede6def",
+        "bytes": 43832
+      },
+      "full_diff": {
+        "path": "docs/audits/2026-10-03-independent-efficiency/jev-lifecycle/review-diffs/R03.patch",
+        "sha256": "22fbf81d37a46460de92636b39bc0f11fdeaefba508a0aff7e70e677e3215790",
+        "bytes": 17030
+      },
+      "source_commit": "f29611f211747884b4f508db80634d3f6df2a5e9",
+      "public_contract": {
+        "source": "Public sanitized task retained in the state.task field; original provenance is the V2 public study.",
+        "task_text_sha256": "c6d0525dd9f7d8438e237984be0194366a747bf8c5e7e10e2557edd2b4e4e7cb",
+        "public_provenance_path": "docs/audits/2026-10-03-independent-efficiency/briefing-iteration-2/README.md"
+      },
+      "candidate_binding": {
+        "payload_sha256": "3dbedc9cc80a12dc80eab46af6d3822a8d2d3b08f24d7a45514f8ff40269da6e",
+        "canonical_candidate_sha256": "6b496ddcaa2aae5375733dea6cf102c61d79197ed09ec1162fe2ad07adc653ff"
+      },
+      "label_evidence": {
+        "report": {
+          "path": "docs/audits/2026-10-03-independent-efficiency/briefing-iteration-2/posthoc-execution.json",
+          "sha256": "156e81a0d9bf7721579177256d750a96fc99dfd9b28e964c9665cbb81f83120a",
+          "bytes": 46550
+        },
+        "json_pointer": "/variants/6",
+        "cases": [
+          {
+            "test": "conflicting_manifest_marks_resolve_the_same_way_in_both_orders",
+            "outcome": "ok"
+          },
+          {
+            "test": "equal_rank_divergent_copies_choose_the_same_record_in_both_orders",
+            "outcome": "ok"
+          }
+        ],
+        "passed": 2,
+        "failed": 0,
+        "prior_frozen_acceptance_passed": true,
+        "ordinary_checks_previously_passed": true
+      },
+      "omissions": [
+        "The supplied diff contains every changed file, including tests and documentation. Unchanged source is limited to the listed common pre-change spans; the rest of the repository is not included.",
+        "No observed test outcomes, checker text, role labels, private transcript content, or reference commit identifiers appear in the state."
+      ]
+    },
+    {
+      "id": "R04",
+      "family": "gamma",
+      "variant": "negative-control-1",
+      "label": "defective",
+      "demonstrated_defect": "Noul numeric range validation is omitted.",
+      "state": {
+        "path": "docs/audits/2026-10-03-independent-efficiency/jev-lifecycle/review-inputs/R04.json",
+        "sha256": "972177a81abe3d582097f2ed61c28b481629c42d9e12c81d32b51b218f7db770",
+        "bytes": 58368
+      },
+      "full_diff": {
+        "path": "docs/audits/2026-10-03-independent-efficiency/jev-lifecycle/review-diffs/R04.patch",
+        "sha256": "27d6d6e310becac6d7e6c84733a71ca776b41d8f58b2aa4e319c77c6a201bbce",
+        "bytes": 25749
+      },
+      "source_commit": "c427943a5c84ba5938a3549f24b27de551812a37",
+      "public_contract": {
+        "path": "docs/audits/2026-10-03-independent-efficiency/system-one-delegation/alternative-gamma/inputs/public-task-manifest.json",
+        "sha256": "a06ff5c883e57a8bac3cafc88444d6987b80b4a5b3c7efaf4c0354d080a8050d",
+        "bytes": 4131
+      },
+      "candidate_binding": {
+        "payload": {
+          "sha256": "ec55ed359d09eccf77c291ee59e0ec9964925012e79f04e6de531f80ae5640f6",
+          "bytes": 29955,
+          "retained_privately": true
+        },
+        "changes": {
+          "sha256": "e97e3836b131b2ef7123a3f1e7955f9ade7b05742d877d5d7015db91772dbd06",
+          "bytes": 2479,
+          "retained_privately": true
+        },
+        "manifest_sha256": "c7a439fc896bb085127cd49e6fedee467e6f662d0f32e70ff1b29756e82202e9"
+      },
+      "label_evidence": {
+        "report": {
+          "path": "docs/audits/2026-10-03-independent-efficiency/system-one-delegation/eligibility-gamma.json",
+          "sha256": "68c26f988843326d3a49c0ff1b01bec7d233d07a8c47e30039ab002282a49622",
+          "bytes": 34445
+        },
+        "json_pointer": "/attempts/3",
+        "attempt": "qualification-negative-control-1-v1",
+        "independent_test_counts": [
+          {
+            "failed": 1,
+            "passed": 3
+          }
+        ],
+        "checker_sha256": "575a283ba8d4e09005b75ad8d81977eb532cc6c0bf2d47eaf80bca0bb62fbb9f",
+        "ordinary_passed": false,
+        "independent_passed": false,
+        "completed": true,
+        "execution_closed": true
+      },
+      "omissions": [
+        "The supplied diff contains every changed file, including tests and documentation. Unchanged source is limited to the listed common pre-change spans; the rest of the repository is not included.",
+        "No observed test outcomes, checker text, role labels, private transcript content, or reference commit identifiers appear in the state."
+      ]
+    },
+    {
+      "id": "R05",
+      "family": "beta",
+      "variant": "negative-control-1",
+      "label": "defective",
+      "demonstrated_defect": "Writer permits appending after closure.",
+      "state": {
+        "path": "docs/audits/2026-10-03-independent-efficiency/jev-lifecycle/review-inputs/R05.json",
+        "sha256": "049c001fa17b435462b368e31d543de150214209e56504a66881225fda7daecf",
+        "bytes": 48077
+      },
+      "full_diff": {
+        "path": "docs/audits/2026-10-03-independent-efficiency/jev-lifecycle/review-diffs/R05.patch",
+        "sha256": "c629031f4a892c08a8eb5944138e7f7eea731fdaf71d48d12bc5def3963a17ad",
+        "bytes": 23935
+      },
+      "source_commit": "7ec5f6e83d018ab2f25d7a61ff695de81f2f55f6",
+      "public_contract": {
+        "path": "docs/audits/2026-10-03-independent-efficiency/system-one-delegation/alternative-beta/inputs/public-task-manifest.json",
+        "sha256": "a78647ec368dc9f6fb573915d9250bfe9ceb16edc1da9389e8576cc486c7a511",
+        "bytes": 3725
+      },
+      "candidate_binding": {
+        "payload": {
+          "sha256": "c1a125d4ff652cd01c4f7404862b9b8d6ed2c6e1ecc65447689abac519fb76fa",
+          "bytes": 18840,
+          "retained_privately": true
+        },
+        "changes": {
+          "sha256": "20d8b5cbf8e1cb68c576f1cb71089f33700765b294cf41c9048f993c4a4b20f9",
+          "bytes": 1902,
+          "retained_privately": true
+        },
+        "manifest_sha256": "d576eaad9644152d25adb4267d0f20e2ff9d709160cfdace898330b2a76b4f41"
+      },
+      "label_evidence": {
+        "report": {
+          "path": "docs/audits/2026-10-03-independent-efficiency/system-one-delegation/eligibility-beta.json",
+          "sha256": "d1df0c62c256219ea8b1bb915da4ebfb006a4bc487c1092af9f14d0f7041ddce",
+          "bytes": 31569
+        },
+        "json_pointer": "/attempts/4",
+        "attempt": "qualification-negative-control-1-v2",
+        "independent_test_counts": [
+          {
+            "failed": 1,
+            "passed": 2
+          }
+        ],
+        "checker_sha256": "ee58a16d8975ee63b1f7a6911ee63e990a1e0355d0456c9b83da7febfea1ef01",
+        "ordinary_passed": false,
+        "independent_passed": false,
+        "completed": true,
+        "execution_closed": true
+      },
+      "omissions": [
+        "The supplied diff contains every changed file, including tests and documentation. Unchanged source is limited to the listed common pre-change spans; the rest of the repository is not included.",
+        "No observed test outcomes, checker text, role labels, private transcript content, or reference commit identifiers appear in the state."
+      ]
+    },
+    {
+      "id": "R06",
+      "family": "v2",
+      "variant": "4-control",
+      "label": "defective",
+      "demonstrated_defect": "Directory reversal changes both selected reward and manifest commit.",
+      "state": {
+        "path": "docs/audits/2026-10-03-independent-efficiency/jev-lifecycle/review-inputs/R06.json",
+        "sha256": "4369c53c10c4ad05149896458b34f8c21380c1ca6473435046ec25324dab374d",
+        "bytes": 41090
+      },
+      "full_diff": {
+        "path": "docs/audits/2026-10-03-independent-efficiency/jev-lifecycle/review-diffs/R06.patch",
+        "sha256": "b3657e16a2402ec3cd2eed923377a48d7ac9aff8f28b0a0856cc39064ef94e6d",
+        "bytes": 14406
+      },
+      "source_commit": "f29611f211747884b4f508db80634d3f6df2a5e9",
+      "public_contract": {
+        "source": "Public sanitized task retained in the state.task field; original provenance is the V2 public study.",
+        "task_text_sha256": "c6d0525dd9f7d8438e237984be0194366a747bf8c5e7e10e2557edd2b4e4e7cb",
+        "public_provenance_path": "docs/audits/2026-10-03-independent-efficiency/briefing-iteration-2/README.md"
+      },
+      "candidate_binding": {
+        "payload_sha256": "20cd5947a90cfb806e3c42bf1b0ef8e06713db4a50ac9e6ab0c1486b0edcb803",
+        "canonical_candidate_sha256": "e1df668f448bd0ac3dc9407f540fc90445f23bf94886270f2516de15beb6547a"
+      },
+      "label_evidence": {
+        "report": {
+          "path": "docs/audits/2026-10-03-independent-efficiency/briefing-iteration-2/posthoc-execution.json",
+          "sha256": "156e81a0d9bf7721579177256d750a96fc99dfd9b28e964c9665cbb81f83120a",
+          "bytes": 46550
+        },
+        "json_pointer": "/variants/5",
+        "cases": [
+          {
+            "test": "conflicting_manifest_marks_resolve_the_same_way_in_both_orders",
+            "outcome": "FAILED"
+          },
+          {
+            "test": "equal_rank_divergent_copies_choose_the_same_record_in_both_orders",
+            "outcome": "FAILED"
+          }
+        ],
+        "passed": 0,
+        "failed": 2,
+        "prior_frozen_acceptance_passed": true,
+        "ordinary_checks_previously_passed": true
+      },
+      "omissions": [
+        "The supplied diff contains every changed file, including tests and documentation. Unchanged source is limited to the listed common pre-change spans; the rest of the repository is not included.",
+        "No observed test outcomes, checker text, role labels, private transcript content, or reference commit identifiers appear in the state."
+      ]
+    },
+    {
+      "id": "R07",
+      "family": "beta",
+      "variant": "reference",
+      "label": "accepted_under_retained_checks",
+      "demonstrated_defect": null,
+      "state": {
+        "path": "docs/audits/2026-10-03-independent-efficiency/jev-lifecycle/review-inputs/R07.json",
+        "sha256": "4bc7197c888e392ab369f8d3eb8d2625f63b72ac67bee604552fc1ed5c8590e0",
+        "bytes": 48402
+      },
+      "full_diff": {
+        "path": "docs/audits/2026-10-03-independent-efficiency/jev-lifecycle/review-diffs/R07.patch",
+        "sha256": "c8bc4f8ec38289dd57981f008bb6e924c2eac5608c6a6a9cd5e3265c8c61d880",
+        "bytes": 24248
+      },
+      "source_commit": "7ec5f6e83d018ab2f25d7a61ff695de81f2f55f6",
+      "public_contract": {
+        "path": "docs/audits/2026-10-03-independent-efficiency/system-one-delegation/alternative-beta/inputs/public-task-manifest.json",
+        "sha256": "a78647ec368dc9f6fb573915d9250bfe9ceb16edc1da9389e8576cc486c7a511",
+        "bytes": 3725
+      },
+      "candidate_binding": {
+        "payload": {
+          "sha256": "55e41de3062f116604ff6dcd54850622af2ac4e7aefefc28ebee1b8fbfc7d7c6",
+          "bytes": 18891,
+          "retained_privately": true
+        },
+        "changes": {
+          "sha256": "47b77f3430428dad7cb8f06681525e48bec1def069ae1d468adf6b7c9d96b919",
+          "bytes": 1902,
+          "retained_privately": true
+        },
+        "manifest_sha256": "c31e5762254b629d3229966cdd747a75218485800bd1c11aecd6593fa474ff34"
+      },
+      "label_evidence": {
+        "report": {
+          "path": "docs/audits/2026-10-03-independent-efficiency/system-one-delegation/eligibility-beta.json",
+          "sha256": "d1df0c62c256219ea8b1bb915da4ebfb006a4bc487c1092af9f14d0f7041ddce",
+          "bytes": 31569
+        },
+        "json_pointer": "/attempts/7",
+        "attempt": "qualification-reference-v2",
+        "independent_test_counts": [
+          {
+            "failed": 0,
+            "passed": 3
+          }
+        ],
+        "checker_sha256": "ee58a16d8975ee63b1f7a6911ee63e990a1e0355d0456c9b83da7febfea1ef01",
+        "ordinary_passed": true,
+        "independent_passed": true,
+        "completed": true,
+        "execution_closed": true
+      },
+      "omissions": [
+        "The supplied diff contains every changed file, including tests and documentation. Unchanged source is limited to the listed common pre-change spans; the rest of the repository is not included.",
+        "No observed test outcomes, checker text, role labels, private transcript content, or reference commit identifiers appear in the state."
+      ]
+    },
+    {
+      "id": "R08",
+      "family": "v2",
+      "variant": "3-treatment",
+      "label": "accepted_under_retained_checks",
+      "demonstrated_defect": null,
+      "state": {
+        "path": "docs/audits/2026-10-03-independent-efficiency/jev-lifecycle/review-inputs/R08.json",
+        "sha256": "d07cbd4d630b220c66b1a92c5f185abd951b43160ab8d4286054a5e7f12f40fe",
+        "bytes": 42755
+      },
+      "full_diff": {
+        "path": "docs/audits/2026-10-03-independent-efficiency/jev-lifecycle/review-diffs/R08.patch",
+        "sha256": "ad5cd5af9bb5b17f3064dc93c35f6da8831920a610b405d43d82feb6222c5621",
+        "bytes": 16003
+      },
+      "source_commit": "f29611f211747884b4f508db80634d3f6df2a5e9",
+      "public_contract": {
+        "source": "Public sanitized task retained in the state.task field; original provenance is the V2 public study.",
+        "task_text_sha256": "c6d0525dd9f7d8438e237984be0194366a747bf8c5e7e10e2557edd2b4e4e7cb",
+        "public_provenance_path": "docs/audits/2026-10-03-independent-efficiency/briefing-iteration-2/README.md"
+      },
+      "candidate_binding": {
+        "payload_sha256": "2603c57d23e1895a9dc362750f121ca3887ed8ed29cce2123cc344a8846af129",
+        "canonical_candidate_sha256": "bd132b02949c11fd9729f0c160a2546496e1ec8697b70fce84b669aa3ae646bf"
+      },
+      "label_evidence": {
+        "report": {
+          "path": "docs/audits/2026-10-03-independent-efficiency/briefing-iteration-2/posthoc-execution.json",
+          "sha256": "156e81a0d9bf7721579177256d750a96fc99dfd9b28e964c9665cbb81f83120a",
+          "bytes": 46550
+        },
+        "json_pointer": "/variants/4",
+        "cases": [
+          {
+            "test": "conflicting_manifest_marks_resolve_the_same_way_in_both_orders",
+            "outcome": "ok"
+          },
+          {
+            "test": "equal_rank_divergent_copies_choose_the_same_record_in_both_orders",
+            "outcome": "ok"
+          }
+        ],
+        "passed": 2,
+        "failed": 0,
+        "prior_frozen_acceptance_passed": true,
+        "ordinary_checks_previously_passed": true
+      },
+      "omissions": [
+        "The supplied diff contains every changed file, including tests and documentation. Unchanged source is limited to the listed common pre-change spans; the rest of the repository is not included.",
+        "No observed test outcomes, checker text, role labels, private transcript content, or reference commit identifiers appear in the state."
+      ]
+    },
+    {
+      "id": "R09",
+      "family": "v2",
+      "variant": "6-treatment",
+      "label": "defective",
+      "demonstrated_defect": "Equal-rank retained-copy reversal changes selected reward; conflicting marks case passes.",
+      "state": {
+        "path": "docs/audits/2026-10-03-independent-efficiency/jev-lifecycle/review-inputs/R09.json",
+        "sha256": "cb1a7a635e17d0e1a3904eb7276a876a020d1341ddd8d5c6ba4b78f84229fdb5",
+        "bytes": 43548
+      },
+      "full_diff": {
+        "path": "docs/audits/2026-10-03-independent-efficiency/jev-lifecycle/review-diffs/R09.patch",
+        "sha256": "9902f9e2a9c623f4773c45fcb0221df0f018669107a10807df83873f12a0e418",
+        "bytes": 16764
+      },
+      "source_commit": "f29611f211747884b4f508db80634d3f6df2a5e9",
+      "public_contract": {
+        "source": "Public sanitized task retained in the state.task field; original provenance is the V2 public study.",
+        "task_text_sha256": "c6d0525dd9f7d8438e237984be0194366a747bf8c5e7e10e2557edd2b4e4e7cb",
+        "public_provenance_path": "docs/audits/2026-10-03-independent-efficiency/briefing-iteration-2/README.md"
+      },
+      "candidate_binding": {
+        "payload_sha256": "72482806573f945347024af4afc2ecf162708fc6a5643ff79e8aec7dd10e6e61",
+        "canonical_candidate_sha256": "3166c17671cd1ec23e37cf45ce497017ae6bc482f301ac3f4038286c654a1960"
+      },
+      "label_evidence": {
+        "report": {
+          "path": "docs/audits/2026-10-03-independent-efficiency/briefing-iteration-2/posthoc-execution.json",
+          "sha256": "156e81a0d9bf7721579177256d750a96fc99dfd9b28e964c9665cbb81f83120a",
+          "bytes": 46550
+        },
+        "json_pointer": "/variants/7",
+        "cases": [
+          {
+            "test": "conflicting_manifest_marks_resolve_the_same_way_in_both_orders",
+            "outcome": "ok"
+          },
+          {
+            "test": "equal_rank_divergent_copies_choose_the_same_record_in_both_orders",
+            "outcome": "FAILED"
+          }
+        ],
+        "passed": 1,
+        "failed": 1,
+        "prior_frozen_acceptance_passed": true,
+        "ordinary_checks_previously_passed": true
+      },
+      "omissions": [
+        "The supplied diff contains every changed file, including tests and documentation. Unchanged source is limited to the listed common pre-change spans; the rest of the repository is not included.",
+        "No observed test outcomes, checker text, role labels, private transcript content, or reference commit identifiers appear in the state."
+      ]
+    },
+    {
+      "id": "R10",
+      "family": "gamma",
+      "variant": "negative-control-2",
+      "label": "defective",
+      "demonstrated_defect": "Typed request-aware coverage and option validation is omitted; numeric decoding remains.",
+      "state": {
+        "path": "docs/audits/2026-10-03-independent-efficiency/jev-lifecycle/review-inputs/R10.json",
+        "sha256": "647a087339a75e8f2dc95f6d759ad07bf2d10cbca0514134307a63d81c4003a3",
+        "bytes": 58394
+      },
+      "full_diff": {
+        "path": "docs/audits/2026-10-03-independent-efficiency/jev-lifecycle/review-diffs/R10.patch",
+        "sha256": "a157d366c8525e0d03254e923abc2300314862f597b7188b67e66542bdc7ed24",
+        "bytes": 25771
+      },
+      "source_commit": "c427943a5c84ba5938a3549f24b27de551812a37",
+      "public_contract": {
+        "path": "docs/audits/2026-10-03-independent-efficiency/system-one-delegation/alternative-gamma/inputs/public-task-manifest.json",
+        "sha256": "a06ff5c883e57a8bac3cafc88444d6987b80b4a5b3c7efaf4c0354d080a8050d",
+        "bytes": 4131
+      },
+      "candidate_binding": {
+        "payload": {
+          "sha256": "ab8bdd6e86c8d69bb79769d150fbe2e4f01e7e476526adfec976aa732c53e90b",
+          "bytes": 29952,
+          "retained_privately": true
+        },
+        "changes": {
+          "sha256": "797d52b9c642f736ff78049a13afd4da278cdf39f3c19e535c2fbe18f8af8546",
+          "bytes": 2479,
+          "retained_privately": true
+        },
+        "manifest_sha256": "635f89b2fd41056cafb75c5eb2427d85b787f346b3661a96ab4aa1f4b7d09bb2"
+      },
+      "label_evidence": {
+        "report": {
+          "path": "docs/audits/2026-10-03-independent-efficiency/system-one-delegation/eligibility-gamma.json",
+          "sha256": "68c26f988843326d3a49c0ff1b01bec7d233d07a8c47e30039ab002282a49622",
+          "bytes": 34445
+        },
+        "json_pointer": "/attempts/4",
+        "attempt": "qualification-negative-control-2-v1",
+        "independent_test_counts": [
+          {
+            "failed": 2,
+            "passed": 2
+          }
+        ],
+        "checker_sha256": "575a283ba8d4e09005b75ad8d81977eb532cc6c0bf2d47eaf80bca0bb62fbb9f",
+        "ordinary_passed": true,
+        "independent_passed": false,
+        "completed": true,
+        "execution_closed": true
+      },
+      "omissions": [
+        "The supplied diff contains every changed file, including tests and documentation. Unchanged source is limited to the listed common pre-change spans; the rest of the repository is not included.",
+        "No observed test outcomes, checker text, role labels, private transcript content, or reference commit identifiers appear in the state."
+      ]
+    },
+    {
+      "id": "R11",
+      "family": "gamma",
+      "variant": "reference",
+      "label": "accepted_under_retained_checks",
+      "demonstrated_defect": null,
+      "state": {
+        "path": "docs/audits/2026-10-03-independent-efficiency/jev-lifecycle/review-inputs/R11.json",
+        "sha256": "2a189db85f124dfbbb2b65b9711ad8680778fd96de8ea56448e27fb004550c73",
+        "bytes": 58449
+      },
+      "full_diff": {
+        "path": "docs/audits/2026-10-03-independent-efficiency/jev-lifecycle/review-diffs/R11.patch",
+        "sha256": "7d34defee04afc057697b294c3aad7ba9c4daca404076555fa3eae97c35582e9",
+        "bytes": 25825
+      },
+      "source_commit": "c427943a5c84ba5938a3549f24b27de551812a37",
+      "public_contract": {
+        "path": "docs/audits/2026-10-03-independent-efficiency/system-one-delegation/alternative-gamma/inputs/public-task-manifest.json",
+        "sha256": "a06ff5c883e57a8bac3cafc88444d6987b80b4a5b3c7efaf4c0354d080a8050d",
+        "bytes": 4131
+      },
+      "candidate_binding": {
+        "payload": {
+          "sha256": "bcffb69e6f7847382d0eb1133bb0393786f91536016a4340bfc559898496a771",
+          "bytes": 29965,
+          "retained_privately": true
+        },
+        "changes": {
+          "sha256": "0c971624bc546567742285b5aa41d54e7b1bb2dfa476d792ccc509fc7720a553",
+          "bytes": 2479,
+          "retained_privately": true
+        },
+        "manifest_sha256": "e20f960edb0a1347d120b2764b0e825d5c555c16962d431b119e9450b2a0c09f"
+      },
+      "label_evidence": {
+        "report": {
+          "path": "docs/audits/2026-10-03-independent-efficiency/system-one-delegation/eligibility-gamma.json",
+          "sha256": "68c26f988843326d3a49c0ff1b01bec7d233d07a8c47e30039ab002282a49622",
+          "bytes": 34445
+        },
+        "json_pointer": "/attempts/5",
+        "attempt": "qualification-reference-v1",
+        "independent_test_counts": [
+          {
+            "failed": 0,
+            "passed": 4
+          }
+        ],
+        "checker_sha256": "575a283ba8d4e09005b75ad8d81977eb532cc6c0bf2d47eaf80bca0bb62fbb9f",
+        "ordinary_passed": true,
+        "independent_passed": true,
+        "completed": true,
+        "execution_closed": true
+      },
+      "omissions": [
+        "The supplied diff contains every changed file, including tests and documentation. Unchanged source is limited to the listed common pre-change spans; the rest of the repository is not included.",
+        "No observed test outcomes, checker text, role labels, private transcript content, or reference commit identifiers appear in the state."
+      ]
+    },
+    {
+      "id": "R12",
+      "family": "v2",
+      "variant": "1-control",
+      "label": "accepted_under_retained_checks",
+      "demonstrated_defect": null,
+      "state": {
+        "path": "docs/audits/2026-10-03-independent-efficiency/jev-lifecycle/review-inputs/R12.json",
+        "sha256": "e545cb6cf0727e917a89578031fff12ebc8400262a5818f68c2c5534a8d8487f",
+        "bytes": 45985
+      },
+      "full_diff": {
+        "path": "docs/audits/2026-10-03-independent-efficiency/jev-lifecycle/review-diffs/R12.patch",
+        "sha256": "65a84a1e045b061f63822a757117e155959c38d465caffef8512f14dc616db31",
+        "bytes": 19131
+      },
+      "source_commit": "f29611f211747884b4f508db80634d3f6df2a5e9",
+      "public_contract": {
+        "source": "Public sanitized task retained in the state.task field; original provenance is the V2 public study.",
+        "task_text_sha256": "c6d0525dd9f7d8438e237984be0194366a747bf8c5e7e10e2557edd2b4e4e7cb",
+        "public_provenance_path": "docs/audits/2026-10-03-independent-efficiency/briefing-iteration-2/README.md"
+      },
+      "candidate_binding": {
+        "payload_sha256": "2f456d0674713936e337173f6144dcba0990ac118f33f0b30002f3b3481b4098",
+        "canonical_candidate_sha256": "01527df4763524a8c19dc9f6098c261d901b446b881ee761742ccdd074c2761c"
+      },
+      "label_evidence": {
+        "report": {
+          "path": "docs/audits/2026-10-03-independent-efficiency/briefing-iteration-2/posthoc-execution.json",
+          "sha256": "156e81a0d9bf7721579177256d750a96fc99dfd9b28e964c9665cbb81f83120a",
+          "bytes": 46550
+        },
+        "json_pointer": "/variants/2",
+        "cases": [
+          {
+            "test": "conflicting_manifest_marks_resolve_the_same_way_in_both_orders",
+            "outcome": "ok"
+          },
+          {
+            "test": "equal_rank_divergent_copies_choose_the_same_record_in_both_orders",
+            "outcome": "ok"
+          }
+        ],
+        "passed": 2,
+        "failed": 0,
+        "prior_frozen_acceptance_passed": true,
+        "ordinary_checks_previously_passed": true
+      },
+      "omissions": [
+        "The supplied diff contains every changed file, including tests and documentation. Unchanged source is limited to the listed common pre-change spans; the rest of the repository is not included.",
+        "No observed test outcomes, checker text, role labels, private transcript content, or reference commit identifiers appear in the state."
+      ]
+    }
+  ],
+  "next_read_cases": [
+    {
+      "id": "N01",
+      "family": "beta",
+      "expected_choice": "p",
+      "label_kind": "expert_public_contract_semantic_relevance",
+      "grounding": "A13 requires splitting newline-delimited bytes before UTF-8 decoding and preserving a valid prefix.",
+      "public_requirement_anchors": [
+        {
+          "path": "crates/atif/src/log.rs",
+          "lines": [
+            231,
+            309
+          ]
+        },
+        {
+          "contract": {
+            "path": "docs/audits/2026-10-03-independent-efficiency/system-one-delegation/alternative-beta/inputs/public-task-manifest.json",
+            "sha256": "a78647ec368dc9f6fb573915d9250bfe9ceb16edc1da9389e8576cc486c7a511",
+            "bytes": 3725
+          }
+        }
+      ],
+      "limitations": "A preferred next read is not measured completion speed; other readings can still be useful.",
+      "question": {
+        "type": "choice",
+        "instructions": "Select the reading that most directly resolves the stated uncertainty from the listed public source locations. Choose none if the necessary material is absent.",
+        "criteria": {
+          "p": "The byte-to-record trace reader and its recovery/error behavior.",
+          "q": "The benchmark observation and record-integrity judgment boundary.",
+          "r": "The append-only writer, record append, and closure operations.",
+          "none": "None of these readings directly addresses the stated uncertainty."
+        }
+      },
+      "state": {
+        "path": "docs/audits/2026-10-03-independent-efficiency/jev-lifecycle/review-inputs/N01.json",
+        "sha256": "5429c0f1ed12ab29a62d26fc780f84901edea5d37a3b31dd273c13a72be2eb6c",
+        "bytes": 2326
+      }
+    },
+    {
+      "id": "N02",
+      "family": "beta",
+      "expected_choice": "q",
+      "label_kind": "expert_public_contract_semantic_relevance",
+      "grounding": "A13 separately requires the strict grader to reject damaged/incomplete evidence or avoid a successful grade; reader recovery alone is not that decision.",
+      "public_requirement_anchors": [
+        {
+          "path": "crates/coderbench/src/lib.rs",
+          "lines": [
+            1269,
+            1427
+          ]
+        },
+        {
+          "contract": {
+            "path": "docs/audits/2026-10-03-independent-efficiency/system-one-delegation/alternative-beta/inputs/public-task-manifest.json",
+            "sha256": "a78647ec368dc9f6fb573915d9250bfe9ceb16edc1da9389e8576cc486c7a511",
+            "bytes": 3725
+          }
+        }
+      ],
+      "limitations": "A preferred next read is not measured completion speed; other readings can still be useful.",
+      "question": {
+        "type": "choice",
+        "instructions": "Select the reading that most directly resolves the stated uncertainty from the listed public source locations. Choose none if the necessary material is absent.",
+        "criteria": {
+          "p": "The byte-to-record trace reader and its recovery/error behavior.",
+          "q": "The benchmark observation and record-integrity judgment boundary.",
+          "r": "The append-only writer, record append, and closure operations.",
+          "none": "None of these readings directly addresses the stated uncertainty."
+        }
+      },
+      "state": {
+        "path": "docs/audits/2026-10-03-independent-efficiency/jev-lifecycle/review-inputs/N02.json",
+        "sha256": "0603808a06645e7cb48ea6a63ad10403b98b2ae95d01e3122e3f124825d1f102",
+        "bytes": 2385
+      }
+    },
+    {
+      "id": "N03",
+      "family": "gamma",
+      "expected_choice": "q",
+      "label_kind": "expert_public_contract_semantic_relevance",
+      "grounding": "The task explicitly preserves the pinned selected-answer/calibrated-score contract; it must not substitute argmax consistency for that contract.",
+      "public_requirement_anchors": [
+        {
+          "path": "docs/decision-models/2026-09-20-score-contract.md",
+          "lines": [
+            1,
+            107
+          ]
+        }
+      ],
+      "limitations": "A preferred next read is not measured completion speed; other readings can still be useful.",
+      "question": {
+        "type": "choice",
+        "instructions": "Select the reading that most directly resolves the stated uncertainty from the listed public source locations. Choose none if the necessary material is absent.",
+        "criteria": {
+          "p": "The typed request-response call and the raw compatibility call.",
+          "q": "The selected-answer and calibrated fractional-score contract.",
+          "r": "The decoder for individual answer variants and malformed response fields.",
+          "none": "None of these readings directly addresses the stated uncertainty."
+        }
+      },
+      "state": {
+        "path": "docs/audits/2026-10-03-independent-efficiency/jev-lifecycle/review-inputs/N03.json",
+        "sha256": "0399605350efe923707e63059521ff48d7ba96ac6314101575a228f541199de7",
+        "bytes": 2516
+      }
+    },
+    {
+      "id": "N04",
+      "family": "gamma",
+      "expected_choice": "p",
+      "label_kind": "expert_public_contract_semantic_relevance",
+      "grounding": "Coverage compares response IDs to the original questions, so it belongs at the typed request-aware call boundary rather than standalone answer decoding.",
+      "public_requirement_anchors": [
+        {
+          "path": "crates/jev/src/client.rs",
+          "lines": [
+            236,
+            305
+          ]
+        },
+        {
+          "contract": {
+            "path": "docs/audits/2026-10-03-independent-efficiency/system-one-delegation/alternative-gamma/inputs/public-task-manifest.json",
+            "sha256": "a06ff5c883e57a8bac3cafc88444d6987b80b4a5b3c7efaf4c0354d080a8050d",
+            "bytes": 4131
+          }
+        }
+      ],
+      "limitations": "A preferred next read is not measured completion speed; other readings can still be useful.",
+      "question": {
+        "type": "choice",
+        "instructions": "Select the reading that most directly resolves the stated uncertainty from the listed public source locations. Choose none if the necessary material is absent.",
+        "criteria": {
+          "p": "The typed request-response call and the raw compatibility call.",
+          "q": "The selected-answer and calibrated fractional-score contract.",
+          "r": "The decoder for individual answer variants and malformed response fields.",
+          "none": "None of these readings directly addresses the stated uncertainty."
+        }
+      },
+      "state": {
+        "path": "docs/audits/2026-10-03-independent-efficiency/jev-lifecycle/review-inputs/N04.json",
+        "sha256": "2be7c9e84d710013b8bdef88d8f615f24727c5eceb16f8ba34507ff77618d243",
+        "bytes": 2513
+      }
+    },
+    {
+      "id": "N05",
+      "family": "alpha",
+      "expected_choice": "p",
+      "label_kind": "expert_public_contract_semantic_relevance",
+      "grounding": "The public task names redundant grant retention versus128 distinct live grants. The pre-task issue function checks retained grant count before insertion.",
+      "public_requirement_anchors": [
+        {
+          "path": "crates/coder-access/src/host/mod.rs",
+          "lines": [
+            743,
+            785
+          ]
+        },
+        {
+          "contract": {
+            "path": "docs/audits/2026-10-03-independent-efficiency/system-one-delegation/alternative-alpha/inputs/public-task-manifest.json",
+            "sha256": "93075b5d1750c983305f57a0c2b44d18b595b3f699b3d8bf158af11af9d7e2e0",
+            "bytes": 3439
+          }
+        }
+      ],
+      "limitations": "A preferred next read is not measured completion speed; other readings can still be useful.",
+      "question": {
+        "type": "choice",
+        "instructions": "Select the reading that most directly resolves the stated uncertainty from the listed public source locations. Choose none if the necessary material is absent.",
+        "criteria": {
+          "p": "Device revocation and grant issuance, including retained-grant capacity.",
+          "q": "Grant epochs, explicit revocation, and authority-narrowing delegation rules.",
+          "r": "Invitation creation, reverse-enrollment request creation, and pending status.",
+          "none": "None of these readings directly addresses the stated uncertainty."
+        }
+      },
+      "state": {
+        "path": "docs/audits/2026-10-03-independent-efficiency/jev-lifecycle/review-inputs/N05.json",
+        "sha256": "c1941b2487c90e1d50b473cce7ae87eb47cdadd887f7b2485f556a67a1c1f145",
+        "bytes": 2248
+      }
+    },
+    {
+      "id": "N06",
+      "family": "alpha",
+      "expected_choice": "q",
+      "label_kind": "expert_public_contract_semantic_relevance",
+      "grounding": "The public task preserves valid delegation but forbids revocation resurrection; pinned NIP-HOST grants/epochs/delegation sections define these authority rules.",
+      "public_requirement_anchors": [
+        {
+          "path": "nips/openagents/NIP-HOST.md",
+          "lines": [
+            266,
+            313
+          ]
+        },
+        {
+          "contract": {
+            "path": "docs/audits/2026-10-03-independent-efficiency/system-one-delegation/alternative-alpha/inputs/public-task-manifest.json",
+            "sha256": "93075b5d1750c983305f57a0c2b44d18b595b3f699b3d8bf158af11af9d7e2e0",
+            "bytes": 3439
+          }
+        }
+      ],
+      "limitations": "A preferred next read is not measured completion speed; other readings can still be useful.",
+      "question": {
+        "type": "choice",
+        "instructions": "Select the reading that most directly resolves the stated uncertainty from the listed public source locations. Choose none if the necessary material is absent.",
+        "criteria": {
+          "p": "Device revocation and grant issuance, including retained-grant capacity.",
+          "q": "Grant epochs, explicit revocation, and authority-narrowing delegation rules.",
+          "r": "Invitation creation, reverse-enrollment request creation, and pending status.",
+          "none": "None of these readings directly addresses the stated uncertainty."
+        }
+      },
+      "state": {
+        "path": "docs/audits/2026-10-03-independent-efficiency/jev-lifecycle/review-inputs/N06.json",
+        "sha256": "3b804ad7927f9086d998ec568f8ebb625f0e3f4965430aab6b128e2aa00cf2ff",
+        "bytes": 2272
+      }
+    }
+  ],
+  "reporting_proposal": {
+    "primary": [
+      "Recall on six executable demonstrated defects.",
+      "Rate of defect flags on six accepted-under-retained-checks patches, reported as flags rather than necessarily false positives.",
+      "Abstentions and full returned probability distributions.",
+      "Accuracy on six separately identified expert semantic next-read cases.",
+      "All errors, cost/usage completeness, and end-to-end call latency."
+    ],
+    "limits": [
+      "This is a curated component pilot over three task families, not a randomized productivity experiment.",
+      "V2 positives and defects share one historical task; report family-level results as well as pooled counts.",
+      "Beta/gamma mutations are synthetic and some fail ordinary tests too; do not generalize detection rates to natural agent defects.",
+      "Next-read labels are public-contract semantic judgments, not execution-validated optimum actions.",
+      "Use the fixed packet bytes and fixed question once per case; no adaptive prompt tuning or case replacement after responses."
+    ]
+  },
+  "validation": [
+    {
+      "id": "R01",
+      "full_diff_applies": true,
+      "all_candidate_bytes_match": true,
+      "source_spans_verified": 3
+    },
+    {
+      "id": "R02",
+      "full_diff_applies": true,
+      "all_candidate_bytes_match": true,
+      "source_spans_verified": 3
+    },
+    {
+      "id": "R03",
+      "full_diff_applies": true,
+      "all_candidate_bytes_match": true,
+      "source_spans_verified": 3
+    },
+    {
+      "id": "R04",
+      "full_diff_applies": true,
+      "all_candidate_bytes_match": true,
+      "source_spans_verified": 4
+    },
+    {
+      "id": "R05",
+      "full_diff_applies": true,
+      "all_candidate_bytes_match": true,
+      "source_spans_verified": 3
+    },
+    {
+      "id": "R06",
+      "full_diff_applies": true,
+      "all_candidate_bytes_match": true,
+      "source_spans_verified": 3
+    },
+    {
+      "id": "R07",
+      "full_diff_applies": true,
+      "all_candidate_bytes_match": true,
+      "source_spans_verified": 3
+    },
+    {
+      "id": "R08",
+      "full_diff_applies": true,
+      "all_candidate_bytes_match": true,
+      "source_spans_verified": 3
+    },
+    {
+      "id": "R09",
+      "full_diff_applies": true,
+      "all_candidate_bytes_match": true,
+      "source_spans_verified": 3
+    },
+    {
+      "id": "R10",
+      "full_diff_applies": true,
+      "all_candidate_bytes_match": true,
+      "source_spans_verified": 4
+    },
+    {
+      "id": "R11",
+      "full_diff_applies": true,
+      "all_candidate_bytes_match": true,
+      "source_spans_verified": 4
+    },
+    {
+      "id": "R12",
+      "full_diff_applies": true,
+      "all_candidate_bytes_match": true,
+      "source_spans_verified": 3
+    }
+  ],
+  "lexical_baseline": {
+    "schema": "openagents.jev.next-read-lexical-baseline.v1",
+    "prior_manifest_sha256": "2ce97654d51812ef95882694f037c9d1080bfd9911e59e9ff2ea50804fac0d5b",
+    "policy": {
+      "query": "state.task only",
+      "candidate": "candidate_readings[].description",
+      "tokenizer": "set(re.findall(r\"[a-z0-9]+\", text.lower()))",
+      "score": "cardinality of query-token and candidate-description-token intersection",
+      "stopwords_removed": false,
+      "stemming": false,
+      "tie_break": "ascending option key",
+      "zero_scores": "Choose none only if every source option score is zero."
+    },
+    "cases": [
+      {
+        "id": "N01",
+        "scores": {
+          "p": 2,
+          "q": 1,
+          "r": 1
+        },
+        "selected": "p",
+        "expected": "p",
+        "matches": true,
+        "state_sha256": "5429c0f1ed12ab29a62d26fc780f84901edea5d37a3b31dd273c13a72be2eb6c"
+      },
+      {
+        "id": "N02",
+        "scores": {
+          "p": 2,
+          "q": 3,
+          "r": 1
+        },
+        "selected": "q",
+        "expected": "q",
+        "matches": true,
+        "state_sha256": "0603808a06645e7cb48ea6a63ad10403b98b2ae95d01e3122e3f124825d1f102"
+      },
+      {
+        "id": "N03",
+        "scores": {
+          "p": 1,
+          "q": 4,
+          "r": 2
+        },
+        "selected": "q",
+        "expected": "q",
+        "matches": true,
+        "state_sha256": "0399605350efe923707e63059521ff48d7ba96ac6314101575a228f541199de7"
+      },
+      {
+        "id": "N04",
+        "scores": {
+          "p": 5,
+          "q": 1,
+          "r": 2
+        },
+        "selected": "p",
+        "expected": "p",
+        "matches": true,
+        "state_sha256": "2be7c9e84d710013b8bdef88d8f615f24727c5eceb16f8ba34507ff77618d243"
+      },
+      {
+        "id": "N05",
+        "scores": {
+          "p": 5,
+          "q": 2,
+          "r": 2
+        },
+        "selected": "p",
+        "expected": "p",
+        "matches": true,
+        "state_sha256": "c1941b2487c90e1d50b473cce7ae87eb47cdadd887f7b2485f556a67a1c1f145"
+      },
+      {
+        "id": "N06",
+        "scores": {
+          "p": 2,
+          "q": 2,
+          "r": 0
+        },
+        "selected": "p",
+        "expected": "q",
+        "matches": false,
+        "state_sha256": "3b804ad7927f9086d998ec568f8ebb625f0e3f4965430aab6b128e2aa00cf2ff"
+      }
+    ],
+    "model_calls": 0
+  }
+}

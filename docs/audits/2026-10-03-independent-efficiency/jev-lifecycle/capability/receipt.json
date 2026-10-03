@@ -1,0 +1,98 @@
+{
+  "schema": "openagents.audit.jev-gateway-capability.v1",
+  "started_at": "2026-10-03T11:56:17.425451+00:00",
+  "endpoint": "https://ai-gateway.vercel.sh/typesafe/v1/systemone",
+  "requested_model": "typesafe-ai/jev",
+  "request_sha256": "6d4f8d64441fdc34b691eded2c3bf4e5dfeedba948671fc58d3be798333cc436",
+  "request_bytes": 1021,
+  "attempts": 1,
+  "automatic_retries": 0,
+  "automatic_fallbacks": 0,
+  "status": "answered",
+  "cost_usd": 2.0664e-05,
+  "http_status": 200,
+  "headers": {},
+  "response_sha256": "821b3331487c40492d0f5c4198df3c2b3da9133c27693324136f8f350f5628c7",
+  "response_model": "typesafe-ai/jev",
+  "usage": {
+    "input_tokens": 492,
+    "output_tokens": 77
+  },
+  "gateway": {
+    "cost": "0.000020664",
+    "marketCost": "0.000020664",
+    "surchargeCost": "0",
+    "gatewayCost": "0.000020664",
+    "generationId": "gen_01M40SYHH389CY02CTES7TCAPH",
+    "routing": {
+      "originalModelId": "typesafe-ai/jev",
+      "resolvedProvider": "digitalocean",
+      "fallbacksAvailable": [
+        "typesafe-ai"
+      ],
+      "planningReasoning": "System credentials planned for: digitalocean, typesafe-ai. Total execution order: typesafe-ai(system) → digitalocean(system)",
+      "canonicalSlug": "typesafe-ai/jev",
+      "finalProvider": "typesafe-ai",
+      "modelAttemptCount": 1,
+      "modelAttempts": [
+        {
+          "canonicalSlug": "typesafe-ai/jev",
+          "success": true,
+          "providerAttemptCount": 1,
+          "providerAttempts": [
+            {
+              "provider": "typesafe-ai",
+              "credentialType": "system",
+              "success": true,
+              "startTime": 1791028577850,
+              "endTime": 1791028578012,
+              "statusCode": 200
+            }
+          ]
+        }
+      ],
+      "totalProviderAttemptCount": 1
+    }
+  },
+  "answer_types": {
+    "requires_test": "noul",
+    "work_kind": "choice",
+    "relevance": "score"
+  },
+  "answer_identity_and_types_match": true,
+  "answer_values": {
+    "requires_test": {
+      "type": "noul",
+      "noul": 0.98
+    },
+    "work_kind": {
+      "type": "choice",
+      "choice": "code_and_test",
+      "confidence": 1,
+      "probabilities": {
+        "documentation_only": 0,
+        "other": 0,
+        "code_and_test": 1
+      }
+    },
+    "relevance": {
+      "type": "score",
+      "score": 2.43,
+      "confidence": 0.43,
+      "probabilities": {
+        "0": 0.05,
+        "1": 0.15,
+        "2": 0.12,
+        "3": 0.68
+      },
+      "legend": {
+        "0": "Unrelated to the requested behavior",
+        "1": "Related background only",
+        "2": "Useful implementation dependency",
+        "3": "Direct implementation location for the requested behavior"
+      }
+    }
+  },
+  "wall_s": 0.640848083,
+  "finished_at": "2026-10-03T11:56:18.066831+00:00"
+}

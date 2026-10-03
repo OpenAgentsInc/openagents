@@ -1,0 +1,36 @@
+{
+  "schema": "openagents.jev-lifecycle.probe-window-followup.v1",
+  "task_id": "alternative-alpha",
+  "model_calls": 0,
+  "changed_model_selection": false,
+  "reason": "Honor the already-recorded catalog start line instead of the reader default.",
+  "selected_catalog_id": "f01",
+  "catalog_record": {
+    "id": "f01",
+    "path": "crates/coder-access/src/host/mod.rs",
+    "blob": "a341758ce82a21cc1b45aebf8d233288c9a1e6a5",
+    "file_sha256": "7b0f8ed5041f0bc2929a03632e0a5245188416c1dbb2029924b5600ff001bced",
+    "bytes": 29901,
+    "role": "implementation",
+    "reason": "candidate_state_budget",
+    "baseline_score": 149,
+    "suggested_start_line": 564
+  },
+  "original_probe_sha256": "7b37d2796e61bcecc56192adebccc13145270d71ed3920f842eb9a3731ef31c5",
+  "reader_module_sha256": "4e4bc6acf510bb852af38bc47e1bc20f66e3d3a2817e00ff1dcb4762a2d20acc",
+  "corrected_read": {
+    "source_commit": "09f4e0915150f503e332c2b213d24f793c433f3b",
+    "path": "crates/coder-access/src/host/mod.rs",
+    "blob": "a341758ce82a21cc1b45aebf8d233288c9a1e6a5",
+    "file_sha256": "7b0f8ed5041f0bc2929a03632e0a5245188416c1dbb2029924b5600ff001bced",
+    "file_bytes": 29901,
+    "total_lines": 811,
+    "start_line": 564,
+    "end_line": 685,
+    "text": "    fn book(&self, store: &Store, secret: &SecretKey) -> Result<Book> {\n        let book: Book = store.load()?.ok_or_else(|| {\n            Error::new(Code::Unavailable, \"initialize the host with `init` first\")\n        })?;\n        let host = pubkey(secret);\n        if book.v != STORE_VERSION\n            || book.host != host\n            || book.grants.len() > MAX_GRANTS\n            || book.invitations.len() > MAX_INVITATIONS\n            || book.enrollments.len() > MAX_ENROLLMENTS\n            || book.replies.len() > MAX_REPLIES\n            || book.epochs.len() > MAX_EPOCHS\n        {\n            return fail(\n                Code::Malformed,\n                \"host access store identity or bounds differ\",\n            );\n        }\n        public(&book.owner)?;\n        for (id, record) in &book.grants {\n            record.grant.validate(self.policy)?;\n            let signed: Grant = open(\n                &record.authorization,\n                secret,\n                &host,\n                &record.grant.device,\n                GRANT,\n            )?;\n            if id != &record.grant.grant\n                || encoded(&signed)? != encoded(&record.grant)?\n                || record.grant.owner != book.owner\n                || record.grant.host != host\n            {\n                return fail(\n                    Code::Malformed,\n                    \"retained grant differs from its signed bytes\",\n                );\n            }\n        }\n        for (id, retained) in &book.replies {\n            if let Some(reply) = &retained.reply\n                && (reply.pubkey != host\n                    || reply.tag_values(\"h\").collect::<Vec<_>>() != [id.as_str()]\n                    || nostr::private_artifact::admit(reply).is_err())\n            {\n                return fail(\n                    Code::Malformed,\n                    \"retained reply differs from its signed bytes\",\n                );\n            }\n        }\n        enroll::validate(&book, self.policy)?;\n        Ok(book)\n    }\n}\n\n/// A new reply and whether to retain it, or the exact retained reply bytes.\nenum Step {\n    Reply(ReplyResult, bool),\n    Retained(Event),\n}\n\nfn refused(error: Error) -> ReplyResult {\n    ReplyResult::Refused {\n        code: error.code,\n        missing: error.missing,\n    }\n}\n\nfn principal(\n    book: &Book,\n    request: &Request,\n    signer: &str,\n    now: u64,\n) -> std::result::Result<Principal, Error> {\n    let Some(id) = &request.grant else {\n        if signer == book.owner {\n            return Ok(Principal {\n                key: signer.into(),\n                rights: Rights::all(),\n                grant: None,\n                expires_at: u64::MAX,\n            });\n        }\n        return Err(Error::new(Code::Forbidden, \"this key holds no grant\"));\n    };\n    let record = book\n        .grants\n        .get(id)\n        .ok_or_else(|| Error::new(Code::Forbidden, \"grant is not admitted at this host\"))?;\n    if record.grant.device != signer {\n        // A copied grant is not a bearer credential.\n        return Err(Error::new(\n            Code::Forbidden,\n            \"grant belongs to another device\",\n        ));\n    }\n    if record.revoked_at.is_some() {\n        return Err(Error::new(Code::Revoked, \"grant is revoked\"));\n    }\n    if record.grant.expires_at <= now {\n        return Err(Error::new(Code::Expired, \"grant has expired\"));\n    }\n    if request.epoch != Some(record.grant.epoch) || record.grant.epoch != book.epoch(signer) {\n        return Err(Error::new(Code::Stale, \"grant epoch is not current\"));\n    }\n    if request.expires_at > record.grant.expires_at || request.issued_at < record.grant.issued_at {\n        return Err(Error::new(Code::Forbidden, \"request is outside its grant\"));\n    }\n    Ok(Principal {\n        key: signer.into(),\n        rights: record.grant.rights.clone(),\n        grant: Some(id.clone()),\n        expires_at: record.grant.expires_at,\n    })\n}\n\nfn devices(book: &Book, now: u64) -> Vec<DeviceEntry> {\n    book.grants\n        .values()\n        .map(|r| DeviceEntry {\n            device: r.grant.device.clone(),\n",
+    "source_sha256": "90571261fe47eea2df28fcf2d4fc3c02fa6615e6b0a7acb0c3eb72300dba2377",
+    "truncated": true,
+    "reason": "bounded_source_read",
+    "wall_s": 0.14590874989517033
+  }
+}

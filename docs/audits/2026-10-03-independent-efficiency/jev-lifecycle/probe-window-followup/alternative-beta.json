@@ -1,0 +1,36 @@
+{
+  "schema": "openagents.jev-lifecycle.probe-window-followup.v1",
+  "task_id": "alternative-beta",
+  "model_calls": 0,
+  "changed_model_selection": false,
+  "reason": "Honor the already-recorded catalog start line instead of the reader default.",
+  "selected_catalog_id": "f01",
+  "catalog_record": {
+    "id": "f01",
+    "path": "crates/coderbench/src/lib.rs",
+    "blob": "fc62b67bb082bad555b56b92dffbc2a196994f40",
+    "file_sha256": "1fcf6ce2bf972972471a6dfeaf4c0a1c469b1b6183b211b515a483c51fa98178",
+    "bytes": 57777,
+    "role": "implementation",
+    "reason": "candidate_state_budget",
+    "baseline_score": 57,
+    "suggested_start_line": 869
+  },
+  "original_probe_sha256": "5c728ece0aa6461fb1a618723355fd0458e65413119bb33867caf555d6561b84",
+  "reader_module_sha256": "4e4bc6acf510bb852af38bc47e1bc20f66e3d3a2817e00ff1dcb4762a2d20acc",
+  "corrected_read": {
+    "source_commit": "7ec5f6e83d018ab2f25d7a61ff695de81f2f55f6",
+    "path": "crates/coderbench/src/lib.rs",
+    "blob": "fc62b67bb082bad555b56b92dffbc2a196994f40",
+    "file_sha256": "1fcf6ce2bf972972471a6dfeaf4c0a1c469b1b6183b211b515a483c51fa98178",
+    "file_bytes": 57777,
+    "total_lines": 1464,
+    "start_line": 869,
+    "end_line": 965,
+    "text": "    #[test]\n    fn escaped_names_do_not_collapse_distinct_write_paths() {\n        let invalid = OsString::from_vec(vec![b'f', 0xff]);\n        let literal = OsString::from(format!(\"{invalid:?}\"));\n        let paths = [invalid, literal, \"line\\nend\".into(), \"line\\\\nend\".into()];\n        let labels: BTreeSet<String> = paths\n            .into_iter()\n            .map(|path| workspace_path(&PathBuf::from(path)))\n            .collect();\n        assert_eq!(labels.len(), 4);\n    }\n}\n\n/// The word a call's outcome reads as in a fault.\nfn outcome_word(outcome: Outcome) -> String {\n    match outcome {\n        Outcome::Completed => \"completed\".to_string(),\n        Outcome::Failed => \"failed\".to_string(),\n        Outcome::Cancelled => \"was cancelled\".to_string(),\n    }\n}\n\nimpl Task {\n    /// Reads a task manifest.\n    ///\n    /// # Errors\n    ///\n    /// Returns an error when the file cannot be read, does not parse, or\n    /// declares a schema this version does not know. An unknown schema is\n    /// an error rather than a warning: a manifest a reader half-understands\n    /// grades a run against a rule nobody stated. So is a manifest whose\n    /// `expects` entries cannot check a run — a blank prompt or answer, a\n    /// repeated prompt, or a count that does not pin one per delegation —\n    /// because grading against half an expectation silently passes what it\n    /// cannot verify.\n    pub fn load(path: &Path) -> Result<Self, String> {\n        let text = std::fs::read_to_string(path).map_err(|e| format!(\"{}: {e}\", path.display()))?;\n        let task: Self =\n            serde_json::from_str(&text).map_err(|e| format!(\"{}: {e}\", path.display()))?;\n        if task.schema != TASK_SCHEMA {\n            return Err(format!(\n                \"{}: schema is {}, this version reads {TASK_SCHEMA}\",\n                path.display(),\n                task.schema\n            ));\n        }\n        let malformed = task.malformed_expectations();\n        if !malformed.is_empty() {\n            return Err(format!(\"{}: {}\", path.display(), malformed.join(\"; \")));\n        }\n        Ok(task)\n    }\n\n    /// Judges what a run did against the path this task expects.\n    ///\n    /// Returns every fault rather than the first, because a run that took\n    /// the wrong program usually gets several things wrong afterwards and\n    /// the first one is rarely the informative one.\n    ///\n    /// The faults come back in the order [`Grade::path`] states, so the\n    /// first one is the earliest thing that went wrong. Reporting them in\n    /// the order the checker tests them would put a missing delegation\n    /// above the missing probe that explains it. Faults about the record\n    /// itself sort after every step, because they are about the trace\n    /// rather than about a place in the path.\n    #[must_use]\n    pub fn judge(&self, run: &Observed) -> Judgment {\n        let mut faults = Vec::new();\n        self.judge_program(run, &mut faults);\n        self.judge_delegations(run, &mut faults);\n        self.judge_decisions(run, &mut faults);\n        self.judge_checks(run, &mut faults);\n        self.judge_order(run, &mut faults);\n        self.judge_writes(run, &mut faults);\n        self.judge_record(run, &mut faults);\n        // A stable sort, so faults that share a step keep the order they\n        // were found in: how many delegations ran, then which of them\n        // answered wrongly, then what they wrote.\n        faults.sort_by_key(|fault| self.stage(fault));\n        let verdict = if faults.is_empty() {\n            Verdict::Passed\n        } else {\n            Verdict::over(faults.iter().map(Fault::verdict))\n        };\n        Judgment { verdict, faults }\n    }\n\n    fn judge_program(&self, run: &Observed, faults: &mut Vec<Fault>) {\n        if self.grade.program.is_empty() {\n            return;\n        }\n        match &run.program {\n            Some(found) if found == &self.grade.program => {}\n            Some(found) => faults.push(Fault::Program {\n                expected: self.grade.program.clone(),\n                found: found.clone(),\n            }),\n",
+    "source_sha256": "2cb8186279c3cf471c07b60cc3eb8b61ad23688a5860a04ffb97ca01721fbbd5",
+    "truncated": true,
+    "reason": "bounded_source_read",
+    "wall_s": 0.10902612516656518
+  }
+}

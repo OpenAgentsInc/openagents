@@ -1,0 +1,274 @@
+{
+  "schema": "openagents.jev-lifecycle.source-read-timing.v1",
+  "model_calls": 0,
+  "source_hashes": {
+    "context-at-round-one.py": "4e4bc6acf510bb852af38bc47e1bc20f66e3d3a2817e00ff1dcb4762a2d20acc",
+    "context.py": "46af0a61281924f6447d31c28754815c7b09124506446b2dbfeaa70ed0d3e8a6"
+  },
+  "benchmark_sha256": "01c3a79bf2fc4c70732e0ff880b36afcbb14b9dd8aa6c1c9b8cc36dbb40081cf",
+  "warm_observations_per_implementation": 5,
+  "timing_boundary": "assemble only: includes source I/O, validation, selection and canonical index hashing; excludes process startup, input JSON loading, packing and output writes",
+  "order": "one warmup per implementation, then five pairs alternating original-first and batched-first",
+  "tasks": [
+    {
+      "id": "alternative-alpha",
+      "source_commit": "09f4e0915150f503e332c2b213d24f793c433f3b",
+      "index_sha256": "d0771eb093ec2224cc1ae562c3796949a48f76f9d74cbc0b5d10d4c4869354aa",
+      "candidate_pool_sha256": "2bb12b3b51452b50272becf17595943b8becf8332534f6db6f754ec5854467ba",
+      "manifest_sha256": "93075b5d1750c983305f57a0c2b44d18b595b3f699b3d8bf158af11af9d7e2e0",
+      "recorded_response_sha256": "6931bf13127c06c5a068006074fb72eecd06ff8334c139a3a733341ed59a2384",
+      "pack_sha256": {
+        "deterministic": "ad6d102706aa51773bc132bb391cfcd6a76ebabe8340e7d8a52d436d3897ffad",
+        "recorded_jev": "dd8199c873e75cbe046a0c5caa4ecc59914738d4dd06735606c28446bf7bd5c3"
+      },
+      "all_non_timing_fields_equal": true,
+      "warmup": {
+        "original": {
+          "assembly_s": 2.3031167089939117,
+          "deterministic_pack_s": 0.0007419998291879892,
+          "recorded_jev_pack_s": 0.0005632499232888222
+        },
+        "batched": {
+          "assembly_s": 0.7904525420162827,
+          "deterministic_pack_s": 0.0007943750824779272,
+          "recorded_jev_pack_s": 0.000648540910333395
+        }
+      },
+      "observations": {
+        "original": [
+          {
+            "assembly_s": 2.3714571250602603,
+            "deterministic_pack_s": 0.0006416670512408018,
+            "recorded_jev_pack_s": 0.0007777081336826086
+          },
+          {
+            "assembly_s": 2.2702140000183135,
+            "deterministic_pack_s": 0.0006502908654510975,
+            "recorded_jev_pack_s": 0.0005585828330367804
+          },
+          {
+            "assembly_s": 2.4860574579797685,
+            "deterministic_pack_s": 0.001146957976743579,
+            "recorded_jev_pack_s": 0.0005845420528203249
+          },
+          {
+            "assembly_s": 2.1801661250647157,
+            "deterministic_pack_s": 0.0007446669042110443,
+            "recorded_jev_pack_s": 0.0007748750504106283
+          },
+          {
+            "assembly_s": 2.0580270001664758,
+            "deterministic_pack_s": 0.0007449998520314693,
+            "recorded_jev_pack_s": 0.0006214589811861515
+          }
+        ],
+        "batched": [
+          {
+            "assembly_s": 0.7773316248785704,
+            "deterministic_pack_s": 0.0006182079669088125,
+            "recorded_jev_pack_s": 0.0005814998876303434
+          },
+          {
+            "assembly_s": 0.8779559161048383,
+            "deterministic_pack_s": 0.0014407080598175526,
+            "recorded_jev_pack_s": 0.0006411669310182333
+          },
+          {
+            "assembly_s": 0.931815167190507,
+            "deterministic_pack_s": 0.0006895831320434809,
+            "recorded_jev_pack_s": 0.0006011668592691422
+          },
+          {
+            "assembly_s": 0.7885328750126064,
+            "deterministic_pack_s": 0.0007635420188307762,
+            "recorded_jev_pack_s": 0.0006430838257074356
+          },
+          {
+            "assembly_s": 0.7774359590839595,
+            "deterministic_pack_s": 0.0006507090292870998,
+            "recorded_jev_pack_s": 0.0005627081263810396
+          }
+        ]
+      },
+      "median_assembly_s": {
+        "original": 2.2702140000183135,
+        "batched": 0.7885328750126064
+      },
+      "median_reduction_fraction": 0.6526614341175565
+    },
+    {
+      "id": "alternative-beta",
+      "source_commit": "7ec5f6e83d018ab2f25d7a61ff695de81f2f55f6",
+      "index_sha256": "75e5a9cf5166e0ff27033403dc06bd7cd2f20fb7aa4841a3db1cef79227d0c3b",
+      "candidate_pool_sha256": "a63a6c5f73ab83d9dbe0eb64af12d28539f90b6c254cb9d81584f957ca349643",
+      "manifest_sha256": "a78647ec368dc9f6fb573915d9250bfe9ceb16edc1da9389e8576cc486c7a511",
+      "recorded_response_sha256": "99b363e2c126c75fe29830a7ef26cc8b6bde138c7739408de220ab002ea1ac1a",
+      "pack_sha256": {
+        "deterministic": "761354b211df79855868fb7a98a8d86c41c994ccb145d7507ed3317f2a979204",
+        "recorded_jev": "846dfba975dff193abd6a3b0955c5b212a448a9debc7b5d9743fcb9de3723ef5"
+      },
+      "all_non_timing_fields_equal": true,
+      "warmup": {
+        "original": {
+          "assembly_s": 1.2609595421236008,
+          "deterministic_pack_s": 0.0006793329957872629,
+          "recorded_jev_pack_s": 0.0006151250563561916
+        },
+        "batched": {
+          "assembly_s": 0.3918194998987019,
+          "deterministic_pack_s": 0.0005722080823034048,
+          "recorded_jev_pack_s": 0.0005299579352140427
+        }
+      },
+      "observations": {
+        "original": [
+          {
+            "assembly_s": 1.2839788338169456,
+            "deterministic_pack_s": 0.0006086251232773066,
+            "recorded_jev_pack_s": 0.0005363340023905039
+          },
+          {
+            "assembly_s": 1.3604749168734998,
+            "deterministic_pack_s": 0.0007081250660121441,
+            "recorded_jev_pack_s": 0.0007866660598665476
+          },
+          {
+            "assembly_s": 1.371932707959786,
+            "deterministic_pack_s": 0.0006129590328782797,
+            "recorded_jev_pack_s": 0.0005386671982705593
+          },
+          {
+            "assembly_s": 1.4118517090100795,
+            "deterministic_pack_s": 0.0006107920780777931,
+            "recorded_jev_pack_s": 0.0005325409583747387
+          },
+          {
+            "assembly_s": 1.2959593748673797,
+            "deterministic_pack_s": 0.0005896668881177902,
+            "recorded_jev_pack_s": 0.0005209159571677446
+          }
+        ],
+        "batched": [
+          {
+            "assembly_s": 0.4146085837855935,
+            "deterministic_pack_s": 0.0006262501701712608,
+            "recorded_jev_pack_s": 0.00059104198589921
+          },
+          {
+            "assembly_s": 0.39584795804694295,
+            "deterministic_pack_s": 0.0008995418902486563,
+            "recorded_jev_pack_s": 0.0005610829684883356
+          },
+          {
+            "assembly_s": 0.44140124996192753,
+            "deterministic_pack_s": 0.0005853329785168171,
+            "recorded_jev_pack_s": 0.0008752921130508184
+          },
+          {
+            "assembly_s": 0.42862495803274214,
+            "deterministic_pack_s": 0.0005903749261051416,
+            "recorded_jev_pack_s": 0.0005956250242888927
+          },
+          {
+            "assembly_s": 0.42840987513773143,
+            "deterministic_pack_s": 0.0005824579857289791,
+            "recorded_jev_pack_s": 0.000535166822373867
+          }
+        ]
+      },
+      "median_assembly_s": {
+        "original": 1.3604749168734998,
+        "batched": 0.42840987513773143
+      },
+      "median_reduction_fraction": 0.6851027021341505
+    },
+    {
+      "id": "alternative-gamma",
+      "source_commit": "c427943a5c84ba5938a3549f24b27de551812a37",
+      "index_sha256": "772c563dacdb48a6647f54a2d0f39ad0b73323542f9a3dc887d12471d1e9062c",
+      "candidate_pool_sha256": "d05d31eae0eb99015860a6958254f48a55144773557cc3ea2e071b88cf67c69e",
+      "manifest_sha256": "a06ff5c883e57a8bac3cafc88444d6987b80b4a5b3c7efaf4c0354d080a8050d",
+      "recorded_response_sha256": "07c05ad66bc7347f16c0bc053162f77bb7c846428f5ad8bbc832d0d88163aa63",
+      "pack_sha256": {
+        "deterministic": "cbcded1a641247903e6a5d2775218a6397b67227a376bd8610d11edf50331b38",
+        "recorded_jev": "ad58a509eaef59847d918b3dd2af3ca27c2ca88c121308967c8e1b9bb3444628"
+      },
+      "all_non_timing_fields_equal": true,
+      "warmup": {
+        "original": {
+          "assembly_s": 2.1909893748816103,
+          "deterministic_pack_s": 0.0005812090821564198,
+          "recorded_jev_pack_s": 0.0005987081676721573
+        },
+        "batched": {
+          "assembly_s": 0.3654806660488248,
+          "deterministic_pack_s": 0.0006208340637385845,
+          "recorded_jev_pack_s": 0.0005901670083403587
+        }
+      },
+      "observations": {
+        "original": [
+          {
+            "assembly_s": 2.0980928339995444,
+            "deterministic_pack_s": 0.0005789999850094318,
+            "recorded_jev_pack_s": 0.0005257078446447849
+          },
+          {
+            "assembly_s": 2.2633222080767155,
+            "deterministic_pack_s": 0.0005969170015305281,
+            "recorded_jev_pack_s": 0.0007342919707298279
+          },
+          {
+            "assembly_s": 2.2158956250641495,
+            "deterministic_pack_s": 0.0007131670136004686,
+            "recorded_jev_pack_s": 0.0005933749489486217
+          },
+          {
+            "assembly_s": 2.1392259581480175,
+            "deterministic_pack_s": 0.0006329999305307865,
+            "recorded_jev_pack_s": 0.0005762910004705191
+          },
+          {
+            "assembly_s": 2.2125982500147074,
+            "deterministic_pack_s": 0.0005797918420284986,
+            "recorded_jev_pack_s": 0.0005262917838990688
+          }
+        ],
+        "batched": [
+          {
+            "assembly_s": 0.3650754999835044,
+            "deterministic_pack_s": 0.0006204592064023018,
+            "recorded_jev_pack_s": 0.0005885828286409378
+          },
+          {
+            "assembly_s": 0.3725178330205381,
+            "deterministic_pack_s": 0.000549208140000701,
+            "recorded_jev_pack_s": 0.0005179590079933405
+          },
+          {
+            "assembly_s": 0.3707926671486348,
+            "deterministic_pack_s": 0.000626416876912117,
+            "recorded_jev_pack_s": 0.0005840000230818987
+          },
+          {
+            "assembly_s": 0.3425105419009924,
+            "deterministic_pack_s": 0.0006435830146074295,
+            "recorded_jev_pack_s": 0.0008130420465022326
+          },
+          {
+            "assembly_s": 0.38201674981974065,
+            "deterministic_pack_s": 0.0006045831833034754,
+            "recorded_jev_pack_s": 0.0006983750499784946
+          }
+        ]
+      },
+      "median_assembly_s": {
+        "original": 2.2125982500147074,
+        "batched": 0.3707926671486348
+      },
+      "median_reduction_fraction": 0.8324175357427992
+    }
+  ],
+  "status": "provisional_excluded_possible_overlapping_timing_launches",
+  "limitation": "The first process handle was not retained; a second launch may have overlapped it. These observations are retained but excluded from the final speed claim. The final measurement runs after confirming both processes exited."
+}

@@ -1,0 +1,430 @@
+{
+  "cargo_commands": 0,
+  "limits": [
+    "Inspected tasks are development evidence, not unseen confirmation.",
+    "Named-function presence is a bounded coverage diagnostic from previously published previews, not an exhaustive behavioral oracle.",
+    "Local assembly timing starts inside assemble after input JSON loading; it includes Git reads, source validation, selection, and canonical index hashing. It excludes Python startup, index construction, JSON input loading, packing, and output writes.",
+    "First local measurements are not a controlled cold-cache benchmark and are not directly comparable to prior remote preview timings.",
+    "The source assembler does not prove a complete dependency graph; oversized declarations are explicitly partial and state-budget omissions remain."
+  ],
+  "model_calls": 0,
+  "original_frozen_study_unchanged": true,
+  "schema": "openagents.jev-lifecycle.discovery-baseline.v1",
+  "source_module_sha256": "4e4bc6acf510bb852af38bc47e1bc20f66e3d3a2817e00ff1dcb4762a2d20acc",
+  "status": "development_observation_before_live_responses",
+  "synthetic_tests": {
+    "elapsed_s": 15.608,
+    "passed": 12
+  },
+  "tasks": [
+    {
+      "id": "alternative-alpha",
+      "named_public_preview_anchor_presence": [
+        {
+          "name": "Host::request_enrollment",
+          "new_completeness": [
+            "complete_declaration"
+          ],
+          "new_pack": true,
+          "new_pool": true,
+          "old_pack": true,
+          "old_pool": true
+        },
+        {
+          "name": "Host::redeem",
+          "new_completeness": [],
+          "new_pack": false,
+          "new_pool": false,
+          "old_pack": false,
+          "old_pool": true
+        },
+        {
+          "name": "Host::handle_with_clock",
+          "new_completeness": [],
+          "new_pack": false,
+          "new_pool": false,
+          "old_pack": false,
+          "old_pool": true
+        },
+        {
+          "name": "Host::execute",
+          "new_completeness": [
+            "partial_declaration"
+          ],
+          "new_pack": true,
+          "new_pool": true,
+          "old_pack": false,
+          "old_pool": false
+        }
+      ],
+      "new": {
+        "assembly_wall_s": 2.20399733283557,
+        "baseline_pack_bytes": 16371,
+        "baseline_pack_sha256": "ad6d102706aa51773bc132bb391cfcd6a76ebabe8340e7d8a52d436d3897ffad",
+        "candidate_count": 14,
+        "candidate_pool_sha256": "2bb12b3b51452b50272becf17595943b8becf8332534f6db6f754ec5854467ba",
+        "candidate_state_bytes": 28591,
+        "context_sha256": "c05385354baf75bafbeabfde1dfb74020ccdc6321b8e8dfe832875e1401c5ef3",
+        "coverage": {
+          "candidate_roles": {
+            "document": 2,
+            "implementation": 6,
+            "test": 6
+          },
+          "candidate_units": 14,
+          "catalog_omitted": 0,
+          "catalog_total": 18,
+          "complete_dependency_coverage_claimed": false,
+          "eligible_units": 407,
+          "file_omissions": 0,
+          "files_read": 18,
+          "missing_packages": [],
+          "omission_reasons": {
+            "candidate_state_budget": 393
+          },
+          "omitted_units": 393,
+          "oversized_units": 4,
+          "parse_error_units": 0,
+          "scoped_files": 18,
+          "targeted_read_only_units": 0,
+          "unavailable_explicit_paths": []
+        },
+        "in_scope_implementation_units": 6,
+        "pack_wall_s": 0.0007450829725712538,
+        "roles": {
+          "document": 2,
+          "implementation": 6,
+          "test": 6
+        },
+        "selected_count": 8,
+        "selected_source_paths": [
+          "crates/coder-access/README.md",
+          "crates/coder-access/src/host/enroll.rs",
+          "crates/coder-access/src/host/mod.rs",
+          "crates/coder-access/src/protocol.rs",
+          "crates/coder-access/src/spend.rs",
+          "crates/coder-access/src/tests/flows.rs",
+          "crates/coder-access/tests/capability.rs",
+          "nips/openagents/NIP-HOST.md"
+        ],
+        "source_paths": [
+          "crates/coder-access/README.md",
+          "crates/coder-access/src/cj.rs",
+          "crates/coder-access/src/host/enroll.rs",
+          "crates/coder-access/src/host/mod.rs",
+          "crates/coder-access/src/host/serve.rs",
+          "crates/coder-access/src/protocol.rs",
+          "crates/coder-access/src/spend.rs",
+          "crates/coder-access/src/spend/tests.rs",
+          "crates/coder-access/src/tests/flows.rs",
+          "crates/coder-access/src/tests/mod.rs",
+          "crates/coder-access/tests/capability.rs",
+          "crates/coder-access/tests/cli.rs",
+          "nips/openagents/NIP-HOST.md"
+        ]
+      },
+      "old": {
+        "candidate_count": 13,
+        "in_scope_implementation_units": 10,
+        "pack_bytes": 15449,
+        "pool_file_sha256": "4d4f0cf60aedd07df479247cf1ee7a8ed0f188fbbb59a6eef6dffae0c8562b0c",
+        "preparation_sha256": "e51563c21dea616240f88ea0d5177cb7922fb0c2857adc5c08979d4370154a3b",
+        "roles": {
+          "document": 0,
+          "implementation": 11,
+          "test": 2
+        },
+        "selected_count": 11,
+        "selected_source_paths": [
+          "crates/coder-access/src/host/enroll.rs",
+          "crates/coder-access/src/host/mod.rs",
+          "crates/coder-access/src/tests/flows.rs",
+          "crates/coder-computers/src/live.rs",
+          "crates/coder-computers/tests/live.rs"
+        ],
+        "source_paths": [
+          "crates/coder-access/src/host/enroll.rs",
+          "crates/coder-access/src/host/mod.rs",
+          "crates/coder-access/src/tests/flows.rs",
+          "crates/coder-computers/src/live.rs",
+          "crates/coder-computers/tests/live.rs"
+        ]
+      },
+      "source_commit": "09f4e0915150f503e332c2b213d24f793c433f3b"
+    },
+    {
+      "id": "alternative-beta",
+      "named_public_preview_anchor_presence": [
+        {
+          "name": "read",
+          "new_completeness": [
+            "complete_declaration"
+          ],
+          "new_pack": false,
+          "new_pool": true,
+          "old_pack": false,
+          "old_pool": false
+        },
+        {
+          "name": "Log::append",
+          "new_completeness": [],
+          "new_pack": false,
+          "new_pool": false,
+          "old_pack": false,
+          "old_pool": false
+        },
+        {
+          "name": "Log::finish",
+          "new_completeness": [],
+          "new_pack": false,
+          "new_pool": false,
+          "old_pack": false,
+          "old_pool": false
+        }
+      ],
+      "new": {
+        "assembly_wall_s": 1.5373557088896632,
+        "baseline_pack_bytes": 14702,
+        "baseline_pack_sha256": "761354b211df79855868fb7a98a8d86c41c994ccb145d7507ed3317f2a979204",
+        "candidate_count": 11,
+        "candidate_pool_sha256": "a63a6c5f73ab83d9dbe0eb64af12d28539f90b6c254cb9d81584f957ca349643",
+        "candidate_state_bytes": 28535,
+        "context_sha256": "c5ba4fc4e696e621dac98cdea072a59b1a8cac23d19ddd2752048bf7510629b4",
+        "coverage": {
+          "candidate_roles": {
+            "document": 1,
+            "implementation": 6,
+            "test": 4
+          },
+          "candidate_units": 11,
+          "catalog_omitted": 0,
+          "catalog_total": 13,
+          "complete_dependency_coverage_claimed": false,
+          "eligible_units": 270,
+          "file_omissions": 0,
+          "files_read": 13,
+          "missing_packages": [],
+          "omission_reasons": {
+            "candidate_state_budget": 259
+          },
+          "omitted_units": 259,
+          "oversized_units": 1,
+          "parse_error_units": 0,
+          "scoped_files": 13,
+          "targeted_read_only_units": 0,
+          "unavailable_explicit_paths": []
+        },
+        "in_scope_implementation_units": 6,
+        "pack_wall_s": 0.000703832833096385,
+        "roles": {
+          "document": 1,
+          "implementation": 6,
+          "test": 4
+        },
+        "selected_count": 8,
+        "selected_source_paths": [
+          "crates/atif/src/document.rs",
+          "crates/atif/src/log.rs",
+          "crates/coderbench/src/lib.rs",
+          "crates/coderbench/tests/devin_fan_out_six.rs",
+          "crates/coderbench/tests/negative.rs",
+          "docs/coder/traces.md"
+        ],
+        "source_paths": [
+          "crates/atif/src/document.rs",
+          "crates/atif/src/log.rs",
+          "crates/coderbench/src/drive.rs",
+          "crates/coderbench/src/lib.rs",
+          "crates/coderbench/src/main.rs",
+          "crates/coderbench/tests/devin_fan_out_six.rs",
+          "crates/coderbench/tests/negative.rs",
+          "docs/coder/traces.md"
+        ]
+      },
+      "old": {
+        "candidate_count": 16,
+        "in_scope_implementation_units": 2,
+        "pack_bytes": 16239,
+        "pool_file_sha256": "4735a830eb03204052074f4679c498eef9924b086857a81deaf32efeb257f65a",
+        "preparation_sha256": "99280eb9bb57bb03ba7afd873e5c3baf0b95b8be60a72ba1246ad5626cda781e",
+        "roles": {
+          "document": 0,
+          "implementation": 4,
+          "test": 12
+        },
+        "selected_count": 9,
+        "selected_source_paths": [
+          "crates/atif/src/document.rs",
+          "crates/atif/src/log.rs",
+          "crates/coder/tests/program_run.rs",
+          "crates/coderbench/src/lib.rs",
+          "crates/coderbench/tests/harness.rs",
+          "crates/coderbench/tests/negative.rs",
+          "crates/gym/src/suite.rs",
+          "docs/audits/2026-09-19-codebase-audit/calibration-wire.rs",
+          "docs/audits/2026-09-19-codebase-audit/reproduce.rs"
+        ],
+        "source_paths": [
+          "crates/atif/src/document.rs",
+          "crates/atif/src/log.rs",
+          "crates/coder/src/delegate.rs",
+          "crates/coder/src/generate.rs",
+          "crates/coder/src/runtime.rs",
+          "crates/coder/tests/program_run.rs",
+          "crates/coder/tests/relay_lifecycle.rs",
+          "crates/coderbench/src/lib.rs",
+          "crates/coderbench/src/main.rs",
+          "crates/coderbench/tests/harness.rs",
+          "crates/coderbench/tests/negative.rs",
+          "crates/gym/src/suite.rs",
+          "docs/audits/2026-09-19-codebase-audit/calibration-wire.rs",
+          "docs/audits/2026-09-19-codebase-audit/reproduce.rs"
+        ]
+      },
+      "source_commit": "7ec5f6e83d018ab2f25d7a61ff695de81f2f55f6"
+    },
+    {
+      "id": "alternative-gamma",
+      "named_public_preview_anchor_presence": [
+        {
+          "name": "SystemOneResponse::decode",
+          "new_completeness": [],
+          "new_pack": false,
+          "new_pool": false,
+          "old_pack": false,
+          "old_pool": false
+        },
+        {
+          "name": "decode_answer",
+          "new_completeness": [],
+          "new_pack": false,
+          "new_pool": false,
+          "old_pack": false,
+          "old_pool": false
+        },
+        {
+          "name": "Client::system_one",
+          "new_completeness": [],
+          "new_pack": false,
+          "new_pool": false,
+          "old_pack": false,
+          "old_pool": false
+        },
+        {
+          "name": "BlockingClient::system_one",
+          "new_completeness": [],
+          "new_pack": false,
+          "new_pool": false,
+          "old_pack": false,
+          "old_pool": false
+        }
+      ],
+      "new": {
+        "assembly_wall_s": 2.2906675420235842,
+        "baseline_pack_bytes": 16238,
+        "baseline_pack_sha256": "cbcded1a641247903e6a5d2775218a6397b67227a376bd8610d11edf50331b38",
+        "candidate_count": 13,
+        "candidate_pool_sha256": "d05d31eae0eb99015860a6958254f48a55144773557cc3ea2e071b88cf67c69e",
+        "candidate_state_bytes": 28400,
+        "context_sha256": "101317b392eb49931b1481f9a2d9e0a79bb80e14ae373a32fab4837656c5361d",
+        "coverage": {
+          "candidate_roles": {
+            "document": 2,
+            "implementation": 6,
+            "test": 5
+          },
+          "candidate_units": 13,
+          "catalog_omitted": 0,
+          "catalog_total": 25,
+          "complete_dependency_coverage_claimed": false,
+          "eligible_units": 410,
+          "file_omissions": 0,
+          "files_read": 25,
+          "missing_packages": [],
+          "omission_reasons": {
+            "candidate_state_budget": 397
+          },
+          "omitted_units": 397,
+          "oversized_units": 2,
+          "parse_error_units": 0,
+          "scoped_files": 25,
+          "targeted_read_only_units": 0,
+          "unavailable_explicit_paths": []
+        },
+        "in_scope_implementation_units": 6,
+        "pack_wall_s": 0.0008538749534636736,
+        "roles": {
+          "document": 2,
+          "implementation": 6,
+          "test": 5
+        },
+        "selected_count": 8,
+        "selected_source_paths": [
+          ".agents/skills/typesafe-ai/SKILL.md",
+          "crates/jev/src/answers.rs",
+          "crates/jev/tests/answers.rs",
+          "crates/jev/tests/blocking.rs",
+          "crates/jev/tests/client.rs",
+          "crates/jev/tests/live.rs",
+          "crates/jev/tests/selected_answer.rs",
+          "docs/decision-models/2026-09-20-score-contract.md"
+        ],
+        "source_paths": [
+          ".agents/skills/typesafe-ai/SKILL.md",
+          "crates/jev/src/answers.rs",
+          "crates/jev/src/client.rs",
+          "crates/jev/src/error.rs",
+          "crates/jev/src/models.rs",
+          "crates/jev/src/questions.rs",
+          "crates/jev/src/retry.rs",
+          "crates/jev/tests/answers.rs",
+          "crates/jev/tests/blocking.rs",
+          "crates/jev/tests/client.rs",
+          "crates/jev/tests/live.rs",
+          "crates/jev/tests/selected_answer.rs",
+          "docs/decision-models/2026-09-20-score-contract.md"
+        ]
+      },
+      "old": {
+        "candidate_count": 14,
+        "in_scope_implementation_units": 0,
+        "pack_bytes": 16278,
+        "pool_file_sha256": "3ce491acd5973c052be7bc1ea234ffe3d81be0680e4caca910cfb6e90b178f10",
+        "preparation_sha256": "d6263873766036d598c5b10892b29d2b7331d558c7a801b32981910e088ef173",
+        "roles": {
+          "document": 0,
+          "implementation": 5,
+          "test": 9
+        },
+        "selected_count": 8,
+        "selected_source_paths": [
+          "crates/coder/src/generate.rs",
+          "crates/coder/tests/program_run.rs",
+          "crates/gym/src/gate.rs",
+          "crates/jev/tests/client.rs",
+          "crates/jev/tests/live.rs",
+          "docs/audits/2026-09-19-codebase-audit/calibration-wire.rs",
+          "docs/audits/2026-09-19-codebase-audit/reproduce.rs"
+        ],
+        "source_paths": [
+          "crates/coder/src/generate.rs",
+          "crates/coder/tests/program_run.rs",
+          "crates/gym/src/gate.rs",
+          "crates/jev/tests/client.rs",
+          "crates/jev/tests/live.rs",
+          "crates/lev/src/estimator.rs",
+          "docs/audits/2026-09-19-codebase-audit/calibration-wire.rs",
+          "docs/audits/2026-09-19-codebase-audit/reproduce.rs"
+        ]
+      },
+      "source_commit": "c427943a5c84ba5938a3549f24b27de551812a37"
+    }
+  ],
+  "test_module_sha256": "5a1a320a3d28b69063e59217462fc80ba70ea1919a8a9e9b400d6a9baf74a084",
+  "unrun": [
+    {
+      "id": "reserved-a",
+      "reason": "No retained local syntax index located; no replacement or fabricated index used."
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "task": "A partial final multibyte record makes interactive viewing lose earlier complete records. Which reading should come first to understand that failure?",
+  "source_commit": "7ec5f6e83d018ab2f25d7a61ff695de81f2f55f6",
+  "source_context": {
+    "public_task": "Fix public audit finding A13 in `crates/atif` and its `crates/coderbench` consumer. Read newline-delimited bytes before UTF-8 decoding so a torn final multibyte record preserves the valid prefix for interactive viewing. Report unreadable records and interruption, and distinguish tolerant recovery from the stronger integrity needed for benchmark evidence. Specify and enforce lifecycle behavior for repeated session headers or end records, records after end, append after closure, and malformed interior records. Add property or table-driven tests truncating a non-ASCII final record at every byte. Strict CoderBench ingestion must reject or mark damaged or incomplete evidence unverifiable and must not convert recovery into a successful grade. Preserve valid ATIF fixture compatibility and the retained transcript archive. Read `docs/coder/traces.md`. Work only within `crates/atif/` and `crates/coderbench/`; run their ordinary tests and formatting checks. Documentation outside these packages and operational work are outside this isolated trial.",
+    "candidate_readings": [
+      {
+        "key": "p",
+        "path": "crates/atif/src/log.rs",
+        "start_line": 231,
+        "end_line": 309,
+        "description": "The byte-to-record trace reader and its recovery/error behavior.",
+        "source_blob_sha256": "68f164446044a59b4b8b1199253acdcedc2fec0f65f2e1e540636b3ea94104f6"
+      },
+      {
+        "key": "q",
+        "path": "crates/coderbench/src/lib.rs",
+        "start_line": 1269,
+        "end_line": 1427,
+        "description": "The benchmark observation and record-integrity judgment boundary.",
+        "source_blob_sha256": "1fcf6ce2bf972972471a6dfeaf4c0a1c469b1b6183b211b515a483c51fa98178"
+      },
+      {
+        "key": "r",
+        "path": "crates/atif/src/log.rs",
+        "start_line": 78,
+        "end_line": 179,
+        "description": "The append-only writer, record append, and closure operations.",
+        "source_blob_sha256": "68f164446044a59b4b8b1199253acdcedc2fec0f65f2e1e540636b3ea94104f6"
+      }
+    ]
+  }
+}

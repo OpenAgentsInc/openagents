@@ -68,8 +68,18 @@ Its [evidence synthesis](system-one-delegation/evidence-synthesis.md) separates
 the demonstrated configuration gains from the unproven incremental Jev gain.
 Two fast replacement previews omit core implementation evidence, which a
 semantic reranker cannot restore from their candidate pools.
-Scored execution remains blocked by a real Jev request returning HTTP 402;
-the new preparation timings and broker capability check are component results.
+The direct TypeSafe request returned HTTP 402. The owner's gateway configuration
+subsequently produced a [real Jev answer](jev-lifecycle/capability/receipt.json)
+in 0.641 seconds with $0.000020664 reported usage. The new
+[lifecycle pilot](jev-lifecycle/README.md) tests preparation, source probes,
+and patch review through that unversioned gateway alias. The native comparison
+still has zero scored sessions; these are component experiments.
+Its 53 real calls report $0.026275620 in usage. Batching four independent
+questions reduces API cost by 73.4% and time by 70.3% in two paired blocks.
+Source ranking recovers one missing implementation unit, while review fails
+to distinguish order-dependence defects after correcting an overconstrained
+question. Batched Git reads speed up context assembly without changing its
+output. The complete warm CLI meets the one-second target on six of nine runs.
 
 ## Executive assessment
 

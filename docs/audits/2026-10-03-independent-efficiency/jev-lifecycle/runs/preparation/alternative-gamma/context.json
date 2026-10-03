@@ -1,0 +1,3393 @@
+{
+  "schema": "openagents.jev-lifecycle.context.v1",
+  "source_commit": "c427943a5c84ba5938a3549f24b27de551812a37",
+  "task": {
+    "id": "alternative-gamma",
+    "title": "[P2][Audit A12, A22] Validate decision responses and enforce whole-call SDK deadlines",
+    "prompt": "Implement the remaining A12 portion of public issue 9424 in `crates/jev`. Validate finite numeric ranges, probability mass within a documented tolerance, selected option identities, and score legend bounds before returning typed decisions. At the typed request-aware boundary, validate required answer coverage, answer types, and option identities. Invalid answers must return structured validation errors; preserve a separate raw compatibility path. Cover Noul, Choice, and Score malformed responses and valid compatibility cases through async and blocking clients with bounded local mocks. Read `.agents/skills/typesafe-ai/SKILL.md` and the pinned `docs/decision-models/2026-09-20-score-contract.md`; preserve that selected-answer and calibrated-score contract when interpreting confidence and probabilities. This task does not choose model thresholds or call a provider. A22 whole-call deadlines are already implemented at this source and are outside this task. Work only within `crates/jev/`; run ordinary tests with `--features jev/blocking` and formatting checks. Do not enable the live feature. Broader consumer regression checks and deployment are outside this isolated SDK trial.",
+    "packages": [
+      "jev"
+    ],
+    "allowed_paths": [
+      "crates/jev/"
+    ],
+    "required_public_readings": [
+      "docs/decision-models/2026-09-20-score-contract.md"
+    ]
+  },
+  "candidates": [
+    {
+      "id": "c01",
+      "path": "crates/jev/src/answers.rs",
+      "blob": "11b7359e1784c0b4a1507f7524d90411cbb5dd9d",
+      "file_sha256": "34dde188f362e772e82e18ef75d1f62eede8cf62ba8f59ac6f9f8cd9a3d41dc0",
+      "name": "ScoreAnswer",
+      "role": "implementation",
+      "kind": "struct_item",
+      "start_line": 52,
+      "end_line": 80,
+      "full_start_line": 52,
+      "full_end_line": 80,
+      "text": "/// Where a Score question placed the state, with the rubric it read.\n#[derive(Debug, Clone, PartialEq, Deserialize)]\npub struct ScoreAnswer {\n    /// The probability-weighted mean level, which falls between levels.\n    /// A caller that needs a categorical level reads `selected`, or falls\n    /// back to the argmax of `probabilities` when the answer lacks it.\n    /// `docs/decision-models/2026-09-20-score-contract.md` states the rule.\n    pub score: f64,\n    /// How sharp the distribution is, as the API reports it.\n    pub confidence: f64,\n    /// The level the estimator's own distribution named, when the door\n    /// reports one.\n    ///\n    /// A served calibration map rescales the selected level's probability\n    /// without replacing the answer, and can leave a runner-up numerically\n    /// larger in `probabilities`; this field is then the only place the\n    /// estimator's pick survives the wire. When absent, a categorical reader\n    /// falls back to the argmax of `probabilities`, with a tied maximum\n    /// resolving to the highest level. Absence is not evidence that no\n    /// calibration map was served.\n    #[serde(default)]\n    pub selected: Option<String>,\n    /// The rubric, keyed by level.\n    pub legend: BTreeMap<u32, Entry>,\n    /// A probability for each level. The API leaves this out on some answers,\n    /// and the field is then empty.\n    #[serde(default)]\n    pub probabilities: BTreeMap<u32, f64>,\n}\n",
+      "source_sha256": "0de7eb4b1d12b45af4e7f50b873edefce3d88acf74302557ca953e1699ba4d1f",
+      "completeness": "complete_declaration",
+      "admission_reasons": [
+        "package_scope"
+      ],
+      "baseline_score": 106
+    },
+    {
+      "id": "c02",
+      "path": "crates/jev/tests/blocking.rs",
+      "blob": "02d55d9d443bc32d1127852305e914ba2778a53c",
+      "file_sha256": "68dd7bf71a2f4bcd41541e39764b181725c126eabb2850cf4ebed8497b5ea09b",
+      "name": "the_blocking_call_holds_the_same_whole_call_deadline",
+      "role": "test",
+      "kind": "function_item",
+      "start_line": 133,
+      "end_line": 167,
+      "full_start_line": 133,
+      "full_end_line": 167,
+      "text": "/// The blocking entry point runs the same loop, so the same whole-call\n/// deadline holds: a reply that arrives past the budget cannot succeed, and\n/// the attempt's own timeout gives way to the time the call has left.\n#[test]\nfn the_blocking_call_holds_the_same_whole_call_deadline() -> Outcome {\n    let (base, _seen) = serve_after(RECORDED_RESPONSE, Duration::from_millis(200));\n    let client = BlockingClient::new(\n        Config::new()\n            .api_key(\"ts-test-key\")\n            .base_url(&base)\n            .timeout(Duration::from_secs(5))\n            .retry(RetryPolicy {\n                max_retries: 0,\n                budget: Some(Duration::from_millis(50)),\n                ..RetryPolicy::default()\n            }),\n    )?;\n    let began = std::time::Instant::now();\n    let Err(jev::Error::Timeout { timeout }) = client.system_one(SystemOneRequest::new(\n        json!({\"subject\": \"Double charge\"}),\n        Questions::new().with(\"refund\", Noul::new(\"Is a refund asked for?\")),\n    )) else {\n        unreachable!(\"a reply past the call's deadline cannot succeed\");\n    };\n    assert!(\n        timeout <= Duration::from_millis(50),\n        \"the attempt was capped by the remaining budget: {timeout:?}\"\n    );\n    assert!(\n        began.elapsed() < Duration::from_secs(5),\n        \"the budget, not the attempt's own timeout, ended the call: {:?}\",\n        began.elapsed()\n    );\n    Ok(())\n}\n",
+      "source_sha256": "e2bf6a9e3ac20f5065d50b6e955c811556d4976a71cd61a0b04807259a554ea2",
+      "completeness": "complete_declaration",
+      "admission_reasons": [
+        "package_scope"
+      ],
+      "baseline_score": 131
+    },
+    {
+      "id": "c03",
+      "path": "docs/decision-models/2026-09-20-score-contract.md",
+      "blob": "593e51099b82e2f905f0759f27122bb8ffb75418",
+      "file_sha256": "a8c612095723bf3599ae4d618aeff8ae18e3b5a05e868c07f26e623126e20c60",
+      "name": "docs/decision-models/2026-09-20-score-contract.md",
+      "role": "document",
+      "kind": "document",
+      "start_line": 57,
+      "end_line": 98,
+      "full_start_line": 1,
+      "full_end_line": 107,
+      "text": "| Score | `selected`, the canonical decimal level key | Highest level among maxima in `probabilities`. |\n\nLev writes `selected` on Noul and Score answers, calibrated or raw. Jev's\nRust SDK decodes it and rejects invalid option names. Gym records it and\nreads that option's probability when fitting or applying another map.\nAbsence means no provenance was reported. It does not prove that an external\ndoor is uncalibrated or reveal its internal estimator. In particular, the\nhosted Jev implementation is not inspected here.\n\nOlder clients can still read the standard numeric fields. They cannot\nrecover a fixed categorical selection from an inverted distribution unless\nthey understand `selected`. No threshold or local argmax can reconstruct\nthat omitted information in general.\n\n## Versioned measurement rows\n\nNew rows use `openagents.gym.eval_row.v2`. The `selected` field identifies\nthe answer, and `raw_top` records the probability reported on that answer.\nDespite its historical name, it can now be below the distribution maximum.\nThis is a semantic change from v1's maximum, so it receives a new schema\nidentifier. Older store readers reject v2 instead of silently applying the\nold interpretation.\n\nThe store also accepts historical v1 rows. Their schema, fields, and receipt\nchains are not rewritten. When a v1 row lacks a named selection, readers\nretain the historical argmax fallback. That fallback cannot reconstruct an\nunrecorded non-argmax Choice or prove whether the distribution was calibrated.\nHistorical claims require their retained provenance, not an assumption based\non an absent field. An old consumer must upgrade before reading new rows.\n\nThe gate's policy is separate from its input schema. This fix changes no\nthreshold, basis, or criterion in `probability-v1` or `ab::Rule::v2`; their\ndigests do not change. The [re-derivation inventory](../gym/measurements/2026-09-20-raw-floors-and-mapped-claims.md)\nchecks the retained records, including their gate verdicts, under the corrected\nreader. Unknown historical measurements remain unknown.\n\n## Precision and verification\n\nKev rounds wire statistics and probabilities to two decimal places. Lev's\nraw sample frequencies use a `1/n` grid; calibrated probabilities need not\nstay on that grid. Comparisons must use the precision actually reported.\nNeither wire rounding nor a tied distribution changes which statistic\n",
+      "source_sha256": "2fb2b2c724d50100b2ddbf1aedf852e1c72aa3c042113b7f546389765442b7f2",
+      "completeness": "partial_file",
+      "admission_reasons": [
+        "explicit_file",
+        "oversized_declaration_read_pointer"
+      ],
+      "baseline_score": 1215
+    },
+    {
+      "id": "c04",
+      "path": "crates/jev/src/questions.rs",
+      "blob": "ae89c2bdb8fad2f93e2cef3cb9d5e57ce324f22a",
+      "file_sha256": "dfa7fb6681c7915bfd7401f4c451325614f5f85d6d656767cd701dd1655f6c83",
+      "name": "Questions::validate",
+      "role": "implementation",
+      "kind": "function_item",
+      "start_line": 432,
+      "end_line": 456,
+      "full_start_line": 432,
+      "full_end_line": 456,
+      "text": "    /// Check the set the way both official SDKs check theirs, and the two\n    /// limits the API documents.\n    ///\n    /// # Errors\n    ///\n    /// Returns [`Error::Question`] when the set is empty, a Score names fewer\n    /// than two or more than ten levels, or a Choice names more than 255\n    /// options. The error names the question at fault.\n    pub fn validate(&self) -> Result<()> {\n        if self.0.is_empty() {\n            return Err(Error::Question {\n                id: String::new(),\n                message: \"a request asks at least one question\".to_string(),\n            });\n        }\n        for (id, question) in self.iter() {\n            match question {\n                Question::Score(score) => check_score(id, score.criteria.len())?,\n                Question::Choice(choice) => check_choice(id, choice.criteria.len())?,\n                Question::Noul(_) => {}\n                Question::Raw(value) => check_raw(id, value)?,\n            }\n        }\n        Ok(())\n    }\n",
+      "source_sha256": "2034a09d991791bf756cf54946dee15158350f41cd223bb9b9a22c95940445e0",
+      "completeness": "complete_declaration",
+      "admission_reasons": [
+        "package_scope"
+      ],
+      "baseline_score": 84
+    },
+    {
+      "id": "c05",
+      "path": "crates/jev/tests/client.rs",
+      "blob": "fe4c7346b039c300f34b17886990f6754459a3c6",
+      "file_sha256": "843f4096427040afd379bc6b03aaa39537a96de45bac1fd45cf04dfc0516fe49",
+      "name": "a_request_names_the_model_the_call_asks_for",
+      "role": "test",
+      "kind": "function_item",
+      "start_line": 332,
+      "end_line": 349,
+      "full_start_line": 332,
+      "full_end_line": 349,
+      "text": "#[tokio::test]\nasync fn a_request_names_the_model_the_call_asks_for() -> Outcome {\n    let (base, seen) = serve(vec![Reply::new(200, RECORDED_RESPONSE)]).await?;\n    let client = Client::new(\n        Config::new()\n            .api_key(\"ts-test-key-abcd1234\")\n            .base_url(format!(\"{base}/\"))\n            .default_model(\"jev-1.12\")\n            .retry(once()),\n    )?;\n    assert_eq!(client.base_url(), base, \"a trailing slash is dropped\");\n    assert_eq!(client.default_model(), \"jev-1.12\");\n    client.system_one(asking().model(\"jev-1.13.0\")).await?;\n    let seen = seen.lock().await;\n    let body = seen.first().ok_or(\"the server read one request\")?.json()?;\n    assert_eq!(body[\"model\"], json!(\"jev-1.13.0\"));\n    Ok(())\n}\n",
+      "source_sha256": "5048baf063856643064d04bb91c4ccf6164f479b3a37d548a886d5c181409866",
+      "completeness": "complete_declaration",
+      "admission_reasons": [
+        "package_scope"
+      ],
+      "baseline_score": 118
+    },
+    {
+      "id": "c06",
+      "path": ".agents/skills/typesafe-ai/SKILL.md",
+      "blob": "0109513f9656917dc93cbc5ecddfca465a53ce66",
+      "file_sha256": "71ea90d7906c6554c4f4c460ef7361b2d26f59116ccdae986dc6d997b9389f52",
+      "name": ".agents/skills/typesafe-ai/SKILL.md",
+      "role": "document",
+      "kind": "document",
+      "start_line": 41,
+      "end_line": 71,
+      "full_start_line": 1,
+      "full_end_line": 149,
+      "text": "- If the index is unavailable, use the direct links below or the site's navigation.\n  If Markdown fetching fails, try the normal page. If live access is unavailable,\n  use available local docs or installed SDK types, state that limitation, and avoid\n  inventing version-dependent details.\n\n| Task | Start here; follow the relevant details |\n| --- | --- |\n| Understand the programming model | [System One](https://docs.typesafe.ai/concepts/system-one.md), [building guide](https://docs.typesafe.ai/concepts/how-to-build-with-system-one.md) |\n| Explore what to build | [Use-case map](https://docs.typesafe.ai/concepts/use-case-map.md), then relevant cookbooks from the index |\n| Prepare inputs and questions | [State](https://docs.typesafe.ai/concepts/state.md), [primitives](https://docs.typesafe.ai/primitives.md), then the chosen primitive's page |\n| Decide how to handle uncertainty | [Confidence](https://docs.typesafe.ai/confidence.md) |\n| Write API code | [HTTP API](https://docs.typesafe.ai/api.md), [Python SDK](https://docs.typesafe.ai/sdk/python.md), or [JavaScript SDK](https://docs.typesafe.ai/sdk/javascript.md) |\n| Update an older integration | [Migration guide](https://docs.typesafe.ai/migrating-to-v1.md) and the installed SDK's current reference |\n\n## Find the useful shape\n\nStart from the behavior the user wants: what will the application show, select,\nchange, or hand off? Work backward to the judgments it needs. Keep known rules,\ncalculations, exact lookups, and execution in code. Preserve the user's chosen stack\nand scope; add TypeSafe where semantic understanding helps.\n\nWhen brainstorming or choosing an architecture, consider more than classification.\nThe patterns below are starting points: combine primitives around the user's goal,\nincluding ideas that do not fit an established recipe.\n\n- **Route and fill known arguments.** A request can select a handler and its typed\n  parameters. Ask useful branch-specific questions up front and consume only the\n  relevant answers. Explore [function calling](https://docs.typesafe.ai/cookbooks/function_calling.md)\n  and [speculative fan-out](https://docs.typesafe.ai/patterns/fan-out.md).\n- **Select instead of generate.** Find candidate values or source spans in code,\n  use a judgment to select the intended one, then copy or normalize it. Code can\n",
+      "source_sha256": "f4ff715005543ab333df0186c906dd8cc0776969da04bb41a839457decb01da1",
+      "completeness": "partial_file",
+      "admission_reasons": [
+        "explicit_file",
+        "oversized_declaration_read_pointer"
+      ],
+      "baseline_score": 1186
+    },
+    {
+      "id": "c07",
+      "path": "crates/jev/src/client.rs",
+      "blob": "587b2c3c56a57227647a4bc120fb5fa93b70ffa1",
+      "file_sha256": "e39763bc08057ccd0fb6e658d683bccbf86ab1de2e29df05c8bfe77ec14c34ca",
+      "name": "RawResponse::read",
+      "role": "implementation",
+      "kind": "function_item",
+      "start_line": 612,
+      "end_line": 626,
+      "full_start_line": 612,
+      "full_end_line": 626,
+      "text": "    /// Read one response into its status, its headers, and its bytes.\n    ///\n    /// # Errors\n    ///\n    /// Returns [`Error::Connection`] when the body does not arrive.\n    pub async fn read(response: reqwest::Response) -> Result<Self> {\n        let status = response.status().as_u16();\n        let headers = response.headers().clone();\n        let bytes = response.bytes().await.map_err(Error::connection)?.to_vec();\n        Ok(Self {\n            status,\n            headers,\n            bytes,\n        })\n    }\n",
+      "source_sha256": "7ba7b2867d0224df383aefea8a92909601a51fa44199763a17266bea3f24c7a1",
+      "completeness": "complete_declaration",
+      "admission_reasons": [
+        "package_scope"
+      ],
+      "baseline_score": 81
+    },
+    {
+      "id": "c08",
+      "path": "crates/jev/tests/live.rs",
+      "blob": "a55d253c2efa32fa17f84b71689979f656f1cff5",
+      "file_sha256": "83005a6a9d1d67d10a0b7b58a76f7f766e95c4383e78196023e8ea5d79c4e527",
+      "name": "one_request_reaches_the_api_and_its_answers_read",
+      "role": "test",
+      "kind": "function_item",
+      "start_line": 34,
+      "end_line": 87,
+      "full_start_line": 34,
+      "full_end_line": 87,
+      "text": "#[tokio::test]\nasync fn one_request_reaches_the_api_and_its_answers_read() -> Outcome {\n    if std::env::var(\"TYPESAFE_API_KEY\").is_err() {\n        return Err(\"set TYPESAFE_API_KEY before you run the live test\".into());\n    }\n    let client = Client::from_env()?;\n    let questions = Questions::new()\n        .with(\"refund\", Noul::new(\"Does the customer ask for money back?\"))\n        .with(\n            \"department\",\n            Choice::new(\"Which team should handle this?\", IndexMap::new())\n                .option(\"billing\", \"Charges, invoices, and refunds\")\n                .option(\"technical\", \"Bugs and outages\")\n                .bare_option(\"other\"),\n        )\n        .with(\n            \"severity\",\n            Score::new(\"How severe is the issue?\", Vec::new())\n                .level(\"Cosmetic; the product works\")\n                .level(\"Impaired; a workaround exists\")\n                .level(\"Blocking; no workaround\"),\n        );\n    let response = client\n        .system_one(SystemOneRequest::new(\n            \"The same order was charged to my card twice, and I want the second charge back.\",\n            questions,\n        ))\n        .await?;\n\n    println!(\"model: {}\", response.model);\n    println!(\"request id: {}\", response.request_id().unwrap_or(\"-\"));\n    println!(\n        \"usage: {:?} input, {:?} output\",\n        response.usage.input_tokens, response.usage.output_tokens\n    );\n    for (id, answer) in &response.answers {\n        println!(\"{id}: {answer:?}\");\n    }\n\n    let refund = response.noul(\"refund\")?;\n    assert!((0.0..=1.0).contains(&refund.noul));\n    let department = response.choice(\"department\")?;\n    assert!(\n        [\"billing\", \"technical\", \"other\"].contains(&department.choice.as_str()),\n        \"{}\",\n        department.choice\n    );\n    let total: f64 = department.probabilities.values().sum();\n    assert!((total - 1.0).abs() <= 0.02, \"{total}\");\n    let severity = response.score(\"severity\")?;\n    assert!((0.0..=2.0).contains(&severity.score), \"{}\", severity.score);\n    assert_eq!(severity.legend.len(), 3);\n    Ok(())\n}\n",
+      "source_sha256": "6396585f22ed98ed07468c6de6c4eb8d319bbe32d0ad912048234a8b006cd125",
+      "completeness": "complete_declaration",
+      "admission_reasons": [
+        "package_scope"
+      ],
+      "baseline_score": 106
+    },
+    {
+      "id": "c09",
+      "path": "crates/jev/src/retry.rs",
+      "blob": "ac26bf44bd147f50cacf5bad9a240f098abbe516",
+      "file_sha256": "7248982511c6bfe6183f479f1788284378ad702b04bc416819b6f4a58f76e9ba",
+      "name": "RetryPolicy::validate",
+      "role": "implementation",
+      "kind": "function_item",
+      "start_line": 120,
+      "end_line": 148,
+      "full_start_line": 120,
+      "full_end_line": 148,
+      "text": "    /// Check every field, the way both official SDKs check theirs.\n    ///\n    /// # Errors\n    ///\n    /// Returns [`Error::Config`] when the jitter falls outside 0 to 1, a\n    /// status falls outside 100 to 999, or the budget is zero.\n    pub fn validate(&self) -> Result<()> {\n        if !(0.0..=1.0).contains(&self.backoff_jitter) {\n            return Err(Error::Config(format!(\n                \"`retry.backoff_jitter` must be between 0 and 1, got {}\",\n                self.backoff_jitter\n            )));\n        }\n        if let Some(status) = self\n            .http_statuses\n            .iter()\n            .find(|status| !(100..=999).contains(*status))\n        {\n            return Err(Error::Config(format!(\n                \"`retry.http_statuses` must hold HTTP status codes, got {status}\"\n            )));\n        }\n        if self.budget == Some(Duration::ZERO) {\n            return Err(Error::Config(\n                \"`retry.budget` must be a positive duration\".to_string(),\n            ));\n        }\n        Ok(())\n    }\n",
+      "source_sha256": "8412d6064414d515550326cbd316da0955e56b99fb2a19a24245c80dca908f8e",
+      "completeness": "complete_declaration",
+      "admission_reasons": [
+        "package_scope"
+      ],
+      "baseline_score": 81
+    },
+    {
+      "id": "c10",
+      "path": "crates/jev/tests/answers.rs",
+      "blob": "11aa1e38149e1a6ce5f029603ad6238946e5ac35",
+      "file_sha256": "b1c2c28d1882637813d7699b29cd8656e7156c24c6f46bbca003ef9f7e4bc03e",
+      "name": "a_field_that_does_not_read_is_named_by_a_dotted_path",
+      "role": "test",
+      "kind": "function_item",
+      "start_line": 235,
+      "end_line": 304,
+      "full_start_line": 235,
+      "full_end_line": 304,
+      "text": "#[test]\nfn a_field_that_does_not_read_is_named_by_a_dotted_path() -> Outcome {\n    let cases = [\n        (\n            json!({\"model\": \"m\", \"answers\": {\"tone\": {\"type\": \"score\", \"score\": 1.0, \"confidence\": \"high\", \"legend\": {}}}}),\n            \"answers.tone.confidence\",\n        ),\n        (\n            json!({\"model\": \"m\", \"answers\": {\"tone\": {\"type\": \"noul\"}}}),\n            \"answers.tone.noul\",\n        ),\n        (\n            json!({\"model\": \"m\", \"answers\": {\"tone\": {\"type\": \"choice\", \"choice\": \"a\", \"confidence\": 1.0}}}),\n            \"answers.tone.probabilities\",\n        ),\n        (\n            json!({\"model\": \"m\", \"answers\": {\"tone\": {\"noul\": 0.5}}}),\n            \"answers.tone.type\",\n        ),\n        (json!({\"answers\": {}}), \"model\"),\n        (json!({\"model\": 7, \"answers\": {}}), \"model\"),\n        (json!({\"model\": \"m\", \"answers\": 7}), \"answers\"),\n        (json!([\"not an object\"]), \"body\"),\n        (\n            json!({\"model\": \"m\", \"answers\": {\"c\": \"not-a-mapping\"}}),\n            \"answers.c.type\",\n        ),\n        (\n            json!({\"model\": \"m\", \"answers\": {\"c\": {\"type\": \"choice\", \"choice\": \"a\", \"probabilities\": {}}}}),\n            \"answers.c.confidence\",\n        ),\n        (\n            json!({\"model\": \"m\", \"answers\": {\"n\": {\"type\": \"noul\", \"noul\": \"0.5\"}}}),\n            \"answers.n.noul\",\n        ),\n        // A malformed map entry names the entry, inside `legend` or\n        // `probabilities`.\n        (\n            json!({\"model\": \"m\", \"answers\": {\"s\": {\"type\": \"score\", \"score\": 1.0, \"confidence\": 1.0, \"legend\": [], \"probabilities\": {}}}}),\n            \"answers.s.legend\",\n        ),\n        (\n            json!({\"model\": \"m\", \"answers\": {\"s\": {\"type\": \"score\", \"score\": 1.0, \"confidence\": 1.0, \"legend\": {\"x\": \"bad\"}, \"probabilities\": {}}}}),\n            \"answers.s.legend.x\",\n        ),\n        (\n            json!({\"model\": \"m\", \"answers\": {\"s\": {\"type\": \"score\", \"score\": 1.0, \"confidence\": 1.0, \"legend\": {}, \"probabilities\": {\"x\": 0.5}}}}),\n            \"answers.s.probabilities.x\",\n        ),\n        (\n            json!({\"model\": \"m\", \"answers\": {\"s\": {\"type\": \"score\", \"score\": 1.0, \"confidence\": 1.0, \"legend\": {}, \"probabilities\": {\"0\": \"high\"}}}}),\n            \"answers.s.probabilities.0\",\n        ),\n    ];\n    for (body, expected) in cases {\n        let Err(Error::ResponseValidation {\n            status,\n            field_path,\n            request_id,\n            ..\n        }) = SystemOneResponse::decode(raw(&body)?)\n        else {\n            unreachable!(\"{expected} does not read\");\n        };\n        assert_eq!(field_path, expected);\n        assert_eq!(status, 200);\n        assert_eq!(request_id.as_deref(), Some(\"req_01test\"));\n    }\n    Ok(())\n}\n",
+      "source_sha256": "a7e0673110c8ac5896c29baec75c2e9ca632311bb05d72e7e0f316bc567c506e",
+      "completeness": "complete_declaration",
+      "admission_reasons": [
+        "package_scope"
+      ],
+      "baseline_score": 98
+    },
+    {
+      "id": "c11",
+      "path": "crates/jev/src/models.rs",
+      "blob": "a4bd879d2bd2f5277c57b81693d105be834716fa",
+      "file_sha256": "47aee34621c1ab932b352ac08ec13ff628bb1314a5326a608552571e996bbe9d",
+      "name": "Models::list_raw",
+      "role": "implementation",
+      "kind": "function_item",
+      "start_line": 98,
+      "end_line": 108,
+      "full_start_line": 98,
+      "full_end_line": 108,
+      "text": "    /// List the models the account can ask, handing back the response unread,\n    /// the way `models.list().asResponse()` does in the JavaScript SDK and\n    /// `raw_http_response` does in the Python SDK.\n    ///\n    /// # Errors\n    ///\n    /// Returns the same errors as [`Models::list`], other than\n    /// [`Error::ResponseValidation`].\n    pub async fn list_raw(&self, options: ListOptions) -> Result<crate::RawResponse> {\n        self.client.list_models(options).await\n    }\n",
+      "source_sha256": "6d3b0f84286ce97c8ecdfbacd58b366e8a4d060f2b9e769561d136dc0b73c990",
+      "completeness": "complete_declaration",
+      "admission_reasons": [
+        "package_scope"
+      ],
+      "baseline_score": 76
+    },
+    {
+      "id": "c12",
+      "path": "crates/jev/tests/selected_answer.rs",
+      "blob": "04dcc9de3d41af50d92bc97f5d329632618bc325",
+      "file_sha256": "183c1b99706243034ba9d882f1849ecb90a325f3c4a9c9fbabf0c845bcde1055",
+      "name": "a_noul_cannot_name_an_option_outside_yes_and_no",
+      "role": "test",
+      "kind": "function_item",
+      "start_line": 14,
+      "end_line": 24,
+      "full_start_line": 14,
+      "full_end_line": 24,
+      "text": "#[test]\nfn a_noul_cannot_name_an_option_outside_yes_and_no() {\n    for selected in [\"\", \"maybe\", \"YES\"] {\n        let error = decode(json!({\"type\":\"noul\",\"noul\":0.25,\"selected\":selected})).unwrap_err();\n        assert!(\n            matches!(error, Error::ResponseValidation { field_path, .. } if field_path == \"answers.q.selected\")\n        );\n    }\n    let answer = decode(json!({\"type\":\"noul\",\"noul\":0.25,\"selected\":\"yes\"})).unwrap();\n    assert_eq!(answer.noul(\"q\").unwrap().selected.as_deref(), Some(\"yes\"));\n}\n",
+      "source_sha256": "142c47c27bf9140e4b59a1f90e35482b9df334b980d93012afcf94257761f0d2",
+      "completeness": "complete_declaration",
+      "admission_reasons": [
+        "package_scope"
+      ],
+      "baseline_score": 97
+    },
+    {
+      "id": "c13",
+      "path": "crates/jev/src/error.rs",
+      "blob": "9cee344140702bff0860b789cea82ca85331811f",
+      "file_sha256": "816c6d2bfa73b037a2e0be77fd7213bf7890cd87ebe8aeada6d6c6efccc4e11b",
+      "name": "Error",
+      "role": "implementation",
+      "kind": "enum_item",
+      "start_line": 64,
+      "end_line": 136,
+      "full_start_line": 64,
+      "full_end_line": 136,
+      "text": "/// What a failed request failed at.\n#[derive(Debug, Error)]\npub enum Error {\n    /// A setting is missing or out of range. Raised before any request.\n    #[error(\"{0}\")]\n    Config(String),\n\n    /// A question set failed the checks the SDK runs before any request.\n    #[error(\"{}\", describe_question(id, message))]\n    Question {\n        /// The question id, or an empty string when the whole set is at fault.\n        id: String,\n        /// What is wrong with it.\n        message: String,\n    },\n\n    /// The API answered with a status outside the 2xx range.\n    ///\n    /// The error is boxed because it carries the response headers and body, and\n    /// a `Result` whose failure is that wide costs every call that returns one.\n    #[error(transparent)]\n    Api(Box<ApiError>),\n\n    /// The request never reached the API, or its response never arrived.\n    #[error(\"{message}\")]\n    Connection {\n        /// What the transport reported.\n        message: String,\n        /// The transport error, when there is one to carry.\n        #[source]\n        source: Option<Box<dyn std::error::Error + Send + Sync>>,\n    },\n\n    /// One attempt ran past its timeout.\n    #[error(\"the request timed out after {}ms\", timeout.as_millis())]\n    Timeout {\n        /// The per-attempt timeout that expired.\n        timeout: Duration,\n    },\n\n    /// A 2xx body was missing a field, or carried one the SDK cannot read.\n    #[error(\"invalid response data at {field_path:?}\")]\n    ResponseValidation {\n        /// The response status.\n        status: u16,\n        /// A dotted path to the field, such as `answers.tone.confidence`.\n        field_path: String,\n        /// The body the SDK read, when it read one. It is boxed so the enum\n        /// stays narrow under every feature combination a dependent crate's\n        /// `serde_json` features give `Value`.\n        body: Option<Box<ResponseBody>>,\n        /// The request id, when the response carried one.\n        request_id: Option<String>,\n    },\n\n    /// A typed accessor asked for one answer type and found another.\n    #[error(\"answer {id:?} is a {found} answer, not a {expected} answer\")]\n    AnswerType {\n        /// The question id.\n        id: String,\n        /// The type the caller asked for.\n        expected: &'static str,\n        /// The type the response carried.\n        found: &'static str,\n    },\n\n    /// A typed accessor named an answer the response does not carry.\n    #[error(\"the response carries no answer named {id:?}\")]\n    MissingAnswer {\n        /// The question id.\n        id: String,\n    },\n}\n",
+      "source_sha256": "190a257749f6b74d438d8e3fdd136885537aa14c998a0beddec010ef85683a69",
+      "completeness": "complete_declaration",
+      "admission_reasons": [
+        "package_scope"
+      ],
+      "baseline_score": 74
+    }
+  ],
+  "catalog": [
+    {
+      "id": "f01",
+      "path": "crates/jev/src/answers.rs",
+      "blob": "11b7359e1784c0b4a1507f7524d90411cbb5dd9d",
+      "file_sha256": "34dde188f362e772e82e18ef75d1f62eede8cf62ba8f59ac6f9f8cd9a3d41dc0",
+      "bytes": 17107,
+      "role": "implementation",
+      "reason": "candidate_state_budget",
+      "baseline_score": 70,
+      "suggested_start_line": 22
+    },
+    {
+      "id": "f02",
+      "path": "crates/jev/tests/client.rs",
+      "blob": "fe4c7346b039c300f34b17886990f6754459a3c6",
+      "file_sha256": "843f4096427040afd379bc6b03aaa39537a96de45bac1fd45cf04dfc0516fe49",
+      "bytes": 56762,
+      "role": "test",
+      "reason": "candidate_state_budget",
+      "baseline_score": 60,
+      "suggested_start_line": 821
+    },
+    {
+      "id": "f03",
+      "path": "docs/decision-models/2026-09-20-score-contract.md",
+      "blob": "593e51099b82e2f905f0759f27122bb8ffb75418",
+      "file_sha256": "a8c612095723bf3599ae4d618aeff8ae18e3b5a05e868c07f26e623126e20c60",
+      "bytes": 6073,
+      "role": "document",
+      "reason": "partial_unit_needs_targeted_read",
+      "baseline_score": 1109,
+      "suggested_start_line": 1
+    },
+    {
+      "id": "f04",
+      "path": "crates/jev/src/lib.rs",
+      "blob": "4ae230617fc60e18c5342df0928a08ed9382b409",
+      "file_sha256": "eb7245e69ff658110d3eff879d9c6e0ede8ff31b5deda3dd564ff1358d98848e",
+      "bytes": 8788,
+      "role": "implementation",
+      "reason": "candidate_state_budget",
+      "baseline_score": 58,
+      "suggested_start_line": 235
+    },
+    {
+      "id": "f05",
+      "path": "crates/jev/tests/selected_answer.rs",
+      "blob": "04dcc9de3d41af50d92bc97f5d329632618bc325",
+      "file_sha256": "183c1b99706243034ba9d882f1849ecb90a325f3c4a9c9fbabf0c845bcde1055",
+      "bytes": 1634,
+      "role": "test",
+      "reason": "candidate_state_budget",
+      "baseline_score": 59,
+      "suggested_start_line": 26
+    },
+    {
+      "id": "f06",
+      "path": ".agents/skills/typesafe-ai/SKILL.md",
+      "blob": "0109513f9656917dc93cbc5ecddfca465a53ce66",
+      "file_sha256": "71ea90d7906c6554c4f4c460ef7361b2d26f59116ccdae986dc6d997b9389f52",
+      "bytes": 10040,
+      "role": "document",
+      "reason": "partial_unit_needs_targeted_read",
+      "baseline_score": 1093,
+      "suggested_start_line": 1
+    },
+    {
+      "id": "f07",
+      "path": "crates/jev/src/client.rs",
+      "blob": "587b2c3c56a57227647a4bc120fb5fa93b70ffa1",
+      "file_sha256": "e39763bc08057ccd0fb6e658d683bccbf86ab1de2e29df05c8bfe77ec14c34ca",
+      "bytes": 24371,
+      "role": "implementation",
+      "reason": "candidate_state_budget",
+      "baseline_score": 57,
+      "suggested_start_line": 704
+    },
+    {
+      "id": "f08",
+      "path": "crates/jev/tests/live.rs",
+      "blob": "a55d253c2efa32fa17f84b71689979f656f1cff5",
+      "file_sha256": "83005a6a9d1d67d10a0b7b58a76f7f766e95c4383e78196023e8ea5d79c4e527",
+      "bytes": 8608,
+      "role": "test",
+      "reason": "candidate_state_budget",
+      "baseline_score": 58,
+      "suggested_start_line": 122
+    },
+    {
+      "id": "f09",
+      "path": "crates/jev/src/error.rs",
+      "blob": "9cee344140702bff0860b789cea82ca85331811f",
+      "file_sha256": "816c6d2bfa73b037a2e0be77fd7213bf7890cd87ebe8aeada6d6c6efccc4e11b",
+      "bytes": 12366,
+      "role": "implementation",
+      "reason": "candidate_state_budget",
+      "baseline_score": 49,
+      "suggested_start_line": 147
+    },
+    {
+      "id": "f10",
+      "path": "crates/jev/tests/answers.rs",
+      "blob": "11aa1e38149e1a6ce5f029603ad6238946e5ac35",
+      "file_sha256": "b1c2c28d1882637813d7699b29cd8656e7156c24c6f46bbca003ef9f7e4bc03e",
+      "bytes": 12894,
+      "role": "test",
+      "reason": "candidate_state_budget",
+      "baseline_score": 52,
+      "suggested_start_line": 166
+    },
+    {
+      "id": "f11",
+      "path": "crates/jev/src/models.rs",
+      "blob": "a4bd879d2bd2f5277c57b81693d105be834716fa",
+      "file_sha256": "47aee34621c1ab932b352ac08ec13ff628bb1314a5326a608552571e996bbe9d",
+      "bytes": 4195,
+      "role": "implementation",
+      "reason": "candidate_state_budget",
+      "baseline_score": 47,
+      "suggested_start_line": 75
+    },
+    {
+      "id": "f12",
+      "path": "crates/jev/tests/blocking.rs",
+      "blob": "02d55d9d443bc32d1127852305e914ba2778a53c",
+      "file_sha256": "68dd7bf71a2f4bcd41541e39764b181725c126eabb2850cf4ebed8497b5ea09b",
+      "bytes": 6336,
+      "role": "test",
+      "reason": "candidate_state_budget",
+      "baseline_score": 50,
+      "suggested_start_line": 77
+    },
+    {
+      "id": "f13",
+      "path": "crates/jev/src/retry.rs",
+      "blob": "ac26bf44bd147f50cacf5bad9a240f098abbe516",
+      "file_sha256": "7248982511c6bfe6183f479f1788284378ad702b04bc416819b6f4a58f76e9ba",
+      "bytes": 9128,
+      "role": "implementation",
+      "reason": "candidate_state_budget",
+      "baseline_score": 45,
+      "suggested_start_line": 30
+    },
+    {
+      "id": "f14",
+      "path": "crates/jev/tests/surface.rs",
+      "blob": "e246644cc4fa7a44faa7f66a96f971e3156bb076",
+      "file_sha256": "c42110f31306293c3145c653b05be1a8de2c0c8fc44d95b082cf269d1097b5d9",
+      "bytes": 8892,
+      "role": "test",
+      "reason": "candidate_state_budget",
+      "baseline_score": 48,
+      "suggested_start_line": 33
+    },
+    {
+      "id": "f15",
+      "path": "crates/jev/examples/blocking.rs",
+      "blob": "74e21464e0df431af1ba04ca9340c79e1b3b4cd9",
+      "file_sha256": "9146551d9b1248b68b1dfd492c619837f0d42d3d8778c5c78d53d5bfee9eb4fd",
+      "bytes": 965,
+      "role": "implementation",
+      "reason": "candidate_state_budget",
+      "baseline_score": 44,
+      "suggested_start_line": 12
+    },
+    {
+      "id": "f16",
+      "path": "crates/jev/tests/questions.rs",
+      "blob": "36f7754430e065fbf83c12a3e3ec072e945f47df",
+      "file_sha256": "c29fe5eaaf0064b674f23bd26254741a200665315f84ec85afa5ec2da98a2bf2",
+      "bytes": 10895,
+      "role": "test",
+      "reason": "candidate_state_budget",
+      "baseline_score": 42,
+      "suggested_start_line": 249
+    },
+    {
+      "id": "f17",
+      "path": "crates/jev/src/questions.rs",
+      "blob": "ae89c2bdb8fad2f93e2cef3cb9d5e57ce324f22a",
+      "file_sha256": "dfa7fb6681c7915bfd7401f4c451325614f5f85d6d656767cd701dd1655f6c83",
+      "bytes": 16702,
+      "role": "implementation",
+      "reason": "candidate_state_budget",
+      "baseline_score": 44,
+      "suggested_start_line": 233
+    },
+    {
+      "id": "f18",
+      "path": "crates/jev/tests/logging.rs",
+      "blob": "1ba1fe57df96d83b6624f568310325a0e5c18601",
+      "file_sha256": "27e3ae22be852d5f743ea4d69df427fe5682963e832ca8445caf5f4eab2f3640",
+      "bytes": 10007,
+      "role": "test",
+      "reason": "candidate_state_budget",
+      "baseline_score": 38,
+      "suggested_start_line": 276
+    },
+    {
+      "id": "f19",
+      "path": "crates/jev/examples/demo.rs",
+      "blob": "8d73ff4366555def287427b94bfc464b8f8a548b",
+      "file_sha256": "7a35336cae16482ca20274907d716feec1092588877183c7074375912a349417",
+      "bytes": 3599,
+      "role": "implementation",
+      "reason": "candidate_state_budget",
+      "baseline_score": 38,
+      "suggested_start_line": 13
+    },
+    {
+      "id": "f20",
+      "path": "crates/jev/tests/retry.rs",
+      "blob": "d6167d6b2db1612fbbb34393e34f87a05e95c67a",
+      "file_sha256": "0426df0d42662c8ad5da4ba1abb914d37afc53382deb13b4deb8dd635bbab580",
+      "bytes": 11137,
+      "role": "test",
+      "reason": "candidate_state_budget",
+      "baseline_score": 32,
+      "suggested_start_line": 181
+    },
+    {
+      "id": "f21",
+      "path": "crates/jev/examples/chat_probe.rs",
+      "blob": "932fd922f17dc0fa2169f56e4009002dbeb624bb",
+      "file_sha256": "c15e66b84c06d059a7f30e1a1d812ccf4ea5e0769820490d0215c636a340021d",
+      "bytes": 1983,
+      "role": "implementation",
+      "reason": "candidate_state_budget",
+      "baseline_score": 36,
+      "suggested_start_line": 13
+    },
+    {
+      "id": "f22",
+      "path": "crates/jev/tests/env.rs",
+      "blob": "d071fe6be5fc87fe579edfd9a0ffbca1ce3b9d39",
+      "file_sha256": "7d137d5dab640756606eed2a679c61b751eb17fa3e7cf457d2c4c904e8dd24f2",
+      "bytes": 3284,
+      "role": "test",
+      "reason": "candidate_state_budget",
+      "baseline_score": 28,
+      "suggested_start_line": 13
+    },
+    {
+      "id": "f23",
+      "path": "crates/jev/src/transport.rs",
+      "blob": "6a2db4860891a7bd58616bf3160db6ac4df85161",
+      "file_sha256": "cb1f80c08d2ef2592ba2591320543a0e06b5c2f127786a90121351a6272e418a",
+      "bytes": 5473,
+      "role": "implementation",
+      "reason": "candidate_state_budget",
+      "baseline_score": 36,
+      "suggested_start_line": 19
+    },
+    {
+      "id": "f24",
+      "path": "crates/jev/src/config.rs",
+      "blob": "2fd643db94bde8b720a3ff939b0b40d6ae9a4a45",
+      "file_sha256": "fa70ba3028ebff45d8a9bac2180900d86e5286b6f536255cca42ec8e97009f78",
+      "bytes": 6945,
+      "role": "implementation",
+      "reason": "candidate_state_budget",
+      "baseline_score": 35,
+      "suggested_start_line": 116
+    },
+    {
+      "id": "f25",
+      "path": "crates/jev/examples/quickstart.rs",
+      "blob": "ce940b0bfe79f1a58ede9d8fb44fb680c124dfba",
+      "file_sha256": "d282514fb50e5925688bb57a4caf18d5b374e084f805482ca9bfd2fc9b42df7c",
+      "bytes": 1051,
+      "role": "implementation",
+      "reason": "candidate_state_budget",
+      "baseline_score": 29,
+      "suggested_start_line": 12
+    }
+  ],
+  "coverage": {
+    "scoped_files": 25,
+    "files_read": 25,
+    "file_omissions": 0,
+    "eligible_units": 410,
+    "candidate_units": 13,
+    "candidate_roles": {
+      "implementation": 6,
+      "test": 5,
+      "document": 2
+    },
+    "omitted_units": 397,
+    "omission_reasons": {
+      "candidate_state_budget": 397
+    },
+    "oversized_units": 2,
+    "targeted_read_only_units": 0,
+    "parse_error_units": 0,
+    "catalog_total": 25,
+    "catalog_omitted": 0,
+    "missing_packages": [],
+    "unavailable_explicit_paths": [],
+    "complete_dependency_coverage_claimed": false
+  },
+  "oversized": [
+    {
+      "path": "docs/decision-models/2026-09-20-score-contract.md",
+      "name": "docs/decision-models/2026-09-20-score-contract.md",
+      "start_line": 1,
+      "end_line": 107,
+      "bytes": 6073
+    },
+    {
+      "path": ".agents/skills/typesafe-ai/SKILL.md",
+      "name": ".agents/skills/typesafe-ai/SKILL.md",
+      "start_line": 1,
+      "end_line": 149,
+      "bytes": 10040
+    }
+  ],
+  "omissions": [
+    {
+      "path": "crates/jev/tests/questions.rs",
+      "name": "a_question_written_out_as_json_fails_the_checks_the_python_sdk_runs",
+      "start_line": 249,
+      "end_line": 274,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/lib.rs",
+      "name": "defaults::MODEL",
+      "start_line": 235,
+      "end_line": 236,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/surface.rs",
+      "name": "a_caller_builds_every_question_type_and_reads_every_answer_type",
+      "start_line": 33,
+      "end_line": 123,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/transport.rs",
+      "name": "SDK_NAME",
+      "start_line": 19,
+      "end_line": 21,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/logging.rs",
+      "name": "a_retry_is_logged_before_the_next_attempt",
+      "start_line": 276,
+      "end_line": 308,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/examples/blocking.rs",
+      "name": "main",
+      "start_line": 12,
+      "end_line": 28,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/retry.rs",
+      "name": "an_unreadable_millisecond_count_falls_through_to_seconds",
+      "start_line": 181,
+      "end_line": 218,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/examples/chat_probe.rs",
+      "name": "main",
+      "start_line": 13,
+      "end_line": 59,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/env.rs",
+      "name": "MODEL",
+      "start_line": 13,
+      "end_line": 13,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/config.rs",
+      "name": "Config::default_model",
+      "start_line": 116,
+      "end_line": 123,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "the_budget_bounds_the_raw_call_the_same_way",
+      "start_line": 821,
+      "end_line": 846,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/examples/demo.rs",
+      "name": "main",
+      "start_line": 13,
+      "end_line": 105,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "the_raw_call_hands_back_the_response_unread",
+      "start_line": 920,
+      "end_line": 928,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/examples/quickstart.rs",
+      "name": "main",
+      "start_line": 12,
+      "end_line": 36,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "a_long_message_is_whole_and_a_long_body_is_cut",
+      "start_line": 556,
+      "end_line": 587,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/answers.rs",
+      "name": "NoulAnswer",
+      "start_line": 22,
+      "end_line": 39,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "a_retry_gets_only_the_time_the_call_has_left",
+      "start_line": 781,
+      "end_line": 819,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/answers.rs",
+      "name": "ChoiceAnswer",
+      "start_line": 41,
+      "end_line": 50,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "a_call_names_its_own_timeout_and_the_retry_follows_it",
+      "start_line": 869,
+      "end_line": 891,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/answers.rs",
+      "name": "decode_answer",
+      "start_line": 303,
+      "end_line": 347,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "a_supplied_http_client_cannot_override_the_sdk_headers",
+      "start_line": 1432,
+      "end_line": 1466,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/answers.rs",
+      "name": "RawResponse::request_id",
+      "start_line": 145,
+      "end_line": 151,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "a_call_policy_retries_only_the_statuses_it_names",
+      "start_line": 1372,
+      "end_line": 1430,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/answers.rs",
+      "name": "validation",
+      "start_line": 504,
+      "end_line": 512,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "a_call_names_its_own_retry_policy",
+      "start_line": 983,
+      "end_line": 1000,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/answers.rs",
+      "name": "read",
+      "start_line": 349,
+      "end_line": 363,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "an_aborted_call_sends_no_retry",
+      "start_line": 1468,
+      "end_line": 1490,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/answers.rs",
+      "name": "SCORE_FIELDS",
+      "start_line": 411,
+      "end_line": 437,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "the_error_body_edge_cases_both_official_sdks_cover",
+      "start_line": 1074,
+      "end_line": 1133,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/answers.rs",
+      "name": "Answer",
+      "start_line": 82,
+      "end_line": 91,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/live.rs",
+      "name": "an_unknown_model_is_a_bad_request",
+      "start_line": 122,
+      "end_line": 160,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/answers.rs",
+      "name": "Answer::kind",
+      "start_line": 94,
+      "end_line": 102,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "a_request_names_the_state_the_model_and_the_questions",
+      "start_line": 320,
+      "end_line": 330,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/answers.rs",
+      "name": "CHOICE_FIELDS",
+      "start_line": 393,
+      "end_line": 409,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "the_models_envelope_names_the_first_field_it_cannot_read",
+      "start_line": 1188,
+      "end_line": 1227,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/answers.rs",
+      "name": "RawResponse",
+      "start_line": 117,
+      "end_line": 129,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "read_request",
+      "start_line": 200,
+      "end_line": 243,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/answers.rs",
+      "name": "SystemOneResponse::request_id",
+      "start_line": 206,
+      "end_line": 211,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "the_models_raw_listing_keeps_what_the_card_drops",
+      "start_line": 1229,
+      "end_line": 1247,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/answers.rs",
+      "name": "SystemOneResponse::noul",
+      "start_line": 213,
+      "end_line": 224,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/live.rs",
+      "name": "the_live_account_lists_its_models",
+      "start_line": 89,
+      "end_line": 103,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/answers.rs",
+      "name": "SystemOneResponse::choice",
+      "start_line": 226,
+      "end_line": 237,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "the_questions_are_checked_before_any_request",
+      "start_line": 909,
+      "end_line": 918,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/answers.rs",
+      "name": "SystemOneResponse::score",
+      "start_line": 239,
+      "end_line": 250,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/live.rs",
+      "name": "server_side_validation_names_the_field",
+      "start_line": 162,
+      "end_line": 191,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/answers.rs",
+      "name": "NOUL_FIELDS",
+      "start_line": 380,
+      "end_line": 391,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/answers.rs",
+      "name": "a_score_without_probabilities_decodes",
+      "start_line": 166,
+      "end_line": 186,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/answers.rs",
+      "name": "RawResponse::body",
+      "start_line": 132,
+      "end_line": 137,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "a_request_carries_the_headers_the_api_reads",
+      "start_line": 286,
+      "end_line": 318,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/answers.rs",
+      "name": "SystemOneResponse::answer",
+      "start_line": 276,
+      "end_line": 281,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "the_recorded_request_is_the_body_this_crate_sends",
+      "start_line": 351,
+      "end_line": 398,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/answers.rs",
+      "name": "SystemOneResponse::decode",
+      "start_line": 169,
+      "end_line": 198,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "a_body_that_breaks_mid_read_is_retried",
+      "start_line": 1249,
+      "end_line": 1265,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/answers.rs",
+      "name": "SystemOneResponse::raw",
+      "start_line": 200,
+      "end_line": 204,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/selected_answer.rs",
+      "name": "a_score_must_name_an_actual_canonical_level",
+      "start_line": 26,
+      "end_line": 40,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/answers.rs",
+      "name": "blame_field",
+      "start_line": 439,
+      "end_line": 471,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/blocking.rs",
+      "name": "the_blocking_client_sends_and_reads_one_request",
+      "start_line": 77,
+      "end_line": 112,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/answers.rs",
+      "name": "RawResponse::text",
+      "start_line": 139,
+      "end_line": 143,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "a_body_the_client_cannot_read_names_its_field",
+      "start_line": 930,
+      "end_line": 942,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/client.rs",
+      "name": "BlockingClient::list_models",
+      "start_line": 704,
+      "end_line": 711,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "the_models_listing_reads_the_envelope",
+      "start_line": 944,
+      "end_line": 967,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/answers.rs",
+      "name": "SystemOneResponse",
+      "start_line": 154,
+      "end_line": 166,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "a_models_body_of_another_shape_names_the_field",
+      "start_line": 969,
+      "end_line": 981,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/client.rs",
+      "name": "MODELS_PATH",
+      "start_line": 28,
+      "end_line": 29,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/blocking.rs",
+      "name": "the_blocking_client_lists_models",
+      "start_line": 114,
+      "end_line": 131,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/client.rs",
+      "name": "SystemOneRequest",
+      "start_line": 31,
+      "end_line": 59,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "the_message_is_read_out_of_the_body",
+      "start_line": 508,
+      "end_line": 543,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/client.rs",
+      "name": "SystemOneRequest::model",
+      "start_line": 76,
+      "end_line": 81,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "the_budget_bounds_a_body_that_stalls",
+      "start_line": 717,
+      "end_line": 747,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/client.rs",
+      "name": "Client::system_one_raw",
+      "start_line": 260,
+      "end_line": 276,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/answers.rs",
+      "name": "the_documented_response_decodes",
+      "start_line": 52,
+      "end_line": 76,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/client.rs",
+      "name": "SystemOneRequest::body",
+      "start_line": 115,
+      "end_line": 144,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "the_budget_stops_a_retry_before_it_waits",
+      "start_line": 656,
+      "end_line": 677,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/answers.rs",
+      "name": "Usage",
+      "start_line": 105,
+      "end_line": 115,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "a_request_that_reaches_nothing_is_a_connection_error",
+      "start_line": 893,
+      "end_line": 907,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/answers.rs",
+      "name": "Wire",
+      "start_line": 284,
+      "end_line": 294,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/answers.rs",
+      "name": "documented",
+      "start_line": 28,
+      "end_line": 50,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/client.rs",
+      "name": "Client::send_with",
+      "start_line": 359,
+      "end_line": 437,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/answers.rs",
+      "name": "the_answers_keep_the_order_the_response_sent",
+      "start_line": 78,
+      "end_line": 123,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/answers.rs",
+      "name": "Tag",
+      "start_line": 296,
+      "end_line": 301,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "a_status_the_policy_does_not_retry_runs_once",
+      "start_line": 622,
+      "end_line": 635,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/answers.rs",
+      "name": "blame_entry",
+      "start_line": 473,
+      "end_line": 482,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "the_endpoint_names_the_path_and_omits_url_credentials",
+      "start_line": 1156,
+      "end_line": 1186,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/answers.rs",
+      "name": "SystemOneResponse::nouls",
+      "start_line": 252,
+      "end_line": 258,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "a_body_that_stalls_mid_read_times_out",
+      "start_line": 1267,
+      "end_line": 1281,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/answers.rs",
+      "name": "SystemOneResponse::choices",
+      "start_line": 260,
+      "end_line": 266,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/surface.rs",
+      "name": "the_models_surface_reads_from_outside",
+      "start_line": 220,
+      "end_line": 232,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/answers.rs",
+      "name": "SystemOneResponse::scores",
+      "start_line": 268,
+      "end_line": 274,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "RECORDED_REQUEST",
+      "start_line": 22,
+      "end_line": 23,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/answers.rs",
+      "name": "blame_body",
+      "start_line": 484,
+      "end_line": 502,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/answers.rs",
+      "name": "a_typed_accessor_names_the_type_it_found_and_the_id_it_missed",
+      "start_line": 143,
+      "end_line": 164,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/client.rs",
+      "name": "Client::send_read",
+      "start_line": 353,
+      "end_line": 357,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "the_budget_is_a_deadline_the_first_attempt_cannot_outlive",
+      "start_line": 679,
+      "end_line": 715,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/client.rs",
+      "name": "Client::attempt_read",
+      "start_line": 439,
+      "end_line": 471,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/answers.rs",
+      "name": "an_unknown_answer_type_is_skipped",
+      "start_line": 201,
+      "end_line": 217,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/answers.rs",
+      "name": "Field",
+      "start_line": 365,
+      "end_line": 371,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "serve_with",
+      "start_line": 120,
+      "end_line": 180,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/answers.rs",
+      "name": "mismatch",
+      "start_line": 514,
+      "end_line": 521,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "a_caller_cannot_replace_the_headers_the_api_reads",
+      "start_line": 400,
+      "end_line": 448,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/client.rs",
+      "name": "Client::system_one",
+      "start_line": 240,
+      "end_line": 258,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "the_body_a_caller_records_is_the_body_the_wire_carries",
+      "start_line": 1050,
+      "end_line": 1072,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/client.rs",
+      "name": "Client::list_models",
+      "start_line": 294,
+      "end_line": 305,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/live.rs",
+      "name": "rich_descriptions_and_one_sided_criteria_reach_the_api",
+      "start_line": 193,
+      "end_line": 241,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/client.rs",
+      "name": "BlockingClient",
+      "start_line": 650,
+      "end_line": 659,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "serve",
+      "start_line": 105,
+      "end_line": 118,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/client.rs",
+      "name": "BlockingClient::new",
+      "start_line": 663,
+      "end_line": 678,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/surface.rs",
+      "name": "every_failure_reads_without_its_key_and_names_its_request",
+      "start_line": 148,
+      "end_line": 195,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/client.rs",
+      "name": "BlockingClient::system_one",
+      "start_line": 695,
+      "end_line": 702,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "extra_body_keeps_nulls_and_replaces_shallow_fields",
+      "start_line": 1527,
+      "end_line": 1547,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/lib.rs",
+      "name": "env::DEFAULT_MODEL",
+      "start_line": 250,
+      "end_line": 251,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/live.rs",
+      "name": "a_bad_key_is_an_authentication_error",
+      "start_line": 105,
+      "end_line": 120,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/answers.rs",
+      "name": "Shape",
+      "start_line": 373,
+      "end_line": 378,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/answers.rs",
+      "name": "raw",
+      "start_line": 14,
+      "end_line": 26,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/client.rs",
+      "name": "SystemOneRequest::retry",
+      "start_line": 83,
+      "end_line": 92,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "extra_body_fields_are_merged_last",
+      "start_line": 450,
+      "end_line": 464,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/client.rs",
+      "name": "SystemOneRequest::timeout",
+      "start_line": 94,
+      "end_line": 99,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "a_server_wait_past_the_budget_never_runs",
+      "start_line": 749,
+      "end_line": 779,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/client.rs",
+      "name": "SystemOneRequest::headers",
+      "start_line": 101,
+      "end_line": 106,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/surface.rs",
+      "name": "the_blocking_client_builds_from_the_same_settings",
+      "start_line": 241,
+      "end_line": 249,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/transport.rs",
+      "name": "SDK_HEADER",
+      "start_line": 23,
+      "end_line": 24,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "each_error_status_names_its_kind",
+      "start_line": 466,
+      "end_line": 506,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/client.rs",
+      "name": "SYSTEM_ONE_PATH",
+      "start_line": 25,
+      "end_line": 26,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "a_retried_status_runs_again_and_says_which_attempt_it_is",
+      "start_line": 589,
+      "end_line": 603,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/client.rs",
+      "name": "Client::default_model",
+      "start_line": 209,
+      "end_line": 213,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "a_client_reads_back_its_settings",
+      "start_line": 1029,
+      "end_line": 1048,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/client.rs",
+      "name": "request_id",
+      "start_line": 643,
+      "end_line": 648,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "zero_backoff_still_retries",
+      "start_line": 1328,
+      "end_line": 1349,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/client.rs",
+      "name": "BlockingClient::from_env",
+      "start_line": 680,
+      "end_line": 687,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/selected_answer.rs",
+      "name": "decode",
+      "start_line": 6,
+      "end_line": 12,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/models.rs",
+      "name": "Models::list",
+      "start_line": 75,
+      "end_line": 96,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "Delivery",
+      "start_line": 37,
+      "end_line": 45,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/client.rs",
+      "name": "SystemOneRequest::new",
+      "start_line": 62,
+      "end_line": 74,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "drop_connections",
+      "start_line": 182,
+      "end_line": 198,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/client.rs",
+      "name": "Client::models",
+      "start_line": 234,
+      "end_line": 238,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "asking",
+      "start_line": 278,
+      "end_line": 284,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/client.rs",
+      "name": "BlockingClient::client",
+      "start_line": 689,
+      "end_line": 693,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "the_last_failure_of_an_exhausted_policy_is_the_one_returned",
+      "start_line": 1293,
+      "end_line": 1310,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/client.rs",
+      "name": "SystemOneRequest::extra_body",
+      "start_line": 108,
+      "end_line": 113,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "the_retry_count_names_every_attempt",
+      "start_line": 1351,
+      "end_line": 1370,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/client.rs",
+      "name": "Client::prepare",
+      "start_line": 307,
+      "end_line": 346,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "array_and_null_entries_reach_the_wire",
+      "start_line": 1492,
+      "end_line": 1525,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/client.rs",
+      "name": "Client::attempt",
+      "start_line": 473,
+      "end_line": 545,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/questions.rs",
+      "name": "a_question_the_checks_do_not_know_is_left_to_the_api",
+      "start_line": 276,
+      "end_line": 296,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/questions.rs",
+      "name": "Choice::option",
+      "start_line": 233,
+      "end_line": 238,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/answers.rs",
+      "name": "the_recorded_response_decodes",
+      "start_line": 325,
+      "end_line": 359,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/questions.rs",
+      "name": "Choice::bare_option",
+      "start_line": 240,
+      "end_line": 245,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "Seen",
+      "start_line": 84,
+      "end_line": 91,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/client.rs",
+      "name": "Client::prepare_system_one",
+      "start_line": 278,
+      "end_line": 292,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "Seen::header",
+      "start_line": 94,
+      "end_line": 97,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/models.rs",
+      "name": "invalid",
+      "start_line": 130,
+      "end_line": 138,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "client",
+      "start_line": 245,
+      "end_line": 257,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/client.rs",
+      "name": "endpoint_of",
+      "start_line": 629,
+      "end_line": 641,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "a_204_carries_no_body",
+      "start_line": 1283,
+      "end_line": 1291,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/error.rs",
+      "name": "Error::request_id",
+      "start_line": 147,
+      "end_line": 155,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/surface.rs",
+      "name": "the_retry_surface_reads_from_outside",
+      "start_line": 197,
+      "end_line": 218,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/lib.rs",
+      "name": "VERSION",
+      "start_line": 220,
+      "end_line": 222,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "RECORDED_RESPONSE",
+      "start_line": 25,
+      "end_line": 26,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/lib.rs",
+      "name": "env::LOG_LEVEL",
+      "start_line": 253,
+      "end_line": 256,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "Reply::new",
+      "start_line": 48,
+      "end_line": 57,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/models.rs",
+      "name": "read_card",
+      "start_line": 111,
+      "end_line": 128,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "Reply::truncated",
+      "start_line": 71,
+      "end_line": 75,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/questions.rs",
+      "name": "check_raw",
+      "start_line": 516,
+      "end_line": 550,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "an_empty_body_says_there_was_none",
+      "start_line": 545,
+      "end_line": 554,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/client.rs",
+      "name": "Client::send",
+      "start_line": 348,
+      "end_line": 351,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "the_retries_run_out_and_the_last_failure_is_returned",
+      "start_line": 605,
+      "end_line": 620,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/client.rs",
+      "name": "Client::failure",
+      "start_line": 547,
+      "end_line": 578,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "a_server_delay_sets_the_wait",
+      "start_line": 637,
+      "end_line": 654,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/client.rs",
+      "name": "Prepared",
+      "start_line": 588,
+      "end_line": 598,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "an_attempt_past_its_timeout_is_a_timeout",
+      "start_line": 848,
+      "end_line": 867,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/error.rs",
+      "name": "REQUEST_ID_HEADER",
+      "start_line": 21,
+      "end_line": 22,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "a_client_refuses_settings_it_cannot_use",
+      "start_line": 1002,
+      "end_line": 1027,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/lib.rs",
+      "name": "Result",
+      "start_line": 224,
+      "end_line": 225,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "a_rate_limit_names_the_wait_the_server_asked_for",
+      "start_line": 1135,
+      "end_line": 1154,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/client.rs",
+      "name": "Inner",
+      "start_line": 156,
+      "end_line": 167,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "a_connection_error_is_retried_then_the_last_one_is_returned",
+      "start_line": 1312,
+      "end_line": 1326,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/client.rs",
+      "name": "Client::new",
+      "start_line": 170,
+      "end_line": 192,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "Outcome",
+      "start_line": 20,
+      "end_line": 20,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/client.rs",
+      "name": "Client::default_headers",
+      "start_line": 227,
+      "end_line": 232,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "Reply",
+      "start_line": 28,
+      "end_line": 35,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/lib.rs",
+      "name": "defaults::BASE_URL",
+      "start_line": 232,
+      "end_line": 233,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "Reply::header",
+      "start_line": 59,
+      "end_line": 63,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/lib.rs",
+      "name": "env::API_KEY",
+      "start_line": 244,
+      "end_line": 245,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "Reply::after",
+      "start_line": 65,
+      "end_line": 69,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/lib.rs",
+      "name": "env::BASE_URL",
+      "start_line": 247,
+      "end_line": 248,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "Reply::stalled",
+      "start_line": 77,
+      "end_line": 81,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/models.rs",
+      "name": "ModelCard",
+      "start_line": 13,
+      "end_line": 24,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "Seen::json",
+      "start_line": 99,
+      "end_line": 102,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/models.rs",
+      "name": "Models",
+      "start_line": 63,
+      "end_line": 67,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "eager",
+      "start_line": 259,
+      "end_line": 268,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/questions.rs",
+      "name": "Choice",
+      "start_line": 213,
+      "end_line": 221,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/client.rs",
+      "name": "once",
+      "start_line": 270,
+      "end_line": 276,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/retry.rs",
+      "name": "RetryPolicy",
+      "start_line": 30,
+      "end_line": 76,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/live.rs",
+      "name": "once_client",
+      "start_line": 26,
+      "end_line": 32,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/client.rs",
+      "name": "Client::from_env",
+      "start_line": 194,
+      "end_line": 201,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/answers.rs",
+      "name": "an_unknown_field_is_ignored",
+      "start_line": 219,
+      "end_line": 233,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/client.rs",
+      "name": "Failed",
+      "start_line": 581,
+      "end_line": 586,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/live.rs",
+      "name": "Outcome",
+      "start_line": 24,
+      "end_line": 24,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/lib.rs",
+      "name": "defaults::TIMEOUT",
+      "start_line": 238,
+      "end_line": 239,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/questions.rs",
+      "name": "a_choice_names_at_most_255_options",
+      "start_line": 217,
+      "end_line": 229,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/models.rs",
+      "name": "Models::new",
+      "start_line": 70,
+      "end_line": 73,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/answers.rs",
+      "name": "a_response_without_usage_decodes",
+      "start_line": 188,
+      "end_line": 199,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/questions.rs",
+      "name": "Noul",
+      "start_line": 167,
+      "end_line": 175,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/answers.rs",
+      "name": "the_recorded_distributions_sum_to_one",
+      "start_line": 361,
+      "end_line": 376,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/client.rs",
+      "name": "Client",
+      "start_line": 147,
+      "end_line": 154,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/questions.rs",
+      "name": "a_request_asks_at_least_one_question",
+      "start_line": 184,
+      "end_line": 191,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/client.rs",
+      "name": "Client::base_url",
+      "start_line": 203,
+      "end_line": 207,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/questions.rs",
+      "name": "a_score_names_two_to_ten_levels",
+      "start_line": 193,
+      "end_line": 215,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/client.rs",
+      "name": "Client::timeout",
+      "start_line": 215,
+      "end_line": 219,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/answers.rs",
+      "name": "a_body_that_is_not_json_names_the_body",
+      "start_line": 306,
+      "end_line": 323,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/client.rs",
+      "name": "Client::retry",
+      "start_line": 221,
+      "end_line": 225,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/questions.rs",
+      "name": "a_noul_serializes_to_the_wire_shape",
+      "start_line": 52,
+      "end_line": 81,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/client.rs",
+      "name": "Prepared::body_text",
+      "start_line": 601,
+      "end_line": 608,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/questions.rs",
+      "name": "a_question_set_keeps_its_order_and_names_its_types",
+      "start_line": 146,
+      "end_line": 174,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/error.rs",
+      "name": "ApiError",
+      "start_line": 217,
+      "end_line": 232,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/answers.rs",
+      "name": "the_filtered_views_hold_one_type_each",
+      "start_line": 125,
+      "end_line": 141,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/questions.rs",
+      "name": "NoulCriteria",
+      "start_line": 122,
+      "end_line": 130,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/blocking.rs",
+      "name": "serve_after",
+      "start_line": 21,
+      "end_line": 65,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/questions.rs",
+      "name": "Score",
+      "start_line": 261,
+      "end_line": 269,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/questions.rs",
+      "name": "a_choice_keeps_the_order_its_options_were_added_in",
+      "start_line": 83,
+      "end_line": 107,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/questions.rs",
+      "name": "check_score",
+      "start_line": 482,
+      "end_line": 501,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/questions.rs",
+      "name": "a_score_serializes_its_levels_in_order",
+      "start_line": 109,
+      "end_line": 133,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/questions.rs",
+      "name": "check_choice",
+      "start_line": 503,
+      "end_line": 514,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/answers.rs",
+      "name": "RECORDED_RESPONSE",
+      "start_line": 10,
+      "end_line": 12,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/error.rs",
+      "name": "ApiErrorKind",
+      "start_line": 173,
+      "end_line": 196,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/logging.rs",
+      "name": "an_answer_logs_one_info_summary",
+      "start_line": 234,
+      "end_line": 257,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/questions.rs",
+      "name": "MAX_CHOICE_OPTIONS",
+      "start_line": 17,
+      "end_line": 18,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/questions.rs",
+      "name": "an_empty_noul_criteria_sends_an_empty_object",
+      "start_line": 298,
+      "end_line": 307,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/questions.rs",
+      "name": "MIN_SCORE_LEVELS",
+      "start_line": 20,
+      "end_line": 21,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/answers.rs",
+      "name": "Outcome",
+      "start_line": 8,
+      "end_line": 8,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/questions.rs",
+      "name": "MAX_SCORE_LEVELS",
+      "start_line": 23,
+      "end_line": 24,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/blocking.rs",
+      "name": "client",
+      "start_line": 72,
+      "end_line": 75,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/questions.rs",
+      "name": "Noul::with_criteria",
+      "start_line": 187,
+      "end_line": 194,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/blocking.rs",
+      "name": "serve_once",
+      "start_line": 67,
+      "end_line": 70,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/questions.rs",
+      "name": "Noul::serialize",
+      "start_line": 198,
+      "end_line": 210,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/surface.rs",
+      "name": "the_defaults_and_the_variable_names_are_the_official_ones",
+      "start_line": 21,
+      "end_line": 31,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/questions.rs",
+      "name": "Choice::new",
+      "start_line": 224,
+      "end_line": 231,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/surface.rs",
+      "name": "a_key_never_reaches_a_log_line_or_a_failure",
+      "start_line": 125,
+      "end_line": 146,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/questions.rs",
+      "name": "Choice::serialize",
+      "start_line": 249,
+      "end_line": 258,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/surface.rs",
+      "name": "the_result_alias_names_this_crate_s_failure",
+      "start_line": 234,
+      "end_line": 239,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/questions.rs",
+      "name": "Score::new",
+      "start_line": 272,
+      "end_line": 279,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/blocking.rs",
+      "name": "Outcome",
+      "start_line": 16,
+      "end_line": 16,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/questions.rs",
+      "name": "Score::level",
+      "start_line": 281,
+      "end_line": 286,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/blocking.rs",
+      "name": "RECORDED_RESPONSE",
+      "start_line": 18,
+      "end_line": 19,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/questions.rs",
+      "name": "Score::serialize",
+      "start_line": 290,
+      "end_line": 299,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/logging.rs",
+      "name": "request_complete",
+      "start_line": 136,
+      "end_line": 152,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/questions.rs",
+      "name": "NoulCriteria::new",
+      "start_line": 133,
+      "end_line": 137,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/logging.rs",
+      "name": "Capture::read",
+      "start_line": 26,
+      "end_line": 29,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/questions.rs",
+      "name": "NoulCriteria::when_true",
+      "start_line": 139,
+      "end_line": 144,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/surface.rs",
+      "name": "Outcome",
+      "start_line": 19,
+      "end_line": 19,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/questions.rs",
+      "name": "NoulCriteria::when_false",
+      "start_line": 146,
+      "end_line": 151,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/questions.rs",
+      "name": "a_question_failure_reads_with_its_id",
+      "start_line": 309,
+      "end_line": 326,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/questions.rs",
+      "name": "NoulCriteria::serialize",
+      "start_line": 155,
+      "end_line": 164,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/questions.rs",
+      "name": "a_set_built_from_an_iterator_reads_the_same",
+      "start_line": 176,
+      "end_line": 182,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/questions.rs",
+      "name": "Noul::new",
+      "start_line": 178,
+      "end_line": 185,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/questions.rs",
+      "name": "a_question_written_out_as_json_names_a_type_and_its_criteria",
+      "start_line": 231,
+      "end_line": 247,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/questions.rs",
+      "name": "Question",
+      "start_line": 302,
+      "end_line": 316,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/logging.rs",
+      "name": "serve",
+      "start_line": 91,
+      "end_line": 134,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/error.rs",
+      "name": "ApiError::message",
+      "start_line": 257,
+      "end_line": 274,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/logging.rs",
+      "name": "nothing_is_logged_above_the_level",
+      "start_line": 310,
+      "end_line": 322,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/error.rs",
+      "name": "extract_message",
+      "start_line": 295,
+      "end_line": 337,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/questions.rs",
+      "name": "a_bare_scalar_becomes_text",
+      "start_line": 24,
+      "end_line": 31,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/questions.rs",
+      "name": "Questions",
+      "start_line": 367,
+      "end_line": 384,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/questions.rs",
+      "name": "a_question_written_out_as_json_is_sent_as_it_stands",
+      "start_line": 135,
+      "end_line": 144,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/error.rs",
+      "name": "describe_question",
+      "start_line": 164,
+      "end_line": 171,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/logging.rs",
+      "name": "BODY",
+      "start_line": 17,
+      "end_line": 19,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/error.rs",
+      "name": "describe_entry",
+      "start_line": 339,
+      "end_line": 357,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/logging.rs",
+      "name": "a_credential_never_reaches_a_log_line",
+      "start_line": 175,
+      "end_line": 232,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/retry.rs",
+      "name": "parse_seconds",
+      "start_line": 234,
+      "end_line": 247,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/questions.rs",
+      "name": "Outcome",
+      "start_line": 9,
+      "end_line": 9,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/error.rs",
+      "name": "ApiError::new",
+      "start_line": 235,
+      "end_line": 255,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/questions.rs",
+      "name": "an_entry_takes_the_four_shapes_the_api_reads",
+      "start_line": 11,
+      "end_line": 22,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/error.rs",
+      "name": "ResponseBody",
+      "start_line": 24,
+      "end_line": 33,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/questions.rs",
+      "name": "an_entry_takes_anything_that_serializes",
+      "start_line": 33,
+      "end_line": 50,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/error.rs",
+      "name": "ResponseBody::as_json",
+      "start_line": 36,
+      "end_line": 43,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/questions.rs",
+      "name": "an_entry_takes_anything_that_serializes::Ticket",
+      "start_line": 35,
+      "end_line": 39,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/error.rs",
+      "name": "ResponseBody::as_text",
+      "start_line": 45,
+      "end_line": 52,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/logging.rs",
+      "name": "requests_are_numbered",
+      "start_line": 259,
+      "end_line": 274,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/error.rs",
+      "name": "ApiErrorKind::of",
+      "start_line": 199,
+      "end_line": 214,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/logging.rs",
+      "name": "asking",
+      "start_line": 167,
+      "end_line": 173,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/error.rs",
+      "name": "ApiError::retry_after",
+      "start_line": 276,
+      "end_line": 280,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/logging.rs",
+      "name": "client",
+      "start_line": 154,
+      "end_line": 165,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/error.rs",
+      "name": "ApiError::fmt",
+      "start_line": 284,
+      "end_line": 290,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/logging.rs",
+      "name": "Outcome",
+      "start_line": 15,
+      "end_line": 15,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/error.rs",
+      "name": "MAX_BODY_IN_MESSAGE",
+      "start_line": 17,
+      "end_line": 19,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/logging.rs",
+      "name": "Capture",
+      "start_line": 21,
+      "end_line": 23,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/error.rs",
+      "name": "ResponseBody::fmt",
+      "start_line": 56,
+      "end_line": 61,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/logging.rs",
+      "name": "Capture::write",
+      "start_line": 33,
+      "end_line": 39,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/error.rs",
+      "name": "Error::connection",
+      "start_line": 139,
+      "end_line": 145,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/logging.rs",
+      "name": "Capture::flush",
+      "start_line": 41,
+      "end_line": 43,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/error.rs",
+      "name": "Error::from",
+      "start_line": 159,
+      "end_line": 161,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/logging.rs",
+      "name": "Capture::Writer",
+      "start_line": 47,
+      "end_line": 47,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/error.rs",
+      "name": "render_part",
+      "start_line": 359,
+      "end_line": 365,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/logging.rs",
+      "name": "Capture::make_writer",
+      "start_line": 49,
+      "end_line": 51,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/error.rs",
+      "name": "truncate",
+      "start_line": 367,
+      "end_line": 374,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/logging.rs",
+      "name": "logged",
+      "start_line": 54,
+      "end_line": 65,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/questions.rs",
+      "name": "Question::kind",
+      "start_line": 319,
+      "end_line": 329,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/logging.rs",
+      "name": "Reply",
+      "start_line": 67,
+      "end_line": 72,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/models.rs",
+      "name": "ListOptions",
+      "start_line": 26,
+      "end_line": 32,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/logging.rs",
+      "name": "Reply::new",
+      "start_line": 75,
+      "end_line": 82,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/questions.rs",
+      "name": "Question::serialize",
+      "start_line": 357,
+      "end_line": 364,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/logging.rs",
+      "name": "Reply::header",
+      "start_line": 84,
+      "end_line": 88,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/retry.rs",
+      "name": "parse_retry_after_at",
+      "start_line": 208,
+      "end_line": 227,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/retry.rs",
+      "name": "every_field_is_checked",
+      "start_line": 278,
+      "end_line": 301,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/models.rs",
+      "name": "ListOptions::new",
+      "start_line": 35,
+      "end_line": 39,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/retry.rs",
+      "name": "a_rate_limit_error_names_the_wait",
+      "start_line": 303,
+      "end_line": 335,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/models.rs",
+      "name": "ListOptions::retry",
+      "start_line": 41,
+      "end_line": 46,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/retry.rs",
+      "name": "api",
+      "start_line": 19,
+      "end_line": 29,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/models.rs",
+      "name": "ListOptions::timeout",
+      "start_line": 48,
+      "end_line": 53,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/retry.rs",
+      "name": "a_server_delay_reads_an_http_date",
+      "start_line": 220,
+      "end_line": 234,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/models.rs",
+      "name": "ListOptions::headers",
+      "start_line": 55,
+      "end_line": 60,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/retry.rs",
+      "name": "the_defaults_are_the_ones_both_official_sdks_ship",
+      "start_line": 31,
+      "end_line": 45,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/questions.rs",
+      "name": "Questions::insert",
+      "start_line": 400,
+      "end_line": 407,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/retry.rs",
+      "name": "the_jitter_takes_a_fraction_off_the_delay",
+      "start_line": 77,
+      "end_line": 101,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/retry.rs",
+      "name": "RetryPolicy::delay",
+      "start_line": 172,
+      "end_line": 176,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/retry.rs",
+      "name": "a_server_delay_reads_seconds_a_date_and_nothing",
+      "start_line": 147,
+      "end_line": 179,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/retry.rs",
+      "name": "RetryPolicy::delay_with",
+      "start_line": 178,
+      "end_line": 195,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/retry.rs",
+      "name": "a_failure_is_retried_by_its_kind",
+      "start_line": 236,
+      "end_line": 262,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/retry.rs",
+      "name": "parse_retry_after",
+      "start_line": 198,
+      "end_line": 206,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/retry.rs",
+      "name": "Outcome",
+      "start_line": 10,
+      "end_line": 10,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/questions.rs",
+      "name": "Entry::json",
+      "start_line": 45,
+      "end_line": 54,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/retry.rs",
+      "name": "headers",
+      "start_line": 12,
+      "end_line": 17,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/retry.rs",
+      "name": "RETRY_AFTER_MS_HEADER",
+      "start_line": 17,
+      "end_line": 19,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/retry.rs",
+      "name": "the_retried_statuses_are_408_429_and_every_5xx",
+      "start_line": 47,
+      "end_line": 56,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/retry.rs",
+      "name": "RETRY_COUNT_HEADER",
+      "start_line": 24,
+      "end_line": 25,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/retry.rs",
+      "name": "the_delay_doubles_up_to_the_cap",
+      "start_line": 58,
+      "end_line": 75,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/retry.rs",
+      "name": "RetryPolicy::default",
+      "start_line": 79,
+      "end_line": 96,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/retry.rs",
+      "name": "a_server_delay_replaces_the_computed_one",
+      "start_line": 103,
+      "end_line": 134,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/retry.rs",
+      "name": "RetryPolicy::fmt",
+      "start_line": 100,
+      "end_line": 116,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/retry.rs",
+      "name": "the_millisecond_header_wins_over_the_second_one",
+      "start_line": 136,
+      "end_line": 145,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/retry.rs",
+      "name": "RetryPolicy::retries_error",
+      "start_line": 156,
+      "end_line": 170,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/retry.rs",
+      "name": "a_predicate_adds_to_the_built_in_rules",
+      "start_line": 264,
+      "end_line": 276,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/retry.rs",
+      "name": "header",
+      "start_line": 229,
+      "end_line": 232,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/retry.rs",
+      "name": "the_policy_reads_without_its_predicate",
+      "start_line": 337,
+      "end_line": 348,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/questions.rs",
+      "name": "Question::from",
+      "start_line": 333,
+      "end_line": 335,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/env.rs",
+      "name": "resolution_is_explicit_then_env_then_default",
+      "start_line": 48,
+      "end_line": 103,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/questions.rs",
+      "name": "Question::from",
+      "start_line": 339,
+      "end_line": 341,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/env.rs",
+      "name": "KEY",
+      "start_line": 11,
+      "end_line": 11,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/questions.rs",
+      "name": "Question::from",
+      "start_line": 345,
+      "end_line": 347,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/env.rs",
+      "name": "BASE",
+      "start_line": 12,
+      "end_line": 12,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/questions.rs",
+      "name": "Question::from",
+      "start_line": 351,
+      "end_line": 353,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/env.rs",
+      "name": "set",
+      "start_line": 15,
+      "end_line": 25,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/questions.rs",
+      "name": "Questions::new",
+      "start_line": 387,
+      "end_line": 391,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/env.rs",
+      "name": "Saved",
+      "start_line": 27,
+      "end_line": 28,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/questions.rs",
+      "name": "Questions::get",
+      "start_line": 409,
+      "end_line": 413,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/env.rs",
+      "name": "Saved::take",
+      "start_line": 31,
+      "end_line": 37,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/retry.rs",
+      "name": "RETRY_AFTER_HEADER",
+      "start_line": 21,
+      "end_line": 22,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/env.rs",
+      "name": "Outcome",
+      "start_line": 9,
+      "end_line": 9,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/retry.rs",
+      "name": "RetryPredicate",
+      "start_line": 27,
+      "end_line": 28,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/tests/env.rs",
+      "name": "Saved::drop",
+      "start_line": 41,
+      "end_line": 45,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/retry.rs",
+      "name": "RetryPolicy::retries_status",
+      "start_line": 150,
+      "end_line": 154,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/questions.rs",
+      "name": "Entry",
+      "start_line": 26,
+      "end_line": 42,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/questions.rs",
+      "name": "Entry::to_value",
+      "start_line": 56,
+      "end_line": 65,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/questions.rs",
+      "name": "Entry::is_null",
+      "start_line": 67,
+      "end_line": 71,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/questions.rs",
+      "name": "Entry::from",
+      "start_line": 75,
+      "end_line": 77,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/questions.rs",
+      "name": "Entry::from",
+      "start_line": 81,
+      "end_line": 83,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/questions.rs",
+      "name": "Entry::from",
+      "start_line": 87,
+      "end_line": 89,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/questions.rs",
+      "name": "Entry::from",
+      "start_line": 93,
+      "end_line": 95,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/questions.rs",
+      "name": "Entry::from",
+      "start_line": 99,
+      "end_line": 107,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/questions.rs",
+      "name": "Entry::serialize",
+      "start_line": 111,
+      "end_line": 113,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/questions.rs",
+      "name": "Entry::deserialize",
+      "start_line": 117,
+      "end_line": 119,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/questions.rs",
+      "name": "Questions::with",
+      "start_line": 393,
+      "end_line": 398,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/questions.rs",
+      "name": "Questions::len",
+      "start_line": 415,
+      "end_line": 419,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/questions.rs",
+      "name": "Questions::is_empty",
+      "start_line": 421,
+      "end_line": 425,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/questions.rs",
+      "name": "Questions::iter",
+      "start_line": 427,
+      "end_line": 430,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/questions.rs",
+      "name": "Questions::from",
+      "start_line": 460,
+      "end_line": 462,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/questions.rs",
+      "name": "Questions::from_iter",
+      "start_line": 466,
+      "end_line": 473,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/questions.rs",
+      "name": "Questions::serialize",
+      "start_line": 477,
+      "end_line": 479,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/transport.rs",
+      "name": "redact",
+      "start_line": 88,
+      "end_line": 112,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/transport.rs",
+      "name": "headers",
+      "start_line": 47,
+      "end_line": 75,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/config.rs",
+      "name": "Config",
+      "start_line": 69,
+      "end_line": 91,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/config.rs",
+      "name": "Config::resolve",
+      "start_line": 157,
+      "end_line": 208,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/transport.rs",
+      "name": "RUNTIME_HEADER",
+      "start_line": 26,
+      "end_line": 27,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/transport.rs",
+      "name": "AGENT",
+      "start_line": 32,
+      "end_line": 33,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/config.rs",
+      "name": "Config::default_headers",
+      "start_line": 141,
+      "end_line": 147,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/transport.rs",
+      "name": "parse_body",
+      "start_line": 128,
+      "end_line": 143,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/config.rs",
+      "name": "ApiKey::expose",
+      "start_line": 37,
+      "end_line": 42,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/config.rs",
+      "name": "Config::api_key",
+      "start_line": 100,
+      "end_line": 105,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/config.rs",
+      "name": "Config::base_url",
+      "start_line": 107,
+      "end_line": 114,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/config.rs",
+      "name": "from_env",
+      "start_line": 222,
+      "end_line": 229,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/transport.rs",
+      "name": "JSON",
+      "start_line": 29,
+      "end_line": 30,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/config.rs",
+      "name": "ApiKey",
+      "start_line": 17,
+      "end_line": 28,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/config.rs",
+      "name": "Config::http_client",
+      "start_line": 149,
+      "end_line": 155,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/config.rs",
+      "name": "Resolved",
+      "start_line": 211,
+      "end_line": 220,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/transport.rs",
+      "name": "RUNTIME",
+      "start_line": 35,
+      "end_line": 45,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/transport.rs",
+      "name": "name",
+      "start_line": 77,
+      "end_line": 81,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/transport.rs",
+      "name": "value",
+      "start_line": 83,
+      "end_line": 86,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/transport.rs",
+      "name": "redact::KEYS",
+      "start_line": 96,
+      "end_line": 96,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/transport.rs",
+      "name": "redact::OPAQUE",
+      "start_line": 97,
+      "end_line": 97,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/transport.rs",
+      "name": "mask",
+      "start_line": 114,
+      "end_line": 126,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/config.rs",
+      "name": "ApiKey::new",
+      "start_line": 31,
+      "end_line": 35,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/config.rs",
+      "name": "ApiKey::fmt",
+      "start_line": 46,
+      "end_line": 48,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/config.rs",
+      "name": "ApiKey::fmt",
+      "start_line": 52,
+      "end_line": 54,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/config.rs",
+      "name": "ApiKey::from",
+      "start_line": 58,
+      "end_line": 60,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/config.rs",
+      "name": "ApiKey::from",
+      "start_line": 64,
+      "end_line": 66,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/config.rs",
+      "name": "Config::new",
+      "start_line": 94,
+      "end_line": 98,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/config.rs",
+      "name": "Config::timeout",
+      "start_line": 125,
+      "end_line": 131,
+      "reason": "candidate_state_budget"
+    },
+    {
+      "path": "crates/jev/src/config.rs",
+      "name": "Config::retry",
+      "start_line": 133,
+      "end_line": 139,
+      "reason": "candidate_state_budget"
+    }
+  ],
+  "limits": {
+    "candidate_state_bytes": 28672,
+    "max_candidates": 32,
+    "max_files": 48,
+    "pack_bytes": 16384,
+    "unit_bytes": 6000,
+    "slice_bytes": 2400
+  },
+  "instruction_policy": "Optional source evidence only; supply complete applicable instructions separately.",
+  "index_sha256": "772c563dacdb48a6647f54a2d0f39ad0b73323542f9a3dc887d12471d1e9062c",
+  "candidate_pool_sha256": "d05d31eae0eb99015860a6958254f48a55144773557cc3ea2e071b88cf67c69e",
+  "candidate_state_bytes": 28400,
+  "wall_s": 2.233960499987006
+}

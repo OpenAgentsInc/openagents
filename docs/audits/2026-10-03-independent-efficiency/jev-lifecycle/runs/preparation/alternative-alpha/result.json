@@ -1,0 +1,194 @@
+{
+  "task_id": "alternative-alpha",
+  "live": true,
+  "source_commit": "09f4e0915150f503e332c2b213d24f793c433f3b",
+  "calls": [
+    {
+      "schema": "jev.gateway.call.v1",
+      "endpoint": "https://ai-gateway.vercel.sh/typesafe/v1/systemone",
+      "requested_model": "typesafe-ai/jev",
+      "returned_model": "typesafe-ai/jev",
+      "version_pinned": false,
+      "model_identity": "unversioned_gateway_alias",
+      "attempts": 1,
+      "started_at": "2026-10-03T12:07:55.286512Z",
+      "finished_at": "2026-10-03T12:07:55.804512Z",
+      "launch_intent_at": "2026-10-03T12:07:55.300579Z",
+      "outcome": "answered",
+      "answers_valid": true,
+      "http_status": 200,
+      "request_sha256": "373257b4185eac4bbccd5649a8b86035ef6e45a3b67ddf774456463d16bca7ac",
+      "request_bytes": 44663,
+      "response_sha256": "6931bf13127c06c5a068006074fb72eecd06ff8334c139a3a733341ed59a2384",
+      "response_bytes": 8054,
+      "response_artifact": "response.json",
+      "response_headers": {
+        "x-vercel-id": "cle1::cle1::qcphq-1791029275499-9b14d325ab2d"
+      },
+      "usage": {
+        "input_tokens": 13324,
+        "output_tokens": 1462
+      },
+      "gateway_metadata": {
+        "routing": {
+          "originalModelId": "typesafe-ai/jev",
+          "resolvedProvider": "digitalocean",
+          "fallbacksAvailable": [
+            "typesafe-ai"
+          ],
+          "planningReasoning": "System credentials planned for: digitalocean, typesafe-ai. Total execution order: typesafe-ai(system) → digitalocean(system)",
+          "canonicalSlug": "typesafe-ai/jev",
+          "finalProvider": "typesafe-ai",
+          "modelAttemptCount": 1,
+          "modelAttempts": [
+            {
+              "canonicalSlug": "typesafe-ai/jev",
+              "success": true,
+              "providerAttemptCount": 1,
+              "providerAttempts": [
+                {
+                  "provider": "typesafe-ai",
+                  "credentialType": "system",
+                  "success": true,
+                  "startTime": 1791029275590,
+                  "endTime": 1791029275791,
+                  "statusCode": 200
+                }
+              ]
+            }
+          ],
+          "totalProviderAttemptCount": 1
+        },
+        "cost": "0.000559608",
+        "marketCost": "0.000559608",
+        "surchargeCost": "0",
+        "gatewayCost": "0.000559608",
+        "inferenceCost": "0.000559608",
+        "inputInferenceCost": "0.000559608",
+        "outputInferenceCost": "0",
+        "generationId": "gen_01M40TKTWVQBTBJW9Q28H9BERR"
+      },
+      "cost_usd": 0.000559608,
+      "cost_usd_decimal": "0.000559608",
+      "cost_status": "gateway_reported",
+      "accounting_error": null,
+      "error_type": null,
+      "status": "answered",
+      "wall_s": 0.5180122500751168
+    },
+    {
+      "schema": "jev.gateway.call.v1",
+      "endpoint": "https://ai-gateway.vercel.sh/typesafe/v1/systemone",
+      "requested_model": "typesafe-ai/jev",
+      "returned_model": "typesafe-ai/jev",
+      "version_pinned": false,
+      "model_identity": "unversioned_gateway_alias",
+      "attempts": 1,
+      "started_at": "2026-10-03T12:07:55.806478Z",
+      "finished_at": "2026-10-03T12:07:56.247711Z",
+      "launch_intent_at": "2026-10-03T12:07:55.815349Z",
+      "outcome": "answered",
+      "answers_valid": true,
+      "http_status": 200,
+      "request_sha256": "9c2af8a94fabe9d47cfb85125f651530fe78d5f195d8e4f1d8df4ee86b7fa750",
+      "request_bytes": 25023,
+      "response_sha256": "3f938162409aa0ab9eaa587a6c6c86671dfb687da8570a28fc0fe8d7af251dd3",
+      "response_bytes": 1301,
+      "response_artifact": "response.json",
+      "response_headers": {
+        "x-vercel-id": "cle1::cle1::77lds-1791029275993-296e7ad9d664"
+      },
+      "usage": {
+        "input_tokens": 9269,
+        "output_tokens": 189
+      },
+      "gateway_metadata": {
+        "routing": {
+          "originalModelId": "typesafe-ai/jev",
+          "resolvedProvider": "digitalocean",
+          "fallbacksAvailable": [
+            "typesafe-ai"
+          ],
+          "planningReasoning": "System credentials planned for: digitalocean, typesafe-ai. Total execution order: typesafe-ai(system) → digitalocean(system)",
+          "canonicalSlug": "typesafe-ai/jev",
+          "finalProvider": "typesafe-ai",
+          "modelAttemptCount": 1,
+          "modelAttempts": [
+            {
+              "canonicalSlug": "typesafe-ai/jev",
+              "success": true,
+              "providerAttemptCount": 1,
+              "providerAttempts": [
+                {
+                  "provider": "typesafe-ai",
+                  "credentialType": "system",
+                  "success": true,
+                  "startTime": 1791029276035,
+                  "endTime": 1791029276218,
+                  "statusCode": 200
+                }
+              ]
+            }
+          ],
+          "totalProviderAttemptCount": 1
+        },
+        "cost": "0.000389298",
+        "marketCost": "0.000389298",
+        "surchargeCost": "0",
+        "gatewayCost": "0.000389298",
+        "inferenceCost": "0.000389298",
+        "inputInferenceCost": "0.000389298",
+        "outputInferenceCost": "0",
+        "generationId": "gen_01M40TKVBH3CB4K6TJ3WR4M7XD"
+      },
+      "cost_usd": 0.000389298,
+      "cost_usd_decimal": "0.000389298",
+      "cost_status": "gateway_reported",
+      "accounting_error": null,
+      "error_type": null,
+      "status": "answered",
+      "wall_s": 0.4412447919603437
+    }
+  ],
+  "deterministic_wall_s": 2.5787840830162168,
+  "ranking": "jev",
+  "requirement_map": {
+    "r01": {
+      "text": "Device re-enrollment in `crates/coder-access` keeps adding grants until the 128-grant bound prevents a new device from enrolling.",
+      "candidate": "c01"
+    },
+    "r02": {
+      "text": "Fix grant retention so a device that enrolls again has one live grant, and revoked or superseded grants do not prevent new enrollment.",
+      "candidate": "c01"
+    },
+    "r03": {
+      "text": "Preserve the bound for distinct live devices and preserve already-issued delegated access when its issuing device enrolls again.",
+      "candidate": "c01"
+    },
+    "r04": {
+      "text": "Delegation must still narrow authority and obey explicit revocation; re-enrollment must not revive authority that was revoked or removed.",
+      "candidate": "c04"
+    },
+    "r05": {
+      "text": "Preserve invitation retry behavior.",
+      "candidate": "c01"
+    },
+    "r06": {
+      "text": "Cover the public invitation and owner-approved enrollment paths with regression tests.",
+      "candidate": "c08"
+    },
+    "r07": {
+      "text": "Read the crate README and `nips/openagents/NIP-HOST.md`.",
+      "candidate": "c06"
+    },
+    "r08": {
+      "text": "Work only on the isolated code and tests in `crates/coder-access/`; host-store cleanup, deployment, owner devices, and changes outside this package are outside this trial.",
+      "candidate": "none"
+    }
+  },
+  "missing_implementation_probability": 0.86,
+  "next_read": "f01",
+  "probe_path": "crates/coder-access/src/host/mod.rs",
+  "total_wall_s": 3.750529916025698,
+  "cost_usd": 0.000948906
+}

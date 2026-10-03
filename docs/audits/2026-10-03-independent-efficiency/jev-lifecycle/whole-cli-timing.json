@@ -1,0 +1,94 @@
+{
+  "at": "2026-10-03T12:21:00.279977+00:00",
+  "condition": "Serial warm local CLI process after unit tests finished, retained syntax index, no network or Jev; includes process startup, imports, manifest/index loading, assembly, output writes, process exit. Cold indexing and live GitHub fetch excluded. Shared local machine, not an exclusive host.",
+  "rows": [
+    {
+      "task": "alternative-alpha",
+      "repetition": 1,
+      "process_wall_s": 1.0573059578891844,
+      "exit_code": 0,
+      "pipeline_reported_wall_s": 0.9596427090000361,
+      "briefing_sha256": "ad6d102706aa51773bc132bb391cfcd6a76ebabe8340e7d8a52d436d3897ffad",
+      "same_briefing_as_original": true
+    },
+    {
+      "task": "alternative-beta",
+      "repetition": 1,
+      "process_wall_s": 0.4793025830294937,
+      "exit_code": 0,
+      "pipeline_reported_wall_s": 0.37926858314312994,
+      "briefing_sha256": "761354b211df79855868fb7a98a8d86c41c994ccb145d7507ed3317f2a979204",
+      "same_briefing_as_original": true
+    },
+    {
+      "task": "alternative-gamma",
+      "repetition": 1,
+      "process_wall_s": 0.48143229191191494,
+      "exit_code": 0,
+      "pipeline_reported_wall_s": 0.3842672919854522,
+      "briefing_sha256": "cbcded1a641247903e6a5d2775218a6397b67227a376bd8610d11edf50331b38",
+      "same_briefing_as_original": true
+    },
+    {
+      "task": "alternative-alpha",
+      "repetition": 2,
+      "process_wall_s": 1.1066393330693245,
+      "exit_code": 0,
+      "pipeline_reported_wall_s": 1.000488999998197,
+      "briefing_sha256": "ad6d102706aa51773bc132bb391cfcd6a76ebabe8340e7d8a52d436d3897ffad",
+      "same_briefing_as_original": true
+    },
+    {
+      "task": "alternative-beta",
+      "repetition": 2,
+      "process_wall_s": 0.5102739168796688,
+      "exit_code": 0,
+      "pipeline_reported_wall_s": 0.4084077081643045,
+      "briefing_sha256": "761354b211df79855868fb7a98a8d86c41c994ccb145d7507ed3317f2a979204",
+      "same_briefing_as_original": true
+    },
+    {
+      "task": "alternative-gamma",
+      "repetition": 2,
+      "process_wall_s": 0.5225810830015689,
+      "exit_code": 0,
+      "pipeline_reported_wall_s": 0.408168249996379,
+      "briefing_sha256": "cbcded1a641247903e6a5d2775218a6397b67227a376bd8610d11edf50331b38",
+      "same_briefing_as_original": true
+    },
+    {
+      "task": "alternative-alpha",
+      "repetition": 3,
+      "process_wall_s": 1.0065692921634763,
+      "exit_code": 0,
+      "pipeline_reported_wall_s": 0.9039208749309182,
+      "briefing_sha256": "ad6d102706aa51773bc132bb391cfcd6a76ebabe8340e7d8a52d436d3897ffad",
+      "same_briefing_as_original": true
+    },
+    {
+      "task": "alternative-beta",
+      "repetition": 3,
+      "process_wall_s": 0.4571274579502642,
+      "exit_code": 0,
+      "pipeline_reported_wall_s": 0.3665938749909401,
+      "briefing_sha256": "761354b211df79855868fb7a98a8d86c41c994ccb145d7507ed3317f2a979204",
+      "same_briefing_as_original": true
+    },
+    {
+      "task": "alternative-gamma",
+      "repetition": 3,
+      "process_wall_s": 0.4224915001541376,
+      "exit_code": 0,
+      "pipeline_reported_wall_s": 0.33115587499924004,
+      "briefing_sha256": "cbcded1a641247903e6a5d2775218a6397b67227a376bd8610d11edf50331b38",
+      "same_briefing_as_original": true
+    }
+  ],
+  "under_one_second": 6,
+  "total": 9,
+  "medians": {
+    "alternative-alpha": 1.0573059578891844,
+    "alternative-beta": 0.4793025830294937,
+    "alternative-gamma": 0.48143229191191494
+  }
+}

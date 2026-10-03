@@ -1,0 +1,202 @@
+{
+  "task_id": "alternative-beta",
+  "live": true,
+  "source_commit": "7ec5f6e83d018ab2f25d7a61ff695de81f2f55f6",
+  "calls": [
+    {
+      "schema": "jev.gateway.call.v1",
+      "endpoint": "https://ai-gateway.vercel.sh/typesafe/v1/systemone",
+      "requested_model": "typesafe-ai/jev",
+      "returned_model": "typesafe-ai/jev",
+      "version_pinned": false,
+      "model_identity": "unversioned_gateway_alias",
+      "attempts": 1,
+      "started_at": "2026-10-03T12:07:57.955677Z",
+      "finished_at": "2026-10-03T12:07:58.618012Z",
+      "launch_intent_at": "2026-10-03T12:07:57.965166Z",
+      "outcome": "answered",
+      "answers_valid": true,
+      "http_status": 200,
+      "request_sha256": "9f3f855328ad71ddf9e7942266d87f52995ed8c71273d5e777a3932c027d5005",
+      "request_bytes": 44006,
+      "response_sha256": "99b363e2c126c75fe29830a7ef26cc8b6bde138c7739408de220ab002ea1ac1a",
+      "response_bytes": 7162,
+      "response_artifact": "response.json",
+      "response_headers": {
+        "x-vercel-id": "cle1::cle1::7s249-1791029278140-af3093e3fba8"
+      },
+      "usage": {
+        "input_tokens": 12953,
+        "output_tokens": 1446
+      },
+      "gateway_metadata": {
+        "routing": {
+          "originalModelId": "typesafe-ai/jev",
+          "resolvedProvider": "digitalocean",
+          "fallbacksAvailable": [
+            "typesafe-ai"
+          ],
+          "planningReasoning": "System credentials planned for: digitalocean, typesafe-ai. Total execution order: typesafe-ai(system) → digitalocean(system)",
+          "canonicalSlug": "typesafe-ai/jev",
+          "finalProvider": "typesafe-ai",
+          "modelAttemptCount": 1,
+          "modelAttempts": [
+            {
+              "canonicalSlug": "typesafe-ai/jev",
+              "success": true,
+              "providerAttemptCount": 1,
+              "providerAttempts": [
+                {
+                  "provider": "typesafe-ai",
+                  "credentialType": "system",
+                  "success": true,
+                  "startTime": 1791029278240,
+                  "endTime": 1791029278597,
+                  "statusCode": 200
+                }
+              ]
+            }
+          ],
+          "totalProviderAttemptCount": 1
+        },
+        "cost": "0.000544026",
+        "marketCost": "0.000544026",
+        "surchargeCost": "0",
+        "gatewayCost": "0.000544026",
+        "inferenceCost": "0.000544026",
+        "inputInferenceCost": "0.000544026",
+        "outputInferenceCost": "0",
+        "generationId": "gen_01M40TKXG5AA0QRVSD0FQBXM7P"
+      },
+      "cost_usd": 0.000544026,
+      "cost_usd_decimal": "0.000544026",
+      "cost_status": "gateway_reported",
+      "accounting_error": null,
+      "error_type": null,
+      "status": "answered",
+      "wall_s": 0.6623447500169277
+    },
+    {
+      "schema": "jev.gateway.call.v1",
+      "endpoint": "https://ai-gateway.vercel.sh/typesafe/v1/systemone",
+      "requested_model": "typesafe-ai/jev",
+      "returned_model": "typesafe-ai/jev",
+      "version_pinned": false,
+      "model_identity": "unversioned_gateway_alias",
+      "attempts": 1,
+      "started_at": "2026-10-03T12:07:58.620323Z",
+      "finished_at": "2026-10-03T12:07:59.099684Z",
+      "launch_intent_at": "2026-10-03T12:07:58.629542Z",
+      "outcome": "answered",
+      "answers_valid": true,
+      "http_status": 200,
+      "request_sha256": "0c3644c0b9d0c28505ff5299d7aaba8bc7f320fd519e758f965d8c65e847a960",
+      "request_bytes": 22850,
+      "response_sha256": "2c48b92bb377dcfce040dc78389c7742f39bbad8d499836cff44ae6a59cb6b30",
+      "response_bytes": 1254,
+      "response_artifact": "response.json",
+      "response_headers": {
+        "x-vercel-id": "cle1::cle1::tbf6k-1791029278836-09f06d7ea1dd"
+      },
+      "usage": {
+        "input_tokens": 8105,
+        "output_tokens": 144
+      },
+      "gateway_metadata": {
+        "routing": {
+          "originalModelId": "typesafe-ai/jev",
+          "resolvedProvider": "digitalocean",
+          "fallbacksAvailable": [
+            "typesafe-ai"
+          ],
+          "planningReasoning": "System credentials planned for: digitalocean, typesafe-ai. Total execution order: typesafe-ai(system) → digitalocean(system)",
+          "canonicalSlug": "typesafe-ai/jev",
+          "finalProvider": "typesafe-ai",
+          "modelAttemptCount": 1,
+          "modelAttempts": [
+            {
+              "canonicalSlug": "typesafe-ai/jev",
+              "success": true,
+              "providerAttemptCount": 1,
+              "providerAttempts": [
+                {
+                  "provider": "typesafe-ai",
+                  "credentialType": "system",
+                  "success": true,
+                  "startTime": 1791029278887,
+                  "endTime": 1791029279082,
+                  "statusCode": 200
+                }
+              ]
+            }
+          ],
+          "totalProviderAttemptCount": 1
+        },
+        "cost": "0.00034041",
+        "marketCost": "0.00034041",
+        "surchargeCost": "0",
+        "gatewayCost": "0.00034041",
+        "inferenceCost": "0.00034041",
+        "inputInferenceCost": "0.00034041",
+        "outputInferenceCost": "0",
+        "generationId": "gen_01M40TKY4PNT9CY08QDVGK9AE9"
+      },
+      "cost_usd": 0.00034041,
+      "cost_usd_decimal": "0.00034041",
+      "cost_status": "gateway_reported",
+      "accounting_error": null,
+      "error_type": null,
+      "status": "answered",
+      "wall_s": 0.47937229205854237
+    }
+  ],
+  "deterministic_wall_s": 1.496544708032161,
+  "ranking": "jev",
+  "requirement_map": {
+    "r01": {
+      "text": "Fix public audit finding A13 in `crates/atif` and its `crates/coderbench` consumer.",
+      "candidate": "c08"
+    },
+    "r02": {
+      "text": "Read newline-delimited bytes before UTF-8 decoding so a torn final multibyte record preserves the valid prefix for interactive viewing.",
+      "candidate": "c08"
+    },
+    "r03": {
+      "text": "Report unreadable records and interruption, and distinguish tolerant recovery from the stronger integrity needed for benchmark evidence.",
+      "candidate": "c08"
+    },
+    "r04": {
+      "text": "Specify and enforce lifecycle behavior for repeated session headers or end records, records after end, append after closure, and malformed interior records.",
+      "candidate": "c08"
+    },
+    "r05": {
+      "text": "Add property or table-driven tests truncating a non-ASCII final record at every byte.",
+      "candidate": "c02"
+    },
+    "r06": {
+      "text": "Strict CoderBench ingestion must reject or mark damaged or incomplete evidence unverifiable and must not convert recovery into a successful grade.",
+      "candidate": "c02"
+    },
+    "r07": {
+      "text": "Preserve valid ATIF fixture compatibility and the retained transcript archive.",
+      "candidate": "c09"
+    },
+    "r08": {
+      "text": "Read `docs/coder/traces.md`.",
+      "candidate": "c03"
+    },
+    "r09": {
+      "text": "Work only within `crates/atif/` and `crates/coderbench/`; run their ordinary tests and formatting checks.",
+      "candidate": "none"
+    },
+    "r10": {
+      "text": "Documentation outside these packages and operational work are outside this isolated trial.",
+      "candidate": "none"
+    }
+  },
+  "missing_implementation_probability": 0.87,
+  "next_read": "f01",
+  "probe_path": "crates/coderbench/src/lib.rs",
+  "total_wall_s": 2.801292041083798,
+  "cost_usd": 0.000884436
+}

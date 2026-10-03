@@ -1,0 +1,593 @@
+{
+  "schema": "openagents.jev.lifecycle-results.v1",
+  "scored_native_sessions": 0,
+  "calls": 53,
+  "http_attempts": 53,
+  "valid_calls": 53,
+  "reported_cost_usd": 0.02627562,
+  "unknown_cost_calls": [],
+  "summed_api_wall_s": 29.01743879778993,
+  "final_providers": {
+    "typesafe-ai": 53
+  },
+  "provider_attempts": 55,
+  "gateway_internal_failovers": [
+    "runs/batching/2-batch-1/receipt.json",
+    "runs/review-focused/R12/receipt.json"
+  ],
+  "review": {
+    "cases": [
+      {
+        "id": "R01",
+        "family": "beta",
+        "label": "defective",
+        "action": "verify",
+        "probability_flag": false,
+        "probabilities": {
+          "material_defect": 0.49
+        },
+        "api_wall_s": 0.6238500829786062,
+        "cost_usd": 0.000591486
+      },
+      {
+        "id": "R02",
+        "family": "v2",
+        "label": "accepted_under_retained_checks",
+        "action": "verify",
+        "probability_flag": false,
+        "probabilities": {
+          "material_defect": 0.16
+        },
+        "api_wall_s": 0.5050825420767069,
+        "cost_usd": 0.000525378
+      },
+      {
+        "id": "R03",
+        "family": "v2",
+        "label": "accepted_under_retained_checks",
+        "action": "verify",
+        "probability_flag": false,
+        "probabilities": {
+          "material_defect": 0.19
+        },
+        "api_wall_s": 0.5855430830270052,
+        "cost_usd": 0.0005271
+      },
+      {
+        "id": "R04",
+        "family": "gamma",
+        "label": "defective",
+        "action": "verify",
+        "probability_flag": false,
+        "probabilities": {
+          "material_defect": 0.43
+        },
+        "api_wall_s": 0.5304742080625147,
+        "cost_usd": 0.000712278
+      },
+      {
+        "id": "R05",
+        "family": "beta",
+        "label": "defective",
+        "action": "verify",
+        "probability_flag": false,
+        "probabilities": {
+          "material_defect": 0.49
+        },
+        "api_wall_s": 0.5088981669396162,
+        "cost_usd": 0.000586992
+      },
+      {
+        "id": "R06",
+        "family": "v2",
+        "label": "defective",
+        "action": "verify",
+        "probability_flag": false,
+        "probabilities": {
+          "material_defect": 0.18
+        },
+        "api_wall_s": 0.46000399999320507,
+        "cost_usd": 0.000492408
+      },
+      {
+        "id": "R07",
+        "family": "beta",
+        "label": "accepted_under_retained_checks",
+        "action": "verify",
+        "probability_flag": false,
+        "probabilities": {
+          "material_defect": 0.47
+        },
+        "api_wall_s": 0.5378734171390533,
+        "cost_usd": 0.000589806
+      },
+      {
+        "id": "R08",
+        "family": "v2",
+        "label": "accepted_under_retained_checks",
+        "action": "verify",
+        "probability_flag": false,
+        "probabilities": {
+          "material_defect": 0.19
+        },
+        "api_wall_s": 0.4761306250002235,
+        "cost_usd": 0.000511854
+      },
+      {
+        "id": "R09",
+        "family": "v2",
+        "label": "defective",
+        "action": "verify",
+        "probability_flag": false,
+        "probabilities": {
+          "material_defect": 0.18
+        },
+        "api_wall_s": 0.5209263749420643,
+        "cost_usd": 0.000519876
+      },
+      {
+        "id": "R10",
+        "family": "gamma",
+        "label": "defective",
+        "action": "verify",
+        "probability_flag": false,
+        "probabilities": {
+          "material_defect": 0.49
+        },
+        "api_wall_s": 0.521890833042562,
+        "cost_usd": 0.000712698
+      },
+      {
+        "id": "R11",
+        "family": "gamma",
+        "label": "accepted_under_retained_checks",
+        "action": "verify",
+        "probability_flag": false,
+        "probabilities": {
+          "material_defect": 0.4
+        },
+        "api_wall_s": 0.4937559589743614,
+        "cost_usd": 0.000713202
+      },
+      {
+        "id": "R12",
+        "family": "v2",
+        "label": "accepted_under_retained_checks",
+        "action": "verify",
+        "probability_flag": false,
+        "probabilities": {
+          "material_defect": 0.18
+        },
+        "api_wall_s": 0.4734719998668879,
+        "cost_usd": 0.000549864
+      }
+    ],
+    "defective_cases": 6,
+    "accepted_cases": 6,
+    "defects_flagged": 0,
+    "accepted_flagged": 0,
+    "abstentions": 0,
+    "probability_defects_flagged": 0,
+    "probability_accepted_flagged": 0,
+    "api_wall_s": 6.237901292042807,
+    "median_api_wall_s": 0.5149122709408402,
+    "cost_usd": 0.0070329419999999995
+  },
+  "focused_review": {
+    "cases": [
+      {
+        "id": "R01",
+        "family": "beta",
+        "label": "defective",
+        "action": "verify",
+        "probability_flag": false,
+        "probabilities": {
+          "byte_recovery": 0.57,
+          "closed_writer": 0.95,
+          "lifecycle": 0.89,
+          "strict_consumer": 0.79
+        },
+        "api_wall_s": 0.6906657090876251,
+        "cost_usd": 0.000633906
+      },
+      {
+        "id": "R02",
+        "family": "v2",
+        "label": "accepted_under_retained_checks",
+        "action": "revise",
+        "probability_flag": true,
+        "probabilities": {
+          "copy_marks": 0.81,
+          "equal_rank": 0.39,
+          "conflicting_marks": 0.47
+        },
+        "api_wall_s": 0.5548181671183556,
+        "cost_usd": 0.000736638
+      },
+      {
+        "id": "R03",
+        "family": "v2",
+        "label": "accepted_under_retained_checks",
+        "action": "revise",
+        "probability_flag": true,
+        "probabilities": {
+          "copy_marks": 0.76,
+          "equal_rank": 0.31,
+          "conflicting_marks": 0.49
+        },
+        "api_wall_s": 0.5850314169656485,
+        "cost_usd": 0.000739158
+      },
+      {
+        "id": "R04",
+        "family": "gamma",
+        "label": "defective",
+        "action": "revise",
+        "probability_flag": true,
+        "probabilities": {
+          "noul_range": 0.15,
+          "distributions": 0.93,
+          "request_boundary": 0.86,
+          "calibrated_contract": 0.77,
+          "raw_path": 0.81
+        },
+        "api_wall_s": 0.5762576658744365,
+        "cost_usd": 0.00064386
+      },
+      {
+        "id": "R05",
+        "family": "beta",
+        "label": "defective",
+        "action": "revise",
+        "probability_flag": true,
+        "probabilities": {
+          "byte_recovery": 0.9,
+          "closed_writer": 0.08,
+          "lifecycle": 0.92,
+          "strict_consumer": 0.8
+        },
+        "api_wall_s": 0.6878611668944359,
+        "cost_usd": 0.000630042
+      },
+      {
+        "id": "R06",
+        "family": "v2",
+        "label": "defective",
+        "action": "revise",
+        "probability_flag": true,
+        "probabilities": {
+          "copy_marks": 0.72,
+          "equal_rank": 0.16,
+          "conflicting_marks": 0.33
+        },
+        "api_wall_s": 0.4993399588856846,
+        "cost_usd": 0.000731514
+      },
+      {
+        "id": "R07",
+        "family": "beta",
+        "label": "accepted_under_retained_checks",
+        "action": "verify",
+        "probability_flag": false,
+        "probabilities": {
+          "byte_recovery": 0.9,
+          "closed_writer": 0.96,
+          "lifecycle": 0.93,
+          "strict_consumer": 0.82
+        },
+        "api_wall_s": 0.7752513331361115,
+        "cost_usd": 0.0006321
+      },
+      {
+        "id": "R08",
+        "family": "v2",
+        "label": "accepted_under_retained_checks",
+        "action": "revise",
+        "probability_flag": true,
+        "probabilities": {
+          "copy_marks": 0.59,
+          "equal_rank": 0.39,
+          "conflicting_marks": 0.63
+        },
+        "api_wall_s": 0.6008386660832912,
+        "cost_usd": 0.000730296
+      },
+      {
+        "id": "R09",
+        "family": "v2",
+        "label": "defective",
+        "action": "revise",
+        "probability_flag": true,
+        "probabilities": {
+          "copy_marks": 0.76,
+          "equal_rank": 0.14,
+          "conflicting_marks": 0.5
+        },
+        "api_wall_s": 0.6237361249513924,
+        "cost_usd": 0.00073164
+      },
+      {
+        "id": "R10",
+        "family": "gamma",
+        "label": "defective",
+        "action": "revise",
+        "probability_flag": true,
+        "probabilities": {
+          "noul_range": 0.95,
+          "distributions": 0.93,
+          "request_boundary": 0.48,
+          "calibrated_contract": 0.79,
+          "raw_path": 0.83
+        },
+        "api_wall_s": 0.584502707934007,
+        "cost_usd": 0.000645036
+      },
+      {
+        "id": "R11",
+        "family": "gamma",
+        "label": "accepted_under_retained_checks",
+        "action": "verify",
+        "probability_flag": false,
+        "probabilities": {
+          "noul_range": 0.95,
+          "distributions": 0.93,
+          "request_boundary": 0.87,
+          "calibrated_contract": 0.79,
+          "raw_path": 0.86
+        },
+        "api_wall_s": 0.5267548330593854,
+        "cost_usd": 0.000644994
+      },
+      {
+        "id": "R12",
+        "family": "v2",
+        "label": "accepted_under_retained_checks",
+        "action": "revise",
+        "probability_flag": true,
+        "probabilities": {
+          "copy_marks": 0.76,
+          "equal_rank": 0.45,
+          "conflicting_marks": 0.64
+        },
+        "api_wall_s": 0.7290175000671297,
+        "cost_usd": 0.000743526
+      }
+    ],
+    "defective_cases": 6,
+    "accepted_cases": 6,
+    "defects_flagged": 5,
+    "accepted_flagged": 4,
+    "abstentions": 0,
+    "probability_defects_flagged": 5,
+    "probability_accepted_flagged": 4,
+    "api_wall_s": 7.434075250057504,
+    "median_api_wall_s": 0.5929350415244699,
+    "cost_usd": 0.00824271
+  },
+  "corrected_order_review": {
+    "cases": [
+      {
+        "id": "R02",
+        "family": "v2",
+        "label": "accepted_under_retained_checks",
+        "action": "verify",
+        "probability_flag": false,
+        "probabilities": {
+          "copy_marks": 0.81,
+          "equal_rank": 0.82,
+          "conflicting_marks": 0.85
+        },
+        "api_wall_s": 1.0504211250226945,
+        "cost_usd": 0.000738654
+      },
+      {
+        "id": "R03",
+        "family": "v2",
+        "label": "accepted_under_retained_checks",
+        "action": "verify",
+        "probability_flag": false,
+        "probabilities": {
+          "copy_marks": 0.75,
+          "equal_rank": 0.76,
+          "conflicting_marks": 0.81
+        },
+        "api_wall_s": 0.6959730840753764,
+        "cost_usd": 0.000741174
+      },
+      {
+        "id": "R06",
+        "family": "v2",
+        "label": "defective",
+        "action": "verify",
+        "probability_flag": false,
+        "probabilities": {
+          "copy_marks": 0.72,
+          "equal_rank": 0.68,
+          "conflicting_marks": 0.69
+        },
+        "api_wall_s": 0.621288042049855,
+        "cost_usd": 0.00073353
+      },
+      {
+        "id": "R08",
+        "family": "v2",
+        "label": "accepted_under_retained_checks",
+        "action": "verify",
+        "probability_flag": false,
+        "probabilities": {
+          "copy_marks": 0.59,
+          "equal_rank": 0.75,
+          "conflicting_marks": 0.77
+        },
+        "api_wall_s": 0.6081284580286592,
+        "cost_usd": 0.000732312
+      },
+      {
+        "id": "R09",
+        "family": "v2",
+        "label": "defective",
+        "action": "verify",
+        "probability_flag": false,
+        "probabilities": {
+          "copy_marks": 0.74,
+          "equal_rank": 0.63,
+          "conflicting_marks": 0.86
+        },
+        "api_wall_s": 0.5696028748061508,
+        "cost_usd": 0.000733656
+      },
+      {
+        "id": "R12",
+        "family": "v2",
+        "label": "accepted_under_retained_checks",
+        "action": "verify",
+        "probability_flag": false,
+        "probabilities": {
+          "copy_marks": 0.75,
+          "equal_rank": 0.76,
+          "conflicting_marks": 0.85
+        },
+        "api_wall_s": 0.5588372498750687,
+        "cost_usd": 0.000745542
+      }
+    ],
+    "defective_cases": 2,
+    "accepted_cases": 4,
+    "defects_flagged": 0,
+    "accepted_flagged": 0,
+    "abstentions": 0,
+    "probability_defects_flagged": 0,
+    "probability_accepted_flagged": 0,
+    "api_wall_s": 4.1042508338578045,
+    "median_api_wall_s": 0.6147082500392571,
+    "cost_usd": 0.004424868
+  },
+  "next_read": {
+    "cases": [
+      {
+        "id": "N01",
+        "expected": "p",
+        "actual": "p",
+        "correct": true
+      },
+      {
+        "id": "N02",
+        "expected": "q",
+        "actual": "q",
+        "correct": true
+      },
+      {
+        "id": "N03",
+        "expected": "q",
+        "actual": "q",
+        "correct": true
+      },
+      {
+        "id": "N04",
+        "expected": "p",
+        "actual": "p",
+        "correct": true
+      },
+      {
+        "id": "N05",
+        "expected": "p",
+        "actual": "p",
+        "correct": true
+      },
+      {
+        "id": "N06",
+        "expected": "q",
+        "actual": "q",
+        "correct": true
+      }
+    ],
+    "correct": 6,
+    "count": 6,
+    "label_kind": "expert public-contract relevance, not coding acceptance"
+  },
+  "batching": {
+    "totals": {
+      "batch": {
+        "cost_usd": 0.000709716,
+        "api_wall_s": 1.1495552510023117
+      },
+      "sequential": {
+        "cost_usd": 0.002669268,
+        "api_wall_s": 3.8734082092996687
+      }
+    },
+    "batch_over_sequential": {
+      "cost_usd": 0.26588413003115463,
+      "api_wall_s": 0.29678133284334546
+    },
+    "exact_answer_agreement": [
+      {
+        "rank_c01": false,
+        "rank_c02": false,
+        "map_r01": false,
+        "missing_implementation": false
+      },
+      {
+        "rank_c01": false,
+        "rank_c02": false,
+        "map_r01": false,
+        "missing_implementation": true
+      }
+    ]
+  },
+  "receipt_paths": [
+    "capability/receipt.json",
+    "runs/batching/1-batch-1/receipt.json",
+    "runs/batching/1-sequential-1/receipt.json",
+    "runs/batching/1-sequential-2/receipt.json",
+    "runs/batching/1-sequential-3/receipt.json",
+    "runs/batching/1-sequential-4/receipt.json",
+    "runs/batching/2-batch-1/receipt.json",
+    "runs/batching/2-sequential-1/receipt.json",
+    "runs/batching/2-sequential-2/receipt.json",
+    "runs/batching/2-sequential-3/receipt.json",
+    "runs/batching/2-sequential-4/receipt.json",
+    "runs/next-read/N01/receipt.json",
+    "runs/next-read/N02/receipt.json",
+    "runs/next-read/N03/receipt.json",
+    "runs/next-read/N04/receipt.json",
+    "runs/next-read/N05/receipt.json",
+    "runs/next-read/N06/receipt.json",
+    "runs/preparation/alternative-alpha/preparation-call/receipt.json",
+    "runs/preparation/alternative-alpha/probe-call/receipt.json",
+    "runs/preparation/alternative-beta/preparation-call/receipt.json",
+    "runs/preparation/alternative-beta/probe-call/receipt.json",
+    "runs/preparation/alternative-gamma/preparation-call/receipt.json",
+    "runs/preparation/alternative-gamma/probe-call/receipt.json",
+    "runs/review/R01/receipt.json",
+    "runs/review/R02/receipt.json",
+    "runs/review/R03/receipt.json",
+    "runs/review/R04/receipt.json",
+    "runs/review/R05/receipt.json",
+    "runs/review/R06/receipt.json",
+    "runs/review/R07/receipt.json",
+    "runs/review/R08/receipt.json",
+    "runs/review/R09/receipt.json",
+    "runs/review/R10/receipt.json",
+    "runs/review/R11/receipt.json",
+    "runs/review/R12/receipt.json",
+    "runs/review-focused/R01/receipt.json",
+    "runs/review-focused/R02/receipt.json",
+    "runs/review-focused/R03/receipt.json",
+    "runs/review-focused/R04/receipt.json",
+    "runs/review-focused/R05/receipt.json",
+    "runs/review-focused/R06/receipt.json",
+    "runs/review-focused/R07/receipt.json",
+    "runs/review-focused/R08/receipt.json",
+    "runs/review-focused/R09/receipt.json",
+    "runs/review-focused/R10/receipt.json",
+    "runs/review-focused/R11/receipt.json",
+    "runs/review-focused/R12/receipt.json",
+    "runs/review-order-corrected/R02/receipt.json",
+    "runs/review-order-corrected/R03/receipt.json",
+    "runs/review-order-corrected/R06/receipt.json",
+    "runs/review-order-corrected/R08/receipt.json",
+    "runs/review-order-corrected/R09/receipt.json",
+    "runs/review-order-corrected/R12/receipt.json"
+  ]
+}
