@@ -172,11 +172,6 @@ What the numbers say:
 
 Known gaps, as of the first image:
 
-- `cargo build --tests -p coder` does not compile on `main`:
-  `crates/coder/tests/interop_processes.rs` reads `CARGO_BIN_EXE_coder-worker`
-  and no package defines that binary. The bake builds with `--keep-going` and
-  records `tests_not_compiling: ["coder"]` in the manifest; the rest of
-  coder's test dependencies are warm.
 - A day whose `origin/main` cannot build (a stale `Cargo.lock` under
   `--locked` was seen at `ceac875a81`) fails the bake, and the family keeps
   the previous image.
