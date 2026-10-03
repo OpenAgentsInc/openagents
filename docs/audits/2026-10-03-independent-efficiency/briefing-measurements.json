@@ -1,0 +1,547 @@
+{
+  "schema": "openagents.briefing-lab.benchmark.v1",
+  "recorded_at_utc": "2026-10-03T02:16:25Z",
+  "input_commit": "682d958c7eb24a4dc32ed503965f4c103919cd77",
+  "binary_sha256": "4f474da4a7a41aac2fad534572510e97deb2271a99f55421ad7cd8f4de35c3d9",
+  "source_sha256": {
+    "crates/briefing-lab/Cargo.toml": "5565e31c6a484bae89020d71a956f49362610580f42605730fd243fc08bc999a",
+    "crates/briefing-lab/src/lib.rs": "7b429738610d9aecc34921d8ac3cbc36e9f7c6731b0c6d089674faeac04f5991",
+    "crates/briefing-lab/src/main.rs": "85de360e6d8ceb888c2aee95b2c7da5470b6a3a7cc8a5d6fa9f367e20434301f",
+    "scripts/briefing-preview.sh": "ceff6701edafda6b0d645b56adf23b54b554285d8dd4291beab58eb5cebf91a1"
+  },
+  "host": {
+    "platform": "Linux-6.8.0-117-generic-x86_64-with-glibc2.39",
+    "logical_cpus": 8,
+    "cpu_model": "AMD Ryzen 9 9950X 16-Core Processor"
+  },
+  "method": "Fresh CLI process, existing index and cached issue, through output-file completion. OS cache is not flushed. First-use index measured separately. Nearest-rank quantiles. Provenance verification occurs outside the timed interval.",
+  "index": {
+    "elapsed_ms": 1806.173649,
+    "internal_ms": 1676.788349,
+    "bytes": 19822302,
+    "sha256": "c11d3c28eba3287a5b2b104211b81c63ca08ea2b9f6792f8c6fc2b89b412f9aa",
+    "indexed_files": 5294,
+    "known_paths": 27642,
+    "omissions": {
+      "excluded generated, archive, or unsupported files": 22172,
+      "index byte or file budget": 176
+    }
+  },
+  "cases": [
+    {
+      "number": 10250,
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/10250",
+      "title": "Codex lean session: one codex exec session with the Jev briefing as the default Codex route (coder.codex)",
+      "issue_sha256": "4e01eb655eea84763c88c2bd5169898b37479c4ce76be32f976afd464c3afbdd",
+      "issue_updated_at": "2026-10-03T00:54:56Z",
+      "variants": {
+        "default": {
+          "count": 20,
+          "p50_ms": 238.224778,
+          "p95_ms": 240.924282,
+          "max_ms": 242.956176,
+          "over_one_second": 0,
+          "elapsed_ms": [
+            238.224778,
+            237.86478,
+            242.956176,
+            237.862715,
+            240.107776,
+            239.139854,
+            238.777904,
+            240.924282,
+            235.845647,
+            236.162084,
+            236.014095,
+            240.357242,
+            237.501164,
+            236.434263,
+            239.063625,
+            235.605618,
+            238.466728,
+            237.993366,
+            239.256957,
+            239.068401
+          ],
+          "last_internal_timings_ms": {
+            "assembly": 47.106513,
+            "index_and_issue_load": 149.833174,
+            "original_index_build_separate": 1676.788349,
+            "output_serialization_sample": 0.09814500000000001,
+            "revision_validation": 0.709421,
+            "selected_git_validation_and_read": 5.718708,
+            "warm_preview_before_output": 199.587354
+          },
+          "evidence_paths": [
+            "docs/cost/2026-10-02-shadow-baseline-measurement.md",
+            "docs/cost/2026-10-02-system-one-cost-efficiency-audit.md",
+            "crates/coder-one/src/micro/lean.rs",
+            "crates/coder-one/src/policy.rs",
+            "docs/terminal-bench/2026-09-23-coder-one-vs-claude-code-tb4.md",
+            "crates/coder-one/src/compose/tests.rs",
+            "docs/cost/2026-10-02-shadow-baseline/study.py",
+            "crates/coder/src/task/autostart.rs",
+            "AGENTS.md",
+            "Cargo.toml",
+            "README.md",
+            "crates/coder-one/Cargo.toml",
+            "crates/coder/Cargo.toml",
+            "docs/README.md"
+          ],
+          "candidate_files": 5144,
+          "history_count": 4,
+          "markdown_bytes": 50647
+        },
+        "no_symbols": {
+          "count": 1,
+          "p50_ms": 234.892489,
+          "p95_ms": 234.892489,
+          "max_ms": 234.892489,
+          "over_one_second": 0,
+          "elapsed_ms": [
+            234.892489
+          ],
+          "last_internal_timings_ms": {
+            "assembly": 43.201087,
+            "index_and_issue_load": 150.63063,
+            "original_index_build_separate": 1676.788349,
+            "output_serialization_sample": 0.094407,
+            "revision_validation": 0.48519999999999996,
+            "selected_git_validation_and_read": 3.448358,
+            "warm_preview_before_output": 196.023339
+          },
+          "evidence_paths": [
+            "docs/cost/2026-10-02-shadow-baseline-measurement.md",
+            "docs/cost/2026-10-02-system-one-cost-efficiency-audit.md",
+            "docs/terminal-bench/2026-09-23-coder-one-vs-claude-code-tb4.md",
+            "docs/cost/2026-10-02-shadow-baseline/study.py",
+            "docs/cost/2026-10-02-shadow-baseline/codex_session.py",
+            "docs/audits/2026-10-03-independent-efficiency/README.md",
+            "docs/optimization/coder-components.md",
+            "docs/coder/guides/coder-one-components.md",
+            "AGENTS.md",
+            "Cargo.toml",
+            "README.md",
+            "docs/README.md",
+            "docs/audits/README.md",
+            "docs/coder/README.md"
+          ],
+          "candidate_files": 5144,
+          "history_count": 4,
+          "markdown_bytes": 59097
+        },
+        "no_history": {
+          "count": 1,
+          "p50_ms": 237.795824,
+          "p95_ms": 237.795824,
+          "max_ms": 237.795824,
+          "over_one_second": 0,
+          "elapsed_ms": [
+            237.795824
+          ],
+          "last_internal_timings_ms": {
+            "assembly": 46.707573000000004,
+            "index_and_issue_load": 148.015701,
+            "original_index_build_separate": 1676.788349,
+            "output_serialization_sample": 0.10709099999999999,
+            "revision_validation": 0.529353,
+            "selected_git_validation_and_read": 4.060778999999999,
+            "warm_preview_before_output": 196.978273
+          },
+          "evidence_paths": [
+            "docs/cost/2026-10-02-shadow-baseline-measurement.md",
+            "docs/cost/2026-10-02-system-one-cost-efficiency-audit.md",
+            "crates/coder-one/src/micro/lean.rs",
+            "crates/coder-one/src/policy.rs",
+            "docs/terminal-bench/2026-09-23-coder-one-vs-claude-code-tb4.md",
+            "crates/coder-one/src/compose/tests.rs",
+            "docs/cost/2026-10-02-shadow-baseline/study.py",
+            "crates/coder/src/task/autostart.rs",
+            "AGENTS.md",
+            "Cargo.toml",
+            "README.md",
+            "crates/coder-one/Cargo.toml",
+            "crates/coder/Cargo.toml",
+            "docs/README.md"
+          ],
+          "candidate_files": 5144,
+          "history_count": 0,
+          "markdown_bytes": 50023
+        },
+        "explicit_only": {
+          "count": 1,
+          "p50_ms": 225.339885,
+          "p95_ms": 225.339885,
+          "max_ms": 225.339885,
+          "over_one_second": 0,
+          "elapsed_ms": [
+            225.339885
+          ],
+          "last_internal_timings_ms": {
+            "assembly": 33.521512,
+            "index_and_issue_load": 149.412092,
+            "original_index_build_separate": 1676.788349,
+            "output_serialization_sample": 0.051486000000000004,
+            "revision_validation": 0.510688,
+            "selected_git_validation_and_read": 2.560243,
+            "warm_preview_before_output": 184.78059
+          },
+          "evidence_paths": [
+            "docs/cost/2026-10-02-shadow-baseline-measurement.md",
+            "AGENTS.md",
+            "Cargo.toml",
+            "README.md",
+            "docs/README.md",
+            "docs/cost/README.md"
+          ],
+          "candidate_files": 1,
+          "history_count": 0,
+          "markdown_bytes": 22828
+        }
+      },
+      "cached_wrapper_elapsed_ms": 239.652498
+    },
+    {
+      "number": 10162,
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/10162",
+      "title": "Gym study: OpenAgents vs raw Claude Code / Codex on the same tasks (cost, time, outcome)",
+      "issue_sha256": "c5bb304dfac3db331d7a9897a96f64e39a93511b0f386146f1afe021d1a0a7f1",
+      "issue_updated_at": "2026-10-03T01:56:52Z",
+      "variants": {
+        "default": {
+          "count": 20,
+          "p50_ms": 236.208062,
+          "p95_ms": 240.491808,
+          "max_ms": 242.108769,
+          "over_one_second": 0,
+          "elapsed_ms": [
+            234.50503,
+            242.108769,
+            235.718084,
+            239.819569,
+            236.701459,
+            234.654615,
+            237.083573,
+            236.208062,
+            240.491808,
+            239.12198,
+            240.392922,
+            235.513495,
+            238.948311,
+            235.559267,
+            236.335445,
+            231.059444,
+            234.423148,
+            233.608899,
+            234.686486,
+            236.994229
+          ],
+          "last_internal_timings_ms": {
+            "assembly": 43.922301,
+            "index_and_issue_load": 150.43202399999998,
+            "original_index_build_separate": 1676.788349,
+            "output_serialization_sample": 0.091352,
+            "revision_validation": 0.697329,
+            "selected_git_validation_and_read": 4.1984580000000005,
+            "warm_preview_before_output": 196.910362
+          },
+          "evidence_paths": [
+            "docs/cost/2026-10-02-system-one-cost-efficiency-audit.md",
+            "crates/gym/src/terminal_bench_tui.rs",
+            "docs/terminal-bench/2026-09-23-task-win-analysis.md",
+            "docs/terminal-bench/2026-09-24-task-anatomy.md",
+            "crates/gym/src/terminal_bench.rs",
+            "docs/terminal-bench/2026-09-23-coder-one-vs-claude-code-tb4.md",
+            "docs/terminal-bench/2026-09-24-version-arc.md",
+            "crates/gym/src/runs.rs",
+            "AGENTS.md",
+            "Cargo.toml",
+            "README.md",
+            "crates/gym/Cargo.toml",
+            "docs/README.md",
+            "docs/cost/README.md"
+          ],
+          "candidate_files": 5174,
+          "history_count": 4,
+          "markdown_bytes": 48474
+        },
+        "no_symbols": {
+          "count": 1,
+          "p50_ms": 241.147755,
+          "p95_ms": 241.147755,
+          "max_ms": 241.147755,
+          "over_one_second": 0,
+          "elapsed_ms": [
+            241.147755
+          ],
+          "last_internal_timings_ms": {
+            "assembly": 43.594986000000006,
+            "index_and_issue_load": 153.466559,
+            "original_index_build_separate": 1676.788349,
+            "output_serialization_sample": 0.104024,
+            "revision_validation": 0.5126109999999999,
+            "selected_git_validation_and_read": 3.9091769999999997,
+            "warm_preview_before_output": 199.37612900000002
+          },
+          "evidence_paths": [
+            "docs/cost/2026-10-02-system-one-cost-efficiency-audit.md",
+            "docs/terminal-bench/2026-09-23-task-win-analysis.md",
+            "docs/terminal-bench/2026-09-24-task-anatomy.md",
+            "docs/terminal-bench/2026-09-23-coder-one-vs-claude-code-tb4.md",
+            "docs/terminal-bench/2026-09-24-version-arc.md",
+            "docs/essays/2026-09-29-test-time-capabilities.md",
+            "docs/terminal-bench/2026-09-23-matched-controller-targeted.md",
+            "docs/terminal-bench/2026-09-25-status-snapshot.md",
+            "AGENTS.md",
+            "Cargo.toml",
+            "README.md",
+            "docs/README.md",
+            "docs/cost/README.md",
+            "docs/terminal-bench/README.md"
+          ],
+          "candidate_files": 5174,
+          "history_count": 4,
+          "markdown_bytes": 61411
+        },
+        "no_history": {
+          "count": 1,
+          "p50_ms": 230.907316,
+          "p95_ms": 230.907316,
+          "max_ms": 230.907316,
+          "over_one_second": 0,
+          "elapsed_ms": [
+            230.907316
+          ],
+          "last_internal_timings_ms": {
+            "assembly": 42.366131,
+            "index_and_issue_load": 148.480921,
+            "original_index_build_separate": 1676.788349,
+            "output_serialization_sample": 0.085431,
+            "revision_validation": 0.536887,
+            "selected_git_validation_and_read": 4.055751,
+            "warm_preview_before_output": 193.18180500000003
+          },
+          "evidence_paths": [
+            "docs/cost/2026-10-02-system-one-cost-efficiency-audit.md",
+            "crates/gym/src/terminal_bench_tui.rs",
+            "docs/terminal-bench/2026-09-23-task-win-analysis.md",
+            "docs/terminal-bench/2026-09-24-task-anatomy.md",
+            "crates/gym/src/terminal_bench.rs",
+            "docs/terminal-bench/2026-09-23-coder-one-vs-claude-code-tb4.md",
+            "docs/terminal-bench/2026-09-24-version-arc.md",
+            "crates/gym/src/runs.rs",
+            "AGENTS.md",
+            "Cargo.toml",
+            "README.md",
+            "crates/gym/Cargo.toml",
+            "docs/README.md",
+            "docs/cost/README.md"
+          ],
+          "candidate_files": 5174,
+          "history_count": 0,
+          "markdown_bytes": 47816
+        },
+        "explicit_only": {
+          "count": 1,
+          "p50_ms": 226.220491,
+          "p95_ms": 226.220491,
+          "max_ms": 226.220491,
+          "over_one_second": 0,
+          "elapsed_ms": [
+            226.220491
+          ],
+          "last_internal_timings_ms": {
+            "assembly": 35.080031,
+            "index_and_issue_load": 149.830658,
+            "original_index_build_separate": 1676.788349,
+            "output_serialization_sample": 0.049653,
+            "revision_validation": 0.482255,
+            "selected_git_validation_and_read": 2.315044,
+            "warm_preview_before_output": 186.802147
+          },
+          "evidence_paths": [
+            "docs/cost/2026-10-02-system-one-cost-efficiency-audit.md",
+            "AGENTS.md",
+            "Cargo.toml",
+            "README.md",
+            "docs/README.md",
+            "docs/cost/README.md"
+          ],
+          "candidate_files": 1,
+          "history_count": 0,
+          "markdown_bytes": 23148
+        }
+      },
+      "cached_wrapper_elapsed_ms": 239.148069
+    },
+    {
+      "number": 10253,
+      "url": "https://github.com/OpenAgentsInc/openagents/issues/10253",
+      "title": "System One briefing audit and runnable issue preview prototype",
+      "issue_sha256": "14b2b30b4865ab7b5a2f616dff1f2576a2662f020cb6e9ff83ceef7cad725c9b",
+      "issue_updated_at": "2026-10-03T02:04:14Z",
+      "variants": {
+        "default": {
+          "count": 20,
+          "p50_ms": 240.64767,
+          "p95_ms": 247.012779,
+          "max_ms": 248.082536,
+          "over_one_second": 0,
+          "elapsed_ms": [
+            235.895385,
+            240.482362,
+            237.174663,
+            240.400748,
+            236.837149,
+            238.960544,
+            244.246176,
+            242.859171,
+            243.333749,
+            238.091399,
+            246.491134,
+            240.856478,
+            239.981494,
+            236.677302,
+            240.64767,
+            247.012779,
+            240.964476,
+            242.754286,
+            240.730088,
+            248.082536
+          ],
+          "last_internal_timings_ms": {
+            "assembly": 48.142264,
+            "index_and_issue_load": 151.39724800000002,
+            "original_index_build_separate": 1676.788349,
+            "output_serialization_sample": 0.09922700000000001,
+            "revision_validation": 0.851178,
+            "selected_git_validation_and_read": 5.188652,
+            "warm_preview_before_output": 202.210805
+          },
+          "evidence_paths": [
+            "docs/glossary.md",
+            "docs/audits/2026-10-03-independent-efficiency/README.md",
+            "docs/optimization/coder-components.md",
+            "docs/coder/design/coder-suite-migration.md",
+            "docs/cost/2026-10-02-system-one-cost-efficiency-audit.md",
+            "docs/coder/design/coder-terminal-v05-algorithm-and-goldens.md",
+            "crates/coder-one/src/micro.rs",
+            "crates/gym/src/bin/gym.rs",
+            "AGENTS.md",
+            "Cargo.toml",
+            "README.md",
+            "crates/coder-one/Cargo.toml",
+            "crates/gym/Cargo.toml",
+            "docs/README.md"
+          ],
+          "candidate_files": 5235,
+          "history_count": 4,
+          "markdown_bytes": 56238
+        },
+        "no_symbols": {
+          "count": 1,
+          "p50_ms": 243.727009,
+          "p95_ms": 243.727009,
+          "max_ms": 243.727009,
+          "over_one_second": 0,
+          "elapsed_ms": [
+            243.727009
+          ],
+          "last_internal_timings_ms": {
+            "assembly": 46.778805,
+            "index_and_issue_load": 153.570496,
+            "original_index_build_separate": 1676.788349,
+            "output_serialization_sample": 0.103484,
+            "revision_validation": 0.507674,
+            "selected_git_validation_and_read": 5.207617,
+            "warm_preview_before_output": 202.61918300000002
+          },
+          "evidence_paths": [
+            "docs/glossary.md",
+            "docs/audits/2026-10-03-independent-efficiency/README.md",
+            "docs/optimization/coder-components.md",
+            "docs/coder/design/coder-suite-migration.md",
+            "docs/cost/2026-10-02-system-one-cost-efficiency-audit.md",
+            "docs/coder/design/coder-terminal-v05-algorithm-and-goldens.md",
+            "docs/essays/2026-09-29-test-time-capabilities.md",
+            "docs/history/2026-09-28-tassadar-percepta.md",
+            "AGENTS.md",
+            "Cargo.toml",
+            "README.md",
+            "docs/README.md",
+            "docs/audits/README.md",
+            "docs/coder/README.md"
+          ],
+          "candidate_files": 5235,
+          "history_count": 4,
+          "markdown_bytes": 61409
+        },
+        "no_history": {
+          "count": 1,
+          "p50_ms": 240.9204,
+          "p95_ms": 240.9204,
+          "max_ms": 240.9204,
+          "over_one_second": 0,
+          "elapsed_ms": [
+            240.9204
+          ],
+          "last_internal_timings_ms": {
+            "assembly": 48.756617000000006,
+            "index_and_issue_load": 149.154015,
+            "original_index_build_separate": 1676.788349,
+            "output_serialization_sample": 0.095209,
+            "revision_validation": 0.518624,
+            "selected_git_validation_and_read": 5.533248,
+            "warm_preview_before_output": 200.640718
+          },
+          "evidence_paths": [
+            "docs/glossary.md",
+            "docs/audits/2026-10-03-independent-efficiency/README.md",
+            "docs/optimization/coder-components.md",
+            "docs/coder/design/coder-suite-migration.md",
+            "docs/cost/2026-10-02-system-one-cost-efficiency-audit.md",
+            "docs/coder/design/coder-terminal-v05-algorithm-and-goldens.md",
+            "crates/coder-one/src/micro.rs",
+            "crates/gym/src/bin/gym.rs",
+            "AGENTS.md",
+            "Cargo.toml",
+            "README.md",
+            "crates/coder-one/Cargo.toml",
+            "crates/gym/Cargo.toml",
+            "docs/README.md"
+          ],
+          "candidate_files": 5235,
+          "history_count": 0,
+          "markdown_bytes": 55655
+        },
+        "explicit_only": {
+          "count": 1,
+          "p50_ms": 230.329427,
+          "p95_ms": 230.329427,
+          "max_ms": 230.329427,
+          "over_one_second": 0,
+          "elapsed_ms": [
+            230.329427
+          ],
+          "last_internal_timings_ms": {
+            "assembly": 34.197823,
+            "index_and_issue_load": 151.08776600000002,
+            "original_index_build_separate": 1676.788349,
+            "output_serialization_sample": 0.036008,
+            "revision_validation": 0.5168510000000001,
+            "selected_git_validation_and_read": 2.010213,
+            "warm_preview_before_output": 187.316714
+          },
+          "evidence_paths": [
+            "AGENTS.md",
+            "Cargo.toml"
+          ],
+          "candidate_files": 0,
+          "history_count": 0,
+          "markdown_bytes": 9122
+        }
+      },
+      "cached_wrapper_elapsed_ms": 241.349663
+    }
+  ]
+}

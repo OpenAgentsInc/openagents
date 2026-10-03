@@ -7,7 +7,7 @@ Use the [master roadmap](../roadmap.md) for current work.
 
 | Document | Recorded topic |
 | --- | --- |
-| [2026-10-03-independent-efficiency/README.md](2026-10-03-independent-efficiency/README.md) | Independent cost and context audit: current Claude/Codex paths, historical Microluna/Microcoder controls, recomputed comparisons, and a standalone study protocol |
+| [2026-10-03-independent-efficiency/README.md](2026-10-03-independent-efficiency/README.md) | Independent cost and context audit: Claude/Codex comparisons, historical controls, System One preparation experiments, and a runnable issue briefing prototype |
 | [2026-09-26-nostr-adoption/README.md](2026-09-26-nostr-adoption/README.md) | Nostr adoption across all 44 workspace packages: existing paths, missing integrations, pre-adoption blockers, and local boundaries |
 | [2026-09-19-codebase-audit/README.md](2026-09-19-codebase-audit/README.md) | Workspace audit: September 19, 2026 |
 | [2026-09-19-codebase-audit/issues.md](2026-09-19-codebase-audit/issues.md) | Open issue map |

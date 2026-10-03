@@ -1,0 +1,20 @@
+[
+  {
+    "issue": 10250,
+    "title": "Codex lean session: one codex exec session with the Jev briefing as the default Codex route (coder.codex)",
+    "fetch_ms": 502.477,
+    "bytes": 766
+  },
+  {
+    "issue": 10162,
+    "title": "Gym study: OpenAgents vs raw Claude Code / Codex on the same tasks (cost, time, outcome)",
+    "fetch_ms": 458.416,
+    "bytes": 711
+  },
+  {
+    "issue": 10253,
+    "title": "System One briefing audit and runnable issue preview prototype",
+    "fetch_ms": 425.435,
+    "bytes": 1152
+  }
+]

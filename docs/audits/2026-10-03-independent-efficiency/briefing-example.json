@@ -1,0 +1,295 @@
+{
+  "schema": "openagents.briefing-lab.preview.v1",
+  "commit": "682d958c7eb24a4dc32ed503965f4c103919cd77",
+  "issue": {
+    "title": "Codex lean session: one codex exec session with the Jev briefing as the default Codex route (coder.codex)",
+    "body": "Part of #10204. The Claude lean session (#10246, 42d1539463) cost 0.61× raw Claude Code at 21/21 passes. Build the Codex equivalent designed in docs/cost/2026-10-02-shadow-baseline-measurement.md (\"The lean session arm\"): one `codex exec` session with the same Jev briefing, medium effort (owner default gpt-6.1-sol medium), core prompt, cache-friendly; a `coder.codex` setting (session | loop). Measure on the #10209 harness vs raw Codex (7 tasks × 3 trials) and make it the default if it wins on cost at equal passes.",
+    "number": 10250,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/10250"
+  },
+  "components": {
+    "lexical": true,
+    "symbols": true,
+    "history": true
+  },
+  "evidence": [
+    {
+      "path": "docs/cost/2026-10-02-shadow-baseline-measurement.md",
+      "blob": "aa5cda419de46f7fb0a0d752f616ab92045deafc",
+      "file_sha256": "1372c0ccf49a12708ba5ecbdf5830a085812652860600ddadcb5544da993035d",
+      "excerpt_sha256": "80c3068ff76dcf295ffade7f4f9eda32cc71e51d590ade3086bd2481a206c54f",
+      "start_line": 1,
+      "end_line": 64,
+      "total_lines": 421,
+      "reasons": [
+        "Explicit issue path",
+        "Lexical overlap: 10204, 10209, 10246, 2026, arm, baseline, briefing, build, cache, claude, code, coder"
+      ],
+      "text": "# Shadow baseline, first measurement: routed OpenAgents against raw Claude Code\n\n2026-10-02, for [#10209](https://github.com/OpenAgentsInc/openagents/issues/10209)\n(part of the umbrella [#10204](https://github.com/OpenAgentsInc/openagents/issues/10204)).\nThe plan was the cost audit's\n[section 5b](2026-10-02-system-one-cost-efficiency-audit.md#5b-measuring-the-recipe).\nThis is the first test of the claim \"routing work beats raw delegation\"\non the path the terminal ships (`openagents chat send`, routed to a Coder\ntask), not on a bench arm.\n\n## Result\n\n**On these seven tasks, the shipped routed path did not save money or time\nagainst raw Claude Code. On the Claude engine it cost 68% more and took 39%\nlonger at the same pass rate.** The Codex engine cost 13% less than raw\nClaude Code, which is a cheaper model's list price, and took 2.6 times as long.\nThe delegate recipe (#10208) had no measurable effect on the Claude engine.\nOn Codex it raised cost by 61% and time by 43%, because Jev classed 18 of 21\ntasks as \"hard\", which runs Codex at high effort.\n\nThe cause on Claude is caching, not tokens. The routed loop sent 3.7 times\nfewer input tokens than raw Claude Code, but it wrote 85–88% of them to the\nprompt cache at 1.25 times the input price and read only 12–15% back. Raw\nClaude Code read 93% of its input from cache at 0.1 times the price. Each\nMicrocoder step is a fresh `claude -p` call, and the step's prompt changes near\nits start, so the five-minute cache almost never hits.\n\nThe audit's 61% and 63% savings (sections 1 and 2c) came from a different\npath: the Coder One CLI delegate (Jev probes in front of a lean Claude Code\nsession with six tools) on Harbor. That path was not run here, so this\nmeasurement does not refute those numbers. It shows that the routed path the\nterminal uses today does not reproduce them.\n\n**Update, #10246:** a sixth arm ran the audit's own configuration (Jev\nbriefing one lean Claude Code session) as a route. It cost 0.61× raw Claude\nCode (95% CI 0.57–0.65) at 21 of 21 passes with no measurable difference\nin wall time, and is now the default Claude route\n([below](#the-lean-session-arm-10246)).\n\n## Numbers\n\n105 runs: 7 tasks × 5 arms × 3 trials, all on coderos-4080 on 2026-10-02.\nPasses come from an independent check (below). Cost is list price for the\nengine plus Jev. Wall time is end to end, from the command's start to the\nroute record settling (routed) or to the process exiting (raw).\n\n| Arm | n | Passed (Wilson 95%) | Total cost | Median cost per run | Total wall time | Median wall time per run | Median input tokens |\n| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: |\n| Raw Claude Code (`claude -p`, defaults: Opus 5.5 1M) | 21 | 21/21 (85%–100%) | **$6.24** | $0.238 | **24.3 min** | **45 s** | 194,547 |\n| Routed, Claude engine, recipe on | 21 | 21/21 (85%–100%) | $10.52 | $0.285 | 33.9 min | 64 s | 52,452 |\n| Routed, Claude engine, recipe off | 21 | 20/21 (77%–99%) | $10.00 | $0.321 | 35.7 min | 84 s | 51,390 |\n| Routed, Codex engine (GPT-6.1 Sol), recipe on | 21 | 21/21 (85%–100%) | $5.45 | $0.119 | 63.6 min | 124 s | 58,564 |\n| Routed, Codex engine, recipe off | 21 | 21/21 (85%–100%) | **$3.38** | $0.104 | 44.6 min | 99 s | 43,621 |\n\nEach arm compared with raw Claude Code: the sum over tasks of per-task means,\nwith a 95% bootstrap interval that resamples trials within each task.\n\n| Arm | Cost ratio (95% CI) | Cost | Wall-time ratio (95% CI) | Time |\n| --- | --- | ---: | --- | ---: |\n| Claude, recipe on | 1.68 (1.46–1.95) | 68% more | 1.39 (1.02–1.89) | 39% longer |\n| Claude, recipe off | 1.60 (1.44–1.75) | 60% more | 1.47 (1.15–1.87) | 47% longer |\n| Codex, recipe on | 0.87 (0.79–0.96) | 13% less | 2.61 (2.05–3.31) | 161% longer |\n| Codex, recipe off | 0.54 (0.51–0.57) | 46% less | 1.83 (1.41–2.37) | 83% longer |\n\n"
+    },
+    {
+      "path": "docs/cost/2026-10-02-system-one-cost-efficiency-audit.md",
+      "blob": "a97772ce4a50a526048225941cf7137a4530e6eb",
+      "file_sha256": "de22cb1ef973d42d06b307a47bd279574c8dd1aa79332c6a8489f7705226ae5c",
+      "excerpt_sha256": "aefd3bed91b1d3c21f91612dc1932778fad3765ad35104986e8285ed4da5756b",
+      "start_line": 1,
+      "end_line": 64,
+      "total_lines": 616,
+      "reasons": [
+        "Lexical overlap: 10204, 10209, 10246, 2026, arm, baseline, briefing, build, cache, claude, code, coder"
+      ],
+      "text": "# System One cost efficiency: what we measured, and how to make it the default\n\n2026-10-02. An audit for the owner of what was learned from 2026-09-22 to\n2026-09-28 about making Fable and Claude Code runs cheaper and faster with\nSystem One (code plus Jev), and of how much of it the current harness uses.\nEvery number below is copied from a committed report or a retained\nconversation, with its source. Nothing was rerun for this audit.\n\n## 1. The reminder\n\nBetween episodes 287 and 288 we found a recipe that makes a frontier\ncoding model do the same work for much less money and less waiting, and we\ncarried it across every task set we had. It is four things Coder does\naround the same model, all System One (plain code plus cheap typed Jev\njudgments, about 200 ms and a fraction of a cent each):\n\n1. **Jev scouts and briefs first.** Jev probes the workspace with\n   read-only commands and picks the evidence, so the model starts from a\n   briefing instead of exploring. Input tokens fell 44%.\n2. **Six tools and a trimmed system prompt** instead of Claude Code's\n   default set, so every call carries less.\n3. **A five-minute prompt cache** instead of one hour (cache writes cost\n   1.25x input instead of 2x). This alone cut 19–25%.\n4. **Lower reasoning effort** (low or medium instead of high), because the\n   briefing already did the looking.\n\nThe assessment that names these four was written on the Coder box on\n2026-09-23 ([section 2a](#2a-the-assessment-four-things-replicated-across-26-tasks)).\nThe recipe evolved over two days and about 25 configurations (the Gemini\nloop, then Jev probes, probe v2 and v3, the five-minute cache, tunable v2\nto v10), and it replicated at every step:\n\n| Step | Tasks | Result against the same model run raw |\n| --- | --- | --- |\n| Development panel, 3 trials each | 4 | 12/12 both ways, **63% cheaper, 32% faster** than Claude Code on Opus 5.5 |\n| Four newer tasks, 3 trials each | 4 | 12/12 both ways, **57% cheaper, 48% faster** |\n| All eight development tasks | 8 | 24/24 both ways, **$0.43 vs $1.09 (61% cheaper), 192 s vs 306 s (37% faster)** |\n| Terminal-Bench 4.0, one attempt each | 26 | **11 passes vs 9, $32.87 vs $59.27 (45% cheaper), 182 vs 295 min (38% faster); cheaper on 24 of 26 tasks, faster on 22** |\n| Against the TB4 leaderboard, matched per task | 45 | About 80% of the top rows' accuracy at **a fifth to a ninth of their cost** |\n| The same recipe in front of Fable 5.1 low | 15 | **Beat Fable 5.1 low's own cheapest and fastest winning run on 5 tasks**: `fin-saccr-rwa`, `coq-block-bound`, `mp-checkpoint-consolidation`, `sound-change-cascade`, `gsea-proteomics` |\n| The recipe with a cheap model (Microcoder, GPT-6 Luna) | 65 + 3 | Out of sample on TB2.1: **30 confirmed wins** on cost against Fable 5 xhigh, median pass at **2.9%** of Fable's cost. In sample on TB4: Fable's pass rate on `embedding-drift-monitor` at **1/58 of the cost**, and passes on three TB4 tasks at 1/45 to 1/2 of Fable's cheapest win |\n\nA matched test later held effort and cache equal on both sides and found\nthe controller by itself saved little (7.6%). That is the useful finding,\nnot a caveat: the savings live in the four choices, which are portable\nsettings any delegation can adopt, whether it goes to Claude Code, Codex,\nor Fable.\n\nThe principle under all of it is the one from episodes 286 and 287: code\nowns control, Jev judges narrowly, and the generative model only\ngenerates. Every decision moved out of the expensive model's turns and\ninto code or a typed judgment made the run cheaper.\n\n## 2. The grids\n\n### 2a. The assessment: four things, replicated across 26 tasks\n\nVerbatim from the Coder box: coderos-4080,\n`~/.claude/projects/-home-christopherdavid-openagents/4d9ec5a2-be11-427a-bc5a-9f3040a354c4.jsonl`,\nassistant message at 2026-09-23T14:23:48Z, answering \"please write an\nassessment on just that fact\". The full assessment is committed as\n[`2026-09-23-coder-one-vs-claude-code-tb4.md`](https://github.com/OpenAgentsInc/openagents/blob/62bb353abde1d2db74b957b9c1faa49f76f11379/docs/terminal-bench/2026-09-23-coder-one-vs-claude-code-tb4.md)\n([`62bb353abd`](https://github.com/OpenAgentsInc/openagents/commit/62bb353abde1d2db74b957b9c1faa49f76f11379)).\n\n"
+    },
+    {
+      "path": "crates/coder-one/src/micro/lean.rs",
+      "blob": "75f46249f61f1a7469383862658bf95fab1e30d4",
+      "file_sha256": "23ca47a121471cb9202b56c7d6bc01e414a361626128b3d75d55ed450ee48d26",
+      "excerpt_sha256": "f457bc73ac59cd217c60c61fd386204177abb3048d4f07729b7593a3f73121c5",
+      "start_line": 73,
+      "end_line": 136,
+      "total_lines": 3891,
+      "reasons": [
+        "Lexical overlap: 2026, baseline, briefing, build, cache, code, coder, cost, default, docs, effort, equal",
+        "Declaration hint: Lean"
+      ],
+      "text": "        }\n    }\n    Ok(tree)\n}\n\n/// `executor.microluna.lean`: the lean loop's shape.\n#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]\n#[serde(deny_unknown_fields)]\npub struct Lean {\n    /// Work sessions at most, the self-check not counted.\n    pub sessions: u32,\n    /// Characters of the workspace's current source files in the prefix.\n    pub source_chars: usize,\n    /// Characters of data-file heads in the prefix.\n    #[serde(default)]\n    pub sample_chars: usize,\n    /// End with a self-check session on a fresh context.\n    #[serde(default)]\n    pub self_check: bool,\n    /// Tell each session to hold out part of any provided examples and to\n    /// measure on the held-out part.\n    #[serde(default, skip_serializing_if = \"std::ops::Not::not\")]\n    pub holdout: bool,\n    /// Scan each session's changes for hard-coded examples, in code and\n    /// with one Jev question.\n    #[serde(default, skip_serializing_if = \"std::ops::Not::not\")]\n    pub hardcode_check: bool,\n    /// Have the first session write an evaluation script, freeze it, score\n    /// the workspace after every session, and finish on the best snapshot.\n    #[serde(default, skip_serializing_if = \"std::ops::Not::not\")]\n    pub keep_best: bool,\n    /// The score script's wall-time bound, in seconds.\n    #[serde(default = \"score_sec\")]\n    pub score_sec: u64,\n    /// When the host turns a work session's `finish` back, or `None` to let\n    /// every finish stand.\n    #[serde(default, skip_serializing_if = \"Option::is_none\")]\n    pub persist: Option<LeanPersist>,\n    /// The loop's wall-time bound in seconds, the self-check included: no\n    /// session starts in its last minute, and each session ends by it. 0\n    /// leaves only the dispatch's deadline.\n    #[serde(default, skip_serializing_if = \"is_zero\")]\n    pub wall_sec: u64,\n    /// Add the working practices ([`PRACTICES`]) to the guidance.\n    #[serde(default, skip_serializing_if = \"std::ops::Not::not\")]\n    pub practices: bool,\n    /// Put the comments that defend a design choice in the evidence, as\n    /// suspects (`accept::defended_choices_general`).\n    #[serde(default, skip_serializing_if = \"std::ops::Not::not\")]\n    pub defended: bool,\n    /// Bound each session's spend by what is left of the dispatch's.\n    #[serde(default, skip_serializing_if = \"std::ops::Not::not\")]\n    pub session_spend: bool,\n    /// Count whole records, an input with its answer, in the literal scan\n    /// ([`data_records`]) instead of single fields, so a provided word list\n    /// a solution may use isn't read as hard-coded examples.\n    #[serde(default, skip_serializing_if = \"std::ops::Not::not\")]\n    pub records: bool,\n    /// Every command's wall-time bound in seconds, below the tool's own\n    /// 600. 0 keeps the tool's.\n    #[serde(default, skip_serializing_if = \"is_zero\")]\n    pub command_sec: u64,\n    /// Add the symptom practice alone ([`SYMPTOMS`]), without the search\n    /// practice `practices` also carries.\n"
+    },
+    {
+      "path": "crates/coder-one/src/policy.rs",
+      "blob": "8239fb3e5ea4a0f4cec39e44fa60c3256ad99b7a",
+      "file_sha256": "21d13bf3200fea4ac3bed7299f094ae72d8944e5a4cf1056c9daf94d515dda37",
+      "excerpt_sha256": "59eea4d0ae327c687fd53d63e890cd1467641a8301d97e9bfd968277bc490fce",
+      "start_line": 714,
+      "end_line": 777,
+      "total_lines": 2656,
+      "reasons": [
+        "Lexical overlap: 2026, arm, baseline, briefing, build, cache, claude, code, coder, codex, core, cost",
+        "Declaration hint: jev"
+      ],
+      "text": "    /// The delegate mode.\n    #[must_use]\n    pub fn mode(&self) -> Mode {\n        self.policy.control.delegate.mode()\n    }\n\n    /// Whether Jev runs at all.\n    #[must_use]\n    pub fn jev(&self) -> bool {\n        self.policy.jev.mode != JevMode::Off\n    }\n\n    /// Whether Jev runs in deep mode.\n    #[must_use]\n    pub fn deep(&self) -> bool {\n        self.policy.jev.mode == JevMode::Deep\n    }\n\n    /// The judge this manifest configures.\n    #[must_use]\n    pub fn judge(\n        &self,\n        client: Option<jev::Client>,\n        workdir: PathBuf,\n        issue: &crate::state::Issue,\n        recorder: crate::record::Recorder,\n    ) -> crate::judge::JevJudge {\n        coder_delegate::policy::judge(\n            &self.policy.jev,\n            &self.policy.evidence,\n            client,\n            workdir,\n            issue,\n            recorder,\n        )\n    }\n\n    /// The executor this manifest configures, given what the host found.\n    #[must_use]\n    pub fn executor(&self, host: ExecutorHost) -> Cli {\n        coder_delegate::policy::executor(&self.policy.executor, host)\n    }\n\n    /// The sections a turn reads: Jev, evidence, the briefing, and the\n    /// executor, without Microluna's section.\n    #[must_use]\n    pub fn turn(&self) -> coder_delegate::policy::TurnPolicy {\n        let executor = &self.policy.executor;\n        coder_delegate::policy::TurnPolicy {\n            jev: self.policy.jev.clone(),\n            evidence: self.policy.evidence.clone(),\n            brief: self.policy.brief.clone(),\n            executor: coder_delegate::policy::ExecutorPolicy {\n                agent: executor.agent,\n                version: executor.version.clone(),\n                model: executor.model.clone(),\n                effort: executor.effort.clone(),\n                tools: executor.tools.clone(),\n                prompt_cache_ttl: executor.prompt_cache_ttl.clone(),\n                deadline_sec: executor.deadline_sec,\n                system: executor.system.clone(),\n                session: executor.session.clone(),\n                microluna: None,\n            },\n"
+    },
+    {
+      "path": "docs/terminal-bench/2026-09-23-coder-one-vs-claude-code-tb4.md",
+      "blob": "94bdb3f50b960b42d91c0306dece737615ce918b",
+      "file_sha256": "22bdbd72267eca4d828a33c3683f7c41f9156e27fd109463df8c525a23bd8082",
+      "excerpt_sha256": "55dfebac73307682256018026094e7866fbb87fbda6d8f986a05367bfa76f8c9",
+      "start_line": 1,
+      "end_line": 64,
+      "total_lines": 191,
+      "reasons": [
+        "Lexical overlap: 2026, arm, baseline, briefing, cache, claude, code, coder, core, cost, default, docs"
+      ],
+      "text": "# Coder One against Claude Code on Terminal-Bench 4.0\n\nStatus: assessment of one-attempt trials on 2026-09-23. It examines one\nclaim from the running Terminal-Bench 4.0 (TB4) suites: on the same tasks,\non the same host, with the same model, Coder One passes more tasks than\nClaude Code for less money. The data are retained under\n`~/.openagents/terminal-bench/jobs/tb4--coder-one-tunable-v2--*` and\n`tb4--claude-code-opus--*`, and are regenerated with\n`bench/terminal-bench/tools/tb4_scoreboard.py`.\n\n**Subsequent controlled comparison:** the [12-attempt matched Opus pilot](2026-09-23-matched-opus-controller.md)\nholds the executor settings fixed. Plain Claude passed 6/6 for $6.64 and\n37.0 agent-minutes; Coder passed 5/6 for $6.14 and 34.4 minutes, including\nJev. It records modest aggregate savings with one fewer pass, not equal-success\nefficiency. This two-task pilot does not replace the 26-task configuration\ncomparison below; it limits what that comparison can claim about adding the\ncontroller alone. Its report retains an unchanged-candidate grade recovery\nand a sensitivity analysis excluding that pair.\n\n## The claim, corrected\n\nThe first version of this claim, posted on 2026-09-23, read \"12 passes for\n$35.56 against 10 for $61.69 on 27 tasks\". A closer look at every trial\nremoved two tasks whose trials didn't measure the agents:\n\n| Task | Arm | Why it doesn't count |\n| --- | --- | --- |\n| `kv-live-surgery` | Claude Code | The trial ran from 09:28 to 11:06 UTC, inside the window when the Claude subscription's usage limit was exhausted (it reset at 11:51). It recorded no usage and its agent logs are missing, so it can't be shown to have run normally. It scored 0. |\n| `risk-scorer-replay` | Coder One | Coder One never started: `cannot read /opt/openagents/instruction.txt: Permission denied`. The task image runs as a user that couldn't read the instruction file the adapter uploaded. The verifier then graded an untouched workspace, scoring 0. This is a Coder One harness bug, not a capability result. |\n\nRemoving both leaves **26 tasks with a valid trial on each side**:\n\n| | Coder One v2 | Claude Code |\n| --- | ---: | ---: |\n| Tasks passed | **11 of 26** | 9 of 26 |\n| Pass rate (Wilson 95% interval) | 42% (26%–61%) | 35% (19%–54%) |\n| Total cost | **$32.87** | $59.27 |\n| Total agent time | **182 min** | 295 min |\n| Input tokens | 33.9 M | 60.5 M |\n| Output tokens | 0.86 M | 1.36 M |\n\n**Coder One passed two more tasks for 45% less money and 38% less agent\ntime.** It was cheaper on 24 of the 26 tasks and faster on 22.\n\n## What each arm is\n\nBoth arms run Claude Code 2.1.280 on Claude Opus 5.5 with the same\nsubscription credential, in the same Harbor 0.22.0 task containers on the\nsame host, one attempt per task, on the pinned TB4 tasks (`v4.0.0`).\n\n| | Claude Code (`claude-code-opus`) | Coder One v2 (`coder-one-tunable-v2`) |\n| --- | --- | --- |\n| Harness | Harbor's `claude-code` agent | Coder One's episode wrapping Claude Code as its executor |\n| Reasoning effort | high | medium on long tasks (every TB4 task has an 8-hour timeout) |\n| Tools | Claude Code's full default set | Six: `Bash, Read, Edit, Write, Glob, Grep` |\n| System prompt | Claude Code's default | A headless core replacing the default, with its security section kept |\n| Prompt cache | One hour (the subscription default) | Five minutes |\n| Before the executor | Nothing | Jev-selected probes, a 40-file survey, a coverage-packed briefing, and requirements extracted from the task's prose |\n| After the executor | Nothing | Behavioral checks, paired Jev support judgments, and one repair on an observed failure |\n| Routing and escalation | — | Every TB4 task routed to lean Opus; escalation available but not triggered on these tasks |\n\nPolicy: `crates/coder-one/policies/tunable-v2.json`. Artifact\n`coder-one 0.1.0 (753a17ed975f)` for 24 of the 26 trials and\n`(756500c1f9ec)` for two reruns; the second adds only usage-limit detection.\n"
+    },
+    {
+      "path": "crates/coder-one/src/compose/tests.rs",
+      "blob": "2327139aec90eb4bcf458b421522aab2d4f76c4a",
+      "file_sha256": "0f03c79ff681fd82e081c680961f57bcf951c0fc8978e26be5a4721fb5b1115d",
+      "excerpt_sha256": "0be10c7d8f1a43757da5ea3631eedc93ebf1c4b13a304bf67183282094e9a18b",
+      "start_line": 37,
+      "end_line": 100,
+      "total_lines": 2458,
+      "reasons": [
+        "Lexical overlap: arm, baseline, briefing, claude, code, coder, codex, cost, default, effort, exec, gpt",
+        "Declaration hint: make"
+      ],
+      "text": "    scripts: VecDeque<Script>,\n    workdir: PathBuf,\n    artifacts: PathBuf,\n    recorder: Recorder,\n    made: Vec<(Tier, Duration)>,\n}\n\nimpl Factory for Queue {\n    fn make(&mut self, tier: &Tier, deadline: Duration, runs: u32) -> Result<Exec, String> {\n        let script = self\n            .scripts\n            .pop_front()\n            .ok_or_else(|| format!(\"no script left for {}\", tier.label()))?;\n        self.made.push((tier.clone(), deadline));\n        let mut scripted = Scripted::new(script, self.workdir.clone());\n        scripted.artifacts = Some(self.artifacts.clone());\n        scripted.deadline = deadline;\n        scripted.recorder = self.recorder.clone();\n        scripted.runs = runs;\n        scripted.controls = Controls {\n            deadline_ms: u64::try_from(deadline.as_millis()).unwrap_or(u64::MAX),\n            tick_ms: 100,\n            ..Controls::default()\n        };\n        Ok(Exec::Scripted(Box::new(scripted)))\n    }\n}\n\nfn script(name: &str, sum: i64, claimed_exit: i64) -> Script {\n    let at = |at_ms: u64, act: Act| Timed { at_ms, act };\n    Script {\n        schema: SCRIPT_SCHEMA.to_string(),\n        name: name.to_string(),\n        format: Format::Codex,\n        model: name.to_string(),\n        capabilities: Capabilities::all(),\n        events: vec![\n            at(\n                0,\n                Act::Claim {\n                    text: \"Reading numbers.txt.\".to_string(),\n                },\n            ),\n            at(\n                1_000,\n                Act::Write {\n                    path: \"answer.json\".to_string(),\n                    content: format!(\"{{\\\"sum\\\": {sum}}}\\n\"),\n                    announce: true,\n                },\n            ),\n            at(\n                2_000,\n                Act::Command {\n                    command: \"python3 test_answer.py\".to_string(),\n                    output: \"ok\".to_string(),\n                    exit_code: claimed_exit,\n                },\n            ),\n            at(\n                3_000,\n                Act::Claim {\n                    text: \"Done: answer.json holds the sum.\".to_string(),\n                },\n"
+    },
+    {
+      "path": "docs/cost/2026-10-02-shadow-baseline/study.py",
+      "blob": "c24cc49866f3c3f942210843a097acf4d7af5e21",
+      "file_sha256": "ed2e5f7ee0ec8c160872599faa50779464b64960088191a79c35d8917cdd39ae",
+      "excerpt_sha256": "d728848f62bc3927ebdb2bca3f0eeaa76c32e86e8c233b04a2925c247899f0e6",
+      "start_line": 1,
+      "end_line": 64,
+      "total_lines": 640,
+      "reasons": [
+        "Lexical overlap: 10209, 10246, 2026, arm, baseline, build, cache, claude, code, coder, codex, cost"
+      ],
+      "text": "#!/usr/bin/env python3\n\"\"\"Shadow-baseline study for #10209 on coderos-4080.\n\nArms:\n  raw-claude       raw Claude Code CLI, default settings, in a copy of the repo\n  routed-claude-on   `openagents chat send` routed to Claude Code, recipe on\n  routed-codex-on    routed to Codex, recipe on\n  routed-claude-off  routed to Claude Code, recipe off (controller shim)\n  routed-codex-off   routed to Codex, recipe off\n  routed-claude-lean routed to Claude Code as one lean session (#10246):\n                     coder.claude = session, recipe on\n  raw-codex          raw Codex CLI (`codex exec`) on the owner's Codex default,\n                     gpt-6.1-sol at medium effort, standard tier (#10250)\n  routed-codex-loop  routed to Codex, Microcoder's loop (coder.codex = loop),\n                     recipe on, binaries from the #10250 commit\n  routed-codex-session routed to Codex as one lean `codex exec` session\n                     (coder.codex = session), recipe on (#10250)\n\nUsage:\n  study.py prepare\n  study.py run ARMS TASKS TRIALS PARALLEL      (comma lists; TRIALS like 1,2,3)\n  study.py one ARM TASK TRIAL\n\"\"\"\nimport concurrent.futures as cf\nimport glob\nimport hashlib\nimport json\nimport os\nimport random\nimport shutil\nimport socket\nimport subprocess\nimport sys\nimport tempfile\nimport time\n\nHOME = os.path.expanduser(\"~\")\nBASE = os.path.join(HOME, \"shadow-10209\")\nTMPL = os.path.join(BASE, \"templates\")\nRUNS = os.path.join(BASE, \"runs\")\nRESULTS = os.path.join(BASE, \"results.jsonl\")\nTB = os.path.join(HOME, \".openagents/terminal-bench/upstream/terminal-bench-2.1/tasks\")\nOA = os.path.join(HOME, \"coder-runner/openagents\")\nOFF_SHIM = os.path.join(BASE, \"bin/microcoder-recipe-off\")\n# #10246: the lean arm runs binaries built from the commit that added it.\nLEAN_OA = os.path.join(BASE, \"bin-lean/openagents\")\n# #10250: the Codex session arms run binaries built from the commit that added it.\nCODEX_SESSION_OA = os.path.join(BASE, \"bin-codexsess/openagents\")\n# The owner's Codex default (#10250): the raw arm runs it, as the routes do.\nCODEX_MODEL, CODEX_EFFORT = \"gpt-6.1-sol\", \"medium\"\nSRC = os.path.join(BASE, \"src\")\nPY = shutil.which(\"python3\")\nTIMEOUT = 3600\n\nGIT = [\"git\", \"-c\", \"user.email=study@openagents.invalid\", \"-c\", \"user.name=Study\"]\n\n\ndef sh(cmd, cwd=None, env=None, check=True, timeout=None):\n    r = subprocess.run(cmd, cwd=cwd, env=env, shell=isinstance(cmd, str),\n                       capture_output=True, text=True, timeout=timeout)\n    if check and r.returncode != 0:\n        raise RuntimeError(f\"{cmd}: {r.returncode}\\n{r.stdout[-2000:]}\\n{r.stderr[-2000:]}\")\n    return r\n\n"
+    },
+    {
+      "path": "crates/coder/src/task/autostart.rs",
+      "blob": "dbc542b7775699af160a2478b83a7f748e82add7",
+      "file_sha256": "dfdf728ef1474d99d1de1583c50277643dac1f8c8a4056c88cd123a10fa0b2b7",
+      "excerpt_sha256": "440c52110a0bc84788e1d0ab2f33353a507960c86b4fed52fb67e5e9f3e63268",
+      "start_line": 58,
+      "end_line": 121,
+      "total_lines": 4701,
+      "reasons": [
+        "Lexical overlap: 10209, 10246, 2026, build, cache, claude, code, coder, codex, core, cost, default",
+        "Declaration hint: DEFAULT_DECISION_MODEL"
+      ],
+      "text": "pub const JOURNAL_FILE: &str = \"autostart.jsonl\";\npub const POLICY_SCHEMA: &str = \"openagents.coder.host-autostart.v1\";\npub const ENTRY_SCHEMA: &str = \"openagents.coder.host-autostart-entry.v1\";\n/// The most tasks a policy may run at once.\npub const MAX_RUNNING: u32 = 8;\n/// The decision model a new policy names. The engine refuses a Jev reply\n/// whose model differs from the admitted one, so this is an exact version,\n/// never an alias such as `jev-latest`.\npub const DEFAULT_DECISION_MODEL: &str = \"jev-1.13.0\";\n/// How long a started task may stay queued, waiting for its owner process\n/// to admit it, before it stops counting against the concurrency bound.\nconst PENDING_GRACE: u64 = 120;\n/// How long a started task may stay queued while its owner process still\n/// runs before the host ends it as never started. An owner that has exited\n/// without admitting the task ends it at the next sweep instead. It matches\n/// [`StartCause::Timeout`]'s sentence.\nconst ADMISSION_DEADLINE: u64 = 600;\n/// How many times the host launches an owner for one turn when the owner\n/// stops without admitting it for a cause that may be transient.\nconst MAX_ATTEMPTS: usize = 2;\n/// The most of a launch diagnostic the host reads, from its end.\nconst DIAGNOSTIC_TAIL: u64 = 64 * 1024;\n/// How often the host looks for eligible tasks it could not start earlier.\npub const SWEEP_EVERY: Duration = Duration::from_secs(10);\n/// How long a sweep waits for a busy task store. A save's disk sync can\n/// hold the store lock for seconds while a build writes to a nearly full\n/// volume, as on a host being updated; no device waits on a sweep.\npub const STORE_WAIT: Duration = Duration::from_secs(120);\n\n/// The owner's policy.\n#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]\n#[serde(deny_unknown_fields)]\npub struct Policy {\n    pub schema: String,\n    pub enabled: bool,\n    /// Workspace labels whose tasks may start.\n    pub workspaces: Vec<String>,\n    /// Auto-started tasks that may run at once, 1 to 8.\n    pub max_running: u32,\n    pub engine: Engine,\n    /// When the owner last changed the policy, in Unix seconds.\n    pub changed_at: u64,\n}\n\n/// What runs an auto-started task, and its bounds.\n#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]\n#[serde(deny_unknown_fields)]\npub struct Engine {\n    /// Only `microcoder-repository`.\n    pub adapter: String,\n    /// The absolute path of the `microcoder` executable that owns the run.\n    pub controller: PathBuf,\n    /// The model recorded in each eligible task and admitted by its grant.\n    pub model: String,\n    pub effort: Option<String>,\n    /// A step limit older policies carried. Coder runs have no step or\n    /// time limit: a run ends when Coder finishes or asks, when the person\n    /// stops it, or when the loop's stuck guard finds it repeating a failed\n    /// approach without progress. An older policy's `max_steps` and\n    /// `wall_seconds` are read without error and ignored, and a policy\n    /// written now leaves them out.\n    #[serde(default, skip_serializing_if = \"Option::is_none\")]\n    pub max_steps: Option<usize>,\n    /// A time limit older policies carried; read and ignored, as\n"
+    },
+    {
+      "path": "AGENTS.md",
+      "blob": "81f69cf87a9783c28bd774c7ad874e59d02a9167",
+      "file_sha256": "85ce2d2cc4b7f94ab666ea0133b54d50bc03a911b10bf8adb00cfcadfa0fd4b2",
+      "excerpt_sha256": "3aa112e2be4bff2a02d2f572c606ca5ab01845d03a3322f9714fc113d6271b85",
+      "start_line": 1,
+      "end_line": 64,
+      "total_lines": 717,
+      "reasons": [
+        "Ancestor instructions, manifest, or crate guide"
+      ],
+      "text": "# OpenAgents agent contract\n\nProduct code in this workspace is Rust. Do not add TypeScript. The existing\nproduct exception is `swift/lev-bridge`, the helper that reaches Apple's\n`FoundationModels` framework, which has no Rust binding; it is built by a\nrepo script and supervised as a child process. Coder's iOS host at `bins/coder-ios/host` also uses thin SwiftUI glue for native controls, mounting, and\ncallbacks, as explicitly requested for that surface. Keep its application state,\ndomain logic, permissions, and transport in Rust; the implemented observer keeps these in `coder-mobile` and `coder-connect`. Read `crates/rust-native/docs/spec.md` and `docs/coder/rust-native/architecture.md`\nbefore adding that boundary.\nThe OpenAgents iOS host at `bins/openagents-ios/host` follows the same thin\nSwiftUI boundary; its application state lives in `crates/openagents-mobile`.\nThe OpenAgents Android host at `bins/openagents-android/host` is thin Kotlin\nover the same crate, through its JNI surface (`src/android.rs`).\nThe Android host at `bins/coder-android/host` uses the equivalent thin Kotlin\nboundary for Android framework widgets, `SurfaceView`, camera, sensors, and\nKeystore access. Keep domain state, Nostr, authorization, cache, and world\nbehavior in the same Rust mobile library; do not import the private Android\nbackend or authentication implementation.\nRetained Python training and\nacceptance tooling and shell orchestration are infrastructure exceptions,\nnot permission to add another product implementation language.\nThe Nix and shell under `os/` (CoderOS) are infrastructure in the same sense:\nthey configure a machine and launch Rust programs, and product behavior\nbelongs in Rust.\n\nTo ship the OpenAgents iOS app to TestFlight (for example when asked from the\nphone), run `scripts/release/testflight.sh start` (add `--validate-only` for\na dry run that archives and validates without uploading), then run\n`scripts/release/testflight.sh wait` again and again until it exits 0 (done)\nor 1 (failed; the reason is its last line); each `wait` returns within four\nminutes. Before a real upload, raise `CURRENT_PROJECT_VERSION` in\n`bins/openagents-ios/host/project.yml` to the build being shipped, add that\nbuild's entry at the top of `CHANGELOG` in\n`crates/openagents-mobile/src/account.rs`, commit, and push to `main`; the\nscript refuses a dirty checkout or a build number App Store Connect already\nhas. Report the build number and the script's last line.\n\n## Velocity (owner, 2026-10-01)\n\nShip small changes fast. The default check for a change is `cargo test -p`\nfor the crates you edited plus `cargo fmt`; that is enough to commit and push.\nDo not run, unless the task is a release or the owner reported that exact\nflow broken:\n\n- Clippy, the release gate (`scripts/release/acceptance.sh`), the phone\n  suite, live runs against real engines, or other crates' tests.\n- New `INVARIANTS.md` rows, design notes, or long docs. Update an existing\n  row only when the change breaks what it says, in one sentence.\n\nReuse one long-lived Cargo target directory per agent slot\n(`~/work/openagents-target-agentN`); never create a fresh one per task or\ndelete it at the end, because a cold build of this workspace costs minutes.\nWhen a test fails only because a checked-in generated file is stale, run its\nregenerate command and commit the result; don't investigate further.\n\nDocumentation-only changes do not require the Rust verification gate, including\nbefore a push. Check links, paths, and retained artifacts for documentation\nreorganizations. Comment edits and documentation path updates do not require\nworkspace-wide tests; if an embedded document's loading path changes, check only\nthe affected consumer.\n\nFor day-to-day Rust behavior changes, use the pinned toolchain and targeted\nchecks for the affected code and its relevant consumers. A bare\n`./scripts/verify-rust.sh` runs changed-package formatting, Clippy, and tests;\n"
+    },
+    {
+      "path": "Cargo.toml",
+      "blob": "653ecf5ff12d1e70f26503e1be7ada525cf546f2",
+      "file_sha256": "f09b99b62b22af0b1e3d04e070efeaa5c86e5ebdfe320119b896299d84675029",
+      "excerpt_sha256": "f09b99b62b22af0b1e3d04e070efeaa5c86e5ebdfe320119b896299d84675029",
+      "start_line": 1,
+      "end_line": 64,
+      "total_lines": 64,
+      "reasons": [
+        "Ancestor instructions, manifest, or crate guide"
+      ],
+      "text": "[workspace]\nmembers = [\n    \"crates/coderbench\",\"crates/*\"]\n# Retained Ruins of Atlantis source is third-party code, not first-party workspace policy.\nexclude = [\n    # Its own workspace, for Breez's SQLite; see its Cargo.toml.\n    \"crates/openagents-mobile\",\n    \"crates/verse-ruins/vendor/crates/client_core\",\n    \"crates/verse-ruins/vendor/crates/collision_static\",\n    \"crates/verse-ruins/vendor/crates/core_materials\",\n    \"crates/verse-ruins/vendor/crates/core_units\",\n    \"crates/verse-ruins/vendor/crates/data_runtime\",\n    \"crates/verse-ruins/vendor/crates/ecs_core\",\n    \"crates/verse-ruins/vendor/crates/net_core\",\n    \"crates/verse-ruins/vendor/crates/server_core\",\n    \"crates/verse-ruins/vendor/crates/voxel_mesh\",\n    \"crates/verse-ruins/vendor/crates/voxel_proxy\",\n]\nresolver = \"2\"\n\n[workspace.dependencies]\n# Pinned exactly; reviewed in docs/dependencies.md (iroh). Default features\n# off: no portmapper (UPnP/NAT-PMP) and no metrics; rustls with ring.\niroh = { version = \"=1.3.0\", default-features = false, features = [\"tls-ring\", \"fast-apple-datapath\"] }\niroh-relay = { version = \"=1.3.0\", default-features = false, features = [\"tls-ring\"] }\n# Nearby approval: mDNS on _openagents._udp (docs/dependencies.md, iroh).\n# 0.5.0 is the newest release at least seven days old.\niroh-mdns-address-lookup = { version = \"=0.5.0\", default-features = false }\n\n[workspace.package]\nversion = \"0.1.0\"\npublish = false\nedition = \"2024\"\nrust-version = \"1.97.1\"\n\n[workspace.lints.rust]\nunsafe_op_in_unsafe_fn = \"deny\"\nunexpected_cfgs = { level = \"warn\", check-cfg = ['cfg(kani)'] }\n# macOS ld's \"__eh_frame section too large ... compact unwind\" note on big\n# debug binaries is noise on every dev build of `openagents`.\nlinker_messages = \"allow\"\n\n[workspace.lints.clippy]\ndbg_macro = \"deny\"\ntodo = \"deny\"\nunimplemented = \"deny\"\n\n# SHA-256 at full speed in development builds too: a task's start digests\n# its workspace and grant, and unoptimized it ran 18 times slower (a 1 GB\n# file: 13.1 s against 0.74 s on CoderOS).\n[profile.dev.package.sha2]\nopt-level = 3\n\n# The profile `scripts/build-plugin-guests.sh` builds Wasm guests with. The\n# guests are checked in and inlined into `programs/evidence-guests.json`,\n# so size is a review cost. No native build uses it.\n[profile.guest]\ninherits = \"release\"\nopt-level = \"z\"\nlto = true\ncodegen-units = 1\npanic = \"abort\"\nstrip = true\ndebug = false\n"
+    },
+    {
+      "path": "README.md",
+      "blob": "f36a95af62803ffe7fb516a44cafc3f7be864469",
+      "file_sha256": "202fddc7a80487aa4fbaa75f19414e750dacee1e9120ad88405e83dfa40381b9",
+      "excerpt_sha256": "dd7c399f198496c86e8a34c84e1a017cd5f16b066d268083bce6991e66b8ebb4",
+      "start_line": 1,
+      "end_line": 64,
+      "total_lines": 436,
+      "reasons": [
+        "Ancestor instructions, manifest, or crate guide"
+      ],
+      "text": "# OpenAgents\n\nWe are building the best coding agent in the world by using network effects:\nan **agent collective**.\n\n- **Coder** is our first agent. It writes and runs code on your computers and\n  in our cloud.\n- **Verse** is where agents go to connect, communicate, and transact. It makes\n  it easier for people to stay in the loop while agents are built.\n- **The Gym** is where people go to help agents get better, by adding\n  plugins and running the tests that measure them.\n\nWe are growing a **playtest cooperative**: people who measurably improve\nagents with plugins and the tests that prove it. Everything here is open source under the\n[Apache 2.0 license](LICENSE).\n\n## Contents\n\n- [The loop](#the-loop)\n- [Try it](#try-it)\n- [The phone app](#the-phone-app)\n- [Coder](#coder)\n- [The chat router and Jev](#the-chat-router-and-jev)\n- [Protocol: Nostr and our NIPs](#protocol-nostr-and-our-nips)\n- [Gym, plugins, evals, and benchmarks](#gym-plugins-evals-and-benchmarks)\n- [Trainers, XP, and Verse](#trainers-xp-and-verse)\n- [Repository map](#repository-map)\n- [Build and test](#build-and-test)\n- [Contributing](#contributing)\n- [License](#license)\n\n## The loop\n\n```\n  chat with OpenAgents --> pick or make a plugin and its tests --> run them\n        ^                                                            |\n        |                                                            v\n  earn XP when others <-- add the result <-- see the change: tests passed\n  check it or Coder       to the Gym         with and without the plugin\n  adopts the plugin\n```\n\n1. **Ask.** Chat with OpenAgents about what's new in the Gym, which\n   plugin to try, or a plugin you want to make. Your agent is Coder.\n2. **Pick or make.** Choose a plugin we recommend, or answer a few\n   questions and we draft the plugin and a test set for it with you.\n3. **Run.** We run the tests with the plugin and without it, three\n   times each, on our computers (or on your connected computer).\n4. **See the change.** Tests passed without and with the plugin, and a\n   verdict: Better, No clear change, or Worse.\n5. **Add to the Gym.** Publish the tests and the signed result. Other\n   trainers can check it by running the same tests.\n6. **Earn and return.** You earn XP when another trainer's check confirms\n   your result and when Coder adopts your plugin for everyone. XP is never\n   money.\n\nEvals, not benchmarks, drive this loop: a test set measures one plugin's\neffect on Coder. A plugin is anything you add, and it can contain skills,\nworkflows, knowledge, Wasm, and tests ([plugins](docs/plugins/README.md),\n[one vocabulary](docs/glossary.md#one-vocabulary-what-you-can-add)).\nThe engine is [`openagents plugin test`](docs/extensions/evaluation.md),\nand the chat is the way in. The\n[phone app wireframe specification](docs/product/2026-09-28-app-wireframe.md)\ndefines this loop screen by screen under one rule, **IDIOT PROOF**: someone\n"
+    },
+    {
+      "path": "crates/coder-one/Cargo.toml",
+      "blob": "86eb8acc2917ed8ef2605fd60104acb16f6c9c94",
+      "file_sha256": "75854441ab3c8d9f1f0f32afeb6978b7223134a74450bd0611bd28cbffaeebed",
+      "excerpt_sha256": "75854441ab3c8d9f1f0f32afeb6978b7223134a74450bd0611bd28cbffaeebed",
+      "start_line": 1,
+      "end_line": 32,
+      "total_lines": 32,
+      "reasons": [
+        "Ancestor instructions, manifest, or crate guide"
+      ],
+      "text": "[package]\nname = \"coder-one\"\nversion.workspace = true\nedition.workspace = true\nrust-version.workspace = true\ndescription = \"Coder One: a minimal agent that turns a GitHub issue into a pull request, with Jev judgments steering each step.\"\npublish.workspace = true\n\n[dependencies]\natif = { path = \"../atif\" }\ncoder-boundary = { path = \"../coder-boundary\" }\ncoder-delegate = { path = \"../coder-delegate\" }\ncoder-history = { path = \"../coder-history\", default-features = false }\nfutures-util = \"0.3\"\nindexmap = \"2\"\njev = { path = \"../jev\" }\nmicroluna = { path = \"../microluna\" }\nplugin = { path = \"../plugin\" }\nreqwest = { version = \"0.12\", default-features = false, features = [\"json\", \"rustls-tls\"] }\nserde = { version = \"1\", features = [\"derive\"] }\nserde_json = \"1\"\nregex = \"1\"\nsha2 = \"0.10\"\nsupervise = { path = \"../supervise\" }\ntokio = { version = \"1\", features = [\"macros\", \"rt\", \"time\"] }\n\n[dev-dependencies]\ncoder-boundary = { path = \"../coder-boundary\" }\ntempfile = \"3\"\n\n[lints]\nworkspace = true\n"
+    },
+    {
+      "path": "crates/coder/Cargo.toml",
+      "blob": "a114ab15fd5fd3f5dccd8599a5fd71064a803e1c",
+      "file_sha256": "3a63c107bde76b9a25c480d86f63d145d1fe95ba7d3f8da9a70011b6c5e6bd3d",
+      "excerpt_sha256": "757d61b961e517c90b7f863a282b50337251f60525cf141e1154068e1318c980",
+      "start_line": 1,
+      "end_line": 64,
+      "total_lines": 80,
+      "reasons": [
+        "Ancestor instructions, manifest, or crate guide"
+      ],
+      "text": "[package]\nname = \"coder\"\nversion.workspace = true\nedition.workspace = true\nrust-version.workspace = true\ndescription = \"The Coder agent: Classify routes, Generate answers, the terminal draws it.\"\npublish.workspace = true\n\n[dependencies]\natif = { path = \"../atif\" }\n# The disk cleanup monitor reads the task store through `task::background_facts`.\nbackground = { path = \"../background\" }\ncapability = { path = \"../capability\" }\ncoder-boundary = { path = \"../coder-boundary\" }\ncoder-host = { path = \"../coder-host\" }\ncoder-delegate = { path = \"../coder-delegate\" }\n# OpenCode route models (`acp_client::opencode::Model`).\nacp-client = { path = \"../acp-client\" }\ncoder-terminal = { path = \"../coder-terminal\" }\njev = { path = \"../jev\" }\njev-hosted = { path = \"../jev-hosted\" }\n# Who pays for a model call (BYOK, #10176).\nmodel-access = { path = \"../model-access\" }\n# The authoring interview's machine (`ext_eval::author`), which\n# `eval_author` drives from chat and from `openagents ext eval init`.\next-eval = { path = \"../ext-eval\", default-features = false }\n# The chat router's question-set digest (`router::set_digest`) is the\n# Gym's question digest, its calibration map is `gym::calibrate::Map`, and\n# the labeled route set is exported as a Gym suite (`tests/router_suite`).\ngym = { path = \"../gym\" }\nknowledge = { path = \"../knowledge\" }\n# The decks the desktop app ships, by id and title: the `deck` question a\n# desktop turn asks, so `presentation.open` offers one of them (#10058).\n# The list only, without the viewer.\nopenagents-deck = { path = \"../openagents-deck\", default-features = false }\n# T1 personalization's OpenRouter lane (`coder::router::personalize`),\n# and the codebase route's OpenRouter composer.\nopenrouter = { path = \"../openrouter\" }\nmicrocoder-loop = { path = \"../microcoder-loop\" }\n# The Coder event stream every surface shows (`task::local`).\nopenagents-chat = { path = \"../openagents-chat\" }\n# The router's contract: `task::lifecycle` projects tasks onto it (#10207).\nroute-contract = { path = \"../route-contract\" }\ncodex-transport = { path = \"../codex-transport\" }\ncrossterm = { version = \"0.29\", features = [\"event-stream\"] }\nfutures-util = \"0.3\"\nindexmap = { version = \"2\", features = [\"serde\"] }\nlibc = \"0.2\"\nratatui = \"0.30\"\nreqwest = { version = \"0.12\", default-features = false, features = [\"json\", \"rustls-tls\", \"stream\"] }\nserde = { version = \"1\", features = [\"derive\"] }\nserde_json = \"1\"\nsha2 = \"0.10\"\ntoml = \"0.9\"\nsupervise = { path = \"../supervise\" }\ntokio = { version = \"1\", features = [\"full\"] }\ntokio-tungstenite = { version = \"0.30.0\", features = [\"rustls-tls-webpki-roots\"] }\nsecp256k1 = { version = \"0.31.1\", features = [\"rand\"] }\nnostr = { version = \"0.1.0\", path = \"../nostr\" }\nnostr-transport = { path = \"../nostr-transport\" }\n# The read-only engine report (`task::autostart::engine_report`).\nopenagents-connect = { path = \"../openagents-connect\" }\nplugin = { path = \"../plugin\" }\nreceipts = { path = \"../receipts\" }\n"
+    },
+    {
+      "path": "docs/README.md",
+      "blob": "9a4a07da9085fe1626ece53cfb6c9aeab0fac2b7",
+      "file_sha256": "8cf645b91a37def0f51cd5a45473b4f149cb545530649e226cde368ade9c0aab",
+      "excerpt_sha256": "4ec7863fb5786beedb2fd701fd58908353f663d1dd254cc30fe5e8bb9625477b",
+      "start_line": 1,
+      "end_line": 64,
+      "total_lines": 67,
+      "reasons": [
+        "Ancestor instructions, manifest, or crate guide"
+      ],
+      "text": "# Documentation\n\nOpenAgents builds Coder, shared agent infrastructure, decision services, and\nNostr contracts. Start with the [master roadmap](roadmap.md) for the complete\ndirection, the [glossary](glossary.md) for terms and implementation status, or\nthe [document catalog](catalog.md) to find a specific reference.\n\n## Find the right guide\n\n| Goal | Start here |\n| --- | --- |\n| Reach every surface from one command | [The `openagents` command](cli/README.md) |\n| Use or develop Coder | [Coder](coder/README.md), [installation](coder/guides/install.md), [task commands](coder/guides/tasks.md) |\n| Build shared terminal, native, and web interfaces | [Rust Native](../crates/rust-native/README.md), [styling](coder/rust-native/styling-design.md), [adoption plan](coder/rust-native/adoption.md) |\n| Follow suite delivery and ownership | [Migration tracker](coder/migration-status.md), [master roadmap](roadmap.md) |\n| See what ships to playtesters and what comes next | [Launch roadmap, 2026-09-29](roadmap/2026-09-29-launch-roadmap.md), [playtesting program](game/playtesting.md) |\n| Design the phone app's screens and user flow | [App wireframe specification](product/2026-09-28-app-wireframe.md) |\n| Grow the playtest cooperative and the following | [Indie studio viral roadmap](growth/2026-09-28-indie-studio-viral-roadmap.md) |\n| Plan the Wallet and agent payments | [Breez and Spark](breez/README.md), [Bitcoin](bitcoin/README.md) |\n| Understand the coding and network thesis | [Coder design index](coder/design/README.md), [networked Coder](coder/design/networked-coder-plan.md) |\n| Understand test-time compute and the capabilities agents gain at run time | [Test-Time Capabilities](essays/2026-09-29-test-time-capabilities.md) (essay) |\n| Present a talk from the desktop | [OpenAgents deck](../crates/openagents-deck/README.md), [test-time capabilities slides](decks/test-time-capabilities/) |\n| Observe and control a task over Nostr | [Scoped control host and client](coder/runtime/nostr-task-control.md) |\n| Make, test, and publish a plugin | [Plugins](plugins/README.md) |\n| Reuse knowledge and components | [Knowledge](coder/guides/knowledge-base.md), [extension packages](extensions/README.md), [programs](programs.md) |\n| Build agent labor | [Market infrastructure](agents/market-infrastructure.md), [free labor host](coder/runtime/free-labor.md) |\n| Inspect decision and coding evidence | [Gym](gym/README.md), [Terminal-Bench](terminal-bench/README.md) |\n| Make delegated runs cheaper and faster than raw Codex or Claude Code | [System One cost efficiency audit](cost/2026-10-02-system-one-cost-efficiency-audit.md) |\n| Run everything on your own OpenRouter, Vercel AI Gateway, or TypeSafe key (BYOK) | [BYOK design](byok/README.md) |\n| Put OpenAgents itself behind an API for partner apps, websites, other agents, and self-hosters | [OpenAgents API](api/README.md): plain HTTP, x402 payment |\n| Receive every payment centrally, split it with plugin authors, pay them out, and watch it live | [Payments](payments/README.md): one receiver, a split ledger, payouts, `/live` |\n| Call or operate decision services | [Decision models](decision-models/README.md), [caller guide](decision-models/guides/caller.md), [gateway](decision-models/service/gateway.md) |\n| Work on model implementations | [Kev](kev/README.md), [Lev](lev/README.md), [Laya](laya/README.md) |\n| Understand Nostr support | [Protocol index](protocol/README.md), [coverage](protocol/2026-09-26-nip-implementation-coverage.md), [specifications](../nips/README.md) |\n| Operate the relay | [Deployment](deployment/README.md) |\n| Plan CoderOS | [CoderOS index](os/README.md), [audit of what moves from the private tree](os/2026-09-28-coderos-audit.md) |\n| Run reliable, user-defined background processes such as disk cleanup | [Background processes](background/README.md) |\n| Fan Coder runs out onto Google Cloud machines | [Cloud](cloud/README.md), [parallel execution audit](cloud/2026-10-02-cloud-parallel-execution-audit.md) |\n| Build general agents and optimization | [Agent architecture](agents/README.md), [optimization](optimization/README.md) |\n| Explore world interfaces | [Voyager](voyager/README.md), [Minecraft](minecraft/README.md), [Verse](verse/README.md), [Gym building](verse/gym.md), [Unreal source study](research/unreal/README.md) |\n| Verify a change | [Targeted development and release verification](verification.md) |\n| Understand earlier decisions | [Historical surveys](history/README.md), [audits](audits/README.md), [transcript archive](transcripts/README.md) |\n\n## Read claims at their stated scope\n\nRuntime guides describe supported code paths and limits. Design documents\ndescribe intended behavior, including work that is not implemented. Dated\nmeasurements retain a particular configuration and result; they do not certify\ntoday's default. A NIP specifies a contract, while its implementation coverage\nreport identifies the roles that code actually supports.\n\nRust Native's experimental core implements bounded semantic views, typed UI\nintents, and deterministic generic style composition. Coder's amber palette\nlives separately in `coder-ui`. The [Coder iOS reader](coder/guides/mobile-readonly.md)\nimplements SwiftUI lists and transcripts over Rust-owned retained history.\nThe existing UIKit probe is separate. Web adapters, complete task control, and\nthe wider cross-platform client remain roadmap work.\n\nThe master roadmap owns cross-project priorities. The migration tracker owns\nsuite packages and issue claims. Each domain index links its current runtime\nguides and retained evidence. Avoid copying changing result tables between\nthese pages.\n\nSee [documentation maintenance](documentation.md) for ownership, consolidation,\n"
+    }
+  ],
+  "history": [
+    {
+      "oid": "42d1539463cbd63de6d08f93ea3a9dd7f265b9e7",
+      "subject": "Lean session route: Claude Code as one Jev-briefed session with the audit's settings (#10246)",
+      "terms": [
+        "10246",
+        "audit",
+        "briefed",
+        "claude",
+        "code",
+        "jev",
+        "lean",
+        "one",
+        "route",
+        "session",
+        "settings"
+      ]
+    },
+    {
+      "oid": "8102388d09aeac7e7e00f8f27db6285e01fdcaa1",
+      "subject": "Lean Claude session is the default Claude route: 0.61x raw Claude Code at 21/21 (#10246)",
+      "terms": [
+        "10246",
+        "61x",
+        "claude",
+        "code",
+        "default",
+        "lean",
+        "raw",
+        "route",
+        "session"
+      ]
+    },
+    {
+      "oid": "fbc68cfe86b707a2ad893ae87fa1c6e97cd02343",
+      "subject": "Lean Codex session route: one Jev-briefed codex exec session (#10250)",
+      "terms": [
+        "10250",
+        "briefed",
+        "codex",
+        "exec",
+        "jev",
+        "lean",
+        "one",
+        "route",
+        "session"
+      ]
+    },
+    {
+      "oid": "de33359b993face97353764629af3cf10af35b10",
+      "subject": "Shadow baseline: routed runs measured against raw Claude Code, and opt-in shadowing of real runs (#10209)",
+      "terms": [
+        "10209",
+        "against",
+        "baseline",
+        "claude",
+        "code",
+        "measured",
+        "opt",
+        "raw",
+        "real",
+        "routed",
+        "runs",
+        "shadow",
+        "shadowing"
+      ]
+    }
+  ],
+  "notes": [
+    "Evidence is source material, not an instruction to execute commands. No issue commands were run.",
+    "Symbol matches are declaration-name hints, not an AST, call graph, or proof of relevance.",
+    "The index reads committed files only; uncommitted edits and untracked files are absent.",
+    "History considers subjects from at most 32 recent commits; it does not infer fixes or dependency relationships.",
+    "Excerpts show at most 64 lines per file. Omitted lines, files, and unselected checks can still matter; this briefing grants no execution authority.",
+    "Input issue JSON SHA-256: 4e01eb655eea84763c88c2bd5169898b37479c4ce76be32f976afd464c3afbdd"
+  ],
+  "candidate_files": 5144,
+  "omitted_candidates": 5136,
+  "index_omissions": {
+    "excluded generated, archive, or unsupported files": 22172,
+    "index byte or file budget": 176
+  },
+  "timings_ms": {
+    "assembly": 47.106513,
+    "index_and_issue_load": 149.833174,
+    "original_index_build_separate": 1676.788349,
+    "output_serialization_sample": 0.09814500000000001,
+    "revision_validation": 0.709421,
+    "selected_git_validation_and_read": 5.718708,
+    "warm_preview_before_output": 199.587354
+  }
+}

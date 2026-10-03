@@ -4,6 +4,12 @@ Recorded October 3, 2026 UTC (October 2 in America/Chicago).
 Audit issue: [#10252](https://github.com/OpenAgentsInc/openagents/issues/10252).
 Source snapshot: [`5e22f2af962f7e848df3aee1385e6cf165132123`][snapshot].
 
+Extension: [System One briefing experiments and runnable prototype](system-one-briefing.md),
+tracked in [#10253](https://github.com/OpenAgentsInc/openagents/issues/10253).
+The extension reads the entire retained TypeSafe corpus and adds a concrete
+program for preparing context in advance. Its new measurements are separate
+from the historical agent comparisons below.
+
 ## Executive assessment
 
 **Some of the earlier context and delegation work is missing from the
@@ -58,6 +64,17 @@ Measure each addition against a configuration-matched native agent. Treat
 general monitoring, repeated suite generation, and unconditional persistence
 as costs that must earn their place.
 
+**The stronger System One opportunity is to compile better briefings from
+repository facts and small semantic judgments.** Precompute source structure,
+package ownership, and bounded history; retrieve a broad candidate pool; ask
+typed questions about relevance and missing evidence; then let code preserve
+requirements, select exact source spans, and render an expandable brief.
+Preparation can inspect more evidence than the executor initially receives.
+This can save repeated discovery while making each stage independently
+testable. The [extension](system-one-briefing.md) specifies these experiments
+and includes a runnable deterministic baseline. It does not claim a new
+Jev, Claude, or Codex outcome improvement.
+
 ### Reading guide
 
 - [Earlier context and delegation mechanisms](#1-what-the-earlier-systems-were-trying-to-achieve)
@@ -68,6 +85,8 @@ as costs that must earn their place.
 - [Source and measurement findings](#6-findings-to-resolve-before-making-broader-claims)
 - [Standalone study protocol](#7-a-standalone-head-to-head-program)
 - [Recommended work order](#8-recommended-order-of-work)
+- [System One theory, code indexing, history, and isolated experiments](system-one-briefing.md)
+- [Runnable issue briefing preview](../../../crates/briefing-lab/README.md)
 
 ## Scope and method
 
@@ -882,7 +901,11 @@ constructed from an unstated value of waiting.
 3. **Measure evidence delivery.** Compare the present section briefing
    with requirement-aware packing and explicit expansion, using an
    equally configured native session. Count selection work that gets
-   discarded and evidence the executor rereads.
+   discarded and evidence the executor rereads. Start with the
+   [isolated briefing experiments](system-one-briefing.md#6-components-to-test-in-isolation):
+   cached lexical retrieval, structural extraction, history, one semantic
+   selection batch, and deterministic coverage packing. Most iterations
+   can run without launching an executor.
 4. **Preserve cache gains while removing avoidable work.** Measure
    duplicate request content, unnecessary surveys, repeated checks, and
    startup phases. Use revision identities to justify reuse. Small tasks
@@ -896,8 +919,11 @@ constructed from an unstated value of waiting.
    knowledge promotion require their own held-out evidence.
 
 The immediate opportunity is better evidence delivery and measurement,
-with native caching preserved. The repository already contains much of
-the machinery to investigate that direction. The retained evidence does
+with native caching preserved. Move stable preparation work ahead of the
+turn and test how much semantic interpretation software can reuse. The
+repository already contains useful extraction, packing, and identity
+machinery, but the inspected paths lack a persistent source-symbol index.
+The retained evidence does
 not yet establish that a general controller or small-model specialist
 system beats equally configured Claude or Codex on representative issue
 work.
@@ -927,10 +953,10 @@ Validation for this documentation change:
 - Check linked repository paths and pinned source references.
 - Run `git diff --check` and review the documentation-only diff.
 
-No Rust code changed, so no Cargo build, test suite, release gate, live
-engine run, or deployment is required. The proposed protocol and
-implementation findings remain follow-up work, clearly separated from
-the completed audit.
+The original audit changed no Rust code and required no Cargo checks.
+The later runnable prototype has its own targeted verification and
+measurement record in the [System One extension](system-one-briefing.md).
+The proposed agent comparisons remain follow-up work.
 
 ## Evidence retained with this audit
 
