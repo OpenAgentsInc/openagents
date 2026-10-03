@@ -319,3 +319,33 @@ settings are documented in [docs/cli/settings.md](../cli/settings.md).
   (`~/shadow-10209/runs/<task>/<arm>/<trial>/`) holds `result.json` with the
   check's output, the CLI's event stream, the route record, and the ATIF
   trajectory.
+
+## Follow-up: the prompt-cache fix (#10244)
+
+The routed Claude loop now sends each step's prompt as the previous step's
+prompt, byte for byte, with only the new step and state appended
+(`crates/microcoder-loop/src/transcript.rs`). Claude Code marks only its
+system prompt and an environment message it adds after the user's message
+for caching, so the Claude lane sends the log as one content block per step
+and marks the last block `cache_control` (`crates/microcoder-loop/src/claude.rs`).
+Each call reads every earlier step from the cache and writes only its own.
+
+Remeasured on coderos-4080 the same day at `9513636c45`: 3 tasks
+(`bottle-etag`, `headless-terminal`, `mi-seekable`) × 3 trials, raw Claude
+Code against routed Claude with the recipe on. Ratios are the sum over tasks
+of per-task means, as above.
+
+| | Raw Claude Code | Routed Claude, before (`feb4bc8270`) | Routed Claude, after |
+| --- | ---: | ---: | ---: |
+| Passed | 9/9 | 9/9 | 9/9 |
+| Total cost | $2.78 | $4.06 | **$2.24** |
+| Input read from cache | 92.5% | 13.3% | **82.6%** |
+| Cost against raw (same-run raw) | 1.00 | 1.55 | **0.81** |
+| Wall time against raw | 1.00 | 1.53 | 1.38 |
+
+Per task, mean cost raw → routed after: `bottle-etag` $0.349 → $0.274,
+`headless-terminal` $0.343 → $0.312, `mi-seekable` $0.236 → $0.162. The
+remaining cache writes are each run's first step (about 8,000 tokens) and
+each later step's own new text. Routed runs still take longer than raw
+Claude Code (a median of 104 s against 54 s): the loop's 4–9 separate calls.
+Rows: [`2026-10-02-shadow-baseline/collected-10244.jsonl`](2026-10-02-shadow-baseline/collected-10244.jsonl).
