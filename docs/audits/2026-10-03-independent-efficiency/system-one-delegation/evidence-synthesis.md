@@ -85,11 +85,41 @@ identifies freshness, duplicate-work, and accounting gaps there. The
 experiment should inform that path after measurement. Creating a second
 speculative preparation service would add another lifecycle to audit.
 
+The [full acceptance preflight](acceptance-preflight.md) adds a concrete
+preparation target: baseline test health. A historical reference cannot
+satisfy the original gate because an unrelated ordinary test already fails.
+Knowing this before dispatch prevents asking a paid executor to rediscover
+the same problem. That knowledge is expensive to obtain here: the two large
+checks take 160.79 and 176.75 seconds. Bind the result to source and environment
+and reuse it when those inputs match. Running a full baseline suite before
+every small turn could erase an inference saving. This is a measured setup
+finding and a proposed reuse policy, not a demonstrated executor speedup.
+
+The [C/D follow-up](eligibility-cd.md) makes two further requirements concrete.
+First, source retrieval must follow the relevant helper: looking only at a
+caller's ordering incorrectly suggests a missing-directory defect, while the
+helper already creates the directory. Second, history can explain a conflicting
+test expectation: an earlier authority change and another public test agree
+with the behavior that an older integration fixture rejects. The review cancels
+a planned repeat compilation without claiming an unmeasured time saving.
+These cases motivate separate helper-coverage and behavior-history experiments;
+they do not justify adding every dependency and commit to every prompt.
+
+Freeze any test-health packet against the source tree, ordinary-test command,
+toolchain, build profile, platform, fixture inputs, and result identity. A dirty
+tree or changed dependency invalidates the affected result. Include the exact
+failure and its scope instead of telling an executor that a whole repository is
+healthy. In a later isolated experiment, compare the same executor with and
+without this packet and count rediscovery, unnecessary edits, and final defects
+as well as time. Charge the initial qualification once and report the number of
+subsequent tasks over which it is reused.
+
 ## Components that can be tested separately
 
 | Component | Cheap diagnostic | End-to-end decision |
 | --- | --- | --- |
 | Environment and history facts | Correctness against pinned Git objects and fresh probes; cache invalidation after each input changes | Does the packet remove repeated discovery without inducing a stale assumption? |
+| Task workspace contents | On the same commit, compare the full export with a declared package, dependency, instruction, and fixture closure; run the same checks against both | Does smaller staging reduce setup time without repairs caused by missing files? Retain fallbacks and all construction costs. |
 | AST candidate retrieval | Repeated-output identity, useful declaration recall on separately labeled tasks, required dependency omissions, latency and size | Does the agent read less while retaining acceptance and reviewed behavior? |
 | Jev ranking | Paired ranking quality on the exact same pool, semantic relevance, one-call latency and actual usage | Compare C/B and F/E under the frozen protocol; do not credit the deterministic pack to Jev. |
 | Briefing coverage | Deliberately omit a dependency, fixture, or requirement; measure which omissions the validator detects | Does adding coverage reduce independent defects enough to repay larger context or additional retrieval? |
@@ -101,6 +131,24 @@ The current warm component measurements cover output identity, elapsed time,
 and size. They do **not** establish retrieval recall, dependency coverage,
 semantic ranking quality, or executor improvement. No treatment tuning used
 reserve executor outcomes because no such outcomes exist.
+
+The qualified [alpha task's preview](alternative-alpha/README.md) supplies a
+concrete coverage diagnostic. Two available source units are omitted from the
+delivered pack, while a larger function exceeds the unit-size cap before any
+semantic ranker sees it. A Jev reranker could change the first selection; it
+cannot recover evidence absent from its candidate pool. The preview completes
+in 0.665 seconds after separate indexing, with exact source spans verified.
+That establishes fast, faithful extraction for this observation, not sufficient
+task coverage. Preserve the frozen policy for the experiment and test any later
+candidate-expansion policy separately.
+
+Workspace staging is another deterministic hypothesis prompted by the measured
+1.5 GB source exports and their Git snapshot costs. A dependency graph alone
+is insufficient: build scripts, included files, runtime fixtures, repository
+instructions, and tests that inspect directory contents also need coverage. Test export
+completeness before measuring agent performance, and fall back to the full tree
+when the required file set is unknown. This is a future matched experiment;
+none of this panel's source exports are reduced.
 
 Some public tasks already name a file or function. A semantic ranker may add
 little when deterministic retrieval finds that evidence directly. This panel

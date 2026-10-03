@@ -1,0 +1,38 @@
+{
+  "schema": "openagents.delegation.local-validation.v1",
+  "recorded_at": "2026-10-03T09:02:42.558978+00:00",
+  "python": "3.13.12",
+  "command": "python3.13 -m unittest discover -s bench/delegation-study -p 'test_*.py'",
+  "tests": 132,
+  "elapsed_reported_s": 26.278,
+  "outcome": "passed",
+  "previous_record": "local-validation.json",
+  "module_sha256": {
+    "bench/delegation-study/bridge.py": "20fedd1e86c487d08812414ecda33906abac3ae37c8a42edef031c465deaee70",
+    "bench/delegation-study/broker.py": "e8ff242d1df9e8b839285c3b6089ab291a386873c313bac5ed41bfa4b1d7beac",
+    "bench/delegation-study/candidate.py": "66a848a33e59f38703a03237294c318c14c5b7b8515eb9423efbb8b91f782373",
+    "bench/delegation-study/capture_limits.py": "78a5dc5c4dce6e93941f606114d839fb291529e4ce96a0799706731472d06601",
+    "bench/delegation-study/check_candidate.py": "f2c40fe470ccd92dbdcf4e9a72cfc03310583026a677114638e8355cdaa498ee",
+    "bench/delegation-study/prepare.py": "20868f9bbfdc3002a6345e9e4fddfa0b7cdb3e164e11d74af0ad488813389c6b",
+    "bench/delegation-study/report.py": "09047b6ef5994b981db17e9ffbb0a7d3a60a289a5e333dd2d41ba250e58434e5",
+    "bench/delegation-study/run_inner.py": "961f07e47a6f7df93b051d8f61e04a9f95224828361bf4295c62d40dbfe868a9",
+    "bench/delegation-study/run_remote.py": "12fface58de3292a6ef0df7ecc1880e327e68ac1decfdffc0338b85127cbcfbf",
+    "bench/delegation-study/schedule.py": "0acd5c5bf042502b054f407f9aa26ce68cbedb28cbd8e2f33b662ce97d04d789",
+    "bench/delegation-study/seed.py": "2d01dc21987d331ef3af5d8ce6dcbb6ab26a10eb0374f50094cdb202881f1d61",
+    "bench/delegation-study/seed_manifest.py": "db03669c77ed57c0e4480f1e503070f6d314965476222dd2594755dcdf93699a",
+    "bench/delegation-study/test_candidate.py": "4df26d07206f4dec08a8df3a24d5d6c710d55285ac4ba836ac0552b5d8771e49",
+    "bench/delegation-study/test_check_candidate.py": "6d78886d85e73bd0b5b420ac51f6853efaa384ae0b6883e3b3f2151b1f98d036",
+    "bench/delegation-study/test_infrastructure.py": "6873a01f0b2b91cb60e6b98f6f2b6f1a54936dd780439d1257158bc5b5ccdd4f",
+    "bench/delegation-study/test_prepare.py": "9da12d889d4704808672663980ca82fe9ce03cf37a3a2724fa6e5a87098c601c",
+    "bench/delegation-study/test_report.py": "31eea025f4c657f27170a982ce966690b9b62f3173f4f8191c15f8ff8ec81161",
+    "bench/delegation-study/test_schedule.py": "2dd2dd882aa60847bbf166ac42acb6bedef4a3f5e59e29daf4bc29a9cc326539",
+    "bench/delegation-study/test_seed.py": "1fb90dfd0ec36fc1a627a8b2ecf254c493e8715f16a3f75bd0dc20a6421da92e",
+    "bench/delegation-study/test_trial.py": "55575ded70074c2c9203f33f86dbebbba9bf4db34ad39ea98542486f62b39a59",
+    "bench/delegation-study/trial.py": "20312c5f2901e50542279534d619e3750be830286a83d539a4972e56a212e5ec"
+  },
+  "output_sha256": "d94e68fa799be053d8aa9cfff95092f2c784accefde1c117dc0372eb40d29d68",
+  "limits": [
+    "Local synthetic infrastructure tests; no real provider request or scored coding outcome.",
+    "No Cargo invocation on the owner computer."
+  ]
+}

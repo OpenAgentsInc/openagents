@@ -8,6 +8,30 @@ import stat
 SEED_POLICY='cargo-reported-libraries-v1'
 
 
+def cargo_features(value, packages=None):
+    """Validate an explicit, ordered list of package-qualified Cargo features."""
+    if (not isinstance(value,list) or len(value)>32
+            or any(not isinstance(item,str) or len(item)>129
+                   or not re.fullmatch(r'[A-Za-z0-9_-]+/[A-Za-z0-9_-]+',item) for item in value)
+            or len(set(value))!=len(value)):
+        raise ValueError('Cargo features must be unique explicit package/feature names')
+    if packages is not None and any(item.split('/')[0] not in packages for item in value):
+        raise ValueError('A Cargo feature names an unselected package')
+    return list(value)
+
+
+def feature_arguments(features):
+    features=cargo_features(features)
+    return ['--features',','.join(features)] if features else []
+
+
+def feature_check_command(features):
+    features=cargo_features(features)
+    packages=sorted({item.split('/')[0] for item in features})
+    return ' '.join(['cargo','test','--locked','--offline']+
+                    [arg for package in packages for arg in ('-p',package)]+feature_arguments(features))
+
+
 def digest(path):
     value=hashlib.sha256()
     with Path(path).open('rb') as source:
@@ -25,7 +49,7 @@ def inventory(root):
     return files
 
 
-def validate_seed(root,expected_digest,source_commit=None,source_archive_sha256=None,build_environment=None):
+def validate_seed(root,expected_digest,source_commit=None,source_archive_sha256=None,build_environment=None,features=None):
     root=Path(root)
     manifest=root/'seed-manifest.json'
     if manifest.is_symlink() or digest(manifest)!=expected_digest:
@@ -34,6 +58,9 @@ def validate_seed(root,expected_digest,source_commit=None,source_archive_sha256=
     value=json.loads(manifest.read_text())
     if value.get('schema')!='openagents.delegation.cargo-seed.v1':raise ValueError('Unknown seed schema')
     if value.get('seed_policy')!=SEED_POLICY:raise ValueError('The seed cache policy does not match')
+    declared=cargo_features(value.get('cargo_features',[]),value.get('packages',[]))
+    if declared!=cargo_features([] if features is None else features):
+        raise ValueError('The seed Cargo features do not match')
     if build_environment is not None and value.get('build_environment')!=build_environment:
         raise ValueError('The seed build environment does not match')
     rustdoc=value.get('build_environment',{}).get('RUSTDOC')

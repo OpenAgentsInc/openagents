@@ -1,0 +1,37 @@
+{
+  "schema": "openagents.delegation.alternative-inputs.v1",
+  "task_id": "alternative-alpha",
+  "source_commit": "09f4e0915150f503e332c2b213d24f793c433f3b",
+  "public_manifest_sha256": "93075b5d1750c983305f57a0c2b44d18b595b3f699b3d8bf158af11af9d7e2e0",
+  "original_issue_record_sha256": "7d4f5bd2a5d06298362b9433628c391dd6cf0c3544e9824dcbb49d9241952ed1",
+  "original_issue_body_sha256": "e9c74ff7b3b51b1fe1da722dda6f4138060fefed6ae5f97fa93653d1d8dda098",
+  "normalized_issue_sha256": "e5e79e635ed9f39e9b6515f3a5dce4cc3fd0f3122b4369cddc93ed14dce3a62b",
+  "base_prompt_sha256": "6cd14bf147372269550ae3c607dafdf3d93cc82dc3c9dd2da2385b73c17946e3",
+  "source_instructions": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "3f32f4fd3c25b1dd5bf6fd302c90bf8b18da4a78942a61db12b87ca2cbbe4779"
+    },
+    {
+      "path": ".agents/skills/google-developer-style/SKILL.md",
+      "sha256": "afb103c87f283e88ea33a1439a11fb1838a17970760b8ecc59bf2f9d89fb0197"
+    },
+    {
+      "path": ".agents/skills/nostr/SKILL.md",
+      "sha256": "627ce777325d70ea42fdc72246e225a7c1d4e15b499bd1aab04bda1ad7cb6580"
+    }
+  ],
+  "required_public_readings": [
+    {
+      "path": "crates/coder-access/README.md",
+      "sha256": "0b2d7ddf3063bbc5136326a62f210c3275ba8eb66b406d4885935d7c73af47ac"
+    },
+    {
+      "path": "nips/openagents/NIP-HOST.md",
+      "sha256": "3da5fd0161b7096a4aeada96bdccd3fc3444734f205eda3919f85e1890c18210"
+    }
+  ],
+  "composition": "Same common envelope as original reserved-a input, replacing the package name only, followed by exact safe manifest title and normalized prompt. The preparer reads only normalized issue.json. Original issue body is provenance, not an additional executor instruction.",
+  "qualification_note": "Current Linux qualification used helper f2c40fe470ccd92dbdcf4e9a72cfc03310583026a677114638e8355cdaa498ee under default features. It is separate from this preview and is not a scored native result.",
+  "preview_policy": "One new deterministic preview with frozen prepare.py; retain one process measurement and separate cold index time. Do not pool with original 20 previews."
+}

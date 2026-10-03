@@ -182,6 +182,35 @@ class CheckCandidateTests(unittest.TestCase):
         self.assertEqual(row['status'], 'infrastructure_error')
         self.assertEqual(self.fixture.calls, [])
 
+    def test_explicit_features_reach_both_compile_and_test_commands(self):
+        features=['fixture/blocking']
+        self.fixture.config['cargo_features']=features
+        path=self.fixture.seed/'seed-manifest.json';value=json.loads(path.read_text())
+        value['cargo_features']=features;path.write_text(json.dumps(value))
+        self.fixture.config['target_seed_manifest_sha256']=digest(path)
+        row,_=self.fixture.run()
+        self.assertTrue(row['accepted'],row)
+        self.assertEqual(row['cargo_features'],features)
+        for argv,phase,_ in self.fixture.calls:
+            if phase.startswith(('ordinary-','independent-')):
+                self.assertEqual(argv[argv.index('--features')+1],'fixture/blocking')
+            else:
+                self.assertNotIn('--features',argv)
+
+    def test_mismatched_seed_features_refuse_before_commands(self):
+        self.fixture.config['cargo_features']=['fixture/blocking']
+        row,_=self.fixture.run()
+        self.assertFalse(row['completed'])
+        self.assertEqual(row['status'],'infrastructure_error')
+        self.assertEqual(self.fixture.calls,[])
+
+    def test_wildcard_or_unselected_features_refuse_before_commands(self):
+        for index,features in enumerate((['fixture/*'],['--all-features'],['other/blocking'])):
+            self.fixture.config['cargo_features']=features
+            row,_=self.fixture.run('invalid-features-'+str(index))
+            self.assertFalse(row['completed'])
+            self.assertEqual(self.fixture.calls,[])
+
     def test_candidate_preimage_must_match_clean_base(self):
         fixture = self.fixture
         fixture.changes['crate/src/lib.rs']['before']['sha256'] = '0' * 64

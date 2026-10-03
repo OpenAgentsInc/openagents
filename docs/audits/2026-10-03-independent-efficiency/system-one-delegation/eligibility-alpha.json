@@ -1,0 +1,755 @@
+{
+  "accounting": {
+    "cleanup_outside_attempt_timers": true,
+    "dollar_cost": null,
+    "dollar_cost_reason": "No dollar ledger was collected; these are no-model infrastructure measurements.",
+    "measured_eight_attempts_cleanup_s": 7.326378637001653,
+    "measured_eight_attempts_total_wall_s": 365.5713184840006,
+    "tool_transfer_and_research_time_included": false
+  },
+  "alias": "alternative-alpha",
+  "allowed_paths": [
+    "crates/coder-access/"
+  ],
+  "archive_preparation": {
+    "alias": "alternative-alpha",
+    "archive_wall_s": 2.591757303000122,
+    "available_after_bytes": 5662961664,
+    "cargo_commands": 0,
+    "config_sha256": "d09d7b694dc7e528fc34a35b68bf79c185d571ec4dae1e60459fbd18268d36ba",
+    "model_calls": 0,
+    "package": "coder-access",
+    "reference_patch_or_checker_read": false,
+    "schema": "openagents.delegation.alternative-preparation.v1",
+    "source_archive_bytes": 1452369920,
+    "source_archive_sha256": "bd1b37da7b434beda6e60172a3d37095e41125ebbe35e4b2e1a57ab6e30c67be",
+    "source_bytes": 1428447034,
+    "source_commit": "09f4e0915150f503e332c2b213d24f793c433f3b",
+    "source_files": 24674,
+    "source_tree": "9596c0af4019b3c1c069c6a0efc818c6d77d0f51",
+    "state": "archive_and_config_prepared_no_compile",
+    "timing_scope": "Recorded preparation timer starts immediately before Git archive creation and ends after archive hashing/provenance assembly; preceding commit/tree admission is excluded.",
+    "total_preparation_wall_s": 3.2742964120006945
+  },
+  "attempts": [
+    {
+      "alias": "alternative-alpha",
+      "attempt": "ordinary-base-v1",
+      "calibration_classification": "ordinary_gate_passed",
+      "candidate_manifest_sha256": "66111d673ab27cc9d3647e9d9b0e48b40a5acef29450fb927173c3aaf98bc883",
+      "checker_injected": false,
+      "cleanup_outside_measurement": true,
+      "cleanup_s": 0.9474207930006742,
+      "compile": {
+        "exit_code": 0,
+        "passed": true,
+        "status": "passed",
+        "wall_s": 13.241786687000058
+      },
+      "driver_sha256": "8813656ff705d03c4e0d3baa0efe52682cfed8cbe99aef9ac0add841bf172711",
+      "format": {
+        "exit_code": 0,
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.11463473300045735
+      },
+      "helper_sha256": "f2c40fe470ccd92dbdcf4e9a72cfc03310583026a677114638e8355cdaa498ee",
+      "identity_and_scope_validated": true,
+      "model_calls": 0,
+      "passed": true,
+      "phases": {
+        "export_s": 3.9241300869998668,
+        "git_snapshot_s": 14.913946955999563,
+        "seed_copy_s": 0.11751380599980621,
+        "seed_validation_s": 0.20945275900066918,
+        "setup_s": 19.876373896000587
+      },
+      "retained_files_sha256": "b6bfb3faa0ee466b66924402fa6b71f7ba5d044ea009086186edace7124f1ac8",
+      "role": "base",
+      "schema": "openagents.delegation.ordinary-eligibility.v1",
+      "scratch_absent": true,
+      "seed_manifest_sha256": "262f08f06d385bd5dd9f63922e9d999ee4e67dd4673287afcbd2a22bb336577e",
+      "snapshot_commit": "af8f1624997bd8b9c23219af022c06601bb07866",
+      "source_archive_sha256": "bd1b37da7b434beda6e60172a3d37095e41125ebbe35e4b2e1a57ab6e30c67be",
+      "source_commit": "09f4e0915150f503e332c2b213d24f793c433f3b",
+      "status": "complete",
+      "test": {
+        "exit_code": 0,
+        "passed": true,
+        "status": "passed",
+        "wall_s": 4.523313628999858
+      },
+      "total_timeout_s": 240,
+      "total_wall_s": 38.02683860800062
+    },
+    {
+      "alias": "alternative-alpha",
+      "attempt": "ordinary-reference-v1",
+      "calibration_classification": "ordinary_gate_passed",
+      "candidate_manifest_sha256": "a484c13ea6ffa1fc7a52ef7b07318360d7189ed605fa38361cd8674fc03943ab",
+      "checker_injected": false,
+      "cleanup_outside_measurement": true,
+      "cleanup_s": 0.9139702579996083,
+      "compile": {
+        "exit_code": 0,
+        "passed": true,
+        "status": "passed",
+        "wall_s": 13.293040864000432
+      },
+      "driver_sha256": "8813656ff705d03c4e0d3baa0efe52682cfed8cbe99aef9ac0add841bf172711",
+      "format": {
+        "exit_code": 0,
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.11455503300021519
+      },
+      "helper_sha256": "f2c40fe470ccd92dbdcf4e9a72cfc03310583026a677114638e8355cdaa498ee",
+      "identity_and_scope_validated": true,
+      "model_calls": 0,
+      "passed": true,
+      "phases": {
+        "export_s": 3.099029256999529,
+        "git_snapshot_s": 14.094694858999901,
+        "seed_copy_s": 0.10905527399972925,
+        "seed_validation_s": 0.20513127499998518,
+        "setup_s": 18.20557224699951
+      },
+      "retained_files_sha256": "3476453cade63932d78093c77cfc11e401bb34b19ba81e96e4fe47162fcd4235",
+      "role": "reference",
+      "schema": "openagents.delegation.ordinary-eligibility.v1",
+      "scratch_absent": true,
+      "seed_manifest_sha256": "262f08f06d385bd5dd9f63922e9d999ee4e67dd4673287afcbd2a22bb336577e",
+      "snapshot_commit": "af8f1624997bd8b9c23219af022c06601bb07866",
+      "source_archive_sha256": "bd1b37da7b434beda6e60172a3d37095e41125ebbe35e4b2e1a57ab6e30c67be",
+      "source_commit": "09f4e0915150f503e332c2b213d24f793c433f3b",
+      "status": "complete",
+      "test": {
+        "exit_code": 0,
+        "passed": true,
+        "status": "passed",
+        "wall_s": 4.522886552000273
+      },
+      "total_timeout_s": 240,
+      "total_wall_s": 36.206695781000235
+    },
+    {
+      "accepted": false,
+      "attempt": "qualification-base-v1",
+      "calibration_classification": "invalid_checker_fixture_before_behavior",
+      "candidate_manifest_sha256": "66111d673ab27cc9d3647e9d9b0e48b40a5acef29450fb927173c3aaf98bc883",
+      "checker_sha256": "20459e6c50284d1b73e20419da98e5cca25d18736e5c4f41b41e9048711c13e3",
+      "checks_sha256": "d0ecba2300d700fe86a5c0d0b8f0ce4640640ac366581e68a2c4a1fc3e5ad2f5",
+      "cleanup_outside_measurement": true,
+      "cleanup_s": 0.9108067329998448,
+      "completed": true,
+      "execution_closed": true,
+      "format": {
+        "exit_code": 0,
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.11462452200066764
+      },
+      "identity_validated": true,
+      "independent": {
+        "compile": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 0.31486475499968947
+        },
+        "passed": false,
+        "status": "failed",
+        "test": {
+          "exit_code": 101,
+          "passed": false,
+          "status": "failed",
+          "wall_s": 0.16460793199985346
+        },
+        "wall_s": 0.4839743370002907
+      },
+      "independent_test_counts": {
+        "failed": 4,
+        "passed": 0
+      },
+      "model_calls": 0,
+      "ordinary": {
+        "compile": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 13.394831927999803
+        },
+        "passed": true,
+        "status": "passed",
+        "test": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 4.521495140999832
+        },
+        "wall_s": 17.925517387999207
+      },
+      "phases": {
+        "apply_candidate_s": 0.00014367000039783306,
+        "export_s": 2.952229792000253,
+        "git_snapshot_s": 12.9779291320001,
+        "seed_copy_s": 0.10938611799974751,
+        "seed_validation_s": 0.19862917299997207,
+        "setup_s": 16.912442290999934
+      },
+      "retained_files_sha256": "cfa57f4e5ecd9bf4845508763fd9936408e34333ec07a0eff4ac44102e0637a7",
+      "role": "base",
+      "scope": {
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.6082377090006048
+      },
+      "scope_validated": true,
+      "scratch_absent": true,
+      "seed_policy": "cargo-reported-libraries-v1",
+      "snapshot_commit": "af8f1624997bd8b9c23219af022c06601bb07866",
+      "source_archive_sha256": "bd1b37da7b434beda6e60172a3d37095e41125ebbe35e4b2e1a57ab6e30c67be",
+      "source_commit": "09f4e0915150f503e332c2b213d24f793c433f3b",
+      "source_mtime_policy": "changed_and_injected_only_verified_base_seed",
+      "target_seed_manifest_sha256": "262f08f06d385bd5dd9f63922e9d999ee4e67dd4673287afcbd2a22bb336577e",
+      "total_wall_s": 35.48207356900002
+    },
+    {
+      "accepted": false,
+      "attempt": "qualification-reference-v1",
+      "calibration_classification": "invalid_checker_fixture_before_behavior",
+      "candidate_manifest_sha256": "a484c13ea6ffa1fc7a52ef7b07318360d7189ed605fa38361cd8674fc03943ab",
+      "checker_sha256": "20459e6c50284d1b73e20419da98e5cca25d18736e5c4f41b41e9048711c13e3",
+      "checks_sha256": "f707c164418eeeb8dd3cf1133b7138d701d4cf64f874a62889375baa54ddebee",
+      "cleanup_outside_measurement": true,
+      "cleanup_s": 0.9005811490005726,
+      "completed": true,
+      "execution_closed": true,
+      "format": {
+        "exit_code": 0,
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.11457271099970967
+      },
+      "identity_validated": true,
+      "independent": {
+        "compile": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 0.3148497229994973
+        },
+        "passed": false,
+        "status": "failed",
+        "test": {
+          "exit_code": 101,
+          "passed": false,
+          "status": "failed",
+          "wall_s": 0.16473995100022876
+        },
+        "wall_s": 0.48356707699986146
+      },
+      "independent_test_counts": {
+        "failed": 4,
+        "passed": 0
+      },
+      "model_calls": 0,
+      "ordinary": {
+        "compile": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 13.137283871999898
+        },
+        "passed": true,
+        "status": "passed",
+        "test": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 4.52091461100008
+        },
+        "wall_s": 17.741646026000126
+      },
+      "phases": {
+        "apply_candidate_s": 0.002458930999637232,
+        "export_s": 3.383696071000486,
+        "git_snapshot_s": 13.388090014000227,
+        "seed_copy_s": 0.11177884100015945,
+        "seed_validation_s": 0.1996762970002237,
+        "setup_s": 17.794750281000233
+      },
+      "retained_files_sha256": "866d18865f474c121e32f8b641261731ff1e84649fd1947041371d99fec8ff3b",
+      "role": "reference",
+      "scope": {
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.6117488979998598
+      },
+      "scope_validated": true,
+      "scratch_absent": true,
+      "seed_policy": "cargo-reported-libraries-v1",
+      "snapshot_commit": "af8f1624997bd8b9c23219af022c06601bb07866",
+      "source_archive_sha256": "bd1b37da7b434beda6e60172a3d37095e41125ebbe35e4b2e1a57ab6e30c67be",
+      "source_commit": "09f4e0915150f503e332c2b213d24f793c433f3b",
+      "source_mtime_policy": "changed_and_injected_only_verified_base_seed",
+      "target_seed_manifest_sha256": "262f08f06d385bd5dd9f63922e9d999ee4e67dd4673287afcbd2a22bb336577e",
+      "total_wall_s": 36.19046287499987
+    },
+    {
+      "accepted": false,
+      "attempt": "qualification-base-v2",
+      "calibration_classification": "compiled_behavior_rejection",
+      "candidate_manifest_sha256": "66111d673ab27cc9d3647e9d9b0e48b40a5acef29450fb927173c3aaf98bc883",
+      "checker_sha256": "eb806205bb776594272b5ea501ed4f428b2713b04179098d278c90f6ca045680",
+      "checks_sha256": "027bc0238014a0cc6b83ce28fa0279abf35e7076ede954c267fce74492a83219",
+      "cleanup_outside_measurement": true,
+      "cleanup_s": 0.8895945600006598,
+      "completed": true,
+      "execution_closed": true,
+      "format": {
+        "exit_code": 0,
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.1143779079993692
+      },
+      "identity_validated": true,
+      "independent": {
+        "compile": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 0.31495457099936175
+        },
+        "passed": false,
+        "status": "failed",
+        "test": {
+          "exit_code": 101,
+          "passed": false,
+          "status": "failed",
+          "wall_s": 18.344532308000453
+        },
+        "wall_s": 18.66360980399986
+      },
+      "independent_test_counts": {
+        "failed": 4,
+        "passed": 0
+      },
+      "model_calls": 0,
+      "ordinary": {
+        "compile": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 13.189382169000055
+        },
+        "passed": true,
+        "status": "passed",
+        "test": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 4.5217585880000115
+        },
+        "wall_s": 17.732150719000856
+      },
+      "phases": {
+        "apply_candidate_s": 0.00013979199957248056,
+        "export_s": 3.250937612000598,
+        "git_snapshot_s": 13.302158192999741,
+        "seed_copy_s": 0.10500809400036815,
+        "seed_validation_s": 0.20666847899974528,
+        "setup_s": 17.550431515000128
+      },
+      "retained_files_sha256": "969d942dbecf99019682ccfefc94c3d9af7e839415fcfcec187da22e1fd322e1",
+      "role": "base",
+      "scope": {
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.6259708099996715
+      },
+      "scope_validated": true,
+      "scratch_absent": true,
+      "seed_policy": "cargo-reported-libraries-v1",
+      "snapshot_commit": "af8f1624997bd8b9c23219af022c06601bb07866",
+      "source_archive_sha256": "bd1b37da7b434beda6e60172a3d37095e41125ebbe35e4b2e1a57ab6e30c67be",
+      "source_commit": "09f4e0915150f503e332c2b213d24f793c433f3b",
+      "source_mtime_policy": "changed_and_injected_only_verified_base_seed",
+      "target_seed_manifest_sha256": "262f08f06d385bd5dd9f63922e9d999ee4e67dd4673287afcbd2a22bb336577e",
+      "total_wall_s": 54.113394697999865
+    },
+    {
+      "accepted": true,
+      "attempt": "qualification-reference-v2",
+      "calibration_classification": "reference_accepted",
+      "candidate_manifest_sha256": "a484c13ea6ffa1fc7a52ef7b07318360d7189ed605fa38361cd8674fc03943ab",
+      "checker_sha256": "eb806205bb776594272b5ea501ed4f428b2713b04179098d278c90f6ca045680",
+      "checks_sha256": "e3bb3cc9d3179621a76153d1bfb137602cee14c2a3caf0663990dfdcbd8c0f6b",
+      "cleanup_outside_measurement": true,
+      "cleanup_s": 0.9107866790000116,
+      "completed": true,
+      "execution_closed": true,
+      "format": {
+        "exit_code": 0,
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.11447265300012077
+      },
+      "identity_validated": true,
+      "independent": {
+        "compile": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 0.31479928299995663
+        },
+        "passed": true,
+        "status": "passed",
+        "test": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 19.997112254000058
+        },
+        "wall_s": 20.31596060100037
+      },
+      "independent_test_counts": {
+        "failed": 0,
+        "passed": 4
+      },
+      "model_calls": 0,
+      "ordinary": {
+        "compile": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 13.344274203000168
+        },
+        "passed": true,
+        "status": "passed",
+        "test": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 4.522307032000754
+        },
+        "wall_s": 17.962931710999328
+      },
+      "phases": {
+        "apply_candidate_s": 0.0015412550001201453,
+        "export_s": 3.2938427220005906,
+        "git_snapshot_s": 13.014352002999658,
+        "seed_copy_s": 0.10876414900030795,
+        "seed_validation_s": 0.19973312200090731,
+        "setup_s": 17.337979622000603
+      },
+      "retained_files_sha256": "8750b65168a6eccab001fd7c5a1c572ade219a266bedca283fd9cf86a3353f59",
+      "role": "reference",
+      "scope": {
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.612860052000542
+      },
+      "scope_validated": true,
+      "scratch_absent": true,
+      "seed_policy": "cargo-reported-libraries-v1",
+      "snapshot_commit": "af8f1624997bd8b9c23219af022c06601bb07866",
+      "source_archive_sha256": "bd1b37da7b434beda6e60172a3d37095e41125ebbe35e4b2e1a57ab6e30c67be",
+      "source_commit": "09f4e0915150f503e332c2b213d24f793c433f3b",
+      "source_mtime_policy": "changed_and_injected_only_verified_base_seed",
+      "target_seed_manifest_sha256": "262f08f06d385bd5dd9f63922e9d999ee4e67dd4673287afcbd2a22bb336577e",
+      "total_wall_s": 55.81261741799972
+    },
+    {
+      "accepted": false,
+      "attempt": "qualification-negative-control-1-v2",
+      "calibration_classification": "compiled_behavior_rejection",
+      "candidate_manifest_sha256": "6e39e00a38b7834ab2a7d24afa19b760c2e0e077ed649d3a3028aff1e965097d",
+      "checker_sha256": "eb806205bb776594272b5ea501ed4f428b2713b04179098d278c90f6ca045680",
+      "checks_sha256": "92a417bd8dafbcb6319499c6264a3b327b2fa3552afe88d3d078baa0eebe020e",
+      "cleanup_outside_measurement": true,
+      "cleanup_s": 0.9064866300004724,
+      "completed": true,
+      "execution_closed": true,
+      "format": {
+        "exit_code": 0,
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.11459690999981831
+      },
+      "identity_validated": true,
+      "independent": {
+        "compile": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 0.31496388200048386
+        },
+        "passed": false,
+        "status": "failed",
+        "test": {
+          "exit_code": 101,
+          "passed": false,
+          "status": "failed",
+          "wall_s": 18.54598162900038
+        },
+        "wall_s": 18.879031526999825
+      },
+      "independent_test_counts": {
+        "failed": 4,
+        "passed": 0
+      },
+      "model_calls": 0,
+      "ordinary": {
+        "compile": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 13.340927740000552
+        },
+        "passed": false,
+        "status": "failed",
+        "test": {
+          "exit_code": 101,
+          "passed": false,
+          "status": "failed",
+          "wall_s": 4.271416068999315
+        },
+        "wall_s": 17.906631910000215
+      },
+      "phases": {
+        "apply_candidate_s": 0.0018420289998175576,
+        "export_s": 3.0541448220001257,
+        "git_snapshot_s": 13.058953965,
+        "seed_copy_s": 0.09364746300070692,
+        "seed_validation_s": 0.29288266000003205,
+        "setup_s": 17.22522189099982
+      },
+      "retained_files_sha256": "05230f1175776829e693bbf79cfb221f01351a42eec071c0e8afbd1bc17ce082",
+      "role": "negative-control-1",
+      "scope": {
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.5801970950005853
+      },
+      "scope_validated": true,
+      "scratch_absent": true,
+      "seed_policy": "cargo-reported-libraries-v1",
+      "snapshot_commit": "af8f1624997bd8b9c23219af022c06601bb07866",
+      "source_archive_sha256": "bd1b37da7b434beda6e60172a3d37095e41125ebbe35e4b2e1a57ab6e30c67be",
+      "source_commit": "09f4e0915150f503e332c2b213d24f793c433f3b",
+      "source_mtime_policy": "changed_and_injected_only_verified_base_seed",
+      "target_seed_manifest_sha256": "262f08f06d385bd5dd9f63922e9d999ee4e67dd4673287afcbd2a22bb336577e",
+      "total_wall_s": 54.16359042000022
+    },
+    {
+      "accepted": false,
+      "attempt": "qualification-negative-control-2-v2",
+      "calibration_classification": "compiled_behavior_rejection",
+      "candidate_manifest_sha256": "7ca96f343a2c3219dd7d1984c0c7a143c0f3a90be014ff84b113ee5161cee8e5",
+      "checker_sha256": "eb806205bb776594272b5ea501ed4f428b2713b04179098d278c90f6ca045680",
+      "checks_sha256": "a7ea5d10bbd0aafd2e47e8ac4a08ecb9b18c4a5c43009413395591aaf7228a55",
+      "cleanup_outside_measurement": true,
+      "cleanup_s": 0.9467318349998095,
+      "completed": true,
+      "execution_closed": true,
+      "format": {
+        "exit_code": 0,
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.11453459699987434
+      },
+      "identity_validated": true,
+      "independent": {
+        "compile": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 0.31498236900006304
+        },
+        "passed": false,
+        "status": "failed",
+        "test": {
+          "exit_code": 101,
+          "passed": false,
+          "status": "failed",
+          "wall_s": 19.898674948000007
+        },
+        "wall_s": 20.241959739999402
+      },
+      "independent_test_counts": {
+        "failed": 1,
+        "passed": 3
+      },
+      "model_calls": 0,
+      "ordinary": {
+        "compile": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 12.688808281999627
+        },
+        "passed": false,
+        "status": "failed",
+        "test": {
+          "exit_code": 101,
+          "passed": false,
+          "status": "failed",
+          "wall_s": 4.270818424000026
+        },
+        "wall_s": 16.96548285300014
+      },
+      "phases": {
+        "apply_candidate_s": 0.0015342219994636253,
+        "export_s": 3.113848410999708,
+        "git_snapshot_s": 13.320943466000244,
+        "seed_copy_s": 0.10812360499949136,
+        "seed_validation_s": 0.1980421150001348,
+        "setup_s": 18.1851682839997
+      },
+      "retained_files_sha256": "e1a313e13c4ce8b864606096237741a0f98b0b8933d70ebdca9331277cad6ce8",
+      "role": "negative-control-2",
+      "scope": {
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.5863104330001079
+      },
+      "scope_validated": true,
+      "scratch_absent": true,
+      "seed_policy": "cargo-reported-libraries-v1",
+      "snapshot_commit": "af8f1624997bd8b9c23219af022c06601bb07866",
+      "source_archive_sha256": "bd1b37da7b434beda6e60172a3d37095e41125ebbe35e4b2e1a57ab6e30c67be",
+      "source_commit": "09f4e0915150f503e332c2b213d24f793c433f3b",
+      "source_mtime_policy": "changed_and_injected_only_verified_base_seed",
+      "target_seed_manifest_sha256": "262f08f06d385bd5dd9f63922e9d999ee4e67dd4673287afcbd2a22bb336577e",
+      "total_wall_s": 55.57564511500004
+    }
+  ],
+  "checker": {
+    "behavior_assertions_changed_after_first_attempt": false,
+    "fixture_attempts_retained": true,
+    "fixture_correction": "Initialize the store in a new child of the scratch directory; an existing empty directory was treated as an already-initialized store.",
+    "independent_test_count": 4,
+    "negative_control_count": 2,
+    "negative_controls_compiled": true,
+    "negative_controls_rejected_by_ordinary_and_independent": true,
+    "original_sha256": "20459e6c50284d1b73e20419da98e5cca25d18736e5c4f41b41e9048711c13e3",
+    "public_api_only": true,
+    "qualified_sha256": "eb806205bb776594272b5ea501ed4f428b2713b04179098d278c90f6ca045680",
+    "source_and_private_assertions_not_published": true
+  },
+  "common_final_check_budget_s": 240,
+  "created_at": "2026-10-03T09:11:21.999768+00:00",
+  "helper_sha256": {
+    "candidate.py": "66a848a33e59f38703a03237294c318c14c5b7b8515eb9423efbb8b91f782373",
+    "check_candidate.py": "f2c40fe470ccd92dbdcf4e9a72cfc03310583026a677114638e8355cdaa498ee",
+    "run_remote.py": "12fface58de3292a6ef0df7ecc1880e327e68ac1decfdffc0338b85127cbcfbf",
+    "seed_manifest.py": "db03669c77ed57c0e4480f1e503070f6d314965476222dd2594755dcdf93699a"
+  },
+  "issue": 9908,
+  "limits": [
+    "Four public-API scenarios and two negative controls do not prove complete behavioral correctness.",
+    "Both negative controls are also rejected by ordinary tests; this calibration does not measure unique marginal coverage from the independent checker.",
+    "The checks exercise scratch stores and local signed exchanges, not live owner devices or deployment.",
+    "Wall-clock checks in a public client API require fixture times relative to the actual run date; this is not a wholly injected-clock model.",
+    "No executor success, treatment effect, token saving, or engineering return is measured.",
+    "Native and acceptance scratch coexistence remains unverified."
+  ],
+  "local_setup_failures": [
+    {
+      "failure": "Standalone source formatting followed a sibling module that was absent from the temporary directory.",
+      "phase": "negative-control formatting",
+      "remote_execution_or_payload_upload_before_fix": false,
+      "resolution": "Format the existing file with child-module traversal disabled; mutation semantics unchanged.",
+      "wall_s": null
+    }
+  ],
+  "model_calls": 0,
+  "original_panel_artifacts_unchanged": true,
+  "package": "coder-access",
+  "provenance": {
+    "landed_rebased_reference_not_used": true,
+    "observed_clean_assignment_utc": "2026-09-28T20:51:35.069Z",
+    "original_reference_parent_matches_source": true,
+    "public_issue_url": "https://github.com/OpenAgentsInc/openagents/issues/9908",
+    "reference_patch_and_transcript_private": true,
+    "scope_limits": [
+      "The historical child also handled issue 9909 and host cleanup/deployment; these operations are excluded.",
+      "The public INVARIANTS update is outside this package-only trial.",
+      "Retained historical macOS results do not substitute for the new Linux qualification."
+    ]
+  },
+  "public_task_manifest_sha256": "93075b5d1750c983305f57a0c2b44d18b595b3f699b3d8bf158af11af9d7e2e0",
+  "retention": {
+    "all_attempt_scratch_absent": true,
+    "all_retained_manifest_files_verified": true,
+    "available_disk_bytes_after_cleanup": 11922567168,
+    "private_archive_bytes": 168976,
+    "private_archive_sha256": "e608067df7c9c07ad221f294a83fd7e335cf53faebe1ce262b60a2e01ea63f8b",
+    "retained_attempt_count": 8,
+    "retained_file_count": 152,
+    "seeds_and_shared_target_preserved": true,
+    "slot_lock_acquired_after_checks": true
+  },
+  "schema": "openagents.delegation.alternative-eligibility.v1",
+  "scored_executor_runs": 0,
+  "screen": {
+    "candidate_decisions": [
+      {
+        "decision": "calibrate",
+        "issue": 9908,
+        "reason": "Bounded public grant-retention behavior in coder-access, an observed clean child source, and public APIs for local signed exchanges."
+      },
+      {
+        "decision": "not_calibrated",
+        "issue": 9899,
+        "reason": "Near-duplicate grant-retention family; coder-connect was also used by an earlier holdout."
+      },
+      {
+        "decision": "not_calibrated",
+        "issue": 9827,
+        "reason": "Five physics behaviors plus Verse workaround removal span three crates; outside the requested small isolated gate. No fresh child launch found in the bounded prompt inventory."
+      }
+    ],
+    "initial_child_assignment_metadata_count": 595,
+    "retained_screen_sha256": "fff291f44471332487f89062818147e20b302a9bf65bb3b26e4695b638342201",
+    "selection_before_model_outcomes": true,
+    "window": "2026-09-26 through 2026-10-02 local"
+  },
+  "seed_build": {
+    "archive_entries": 32467,
+    "archive_wall_s": 2.193510609000441,
+    "build_wall_s": 13.341133400999752,
+    "exit_code": 0,
+    "export_wall_s": 3.787231133000205,
+    "git_snapshot_wall_s": 14.246535644000687,
+    "recompiled_workspace_units": 11,
+    "schema": "openagents.delegation.seed-build.v1",
+    "seed_bytes": 349137657,
+    "seed_files": 776,
+    "seed_manifest_sha256": "262f08f06d385bd5dd9f63922e9d999ee4e67dd4673287afcbd2a22bb336577e",
+    "selected_seed_bytes": 349137657,
+    "snapshot_commit": "af8f1624997bd8b9c23219af022c06601bb07866",
+    "source_archive_bytes": 1452369920,
+    "source_bytes": 1428447034,
+    "source_commit": "09f4e0915150f503e332c2b213d24f793c433f3b",
+    "source_mtimes_refreshed_unix_ns": 1791017671640746537,
+    "status": "complete",
+    "toolchain": {
+      "cargo": "cargo 1.97.1 (c980f4866 2026-06-30)",
+      "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)\nbinary: rustc\ncommit-hash: 8bab26f4f68e0e26f0bb7960be334d5b520ea452\ncommit-date: 2026-07-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.97.1\nLLVM version: 22.1.6",
+      "rustdoc": "rustdoc 1.97.1 (8bab26f4f 2026-07-14)\nbinary: rustdoc\ncommit-hash: 8bab26f4f68e0e26f0bb7960be334d5b520ea452\ncommit-date: 2026-07-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.97.1\nLLVM version: 22.1.6"
+    },
+    "total_wall_s": 35.882411814999614
+  },
+  "seed_builder_cleanup": {
+    "outside_build_timer": true,
+    "seed_preserved": true,
+    "shared_target_preserved": true,
+    "status": "complete",
+    "wall_s": 0.9207047729996702
+  },
+  "source_archive_sha256": "bd1b37da7b434beda6e60172a3d37095e41125ebbe35e4b2e1a57ab6e30c67be",
+  "source_commit": "09f4e0915150f503e332c2b213d24f793c433f3b",
+  "status": "qualified_for_prospective_registration"
+}

@@ -1,0 +1,55 @@
+{
+  "contains_hidden_checkers": false,
+  "contains_reference_solutions": false,
+  "created_at": "2026-10-03T09:09:07.432254+00:00",
+  "schema": "openagents.delegation-study.public-task-manifest.v1",
+  "status": "prospective replacement; calibration record and registration remain separate",
+  "tasks": [
+    {
+      "allowed_paths": [
+        "crates/coder-access/"
+      ],
+      "applicable_instruction_paths": [
+        {
+          "path": "AGENTS.md",
+          "sha256": "3f32f4fd3c25b1dd5bf6fd302c90bf8b18da4a78942a61db12b87ca2cbbe4779"
+        },
+        {
+          "path": ".agents/skills/google-developer-style/SKILL.md",
+          "sha256": "afb103c87f283e88ea33a1439a11fb1838a17970760b8ecc59bf2f9d89fb0197"
+        },
+        {
+          "path": ".agents/skills/nostr/SKILL.md",
+          "sha256": "627ce777325d70ea42fdc72246e225a7c1d4e15b499bd1aab04bda1ad7cb6580"
+        }
+      ],
+      "id": "alternative-alpha",
+      "issue": 9908,
+      "packages": [
+        "coder-access"
+      ],
+      "prompt": "Device re-enrollment in `crates/coder-access` keeps adding grants until the 128-grant bound prevents a new device from enrolling. Fix grant retention so a device that enrolls again has one live grant, and revoked or superseded grants do not prevent new enrollment. Preserve the bound for distinct live devices and preserve already-issued delegated access when its issuing device enrolls again. Delegation must still narrow authority and obey explicit revocation; re-enrollment must not revive authority that was revoked or removed. Preserve invitation retry behavior. Cover the public invitation and owner-approved enrollment paths with regression tests. Read the crate README and `nips/openagents/NIP-HOST.md`. Work only on the isolated code and tests in `crates/coder-access/`; host-store cleanup, deployment, owner devices, and changes outside this package are outside this trial.",
+      "public_requirement_provenance": {
+        "clean_source_provenance": "A retained child records a fresh worktree at the pinned source before the scoped implementation; raw conversation remains private.",
+        "historical_gate_limit": "Retained macOS output is provenance only; separate current Linux eligibility checks are required.",
+        "observed_historical_assignment_utc": "2026-09-28T20:51:35.069Z",
+        "original_body_sha256": "e9c74ff7b3b51b1fe1da722dda6f4138060fefed6ae5f97fa93653d1d8dda098",
+        "original_issue_record_sha256": "7d4f5bd2a5d06298362b9433628c391dd6cf0c3544e9824dcbb49d9241952ed1",
+        "scope": "Normalized public issue behavior with public protocol safety requirements. The original child also handled issue 9909 and operational host cleanup/deployment; those and the original INVARIANTS row are excluded by the isolated package-only trial scope.",
+        "url": "https://github.com/OpenAgentsInc/openagents/issues/9908"
+      },
+      "required_public_readings": [
+        {
+          "path": "crates/coder-access/README.md",
+          "sha256": "0b2d7ddf3063bbc5136326a62f210c3275ba8eb66b406d4885935d7c73af47ac"
+        },
+        {
+          "path": "nips/openagents/NIP-HOST.md",
+          "sha256": "3da5fd0161b7096a4aeada96bdccd3fc3444734f205eda3919f85e1890c18210"
+        }
+      ],
+      "source_commit": "09f4e0915150f503e332c2b213d24f793c433f3b",
+      "title": "Device-access (NIP-HOST) grants fill up: one grant per live test run in coder-access/access.json"
+    }
+  ]
+}

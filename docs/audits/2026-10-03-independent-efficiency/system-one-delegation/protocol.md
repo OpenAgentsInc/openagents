@@ -2,11 +2,14 @@
 
 **Draft; scored execution is not registered yet.** The coordinator must fill
 the pending bindings in [protocol.json](protocol.json), verify provider access
-and isolation, and seal the registration before any scored session. The coordinator saw provisional candidate issue numbers and brief labels
-before full policy coding, but has not read the reserve prompts, source,
-checkers, or reference fixes. This is partial blinding. Treatment improvements
-used only the known development task #10167. Reserve prompts stay withheld
-until the treatment freeze; checkers and reference fixes remain isolated.
+and isolation, and seal the registration before any scored session. During
+policy development, the coordinator knew provisional candidate issue numbers
+and brief labels but had not read reserve prompts, source, checkers, or
+reference fixes. This is partial blinding. Treatment improvements used only
+the known development task #10167. Public task and source details become
+available after the treatment freeze, including the later eligibility review.
+The preparation policy stays unchanged; checkers and reference fixes remain
+outside preparation development and executor access.
 A capability request that cannot run, including a payment refusal, does not
 satisfy that prerequisite. Retain its receipt and any unknown cost.
 
@@ -148,9 +151,14 @@ not retrospective selection of the favorable rate.
 
 ## Task selection, checks, and freeze
 
-The selector has one `coder-boundary` task and three `coder` tasks across at
-least three behavioral families. All four are previously unused in the scored
-experiments. This concentration within two crates limits transfer claims:
+The original draft selects one `coder-boundary` task and three `coder` tasks
+across at least three behavioral families. All four are previously unused in
+the scored experiments. The full [A/B](acceptance-preflight.md) and
+[C/D](eligibility-cd.md) preflights qualify only A under the unchanged gate.
+Replacement selection is pending; retain the original manifest and draft
+schedule and bind any replacement in a separate prospective record before
+scoring. Do not choose replacements using briefing quality or executor outcomes.
+The original concentration within two crates limits transfer claims:
 there is no broad repository-level generalization. Each task needs a clean
 pre-fix source, a verifiable original public requirement,
 a known reference fix, and offline Linux checks. Exclude earlier development,
@@ -241,14 +249,29 @@ The common build environment sets `CARGO_PROFILE_DEV_DEBUG=0` and
 This pre-scoring storage amendment removes debug symbols without changing
 optimization or assertions. The verified `cargo-reported-libraries-v1` seed
 contains baseline libraries; final test executables are relinked. Keep the
-failed default-profile setup evidence. After candidate, checks, logs, and
-endpoint receipts are retained, remove completed per-attempt target copies and
-reconstructible native and acceptance workspaces. Workspace removal additionally
-requires the canonical candidate, change manifest, checks, source-archive
-identities, and durable private logs. Record cleanup separately, outside the
-primary endpoint. Preserve source archives, shared seeds, long-lived targets,
-candidate payloads, and logs. Never follow a cleanup symlink or remove a phase's
-scratch directories while its execution closure remains unconfirmed.
+failed default-profile setup evidence. Before acceptance, durably retain the
+validated candidate, change manifest, native result, provider ledger, source
+identity, and private logs. Confirm native execution has closed, then remove
+its reconstructible workspace and target copy. Include that release in the
+primary endpoint and retain its timing and free-space observations. A failed
+release stops acceptance and later trial admission; it is not retried
+automatically. This prevents the two large scratch copies from coexisting,
+but imposes no disk quota on arbitrary executor output or other processes.
+
+After checks and endpoint receipts are retained, remove the closed acceptance
+workspace and target copy. Record this final cleanup outside the primary
+endpoint. Preserve source archives, shared seeds, long-lived targets, candidate
+payloads, and logs. Never follow a cleanup symlink or remove a phase's scratch
+directories while its execution closure remains unconfirmed.
+
+Bind any additional Cargo features as explicit package-qualified names in
+the task, common check instructions, baseline seed, native configuration,
+and acceptance template. The [feature amendment](cargo-feature-amendment.json)
+preserves default-feature behavior when the field is absent and refuses a
+mismatched seed. Ordinary and independent final checks use the same bound
+features. Native metadata records the configured instructions; it does not
+prove that the executor runs that command. Do not substitute `--all-features`
+for the declared offline gate.
 
 The [reporter](../../../../bench/delegation-study/report.py) reads static
 expectations from `registration.report_bindings`. These include exact primary
@@ -339,15 +362,21 @@ resource contention. A provider prompt cache is observed through usage;
 it is not assumed to reset between runs.
 
 The proposed executor deadline is ten minutes, followed by at most four
-minutes for final external checking. The final registration must confirm
+minutes for final external checking. The [deadline proposal record](verification-budget-amendment.json)
+retains a proposed six-minute limit and its withdrawal before execution:
+C's measured timeout motivates the proposal, but later source review identifies
+a separate ordinary-suite eligibility failure. The planned retry is canceled.
+No scored session or check uses the proposed longer limit.
+The final registration must confirm
 these are feasible for all tasks and set the same limits across arms.
 Ordinary budget or time exhaustion is a task outcome.
 
 Primary elapsed time starts before per-run source export/preparation and
 ends when the final independent checks and candidate artifacts are durably
 recorded. It includes preparation, Jev, engine work, internal fixes, final
-checks, polling, and capture. Record each phase. Queue time, common cold
-compilation/indexing, final cleanup, and later blind review are separate.
+checks, polling, capture, and the native scratch release required before
+acceptance. Record each phase. Queue time, common cold compilation/indexing,
+final acceptance cleanup, and later blind review are separate.
 This is a warm workflow endpoint, not time through deployment, merge, or
 issue closure. Report batch elapsed time separately from summed run time.
 

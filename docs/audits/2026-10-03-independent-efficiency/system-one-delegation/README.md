@@ -12,8 +12,8 @@ deterministic fallback and unknown cost. A provider model listing does not
 establish funded inference. The single-trial coordinator now connects
 preparation, native execution, final acceptance, and the complete endpoint
 clock. Its offline tests pass. Linux preflight accepts the first historical
-reference, but a pre-existing ordinary-test failure makes the second task
-ineligible under the original gate. Task eligibility, funded provider access,
+reference, but ordinary-suite failures and a timeout leave the other three
+original tasks unqualified. Task eligibility, funded provider access,
 current native capability checks, and final registration remain prerequisites.
 The protocol remains unsealed.
 
@@ -86,6 +86,13 @@ artifacts, not the complete scored-session instruction envelope. Candidate
 quality has not been scored. Each preview's adjacent `preparation.json` and
 `candidates.json` bind its source, policy, output, and recorded omissions.
 
+The separate [alpha preview](alternative-alpha/README.md) takes 0.665 seconds
+after a 4.772-second index build and produces a readable
+[15,449-byte briefing](alternative-alpha/preview/briefing.md). This is one
+observation, kept separate from the original 20. Exact source spans match, but
+two available units are omitted from the delivered pack and one larger function
+exceeds the candidate-size limit. The unchanged policy's limits remain visible.
+
 The independent [component recomputation](recompute_components.py) verifies
 the frozen file and preview hashes and reprices the actual native capability
 calls. Its [results](component-results.json) reproduce the 18/20 preview
@@ -102,8 +109,17 @@ static review, synthetic regressions, and actual namespace probes.
 
 The [runnable infrastructure](../../../../bench/delegation-study/README.md)
 includes an isolated single-attempt native runner and a provider broker.
-Its [129 local tests](local-validation.json) pass, including candidate identity,
+Its [143 local tests](local-validation-features.json) pass, including candidate identity,
 accounting, signal cleanup, schedule admission, and incomplete-result handling.
+The earlier [129-test](local-validation.json) and
+[132-test](local-validation-followup.json) records remain retained. The
+[storage amendment](storage-amendment.json) adds a guarded native scratch
+release before acceptance, counting that release in the primary endpoint.
+This avoids keeping two full build trees at once; it does not impose a disk
+quota or establish current native-to-acceptance feasibility.
+The [Cargo feature amendment](cargo-feature-amendment.json) binds explicit
+features across the seed, common task instructions, native configuration,
+and final checks. Configuration alone does not prove the executor runs a test.
 These synthetic checks do not substitute for the real Linux and provider
 preflights. The [draft schedule](draft-schedule.json) fixes 48 attempt identities
 and order; it remains unsealed and grants no execution authority.
@@ -168,12 +184,32 @@ necessary eligibility check beyond the earlier task-specific calibration:
 
 Both B variants fail the same pre-existing artifact-directory test; subsequent
 ordinary targets do not run after that library failure. The reference therefore
-cannot satisfy the original full-ordinary-test gate. No check is skipped, no
+cannot satisfy the original full-ordinary-test gate. The later
+[C/D qualification](eligibility-cd.md) retains a 240-second C timeout and a
+173.56-second D reference rejection caused by a stale ordinary integration
+expectation. C shares the relevant source and fixture with D, so source review
+predicts the same later failure; it is not an observed C integration result.
+A proposed longer C retry is canceled before launch.
+
+Only A qualifies under the original complete gate. No check is skipped, no
 source workaround is applied, and no verdict is relaxed. Alternative task
 eligibility is being screened before scoring. The original task manifest,
 previews, draft schedule, and all failed setup attempts remain retained.
 These are single feasibility observations, not native coding sessions or
-population latency estimates. Cleanup is recorded separately.
+population latency estimates. Cleanup is recorded separately. Eligibility
+selection narrows the eventual study to historical bugs with healthy ordinary
+suites in the tested Linux environment. It does not sample the full backlog,
+and a smaller-library replacement cannot establish a large-workspace win.
+
+[Alternative alpha, #9908](eligibility-alpha.md), qualifies under the same
+240-second limit: the reference passes all gates in 55.81 seconds, the original
+source fails the independent behavior checks, and two compiled incorrect fixes
+are rejected. Its eight retained attempts include two invalid checker-fixture
+runs; those do not count as behavioral evidence. The
+[second bounded screen](selection-screen-2.md) proposes two further library
+tasks for qualification. Their sources are older than the original recent-week
+window, and no matching fresh Claude launch was established. These are public
+issue trials, not reconstructed observations of clean Claude sessions.
 
 The [calibration report](calibration.md) and [24 retained attempt rows](calibration.json)
 record four reserve base failures, four historical-reference passes, and

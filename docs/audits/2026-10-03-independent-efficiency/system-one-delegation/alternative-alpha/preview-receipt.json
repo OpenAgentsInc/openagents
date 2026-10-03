@@ -1,0 +1,171 @@
+{
+  "schema": "openagents.delegation.alternative-preview.v1",
+  "task_id": "alternative-alpha",
+  "source_commit": "09f4e0915150f503e332c2b213d24f793c433f3b",
+  "started_at": "2026-10-03T09:16:53.094965+00:00",
+  "status": "complete",
+  "index": {
+    "process_wall_s": 4.771843038000952,
+    "exit_code": 0,
+    "sha256": "ba852c7c22978673a1af8046c10e46e409da86b223da2b2cb876af44ada2eff2",
+    "bytes": 31589070
+  },
+  "preview": {
+    "process_wall_s": 0.6652043199992477,
+    "exit_code": 0,
+    "reported_wall_s": 0.5436564020001242,
+    "source_selection_wall_s": 0.531366753999464,
+    "briefing_bytes": 15449,
+    "briefing_sha256": "ca79dbad558ad7b31d227c5654506746794b3d008b3f95eb6cbc55d24e2f3e1e",
+    "preparation_sha256": "e51563c21dea616240f88ea0d5177cb7922fb0c2857adc5c08979d4370154a3b",
+    "candidate_sha256": "4d4f0cf60aedd07df479247cf1ee7a8ed0f188fbbb59a6eef6dffae0c8562b0c",
+    "policy": "syntax-units-v2",
+    "coverage": {
+      "files_read": 24,
+      "eligible_units": 1408,
+      "candidate_units": 13,
+      "oversized_units": [
+        {
+          "path": "crates/coder-access/src/host/mod.rs",
+          "name": "Host::execute",
+          "reason": "unit exceeds 6000 bytes"
+        },
+        {
+          "path": "crates/coder-computers/src/live.rs",
+          "name": "Live::snapshot",
+          "reason": "unit exceeds 6000 bytes"
+        },
+        {
+          "path": "crates/coder/src/runtime.rs",
+          "name": "Runtime::run_steps",
+          "reason": "unit exceeds 6000 bytes"
+        },
+        {
+          "path": "crates/coder/src/runtime.rs",
+          "name": "Runtime::nested",
+          "reason": "unit exceeds 6000 bytes"
+        },
+        {
+          "path": "crates/coder/src/runtime.rs",
+          "name": "Runtime::look_up",
+          "reason": "unit exceeds 6000 bytes"
+        },
+        {
+          "path": "crates/coder/src/runtime.rs",
+          "name": "Runtime::review_findings",
+          "reason": "unit exceeds 6000 bytes"
+        },
+        {
+          "path": "crates/coder/src/runtime.rs",
+          "name": "Runtime::delegate",
+          "reason": "unit exceeds 6000 bytes"
+        },
+        {
+          "path": "crates/coder/src/runtime.rs",
+          "name": "Runtime::ask",
+          "reason": "unit exceeds 6000 bytes"
+        },
+        {
+          "path": "crates/coder-mobile/src/computers_live_tests.rs",
+          "name": "the_app_enrolls_watches_invites_sees_activity_and_is_revoked_against_a_real_host",
+          "reason": "unit exceeds 6000 bytes"
+        },
+        {
+          "path": "crates/coder-mobile/src/computers_live_tests.rs",
+          "name": "serve_a_host_for_a_device_run",
+          "reason": "unit exceeds 6000 bytes"
+        },
+        {
+          "path": "crates/coder-access/src/main.rs",
+          "name": "run",
+          "reason": "unit exceeds 6000 bytes"
+        },
+        {
+          "path": "crates/coder/src/delegate.rs",
+          "name": "Delegator::run",
+          "reason": "unit exceeds 6000 bytes"
+        },
+        {
+          "path": "crates/coder-computers/tests/live.rs",
+          "name": "directory_hosts_show_owner_labels_weights_and_revisions",
+          "reason": "unit exceeds 6000 bytes"
+        },
+        {
+          "path": "crates/coder-host/tests/support/scenario.rs",
+          "name": "run",
+          "reason": "unit exceeds 6000 bytes"
+        },
+        {
+          "path": "crates/coder-host/src/cli.rs",
+          "name": "serve",
+          "reason": "unit exceeds 6000 bytes"
+        },
+        {
+          "path": "crates/openagents-mobile/src/app.rs",
+          "name": "Request",
+          "reason": "unit exceeds 6000 bytes"
+        },
+        {
+          "path": "crates/openagents-mobile/src/app.rs",
+          "name": "App::open",
+          "reason": "unit exceeds 6000 bytes"
+        },
+        {
+          "path": "crates/openagents-mobile/src/app.rs",
+          "name": "App::call",
+          "reason": "unit exceeds 6000 bytes"
+        },
+        {
+          "path": "crates/coder-computers/src/tests.rs",
+          "name": "every_status_is_derived_and_worded",
+          "reason": "unit exceeds 6000 bytes"
+        },
+        {
+          "path": "crates/coder-computers/src/tests.rs",
+          "name": "every_intent_runs_through_its_check",
+          "reason": "unit exceeds 6000 bytes"
+        },
+        {
+          "path": "crates/coder-computers/src/controller.rs",
+          "name": "Computers::apply",
+          "reason": "unit exceeds 6000 bytes"
+        },
+        {
+          "path": "crates/coder-computers/src/controller.rs",
+          "name": "Computers::accept",
+          "reason": "unit exceeds 6000 bytes"
+        },
+        {
+          "path": "crates/coder-one/src/policy.rs",
+          "name": "Manifest::validate",
+          "reason": "unit exceeds 6000 bytes"
+        },
+        {
+          "path": "crates/coder-one/src/policy.rs",
+          "name": "Resolution::apply",
+          "reason": "unit exceeds 6000 bytes"
+        }
+      ],
+      "pool_policy": "24 lexically ranked Rust files; up to 32 complete declarations; 28 KiB state"
+    },
+    "selection_count": 11
+  },
+  "model_calls": 0,
+  "paid_cost_usd": 0,
+  "cargo_calls": 0,
+  "timing_scope": "One process measurement per phase; separate index construction. No operating-system cache flush; do not pool with original 20 previews.",
+  "binary_sha256": "cfe8027a1c2aa1278483e4f38b45819bd19933b3d6703f51aa02110d8212c3a1",
+  "prepare_sha256": "20868f9bbfdc3002a6345e9e4fddfa0b7cdb3e164e11d74af0ad488813389c6b",
+  "issue_sha256": "e5e79e635ed9f39e9b6515f3a5dce4cc3fd0f3122b4369cddc93ed14dce3a62b",
+  "finished_at": "2026-10-03T09:16:58.562124+00:00",
+  "validation": {
+    "all_candidate_file_digests_and_exact_spans_match_source": true,
+    "candidate_units_checked": 13,
+    "input_index_script_payload_digests_match": true,
+    "briefing_within_16384_bytes": true,
+    "retained_archive_sha256": "65022c280eb2c5af5d9fce4253345ae5676f5131560723a95e51c0bba066fe27",
+    "retained_archive_bytes": 5452634,
+    "index_retention": "Retained privately; reconstruct with the pinned source, frozen binary, and documented command."
+  },
+  "qualification_note": "Qualification used helper f2c40fe470ccd92dbdcf4e9a72cfc03310583026a677114638e8355cdaa498ee under default features; this preview is not a new scored native result."
+}

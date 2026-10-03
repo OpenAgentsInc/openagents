@@ -144,6 +144,15 @@ before exporting source and records its version and executable hash. Native
 execution and acceptance check this binding; doctests remain enabled.
 The trusted builder needs no provider credential and executes no model.
 
+An optional `cargo_features` list names explicit package-qualified features,
+for example `["jev/blocking"]`. The builder adds `--features jev/blocking`
+and binds the list in the seed manifest. Native and acceptance configurations
+must name the same list. Missing fields in retained manifests mean `[]`:
+Cargo's default features, with no additional features. Wildcards, duplicate
+names, unqualified names, and command flags such as `--all-features` are refused.
+Acceptance features must belong to its checker package, which both ordinary
+and independent compile/test commands select. Formatting receives no feature flags.
+
 Run synthetic checks with:
 
 ```sh
@@ -257,7 +266,7 @@ One host's monotonic clock starts after the execution slot is acquired and
 before per-trial registration and archive validation. Validation duration is
 also recorded separately. The endpoint includes preparation, Jev, source
 export, Git initialization, seed validation and copying, native execution,
-capture, provider drain, independent checks, and durable candidate/check
+capture, provider drain, native scratch removal, independent checks, and durable candidate/check
 artifacts. Final receipt bookkeeping follows the endpoint timestamp. Queue
 time, shared cold builds and indexing, and blinded review are separate.
 
@@ -267,12 +276,20 @@ for export, capture, and provider drain; a 240-second acceptance watchdog
 includes its setup, compilation, and tests. The final registration must bind
 feasible outer deadlines; the proposed budgets remain unsealed.
 
-After retaining the endpoint and trial receipts, the coordinator removes closed
-attempts' `native/home/target` and `acceptance/home/target` copies. It also removes
-their reconstructible `workspace` directories after the validated candidate,
-change manifest, checks, source-archive identities, and private logs are durable.
-It records cleanup time outside the primary endpoint. Source archives, shared
-seeds, long-lived targets, logs, receipts, and candidate payloads remain. Cleanup
+Before acceptance starts, the coordinator syncs the validated native candidate,
+change manifest, native result, provider ledger, and private logs. It retains
+their hashes in `native-retention.json`, then removes the confirmed-closed
+native `workspace` and `home/target` copies. `native-scratch-release.json`
+records removal outcomes, duration, and free disk bytes before and after.
+This removal is inside the primary endpoint. Failure stops acceptance and later
+trial admission, and is retained without an automatic cleanup retry. This prevents overlapping native
+and acceptance source/build copies; it is not a disk quota or a reservation
+against executor output growth or other processes.
+
+After retaining the endpoint and trial receipts, the coordinator removes the
+closed acceptance target and reconstructible workspace, recording this final
+cleanup outside the primary endpoint. Source archives, shared seeds,
+long-lived targets, logs, receipts, and candidate payloads remain. Cleanup
 refuses symlinks or paths outside the attempt. Missing reconstruction evidence
 preserves a workspace; unconfirmed process closure preserves that phase's
 scratch directories. A failed cleanup is retained and does not cause a paid
@@ -294,6 +311,13 @@ native attempt, `candidate_dir`, `allowed_paths`, `packages`, the frozen
 `expected_snapshot_commit` checks agreement with the native Git snapshot.
 The trial coordinator supplies the run-specific identities and the common
 registered verification budget.
+For a feature-bearing task, the registered task, native configuration, seed,
+and acceptance template bind the same `cargo_features`. Its common base prompt
+must contain the exact check command, such as
+`cargo test --locked --offline -p jev --features jev/blocking`.
+Registration and dispatch reject a missing command before any paid phase.
+This exposes the same check policy to every native arm; it does not force the
+model to run that command. Final acceptance independently applies the feature list.
 
 Acceptance reconstructs a fresh historical tree and deterministic base Git
 snapshot, verifies every candidate preimage, and applies the complete candidate,

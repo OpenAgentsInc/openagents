@@ -12,6 +12,7 @@ import re
 import statistics
 import tarfile
 import candidate
+from seed_manifest import cargo_features, feature_check_command
 
 MANIFEST_SCHEMA = "openagents.delegation.report-manifest.v1"
 REPORT_SCHEMA = "openagents.delegation.report.v1"
@@ -109,6 +110,11 @@ def sealed_bindings(manifest, protocol):
 def verify_input_bindings(root, refs, data, cell, arm, frozen):
     task = next(t for t in frozen["tasks"] if t["task_id"] == cell["task_id"])
     native = data["native"]
+    features = cargo_features(task.get('cargo_features',[]))
+    if cargo_features(native.get('cargo_features',[])) != features:
+        raise ValueError('Native Cargo features differ from sealed registration')
+    if 'checks' in data and cargo_features(data['checks'].get('cargo_features',[])) != features:
+        raise ValueError('Acceptance Cargo features differ from sealed registration')
     expected = {"source_commit": task["source_commit"], "source_archive_sha256": task["source_archive_sha256"],
                 "cli_sha256": frozen["cli"]["sha256"], "cli_hash_after": frozen["cli"]["sha256"],
                 "cli_version": frozen["cli"]["version"], "model": arm["primary_model"], "effort": arm["effort"]}
@@ -119,6 +125,8 @@ def verify_input_bindings(root, refs, data, cell, arm, frozen):
             or not arm["argv_tail"] or argv[1:] != arm["argv_tail"]):
         raise ValueError("native prompt or tool argv differs from registration")
     base = artifact(root, task["base_prompt"], "bytes")
+    if features and feature_check_command(features).encode() not in base:
+        raise ValueError('Registered task prompt lacks its Cargo feature check command')
     if arm["preparation"]:
         expected_prep = task["preparation"]
         prep = data["preparation"]

@@ -95,9 +95,10 @@ These measurements share an evolving dependency cache; the table is not
 an independent cold-build comparison. Seed creation does not establish
 ordinary-test success or acceptance latency.
 
-Per-run target and workspace copies need bounded disk admission and cleanup
-after candidate artifacts, receipts, and private logs are retained. Cleanup
-belongs outside the primary endpoint and is recorded separately. The source
+Per-run target and workspace copies need disk admission and cleanup after
+candidate artifacts, receipts, and private logs are retained. The original
+coordinator puts all cleanup outside the primary endpoint; the later amendment
+below moves the release needed before acceptance inside it. The source
 archives and canonical candidate artifacts allow reconstruction. Retaining
 two 1.5 GB workspaces per session would exceed 140 GB over 48 sessions even
 before compiled targets. The coordinator removes only its closed, verified
@@ -130,3 +131,27 @@ and maintenance before indexing; a focused regression confirms that the
 snapshot commit stays identical. Scratch cleanup tolerates only a child
 that has already disappeared. Permission, root-path, and other errors remain
 visible. These corrections precede scoring and apply to every arm.
+
+## Release native scratch before final verification
+
+The [D reference observation](eligibility-cd.md#disk-and-cleanup) measures
+8.45 GB of allocated acceptance workspace and target, with 5.64 GB free at
+that point. Keeping a similar native tree concurrently is not qualified by
+that observation. The seed's exported size alone understates the storage a
+full check needs.
+
+The [storage amendment](storage-amendment.json) changes the common trial
+coordinator before scoring. It validates and durably retains candidate bytes,
+changes, native results, provider accounting, and logs, confirms native process
+closure, then removes only the reconstructible native workspace and target.
+Acceptance starts after a successful release. A failed release stops it and
+later trial admission, retaining the failure without automatic cleanup retry.
+Unknown closure or missing evidence preserves the scratch files.
+
+Native release time counts inside the endpoint; final acceptance cleanup
+remains separate. All 132 [local checks](local-validation-followup.json) pass,
+including release ordering, retained artifacts, failure handling, and shared
+target preservation. This establishes those tested behaviors, not an actual
+current native-to-acceptance run or a storage quota. Native home caches,
+arbitrary output, and other processes can still consume disk. Required live
+preflight and final registration remain incomplete.

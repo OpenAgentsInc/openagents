@@ -1,0 +1,5 @@
+Found during #9899. `~/.openagents/coder-access/access.json` on the Mac holds 60 of 128 grants, 56 of them for the openagents-mobile live tests' fixed key: every live run enrolls again and adds a grant. At 128 new device enrollments (including the owner's phone re-adding a computer) would fail.
+
+Unlike the chat-history store (#9899, 89bc6cac48), grants here can be delegated from existing ones, so revoking a device's older grants on re-enrollment must not break grants delegated from them.
+
+Acceptance: a device that enrolls again holds one live grant (older ones revoked or replaced without breaking delegations derived from the grant it keeps, or delegations re-parented safely); revoked/superseded grants never block new enrollments; tests for both plus the delegation case; INVARIANTS row; clean both hosts' stores with backups, without touching the owner's phone grants (key 7829d4f7…).

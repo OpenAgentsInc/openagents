@@ -1,0 +1,45 @@
+{
+  "schema": "openagents.delegation.pre-scoring-amendment.v1",
+  "recorded_at": "2026-10-03T08:54:20.096846+00:00",
+  "prior_commit": "6705d736620e73af1cc7c1d02fa74bf245967dd5",
+  "previous_sha256": {
+    "protocol.json": "725d86d6a3f5c4333b0e511b1fe4b1409b2c826b518301bdc0e83f607a2a4b81",
+    "protocol.md": "aa3b62e5031bcd4a41d569ca4b6f2375ce8a6da972a80ddd0a91f7f860b38a53"
+  },
+  "scored_sessions_before_amendment": 0,
+  "change": {
+    "final_verification_seconds_previous": 240,
+    "final_verification_seconds_proposed": 360,
+    "executor_seconds_unchanged": 600,
+    "scope": "Same verification budget for every future arm and task."
+  },
+  "basis": {
+    "task": "reserved-c",
+    "observed_reference_acceptance_s": 240.00195,
+    "observed_status": "timeout_not_accepted",
+    "known_setup_format_compile_s_rounded": 142.327,
+    "source_owner_lock_wait_s": 120,
+    "source_runtime": "Existing ordinary test uses Tokio current-thread runtime; synchronous lock wait prevents the spawned owner progressing until the wait returns.",
+    "test_command_duration_s": null
+  },
+  "reason": "The earlier total cap leaves less time for the ordinary test than the source-defined competing-owner wait. A no-model reference retry at a proposed common six-minute cap was planned.",
+  "unchanged": [
+    "Independent checker and its requirements",
+    "All-ordinary-tests quality gate",
+    "Final candidate selection",
+    "Executor model, prompt, tools, and 600-second limit",
+    "Frozen source preparation policy",
+    "Cost thresholds and accounting rules"
+  ],
+  "retention": "Keep every earlier timeout, failure, phase receipt, and setup cost. No tests are skipped and no source workaround is applied.",
+  "registration_sealed": false,
+  "resolution": {
+    "recorded_at": "2026-10-03T08:58:54.543992+00:00",
+    "status": "withdrawn_before_execution",
+    "proposed_retry_launched": false,
+    "scored_sessions": 0,
+    "effective_final_verification_seconds": 240,
+    "reason": "Read-only comparison shows C shares the later stale ordinary fixture measured failing in D. A longer retry cannot qualify C under the strict gate; retain the original cap and all earlier evidence.",
+    "evidence": "eligibility-cd.json"
+  }
+}

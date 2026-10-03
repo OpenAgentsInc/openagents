@@ -19,6 +19,7 @@ import uuid
 import candidate
 import report
 import schedule
+from seed_manifest import cargo_features, feature_check_command
 
 SCHEMA = "openagents.delegation.trial.v1"
 NATIVE_COMMON = {"provider_meter", "toolchain", "timeout_s", "cli_budget_usd", "capture_limits", "initialize_git"}
@@ -157,6 +158,44 @@ def retain_logs(root, output):
     return refs
 
 
+def release_native_scratch(root, output, native, candidate_identity, clock=time.monotonic_ns):
+    """Retain reconstruction evidence before freeing closed native scratch."""
+    if native.get('execution_closed') is not True:
+        raise ValueError('Native execution closure is unconfirmed')
+    artifacts = {}
+    for key, name in (('native','result.json'), ('provider_calls','provider-calls.jsonl'),
+                      ('candidate_manifest','candidate-manifest.json'),
+                      ('candidate_payload','candidate.tar.gz'), ('candidate_changes','changes.json')):
+        artifacts[key] = reference(root, output/'native'/name)
+    if artifacts['candidate_manifest']['sha256'] != candidate_identity:
+        raise ValueError('The candidate changed before scratch removal')
+    logs = retain_logs(root, output)
+    descriptor = os.open(output/'native', os.O_RDONLY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+    retained = {'schema':'openagents.delegation.native-retention.v1',
+                'candidate_manifest_sha256':candidate_identity, 'execution_closed':True,
+                'artifacts':artifacts, 'private_logs':logs}
+    durable(output/'native-retention.json', retained)
+    started = clock()
+    receipt = {'schema':'openagents.delegation.scratch-release.v1', 'status':'incomplete',
+               'inside_primary_endpoint':True, 'start_monotonic_ns':started,
+               'retention':reference(root, output/'native-retention.json'),
+               'free_bytes_before':shutil.disk_usage(output).free, 'targets':[]}
+    durable(output/'native-scratch-release.json', receipt)
+    try:
+        receipt['targets'] = cleanup_targets(output, True, False, True)
+        receipt['status'] = 'complete' if all(row['removed'] for row in receipt['targets']) else 'failed'
+    finally:
+        receipt['end_monotonic_ns'] = clock()
+        receipt['wall_s'] = (receipt['end_monotonic_ns']-started)/1e9
+        receipt['free_bytes_after'] = shutil.disk_usage(output).free
+        durable(output/'native-scratch-release.json', receipt)
+    return receipt
+
+
 def eligibility(root, registration, registration_sha, run_id):
     """Admit complete blocks in fixed order using retained, uniquely charged work."""
     cells = registration['schedule']
@@ -173,6 +212,9 @@ def eligibility(root, registration, registration_sha, run_id):
                 or row.get('execution_closed') is not True or row.get('accounting_complete') is not True
                 or not report.number(row.get('cost_upper_usd'))):
             raise ValueError('An earlier trial has unresolved execution or accounting')
+        if (row.get('failed_stage') == 'native_scratch_release'
+                or any(not item.get('removed') for item in row.get('cleanup', {}).get('targets', []))):
+            raise ValueError('An earlier trial has unresolved scratch cleanup')
         ledger.append({'run_id':cell['run_id'],'cost_upper_usd':row['cost_upper_usd']})
         prior.append(reference(root, path))
     block_start = position - position % 6
@@ -243,6 +285,7 @@ def _run(registration_path, run_id, output, credential_file, *, phase_runner=pro
     native_started = native_closed = preparation_started = False
     acceptance_closed = False
     acceptance_started = candidate_validated = False
+    native_release_started = False
     candidate_identity = None
     validation = None
     stage = 'registration'
@@ -290,6 +333,10 @@ def _run(registration_path, run_id, output, credential_file, *, phase_runner=pro
         if runtime.get("schema") != "openagents.delegation.trial-config.v1":
             raise ValueError("Unexpected trial runtime schema")
         task_runtime = runtime["tasks"][cell["task_id"]]
+        features = cargo_features(task.get('cargo_features',[]))
+        template = report.artifact(root, task_runtime['acceptance_template'])
+        if cargo_features(template.get('cargo_features',[]),template['packages']) != features:
+            raise ValueError('Native and acceptance Cargo features differ')
         source_refs = registration["task_artifacts"][cell["task_id"]]
         common = dict(runtime["native_common"])
         if (set(common) - NATIVE_COMMON or common.get("cli_budget_usd") != 2
@@ -310,6 +357,8 @@ def _run(registration_path, run_id, output, credential_file, *, phase_runner=pro
         if not credential.is_file() or stat.S_IMODE(credential.stat().st_mode) & 0o077:
             raise ValueError("Use a private broker credential file")
         base = report.artifact(root, task["base_prompt"], "bytes")
+        if features and feature_check_command(features).encode() not in base:
+            raise ValueError('The common task prompt lacks its bound Cargo feature check command')
         prompt = base
         if arm["preparation"]:
             stage = 'preparation'
@@ -348,6 +397,7 @@ def _run(registration_path, run_id, output, credential_file, *, phase_runner=pro
                       model=arm['primary_model'], effort=arm['effort'], prompt_file=str(prompt_path),
                       prompt_sha256=report.sha(prompt), credential_file=str(credential), target_seed=task_runtime['target_seed'],
                       target_seed_manifest_sha256=source_refs['target_seed_manifest']['sha256'])
+        if features:config['cargo_features']=features
         arm_runtime = runtime['arms'][cell['arm']]
         if set(arm_runtime) - {'tools', 'system_prompt'}:
             raise ValueError("Unexpected native arm setting")
@@ -383,6 +433,8 @@ def _run(registration_path, run_id, output, credential_file, *, phase_runner=pro
             raise ValueError("Acceptance template overrides derived identities")
         if template.get('toolchain') != common.get('toolchain'):
             raise ValueError("Native and acceptance toolchains differ")
+        if cargo_features(template.get('cargo_features',[]),template['packages']) != features:
+            raise ValueError('Acceptance Cargo features changed')
         if template['checker']['sha256'] != source_refs['checker']['sha256']:
             raise ValueError("Acceptance checker differs from frozen task")
         acceptance = dict(template, run_id=run_id, source_commit=task['source_commit'], source_archive=str(archive),
@@ -391,6 +443,17 @@ def _run(registration_path, run_id, output, credential_file, *, phase_runner=pro
                           expected_snapshot_commit=native['snapshot_commit'],
                           target_seed_manifest_sha256=source_refs['target_seed_manifest']['sha256'])
         durable(output/'acceptance-config.private.json', acceptance)
+        # Acceptance reconstructs solely from retained source and candidate data.
+        # Free the closed executor's copies before creating another full tree.
+        stage = 'native_scratch_release'
+        native_release_started = True
+        released = release_native_scratch(root, output, native, candidate_identity, clock)
+        state['native_scratch_release'] = released
+        state['artifacts']['native_retention'] = reference(root, output/'native-retention.json')
+        state['artifacts']['native_scratch_release'] = reference(root, output/'native-scratch-release.json')
+        durable(output/'trial.json', state)
+        if released['status'] != 'complete':
+            raise ValueError('Native scratch cleanup failed; acceptance was not launched')
         stage = 'acceptance'
         acceptance_started = True
         checked = phase('acceptance', [sys.executable, str(root/registration['artifacts']['acceptance_coordinator']['path']),
@@ -400,6 +463,7 @@ def _run(registration_path, run_id, output, credential_file, *, phase_runner=pro
                              and checks.get('execution_closed') is True)
         if (checked['timed_out'] or checks.get('schema') != 'openagents.delegation.final-checks.v1'
                 or checks.get('run_id') != run_id or checks.get('candidate_manifest_sha256') != candidate_identity
+                or cargo_features(checks.get('cargo_features',[])) != features
                 or checks.get('completed') is not True or not acceptance_closed):
             raise ValueError("Independent final checks are incomplete or name another candidate")
         values = [checks.get(k, {}).get('passed') for k in ('scope','format','ordinary','independent')]
@@ -416,6 +480,7 @@ def _run(registration_path, run_id, output, credential_file, *, phase_runner=pro
         for key, relative in (('native','native/result.json'), ('provider_calls','native/provider-calls.jsonl'),
                               ('candidate_manifest','native/candidate-manifest.json'), ('candidate_payload','native/candidate.tar.gz'),
                               ('candidate_changes','native/changes.json'), ('checks','acceptance/checks.json'),
+                              ('native_retention','native-retention.json'), ('native_scratch_release','native-scratch-release.json'),
                               ('preparation','preparation/preparation.json'), ('system_one_call','preparation/jev-call.json')):
             path = output/relative
             if path.is_file():
@@ -483,7 +548,8 @@ def _run(registration_path, run_id, output, credential_file, *, phase_runner=pro
         cleanup_started = clock()
         reconstruction_ready = (candidate_validated and logs_retained
                                and all(key in state['artifacts'] for key in ('candidate_manifest','candidate_payload','candidate_changes','checks','endpoint')))
-        state['cleanup'] = {'outside_primary_endpoint':True,'targets':cleanup_targets(output,native_closed,acceptance_closed,reconstruction_ready),
+        # A failed pre-acceptance release is retained, never silently retried.
+        state['cleanup'] = {'outside_primary_endpoint':True,'targets':cleanup_targets(output,native_closed and not native_release_started,acceptance_closed,reconstruction_ready),
                             'wall_s':(clock()-cleanup_started)/1e9}
         durable(output/'trial.json',state)
     return state

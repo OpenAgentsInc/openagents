@@ -53,7 +53,7 @@ class TrialTests(unittest.TestCase):
         self.credential.write_text('synthetic fixture only')
         self.credential.chmod(0o600)
         self.calls=[]
-        self.fail=None
+        self.fail_phase=None
         self.quality=True
         self.budget_exit=False
         self.native_charge=None
@@ -74,7 +74,7 @@ class TrialTests(unittest.TestCase):
         self.assertEqual(records[-1]['event'],'launch_intent')
         self.assertEqual(records[-1]['phase'],name)
         self.calls.append(name)
-        if self.fail==name:
+        if self.fail_phase==name:
             raise RuntimeError('injected interrupted phase')
         if name=='preparation':
             destination=Path(argv[argv.index('--output')+1]);destination.mkdir()
@@ -113,6 +113,7 @@ class TrialTests(unittest.TestCase):
                  'argv':[config['binary']]+trial.native_arguments(config),'prompt_sha256':report.sha(prompt),
                  'delivered_prompt_sha256':report.sha(('Benchmark run ID: '+config['run_id']+'\n\n').encode()+prompt),
                  'candidate_manifest_sha256':identity,'candidate_payload_sha256':payload,'snapshot_commit':'1'*40}
+            if config.get('cargo_features'):row['cargo_features']=config['cargo_features']
             (destination/'result.json').write_text(json.dumps(row))
             provider=[{'run_id':config['run_id'],'phase':'admitted','call_id':config['run_id']+'-call',
                        'model':config['model'],'path':'/v1/messages'},
@@ -126,6 +127,7 @@ class TrialTests(unittest.TestCase):
             checks={'schema':'openagents.delegation.final-checks.v1','run_id':config['run_id'],
                     'candidate_manifest_sha256':config['candidate_manifest_sha256'],'completed':True,'execution_closed':True,
                     **{k:{'passed':True} for k in ('scope','format','ordinary','independent')}}
+            if config.get('cargo_features'):checks['cargo_features']=config['cargo_features']
             checks['independent']['passed']=self.quality
             (destination/'checks.json').write_text(json.dumps(checks))
         return {'exit_code':0,'timed_out':False}
@@ -152,6 +154,71 @@ class TrialTests(unittest.TestCase):
         self.assertNotIn(str(self.credential),public)
         self.assertNotIn('synthetic fixture only',public)
 
+    def feature_task(self, prompt=True, acceptance=True):
+        run_id=self.choose_first('A')
+        cell=next(c for c in self.registration['schedule'] if c['run_id']==run_id)
+        task=next(t for t in self.protocol['registration']['report_bindings']['tasks'] if t['task_id']==cell['task_id'])
+        task['cargo_features']=['fixture/blocking']
+        if prompt:
+            task['base_prompt']=self.fixture.write('runtime/feature-prompt.txt',
+                b'Common check: cargo test --locked --offline -p fixture --features fixture/blocking',raw=True)
+        if acceptance:
+            settings=self.runtime['tasks'][task['task_id']]
+            template=report.artifact(self.root,settings['acceptance_template'])
+            template['cargo_features']=['fixture/blocking']
+            settings['acceptance_template']=self.fixture.write('runtime/feature-template.json',template)
+        self.registration['artifacts']['trial_config']=self.fixture.write('runtime/config.json',self.runtime)
+        self.registration['protocol']=self.fixture.write('protocol.json',self.protocol)
+        self.path.write_text(json.dumps(self.registration))
+        return run_id
+
+    def test_feature_policy_reaches_native_and_acceptance_with_common_prompt(self):
+        run_id=self.feature_task();result=self.run_trial(run_id)
+        self.assertTrue(result['accepted'],result)
+        for name in ('native','acceptance'):
+            config=json.loads((self.root/'runs'/run_id/(name+'-config.private.json')).read_text())
+            self.assertEqual(config['cargo_features'],['fixture/blocking'])
+        prompt=report.artifact(self.root,result['artifacts']['prompt'],'bytes')
+        self.assertIn(b'cargo test --locked --offline -p fixture --features fixture/blocking',prompt)
+
+    def test_missing_common_feature_instruction_blocks_before_paid_phase(self):
+        result=self.run_trial(self.feature_task(prompt=False))
+        self.assertEqual(result['status'],'failed')
+        self.assertEqual(self.calls,[])
+        self.assertEqual(result['cost_upper_usd'],0)
+
+    def test_acceptance_feature_mismatch_blocks_before_paid_phase(self):
+        result=self.run_trial(self.feature_task(acceptance=False))
+        self.assertEqual(result['status'],'failed')
+        self.assertEqual(self.calls,[])
+
+    def test_acceptance_receipt_cannot_drop_required_features(self):
+        run_id=self.feature_task()
+        def dropped(name,argv,output,timeout):
+            result=self.fake_phase(name,argv,output,timeout)
+            if name=='acceptance':
+                path=Path(argv[-1])/'checks.json';value=json.loads(path.read_text())
+                value.pop('cargo_features');path.write_text(json.dumps(value))
+            return result
+        result=trial.run(self.path,run_id,self.root/'runs'/run_id,self.credential,phase_runner=dropped,
+                         validator=lambda path:{'ready_for_external_dispatch':True})
+        self.assertEqual(result['status'],'failed')
+        self.assertIsNone(result['accepted'])
+
+    def test_native_feature_receipt_must_match_registered_task(self):
+        run_id=self.feature_task()
+        def mismatched(name,argv,output,timeout):
+            result=self.fake_phase(name,argv,output,timeout)
+            if name=='native':
+                path=Path(argv[-1])/'result.json';value=json.loads(path.read_text())
+                value['cargo_features']=['fixture/other'];path.write_text(json.dumps(value))
+            return result
+        result=trial.run(self.path,run_id,self.root/'runs'/run_id,self.credential,phase_runner=mismatched,
+                         validator=lambda path:{'ready_for_external_dispatch':True})
+        self.assertEqual(self.calls,['native'])
+        self.assertEqual(result['status'],'failed')
+        self.assertIsNone(result['accepted'])
+
     def test_prepared_prompt_preserves_exact_pack_and_jev_cost(self):
         run_id=self.choose_first('F');result=self.run_trial(run_id)
         self.assertEqual(result['status'],'complete',result)
@@ -168,7 +235,7 @@ class TrialTests(unittest.TestCase):
         self.assertGreater(result['cost_lower_usd'],0)
 
     def test_existing_attempt_is_inspect_only_even_after_paid_launch_failure(self):
-        self.fail='native';run_id=self.choose_first('A');first=self.run_trial(run_id)
+        self.fail_phase='native';run_id=self.choose_first('A');first=self.run_trial(run_id)
         self.assertEqual(first['status'],'incomplete')
         self.assertFalse(first['execution_closed']);self.assertIsNone(first['cost_upper_usd'])
         calls=list(self.calls);second=self.run_trial(run_id)
@@ -261,10 +328,19 @@ class TrialTests(unittest.TestCase):
         self.assertFalse(result['execution_closed']);self.assertIsNone(result['cost_upper_usd'])
         self.assertIn('endpoint',result['artifacts'])
 
-    def test_completed_owned_target_copies_are_removed_after_endpoint(self):
+    def test_native_scratch_is_durably_retained_then_removed_before_acceptance(self):
         run_id=self.choose_first('A')
         shared=self.root/'shared-target';shared.mkdir();(shared/'keep').write_text('shared')
         def with_targets(name,argv,output,timeout):
+            if name == 'acceptance':
+                self.assertFalse((output/'native'/'workspace').exists())
+                self.assertFalse((output/'native'/'home'/'target').exists())
+                retained=json.loads((output/'native-retention.json').read_text())
+                for ref in retained['artifacts'].values():
+                    report.artifact(self.root,ref,'binary')
+                self.assertTrue(retained['private_logs'])
+                released=json.loads((output/'native-scratch-release.json').read_text())
+                self.assertEqual(released['status'],'complete')
             result=self.fake_phase(name,argv,output,timeout)
             if name in ('native','acceptance'):
                 target=Path(argv[-1])/'home'/'target';target.mkdir(parents=True)
@@ -276,8 +352,18 @@ class TrialTests(unittest.TestCase):
         result=trial.run(self.path,run_id,self.root/'runs'/run_id,self.credential,phase_runner=with_targets,
                          validator=lambda path:{'ready_for_external_dispatch':True})
         self.assertTrue(result['cleanup']['outside_primary_endpoint'])
-        self.assertEqual(len(result['cleanup']['targets']),4)
+        self.assertEqual(len(result['cleanup']['targets']),2)
         self.assertTrue(all(row['removed'] for row in result['cleanup']['targets']))
+        released=result['native_scratch_release']
+        self.assertEqual(len(released['targets']),2)
+        self.assertTrue(all(row['removed'] for row in released['targets']))
+        self.assertTrue(released['inside_primary_endpoint'])
+        self.assertGreaterEqual(released['free_bytes_before'],0)
+        self.assertGreaterEqual(released['free_bytes_after'],0)
+        endpoint=report.artifact(self.root,result['artifacts']['endpoint'])
+        self.assertLess(endpoint['start_monotonic_ns'],released['start_monotonic_ns'])
+        self.assertLessEqual(released['end_monotonic_ns'],result['phases'][-1]['start_monotonic_ns'])
+        self.assertLessEqual(released['end_monotonic_ns'],endpoint['end_monotonic_ns'])
         self.assertEqual((shared/'keep').read_text(),'shared')
         self.assertTrue((self.root/'runs'/run_id/'native'/'candidate-manifest.json').is_file())
         self.assertTrue((self.root/'runs'/run_id/'acceptance'/'checks.json').is_file())
@@ -285,6 +371,74 @@ class TrialTests(unittest.TestCase):
         self.assertTrue(result['private_logs'])
         for refs in self.registration['task_artifacts'].values():
             self.assertTrue((self.root/refs['source_archive']['path']).is_file())
+
+    def test_failed_native_scratch_release_blocks_acceptance_without_cleanup_retry(self):
+        run_id=self.choose_first('A')
+        def with_scratch(name,argv,output,timeout):
+            result=self.fake_phase(name,argv,output,timeout)
+            if name=='native':
+                (output/'native'/'workspace').mkdir()
+                (output/'native'/'workspace'/'keep').write_text('retained')
+            return result
+        with patch('trial.shutil.rmtree',side_effect=PermissionError('retained failure')) as removal:
+            removal.avoids_symlink_attacks=True
+            result=trial.run(self.path,run_id,self.root/'runs'/run_id,self.credential,
+                             phase_runner=with_scratch,validator=lambda path:{'ready_for_external_dispatch':True})
+            self.assertEqual(removal.call_count,1)
+        self.assertEqual(self.calls,['native'])
+        self.assertEqual(result['status'],'failed')
+        self.assertEqual(result['failed_stage'],'native_scratch_release')
+        self.assertTrue(result['execution_closed']);self.assertTrue(result['accounting_complete'])
+        self.assertIsNone(result['accepted'])
+        self.assertEqual(result['native_scratch_release']['targets'],
+                         [{'path':'native/workspace','removed':False,'error_type':'PermissionError'}])
+        self.assertTrue((self.root/'runs'/run_id/'native'/'workspace'/'keep').exists())
+        self.assertEqual(result['cleanup']['targets'],[])
+        self.assertIn('native_retention',result['artifacts'])
+        self.assertIn('native_scratch_release',result['artifacts'])
+        next_id=self.registration['schedule'][1]['run_id']
+        later=self.run_trial(next_id)
+        self.assertEqual(later['status'],'failed')
+        self.assertEqual(self.calls,['native'])
+        self.assertEqual(later['cost_upper_usd'],0)
+
+    def test_unknown_native_closure_preserves_scratch_and_does_not_launch_acceptance(self):
+        run_id=self.choose_first('A')
+        def uncertain(name,argv,output,timeout):
+            result=self.fake_phase(name,argv,output,timeout)
+            if name=='native':
+                destination=Path(argv[-1])
+                row=json.loads((destination/'result.json').read_text())
+                row['execution_closed']=False
+                (destination/'result.json').write_text(json.dumps(row))
+                (destination/'workspace').mkdir()
+                (destination/'home'/'target').mkdir(parents=True)
+            return result
+        result=trial.run(self.path,run_id,self.root/'runs'/run_id,self.credential,
+                         phase_runner=uncertain,validator=lambda path:{'ready_for_external_dispatch':True})
+        self.assertEqual(self.calls,['native'])
+        self.assertFalse(result['execution_closed']);self.assertIsNone(result['cost_upper_usd'])
+        self.assertTrue((self.root/'runs'/run_id/'native'/'workspace').exists())
+        self.assertTrue((self.root/'runs'/run_id/'native'/'home'/'target').exists())
+        self.assertNotIn('native_scratch_release',result)
+
+    def test_missing_provider_evidence_preserves_native_scratch(self):
+        run_id=self.choose_first('A')
+        def missing(name,argv,output,timeout):
+            result=self.fake_phase(name,argv,output,timeout)
+            if name=='native':
+                destination=Path(argv[-1])
+                (destination/'provider-calls.jsonl').unlink()
+                (destination/'workspace').mkdir()
+                (destination/'home'/'target').mkdir(parents=True)
+            return result
+        result=trial.run(self.path,run_id,self.root/'runs'/run_id,self.credential,
+                         phase_runner=missing,validator=lambda path:{'ready_for_external_dispatch':True})
+        self.assertEqual(self.calls,['native'])
+        self.assertEqual(result['status'],'failed')
+        self.assertIsNone(result['cost_upper_usd'])
+        self.assertTrue((self.root/'runs'/run_id/'native'/'workspace').exists())
+        self.assertTrue((self.root/'runs'/run_id/'native'/'home'/'target').exists())
 
     def test_cleanup_refuses_a_symlink_to_a_shared_target(self):
         output=self.root/'owned';(output/'native'/'home').mkdir(parents=True)

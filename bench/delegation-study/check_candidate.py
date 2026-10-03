@@ -18,7 +18,7 @@ import uuid
 
 import candidate
 import run_remote
-from seed_manifest import digest, validate_seed
+from seed_manifest import cargo_features, feature_arguments, digest, validate_seed
 
 SCHEMA = 'openagents.delegation.final-checks.v1'
 PHASES = ('scope', 'format', 'ordinary', 'independent')
@@ -68,7 +68,7 @@ def relative_path(value):
 
 
 def initial(config):
-    return {'schema': SCHEMA, 'run_id': config.get('run_id'),
+    row = {'schema': SCHEMA, 'run_id': config.get('run_id'),
             'source_commit': config.get('source_commit'),
             'source_archive_sha256': config.get('source_archive_sha256'),
             'candidate_manifest_sha256': config.get('candidate_manifest_sha256'),
@@ -78,6 +78,8 @@ def initial(config):
             'identity_validated': False, 'scope_validated': False,
             'phase_budget_policy': 'remaining_total_deadline', 'candidate_symlinks': 'rejected',
             'phases': {}, **{p: {'passed': None, 'status': 'not_started'} for p in PHASES}}
+    if config.get('cargo_features'):row['cargo_features'] = config['cargo_features']
+    return row
 
 
 def validate_config(config):
@@ -100,6 +102,8 @@ def validate_config(config):
         raise Invalid('invalid_checker_injection')
     if checker['package'] not in packages or not re.fullmatch(r'[A-Za-z0-9_-]+', checker['target']):
         raise Invalid('invalid_checker_target')
+    # The independent command selects the checker package only.
+    cargo_features(config.get('cargo_features',[]),[checker['package']])
     if injection.name != checker['target'] + '.rs' or not re.fullmatch('[0-9a-f]{64}', checker['sha256']):
         raise Invalid('invalid_checker_identity')
     for seconds in (config['total_timeout_s'],):
@@ -232,6 +236,7 @@ def check(config, output, execute_command=execute):
     save = lambda: durable_json(output / 'checks.json', row)
     try:
         validate_config(config)
+        features=cargo_features(config.get('cargo_features',[]),config['packages'])
         checker = config['checker']
         archive = Path(config['source_archive'])
         if digest(archive) != config['source_archive_sha256']:
@@ -256,7 +261,7 @@ def check(config, output, execute_command=execute):
         operation = time.monotonic()
         seed_value = validate_seed(seed, config['target_seed_manifest_sha256'],
                                    config['source_commit'], config['source_archive_sha256'],
-                                   build_environment=config['toolchain'].get('environment', {}))
+                                   build_environment=config['toolchain'].get('environment', {}),features=features)
         row['phases']['seed_validation_s'] = time.monotonic() - operation
         row['seed_policy'] = seed_value['seed_policy']
         if not set(config['packages']).issubset(set(seed_value.get('packages', []))):
@@ -330,6 +335,7 @@ def check(config, output, execute_command=execute):
                 command_base = base
                 command = ['cargo', 'test', '--locked', '--offline'] + package_args
                 test_arguments = []
+            command += feature_arguments(features)
             row[phase] = {'passed': None, 'status': 'running'}; save()
             phase_start = time.monotonic()
             for part, arguments in [('compile', ['--no-run']), ('test', test_arguments)]:

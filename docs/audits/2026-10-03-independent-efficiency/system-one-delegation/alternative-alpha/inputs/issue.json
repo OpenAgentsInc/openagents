@@ -1,0 +1,6 @@
+{
+  "number": 9908,
+  "title": "Device-access (NIP-HOST) grants fill up: one grant per live test run in coder-access/access.json",
+  "body": "Device re-enrollment in `crates/coder-access` keeps adding grants until the 128-grant bound prevents a new device from enrolling. Fix grant retention so a device that enrolls again has one live grant, and revoked or superseded grants do not prevent new enrollment. Preserve the bound for distinct live devices and preserve already-issued delegated access when its issuing device enrolls again. Delegation must still narrow authority and obey explicit revocation; re-enrollment must not revive authority that was revoked or removed. Preserve invitation retry behavior. Cover the public invitation and owner-approved enrollment paths with regression tests. Read the crate README and `nips/openagents/NIP-HOST.md`. Work only on the isolated code and tests in `crates/coder-access/`; host-store cleanup, deployment, owner devices, and changes outside this package are outside this trial.",
+  "url": "https://github.com/OpenAgentsInc/openagents/issues/9908"
+}

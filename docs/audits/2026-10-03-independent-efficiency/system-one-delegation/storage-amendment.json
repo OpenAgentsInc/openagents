@@ -1,0 +1,48 @@
+{
+  "schema": "openagents.delegation.pre-scoring-amendment.v1",
+  "recorded_at": "2026-10-03T09:02:42.564433+00:00",
+  "prior_commit": "6705d736620e73af1cc7c1d02fa74bf245967dd5",
+  "scored_sessions": 0,
+  "registration_sealed": false,
+  "reason": "Measured full acceptance scratch consumes about 8.45GB while only 5.64GB remains free; keeping an earlier native workspace and target concurrently is not qualified.",
+  "evidence": "eligibility-cd.json",
+  "change": "Retain and validate native candidate, logs, and accounting; confirm closure; remove reconstructible native workspace and target before independent acceptance. Include release in endpoint. Stop acceptance and later admission if cleanup fails, without automatic retry.",
+  "preserved": [
+    "Original source archives and shared seeds",
+    "Long-lived agent Cargo target",
+    "Candidate payload, manifest, changes, logs, and receipts",
+    "Final-only candidate and ordinary/independent quality gates",
+    "All earlier feasibility failures and timings"
+  ],
+  "timing": "Native release inside primary endpoint; final acceptance cleanup remains separately timed.",
+  "limits": [
+    "No disk quota against arbitrary executor output, native home caches, or other process growth.",
+    "Actual current native-to-acceptance pipeline still requires preflight before scoring."
+  ],
+  "validation": {
+    "path": "local-validation-followup.json",
+    "sha256": "2fba947b34795b523525f327f28f9acb329463a098c514d21a2ad12d1852f15a"
+  },
+  "files": {
+    "bench/delegation-study/trial.py": {
+      "previous_sha256": "0f0feaaf89da515e64be387e1793799ccc81165d2cbf53aa53cbb8296f5b8b03",
+      "current_sha256": "20312c5f2901e50542279534d619e3750be830286a83d539a4972e56a212e5ec"
+    },
+    "bench/delegation-study/test_trial.py": {
+      "previous_sha256": "0b182c5a299b19b718f5d9464f4bc28d0ca8c991def80eb81dd0c785d394785c",
+      "current_sha256": "55575ded70074c2c9203f33f86dbebbba9bf4db34ad39ea98542486f62b39a59"
+    },
+    "bench/delegation-study/README.md": {
+      "previous_sha256": "d5acbff992348204f478229cc7825bbef6cd8b8d2ab3fadecd20136a206ebdbf",
+      "current_sha256": "78fa7ddd75e003bcf2e1a890eaa2642a827e0f8890734fdf7952cc47982eef3a"
+    },
+    "docs/audits/2026-10-03-independent-efficiency/system-one-delegation/protocol.json": {
+      "previous_sha256": "725d86d6a3f5c4333b0e511b1fe4b1409b2c826b518301bdc0e83f607a2a4b81",
+      "current_sha256": "ec3e96ec350eb33096d4900e21021e17d40dc63f747c1221a9e9b810074dd6b9"
+    },
+    "docs/audits/2026-10-03-independent-efficiency/system-one-delegation/protocol.md": {
+      "previous_sha256": "aa3b62e5031bcd4a41d569ca4b6f2375ce8a6da972a80ddd0a91f7f860b38a53",
+      "current_sha256": "9e9b6c2abc885d8a2f58ac9a2c226a2aad4c1c0fe12f9db7cdecf73be96492ce"
+    }
+  }
+}

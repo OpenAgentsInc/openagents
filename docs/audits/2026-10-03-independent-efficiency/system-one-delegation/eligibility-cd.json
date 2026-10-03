@@ -1,0 +1,332 @@
+{
+  "c_source_prediction": {
+    "comparison_record_sha256": "4479b5e31b8134296bf3ff77cff57b98667b992c0208f02fb7faabbbcb50c27e",
+    "later_failure": "Same stale desktop integration expectation as measured in D.",
+    "measured_for_c": false,
+    "retry_launched": false,
+    "same_public_blobs_in_base_and_reference": true
+  },
+  "c_timeout": {
+    "eventual_test_outcome": "unmeasured",
+    "last_long_running_test": "task::owner::tests::a_live_owner_refuses_competitors_and_recovery_never_reexecutes",
+    "next_check": "Proposed360-second retry canceled before launch because C shares D's stale later ordinary fixture. Increase withdrawn before launch/scoring; original240-second cap retained.",
+    "ordinary_test_command_duration_s": null,
+    "reason_duration_unknown": "The outer watchdog terminated the worker before its current-command checkpoint; completed phase times remain retained.",
+    "static_diagnosis": "The reference makes competing execute wait synchronously for an owner lock for up to120 seconds; the default current-thread Tokio test cannot poll its first owner task during that wait."
+  },
+  "d_failure": {
+    "assertion_line": 119,
+    "diagnosis": "The intentional same-account local-authority policy change7310fc3bc1 left a stale refusal expectation in this public fixture; the key source reads disk on each load. Relevant source blobs match base/reference.",
+    "diagnosis_record_sha256": "af828164633159d4a67ca20f71a7389f1c43763be5cd19bfa849cb8d1a199f9a",
+    "independent_checker_passed": true,
+    "integration_target_result": {
+      "failed": 1,
+      "ignored": 0,
+      "passed": 2
+    },
+    "join_line": 135,
+    "observation": "The fixture replaces its stored owner key, then expects create_task to refuse; it receives an accepted synthetic task identifier.",
+    "path": "crates/coder/tests/desktop_local_coder.rs",
+    "test": "desktop_creates_retries_reads_and_cancels_through_the_phone_clients"
+  },
+  "date": "2026-10-03",
+  "disk_observation": {
+    "native_and_acceptance_scratch_coexistence_verified": false,
+    "notes": "D measured one acceptance workspace and target before cleanup. Seed-builder headroom checking is not a runtime disk reservation.",
+    "post_cleanup_disk_free_bytes": 14088126464
+  },
+  "full_reference_attempts": [
+    {
+      "accepted": false,
+      "active_check": {
+        "part": "test",
+        "phase": "ordinary"
+      },
+      "alias": "reserved-c",
+      "candidate_manifest_sha256": "f204741c278a2d193179732ebcdb9f3e94a8f47521d0eadba97ad3fe3adc5c61",
+      "candidate_symlinks": "rejected",
+      "checker_sha256": "bf90c92d28495a552d44214c90bb7eb9baa15dc13cf73978cd39b05b455ee09d",
+      "checks_sha256": "5fad34d227a401eae6f04475f0306a3ea9d2547c6c6724666c2c2bdfc9901a3d",
+      "cleanup": {
+        "scratch_cleanup_outside_check_timer": true,
+        "scratch_cleanup_s": 1.399939719000031,
+        "scratch_cleanup_status": "complete"
+      },
+      "completed": true,
+      "execution_closed": true,
+      "format": {
+        "exit_code": 0,
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.8159991100001207
+      },
+      "identity_validated": true,
+      "independent": {
+        "passed": false,
+        "status": "total_deadline"
+      },
+      "ordinary": {
+        "compile": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 116.76347488299962
+        },
+        "passed": false,
+        "status": "total_deadline",
+        "test": {
+          "passed": false,
+          "status": "total_deadline"
+        }
+      },
+      "phase_budget_policy": "remaining_total_deadline",
+      "phases": {
+        "apply_candidate_s": 0.001474230999519932,
+        "export_s": 3.635152550999919,
+        "git_snapshot_s": 14.863308323000638,
+        "seed_copy_s": 2.524216845999945,
+        "seed_validation_s": 2.0814194810000117,
+        "setup_s": 24.74823661299979
+      },
+      "preflight_wall_before_cleanup_s": 241.86538389399993,
+      "role": "reference",
+      "run_id": "3efaba2d-acd3-417a-b2af-40346b5ae4cc",
+      "schema": "openagents.delegation.final-checks.v1",
+      "scope": {
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.6492968150005254
+      },
+      "scope_validated": true,
+      "seed_policy": "cargo-reported-libraries-v1",
+      "snapshot_commit": "73ed4bb69a1484f6b47c571c96cdf7f9dd2342e8",
+      "source_archive_sha256": "9b7385d9df6bf193ee8f80d055cfb025f9d3feb221f7b97cdbd41ea069b202bf",
+      "source_commit": "e11b84c3adde42755c32fb478cc1895d13149042",
+      "source_mtime_policy": "changed_and_injected_only_verified_base_seed",
+      "status": "total_deadline",
+      "target_seed_manifest_sha256": "b149dd060fdc9b54c2a9b27640df21509bc4e30b8cc2bd2c71b5337040204fbe",
+      "toolchain": {
+        "cargo": "cargo 1.97.1 (c980f4866 2026-06-30)",
+        "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)\nbinary: rustc\ncommit-hash: 8bab26f4f68e0e26f0bb7960be334d5b520ea452\ncommit-date: 2026-07-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.97.1\nLLVM version: 22.1.6",
+        "rustdoc": "rustdoc 1.97.1 (8bab26f4f 2026-07-14)\nbinary: rustdoc\ncommit-hash: 8bab26f4f68e0e26f0bb7960be334d5b520ea452\ncommit-date: 2026-07-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.97.1\nLLVM version: 22.1.6"
+      },
+      "total_timeout_s": 240,
+      "total_wall_s": 240.0019502840005
+    },
+    {
+      "accepted": false,
+      "alias": "reserved-d",
+      "candidate_manifest_sha256": "57d6846afa08d6132b0eba3bc326548498bb4f177142926fadbc9f92d0613d7f",
+      "candidate_symlinks": "rejected",
+      "checker_sha256": "3baf235cafef8bda5e7b3428dd5f4d626e9898c674fd2f488660d4308cd6f4ed",
+      "checks_sha256": "d8677bdfbca041ab18903ded75d12982d6c1f673f27769a147f0341e9e3c23de",
+      "cleanup": {
+        "scratch_cleanup_outside_check_timer": true,
+        "scratch_cleanup_s": 1.478747041999668,
+        "scratch_cleanup_status": "complete"
+      },
+      "completed": true,
+      "execution_closed": true,
+      "format": {
+        "exit_code": 0,
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.8163282230007098
+      },
+      "identity_validated": true,
+      "independent": {
+        "compile": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 1.1166259609999543
+        },
+        "passed": true,
+        "status": "passed",
+        "test": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 0.6155921899999157
+        },
+        "wall_s": 1.7376870719999715
+      },
+      "ordinary": {
+        "compile": {
+          "exit_code": 0,
+          "passed": true,
+          "status": "passed",
+          "wall_s": 117.41637636700034
+        },
+        "passed": false,
+        "status": "failed",
+        "test": {
+          "exit_code": 101,
+          "passed": false,
+          "status": "failed",
+          "wall_s": 28.923709630000303
+        },
+        "wall_s": 146.97926526999981
+      },
+      "phase_budget_policy": "remaining_total_deadline",
+      "phases": {
+        "apply_candidate_s": 0.00198387599994021,
+        "export_s": 3.921387987000344,
+        "git_snapshot_s": 15.492423082999267,
+        "seed_copy_s": 1.169065211999623,
+        "seed_validation_s": 1.5937517540005501,
+        "setup_s": 23.9568297980004
+      },
+      "preflight_wall_before_cleanup_s": 175.14065742599996,
+      "role": "reference",
+      "run_id": "0e80e179-d339-4bf8-9077-aa541a9d33c8",
+      "schema": "openagents.delegation.final-checks.v1",
+      "scope": {
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.6664178410001114
+      },
+      "scope_validated": true,
+      "scratch_size_before_cleanup": {
+        "allocated_bytes": {
+          "target": 6082457600,
+          "workspace": 2365603840
+        },
+        "disk_free_bytes": 5638746112,
+        "disk_total_bytes": 157154062336,
+        "measurement_wall_s": 0.09895447100007004,
+        "outside_acceptance_timer": true,
+        "paired_native_acceptance_coexistence_verified": false
+      },
+      "seed_policy": "cargo-reported-libraries-v1",
+      "snapshot_commit": "32812f3f740d2181713f6ebf649815842a6c4672",
+      "source_archive_sha256": "10a0be2d586ec667ea36701a1d876c0c8b4dd2bcbd244cdcedfd46629b806491",
+      "source_commit": "4eee1cbf3ecc844f89d42abc2b7df7be4411c846",
+      "source_mtime_policy": "changed_and_injected_only_verified_base_seed",
+      "status": "complete",
+      "target_seed_manifest_sha256": "0ff875a153f6ba0ca2d87508e28e2abd102d7ab19bd1455075d4d28cd6cd9f3c",
+      "toolchain": {
+        "cargo": "cargo 1.97.1 (c980f4866 2026-06-30)",
+        "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)\nbinary: rustc\ncommit-hash: 8bab26f4f68e0e26f0bb7960be334d5b520ea452\ncommit-date: 2026-07-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.97.1\nLLVM version: 22.1.6",
+        "rustdoc": "rustdoc 1.97.1 (8bab26f4f 2026-07-14)\nbinary: rustdoc\ncommit-hash: 8bab26f4f68e0e26f0bb7960be334d5b520ea452\ncommit-date: 2026-07-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.97.1\nLLVM version: 22.1.6"
+      },
+      "total_timeout_s": 240,
+      "total_wall_s": 173.5613092069998,
+      "wall_s": 173.51052482700015
+    }
+  ],
+  "helper_sha256": "f2c40fe470ccd92dbdcf4e9a72cfc03310583026a677114638e8355cdaa498ee",
+  "historical_sources_or_frozen_checkers_modified_to_pass_gate": false,
+  "model_calls": 0,
+  "private_driver_bindings": {
+    "cd-inputs.tar.gz": "a3c84e5f2f0d4dd9258070aeb28ade2a8872e814cf99a11915623e2c522358d9",
+    "preflight-d-size.py": "6226aa68ca251d0e227ca66c400bb04c425bf5cb4fed3f3edf741372d42090b3",
+    "preflight.py": "f66ad4983e3a33a037cdce49a66764efbd202b82412ace516fba4139ed254f48",
+    "targeted_eligibility.py": "f757dfb4e8ee468977381a2dcb47df5d4fc1c6056369121495aedc202453b08f"
+  },
+  "private_evidence": {
+    "bytes": 248529,
+    "contents_published": false,
+    "sha256": "f5fbeeb342c1694f501e6c6eaf295cdad9bb64dc19bc593cad2440f7e97df66a"
+  },
+  "retention": {
+    "agent3_lock_reacquired_and_released": true,
+    "closed_scratch_removed": true,
+    "seed_and_shared_target_preserved": true
+  },
+  "schema": "openagents.delegation.eligibility-followup.v1",
+  "scored_runs": 0,
+  "static_inspection_correction": {
+    "c_and_d_base_reference_terminal_and_delegate_door_files_identical": true,
+    "execution_observation": "The single existing public test passes for both C and D without a skip message.",
+    "initial_inference": "Matching answer_in ordering suggested the older artifact-directory failure remained.",
+    "limits": "A dependency-following review correction, not a measured briefing benefit or full-suite pass.",
+    "missing_dependency": "boundary itself creates the artifacts directory before adding it as writable.",
+    "public_source": "crates/coder-delegate/src/terminal.rs:356"
+  },
+  "status": "original_c_and_d_not_qualified_under_strict_gate",
+  "targeted_tests": [
+    {
+      "alias": "reserved-c",
+      "checker_injected": false,
+      "cleanup_outside_measurement": true,
+      "cleanup_s": 1.3357815509998545,
+      "compile": {
+        "exit_code": 0,
+        "passed": true,
+        "status": "passed",
+        "wall_s": 104.39149626400012
+      },
+      "full_acceptance": false,
+      "helper_sha256": "f2c40fe470ccd92dbdcf4e9a72cfc03310583026a677114638e8355cdaa498ee",
+      "model_calls": 0,
+      "phases": {
+        "export_s": 3.0880556009997235,
+        "git_snapshot_s": 15.212614885000221,
+        "seed_copy_s": 1.7173515610002141,
+        "seed_validation_s": 2.8443412169999647,
+        "setup_s": 26.050170837000223
+      },
+      "retained_files_sha256": "aaa4125ac9af9c5286c3a4f5a7339963428c5dae9433a783dcc5ee5f04cbb1ef",
+      "schema": "openagents.delegation.targeted-eligibility.v1",
+      "scratch_absent": true,
+      "seed_manifest_sha256": "b149dd060fdc9b54c2a9b27640df21509bc4e30b8cc2bd2c71b5337040204fbe",
+      "skip_message_seen": false,
+      "snapshot_commit": "73ed4bb69a1484f6b47c571c96cdf7f9dd2342e8",
+      "source_archive_sha256": "9b7385d9df6bf193ee8f80d055cfb025f9d3feb221f7b97cdbd41ea069b202bf",
+      "source_commit": "e11b84c3adde42755c32fb478cc1895d13149042",
+      "source_modified": false,
+      "status": "complete",
+      "test": {
+        "exit_code": 0,
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.4151944149998599
+      },
+      "test_name": "delegate_door::tests::the_permit_decides_whether_the_executor_may_write_and_a_follow_up_resumes",
+      "total_timeout_s": 240,
+      "total_wall_s": 130.86007209800027
+    },
+    {
+      "alias": "reserved-d",
+      "checker_injected": false,
+      "cleanup_outside_measurement": true,
+      "cleanup_s": 1.2199418529999093,
+      "compile": {
+        "exit_code": 0,
+        "passed": true,
+        "status": "passed",
+        "wall_s": 97.36890970500008
+      },
+      "full_acceptance": false,
+      "helper_sha256": "f2c40fe470ccd92dbdcf4e9a72cfc03310583026a677114638e8355cdaa498ee",
+      "model_calls": 0,
+      "phases": {
+        "export_s": 3.397900816999936,
+        "git_snapshot_s": 15.23838627800069,
+        "seed_copy_s": 1.8700142490006328,
+        "seed_validation_s": 2.9971948640004484,
+        "setup_s": 26.064272096999957
+      },
+      "retained_files_sha256": "f93a434e7fd52a1ec1dc332888a4e7522c242baab796b4270b2bd6f65b896f18",
+      "schema": "openagents.delegation.targeted-eligibility.v1",
+      "scratch_absent": true,
+      "seed_manifest_sha256": "0ff875a153f6ba0ca2d87508e28e2abd102d7ab19bd1455075d4d28cd6cd9f3c",
+      "skip_message_seen": false,
+      "snapshot_commit": "32812f3f740d2181713f6ebf649815842a6c4672",
+      "source_archive_sha256": "10a0be2d586ec667ea36701a1d876c0c8b4dd2bcbd244cdcedfd46629b806491",
+      "source_commit": "4eee1cbf3ecc844f89d42abc2b7df7be4411c846",
+      "source_modified": false,
+      "status": "complete",
+      "test": {
+        "exit_code": 0,
+        "passed": true,
+        "status": "passed",
+        "wall_s": 0.36526431499987666
+      },
+      "test_name": "delegate_door::tests::the_permit_decides_whether_the_executor_may_write_and_a_follow_up_resumes",
+      "total_timeout_s": 240,
+      "total_wall_s": 123.81870317700032
+    }
+  ]
+}

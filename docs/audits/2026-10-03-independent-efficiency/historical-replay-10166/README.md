@@ -5,8 +5,9 @@ Audit issue: [#10280](https://github.com/OpenAgentsInc/openagents/issues/10280).
 
 **The briefing did not beat the historical implementation on correctness.
 It also did not show a consistent cost or speed advantage over a fresh
-control.** All four fresh candidates passed their own tests but failed the
-same independent case. The historical implementation passed all seven cases.
+control.** All four fresh candidates passed 22 ordinary tests when checked
+externally afterward but failed the same independent case. The agents could
+not execute commands. The historical implementation passed all seven cases.
 
 This is an actual coding experiment: four fresh Claude sessions produced
 patches against a historical repository export. It measures the first
@@ -61,7 +62,7 @@ controller.
 
 ## Results
 
-| Run order | Condition | Agent seconds | CLI list-price estimate | Own tests | Independent cases | Formatting |
+| Run order | Condition | Agent seconds | CLI list-price estimate | Ordinary tests (external) | Independent cases | Formatting |
 | ---: | --- | ---: | ---: | ---: | ---: | --- |
 | 1 | Control 1 | 87.49 | $0.780317 | 22/22 | 6/7 | Fail |
 | 2 | Briefing 1 | 77.59 | $0.632174 | 22/22 | 6/7 | Fail |

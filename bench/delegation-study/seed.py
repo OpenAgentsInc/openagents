@@ -12,7 +12,7 @@ import time
 import tomllib
 
 import run_remote as runner
-from seed_manifest import SEED_POLICY, digest, inventory, validate_seed
+from seed_manifest import SEED_POLICY, cargo_features, feature_arguments, digest, inventory, validate_seed
 
 TARGET='/home/executor/target'
 MAX_SEED_BYTES=8*1024**3
@@ -117,6 +117,7 @@ def build(config,output):
         if not re.fullmatch(r'[0-9a-f]{40}',commit):raise ValueError('A full source commit is required')
         packages=config['packages']
         if not packages or any(not re.fullmatch(r'[a-zA-Z0-9_-]+',p) for p in packages):raise ValueError('Invalid baseline package names')
+        features=cargo_features(config.get('cargo_features',[]),packages)
         toolchain=config['toolchain']
         rustdoc=rustdoc_executable(toolchain)
         archive=output/'source.tar'
@@ -144,6 +145,7 @@ def build(config,output):
             versions[name]=subprocess.check_output(base+argv,stderr=subprocess.PIPE,text=True,timeout=30).strip()
         command=['cargo','test','--locked','--offline','--no-run','--message-format=json']
         for package in packages:command+=['-p',package]
+        command+=feature_arguments(features)
         start=time.monotonic()
         with (output/'cargo.jsonl').open('wb') as stdout,(output/'cargo.stderr').open('wb') as stderr:
             check=subprocess.run(base+command,stdout=stdout,stderr=stderr,timeout=config.get('timeout_s',1200))
@@ -165,9 +167,10 @@ def build(config,output):
             shutil.copy2(target/relative,dest)
         manifest={'schema':'openagents.delegation.cargo-seed.v1','seed_policy':SEED_POLICY,'build_environment':toolchain.get('environment',{}),'source_commit':commit,'source_archive_sha256':digest(archive),'packages':packages,'cargo_command':command,'toolchain':versions,'cargo_json_sha256':digest(output/'cargo.jsonl'),'files':inventory(destination),'omitted':['Final executables and their fingerprints','Build-script output directories and their fingerprints','Incremental compilation state','Unreported files, other units, and diagnostic output files']}
         manifest.update(rustdoc_path=str(rustdoc),rustdoc_sha256=digest(rustdoc))
+        if features:manifest['cargo_features']=features
         (seed/'seed-manifest.json').write_text(json.dumps(manifest,sort_keys=True,indent=2)+'\n')
         manifest_sha=digest(seed/'seed-manifest.json')
-        validate_seed(seed,manifest_sha,commit)
+        validate_seed(seed,manifest_sha,commit,features=features)
         result.update(status='complete',seed_manifest_sha256=manifest_sha,seed_files=len(files),seed_bytes=sum(x['bytes'] for x in manifest['files'].values()))
     except Exception as error:
         result.update(status='infrastructure_error',error_type=type(error).__name__,error=str(error)[:400])

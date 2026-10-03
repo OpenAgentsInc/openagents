@@ -1,0 +1,256 @@
+{
+  "schema": "openagents.delegation.eligibility-screen.v2",
+  "date": "2026-10-03",
+  "status": "two_candidates_await_qualification",
+  "search_source_commit": "6705d736620e73af1cc7c1d02fa74bf245967dd5",
+  "calendar_timezone": "America/Chicago",
+  "search_windows": [
+    {
+      "first": "2026-09-26",
+      "last": "2026-10-02",
+      "reason": "original recent-week scope"
+    },
+    {
+      "first": "2026-09-19",
+      "last": "2026-09-25",
+      "reason": "Coordinator widened the screen after no two additional suitable recent-week tasks were found; these candidates are older than the original recent-week window."
+    }
+  ],
+  "search_denominator": {
+    "metadata_inventory_sha256": "e50327579d1711cab081193014426e0a93f6db7cb0e308f1cc7c56ef60395610",
+    "counts": {
+      "recent": {
+        "all_reachable_commits": 1461,
+        "rust_commits": 969,
+        "bounded_metadata_candidates": 20
+      },
+      "earlier": {
+        "all_reachable_commits": 1435,
+        "rust_commits": 863,
+        "bounded_metadata_candidates": 62
+      }
+    },
+    "metadata_filter": {
+      "max_rust_files": 8,
+      "max_crates": 2,
+      "excluded_crates": [
+        "background",
+        "briefing-lab",
+        "coder",
+        "coder-access",
+        "coder-connect",
+        "coder-delegate",
+        "coder-mobile",
+        "coder-one",
+        "coder-terminal",
+        "gym",
+        "openagents-cli",
+        "openagents-desktop",
+        "openagents-mobile"
+      ],
+      "excluded_prefixes": [
+        "microcoder",
+        "verse"
+      ],
+      "title_regex": "fix|refus|reject|preserv|avoid|recover|bound|prun|leak|retain|retr|deadline|validat|invariant|reconnect",
+      "require_all_rust_under_crates": true
+    },
+    "counting_limitations": [
+      "The metadata inventory was reconstructed after the manual screen and was not a preregistered selection algorithm. It is the Git-history denominator, not a claim that every candidate body or test suite was reviewed.",
+      "The initial exploratory title review was not exhaustively logged. The explicit decision list preserves ten inspected commit exclusions, including one duplicate.",
+      "The closed-issue lookup was capped at 250 results for September 19\u201325, so it is not an exhaustive issue census.",
+      "Gamma was found by following the public issue for the earlier deadline patch; its title does not match the reconstructed bug-word filter.",
+      "Only commits reachable from the pinned source tree are counted. Source-parent identity is independently bound for each selected candidate."
+    ]
+  },
+  "candidates": [
+    {
+      "label": "alternative-beta",
+      "issue": 9425,
+      "title": "[P2][Audit A13] Recover torn traces while enforcing strict grading integrity",
+      "issue_url": "https://github.com/OpenAgentsInc/openagents/issues/9425",
+      "package": "atif",
+      "source_commit": "7ec5f6e83d018ab2f25d7a61ff695de81f2f55f6",
+      "reference_commit": "fc385a13a40cef956636284e809f154acddf373c",
+      "original_issue_source": "1843fa6c18a05537bf2b022f69361a9ba3ef12a1",
+      "scope": "Complete A13 issue: tolerant torn-trace recovery with visible damage, trace lifecycle integrity, and strict grader behavior. Include the original coderbench fixture adjustments and consumer tests.",
+      "allowed_roots": [
+        "crates/atif",
+        "crates/coderbench"
+      ],
+      "ordinary_commands": [
+        [
+          "cargo",
+          "test",
+          "--manifest-path",
+          "crates/atif/Cargo.toml",
+          "--locked",
+          "--offline"
+        ],
+        [
+          "cargo",
+          "test",
+          "--manifest-path",
+          "crates/coderbench/Cargo.toml",
+          "--locked",
+          "--offline"
+        ]
+      ],
+      "observed_clean_claude_launch": false,
+      "provenance_class": "public_issue_native_trial_not_observed_session_replay",
+      "issue_body_version_note": "Retrieved public body retained; issue edit history was not reconstructed, so byte identity with the original assignment is not claimed.",
+      "reference_scope_exclusions": [
+        "docs/coder/traces.md"
+      ],
+      "audit_to_source_changed_paths": [
+        "crates/atif/Cargo.toml",
+        "crates/atif/src/document.rs"
+      ],
+      "status": "not_qualified",
+      "candidate_manifest_sha256": "e3ed650d6e54d0b4662f5857bea534683db4ae9b7705911184c1cc03678c19be",
+      "public_issue_body_sha256": "578019bdb758746718c4026d84e1da27aa1e869b9fbc4b7a275f4435952816e3",
+      "private_reference_patch_sha256": "925824bd834c08f230c53d636a6675c1e748c812f869565230f4bfe5a27d88c5"
+    },
+    {
+      "label": "alternative-gamma",
+      "issue": 9424,
+      "title": "[P2][Audit A12, A22] Validate decision responses and enforce whole-call SDK deadlines",
+      "issue_url": "https://github.com/OpenAgentsInc/openagents/issues/9424",
+      "package": "jev",
+      "source_commit": "c427943a5c84ba5938a3549f24b27de551812a37",
+      "reference_commit": "7ec5f6e83d018ab2f25d7a61ff695de81f2f55f6",
+      "original_issue_source": "1843fa6c18a05537bf2b022f69361a9ba3ef12a1",
+      "scope": "Remaining A12 portion of a two-finding public issue: validate typed numeric answers and request-aware type/coverage/option identity while retaining raw compatibility. A22 retry deadline is already present in the selected source; do not count this as replaying the whole original issue.",
+      "allowed_roots": [
+        "crates/jev"
+      ],
+      "ordinary_commands": [
+        [
+          "cargo",
+          "test",
+          "--manifest-path",
+          "crates/jev/Cargo.toml",
+          "--features",
+          "blocking",
+          "--locked",
+          "--offline"
+        ]
+      ],
+      "observed_clean_claude_launch": false,
+      "provenance_class": "public_issue_native_trial_not_observed_session_replay",
+      "issue_body_version_note": "Retrieved public body retained; issue edit history was not reconstructed, so byte identity with the original assignment is not claimed.",
+      "reference_scope_exclusions": [],
+      "audit_to_source_changed_paths": [
+        "crates/jev/Cargo.toml",
+        "crates/jev/src/answers.rs",
+        "crates/jev/src/client.rs",
+        "crates/jev/src/lib.rs",
+        "crates/jev/src/retry.rs",
+        "crates/jev/tests/blocking.rs",
+        "crates/jev/tests/client.rs",
+        "crates/jev/tests/selected_answer.rs"
+      ],
+      "status": "not_qualified",
+      "candidate_manifest_sha256": "bcfd14adbb0ae09f1950ea86b55e5f0327434eb9c6a3f58ee12d82958304931b",
+      "public_issue_body_sha256": "d845475194ca65eb78804b5328ae010ecf2d28fa27607e9a5a8e4bb7802f1e8f",
+      "private_reference_patch_sha256": "435d5fc6b7bd19c2fc6bc91d05857aa5849f8dbc37b468b0a33828330f2be638"
+    }
+  ],
+  "explicit_not_selected_commits": [
+    {
+      "commit": "9513636c450a7e56b344141c061a64f47981a586",
+      "committed_at": "2026-10-02T19:21:02-05:00",
+      "title": "coder-boundary: find Git by absolute path for the source guard (#10244)",
+      "decision": "not_selected",
+      "reason": "Prior development overlap: coder-boundary source-guard variant; not an independent replacement."
+    },
+    {
+      "commit": "1b8e76942855393f1580a3e14975573619b5f34e",
+      "committed_at": "2026-10-02T18:02:05-05:00",
+      "title": "Blob uploads: relay media on Cloud Run, a clear refusal, fake-server tests (#10181)",
+      "decision": "not_selected",
+      "reason": "Hosted relay media/blob delivery and deployment scope; unsuitable for a small offline library task."
+    },
+    {
+      "commit": "01d617f7d9ff4c642c531121f5ac15f075656cb9",
+      "committed_at": "2026-10-02T16:06:56-05:00",
+      "title": "Plugin flow: a test run that stopped before its report stays at the run step (#10177)",
+      "decision": "not_selected",
+      "reason": "Plugin UI flow/state handling; not prioritized over small library contracts in this bounded screen."
+    },
+    {
+      "commit": "64ca2c5c40097ef250cddedea4fd062100a878d9",
+      "committed_at": "2026-09-30T17:33:59-05:00",
+      "title": "Check avatar style bounds and document shared presentation",
+      "decision": "not_selected",
+      "reason": "Presentation/style validation feature work, rather than a narrow historical defect with clean task provenance."
+    },
+    {
+      "commit": "17cefc1703dd5e47d94a82436d2327af8881fffd",
+      "committed_at": "2026-09-29T03:59:58-05:00",
+      "title": "Keep the relay serving when it loses its Postgres listener",
+      "decision": "not_selected",
+      "reason": "Postgres listener/service lifecycle requires a database integration environment."
+    },
+    {
+      "commit": "6a0d7ece69daf8493f9a52fe4315709f38ff2561",
+      "committed_at": "2026-09-21T12:20:24-05:00",
+      "title": "receipts: validate schema, binding, and identity over the join",
+      "decision": "not_selected",
+      "reason": "Adds a large new receipt-validation module; not a narrow bug in an existing API."
+    },
+    {
+      "commit": "823006f7d61f6fcbeff1775a0d64048231915e99",
+      "committed_at": "2026-09-21T00:23:57-05:00",
+      "title": "Correct the NIP-44 padding property at power-of-two boundaries",
+      "decision": "not_selected",
+      "reason": "Corrects a test property rather than production behavior."
+    },
+    {
+      "commit": "ed3cf0c6517df0a8232c1dabdf75a14e5b9f001b",
+      "committed_at": "2026-09-21T23:31:01-05:00",
+      "title": "Requeue a capacity-refused task under a stated backoff",
+      "decision": "not_selected",
+      "reason": "Capacity requeue/backoff spans scheduler/project behavior; broader task, not pursued after two smaller candidates were located."
+    },
+    {
+      "commit": "43c3ffd6104c0070f58ac9385a294dae2565156c",
+      "committed_at": "2026-09-21T16:05:05-05:00",
+      "title": "Requeue a capacity-refused task under a stated backoff",
+      "decision": "not_selected",
+      "reason": "Earlier duplicate commit of the same capacity requeue/backoff change; not counted as another task."
+    },
+    {
+      "commit": "22e2ebc7fc1ff92eff7d06cef58ce8e93be38423",
+      "committed_at": "2026-09-20T05:52:07-05:00",
+      "title": "jev: bound attempts and response reads by the call deadline",
+      "decision": "not_selected",
+      "reason": "A22 is another finding in the same issue as proposed gamma. Existing SDK worktree and separate earlier landing; do not use it as a second independent task."
+    }
+  ],
+  "independent_read_only_review": {
+    "source_and_manifest_hashes": "verified",
+    "exact_fix_parents": "verified",
+    "linux_dependency_feasibility": "plausible; unexecuted",
+    "gamma_integration_gap": "Seed and acceptance configuration must bind --features blocking. Existing generic commands do not expose the feature selection. Never use --all-features, which enables credentialed live provider tests.",
+    "gamma_prompt_requirement": "Retain the full original issue body and explicitly scope the new assignment to A12; A22 is already in the selected base."
+  },
+  "qualification_required": [
+    "Preserve the original unsealed four-task proposal and the failed eligibility evidence.",
+    "Before task registration, run each unchanged base and reference through the declared full ordinary package gates on isolated Linux; no test skips or product repairs to rescue eligibility.",
+    "Freeze behavior-focused independent acceptance checks and two negative controls, then calibrate against base/reference before any scored model calls.",
+    "Bind task-specific ordinary features, source/seed/toolchain/allowed-path identities and common instructions prospectively.",
+    "If either candidate fails eligibility, retain the failure and stop this search. No further widening is authorized for this round; task count must not be forced."
+  ],
+  "not_run": [
+    "Cargo",
+    "models",
+    "preparation ranking",
+    "executor outcome inspection"
+  ],
+  "public_omissions": [
+    "No reference patch bytes, independent checker source, transcript text, home/sandbox paths, credentials, or account metadata."
+  ],
+  "search_closed": true,
+  "further_widening_authorized": false
+}

@@ -13,7 +13,7 @@ import subprocess
 import tarfile
 import time
 import uuid
-from seed_manifest import validate_seed
+from seed_manifest import cargo_features, feature_check_command, validate_seed
 from candidate import write_manifest, MAX_PAYLOAD_BYTES
 from capture_limits import Limits, Reader, Writer
 
@@ -185,6 +185,8 @@ def run(config,output):
         if str(uuid.UUID(config['run_id'])) != config['run_id']:
             raise ValueError('The run identity must be a canonical UUID')
         row['run_id']=config['run_id']
+        features=cargo_features(config.get('cargo_features',[]))
+        if features:row['cargo_features']=features
         binary=Path(config['binary']).resolve(strict=True)
         actual=sha(binary)
         if actual!=config['binary_sha256']:raise ValueError('The native CLI hash changed')
@@ -207,13 +209,15 @@ def run(config,output):
         if config.get('target_seed'):
             start=time.monotonic()
             seed=Path(config['target_seed'])
-            validate_seed(seed,config['target_seed_manifest_sha256'],config['source_commit'],config['source_archive_sha256'],config.get('toolchain',{}).get('environment',{}))
+            validate_seed(seed,config['target_seed_manifest_sha256'],config['source_commit'],config['source_archive_sha256'],config.get('toolchain',{}).get('environment',{}),features=features)
             # The trusted builder has filtered this seed to the base-only Cargo graph.
             subprocess.run(['cp','-a','--reflink=auto',str(seed/'target'),str(home/'target')],check=True,stderr=subprocess.PIPE)
             row['phases']['target_seed_copy_s']=time.monotonic()-start
             row['target_seed_manifest_sha256']=config['target_seed_manifest_sha256']
         prompt=Path(config['prompt_file']).read_bytes()
         if hashlib.sha256(prompt).hexdigest()!=config['prompt_sha256']:raise ValueError('The prompt hash changed')
+        if features and feature_check_command(features).encode() not in prompt:
+            raise ValueError('The task prompt lacks its bound Cargo feature check command')
         prompt=('Benchmark run ID: '+config['run_id']+'\n\n').encode()+prompt
         (inputs/'prompt.txt').write_bytes(prompt)
         row['delivered_prompt_sha256']=hashlib.sha256(prompt).hexdigest()

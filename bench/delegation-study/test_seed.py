@@ -5,10 +5,43 @@ import unittest
 from unittest.mock import patch
 
 import seed
-from seed_manifest import digest,inventory,validate_seed
+from seed_manifest import cargo_features,feature_arguments,digest,inventory,validate_seed
 
 
 class SeedTests(unittest.TestCase):
+    def test_features_are_explicit_qualified_and_bound_to_selected_packages(self):
+        self.assertEqual(feature_arguments(['jev/blocking']),['--features','jev/blocking'])
+        self.assertEqual(feature_arguments([]),[])
+        for value in (None,'blocking',['blocking'],['--all-features'],['jev/*'],['*/blocking'],
+                      ['jev/blocking','jev/blocking'],['jev/blocking','other/feature']):
+            with self.subTest(value=value),self.assertRaises(ValueError):
+                cargo_features(value,['jev'])
+
+    def test_feature_mismatch_is_rejected_and_legacy_absence_remains_default(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary);expected=self.make_seed(root)
+            validate_seed(root,expected,features=[])
+            with self.assertRaisesRegex(ValueError,'features do not match'):
+                validate_seed(root,expected,features=['base/blocking'])
+            path=root/'seed-manifest.json';value=json.loads(path.read_text())
+            value.update(packages=['base'],cargo_features=['base/blocking'])
+            path.write_text(json.dumps(value));expected=digest(path)
+            validate_seed(root,expected,features=['base/blocking'])
+            for features in (None,[],['base/other']):
+                with self.subTest(features=features),self.assertRaisesRegex(ValueError,'features do not match'):
+                    validate_seed(root,expected,features=features)
+
+    def test_invalid_features_fail_before_any_source_or_compiler_command(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root=Path(temporary);target=root/'target';target.mkdir()
+            config={'source_commit':'1'*40,'packages':['base'],'shared_target':str(target),
+                    'cargo_features':['--all-features'],'toolchain':{}}
+            with patch.object(seed.subprocess,'run') as command:
+                result=seed.build(config,root/'attempt')
+            self.assertEqual(result['status'],'infrastructure_error')
+            self.assertIn('package/feature',result['error'])
+            command.assert_not_called()
+
     def test_only_reported_baseline_graph_enters_seed(self):
         with tempfile.TemporaryDirectory() as temporary:
             root=Path(temporary).resolve();workspace=root/'workspace';workspace.mkdir()

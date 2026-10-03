@@ -1,0 +1,14 @@
+This is an isolated historical coding exercise. Produce the candidate in the working tree; the harness checks the final state after the session ends. Follow the applicable AGENTS.md and repository writing instructions in this snapshot.
+
+The exercise concerns the bounded task below. It does not authorize claiming or updating the live issue, committing, pushing, deploying, or contacting other systems. Direct external networking is unavailable. The configured Cargo toolchain and CARGO_TARGET_DIR are provided; keep that external target directory. Keep generated build outputs outside the source tree.
+
+Allowed edit roots: crates/coder-access/
+Named checks: cargo fmt -p coder-access -- --check; cargo test -p coder-access --locked --offline
+
+Run the named checks and the focused regression coverage requested by the task. Report the changes, checks, and any unresolved failure when finished.
+
+# Task
+
+Device-access (NIP-HOST) grants fill up: one grant per live test run in coder-access/access.json
+
+Device re-enrollment in `crates/coder-access` keeps adding grants until the 128-grant bound prevents a new device from enrolling. Fix grant retention so a device that enrolls again has one live grant, and revoked or superseded grants do not prevent new enrollment. Preserve the bound for distinct live devices and preserve already-issued delegated access when its issuing device enrolls again. Delegation must still narrow authority and obey explicit revocation; re-enrollment must not revive authority that was revoked or removed. Preserve invitation retry behavior. Cover the public invitation and owner-approved enrollment paths with regression tests. Read the crate README and `nips/openagents/NIP-HOST.md`. Work only on the isolated code and tests in `crates/coder-access/`; host-store cleanup, deployment, owner devices, and changes outside this package are outside this trial.

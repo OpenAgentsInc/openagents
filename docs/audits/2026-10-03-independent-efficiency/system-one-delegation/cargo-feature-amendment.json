@@ -1,0 +1,72 @@
+{
+  "compatibility": "Retained manifests and receipts without cargo_features mean no additional features. Existing evidence is not rewritten. A feature-bearing seed requires a new actual build; do not relabel an existing default-feature seed.",
+  "date": "2026-10-03",
+  "execution": {
+    "cargo_commands": 0,
+    "model_calls": 0,
+    "remote_changes": 0
+  },
+  "policy": {
+    "acceptance_package_scope": "Every additional feature belongs to the checker package.",
+    "bindings": [
+      "seed build config and manifest",
+      "native config and receipt",
+      "registered task and common prompt",
+      "acceptance template and final-check receipt"
+    ],
+    "bounds": "At most 32 unique package/feature strings, each at most 129 characters; no flags or wildcards.",
+    "enforcement": "Seed feature mismatches refuse validation. Final ordinary and independent compile/test commands receive the bound features. Registration, dispatch, and reporting reject feature mismatches or missing common check instructions.",
+    "example": [
+      "jev/blocking"
+    ],
+    "field": "cargo_features",
+    "meaning": "Additional package-qualified Cargo features; Cargo default features stay enabled.",
+    "missing_field": [],
+    "native_instruction": "cargo test --locked --offline -p jev --features jev/blocking",
+    "native_receipt_meaning": "Configured seed/check instructions, not evidence the executor ran a test."
+  },
+  "prior_evidence": {
+    "local-validation-followup.json": "2fba947b34795b523525f327f28f9acb329463a098c514d21a2ad12d1852f15a",
+    "storage-amendment.json": "6a5c902729326228281e3277af4de63e5be539b74865ee1576a77d6ef7b58fb5"
+  },
+  "reason": "The prospective Jev task needs its blocking client covered without enabling credentialed live tests.",
+  "remaining": [
+    "Root combined synthetic suite after source handoff.",
+    "Actual feature-bearing baseline seed and Linux base/reference qualification.",
+    "Bind final feature policy and source hashes in the sealed registration."
+  ],
+  "schema": "openagents.delegation.cargo-feature-amendment.v1",
+  "source_sha256": {
+    "bench/delegation-study/README.md": "c82d5176c960f531978915c950c9e7fe8f5e56b326dfd0c9c65be2804eb56b75",
+    "bench/delegation-study/check_candidate.py": "86abab6a41fccb2f8a2b973e3a2f9d73404c55ec79ac3482829ca6174286cf6d",
+    "bench/delegation-study/report.py": "a1b9e361ac30413730f1fbb95a60116d5e429ecd1938d6670d1406c472c3ac51",
+    "bench/delegation-study/run_remote.py": "0c11019a54926ce5b4bdf3d477ce6ac543dac07bcbda59f0a2b2089b2389866f",
+    "bench/delegation-study/schedule.py": "6294517aa29ec817704774b95f9eefb34fcdb41b44704fd1e6191cb2a3eefc23",
+    "bench/delegation-study/seed.py": "e4b71bfb88b1a800ee1d5296f836d7aacf10ea3980b2223ad43b0b79ad0f9369",
+    "bench/delegation-study/seed_manifest.py": "0135097f1e92d46fddf7da57cf4c3b0d4ea3efc489d57f74ef1291e405406d0f",
+    "bench/delegation-study/test_check_candidate.py": "c9e30f1fe87a7b0bf4e8ba8bd109b3d6ed7ceaf3a04736e18bd1e4648bfb7fdc",
+    "bench/delegation-study/test_seed.py": "4d2aa6e1228e3fa13b0808af55e070d27e0fb92830e902d8cff38d461196d1e8",
+    "bench/delegation-study/test_trial.py": "2f00ad014ec485627a3e82179336ba91d34627dd921f96809360f16bedae01a2",
+    "bench/delegation-study/trial.py": "7e24573b377f6b1359b2316e25c08a9f67d56925eadfa9a0a574c8430a8f08e7"
+  },
+  "status": "prospective_before_scored_trials",
+  "validation": [
+    {
+      "command": "PYTHONPATH=bench/delegation-study python3.13 -m unittest test_seed test_check_candidate test_trial test_report test_schedule -q",
+      "passed": 112,
+      "scope": "Before adding the final native-receipt mismatch regression and moving two imports.",
+      "wall_s": 28.639
+    },
+    {
+      "command": "PYTHONPATH=bench/delegation-study python3.13 -m unittest test_trial.TrialTests.test_native_feature_receipt_must_match_registered_task test_trial.TrialTests.test_acceptance_receipt_cannot_drop_required_features test_trial.TrialTests.test_feature_policy_reaches_native_and_acceptance_with_common_prompt -q",
+      "passed": 3,
+      "scope": "Final source; native/final-check mismatch and matching feature flow.",
+      "wall_s": 0.831
+    },
+    {
+      "check": "python3.13 -m py_compile",
+      "scope": "All changed Python modules and tests.",
+      "status": "passed"
+    }
+  ]
+}

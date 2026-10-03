@@ -164,7 +164,9 @@
       "reference_fixes"
     ],
     "reserve_prompt_release": "after_treatment_freeze",
-    "development_source_used": "issue_10167"
+    "development_source_used": "issue_10167",
+    "eligibility_status": "original_draft_only_A_qualifies_replacement_selection_pending",
+    "original_artifacts_retained": true
   },
   "execution": {
     "initial_inputs_per_session": 1,
@@ -199,12 +201,31 @@
     },
     "seed_policy": "cargo-reported-libraries-v1",
     "cleanup": {
-      "per_attempt_target_copies": "after_durable_candidate_checks_endpoint_and_receipts",
-      "outside_primary_endpoint": true,
+      "per_attempt_target_copies": "native_before_acceptance_after_durable_reconstruction_evidence; acceptance_after_durable_checks_endpoint_and_receipts",
       "shared_long_lived_targets": "preserved",
       "unconfirmed_execution": "no_automatic_cleanup",
-      "per_attempt_workspaces": "after_confirmed_phase_closure_and_durable_validated_candidate_payload_changes_logs_checks_endpoint_and_source_identity",
-      "reconstruction_evidence": "preserved"
+      "per_attempt_workspaces": "native_after_confirmed_closure_and_validated_candidate_payload_changes_native_result_provider_ledger_source_identity_and_logs; acceptance_also_requires_durable_checks_and_endpoint",
+      "reconstruction_evidence": "preserved",
+      "native_release_failure": "retain_receipt_stop_acceptance_and_later_trials_no_automatic_retry",
+      "disk_quota": false,
+      "native_release_inside_primary_endpoint": true,
+      "acceptance_cleanup_outside_primary_endpoint": true
+    },
+    "cargo_features": {
+      "field": "cargo_features",
+      "names": "explicit_package_qualified_finite_list",
+      "default": [],
+      "default_features": "remain_enabled",
+      "bindings": [
+        "task",
+        "common_prompt",
+        "seed",
+        "native_configuration",
+        "acceptance_template",
+        "final_checks"
+      ],
+      "native_record_is_configured_not_executed": true,
+      "all_features_flag": false
     }
   },
   "endpoint": {
@@ -220,12 +241,13 @@
       "internal_checks_and_fixes",
       "final_format_and_crate_and_independent_checks",
       "polling",
-      "candidate_capture"
+      "candidate_capture",
+      "native_scratch_release_before_acceptance"
     ],
     "separate": [
       "queue_time",
       "shared_cold_compilation_and_indexing",
-      "cleanup",
+      "final_acceptance_cleanup",
       "blind_source_review",
       "deployment_or_merge"
     ],

@@ -10,6 +10,7 @@ import re
 import uuid
 
 from report import artifact, digest, number, token, price_bounds, PRIMARY_MODELS, PREPARATION_BINDINGS
+from seed_manifest import cargo_features, feature_check_command
 
 SCHEMA = "openagents.delegation.registration.v1"
 GLOBAL_ROLES = ("preparer", "syntax_binary", "native_cli", "broker", "sandbox", "native_runner",
@@ -142,7 +143,10 @@ def validate(path):
                                  ("base_prompt", task["base_prompt"]["sha256"])):
                 if refs[role]["sha256"] != wanted:
                     errors.append("task artifact differs from report binding: " + role)
-            artifact(root, task["base_prompt"], "bytes")
+            features = cargo_features(task.get('cargo_features',[]))
+            base_prompt = artifact(root, task["base_prompt"], "bytes")
+            if features and feature_check_command(features).encode() not in base_prompt:
+                errors.append('task prompt lacks its bound Cargo feature check command')
             if prep["script_sha256"] != loaded["preparer"]:
                 errors.append("preparer differs from frozen input policy")
         receipts = registration["preflights"]

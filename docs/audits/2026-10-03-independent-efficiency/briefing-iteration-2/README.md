@@ -2,7 +2,8 @@
 
 This study continues the [failed first replay](../historical-replay-10166/README.md).
 The first four fresh candidates all missed a nested ignored-cache case. Their
-own tests passed, and the original briefing did not include the faulty function.
+ordinary tests passed when checked externally afterward; those agents could not
+execute commands. The original briefing did not include the faulty function.
 That result is retained. Issue #10166 is development data for this round.
 Iteration work is tracked in [#10282](https://github.com/OpenAgentsInc/openagents/issues/10282).
 
