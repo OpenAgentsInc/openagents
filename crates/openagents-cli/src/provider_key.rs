@@ -128,14 +128,14 @@ fn row(provider: Provider, key: &ApiKey, state: Option<&State>, place: &str) -> 
         "fingerprint": key.fingerprint(),
         "stored_in": place,
         "state": state.map_or("unchecked", State::word),
+        "label": provider.name(),
     });
     if let Some(State::Works {
-        label,
+        label: _,
         remaining_usd,
         spent_usd,
     }) = state
     {
-        row["label"] = json!(label);
         row["remaining_usd"] = json!(remaining_usd);
         row["spent_usd"] = json!(spent_usd);
     }
@@ -328,6 +328,14 @@ pub(crate) fn run(output: &Output, words: &[String]) -> u8 {
                     } else {
                         rows.iter().map(render_row).collect()
                     };
+                    // Keep guidance after the data rows.
+                    for row in &rows {
+                        if row["state"] == "no credits"
+                            && let Some(line) = row["line"].as_str()
+                        {
+                            lines.push(line.to_owned());
+                        }
+                    }
                     lines.push(value["status"].as_str().unwrap_or("").to_owned());
                     lines.join("\n")
                 },

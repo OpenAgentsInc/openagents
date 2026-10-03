@@ -200,3 +200,80 @@ fn connect_keeps_the_signed_in_key_like_a_pasted_one() {
     assert!(home.join(".openagents/openrouter.json").exists());
     assert_eq!(payer(home), "mine");
 }
+
+#[test]
+fn payer_help_and_provider_labels_are_explicit() {
+    let home = tempfile::tempdir().unwrap();
+    let help = run(home.path(), &["settings", "--help"], None, "works");
+    assert!(help.status.success());
+    let help = text(&help);
+    let keys = help.split("Keys:").nth(1).unwrap();
+    assert!(keys.contains("models.payer"));
+    assert!(keys.contains("ours") && keys.contains("mine"));
+    assert!(keys.contains("OpenAgents pays for model calls"));
+    for provider in ["openrouter", "vercel", "typesafe"] {
+        let kept = run(
+            home.path(),
+            &["settings", "provider-key", "set", provider],
+            Some(KEY),
+            "works",
+        );
+        assert!(kept.status.success(), "{}", text(&kept));
+    }
+    for command in ["show", "test"] {
+        for json in [false, true] {
+            let mut args = vec!["settings", "provider-key", command];
+            if json {
+                args.insert(0, "--json");
+            }
+            let out = run(home.path(), &args, None, "works");
+            assert!(out.status.success());
+            let shown = text(&out);
+            assert!(!shown.contains("sk-or-v1-"));
+            assert!(!shown.contains("fixture"));
+            assert!(shown.contains("Model calls are paid by OpenAgents (models.payer ours)"));
+            assert!(shown.contains("openagents settings set models.payer mine"));
+            if json {
+                let value: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+                for row in value["keys"].as_array().unwrap() {
+                    assert_eq!(row["label"], row["name"]);
+                }
+            } else {
+                assert!(shown.contains("label OpenRouter"));
+                assert!(shown.contains("label Vercel AI Gateway"));
+                assert!(shown.contains("label TypeSafe"));
+            }
+        }
+    }
+}
+
+#[test]
+fn no_credits_explains_where_to_top_up() {
+    let home = tempfile::tempdir().unwrap();
+    for (provider, destination) in [
+        ("openrouter", "https://openrouter.ai/settings/credits"),
+        ("vercel", "https://vercel.com"),
+        ("typesafe", "https://typesafe.ai"),
+    ] {
+        let kept = run(
+            home.path(),
+            &["settings", "provider-key", "set", provider, "--skip-test"],
+            Some(KEY),
+            "works",
+        );
+        assert!(kept.status.success());
+        for json in [false, true] {
+            let mut args = vec!["settings", "provider-key", "test", provider];
+            if json {
+                args.insert(0, "--json");
+            }
+            let out = run(home.path(), &args, None, "no-credits");
+            assert!(out.status.success());
+            let shown = text(&out);
+            assert!(shown.contains("no credits"), "{shown}");
+            assert!(shown.contains("calls on it will fail"), "{shown}");
+            assert!(shown.contains("Add credits"), "{shown}");
+            assert!(shown.contains(destination), "{shown}");
+        }
+    }
+}

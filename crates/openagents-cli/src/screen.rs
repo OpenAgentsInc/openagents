@@ -1284,7 +1284,12 @@ mod tests {
         assert!(shown.choices[6].blocked.is_some());
         assert!(shown.choices[8].waiting.is_some());
         assert!(change_setting(&file, "provider-connect:openrouter", false).is_ok());
-        assert_eq!(shown.status.as_deref(), Some("Running on OpenAgents."));
+        assert_eq!(
+            shown.status.as_deref(),
+            Some(
+                "Model calls are paid by OpenAgents (models.payer ours). To use your keys: openagents settings set models.payer mine"
+            )
+        );
         // Opt-out (#10184): every agent is on with no file, Devin and
         // OpenCode too, and none is blocked.
         assert_eq!(

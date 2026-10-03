@@ -93,7 +93,7 @@ pub fn jev(sender: &dyn Send, provider: Provider, key: &ApiKey) -> Option<bool> 
 pub enum State {
     /// The key works.
     Works {
-        /// The key's label at the provider, when it says.
+        /// A safe display label: the provider name, never key material.
         label: Option<String>,
         /// What is left on the account, in US dollars, when it says.
         remaining_usd: Option<f64>,
@@ -132,7 +132,15 @@ impl State {
     pub fn line(&self, provider: Provider) -> String {
         match self {
             State::Works { .. } => format!("Your {} key works.", provider.name()),
-            State::NoCredits => "This key has no credits; calls on it will fail.".to_owned(),
+            State::NoCredits => format!(
+                "This key has no credits; calls on it will fail. Add credits to your {} account at {}.",
+                provider.name(),
+                match provider {
+                    Provider::OpenRouter => "https://openrouter.ai/settings/credits",
+                    Provider::Vercel => "https://vercel.com (AI Gateway > Credits)",
+                    Provider::TypeSafe => "https://typesafe.ai (sign in to manage your credits)",
+                }
+            ),
             State::Refused => format!("{} didn't accept that key.", provider.name()),
             State::Unknown(failure) => failure.line(),
         }
@@ -174,7 +182,7 @@ pub fn read(provider: Provider, status: Option<u16>, body: &[u8]) -> State {
                 return State::NoCredits;
             }
             State::Works {
-                label: data.get("label").and_then(Value::as_str).map(str::to_owned),
+                label: Some(provider.name().to_owned()),
                 remaining_usd: remaining,
                 spent_usd: spent,
             }
@@ -185,13 +193,13 @@ pub fn read(provider: Provider, status: Option<u16>, body: &[u8]) -> State {
                 return State::NoCredits;
             }
             State::Works {
-                label: None,
+                label: Some(provider.name().to_owned()),
                 remaining_usd: balance,
                 spent_usd: number(value.get("total_used")),
             }
         }
         Provider::TypeSafe => State::Works {
-            label: None,
+            label: Some(provider.name().to_owned()),
             remaining_usd: None,
             spent_usd: number(value.pointer("/usage/cost")),
         },
@@ -291,7 +299,7 @@ mod tests {
         assert_eq!(
             works,
             State::Works {
-                label: Some("mine".into()),
+                label: Some("OpenRouter".into()),
                 remaining_usd: Some(3.0),
                 spent_usd: Some(1.5)
             }

@@ -667,7 +667,7 @@ pub fn current() -> Access {
 #[must_use]
 pub fn status_line(mode: Mode, keys: &Keys, last: Option<&Failure>) -> String {
     match (mode, last) {
-        (Mode::Ours, _) => "Running on OpenAgents.".into(),
+        (Mode::Ours, _) => "Model calls are paid by OpenAgents (models.payer ours). To use your keys: openagents settings set models.payer mine".into(),
         (Mode::Mine, Some(failure)) => {
             format!("{} Nothing is running on ours.", failure.line())
         }
@@ -813,7 +813,7 @@ mod tests {
         let mut keys = Keys::none();
         assert_eq!(
             status_line(Mode::Ours, &keys, None),
-            "Running on OpenAgents."
+            "Model calls are paid by OpenAgents (models.payer ours). To use your keys: openagents settings set models.payer mine"
         );
         keys.insert(Provider::OpenRouter, ApiKey::new("k"));
         assert_eq!(

@@ -49,7 +49,7 @@ Keys:
                                   or loop (Microcoder's step loop) (default session).
   coder.codex                     session (one codex exec session briefed by Jev)
                                   or loop (Microcoder's step loop) (default loop).
-  models.payer                    ours (default: model calls on OpenAgents) or mine (every
+  models.payer                    ours (default: OpenAgents pays for model calls) or mine (every
                                   model call on your own keys, never ours; needs an
                                   OpenRouter or Vercel AI Gateway key).
 Settings live in ~/.openagents/settings.json (OPENAGENTS_SETTINGS overrides the
