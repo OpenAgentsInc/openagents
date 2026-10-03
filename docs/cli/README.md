@@ -397,6 +397,12 @@ one.
 
 `--xp-relay` chooses the XP relay (default `VERSE_XP_RELAY`, then the world
 relay); `--referee KEY` trusts another referee for this reading only.
+A fresh install trusts the shipped OpenAgents referee. Use
+`openagents verse trust list`, `openagents verse trust add KEY`, or
+`openagents verse trust remove KEY` to manage referees without editing files.
+The first change saves an explicit list in
+`~/.openagents/knowledge/xp-trust.json`; that list replaces the defaults,
+so removing the OpenAgents referee stays effective across restarts.
 Portals, replays, and captures stay desktop-only: they are local
 demonstrations with no event on the wire to drive.
 

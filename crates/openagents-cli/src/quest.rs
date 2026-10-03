@@ -2,7 +2,7 @@
 //! events (`nips/openagents/NIP-XP.md`) exactly as the desktop client reads
 //! them: quests (`30193`), awards (`3193`), revocations (`3194`), and
 //! achievement labels (`1985`), derived under the reader's trust list by
-//! [`verse::xp::snapshot`]. Everything here is read-only.
+//! [`verse::xp::snapshot`]. Trust management writes only the local trust list.
 
 use std::collections::BTreeMap;
 
@@ -40,11 +40,19 @@ pub struct Reading {
 /// then derive.
 pub fn read(args: &Args) -> Result<Reading, String> {
     let identity = crate::relay::reader_identity_for(args.option("as"))?;
+    // `--xp-referee` is the name the Verse client and older help used.
     let referees: Vec<String> = args
         .options("referee")
         .into_iter()
+        .chain(args.options("xp-referee"))
         .map(str::to_owned)
         .collect();
+    if let Some(bad) = referees
+        .iter()
+        .find(|key| knowledge::xp::parse_key(key).is_none())
+    {
+        return Err(format!("--referee {bad} isn't an npub or a hex public key"));
+    }
     let (trust, problem) = load_trust(&referees);
     let extra: Vec<String> = args
         .options("pubkey")
@@ -300,12 +308,64 @@ fn awards_cell(row: &Value) -> String {
     }
 }
 
+/// Manages the local referee list without opening a relay or creating an identity.
+pub fn trust(output: &Output, args: &Args) -> Result<u8, String> {
+    let words = args.positional();
+    let action = words.first().map(String::as_str).unwrap_or("list");
+    let trust = match action {
+        "list" if words.len() <= 1 => {
+            let (trust, problem) = load_trust(&[]);
+            if let Some(problem) = problem {
+                return Err(problem);
+            }
+            trust
+        }
+        "add" | "remove" if words.len() == 2 => {
+            let path = xp_ledger_path()?;
+            let own = knowledge::xp::referee_key_file().and_then(|p| knowledge::xp::own_pubkey(&p));
+            verse::xp::edit_trust_at(&path, own.as_deref(), &words[1], action == "add")?
+        }
+        _ => return Err("use openagents verse trust list | add KEY | remove KEY".into()),
+    };
+    output.emit(
+        &json!({"referees": trust.referees, "runners": trust.runners}),
+        |value| {
+            let keys = value["referees"].as_array().unwrap();
+            if keys.is_empty() {
+                verse::xp::no_referees_message()
+            } else {
+                keys.iter()
+                    .filter_map(Value::as_str)
+                    .map(|key| {
+                        if key == verse::xp::OPENAGENTS_REFEREE {
+                            format!("{key}  OpenAgents (trusted by default)")
+                        } else {
+                            key.to_owned()
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            }
+        },
+    );
+    Ok(0)
+}
+
+fn xp_ledger_path() -> Result<std::path::PathBuf, String> {
+    knowledge::xp::trust_file().ok_or("HOME is required to manage referee trust".into())
+}
+
+fn referee_count(value: &Value) -> String {
+    let count = value["referees"].as_u64().unwrap_or(0);
+    format!("{count} referee{}", if count == 1 { "" } else { "s" })
+}
+
 fn render_quests(value: &Value) -> String {
     let Some(rows) = value["quests"].as_array() else {
         return String::new();
     };
     if rows.is_empty() {
-        return "no quests".into();
+        return quest_footer(value, "no quests".into());
     }
     let now = unix_now();
     let mut table = vec![vec![
@@ -343,7 +403,14 @@ fn render_quests(value: &Value) -> String {
             row["title"].as_str().unwrap_or("").to_owned(),
         ]);
     }
-    out::table(&table)
+    quest_footer(value, out::table(&table))
+}
+
+fn quest_footer(value: &Value, mut text: String) -> String {
+    if value["referees"].as_u64() == Some(0) {
+        text.push_str(&format!("\n{}", verse::xp::no_referees_message()));
+    }
+    text
 }
 
 /// `verse quests`: every quest version on the relay, trusted referees first.
@@ -461,9 +528,9 @@ pub fn board(output: &Output, args: &Args) -> Result<u8, String> {
         }),
         |value| {
             let mut lines = vec![format!(
-                "board at {}: {} referees, {} awards counted, {} revoked, {} refused, {} conflicts",
+                "board at {}: {}, {} awards counted, {} revoked, {} refused, {} conflicts",
                 value["relay"].as_str().unwrap_or(""),
-                value["referees"],
+                referee_count(value),
                 value["counted"],
                 value["revoked"],
                 value["refused"],
@@ -545,5 +612,31 @@ mod awards_cell_tests {
         assert_eq!(awards_cell(&row), "none yet (no limit)");
         let row = json!({"counted": 2, "awards": 3, "max_awards": 10});
         assert_eq!(awards_cell(&row), "2 of 3 counted (max 10)");
+    }
+}
+
+#[cfg(test)]
+mod trust_output_tests {
+    use super::*;
+
+    #[test]
+    fn referee_counts_use_singular_only_for_one() {
+        assert_eq!(referee_count(&json!({"referees": 0})), "0 referees");
+        assert_eq!(referee_count(&json!({"referees": 1})), "1 referee");
+        assert_eq!(referee_count(&json!({"referees": 2})), "2 referees");
+    }
+
+    #[test]
+    fn quest_list_and_board_quest_table_offer_an_action_after_rows() {
+        let mut value = json!({"referees": 0, "quests": []});
+        let message = verse::xp::no_referees_message();
+        assert_eq!(render_quests(&value), format!("no quests\n{message}"));
+        value["quests"] =
+            json!([{"address": "example@1", "title": "Example quest", "trusted": false}]);
+        let text = render_quests(&value);
+        assert!(text.lines().nth(1).unwrap().contains("example@1"));
+        assert_eq!(text.lines().last().unwrap(), message);
+        value["referees"] = json!(1);
+        assert!(!render_quests(&value).contains("No referee"));
     }
 }

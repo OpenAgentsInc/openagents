@@ -38,6 +38,9 @@ pub(crate) const USAGE: &str = "usage: openagents verse COMMAND [OPTIONS]
   control ENTITY leave      Drive another entity this identity publishes (for
                             example an agent it spawned): the same events as
                             move, gesture, and leave, under that entity id.
+  trust list                List trusted referees (OpenAgents is trusted by default).
+  trust add KEY             Trust a referee locally.
+  trust remove KEY          Remove a referee from local trust.
   quests                    Every quest on the XP relay, trusted referees first.
   xp [--pubkey KEY]...      The XP ledger and level for this identity's keys,
                             or for the keys given.
@@ -96,6 +99,9 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("control move", Effect::Publishes),
     Declared::computer("control gesture", Effect::Publishes),
     Declared::computer("control leave", Effect::Publishes),
+    Declared::computer("trust list", Effect::ReadOnly),
+    Declared::computer("trust add", Effect::LocalWrite),
+    Declared::computer("trust remove", Effect::LocalWrite),
     Declared::computer("quests", Effect::ReadOnly),
     Declared::computer("xp", Effect::ReadOnly),
     Declared::computer("xp verify-card", Effect::ReadOnly),
@@ -372,8 +378,9 @@ fn run_group(output: &Output, words: &[String], group: &str) -> u8 {
         "gesture" => (&["to", "at", "duration"], 1, 1),
         "name" => (&[], 1, usize::MAX),
         "control" => (&["yaw", "role", "name", "to", "at", "duration"], 2, 3),
-        "quests" | "board" => (&["xp-relay", "referee"], 0, 0),
-        "xp" => (&["xp-relay", "referee", "pubkey"], 0, 2),
+        "trust" => (&[], 1, 2),
+        "quests" | "board" => (&["xp-relay", "referee", "xp-referee"], 0, 0),
+        "xp" => (&["xp-relay", "referee", "xp-referee", "pubkey"], 0, 2),
         other => return output.usage(group, &format!("unknown command `{other}`"), USAGE),
     };
     let usage_command =
@@ -441,6 +448,7 @@ fn run_group(output: &Output, words: &[String], group: &str) -> u8 {
         Err(message) => return output.usage(group, &message, USAGE),
     };
     let quest = match command.as_str() {
+        "trust" => Some(crate::quest::trust(output, &args)),
         "quests" => Some(crate::quest::quests(output, &args)),
         "xp" => Some(crate::quest::xp(output, &args)),
         "board" => Some(crate::quest::board(output, &args)),

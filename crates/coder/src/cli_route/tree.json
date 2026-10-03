@@ -7258,6 +7258,109 @@
           ]
         },
         {
+          "name": "trust",
+          "children": [
+            {
+              "name": "list",
+              "leaf": {
+                "path": [
+                  "verse",
+                  "trust",
+                  "list"
+                ],
+                "usage": [
+                  "trust list"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "trust"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "list"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "List trusted referees (OpenAgents is trusted by default).",
+                "effect": "read_only",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "add",
+              "leaf": {
+                "path": [
+                  "verse",
+                  "trust",
+                  "add"
+                ],
+                "usage": [
+                  "trust add KEY"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "trust"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "add"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "KEY"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Trust a referee locally.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "remove",
+              "leaf": {
+                "path": [
+                  "verse",
+                  "trust",
+                  "remove"
+                ],
+                "usage": [
+                  "trust remove KEY"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "trust"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "remove"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "KEY"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Remove a referee from local trust.",
+                "effect": "local_write",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
+        },
+        {
           "name": "quests",
           "leaf": {
             "path": [

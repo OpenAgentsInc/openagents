@@ -467,32 +467,82 @@ pub fn missing(have: &BTreeMap<String, Event>, trust: &XpTrust) -> BTreeSet<Stri
     want
 }
 
-/// The reader's trust: the referees in
-/// `~/.openagents/knowledge/xp-trust.json`, plus the reader's own referee
-/// key's public key when that key exists, and the `--xp-referee` keys, as
-/// `microcoder xp ledger` does. A trust file that doesn't parse trusts
-/// only the other two and says why.
+/// The reader's trust: shipped defaults when no trust file exists, otherwise
+/// the explicit list in `~/.openagents/knowledge/xp-trust.json`.
+/// `--referee` adds keys for this reading only.
 #[must_use]
 pub fn load_trust(referees: &[String]) -> (XpTrust, Option<String>) {
-    let (mut trust, mut problem) = match trust_file() {
-        Some(path) => match XpTrust::read(&path) {
+    let own = referee_key_file().and_then(|k| own_pubkey(&k));
+    load_trust_at(trust_file().as_deref(), own.as_deref(), referees)
+}
+
+/// Loads trust from an explicit path without accessing the reader's home.
+#[must_use]
+pub fn load_trust_at(
+    path: Option<&std::path::Path>,
+    own: Option<&str>,
+    referees: &[String],
+) -> (XpTrust, Option<String>) {
+    let mut defaults = openagents_trust();
+    if let Some(own) = own {
+        defaults.referees.insert(own.to_owned());
+    }
+    let (mut trust, mut problem) = match path.filter(|p| p.exists()) {
+        Some(path) => match XpTrust::read(path) {
             Ok(trust) => (trust, None),
-            Err(e) => (XpTrust::default(), Some(e)),
+            Err(e) => (defaults, Some(e)),
         },
-        None => (XpTrust::default(), None),
+        None => (defaults, None),
     };
     for key in referees {
         match parse_author(key) {
             Some(hex) => {
                 trust.referees.insert(hex);
             }
-            None => problem = Some(format!("--xp-referee {key} isn't an npub or a hex key")),
+            None => problem = Some(format!("--referee {key} isn't an npub or a hex key")),
         }
     }
-    if let Some(own) = referee_key_file().and_then(|k| own_pubkey(&k)) {
-        trust.referees.insert(own);
-    }
     (trust, problem)
+}
+
+/// Adds or removes a referee in the explicit local trust list.
+///
+/// # Errors
+///
+/// Returns an error for invalid keys, invalid existing trust, or failed writes.
+pub fn edit_trust_at(
+    path: &std::path::Path,
+    own: Option<&str>,
+    key: &str,
+    add: bool,
+) -> Result<XpTrust, String> {
+    let key = parse_author(key).ok_or("referee must be an npub or a hex public key")?;
+    let (mut trust, problem) = load_trust_at(Some(path), own, &[]);
+    if let Some(problem) = problem {
+        return Err(problem);
+    }
+    if add {
+        trust.referees.insert(key);
+    } else {
+        trust.referees.remove(&key);
+    }
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let bytes =
+        serde_json::to_vec_pretty(&json!({"referees": trust.referees, "runners": trust.runners}))
+            .map_err(|e| e.to_string())?;
+    let temporary = path.with_extension("json.tmp");
+    std::fs::write(&temporary, bytes).map_err(|e| e.to_string())?;
+    std::fs::rename(&temporary, path).map_err(|e| e.to_string())?;
+    Ok(trust)
+}
+
+/// Actionable guidance when a reader has opted out of all referees.
+pub fn no_referees_message() -> String {
+    format!(
+        "No referee is trusted; awards do not count. Trust one with: openagents verse trust add {OPENAGENTS_REFEREE}"
+    )
 }
 
 /// The public keys whose XP is shown as the player's: the Verse profile
@@ -891,7 +941,7 @@ pub fn strip(board: Option<&Board>, mine: &[String]) -> Vec<Styled> {
         ));
     }
     let referees = if snap.referees == 0 {
-        "no trusted referees (add them to ~/.openagents/knowledge/xp-trust.json)".to_owned()
+        no_referees_message()
     } else {
         format!(
             "trusting {} referee{}",
@@ -1014,6 +1064,9 @@ pub fn board_lines(board: Option<&Board>, now: u64) -> Vec<Styled> {
             format!("  {} · referee {}", q.address, short(&q.referee)),
             Intensity::Quarter,
         ));
+    }
+    if snap.referees == 0 {
+        out.push((no_referees_message(), Intensity::Half));
     }
     out.push((String::new(), Intensity::Quarter));
     out.push((

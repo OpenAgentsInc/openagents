@@ -536,3 +536,64 @@ fn an_adoption_release_asks_for_its_documents() {
     assert!(snap.evals.is_empty());
     assert!(made(&snap, &["ab".repeat(32)]).results.is_empty());
 }
+
+#[test]
+fn fresh_trust_and_persisted_opt_out() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("xp-trust.json");
+    let own = signer(9).pubkey().to_owned();
+    let (fresh, problem) = load_trust_at(Some(&path), Some(&own), &[]);
+    assert!(problem.is_none());
+    assert!(fresh.referees.contains(OPENAGENTS_REFEREE));
+    assert!(fresh.referees.contains(&own));
+    edit_trust_at(&path, Some(&own), OPENAGENTS_REFEREE, false).unwrap();
+    edit_trust_at(&path, Some(&own), &own, false).unwrap();
+    assert!(
+        load_trust_at(Some(&path), Some(&own), &[])
+            .0
+            .referees
+            .is_empty()
+    );
+    let extra = signer(8).pubkey().to_owned();
+    // An explicit flag is temporary; it does not modify the saved list.
+    let (temporary, _) = load_trust_at(Some(&path), None, &[extra.clone()]);
+    assert!(temporary.referees.contains(&extra));
+    assert!(load_trust_at(Some(&path), None, &[]).0.referees.is_empty());
+    edit_trust_at(&path, None, &extra, true).unwrap();
+    assert!(
+        load_trust_at(Some(&path), None, &[])
+            .0
+            .referees
+            .contains(&extra)
+    );
+    assert!(edit_trust_at(&path, None, "invalid", true).is_err());
+}
+
+#[test]
+fn invalid_trust_reports_problem_and_keeps_shipped_default() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("xp-trust.json");
+    std::fs::write(&path, "invalid json").unwrap();
+    let (trust, problem) = load_trust_at(Some(&path), None, &[]);
+    assert!(problem.is_some());
+    assert!(trust.referees.contains(OPENAGENTS_REFEREE));
+    assert!(edit_trust_at(&path, None, OPENAGENTS_REFEREE, false).is_err());
+    let (_, problem) = load_trust_at(None, None, &["invalid".into()]);
+    assert!(problem.unwrap().contains("--referee"));
+}
+
+#[test]
+fn empty_board_and_hud_explain_how_to_trust() {
+    let board = Board::fixed("wss://example.test", Snapshot::default());
+    let message = no_referees_message();
+    assert!(
+        board_lines(Some(&board), AT)
+            .iter()
+            .any(|(line, _)| line == &message)
+    );
+    assert!(
+        strip(Some(&board), &[])
+            .iter()
+            .any(|(line, _)| line.contains(&message))
+    );
+}
