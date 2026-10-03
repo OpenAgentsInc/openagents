@@ -1,0 +1,46 @@
+OpenAgents Terminal against Claude Code, run demo-dryrun-1, tasks bottle-etag, mi-seekable, mi-one
+binaries: {'commit': '682d958c7e', 'claude': '2.1.286 (Claude Code)', 'codex': 'codex-cli 0.159.2', 'host': 'coderos-4080'}
+
+== bottle-etag: both from base commit 62d7e076e1, two scratch checkouts
+  OpenAgents  PASS  cost  time
+  Claude Code PASS  cost  time
+
+== mi-seekable: both from base commit ca711220a6, two scratch checkouts
+  OpenAgents  PASS  cost  time
+  Claude Code PASS  cost  time
+
+== mi-one: both from base commit 9ed3dbb0ae, two scratch checkouts
+  OpenAgents  PASS  cost  time
+  Claude Code PASS  cost  time
+
+Measured difference, run demo-dryrun-1 (records: ~/gym-efficiency/runs/demo-dryrun-1)
+
+task           OpenAgents Terminal          Claude Code                     cost    time
+               check   cost      time       check   cost      time         ratio   ratio
+bottle-etag    pass    $0.188       59 s    pass    $0.282       46 s      0.66x   1.27x
+mi-seekable    pass    $0.107       40 s    pass    $0.213       35 s      0.50x   1.13x
+mi-one         pass    $0.135       57 s    pass    $0.139       15 s      0.98x   3.74x
+total          3/3     $0.430      156 s    3/3     $0.634       97 s      0.68x   1.61x
+
+OpenAgents Terminal cost 32% less than Claude Code (3/3 against 3/3 passing) and took 1.61x as long.
+Cost is list price from each engine's reported usage (Claude Code subscription usage is not billed per run); the routed cost includes Jev's routing and briefing calls.
+
+For context, the standing study's medians on the same tasks (3 trials each, study 2026-10-03):
+  bottle-etag    OpenAgents $0.180 65 s (3/3)   Claude Code $0.350 87 s (3/3)   cost 0.52x   time 0.74x
+  mi-seekable    OpenAgents $0.123 44 s (3/3)   Claude Code $0.230 42 s (3/3)   cost 0.53x   time 1.06x
+  mi-one         OpenAgents $0.072 29 s (3/3)   Claude Code $0.151 17 s (3/3)   cost 0.48x   time 1.67x
+6 runs -> ~/gym-efficiency/demo-dryrun-1.jsonl
+
+`openagents efficiency --study` on this run's rows:
+Study ~/gym-efficiency/demo-dryrun-1.jsonl (6 runs on 3 tasks): Study rows given on the command line
+  raw Claude Code                    3/3 passed · $0.211 ($0.211–$0.211) per checked result · 35 s (35 s–35 s) to a checked result · $0.63 in all
+  lean Claude Code session           3/3 passed · $0.143 ($0.143–$0.143) per checked result · 57 s (57 s–57 s) to a checked result · $0.43 in all
+  by class: repository
+    raw Claude Code                  3/3 passed · $0.211 ($0.211–$0.211) per checked result · 35 s (35 s–35 s) to a checked result
+    lean Claude Code session         3/3 passed · $0.143 ($0.143–$0.143) per checked result · 57 s (57 s–57 s) to a checked result
+  source: ~/gym-efficiency/demo-dryrun-1.jsonl
+(3 earlier studies: openagents efficiency --all)
+Findings (95% intervals; a ratio below 1 favors the arm):
+  - lean Claude Code session against raw Claude Code on 3 tasks: cost 0.68× (0.68–0.68) — 32% cheaper; time 1.61× (1.61–1.61) — 61% slower.
+
+Summary saved: ~/gym-efficiency/demo-dryrun-1-summary.txt

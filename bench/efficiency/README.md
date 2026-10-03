@@ -80,6 +80,16 @@ Claude Code and Codex on the host, set `EFFICIENCY_TB` to a Terminal-Bench
 2.1 `tasks` folder, and run the same command. The host costs about $0.17 an
 hour on spot.
 
+## Side-by-side demo
+
+[`demo.py`](demo.py) runs three of these tasks (`bottle-etag`,
+`mi-seekable`, `mi-one`) at once in OpenAgents Terminal (the lean session)
+and raw Claude Code from the same commit, in a tmux split, and prints the
+measured difference from the run records
+([#10211](https://github.com/OpenAgentsInc/openagents/issues/10211); runbook
+and dry-run numbers:
+[docs/cost/2026-10-02-terminal-vs-claude-code-demo.md](../../docs/cost/2026-10-02-terminal-vs-claude-code-demo.md)).
+
 ## What it costs
 
 The first standing run, `2026-10-03` (84 runs: 7 tasks, 4 arms, 3 trials,
