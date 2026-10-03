@@ -1,5 +1,9 @@
 # Genesis example port roadmap for Verse physics
 
+For current engine integration and remaining character/collision work, see the
+[Verse Engine roadmap](../verse/engine/roadmap.md). The dated implementation
+record below remains historical evidence.
+
 **Status:** Roadmap, 2026-09-27. Tracking issue [#9788](https://github.com/OpenAgentsInc/openagents/issues/9788). Follows [Genesis lessons for Verse physics zones](2026-09-27-genesis-for-verse-zones.md). No zone authority, networking, or runtime dependency on Genesis is approved here.
 
 Porting means **reimplementing the mechanism in Rust in the shared, zone-agnostic [`physics`](../../crates/physics/src/lib.rs) crate** and proving it with a test there. Zones consume it. Lagrange 1 is the first consumer and the acceptance scene, not the home: any zone that needs rigid bodies, contact, joints, thrusters, or sensors uses the same crate. No Genesis source, assets, or Python runtime enter the repo. Genesis stays a pinned reference and, where noted, an offline oracle for calibration runs.

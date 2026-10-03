@@ -1,5 +1,8 @@
 # WoW episodes
 
+The [Verse Engine roadmap](../verse/engine/roadmap.md) connects this research
+fixture to original content, owned physics, and the #10406 world service.
+
 These episodes are private research fixtures for [Verse Engine](../verse/engine/architecture.md),
 the game engine powering the Verse metaverse. The original-content milestone
 replaces WoW assets in the product path; retained recordings document the

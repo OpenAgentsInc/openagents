@@ -1,5 +1,8 @@
 # Verse
 
+The [Verse Engine roadmap](engine/roadmap.md) sequences original content,
+owned physics reuse, and authoritative multiplayer.
+
 [Verse Engine](engine/architecture.md) is the Rust game engine that powers Verse.
 Its specification defines the runtime, GPU pipeline, authoring tools, and
 near-term migration to original assets.

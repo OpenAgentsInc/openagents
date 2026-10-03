@@ -307,7 +307,8 @@ cargo run -p gym --features tui --bin gym-terminal -- --terminal-bench
   plaza and local zones. See [Verse](docs/verse/README.md),
   [zones](docs/verse/zones.md), and the [Gym building](docs/verse/gym.md).
 - **Verse Engine.** The owned Rust game engine that powers Verse. See the
-  [engine specification](docs/verse/engine/architecture.md).
+  [engine specification](docs/verse/engine/architecture.md) and
+  [delivery roadmap](docs/verse/engine/roadmap.md).
 
 ## Repository map
 

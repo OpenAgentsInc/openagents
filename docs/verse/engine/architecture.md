@@ -48,6 +48,9 @@ provenance archive. Do not rebrand copied reference code as original work.
 Original assets need creator records and source files, not just renamed MPQ
 exports or repainted Blizzard textures.
 
+The [delivery roadmap](roadmap.md) inventories existing owned code, adds a
+physics plan, and connects the original chamber to #10406 and #10407.
+
 ## Aeon study
 
 Reference checkout: `~/work/projects/repos/aeon-engine`, cloned from
@@ -104,12 +107,17 @@ Names below are proposed; no crates are added by this document.
 | `verse-engine-assets` | Validated manifests, compiled pack readers, typed asset handles, bounded loading, residency and dependency tracking. | WoW parsing, gameplay mutations, automatic network fetches. |
 | `verse-engine-render` | GPU resources, render graph, WGSL, visibility, materials, lights, shadows, effects, debug draws, capture. | Health changes, quest rewards, authority decisions. |
 | `verse-engine-animation` | Skeleton/clip contracts, pose evaluation, graphs, blending, attachments, optional IK. | Damage timing or server command admission. |
-| `verse-engine-physics` | Spatial indices, swept collision, character integration, ray/shape queries, navigation. | Mesh decoding or visual camera policy. |
+| `verse-engine-physics` | Engine integration over the existing `physics` crate, spatial indices, swept collision, character integration, queries, and navigation. | A duplicate rigid-body solver, mesh decoding, or visual camera policy. |
 | `verse-engine-audio` | Mixing, voices, spatial emitters, occlusion, bounded streaming. | Encounter triggers or arbitrary file access. |
 | `verse-world` | Game rules, character/instance ownership, admitted commands, authoritative events and snapshots. | GPU, editor, native platform widgets. |
 | `verse-world-host` | Authenticated transport, instance lifecycle, transactional persistence, backups, metrics. | Client camera and draw calls. |
 | `verse-tools` | Rust content compiler, validators, inspectors, scene/timeline authoring, pack builds. | A second implementation of runtime rules. |
 | `verse` and mobile adapters | Input translation, presentation, surface/audio lifecycle, session clients. | Independent combat or inventory authority. |
+
+The existing `crates/physics` remains the owned generic solver; the proposed
+physics module is an integration/query boundary. Reuse Lagrange and Physics Lab
+fixtures, keeping orbital fields and EVA rules in `verse-lagrange`. The initial
+30 Hz chamber authority uses four 120 Hz physics substeps, subject to measurement.
 
 The dependency direction is platform adapter → engine systems → core, with
 world rules consuming portable physics/assets contracts and exporting read-only

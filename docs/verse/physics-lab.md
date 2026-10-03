@@ -1,5 +1,8 @@
 # Physics Lab: the shared physics crate, live
 
+The lab is also a regression and inspection fixture for the
+[Verse Engine physics roadmap](engine/roadmap.md).
+
 The **Physics Lab** is a Verse zone where you watch each mechanism of the
 shared [`physics`](../../crates/physics/) crate run live and change it with
 on-screen knobs. It has nine scenarios, from a contact manifold to a

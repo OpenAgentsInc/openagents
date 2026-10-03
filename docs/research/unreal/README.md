@@ -1,5 +1,9 @@
 # Unreal Engine research
 
+The [Verse Engine roadmap](../../verse/engine/roadmap.md) applies this retained
+research to owned physics and rendering and explains Epic source access.
+Its proposed work does not change the historical candidate statuses.
+
 Notes from studying Unreal Engine source to decide what to reimplement in our
 own code. Unreal's code is proprietary: we reuse its ideas, never its code.
 Read [AGENTS.md](AGENTS.md) before opening any Unreal file or adding a note

@@ -1,5 +1,9 @@
 # Lagrange 1: the L1 construction station
 
+Lagrange is a regression consumer for [Verse Engine](engine/roadmap.md).
+Its generic physics mechanisms remain in `crates/physics`; orbital fields and
+EVA rules remain specific to this Verse zone.
+
 **Lagrange 1** is a Verse zone set on a small crewed station orbiting the
 Sun–Earth L1 point, about 1.5 million km sunward of Earth. It is where a ship
 frame begins: an astronaut in a maneuvering pack carries parts from a depot to
