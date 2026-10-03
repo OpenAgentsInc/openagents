@@ -65,6 +65,9 @@ on PATH) and --questions the question sets it asks (default: the
 questions/ of the checkout it was built in, then ~/.openagents/questions);
 both arms get the same ones. The pinned door is CODER_DOOR_URL, CODER_DOOR_KEY (or CODER_AI_GATEWAY_KEY),
 and CODER_MODEL from this shell; the run's child never sees the key.
+Without a model key, the default door uses your signed-in Claude Code or
+Codex. Both arms use the same engine; login credentials stay outside the
+test sandbox.
 TYPESAFE_API_KEY, when set, is the decision door for decision graders and
 the child's classifier. Nothing leaves this computer until publish.
 Exit codes: 0 Better or a clean single-arm run, 1 Worse, inconclusive, or a
@@ -389,7 +392,8 @@ fn agent(args: &Args) -> Result<AgentPin, String> {
 /// name (`gemini`, `glm`) is the same door running that lane's model.
 fn door(name: Option<&str>) -> Result<Door, String> {
     let access = model_access::current();
-    if access.is_mine() && std::env::var("CODER_DOOR_KEY").is_err() {
+    if access.is_mine() && access.keys().chat_capable() && std::env::var("CODER_DOOR_KEY").is_err()
+    {
         return their_door(&access, name);
     }
     let key = std::env::var("CODER_DOOR_KEY")
@@ -553,6 +557,8 @@ struct Prepared {
     target: Target,
     agent: AgentPin,
     door: Door,
+    // Keeps the signed-in engine bridge alive for every run in both arms.
+    _bridge: Option<crate::eval_engine::Bridge>,
     decision: Option<DecisionPin>,
     options: Options,
 }
@@ -578,13 +584,29 @@ fn prepare(
             );
         }
     };
-    let door = door(chosen.as_deref())?;
+    let (door, bridge) = match door(chosen.as_deref()) {
+        Ok(door) => (door, None),
+        Err(error)
+            if error == NO_MODEL_KEY && chosen.as_deref().is_none_or(|name| name == "default") =>
+        {
+            let bridge = crate::eval_engine::Bridge::discover()?;
+            let door = Door {
+                name: "default".into(),
+                url: bridge.url.clone(),
+                key: Secret::new(&bridge.key),
+                model: bridge.model.clone(),
+            };
+            (door, Some(bridge))
+        }
+        Err(error) => return Err(error),
+    };
     let agent = agent(args)?;
     Ok(Prepared {
         suite,
         target,
         agent,
         door,
+        _bridge: bridge,
         decision: decision_pin(),
         options,
     })

@@ -15,6 +15,10 @@ name = "openagents"
 path = "src/main.rs"
 
 [dependencies]
+axum = "0.8"
+coder-delegate = { path = "../coder-delegate" }
+jsonschema = { version = "0.33", default-features = false }
+supervise = { path = "../supervise" }
 # `openagents background`: the host's background rules (the disk monitor).
 background = { path = "../background" }
 base64 = "0.22"

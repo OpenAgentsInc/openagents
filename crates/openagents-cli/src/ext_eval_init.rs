@@ -33,7 +33,9 @@ Writes a test set for the plugin with you, one step at a time: what the
 plugin is for, what a good run looks like, the tests, the checks, a one-run
 try, and the full run's size. Type y at each step to go on, or type what to
 change. The plugin is read, never changed; the finished tests are
-written under its eval directory (evals/ by default), or --out.";
+written under its eval directory (evals/ by default), or --out.
+Uses your model key, or your signed-in Claude Code or Codex when no key
+is available.";
 
 /// The package key a local extension's definition names until it is
 /// published: no signer yet.
@@ -84,10 +86,22 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
             Err(error) => return output.usage(command, &error.to_string(), USAGE),
         },
     };
+    let mut bridge = None;
     let door = match Door::from_env() {
         Ok(Door::Stub(_)) => match interview_door() {
             Some(door) => door,
-            None => return output.fail(command, NO_INTERVIEW_MODEL),
+            None => match crate::eval_engine::Bridge::discover() {
+                Ok(local) => {
+                    let door = Door::Live(coder::generate::ResponsesDoor::new(
+                        &local.url,
+                        &local.model,
+                        &local.key,
+                    ));
+                    bridge = Some(local);
+                    door
+                }
+                Err(error) => return output.fail(command, &error),
+            },
         },
         Ok(door) => door,
         Err(error) => return output.fail(command, &error),
@@ -105,6 +119,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         stdin.lock(),
         std::io::stdout(),
     ));
+    drop(bridge);
     match result {
         Ok(written) => {
             if output.json() {
@@ -465,12 +480,8 @@ fn ended() -> Stop {
     Stop::Failed("the answers ended before the test set was ready; nothing was written".into())
 }
 
-/// What the interview says when nothing here can answer it.
-const NO_INTERVIEW_MODEL: &str = "The interview needs a model on this computer, and OpenAgents ships no model key. Add your own with `openagents settings provider-key set openrouter` (or `vercel`) and run this again, or ask for the tests in chat (\"write tests for my plugin\"), which runs the interview with us.";
-
-/// The interview's model when no door key is set: a key the person stored
-/// (`openagents settings provider-key`). OpenAgents ships no model key, and
-/// a signed-in coding agent answers in prose, not the interview's records.
+/// The interview's model when no door key is set: a key the person stored.
+/// The caller falls back to a signed-in coding engine when no key is available.
 fn interview_door() -> Option<Door> {
     let theirs = model_access::Access::theirs(model_access::current().keys().clone());
     let model = coder::generate::DEFAULT_MODEL;

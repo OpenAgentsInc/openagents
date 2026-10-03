@@ -455,3 +455,148 @@ fn a_published_result_is_checked_and_confirmed_on_a_local_relay() {
     assert_eq!(checked["original"], result_id.as_str());
     relay.stop.shutdown();
 }
+
+/// A signed-in engine stand-in. HOME and all login paths belong to this test.
+#[cfg(unix)]
+fn signed_in(work: &Path, codex: bool, running: bool) -> Command {
+    use std::os::unix::fs::PermissionsExt;
+    let home = work.join("login");
+    std::fs::create_dir_all(home.join(if codex { ".codex" } else { ".claude" })).unwrap();
+    std::fs::write(
+        home.join(if codex {
+            ".codex/auth.json"
+        } else {
+            ".claude/.credentials.json"
+        }),
+        "{}",
+    )
+    .unwrap();
+    let binary = work.join("engine");
+    let output = if codex {
+        "[ \"$1\" = exec ] || exit 3\nwhile [ \"$1\" != --output-schema ]; do shift; done\n[ -f \"$2\" ] || exit 4\nwhile [ \"$1\" != --output-last-message ]; do shift; done\nexec > \"$2\""
+    } else {
+        "case \"$*\" in *'--output-format json'*) ;; *) exit 3 ;; esac"
+    };
+    let proposal = if running {
+        r#"{"answer":"Welcome aboard, glad you are here!"}"#
+    } else {
+        r#"{"say":"We help you check the plugin.","asking":false,"name":null,"summary":null,"skill":null,"uses":[]}"#
+    };
+    let result = if codex {
+        proposal.to_string()
+    } else {
+        json!({"type":"result","is_error":false,"result":proposal}).to_string()
+    };
+    std::fs::write(
+        &binary,
+        format!(
+            "#!/bin/sh\nprintf '%s\\n' \"$*\" >> '{}'\n{output}\nprintf '%s\\n' '{}'\n",
+            work.join("calls").display(),
+            result
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o700)).unwrap();
+    let mut command = Command::new(OPENAGENTS);
+    command
+        .env_clear()
+        .env("HOME", &home)
+        .env("PATH", "/usr/bin:/bin")
+        .env("OPENAGENTS_HOME", work.join("oa"))
+        .env("VERSE_HOME", work.join("verse"))
+        .env("SUPERVISE_MEMORY_MAX", "none")
+        .env(
+            if codex {
+                "CODER_ONE_CODEX_BIN"
+            } else {
+                "CODER_ONE_CLAUDE_BIN"
+            },
+            binary,
+        );
+    command
+}
+
+#[test]
+#[cfg(unix)]
+fn keyless_interview_uses_each_signed_in_engine() {
+    for codex in [false, true] {
+        let work = tempfile::tempdir().unwrap();
+        let root = extension(work.path());
+        let out = signed_in(work.path(), codex, false)
+            .args(["plugin", "test", "init"])
+            .arg(&root)
+            .stdin(Stdio::null())
+            .output()
+            .unwrap();
+        let screen = String::from_utf8_lossy(&out.stdout);
+        let error = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            screen.contains("We help you check the plugin."),
+            "{screen}\n{error}"
+        );
+        assert!(error.contains("answers ended"), "{error}");
+        assert!(!error.contains("invalid JSON"), "{error}");
+        let calls = std::fs::read_to_string(work.path().join("calls")).unwrap();
+        assert!(calls.contains("## JSON schema"));
+        assert!(calls.contains(if codex {
+            "--output-schema"
+        } else {
+            "--output-format json"
+        }));
+    }
+}
+
+#[test]
+#[cfg(unix)]
+fn keyless_run_uses_each_signed_in_engine_in_both_arms() {
+    for codex in [false, true] {
+        let work = tempfile::tempdir().unwrap();
+        let root = extension(work.path());
+        let out = signed_in(work.path(), codex, true)
+            .args(["--json", "plugin", "test", "run"])
+            .arg(&root)
+            .args(["--trust", "--case", "greeting", "--runs", "1", "--coder"])
+            .arg(fake_agent())
+            .output()
+            .unwrap();
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(!stderr.contains("needs a model key"), "{stderr}");
+        let report: Value =
+            serde_json::from_slice(&out.stdout).unwrap_or_else(|e| panic!("{e}: {stderr}"));
+        assert!(report.is_object());
+        let calls = std::fs::read_to_string(work.path().join("calls")).unwrap();
+        assert_eq!(
+            calls.matches("Return JSON matching").count(),
+            2,
+            "both arms use the same engine: {stderr}"
+        );
+        assert!(stderr.contains("greeting subject #1 completed"), "{stderr}");
+        assert!(
+            stderr.contains("greeting baseline #1 completed"),
+            "{stderr}"
+        );
+    }
+}
+
+#[test]
+#[cfg(unix)]
+fn a_fileless_claude_login_is_discovered_through_auth_status() {
+    let work = tempfile::tempdir().unwrap();
+    let root = extension(work.path());
+    let mut command = signed_in(work.path(), false, false);
+    std::fs::remove_file(work.path().join("login/.claude/.credentials.json")).unwrap();
+    let binary = work.path().join("engine");
+    let script = std::fs::read_to_string(&binary).unwrap();
+    std::fs::write(&binary, script.replacen("#!/bin/sh\n", "#!/bin/sh\nif [ \"$1\" = auth ]; then printf '%s\\n' '{\"loggedIn\":true}'; exit 0; fi\n", 1)).unwrap();
+    let out = command
+        .args(["plugin", "test", "init"])
+        .arg(root)
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    assert!(
+        String::from_utf8_lossy(&out.stdout).contains("We help you check the plugin."),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}

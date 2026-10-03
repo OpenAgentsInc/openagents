@@ -29,6 +29,7 @@ mod connect;
 mod discover;
 mod efficiency;
 mod eval;
+mod eval_engine;
 mod ext_defaults;
 mod ext_eval;
 mod ext_eval_init;

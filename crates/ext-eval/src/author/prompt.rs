@@ -304,8 +304,9 @@ pub fn instructions(interview: &Interview, need: &Need, person: &str) -> String 
         .replace("${person}", person)
         .replace("${tool}", &tool);
     format!(
-        "{head}\n{ANSWER}\n\n{}\n\n## State\n\n{}",
+        "{head}\n{ANSWER}\n\n{}\n\n## JSON schema\n{}\n\n## State\n\n{}",
         task(interview, need),
+        super::proposal::schema(need),
         serde_json::to_string_pretty(&state(interview)).unwrap_or_default()
     )
 }

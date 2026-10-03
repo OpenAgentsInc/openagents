@@ -54,6 +54,7 @@ jev-hosted = { path = "../jev-hosted" }
 nostr = { path = "../nostr" }
 plugin = { path = "../plugin", optional = true }
 regex = "1"
+schemars = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"

@@ -6,12 +6,13 @@
 //! suggestion the floor and the case parser decide on, never an
 //! instruction.
 
+use schemars::JsonSchema;
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 
 /// The tool at step 1: a description of an existing tool, or a proposed
 /// chat-made one.
-#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, JsonSchema)]
 #[serde(default)]
 pub struct ToolProposal {
     /// What we say: what the tool is for, what it does, and what it
@@ -30,7 +31,7 @@ pub struct ToolProposal {
 }
 
 /// One proposed test.
-#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, JsonSchema)]
 #[serde(default)]
 pub struct TestProposal {
     /// A short kebab-case name for the task shape.
@@ -48,7 +49,7 @@ pub struct TestProposal {
 }
 
 /// Tests at step 3.
-#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, JsonSchema)]
 #[serde(default)]
 pub struct TestsProposal {
     /// What we say about them.
@@ -58,7 +59,7 @@ pub struct TestsProposal {
 }
 
 /// What a check reads.
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum FocusProposal {
     /// `last_message`, `trajectory`, `files`, `changed`, or `diff`.
@@ -71,7 +72,7 @@ pub enum FocusProposal {
 }
 
 /// One proposed check (a grader).
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, JsonSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum GraderProposal {
     /// Jev answers a yes-or-no question about the focus.
@@ -162,13 +163,14 @@ impl GraderProposal {
 }
 
 /// One test's checks.
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, JsonSchema)]
 pub struct CaseChecks {
     /// The test's id.
     pub test: String,
     /// Its checks, as written. [`CaseChecks::typed`] reads them; one the
     /// machine doesn't know is dropped, not the whole proposal.
     #[serde(default)]
+    #[schemars(with = "Vec<GraderProposal>")]
     pub graders: Vec<serde_json::Value>,
 }
 
@@ -184,7 +186,7 @@ impl CaseChecks {
 }
 
 /// Checks at step 4.
-#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, JsonSchema)]
 #[serde(default)]
 pub struct ChecksProposal {
     /// What we say about them, in plain words.
@@ -196,7 +198,7 @@ pub struct ChecksProposal {
 /// A fix after a try or a change request: new tests, new checks, or both.
 /// Tests left out keep their checks; a test whose checks are left out gets
 /// a starting check.
-#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, JsonSchema)]
 #[serde(default)]
 pub struct FixProposal {
     /// What we say.
@@ -208,7 +210,7 @@ pub struct FixProposal {
 }
 
 /// Words only.
-#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, JsonSchema)]
 #[serde(default)]
 pub struct SayProposal {
     /// What we say.
@@ -259,4 +261,23 @@ mod tests {
         );
         assert!(parse::<SayProposal>("no object here").is_err());
     }
+}
+
+/// The structured output contract for one interview step.
+pub fn schema(need: &super::Need) -> serde_json::Value {
+    use super::Need;
+    let mut schema = match need {
+        Need::Tool { .. } => serde_json::to_value(schemars::schema_for!(ToolProposal)),
+        Need::Tests { .. } => serde_json::to_value(schemars::schema_for!(TestsProposal)),
+        Need::Checks { .. } => serde_json::to_value(schemars::schema_for!(ChecksProposal)),
+        Need::Fix { .. } => serde_json::to_value(schemars::schema_for!(FixProposal)),
+        _ => serde_json::to_value(schemars::schema_for!(SayProposal)),
+    }
+    .expect("proposal schema");
+    schema["required"] = match need {
+        Need::Tests { .. } => serde_json::json!(["say", "tests"]),
+        Need::Checks { .. } => serde_json::json!(["say", "checks"]),
+        _ => serde_json::json!(["say"]),
+    };
+    schema
 }
