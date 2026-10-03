@@ -194,6 +194,25 @@ fn home_from_profile() {
     }
 }
 
+fn top_level_suggestion(word: &str) -> Option<&'static str> {
+    // Models belong to the decision API's caller, not this CLI.
+    if word == "models" {
+        return Some("settings");
+    }
+    if word.len() > 32 {
+        return None;
+    }
+    USAGE
+        .lines()
+        .filter(|line| line.starts_with("  ") && !line.starts_with("   "))
+        .filter_map(|line| line.split_whitespace().next())
+        .filter(|name| name.bytes().all(|byte| byte.is_ascii_lowercase()))
+        .map(|name| (name, chat::edit_distance(word, name)))
+        .filter(|(_, distance)| *distance > 0 && *distance <= 2)
+        .min_by_key(|(_, distance)| *distance)
+        .map(|(name, _)| name)
+}
+
 fn main() -> ExitCode {
     #[cfg(windows)]
     home_from_profile();
@@ -323,7 +342,12 @@ fn main() -> ExitCode {
             EXIT_FAILURE
         }
         other => {
-            eprintln!("openagents: unknown command `{other}`\n\n{USAGE}");
+            let suggestion = top_level_suggestion(other)
+                .map(|name| format!("; did you mean `openagents {name}`?"))
+                .unwrap_or_default();
+            eprintln!(
+                "openagents: unknown command `{other}`{suggestion}\nSee `openagents --help` for available commands."
+            );
             EXIT_USAGE
         }
     };

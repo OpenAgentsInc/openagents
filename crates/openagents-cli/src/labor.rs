@@ -228,8 +228,14 @@ fn now() -> u64 {
 
 fn read_setup(dir: &Path) -> Result<Setup, String> {
     let path = dir.join("setup.json");
-    let text = std::fs::read_to_string(&path)
-        .map_err(|error| format!("cannot read {}: {error}", path.display()))?;
+    let text = std::fs::read_to_string(&path).map_err(|error| {
+        let name = dir.file_name().unwrap_or_default().to_string_lossy();
+        if error.kind() == std::io::ErrorKind::NotFound {
+            format!("No book named {name}. See `openagents labor list`.")
+        } else {
+            format!("Cannot read book {name}: {error}")
+        }
+    })?;
     serde_json::from_str(&text)
         .map_err(|error| format!("{} is not a labor setup: {error}", path.display()))
 }

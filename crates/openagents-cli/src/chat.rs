@@ -219,7 +219,7 @@ fn near_command(word: &str) -> Option<&'static str> {
 
 /// Edit distance between two short words, counting a swap of neighbours
 /// as one edit (`sned` is one from `send`).
-fn edit_distance(a: &str, b: &str) -> usize {
+pub(super) fn edit_distance(a: &str, b: &str) -> usize {
     let a: Vec<char> = a.chars().collect();
     let b: Vec<char> = b.chars().collect();
     let mut d = vec![vec![0usize; b.len() + 1]; a.len() + 1];

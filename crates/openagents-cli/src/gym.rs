@@ -145,10 +145,11 @@ impl Kept {
     fn load(profile: Option<&str>) -> Result<Self, String> {
         let path = connection_path(profile);
         let code = std::fs::read_to_string(&path).map_err(|error| {
-            format!(
-                "{}: {error}; run `openagents gym connect` first",
-                path.display()
-            )
+            if error.kind() == std::io::ErrorKind::NotFound {
+                "Not connected to a gym yet. Run `openagents gym connect --code CODE`.".to_owned()
+            } else {
+                format!("Cannot read the gym connection: {error}")
+            }
         })?;
         Self::verify(profile, &code)
     }

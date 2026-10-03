@@ -307,12 +307,8 @@ pub fn alive(pid: Option<u32>) -> bool {
 /// `sov admit NAME [--as AUTHORITY_PROFILE]`.
 pub fn admit_command(output: &Output, home: &Path, name: &str, args: &Args) -> Result<u8, String> {
     let paths = Paths::for_name(home, name);
-    let bytes = std::fs::read(&paths.profile).map_err(|e| {
-        format!(
-            "no profile draft `{name}` at {}: {e}",
-            paths.profile.display()
-        )
-    })?;
+    let bytes =
+        std::fs::read(&paths.profile).map_err(|e| crate::sov::profile_read_error(name, &e))?;
     let profile: Profile =
         serde_json::from_slice(&bytes).map_err(|e| format!("profile does not parse: {e}"))?;
     let signer = crate::relay::signer_for(args.option("as"))?;
@@ -353,7 +349,7 @@ fn plan(home: &Path, name: &str, args: &Args) -> Result<(Vec<Value>, Option<Acti
         Err(e) => {
             checks.push(refusal(
                 "profile-contract",
-                format!("no profile draft `{name}`: {e}"),
+                crate::sov::profile_read_error(name, &e),
             ));
             return Ok((checks, None));
         }

@@ -255,10 +255,17 @@ fn profile_path(name: &str) -> Result<PathBuf, String> {
     Ok(home().join(format!("{name}.profile.json")))
 }
 
+pub(super) fn profile_read_error(name: &str, error: &std::io::Error) -> String {
+    if error.kind() == std::io::ErrorKind::NotFound {
+        format!("No profile draft named {name}. Run `openagents sov profile new {name}`.")
+    } else {
+        format!("Cannot read profile draft {name}: {error}")
+    }
+}
+
 fn load(name: &str) -> Result<Profile, String> {
     let path = profile_path(name)?;
-    let text = std::fs::read_to_string(&path)
-        .map_err(|e| format!("no profile draft `{name}` at {}: {e}", path.display()))?;
+    let text = std::fs::read_to_string(&path).map_err(|e| profile_read_error(name, &e))?;
     if text.len() > 64 * 1024 {
         return Err("profile is larger than 64 KiB".into());
     }
@@ -482,7 +489,13 @@ fn profile(output: &Output, words: &[String]) -> Result<u8, String> {
             let Some(file) = args.positional().first() else {
                 return Err("FILE is required".into());
             };
-            let text = std::fs::read_to_string(file).map_err(|e| format!("{file}: {e}"))?;
+            let text = std::fs::read_to_string(file).map_err(|e| {
+                if e.kind() == std::io::ErrorKind::NotFound {
+                    format!("No file at {file}.")
+                } else {
+                    format!("Cannot read file {file}: {e}")
+                }
+            })?;
             let profile: Profile =
                 serde_json::from_str(&text).map_err(|e| format!("{file}: {e}"))?;
             match profile.validate() {

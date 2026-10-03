@@ -64,10 +64,17 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         args.positional()
             .first()
             .map(|word| word.trim_start_matches('#'))
-            .ok_or_else(|| format!("`issue {command}` needs an issue number"))?
+            .ok_or_else(|| {
+                format!("N (issue number) is required for `openagents issue {command}`.")
+            })?
             .parse::<u64>()
             .map_err(|_| "the issue is a number, such as 10203".to_owned())
     };
+    if command != "pickup" {
+        if let Err(message) = number() {
+            return output.usage("issue", &message, USAGE);
+        }
+    }
     let (repository, policy) = match place(args.option("repo")) {
         Ok(place) => place,
         Err(message) => return output.fail("issue", &message),
