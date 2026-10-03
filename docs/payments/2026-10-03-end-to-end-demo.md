@@ -51,6 +51,14 @@ $ scripts/payments-demo.sh --plugin explain-error-check --quote-only
   flow server's poll, and `/stats` counts it (`calls` went 0, 1, 2).
 - `/stats` reports `reconciliation: ok` (ledger empty, receiver and Spark
   wallets listed).
+- After `pay-host` `5c2d80f2d2` and the check plugin's listing were
+  registered, the next challenged call showed as
+  `{"type":"call","plugin":"explain-error-check","node":"plugin:explain-error-check"}`.
+- The released `openagents` 1.0.0-rc.2 (macOS) reads this 402 as a buyer:
+  `x402 fetch … --max-msat 1000` refused with "the resource costs 15000
+  msat, above the ceiling 1000; nothing was paid", so the owner's paid run
+  needs no new client build. Publishing with a fee needs a newer build than
+  rc.2, so the script publishes on `oa-pay-1`.
 
 Not verified, because the receiver has no channel and no wallet here holds
 owner funds: the paid retry, the settlement and its shares, the payout, and
