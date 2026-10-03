@@ -261,6 +261,12 @@ impl Coder for Here {
     /// an open issue nobody holds ([`super::issue_pick`]). The flow then
     /// claims it like any other, so an engine run never has to.
     fn issue(&self, request: &str, earlier: &str, dir: &Path) -> Option<Box<dyn Issue>> {
+        // Issues live on GitHub: a checkout whose `origin` is elsewhere
+        // (a local bare repository, another forge) has none to work, so
+        // the message runs as an ordinary task (#10398).
+        if !super::issue_run::on_github(dir) {
+            return None;
+        }
         Some(
             match super::issue_run::asked_work_blocking(request, earlier, dir)? {
                 super::issue_run::Asked::Issue(reference) => Box::new(IssueRef {

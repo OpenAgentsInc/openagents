@@ -1124,3 +1124,51 @@ fn the_checks_build_in_a_slot_of_the_task_store() {
     };
     assert!(unslotted.slot(&repo).unwrap().is_none());
 }
+
+/// Issues live on GitHub; a checkout whose `origin` is a local bare
+/// repository or another forge has none, so a coding request there runs
+/// as an ordinary task instead of failing on `gh repo view` (#10398).
+#[test]
+fn only_a_checkout_with_a_github_origin_has_issues_to_work() {
+    let dir = tempfile::tempdir().unwrap();
+    let repo = dir.path().join("repo");
+    let git = |args: &[&str]| {
+        let status = std::process::Command::new("git")
+            .args(args)
+            .current_dir(dir.path())
+            .status()
+            .unwrap();
+        assert!(status.success(), "git {args:?}");
+    };
+    git(&["init", "-q", "-b", "main", "repo"]);
+    assert!(!super::on_github(&repo), "no origin");
+    git(&["-C", "repo", "remote", "add", "origin", "../origin.git"]);
+    assert!(!super::on_github(&repo), "a local bare origin");
+    git(&[
+        "-C",
+        "repo",
+        "remote",
+        "set-url",
+        "origin",
+        "https://gitlab.com/a/b.git",
+    ]);
+    assert!(!super::on_github(&repo), "another forge");
+    git(&[
+        "-C",
+        "repo",
+        "remote",
+        "set-url",
+        "origin",
+        "git@github.com:acme/app.git",
+    ]);
+    assert!(super::on_github(&repo));
+    git(&[
+        "-C",
+        "repo",
+        "remote",
+        "set-url",
+        "origin",
+        "https://github.com/acme/app",
+    ]);
+    assert!(super::on_github(&repo));
+}

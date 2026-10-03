@@ -808,6 +808,17 @@ fn on_thread(request: &str, earlier: &str, workdir: &Path, pick: bool) -> Option
 ///
 /// # Errors
 /// GitHub cannot be read, or no open issue is free.
+/// Whether `dir`'s checkout has an `origin` on GitHub, the only place
+/// its issues can live. A missing remote, a local path, or another forge
+/// is not (#10398).
+#[must_use]
+pub fn on_github(dir: &Path) -> bool {
+    local::git_out(dir, &["remote", "get-url", "origin"])
+        .ok()
+        .and_then(|url| super::publish::github_repository(url.trim()))
+        .is_some()
+}
+
 pub fn pick_here(
     tracker: &dyn Tracker,
     dir: &Path,
