@@ -189,3 +189,10 @@ These need accounts, sessions, or payments, or are internal:
    for the connect link, which names `coder-serve` as the server of
    `/connect`.
 8. Cut DNS over from the `coder` deployment, then retire its site routes.
+
+Live (2026-10-03): revision `coder-web-16006f7873` (image
+`openagents/openagents-web:16006f7873`, fractional sats on `/live`, #10239),
+copied from `coder-web-37def7d8fc`'s spec with the pay host variable and
+both VPC annotations kept, serves 100% of the traffic; `coder-web-37def7d8fc`
+is the rollback (`--to-revisions coder-web-37def7d8fc=100`). Built from
+GitHub by the automation account, applied as `chris@`.
