@@ -1,0 +1,82 @@
+{
+  "schema": "openagents.briefing.calibration-provenance.v1",
+  "private_artifact_digests": [
+    {
+      "artifact": "calibration-registration.json",
+      "sha256": "4e0c1cff6f552fda71100d12c0b1eb10ee412f5ac360b60c1bccb21342904c59"
+    },
+    {
+      "artifact": "calibration-registration-final.json",
+      "sha256": "bd6cd897bf2ea387b40d5cab448a121fe8169994ead3d3000408f40deaec9079"
+    },
+    {
+      "artifact": "amendment.json",
+      "sha256": "545ed2a436f043ba009b069f2e4a7d3251421e3eb56e5c905610c7aea593427d"
+    },
+    {
+      "artifact": "calibration-amendment.json",
+      "sha256": "ddaf58f94caf3790287f0afd698b50678478d70a5a414026743e695d70012473"
+    },
+    {
+      "artifact": "exclusion-amendment.json",
+      "sha256": "c80d127bc71ebc298809f3f85104b5baa2c851957749cdbc00fae3a1265a035a"
+    },
+    {
+      "artifact": "reserve-config-final.json",
+      "sha256": "c16cc3f0c42e635d4fd00f45f380fd39fbeec9fe34db727518d41bbd56199b70"
+    },
+    {
+      "artifact": "calibrate_repeats.py",
+      "sha256": "4aac833ebf063e5bb37eefa5f15411b7181fda5c8ec1be67535aeea15fce2d93"
+    },
+    {
+      "artifact": "calibrate_repeats_final.py",
+      "sha256": "cf04d661e874c5003445305575ee95826fbf746906d59d81e0acf971a1869c6c"
+    },
+    {
+      "artifact": "repeat_binary_remote.py",
+      "sha256": "a5de5983615b5be4cfc6993b54facd08e7440918efc724f55158422bcfb25a27"
+    },
+    {
+      "artifact": "verify_remote.py",
+      "sha256": "a5d9e8ed6ed15be3c438dc1aff508e805df04cc67d6036f3d29621e657d8284a"
+    },
+    {
+      "artifact": "verify_reserve_remote.py",
+      "sha256": "2647e1d14cd83b33eaa7d15124118c57322f8e4eab0b63dc5cbfc471d5c26e0b"
+    },
+    {
+      "artifact": "checker/acceptance.rs",
+      "sha256": "9f99fdeef15526a9794edc7ce0468c82df24c636e4803dd14be246c4341b0e31"
+    },
+    {
+      "artifact": "reference-changes.json",
+      "sha256": "dbe9e7f61f27279d3ab3ece9d1c28e7ea916cefd753f3a2c124109605320b406"
+    },
+    {
+      "artifact": "calibration-preflight.json",
+      "sha256": "f5b89a0b9b163980f4b25f5c476dc413658d68cac8d609321f7f9a8ae711c5b4"
+    },
+    {
+      "artifact": "calibration-cache-fetch.json",
+      "sha256": "83d5dfde70c1f034d6012ba854ca929bf9d31f6a0a110f7e033421f0574c2d8c"
+    },
+    {
+      "artifact": "calibration-permission-diagnostic.json",
+      "sha256": "52e1ff6f0993227f19952eb438130496e469ef2c0e9b5b54127db4a47b62885c"
+    },
+    {
+      "artifact": "pretrial-remote-verification.json",
+      "sha256": "c30be2dec2eca4222c49a83b179ef66ab3fb39089df231f9cd4729e419bfd19f"
+    },
+    {
+      "artifact": "poll-recovery-registration.json",
+      "sha256": "c18533dd4d5234f945b8f7ded4f9af71a05f7b3148ed90ccd1545e9adf915688"
+    },
+    {
+      "artifact": "resume_repetitions.py",
+      "sha256": "13417ca7897de6752b1f683c3927b5ecca9ff3c45212547a0a00b53223b091e2"
+    }
+  ],
+  "redaction": "Published logs replace local source, scratch, tool, Cargo cache, and target paths with role placeholders. Raw transcripts, task inputs, command launch records, sandbox identifiers, and credentials are omitted. Checker and verifier bytes are unchanged. All full-gate attempts and all registered behavior observations are retained."
+}

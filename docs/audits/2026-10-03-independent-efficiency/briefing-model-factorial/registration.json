@@ -1,0 +1,160 @@
+{
+  "schema": "openagents.briefing.factorial-public-registration.v1",
+  "created_at_utc": "2026-10-03T05:48:09.363307+00:00",
+  "status": "Registered before warmups and scored calls.",
+  "private_plan_sha256": "90f8091db08d7fc77a062f4a713bd0b526b8501faffde1cbbf7941399d26fa27",
+  "source_commit": "aeb7f9fb19e0d56c13400702894172ae472e3bcf",
+  "models": {
+    "opus": "claude-opus-5-5",
+    "sonnet": "claude-sonnet-5-5"
+  },
+  "claude_cli_version": "2.1.287",
+  "effort": "medium",
+  "order": [
+    "ABDC",
+    "BCAD",
+    "CDBA",
+    "DACB"
+  ],
+  "runner_sha256": "3191781df7659936d9da67f1a6410a025b4b121174a9d205405cefcad06b34ff",
+  "instruction_guard_sha256": "78b66e55928917b88c38eb14b912c5af8ed1bed8fef7263fce1c8be73b0a07be",
+  "coordinator_sha256": "2527e71b439661d8d9b9a82f756fe8e976036f276676dfaaa9823ed9e37994fe",
+  "initial_reporter_sha256": "c0bb062842fa7cbc53389aa71ec6d289c54b6401be2f04cf1c9da84c9a997d64",
+  "initial_shared_reporter_sha256": "84508746a443a391d636bfc3a8d163909e28f1bd46edebb8b9928571265aa731",
+  "task_config_sha256": "c16cc3f0c42e635d4fd00f45f380fd39fbeec9fe34db727518d41bbd56199b70",
+  "gate": {
+    "accepted_per_arm": 4,
+    "minimum_median_cost_reduction_fraction": 0.2,
+    "minimum_cheaper_blocks": 3,
+    "maximum_median_wall_ratio": 1.1
+  },
+  "input_files": [
+    {
+      "name": "instructions-reserve.txt",
+      "sha256": "70336af075d04e4d255d77d3b1a47b7b7a1590ec0f32fb1f9ad8e548cd2af2df",
+      "bytes": 75781
+    },
+    {
+      "name": "instructions-reserve-manifest.json",
+      "sha256": "45eb5324c9120cea07ca09a5cc96d66a34f373541d1cf8e280f743853dd32d96",
+      "bytes": 997
+    },
+    {
+      "name": "instructions-reserve-block.txt",
+      "sha256": "0951d0984fb2e11d32d9ceac220229767647d91cee8d2293b61bcaf1053e63d0",
+      "bytes": 74758
+    },
+    {
+      "name": "task-reserve.txt",
+      "sha256": "55380267d422504710846303bb3d1b0fcfca5d8d66d386c01519104b7f29814d",
+      "bytes": 2447
+    },
+    {
+      "name": "treatment-reserve.md",
+      "sha256": "429ce7256a1d951d03a9b078d96062c9ea904effd723a2420ad917654a6d1368",
+      "bytes": 14025
+    },
+    {
+      "name": "preparation-reserve.json",
+      "sha256": "0caf8797825b00695f0ef35a8b74008873aa4569c280383a1c2f1c53c39e9d20",
+      "bytes": 16390
+    },
+    {
+      "name": "issue-reserve.json",
+      "sha256": "502f9b9ef2f230a444f14758b5e5e148377cb5ef8d20361388fda3ea6c0dd6c5",
+      "bytes": 2674
+    },
+    {
+      "name": "acceptance.rs",
+      "sha256": "9f99fdeef15526a9794edc7ce0468c82df24c636e4803dd14be246c4341b0e31",
+      "bytes": 8132
+    },
+    {
+      "name": "verify_remote.py",
+      "sha256": "a5d9e8ed6ed15be3c438dc1aff508e805df04cc67d6036f3d29621e657d8284a",
+      "bytes": 9077
+    },
+    {
+      "name": "registration.json",
+      "sha256": "d9b45ab2e9207c18bd0f684be672a0c8624849e5f6e8e4f7ea3fad3683cdb15d",
+      "bytes": 3542
+    },
+    {
+      "name": "amendment.json",
+      "sha256": "545ed2a436f043ba009b069f2e4a7d3251421e3eb56e5c905610c7aea593427d",
+      "bytes": 1694
+    },
+    {
+      "name": "calibration-registration.json",
+      "sha256": "4e0c1cff6f552fda71100d12c0b1eb10ee412f5ac360b60c1bccb21342904c59",
+      "bytes": 4836
+    },
+    {
+      "name": "calibration-amendment.json",
+      "sha256": "ddaf58f94caf3790287f0afd698b50678478d70a5a414026743e695d70012473",
+      "bytes": 2225
+    },
+    {
+      "name": "verify_reserve_remote.py",
+      "sha256": "2647e1d14cd83b33eaa7d15124118c57322f8e4eab0b63dc5cbfc471d5c26e0b",
+      "bytes": 9161
+    },
+    {
+      "name": "exclusion-amendment.json",
+      "sha256": "c80d127bc71ebc298809f3f85104b5baa2c851957749cdbc00fae3a1265a035a",
+      "bytes": 3175
+    },
+    {
+      "name": "calibration-registration-final.json",
+      "sha256": "bd6cd897bf2ea387b40d5cab448a121fe8169994ead3d3000408f40deaec9079",
+      "bytes": 5778
+    },
+    {
+      "name": "plan.md",
+      "sha256": "baf4f3d28ad0a58bc41e185cfc83c776db2e4f36834f112767f9713690ef7dac",
+      "bytes": 8035
+    },
+    {
+      "name": "packer-freeze.json",
+      "sha256": "357463c62149113daa0ea8ec832d08098c1ca473ae15aadbb3b9fc65d8eaf919",
+      "bytes": 2151
+    },
+    {
+      "name": "transport-amendment.json",
+      "sha256": "e5eac41da58e79f1f4079946869ee5800de92ebec37862a003f39f684df2bd9d",
+      "bytes": 1613
+    },
+    {
+      "name": "transport-runner.diff",
+      "sha256": "72a3030ae70c0ec26cb4ca8dae9640bf8c2ecaec8c555b6b54f95d6e0cb0e09b",
+      "bytes": 7103
+    },
+    {
+      "name": "prepare_structure.py",
+      "sha256": "a8d99c27e48c2e3480bbba71e90ebf0f300daba3d569b2be107390c9526eef34",
+      "bytes": 10295
+    },
+    {
+      "name": "summary.json",
+      "sha256": "d8101f3aefaedeb471354af882238967c0ed3de0d4cb05c887d48a828d91aebc",
+      "bytes": 4314
+    },
+    {
+      "name": "pretrial-remote-verification.json",
+      "sha256": "c30be2dec2eca4222c49a83b179ef66ab3fb39089df231f9cd4729e419bfd19f",
+      "bytes": 1220
+    },
+    {
+      "name": "summary.json",
+      "sha256": "fddf3c690e6c25cb514c80885a3b46d595c2cd8b796fe2d1067c25c5d473f414",
+      "bytes": 100643
+    },
+    {
+      "name": "calibration/files.json",
+      "sha256": "cb7a7bdd8fbe10fb614ba0ed37ee07e1bb5b370db40fa4aae005bb6972e9984f",
+      "bytes": 9122
+    }
+  ],
+  "privacy": "The runtime plan contains local operational paths. Its digest is retained; the public record uses input names and content digests.",
+  "pre_publication_addition": "Added the completed calibration file manifest before any warmup, scored call, or publication."
+}

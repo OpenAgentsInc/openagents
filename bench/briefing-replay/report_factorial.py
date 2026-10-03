@@ -106,6 +106,43 @@ def binding(metadata, expected):
     return valid, models
 
 
+def export_transport_retries(metadata, row):
+    """Copy only bounded numeric and enum telemetry; never transport contents."""
+    if 'transport_retries' not in metadata:
+        return
+    records = metadata['transport_retries']
+    row['transport_retries'] = []
+    malformed = not isinstance(records, list) or len(records) > 4096
+    omitted = 0
+    if isinstance(records, list):
+        omitted = max(0, len(records) - 4096)
+        fields = {'method', 'operation', 'attempts', 'http_statuses', 'scheduled_backoff_s', 'outcome', 'elapsed_s'}
+        for record in records[:4096]:
+            if not isinstance(record, dict):
+                malformed, omitted = True, omitted + 1
+                continue
+            statuses, delays = record.get('http_statuses'), record.get('scheduled_backoff_s')
+            valid = (record.get('method') == 'GET'
+                     and record.get('operation') in ('process_status', 'file_read', 'other_get')
+                     and type(record.get('attempts')) is int and 1 <= record['attempts'] <= 3
+                     and isinstance(statuses, list) and 1 <= len(statuses) <= record['attempts']
+                     and all(type(code) is int and 100 <= code <= 599 for code in statuses)
+                     and statuses[0] in (502, 503, 504)
+                     and isinstance(delays, list) and delays in ([], [1], [1, 2])
+                     and all(type(delay) is int for delay in delays)
+                     and record.get('outcome') in ('succeeded', 'exhausted', 'failed')
+                     and report.number(record.get('elapsed_s')) is not None)
+            if not valid:
+                malformed, omitted = True, omitted + 1
+                continue
+            if set(record) != fields:
+                malformed = True
+            row['transport_retries'].append({key: record[key] for key in sorted(fields)})
+    row['transport_retry_records_omitted'] = omitted
+    if malformed:
+        row.setdefault('artifact_errors', []).append('Transport retry telemetry contains malformed, unsupported, or excess fields or records; only valid whitelisted fields are exported.')
+
+
 def recover_run(run_dir, label, config, runs_root, output, builder, prep, condition, error):
     """Retain known cumulative usage when malformed metadata prevents normal export."""
     scrub = report.Scrubber(config, runs_root)
@@ -148,6 +185,10 @@ def recover_run(run_dir, label, config, runs_root, output, builder, prep, condit
     row.update(cost_usd_list_estimate=cost, cost_status='incomplete_lower_bound' if cost is not None else 'unknown',
                recovery_sources=[name for name, _ in records],
                recovery_note='Highest observed cumulative estimate, counted once. Malformed metadata prevents complete accounting or acceptance.')
+    for _, metadata in records:
+        if 'transport_retries' in metadata:
+            export_transport_retries(metadata, row)
+            break
     if sequences:
         name, events = max(sequences, key=lambda item: (max((report.number(e.get('total_cost_usd')) or 0 for e in item[1]), default=0), len(item[1])))
         row['recovered_usage_source'] = name
@@ -190,7 +231,13 @@ def recover_run(run_dir, label, config, runs_root, output, builder, prep, condit
 
 def export_observed(run_dir, label, config, runs_root, output, builder, prep, condition=None):
     try:
-        return report.export_run(run_dir, label, config, runs_root, output, builder, prep, condition)
+        row = report.export_run(run_dir, label, config, runs_root, output, builder, prep, condition)
+        for name in ['result.json', 'progress.json', 'request.json']:
+            path = run_dir / name
+            if path.exists():
+                export_transport_retries(report.read_json(path), row)
+                break
+        return row
     except EXPORT_ERRORS as error:
         return recover_run(run_dir, label, config, runs_root, output, builder, prep, condition, error)
 
@@ -638,6 +685,75 @@ class FactorialTests(unittest.TestCase):
                 self.assertEqual(warmup['cost_usd_list_estimate'], 0.01)
                 self.assertEqual(document['analysis']['primary_verdict'], 'pending')
                 self.assertAlmostEqual(document['cost_accounting']['all_observed_known_cli_cost_usd_list_estimate'], 12.22)
+
+    def retry_record(self):
+        return {'method': 'GET', 'operation': 'process_status', 'attempts': 3,
+                'http_statuses': [502, 503], 'scheduled_backoff_s': [1, 2],
+                'outcome': 'succeeded', 'elapsed_s': 3.25}
+
+    def test_transport_retry_whitelist_retains_scored_and_warmup_records_without_secrets(self):
+        with self.synthetic_study() as (args, builder):
+            scored = args.study_root / 'runs' / coordinator.schedule()[0]['label']
+            warmup = args.study_root / 'warmups/sonnet'
+            def update(run, records):
+                metadata = report.read_json(run / 'result.json')
+                metadata['transport_retries'] = records
+                report.write_json(run / 'result.json', metadata)
+                if (run / 'arm-result.json').exists():
+                    arm = report.read_json(run / 'arm-result.json')
+                    arm['runner_result_sha256'] = report.sha((run / 'result.json').read_bytes())
+                    report.write_json(run / 'arm-result.json', arm)
+            for run in [scored, warmup]:
+                update(run, [self.retry_record()])
+            with mock.patch.object(report, 'PatchBuilder', return_value=builder):
+                document = build_report(args)
+            self.assertEqual(document['analysis']['primary_verdict'], 'cost_gate_passed')
+            for row in [document['runs'][0], document['shared_setup']['warmups'][1]]:
+                self.assertEqual(row['transport_retries'], [self.retry_record()])
+                self.assertFalse(row['artifact_errors'])
+            private = dict(self.retry_record(), url='https://invalid.test/PRIVATE_URL',
+                           path='PRIVATE_PATH', headers={'Authorization': 'PRIVATE_HEADER'},
+                           response_body='PRIVATE_BODY')
+            malformed = dict(self.retry_record(), operation='PRIVATE_OPERATION')
+            for run in [scored, warmup]:
+                update(run, [private, malformed])
+            with mock.patch.object(report, 'PatchBuilder', return_value=builder):
+                document = build_report(args)
+            self.assertEqual(document['analysis']['primary_verdict'], 'pending')
+            for row in [document['runs'][0], document['shared_setup']['warmups'][1]]:
+                self.assertEqual(row['transport_retries'], [self.retry_record()])
+                self.assertEqual(row['transport_retry_records_omitted'], 1)
+                self.assertTrue(row['artifact_errors'])
+            self.assertAlmostEqual(document['cost_accounting']['all_observed_known_cli_cost_usd_list_estimate'], 12.22)
+            self.assertNotIn('PRIVATE_', (args.output / 'metrics.json').read_text())
+
+    def test_malformed_present_retry_telemetry_is_visible_and_legacy_absence_is_allowed(self):
+        row = {}
+        export_transport_retries({}, row)
+        self.assertEqual(row, {})
+        for invalid in [None, 'PRIVATE_VALUE', {}, [None], [dict(self.retry_record(), attempts=True)],
+                        [dict(self.retry_record(), elapsed_s=float('nan'))]]:
+            with self.subTest(invalid=type(invalid).__name__):
+                row = {}
+                export_transport_retries({'transport_retries': invalid}, row)
+                self.assertEqual(row['transport_retries'], [])
+                self.assertTrue(row['artifact_errors'])
+                self.assertNotIn('PRIVATE_VALUE', json.dumps(row))
+
+    def test_retry_telemetry_survives_recovery_from_truncated_final_metadata(self):
+        with self.synthetic_study() as (args, builder):
+            run = args.study_root / 'runs' / coordinator.schedule()[0]['label']
+            progress = report.read_json(run / 'result.json')
+            progress['transport_retries'] = [dict(self.retry_record(), outcome='exhausted', http_statuses=[502, 503, 504])]
+            report.write_json(run / 'progress.json', progress)
+            (run / 'result.json').write_text('{')
+            with mock.patch.object(report, 'PatchBuilder', return_value=builder):
+                document = build_report(args)
+            row = document['runs'][0]
+            self.assertEqual(row['transport_retries'], progress['transport_retries'])
+            self.assertEqual(row['cost_usd_list_estimate'], 1.0)
+            self.assertFalse(row['cost_complete'])
+            self.assertEqual(document['analysis']['primary_verdict'], 'pending')
 
     @contextmanager
     def synthetic_study(self):

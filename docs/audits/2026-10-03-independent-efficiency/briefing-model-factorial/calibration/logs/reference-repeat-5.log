@@ -1,0 +1,10 @@
+
+running 5 tests
+test a_connection_is_not_notified_before_its_first_catalog_read ... ok
+test changes_outside_the_disclosed_root_and_ordinary_files_stay_quiet ... ok
+test importing_a_populated_day_directory_notifies_and_then_lists_the_chat ... ok
+test importing_a_populated_directory_tree_notifies_without_child_writes ... ok
+test starting_a_chat_in_an_existing_directory_still_notifies ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.84s
+

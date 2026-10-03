@@ -1,0 +1,2598 @@
+{
+  "schema": "openagents.briefing.calibration.v1",
+  "source_commit": "aeb7f9fb19e0d56c13400702894172ae472e3bcf",
+  "reference_commit": "fd305b01df5add38e2bd0ef3f862ee85cc9950c3",
+  "package": "coder-connect",
+  "excluded_own_test": "tests::strict_destinations_schemas_and_private_store_permissions",
+  "registered_final_observations": {
+    "observations_per_revision": 11,
+    "full_gates_per_revision": 1,
+    "binary_repeats_per_revision": 10,
+    "observations": [
+      {
+        "label": "base",
+        "phase": "full_gate",
+        "passed": 3,
+        "failed": 2,
+        "ignored": 0,
+        "failure_assertions_checked": true
+      },
+      {
+        "label": "reference",
+        "phase": "full_gate",
+        "passed": 5,
+        "failed": 0,
+        "ignored": 0,
+        "failure_assertions_checked": true
+      },
+      {
+        "label": "base",
+        "phase": "binary_repeat",
+        "repetition": 1,
+        "passed": 3,
+        "failed": 2,
+        "ignored": 0,
+        "failure_assertions_checked": true
+      },
+      {
+        "label": "reference",
+        "phase": "binary_repeat",
+        "repetition": 1,
+        "passed": 5,
+        "failed": 0,
+        "ignored": 0,
+        "failure_assertions_checked": true
+      },
+      {
+        "label": "base",
+        "phase": "binary_repeat",
+        "repetition": 2,
+        "passed": 3,
+        "failed": 2,
+        "ignored": 0,
+        "failure_assertions_checked": true
+      },
+      {
+        "label": "reference",
+        "phase": "binary_repeat",
+        "repetition": 2,
+        "passed": 5,
+        "failed": 0,
+        "ignored": 0,
+        "failure_assertions_checked": true
+      },
+      {
+        "label": "base",
+        "phase": "binary_repeat",
+        "repetition": 3,
+        "passed": 3,
+        "failed": 2,
+        "ignored": 0,
+        "failure_assertions_checked": true
+      },
+      {
+        "label": "reference",
+        "phase": "binary_repeat",
+        "repetition": 3,
+        "passed": 5,
+        "failed": 0,
+        "ignored": 0,
+        "failure_assertions_checked": true
+      },
+      {
+        "label": "base",
+        "phase": "binary_repeat",
+        "repetition": 4,
+        "passed": 3,
+        "failed": 2,
+        "ignored": 0,
+        "failure_assertions_checked": true
+      },
+      {
+        "label": "reference",
+        "phase": "binary_repeat",
+        "repetition": 4,
+        "passed": 5,
+        "failed": 0,
+        "ignored": 0,
+        "failure_assertions_checked": true
+      },
+      {
+        "label": "base",
+        "phase": "binary_repeat",
+        "repetition": 5,
+        "passed": 3,
+        "failed": 2,
+        "ignored": 0,
+        "failure_assertions_checked": true
+      },
+      {
+        "label": "reference",
+        "phase": "binary_repeat",
+        "repetition": 5,
+        "passed": 5,
+        "failed": 0,
+        "ignored": 0,
+        "failure_assertions_checked": true
+      },
+      {
+        "label": "base",
+        "phase": "binary_repeat",
+        "repetition": 6,
+        "passed": 3,
+        "failed": 2,
+        "ignored": 0,
+        "failure_assertions_checked": true
+      },
+      {
+        "label": "reference",
+        "phase": "binary_repeat",
+        "repetition": 6,
+        "passed": 5,
+        "failed": 0,
+        "ignored": 0,
+        "failure_assertions_checked": true
+      },
+      {
+        "label": "base",
+        "phase": "binary_repeat",
+        "repetition": 7,
+        "passed": 3,
+        "failed": 2,
+        "ignored": 0,
+        "failure_assertions_checked": true
+      },
+      {
+        "label": "reference",
+        "phase": "binary_repeat",
+        "repetition": 7,
+        "passed": 5,
+        "failed": 0,
+        "ignored": 0,
+        "failure_assertions_checked": true
+      },
+      {
+        "label": "base",
+        "phase": "binary_repeat",
+        "repetition": 8,
+        "passed": 3,
+        "failed": 2,
+        "ignored": 0,
+        "failure_assertions_checked": true
+      },
+      {
+        "label": "reference",
+        "phase": "binary_repeat",
+        "repetition": 8,
+        "passed": 5,
+        "failed": 0,
+        "ignored": 0,
+        "failure_assertions_checked": true
+      },
+      {
+        "label": "base",
+        "phase": "binary_repeat",
+        "repetition": 9,
+        "passed": 3,
+        "failed": 2,
+        "ignored": 0,
+        "failure_assertions_checked": true
+      },
+      {
+        "label": "reference",
+        "phase": "binary_repeat",
+        "repetition": 9,
+        "passed": 5,
+        "failed": 0,
+        "ignored": 0,
+        "failure_assertions_checked": true
+      },
+      {
+        "label": "base",
+        "phase": "binary_repeat",
+        "repetition": 10,
+        "passed": 3,
+        "failed": 2,
+        "ignored": 0,
+        "failure_assertions_checked": true
+      },
+      {
+        "label": "reference",
+        "phase": "binary_repeat",
+        "repetition": 10,
+        "passed": 5,
+        "failed": 0,
+        "ignored": 0,
+        "failure_assertions_checked": true
+      }
+    ]
+  },
+  "full_gate_attempts": [
+    {
+      "id": "setup-cache-miss",
+      "role": "setup",
+      "private_record_sha256": "3792d3da9bcdf15664114a27979c158e0d2e894ad7e58b38d8712f371009ce98",
+      "source_commit": "aeb7f9fb19e0d56c13400702894172ae472e3bcf",
+      "candidate_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "verifier_passed": false,
+      "checks": [
+        {
+          "name": "initial-format",
+          "command": [
+            "cargo",
+            "fmt",
+            "-p",
+            "coder-connect",
+            "--",
+            "--check"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "wall_s": 0.11393196299923147,
+          "log": "logs/setup-cache-miss-initial-format.log",
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "groups": [],
+          "case_outcomes": [],
+          "assertion_blocks": [],
+          "import_notification_timeout_assertions": 0
+        },
+        {
+          "name": "autoformat",
+          "command": [
+            "cargo",
+            "fmt",
+            "-p",
+            "coder-connect"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "wall_s": 0.11397536499953276,
+          "log": "logs/setup-cache-miss-autoformat.log",
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "groups": [],
+          "case_outcomes": [],
+          "assertion_blocks": [],
+          "import_notification_timeout_assertions": 0
+        },
+        {
+          "name": "format",
+          "command": [
+            "cargo",
+            "fmt",
+            "-p",
+            "coder-connect",
+            "--",
+            "--check"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "wall_s": 0.11408668999956717,
+          "log": "logs/setup-cache-miss-format.log",
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "groups": [],
+          "case_outcomes": [],
+          "assertion_blocks": [],
+          "import_notification_timeout_assertions": 0
+        },
+        {
+          "name": "own-tests",
+          "command": [
+            "cargo",
+            "test",
+            "-p",
+            "coder-connect",
+            "--offline"
+          ],
+          "exit_code": 101,
+          "timed_out": false,
+          "wall_s": 0.26451497499965626,
+          "log": "logs/setup-cache-miss-own-tests.log",
+          "log_sha256": "a96e361e59d707bcefb354ebeac83a9f40675726f1287655990b72e995e60ad1",
+          "groups": [],
+          "case_outcomes": [],
+          "assertion_blocks": [],
+          "import_notification_timeout_assertions": 0
+        },
+        {
+          "name": "acceptance",
+          "command": [
+            "cargo",
+            "+1.97.1",
+            "test",
+            "--manifest-path",
+            "[BASE_CALIBRATION]/checks/full-base-cea1c193/1/harness/Cargo.toml",
+            "--offline",
+            "--test",
+            "acceptance",
+            "--",
+            "--test-threads=1"
+          ],
+          "exit_code": 101,
+          "timed_out": false,
+          "wall_s": 0.03178427199964062,
+          "log": "logs/setup-cache-miss-acceptance.log",
+          "log_sha256": "a96e361e59d707bcefb354ebeac83a9f40675726f1287655990b72e995e60ad1",
+          "groups": [],
+          "case_outcomes": [],
+          "assertion_blocks": [],
+          "import_notification_timeout_assertions": 0
+        }
+      ]
+    },
+    {
+      "id": "base-unamended",
+      "role": "diagnostic",
+      "private_record_sha256": "df92d4a926943afa6bda48a52a32cd29d769a1d2041a7ef8ea03f2b46ef3b9ff",
+      "source_commit": "aeb7f9fb19e0d56c13400702894172ae472e3bcf",
+      "candidate_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "verifier_passed": false,
+      "checks": [
+        {
+          "name": "initial-format",
+          "command": [
+            "cargo",
+            "fmt",
+            "-p",
+            "coder-connect",
+            "--",
+            "--check"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "wall_s": 0.11402207099945372,
+          "log": "logs/base-unamended-initial-format.log",
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "groups": [],
+          "case_outcomes": [],
+          "assertion_blocks": [],
+          "import_notification_timeout_assertions": 0
+        },
+        {
+          "name": "autoformat",
+          "command": [
+            "cargo",
+            "fmt",
+            "-p",
+            "coder-connect"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "wall_s": 0.11404256900004839,
+          "log": "logs/base-unamended-autoformat.log",
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "groups": [],
+          "case_outcomes": [],
+          "assertion_blocks": [],
+          "import_notification_timeout_assertions": 0
+        },
+        {
+          "name": "format",
+          "command": [
+            "cargo",
+            "fmt",
+            "-p",
+            "coder-connect",
+            "--",
+            "--check"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "wall_s": 0.11418418300036137,
+          "log": "logs/base-unamended-format.log",
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "groups": [],
+          "case_outcomes": [],
+          "assertion_blocks": [],
+          "import_notification_timeout_assertions": 0
+        },
+        {
+          "name": "own-tests",
+          "command": [
+            "cargo",
+            "test",
+            "-p",
+            "coder-connect",
+            "--offline"
+          ],
+          "exit_code": 101,
+          "timed_out": false,
+          "wall_s": 14.010354842000197,
+          "log": "logs/base-unamended-own-tests.log",
+          "log_sha256": "0c06a7f88c3104a7973991cb69af83bffa606005f84215dcb00209b56da48656",
+          "groups": [
+            "test result: FAILED. 41 passed; 2 failed; 5 ignored; 0 measured; 0 filtered out; finished in 4.38s"
+          ],
+          "case_outcomes": [
+            {
+              "test": "cli::tests::short_pair_help_does_not_open_a_host",
+              "outcome": "ok"
+            },
+            {
+              "test": "cli::tests::short_pair_cannot_dispatch_other_observer_commands",
+              "outcome": "ok"
+            },
+            {
+              "test": "cli::tests::short_pair_preserves_source_exclusions_without_creating_state",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::bench::bench_end_to_end",
+              "outcome": "ignored, benchmark"
+            },
+            {
+              "test": "tests::bench::bench_host_handling",
+              "outcome": "ignored, benchmark"
+            },
+            {
+              "test": "tests::active_store_lock_refuses_concurrent_administration_without_losing_revocation",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::a_failed_request_log_write_returns_no_reply_and_a_retry_reads",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::another_process_never_reads_a_bound_request_again",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::backward_page_seals_and_verifies_from_the_newest_record",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::connection_pins_identity_scope_and_expiry_without_disclosing_paths",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::a_revocation_another_writer_saved_ends_reads_at_once",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::catalog_page_cursor_and_exact_request_correlation",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::direct::a_detached_body_must_be_the_bytes_its_envelope_names",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::changed_root_and_unadmitted_source_refuse",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::cancelled_exchange_discards_socket_before_the_next_observation",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::direct::a_host_without_direct_reads_falls_back_to_the_relay_route",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::direct::a_request_is_read_once_on_either_route",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::authenticated_encrypted_relay_roundtrip_uses_synthetic_data_only",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::direct::direct_requests_pass_every_relay_check_but_the_relay_binding",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::fresh_tolerates_a_reader_clock_behind_the_issuer",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::durable_revocation_blocks_cached_retries_and_source_revocation_ends_grant",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::expired_replies_of_every_grant_leave_the_log",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::direct::a_direct_connection_reads_at_once_and_nudges_when_a_read_chat_grows",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::direct::direct_bounds_apply_only_to_direct_replies",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::pairing::compact_invitation_is_bounded_and_expiry_and_destination_are_local",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::a_warm_link_carries_concurrent_reads_to_a_concurrent_host",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::pairing::a_coder_only_host_serves_only_coder_chats_and_their_delegates_under_any_grant",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::pairing::a_device_that_pairs_again_holds_one_grant",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::pairing::export_synthetic_qr_fixture",
+              "outcome": "ignored, writes a synthetic invitation SVG and exact payload for an independent native QR decoder"
+            },
+            {
+              "test": "tests::pairing::production_bootstrap_reads_only_generated_history",
+              "outcome": "ignored, publishes generated pairing and synthetic history only to an explicitly selected relay"
+            },
+            {
+              "test": "tests::pairing::coder_task_source_pairs_and_pages_backward_through_the_observer",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::pairing::bootstrap_cancellation_revocation_and_changed_roots_refuse",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::pairing::qr_modules_are_a_square_with_a_quiet_zone_and_finder_patterns",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::pairing::expiry_is_rechecked_and_failed_save_returns_no_success_or_memory_claim",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::pairing::response_identity_and_original_request_are_checked",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::pairing::wrong_capability_or_signature_cannot_consume_invitation",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::production_relay_reads_only_generated_history",
+              "outcome": "ignored, requires an explicitly selected production relay and synthetic publication"
+            },
+            {
+              "test": "tests::pairing::two_devices_racing_for_one_invitation_cannot_both_claim_it",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::pairing::successful_claim_is_single_device_and_same_grant_after_reopen",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::request_expiry_rechecked_after_read_and_rate_is_durable",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::strict_destinations_schemas_and_private_store_permissions",
+              "outcome": "FAILED"
+            },
+            {
+              "test": "tests::signed_corrupt_base64_or_offsets_are_refused_by_client",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::pairing::encrypted_pairing_then_catalog_and_page_reuses_existing_observer",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::signed_transcript_record_regrouping_and_false_cursors_are_refused",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::direct::a_coder_only_host_watches_only_the_coder_task_directory",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::pairing::expired_admissions_are_pruned_by_the_invitation_flow",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::pairing::revoked_grants_never_block_a_new_pairing",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::direct::a_direct_connection_nudges_the_catalog_when_any_harness_starts_a_chat",
+              "outcome": "FAILED"
+            }
+          ],
+          "assertion_blocks": [
+            "thread 'tests::strict_destinations_schemas_and_private_store_permissions' (107644) panicked at crates/coder-connect/src/tests/mod.rs:531:36:\ncalled `Result::unwrap_err()` on an `Ok` value: [\"wss://relay.example/\"]",
+            "thread 'tests::direct::a_direct_connection_nudges_the_catalog_when_any_harness_starts_a_chat' (107603) panicked at crates/coder-connect/src/tests/direct.rs:400:10:\na nudge: Elapsed(())"
+          ],
+          "import_notification_timeout_assertions": 0
+        },
+        {
+          "name": "acceptance",
+          "command": [
+            "cargo",
+            "+1.97.1",
+            "test",
+            "--manifest-path",
+            "[BASE_CALIBRATION]/checks/full-base-031eb910/1/harness/Cargo.toml",
+            "--offline",
+            "--test",
+            "acceptance",
+            "--",
+            "--test-threads=1"
+          ],
+          "exit_code": 101,
+          "timed_out": false,
+          "wall_s": 15.00298390900025,
+          "log": "logs/base-unamended-acceptance.log",
+          "log_sha256": "49c8924d90c3426e71c697a2bad7f84b2aae5f0e3cbea2968b766e45030f3b6b",
+          "groups": [
+            "test result: FAILED. 3 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.22s"
+          ],
+          "case_outcomes": [
+            {
+              "test": "a_connection_is_not_notified_before_its_first_catalog_read",
+              "outcome": "ok"
+            },
+            {
+              "test": "changes_outside_the_disclosed_root_and_ordinary_files_stay_quiet",
+              "outcome": "ok"
+            },
+            {
+              "test": "importing_a_populated_day_directory_notifies_and_then_lists_the_chat",
+              "outcome": "FAILED"
+            },
+            {
+              "test": "importing_a_populated_directory_tree_notifies_without_child_writes",
+              "outcome": "FAILED"
+            },
+            {
+              "test": "starting_a_chat_in_an_existing_directory_still_notifies",
+              "outcome": "ok"
+            }
+          ],
+          "assertion_blocks": [
+            "thread 'importing_a_populated_day_directory_notifies_and_then_lists_the_chat' (107818) panicked at checker.rs:121:14:\nA newly available chat must promptly notify a catalog reader.: Elapsed(())",
+            "thread 'importing_a_populated_directory_tree_notifies_without_child_writes' (107854) panicked at checker.rs:121:14:\nA newly available chat must promptly notify a catalog reader.: Elapsed(())"
+          ],
+          "import_notification_timeout_assertions": 2
+        }
+      ]
+    },
+    {
+      "id": "reference-unamended",
+      "role": "diagnostic",
+      "private_record_sha256": "2f3493be217dd236cb5b31e84bd50d206fe1932cc2a4685444cd2daa442e4e50",
+      "source_commit": "aeb7f9fb19e0d56c13400702894172ae472e3bcf",
+      "candidate_digest": "6f2302a0c63484b7dc09c2d05729e33f4a2fbd7b63eda8a35645aab0da2a4e19",
+      "verifier_passed": true,
+      "checks": [
+        {
+          "name": "initial-format",
+          "command": [
+            "cargo",
+            "fmt",
+            "-p",
+            "coder-connect",
+            "--",
+            "--check"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "wall_s": 0.11437902000034228,
+          "log": "logs/reference-unamended-initial-format.log",
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "groups": [],
+          "case_outcomes": [],
+          "assertion_blocks": [],
+          "import_notification_timeout_assertions": 0
+        },
+        {
+          "name": "autoformat",
+          "command": [
+            "cargo",
+            "fmt",
+            "-p",
+            "coder-connect"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "wall_s": 0.11443430300005275,
+          "log": "logs/reference-unamended-autoformat.log",
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "groups": [],
+          "case_outcomes": [],
+          "assertion_blocks": [],
+          "import_notification_timeout_assertions": 0
+        },
+        {
+          "name": "format",
+          "command": [
+            "cargo",
+            "fmt",
+            "-p",
+            "coder-connect",
+            "--",
+            "--check"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "wall_s": 0.16495224200025405,
+          "log": "logs/reference-unamended-format.log",
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "groups": [],
+          "case_outcomes": [],
+          "assertion_blocks": [],
+          "import_notification_timeout_assertions": 0
+        },
+        {
+          "name": "own-tests",
+          "command": [
+            "cargo",
+            "test",
+            "-p",
+            "coder-connect",
+            "--offline"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "wall_s": 5.642549477000102,
+          "log": "logs/reference-unamended-own-tests.log",
+          "log_sha256": "b446188159729349351e042ffb9573980e247a3562ea7a739f3bd8449ce6e8dd",
+          "groups": [
+            "test result: ok. 43 passed; 0 failed; 5 ignored; 0 measured; 0 filtered out; finished in 1.72s",
+            "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+            "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.24s",
+            "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+          ],
+          "case_outcomes": [
+            {
+              "test": "cli::tests::short_pair_help_does_not_open_a_host",
+              "outcome": "ok"
+            },
+            {
+              "test": "cli::tests::short_pair_cannot_dispatch_other_observer_commands",
+              "outcome": "ok"
+            },
+            {
+              "test": "cli::tests::short_pair_preserves_source_exclusions_without_creating_state",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::bench::bench_end_to_end",
+              "outcome": "ignored, benchmark"
+            },
+            {
+              "test": "tests::bench::bench_host_handling",
+              "outcome": "ignored, benchmark"
+            },
+            {
+              "test": "tests::active_store_lock_refuses_concurrent_administration_without_losing_revocation",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::another_process_never_reads_a_bound_request_again",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::a_failed_request_log_write_returns_no_reply_and_a_retry_reads",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::backward_page_seals_and_verifies_from_the_newest_record",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::a_revocation_another_writer_saved_ends_reads_at_once",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::connection_pins_identity_scope_and_expiry_without_disclosing_paths",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::direct::a_detached_body_must_be_the_bytes_its_envelope_names",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::catalog_page_cursor_and_exact_request_correlation",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::changed_root_and_unadmitted_source_refuse",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::cancelled_exchange_discards_socket_before_the_next_observation",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::direct::a_request_is_read_once_on_either_route",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::direct::a_host_without_direct_reads_falls_back_to_the_relay_route",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::authenticated_encrypted_relay_roundtrip_uses_synthetic_data_only",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::direct::direct_requests_pass_every_relay_check_but_the_relay_binding",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::fresh_tolerates_a_reader_clock_behind_the_issuer",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::durable_revocation_blocks_cached_retries_and_source_revocation_ends_grant",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::direct::direct_bounds_apply_only_to_direct_replies",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::direct::a_direct_connection_reads_at_once_and_nudges_when_a_read_chat_grows",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::expired_replies_of_every_grant_leave_the_log",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::a_warm_link_carries_concurrent_reads_to_a_concurrent_host",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::pairing::compact_invitation_is_bounded_and_expiry_and_destination_are_local",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::pairing::a_coder_only_host_serves_only_coder_chats_and_their_delegates_under_any_grant",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::pairing::bootstrap_cancellation_revocation_and_changed_roots_refuse",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::pairing::export_synthetic_qr_fixture",
+              "outcome": "ignored, writes a synthetic invitation SVG and exact payload for an independent native QR decoder"
+            },
+            {
+              "test": "tests::pairing::production_bootstrap_reads_only_generated_history",
+              "outcome": "ignored, publishes generated pairing and synthetic history only to an explicitly selected relay"
+            },
+            {
+              "test": "tests::pairing::coder_task_source_pairs_and_pages_backward_through_the_observer",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::pairing::qr_modules_are_a_square_with_a_quiet_zone_and_finder_patterns",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::pairing::expiry_is_rechecked_and_failed_save_returns_no_success_or_memory_claim",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::pairing::a_device_that_pairs_again_holds_one_grant",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::pairing::response_identity_and_original_request_are_checked",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::pairing::wrong_capability_or_signature_cannot_consume_invitation",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::production_relay_reads_only_generated_history",
+              "outcome": "ignored, requires an explicitly selected production relay and synthetic publication"
+            },
+            {
+              "test": "tests::pairing::two_devices_racing_for_one_invitation_cannot_both_claim_it",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::pairing::successful_claim_is_single_device_and_same_grant_after_reopen",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::request_expiry_rechecked_after_read_and_rate_is_durable",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::strict_destinations_schemas_and_private_store_permissions",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::signed_corrupt_base64_or_offsets_are_refused_by_client",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::direct::a_direct_connection_nudges_the_catalog_when_any_harness_starts_a_chat",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::pairing::encrypted_pairing_then_catalog_and_page_reuses_existing_observer",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::signed_transcript_record_regrouping_and_false_cursors_are_refused",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::pairing::expired_admissions_are_pruned_by_the_invitation_flow",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::direct::a_coder_only_host_watches_only_the_coder_task_directory",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::pairing::revoked_grants_never_block_a_new_pairing",
+              "outcome": "ok"
+            },
+            {
+              "test": "local_pair_and_revoke_cli_retain_only_public_connection_output",
+              "outcome": "ok"
+            },
+            {
+              "test": "connect_command_displays_qr_pairs_and_retains_only_the_selected_roots",
+              "outcome": "ok"
+            }
+          ],
+          "assertion_blocks": [],
+          "import_notification_timeout_assertions": 0
+        },
+        {
+          "name": "acceptance",
+          "command": [
+            "cargo",
+            "+1.97.1",
+            "test",
+            "--manifest-path",
+            "[REFERENCE_CALIBRATION]/checks/diagnostic-reference-3a601df0/1/harness/Cargo.toml",
+            "--offline",
+            "--test",
+            "acceptance",
+            "--",
+            "--test-threads=1"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "wall_s": 8.092017830999794,
+          "log": "logs/reference-unamended-acceptance.log",
+          "log_sha256": "b1e239443658472fa8ea731f080aec8489a10560ab98f49c425226fe64699ab1",
+          "groups": [
+            "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.88s"
+          ],
+          "case_outcomes": [
+            {
+              "test": "a_connection_is_not_notified_before_its_first_catalog_read",
+              "outcome": "ok"
+            },
+            {
+              "test": "changes_outside_the_disclosed_root_and_ordinary_files_stay_quiet",
+              "outcome": "ok"
+            },
+            {
+              "test": "importing_a_populated_day_directory_notifies_and_then_lists_the_chat",
+              "outcome": "ok"
+            },
+            {
+              "test": "importing_a_populated_directory_tree_notifies_without_child_writes",
+              "outcome": "ok"
+            },
+            {
+              "test": "starting_a_chat_in_an_existing_directory_still_notifies",
+              "outcome": "ok"
+            }
+          ],
+          "assertion_blocks": [],
+          "import_notification_timeout_assertions": 0
+        }
+      ]
+    },
+    {
+      "id": "base-final",
+      "role": "registered_final",
+      "private_record_sha256": "4e4b64cef15623d3c6c996f00e7031e7017298a858da7367a2a9d2d2dbfbcfe2",
+      "source_commit": "aeb7f9fb19e0d56c13400702894172ae472e3bcf",
+      "candidate_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "verifier_passed": false,
+      "checks": [
+        {
+          "name": "initial-format",
+          "command": [
+            "cargo",
+            "fmt",
+            "-p",
+            "coder-connect",
+            "--",
+            "--check"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "wall_s": 0.11391373000060412,
+          "log": "logs/base-final-initial-format.log",
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "groups": [],
+          "case_outcomes": [],
+          "assertion_blocks": [],
+          "import_notification_timeout_assertions": 0
+        },
+        {
+          "name": "autoformat",
+          "command": [
+            "cargo",
+            "fmt",
+            "-p",
+            "coder-connect"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "wall_s": 0.11403501699987828,
+          "log": "logs/base-final-autoformat.log",
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "groups": [],
+          "case_outcomes": [],
+          "assertion_blocks": [],
+          "import_notification_timeout_assertions": 0
+        },
+        {
+          "name": "format",
+          "command": [
+            "cargo",
+            "fmt",
+            "-p",
+            "coder-connect",
+            "--",
+            "--check"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "wall_s": 0.11409395600003336,
+          "log": "logs/base-final-format.log",
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "groups": [],
+          "case_outcomes": [],
+          "assertion_blocks": [],
+          "import_notification_timeout_assertions": 0
+        },
+        {
+          "name": "own-tests",
+          "command": [
+            "cargo",
+            "test",
+            "-p",
+            "coder-connect",
+            "--offline",
+            "--",
+            "--skip",
+            "tests::strict_destinations_schemas_and_private_store_permissions"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "wall_s": 2.0683216309998897,
+          "log": "logs/base-final-own-tests.log",
+          "log_sha256": "f01f159e3d33dadb9d0833118a0735a927aee7dfd5a44e8db1cddbe414efcfac",
+          "groups": [
+            "test result: ok. 42 passed; 0 failed; 5 ignored; 0 measured; 1 filtered out; finished in 1.51s",
+            "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+            "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.24s",
+            "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+          ],
+          "case_outcomes": [
+            {
+              "test": "cli::tests::short_pair_help_does_not_open_a_host",
+              "outcome": "ok"
+            },
+            {
+              "test": "cli::tests::short_pair_cannot_dispatch_other_observer_commands",
+              "outcome": "ok"
+            },
+            {
+              "test": "cli::tests::short_pair_preserves_source_exclusions_without_creating_state",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::bench::bench_end_to_end",
+              "outcome": "ignored, benchmark"
+            },
+            {
+              "test": "tests::bench::bench_host_handling",
+              "outcome": "ignored, benchmark"
+            },
+            {
+              "test": "tests::active_store_lock_refuses_concurrent_administration_without_losing_revocation",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::a_failed_request_log_write_returns_no_reply_and_a_retry_reads",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::another_process_never_reads_a_bound_request_again",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::backward_page_seals_and_verifies_from_the_newest_record",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::a_revocation_another_writer_saved_ends_reads_at_once",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::connection_pins_identity_scope_and_expiry_without_disclosing_paths",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::direct::a_detached_body_must_be_the_bytes_its_envelope_names",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::catalog_page_cursor_and_exact_request_correlation",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::changed_root_and_unadmitted_source_refuse",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::cancelled_exchange_discards_socket_before_the_next_observation",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::direct::a_host_without_direct_reads_falls_back_to_the_relay_route",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::direct::a_request_is_read_once_on_either_route",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::durable_revocation_blocks_cached_retries_and_source_revocation_ends_grant",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::authenticated_encrypted_relay_roundtrip_uses_synthetic_data_only",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::fresh_tolerates_a_reader_clock_behind_the_issuer",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::direct::direct_requests_pass_every_relay_check_but_the_relay_binding",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::direct::a_direct_connection_reads_at_once_and_nudges_when_a_read_chat_grows",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::direct::direct_bounds_apply_only_to_direct_replies",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::expired_replies_of_every_grant_leave_the_log",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::pairing::a_coder_only_host_serves_only_coder_chats_and_their_delegates_under_any_grant",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::pairing::compact_invitation_is_bounded_and_expiry_and_destination_are_local",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::a_warm_link_carries_concurrent_reads_to_a_concurrent_host",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::pairing::bootstrap_cancellation_revocation_and_changed_roots_refuse",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::pairing::export_synthetic_qr_fixture",
+              "outcome": "ignored, writes a synthetic invitation SVG and exact payload for an independent native QR decoder"
+            },
+            {
+              "test": "tests::pairing::production_bootstrap_reads_only_generated_history",
+              "outcome": "ignored, publishes generated pairing and synthetic history only to an explicitly selected relay"
+            },
+            {
+              "test": "tests::pairing::coder_task_source_pairs_and_pages_backward_through_the_observer",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::pairing::a_device_that_pairs_again_holds_one_grant",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::pairing::qr_modules_are_a_square_with_a_quiet_zone_and_finder_patterns",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::pairing::expiry_is_rechecked_and_failed_save_returns_no_success_or_memory_claim",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::pairing::response_identity_and_original_request_are_checked",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::pairing::wrong_capability_or_signature_cannot_consume_invitation",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::production_relay_reads_only_generated_history",
+              "outcome": "ignored, requires an explicitly selected production relay and synthetic publication"
+            },
+            {
+              "test": "tests::pairing::two_devices_racing_for_one_invitation_cannot_both_claim_it",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::pairing::successful_claim_is_single_device_and_same_grant_after_reopen",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::request_expiry_rechecked_after_read_and_rate_is_durable",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::signed_corrupt_base64_or_offsets_are_refused_by_client",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::signed_transcript_record_regrouping_and_false_cursors_are_refused",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::pairing::encrypted_pairing_then_catalog_and_page_reuses_existing_observer",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::direct::a_direct_connection_nudges_the_catalog_when_any_harness_starts_a_chat",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::pairing::expired_admissions_are_pruned_by_the_invitation_flow",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::direct::a_coder_only_host_watches_only_the_coder_task_directory",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::pairing::revoked_grants_never_block_a_new_pairing",
+              "outcome": "ok"
+            },
+            {
+              "test": "local_pair_and_revoke_cli_retain_only_public_connection_output",
+              "outcome": "ok"
+            },
+            {
+              "test": "connect_command_displays_qr_pairs_and_retains_only_the_selected_roots",
+              "outcome": "ok"
+            }
+          ],
+          "assertion_blocks": [],
+          "import_notification_timeout_assertions": 0
+        },
+        {
+          "name": "acceptance",
+          "command": [
+            "cargo",
+            "+1.97.1",
+            "test",
+            "--manifest-path",
+            "[BASE_CALIBRATION]/checks/full-base-ae8e2369/1/harness/Cargo.toml",
+            "--offline",
+            "--test",
+            "acceptance",
+            "--",
+            "--test-threads=1"
+          ],
+          "exit_code": 101,
+          "timed_out": false,
+          "wall_s": 9.387290573000428,
+          "log": "logs/base-final-acceptance.log",
+          "log_sha256": "4dde277de583e0081b7fd984b2304ff3b3deafc7002b535c4be7a158a05762eb",
+          "groups": [
+            "test result: FAILED. 3 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.76s"
+          ],
+          "case_outcomes": [
+            {
+              "test": "a_connection_is_not_notified_before_its_first_catalog_read",
+              "outcome": "ok"
+            },
+            {
+              "test": "changes_outside_the_disclosed_root_and_ordinary_files_stay_quiet",
+              "outcome": "ok"
+            },
+            {
+              "test": "importing_a_populated_day_directory_notifies_and_then_lists_the_chat",
+              "outcome": "FAILED"
+            },
+            {
+              "test": "importing_a_populated_directory_tree_notifies_without_child_writes",
+              "outcome": "FAILED"
+            },
+            {
+              "test": "starting_a_chat_in_an_existing_directory_still_notifies",
+              "outcome": "ok"
+            }
+          ],
+          "assertion_blocks": [
+            "thread 'importing_a_populated_day_directory_notifies_and_then_lists_the_chat' (110372) panicked at checker.rs:121:14:\nA newly available chat must promptly notify a catalog reader.: Elapsed(())",
+            "thread 'importing_a_populated_directory_tree_notifies_without_child_writes' (110601) panicked at checker.rs:121:14:\nA newly available chat must promptly notify a catalog reader.: Elapsed(())"
+          ],
+          "import_notification_timeout_assertions": 2
+        }
+      ]
+    },
+    {
+      "id": "reference-final",
+      "role": "registered_final",
+      "private_record_sha256": "c349ee0a3a78cc70c95a4e145a2fbcb8fc098d594ea13e3a7ee3ccbc9cfd55bd",
+      "source_commit": "aeb7f9fb19e0d56c13400702894172ae472e3bcf",
+      "candidate_digest": "6f2302a0c63484b7dc09c2d05729e33f4a2fbd7b63eda8a35645aab0da2a4e19",
+      "verifier_passed": true,
+      "checks": [
+        {
+          "name": "initial-format",
+          "command": [
+            "cargo",
+            "fmt",
+            "-p",
+            "coder-connect",
+            "--",
+            "--check"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "wall_s": 0.11397843899976579,
+          "log": "logs/reference-final-initial-format.log",
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "groups": [],
+          "case_outcomes": [],
+          "assertion_blocks": [],
+          "import_notification_timeout_assertions": 0
+        },
+        {
+          "name": "autoformat",
+          "command": [
+            "cargo",
+            "fmt",
+            "-p",
+            "coder-connect"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "wall_s": 0.11456748900036473,
+          "log": "logs/reference-final-autoformat.log",
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "groups": [],
+          "case_outcomes": [],
+          "assertion_blocks": [],
+          "import_notification_timeout_assertions": 0
+        },
+        {
+          "name": "format",
+          "command": [
+            "cargo",
+            "fmt",
+            "-p",
+            "coder-connect",
+            "--",
+            "--check"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "wall_s": 0.1143694089996643,
+          "log": "logs/reference-final-format.log",
+          "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "groups": [],
+          "case_outcomes": [],
+          "assertion_blocks": [],
+          "import_notification_timeout_assertions": 0
+        },
+        {
+          "name": "own-tests",
+          "command": [
+            "cargo",
+            "test",
+            "-p",
+            "coder-connect",
+            "--offline",
+            "--",
+            "--skip",
+            "tests::strict_destinations_schemas_and_private_store_permissions"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "wall_s": 5.279619267000271,
+          "log": "logs/reference-final-own-tests.log",
+          "log_sha256": "4f35d96535a9ffe8fd971fd8ea8f7c0670e6cc29c0d4401e50f82d3f3b41197f",
+          "groups": [
+            "test result: ok. 42 passed; 0 failed; 5 ignored; 0 measured; 1 filtered out; finished in 1.74s",
+            "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s",
+            "test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.42s",
+            "test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s"
+          ],
+          "case_outcomes": [
+            {
+              "test": "cli::tests::short_pair_help_does_not_open_a_host",
+              "outcome": "ok"
+            },
+            {
+              "test": "cli::tests::short_pair_cannot_dispatch_other_observer_commands",
+              "outcome": "ok"
+            },
+            {
+              "test": "cli::tests::short_pair_preserves_source_exclusions_without_creating_state",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::bench::bench_end_to_end",
+              "outcome": "ignored, benchmark"
+            },
+            {
+              "test": "tests::bench::bench_host_handling",
+              "outcome": "ignored, benchmark"
+            },
+            {
+              "test": "tests::active_store_lock_refuses_concurrent_administration_without_losing_revocation",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::a_failed_request_log_write_returns_no_reply_and_a_retry_reads",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::another_process_never_reads_a_bound_request_again",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::backward_page_seals_and_verifies_from_the_newest_record",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::a_revocation_another_writer_saved_ends_reads_at_once",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::connection_pins_identity_scope_and_expiry_without_disclosing_paths",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::direct::a_detached_body_must_be_the_bytes_its_envelope_names",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::catalog_page_cursor_and_exact_request_correlation",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::changed_root_and_unadmitted_source_refuse",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::cancelled_exchange_discards_socket_before_the_next_observation",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::direct::a_request_is_read_once_on_either_route",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::direct::a_host_without_direct_reads_falls_back_to_the_relay_route",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::authenticated_encrypted_relay_roundtrip_uses_synthetic_data_only",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::durable_revocation_blocks_cached_retries_and_source_revocation_ends_grant",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::fresh_tolerates_a_reader_clock_behind_the_issuer",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::direct::direct_requests_pass_every_relay_check_but_the_relay_binding",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::direct::a_direct_connection_reads_at_once_and_nudges_when_a_read_chat_grows",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::direct::direct_bounds_apply_only_to_direct_replies",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::expired_replies_of_every_grant_leave_the_log",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::a_warm_link_carries_concurrent_reads_to_a_concurrent_host",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::pairing::compact_invitation_is_bounded_and_expiry_and_destination_are_local",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::pairing::a_coder_only_host_serves_only_coder_chats_and_their_delegates_under_any_grant",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::pairing::coder_task_source_pairs_and_pages_backward_through_the_observer",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::pairing::export_synthetic_qr_fixture",
+              "outcome": "ignored, writes a synthetic invitation SVG and exact payload for an independent native QR decoder"
+            },
+            {
+              "test": "tests::pairing::production_bootstrap_reads_only_generated_history",
+              "outcome": "ignored, publishes generated pairing and synthetic history only to an explicitly selected relay"
+            },
+            {
+              "test": "tests::pairing::bootstrap_cancellation_revocation_and_changed_roots_refuse",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::pairing::qr_modules_are_a_square_with_a_quiet_zone_and_finder_patterns",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::pairing::a_device_that_pairs_again_holds_one_grant",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::pairing::expiry_is_rechecked_and_failed_save_returns_no_success_or_memory_claim",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::pairing::response_identity_and_original_request_are_checked",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::pairing::wrong_capability_or_signature_cannot_consume_invitation",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::production_relay_reads_only_generated_history",
+              "outcome": "ignored, requires an explicitly selected production relay and synthetic publication"
+            },
+            {
+              "test": "tests::pairing::two_devices_racing_for_one_invitation_cannot_both_claim_it",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::pairing::successful_claim_is_single_device_and_same_grant_after_reopen",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::direct::a_direct_connection_nudges_the_catalog_when_any_harness_starts_a_chat",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::request_expiry_rechecked_after_read_and_rate_is_durable",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::pairing::encrypted_pairing_then_catalog_and_page_reuses_existing_observer",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::signed_corrupt_base64_or_offsets_are_refused_by_client",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::signed_transcript_record_regrouping_and_false_cursors_are_refused",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::direct::a_coder_only_host_watches_only_the_coder_task_directory",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::pairing::expired_admissions_are_pruned_by_the_invitation_flow",
+              "outcome": "ok"
+            },
+            {
+              "test": "tests::pairing::revoked_grants_never_block_a_new_pairing",
+              "outcome": "ok"
+            },
+            {
+              "test": "local_pair_and_revoke_cli_retain_only_public_connection_output",
+              "outcome": "ok"
+            },
+            {
+              "test": "connect_command_displays_qr_pairs_and_retains_only_the_selected_roots",
+              "outcome": "ok"
+            }
+          ],
+          "assertion_blocks": [],
+          "import_notification_timeout_assertions": 0
+        },
+        {
+          "name": "acceptance",
+          "command": [
+            "cargo",
+            "+1.97.1",
+            "test",
+            "--manifest-path",
+            "[REFERENCE_CALIBRATION]/checks/full-reference-d6947c60/1/harness/Cargo.toml",
+            "--offline",
+            "--test",
+            "acceptance",
+            "--",
+            "--test-threads=1"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "wall_s": 2.8200847220005016,
+          "log": "logs/reference-final-acceptance.log",
+          "log_sha256": "95f008a5e4ff94c98a3a53671788b8749d9a4c495a68414599b63ebf7cbd0819",
+          "groups": [
+            "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.86s"
+          ],
+          "case_outcomes": [
+            {
+              "test": "a_connection_is_not_notified_before_its_first_catalog_read",
+              "outcome": "ok"
+            },
+            {
+              "test": "changes_outside_the_disclosed_root_and_ordinary_files_stay_quiet",
+              "outcome": "ok"
+            },
+            {
+              "test": "importing_a_populated_day_directory_notifies_and_then_lists_the_chat",
+              "outcome": "ok"
+            },
+            {
+              "test": "importing_a_populated_directory_tree_notifies_without_child_writes",
+              "outcome": "ok"
+            },
+            {
+              "test": "starting_a_chat_in_an_existing_directory_still_notifies",
+              "outcome": "ok"
+            }
+          ],
+          "assertion_blocks": [],
+          "import_notification_timeout_assertions": 0
+        }
+      ]
+    }
+  ],
+  "retained_executables": {
+    "base": {
+      "sha256": "2a589092ee0fa79f47e6966e665228889be77994dfe0882bac8dac11defaecbe",
+      "bytes": 105120448,
+      "candidate_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "checker_sha256": "9f99fdeef15526a9794edc7ce0468c82df24c636e4803dd14be246c4341b0e31",
+      "allowed_source_tree_sha256": "e02ae086acc878b35d32f7ab55edf57e551afdd597a7fe6a6e2bbf729934d700",
+      "test_names": [
+        "a_connection_is_not_notified_before_its_first_catalog_read",
+        "changes_outside_the_disclosed_root_and_ordinary_files_stay_quiet",
+        "importing_a_populated_day_directory_notifies_and_then_lists_the_chat",
+        "importing_a_populated_directory_tree_notifies_without_child_writes",
+        "starting_a_chat_in_an_existing_directory_still_notifies"
+      ]
+    },
+    "reference": {
+      "sha256": "9f54e8b60087ed717a05a89b68ea7339e380005719cc131e21168d76a95c0899",
+      "bytes": 105086000,
+      "candidate_digest": "6f2302a0c63484b7dc09c2d05729e33f4a2fbd7b63eda8a35645aab0da2a4e19",
+      "checker_sha256": "9f99fdeef15526a9794edc7ce0468c82df24c636e4803dd14be246c4341b0e31",
+      "allowed_source_tree_sha256": "9a7701b5f5d03b9f690ff39613273118b7f01a271a77f8070468a055a42924cf",
+      "test_names": [
+        "a_connection_is_not_notified_before_its_first_catalog_read",
+        "changes_outside_the_disclosed_root_and_ordinary_files_stay_quiet",
+        "importing_a_populated_day_directory_notifies_and_then_lists_the_chat",
+        "importing_a_populated_directory_tree_notifies_without_child_writes",
+        "starting_a_chat_in_an_existing_directory_still_notifies"
+      ]
+    }
+  },
+  "binary_repeats": [
+    {
+      "label": "base",
+      "repetition": 1,
+      "executable_sha256": "2a589092ee0fa79f47e6966e665228889be77994dfe0882bac8dac11defaecbe",
+      "candidate_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "checker_sha256": "9f99fdeef15526a9794edc7ce0468c82df24c636e4803dd14be246c4341b0e31",
+      "allowed_source_tree_sha256": "e02ae086acc878b35d32f7ab55edf57e551afdd597a7fe6a6e2bbf729934d700",
+      "exit_code": 101,
+      "timed_out": false,
+      "wall_s": 8.938208264999957,
+      "private_record_sha256": "727cc4de02c1dc88f5a7cb627398a459f49d4ee4fb8b58fef784aa9633b58655",
+      "log": "logs/base-repeat-1.log",
+      "log_sha256": "7dd56fc095fb9c00d64f29ad950e5980297fc88976f5b22236e1593f76d97e29",
+      "groups": [
+        "test result: FAILED. 3 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.83s"
+      ],
+      "case_outcomes": [
+        {
+          "test": "a_connection_is_not_notified_before_its_first_catalog_read",
+          "outcome": "ok"
+        },
+        {
+          "test": "changes_outside_the_disclosed_root_and_ordinary_files_stay_quiet",
+          "outcome": "ok"
+        },
+        {
+          "test": "importing_a_populated_day_directory_notifies_and_then_lists_the_chat",
+          "outcome": "FAILED"
+        },
+        {
+          "test": "importing_a_populated_directory_tree_notifies_without_child_writes",
+          "outcome": "FAILED"
+        },
+        {
+          "test": "starting_a_chat_in_an_existing_directory_still_notifies",
+          "outcome": "ok"
+        }
+      ],
+      "assertion_blocks": [
+        "thread 'importing_a_populated_day_directory_notifies_and_then_lists_the_chat' (111242) panicked at checker.rs:121:14:\nA newly available chat must promptly notify a catalog reader.: Elapsed(())",
+        "thread 'importing_a_populated_directory_tree_notifies_without_child_writes' (111281) panicked at checker.rs:121:14:\nA newly available chat must promptly notify a catalog reader.: Elapsed(())"
+      ],
+      "import_notification_timeout_assertions": 2
+    },
+    {
+      "label": "base",
+      "repetition": 2,
+      "executable_sha256": "2a589092ee0fa79f47e6966e665228889be77994dfe0882bac8dac11defaecbe",
+      "candidate_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "checker_sha256": "9f99fdeef15526a9794edc7ce0468c82df24c636e4803dd14be246c4341b0e31",
+      "allowed_source_tree_sha256": "e02ae086acc878b35d32f7ab55edf57e551afdd597a7fe6a6e2bbf729934d700",
+      "exit_code": 101,
+      "timed_out": false,
+      "wall_s": 8.835458964999816,
+      "private_record_sha256": "5a3be87b175c178036bcb0a692f283496addcb8bd77de5cce8933038a6707f19",
+      "log": "logs/base-repeat-2.log",
+      "log_sha256": "7680c9e57bb0f7ebc601cf15570bf13b188b9960717e2eca11ac5fcd5fabacc2",
+      "groups": [
+        "test result: FAILED. 3 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.77s"
+      ],
+      "case_outcomes": [
+        {
+          "test": "a_connection_is_not_notified_before_its_first_catalog_read",
+          "outcome": "ok"
+        },
+        {
+          "test": "changes_outside_the_disclosed_root_and_ordinary_files_stay_quiet",
+          "outcome": "ok"
+        },
+        {
+          "test": "importing_a_populated_day_directory_notifies_and_then_lists_the_chat",
+          "outcome": "FAILED"
+        },
+        {
+          "test": "importing_a_populated_directory_tree_notifies_without_child_writes",
+          "outcome": "FAILED"
+        },
+        {
+          "test": "starting_a_chat_in_an_existing_directory_still_notifies",
+          "outcome": "ok"
+        }
+      ],
+      "assertion_blocks": [
+        "thread 'importing_a_populated_day_directory_notifies_and_then_lists_the_chat' (111399) panicked at checker.rs:121:14:\nA newly available chat must promptly notify a catalog reader.: Elapsed(())",
+        "thread 'importing_a_populated_directory_tree_notifies_without_child_writes' (111422) panicked at checker.rs:121:14:\nA newly available chat must promptly notify a catalog reader.: Elapsed(())"
+      ],
+      "import_notification_timeout_assertions": 2
+    },
+    {
+      "label": "base",
+      "repetition": 3,
+      "executable_sha256": "2a589092ee0fa79f47e6966e665228889be77994dfe0882bac8dac11defaecbe",
+      "candidate_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "checker_sha256": "9f99fdeef15526a9794edc7ce0468c82df24c636e4803dd14be246c4341b0e31",
+      "allowed_source_tree_sha256": "e02ae086acc878b35d32f7ab55edf57e551afdd597a7fe6a6e2bbf729934d700",
+      "exit_code": 101,
+      "timed_out": false,
+      "wall_s": 8.829899702000148,
+      "private_record_sha256": "3817e4b25edd0b75c021e0b9d5f35cbc47c67717bf1c1e73e639061dc2d9d817",
+      "log": "logs/base-repeat-3.log",
+      "log_sha256": "187e48d1a1d4cd45f86fa88d99a70cbad158c0688bfafc24c3fab029542649b3",
+      "groups": [
+        "test result: FAILED. 3 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.76s"
+      ],
+      "case_outcomes": [
+        {
+          "test": "a_connection_is_not_notified_before_its_first_catalog_read",
+          "outcome": "ok"
+        },
+        {
+          "test": "changes_outside_the_disclosed_root_and_ordinary_files_stay_quiet",
+          "outcome": "ok"
+        },
+        {
+          "test": "importing_a_populated_day_directory_notifies_and_then_lists_the_chat",
+          "outcome": "FAILED"
+        },
+        {
+          "test": "importing_a_populated_directory_tree_notifies_without_child_writes",
+          "outcome": "FAILED"
+        },
+        {
+          "test": "starting_a_chat_in_an_existing_directory_still_notifies",
+          "outcome": "ok"
+        }
+      ],
+      "assertion_blocks": [
+        "thread 'importing_a_populated_day_directory_notifies_and_then_lists_the_chat' (112002) panicked at checker.rs:121:14:\nA newly available chat must promptly notify a catalog reader.: Elapsed(())",
+        "thread 'importing_a_populated_directory_tree_notifies_without_child_writes' (112025) panicked at checker.rs:121:14:\nA newly available chat must promptly notify a catalog reader.: Elapsed(())"
+      ],
+      "import_notification_timeout_assertions": 2
+    },
+    {
+      "label": "base",
+      "repetition": 4,
+      "executable_sha256": "2a589092ee0fa79f47e6966e665228889be77994dfe0882bac8dac11defaecbe",
+      "candidate_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "checker_sha256": "9f99fdeef15526a9794edc7ce0468c82df24c636e4803dd14be246c4341b0e31",
+      "allowed_source_tree_sha256": "e02ae086acc878b35d32f7ab55edf57e551afdd597a7fe6a6e2bbf729934d700",
+      "exit_code": 101,
+      "timed_out": false,
+      "wall_s": 8.83045245700032,
+      "private_record_sha256": "d63b349ddef4927f9f75c31d585b27db86d8942a7129979a49163abfe4b6e190",
+      "log": "logs/base-repeat-4.log",
+      "log_sha256": "37278d088ff054af51ea975594ba1c192c27752846611f64546e2ee9b99f5964",
+      "groups": [
+        "test result: FAILED. 3 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.75s"
+      ],
+      "case_outcomes": [
+        {
+          "test": "a_connection_is_not_notified_before_its_first_catalog_read",
+          "outcome": "ok"
+        },
+        {
+          "test": "changes_outside_the_disclosed_root_and_ordinary_files_stay_quiet",
+          "outcome": "ok"
+        },
+        {
+          "test": "importing_a_populated_day_directory_notifies_and_then_lists_the_chat",
+          "outcome": "FAILED"
+        },
+        {
+          "test": "importing_a_populated_directory_tree_notifies_without_child_writes",
+          "outcome": "FAILED"
+        },
+        {
+          "test": "starting_a_chat_in_an_existing_directory_still_notifies",
+          "outcome": "ok"
+        }
+      ],
+      "assertion_blocks": [
+        "thread 'importing_a_populated_day_directory_notifies_and_then_lists_the_chat' (112145) panicked at checker.rs:121:14:\nA newly available chat must promptly notify a catalog reader.: Elapsed(())",
+        "thread 'importing_a_populated_directory_tree_notifies_without_child_writes' (112169) panicked at checker.rs:121:14:\nA newly available chat must promptly notify a catalog reader.: Elapsed(())"
+      ],
+      "import_notification_timeout_assertions": 2
+    },
+    {
+      "label": "base",
+      "repetition": 5,
+      "executable_sha256": "2a589092ee0fa79f47e6966e665228889be77994dfe0882bac8dac11defaecbe",
+      "candidate_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "checker_sha256": "9f99fdeef15526a9794edc7ce0468c82df24c636e4803dd14be246c4341b0e31",
+      "allowed_source_tree_sha256": "e02ae086acc878b35d32f7ab55edf57e551afdd597a7fe6a6e2bbf729934d700",
+      "exit_code": 101,
+      "timed_out": false,
+      "wall_s": 8.826352429000508,
+      "private_record_sha256": "316b58759d24dc5cbcc5c280d3c3e6a747eaf864258145359734c1d2bfad89c4",
+      "log": "logs/base-repeat-5.log",
+      "log_sha256": "9d63a7f31c647f45358eaed9df451f536c6e5119e3f53b6916356a19e354b36b",
+      "groups": [
+        "test result: FAILED. 3 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.75s"
+      ],
+      "case_outcomes": [
+        {
+          "test": "a_connection_is_not_notified_before_its_first_catalog_read",
+          "outcome": "ok"
+        },
+        {
+          "test": "changes_outside_the_disclosed_root_and_ordinary_files_stay_quiet",
+          "outcome": "ok"
+        },
+        {
+          "test": "importing_a_populated_day_directory_notifies_and_then_lists_the_chat",
+          "outcome": "FAILED"
+        },
+        {
+          "test": "importing_a_populated_directory_tree_notifies_without_child_writes",
+          "outcome": "FAILED"
+        },
+        {
+          "test": "starting_a_chat_in_an_existing_directory_still_notifies",
+          "outcome": "ok"
+        }
+      ],
+      "assertion_blocks": [
+        "thread 'importing_a_populated_day_directory_notifies_and_then_lists_the_chat' (112306) panicked at checker.rs:121:14:\nA newly available chat must promptly notify a catalog reader.: Elapsed(())",
+        "thread 'importing_a_populated_directory_tree_notifies_without_child_writes' (112340) panicked at checker.rs:121:14:\nA newly available chat must promptly notify a catalog reader.: Elapsed(())"
+      ],
+      "import_notification_timeout_assertions": 2
+    },
+    {
+      "label": "base",
+      "repetition": 6,
+      "executable_sha256": "2a589092ee0fa79f47e6966e665228889be77994dfe0882bac8dac11defaecbe",
+      "candidate_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "checker_sha256": "9f99fdeef15526a9794edc7ce0468c82df24c636e4803dd14be246c4341b0e31",
+      "allowed_source_tree_sha256": "e02ae086acc878b35d32f7ab55edf57e551afdd597a7fe6a6e2bbf729934d700",
+      "exit_code": 101,
+      "timed_out": false,
+      "wall_s": 8.8296477949998,
+      "private_record_sha256": "801a8e6901f19b7437ad54301e97af816178a7901431c7eb63ee41517e2ddc50",
+      "log": "logs/base-repeat-6.log",
+      "log_sha256": "8863c84719f3669a03775c5a6d7694ebcd15a59f9e6d83bcdea41d8fc6351382",
+      "groups": [
+        "test result: FAILED. 3 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.75s"
+      ],
+      "case_outcomes": [
+        {
+          "test": "a_connection_is_not_notified_before_its_first_catalog_read",
+          "outcome": "ok"
+        },
+        {
+          "test": "changes_outside_the_disclosed_root_and_ordinary_files_stay_quiet",
+          "outcome": "ok"
+        },
+        {
+          "test": "importing_a_populated_day_directory_notifies_and_then_lists_the_chat",
+          "outcome": "FAILED"
+        },
+        {
+          "test": "importing_a_populated_directory_tree_notifies_without_child_writes",
+          "outcome": "FAILED"
+        },
+        {
+          "test": "starting_a_chat_in_an_existing_directory_still_notifies",
+          "outcome": "ok"
+        }
+      ],
+      "assertion_blocks": [
+        "thread 'importing_a_populated_day_directory_notifies_and_then_lists_the_chat' (112458) panicked at checker.rs:121:14:\nA newly available chat must promptly notify a catalog reader.: Elapsed(())",
+        "thread 'importing_a_populated_directory_tree_notifies_without_child_writes' (112480) panicked at checker.rs:121:14:\nA newly available chat must promptly notify a catalog reader.: Elapsed(())"
+      ],
+      "import_notification_timeout_assertions": 2
+    },
+    {
+      "label": "base",
+      "repetition": 7,
+      "executable_sha256": "2a589092ee0fa79f47e6966e665228889be77994dfe0882bac8dac11defaecbe",
+      "candidate_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "checker_sha256": "9f99fdeef15526a9794edc7ce0468c82df24c636e4803dd14be246c4341b0e31",
+      "allowed_source_tree_sha256": "e02ae086acc878b35d32f7ab55edf57e551afdd597a7fe6a6e2bbf729934d700",
+      "exit_code": 101,
+      "timed_out": false,
+      "wall_s": 8.931548128000031,
+      "private_record_sha256": "b65e5743d944950dbf5038243bc1befe5fbd871a1669b07b82b460b853817ebd",
+      "log": "logs/base-repeat-7.log",
+      "log_sha256": "cf9df7fb910535a47f7a9b7c36af800fd31c25ff038f3892d523901a5b3adfd3",
+      "groups": [
+        "test result: FAILED. 3 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.84s"
+      ],
+      "case_outcomes": [
+        {
+          "test": "a_connection_is_not_notified_before_its_first_catalog_read",
+          "outcome": "ok"
+        },
+        {
+          "test": "changes_outside_the_disclosed_root_and_ordinary_files_stay_quiet",
+          "outcome": "ok"
+        },
+        {
+          "test": "importing_a_populated_day_directory_notifies_and_then_lists_the_chat",
+          "outcome": "FAILED"
+        },
+        {
+          "test": "importing_a_populated_directory_tree_notifies_without_child_writes",
+          "outcome": "FAILED"
+        },
+        {
+          "test": "starting_a_chat_in_an_existing_directory_still_notifies",
+          "outcome": "ok"
+        }
+      ],
+      "assertion_blocks": [
+        "thread 'importing_a_populated_day_directory_notifies_and_then_lists_the_chat' (112600) panicked at checker.rs:121:14:\nA newly available chat must promptly notify a catalog reader.: Elapsed(())",
+        "thread 'importing_a_populated_directory_tree_notifies_without_child_writes' (112604) panicked at checker.rs:121:14:\nA newly available chat must promptly notify a catalog reader.: Elapsed(())"
+      ],
+      "import_notification_timeout_assertions": 2
+    },
+    {
+      "label": "base",
+      "repetition": 8,
+      "executable_sha256": "2a589092ee0fa79f47e6966e665228889be77994dfe0882bac8dac11defaecbe",
+      "candidate_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "checker_sha256": "9f99fdeef15526a9794edc7ce0468c82df24c636e4803dd14be246c4341b0e31",
+      "allowed_source_tree_sha256": "e02ae086acc878b35d32f7ab55edf57e551afdd597a7fe6a6e2bbf729934d700",
+      "exit_code": 101,
+      "timed_out": false,
+      "wall_s": 8.851421863000724,
+      "private_record_sha256": "215e3930a4339111f3416fa016bc4f876c609a6a4ba51802f0a25f74d349fc06",
+      "log": "logs/base-repeat-8.log",
+      "log_sha256": "1dacc5036f6148ae0a32c419eab123d64dcfddb585393ed4d9b3a387eee8bf9f",
+      "groups": [
+        "test result: FAILED. 3 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.77s"
+      ],
+      "case_outcomes": [
+        {
+          "test": "a_connection_is_not_notified_before_its_first_catalog_read",
+          "outcome": "ok"
+        },
+        {
+          "test": "changes_outside_the_disclosed_root_and_ordinary_files_stay_quiet",
+          "outcome": "ok"
+        },
+        {
+          "test": "importing_a_populated_day_directory_notifies_and_then_lists_the_chat",
+          "outcome": "FAILED"
+        },
+        {
+          "test": "importing_a_populated_directory_tree_notifies_without_child_writes",
+          "outcome": "FAILED"
+        },
+        {
+          "test": "starting_a_chat_in_an_existing_directory_still_notifies",
+          "outcome": "ok"
+        }
+      ],
+      "assertion_blocks": [
+        "thread 'importing_a_populated_day_directory_notifies_and_then_lists_the_chat' (112988) panicked at checker.rs:121:14:\nA newly available chat must promptly notify a catalog reader.: Elapsed(())",
+        "thread 'importing_a_populated_directory_tree_notifies_without_child_writes' (112992) panicked at checker.rs:121:14:\nA newly available chat must promptly notify a catalog reader.: Elapsed(())"
+      ],
+      "import_notification_timeout_assertions": 2
+    },
+    {
+      "label": "base",
+      "repetition": 9,
+      "executable_sha256": "2a589092ee0fa79f47e6966e665228889be77994dfe0882bac8dac11defaecbe",
+      "candidate_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "checker_sha256": "9f99fdeef15526a9794edc7ce0468c82df24c636e4803dd14be246c4341b0e31",
+      "allowed_source_tree_sha256": "e02ae086acc878b35d32f7ab55edf57e551afdd597a7fe6a6e2bbf729934d700",
+      "exit_code": 101,
+      "timed_out": false,
+      "wall_s": 9.034437784999682,
+      "private_record_sha256": "335019b247824d7b63a3b5887b5f6ee7875adac316e5a251d392d8b7812b6887",
+      "log": "logs/base-repeat-9.log",
+      "log_sha256": "d0f60384308ac5c4a61ac43c84d0c0304334093aab2a1a57f6a48e2527ea93d4",
+      "groups": [
+        "test result: FAILED. 3 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.97s"
+      ],
+      "case_outcomes": [
+        {
+          "test": "a_connection_is_not_notified_before_its_first_catalog_read",
+          "outcome": "ok"
+        },
+        {
+          "test": "changes_outside_the_disclosed_root_and_ordinary_files_stay_quiet",
+          "outcome": "ok"
+        },
+        {
+          "test": "importing_a_populated_day_directory_notifies_and_then_lists_the_chat",
+          "outcome": "FAILED"
+        },
+        {
+          "test": "importing_a_populated_directory_tree_notifies_without_child_writes",
+          "outcome": "FAILED"
+        },
+        {
+          "test": "starting_a_chat_in_an_existing_directory_still_notifies",
+          "outcome": "ok"
+        }
+      ],
+      "assertion_blocks": [
+        "thread 'importing_a_populated_day_directory_notifies_and_then_lists_the_chat' (113155) panicked at checker.rs:121:14:\nA newly available chat must promptly notify a catalog reader.: Elapsed(())",
+        "thread 'importing_a_populated_directory_tree_notifies_without_child_writes' (113159) panicked at checker.rs:121:14:\nA newly available chat must promptly notify a catalog reader.: Elapsed(())"
+      ],
+      "import_notification_timeout_assertions": 2
+    },
+    {
+      "label": "base",
+      "repetition": 10,
+      "executable_sha256": "2a589092ee0fa79f47e6966e665228889be77994dfe0882bac8dac11defaecbe",
+      "candidate_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "checker_sha256": "9f99fdeef15526a9794edc7ce0468c82df24c636e4803dd14be246c4341b0e31",
+      "allowed_source_tree_sha256": "e02ae086acc878b35d32f7ab55edf57e551afdd597a7fe6a6e2bbf729934d700",
+      "exit_code": 101,
+      "timed_out": false,
+      "wall_s": 8.828768390000732,
+      "private_record_sha256": "b1c7a6ff1dc8822cd326c80e3951f499a90b5601f72e9c116528f12087d0b86f",
+      "log": "logs/base-repeat-10.log",
+      "log_sha256": "d435b7a807814721e90b33aba5e42f5e1818ab71c554f57d6543da5e5da2172e",
+      "groups": [
+        "test result: FAILED. 3 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.76s"
+      ],
+      "case_outcomes": [
+        {
+          "test": "a_connection_is_not_notified_before_its_first_catalog_read",
+          "outcome": "ok"
+        },
+        {
+          "test": "changes_outside_the_disclosed_root_and_ordinary_files_stay_quiet",
+          "outcome": "ok"
+        },
+        {
+          "test": "importing_a_populated_day_directory_notifies_and_then_lists_the_chat",
+          "outcome": "FAILED"
+        },
+        {
+          "test": "importing_a_populated_directory_tree_notifies_without_child_writes",
+          "outcome": "FAILED"
+        },
+        {
+          "test": "starting_a_chat_in_an_existing_directory_still_notifies",
+          "outcome": "ok"
+        }
+      ],
+      "assertion_blocks": [
+        "thread 'importing_a_populated_day_directory_notifies_and_then_lists_the_chat' (113279) panicked at checker.rs:121:14:\nA newly available chat must promptly notify a catalog reader.: Elapsed(())",
+        "thread 'importing_a_populated_directory_tree_notifies_without_child_writes' (113300) panicked at checker.rs:121:14:\nA newly available chat must promptly notify a catalog reader.: Elapsed(())"
+      ],
+      "import_notification_timeout_assertions": 2
+    },
+    {
+      "label": "reference",
+      "repetition": 1,
+      "executable_sha256": "9f54e8b60087ed717a05a89b68ea7339e380005719cc131e21168d76a95c0899",
+      "candidate_digest": "6f2302a0c63484b7dc09c2d05729e33f4a2fbd7b63eda8a35645aab0da2a4e19",
+      "checker_sha256": "9f99fdeef15526a9794edc7ce0468c82df24c636e4803dd14be246c4341b0e31",
+      "allowed_source_tree_sha256": "9a7701b5f5d03b9f690ff39613273118b7f01a271a77f8070468a055a42924cf",
+      "exit_code": 0,
+      "timed_out": false,
+      "wall_s": 0.9631717620004565,
+      "private_record_sha256": "e748d54fd2174c30f26724c3837a097aee6e845cf75b85037656106ffb818e43",
+      "log": "logs/reference-repeat-1.log",
+      "log_sha256": "7f0de9b725125d2e392b045fe0c389beef8d83645b438b7cb152aa36b152c832",
+      "groups": [
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.91s"
+      ],
+      "case_outcomes": [
+        {
+          "test": "a_connection_is_not_notified_before_its_first_catalog_read",
+          "outcome": "ok"
+        },
+        {
+          "test": "changes_outside_the_disclosed_root_and_ordinary_files_stay_quiet",
+          "outcome": "ok"
+        },
+        {
+          "test": "importing_a_populated_day_directory_notifies_and_then_lists_the_chat",
+          "outcome": "ok"
+        },
+        {
+          "test": "importing_a_populated_directory_tree_notifies_without_child_writes",
+          "outcome": "ok"
+        },
+        {
+          "test": "starting_a_chat_in_an_existing_directory_still_notifies",
+          "outcome": "ok"
+        }
+      ],
+      "assertion_blocks": [],
+      "import_notification_timeout_assertions": 0
+    },
+    {
+      "label": "reference",
+      "repetition": 2,
+      "executable_sha256": "9f54e8b60087ed717a05a89b68ea7339e380005719cc131e21168d76a95c0899",
+      "candidate_digest": "6f2302a0c63484b7dc09c2d05729e33f4a2fbd7b63eda8a35645aab0da2a4e19",
+      "checker_sha256": "9f99fdeef15526a9794edc7ce0468c82df24c636e4803dd14be246c4341b0e31",
+      "allowed_source_tree_sha256": "9a7701b5f5d03b9f690ff39613273118b7f01a271a77f8070468a055a42924cf",
+      "exit_code": 0,
+      "timed_out": false,
+      "wall_s": 0.9138679469997442,
+      "private_record_sha256": "d301c5ca5af532e96438ecea3dbe772025b5943fb0f4ab3e23119666d32ab3bd",
+      "log": "logs/reference-repeat-2.log",
+      "log_sha256": "a5daced6dd4677b91a70d506b75ad21bbea75070889f1d246ae62e01587373e5",
+      "groups": [
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.85s"
+      ],
+      "case_outcomes": [
+        {
+          "test": "a_connection_is_not_notified_before_its_first_catalog_read",
+          "outcome": "ok"
+        },
+        {
+          "test": "changes_outside_the_disclosed_root_and_ordinary_files_stay_quiet",
+          "outcome": "ok"
+        },
+        {
+          "test": "importing_a_populated_day_directory_notifies_and_then_lists_the_chat",
+          "outcome": "ok"
+        },
+        {
+          "test": "importing_a_populated_directory_tree_notifies_without_child_writes",
+          "outcome": "ok"
+        },
+        {
+          "test": "starting_a_chat_in_an_existing_directory_still_notifies",
+          "outcome": "ok"
+        }
+      ],
+      "assertion_blocks": [],
+      "import_notification_timeout_assertions": 0
+    },
+    {
+      "label": "reference",
+      "repetition": 3,
+      "executable_sha256": "9f54e8b60087ed717a05a89b68ea7339e380005719cc131e21168d76a95c0899",
+      "candidate_digest": "6f2302a0c63484b7dc09c2d05729e33f4a2fbd7b63eda8a35645aab0da2a4e19",
+      "checker_sha256": "9f99fdeef15526a9794edc7ce0468c82df24c636e4803dd14be246c4341b0e31",
+      "allowed_source_tree_sha256": "9a7701b5f5d03b9f690ff39613273118b7f01a271a77f8070468a055a42924cf",
+      "exit_code": 0,
+      "timed_out": false,
+      "wall_s": 0.9216129790002014,
+      "private_record_sha256": "93cdd0f8b47c64cc352999cee80fd1b88a47c204463d95bb195ea3c223e009fc",
+      "log": "logs/reference-repeat-3.log",
+      "log_sha256": "a5daced6dd4677b91a70d506b75ad21bbea75070889f1d246ae62e01587373e5",
+      "groups": [
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.85s"
+      ],
+      "case_outcomes": [
+        {
+          "test": "a_connection_is_not_notified_before_its_first_catalog_read",
+          "outcome": "ok"
+        },
+        {
+          "test": "changes_outside_the_disclosed_root_and_ordinary_files_stay_quiet",
+          "outcome": "ok"
+        },
+        {
+          "test": "importing_a_populated_day_directory_notifies_and_then_lists_the_chat",
+          "outcome": "ok"
+        },
+        {
+          "test": "importing_a_populated_directory_tree_notifies_without_child_writes",
+          "outcome": "ok"
+        },
+        {
+          "test": "starting_a_chat_in_an_existing_directory_still_notifies",
+          "outcome": "ok"
+        }
+      ],
+      "assertion_blocks": [],
+      "import_notification_timeout_assertions": 0
+    },
+    {
+      "label": "reference",
+      "repetition": 4,
+      "executable_sha256": "9f54e8b60087ed717a05a89b68ea7339e380005719cc131e21168d76a95c0899",
+      "candidate_digest": "6f2302a0c63484b7dc09c2d05729e33f4a2fbd7b63eda8a35645aab0da2a4e19",
+      "checker_sha256": "9f99fdeef15526a9794edc7ce0468c82df24c636e4803dd14be246c4341b0e31",
+      "allowed_source_tree_sha256": "9a7701b5f5d03b9f690ff39613273118b7f01a271a77f8070468a055a42924cf",
+      "exit_code": 0,
+      "timed_out": false,
+      "wall_s": 0.9130794330003482,
+      "private_record_sha256": "d7224cec9ba5b990a0cccf6dad746b00f0c39b9a4ab87057da7b1c2728506eb8",
+      "log": "logs/reference-repeat-4.log",
+      "log_sha256": "a5daced6dd4677b91a70d506b75ad21bbea75070889f1d246ae62e01587373e5",
+      "groups": [
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.85s"
+      ],
+      "case_outcomes": [
+        {
+          "test": "a_connection_is_not_notified_before_its_first_catalog_read",
+          "outcome": "ok"
+        },
+        {
+          "test": "changes_outside_the_disclosed_root_and_ordinary_files_stay_quiet",
+          "outcome": "ok"
+        },
+        {
+          "test": "importing_a_populated_day_directory_notifies_and_then_lists_the_chat",
+          "outcome": "ok"
+        },
+        {
+          "test": "importing_a_populated_directory_tree_notifies_without_child_writes",
+          "outcome": "ok"
+        },
+        {
+          "test": "starting_a_chat_in_an_existing_directory_still_notifies",
+          "outcome": "ok"
+        }
+      ],
+      "assertion_blocks": [],
+      "import_notification_timeout_assertions": 0
+    },
+    {
+      "label": "reference",
+      "repetition": 5,
+      "executable_sha256": "9f54e8b60087ed717a05a89b68ea7339e380005719cc131e21168d76a95c0899",
+      "candidate_digest": "6f2302a0c63484b7dc09c2d05729e33f4a2fbd7b63eda8a35645aab0da2a4e19",
+      "checker_sha256": "9f99fdeef15526a9794edc7ce0468c82df24c636e4803dd14be246c4341b0e31",
+      "allowed_source_tree_sha256": "9a7701b5f5d03b9f690ff39613273118b7f01a271a77f8070468a055a42924cf",
+      "exit_code": 0,
+      "timed_out": false,
+      "wall_s": 0.9113664559999961,
+      "private_record_sha256": "ed032d486b26b353839271c122565aa68d95d6ac9c0a7ac6dc8879b5ff882ad3",
+      "log": "logs/reference-repeat-5.log",
+      "log_sha256": "517edf512d416167bafd44528ba4ed0f6209ab1268b9a52307defce67c29e4a3",
+      "groups": [
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.84s"
+      ],
+      "case_outcomes": [
+        {
+          "test": "a_connection_is_not_notified_before_its_first_catalog_read",
+          "outcome": "ok"
+        },
+        {
+          "test": "changes_outside_the_disclosed_root_and_ordinary_files_stay_quiet",
+          "outcome": "ok"
+        },
+        {
+          "test": "importing_a_populated_day_directory_notifies_and_then_lists_the_chat",
+          "outcome": "ok"
+        },
+        {
+          "test": "importing_a_populated_directory_tree_notifies_without_child_writes",
+          "outcome": "ok"
+        },
+        {
+          "test": "starting_a_chat_in_an_existing_directory_still_notifies",
+          "outcome": "ok"
+        }
+      ],
+      "assertion_blocks": [],
+      "import_notification_timeout_assertions": 0
+    },
+    {
+      "label": "reference",
+      "repetition": 6,
+      "executable_sha256": "9f54e8b60087ed717a05a89b68ea7339e380005719cc131e21168d76a95c0899",
+      "candidate_digest": "6f2302a0c63484b7dc09c2d05729e33f4a2fbd7b63eda8a35645aab0da2a4e19",
+      "checker_sha256": "9f99fdeef15526a9794edc7ce0468c82df24c636e4803dd14be246c4341b0e31",
+      "allowed_source_tree_sha256": "9a7701b5f5d03b9f690ff39613273118b7f01a271a77f8070468a055a42924cf",
+      "exit_code": 0,
+      "timed_out": false,
+      "wall_s": 0.9149393229999987,
+      "private_record_sha256": "fb62eefa363b39fbefb6643ce9e5b8646172e0ecb5f9cae170d719c9721cfd7a",
+      "log": "logs/reference-repeat-6.log",
+      "log_sha256": "a5daced6dd4677b91a70d506b75ad21bbea75070889f1d246ae62e01587373e5",
+      "groups": [
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.85s"
+      ],
+      "case_outcomes": [
+        {
+          "test": "a_connection_is_not_notified_before_its_first_catalog_read",
+          "outcome": "ok"
+        },
+        {
+          "test": "changes_outside_the_disclosed_root_and_ordinary_files_stay_quiet",
+          "outcome": "ok"
+        },
+        {
+          "test": "importing_a_populated_day_directory_notifies_and_then_lists_the_chat",
+          "outcome": "ok"
+        },
+        {
+          "test": "importing_a_populated_directory_tree_notifies_without_child_writes",
+          "outcome": "ok"
+        },
+        {
+          "test": "starting_a_chat_in_an_existing_directory_still_notifies",
+          "outcome": "ok"
+        }
+      ],
+      "assertion_blocks": [],
+      "import_notification_timeout_assertions": 0
+    },
+    {
+      "label": "reference",
+      "repetition": 7,
+      "executable_sha256": "9f54e8b60087ed717a05a89b68ea7339e380005719cc131e21168d76a95c0899",
+      "candidate_digest": "6f2302a0c63484b7dc09c2d05729e33f4a2fbd7b63eda8a35645aab0da2a4e19",
+      "checker_sha256": "9f99fdeef15526a9794edc7ce0468c82df24c636e4803dd14be246c4341b0e31",
+      "allowed_source_tree_sha256": "9a7701b5f5d03b9f690ff39613273118b7f01a271a77f8070468a055a42924cf",
+      "exit_code": 0,
+      "timed_out": false,
+      "wall_s": 0.912529856999754,
+      "private_record_sha256": "a25477bb0c089523556a398bd897604973a009631657fc947524e9028842cf88",
+      "log": "logs/reference-repeat-7.log",
+      "log_sha256": "a5daced6dd4677b91a70d506b75ad21bbea75070889f1d246ae62e01587373e5",
+      "groups": [
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.85s"
+      ],
+      "case_outcomes": [
+        {
+          "test": "a_connection_is_not_notified_before_its_first_catalog_read",
+          "outcome": "ok"
+        },
+        {
+          "test": "changes_outside_the_disclosed_root_and_ordinary_files_stay_quiet",
+          "outcome": "ok"
+        },
+        {
+          "test": "importing_a_populated_day_directory_notifies_and_then_lists_the_chat",
+          "outcome": "ok"
+        },
+        {
+          "test": "importing_a_populated_directory_tree_notifies_without_child_writes",
+          "outcome": "ok"
+        },
+        {
+          "test": "starting_a_chat_in_an_existing_directory_still_notifies",
+          "outcome": "ok"
+        }
+      ],
+      "assertion_blocks": [],
+      "import_notification_timeout_assertions": 0
+    },
+    {
+      "label": "reference",
+      "repetition": 8,
+      "executable_sha256": "9f54e8b60087ed717a05a89b68ea7339e380005719cc131e21168d76a95c0899",
+      "candidate_digest": "6f2302a0c63484b7dc09c2d05729e33f4a2fbd7b63eda8a35645aab0da2a4e19",
+      "checker_sha256": "9f99fdeef15526a9794edc7ce0468c82df24c636e4803dd14be246c4341b0e31",
+      "allowed_source_tree_sha256": "9a7701b5f5d03b9f690ff39613273118b7f01a271a77f8070468a055a42924cf",
+      "exit_code": 0,
+      "timed_out": false,
+      "wall_s": 0.9741324489996259,
+      "private_record_sha256": "c621abd4a198bf8e93770faccfc06d2f3aacaa97bc0ce09222ac53388ceac94c",
+      "log": "logs/reference-repeat-8.log",
+      "log_sha256": "d041f42473350a52798a2183599948e6c3d3e74c4f3329297f5a506d697e943d",
+      "groups": [
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.90s"
+      ],
+      "case_outcomes": [
+        {
+          "test": "a_connection_is_not_notified_before_its_first_catalog_read",
+          "outcome": "ok"
+        },
+        {
+          "test": "changes_outside_the_disclosed_root_and_ordinary_files_stay_quiet",
+          "outcome": "ok"
+        },
+        {
+          "test": "importing_a_populated_day_directory_notifies_and_then_lists_the_chat",
+          "outcome": "ok"
+        },
+        {
+          "test": "importing_a_populated_directory_tree_notifies_without_child_writes",
+          "outcome": "ok"
+        },
+        {
+          "test": "starting_a_chat_in_an_existing_directory_still_notifies",
+          "outcome": "ok"
+        }
+      ],
+      "assertion_blocks": [],
+      "import_notification_timeout_assertions": 0
+    },
+    {
+      "label": "reference",
+      "repetition": 9,
+      "executable_sha256": "9f54e8b60087ed717a05a89b68ea7339e380005719cc131e21168d76a95c0899",
+      "candidate_digest": "6f2302a0c63484b7dc09c2d05729e33f4a2fbd7b63eda8a35645aab0da2a4e19",
+      "checker_sha256": "9f99fdeef15526a9794edc7ce0468c82df24c636e4803dd14be246c4341b0e31",
+      "allowed_source_tree_sha256": "9a7701b5f5d03b9f690ff39613273118b7f01a271a77f8070468a055a42924cf",
+      "exit_code": 0,
+      "timed_out": false,
+      "wall_s": 0.9685077650001404,
+      "private_record_sha256": "afd07a0db5a158c81f940dd721d34f5859393aa5420139f6096391acdc059830",
+      "log": "logs/reference-repeat-9.log",
+      "log_sha256": "b21a098c40f7b8494e448b424b489324e988c03640756d4e1ff17ecbec096f0c",
+      "groups": [
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.86s"
+      ],
+      "case_outcomes": [
+        {
+          "test": "a_connection_is_not_notified_before_its_first_catalog_read",
+          "outcome": "ok"
+        },
+        {
+          "test": "changes_outside_the_disclosed_root_and_ordinary_files_stay_quiet",
+          "outcome": "ok"
+        },
+        {
+          "test": "importing_a_populated_day_directory_notifies_and_then_lists_the_chat",
+          "outcome": "ok"
+        },
+        {
+          "test": "importing_a_populated_directory_tree_notifies_without_child_writes",
+          "outcome": "ok"
+        },
+        {
+          "test": "starting_a_chat_in_an_existing_directory_still_notifies",
+          "outcome": "ok"
+        }
+      ],
+      "assertion_blocks": [],
+      "import_notification_timeout_assertions": 0
+    },
+    {
+      "label": "reference",
+      "repetition": 10,
+      "executable_sha256": "9f54e8b60087ed717a05a89b68ea7339e380005719cc131e21168d76a95c0899",
+      "candidate_digest": "6f2302a0c63484b7dc09c2d05729e33f4a2fbd7b63eda8a35645aab0da2a4e19",
+      "checker_sha256": "9f99fdeef15526a9794edc7ce0468c82df24c636e4803dd14be246c4341b0e31",
+      "allowed_source_tree_sha256": "9a7701b5f5d03b9f690ff39613273118b7f01a271a77f8070468a055a42924cf",
+      "exit_code": 0,
+      "timed_out": false,
+      "wall_s": 0.9145981530000427,
+      "private_record_sha256": "a22b42e9fa5f34759261a4000531f6eadadba72019d4113d05a2491403d7d58f",
+      "log": "logs/reference-repeat-10.log",
+      "log_sha256": "b21a098c40f7b8494e448b424b489324e988c03640756d4e1ff17ecbec096f0c",
+      "groups": [
+        "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.86s"
+      ],
+      "case_outcomes": [
+        {
+          "test": "a_connection_is_not_notified_before_its_first_catalog_read",
+          "outcome": "ok"
+        },
+        {
+          "test": "changes_outside_the_disclosed_root_and_ordinary_files_stay_quiet",
+          "outcome": "ok"
+        },
+        {
+          "test": "importing_a_populated_day_directory_notifies_and_then_lists_the_chat",
+          "outcome": "ok"
+        },
+        {
+          "test": "importing_a_populated_directory_tree_notifies_without_child_writes",
+          "outcome": "ok"
+        },
+        {
+          "test": "starting_a_chat_in_an_existing_directory_still_notifies",
+          "outcome": "ok"
+        }
+      ],
+      "assertion_blocks": [],
+      "import_notification_timeout_assertions": 0
+    }
+  ],
+  "pretrial_verification": {
+    "schema": "openagents.briefing.pretrial-verification.v1",
+    "observed_at_utc": "2026-10-03T05:46:29.888339+00:00",
+    "remote_tools_match": true,
+    "remote_tools": {
+      "checker": {
+        "sha256": "9f99fdeef15526a9794edc7ce0468c82df24c636e4803dd14be246c4341b0e31",
+        "bytes": 8132,
+        "matches_local": true
+      },
+      "verifier": {
+        "sha256": "2647e1d14cd83b33eaa7d15124118c57322f8e4eab0b63dc5cbfc471d5c26e0b",
+        "bytes": 9161,
+        "matches_local": true
+      }
+    },
+    "scored_source_clean": true,
+    "source": {
+      "source_commit": "aeb7f9fb19e0d56c13400702894172ae472e3bcf",
+      "source_tree": "f816d1d1a72afce2d83752419db2bfc5a0a37d70",
+      "expected_blob_count": 25962,
+      "observed_blob_count": 25962,
+      "mismatches": [],
+      "no_extra_files": true,
+      "source_pin_verified": true,
+      "used_frozen_exporter": true
+    },
+    "export_helper_sha256": "d0c62a57bebf42892143ea491a869d052b5e21afd4534b97497c3c3fe7668cb1",
+    "no_reference_patch_or_calibration_test_in_scored_source": true,
+    "no_cargo_or_models_run": true,
+    "transport_recovery": {
+      "interruption": "HTTP 502 while polling the recorded scored-source export",
+      "commands_relaunched": 0,
+      "additional_get_retries": []
+    }
+  },
+  "scope": "Native Linux filesystem and loopback integration; these repetitions do not establish behavior on every filesystem or loaded machine."
+}

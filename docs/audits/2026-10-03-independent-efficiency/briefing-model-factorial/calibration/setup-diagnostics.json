@@ -1,0 +1,90 @@
+{
+  "cache_fetch": {
+    "exit_code": 0,
+    "log": "logs/cache-fetch.log"
+  },
+  "permission_probe_and_isolated_tests": {
+    "mode_probe": [
+      {
+        "ctime_changed": false,
+        "mode_before": "0o600",
+        "mode_after": "0o644"
+      },
+      {
+        "ctime_changed": false,
+        "mode_before": "0o600",
+        "mode_after": "0o644"
+      },
+      {
+        "ctime_changed": false,
+        "mode_before": "0o600",
+        "mode_after": "0o644"
+      },
+      {
+        "ctime_changed": false,
+        "mode_before": "0o600",
+        "mode_after": "0o644"
+      },
+      {
+        "ctime_changed": false,
+        "mode_before": "0o600",
+        "mode_after": "0o644"
+      },
+      {
+        "ctime_changed": false,
+        "mode_before": "0o600",
+        "mode_after": "0o644"
+      },
+      {
+        "ctime_changed": false,
+        "mode_before": "0o600",
+        "mode_after": "0o644"
+      },
+      {
+        "ctime_changed": false,
+        "mode_before": "0o600",
+        "mode_after": "0o644"
+      },
+      {
+        "ctime_changed": false,
+        "mode_before": "0o600",
+        "mode_after": "0o644"
+      },
+      {
+        "ctime_changed": false,
+        "mode_before": "0o600",
+        "mode_after": "0o644"
+      }
+    ],
+    "filtered_existing_test": [
+      {
+        "repetition": 1,
+        "exit_code": 0,
+        "log": "\nrunning 1 test\ntest tests::strict_destinations_schemas_and_private_store_permissions ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 47 filtered out; finished in 0.01s\n\n"
+      },
+      {
+        "repetition": 2,
+        "exit_code": 0,
+        "log": "\nrunning 1 test\ntest tests::strict_destinations_schemas_and_private_store_permissions ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 47 filtered out; finished in 0.01s\n\n"
+      },
+      {
+        "repetition": 3,
+        "exit_code": 0,
+        "log": "\nrunning 1 test\ntest tests::strict_destinations_schemas_and_private_store_permissions ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 47 filtered out; finished in 0.01s\n\n"
+      }
+    ]
+  },
+  "poll_recovery_registration": {
+    "created_at_utc": "2026-10-03T05:42:59.007496+00:00",
+    "reason": "Recover HTTP 502 while polling the recorded reference-repeat-2 remote process. Fetch that result, then launch only unstarted fixed repetitions. Existing observations are not relaunched. No checker, verifier, source, schedule, or registered driver changes.",
+    "recovery_script_sha256": "13417ca7897de6752b1f683c3927b5ecca9ff3c45212547a0a00b53223b091e2",
+    "original_calibration_registration_sha256": "bd6cd897bf2ea387b40d5cab448a121fe8169994ead3d3000408f40deaec9079",
+    "interrupted_launch_sha256": "2eb8e18ac2aa096eccb1a90f687c51530bcf222b5ad9a6e46f2590a5c63ffed7"
+  },
+  "poll_recovery": {
+    "original_interruption": "HTTP 502 while polling recorded reference-repeat-2 process",
+    "existing_observations_relaunched": 0,
+    "additional_get_retries": [],
+    "gate_or_source_changes": false
+  }
+}

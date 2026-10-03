@@ -1,0 +1,75 @@
+   Compiling coder-connect v0.1.0 ([REPOSITORY]/crates/coder-connect)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.94s
+     Running unittests src/lib.rs ([CARGO_TARGET]/debug/deps/coder_connect-8146cb9fc1edadac)
+
+running 47 tests
+test cli::tests::short_pair_help_does_not_open_a_host ... ok
+test cli::tests::short_pair_cannot_dispatch_other_observer_commands ... ok
+test cli::tests::short_pair_preserves_source_exclusions_without_creating_state ... ok
+test tests::bench::bench_end_to_end ... ignored, benchmark
+test tests::bench::bench_host_handling ... ignored, benchmark
+test tests::active_store_lock_refuses_concurrent_administration_without_losing_revocation ... ok
+test tests::a_failed_request_log_write_returns_no_reply_and_a_retry_reads ... ok
+test tests::another_process_never_reads_a_bound_request_again ... ok
+test tests::backward_page_seals_and_verifies_from_the_newest_record ... ok
+test tests::a_revocation_another_writer_saved_ends_reads_at_once ... ok
+test tests::connection_pins_identity_scope_and_expiry_without_disclosing_paths ... ok
+test tests::direct::a_detached_body_must_be_the_bytes_its_envelope_names ... ok
+test tests::catalog_page_cursor_and_exact_request_correlation ... ok
+test tests::changed_root_and_unadmitted_source_refuse ... ok
+test tests::cancelled_exchange_discards_socket_before_the_next_observation ... ok
+test tests::direct::a_request_is_read_once_on_either_route ... ok
+test tests::direct::a_host_without_direct_reads_falls_back_to_the_relay_route ... ok
+test tests::authenticated_encrypted_relay_roundtrip_uses_synthetic_data_only ... ok
+test tests::durable_revocation_blocks_cached_retries_and_source_revocation_ends_grant ... ok
+test tests::fresh_tolerates_a_reader_clock_behind_the_issuer ... ok
+test tests::direct::direct_requests_pass_every_relay_check_but_the_relay_binding ... ok
+test tests::direct::a_direct_connection_reads_at_once_and_nudges_when_a_read_chat_grows ... ok
+test tests::direct::direct_bounds_apply_only_to_direct_replies ... ok
+test tests::expired_replies_of_every_grant_leave_the_log ... ok
+test tests::a_warm_link_carries_concurrent_reads_to_a_concurrent_host ... ok
+test tests::pairing::compact_invitation_is_bounded_and_expiry_and_destination_are_local ... ok
+test tests::pairing::a_coder_only_host_serves_only_coder_chats_and_their_delegates_under_any_grant ... ok
+test tests::pairing::coder_task_source_pairs_and_pages_backward_through_the_observer ... ok
+test tests::pairing::export_synthetic_qr_fixture ... ignored, writes a synthetic invitation SVG and exact payload for an independent native QR decoder
+test tests::pairing::production_bootstrap_reads_only_generated_history ... ignored, publishes generated pairing and synthetic history only to an explicitly selected relay
+test tests::pairing::bootstrap_cancellation_revocation_and_changed_roots_refuse ... ok
+test tests::pairing::qr_modules_are_a_square_with_a_quiet_zone_and_finder_patterns ... ok
+test tests::pairing::a_device_that_pairs_again_holds_one_grant ... ok
+test tests::pairing::expiry_is_rechecked_and_failed_save_returns_no_success_or_memory_claim ... ok
+test tests::pairing::response_identity_and_original_request_are_checked ... ok
+test tests::pairing::wrong_capability_or_signature_cannot_consume_invitation ... ok
+test tests::production_relay_reads_only_generated_history ... ignored, requires an explicitly selected production relay and synthetic publication
+test tests::pairing::two_devices_racing_for_one_invitation_cannot_both_claim_it ... ok
+test tests::pairing::successful_claim_is_single_device_and_same_grant_after_reopen ... ok
+test tests::direct::a_direct_connection_nudges_the_catalog_when_any_harness_starts_a_chat ... ok
+test tests::request_expiry_rechecked_after_read_and_rate_is_durable ... ok
+test tests::pairing::encrypted_pairing_then_catalog_and_page_reuses_existing_observer ... ok
+test tests::signed_corrupt_base64_or_offsets_are_refused_by_client ... ok
+test tests::signed_transcript_record_regrouping_and_false_cursors_are_refused ... ok
+test tests::direct::a_coder_only_host_watches_only_the_coder_task_directory ... ok
+test tests::pairing::expired_admissions_are_pruned_by_the_invitation_flow ... ok
+test tests::pairing::revoked_grants_never_block_a_new_pairing ... ok
+
+test result: ok. 42 passed; 0 failed; 5 ignored; 0 measured; 1 filtered out; finished in 1.74s
+
+     Running unittests src/main.rs ([CARGO_TARGET]/debug/deps/coder_connect-105ad1478bf17d70)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/cli.rs ([CARGO_TARGET]/debug/deps/cli-473a1986ff90f0e7)
+
+running 2 tests
+test local_pair_and_revoke_cli_retain_only_public_connection_output ... ok
+test connect_command_displays_qr_pairs_and_retains_only_the_selected_roots ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.42s
+
+   Doc-tests coder_connect
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

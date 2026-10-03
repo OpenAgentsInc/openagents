@@ -1,0 +1,131 @@
+--- replay.py
++++ replay_resilient.py
+@@ -13,6 +13,7 @@
+ import signal
+ import subprocess
+ import time
++import urllib.error
+ import urllib.parse
+ import urllib.request
+ import uuid
+@@ -38,22 +39,55 @@
+     temporary.replace(path)
+ 
+ 
+-def api(method, path, data=None):
++def api(method, path, data=None, retry_records=None):
+     request = urllib.request.Request(
+         'https://boat.dev/api/v1/' + path,
+         data=None if data is None else json.dumps(data).encode(), method=method,
+         headers={'Authorization': 'Bearer ' + os.environ['BOAT_API_KEY'], 'Content-Type': 'application/json'},
+     )
+-    with urllib.request.urlopen(request, timeout=60) as response:
+-        return json.load(response)
+-
+-
+-def put(sandbox, path, content):
+-    api('PUT', 'sandboxes/' + sandbox + '/files', {'path': path, 'content': base64.b64encode(content).decode(), 'encoding': 'base64'})
+-
+-
+-def get(sandbox, path):
+-    data = api('GET', 'sandboxes/' + sandbox + '/files?' + urllib.parse.urlencode({'path': path, 'encoding': 'base64'}))
++    started = time.monotonic()
++    record = None
++    try:
++        for attempt in range(1, 4):
++            if record is not None:
++                record['attempts'] = attempt
++            try:
++                with urllib.request.urlopen(request, timeout=60) as response:
++                    result = json.load(response)
++                if record is not None:
++                    record['outcome'] = 'succeeded'
++                return result
++            except urllib.error.HTTPError as error:
++                eligible = method == 'GET' and error.code in (502, 503, 504)
++                if eligible and record is None:
++                    resource = urllib.parse.urlsplit(path).path.split('/')
++                    operation = 'process_status' if len(resource) == 4 and resource[0] == 'sandboxes' and resource[2] == 'commands' else 'file_read' if len(resource) == 3 and resource[0] == 'sandboxes' and resource[2] == 'files' else 'other_get'
++                    record = {'method': 'GET', 'operation': operation, 'attempts': attempt,
++                              'http_statuses': [], 'scheduled_backoff_s': [],
++                              'outcome': 'failed', 'elapsed_s': 0.0}
++                    if retry_records is not None:
++                        retry_records.append(record)
++                if record is not None:
++                    record['http_statuses'].append(error.code)
++                if not eligible or attempt == 3:
++                    if record is not None and eligible:
++                        record['outcome'] = 'exhausted'
++                    raise
++                record['scheduled_backoff_s'].append(attempt)
++                if error.fp is not None:
++                    error.close()
++                time.sleep(attempt)
++    finally:
++        if record is not None:
++            record['elapsed_s'] = time.monotonic() - started
++
++
++def put(sandbox, path, content, retry_records=None):
++    api('PUT', 'sandboxes/' + sandbox + '/files', {'path': path, 'content': base64.b64encode(content).decode(), 'encoding': 'base64'}, retry_records=retry_records)
++
++
++def get(sandbox, path, retry_records=None):
++    data = api('GET', 'sandboxes/' + sandbox + '/files?' + urllib.parse.urlencode({'path': path, 'encoding': 'base64'}), retry_records=retry_records)
+     return base64.b64decode(data['content']) if data['encoding'] == 'base64' else data['content'].encode()
+ 
+ 
+@@ -106,7 +140,7 @@
+     return sorted(result, key=lambda item: item['path'])
+ 
+ 
+-def verify(config, workspace, original, run_id, attempt, output):
++def verify(config, workspace, original, run_id, attempt, output, retry_records=None):
+     started = time.monotonic()
+     changed = changes(workspace, original, config['allowed_roots'])
+     candidate_digest = digest(json.dumps(changed, sort_keys=True).encode())
+@@ -116,14 +150,14 @@
+     request = {'config': config, 'remote_root': remote_root, 'run_id': run_id, 'attempt': attempt, 'changes': changed, 'candidate_digest': candidate_digest, 'result_path': result_path}
+     request_path = remote_root + '/requests/' + run_id + '-' + str(attempt) + '.json'
+     sandbox = config['sandbox']
+-    put(sandbox, request_path, json.dumps(request).encode())
++    put(sandbox, request_path, json.dumps(request).encode(), retry_records=retry_records)
+     command = 'python3 ' + shlex.quote(config['remote_verifier']) + ' ' + shlex.quote(request_path)
+-    launch = api('POST', 'sandboxes/' + sandbox + '/commands', {'command': command, 'detached': True})
++    launch = api('POST', 'sandboxes/' + sandbox + '/commands', {'command': command, 'detached': True}, retry_records=retry_records)
+     save(output / ('verifier-launch-' + str(attempt) + '.json'), launch)
+     # Five checks each have a 300-second limit, plus termination and setup time.
+     deadline = time.monotonic() + 1800
+     while time.monotonic() < deadline:
+-        status = api('GET', 'sandboxes/' + sandbox + '/commands/' + str(launch['processId']))
++        status = api('GET', 'sandboxes/' + sandbox + '/commands/' + str(launch['processId']), retry_records=retry_records)
+         if status.get('status') == 'exited':
+             if status.get('exitCode') != 0:
+                 # Retain errors privately; a broken verifier invalidates the pair.
+@@ -136,7 +170,7 @@
+         time.sleep(1)
+     else:
+         raise TimeoutError('Verifier infrastructure timed out')
+-    result = json.loads(get(sandbox, result_path))
++    result = json.loads(get(sandbox, result_path, retry_records=retry_records))
+     expected = {'run_id': run_id, 'attempt': attempt, 'source_commit': config['source_commit'], 'candidate_digest': candidate_digest}
+     if any(result.get(key) != value for key, value in expected.items()):
+         raise RuntimeError('Verifier result identity does not match the candidate')
+@@ -165,7 +199,7 @@
+     run_id = uuid.uuid4().hex
+     workspace = Path(config['workspace_parent']) / run_id
+     preparation_started = time.monotonic()
+-    metadata = {'run_id': run_id, 'condition': condition, 'source_commit': config['source_commit'], 'model': MODEL, 'effort': 'medium', 'warmup': warmup, 'attempts': [], 'input_turns_sent': 0, 'executor_started': False}
++    metadata = {'run_id': run_id, 'condition': condition, 'source_commit': config['source_commit'], 'model': MODEL, 'effort': 'medium', 'warmup': warmup, 'attempts': [], 'input_turns_sent': 0, 'executor_started': False, 'transport_retries': []}
+     original = None
+     process = None
+     selector = None
+@@ -281,7 +315,7 @@
+                 check_start = time.monotonic()
+                 try:
+                     check_instructions()
+-                    verification = verify(config, workspace, original, run_id, attempt, output)
++                    verification = verify(config, workspace, original, run_id, attempt, output, retry_records=metadata['transport_retries'])
+                     check_instructions()
+                 except ScopeViolation as error:
+                     verification = {'passed': False, 'scope_failure': str(error), 'checks': []}

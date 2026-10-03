@@ -1,0 +1,155 @@
+{
+  "amendment.json": {
+    "schema": "openagents.private-reserve-checker-amendment.v1",
+    "created_at_utc": "2026-10-03T04:59:24.516341+00:00",
+    "previous_commitment": {
+      "directory": "[PRIVATE_PRIOR_COMMITMENT]",
+      "freeze_sha256": "d968b244918658167fc208dd75ba82e319810aefa068193abd11d77387de778e",
+      "checker_sha256": "a001bf9d4b336d8c477890a41b2273a13f508da14141ea6ff53b3698d09f512b"
+    },
+    "current_checker": {
+      "path": "checker/acceptance.rs",
+      "sha256": "9f99fdeef15526a9794edc7ce0468c82df24c636e4803dd14be246c4341b0e31",
+      "test_count": 5,
+      "kind": "bounded Linux public-API integration"
+    },
+    "reason": "Remove private-symbol, module-layout, and injected-source constraints before scored calls. Keep original commitment intact. Use the unchanged external public-API test harness supported by the frozen verifier.",
+    "unchanged": [
+      "selected historical task",
+      "source and reference commits",
+      "full original assignment and issue body",
+      "neutral correctness requirement",
+      "frozen instruction bytes",
+      "verifier implementation"
+    ],
+    "changed": [
+      "five public-API integration checks replace nine private event-injection checks as the gate",
+      "independent V3 remote roots and artifact paths",
+      "ten base and ten reference calibration repetitions"
+    ],
+    "scored_calls_before_amendment": 0,
+    "calibration_status": "not run; Cargo slot is unavailable",
+    "expected_acceptance_by_source_review": {
+      "base": {
+        "passed": 3,
+        "failed": 2
+      },
+      "reference": {
+        "passed": 5,
+        "failed": 0
+      }
+    },
+    "no_post_model_acceptance_expansion": true,
+    "details": "ADAPTER.md"
+  },
+  "calibration-amendment.json": {
+    "schema": "openagents.private-calibration-schedule-amendment.v1",
+    "accepted_at_utc": "2026-10-03T05:13:46.823505+00:00",
+    "authority": "Parent approved the prospective amendment before remote calibration or scored calls.",
+    "previous_registration_sha256": "d9b45ab2e9207c18bd0f684be672a0c8624849e5f6e8e4f7ea3fad3683cdb15d",
+    "previous_checker_amendment_sha256": "545ed2a436f043ba009b069f2e4a7d3251421e3eb56e5c905610c7aea593427d",
+    "previous_twenty_request_plan": {
+      "directory": "calibration-ab6fb3b1709a",
+      "request_count": 20,
+      "requests_sha256": "0c3628fc7d489157ad4b6798c0612aafb99a991b8cf7d2707a1952022ea83797"
+    },
+    "checker_unchanged_sha256": "9f99fdeef15526a9794edc7ce0468c82df24c636e4803dd14be246c4341b0e31",
+    "verifier_unchanged_sha256": "a5d9e8ed6ed15be3c438dc1aff508e805df04cc67d6036f3d29621e657d8284a",
+    "schedule": {
+      "full_gates": [
+        "base",
+        "reference"
+      ],
+      "capture_each_executable_before_the_next_compile": true,
+      "binary_repetition_order": [
+        "base",
+        "reference"
+      ],
+      "binary_repetitions_each": 10,
+      "total_behavior_observations_each": 11,
+      "fresh_scratch_home_per_binary_repetition": true,
+      "sequential": true
+    },
+    "reason": "Repeat the exact calibrated test programs to assess notification reliability without rebuilding and rerunning the complete package twenty times. Preserve every observation and verify binary, checker, source pin, and source-tree digests.",
+    "base_expectation": {
+      "passed": 3,
+      "failed": 2,
+      "failure_assertions": "Both imported-directory cases time out waiting for a catalog notification; inspect the actual assertions."
+    },
+    "reference_expectation": {
+      "passed": 5,
+      "failed": 0,
+      "full_crate_tests_and_formatting": "pass"
+    },
+    "boundaries": [
+      "No changes to the task, checker, verifier, original solution, or scored-run acceptance.",
+      "The historical base and reference stay in separate calibration exports, outside the scored root.",
+      "No new acceptance cases after any scored model call.",
+      "The old script, twenty-request plan, and prior commitments remain intact."
+    ],
+    "status": "registered prospectively; execution waits for parent Cargo-slot authorization"
+  },
+  "exclusion-amendment.json": {
+    "schema": "openagents.private-calibration-amendment.v3",
+    "created_at_utc": "2026-10-03T05:40:50.124137+00:00",
+    "previous_registration_sha256": "4e0c1cff6f552fda71100d12c0b1eb10ee412f5ac360b60c1bccb21342904c59",
+    "source_commit": "aeb7f9fb19e0d56c13400702894172ae472e3bcf",
+    "reference_commit": "fd305b01df5add38e2bd0ef3f862ee85cc9950c3",
+    "package": "coder-connect",
+    "excluded_test": "tests::strict_destinations_schemas_and_private_store_permissions",
+    "scope": "All scored arms and final base/reference calibration use the same own-test exclusion. Every other own test and all five independent acceptance cases remain unchanged.",
+    "reason": "The historical permission test assumes chmod changes the cached file stamp immediately. Store::stamp omits permission mode and uses ctime; 10/10 synthetic immediate chmod probes changed 0600 to 0644 without changing ctime_ns. The full base gate failed this test once; the exact existing test passed all 3 isolated binary runs. The unchanged full reference gate passed it. Treat this as an environment-sensitive historical defect, not a calibrated watcher failure.",
+    "preserved_observations": {
+      "initial_missing_dependency_attempt": true,
+      "base_own": {
+        "passed": 41,
+        "failed": 2,
+        "ignored": 5
+      },
+      "base_acceptance": {
+        "passed": 3,
+        "failed": 2
+      },
+      "reference_own": {
+        "passed": 43,
+        "failed": 0,
+        "ignored": 5,
+        "additional_integration_passes": 2
+      },
+      "reference_acceptance": {
+        "passed": 5,
+        "failed": 0
+      },
+      "isolated_permission_tests_passed": 3,
+      "unchanged_ctime_probes": 10
+    },
+    "verifier_original_sha256": "a5d9e8ed6ed15be3c438dc1aff508e805df04cc67d6036f3d29621e657d8284a",
+    "verifier_final_sha256": "2647e1d14cd83b33eaa7d15124118c57322f8e4eab0b63dc5cbfc471d5c26e0b",
+    "verifier_diff_sha256": "6ed5c60bb1939aeb6fad3675f97d51cf82193e96eda9263929a6d453e7033789",
+    "checker_sha256": "9f99fdeef15526a9794edc7ce0468c82df24c636e4803dd14be246c4341b0e31",
+    "schedule": "Run one new full gate per revision under the amended verifier, retain each exact acceptance executable before the next compile, then run each binary ten more times in fresh scratch homes. Retain all earlier setup/diagnostic observations separately; no retry to select a pass.",
+    "model_calls_before_amendment": 0,
+    "evidence": [
+      {
+        "path": "repeated-calibration-77e312f3661d/full-base-cea1c193-result.json",
+        "sha256": "3792d3da9bcdf15664114a27979c158e0d2e894ad7e58b38d8712f371009ce98"
+      },
+      {
+        "path": "repeated-calibration-c87fcc8bd569/full-base-031eb910-result.json",
+        "sha256": "df92d4a926943afa6bda48a52a32cd29d769a1d2041a7ef8ea03f2b46ef3b9ff"
+      },
+      {
+        "path": "reference-diagnostic-5c3f9b093aac/result.json",
+        "sha256": "2f3493be217dd236cb5b31e84bd50d206fe1932cc2a4685444cd2daa442e4e50"
+      },
+      {
+        "path": "calibration-permission-diagnostic.json",
+        "sha256": "52e1ff6f0993227f19952eb438130496e469ef2c0e9b5b54127db4a47b62885c"
+      },
+      {
+        "path": "calibration-cache-fetch.json",
+        "sha256": "83d5dfde70c1f034d6012ba854ca929bf9d31f6a0a110f7e033421f0574c2d8c"
+      }
+    ]
+  }
+}

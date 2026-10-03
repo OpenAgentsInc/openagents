@@ -6,7 +6,8 @@ blocks compare all four combinations on the same historical issue. The
 [prospective protocol](plan.md) fixes the order, models, checks, one-repair
 limit, and cost and time thresholds before scored calls.
 
-Scored calls have not started. Calibration and final registration precede execution.
+Scored calls have not started. Calibration is complete; the final registration
+binds every input before execution.
 
 ## Why this follows the previous rounds
 
@@ -66,7 +67,8 @@ imported day directory, an imported nested tree, unrelated files and sibling
 roots, notification before the first catalog read, and an ordinary new chat
 inside an existing directory. Atomic imports expose the missing directory
 event without depending on the child-watcher registration race. Ordinary
-crate tests and formatting run as well.
+crate tests and formatting run as well, with one pretrial exclusion described
+below.
 
 A prospectively recorded amendment replaced the original private-symbol
 checker with these public-API tests. This admits internal refactoring and
@@ -76,11 +78,47 @@ model execution. Four-second positive bounds and 300 ms negative observations
 are inherited from the existing test and do not establish notification latency.
 
 The checks exercise operating-system notifications and loopback transport.
-Repeated calibration measures whether this particular environment reproduces
+Repeated [calibration](calibration/README.md) gives the expected result in
+11/11 observations for each revision: the base passes 3/5 cases and the original
+fix passes 5/5. This measures whether this particular environment reproduces
 the bug and accepts the historical fix; it does not make those tests deterministic
 or prove complete correctness. Candidate patches also receive an independent
 source review. Registered acceptance and any broader concerns are reported
 separately.
+
+## Historical test limitation
+
+Calibration also exposed an unrelated, environment-sensitive test failure in
+`tests::strict_destinations_schemas_and_private_store_permissions`. It changes
+`observer.json` from mode `0600` to `0644` and expects the cached store to reject
+it. The historical cache observes ctime but does not include mode in its stamp.
+On this sandbox, ten immediate permission changes preserve the same observed
+ctime even though the mode changes. The test fails in one full base run, then
+passes three isolated runs; a single unchanged full reference gate also passes.
+Those observations remain in the calibration evidence.
+
+A prospective amendment excludes only that named test from the ordinary crate
+gate in every arm. All other crate tests, formatting, and the five independent
+notification checks remain unchanged. A separately named reserve verifier
+records this difference; the round-2 verifier is untouched. No scored model
+call precedes the amendment. This removes an unrelated source of flaky repair
+feedback; it does not establish the omitted permission behavior as correct.
+
+## Transport amendment before execution
+
+Two calibration status reads received an HTTP 502. Each result was recovered
+from the original process without relaunching it. The
+[transport amendment](transport-amendment.json) binds a separate runner copy
+that retries only GET responses with status 502, 503, or 504: at most three
+attempts, with one- and two-second backoffs. Command launches, writes, and model
+calls are never automatically retried. Sanitized retry events and elapsed time
+remain in the results, and retry time stays inside the existing endpoint timer.
+
+The [exact runner difference](transport-runner.diff) and 36 passing synthetic
+tests cover the retry behavior, reporting, and unchanged coordinator. This
+prospective amendment supersedes only the protocol's reference to the original
+runner copy. The models, task, briefing, checks, repair rule, order, and win
+thresholds remain unchanged. The original runner remains available for replay.
 
 ## Reading the result
 

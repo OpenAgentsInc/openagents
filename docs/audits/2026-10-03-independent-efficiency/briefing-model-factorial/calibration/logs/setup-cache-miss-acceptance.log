@@ -1,0 +1,4 @@
+error: failed to download `data-encoding v2.11.1`
+
+Caused by:
+  attempting to make an HTTP request, but --offline was specified

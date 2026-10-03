@@ -26,8 +26,21 @@ four pairs. Median recorded endpoint time is 301.2 versus 278.5 seconds, a
 The final control's first draft changed `read_all` but missed its `Catalog`
 consumer; one repair corrected it. The briefing does not reduce median tool
 calls or reads on this task. The evidence therefore does not establish reduced
-discovery as the cause of the cost difference. Cache and model variation remain
-possible contributors in this small panel.
+discovery as the cause of the cost difference. The cumulative model counters
+provide another view of context and generation volume:
+
+| Median reported tokens per completed session | Control | Briefing |
+| --- | ---: | ---: |
+| Output | 18,041 | 15,873 |
+| Cache creation input | 63,430 | 53,880.5 |
+| Cache read input | 1,083,951.5 | 1,195,713.5 |
+
+The briefing arm generates 12.0% fewer output tokens and creates 15.1% fewer
+cached input tokens at the median, while reading more cached tokens. A tool
+count is therefore a poor proxy for token volume or cost. These counters are
+descriptive; they do not separate the brief's causal effect from cache reuse,
+patch size, repairs, or model variation in this small panel. Thinking tokens
+are retained separately in the CLI record and are not added to output tokens.
 
 Source review finds a broader quality limitation in both arms: some accepted
 patches can still select different equal-rank copies or conflicting manifest

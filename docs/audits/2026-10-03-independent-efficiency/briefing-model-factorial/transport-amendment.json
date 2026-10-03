@@ -1,0 +1,40 @@
+{
+  "schema": "openagents.briefing.factorial-transport-amendment.v1",
+  "created_at_utc": "2026-10-03T05:47:31.584403+00:00",
+  "status": "Registered before warmups and scored model calls.",
+  "reason": "Calibration encountered HTTP 502 on two read-only process polls. Each original process result was recovered without relaunching a test.",
+  "original_runner_sha256": "84fe93a3be4301cab749d9576caf246917f70e4399cd138a3010d578e3030b4c",
+  "effective_runner_sha256": "3191781df7659936d9da67f1a6410a025b4b121174a9d205405cefcad06b34ff",
+  "diff_sha256": "72a3030ae70c0ec26cb4ca8dae9640bf8c2ecaec8c555b6b54f95d6e0cb0e09b",
+  "test_sha256": "48ffe657aac5f7f00349dbf7f4d2799fe21eb6b3e68a6a2c663a19e92dcce8f2",
+  "policy": {
+    "methods": [
+      "GET"
+    ],
+    "statuses": [
+      502,
+      503,
+      504
+    ],
+    "maximum_total_attempts": 3,
+    "backoff_seconds": [
+      1,
+      2
+    ],
+    "mutations_retried": false,
+    "model_calls_retried": false
+  },
+  "telemetry": "Retain only operation/method enums, attempts, HTTP statuses, scheduled backoff, outcome, and elapsed seconds. Retry time remains inside existing check and endpoint timers.",
+  "unchanged": [
+    "Models, effort, file tools, prompts, source, instructions, briefing, acceptance checker, one-repair policy, budgets, order, comparison gates, coordinator, and instruction guard.",
+    "The original round-2 runner remains byte-identical."
+  ],
+  "verification": {
+    "retry_tests": 5,
+    "factorial_reporter_tests": 18,
+    "shared_reporter_tests": 7,
+    "coordinator_tests": 6,
+    "all_passed": true,
+    "live_model_calls": 0
+  }
+}
