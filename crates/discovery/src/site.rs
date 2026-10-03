@@ -158,9 +158,24 @@ pub fn escape(text: &str) -> String {
 /// names what exists, and `capabilities` declines what does not.
 #[must_use]
 pub fn agent_card(origin: &str) -> Value {
-    let endpoint_origin = match origin.trim_end_matches('/') {
-        "https://openagents.com" | "https://api.openagents.com" => "https://api.typesafe.ai",
-        other => other,
+    let public = matches!(
+        origin.trim_end_matches('/'),
+        "https://openagents.com" | "https://api.openagents.com"
+    );
+    let endpoint_origin = if public {
+        "https://api.typesafe.ai"
+    } else {
+        origin.trim_end_matches('/')
+    };
+    // Public origins don't serve `/agents.md` or `/auth.md`; the decision
+    // API's own documentation does.
+    let (documentation, auth_doc) = if public {
+        (
+            "https://docs.typesafe.ai/".to_owned(),
+            "https://docs.typesafe.ai/".to_owned(),
+        )
+    } else {
+        (format!("{origin}/agents.md"), "/auth.md".to_owned())
     };
     json!({
         "name": "OpenAgents decision API",
@@ -182,7 +197,7 @@ pub fn agent_card(origin: &str) -> Value {
             "extendedAgentCard": false,
         },
         "securitySchemes": {
-            "bearer": {"type": "http", "scheme": "bearer", "description": "An API key in the `oak_<id>.<secret>` format. See /auth.md to get one."}
+            "bearer": {"type": "http", "scheme": "bearer", "description": format!("An API key in the `oak_<id>.<secret>` format. See {auth_doc} to get one.")}
         },
         "security": [{"bearer": []}],
         "defaultInputModes": ["application/json"],
@@ -193,7 +208,7 @@ pub fn agent_card(origin: &str) -> Value {
             {"id": "durable-jobs", "name": "Durable jobs", "description": "Run a batch as a job that you can check, cancel, and download results from later.", "tags": ["jobs", "batch"]},
             {"id": "documentation", "name": "Bundled documentation", "description": "List, read, and search the OpenAgents documentation. No API key needed.", "tags": ["docs"]},
         ],
-        "documentationUrl": format!("{origin}/agents.md"),
+        "documentationUrl": documentation,
     })
 }
 
@@ -340,6 +355,7 @@ mod tests {
                 card["supportedInterfaces"][1]["url"],
                 "https://api.typesafe.ai/v1/classify"
             );
+            assert_eq!(card["documentationUrl"], "https://docs.typesafe.ai/");
             assert!(
                 card["skills"][0]["description"]
                     .as_str()

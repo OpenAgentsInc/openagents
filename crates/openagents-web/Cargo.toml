@@ -10,6 +10,7 @@ description = "The OpenAgents website: public pages, legal documents, the instal
 axum = "0.8"
 base64 = "0.22"
 coder = { path = "../coder" }
+discovery = { path = "../discovery" }
 futures-util = "0.3"
 hyper = { version = "1", features = ["client", "http1"] }
 hyper-util = { version = "0.1", features = ["client-legacy", "http1", "tokio"] }

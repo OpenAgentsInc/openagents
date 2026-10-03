@@ -9660,6 +9660,7 @@ dependencies = [
  "axum 0.8.9",
  "base64 0.22.1",
  "coder",
+ "discovery",
  "futures-util",
  "hyper",
  "hyper-util",

@@ -1282,3 +1282,42 @@ async fn the_stats_page_says_when_there_are_no_payments_or_no_pay_host() {
         assert!(html.contains("href=\"/live\""));
     }
 }
+
+#[tokio::test]
+async fn the_site_serves_the_agent_discovery_documents_for_its_public_origin() {
+    let store = tempfile::tempdir().unwrap();
+    let mut config = Config::development(store.path().to_path_buf());
+    config.public_hosts.push("openagents.com".to_owned());
+    let app = router(config);
+    for (path, needle) in [
+        (
+            "/.well-known/agent-card.json",
+            "https://api.typesafe.ai/v1/systemone",
+        ),
+        (
+            "/.well-known/agent-skills/index.json",
+            "https://openagents.com/.well-known/agent-skills/openagents-decision-api/SKILL.md",
+        ),
+        (
+            "/.well-known/agent-skills/openagents-decision-api/SKILL.md",
+            "openagents-decision-api",
+        ),
+    ] {
+        let response = app
+            .clone()
+            .oneshot(
+                axum::http::Request::get(path)
+                    .header("host", "openagents.com")
+                    .body(axum::body::Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 200, "{path}");
+        let body = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let body = String::from_utf8(body.to_vec()).unwrap();
+        assert!(body.contains(needle), "{path}: {body}");
+    }
+}

@@ -33,7 +33,7 @@ use hyper_util::rt::{TokioExecutor, TokioIo};
 
 /// The paths this site answers itself, exactly or as a prefix. `/app`, the
 /// local task browser, is never proxied; the host guard keeps it local.
-const OWNED_EXACT: [&str; 22] = [
+const OWNED_EXACT: [&str; 25] = [
     "/",
     "/download",
     "/install",
@@ -50,6 +50,9 @@ const OWNED_EXACT: [&str; 22] = [
     "/app",
     "/.well-known/apple-app-site-association",
     "/.well-known/assetlinks.json",
+    "/.well-known/agent-card.json",
+    "/.well-known/agent-skills/index.json",
+    crate::wellknown::SKILL_PATH,
     "/static/site.css",
     "/static/ask.js",
     "/static/flow.js",

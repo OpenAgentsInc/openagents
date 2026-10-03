@@ -20,6 +20,7 @@ mod pages;
 pub mod palette;
 mod tasks;
 pub mod upstream;
+mod wellknown;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -126,6 +127,7 @@ pub fn router(config: Config) -> Router {
         .merge(pages::routes())
         .merge(ask::routes())
         .merge(tasks::routes())
+        .merge(wellknown::routes())
         .fallback(not_found)
         .layer(middleware::from_fn(move |request, next| {
             let hosts = hosts.clone();
