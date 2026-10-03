@@ -22,6 +22,7 @@ pub struct State {
     pub deaths: u64,
     pub earned_xp: u64,
     pub turned_in: Vec<u32>,
+    pub killed: BTreeMap<u32, u64>,
 }
 
 impl State {
@@ -38,6 +39,7 @@ impl State {
             deaths: 0,
             earned_xp: 0,
             turned_in: Vec::new(),
+            killed: BTreeMap::new(),
         }
     }
 
@@ -93,7 +95,7 @@ impl State {
             "earned_xp":self.earned_xp,"health":own.and_then(ObjectFields::unit_health),
             "powers":(0..5).map(|i| own.and_then(|f|f.unit_power(i))).collect::<Vec<_>>(),
             "gold":own.and_then(ObjectFields::player_money),"inventory":inventory,"bags":bags,
-            "quests":quests,"turned_in":self.turned_in,"nearby":nearby,"deaths":self.deaths})
+            "quests":quests,"turned_in":self.turned_in,"nearby":nearby,"deaths":self.deaths,"killed":self.killed})
     }
 }
 

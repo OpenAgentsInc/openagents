@@ -1,4 +1,5 @@
 //! One bounded JSON-line session per supervised process.
+mod actions;
 mod session;
 mod state;
 use anyhow::{Result, bail, ensure};
@@ -39,6 +40,13 @@ fn bounded_seconds(args: &Value, default: u64) -> Result<u64> {
 }
 
 fn main() {
+    if std::env::args().nth(1).as_deref() == Some("--version") {
+        println!(
+            "wow-bridge {} benilla cf891dc3756a",
+            env!("CARGO_PKG_VERSION")
+        );
+        return;
+    }
     let (tx, rx) = mpsc::sync_channel::<Result<Request>>(16);
     let closed = Arc::new(AtomicBool::new(false));
     let flag = closed.clone();
@@ -96,6 +104,10 @@ fn main() {
                     live = Some(session::Live::join(&req.args, closed.clone())?);
                     Ok(live.as_ref().unwrap().state.observation(40.0))
                 }
+                "cleanup" => live
+                    .as_mut()
+                    .ok_or_else(|| anyhow::anyhow!("join first"))?
+                    .cleanup(),
                 "shutdown" | "disconnect" => {
                     if let Some(s) = &mut live {
                         s.disconnect()?;
@@ -136,6 +148,9 @@ fn main() {
                             let seconds = bounded_seconds(&req.args, 2)?;
                             s.pump(Duration::from_secs(seconds))?;
                             Ok(s.state.observation(40.0))
+                        }
+                        "target" | "attack" | "cast" | "loot" | "quest" | "use" | "vendor" => {
+                            s.action(op, &req.args, bounded_seconds(&req.args, 30)?)
                         }
                         "goto" => s.goto(&req.args, bounded_seconds(&req.args, 60)?),
                         "gm" => {

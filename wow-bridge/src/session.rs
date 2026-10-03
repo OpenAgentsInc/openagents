@@ -14,16 +14,32 @@ use std::sync::{
 };
 use std::time::{Duration, Instant};
 
+struct Motion {
+    started: Instant,
+    duration: Duration,
+    path: Vec<[f32; 3]>,
+    spline: u32,
+}
+
 pub struct Live {
     pub writer: WorldWriter,
     pub state: State,
     pub setup: bool,
+    join_args: Value,
     events: mpsc::Receiver<Result<Vec<SessionEvent>>>,
     closed: Arc<AtomicBool>,
     last_ping: Instant,
     ping: u32,
     disconnected: bool,
     closing: bool,
+    pub target: Option<u64>,
+    pub loot_window: Option<(u64, u32, Vec<messages::LootItem>)>,
+    pub vendor_seen: Option<u64>,
+    pub loot_error: Option<u8>,
+    pub qualities: std::collections::BTreeMap<u32, u32>,
+    pub cast_result: Option<(u32, bool, Option<u8>)>,
+    motions: std::collections::BTreeMap<u64, Motion>,
+    kill_lives: KillLives,
 }
 
 pub fn credentials(path: &std::path::Path, account: &str) -> Result<String> {
@@ -92,7 +108,18 @@ impl Live {
                     session.delete_character(c.guid)? == messages::CHAR_DELETE_SUCCESS,
                     "character reset refused"
                 );
-                roster = session.char_enum()?;
+                let end = Instant::now() + Duration::from_secs(15);
+                loop {
+                    roster = session.char_enum()?;
+                    if !roster.iter().any(|c| c.name.eq_ignore_ascii_case(name)) {
+                        break;
+                    }
+                    ensure!(
+                        Instant::now() < end,
+                        "character deletion has not reached the roster"
+                    );
+                    std::thread::sleep(Duration::from_millis(100));
+                }
             }
         }
         if !roster.iter().any(|c| c.name.eq_ignore_ascii_case(name)) {
@@ -119,7 +146,18 @@ impl Live {
                 session.create_character(&req)? == messages::CHAR_CREATE_SUCCESS,
                 "character creation refused"
             );
-            roster = session.char_enum()?;
+            let end = Instant::now() + Duration::from_secs(15);
+            loop {
+                roster = session.char_enum()?;
+                if roster.iter().any(|c| c.name.eq_ignore_ascii_case(name)) {
+                    break;
+                }
+                ensure!(
+                    Instant::now() < end,
+                    "created character has not reached the roster"
+                );
+                std::thread::sleep(Duration::from_millis(100));
+            }
         }
         let character = roster
             .iter()
@@ -147,12 +185,21 @@ impl Live {
             writer,
             state,
             setup,
+            join_args: args.clone(),
             events,
             closed,
             last_ping: Instant::now(),
             ping: 0,
             disconnected: false,
             closing: false,
+            target: None,
+            loot_window: None,
+            loot_error: None,
+            vendor_seen: None,
+            cast_result: None,
+            qualities: Default::default(),
+            kill_lives: Default::default(),
+            motions: Default::default(),
         };
         live.pump(Duration::from_secs(2))?;
         ensure!(live.state.fields().is_some(), "player state did not arrive");
@@ -177,6 +224,9 @@ impl Live {
                     self.state.entities.len() < 4096 || self.state.entities.contains_key(&guid),
                     "entity bound exceeded"
                 );
+                if fields.unit_health().is_some_and(|h| h > 0) {
+                    self.kill_lives.alive(guid);
+                }
                 if guid == self.state.guid {
                     self.state.position = position;
                     self.state.orientation = orientation;
@@ -205,6 +255,9 @@ impl Live {
                 if let Some(e) = self.state.entities.get_mut(&guid) {
                     let was_alive = e.fields.unit_health().unwrap_or(0) > 0;
                     e.fields.merge(fields);
+                    if !was_alive && e.fields.unit_health().is_some_and(|h| h > 0) {
+                        self.kill_lives.alive(guid);
+                    }
                     if guid == self.state.guid && was_alive && e.fields.unit_health() == Some(0) {
                         self.state.deaths += 1;
                         emit(json!({"event":"death"}));
@@ -233,13 +286,45 @@ impl Live {
                     self.state.orientation = orientation;
                 }
             }
+            SessionEvent::MonsterMove {
+                guid,
+                start,
+                path,
+                duration_ms,
+                spline_id,
+                stop,
+                transport,
+                ..
+            } if transport.is_none() => {
+                if stop || path.is_empty() || duration_ms == 0 {
+                    self.motions.remove(&guid);
+                    if let Some(e) = self.state.entities.get_mut(&guid) {
+                        e.position = start;
+                    }
+                } else if self.motions.len() < 4096 {
+                    let mut points = vec![start];
+                    points.extend(path);
+                    self.motions.insert(
+                        guid,
+                        Motion {
+                            started: Instant::now(),
+                            duration: Duration::from_millis(u64::from(duration_ms)),
+                            path: points,
+                            spline: spline_id,
+                        },
+                    );
+                }
+            }
             SessionEvent::ObjectsRemoved(guids) => {
                 for g in guids {
+                    self.motions.remove(&g);
+                    self.motions.remove(&g);
                     self.state.entities.remove(&g);
                     self.state.items.remove(&g);
                 }
             }
             SessionEvent::ObjectDestroyed(g) => {
+                self.motions.remove(&g);
                 self.state.entities.remove(&g);
                 self.state.items.remove(&g);
             }
@@ -323,6 +408,40 @@ impl Live {
                 }
                 emit(json!({"event":"quest_complete","quest":q.quest_id}));
             }
+            SessionEvent::PartyKillLog(k) if k.killer == self.state.guid => {
+                if self.kill_lives.credit(k.victim) {
+                    if let Some(entry) = self
+                        .state
+                        .entities
+                        .get(&k.victim)
+                        .and_then(|e| e.fields.object_entry())
+                    {
+                        *self.state.killed.entry(entry).or_default() += 1;
+                        emit(json!({"event":"kill","entry":entry,"guid":k.victim.to_string()}));
+                    }
+                }
+            }
+            SessionEvent::VendorInventory { vendor, .. } => self.vendor_seen = Some(vendor),
+            SessionEvent::ItemTemplate { entry, info } => {
+                if let Some(info) = info {
+                    if self.qualities.len() < 1024 {
+                        self.qualities.insert(entry, info.quality);
+                    }
+                }
+            }
+            SessionEvent::LootResponse {
+                guid, gold, items, ..
+            } => self.loot_window = Some((guid, gold, items)),
+            SessionEvent::LootError { error, .. } => self.loot_error = Some(error),
+            SessionEvent::CastResult {
+                spell_id,
+                success,
+                reason,
+                ..
+            } => self.cast_result = Some((spell_id, success, reason)),
+            SessionEvent::QuestFailed { quest_id, .. } => {
+                emit(json!({"event":"feedback","text":format!("quest {quest_id} failed")}))
+            }
             SessionEvent::XpGain(xp) => self.state.earned_xp += u64::from(xp.total),
             SessionEvent::ItemPushResult(item) => {
                 emit(json!({"event":"loot","entry":item.item_entry,"count":item.count}))
@@ -354,6 +473,44 @@ impl Live {
                     }
                     Err(mpsc::TryRecvError::Empty) => break,
                     Err(_) => bail!("world stream closed"),
+                }
+            }
+            let mut finished = Vec::new();
+            for (guid, m) in &self.motions {
+                let progress =
+                    (m.started.elapsed().as_secs_f32() / m.duration.as_secs_f32()).min(1.0);
+                let total = m.path.windows(2).map(|p| distance(p[0], p[1])).sum::<f32>();
+                let mut left = total * progress;
+                let mut pos = *m.path.last().unwrap();
+                for pair in m.path.windows(2) {
+                    let length = distance(pair[0], pair[1]);
+                    if left <= length && length > 0.0 {
+                        pos = std::array::from_fn(|i| {
+                            pair[0][i] + (pair[1][i] - pair[0][i]) * left / length
+                        });
+                        break;
+                    }
+                    left -= length;
+                }
+                if let Some(e) = self.state.entities.get_mut(guid) {
+                    e.position = pos;
+                }
+                if *guid == self.state.guid {
+                    self.state.position = pos;
+                }
+                if progress >= 1.0 {
+                    finished.push((*guid, m.spline));
+                }
+            }
+            for (guid, spline) in finished {
+                self.motions.remove(&guid);
+                if guid == self.state.guid {
+                    self.writer.move_spline_done(
+                        0,
+                        self.state.position,
+                        self.state.orientation,
+                        spline,
+                    )?;
                 }
             }
             let left = end.saturating_duration_since(Instant::now());
@@ -461,6 +618,44 @@ impl Live {
         )
     }
 
+    pub fn cleanup(&mut self) -> Result<Value> {
+        ensure!(!self.setup, "setup character is retained");
+        self.disconnect()?;
+        let args = &self.join_args;
+        let account = args["account"].as_str().unwrap();
+        let file = std::env::var_os("VOYAGER_WOW_ACCOUNTS")
+            .ok_or_else(|| anyhow::anyhow!("credential file required"))?;
+        let password = credentials(std::path::Path::new(&file), account)?;
+        let logon = benilla_protocol::logon(args["auth"].as_str().unwrap(), account, &password)?;
+        let address = args["world"]
+            .as_str()
+            .map(str::to_owned)
+            .or_else(|| logon.realms.first().map(|r| r.address.clone()))
+            .ok_or_else(|| anyhow::anyhow!("no realm"))?;
+        let mut session = WorldSession::connect(address, account, logon.session_key)?;
+        let name = args["character"].as_str().unwrap();
+        let roster = session.char_enum()?;
+        if let Some(c) = roster.iter().find(|c| c.name.eq_ignore_ascii_case(name)) {
+            ensure!(
+                session.delete_character(c.guid)? == messages::CHAR_DELETE_SUCCESS,
+                "cleanup deletion refused"
+            );
+        }
+        let end = Instant::now() + Duration::from_secs(15);
+        loop {
+            if !session
+                .char_enum()?
+                .iter()
+                .any(|c| c.name.eq_ignore_ascii_case(name))
+            {
+                break;
+            }
+            ensure!(Instant::now() < end, "character survived cleanup");
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        Ok(json!({"deleted":true,"character":name}))
+    }
+
     pub fn disconnect(&mut self) -> Result<()> {
         if self.disconnected {
             return Ok(());
@@ -492,5 +687,32 @@ mod tests {
             std::fs::set_permissions(f.path(), std::fs::Permissions::from_mode(0o644)).unwrap();
             assert!(credentials(f.path(), "GYM1").is_err());
         }
+    }
+}
+
+/// A creature GUID survives respawns; duplicate protection lasts one life.
+#[derive(Default)]
+struct KillLives(std::collections::BTreeSet<u64>);
+impl KillLives {
+    fn alive(&mut self, guid: u64) {
+        self.0.remove(&guid);
+    }
+    fn credit(&mut self, guid: u64) -> bool {
+        self.0.len() < 4096 && self.0.insert(guid)
+    }
+}
+#[cfg(test)]
+mod kill_tests {
+    use super::*;
+    #[test]
+    fn a_respawn_can_earn_new_credit_but_a_duplicate_cannot() {
+        let mut lives = KillLives::default();
+        lives.alive(17);
+        assert!(lives.credit(17));
+        assert!(!lives.credit(17));
+        lives.alive(17);
+        assert!(lives.credit(17));
+        assert!(!lives.credit(17));
+        assert!(lives.credit(18));
     }
 }

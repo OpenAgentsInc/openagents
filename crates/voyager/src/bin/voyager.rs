@@ -122,11 +122,23 @@ fn run(args: &[String]) -> Result<()> {
         )));
     };
     let world = World::load(world_path(&world_arg)?)?;
-    let jar = jar.map(Ok).unwrap_or_else(|| server_jar(&world))?;
-    let java = java.map(Ok).unwrap_or_else(java_path)?;
-    let bridge = bridge
-        .map(Ok)
-        .unwrap_or_else(voyager::bridge::helper_path)?;
+    let jar = if world.wow.is_some() {
+        PathBuf::new()
+    } else {
+        jar.map(Ok).unwrap_or_else(|| server_jar(&world))?
+    };
+    let java = if world.wow.is_some() {
+        PathBuf::new()
+    } else {
+        java.map(Ok).unwrap_or_else(java_path)?
+    };
+    let bridge = bridge.map(Ok).unwrap_or_else(|| {
+        if world.wow.is_some() {
+            voyager::bridge::wow_helper_path()
+        } else {
+            voyager::bridge::helper_path()
+        }
+    })?;
     let runs = runs.unwrap_or_else(default_runs);
     let plan = Plan {
         jar,

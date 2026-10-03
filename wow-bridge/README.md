@@ -44,3 +44,11 @@ The live smoke verified Northshire login, descriptor state, three-yard movement
 independently saved by the server, chat, GM refusal, logout, and shutdown. Its
 disposable character was removed through character select. The
 [realm runbook](../docs/wow/realm.md) covers the private server.
+
+Combat and quest operations are `target`, `attack`, `cast`, `loot`, `quest`,
+`use`, and `vendor`. See [the episode runbook](../docs/wow/episodes.md) for argument
+shapes and deterministic grading. `attack` returns whether the selected target
+died; kill credit comes from the server. `loot` opens, takes, and releases a loot
+window. `quest` confirms acceptance and reward against observed state. Vendor
+sales support only server-quality-zero backpack items. Every operation remains
+bounded by at most 120 seconds.

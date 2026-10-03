@@ -224,7 +224,17 @@ impl Bridge {
     /// Returns [`Error::Bridge`] when the process or its threads will not
     /// spawn.
     pub fn start(path: &Path) -> Result<Self> {
-        let mut child = Command::new(path)
+        Self::start_mode(path, false)
+    }
+
+    /// Starts a trusted helper for manifest setup, outside program authority.
+    pub(crate) fn start_mode(path: &Path, setup: bool) -> Result<Self> {
+        let mut command = Command::new(path);
+        command.env_remove("WOW_BRIDGE_SETUP");
+        if setup {
+            command.env("WOW_BRIDGE_SETUP", "1");
+        }
+        let mut child = command
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -497,4 +507,28 @@ pub fn helper_path() -> Result<PathBuf> {
     Err(Error::bridge(
         "no mc-bridge binary found; build it with ./scripts/build-mc-bridge.sh".to_string(),
     ))
+}
+
+/// Locates the separately built WoW helper.
+pub fn wow_helper_path() -> Result<PathBuf> {
+    if let Some(path) = std::env::var_os("VOYAGER_WOW_BRIDGE") {
+        let path = PathBuf::from(path);
+        if path.is_file() {
+            return Ok(path);
+        }
+    }
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_default();
+    let target = std::env::var_os("CARGO_TARGET_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home.join("work/openagents-target-agent1"));
+    let path = target.join("release/wow-bridge");
+    if path.is_file() {
+        Ok(path)
+    } else {
+        Err(Error::bridge(
+            "no wow-bridge binary; run ./scripts/build-wow-bridge.sh",
+        ))
+    }
 }
