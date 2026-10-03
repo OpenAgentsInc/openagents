@@ -659,6 +659,44 @@ fn positions_hold_across_refreshes_and_rings_do_not_overlap() {
     );
 }
 
+/// Source growth must not crowd circles, even after weights reach their maximum.
+#[test]
+fn dense_tree_keeps_all_circles_apart_across_weight_refreshes() {
+    let mut map = Map::committed();
+    let parent = map.find("route:meta").unwrap();
+    let template = map
+        .nodes
+        .iter()
+        .find(|node| node.kind == Kind::Answer)
+        .unwrap()
+        .clone();
+    for index in 0..100 {
+        let mut node = template.clone();
+        node.id = format!("answer:dense-{index}");
+        node.parent = Some(parent);
+        node.depth = map.nodes[parent].depth + 1;
+        map.nodes.push(node);
+    }
+    let before = Layout::of(&map);
+    for node in &mut map.nodes {
+        node.weight = 1.0;
+    }
+    let after = Layout::of(&map);
+    assert_eq!(before.positions, after.positions);
+    assert_eq!(before.spans, after.spans);
+    for a in 0..map.nodes.len() {
+        for b in (a + 1)..map.nodes.len() {
+            let distance = after.positions[a].distance(after.positions[b]);
+            assert!(
+                distance >= after.radii[a] + after.radii[b],
+                "{} and {} overlap ({distance})",
+                map.nodes[a].id,
+                map.nodes[b].id
+            );
+        }
+    }
+}
+
 /// The camera: screen and world round-trip, panning moves by the drag,
 /// zooming keeps the anchor still and stays in bounds, fit holds every
 /// node, and easing between cameras ends where it should.

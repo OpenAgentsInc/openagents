@@ -10,7 +10,7 @@
 
 use super::{Kind, Map};
 
-/// The ring radius at each depth, in world units.
+/// The minimum ring radius at each depth, in world units.
 pub const RINGS: [f32; 6] = [0.0, 240.0, 500.0, 790.0, 1080.0, 1320.0];
 /// Empty leaves between families, so they read as groups.
 const FAMILY_PAD: f32 = 2.0;
@@ -122,6 +122,23 @@ impl Layout {
             } else {
                 Point::new(RINGS[depth] * angle.cos(), RINGS[depth] * angle.sin())
             };
+        }
+        // More source leaves narrow every angular span. Expand the rings
+        // together to keep circles apart, including circles on different rings.
+        // Maximum radii keep positions independent of refreshed node weights.
+        let mut scale = 1.0_f32;
+        for a in 0..n {
+            for b in (a + 1)..n {
+                let distance = positions[a].distance(positions[b]);
+                let needed = radius(map.nodes[a].kind, 1.0) + radius(map.nodes[b].kind, 1.0) + 2.0;
+                if distance > 0.0 {
+                    scale = scale.max(needed / distance);
+                }
+            }
+        }
+        for position in &mut positions {
+            position.x *= scale;
+            position.y *= scale;
         }
         let radii = map
             .nodes
