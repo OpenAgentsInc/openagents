@@ -111,3 +111,5 @@ mod tests {
         assert_eq!(world.revision, revision);
     }
 }
+
+pub mod assets;
