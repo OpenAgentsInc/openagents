@@ -106,7 +106,7 @@ impl Encounter {
         self.kills = frame
             .actors
             .iter()
-            .filter(|a| a.actor.model == "cultist" && a.health == 0)
+            .filter(|a| a.actor.model.starts_with("cultist") && a.health == 0)
             .count() as u32;
         if self.ended.is_some() {
             return Ok(());
@@ -389,7 +389,7 @@ mod tests {
                 .frame()
                 .actors
                 .into_iter()
-                .filter(|a| a.actor.model == "cultist")
+                .filter(|a| a.actor.model.starts_with("cultist"))
             {
                 if game.unlocked()
                     && a.health > 0

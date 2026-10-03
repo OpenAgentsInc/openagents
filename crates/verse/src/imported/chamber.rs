@@ -417,6 +417,7 @@ pub fn add_effect_models(pack: &mut Pack, dir: &std::path::Path) -> Result<(), S
         pack.models.insert(
             name.into(),
             Model {
+                skin: None,
                 source: format!(
                     "verse/{}/{name}",
                     if ["effect-web", "effect-grease"].contains(&name) {
@@ -462,6 +463,7 @@ pub fn add_effect_models(pack: &mut Pack, dir: &std::path::Path) -> Result<(), S
         pack.models.insert(
             name.into(),
             Model {
+                skin: None,
                 source: format!("verse/particles/{name}"),
                 source_sha256: format!("{:x}", Sha256::digest(name.as_bytes())),
                 height: 2.0,
@@ -484,6 +486,7 @@ pub fn add_effect_models(pack: &mut Pack, dir: &std::path::Path) -> Result<(), S
     pack.models.insert(
         "effect-ribbon".into(),
         Model {
+            skin: None,
             source: "verse/ribbon/effect-ribbon".into(),
             source_sha256: format!("{:x}", Sha256::digest(b"effect-ribbon")),
             height: 2.0,
@@ -535,6 +538,7 @@ pub fn add_effect_models(pack: &mut Pack, dir: &std::path::Path) -> Result<(), S
         pack.models.insert(
             name.into(),
             Model {
+                skin: None,
                 source: format!("verse/procedural/{name}"),
                 source_sha256: format!("{:x}", Sha256::digest(name.as_bytes())),
                 height: 2.0,
@@ -801,7 +805,17 @@ fn portraits(dir: &std::path::Path, pack: &Pack, mut atlas: Atlas) -> Result<Atl
     use super::{Renderer, lighting::Lighting};
     use crate::{render::View, ui::UiBatch};
     let mut renderer = Renderer::new(pack.clone(), dir, 128, 128, &atlas, &[])?;
-    for name in ["adventurer", "cultist", "claude"] {
+    for name in [
+        "adventurer",
+        "cultist",
+        "cultist-female",
+        "cultist-peasant",
+        "cultist-peasant-female",
+        "claude",
+    ] {
+        if !pack.models.contains_key(name) {
+            continue;
+        }
         let height = pack.models[name].height * 0.9144;
         let target = Vec3::Y * height * if name == "claude" { 0.82 } else { 0.92 };
         let eye = target - Vec3::Z * height * 0.4;

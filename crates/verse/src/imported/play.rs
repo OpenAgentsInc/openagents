@@ -346,7 +346,7 @@ impl Game {
                             .is_some_and(|v| v.length_squared() > 0.01)
                         {
                             4
-                        } else if a.actor.model == "cultist" && e.ended.is_none() {
+                        } else if a.actor.model.starts_with("cultist") && e.ended.is_none() {
                             if a.actor.id % 3 == 0 { 25 } else { 51 }
                         } else {
                             0
@@ -380,7 +380,7 @@ impl Game {
                             .unwrap_or_else(|| (-direction.x).atan2(-direction.z));
                     }
                     if self.controls.held(*id) {
-                        a.animation = if a.actor.model == "cultist"
+                        a.animation = if a.actor.model.starts_with("cultist")
                             && self.encounter.as_ref().is_some_and(|e| e.ended.is_none())
                         {
                             if a.actor.id % 3 == 0 { 25 } else { 51 }
@@ -654,7 +654,7 @@ impl Game {
             .actors
             .iter()
             .filter(|a| {
-                a.model == "cultist"
+                a.model.starts_with("cultist")
                     && self
                         .npc_deaths
                         .get(&a.id)
@@ -897,7 +897,7 @@ mod tests {
             .scene
             .actors
             .iter()
-            .find(|a| a.model == "cultist")
+            .find(|a| a.model.starts_with("cultist"))
             .unwrap()
             .clone();
         for _ in 0..2 {
@@ -945,7 +945,7 @@ mod tests {
             .frame()
             .actors
             .into_iter()
-            .find(|a| a.actor.model == "cultist")
+            .find(|a| a.actor.model.starts_with("cultist"))
             .unwrap();
         g.player = target.actor.position + Vec3::Z;
         g.yaw = 0.0;

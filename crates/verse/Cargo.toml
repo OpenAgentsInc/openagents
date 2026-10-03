@@ -16,6 +16,7 @@ capture = []
 imported-desktop = ["dep:winit", "capture"]
 
 [dependencies]
+gltf = { version = "=1.4.1", default-features = false, features = ["import", "utils", "names"] }
 verse-engine = { path = "../verse-engine" }
 bytemuck = { version = "1.25", features = ["derive"] }
 coder = { path = "../coder", optional = true }
@@ -116,4 +117,8 @@ required-features = ["imported-desktop"]
 
 [[example]]
 name = "verse_play"
+required-features = ["imported-desktop"]
+
+[[example]]
+name = "universal_characters"
 required-features = ["imported-desktop"]

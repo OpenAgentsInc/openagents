@@ -46,3 +46,27 @@ Validation for these slices: two physics navigation tests, 39 focused chamber
 tests, 16 gameplay adapter tests, both native example builds, and the native
 navigation recording. Full projectile CCD and explosion-radius occlusion remain
 separate work.
+
+## Universal character capture
+
+`universal-combat.mp4` records the licensed character scene through the native
+GPU renderer. `universal-characters.png` shows all six selectable Standard
+appearances under inspection lighting. The adjacent combat JSON records the
+same ten-ability encounter: ten cultists defeated, 54 absorbed shield damage,
+32 enemy casts, and the adventurer's defeat at 46.9 seconds. Claude retains
+299,877 of 300,000 HP. Cinematic dialogue and camera handoff use programmed cues.
+
+#10432 adds CC0 Quaternius base heads, fantasy outfits, rigged hair, glTF
+rest-pose/inverse-bind skinning, and retargeted animation states. Cultists mix
+male and female Ranger and Peasant outfits; Claude wears an enlarged red Ranger
+outfit. Bow and death states are authored because the Standard animation library
+has no dedicated clips for them. Source licenses, repairs, hashes, and all 43
+available animation names live in `assets/verse/characters/quaternius/`.
+
+Validation: seven engine tests, 40 focused imported-scene tests, the gameplay
+adapter suite, formatting, three native example builds, source manifest digest
+checks, and native lineup and battle captures. The character test exercises all
+six rigs and every mapped state, finite skin palettes and bounds, head/outfit
+composition, and named-clip loading. These captures use no video grading and no
+Blizzard assets. Normal and roughness source images are retained but are not yet
+used by the current material shader.

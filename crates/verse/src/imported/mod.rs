@@ -10,6 +10,7 @@ use crate::{
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3};
 pub mod chamber;
+pub mod characters;
 pub mod combat;
 pub mod controls;
 pub mod lighting;
@@ -667,8 +668,8 @@ impl Renderer {
                     *dst = bone.to_cols_array_2d();
                 }
             }
-            if instance.animation == 1 {
-                // Classic death poses extend below the logical floor; keep the full body visible.
+            if matches!(instance.animation, 1 | 100) {
+                // Ground fallen and prone bodies using their posed geometry.
                 let model = &self.pack.models[&instance.model];
                 let transform = Mat4::from_cols_array_2d(&palette.model);
                 let bones: Vec<_> = palette.bones.iter().map(Mat4::from_cols_array_2d).collect();
@@ -683,7 +684,10 @@ impl Renderer {
                     );
                     lowest = lowest.min(transform.transform_point3(point).y);
                 }
-                let lift = (instance.transform.w_axis.y + 0.05 - lowest).clamp(0.0, 0.6);
+                let lift = (instance.transform.w_axis.y + 0.05 - lowest).clamp(
+                    0.0,
+                    model.height.max(0.6) * instance.transform.y_axis.truncate().length(),
+                );
                 palette.model[3][1] += lift;
             }
             if instance.model == "adventurer" {

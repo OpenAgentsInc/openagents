@@ -1,0 +1,17 @@
+[
+  {
+    "model": "base/Superhero_Female_FullBody.gltf",
+    "export_uri": "T_Eye_Normal_png.png",
+    "resolved_file": "T_Eye_Normal.png"
+  },
+  {
+    "model": "base/Superhero_Male_FullBody.gltf",
+    "export_uri": "T_Hair_1_Normal_png.png",
+    "resolved_file": "T_Hair_1_Normal.png"
+  },
+  {
+    "model": "base/Superhero_Male_FullBody.gltf",
+    "export_uri": "T_Eye_Normal_png.png",
+    "resolved_file": "T_Eye_Normal.png"
+  }
+]

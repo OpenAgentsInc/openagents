@@ -53,15 +53,19 @@ fn sample(model: &Model, animation: u16, time: f32) -> Vec<Local> {
         .iter()
         .enumerate()
         .map(|(i, _)| {
+            let rest = model.skin.as_ref().map(|s| s.rest[i]);
+            let default_translation = rest.map_or([0.; 3], |r| r.translation);
+            let default_rotation = rest.map_or([0., 0., 0., 1.], |r| r.rotation);
+            let default_scale = rest.map_or([1.; 3], |r| r.scale);
             let keys = clip.and_then(|c| c.bones.iter().find(|k| k.bone == i));
             keys.map_or(
                 Local {
-                    translation: Vec3::ZERO,
-                    rotation: Quat::IDENTITY,
-                    scale: Vec3::ONE,
+                    translation: default_translation.into(),
+                    rotation: Quat::from_array(default_rotation),
+                    scale: default_scale.into(),
                 },
                 |k| {
-                    let (a, b, f) = pair(&k.rotation, time, [0.0, 0.0, 0.0, 1.0]);
+                    let (a, b, f) = pair(&k.rotation, time, default_rotation);
                     let q = |v| {
                         let q = Quat::from_array(v);
                         if q.length_squared() > 0.00001 {
@@ -71,9 +75,9 @@ fn sample(model: &Model, animation: u16, time: f32) -> Vec<Local> {
                         }
                     };
                     Local {
-                        translation: vector(&k.translation, time, [0.0; 3]),
+                        translation: vector(&k.translation, time, default_translation),
                         rotation: q(a).slerp(q(b), f),
-                        scale: vector(&k.scale, time, [1.0; 3]),
+                        scale: vector(&k.scale, time, default_scale),
                     }
                 },
             )
@@ -85,15 +89,26 @@ fn matrices(model: &Model, locals: &[Local]) -> Vec<Mat4> {
     for (i, bone) in model.bones.iter().enumerate() {
         let p = Vec3::from(bone.pivot);
         let l = locals[i];
-        let local = Mat4::from_translation(p + l.translation)
-            * Mat4::from_quat(l.rotation)
-            * Mat4::from_scale(l.scale)
-            * Mat4::from_translation(-p);
+        let local = if model.skin.is_some() {
+            Mat4::from_scale_rotation_translation(l.scale, l.rotation, l.translation)
+        } else {
+            Mat4::from_translation(p + l.translation)
+                * Mat4::from_quat(l.rotation)
+                * Mat4::from_scale(l.scale)
+                * Mat4::from_translation(-p)
+        };
         result[i] = if bone.parent >= 0 {
             result[bone.parent as usize] * local
         } else {
             local
         };
+    }
+    if let Some(skin) = &model.skin {
+        let basis = Mat4::from_cols_array(&skin.basis);
+        let inverse = basis.inverse();
+        for (i, matrix) in result.iter_mut().enumerate() {
+            *matrix = basis * *matrix * Mat4::from_cols_array(&skin.inverse_bind[i]) * inverse;
+        }
     }
     result
 }
@@ -147,8 +162,77 @@ mod tests {
     use super::*;
     use crate::assets::{Bone, BoneKeys, Clip};
     #[test]
+    fn inverse_bind_cancels_rest_hierarchy_and_preserves_joint_pivot() {
+        use crate::assets::{RestPose, Skin};
+        let rest = RestPose {
+            translation: [0., 2., 0.],
+            rotation: Quat::IDENTITY.to_array(),
+            scale: [1.; 3],
+        };
+        let basis = Mat4::from_rotation_x(0.7) * Mat4::from_scale(Vec3::splat(2.));
+        let mut model = Model {
+            source: String::new(),
+            source_sha256: String::new(),
+            height: 2.,
+            surfaces: vec![],
+            attachments: vec![],
+            bones: vec![
+                Bone {
+                    parent: -1,
+                    pivot: [0.; 3],
+                },
+                Bone {
+                    parent: 0,
+                    pivot: [0.; 3],
+                },
+            ],
+            clips: vec![],
+            skin: Some(Skin {
+                names: vec!["root".into(), "hand".into()],
+                rest: vec![rest, rest],
+                inverse_bind: vec![
+                    Mat4::from_translation(Vec3::Y * -2.).to_cols_array(),
+                    Mat4::from_translation(Vec3::Y * -4.).to_cols_array(),
+                ],
+                basis: basis.to_cols_array(),
+            }),
+        };
+        assert!(
+            pose(&model, 0, 0.)
+                .iter()
+                .all(|m| m.abs_diff_eq(Mat4::IDENTITY, 1e-5))
+        );
+        model.clips.push(Clip {
+            id: 4,
+            duration: 1.,
+            bones: vec![BoneKeys {
+                bone: 0,
+                translation: vec![],
+                scale: vec![],
+                rotation: vec![(
+                    0.,
+                    Quat::from_rotation_z(std::f32::consts::FRAC_PI_2).to_array(),
+                )],
+            }],
+        });
+        let pivot = basis.transform_point3(Vec3::Y * 2.);
+        assert!(
+            pose(&model, 4, 0.)[0]
+                .transform_point3(pivot)
+                .abs_diff_eq(pivot, 1e-5)
+        );
+        let hand = basis.transform_point3(Vec3::Y * 4.);
+        let expected = basis.transform_point3(Vec3::new(-2., 2., 0.));
+        assert!(
+            pose(&model, 4, 0.)[1]
+                .transform_point3(hand)
+                .abs_diff_eq(expected, 1e-5)
+        );
+    }
+    #[test]
     fn interrupted_transitions_preserve_pose_and_rotation_length() {
         let model = Model {
+            skin: None,
             source: String::new(),
             source_sha256: String::new(),
             height: 1.0,
@@ -191,6 +275,7 @@ mod tests {
     #[test]
     fn death_holds_the_final_pose_while_idle_keeps_looping() {
         let mut model = Model {
+            skin: None,
             source: String::new(),
             source_sha256: String::new(),
             surfaces: vec![],
@@ -220,6 +305,7 @@ mod tests {
     #[test]
     fn child_inherits_interpolated_parent_motion() {
         let model = Model {
+            skin: None,
             source: String::new(),
             source_sha256: String::new(),
             surfaces: vec![],

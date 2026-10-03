@@ -188,13 +188,11 @@ impl ApplicationHandler for App {
                 event_loop
                     .create_window(
                         Window::default_attributes()
-                            .with_title(
-                                if self.pack.source_revision == "verse-original-ritual-v1" {
-                                    "Verse Engine — Original ritual chamber"
-                                } else {
-                                    "The Verse — Scholomance"
-                                },
-                            )
+                            .with_title(if self.game.scene.collision_profile.is_some() {
+                                "Verse Engine — Original ritual chamber"
+                            } else {
+                                "The Verse — Scholomance"
+                            })
                             .with_inner_size(winit::dpi::LogicalSize::new(1280.0, 720.0)),
                     )
                     .map_err(|e| e.to_string())?,
@@ -413,6 +411,20 @@ pub fn run(original_default: bool) -> Result<(), String> {
     if original_default {
         inputs.insert(0, "--original".into());
     }
+    let greybox = inputs
+        .iter()
+        .position(|a| a == "--greybox")
+        .map(|i| inputs.remove(i))
+        .is_some();
+    let appearance = if let Some(i) = inputs.iter().position(|a| a == "--appearance") {
+        inputs.remove(i);
+        if i >= inputs.len() {
+            return Err("Expected character appearance".into());
+        }
+        inputs.remove(i)
+    } else {
+        "male-ranger".into()
+    };
     let mut args = inputs.into_iter();
     let input = args.next().ok_or("Expected pack.json or --original")?;
     let original = input == "--original";
@@ -433,14 +445,39 @@ pub fn run(original_default: bool) -> Result<(), String> {
     } else {
         Pack::read(&path)?
     };
+    if original && !greybox {
+        verse::imported::characters::install(
+            &mut pack,
+            &dir,
+            &PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("../../assets/verse/characters/quaternius"),
+            &appearance,
+        )?;
+        pack.source_revision = "verse-universal-ritual-v1".into();
+    }
     if !original {
         chamber::add_effect_models(&mut pack, &dir)?;
     }
-    let scene = Scene::from_json(if original {
+    let mut scene = Scene::from_json(if original {
         include_bytes!("../../../../assets/verse/original/ritual.json").as_slice()
     } else {
         include_bytes!("../../../../assets/verse/wow/anthropic.json").as_slice()
     })?;
+    if original && !greybox {
+        let mut index = 0;
+        for actor in &mut scene.actors {
+            if actor.model == "cultist" {
+                actor.model = [
+                    "cultist",
+                    "cultist-female",
+                    "cultist-peasant",
+                    "cultist-peasant-female",
+                ][index % 4]
+                    .into();
+                index += 1;
+            }
+        }
+    }
     let game = Game::new(scene)?;
     let heights = pack
         .models
@@ -535,7 +572,7 @@ fn demo(
         app.game = Game::combat(app.game.scene.clone(), true)?;
     }
     if navigation {
-        if app.pack.source_revision != "verse-original-ritual-v1" {
+        if app.game.scene.collision_profile.is_none() {
             return Err("Navigation capture requires original geometry".into());
         }
         let mut scene = app.game.scene.clone();
@@ -564,7 +601,7 @@ fn demo(
         app.game.camera.pitch = 0.15;
         app.game.camera.distance = 7.;
     }
-    for _ in 0..if app.pack.source_revision == "verse-original-ritual-v1" {
+    for _ in 0..if app.game.scene.collision_profile.is_some() {
         0
     } else {
         180

@@ -9,6 +9,15 @@ Verse Engine is the reusable engine; Verse is the metaverse built on it.
 The original chamber is the first new game fixture, while Lagrange and Physics
 Lab remain regression consumers. This roadmap imports no reference-engine code.
 
+[#10432](https://github.com/OpenAgentsInc/openagents/issues/10432) replaces the
+native scene's default placeholder actors with the downloaded CC0 Universal
+characters, four modular fantasy outfits, and retargeted Standard animations.
+The shared engine now evaluates glTF rest transforms and inverse binds. Six
+player appearances and mixed outfitted NPCs are available; `--greybox` retains
+the procedural fixture. See the [character sources and usage](../../../assets/verse/characters/quaternius/README.md).
+This character pipeline uses no Blizzard assets and does not complete world
+service authority or general retargeting for unrelated skeletons.
+
 ## Original scene implementation
 
 [#10426](https://github.com/OpenAgentsInc/openagents/issues/10426) implements the

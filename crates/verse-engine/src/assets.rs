@@ -58,8 +58,25 @@ pub struct Attachment {
     pub position: [f32; 3],
 }
 
+/// Absolute local node transforms for a glTF-compatible skeleton.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+pub struct RestPose {
+    pub translation: [f32; 3],
+    pub rotation: [f32; 4],
+    pub scale: [f32; 3],
+}
+/// Bind-space information for node-based skeletal animation.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Skin {
+    pub names: Vec<String>,
+    pub rest: Vec<RestPose>,
+    pub inverse_bind: Vec<[f32; 16]>,
+    pub basis: [f32; 16],
+}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Model {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skin: Option<Skin>,
     pub source: String,
     pub source_sha256: String,
     pub surfaces: Vec<Surface>,
@@ -131,6 +148,25 @@ impl Pack {
         }
         let mut vertices = 0;
         for model in self.models.values() {
+            if let Some(skin) = &model.skin {
+                if skin.names.len() != model.bones.len()
+                    || skin.rest.len() != model.bones.len()
+                    || skin.inverse_bind.len() != model.bones.len()
+                    || skin.basis.iter().any(|v| !v.is_finite())
+                    || glam::Mat4::from_cols_array(&skin.basis).determinant().abs() < 1e-8
+                    || skin.inverse_bind.iter().flatten().any(|v| !v.is_finite())
+                    || skin.rest.iter().any(|r| {
+                        r.translation
+                            .iter()
+                            .chain(&r.rotation)
+                            .chain(&r.scale)
+                            .any(|v| !v.is_finite())
+                            || glam::Quat::from_array(r.rotation).length_squared() < 1e-8
+                    })
+                {
+                    return Err("Invalid skeletal bind data".into());
+                }
+            }
             if model
                 .attachments
                 .iter()
@@ -216,6 +252,7 @@ mod tests {
             models: BTreeMap::from([(
                 "room".into(),
                 Model {
+                    skin: None,
                     source: String::new(),
                     source_sha256: String::new(),
                     surfaces: vec![],

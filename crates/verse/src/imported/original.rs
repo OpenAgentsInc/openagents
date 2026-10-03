@@ -20,6 +20,7 @@ fn png_file(dir: &Path, name: &str, size: u32, pixels: &[u8]) -> Result<(), Stri
 }
 fn model(name: &str, height: f32) -> Model {
     Model {
+        skin: None,
         source: format!("verse/original/{name}"),
         source_sha256: String::new(),
         surfaces: vec![],
