@@ -195,6 +195,14 @@ pub fn prg(output: &Output, words: &[String]) -> u8 {
 /// `openagents plugin …`, also `openagents ext …`. `test` is the plugin's
 /// with-and-without evaluation, also `eval`.
 pub fn ext(output: &Output, words: &[String]) -> u8 {
+    if let Some((command, rest)) = words.split_first()
+        && rest.first().is_some_and(|word| word == "--help")
+        && !matches!(command.as_str(), "test" | "eval" | "defaults" | "run")
+        && let Some(usage) = crate::argv::command_usage("plugin", command, EXT_USAGE)
+    {
+        println!("{usage}");
+        return 0;
+    }
     if words
         .first()
         .is_some_and(|word| word == "test" || word == "eval")

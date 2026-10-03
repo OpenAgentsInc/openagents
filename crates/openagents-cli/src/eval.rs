@@ -61,6 +61,12 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
     let Some((command, rest)) = words.split_first() else {
         return output.usage("eval", "a command is required", USAGE);
     };
+    if rest.first().is_some_and(|word| word == "--help") {
+        if let Some(usage) = crate::argv::command_usage("eval", command, USAGE) {
+            println!("{usage}");
+            return 0;
+        }
+    }
     let args = match Args::parse(rest, &[]) {
         Ok(args) => args,
         Err(message) => return output.usage("eval", &message, USAGE),

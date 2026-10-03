@@ -93,6 +93,12 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         println!("{USAGE}");
         return 0;
     }
+    if rest.first().is_some_and(|word| word == "--help") {
+        if let Some(usage) = crate::argv::command_usage("background", command, USAGE) {
+            println!("{usage}");
+            return 0;
+        }
+    }
     let args = match Args::parse(rest, &["dry-run", "stats", "yes"]) {
         Ok(args) => args,
         Err(message) => return output.usage("background", &message, USAGE),

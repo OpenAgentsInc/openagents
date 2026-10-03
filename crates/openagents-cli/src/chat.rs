@@ -270,6 +270,12 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         // `openagents chat MESSAGE` is `openagents chat send MESSAGE`.
         _ => ("send", words),
     };
+    if rest.first().is_some_and(|word| word == "--help") {
+        if let Some(usage) = crate::argv::command_usage("chat", command, USAGE) {
+            println!("{usage}");
+            return 0;
+        }
+    }
     let args = match Args::parse(rest, SWITCHES) {
         Ok(args) => args,
         Err(message) => return output.usage("chat", &message, USAGE),

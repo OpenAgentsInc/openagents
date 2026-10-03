@@ -197,3 +197,57 @@ fn money_subcommands_show_their_own_usage() {
         assert!(text.starts_with(usage), "{text}");
     }
 }
+
+#[test]
+fn reported_subcommands_show_usage_flags_and_an_example_before_parsing() {
+    for (group, command, syntax, flag, sibling) in [
+        ("background", "show", "show ID", "--tasks DIR", "resume ID"),
+        (
+            "plugin",
+            "install",
+            "install DIR | NAME | ID",
+            "--blossom URL",
+            "enable PLUGIN",
+        ),
+        (
+            "chat",
+            "send",
+            "send MESSAGE",
+            "--no-run",
+            "follow --thread ID",
+        ),
+        (
+            "eval",
+            "run",
+            "run --door NAME=URL",
+            "--timeout SECONDS",
+            "report --store FILE",
+        ),
+    ] {
+        for help in ["--help", "-h"] {
+            // Help wins over missing values and invalid options, without opening a service.
+            let (code, text, stderr) = run(&[group, command, "--invalid", help]);
+            assert_eq!(code, Some(0), "{stderr}");
+            assert!(stderr.is_empty(), "{stderr}");
+            assert!(
+                text.starts_with(&format!("usage: openagents {group} {syntax}")),
+                "{text}"
+            );
+            assert!(text.contains(flag), "{text}");
+            assert!(
+                text.contains(&format!("Example:\n  openagents {group} {command} ")),
+                "{text}"
+            );
+            assert!(!text.contains(sibling), "{text}");
+        }
+        let (code, by_word, stderr) = run(&["help", group, command]);
+        assert_eq!(code, Some(0), "{stderr}");
+        assert_eq!(by_word, run(&[group, command, "--help"]).1);
+    }
+    for alias in ["plugins", "ext"] {
+        assert_eq!(
+            run(&[alias, "install", "--help"]).1,
+            run(&["plugin", "install", "--help"]).1
+        );
+    }
+}

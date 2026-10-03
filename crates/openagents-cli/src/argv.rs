@@ -2,7 +2,7 @@
 
 pub use coder::argv::Args;
 
-/// Route help flags to the nearest command group with a usage handler.
+/// Route help flags to the nearest command with a usage handler.
 /// Literal words after `--` and message text such as `chat send help` stay intact.
 pub fn normalize_help(arguments: &mut Vec<String>) {
     let end = arguments
@@ -37,6 +37,11 @@ pub fn normalize_help(arguments: &mut Vec<String>) {
         {
             2
         }
+        ("background" | "chat" | "eval" | "plugin" | "plugins" | "ext", Some(command))
+            if index > 1 && !command.starts_with('-') =>
+        {
+            2
+        }
         _ => 1,
     };
     arguments.truncate(depth);
@@ -50,8 +55,14 @@ mod tests {
     #[test]
     fn help_routes_before_value_parsing() {
         for (input, expected) in [
-            (vec!["chat", "work", "--help"], vec!["chat", "--help"]),
-            (vec!["chat", "send", "text", "-h"], vec!["chat", "--help"]),
+            (
+                vec!["chat", "work", "--help"],
+                vec!["chat", "work", "--help"],
+            ),
+            (
+                vec!["chat", "send", "text", "-h"],
+                vec!["chat", "send", "--help"],
+            ),
             (
                 vec!["plugin", "test", "run", "--help"],
                 vec!["plugin", "test", "--help"],
@@ -92,10 +103,28 @@ pub fn command_usage(group: &str, command: &str, usage: &str) -> Option<String> 
     let end = (start + 1..lines.len())
         .find(|&i| !lines[i].starts_with("    "))
         .unwrap_or(lines.len());
-    Some(format!(
+    let mut text = format!(
         "usage: openagents {group} {}",
         lines[start..end].join("\n").trim_start()
-    ))
+    );
+    // Keep shared flags and context below the command, not the group list.
+    if let Some(footer) = (end..lines.len()).find(|&i| !lines[i].starts_with(' ')) {
+        text.push('\n');
+        text.push_str(&lines[footer..].join("\n"));
+    }
+    let example = match (group, command) {
+        ("background", "show") => Some("openagents background show worktrees"),
+        ("plugin", "install") => Some("openagents plugin install ./disk-cleanup"),
+        ("chat", "send") => Some("openagents chat send \"Explain this project\" --no-run"),
+        ("eval", "run") => {
+            Some("openagents eval run --door local=http://127.0.0.1:8080 --timeout 30")
+        }
+        _ => None,
+    };
+    if let Some(example) = example {
+        text.push_str(&format!("\nExample:\n  {example}"));
+    }
+    Some(text)
 }
 
 /// Parse only the options declared by this command, before consuming values.
