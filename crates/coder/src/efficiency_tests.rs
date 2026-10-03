@@ -212,3 +212,61 @@ fn a_routed_arm_is_also_compared_with_the_raw_arm_of_its_engine() {
     let f = findings(&[s]);
     assert!(f.iter().any(|l| l.contains("against raw Codex")), "{f:?}");
 }
+
+#[test]
+fn historical_check_failures_and_recent_executor_successes_stay_distinct() {
+    let fixture: Value =
+        serde_json::from_str(include_str!("../fixtures/efficiency/route-record.json")).unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let store = dir.path().join("tasks");
+    std::fs::create_dir_all(dir.path().join("routes")).unwrap();
+    let mut lines = Vec::new();
+    for (index, (state, check, engine)) in [
+        ("failed", "check_failed", Some("codex")),
+        ("completed", "unchecked", Some("codex")),
+        ("completed", "unchecked", Some("codex")),
+        ("completed", "unchecked", None),
+        ("completed", "verified", Some("claude")),
+        ("cancelled", "pending", Some("codex")),
+        ("failed", "pending", Some("codex")),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let mut record = fixture.clone();
+        record["request"] = json!(format!("request-{index}"));
+        record["runs"][0]["task"] = json!(format!("task-{index}"));
+        record["runs"][0]["engine"] = json!(engine);
+        record["runs"][0]["projection"]["state"] = json!(state);
+        record["runs"][0]["projection"]["check"] = json!(check);
+        lines.push(record.to_string());
+    }
+    let path = dir.path().join("routes/thread.jsonl");
+    let journal = lines.join("\n");
+    std::fs::write(&path, &journal).unwrap();
+    let rows = route_rows(&store);
+    assert_eq!(rows.len(), 6, "stops are not failed checks");
+    let report = report(&[], &[], &rows);
+    assert_eq!(report["runs"]["unchecked"], 4);
+    let groups = report["runs"]["groups"].as_array().unwrap();
+    let codex = groups.iter().find(|g| g["engine"] == "codex").unwrap();
+    assert_eq!(codex["checked"], 1);
+    assert_eq!(codex["passed"], 0);
+    let claude = groups.iter().find(|g| g["engine"] == "claude").unwrap();
+    assert_eq!(claude["passed"], 1);
+    let output = text(&report, false);
+    assert!(
+        output.contains("unknown (legacy engine not recorded)"),
+        "{output}"
+    );
+    assert!(output.contains("1 run · no independent check"), "{output}");
+    assert!(!output.contains("0/0 passed"));
+    for note in LOCAL_EVIDENCE_NOTES {
+        assert!(output.contains(note));
+    }
+    assert_eq!(
+        std::fs::read_to_string(path).unwrap(),
+        journal,
+        "reporting never rewrites history"
+    );
+}

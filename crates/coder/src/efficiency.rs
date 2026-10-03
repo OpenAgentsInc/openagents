@@ -576,7 +576,9 @@ pub fn runs(rows: &[Row]) -> Value {
         .iter()
         .map(|r| {
             (
-                r.engine.clone().unwrap_or_else(|| "unknown".into()),
+                r.engine
+                    .clone()
+                    .unwrap_or_else(|| "unknown (legacy engine not recorded)".into()),
                 r.class.clone(),
             )
         })
@@ -588,7 +590,13 @@ pub fn runs(rows: &[Row]) -> Value {
         .map(|(engine, class)| {
             let of: Vec<&Row> = rows
                 .iter()
-                .filter(|r| r.engine.as_deref().unwrap_or("unknown") == engine && &r.class == class)
+                .filter(|r| {
+                    r.engine
+                        .as_deref()
+                        .unwrap_or("unknown (legacy engine not recorded)")
+                        == engine
+                        && &r.class == class
+                })
                 .collect();
             let mut stats = arm_stats(&format!("{engine} · {class}"), &of);
             stats["engine"] = json!(engine);
@@ -723,6 +731,9 @@ fn est(v: &Value, f: fn(f64) -> String) -> String {
 /// One arm as one line: passes, cost per checked result, time to it.
 #[must_use]
 pub fn arm_line(a: &Value) -> String {
+    if a["checked"].as_u64() == Some(0) {
+        return "no independent check · – per checked result · – to a checked result".into();
+    }
     format!(
         "{}/{} passed · {} per checked result · {} to a checked result",
         a["passed"],
@@ -731,6 +742,13 @@ pub fn arm_line(a: &Value) -> String {
         est(&a["time_to_checked_s"], |x| format!("{x:.0} s")),
     )
 }
+
+/// Explain local evidence without equating executor completion with a checked pass.
+pub const LOCAL_EVIDENCE_NOTES: &[&str] = &[
+    "Completed executor runs without independent checks are unchecked, not checked passes.",
+    "Pass counts include historical independent check verdicts, not executor exits or agent-reported test results.",
+    "Unknown engines are legacy records with no engine recorded; journals are retained without guessing an engine.",
+];
 
 /// The report as text.
 #[must_use]
@@ -811,6 +829,7 @@ pub fn text(report: &Value, all: bool) -> String {
                 .map_or_else(String::new, |c| format!(" · ${c:.2} in all")),
         ));
     }
+    out.extend(LOCAL_EVIDENCE_NOTES.iter().map(|line| (*line).to_owned()));
     out.join("\n")
 }
 

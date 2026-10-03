@@ -112,6 +112,11 @@ pub(crate) fn card(report: &serde_json::Value) -> openagents_terminal::Efficienc
         "This computer's routed runs: {} settled, {} with no independent check.",
         report["runs"]["runs"], report["runs"]["unchecked"]
     ));
+    body.extend(
+        efficiency::LOCAL_EVIDENCE_NOTES
+            .iter()
+            .map(|line| (*line).to_owned()),
+    );
     body.push("Every figure and interval: openagents efficiency --all. Method: openagents.com/efficiency.".into());
     openagents_terminal::Efficiency {
         title: latest.map_or_else(
@@ -137,6 +142,9 @@ mod tests {
     fn the_card_shows_the_latest_studys_arms_and_findings() {
         let report = efficiency::report(&efficiency::studies(&[]), &[], &[]);
         let card = card(&report);
+        for note in efficiency::LOCAL_EVIDENCE_NOTES {
+            assert!(card.body.iter().any(|line| line == note));
+        }
         assert!(
             card.title.starts_with("Efficiency · study "),
             "{}",
