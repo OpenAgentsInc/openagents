@@ -1,0 +1,38 @@
+{
+ "regex-log": {
+  "untouched": false,
+  "solve_exit": 0,
+  "reference": true,
+  "calibrated": true
+ },
+ "log-summary-date-ranges": {
+  "untouched": false,
+  "solve_exit": 0,
+  "reference": true,
+  "calibrated": true
+ },
+ "distribution-search": {
+  "untouched": false,
+  "solve_exit": 0,
+  "reference": true,
+  "calibrated": true
+ },
+ "polyglot-c-py": {
+  "untouched": false,
+  "solve_exit": 0,
+  "reference": true,
+  "calibrated": true
+ },
+ "schemelike-metacircular-eval": {
+  "untouched": false,
+  "solve_exit": 0,
+  "reference": true,
+  "calibrated": true
+ },
+ "constraints-scheduling": {
+  "untouched": false,
+  "solve_exit": 0,
+  "reference": true,
+  "calibrated": true
+ }
+}

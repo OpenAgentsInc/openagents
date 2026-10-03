@@ -20,6 +20,12 @@ Arms (STANDING is the default set):
 Usage:
   study.py standing-hard RUN_ID [TRIALS [PARALLEL]]  the same over the hard
                                                  set (efficiency-hard-v1, #10387)
+  study.py validate RUN_ID [TRIALS [PARALLEL]]   the frozen validation panel
+                                                 (efficiency-validate-v1, #10356):
+                                                 VALIDATE_ARMS x VALIDATE tasks
+  study.py calibrate-validate                    each validation check fails on the
+                                                 untouched task and passes on the
+                                                 task's reference solution
   study.py standing RUN_ID [TRIALS [PARALLEL]]   prepare, run STANDING x TASKS x
                                                   trials, write RUN_ID.jsonl
   study.py prepare
@@ -270,15 +276,79 @@ HARD = {
 TASKS.update(HARD)
 
 
+# The frozen validation panel (#10356): six Terminal-Bench 2.1 tasks never
+# used to tune routing, prompts, or thresholds, each with the task's own tests
+# as the independent check. Protocol, frozen before the first run:
+# docs/audits/2026-10-03-independent-efficiency/codex-validation/protocol.md.
+VALIDATE_TASKSET = "efficiency-validate-v1"
+VALIDATE_ARMS = ["raw-codex", "routed-codex", "raw-claude", "routed-lean"]
+
+
+def prep_tb(name, copies=(), generator=None):
+    """A fresh repository holding the files the task's image puts in /app:
+    `copies` are (path under the task folder, path in the work tree);
+    `generator` is a script under the task folder that writes /app data."""
+    def prep(dest):
+        os.makedirs(dest)
+        sh(["git", "init", "-q", "-b", "main"], cwd=dest)
+        open(os.path.join(dest, "README.md"), "w").write(f"Workspace for {name}.\n")
+        for src, dst in copies:
+            a, b = os.path.join(TB, name, src), os.path.join(dest, dst)
+            if os.path.isdir(a):
+                shutil.copytree(a, b, dirs_exist_ok=True)
+            else:
+                os.makedirs(os.path.dirname(b) or dest, exist_ok=True)
+                shutil.copy(a, b)
+        if generator:
+            code = open(os.path.join(TB, name, generator)).read().replace('"/app/', f'"{dest}/').replace("'/app/", f"'{dest}/")
+            sh([PY, "-c", code], cwd=dest)
+        commit_all(dest, "Workspace")
+        return "."
+    return prep
+
+
+def app_prompt(name):
+    """The task's instruction, with /app read as the work tree."""
+    def prompt(v):
+        text = open(os.path.join(TB, name, "instruction.md")).read().split("# Terminal-Bench Canary")[0].strip()
+        text = text.replace("/app/", "").replace("/app", "the current directory")
+        return (text + "\n\nWork in the current directory (the repository root); paths under /app in the task "
+                f"mean this directory. For Python use the environment at {v} ({v}/bin/python, {v}/bin/pip); "
+                "the checks run with it.")
+    return prompt
+
+
+VALIDATE = {
+    "regex-log": dict(prep=prep_tb("regex-log"), venv=("pytest==8.4.1",), prompt=app_prompt("regex-log")),
+    "log-summary-date-ranges": dict(
+        prep=prep_tb("log-summary-date-ranges", generator="environment/log_generator_deterministic.py"),
+        venv=("pytest==8.4.1",), prompt=app_prompt("log-summary-date-ranges")),
+    # largest-eigenval was dropped before the first run: its reference
+    # solution failed a wall-clock speedup test on the loaded host, so the
+    # check was not reliable.
+    "distribution-search": dict(prep=prep_tb("distribution-search"), venv=("numpy==2.1.2", "scipy==1.15.3", "pytest==8.4.1"),
+                                prompt=app_prompt("distribution-search")),
+    "polyglot-c-py": dict(prep=prep_tb("polyglot-c-py"), venv=("pytest==8.4.1",), prompt=app_prompt("polyglot-c-py")),
+    "schemelike-metacircular-eval": dict(
+        prep=prep_tb("schemelike-metacircular-eval", copies=(("tests/interp.py", "interp.py"), ("tests/test", "test"))),
+        venv=("pytest==8.4.1",), prompt=app_prompt("schemelike-metacircular-eval")),
+    "constraints-scheduling": dict(
+        prep=prep_tb("constraints-scheduling", copies=(("environment/inputs", "."),)),
+        venv=("pytest==8.4.1",), prompt=app_prompt("constraints-scheduling")),
+}
+TASKS.update(VALIDATE)
+
+
 # What each task is, for the report's "by task class" rows.
 CLASS = {
     "fix-git": "terminal-bench", "fix-code-vulnerability": "terminal-bench",
     "headless-terminal": "terminal-bench", "build-cython-ext": "terminal-bench",
     "mi-seekable": "repository", "mi-one": "repository", "bottle-etag": "repository",
     **{name: "hard" for name in HARD},
+    **{name: "validate" for name in VALIDATE},
 }
 # The efficiency-v1 set `standing` runs, unchanged by the hard set.
-V1 = [t for t in TASKS if t not in HARD]
+V1 = [t for t in TASKS if t not in HARD and t not in VALIDATE]
 
 
 def sources():
@@ -398,6 +468,8 @@ def check(task, work, venv):
         return run_pytest(src, venv, home_dir())
     if task in HARD:
         return check_hard(task, work, venv)
+    if task in VALIDATE:
+        return check_validate(task, work, venv)
     if task in ("mi-seekable", "mi-one", "bottle-etag"):
         rev = {"mi-seekable": ("more-itertools", "6b1907d", ["tests/test_more.py"], ["-m", "unittest", "tests.test_more"]),
                "mi-one": ("more-itertools", "def2dab", ["tests/test_more.py"], ["-m", "unittest", "tests.test_more"]),
@@ -453,6 +525,56 @@ def check_hard(task, work, venv):
                            timeout=1200)
         return r.returncode == 0, (r.stdout[-3000:] + r.stderr[-1000:])
     raise KeyError(task)
+
+
+def check_validate(task, work, venv):
+    """The task's own tests against the work tree: /app is the work tree and
+    /tests a copy of the task's tests folder, beside which the test runs."""
+    td = tempfile.mkdtemp(prefix="check-", dir=os.path.join(BASE, "checks"))
+    tests = os.path.join(td, "tests")
+    shutil.copytree(os.path.join(TB, task, "tests"), tests)
+    src = open(os.path.join(tests, "test_outputs.py")).read()
+    src = src.replace('"/tests/', f'"{tests}/').replace('"/tests"', f'"{tests}"')
+    src = src.replace('"/app/', f'"{work}/').replace('"/app"', f'"{work}"').replace("'/app'", f"'{work}'")
+    open(os.path.join(tests, "test_outputs.py"), "w").write(src)
+    env = dict(os.environ)
+    env["PATH"] = os.path.join(venv, "bin") + ":" + env["PATH"]
+    env["PYTHONPATH"] = work
+    r = subprocess.run([os.path.join(venv, "bin/python"), "-m", "pytest", "-q", "-p", "no:cacheprovider",
+                        os.path.join(tests, "test_outputs.py"), "-rA"], cwd=work, env=env,
+                       capture_output=True, text=True, timeout=1200)
+    return r.returncode == 0, (r.stdout[-3000:] + r.stderr[-1000:])
+
+
+def calibrate_validate():
+    """Each validation check must fail on the untouched task and pass on the
+    task's reference solution (solution/solve.sh with /app as the work tree).
+    Writes calibrate-validate.json; never runs an agent."""
+    prepare()
+    out = {}
+    for task, t in VALIDATE.items():
+        res = {}
+        for label in ("untouched", "reference"):
+            d = tempfile.mkdtemp(prefix=f"cal-{task}-", dir=BASE)
+            shutil.copytree(os.path.join(TMPL, task), os.path.join(d, "repo"), symlinks=True)
+            venv = os.path.join(d, "venv")
+            make_venv(venv, t["venv"])
+            work = os.path.join(d, "repo")
+            if label == "reference":
+                solve = open(os.path.join(TB, task, "solution/solve.sh")).read()
+                solve = solve.replace("/app/", work + "/").replace("/app", work).replace("/tests/", os.path.join(TB, task, "tests") + "/")
+                env = dict(os.environ)
+                env["PATH"] = os.path.join(venv, "bin") + ":" + env["PATH"]
+                r = subprocess.run(["bash", "-c", solve], cwd=work, env=env, capture_output=True, text=True, timeout=1800)
+                res["solve_exit"] = r.returncode
+            ok, detail = check_validate(task, work, venv)
+            res[label] = ok
+            if label == "reference" and not ok:
+                res["detail"] = detail[-800:]
+        res["calibrated"] = res["untouched"] is False and res["reference"] is True
+        out[task] = res
+        print(task, res, flush=True)
+    json.dump(out, open(os.path.join(BASE, "calibrate-validate.json"), "w"), indent=1)
 
 
 def home_dir():
@@ -723,7 +845,7 @@ def one(run_id, arm, task, trial, meta=None):
         make_venv(venv, t["venv"])
     prompt = t["prompt"](venv)
     cwd = os.path.normpath(os.path.join(d, "repo", sub))
-    res = dict(study=run_id, taskset=HARD_TASKSET if task in HARD else TASKSET, arm=arm, mode=arm.split("-")[0], task=task, task_class=CLASS[task],
+    res = dict(study=run_id, taskset=HARD_TASKSET if task in HARD else VALIDATE_TASKSET if task in VALIDATE else TASKSET, arm=arm, mode=arm.split("-")[0], task=task, task_class=CLASS[task],
                trial=trial, started=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), **(meta or versions()))
     res.update(ARMS[arm](prompt, cwd, d))
     work = res.get("work")
@@ -779,6 +901,16 @@ def main():
         prepare()
         run(run_id, STANDING, list(HARD), list(range(1, trials + 1)), par)
         collect(run_id)
+    elif cmd == "validate":
+        # The frozen validation panel (#10356): own set name and arms.
+        run_id = sys.argv[2]
+        trials = int(sys.argv[3]) if len(sys.argv) > 3 else 3
+        par = int(sys.argv[4]) if len(sys.argv) > 4 else 4
+        prepare()
+        run(run_id, VALIDATE_ARMS, list(VALIDATE), list(range(1, trials + 1)), par)
+        collect(run_id)
+    elif cmd == "calibrate-validate":
+        calibrate_validate()
     elif cmd == "run":
         run(sys.argv[2], sys.argv[3].split(","), sys.argv[4].split(","),
             [int(x) for x in sys.argv[5].split(",")], int(sys.argv[6]))
