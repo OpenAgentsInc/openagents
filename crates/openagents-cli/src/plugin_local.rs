@@ -54,7 +54,15 @@ fn layout() -> Result<Layout, String> {
 }
 
 fn install(dir: &Path) -> Result<serde_json::Value, String> {
-    install_into(&layout()?, dir)
+    // A plugin folder of one's own: its record states its files' digests
+    // now, so nobody computes one by hand (#10306).
+    let repinned = crate::plugin_new::repinned_note(dir)?;
+    let mut value = install_into(&layout()?, dir)?;
+    if let Some(note) = repinned {
+        let text = value["text"].as_str().unwrap_or_default().to_owned();
+        value["text"] = json!(format!("{note}\n{text}"));
+    }
+    Ok(value)
 }
 
 /// Installs the plugin in `dir` under `layout`, off.
@@ -116,9 +124,13 @@ fn list() -> Result<serde_json::Value, String> {
 }
 
 fn enable(name: &str, on: bool) -> Result<serde_json::Value, String> {
-    let layout = layout()?;
+    enable_in(&layout()?, name, on)
+}
+
+fn enable_in(layout: &Layout, name: &str, on: bool) -> Result<serde_json::Value, String> {
+    let layout = layout.clone();
     let plugin = plugins::set_enabled(&layout, name, on)?;
-    let text = match (on, plugin.background.is_empty()) {
+    let mut text = match (on, plugin.background.is_empty()) {
         (true, false) => format!(
             "{} is on. It runs in the background here; `openagents background list` shows it.",
             plugin.name
@@ -126,8 +138,40 @@ fn enable(name: &str, on: bool) -> Result<serde_json::Value, String> {
         (true, true) => format!("{} is on.", plugin.name),
         (false, _) => format!("{} is off.", plugin.name),
     };
+    if on {
+        for preview in start_packaged_rules(&layout, &plugin)? {
+            text.push_str("\n\n");
+            text.push_str(&preview);
+        }
+    }
     Ok(json!({"text": text, "plugin": row(&plugin)}))
 }
+
+/// Starts each of `plugin`'s background rules that still holds the pause
+/// it was packaged with (a plugin's rule waits for a dry run before its
+/// first real run), showing that dry run: turning the plugin on is when
+/// its owner sees what it would do. A rule the person paused or turned off
+/// here keeps that. The dry runs, one block per rule.
+fn start_packaged_rules(layout: &Layout, plugin: &Installed) -> Result<Vec<String>, String> {
+    let mut previews = Vec::new();
+    for id in &plugin.background {
+        let rule = background::store::load(layout, id)?;
+        if rule.paused_until != Some(PACKAGED_PAUSE) {
+            continue;
+        }
+        let mut lines = vec![format!(
+            "{}, what it would do now (a dry run; nothing is deleted):",
+            rule.name
+        )];
+        lines.extend(crate::background::dry_run_lines(layout, &rule)?);
+        background::view::pause(layout, id, None, true)?;
+        previews.push(lines.join("\n"));
+    }
+    Ok(previews)
+}
+
+/// The pause a plugin's rule is packaged with: until a dry run.
+const PACKAGED_PAUSE: u64 = u64::MAX;
 
 /// One plugin as the terminal and `installed` show it.
 pub(crate) fn line(plugin: &Installed) -> String {
@@ -210,5 +254,33 @@ mod tests {
         assert!(!to.join("evals/results").exists());
         assert!(!to.join("target").exists());
         assert!(!to.join("link").exists());
+    }
+
+    /// #10305: turning a background plugin on shows its rule's dry run and
+    /// starts it, instead of leaving it paused for good.
+    #[test]
+    fn enable_starts_a_packaged_rule_after_showing_its_dry_run() {
+        let home = tempfile::tempdir().unwrap();
+        let layout = Layout::new(home.path(), None).unwrap();
+        let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../plugins/disk-cleanup");
+        install_into(&layout, &repo).unwrap();
+
+        let value = enable_in(&layout, "disk-cleanup", true).unwrap();
+        let text = value["text"].as_str().unwrap();
+        assert!(text.contains("a dry run; nothing is deleted"), "{text}");
+        let after = background::store::load(&layout, "disk-cleanup").unwrap();
+        assert!(after.enabled);
+        assert_eq!(after.paused_until, None);
+
+        // Paused here by the person, it stays paused through off and on.
+        background::view::pause(&layout, "disk-cleanup", None, false).unwrap();
+        enable_in(&layout, "disk-cleanup", false).unwrap();
+        let value = enable_in(&layout, "disk-cleanup", true).unwrap();
+        assert!(!value["text"].as_str().unwrap().contains("dry run"));
+        assert!(
+            !background::store::load(&layout, "disk-cleanup")
+                .unwrap()
+                .enabled
+        );
     }
 }

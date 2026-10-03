@@ -56,6 +56,13 @@ pub(crate) const PRG_EFFECTS: &[Declared] = &[
 ];
 
 pub(crate) const EXT_USAGE: &str = "usage: openagents plugin COMMAND [OPTIONS]
+  new SLUG [--name NAME] [--in DIR] [--from-rule ID]
+        Start a plugin in DIR (default ./SLUG): its package.json, a skill
+        under skills/, and a README with the next commands. --from-rule
+        makes it from a background rule made on this computer.
+  pin [DIR]
+        Set every digest DIR's package.json states to its file's digest
+        now. install and publish do this for a plugin folder too.
   list [--type TYPE] [--author PUBKEY] [--package ID] [--limit N]
         List published plugin records (NIP-EXT). TYPE is listing (default),
         release, revocation, migration, or checkpoint.
@@ -113,6 +120,8 @@ for those commands in full.";
 
 #[cfg(test)]
 pub(crate) const EXT_EFFECTS: &[Declared] = &[
+    Declared::computer("new", Effect::LocalWrite),
+    Declared::computer("pin", Effect::LocalWrite),
     Declared::computer("list", Effect::ReadOnly),
     Declared::computer("run", Effect::ReadOnly),
     Declared::computer("publish", Effect::Publishes),
@@ -196,6 +205,10 @@ pub fn ext(output: &Output, words: &[String]) -> u8 {
     }
     if words.first().is_some_and(|word| word == "run") {
         return crate::ext_run::run(output, &words[1..]);
+    }
+    #[cfg(unix)]
+    if let Some(code) = crate::plugin_new::run(output, words) {
+        return code;
     }
     #[cfg(unix)]
     if let Some(code) = crate::plugin_registry::run(output, words) {

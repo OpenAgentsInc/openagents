@@ -52,6 +52,8 @@ mod playtest;
 #[cfg(unix)]
 mod plugin_local;
 #[cfg(unix)]
+mod plugin_new;
+#[cfg(unix)]
 mod plugin_registry;
 mod provider_key;
 mod quest;

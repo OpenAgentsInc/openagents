@@ -720,7 +720,7 @@ fn pause(
 /// Run `rule` now in this process: a cleanup through the planner (with
 /// every safety check and the run lock), any other rule through the
 /// engine with Jev and the host's services. A real run is remembered.
-fn run_rule(
+pub(crate) fn run_rule(
     layout: &Layout,
     rule: &background::Rule,
     dry_run: bool,
@@ -760,6 +760,20 @@ fn run_rule(
         view::remember(layout, &rule.id, &report);
     }
     Ok(report)
+}
+
+/// The lines a dry run of `rule` shows: what it would do now, nothing
+/// done.
+pub(crate) fn dry_run_lines(
+    layout: &Layout,
+    rule: &background::Rule,
+) -> Result<Vec<String>, String> {
+    let report = run_rule(layout, rule, true)?;
+    Ok(if rule.cleans() {
+        run::describe(&report.plan, &layout.home, true)
+    } else {
+        step_lines(&report)
+    })
 }
 
 /// The lines a run of a rule that is not a cleanup shows.

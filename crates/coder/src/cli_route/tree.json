@@ -13712,6 +13712,86 @@
       "summary": "List published plugins, test a plugin with and without it, add the result to the Gym, check a result, sync Coder's default plugins, and install and turn on plugins here.",
       "children": [
         {
+          "name": "new",
+          "leaf": {
+            "path": [
+              "plugin",
+              "new"
+            ],
+            "usage": [
+              "new SLUG [--name NAME] [--in DIR] [--from-rule ID]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "new"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "SLUG"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "name",
+                    "value": "NAME",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "in",
+                    "value": "DIR",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "from-rule",
+                    "value": "ID",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Start a plugin in DIR (default ./SLUG): its package.json, a skill under skills/, and a README with the next commands. --from-rule makes it from a background rule made on this computer.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "pin",
+          "leaf": {
+            "path": [
+              "plugin",
+              "pin"
+            ],
+            "usage": [
+              "pin [DIR]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "pin"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "DIR",
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Set every digest DIR's package.json states to its file's digest now. install and publish do this for a plugin folder too.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
           "name": "list",
           "leaf": {
             "path": [
@@ -14525,6 +14605,30 @@
       "options": [
         {
           "kind": "option",
+          "name": "name",
+          "value": "NAME",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "in",
+          "value": "DIR",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "from-rule",
+          "value": "ID",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
           "name": "type",
           "value": "TYPE",
           "open": true,
@@ -14551,14 +14655,6 @@
           "kind": "option",
           "name": "limit",
           "value": "N",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "in",
-          "value": "WORKSPACE",
           "open": true,
           "optional": true,
           "repeated": true

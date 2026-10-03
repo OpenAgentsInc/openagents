@@ -779,6 +779,75 @@ fn pin(root: &Path, dir: &str, field: &str, reference: &Reference) -> Result<Pin
     })
 }
 
+/// The reference lists a package record holds: its field, the directory
+/// its files live in, and the field inside a file that names it.
+const REFERENCE_FIELDS: [(&str, &str, &str); 5] = [
+    ("background", "background", "id"),
+    ("questions", "questions", "id"),
+    ("sources", "sources", "slug"),
+    ("policies", "policies", "slug"),
+    ("capabilities", "capabilities", "slug"),
+];
+
+/// Rewrites the digests the package record at `root/package.json` states
+/// to the digests its files have now, so an author never computes one by
+/// hand. Only a reference whose file is found changes; the record keeps
+/// every other field as written. The components it updated, as
+/// `dir/name`; empty when every digest already matched.
+///
+/// # Errors
+///
+/// The record cannot be read, parsed, or written, or a reference names a
+/// file that is not there.
+pub fn repin(root: &Path) -> Result<Vec<String>, String> {
+    let path = root.join("package.json");
+    let text =
+        std::fs::read_to_string(&path).map_err(|error| format!("{}: {error}", path.display()))?;
+    let mut record: Value =
+        serde_json::from_str(&text).map_err(|error| format!("{}: {error}", path.display()))?;
+    let mut changed = Vec::new();
+    let mut update = |reference: &mut Value, dir: &str, field: &str| -> Result<(), String> {
+        let Some(name) = reference
+            .get("name")
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+        else {
+            return Ok(());
+        };
+        let Some(file) = find(&root.join(dir), field, &name) else {
+            return Err(format!(
+                "{dir}/{name} is named in package.json but no file in {dir}/ is it"
+            ));
+        };
+        let bytes = std::fs::read_to_string(&file).map_err(|error| error.to_string())?;
+        let now = digest(&bytes);
+        if reference.get("digest").and_then(Value::as_str) != Some(now.as_str()) {
+            reference["digest"] = Value::String(now);
+            changed.push(format!("{dir}/{name}"));
+        }
+        Ok(())
+    };
+    if let Some(program) = record
+        .get_mut("program")
+        .filter(|program| program.is_object())
+    {
+        update(program, "programs", "slug")?;
+    }
+    for (key, dir, field) in REFERENCE_FIELDS {
+        if let Some(list) = record.get_mut(key).and_then(Value::as_array_mut) {
+            for reference in list {
+                update(reference, dir, field)?;
+            }
+        }
+    }
+    if !changed.is_empty() {
+        let mut bytes = serde_json::to_string_pretty(&record).map_err(|error| error.to_string())?;
+        bytes.push('\n');
+        std::fs::write(&path, bytes).map_err(|error| format!("{}: {error}", path.display()))?;
+    }
+    Ok(changed)
+}
+
 /// The pins a list of references resolves to, keyed by name.
 fn pins(
     root: &Path,
