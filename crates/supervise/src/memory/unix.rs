@@ -125,6 +125,7 @@ pub(crate) fn arm_with(command: &mut Command, max: u64, scope: bool) -> Result<H
                     rlim_cur: data_limit as libc::rlim_t,
                     rlim_max: data_limit as libc::rlim_t,
                 };
+                let limit = within_inherited(limit);
                 if libc::setrlimit(libc::RLIMIT_DATA, &raw const limit) != 0 {
                     return Err(std::io::Error::last_os_error());
                 }
@@ -140,6 +141,36 @@ pub(crate) fn arm_with(command: &mut Command, max: u64, scope: bool) -> Result<H
         gate: gate_write,
         child_ends: Some((report_write, gate_read)),
     })
+}
+
+/// The data limit a child can set under the one it inherited. A job started
+/// inside another capped job (a check run by a Coder run on a host without
+/// cgroup scopes) inherits that job's hard limit, and raising a hard limit
+/// fails with `EPERM`. The inherited limit already holds the child, so the
+/// lower of the two is the cap that applies either way.
+///
+/// Async-signal-safe: it calls only `getrlimit` and compares integers.
+fn within_inherited(wanted: libc::rlimit) -> libc::rlimit {
+    let mut inherited = libc::rlimit {
+        rlim_cur: libc::RLIM_INFINITY,
+        rlim_max: libc::RLIM_INFINITY,
+    };
+    // SAFETY: `getrlimit` writes the current limit into a valid local.
+    if unsafe { libc::getrlimit(libc::RLIMIT_DATA, &raw mut inherited) } != 0 {
+        return wanted;
+    }
+    lower_limit(wanted, inherited.rlim_max)
+}
+
+/// `wanted`, lowered to `hard` when `hard` is a finite limit below it.
+fn lower_limit(wanted: libc::rlimit, hard: libc::rlim_t) -> libc::rlimit {
+    if hard == libc::RLIM_INFINITY || hard >= wanted.rlim_max {
+        return wanted;
+    }
+    libc::rlimit {
+        rlim_cur: wanted.rlim_cur.min(hard),
+        rlim_max: hard,
+    }
 }
 
 /// The gate byte that tells the child it is in its scope.
@@ -756,6 +787,59 @@ mod tests {
         );
         let memory = placed.settle();
         assert!(!memory.exceeded);
+    }
+
+    #[test]
+    fn a_cap_above_an_inherited_hard_limit_is_lowered_to_it() {
+        let wanted = libc::rlimit {
+            rlim_cur: 16 << 30,
+            rlim_max: 16 << 30,
+        };
+        let lowered = lower_limit(wanted, 4 << 30);
+        assert_eq!((lowered.rlim_cur, lowered.rlim_max), (4 << 30, 4 << 30));
+        let kept = lower_limit(wanted, libc::RLIM_INFINITY);
+        assert_eq!((kept.rlim_cur, kept.rlim_max), (16 << 30, 16 << 30));
+        let kept = lower_limit(wanted, 32 << 30);
+        assert_eq!((kept.rlim_cur, kept.rlim_max), (16 << 30, 16 << 30));
+    }
+
+    /// A job started inside another capped job (#10396): the child inherits a
+    /// hard data limit below the cap it asks for, and still starts, held by
+    /// the lower limit, where raising the hard limit used to fail with
+    /// `EPERM` and refuse the job.
+    #[test]
+    #[cfg(not(target_os = "macos"))]
+    fn a_job_inside_a_capped_job_starts_under_the_inherited_limit() {
+        use std::os::unix::process::CommandExt as _;
+        let inherited: u64 = 128 << 20;
+        let mut command = Command::new("sh");
+        command.args(["-c", "ulimit -d"]).stdout(Stdio::piped());
+        // SAFETY: runs between fork and exec and calls only `setrlimit`.
+        unsafe {
+            command.pre_exec(move || {
+                let limit = libc::rlimit {
+                    rlim_cur: inherited as libc::rlim_t,
+                    rlim_max: inherited as libc::rlim_t,
+                };
+                if libc::setrlimit(libc::RLIMIT_DATA, &raw const limit) != 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                Ok(())
+            });
+        }
+        let serving = arm_with(&mut command, 256 << 20, false).unwrap().serve();
+        let spawned = command.spawn();
+        let placed = serving.finish();
+        let output = spawned
+            .expect("the job starts under the inherited limit")
+            .wait_with_output()
+            .unwrap();
+        assert_eq!(placed.enforcement, Enforcement::DataLimit);
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout).trim(),
+            (inherited / 1024).to_string()
+        );
+        assert!(!placed.settle().exceeded);
     }
 
     #[test]
