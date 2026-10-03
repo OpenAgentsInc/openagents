@@ -33,4 +33,6 @@ Run its isolated tests with `python3 scripts/cloud/test_publish_artifacts.py`.
 - `coder-host-bake-guest.sh`: The startup script of the temporary `oa-coder-host` builder VM.
 - `measure-coder-host-image.sh`: Measure an `oa-coder-host` image on a fresh VM, the way a pool host would start from it.
 
+- Hosts started from the `oa-coder-host` image as a pool are managed by `openagents cloud up|down|status` (`crates/openagents-cli/src/cloud.rs`), not by a script here.
+
 `coder-host-setup.sh` is shared by the GCE image and the Boat template (`crates/boat-template`).
