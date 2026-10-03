@@ -146,6 +146,13 @@ pub fn default_branch(top: &Path) -> String {
     .unwrap_or_else(|| "main".to_owned())
 }
 
+/// Where a worktree hook's output for `name` (a task, or a worktree)
+/// goes: `<store>/hooks/<name>.<stage>.log`.
+#[must_use]
+pub fn hooks_log(store: &Path, name: &str, stage: &str) -> PathBuf {
+    store.join("hooks").join(format!("{name}.{stage}.log"))
+}
+
 pub(crate) fn git_out(dir: &Path, args: &[&str]) -> Result<String, String> {
     let output = git()
         .arg("-C")
@@ -260,6 +267,9 @@ pub struct Timings {
     pub worktree_ms: u64,
     /// The worktree was the project's spare ([`super::spare`]).
     pub spare: bool,
+    /// The repository's worktree setup ([`super::worktree_hooks`]).
+    #[serde(default)]
+    pub setup_ms: u64,
     /// The task saved in the store.
     pub submit_ms: u64,
     /// The grant and the engine's launch.
@@ -293,6 +303,10 @@ pub struct Record {
     /// same way.
     #[serde(default, skip_serializing_if = "Shape::is_plain")]
     pub shape: Shape,
+    /// The repository's worktree setup, when it has one
+    /// ([`super::worktree_hooks`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hooks: Option<super::worktree_hooks::Ran>,
 }
 
 /// How a run of a dispatch plan starts (#10183). The plain shape is a run
@@ -1141,6 +1155,22 @@ impl Local {
                 worktree
             }
         };
+        // The repository's own setup, in the task's worktree and before
+        // its engine starts; a spare never has it (#10297).
+        let setting_up = Instant::now();
+        let hooks = match super::worktree_hooks::setup(
+            &checkout.top,
+            &worktree,
+            &checkout.head,
+            &hooks_log(&self.store, &task, "setup"),
+        ) {
+            Ok(ran) => ran,
+            Err(why) => {
+                self.remove_worktree(&checkout.top, &worktree);
+                return Err(why);
+            }
+        };
+        timings.setup_ms = millis(setting_up);
         let submitting = Instant::now();
         let model = order[0].model.clone();
         let intent = TaskIntent {
@@ -1186,6 +1216,7 @@ impl Local {
             ends: BTreeMap::new(),
             requested: requested.map(|provider| provider.as_str().to_owned()),
             shape,
+            hooks: (hooks != super::worktree_hooks::Ran::default()).then_some(hooks),
         };
         timings.submit_ms = millis(submitting);
         let launching = Instant::now();
@@ -1452,7 +1483,18 @@ impl Local {
             .map_err(|_| "Coder's worktree is missing".into())
     }
 
+    /// Remove a worktree this start made, after the repository's own
+    /// teardown ([`super::worktree_hooks::teardown`]).
     fn remove_worktree(&self, top: &Path, worktree: &Path) {
+        let name = worktree.file_name().map_or_else(
+            || "worktree".into(),
+            |name| name.to_string_lossy().into_owned(),
+        );
+        let _ = super::worktree_hooks::teardown(
+            top,
+            worktree,
+            &hooks_log(&self.store, &name, "teardown"),
+        );
         let _ = git_out(
             top,
             &[
