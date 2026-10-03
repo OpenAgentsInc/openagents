@@ -2486,12 +2486,25 @@ impl Job {
                             },
                         )
                     };
-                    let decided = decide(if shadow { Mode::Router } else { mode });
+                    let (decided, mut decisions) = router::decisions::capture(
+                        &response,
+                        routing.calibration.is_some(),
+                        || decide(if shadow { Mode::Router } else { mode }),
+                    );
                     let served = if shadow {
-                        decide(Mode::Legacy)
+                        let (tier, served_decisions) = router::decisions::capture(
+                            &response,
+                            routing.calibration.is_some(),
+                            || decide(Mode::Legacy),
+                        );
+                        decisions = served_decisions;
+                        tier
                     } else {
                         decided.clone()
                     };
+                    for reading in &mut decisions {
+                        reading.action = Some(served.word().into());
+                    }
                     let record = Shadow::of(
                         &reading,
                         bank,
@@ -2509,6 +2522,7 @@ impl Job {
                         served,
                         shadow,
                         answered_by,
+                        decisions,
                     })
                 }
                 Ok(Err(error)) => {
@@ -2774,6 +2788,7 @@ impl Job {
                     // the thread's decision record names them (additive).
                     judgment["door"] = Value::String(judged.answered_by.0.clone());
                     judgment["model"] = Value::String(judged.answered_by.1.clone());
+                    judgment["decisions"] = json!(judged.decisions);
                     publish(FEEDBACK_KIND, judgment).map_err(GenerateError::Stream)?;
                     let routing = judged.routing;
                     let tier = judged.served;
@@ -3430,6 +3445,7 @@ struct Judged {
     shadow: bool,
     /// The Jev door that answered and the model it served.
     answered_by: (String, String),
+    decisions: Vec<route_contract::decision::DecisionReading>,
 }
 
 /// The router's judgment, running.

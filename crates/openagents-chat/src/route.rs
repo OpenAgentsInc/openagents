@@ -418,6 +418,7 @@ pub fn reissue(record: &RouteRecord, number: u64, now_ms: u64) -> Option<RouteRe
         record.received_ms,
     )
     .ok()?;
+    issue.decisions = record.decisions.clone();
     issue.step(Lifecycle::Admitted, "issue_work", now_ms).ok()?;
     Some(issue)
 }
@@ -931,3 +932,16 @@ pub fn waiting(record: &RouteRecord) -> bool {
 
 #[cfg(test)]
 mod tests;
+
+/// Read the worker's additive decision evidence and bind it to this request.
+#[must_use]
+pub fn decisions(
+    meta: Option<&Meta>,
+    request: &str,
+) -> Vec<route_contract::decision::DecisionReading> {
+    let mut readings = meta.map(|m| m.decisions.clone()).unwrap_or_default();
+    for reading in &mut readings {
+        reading.outcome_key = request.into();
+    }
+    readings
+}

@@ -20,6 +20,8 @@
 //! is where it is shown. Every figure is computed here from rows; nothing
 //! is typed in by hand.
 
+pub mod decisions;
+
 use std::collections::BTreeMap;
 use std::path::Path;
 

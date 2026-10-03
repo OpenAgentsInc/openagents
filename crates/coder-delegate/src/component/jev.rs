@@ -208,10 +208,14 @@ pub struct Ask<'a> {
 }
 
 /// What a request produced.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone)]
 pub struct Asked {
     /// The answers object, or `None` when there were none.
     pub answers: Option<Value>,
+    pub model: String,
+    pub call_id: String,
+    pub question_set: String,
+    recorder: Recorder,
     /// Why there are no answers, when there are none.
     pub error: Option<String>,
     /// `live`, `recorded`, `miss`, `off`, `failed`, or `skipped`, when
@@ -229,7 +233,36 @@ pub struct Asked {
     pub milliseconds: Option<u64>,
 }
 
+impl std::fmt::Debug for Asked {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Asked")
+            .field("answers", &self.answers)
+            .field("model", &self.model)
+            .field("how", &self.how)
+            .finish()
+    }
+}
+
 impl Asked {
+    /// Read a Noul at a named policy gate and retain the evaluated comparison.
+    pub fn gate(&self, id: &str, site: &str, threshold: f64) -> Option<f64> {
+        let p = self.noul(id)?;
+        if let Some(mut reading) = route_contract::decision::DecisionReading::new(
+            id,
+            site,
+            &self.model,
+            p,
+            threshold,
+            p >= threshold,
+        ) {
+            reading.question_set.clone_from(&self.question_set);
+            reading.outcome_key.clone_from(&self.call_id);
+            self.recorder
+                .push(Step::thought("").noting("decision_readings", json!([reading])));
+        }
+        Some(p)
+    }
+
     /// The Noul answer to question `id`, or `None` when unknown.
     #[must_use]
     pub fn noul(&self, id: &str) -> Option<f64> {
@@ -309,8 +342,14 @@ pub async fn ask(mode: &JevMode, recorder: &Recorder, ask: Ask<'_>) -> Asked {
         ..Decision::default()
     };
     let credit = |step: Step| step.noting(crate::record::ATTRIBUTION_KEY, json!(invocation));
+    let call_id = decision.id.clone();
+    let question_set = atif::digest(&questions);
     let asked = match mode {
         JevMode::Off => Asked {
+            model: JEV_MODEL.to_owned(),
+            call_id: call_id.clone(),
+            question_set: question_set.clone(),
+            recorder: recorder.clone(),
             answers: None,
             error: Some("Jev is off".to_string()),
             how: "off",
@@ -334,6 +373,10 @@ pub async fn ask(mode: &JevMode, recorder: &Recorder, ask: Ask<'_>) -> Asked {
                     }),
                 )));
                 Asked {
+                    model: entry.model.clone(),
+                    call_id: call_id.clone(),
+                    question_set: question_set.clone(),
+                    recorder: recorder.clone(),
                     answers: Some(entry.answers.clone()),
                     error: None,
                     how: "recorded",
@@ -345,6 +388,10 @@ pub async fn ask(mode: &JevMode, recorder: &Recorder, ask: Ask<'_>) -> Asked {
                 }
             }
             None => Asked {
+                model: JEV_MODEL.to_owned(),
+                call_id: call_id.clone(),
+                question_set: question_set.clone(),
+                recorder: recorder.clone(),
                 answers: None,
                 error: Some("no recorded answer for this state and question set".to_string()),
                 how: "miss",
@@ -367,6 +414,10 @@ pub async fn ask(mode: &JevMode, recorder: &Recorder, ask: Ask<'_>) -> Asked {
             ));
             crate::say::say!("  {} ▸ {DEADLINE_SKIP}", ask.name);
             Asked {
+                model: JEV_MODEL.to_owned(),
+                call_id: call_id.clone(),
+                question_set: question_set.clone(),
+                recorder: recorder.clone(),
                 answers: None,
                 error: Some(DEADLINE_SKIP.to_string()),
                 how: "skipped",
@@ -408,6 +459,10 @@ pub async fn ask(mode: &JevMode, recorder: &Recorder, ask: Ask<'_>) -> Asked {
                             .noting("jev_usage", charge.clone()),
                     ));
                     Asked {
+                        model: response.model.clone(),
+                        call_id: call_id.clone(),
+                        question_set: question_set.clone(),
+                        recorder: recorder.clone(),
                         answers: Some(decision.answers),
                         error: None,
                         how: "live",
@@ -431,6 +486,10 @@ pub async fn ask(mode: &JevMode, recorder: &Recorder, ask: Ask<'_>) -> Asked {
                             .noting("jev_usage", charge.clone()),
                     ));
                     Asked {
+                        model: JEV_MODEL.to_owned(),
+                        call_id: call_id.clone(),
+                        question_set: question_set.clone(),
+                        recorder: recorder.clone(),
                         answers: None,
                         error: Some(error.to_string()),
                         how: "failed",
@@ -607,5 +666,33 @@ mod tests {
         .await;
         assert_eq!(asked.how, "off");
         assert!(!asked.answered());
+    }
+    #[tokio::test]
+    async fn fixture_gate_records_served_model_probability_threshold_and_call_key() {
+        let state = json!({"issue": {"title":"t", "body":"b"}});
+        let mut fixture = recorded(&state, "Is it done?");
+        fixture.entries.values_mut().next().unwrap().model = "jev-fixture-pinned".into();
+        let recorder = Recorder::default();
+        let asked = ask(
+            &JevMode::Recorded(fixture),
+            &recorder,
+            asking(&state, "Is it done?"),
+        )
+        .await;
+        assert_eq!(asked.gate("done", "test.done", 0.67), Some(0.67));
+        assert_eq!(asked.gate("missing", "test.done", 0.67), None);
+        let readings: Vec<_> = recorder
+            .steps()
+            .iter()
+            .filter_map(|s| s.extensions.get("decision_readings").cloned())
+            .collect();
+        assert_eq!(readings.len(), 1);
+        let r = &readings[0][0];
+        assert_eq!(r["model"], "jev-fixture-pinned");
+        assert_eq!(r["raw_probability"], 0.67);
+        assert_eq!(r["threshold"], 0.67);
+        assert_eq!(r["decision"], true);
+        assert_eq!(r["outcome_key"], "jev-1");
+        assert!(r["calibrated_probability"].is_null());
     }
 }

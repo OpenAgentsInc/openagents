@@ -1009,7 +1009,11 @@ pub async fn stale_dependents(
         .iter()
         .enumerate()
         .filter_map(|(i, excerpt)| {
-            let p = asked.noul(&format!("depends_{}", i + 1));
+            let p = asked.gate(
+                &format!("depends_{}", i + 1),
+                "issue_turn.depends",
+                DEPENDS_FLAG,
+            );
             // Jev alone missed a stale `2 + cursor` twice, rating it under
             // 0.5; a list that grew beside a fixed offset is flagged by code.
             let offset = grown.contains(&excerpt.name) && fixed_offset(&excerpt.text);
@@ -1360,7 +1364,7 @@ pub async fn unclear_text(
         .iter()
         .enumerate()
         .filter_map(|(i, (file, text))| {
-            let p = asked.noul(&format!("plain_{}", i + 1))?;
+            let p = asked.gate(&format!("plain_{}", i + 1), "issue_turn.plain", PLAIN_FLAG)?;
             (!crate::decision::ISSUE_TURN_PLAIN.yes(p)).then(|| {
                 format!(
                     "{file}: \"{}\" reads as shorthand (Jev {p:.2}); say it in plain, complete \

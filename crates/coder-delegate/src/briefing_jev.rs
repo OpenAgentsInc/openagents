@@ -413,7 +413,18 @@ pub async fn select(
     )
     .await;
     let decided = if asked.answered() {
-        decide(set, host, requirements, |id| asked.noul(id))
+        decide(set, host, requirements, |id| {
+            let requirement = id.starts_with("requirement_");
+            asked.gate(
+                id,
+                if requirement {
+                    "briefing.flag"
+                } else {
+                    "briefing.keep"
+                },
+                if requirement { set.flag } else { set.keep },
+            )
+        })
     } else {
         Err(format!(
             "Jev didn't answer the briefing request: {}",

@@ -42,6 +42,7 @@ pub mod bank;
 pub mod calibration;
 pub mod capability;
 pub mod card;
+pub mod decisions;
 pub mod gym;
 pub mod judge;
 pub mod personalize;

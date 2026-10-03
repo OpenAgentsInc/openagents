@@ -937,7 +937,10 @@ async fn ask_class(
         },
     )
     .await;
-    let (asks_only, hard) = (asked.noul("asks_only"), asked.noul("hard"));
+    let (asks_only, hard) = (
+        asked.gate("asks_only", "terminal.asks_only", 0.6),
+        asked.gate("hard", "recipe.hard", HARD_AT),
+    );
     let class = class_of(asks_only, hard);
     (
         class,
@@ -981,7 +984,7 @@ async fn ask_checks(
     )
     .await;
     for (i, candidate) in candidates.iter_mut().enumerate() {
-        candidate.p = asked.noul(&format!("check_{i}"));
+        candidate.p = asked.gate(&format!("check_{i}"), "recipe.check_keep", CHECK_KEEP);
     }
     (candidates, asked.error)
 }

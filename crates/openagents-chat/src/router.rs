@@ -1017,6 +1017,9 @@ pub struct Meta {
     /// The judgment feedback as it arrived, bounded.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub judgment: Option<String>,
+    /// Full local decision evidence, separate from the bounded shareable judgment.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub decisions: Vec<route_contract::decision::DecisionReading>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub offers: Vec<Offer>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -1089,7 +1092,16 @@ impl Meta {
 
     /// Takes a `judgment` feedback payload.
     pub fn judged(&mut self, payload: &Value) {
-        let text = payload.to_string();
+        self.decisions = payload
+            .get("decisions")
+            .cloned()
+            .and_then(|v| serde_json::from_value(v).ok())
+            .unwrap_or_default();
+        let mut shareable = payload.clone();
+        if let Some(object) = shareable.as_object_mut() {
+            object.remove("decisions");
+        }
+        let text = shareable.to_string();
         if text.len() <= MAX_JUDGMENT_BYTES {
             self.judgment = Some(text);
         }
@@ -1856,5 +1868,32 @@ mod desktop_context_tests {
                 .unwrap()
                 .contains("on their phone")
         );
+    }
+}
+
+#[cfg(test)]
+mod decision_evidence_tests {
+    use super::*;
+    #[test]
+    fn local_readings_survive_the_shareable_judgment_bound() {
+        let r = route_contract::decision::DecisionReading::new(
+            "read_only",
+            "READ_ONLY_CONFIDENCE",
+            "jev-pinned",
+            0.7,
+            0.7,
+            true,
+        )
+        .unwrap();
+        let payload =
+            serde_json::json!({"tier":"model", "model":"jev-pinned", "decisions": vec![r; 40]});
+        assert!(payload.to_string().len() > MAX_JUDGMENT_BYTES);
+        let mut meta = Meta::default();
+        meta.judged(&payload);
+        assert_eq!(meta.decisions.len(), 40);
+        assert!(meta.judgment.as_ref().unwrap().len() <= MAX_JUDGMENT_BYTES);
+        let bound = crate::route::decisions(Some(&meta), "req-fixture");
+        assert!(bound.iter().all(|r| r.outcome_key == "req-fixture"));
+        assert!(crate::route::decisions(None, "legacy").is_empty());
     }
 }

@@ -32,6 +32,7 @@
 //! named by [`Digest`]: SHA-256 over canonical JSON (object keys sorted, no
 //! whitespace), so a digest does not move with serde's map ordering.
 
+pub mod decision;
 pub mod digest;
 pub mod eval;
 pub mod lifecycle;

@@ -1,0 +1,112 @@
+[
+  {
+    "reading": {
+      "question": "hard",
+      "site": "recipe.hard",
+      "question_set": "delegate-class-v1",
+      "model": "jev-fixture-1",
+      "option": null,
+      "raw_probability": 0.8,
+      "calibrated_probability": null,
+      "policy_probability": 0.8,
+      "threshold": 0.8,
+      "comparison": "ge",
+      "decision": true,
+      "action": "hard",
+      "outcome_key": "fixture-1"
+    },
+    "request": "fixture-request",
+    "task": "fixture-1",
+    "independent_pass": true,
+    "cost_microusd": 40502,
+    "wall_ms": 1200
+  },
+  {
+    "reading": {
+      "question": "hard",
+      "site": "recipe.hard",
+      "question_set": "delegate-class-v1",
+      "model": "jev-fixture-1",
+      "option": null,
+      "raw_probability": 0.2,
+      "calibrated_probability": null,
+      "policy_probability": 0.2,
+      "threshold": 0.8,
+      "comparison": "ge",
+      "decision": false,
+      "action": "hard",
+      "outcome_key": "fixture-2"
+    },
+    "request": "fixture-request",
+    "task": "fixture-2",
+    "independent_pass": false,
+    "cost_microusd": null,
+    "wall_ms": null
+  },
+  {
+    "reading": {
+      "question": "hard",
+      "site": "recipe.hard",
+      "question_set": "delegate-class-v1",
+      "model": "jev-fixture-1",
+      "option": null,
+      "raw_probability": 1.0,
+      "calibrated_probability": null,
+      "policy_probability": 1.0,
+      "threshold": 0.8,
+      "comparison": "ge",
+      "decision": true,
+      "action": "hard",
+      "outcome_key": "fixture-3"
+    },
+    "request": "fixture-request",
+    "task": "fixture-3",
+    "independent_pass": false,
+    "cost_microusd": null,
+    "wall_ms": null
+  },
+  {
+    "reading": {
+      "question": "hard",
+      "site": "recipe.hard",
+      "question_set": "delegate-class-v1",
+      "model": "jev-fixture-1",
+      "option": null,
+      "raw_probability": 0.0,
+      "calibrated_probability": null,
+      "policy_probability": 0.0,
+      "threshold": 0.8,
+      "comparison": "ge",
+      "decision": false,
+      "action": "hard",
+      "outcome_key": "fixture-4"
+    },
+    "request": "fixture-request",
+    "task": "fixture-4",
+    "independent_pass": true,
+    "cost_microusd": null,
+    "wall_ms": null
+  },
+  {
+    "reading": {
+      "question": "hard",
+      "site": "recipe.hard",
+      "question_set": "delegate-class-v1",
+      "model": "jev-fixture-1",
+      "option": null,
+      "raw_probability": 0.8,
+      "calibrated_probability": null,
+      "policy_probability": 0.8,
+      "threshold": 0.8,
+      "comparison": "ge",
+      "decision": true,
+      "action": "hard",
+      "outcome_key": "fixture-5"
+    },
+    "request": "fixture-request",
+    "task": "fixture-5",
+    "independent_pass": null,
+    "cost_microusd": null,
+    "wall_ms": null
+  }
+]

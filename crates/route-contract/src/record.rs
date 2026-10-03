@@ -91,6 +91,9 @@ pub struct RouteRecord {
     /// [`crate::RECORD_SCHEMA`].
     pub schema: String,
     pub request: String,
+    /// Jev gates evaluated for this request; absent in legacy records.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub decisions: Vec<crate::decision::DecisionReading>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thread: Option<String>,
     pub result: RouteResult,
@@ -149,6 +152,7 @@ impl RouteRecord {
         Ok(Self {
             schema: crate::RECORD_SCHEMA.into(),
             request: request.into(),
+            decisions: Vec::new(),
             thread,
             snapshot_digest: snapshot.digest(),
             result,

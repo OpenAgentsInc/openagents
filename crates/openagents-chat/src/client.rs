@@ -1764,6 +1764,7 @@ impl Client {
         )
         .ok()
         .map(|mut record| {
+            record.decisions = crate::route::decisions(reply.meta.as_ref(), &record.request);
             // BYOK (#10176): the keys that paid for this message, by
             // fingerprint only.
             record.payer_keys = reply

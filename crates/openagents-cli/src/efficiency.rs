@@ -12,6 +12,7 @@ use coder::efficiency;
 use coder::task::{local, shadow};
 
 pub(crate) const USAGE: &str = "usage: openagents efficiency [--all] [--study FILE]...
+       openagents efficiency decisions [--store DIR]
 Cost per checked result, time to a checked result, and pass rate, routed
 against raw Claude Code and raw Codex, with run counts and 95% intervals:
   - the standing Gym study's latest run (--all: every committed study),
@@ -20,6 +21,9 @@ against raw Claude Code and raw Codex, with run counts and 95% intervals:
   - this computer's routed Coder runs, by engine and class, from the route
     records in ~/.openagents/routes.
   --study FILE   also report a study's rows (bench/efficiency/study.py collect).
+  decisions      per-question counts, threshold accuracy (run-pass proxy), and
+                 raw-probability reliability, joined to independent checks,
+                 cost, and time; --store DIR selects a task store.
 Methodology: bench/efficiency/README.md; public summary: openagents.com/efficiency.";
 
 /// What the command does and where the phone runs it, for the chat
@@ -39,6 +43,31 @@ pub(crate) fn report(extra: &[(String, String)]) -> serde_json::Value {
 }
 
 pub fn run(output: &Output, words: &[String]) -> u8 {
+    if words.first().is_some_and(|w| w == "decisions") {
+        if words[1..]
+            .iter()
+            .any(|w| matches!(w.as_str(), "--help" | "-h" | "help"))
+        {
+            println!("{USAGE}");
+            return 0;
+        }
+        let store = match &words[1..] {
+            [] => local::default_store(),
+            [flag, path] if flag == "--store" => std::path::PathBuf::from(path),
+            _ => {
+                return output.usage(
+                    "efficiency decisions",
+                    "expected --store DIR or no arguments",
+                    USAGE,
+                );
+            }
+        };
+        let report = efficiency::decisions::report(&efficiency::decisions::rows(&store));
+        output.emit(&json!({"report": report}), |v| {
+            efficiency::decisions::text(&v["report"])
+        });
+        return 0;
+    }
     let mut all = false;
     let mut extra = Vec::new();
     let mut rest = words.iter();

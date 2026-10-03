@@ -283,7 +283,9 @@ impl JevJudge {
             );
             return;
         }
-        let gated = evidence::setup_decide(&commands, |id| asked.noul(id));
+        let gated = evidence::setup_decide(&commands, |id| {
+            asked.gate(id, "evidence.setup", evidence::YES)
+        });
         let scope = crate::ops::Scope::new(&self.workdir);
         let mut ran = Vec::new();
         let mut refused = Vec::new();
@@ -682,7 +684,9 @@ impl JevJudge {
             );
             return;
         }
-        let selected = evidence::probe_keep(&outputs, |id| asked.noul(id));
+        let selected = evidence::probe_keep(&outputs, |id| {
+            asked.gate(id, "evidence.probe_keep", evidence::YES)
+        });
         let mut total = 0;
         for choice in selected.iter().filter(|s| s.decision == "kept") {
             let Some(probe) = outputs.iter().find(|p| p.command == choice.command) else {
@@ -902,8 +906,20 @@ impl JevJudge {
             for (i, candidate) in batch.iter().enumerate() {
                 scored.push((
                     candidate.path.clone(),
-                    Some(asked.noul(&format!("rel_{i}")).unwrap_or(0.0)),
-                    Some(asked.noul(&format!("edit_{i}")).unwrap_or(0.0)),
+                    Some(
+                        asked
+                            .gate(&format!("rel_{i}"), "evidence.relevance", evidence::YES)
+                            .unwrap_or(0.0),
+                    ),
+                    Some(
+                        asked
+                            .gate(
+                                &format!("edit_{i}"),
+                                "evidence.edit_target",
+                                evidence::EDIT_TARGET,
+                            )
+                            .unwrap_or(0.0),
+                    ),
                 ));
             }
         }
@@ -1572,7 +1588,9 @@ impl JevJudge {
         let asked = self
             .ask_jev(&client, "exec.system", "jev_system", jev_state, questions)
             .await;
-        crate::system::selection_answers(ids, |id| asked.noul(id))
+        crate::system::selection_answers(ids, |id| {
+            asked.gate(id, "system.select", crate::system::SELECT)
+        })
     }
 
     pub async fn close(&mut self, state: &State, delegate: &str, changes: &str) -> Close {

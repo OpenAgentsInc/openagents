@@ -405,7 +405,15 @@ fn named_capability(routing: &Routing) -> Option<&Capability> {
     routing
         .capability
         .as_ref()
-        .filter(|(entry, p)| *p >= CAPABILITY_CONFIDENCE && entry.reach == Reach::Coder)
+        .filter(|(entry, p)| {
+            super::decisions::test(
+                "capability",
+                "CAPABILITY_CONFIDENCE",
+                *p,
+                CAPABILITY_CONFIDENCE,
+                "ge",
+            ) && entry.reach == Reach::Coder
+        })
         .map(|(entry, _)| entry)
 }
 
@@ -447,7 +455,9 @@ fn opener_lead(routing: &Routing) -> Option<Lead> {
     routing
         .opener
         .as_ref()
-        .filter(|(_, p)| *p >= OPENER_CONFIDENCE)
+        .filter(|(_, p)| {
+            super::decisions::test("opener", "OPENER_CONFIDENCE", *p, OPENER_CONFIDENCE, "ge")
+        })
         .map(|(opener, _)| Lead {
             id: opener.id.clone(),
             text: opener.text.clone(),
@@ -459,9 +469,16 @@ fn opener_lead(routing: &Routing) -> Option<Lead> {
 fn model(routing: &Routing) -> Tier {
     let near = |is: fn(RouteId) -> bool| {
         is(routing.route)
-            || routing
-                .runner_up
-                .is_some_and(|(route, p)| is(route) && routing.route_p - p < CLOSE_MARGIN)
+            || routing.runner_up.is_some_and(|(route, p)| {
+                is(route)
+                    && super::decisions::test(
+                        "route",
+                        "CLOSE_MARGIN",
+                        routing.route_p - p,
+                        CLOSE_MARGIN,
+                        "lt",
+                    )
+            })
     };
     let note = if near(RouteId::is_gym) {
         Some(super::gym::NO_RECORDS_NOTE)
@@ -496,13 +513,13 @@ confirms it.";
 /// the descent's own `none` leaves a question no command answers to the
 /// model, told [`WALLET_NOTE`].
 fn terminal_wallet(routing: &Routing, situation: &Situation) -> Option<Tier> {
-    let elsewhere = routing
-        .cli_group
-        .as_ref()
-        .is_some_and(|(group, p)| group != WALLET_GROUP && *p >= CLI_GROUP);
+    let elsewhere = routing.cli_group.as_ref().is_some_and(|(group, p)| {
+        group != WALLET_GROUP
+            && super::decisions::test("cli_group", "CLI_GROUP", *p, CLI_GROUP, "ge")
+    });
     (situation.context.surface() == Surface::Terminal
         && routing.route == RouteId::Wallet
-        && routing.route_p >= CLI_ROUTE
+        && super::decisions::test("route", "CLI_ROUTE", routing.route_p, CLI_ROUTE, "ge")
         && !elsewhere)
         .then(|| Tier::Cli {
             group: WALLET_GROUP.to_owned(),
@@ -534,7 +551,9 @@ fn gym(routing: &Routing, bank: &Bank, facts: &Facts) -> Option<Tier> {
     } else {
         EVAL_ROUTE
     };
-    if !routing.route.is_gym() || routing.route_p < floor {
+    if !routing.route.is_gym()
+        || super::decisions::test("route", "gym.floor", routing.route_p, floor, "lt")
+    {
         return None;
     }
     match routing.route {
@@ -546,7 +565,16 @@ fn gym(routing: &Routing, bank: &Bank, facts: &Facts) -> Option<Tier> {
             let id = routing
                 .answer
                 .as_ref()
-                .filter(|(entry, p)| entry.answers(RouteId::EvalCredit) && *p >= STEM_CONFIDENCE)
+                .filter(|(entry, p)| {
+                    entry.answers(RouteId::EvalCredit)
+                        && super::decisions::test(
+                            "answer",
+                            "STEM_CONFIDENCE",
+                            *p,
+                            STEM_CONFIDENCE,
+                            "ge",
+                        )
+                })
                 .map_or("eval.credit.mine", |(entry, _)| entry.id.as_str());
             final_of(bank, facts, id)
         }
@@ -555,7 +583,9 @@ fn gym(routing: &Routing, bank: &Bank, facts: &Facts) -> Option<Tier> {
             tool: routing
                 .tool
                 .as_ref()
-                .filter(|(_, p)| *p >= TOOL_CONFIDENCE)
+                .filter(|(_, p)| {
+                    super::decisions::test("tool", "TOOL_CONFIDENCE", *p, TOOL_CONFIDENCE, "ge")
+                })
                 .map(|(tool, _)| tool.clone()),
             lead: opener_lead(routing),
         }),
@@ -565,9 +595,20 @@ fn gym(routing: &Routing, bank: &Bank, facts: &Facts) -> Option<Tier> {
 /// Rule 3: a whole prepared answer, if the judgment is sure of one.
 fn canned(routing: &Routing, facts: &Facts, offers: bool) -> Option<Tier> {
     let (entry, p) = routing.answer.as_ref()?;
-    if routing.route_p < ROUTE_CONFIDENCE
-        || *p < ANSWER_CONFIDENCE
-        || routing.needs_specifics >= SPECIFICS_CEILING
+    if super::decisions::test(
+        "route",
+        "ROUTE_CONFIDENCE",
+        routing.route_p,
+        ROUTE_CONFIDENCE,
+        "lt",
+    ) || super::decisions::test("answer", "ANSWER_CONFIDENCE", *p, ANSWER_CONFIDENCE, "lt")
+        || super::decisions::test(
+            "needs_specifics",
+            "SPECIFICS_CEILING",
+            routing.needs_specifics,
+            SPECIFICS_CEILING,
+            "ge",
+        )
         || !entry.answers(routing.route)
         || dispatches(entry)
         || entry.answers(RouteId::Refuse)
@@ -621,7 +662,9 @@ pub fn fan_out(routing: &Routing, context: &super::Context) -> Option<super::Dis
     if context.surface() != Surface::Terminal {
         return None;
     }
-    let (fanout, _) = routing.fanout.filter(|(_, p)| *p >= FANOUT_CONFIDENCE)?;
+    let (fanout, _) = routing.fanout.filter(|(_, p)| {
+        super::decisions::test("fanout", "FANOUT_CONFIDENCE", *p, FANOUT_CONFIDENCE, "ge")
+    })?;
     let runs: Vec<Engine> = match fanout {
         Fanout::EachEngine => {
             let listed = match &context.computer {
@@ -646,8 +689,20 @@ pub fn fan_out(routing: &Routing, context: &super::Context) -> Option<super::Dis
     };
     let plan = super::DispatchPlan {
         runs,
-        read_only: routing.read_only >= READ_ONLY_CONFIDENCE,
-        summarize: routing.summarize >= SUMMARIZE_CONFIDENCE,
+        read_only: super::decisions::test(
+            "read_only",
+            "READ_ONLY_CONFIDENCE",
+            routing.read_only,
+            READ_ONLY_CONFIDENCE,
+            "ge",
+        ),
+        summarize: super::decisions::test(
+            "summarize",
+            "SUMMARIZE_CONFIDENCE",
+            routing.summarize,
+            SUMMARIZE_CONFIDENCE,
+            "ge",
+        ),
     };
     (plan.runs.len() >= 2 && plan.valid()).then_some(plan)
 }
@@ -691,7 +746,9 @@ fn fan_out_tier(bank: &Bank, facts: &Facts, plan: super::DispatchPlan) -> Option
 pub fn requested_engine(routing: &Routing) -> Option<super::CodingEngine> {
     routing
         .engine
-        .filter(|(_, p)| *p >= ENGINE_CONFIDENCE)
+        .filter(|(_, p)| {
+            super::decisions::test("engine", "ENGINE_CONFIDENCE", *p, ENGINE_CONFIDENCE, "ge")
+        })
         .map(|(engine, _)| engine)
 }
 
@@ -748,7 +805,15 @@ fn presentation(
     facts: &Facts,
     situation: &Situation,
 ) -> Option<Tier> {
-    if routing.route != RouteId::PresentationOpen || routing.route_p < PRESENTATION_ROUTE {
+    if routing.route != RouteId::PresentationOpen
+        || super::decisions::test(
+            "route",
+            "PRESENTATION_ROUTE",
+            routing.route_p,
+            PRESENTATION_ROUTE,
+            "lt",
+        )
+    {
         return None;
     }
     if situation.context.surface() != Surface::Desktop {
@@ -758,7 +823,9 @@ fn presentation(
     let named = routing
         .deck
         .as_ref()
-        .filter(|(_, p)| *p >= DECK_CONFIDENCE)
+        .filter(|(_, p)| {
+            super::decisions::test("deck", "DECK_CONFIDENCE", *p, DECK_CONFIDENCE, "ge")
+        })
         .and_then(|(id, _)| decks.iter().find(|deck| deck.id == id));
     let Some(deck) = named else {
         let titles: Vec<&str> = decks.iter().map(|deck| deck.title.as_str()).collect();
@@ -794,7 +861,15 @@ fn presentation(
 /// terminal's computer follows with the compiled rule; on every other
 /// surface, `standing.elsewhere`.
 fn standing(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Situation) -> Option<Tier> {
-    if routing.route != RouteId::StandingRule || routing.route_p < STANDING_ROUTE {
+    if routing.route != RouteId::StandingRule
+        || super::decisions::test(
+            "route",
+            "STANDING_ROUTE",
+            routing.route_p,
+            STANDING_ROUTE,
+            "lt",
+        )
+    {
         return None;
     }
     let id = if situation.context.surface() == Surface::Terminal {
@@ -809,16 +884,36 @@ fn standing(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Situation
 /// the request calls for a capability none of the admitted ones covers.
 fn missing(routing: &Routing, bank: &Bank, facts: &Facts) -> Option<Tier> {
     if routing.route != RouteId::CapabilityMissing
-        || routing.route_p < CAPABILITY_ROUTE
+        || super::decisions::test(
+            "route",
+            "CAPABILITY_ROUTE",
+            routing.route_p,
+            CAPABILITY_ROUTE,
+            "lt",
+        )
         || routing.capability.is_some()
-        || routing.capability_missing_p < CAPABILITY_MISSING
+        || super::decisions::test(
+            "capability",
+            "CAPABILITY_MISSING",
+            routing.capability_missing_p,
+            CAPABILITY_MISSING,
+            "lt",
+        )
     {
         return None;
     }
     let closest = routing
         .capability_closest
         .as_ref()
-        .filter(|(_, p)| *p >= CAPABILITY_CLOSEST)
+        .filter(|(_, p)| {
+            super::decisions::test(
+                "capability",
+                "CAPABILITY_CLOSEST",
+                *p,
+                CAPABILITY_CLOSEST,
+                "ge",
+            )
+        })
         .map(|(entry, _)| entry.clone());
     let (id, facts) = match &closest {
         Some(entry) => (
@@ -910,8 +1005,19 @@ fn decide_anywhere(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Si
     );
     // Two independent readings agreeing, the `refuse` route and a risk in
     // the warn band, are as sure as one risk reading at the refusal bar.
-    let agreed = routing.route == RouteId::Refuse && routing.route_p >= ROUTE_CONFIDENCE;
-    if risky && (routing.risk_p >= RISK_REFUSE || (agreed && routing.risk_p >= RISK_WARN)) {
+    let agreed = routing.route == RouteId::Refuse
+        && super::decisions::test(
+            "route",
+            "ROUTE_CONFIDENCE",
+            routing.route_p,
+            ROUTE_CONFIDENCE,
+            "ge",
+        );
+    if risky
+        && (super::decisions::test("risk", "RISK_REFUSE", routing.risk_p, RISK_REFUSE, "ge")
+            || (agreed
+                && super::decisions::test("risk", "RISK_WARN", routing.risk_p, RISK_WARN, "ge")))
+    {
         let id = match routing.risk {
             Risk::SecretShared => "refuse.secret_shared",
             Risk::AsksForSecret => "refuse.asks_for_secret",
@@ -924,8 +1030,15 @@ fn decide_anywhere(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Si
     // 0. An open interview continues, unless the reading is sure of a
     // route that is no part of it. Refusals above still come first.
     if situation.draft
-        && (AUTHOR_CONTINUES.contains(&routing.route) || routing.route_p < ROUTE_CONFIDENCE)
-        && !(risky && routing.risk_p >= RISK_WARN)
+        && (AUTHOR_CONTINUES.contains(&routing.route)
+            || super::decisions::test(
+                "route",
+                "ROUTE_CONFIDENCE",
+                routing.route_p,
+                ROUTE_CONFIDENCE,
+                "lt",
+            ))
+        && !(risky && super::decisions::test("risk", "RISK_WARN", routing.risk_p, RISK_WARN, "ge"))
     {
         return Tier::Author;
     }
@@ -933,12 +1046,18 @@ fn decide_anywhere(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Si
     if situation.plugin
         && (AUTHOR_CONTINUES.contains(&routing.route)
             || PLUGIN_CONTINUES.contains(&routing.route)
-            || routing.route_p < ROUTE_CONFIDENCE)
-        && !(risky && routing.risk_p >= RISK_WARN)
+            || super::decisions::test(
+                "route",
+                "ROUTE_CONFIDENCE",
+                routing.route_p,
+                ROUTE_CONFIDENCE,
+                "lt",
+            ))
+        && !(risky && super::decisions::test("risk", "RISK_WARN", routing.risk_p, RISK_WARN, "ge"))
     {
         return Tier::Author;
     }
-    if risky && routing.risk_p >= RISK_WARN {
+    if risky && super::decisions::test("risk", "RISK_WARN", routing.risk_p, RISK_WARN, "ge") {
         let lead = (routing.risk == Risk::SecretShared)
             .then(|| bank.entry("warn.secret_shared"))
             .flatten()
@@ -951,7 +1070,7 @@ fn decide_anywhere(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Si
         return Tier::Model { lead, note: None };
     }
     if routing.risk == Risk::MoneyMovement
-        && routing.risk_p >= RISK_WARN
+        && super::decisions::test("risk", "RISK_WARN", routing.risk_p, RISK_WARN, "ge")
         && let Some(tier) = final_of(bank, facts, "wallet.send")
     {
         return tier;
@@ -960,14 +1079,26 @@ fn decide_anywhere(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Si
     // 2. Close call.
     if let Some((second, second_p)) = routing.runner_up
         && routing.route != RouteId::Unknown
-        && routing.route_p - second_p < CLOSE_MARGIN
+        && super::decisions::test(
+            "route",
+            "CLOSE_MARGIN",
+            routing.route_p - second_p,
+            CLOSE_MARGIN,
+            "lt",
+        )
     {
         // A question about us is answered from what we documented, not
         // asked back or left to the model (#10137).
         if let Some(tier) = knowledge(routing) {
             return tier;
         }
-        if routing.clarify_p >= CLARIFY_WINS {
+        if super::decisions::test(
+            "route",
+            "CLARIFY_WINS",
+            routing.clarify_p,
+            CLARIFY_WINS,
+            "ge",
+        ) {
             return clarify(bank, facts, situation);
         }
         // An offer loses to an answer: work and a route with its own answer
@@ -982,7 +1113,7 @@ fn decide_anywhere(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Si
             && LANE_ROUTES.contains(&other);
         if dispatch_pair
             && routing.lane == Lane::Computer
-            && routing.lane_p >= DISPATCH_LANE
+            && super::decisions::test("lane", "DISPATCH_LANE", routing.lane_p, DISPATCH_LANE, "ge")
             && let Some(tier) = dispatch(routing, bank, facts, situation)
         {
             return tier;
@@ -1013,7 +1144,13 @@ fn decide_anywhere(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Si
 
     // 4. End.
     if routing.route == RouteId::End
-        && routing.route_p >= ROUTE_CONFIDENCE
+        && super::decisions::test(
+            "route",
+            "ROUTE_CONFIDENCE",
+            routing.route_p,
+            ROUTE_CONFIDENCE,
+            "ge",
+        )
         && let Some(tier) = final_of(bank, facts, "smalltalk.bye")
     {
         return tier;
@@ -1021,8 +1158,14 @@ fn decide_anywhere(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Si
 
     // 5. T1.
     if let Some((entry, p)) = &routing.answer
-        && *p >= STEM_CONFIDENCE
-        && routing.needs_specifics >= SPECIFICS_CEILING
+        && super::decisions::test("answer", "STEM_CONFIDENCE", *p, STEM_CONFIDENCE, "ge")
+        && super::decisions::test(
+            "needs_specifics",
+            "SPECIFICS_CEILING",
+            routing.needs_specifics,
+            SPECIFICS_CEILING,
+            "ge",
+        )
         && entry.answers(routing.route)
         && !dispatches(entry)
         && let Some(tier) = stem_of(entry, facts, situation.personalize)
@@ -1032,7 +1175,13 @@ fn decide_anywhere(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Si
 
     // 6. T4 dispatch, by route.
     if routing.route == RouteId::WorkDispatch
-        && routing.route_p >= DISPATCH_ROUTE
+        && super::decisions::test(
+            "route",
+            "DISPATCH_ROUTE",
+            routing.route_p,
+            DISPATCH_ROUTE,
+            "ge",
+        )
         && let Some(tier) = dispatch(routing, bank, facts, situation)
     {
         return tier;
@@ -1042,11 +1191,42 @@ fn decide_anywhere(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Si
     // route is sure and the seam descends the likely groups as a beam.
     if routing.route == RouteId::Cli
         && let Some((group, group_p)) = &routing.cli_group
-        && ((routing.route_p >= CLI_ROUTE && *group_p >= CLI_GROUP)
-            || (routing.route_p >= CLI_ROUTE_SURE && *group_p >= CLI_GROUP_BEAM)
-            || (routing.route_p >= GROUNDED_ROUTE && *group_p >= CLI_GROUP_SURE))
+        && ((super::decisions::test("route", "CLI_ROUTE", routing.route_p, CLI_ROUTE, "ge")
+            && super::decisions::test("cli_group", "CLI_GROUP", *group_p, CLI_GROUP, "ge"))
+            || (super::decisions::test(
+                "route",
+                "CLI_ROUTE_SURE",
+                routing.route_p,
+                CLI_ROUTE_SURE,
+                "ge",
+            ) && super::decisions::test(
+                "cli_group",
+                "CLI_GROUP_BEAM",
+                *group_p,
+                CLI_GROUP_BEAM,
+                "ge",
+            ))
+            || (super::decisions::test(
+                "route",
+                "GROUNDED_ROUTE",
+                routing.route_p,
+                GROUNDED_ROUTE,
+                "ge",
+            ) && super::decisions::test(
+                "cli_group",
+                "CLI_GROUP_SURE",
+                *group_p,
+                CLI_GROUP_SURE,
+                "ge",
+            )))
     {
-        let also = if *group_p >= CLI_GROUP_SURE {
+        let also = if super::decisions::test(
+            "cli_group",
+            "CLI_GROUP_SURE",
+            *group_p,
+            CLI_GROUP_SURE,
+            "ge",
+        ) {
             Vec::new()
         } else {
             routing
@@ -1063,8 +1243,13 @@ fn decide_anywhere(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Si
     }
 
     // 8. T2.
-    if routing.route_p >= GROUNDED_ROUTE
-        && let Some(corpus) = corpus_of(routing.route)
+    if super::decisions::test(
+        "route",
+        "GROUNDED_ROUTE",
+        routing.route_p,
+        GROUNDED_ROUTE,
+        "ge",
+    ) && let Some(corpus) = corpus_of(routing.route)
     {
         return Tier::Grounded {
             corpus,
@@ -1088,10 +1273,16 @@ fn decide_anywhere(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Si
         return tier;
     }
     if routing.route == RouteId::CapabilityMissing
-        && routing.route_p >= CAPABILITY_ROUTE
+        && super::decisions::test(
+            "route",
+            "CAPABILITY_ROUTE",
+            routing.route_p,
+            CAPABILITY_ROUTE,
+            "ge",
+        )
         && named_capability(routing).is_some()
         && routing.lane == Lane::Computer
-        && routing.lane_p >= DISPATCH_LANE
+        && super::decisions::test("lane", "DISPATCH_LANE", routing.lane_p, DISPATCH_LANE, "ge")
         && let Some(tier) = dispatch(routing, bank, facts, situation)
     {
         return tier;
@@ -1103,14 +1294,22 @@ fn decide_anywhere(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Si
     // not one with its own answer: an offer loses to an answer.
     if LANE_ROUTES.contains(&routing.route)
         && routing.lane == Lane::Computer
-        && routing.lane_p >= DISPATCH_LANE
+        && super::decisions::test("lane", "DISPATCH_LANE", routing.lane_p, DISPATCH_LANE, "ge")
         && let Some(tier) = dispatch(routing, bank, facts, situation)
     {
         return tier;
     }
 
     // 12. Clarify.
-    if routing.route == RouteId::Clarify && routing.route_p >= CLARIFY_ROUTE {
+    if routing.route == RouteId::Clarify
+        && super::decisions::test(
+            "route",
+            "CLARIFY_ROUTE",
+            routing.route_p,
+            CLARIFY_ROUTE,
+            "ge",
+        )
+    {
         return clarify_or_answer(routing, bank, facts, situation);
     }
 
@@ -1141,9 +1340,15 @@ fn knowledge(routing: &Routing) -> Option<Tier> {
         (matches!(
             routing.route,
             RouteId::General | RouteId::Clarify | RouteId::Unknown
-        ) && routing.route_p - second_p < CLOSE_MARGIN)
-            .then(|| corpus_of(second))
-            .flatten()
+        ) && super::decisions::test(
+            "route",
+            "CLOSE_MARGIN",
+            routing.route_p - second_p,
+            CLOSE_MARGIN,
+            "lt",
+        ))
+        .then(|| corpus_of(second))
+        .flatten()
     })?;
     Some(Tier::Grounded {
         corpus,
@@ -1163,8 +1368,14 @@ fn answered(routing: &Routing) -> Tier {
 /// it: "what is this?" on the website reads as asking who we are.
 fn clarify_or_answer(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Situation) -> Tier {
     if let Some((entry, p)) = &routing.answer
-        && *p >= ANSWER_CONFIDENCE
-        && routing.needs_specifics < SPECIFICS_CEILING
+        && super::decisions::test("answer", "ANSWER_CONFIDENCE", *p, ANSWER_CONFIDENCE, "ge")
+        && super::decisions::test(
+            "needs_specifics",
+            "SPECIFICS_CEILING",
+            routing.needs_specifics,
+            SPECIFICS_CEILING,
+            "lt",
+        )
         && !dispatches(entry)
         && !entry.answers(RouteId::Refuse)
         && entry

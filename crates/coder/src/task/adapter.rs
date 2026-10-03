@@ -1344,6 +1344,18 @@ impl Host {
     }
 
     pub fn append(&self, step: &Step) -> Result<(), Error> {
+        let mut bound = step.clone();
+        if let Some(readings) = bound
+            .extensions
+            .get_mut("decision_readings")
+            .and_then(Value::as_array_mut)
+        {
+            for reading in readings {
+                reading["outcome_key"] =
+                    json!(format!("{}-{}", self.task.task_id, self.task.turn()));
+            }
+        }
+        let step = &bound;
         let bytes = serde_json::to_vec(step)
             .map_err(|_| Error::UnsupportedSchema)?
             .len()
