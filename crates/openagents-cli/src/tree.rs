@@ -277,6 +277,23 @@ mod tests {
     }
 
     #[test]
+    fn help_names_only_commands_this_program_runs() {
+        let texts = help()
+            .into_iter()
+            .filter_map(|group| group.usage.map(|usage| (group.name, usage)))
+            .chain([("host spend", coder_host::spend::cli::USAGE)]);
+        for (name, usage) in texts {
+            for old in [
+                "coder host",
+                "coder-service service",
+                "coder-service update",
+            ] {
+                assert!(!usage.contains(old), "{name}'s help names `{old}`");
+            }
+        }
+    }
+
+    #[test]
     fn money_and_secrets_are_labeled() {
         let tree = generate().unwrap_or_else(|errors| panic!("{errors}"));
         let effect = |path: &str| {

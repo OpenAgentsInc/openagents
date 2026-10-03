@@ -286,7 +286,7 @@ impl Config {
     pub fn load(layout: &Layout) -> Result<Self> {
         let bytes = fsx::read_optional(&layout.config())?.ok_or_else(|| {
             Error::refused(format!(
-                "no host service is configured under {}; run `coder-service service install` first",
+                "no host service is configured under {}; run `openagents service install` first",
                 layout.root().display()
             ))
         })?;
@@ -426,7 +426,7 @@ pub fn initialize(layout: &Layout, config: &Config, version: &str) -> Result<()>
         let state: LauncherState = serde_json::from_slice(&bytes)?;
         if state.committed != version {
             return Err(Error::refused(format!(
-                "the host already committed {}; use `coder-service update --to {version}` to change versions",
+                "the host already committed {}; use `openagents service update --to {version}` to change versions",
                 state.committed
             )));
         }

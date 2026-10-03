@@ -1780,7 +1780,7 @@ fn ssh_setup_progress_prompts_and_result_show_on_the_add_screen() {
 fn the_invitation_help_names_the_host_command() {
     let computers = open(Platform::Terminal);
     let body = text_of(&computers, "invite-body");
-    assert!(body.contains("`coder host invite`"), "{body}");
+    assert!(body.contains("`openagents host invite`"), "{body}");
     assert!(!body.contains("coder-access"));
 }
 

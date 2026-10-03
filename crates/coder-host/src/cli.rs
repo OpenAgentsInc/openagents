@@ -23,7 +23,7 @@ pub const EXIT_USAGE: u8 = 2;
 /// Exit code for a refused or failed command.
 pub const EXIT_FAILED: u8 = 1;
 
-pub const USAGE: &str = "usage: coder host COMMAND [OPTIONS]
+pub const USAGE: &str = "usage: openagents host COMMAND [OPTIONS]
   init --owner KEY --relay URL [--relay URL]... [--workspace LABEL=PATH]...
        [--listen-websocket ADDR] [--allow-nonloopback] [--advertise CLASS=HOST:PORT|URL]...
        [--websocket-tls-cert FILE --websocket-tls-key FILE --websocket-name NAME]
@@ -33,7 +33,7 @@ pub const USAGE: &str = "usage: coder host COMMAND [OPTIONS]
   request [--relay URL] [--rights LIST]
   list [--json]
   revoke --device KEY
-  spend request|list|show ...   ask the owner's phone to pay (`coder host spend help`)
+  spend request|list|show ...   ask the owner's phone to pay (`openagents host spend help`)
   adopt [--keys DIR]  move a host set up the old way under the desktop app
   adopt detect        report whether there is such a host to move, changing nothing
   serve [--owner KEY] [--relay URL]... [--workspace LABEL=PATH]... [--listen ADDR]
@@ -70,7 +70,7 @@ pub async fn run(args: &[String], open_tasks: Box<OpenTasks>) -> u8 {
         let state = match home(".openagents/coder-access") {
             Ok(state) => state,
             Err(error) => {
-                eprintln!("coder host: {error}");
+                eprintln!("openagents host: {error}");
                 return EXIT_FAILED;
             }
         };
@@ -82,14 +82,14 @@ pub async fn run(args: &[String], open_tasks: Box<OpenTasks>) -> u8 {
     let mut options = match Options::parse(rest) {
         Ok(options) => options,
         Err(message) => {
-            eprintln!("coder host: {message}\n\n{USAGE}");
+            eprintln!("openagents host: {message}\n\n{USAGE}");
             return EXIT_USAGE;
         }
     };
     let common = match Common::take(&mut options) {
         Ok(common) => common,
         Err(error) => {
-            eprintln!("coder host: {error}\n\n{USAGE}");
+            eprintln!("openagents host: {error}\n\n{USAGE}");
             return EXIT_USAGE;
         }
     };
@@ -106,18 +106,18 @@ pub async fn run(args: &[String], open_tasks: Box<OpenTasks>) -> u8 {
             return 0;
         }
         _ => {
-            eprintln!("coder host: unknown command `{command}`\n\n{USAGE}");
+            eprintln!("openagents host: unknown command `{command}`\n\n{USAGE}");
             return EXIT_USAGE;
         }
     };
     match result {
         Ok(()) => 0,
         Err(Error::Config(message)) if message.starts_with("usage:") => {
-            eprintln!("coder host: {}\n\n{USAGE}", &message[6..]);
+            eprintln!("openagents host: {}\n\n{USAGE}", &message[6..]);
             EXIT_USAGE
         }
         Err(error) => {
-            eprintln!("coder host: {error}");
+            eprintln!("openagents host: {error}");
             EXIT_FAILED
         }
     }
@@ -472,7 +472,7 @@ async fn request(common: &Common, options: &mut Options) -> Result<()> {
     println!("code {}", requested.code);
     eprintln!(
         "Approve this request from the owner or a device with access_admin, typing the code. \
-         `coder host serve` must be running on {relay} to answer. It expires at {}.",
+         `openagents host serve` must be running on {relay} to answer. It expires at {}.",
         requested.expires_at
     );
     let outcome = crate::enroll::wait(
@@ -985,7 +985,7 @@ fn adopt(args: &[String]) -> u8 {
         [only] if only == "detect" => (true, None),
         [flag, dir] if flag == "--keys" => (false, Some(PathBuf::from(dir))),
         _ => {
-            eprintln!("coder host: adopt takes nothing, `detect`, or `--keys DIR`\n\n{USAGE}");
+            eprintln!("openagents host: adopt takes nothing, `detect`, or `--keys DIR`\n\n{USAGE}");
             return EXIT_USAGE;
         }
     };

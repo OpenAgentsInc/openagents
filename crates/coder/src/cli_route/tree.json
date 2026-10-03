@@ -317,7 +317,7 @@
                     ]
                   }
                 ],
-                "summary": "ask the owner's phone to pay (`coder host spend help`)",
+                "summary": "ask the owner's phone to pay (`openagents host spend help`)",
                 "effect": "spends",
                 "runs_on": "screen",
                 "screen": "wallet"
@@ -352,7 +352,7 @@
                     ]
                   }
                 ],
-                "summary": "ask the owner's phone to pay (`coder host spend help`)",
+                "summary": "ask the owner's phone to pay (`openagents host spend help`)",
                 "effect": "read_only",
                 "runs_on": "screen",
                 "screen": "wallet"
@@ -387,7 +387,7 @@
                     ]
                   }
                 ],
-                "summary": "ask the owner's phone to pay (`coder host spend help`)",
+                "summary": "ask the owner's phone to pay (`openagents host spend help`)",
                 "effect": "read_only",
                 "runs_on": "screen",
                 "screen": "wallet"

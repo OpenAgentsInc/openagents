@@ -174,7 +174,7 @@ pub(crate) fn pay(
         .pay(bolt11, max_fee_msat, Duration::from_secs(wait))
         .map_err(|error| match error {
             WalletError::Pending { payment_hash, .. } => format!(
-                "the phone has not answered for payment {payment_hash}; check `coder host spend list`, then retry to reuse the proof"
+                "the phone has not answered for payment {payment_hash}; check `openagents host spend list`, then retry to reuse the proof"
             ),
             other => other.to_string(),
         })

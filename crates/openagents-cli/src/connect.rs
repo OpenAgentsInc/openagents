@@ -31,8 +31,8 @@ pub const USAGE: &str = "usage: openagents connect COMMAND [--socket PATH]
   status                         this computer's host at a glance
   owner import                   use the owner key from your other computers;
                                  reads an nsec or hex secret key from stdin
-The host must be running with its control socket (`coder host serve
---control`, or the OpenAgents desktop app). --socket names another socket.
+The host must be running with its control socket (`openagents host
+serve --control`, or the OpenAgents desktop app). --socket names another socket.
 --ssh sets up a headless computer over SSH and pairs this computer with it;
 see `openagents connect --ssh --help`.";
 
@@ -142,7 +142,7 @@ impl Host {
     async fn open(socket: &Path) -> Result<Self, Failure> {
         let stream = UnixStream::connect(socket).await.map_err(|_| {
             failed(format!(
-                "no host answers at {}; start it with `coder host serve --control` or open the \
+                "no host answers at {}; start it with `openagents host serve --control` or open the \
                  OpenAgents app",
                 socket.display()
             ))

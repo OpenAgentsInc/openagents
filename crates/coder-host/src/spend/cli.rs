@@ -9,7 +9,7 @@ use coder_access::spend::{Context, Purpose, Receipt, Settlement};
 
 use super::{Ask, Book, DEFAULT_TTL};
 
-pub const USAGE: &str = "usage: coder host spend COMMAND [OPTIONS]
+pub const USAGE: &str = "usage: openagents host spend COMMAND [OPTIONS]
   request --invoice BOLT11 [--purpose x402_purchase|labor_payment|tip|transfer]
           [--fee-max-msat N] [--task ID] [--title TEXT] [--resource URI]
           [--note TEXT] [--ttl SECS] [--id HEX] [--wait SECS] [--json]
@@ -33,7 +33,7 @@ pub fn run(args: &[String], state: &Path) -> u8 {
     let mut options = match Flags::parse(rest) {
         Ok(options) => options,
         Err(message) => {
-            eprintln!("coder host spend: {message}\n\n{USAGE}");
+            eprintln!("openagents host spend: {message}\n\n{USAGE}");
             return 2;
         }
     };
@@ -53,7 +53,7 @@ pub fn run(args: &[String], state: &Path) -> u8 {
     match result {
         Ok(code) => code,
         Err(Usage(message)) => {
-            eprintln!("coder host spend: {message}\n\n{USAGE}");
+            eprintln!("openagents host spend: {message}\n\n{USAGE}");
             2
         }
     }
@@ -147,7 +147,7 @@ fn request(state: &Path, flags: &mut Flags) -> Result<u8, Usage> {
     let host = match retry(|| Host::new(state, RelayPolicy::Production).public_key()) {
         Ok(host) => host,
         Err(error) => {
-            eprintln!("coder host spend: this computer's host key is unavailable: {error}");
+            eprintln!("openagents host spend: this computer's host key is unavailable: {error}");
             return Ok(1);
         }
     };
@@ -155,7 +155,7 @@ fn request(state: &Path, flags: &mut Flags) -> Result<u8, Usage> {
     let request = match book.request(&host, &ask, now()) {
         Ok(request) => request,
         Err(refused) => {
-            eprintln!("coder host spend: {refused}");
+            eprintln!("openagents host spend: {refused}");
             return Ok(1);
         }
     };
@@ -179,7 +179,7 @@ fn request(state: &Path, flags: &mut Flags) -> Result<u8, Usage> {
     let receipt = match book.wait(&request.request, Duration::from_secs(wait), now) {
         Ok(receipt) => receipt,
         Err(refused) => {
-            eprintln!("coder host spend: {refused}");
+            eprintln!("openagents host spend: {refused}");
             return Ok(1);
         }
     };
@@ -220,7 +220,7 @@ fn list(state: &Path, flags: &mut Flags) -> Result<u8, Usage> {
     let entries = match Book::open(state).entries(now()) {
         Ok(entries) => entries,
         Err(refused) => {
-            eprintln!("coder host spend: {refused}");
+            eprintln!("openagents host spend: {refused}");
             return Ok(1);
         }
     };
@@ -258,7 +258,7 @@ fn show(state: &Path, flags: &mut Flags) -> Result<u8, Usage> {
             Ok(0)
         }
         Err(refused) => {
-            eprintln!("coder host spend: {refused}");
+            eprintln!("openagents host spend: {refused}");
             Ok(1)
         }
     }

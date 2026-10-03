@@ -617,7 +617,7 @@ fn add(nodes: &mut Vec<Node<Intent>>, snapshot: &Snapshot, caps: Capabilities) {
         text("invite-title", "Use an invitation", TextRole::Heading),
         text(
             "invite-body",
-            "On the computer, run `coder host invite`. Scan its QR code, or paste its complete coder-host: string.",
+            "On the computer, run `openagents host invite`. Scan its QR code, or paste its complete coder-host: string.",
             TextRole::Body,
         ),
     ];
