@@ -1,0 +1,23 @@
+Diff in <VERIFICATION_ROOT>/repo/crates/gym/src/runs_beats_winner.rs:700:
+         let knowledge = Knowledge::read(&fixtures.join("knowledge"));
+         let manifest = manifest();
+         let mut results = Vec::new();
+-        for dirs in [
+-            [live.clone(), host.clone()],
+-            [host.clone(), live.clone()],
+-        ] {
++        for dirs in [[live.clone(), host.clone()], [host.clone(), live.clone()]] {
+             let runs = read_all(&dirs, &knowledge, i64::MAX / 4);
+             let kept = runs.iter().find(|r| r.trial == retained).unwrap();
+             let m = kept.microcoder.as_deref().unwrap();
+Diff in <VERIFICATION_ROOT>/repo/crates/gym/src/runs_microcoder.rs:832:
+                     Some(_) => 1,
+                     None => 2,
+                 };
+-                let better = chosen
+-                    .get(&name)
+-                    .is_none_or(|(best, _, _)| rank < *best);
++                let better = chosen.get(&name).is_none_or(|(best, _, _)| rank < *best);
+                 if better {
+                     chosen.insert(name, (rank, source, run_dir));
+                 }

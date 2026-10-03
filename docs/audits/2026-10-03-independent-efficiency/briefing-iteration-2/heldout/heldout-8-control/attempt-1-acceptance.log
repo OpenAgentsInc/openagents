@@ -1,0 +1,49 @@
+   Compiling gym v0.1.0 (<VERIFICATION_ROOT>/repo/crates/gym)
+   Compiling briefing-replay-acceptance v0.0.0 (<VERIFICATION_ROOT>/checks/<RUN_ID>/1/harness)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 12.76s
+     Running <CHECKER> (<TARGET>/debug/deps/acceptance-d386108c8cbee7c2)
+
+running 5 tests
+test a_manifest_without_a_local_copy_marks_the_run_in_both_readers ... FAILED
+test directory_order_preserves_the_claim_and_its_denominator ... FAILED
+test duplicate_inputs_do_not_duplicate_runs_or_merge_distinct_identities ... ok
+test recorded_commit_keeps_its_provenance_when_a_manifest_adds_a_mark ... FAILED
+test retained_records_win_over_divergent_live_copies_in_both_orders ... FAILED
+
+failures:
+
+---- a_manifest_without_a_local_copy_marks_the_run_in_both_readers stdout ----
+
+thread 'a_manifest_without_a_local_copy_marks_the_run_in_both_readers' (102770) panicked at <CHECKER>:134:13:
+metadata must follow the run identity
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- directory_order_preserves_the_claim_and_its_denominator stdout ----
+
+thread 'directory_order_preserves_the_claim_and_its_denominator' (102771) panicked at <CHECKER>:178:13:
+assertion `left == right` failed
+  left: 2.0
+ right: 1.0
+
+---- recorded_commit_keeps_its_provenance_when_a_manifest_adds_a_mark stdout ----
+
+thread 'recorded_commit_keeps_its_provenance_when_a_manifest_adds_a_mark' (102773) panicked at <CHECKER>:218:9:
+assertion failed: record.mixed
+
+---- retained_records_win_over_divergent_live_copies_in_both_orders stdout ----
+
+thread 'retained_records_win_over_divergent_live_copies_in_both_orders' (102774) panicked at <CHECKER>:152:13:
+assertion `left == right` failed: read the retained record
+  left: Some(1.0)
+ right: Some(0.0)
+
+
+failures:
+    a_manifest_without_a_local_copy_marks_the_run_in_both_readers
+    directory_order_preserves_the_claim_and_its_denominator
+    recorded_commit_keeps_its_provenance_when_a_manifest_adds_a_mark
+    retained_records_win_over_divergent_live_copies_in_both_orders
+
+test result: FAILED. 1 passed; 4 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `--test acceptance`

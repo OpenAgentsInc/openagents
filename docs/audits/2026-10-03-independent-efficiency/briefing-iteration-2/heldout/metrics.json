@@ -4,13 +4,13 @@
   "registration_sha256": "54d5fd9573a88e8c5a566908610f1afbbdc911ce5a54ed7dfcd8e67d127e60de",
   "source_commit": "f29611f211747884b4f508db80634d3f6df2a5e9",
   "preparation": {
-    "warm_brief_wall_s": null,
+    "warm_brief_wall_s": 0.1987855990000753,
     "paid_brief_cost_usd": 0.0,
     "measurement_sha256": "aa2dfeeffadd7291ec98892755e7917e3604354d7af6754ee152e13322737739",
     "payload_sha256": "cc5c8d45adfce27ef591feee629d51bc5358dd9e4c9cbc4c5014753fe88108bc",
     "payload_bytes": 16202,
     "warm_preview_s": 0.1987855990000753,
-    "runtime_probe_s": null,
+    "runtime_probe_s": 0.0,
     "policy": "Apply this frozen measured warm preparation to each treatment endpoint; machine charges are not measured."
   },
   "shared_setup": {
@@ -736,84 +736,2184 @@
       "repair_cost_usd_list_estimate": null,
       "paid_brief_cost_usd": 0.0,
       "cost_with_preparation_usd_list_estimate": 0.9153686,
-      "warm_brief_wall_s": null,
+      "warm_brief_wall_s": 0.1987855990000753,
       "agent_wall_s": 174.16682579099998,
       "checks_wall_s": 86.96520945900002,
       "preparation_wall_s": 34.291590292,
       "wall_s": 261.13203525,
-      "total_wall_with_preparation_s": null
+      "total_wall_with_preparation_s": 295.6224111410001
     },
     {
       "label": "heldout-3-treatment",
       "registered": true,
       "condition": "treatment",
-      "final_result_available": false,
-      "status": "missing",
-      "accepted": false,
-      "completed": false,
-      "attempts": [],
-      "artifacts": {}
+      "final_result_available": true,
+      "status": "complete",
+      "accepted": true,
+      "completed": true,
+      "attempts": [
+        {
+          "attempt": 1,
+          "cumulative_cost_usd_list_estimate": 0.9372168000000001,
+          "incremental_cost_usd_list_estimate": 0.9372168000000001,
+          "model_success": true,
+          "reported_check_passed": true,
+          "num_turns_per_input": 35,
+          "duration_ms_per_input": 144712,
+          "duration_api_ms_cumulative": 144224,
+          "usage_per_input": {
+            "cache_creation_input_tokens": 49718,
+            "cache_read_input_tokens": 1147144,
+            "input_tokens": 46,
+            "output_tokens": 15493,
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 49718,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "output_tokens_details": {
+              "thinking_tokens": 5116
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            }
+          },
+          "checks": [
+            {
+              "name": "initial-format",
+              "exit_code": 1,
+              "timed_out": false,
+              "wall_s": 0.5645508480001808,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "gym",
+                "--",
+                "--check"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "heldout-3-treatment/attempt-1-initial-format.log"
+            },
+            {
+              "name": "autoformat",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.5648259640001925,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "gym"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "heldout-3-treatment/attempt-1-autoformat.log"
+            },
+            {
+              "name": "format",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.564748017999591,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "gym",
+                "--",
+                "--check"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "heldout-3-treatment/attempt-1-format.log"
+            },
+            {
+              "name": "own-tests",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 63.31068754400076,
+              "command": [
+                "cargo",
+                "test",
+                "-p",
+                "gym",
+                "--offline"
+              ],
+              "test_summaries": [
+                {
+                  "passed": 515,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 39,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 1,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 1,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 28,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 1,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 6,
+                  "failed": 0,
+                  "ignored": 1
+                },
+                {
+                  "passed": 1,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 1,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 1,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 6,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 0,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 1,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 2,
+                  "failed": 0,
+                  "ignored": 1
+                },
+                {
+                  "passed": 10,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 0,
+                  "failed": 0,
+                  "ignored": 0
+                }
+              ],
+              "failed_test_names": [],
+              "log": "heldout-3-treatment/attempt-1-own-tests.log"
+            },
+            {
+              "name": "acceptance",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 10.4857168489998,
+              "command": [
+                "cargo",
+                "+1.97.1",
+                "test",
+                "--manifest-path",
+                "<VERIFICATION_ROOT>/checks/<RUN_ID>/1/harness/Cargo.toml",
+                "--offline",
+                "--test",
+                "acceptance",
+                "--",
+                "--test-threads=1"
+              ],
+              "test_summaries": [
+                {
+                  "passed": 5,
+                  "failed": 0,
+                  "ignored": 0
+                }
+              ],
+              "failed_test_names": [],
+              "log": "heldout-3-treatment/attempt-1-acceptance.log"
+            }
+          ]
+        }
+      ],
+      "artifacts": {
+        "heldout-3-treatment/attempt-1-initial-format.log": {
+          "sha256": "d1b3dca7630397c0721e7ce276345fadc21f743ba17542b61a9a111e01704baf",
+          "original_sha256": "e69353b2dcf571bebd74f78b48b0d3f5a5357a73237529b2b1432835b9591f96",
+          "redacted": true,
+          "bytes": 1116
+        },
+        "heldout-3-treatment/attempt-1-autoformat.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "heldout-3-treatment/attempt-1-format.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "heldout-3-treatment/attempt-1-own-tests.log": {
+          "sha256": "1bb7e73578cd13dc397eab81db87929cf770aedeef85bae846a81096b1ee3193",
+          "original_sha256": "d1e00a8747c72e2cdf43cd897f96119887950d008852b7b2fe4aeaa7759e5575",
+          "redacted": true,
+          "bytes": 51399
+        },
+        "heldout-3-treatment/attempt-1-acceptance.log": {
+          "sha256": "0ad68aa90affcc59dd6f5a9cfdffbf47d1870f6633beeb6f5029369116a9fe1b",
+          "original_sha256": "097bc7581dd2d021fa8ce5f6a114f1e7f646fe0d3ba8f7a173e0ba862a3a129b",
+          "redacted": true,
+          "bytes": 791
+        },
+        "heldout-3-treatment/candidate-1.patch": {
+          "sha256": "c5f3e1efccd266ffd536f42fa3be330161679b302bd0502de0d36bb8cacdd3d5",
+          "original_sha256": "c5f3e1efccd266ffd536f42fa3be330161679b302bd0502de0d36bb8cacdd3d5",
+          "redacted": false,
+          "bytes": 15983,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "113e38b9f38cfd452b25e89c897fccb3de399a9022eacd4dc138f67f6bff0603"
+        },
+        "heldout-3-treatment/final-candidate.patch": {
+          "sha256": "ad5cd5af9bb5b17f3064dc93c35f6da8831920a610b405d43d82feb6222c5621",
+          "original_sha256": "ad5cd5af9bb5b17f3064dc93c35f6da8831920a610b405d43d82feb6222c5621",
+          "redacted": false,
+          "bytes": 16003,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "2603c57d23e1895a9dc362750f121ca3887ed8ed29cce2123cc344a8846af129"
+        },
+        "heldout-3-treatment/normalized-candidate-1.patch": {
+          "sha256": "ad5cd5af9bb5b17f3064dc93c35f6da8831920a610b405d43d82feb6222c5621",
+          "original_sha256": "ad5cd5af9bb5b17f3064dc93c35f6da8831920a610b405d43d82feb6222c5621",
+          "redacted": false,
+          "bytes": 16003,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "2603c57d23e1895a9dc362750f121ca3887ed8ed29cce2123cc344a8846af129"
+        }
+      },
+      "input_consistency_errors": [],
+      "artifact_errors": [],
+      "source_commit": "f29611f211747884b4f508db80634d3f6df2a5e9",
+      "instructions_sha256": "cec4c3cba2fc4d1474ca24a85942acd68836e8330fc78d621222b8386ac675e2",
+      "common_input_sha256": "b7c9595eb0ec7e6f6e0e3e0333e340e74504df73c2a4c6304d3577a52fa8b109",
+      "prompt_sha256": "663f942259c6492318cf656d924c120aef10d235faef21a1197f03656e49a7b0",
+      "suffix_sha256": "fd5c78a2738ed3a7d4dd539f19b29588a99dcc064179c75f79f7de2770a2d5fb",
+      "model": "claude-opus-5-5",
+      "effort": "medium",
+      "timeout": false,
+      "tool_counts": {
+        "Edit": 12,
+        "Grep": 11,
+        "Read": 11
+      },
+      "tool_calls": 34,
+      "event_scan": {
+        "available": true,
+        "bytes_scanned": 907119,
+        "malformed_lines": 0,
+        "truncated_tail": false
+      },
+      "attempt_count": 1,
+      "first_attempt_check_passed": true,
+      "final_model_usage_cumulative": {
+        "claude-opus-5-5": {
+          "cacheCreationInputTokens": 49718,
+          "cacheReadInputTokens": 1147144,
+          "contextWindow": 1000000,
+          "costUSD": 0.9372168000000001,
+          "inputTokens": 46,
+          "maxOutputTokens": 128000,
+          "outputTokens": 15493,
+          "thinkingTokens": 5116,
+          "webSearchRequests": 0
+        }
+      },
+      "cost_usd_list_estimate": 0.9372168000000001,
+      "cost_complete": true,
+      "cost_status": "complete_cli_report",
+      "repair_cost_usd_list_estimate": null,
+      "paid_brief_cost_usd": 0.0,
+      "cost_with_preparation_usd_list_estimate": 0.9372168000000001,
+      "warm_brief_wall_s": 0.1987855990000753,
+      "agent_wall_s": 145.80793599999998,
+      "checks_wall_s": 87.62654062499999,
+      "preparation_wall_s": 30.609492499999998,
+      "wall_s": 233.43447662499997,
+      "total_wall_with_preparation_s": 264.24275472400006
     },
     {
       "label": "heldout-4-control",
       "registered": true,
       "condition": "control",
-      "final_result_available": false,
-      "status": "missing",
-      "accepted": false,
-      "completed": false,
-      "attempts": [],
-      "artifacts": {}
+      "final_result_available": true,
+      "status": "complete",
+      "accepted": true,
+      "completed": true,
+      "attempts": [
+        {
+          "attempt": 1,
+          "cumulative_cost_usd_list_estimate": 0.8762152000000001,
+          "incremental_cost_usd_list_estimate": 0.8762152000000001,
+          "model_success": true,
+          "reported_check_passed": true,
+          "num_turns_per_input": 21,
+          "duration_ms_per_input": 141099,
+          "duration_api_ms_cumulative": 140790,
+          "usage_per_input": {
+            "cache_creation_input_tokens": 56848,
+            "cache_read_input_tokens": 816896,
+            "input_tokens": 28,
+            "output_tokens": 12897,
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 56848,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "output_tokens_details": {
+              "thinking_tokens": 4315
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            }
+          },
+          "checks": [
+            {
+              "name": "initial-format",
+              "exit_code": 1,
+              "timed_out": false,
+              "wall_s": 0.5645322660002421,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "gym",
+                "--",
+                "--check"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "heldout-4-control/attempt-1-initial-format.log"
+            },
+            {
+              "name": "autoformat",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.5646079779999127,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "gym"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "heldout-4-control/attempt-1-autoformat.log"
+            },
+            {
+              "name": "format",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.5645578550002028,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "gym",
+                "--",
+                "--check"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "heldout-4-control/attempt-1-format.log"
+            },
+            {
+              "name": "own-tests",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 59.904315782000594,
+              "command": [
+                "cargo",
+                "test",
+                "-p",
+                "gym",
+                "--offline"
+              ],
+              "test_summaries": [
+                {
+                  "passed": 514,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 39,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 1,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 1,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 28,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 1,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 6,
+                  "failed": 0,
+                  "ignored": 1
+                },
+                {
+                  "passed": 1,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 1,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 1,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 6,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 0,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 1,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 2,
+                  "failed": 0,
+                  "ignored": 1
+                },
+                {
+                  "passed": 10,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 0,
+                  "failed": 0,
+                  "ignored": 0
+                }
+              ],
+              "failed_test_names": [],
+              "log": "heldout-4-control/attempt-1-own-tests.log"
+            },
+            {
+              "name": "acceptance",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 11.03855325999939,
+              "command": [
+                "cargo",
+                "+1.97.1",
+                "test",
+                "--manifest-path",
+                "<VERIFICATION_ROOT>/checks/<RUN_ID>/1/harness/Cargo.toml",
+                "--offline",
+                "--test",
+                "acceptance",
+                "--",
+                "--test-threads=1"
+              ],
+              "test_summaries": [
+                {
+                  "passed": 5,
+                  "failed": 0,
+                  "ignored": 0
+                }
+              ],
+              "failed_test_names": [],
+              "log": "heldout-4-control/attempt-1-acceptance.log"
+            }
+          ]
+        }
+      ],
+      "artifacts": {
+        "heldout-4-control/attempt-1-initial-format.log": {
+          "sha256": "ad995c0aafbcc9a9a310e095f3d196734ebfc9161835fad45b0bd7e58bd7b9fa",
+          "original_sha256": "46881ead36df1e6b56f24644d0dad5e8d2984760b7da082284ce0d5a9a2637e5",
+          "redacted": true,
+          "bytes": 1123
+        },
+        "heldout-4-control/attempt-1-autoformat.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "heldout-4-control/attempt-1-format.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "heldout-4-control/attempt-1-own-tests.log": {
+          "sha256": "ae2a29819aa6fd53910c0405d88998fe4c1b11ac742c5f04f1e7024b4b649eb0",
+          "original_sha256": "d244b1b7de23e2f19131152b43b4c8aa73236c24eff06f354bd3dc9325b81b64",
+          "redacted": true,
+          "bytes": 51295
+        },
+        "heldout-4-control/attempt-1-acceptance.log": {
+          "sha256": "a9b32fb69bbc5179f19ae7a4219e9b003337351603ca390ddde18f1a6bd9e0e2",
+          "original_sha256": "578f687c762ac21de14c6923516887835f59ec369ad90909b01d2bf39ee84d96",
+          "redacted": true,
+          "bytes": 791
+        },
+        "heldout-4-control/candidate-1.patch": {
+          "sha256": "2f039d8ae9c5cfb54539eafbcc60751ea37465445b9bb5c0c3a0209866389ab3",
+          "original_sha256": "2f039d8ae9c5cfb54539eafbcc60751ea37465445b9bb5c0c3a0209866389ab3",
+          "redacted": false,
+          "bytes": 14488,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "401b71f9f65fba5355b1453cff2f094af7019f51a0c41a55aeeb8136dfb3c9d6"
+        },
+        "heldout-4-control/final-candidate.patch": {
+          "sha256": "b3657e16a2402ec3cd2eed923377a48d7ac9aff8f28b0a0856cc39064ef94e6d",
+          "original_sha256": "b3657e16a2402ec3cd2eed923377a48d7ac9aff8f28b0a0856cc39064ef94e6d",
+          "redacted": false,
+          "bytes": 14406,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "20cd5947a90cfb806e3c42bf1b0ef8e06713db4a50ac9e6ab0c1486b0edcb803"
+        },
+        "heldout-4-control/normalized-candidate-1.patch": {
+          "sha256": "b3657e16a2402ec3cd2eed923377a48d7ac9aff8f28b0a0856cc39064ef94e6d",
+          "original_sha256": "b3657e16a2402ec3cd2eed923377a48d7ac9aff8f28b0a0856cc39064ef94e6d",
+          "redacted": false,
+          "bytes": 14406,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "20cd5947a90cfb806e3c42bf1b0ef8e06713db4a50ac9e6ab0c1486b0edcb803"
+        }
+      },
+      "input_consistency_errors": [],
+      "artifact_errors": [],
+      "source_commit": "f29611f211747884b4f508db80634d3f6df2a5e9",
+      "instructions_sha256": "cec4c3cba2fc4d1474ca24a85942acd68836e8330fc78d621222b8386ac675e2",
+      "common_input_sha256": "b7c9595eb0ec7e6f6e0e3e0333e340e74504df73c2a4c6304d3577a52fa8b109",
+      "prompt_sha256": "3e0c2c91dcb8bd9afbcc1da70b72cd2048f258747ad1a7088aff5cca5f45d288",
+      "suffix_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "model": "claude-opus-5-5",
+      "effort": "medium",
+      "timeout": false,
+      "tool_counts": {
+        "Edit": 7,
+        "Glob": 1,
+        "Grep": 4,
+        "Read": 8
+      },
+      "tool_calls": 20,
+      "event_scan": {
+        "available": true,
+        "bytes_scanned": 680589,
+        "malformed_lines": 0,
+        "truncated_tail": false
+      },
+      "attempt_count": 1,
+      "first_attempt_check_passed": true,
+      "final_model_usage_cumulative": {
+        "claude-opus-5-5": {
+          "cacheCreationInputTokens": 56848,
+          "cacheReadInputTokens": 816896,
+          "contextWindow": 1000000,
+          "costUSD": 0.8762152000000001,
+          "inputTokens": 28,
+          "maxOutputTokens": 128000,
+          "outputTokens": 12897,
+          "thinkingTokens": 4315,
+          "webSearchRequests": 0
+        }
+      },
+      "cost_usd_list_estimate": 0.8762152000000001,
+      "cost_complete": true,
+      "cost_status": "complete_cli_report",
+      "repair_cost_usd_list_estimate": null,
+      "paid_brief_cost_usd": 0.0,
+      "cost_with_preparation_usd_list_estimate": 0.8762152000000001,
+      "warm_brief_wall_s": 0.0,
+      "agent_wall_s": 141.722057834,
+      "checks_wall_s": 82.31557770799998,
+      "preparation_wall_s": 33.69445475,
+      "wall_s": 224.03763554199998,
+      "total_wall_with_preparation_s": 257.73209029199995
     },
     {
       "label": "heldout-5-control",
       "registered": true,
       "condition": "control",
-      "final_result_available": false,
-      "status": "missing",
-      "accepted": false,
-      "completed": false,
-      "attempts": [],
-      "artifacts": {}
+      "final_result_available": true,
+      "status": "complete",
+      "accepted": true,
+      "completed": true,
+      "attempts": [
+        {
+          "attempt": 1,
+          "cumulative_cost_usd_list_estimate": 1.1085646000000002,
+          "incremental_cost_usd_list_estimate": 1.1085646000000002,
+          "model_success": true,
+          "reported_check_passed": true,
+          "num_turns_per_input": 31,
+          "duration_ms_per_input": 180563,
+          "duration_api_ms_cumulative": 180154,
+          "usage_per_input": {
+            "cache_creation_input_tokens": 61735,
+            "cache_read_input_tokens": 1109163,
+            "input_tokens": 38,
+            "output_tokens": 19635,
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 61735,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "output_tokens_details": {
+              "thinking_tokens": 6710
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            }
+          },
+          "checks": [
+            {
+              "name": "initial-format",
+              "exit_code": 1,
+              "timed_out": false,
+              "wall_s": 0.6151781290000145,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "gym",
+                "--",
+                "--check"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "heldout-5-control/attempt-1-initial-format.log"
+            },
+            {
+              "name": "autoformat",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.5649158799997167,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "gym"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "heldout-5-control/attempt-1-autoformat.log"
+            },
+            {
+              "name": "format",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.5648992200003704,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "gym",
+                "--",
+                "--check"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "heldout-5-control/attempt-1-format.log"
+            },
+            {
+              "name": "own-tests",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 60.023441671,
+              "command": [
+                "cargo",
+                "test",
+                "-p",
+                "gym",
+                "--offline"
+              ],
+              "test_summaries": [
+                {
+                  "passed": 515,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 39,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 1,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 1,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 28,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 1,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 6,
+                  "failed": 0,
+                  "ignored": 1
+                },
+                {
+                  "passed": 1,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 1,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 1,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 6,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 0,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 1,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 2,
+                  "failed": 0,
+                  "ignored": 1
+                },
+                {
+                  "passed": 10,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 0,
+                  "failed": 0,
+                  "ignored": 0
+                }
+              ],
+              "failed_test_names": [],
+              "log": "heldout-5-control/attempt-1-own-tests.log"
+            },
+            {
+              "name": "acceptance",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 10.634939816999577,
+              "command": [
+                "cargo",
+                "+1.97.1",
+                "test",
+                "--manifest-path",
+                "<VERIFICATION_ROOT>/checks/<RUN_ID>/1/harness/Cargo.toml",
+                "--offline",
+                "--test",
+                "acceptance",
+                "--",
+                "--test-threads=1"
+              ],
+              "test_summaries": [
+                {
+                  "passed": 5,
+                  "failed": 0,
+                  "ignored": 0
+                }
+              ],
+              "failed_test_names": [],
+              "log": "heldout-5-control/attempt-1-acceptance.log"
+            }
+          ]
+        }
+      ],
+      "artifacts": {
+        "heldout-5-control/attempt-1-initial-format.log": {
+          "sha256": "cf4dff3340e541553e1f01053f294f21adb0e0819c6750aab4dcc55fdf53eca0",
+          "original_sha256": "f4710135a7a4fb894422f4d7d626ea699c089d89bcc064666bceea166d361aee",
+          "redacted": true,
+          "bytes": 2127
+        },
+        "heldout-5-control/attempt-1-autoformat.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "heldout-5-control/attempt-1-format.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "heldout-5-control/attempt-1-own-tests.log": {
+          "sha256": "058b16c76271d66604df6b7c0a3ee65d3a7f2373621414e9a23790bfa0647bdd",
+          "original_sha256": "6f5f463c9d2f519b3e46f980a88d93cb023c98819d8ce5b299b05fe7cb09c821",
+          "redacted": true,
+          "bytes": 51381
+        },
+        "heldout-5-control/attempt-1-acceptance.log": {
+          "sha256": "767b6d589d767b6a838bcd79c1bb8cef2a8997877f060c1a7cd8d591687956e4",
+          "original_sha256": "beae38a6a75ab39c1c08196eb90efef44f4df71e8c63f0249d8fbc27b475855c",
+          "redacted": true,
+          "bytes": 791
+        },
+        "heldout-5-control/candidate-1.patch": {
+          "sha256": "95dcb1d10d2e5b3f5f7c4df93076543cc04c8f63a7abd085d0d435b6ec368f06",
+          "original_sha256": "95dcb1d10d2e5b3f5f7c4df93076543cc04c8f63a7abd085d0d435b6ec368f06",
+          "redacted": false,
+          "bytes": 16979,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "d8212e45c443a05ab936d74453918348b10f571463093106b9769e04b173afc8"
+        },
+        "heldout-5-control/final-candidate.patch": {
+          "sha256": "22fbf81d37a46460de92636b39bc0f11fdeaefba508a0aff7e70e677e3215790",
+          "original_sha256": "22fbf81d37a46460de92636b39bc0f11fdeaefba508a0aff7e70e677e3215790",
+          "redacted": false,
+          "bytes": 17030,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "3dbedc9cc80a12dc80eab46af6d3822a8d2d3b08f24d7a45514f8ff40269da6e"
+        },
+        "heldout-5-control/normalized-candidate-1.patch": {
+          "sha256": "22fbf81d37a46460de92636b39bc0f11fdeaefba508a0aff7e70e677e3215790",
+          "original_sha256": "22fbf81d37a46460de92636b39bc0f11fdeaefba508a0aff7e70e677e3215790",
+          "redacted": false,
+          "bytes": 17030,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "3dbedc9cc80a12dc80eab46af6d3822a8d2d3b08f24d7a45514f8ff40269da6e"
+        }
+      },
+      "input_consistency_errors": [],
+      "artifact_errors": [],
+      "source_commit": "f29611f211747884b4f508db80634d3f6df2a5e9",
+      "instructions_sha256": "cec4c3cba2fc4d1474ca24a85942acd68836e8330fc78d621222b8386ac675e2",
+      "common_input_sha256": "b7c9595eb0ec7e6f6e0e3e0333e340e74504df73c2a4c6304d3577a52fa8b109",
+      "prompt_sha256": "3e0c2c91dcb8bd9afbcc1da70b72cd2048f258747ad1a7088aff5cca5f45d288",
+      "suffix_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "model": "claude-opus-5-5",
+      "effort": "medium",
+      "timeout": false,
+      "tool_counts": {
+        "Edit": 13,
+        "Glob": 1,
+        "Grep": 8,
+        "Read": 8
+      },
+      "tool_calls": 30,
+      "event_scan": {
+        "available": true,
+        "bytes_scanned": 1111645,
+        "malformed_lines": 0,
+        "truncated_tail": false
+      },
+      "attempt_count": 1,
+      "first_attempt_check_passed": true,
+      "final_model_usage_cumulative": {
+        "claude-opus-5-5": {
+          "cacheCreationInputTokens": 61735,
+          "cacheReadInputTokens": 1109163,
+          "contextWindow": 1000000,
+          "costUSD": 1.1085646000000002,
+          "inputTokens": 38,
+          "maxOutputTokens": 128000,
+          "outputTokens": 19635,
+          "thinkingTokens": 6710,
+          "webSearchRequests": 0
+        }
+      },
+      "cost_usd_list_estimate": 1.1085646000000002,
+      "cost_complete": true,
+      "cost_status": "complete_cli_report",
+      "repair_cost_usd_list_estimate": null,
+      "paid_brief_cost_usd": 0.0,
+      "cost_with_preparation_usd_list_estimate": 1.1085646000000002,
+      "warm_brief_wall_s": 0.0,
+      "agent_wall_s": 181.29092954199996,
+      "checks_wall_s": 83.681955292,
+      "preparation_wall_s": 3.0111944580000003,
+      "wall_s": 264.97288483399996,
+      "total_wall_with_preparation_s": 267.98407929199993
     },
     {
       "label": "heldout-6-treatment",
       "registered": true,
       "condition": "treatment",
-      "final_result_available": false,
-      "status": "missing",
-      "accepted": false,
-      "completed": false,
-      "attempts": [],
-      "artifacts": {}
+      "final_result_available": true,
+      "status": "complete",
+      "accepted": true,
+      "completed": true,
+      "attempts": [
+        {
+          "attempt": 1,
+          "cumulative_cost_usd_list_estimate": 0.9947286,
+          "incremental_cost_usd_list_estimate": 0.9947286,
+          "model_success": true,
+          "reported_check_passed": true,
+          "num_turns_per_input": 32,
+          "duration_ms_per_input": 132703,
+          "duration_api_ms_cumulative": 132423,
+          "usage_per_input": {
+            "cache_creation_input_tokens": 56827,
+            "cache_read_input_tokens": 1244283,
+            "input_tokens": 44,
+            "output_tokens": 14554,
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 56827,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "output_tokens_details": {
+              "thinking_tokens": 4607
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            }
+          },
+          "checks": [
+            {
+              "name": "initial-format",
+              "exit_code": 1,
+              "timed_out": false,
+              "wall_s": 0.564685346999795,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "gym",
+                "--",
+                "--check"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "heldout-6-treatment/attempt-1-initial-format.log"
+            },
+            {
+              "name": "autoformat",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.5647114949997558,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "gym"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "heldout-6-treatment/attempt-1-autoformat.log"
+            },
+            {
+              "name": "format",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.6147967920005613,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "gym",
+                "--",
+                "--check"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "heldout-6-treatment/attempt-1-format.log"
+            },
+            {
+              "name": "own-tests",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 62.716080831,
+              "command": [
+                "cargo",
+                "test",
+                "-p",
+                "gym",
+                "--offline"
+              ],
+              "test_summaries": [
+                {
+                  "passed": 515,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 39,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 1,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 1,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 28,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 1,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 6,
+                  "failed": 0,
+                  "ignored": 1
+                },
+                {
+                  "passed": 1,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 1,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 1,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 6,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 0,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 1,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 2,
+                  "failed": 0,
+                  "ignored": 1
+                },
+                {
+                  "passed": 10,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 0,
+                  "failed": 0,
+                  "ignored": 0
+                }
+              ],
+              "failed_test_names": [],
+              "log": "heldout-6-treatment/attempt-1-own-tests.log"
+            },
+            {
+              "name": "acceptance",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 10.586625336999532,
+              "command": [
+                "cargo",
+                "+1.97.1",
+                "test",
+                "--manifest-path",
+                "<VERIFICATION_ROOT>/checks/<RUN_ID>/1/harness/Cargo.toml",
+                "--offline",
+                "--test",
+                "acceptance",
+                "--",
+                "--test-threads=1"
+              ],
+              "test_summaries": [
+                {
+                  "passed": 5,
+                  "failed": 0,
+                  "ignored": 0
+                }
+              ],
+              "failed_test_names": [],
+              "log": "heldout-6-treatment/attempt-1-acceptance.log"
+            }
+          ]
+        }
+      ],
+      "artifacts": {
+        "heldout-6-treatment/attempt-1-initial-format.log": {
+          "sha256": "79993a6c3af67c4a0e1476976275d64c4603b0d490b4ad96c2c5fe317e27ff62",
+          "original_sha256": "bf378520e9b91bb80b5ff6f1164901017cca30f79cc8a42a1b5851e4f8177ea6",
+          "redacted": true,
+          "bytes": 480
+        },
+        "heldout-6-treatment/attempt-1-autoformat.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "heldout-6-treatment/attempt-1-format.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "heldout-6-treatment/attempt-1-own-tests.log": {
+          "sha256": "5d7e85a0019dcdbf6674f7f8ea8336a4a91ad4482557eab408df1d30b7bc6a39",
+          "original_sha256": "add1d0bb6a8ffebddd89e67cb314f37879a55db2a9480fd17936198d82731b24",
+          "redacted": true,
+          "bytes": 51389
+        },
+        "heldout-6-treatment/attempt-1-acceptance.log": {
+          "sha256": "9bcb814d3880b34dd903537711140dc561fd88c52746cce9bb52fb38758590af",
+          "original_sha256": "c094eb226e558677b128fe08ae40d250119d8b81dfffface66c0afe7fcec30fb",
+          "redacted": true,
+          "bytes": 791
+        },
+        "heldout-6-treatment/candidate-1.patch": {
+          "sha256": "a4336125f178824305c71cec3a9e9f180a529011f96b37dfa9880dcb2e70fe7e",
+          "original_sha256": "a4336125f178824305c71cec3a9e9f180a529011f96b37dfa9880dcb2e70fe7e",
+          "redacted": false,
+          "bytes": 16825,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "53b24a98e9132ec979297ec8d5588f5d681111747c7a1d29a4d86e335cd2ee48"
+        },
+        "heldout-6-treatment/final-candidate.patch": {
+          "sha256": "9902f9e2a9c623f4773c45fcb0221df0f018669107a10807df83873f12a0e418",
+          "original_sha256": "9902f9e2a9c623f4773c45fcb0221df0f018669107a10807df83873f12a0e418",
+          "redacted": false,
+          "bytes": 16764,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "72482806573f945347024af4afc2ecf162708fc6a5643ff79e8aec7dd10e6e61"
+        },
+        "heldout-6-treatment/normalized-candidate-1.patch": {
+          "sha256": "9902f9e2a9c623f4773c45fcb0221df0f018669107a10807df83873f12a0e418",
+          "original_sha256": "9902f9e2a9c623f4773c45fcb0221df0f018669107a10807df83873f12a0e418",
+          "redacted": false,
+          "bytes": 16764,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "72482806573f945347024af4afc2ecf162708fc6a5643ff79e8aec7dd10e6e61"
+        }
+      },
+      "input_consistency_errors": [],
+      "artifact_errors": [],
+      "source_commit": "f29611f211747884b4f508db80634d3f6df2a5e9",
+      "instructions_sha256": "cec4c3cba2fc4d1474ca24a85942acd68836e8330fc78d621222b8386ac675e2",
+      "common_input_sha256": "b7c9595eb0ec7e6f6e0e3e0333e340e74504df73c2a4c6304d3577a52fa8b109",
+      "prompt_sha256": "663f942259c6492318cf656d924c120aef10d235faef21a1197f03656e49a7b0",
+      "suffix_sha256": "fd5c78a2738ed3a7d4dd539f19b29588a99dcc064179c75f79f7de2770a2d5fb",
+      "model": "claude-opus-5-5",
+      "effort": "medium",
+      "timeout": false,
+      "tool_counts": {
+        "Edit": 13,
+        "Glob": 1,
+        "Grep": 6,
+        "Read": 11
+      },
+      "tool_calls": 31,
+      "event_scan": {
+        "available": true,
+        "bytes_scanned": 1063261,
+        "malformed_lines": 0,
+        "truncated_tail": false
+      },
+      "attempt_count": 1,
+      "first_attempt_check_passed": true,
+      "final_model_usage_cumulative": {
+        "claude-opus-5-5": {
+          "cacheCreationInputTokens": 56827,
+          "cacheReadInputTokens": 1244283,
+          "contextWindow": 1000000,
+          "costUSD": 0.9947286,
+          "inputTokens": 44,
+          "maxOutputTokens": 128000,
+          "outputTokens": 14554,
+          "thinkingTokens": 4607,
+          "webSearchRequests": 0
+        }
+      },
+      "cost_usd_list_estimate": 0.9947286,
+      "cost_complete": true,
+      "cost_status": "complete_cli_report",
+      "repair_cost_usd_list_estimate": null,
+      "paid_brief_cost_usd": 0.0,
+      "cost_with_preparation_usd_list_estimate": 0.9947286,
+      "warm_brief_wall_s": 0.1987855990000753,
+      "agent_wall_s": 133.639066958,
+      "checks_wall_s": 87.55303920900002,
+      "preparation_wall_s": 3.295175417,
+      "wall_s": 221.19210616700002,
+      "total_wall_with_preparation_s": 224.6860671830001
     },
     {
       "label": "heldout-7-treatment",
       "registered": true,
       "condition": "treatment",
-      "final_result_available": false,
-      "status": "missing",
-      "accepted": false,
-      "completed": false,
-      "attempts": [],
-      "artifacts": {}
+      "final_result_available": true,
+      "status": "complete",
+      "accepted": true,
+      "completed": true,
+      "attempts": [
+        {
+          "attempt": 1,
+          "cumulative_cost_usd_list_estimate": 1.1260764,
+          "incremental_cost_usd_list_estimate": 1.1260764,
+          "model_success": true,
+          "reported_check_passed": true,
+          "num_turns_per_input": 38,
+          "duration_ms_per_input": 154402,
+          "duration_api_ms_cumulative": 153444,
+          "usage_per_input": {
+            "cache_creation_input_tokens": 65866,
+            "cache_read_input_tokens": 1298962,
+            "input_tokens": 44,
+            "output_tokens": 16959,
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 65866,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "output_tokens_details": {
+              "thinking_tokens": 5206
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            }
+          },
+          "checks": [
+            {
+              "name": "initial-format",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.8673406500001875,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "gym",
+                "--",
+                "--check"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "heldout-7-treatment/attempt-1-initial-format.log"
+            },
+            {
+              "name": "autoformat",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.6154072629997245,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "gym"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "heldout-7-treatment/attempt-1-autoformat.log"
+            },
+            {
+              "name": "format",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.6153738200000589,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "gym",
+                "--",
+                "--check"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "heldout-7-treatment/attempt-1-format.log"
+            },
+            {
+              "name": "own-tests",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 69.91393270299977,
+              "command": [
+                "cargo",
+                "test",
+                "-p",
+                "gym",
+                "--offline"
+              ],
+              "test_summaries": [
+                {
+                  "passed": 514,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 39,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 1,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 1,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 28,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 1,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 6,
+                  "failed": 0,
+                  "ignored": 1
+                },
+                {
+                  "passed": 1,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 1,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 1,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 6,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 0,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 1,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 2,
+                  "failed": 0,
+                  "ignored": 1
+                },
+                {
+                  "passed": 10,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 0,
+                  "failed": 0,
+                  "ignored": 0
+                }
+              ],
+              "failed_test_names": [],
+              "log": "heldout-7-treatment/attempt-1-own-tests.log"
+            },
+            {
+              "name": "acceptance",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 12.501976167000066,
+              "command": [
+                "cargo",
+                "+1.97.1",
+                "test",
+                "--manifest-path",
+                "<VERIFICATION_ROOT>/checks/<RUN_ID>/1/harness/Cargo.toml",
+                "--offline",
+                "--test",
+                "acceptance",
+                "--",
+                "--test-threads=1"
+              ],
+              "test_summaries": [
+                {
+                  "passed": 5,
+                  "failed": 0,
+                  "ignored": 0
+                }
+              ],
+              "failed_test_names": [],
+              "log": "heldout-7-treatment/attempt-1-acceptance.log"
+            }
+          ]
+        }
+      ],
+      "artifacts": {
+        "heldout-7-treatment/attempt-1-initial-format.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "heldout-7-treatment/attempt-1-autoformat.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "heldout-7-treatment/attempt-1-format.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "heldout-7-treatment/attempt-1-own-tests.log": {
+          "sha256": "90f304dc5a8970853aa0495a66cc38aab7c1602592f4654c3a819f81b50382a9",
+          "original_sha256": "6fdadd945bea07e9777cf544ddce92f3af0b26a6cd44d57b775256c070c094b7",
+          "redacted": true,
+          "bytes": 51307
+        },
+        "heldout-7-treatment/attempt-1-acceptance.log": {
+          "sha256": "4d1229f56f58b0ae732085e64d3c7a8cd647d1b19ae7c442952b3351fe321fda",
+          "original_sha256": "e58ea1348859ef264ced4610aa4d59f67dfc3cf9068f835c9f4072425cffc1b8",
+          "redacted": true,
+          "bytes": 791
+        },
+        "heldout-7-treatment/candidate-1.patch": {
+          "sha256": "24ba27984c49df306a5ef30808d227e8700c52af50681efc262d4c553247bbd6",
+          "original_sha256": "24ba27984c49df306a5ef30808d227e8700c52af50681efc262d4c553247bbd6",
+          "redacted": false,
+          "bytes": 17234,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "9ad08b1547ddb50a14fa51bc68c828d734ea68b59cbb172ee8c07f89406869af"
+        },
+        "heldout-7-treatment/final-candidate.patch": {
+          "sha256": "24ba27984c49df306a5ef30808d227e8700c52af50681efc262d4c553247bbd6",
+          "original_sha256": "24ba27984c49df306a5ef30808d227e8700c52af50681efc262d4c553247bbd6",
+          "redacted": false,
+          "bytes": 17234,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "9ad08b1547ddb50a14fa51bc68c828d734ea68b59cbb172ee8c07f89406869af"
+        },
+        "heldout-7-treatment/normalized-candidate-1.patch": {
+          "sha256": "24ba27984c49df306a5ef30808d227e8700c52af50681efc262d4c553247bbd6",
+          "original_sha256": "24ba27984c49df306a5ef30808d227e8700c52af50681efc262d4c553247bbd6",
+          "redacted": false,
+          "bytes": 17234,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "9ad08b1547ddb50a14fa51bc68c828d734ea68b59cbb172ee8c07f89406869af"
+        }
+      },
+      "input_consistency_errors": [],
+      "artifact_errors": [],
+      "source_commit": "f29611f211747884b4f508db80634d3f6df2a5e9",
+      "instructions_sha256": "cec4c3cba2fc4d1474ca24a85942acd68836e8330fc78d621222b8386ac675e2",
+      "common_input_sha256": "b7c9595eb0ec7e6f6e0e3e0333e340e74504df73c2a4c6304d3577a52fa8b109",
+      "prompt_sha256": "663f942259c6492318cf656d924c120aef10d235faef21a1197f03656e49a7b0",
+      "suffix_sha256": "fd5c78a2738ed3a7d4dd539f19b29588a99dcc064179c75f79f7de2770a2d5fb",
+      "model": "claude-opus-5-5",
+      "effort": "medium",
+      "timeout": false,
+      "tool_counts": {
+        "Edit": 16,
+        "Glob": 2,
+        "Grep": 9,
+        "Read": 10
+      },
+      "tool_calls": 37,
+      "event_scan": {
+        "available": true,
+        "bytes_scanned": 1213074,
+        "malformed_lines": 0,
+        "truncated_tail": false
+      },
+      "attempt_count": 1,
+      "first_attempt_check_passed": true,
+      "final_model_usage_cumulative": {
+        "claude-opus-5-5": {
+          "cacheCreationInputTokens": 65866,
+          "cacheReadInputTokens": 1298962,
+          "contextWindow": 1000000,
+          "costUSD": 1.1260764,
+          "inputTokens": 44,
+          "maxOutputTokens": 128000,
+          "outputTokens": 16959,
+          "thinkingTokens": 5206,
+          "webSearchRequests": 0
+        }
+      },
+      "cost_usd_list_estimate": 1.1260764,
+      "cost_complete": true,
+      "cost_status": "complete_cli_report",
+      "repair_cost_usd_list_estimate": null,
+      "paid_brief_cost_usd": 0.0,
+      "cost_with_preparation_usd_list_estimate": 1.1260764,
+      "warm_brief_wall_s": 0.1987855990000753,
+      "agent_wall_s": 155.186544,
+      "checks_wall_s": 97.02327487499997,
+      "preparation_wall_s": 40.417060207999995,
+      "wall_s": 252.20981887499997,
+      "total_wall_with_preparation_s": 292.825664682
     },
     {
       "label": "heldout-8-control",
       "registered": true,
       "condition": "control",
-      "final_result_available": false,
-      "status": "missing",
-      "accepted": false,
-      "completed": false,
-      "attempts": [],
-      "artifacts": {}
+      "final_result_available": true,
+      "status": "complete",
+      "accepted": true,
+      "completed": true,
+      "attempts": [
+        {
+          "attempt": 1,
+          "cumulative_cost_usd_list_estimate": 0.8215421999999998,
+          "incremental_cost_usd_list_estimate": 0.8215421999999998,
+          "model_success": true,
+          "reported_check_passed": false,
+          "num_turns_per_input": 23,
+          "duration_ms_per_input": 145047,
+          "duration_api_ms_cumulative": 144121,
+          "usage_per_input": {
+            "cache_creation_input_tokens": 51963,
+            "cache_read_input_tokens": 878851,
+            "input_tokens": 32,
+            "output_tokens": 11497,
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 51963,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "output_tokens_details": {
+              "thinking_tokens": 2907
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            }
+          },
+          "checks": [
+            {
+              "name": "initial-format",
+              "exit_code": 1,
+              "timed_out": false,
+              "wall_s": 0.866228334999505,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "gym",
+                "--",
+                "--check"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "heldout-8-control/attempt-1-initial-format.log"
+            },
+            {
+              "name": "autoformat",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.6654764770000838,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "gym"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "heldout-8-control/attempt-1-autoformat.log"
+            },
+            {
+              "name": "format",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.7659637870001461,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "gym",
+                "--",
+                "--check"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "heldout-8-control/attempt-1-format.log"
+            },
+            {
+              "name": "own-tests",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 70.95034609699997,
+              "command": [
+                "cargo",
+                "test",
+                "-p",
+                "gym",
+                "--offline"
+              ],
+              "test_summaries": [
+                {
+                  "passed": 515,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 39,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 1,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 1,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 28,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 1,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 6,
+                  "failed": 0,
+                  "ignored": 1
+                },
+                {
+                  "passed": 1,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 1,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 1,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 6,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 0,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 1,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 2,
+                  "failed": 0,
+                  "ignored": 1
+                },
+                {
+                  "passed": 10,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 0,
+                  "failed": 0,
+                  "ignored": 0
+                }
+              ],
+              "failed_test_names": [],
+              "log": "heldout-8-control/attempt-1-own-tests.log"
+            },
+            {
+              "name": "acceptance",
+              "exit_code": 101,
+              "timed_out": false,
+              "wall_s": 12.802996601999439,
+              "command": [
+                "cargo",
+                "+1.97.1",
+                "test",
+                "--manifest-path",
+                "<VERIFICATION_ROOT>/checks/<RUN_ID>/1/harness/Cargo.toml",
+                "--offline",
+                "--test",
+                "acceptance",
+                "--",
+                "--test-threads=1"
+              ],
+              "test_summaries": [
+                {
+                  "passed": 1,
+                  "failed": 4,
+                  "ignored": 0
+                }
+              ],
+              "failed_test_names": [
+                "a_manifest_without_a_local_copy_marks_the_run_in_both_readers",
+                "directory_order_preserves_the_claim_and_its_denominator",
+                "recorded_commit_keeps_its_provenance_when_a_manifest_adds_a_mark",
+                "retained_records_win_over_divergent_live_copies_in_both_orders"
+              ],
+              "log": "heldout-8-control/attempt-1-acceptance.log"
+            }
+          ]
+        },
+        {
+          "attempt": 2,
+          "cumulative_cost_usd_list_estimate": 1.1468639999999999,
+          "incremental_cost_usd_list_estimate": 0.3253218000000001,
+          "model_success": true,
+          "reported_check_passed": true,
+          "num_turns_per_input": 7,
+          "duration_ms_per_input": 66560,
+          "duration_api_ms_cumulative": 210385,
+          "usage_per_input": {
+            "cache_creation_input_tokens": 13162,
+            "cache_read_input_tokens": 449689,
+            "input_tokens": 12,
+            "output_tokens": 6502,
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 13162,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "output_tokens_details": {
+              "thinking_tokens": 1966
+            },
+            "server_tool_use": {
+              "web_search_requests": 0,
+              "web_fetch_requests": 0
+            }
+          },
+          "checks": [
+            {
+              "name": "initial-format",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.5648345530007646,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "gym",
+                "--",
+                "--check"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "heldout-8-control/attempt-2-initial-format.log"
+            },
+            {
+              "name": "autoformat",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.5647828849996586,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "gym"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "heldout-8-control/attempt-2-autoformat.log"
+            },
+            {
+              "name": "format",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 0.5648484789999202,
+              "command": [
+                "cargo",
+                "fmt",
+                "-p",
+                "gym",
+                "--",
+                "--check"
+              ],
+              "test_summaries": [],
+              "failed_test_names": [],
+              "log": "heldout-8-control/attempt-2-format.log"
+            },
+            {
+              "name": "own-tests",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 61.13121944799968,
+              "command": [
+                "cargo",
+                "test",
+                "-p",
+                "gym",
+                "--offline"
+              ],
+              "test_summaries": [
+                {
+                  "passed": 515,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 39,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 1,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 1,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 28,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 1,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 6,
+                  "failed": 0,
+                  "ignored": 1
+                },
+                {
+                  "passed": 1,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 1,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 1,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 6,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 0,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 1,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 2,
+                  "failed": 0,
+                  "ignored": 1
+                },
+                {
+                  "passed": 10,
+                  "failed": 0,
+                  "ignored": 0
+                },
+                {
+                  "passed": 0,
+                  "failed": 0,
+                  "ignored": 0
+                }
+              ],
+              "failed_test_names": [],
+              "log": "heldout-8-control/attempt-2-own-tests.log"
+            },
+            {
+              "name": "acceptance",
+              "exit_code": 0,
+              "timed_out": false,
+              "wall_s": 9.984795378999479,
+              "command": [
+                "cargo",
+                "+1.97.1",
+                "test",
+                "--manifest-path",
+                "<VERIFICATION_ROOT>/checks/<RUN_ID>/2/harness/Cargo.toml",
+                "--offline",
+                "--test",
+                "acceptance",
+                "--",
+                "--test-threads=1"
+              ],
+              "test_summaries": [
+                {
+                  "passed": 5,
+                  "failed": 0,
+                  "ignored": 0
+                }
+              ],
+              "failed_test_names": [],
+              "log": "heldout-8-control/attempt-2-acceptance.log"
+            }
+          ]
+        }
+      ],
+      "artifacts": {
+        "heldout-8-control/attempt-1-initial-format.log": {
+          "sha256": "5c377e43b17c47fda793752343dc205bacff48eb38d2388c0c6e3d0e47c24c08",
+          "original_sha256": "e5fdc71ebb7cc85c22aeb558d58ce847a363c45f2015bd808a2c8630247ac709",
+          "redacted": true,
+          "bytes": 2730
+        },
+        "heldout-8-control/attempt-1-autoformat.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "heldout-8-control/attempt-1-format.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "heldout-8-control/attempt-1-own-tests.log": {
+          "sha256": "901086fc62616ecfab25119f6257d373ce5831bc62efedf1426fcba575b74a1d",
+          "original_sha256": "c46299ef44b37a71bf537287c53e4dd24e1f481dbb1e50535dc8a943aff3a5e3",
+          "redacted": true,
+          "bytes": 51383
+        },
+        "heldout-8-control/attempt-1-acceptance.log": {
+          "sha256": "bab286260b852db160f9a30770ad74b9fbe794717383d18578a402b2ab7a9239",
+          "original_sha256": "e86e2d188c20df2c9c2d954bd80ebb32b2f996dbcd73ee8b010eb13944168361",
+          "redacted": true,
+          "bytes": 2208
+        },
+        "heldout-8-control/attempt-2-initial-format.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "heldout-8-control/attempt-2-autoformat.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "heldout-8-control/attempt-2-format.log": {
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "original_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "redacted": false,
+          "bytes": 0
+        },
+        "heldout-8-control/attempt-2-own-tests.log": {
+          "sha256": "8e8533fffba765a9450eed876bbab9f5ffcc2191b6f6e8b4d940f32513635760",
+          "original_sha256": "c250911898623c80eb9e5f411b4655656b75fc6cc7b7cbc700d9a4c68d705f9f",
+          "redacted": true,
+          "bytes": 51383
+        },
+        "heldout-8-control/attempt-2-acceptance.log": {
+          "sha256": "84e4754a196ab14315b7f68866b28816d2a49e8e7a85100c7b4104c2532cfcc8",
+          "original_sha256": "d5c986681c485c50711a9dc8c537251d931870379a4667aa9873d1a228a89fd1",
+          "redacted": true,
+          "bytes": 790
+        },
+        "heldout-8-control/candidate-1.patch": {
+          "sha256": "e69ab122022136752c011d721fc714ea160fd02a8b61a0091cbae1c6aabd4896",
+          "original_sha256": "e69ab122022136752c011d721fc714ea160fd02a8b61a0091cbae1c6aabd4896",
+          "redacted": false,
+          "bytes": 10920,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "1e17abe5998234ff93b4b1ad157d6e5060e7d52eb4d5fca65cbae29ab18667b3"
+        },
+        "heldout-8-control/candidate-2.patch": {
+          "sha256": "424c0c317a7e1238b90d0121b6ea909c8ccabd82c239b34b36560f98bad6d963",
+          "original_sha256": "424c0c317a7e1238b90d0121b6ea909c8ccabd82c239b34b36560f98bad6d963",
+          "redacted": false,
+          "bytes": 15414,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "8483553d8f27838c5db19769000d9bec6167fc83f13a1b9cfd2ee5c413cf72b0"
+        },
+        "heldout-8-control/final-candidate.patch": {
+          "sha256": "424c0c317a7e1238b90d0121b6ea909c8ccabd82c239b34b36560f98bad6d963",
+          "original_sha256": "424c0c317a7e1238b90d0121b6ea909c8ccabd82c239b34b36560f98bad6d963",
+          "redacted": false,
+          "bytes": 15414,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "8483553d8f27838c5db19769000d9bec6167fc83f13a1b9cfd2ee5c413cf72b0"
+        },
+        "heldout-8-control/normalized-candidate-1.patch": {
+          "sha256": "381c714f5c73b8a8df2bf8c45d9bada3e84db2565a7b1f0856d1b5e1d86a8bc8",
+          "original_sha256": "381c714f5c73b8a8df2bf8c45d9bada3e84db2565a7b1f0856d1b5e1d86a8bc8",
+          "redacted": false,
+          "bytes": 11052,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "950fa14f8f317b17d6329d88521d13552af67274e6ad77296035942960c0799a"
+        },
+        "heldout-8-control/normalized-candidate-2.patch": {
+          "sha256": "424c0c317a7e1238b90d0121b6ea909c8ccabd82c239b34b36560f98bad6d963",
+          "original_sha256": "424c0c317a7e1238b90d0121b6ea909c8ccabd82c239b34b36560f98bad6d963",
+          "redacted": false,
+          "bytes": 15414,
+          "binary_files_omitted": [],
+          "candidate_json_sha256": "8483553d8f27838c5db19769000d9bec6167fc83f13a1b9cfd2ee5c413cf72b0"
+        }
+      },
+      "input_consistency_errors": [],
+      "artifact_errors": [],
+      "source_commit": "f29611f211747884b4f508db80634d3f6df2a5e9",
+      "instructions_sha256": "cec4c3cba2fc4d1474ca24a85942acd68836e8330fc78d621222b8386ac675e2",
+      "common_input_sha256": "b7c9595eb0ec7e6f6e0e3e0333e340e74504df73c2a4c6304d3577a52fa8b109",
+      "prompt_sha256": "3e0c2c91dcb8bd9afbcc1da70b72cd2048f258747ad1a7088aff5cca5f45d288",
+      "suffix_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "model": "claude-opus-5-5",
+      "effort": "medium",
+      "timeout": false,
+      "tool_counts": {
+        "Edit": 9,
+        "Glob": 1,
+        "Grep": 9,
+        "Read": 9
+      },
+      "tool_calls": 28,
+      "event_scan": {
+        "available": true,
+        "bytes_scanned": 926895,
+        "malformed_lines": 0,
+        "truncated_tail": false
+      },
+      "attempt_count": 2,
+      "first_attempt_check_passed": false,
+      "final_model_usage_cumulative": {
+        "claude-opus-5-5": {
+          "cacheCreationInputTokens": 65125,
+          "cacheReadInputTokens": 1328540,
+          "contextWindow": 1000000,
+          "costUSD": 1.1468639999999999,
+          "inputTokens": 44,
+          "maxOutputTokens": 128000,
+          "outputTokens": 17999,
+          "thinkingTokens": 4873,
+          "webSearchRequests": 0
+        }
+      },
+      "cost_usd_list_estimate": 1.1468639999999999,
+      "cost_complete": true,
+      "cost_status": "complete_cli_report",
+      "repair_cost_usd_list_estimate": 0.3253218000000001,
+      "paid_brief_cost_usd": 0.0,
+      "cost_with_preparation_usd_list_estimate": 1.1468639999999999,
+      "warm_brief_wall_s": 0.0,
+      "agent_wall_s": 212.346300334,
+      "checks_wall_s": 182.24272849999997,
+      "preparation_wall_s": 7.444020791,
+      "wall_s": 394.589028834,
+      "total_wall_with_preparation_s": 402.033049625
     }
   ],
   "comparison": {
-    "verdict": "pending",
+    "verdict": "no_clear_win",
     "registered_runs": 8,
-    "final_results": 2,
+    "final_results": 8,
     "pairs": [
       {
         "pair": 1,
@@ -829,58 +2929,64 @@
         "pair": 2,
         "control": "heldout-4-control",
         "treatment": "heldout-3-treatment",
-        "both_final": false,
-        "control_accepted": false,
-        "treatment_accepted": false,
-        "treatment_cost_ratio": null,
-        "same_common_input": null
+        "both_final": true,
+        "control_accepted": true,
+        "treatment_accepted": true,
+        "treatment_cost_ratio": 1.0696194268257386,
+        "same_common_input": true
       },
       {
         "pair": 3,
         "control": "heldout-5-control",
         "treatment": "heldout-6-treatment",
-        "both_final": false,
-        "control_accepted": false,
-        "treatment_accepted": false,
-        "treatment_cost_ratio": null,
-        "same_common_input": null
+        "both_final": true,
+        "control_accepted": true,
+        "treatment_accepted": true,
+        "treatment_cost_ratio": 0.8973122540625956,
+        "same_common_input": true
       },
       {
         "pair": 4,
         "control": "heldout-8-control",
         "treatment": "heldout-7-treatment",
-        "both_final": false,
-        "control_accepted": false,
-        "treatment_accepted": false,
-        "treatment_cost_ratio": null,
-        "same_common_input": null
+        "both_final": true,
+        "control_accepted": true,
+        "treatment_accepted": true,
+        "treatment_cost_ratio": 0.9818743983593523,
+        "same_common_input": true
       }
     ],
     "conditions": {
       "control": {
-        "accepted": 1,
-        "final_results": 1,
-        "complete_cost_observations": 1,
-        "median_cost_usd_list_estimate": 1.102048,
-        "median_total_wall_s": 334.513544417
+        "accepted": 4,
+        "final_results": 4,
+        "complete_cost_observations": 4,
+        "median_cost_usd_list_estimate": 1.1053063,
+        "median_total_wall_s": 301.2488118545
       },
       "treatment": {
-        "accepted": 1,
-        "final_results": 1,
-        "complete_cost_observations": 1,
-        "median_cost_usd_list_estimate": 0.9153686,
-        "median_total_wall_s": null
+        "accepted": 4,
+        "final_results": 4,
+        "complete_cost_observations": 4,
+        "median_cost_usd_list_estimate": 0.9659727,
+        "median_total_wall_s": 278.53420970300004
       }
     },
     "early_futility_eligible": false,
-    "pending_reason": "The registered four-pair panel is incomplete."
+    "development_gate_passed": null,
+    "median_cost_ratio": 0.8739411871623277,
+    "median_wall_ratio": 0.9245985336451025,
+    "cheaper_pairs": 3,
+    "efficiency_gate_passed": false,
+    "correctness_numeric_gate_passed": false,
+    "correctness_safety_review_confirmed": false
   },
   "privacy": "Only selected counters, sanitized checker logs, and candidate patches are exported. No raw streams, model prose, thinking, tool input/results, or init/account metadata.",
   "cost_accounting": {
-    "registered_runs_known_cli_cost_usd_list_estimate": 2.0174166,
+    "registered_runs_known_cli_cost_usd_list_estimate": 8.207082199999999,
     "unregistered_runs_known_cli_cost_usd_list_estimate": 0,
     "shared_warmup_known_cli_cost_usd_list_estimate": 0.11636679999999999,
-    "all_observed_known_cli_cost_usd_list_estimate": 2.1337833999999996,
+    "all_observed_known_cli_cost_usd_list_estimate": 8.323448999999998,
     "complete_for_observed_runs": true,
     "note": "Known cumulative reports are counted once per run, including failures. Missing or interrupted usage can make this total a lower bound. Machine and engineering costs are not measured."
   }

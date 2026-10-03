@@ -1,0 +1,445 @@
+{
+  "schema": "openagents.briefing-replay.structure-preparation.v1",
+  "policy": "ExplicitStructureV1",
+  "status": "complete",
+  "source_commit": "aeb7f9fb19e0d56c13400702894172ae472e3bcf",
+  "model_calls": 0,
+  "external_git_probes": 0,
+  "byte_budget": 16384,
+  "preview_flags": [
+    "--explicit-structure"
+  ],
+  "hashes": {
+    "binary_sha256": "cfe8027a1c2aa1278483e4f38b45819bd19933b3d6703f51aa02110d8212c3a1",
+    "issue_sha256": "502f9b9ef2f230a444f14758b5e5e148377cb5ef8d20361388fda3ea6c0dd6c5",
+    "warm_index_sha256": "822c7e7758bb2fe8fb3e733ef53f85146060b8f09d93ae07a376d8595b6e8333",
+    "preparation_script_sha256": "a8d99c27e48c2e3480bbba71e90ebf0f300daba3d569b2be107390c9526eef34",
+    "cold_index_sha256": "ebeff331c5a699d73e387cbb8b18cbcba32374d0eac4d6e94fd571028f15f103",
+    "structured_preview_sha256": "0cf9117b9a6b28e1771ed3187640fa8c907b22b2afb2fe01fe39aa9d0993b2cf",
+    "focused_sha256": "429ce7256a1d951d03a9b078d96062c9ea904effd723a2420ad917654a6d1368",
+    "treatment_sha256": "429ce7256a1d951d03a9b078d96062c9ea904effd723a2420ad917654a6d1368"
+  },
+  "timings_ms": {
+    "cold_index_build_wall": 1424.6321430000535,
+    "cold_index_reported": 1308.032852,
+    "warm_preview_wall": 219.78333199967892,
+    "preview_stages": {
+      "assembly": 46.972416,
+      "index_and_issue_load": 129.994347,
+      "original_index_build_separate": 1382.974976,
+      "output_serialization_sample": 0.07370800000000001,
+      "revision_validation": 0.824174,
+      "selected_git_validation_and_read": 11.686424,
+      "warm_preview_before_output": 179.993932
+    },
+    "warm_preview_reported_including_output": 180.256
+  },
+  "notes": [
+    "Default lexical and symbol ranking is enabled inside the explicit-file and nearby-test pool. It does not admit unrelated lexical file matches.",
+    "The fresh index build is measured separately. Operating-system page caches are not cleared; cold means a new index artifact, not cold storage.",
+    "Warm preview uses the supplied immutable index copy after the fresh index build. Subprocess wall time includes process startup and output writes.",
+    "treatment.md is exactly focused.md. There is no external probe, additional source appendix, model call, or task execution.",
+    "Supply the complete issue and mandatory instructions separately and identically to both arms."
+  ],
+  "payload_bytes": 14025,
+  "source_bytes": 12232,
+  "selected_ranges": [
+    {
+      "path": "crates/coder-connect/src/direct/watch.rs",
+      "start_line": 15,
+      "end_line": 102
+    },
+    {
+      "path": "crates/coder-connect/src/direct/watch.rs",
+      "start_line": 114,
+      "end_line": 125
+    },
+    {
+      "path": "crates/coder-connect/src/direct/watch.rs",
+      "start_line": 132,
+      "end_line": 245
+    },
+    {
+      "path": "crates/coder-connect/src/tests/pairing.rs",
+      "start_line": 1,
+      "end_line": 5
+    },
+    {
+      "path": "crates/coder-connect/src/tests/pairing.rs",
+      "start_line": 23,
+      "end_line": 43
+    },
+    {
+      "path": "crates/coder-connect/src/tests/pairing.rs",
+      "start_line": 559,
+      "end_line": 673
+    }
+  ],
+  "selections": [
+    {
+      "path": "crates/coder-connect/src/direct/watch.rs",
+      "role": "explicit_source",
+      "anchor": null,
+      "method": "Complete declaration `subscribe`; term match within explicit file; 1 equally ranked candidate(s)",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 141,
+      "end_line": 192
+    },
+    {
+      "path": "crates/coder-connect/src/direct/watch.rs",
+      "role": "structural_dependency",
+      "anchor": null,
+      "method": "Same-file syntax dependency candidate `Inbox`",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 32,
+      "end_line": 37
+    },
+    {
+      "path": "crates/coder-connect/src/direct/watch.rs",
+      "role": "structural_dependency",
+      "anchor": null,
+      "method": "Same-file syntax dependency candidate `Inbox`",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 39,
+      "end_line": 58
+    },
+    {
+      "path": "crates/coder-connect/src/direct/watch.rs",
+      "role": "structural_dependency",
+      "anchor": null,
+      "method": "Same-file syntax dependency candidate `Subscription`",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 60,
+      "end_line": 71
+    },
+    {
+      "path": "crates/coder-connect/src/direct/watch.rs",
+      "role": "structural_dependency",
+      "anchor": null,
+      "method": "Same-file syntax dependency candidate `Subscription`",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 73,
+      "end_line": 77
+    },
+    {
+      "path": "crates/coder-connect/src/direct/watch.rs",
+      "role": "structural_dependency",
+      "anchor": null,
+      "method": "Same-file syntax dependency candidate `Subscription`",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 79,
+      "end_line": 96
+    },
+    {
+      "path": "crates/coder-connect/src/direct/watch.rs",
+      "role": "structural_dependency",
+      "anchor": null,
+      "method": "Same-file syntax dependency candidate `Subscriber`",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 98,
+      "end_line": 102
+    },
+    {
+      "path": "crates/coder-connect/src/direct/watch.rs",
+      "role": "structural_dependency",
+      "anchor": null,
+      "method": "Same-file syntax dependency candidate `routes`",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 132,
+      "end_line": 135
+    },
+    {
+      "path": "crates/coder-connect/src/direct/watch.rs",
+      "role": "structural_dependency",
+      "anchor": null,
+      "method": "Same-file syntax dependency candidate `lock`",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 137,
+      "end_line": 139
+    },
+    {
+      "path": "crates/coder-connect/src/direct/watch.rs",
+      "role": "structural_dependency",
+      "anchor": null,
+      "method": "Same-file syntax dependency candidate `deliver`",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 200,
+      "end_line": 245
+    },
+    {
+      "path": "crates/coder-connect/src/direct/watch.rs",
+      "role": "structural_dependency",
+      "anchor": null,
+      "method": "Same-file syntax dependency candidate `Touched`",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 22,
+      "end_line": 30
+    },
+    {
+      "path": "crates/coder-connect/src/direct/watch.rs",
+      "role": "structural_dependency",
+      "anchor": null,
+      "method": "Same-file syntax dependency candidate `Routes`",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 114,
+      "end_line": 122
+    },
+    {
+      "path": "crates/coder-connect/src/direct/watch.rs",
+      "role": "structural_dependency",
+      "anchor": null,
+      "method": "Same-file syntax dependency candidate `ANNOUNCED`",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 124,
+      "end_line": 125
+    },
+    {
+      "path": "crates/coder-connect/src/direct/watch.rs",
+      "role": "structural_dependency",
+      "anchor": null,
+      "method": "Same-file syntax dependency candidate `relevant`",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 194,
+      "end_line": 198
+    },
+    {
+      "path": "crates/coder-connect/src/direct/watch.rs",
+      "role": "structural_dependency",
+      "anchor": null,
+      "method": "Same-scope imports; imported definitions were not expanded",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 15,
+      "end_line": 15
+    },
+    {
+      "path": "crates/coder-connect/src/direct/watch.rs",
+      "role": "structural_dependency",
+      "anchor": null,
+      "method": "Same-scope imports; imported definitions were not expanded",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 16,
+      "end_line": 16
+    },
+    {
+      "path": "crates/coder-connect/src/direct/watch.rs",
+      "role": "structural_dependency",
+      "anchor": null,
+      "method": "Same-scope imports; imported definitions were not expanded",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 17,
+      "end_line": 17
+    },
+    {
+      "path": "crates/coder-connect/src/direct/watch.rs",
+      "role": "structural_dependency",
+      "anchor": null,
+      "method": "Same-scope imports; imported definitions were not expanded",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 18,
+      "end_line": 18
+    },
+    {
+      "path": "crates/coder-connect/src/direct/watch.rs",
+      "role": "structural_dependency",
+      "anchor": null,
+      "method": "Same-scope imports; imported definitions were not expanded",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 19,
+      "end_line": 19
+    },
+    {
+      "path": "crates/coder-connect/src/direct/watch.rs",
+      "role": "structural_dependency",
+      "anchor": null,
+      "method": "Same-scope imports; imported definitions were not expanded",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 20,
+      "end_line": 20
+    },
+    {
+      "path": "crates/coder-connect/src/tests/pairing.rs",
+      "role": "nearby_test",
+      "anchor": null,
+      "method": "Complete test `a_coder_only_host_serves_only_coder_chats_and_their_delegates_under_any_grant`; Scope-limited lexical fallback; no direct source call was established; 1 equally ranked candidate(s)",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 559,
+      "end_line": 673
+    },
+    {
+      "path": "crates/coder-connect/src/tests/pairing.rs",
+      "role": "test_fixture_helper",
+      "anchor": null,
+      "method": "Same-file syntax dependency candidate `prepare`",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 23,
+      "end_line": 27
+    },
+    {
+      "path": "crates/coder-connect/src/tests/pairing.rs",
+      "role": "test_fixture_helper",
+      "anchor": null,
+      "method": "Same-file syntax dependency candidate `redeem_local`",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 28,
+      "end_line": 43
+    },
+    {
+      "path": "crates/coder-connect/src/tests/pairing.rs",
+      "role": "structural_dependency",
+      "anchor": null,
+      "method": "Same-scope imports; imported definitions were not expanded",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 1,
+      "end_line": 2
+    },
+    {
+      "path": "crates/coder-connect/src/tests/pairing.rs",
+      "role": "structural_dependency",
+      "anchor": null,
+      "method": "Same-scope imports; imported definitions were not expanded",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 3,
+      "end_line": 3
+    },
+    {
+      "path": "crates/coder-connect/src/tests/pairing.rs",
+      "role": "structural_dependency",
+      "anchor": null,
+      "method": "Same-scope imports; imported definitions were not expanded",
+      "complete_file": false,
+      "complete_declaration": true,
+      "start_line": 4,
+      "end_line": 5
+    }
+  ],
+  "coverage": {
+    "omissions": [
+      {
+        "path": "AGENTS.md",
+        "role": "explicit_document",
+        "reason": "Complete mandatory instructions are supplied separately; this pack omits instruction files."
+      },
+      {
+        "path": "crates/coder-connect/tests/direct.rs",
+        "role": "explicit_source",
+        "reason": "Explicit path is absent or excluded from the bounded source index."
+      },
+      {
+        "path": "crates/coder-connect/src/direct/watch.rs",
+        "role": "structural_dependency",
+        "reason": "Call `watching` may be shadowed by a local binding; its target is unresolved."
+      },
+      {
+        "path": "crates/coder-connect/src/direct/watch.rs",
+        "role": "structural_dependency",
+        "reason": "4 calls have no supported same-file target (examples: Arc::downgrade, Some, Vec::new); external and relative paths were not expanded."
+      },
+      {
+        "path": "crates/coder-connect/src/direct/watch.rs",
+        "role": "structural_dependency",
+        "reason": "1 calls have no supported same-file target (examples: std::mem::take); external and relative paths were not expanded."
+      },
+      {
+        "path": "crates/coder-connect/src/direct/watch.rs",
+        "role": "structural_dependency",
+        "reason": "Call `watching` may be shadowed by a local binding; its target is unresolved."
+      },
+      {
+        "path": "crates/coder-connect/src/direct/watch.rs",
+        "role": "structural_dependency",
+        "reason": "1 calls have no supported same-file target (examples: OnceLock::new); external and relative paths were not expanded."
+      },
+      {
+        "path": "crates/coder-connect/src/direct/watch.rs",
+        "role": "structural_dependency",
+        "reason": "Call `routes` may be shadowed by a local binding; its target is unresolved."
+      },
+      {
+        "path": "crates/coder-connect/src/direct/watch.rs",
+        "role": "explicit_source",
+        "reason": "60 method, macro, or indirect call occurrences are unresolved; this is a syntax dependency candidate set, not a complete call graph."
+      },
+      {
+        "path": "nearby tests",
+        "role": "nearby_test",
+        "reason": "43 additional ranked tests were omitted by the one automatically ranked test bound."
+      },
+      {
+        "path": "crates/coder-connect/src/tests/pairing.rs",
+        "role": "test_fixture_helper",
+        "reason": "Call `ask` may be shadowed by a local binding; its target is unresolved."
+      },
+      {
+        "path": "crates/coder-connect/src/tests/pairing.rs",
+        "role": "test_fixture_helper",
+        "reason": "Call `catalog` may be shadowed by a local binding; its target is unresolved."
+      },
+      {
+        "path": "crates/coder-connect/src/tests/pairing.rs",
+        "role": "test_fixture_helper",
+        "reason": "Call `page` may be shadowed by a local binding; its target is unresolved."
+      },
+      {
+        "path": "crates/coder-connect/src/tests/pairing.rs",
+        "role": "test_fixture_helper",
+        "reason": "12 calls have no supported same-file target (examples: CatalogRequest::default, Client::new_with_policy, Fixture::new); external and relative paths were not expanded."
+      },
+      {
+        "path": "crates/coder-connect/src/tests/pairing.rs",
+        "role": "test_fixture_helper",
+        "reason": "2 calls have no supported same-file target (examples: Invitation::parse, pairing::prepare); external and relative paths were not expanded."
+      },
+      {
+        "path": "crates/coder-connect/src/tests/pairing.rs",
+        "role": "test_fixture_helper",
+        "reason": "1 calls have no supported same-file target (examples: pairing::verify); external and relative paths were not expanded."
+      },
+      {
+        "path": "crates/coder-connect/src/tests/pairing.rs",
+        "role": "nearby_test",
+        "reason": "62 method, macro, or indirect call occurrences are unresolved; this is a syntax dependency candidate set, not a complete call graph."
+      },
+      {
+        "path": "INVARIANTS.md",
+        "role": "explicit_document",
+        "reason": "25 additional ranked document sections were omitted by the two-section bound."
+      },
+      {
+        "path": "INVARIANTS.md",
+        "role": "explicit_document",
+        "reason": "Complete Markdown section `Linking devices`; term match within named document; 1 equally ranked candidate(s) did not fit the 16 KiB/16-range bound; its complete bundle was omitted without clipping."
+      },
+      {
+        "path": "INVARIANTS.md",
+        "role": "explicit_document",
+        "reason": "Complete Markdown section `Basic chat`; term match within named document; 1 equally ranked candidate(s) did not fit the 16 KiB/16-range bound; its complete bundle was omitted without clipping."
+      }
+    ],
+    "omitted_coverage_records": 0
+  }
+}

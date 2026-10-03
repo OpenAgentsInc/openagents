@@ -1,19 +1,19 @@
 # Heldout replay panel
 
-Verdict: **pending**.
+Verdict: **no clear win**.
 
-The registered four-pair panel is incomplete.
+This is the registered engineering gate on four pairs, not a population-level significance claim.
 
 | Run | Status | Accepted | Attempts | CLI cost ($) | Agent (s) | Checks (s) | Recorded endpoint (s) | Tools |
 | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | heldout-1-control | complete | true | 1 | 1.1020 | 215.7571 | 90.5001 | 334.5135 | 32 |
-| heldout-2-treatment | complete | true | 1 | 0.9154 | 174.1668 | 86.9652 | — | 33 |
-| heldout-3-treatment | missing | — | 0 | — | — | — | — | 0 |
-| heldout-4-control | missing | — | 0 | — | — | — | — | 0 |
-| heldout-5-control | missing | — | 0 | — | — | — | — | 0 |
-| heldout-6-treatment | missing | — | 0 | — | — | — | — | 0 |
-| heldout-7-treatment | missing | — | 0 | — | — | — | — | 0 |
-| heldout-8-control | missing | — | 0 | — | — | — | — | 0 |
+| heldout-2-treatment | complete | true | 1 | 0.9154 | 174.1668 | 86.9652 | 295.6224 | 33 |
+| heldout-3-treatment | complete | true | 1 | 0.9372 | 145.8079 | 87.6265 | 264.2428 | 34 |
+| heldout-4-control | complete | true | 1 | 0.8762 | 141.7221 | 82.3156 | 257.7321 | 20 |
+| heldout-5-control | complete | true | 1 | 1.1086 | 181.2909 | 83.6820 | 267.9841 | 30 |
+| heldout-6-treatment | complete | true | 1 | 0.9947 | 133.6391 | 87.5530 | 224.6861 | 31 |
+| heldout-7-treatment | complete | true | 1 | 1.1261 | 155.1865 | 97.0233 | 292.8257 | 37 |
+| heldout-8-control | complete | true | 2 | 1.1469 | 212.3463 | 182.2427 | 402.0330 | 28 |
 
 Costs use the last cumulative CLI list-price estimate once, including any repair. They are not verified subscription charges. Incomplete observations remain visible and cannot pass a gate. These are fixed-endpoint costs; failed runs are not a cost through acceptance.
 

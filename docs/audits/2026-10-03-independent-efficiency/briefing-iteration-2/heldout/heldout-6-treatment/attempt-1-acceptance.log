@@ -1,0 +1,14 @@
+   Compiling gym v0.1.0 (<VERIFICATION_ROOT>/repo/crates/gym)
+   Compiling briefing-replay-acceptance v0.0.0 (<VERIFICATION_ROOT>/checks/<RUN_ID>/1/harness)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 10.56s
+     Running <CHECKER> (<TARGET>/debug/deps/acceptance-d386108c8cbee7c2)
+
+running 5 tests
+test a_manifest_without_a_local_copy_marks_the_run_in_both_readers ... ok
+test directory_order_preserves_the_claim_and_its_denominator ... ok
+test duplicate_inputs_do_not_duplicate_runs_or_merge_distinct_identities ... ok
+test recorded_commit_keeps_its_provenance_when_a_manifest_adds_a_mark ... ok
+test retained_records_win_over_divergent_live_copies_in_both_orders ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+

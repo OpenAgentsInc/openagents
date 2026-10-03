@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Export a registered four-arm replay panel without pooling earlier experiments."""
 import argparse
+from contextlib import contextmanager
 import json
 from pathlib import Path
 import statistics
@@ -15,9 +16,11 @@ SCHEMA = 'openagents.briefing.factorial-report.v1'
 GATE = {'accepted_per_arm': 4, 'minimum_median_cost_reduction_fraction': 0.20, 'minimum_cheaper_blocks': 3, 'maximum_median_wall_ratio': 1.10}
 COMPARISONS = {'D_vs_A': ('A', 'D'), 'C_vs_A': ('A', 'C'), 'D_vs_C': ('C', 'D'), 'B_vs_A': ('A', 'B'), 'D_vs_B': ('B', 'D')}
 BRIEF_PREFIX = b'\n\nPrepared evidence follows. It is optional source evidence; mandatory instructions above remain in force. Use additional file reads when necessary.\n\n'
+WARMUP_PROMPT = b'Reply only READY. This is an instruction-prefix warmup; use no tools.'
 PREPARATION_V1 = 'openagents.briefing-replay.preparation.v1'
 STRUCTURE_PREPARATION_V1 = 'openagents.briefing-replay.structure-preparation.v1'
 MAX_BRIEF_BYTES = 16 * 1024
+EXPORT_ERRORS = (OSError, ValueError, TypeError, KeyError, AttributeError)
 
 
 def plan_digest(plan):
@@ -103,8 +106,97 @@ def binding(metadata, expected):
     return valid, models
 
 
+def recover_run(run_dir, label, config, runs_root, output, builder, prep, condition, error):
+    """Retain known cumulative usage when malformed metadata prevents normal export."""
+    scrub = report.Scrubber(config, runs_root)
+    row = {'label': label, 'registered': condition is not None, 'condition': condition,
+           'status': 'export_error', 'final_result_available': (run_dir / 'result.json').exists(),
+           'accepted': False, 'completed': False, 'cost_complete': False,
+           'input_consistency_errors': ['export_error'], 'artifact_errors': [],
+           'export_error': scrub(str(error)[:1000]), 'attempts': [], 'artifacts': {}}
+    records, estimates, sequences = [], [], []
+    for name in ['result.json', 'progress.json', 'request.json']:
+        path = run_dir / name
+        if not path.exists():
+            continue
+        try:
+            record = report.read_json(path)
+            if not isinstance(record, dict):
+                raise ValueError('Expected an object')
+            records.append((name, record))
+            value = report.number(record.get('cost_usd_list_estimate'))
+            if value is not None:
+                estimates.append(value)
+            attempts = record.get('attempts', [])
+            if isinstance(attempts, list):
+                events = [a['result'] for a in attempts if isinstance(a, dict) and isinstance(a.get('result'), dict)]
+                if events:
+                    sequences.append((name, events))
+        except EXPORT_ERRORS as failure:
+            row['artifact_errors'].append(name + ': ' + scrub(str(failure)[:1000]))
+    try:
+        counts, events, scan = report.scan_events(run_dir / 'events.jsonl')
+        row.update(tool_counts=dict(sorted(counts.items())), tool_calls=sum(counts.values()), event_scan=scan)
+        if events:
+            sequences.append(('events.jsonl', events))
+    except EXPORT_ERRORS as failure:
+        row['artifact_errors'].append('events.jsonl: ' + scrub(str(failure)[:1000]))
+    for _, events in sequences:
+        estimates.extend(value for event in events if (value := report.number(event.get('total_cost_usd'))) is not None)
+    # Different artifacts repeat cumulative observations. Never sum their charges.
+    cost = max(estimates) if estimates else None
+    row.update(cost_usd_list_estimate=cost, cost_status='incomplete_lower_bound' if cost is not None else 'unknown',
+               recovery_sources=[name for name, _ in records],
+               recovery_note='Highest observed cumulative estimate, counted once. Malformed metadata prevents complete accounting or acceptance.')
+    if sequences:
+        name, events = max(sequences, key=lambda item: (max((report.number(e.get('total_cost_usd')) or 0 for e in item[1]), default=0), len(item[1])))
+        row['recovered_usage_source'] = name
+        previous = 0.0
+        for i, event in enumerate(events, 1):
+            value = report.number(event.get('total_cost_usd'))
+            item = {'attempt': i, 'cumulative_cost_usd_list_estimate': value,
+                    'incremental_cost_usd_list_estimate': value - previous if value is not None and previous is not None and value >= previous else None,
+                    'reported_check_passed': None}
+            try:
+                item['usage_per_input'] = report.public_turn_usage(event)
+            except EXPORT_ERRORS:
+                row['artifact_errors'].append('Attempt ' + str(i) + ' usage is malformed.')
+            row['attempts'].append(item)
+            previous = value
+        try:
+            row['final_model_usage_cumulative'] = report.public_model_usage(events[-1])
+        except EXPORT_ERRORS:
+            row['artifact_errors'].append('Final model usage is malformed.')
+    row['attempt_count'] = len(row['attempts'])
+    row['cost_with_preparation_usd_list_estimate'] = None
+    row['total_wall_with_preparation_s'] = None
+    # Candidate exports remain useful even when the final record is truncated.
+    try:
+        paths = sorted(run_dir.iterdir())
+    except OSError as failure:
+        paths = []
+        row['artifact_errors'].append('Candidate listing: ' + scrub(str(failure)[:1000]))
+    for path in paths:
+        if not report.re.fullmatch(r'(?:candidate-\d+|normalized-candidate-\d+|final-candidate)\.json', path.name):
+            continue
+        try:
+            patch, binary = builder.build(report.read_json(path))
+            name = label + '/' + path.stem + '.patch'
+            row['artifacts'][name] = dict(report.export_text(output / name, patch, scrub), binary_files_omitted=binary, candidate_json_sha256=report.sha(path.read_bytes()))
+        except EXPORT_ERRORS as failure:
+            row['artifact_errors'].append(path.name + ': ' + scrub(str(failure)[:1000]))
+    return row
+
+
+def export_observed(run_dir, label, config, runs_root, output, builder, prep, condition=None):
+    try:
+        return report.export_run(run_dir, label, config, runs_root, output, builder, prep, condition)
+    except EXPORT_ERRORS as error:
+        return recover_run(run_dir, label, config, runs_root, output, builder, prep, condition, error)
+
+
 def export_registered(row, run_dir, plan, config, runs_root, output, builder, prep):
-    exported = report.export_run(run_dir, row['label'], config, runs_root, output, builder, prep, row['condition'])
+    exported = export_observed(run_dir, row['label'], config, runs_root, output, builder, prep, row['condition'])
     exported.update(arm=row['arm'], block=row['block'], ordinal=row['ordinal'], expected_model=row['model'])
     exported['runner_reported_accepted'] = exported['accepted']
     exported['model_binding_ok'] = False
@@ -117,7 +209,7 @@ def export_registered(row, run_dir, plan, config, runs_root, output, builder, pr
         return exported
     final = run_dir / 'result.json'
     arm_path = run_dir / 'arm-result.json'
-    if final.exists():
+    if final.exists() and exported['status'] != 'export_error':
         metadata = report.read_json(final)
         valid, served = binding(metadata, row['model'])
         version_ok, version = coordinator.cli_version_binding(metadata)
@@ -135,12 +227,16 @@ def export_registered(row, run_dir, plan, config, runs_root, output, builder, pr
         if not version_ok:
             errors.append('claude_cli_version_binding')
         if arm_path.exists():
-            arm = report.read_json(arm_path)
-            wanted = {'plan_sha256': plan_digest(plan), 'runner_result_sha256': report.sha(final.read_bytes()), 'ordinal': row['ordinal'], 'block': row['block'], 'arm': row['arm'], 'model': row['model'], 'condition': row['condition'], 'model_binding_ok': valid, 'served_models_from_cumulative_usage': served, 'expected_claude_cli_version': coordinator.CLAUDE_CLI_VERSION, 'claude_cli_version': version, 'cli_version_binding_ok': version_ok, 'accepted': bool(metadata.get('accepted') and valid and version_ok), 'completed': bool(metadata.get('completed')), 'cost_complete': bool(metadata.get('cost_complete')), 'cost_usd_list_estimate': metadata.get('cost_usd_list_estimate')}
-            if all(arm.get(key) == value for key, value in wanted.items()):
-                exported['arm_record_valid'] = True
-            else:
-                errors.append('arm_record_identity')
+            try:
+                arm = report.read_json(arm_path)
+                wanted = {'plan_sha256': plan_digest(plan), 'runner_result_sha256': report.sha(final.read_bytes()), 'ordinal': row['ordinal'], 'block': row['block'], 'arm': row['arm'], 'model': row['model'], 'condition': row['condition'], 'model_binding_ok': valid, 'served_models_from_cumulative_usage': served, 'expected_claude_cli_version': coordinator.CLAUDE_CLI_VERSION, 'claude_cli_version': version, 'cli_version_binding_ok': version_ok, 'accepted': bool(metadata.get('accepted') and valid and version_ok), 'completed': bool(metadata.get('completed')), 'cost_complete': bool(metadata.get('cost_complete')), 'cost_usd_list_estimate': metadata.get('cost_usd_list_estimate')}
+                if all(arm.get(key) == value for key, value in wanted.items()):
+                    exported['arm_record_valid'] = True
+                else:
+                    errors.append('arm_record_identity')
+            except EXPORT_ERRORS as error:
+                errors.append('malformed_arm_record')
+                exported['artifact_errors'].append('arm-result.json: ' + report.Scrubber(config, runs_root)(str(error)[:1000]))
         else:
             errors.append('missing_arm_record')
     exported['accepted'] = bool(exported['runner_reported_accepted'] and exported['model_binding_ok'] and exported['cli_version_binding_ok'] and exported['arm_record_valid'])
@@ -276,17 +372,15 @@ def build_report(args):
     for row in coordinator.schedule():
         try:
             exported = export_registered(row, runs_root / row['label'], plan, config, runs_root, args.output, builder, prep)
-        except (OSError, ValueError, TypeError, KeyError) as error:
-            exported = {**row, 'registered': True, 'expected_model': row['model'], 'status': 'export_error', 'final_result_available': (runs_root / row['label'] / 'result.json').exists(), 'accepted': False, 'completed': False, 'attempts': [], 'input_consistency_errors': ['export_error'], 'export_error': report.Scrubber(config, runs_root)(str(error)[:1000])}
+        except EXPORT_ERRORS as error:
+            exported = recover_run(runs_root / row['label'], row['label'], config, runs_root, args.output, builder, prep, row['condition'], error)
+            exported.update(arm=row['arm'], block=row['block'], ordinal=row['ordinal'], expected_model=row['model'])
         rows.append(exported)
     expected = {row['label'] for row in coordinator.schedule()}
     if runs_root.exists():
         for i, extra in enumerate(sorted(path for path in runs_root.iterdir() if path.is_dir() and path.name not in expected), 1):
             label = 'unregistered-' + str(i)
-            try:
-                rows.append(report.export_run(extra, label, config, runs_root, args.output, builder, prep))
-            except (OSError, ValueError, TypeError, KeyError) as error:
-                rows.append({'label': label, 'registered': False, 'status': 'export_error', 'final_result_available': (extra / 'result.json').exists(), 'accepted': False, 'completed': False, 'export_error': report.Scrubber(config, runs_root)(str(error)[:1000])})
+            rows.append(export_observed(extra, label, config, runs_root, args.output, builder, prep))
     warmups = []
     setup_errors = []
     for key, filename in [('runner', 'replay.py'), ('instruction_guard', 'instruction_guard.py')]:
@@ -296,19 +390,30 @@ def build_report(args):
     warmup_root = args.warmups_root or args.study_root / 'warmups'
     for family, model in coordinator.MODELS.items():
         path = warmup_root / family
-        row = report.export_run(path, 'warmup-' + family, config, warmup_root, args.output, builder, dict(prep, warm_brief_wall_s=0.0, paid_brief_cost_usd=0.0))
+        row = export_observed(path, 'warmup-' + family, config, warmup_root, args.output, builder, dict(prep, warm_brief_wall_s=0.0, paid_brief_cost_usd=0.0))
         valid = False
         row.update(expected_claude_cli_version=coordinator.CLAUDE_CLI_VERSION, claude_cli_version=None, cli_version_binding_ok=False)
-        if (path / 'result.json').exists():
-            metadata = report.read_json(path / 'result.json')
-            valid, served = binding(metadata, model)
-            version_ok, version = coordinator.cli_version_binding(metadata)
-            row.update(claude_cli_version=version, cli_version_binding_ok=version_ok)
-            valid = valid and metadata.get('instructions_sha256') == report.sha(coordinator.read(config['instructions_file'])) and metadata.get('warmup') is True and metadata.get('input_turns_sent') == metadata.get('session_results') == 1
-            row['served_models_from_cumulative_usage'] = served
+        if (path / 'result.json').exists() and row['status'] != 'export_error':
+            try:
+                metadata = report.read_json(path / 'result.json')
+                valid, served = binding(metadata, model)
+                version_ok, version = coordinator.cli_version_binding(metadata)
+                row.update(claude_cli_version=version, cli_version_binding_ok=version_ok)
+                instructions = coordinator.read(config['instructions_file'])
+                expected_inputs = {'source_commit': config['source_commit'], 'instructions_sha256': report.sha(instructions), 'common_input_sha256': report.sha(instructions + b'\0' + WARMUP_PROMPT), 'prompt_sha256': report.sha(WARMUP_PROMPT), 'suffix_sha256': report.sha(b'')}
+                errors = row.setdefault('input_consistency_errors', [])
+                for key, value in expected_inputs.items():
+                    if metadata.get(key) != value:
+                        errors.append('registered_warmup_' + key)
+                valid = valid and metadata.get('warmup') is True and metadata.get('input_turns_sent') == metadata.get('session_results') == 1 and row.get('tool_calls') == 0 and not errors and not row.get('artifact_errors')
+                row['served_models_from_cumulative_usage'] = served
+            except EXPORT_ERRORS as error:
+                valid = False
+                row.setdefault('input_consistency_errors', []).append('malformed_warmup_binding')
+                row.setdefault('artifact_errors', []).append(report.Scrubber(config, warmup_root)(str(error)[:1000]))
         row['model_binding_ok'] = valid
         if not row.get('completed') or not row.get('cost_complete') or not valid or not row['cli_version_binding_ok']:
-            setup_errors.append('The ' + family + ' shared warmup is missing, incomplete, or has a different CLI version.')
+            setup_errors.append('The ' + family + ' shared warmup is missing, incomplete, or differs from its registered inputs, model, CLI version, or no-tool policy.')
         warmups.append(row)
     observed = [row for row in rows + warmups if row['status'] != 'missing']
     document = {'schema': SCHEMA, 'plan_sha256': plan_digest(plan), 'protocol_sha256': report.sha(args.protocol.read_bytes()), 'source_commit': config['source_commit'], 'preparation': prep, 'shared_setup': {'warmups': warmups, 'cold_index_wall_s': cold_index_wall(prep, args.cold_index_seconds), 'machine_cost_usd': None, 'engineering_cost_usd': None}, 'runs': rows, 'analysis': analyze(rows, setup_errors), 'cost_accounting': {'registered_known_cli_cost_usd_list_estimate': sum(row.get('cost_usd_list_estimate') or 0 for row in rows if row['registered']), 'unregistered_known_cli_cost_usd_list_estimate': sum(row.get('cost_usd_list_estimate') or 0 for row in rows if not row['registered']), 'shared_warmup_known_cli_cost_usd_list_estimate': sum(row.get('cost_usd_list_estimate') or 0 for row in warmups), 'all_observed_known_cli_cost_usd_list_estimate': sum(row.get('cost_usd_list_estimate') or 0 for row in observed), 'complete_for_observed_runs': all(row.get('cost_complete') for row in observed), 'note': 'Each cumulative CLI report is counted once. Unknown usage can make these sums lower bounds. No costs from previous task panels are pooled.'}}
@@ -442,7 +547,100 @@ class FactorialTests(unittest.TestCase):
         metadata['attempts'][0]['result']['modelUsage'][coordinator.MODELS['opus']] = {}
         self.assertFalse(binding(metadata, model)[0])
 
-    def test_export_retains_repairs_and_sanitizes_without_pooling_cumulative_rows(self):
+    def test_malformed_arm_record_preserves_valid_cost_attempts_and_artifacts(self):
+        for malformed in ['{', '[]']:
+            with self.subTest(malformed=malformed), self.synthetic_study() as (args, builder):
+                run = args.study_root / 'runs' / coordinator.schedule()[0]['label']
+                (run / 'arm-result.json').write_text(malformed)
+                with mock.patch.object(report, 'PatchBuilder', return_value=builder):
+                    document = build_report(args)
+                row = document['runs'][0]
+                self.assertEqual(document['analysis']['primary_verdict'], 'pending')
+                self.assertEqual(row['cost_usd_list_estimate'], 1.0)
+                self.assertEqual(row['attempt_count'], 2)
+                self.assertTrue(row['artifacts'])
+                self.assertFalse(row['accepted'])
+                self.assertIn('malformed_arm_record', row['input_consistency_errors'])
+                self.assertAlmostEqual(document['cost_accounting']['all_observed_known_cli_cost_usd_list_estimate'], 12.22)
+
+    def test_truncated_final_records_recover_usage_without_passing_or_double_counting(self):
+        for warmup in [False, True]:
+            with self.subTest(warmup=warmup), self.synthetic_study() as (args, builder):
+                run = args.study_root / ('warmups/sonnet' if warmup else 'runs/' + coordinator.schedule()[0]['label'])
+                original = report.read_json(run / 'result.json')
+                progress = dict(original, attempts=original['attempts'][:1])
+                progress['cost_usd_list_estimate'] = progress['attempts'][0]['result']['total_cost_usd']
+                report.write_json(run / 'progress.json', progress)
+                (run / 'events.jsonl').write_text(''.join(json.dumps(a['result']) + '\n' for a in original['attempts']))
+                (run / 'result.json').write_text('{')
+                with mock.patch.object(report, 'PatchBuilder', return_value=builder):
+                    document = build_report(args)
+                row = document['shared_setup']['warmups'][1] if warmup else document['runs'][0]
+                self.assertTrue((args.output / 'metrics.json').is_file())
+                self.assertEqual(len(document['runs']), 16)
+                self.assertEqual(document['analysis']['primary_verdict'], 'pending')
+                self.assertEqual(row['cost_usd_list_estimate'], original['cost_usd_list_estimate'])
+                self.assertEqual(row['attempt_count'], len(original['attempts']))
+                self.assertFalse(row['cost_complete'])
+                self.assertFalse(row['accepted'])
+                self.assertEqual(row['cost_status'], 'incomplete_lower_bound')
+                self.assertTrue(row['final_model_usage_cumulative'])
+                if not warmup:
+                    self.assertTrue(row['artifacts'])
+                self.assertAlmostEqual(document['cost_accounting']['all_observed_known_cli_cost_usd_list_estimate'], 12.22)
+                self.assertFalse(document['cost_accounting']['complete_for_observed_runs'])
+                public = (args.output / 'metrics.json').read_text()
+                self.assertNotIn('PRIVATE_RESPONSE', public)
+                self.assertNotIn('PRIVATE_ACCOUNT', public)
+
+    def test_unrecoverable_cost_stays_unknown_and_other_rows_remain_visible(self):
+        with self.synthetic_study() as (args, builder):
+            run = args.study_root / 'runs' / coordinator.schedule()[0]['label']
+            (run / 'result.json').write_text('{')
+            with mock.patch.object(report, 'PatchBuilder', return_value=builder):
+                document = build_report(args)
+            row = document['runs'][0]
+            self.assertIsNone(row['cost_usd_list_estimate'])
+            self.assertEqual(row['cost_status'], 'unknown')
+            self.assertFalse(row['cost_complete'])
+            self.assertEqual(len(document['runs']), 16)
+            self.assertEqual(document['analysis']['primary_verdict'], 'pending')
+            self.assertAlmostEqual(document['cost_accounting']['all_observed_known_cli_cost_usd_list_estimate'], 11.22)
+            self.assertFalse(document['cost_accounting']['complete_for_observed_runs'])
+
+    def test_malformed_scored_binding_retains_otherwise_valid_usage(self):
+        with self.synthetic_study() as (args, builder):
+            path = args.study_root / 'runs' / coordinator.schedule()[0]['label'] / 'result.json'
+            metadata = report.read_json(path)
+            metadata['init'] = []
+            report.write_json(path, metadata)
+            with mock.patch.object(report, 'PatchBuilder', return_value=builder):
+                document = build_report(args)
+            row = document['runs'][0]
+            self.assertEqual(row['cost_usd_list_estimate'], 1.0)
+            self.assertEqual(row['attempt_count'], 2)
+            self.assertFalse(row['cost_complete'])
+            self.assertEqual(document['analysis']['primary_verdict'], 'pending')
+            self.assertAlmostEqual(document['cost_accounting']['all_observed_known_cli_cost_usd_list_estimate'], 12.22)
+
+    def test_warmup_input_mismatches_block_the_gate_and_keep_the_charge(self):
+        for key in ['source_commit', 'instructions_sha256', 'common_input_sha256', 'prompt_sha256', 'suffix_sha256']:
+            with self.subTest(key=key), self.synthetic_study() as (args, builder):
+                path = args.study_root / 'warmups/sonnet/result.json'
+                metadata = report.read_json(path)
+                metadata[key] = 'd' * (40 if key == 'source_commit' else 64)
+                report.write_json(path, metadata)
+                with mock.patch.object(report, 'PatchBuilder', return_value=builder):
+                    document = build_report(args)
+                warmup = document['shared_setup']['warmups'][1]
+                self.assertFalse(warmup['model_binding_ok'])
+                self.assertIn('registered_warmup_' + key, warmup['input_consistency_errors'])
+                self.assertEqual(warmup['cost_usd_list_estimate'], 0.01)
+                self.assertEqual(document['analysis']['primary_verdict'], 'pending')
+                self.assertAlmostEqual(document['cost_accounting']['all_observed_known_cli_cost_usd_list_estimate'], 12.22)
+
+    @contextmanager
+    def synthetic_study(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             inputs = []
@@ -471,7 +669,7 @@ class FactorialTests(unittest.TestCase):
             report.write_json(study / 'schedule.json', {'plan_sha256': plan_digest(plan), 'runs': coordinator.schedule()})
             def metadata(model, condition, cost, warmup=False):
                 instructions = Path(config['instructions_file']).read_bytes()
-                task = Path(config['task_file']).read_bytes()
+                task = WARMUP_PROMPT if warmup else Path(config['task_file']).read_bytes()
                 suffix = BRIEF_PREFIX + Path(config['brief_file']).read_bytes() if condition == 'treatment' else b''
                 costs = [cost] if warmup else [cost * 0.8, cost]
                 attempts = [{'result': {'type': 'result', 'subtype': 'success', 'is_error': False, 'result': 'PRIVATE_RESPONSE', 'total_cost_usd': value, 'modelUsage': {model: {'cacheReadInputTokens': 500 if i == 0 else 900, 'account': 'PRIVATE_ACCOUNT'}}}, 'verification': {'passed': i == len(costs) - 1, 'checks': [{'name': 'acceptance', 'exit_code': 0 if i == len(costs) - 1 else 1, 'log': '/Users/private-person/account\n'}]}} for i, value in enumerate(costs)]
@@ -488,6 +686,11 @@ class FactorialTests(unittest.TestCase):
             args = argparse.Namespace(plan=plan_path, study_root=study, preparation=preparation_path, protocol=protocol_path, output=root / 'public', warmups_root=None, cold_index_seconds=None)
             builder = mock.Mock()
             builder.build.return_value = ('', [])
+            yield args, builder
+
+    def test_export_retains_repairs_and_sanitizes_without_pooling_cumulative_rows(self):
+        with self.synthetic_study() as (args, builder):
+            study = args.study_root
             with mock.patch.object(report, 'PatchBuilder', return_value=builder):
                 document = build_report(args)
             self.assertEqual(document['analysis']['primary_verdict'], 'cost_gate_passed')

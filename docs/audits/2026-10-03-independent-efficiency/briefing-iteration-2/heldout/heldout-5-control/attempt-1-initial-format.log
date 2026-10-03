@@ -1,0 +1,49 @@
+Diff in <VERIFICATION_ROOT>/repo/crates/gym/src/runs_microcoder.rs:803:
+         let mut dirs: Vec<&PathBuf> = dirs.iter().collect();
+         dirs.sort();
+         dirs.dedup();
+-        let manifests: Vec<Option<Manifest>> =
+-            dirs.iter().map(|dir| Manifest::read(dir)).collect();
++        let manifests: Vec<Option<Manifest>> = dirs.iter().map(|dir| Manifest::read(dir)).collect();
+         // Every copy of each run: its rank, its path, and its manifest.
+         let mut found: BTreeMap<String, Vec<(u8, PathBuf, usize)>> = BTreeMap::new();
+         for (index, dir) in dirs.iter().enumerate() {
+Diff in <VERIFICATION_ROOT>/repo/crates/gym/src/runs_microcoder.rs:819:
+                     Some(_) => 1,
+                     None => 2,
+                 };
+-                found
+-                    .entry(name)
+-                    .or_default()
+-                    .push((rank, run_dir, index));
++                found.entry(name).or_default().push((rank, run_dir, index));
+             }
+         }
+         let chosen = found
+Diff in <VERIFICATION_ROOT>/repo/crates/gym/src/runs_microcoder.rs:1491:
+                 let run = parent.join(name);
+                 std::fs::create_dir_all(&run).unwrap();
+                 for file in ["summary.json", "events.jsonl"] {
+-                    std::fs::copy(fixtures().join("runs").join(name).join(file), run.join(file))
+-                        .unwrap();
++                    std::fs::copy(
++                        fixtures().join("runs").join(name).join(file),
++                        run.join(file),
++                    )
++                    .unwrap();
+                 }
+             }
+         }
+Diff in <VERIFICATION_ROOT>/repo/crates/gym/src/runs_microcoder.rs:1530:
+         let m = run.microcoder.as_ref().unwrap();
+         assert!(m.mixed);
+         assert_eq!(m.commit.as_deref(), Some("a784eadef8"));
+-        assert!(run.notes.iter().any(|n| n.contains("its records are mixed")));
++        assert!(
++            run.notes
++                .iter()
++                .any(|n| n.contains("its records are mixed"))
++        );
+     }
+ 
+     #[test]

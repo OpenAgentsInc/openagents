@@ -6,15 +6,53 @@ own tests passed, and the original briefing did not include the faulty function.
 That result is retained. Issue #10166 is development data for this round.
 Iteration work is tracked in [#10282](https://github.com/OpenAgentsInc/openagents/issues/10282).
 
-## Development result and held-out test
+## Result: no clear win
+
+The [held-out panel](heldout/README.md) is complete. Both arms pass the frozen
+checks in 4/4 final runs. Median CLI list-price cost is $1.1053 for control and
+$0.9660 with the brief, a 12.6% reduction. Treatment is cheaper in three of
+four pairs. Median recorded endpoint time is 301.2 versus 278.5 seconds, a
+7.5% reduction. The result falls short of the registered 20% cost threshold.
+
+| Held-out measure | Control | Briefing |
+| --- | ---: | ---: |
+| Final patches passing the registered checks | 4/4 | 4/4 |
+| First attempts passing those checks | 3/4 | 4/4 |
+| Median CLI list-price estimate | $1.1053 | $0.9660 |
+| Median recorded endpoint time | 301.2 s | 278.5 s |
+| Median tool calls | 29 | 33.5 |
+| Median file reads | 8 | 10.5 |
+
+The final control's first draft changed `read_all` but missed its `Catalog`
+consumer; one repair corrected it. The briefing does not reduce median tool
+calls or reads on this task. The evidence therefore does not establish reduced
+discovery as the cause of the cost difference. Cache and model variation remain
+possible contributors in this small panel.
+
+Source review finds a broader quality limitation in both arms: some accepted
+patches can still select different equal-rank copies or conflicting manifest
+marks when input order reverses. The frozen checker covers retained-versus-live
+precedence but omits those conflicts. The [independent audit](heldout-audit.json)
+identifies affected candidates and source evidence. The
+[post hoc counterexample tests](posthoc_equal_rank.rs) are prepared but have
+not been compiled or executed; they do not change registered scores. The
+historical reference sorts sources and copy candidates and avoids these gaps
+by static inspection. Passing this panel is not proof of complete correctness.
+
+The next [model and structured-briefing experiment](../briefing-model-factorial/README.md)
+separates a less expensive executor from the brief's contribution. Its reserve,
+packer, order, and gate are frozen before scored calls. This failed cost gate
+remains part of the evidence.
+
+## Development result
 
 The [development panel](development/README.md) is complete. Both arms reach
 4/4 accepted patches, each after one repair. Median CLI cost is $0.8631 for
 control and $0.7564 with the brief, a 12.4% reduction. Treatment is cheaper
 in three of four pairs. Median recorded endpoint wall time is 222.0 versus 167.7 seconds,
 a 24.5% reduction. This falls short of the prospective 20% cost threshold.
-The registered development acceptance gate permits the unchanged method to
-advance to the independent Gym task; that panel is running.
+The registered development acceptance gate permitted the unchanged method to
+advance to the independent Gym task reported above.
 
 Elapsed time includes source export and preflight checks. The final control
 setup takes 74.0 seconds; all other scored development setups take 3.7–4.0

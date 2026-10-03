@@ -1,0 +1,12 @@
+Diff in <VERIFICATION_ROOT>/repo/crates/gym/src/runs_microcoder.rs:447:
+                     Some(_) => 1,
+                     None => 0,
+                 };
+-                if chosen
+-                    .get(&name)
+-                    .is_none_or(|(_, _, held)| *held < rank)
+-                {
++                if chosen.get(&name).is_none_or(|(_, _, held)| *held < rank) {
+                     chosen.insert(name, (run_dir, index, rank));
+                 }
+             }

@@ -1,0 +1,62 @@
+Diff in <VERIFICATION_ROOT>/repo/crates/gym/src/runs_beats_winner.rs:697:
+         assert_eq!(live_first, retained_first);
+         assert_eq!(live_first.len(), 1, "{live_first:#?}");
+         let claim = live_first[0]["claim"].as_str().unwrap();
+-        assert!(claim.contains("passed drift-check in 2 of 3 graded runs."), "{claim}");
++        assert!(
++            claim.contains("passed drift-check in 2 of 3 graded runs."),
++            "{claim}"
++        );
+     }
+ 
+     #[test]
+Diff in <VERIFICATION_ROOT>/repo/crates/gym/src/runs_microcoder.rs:792:
+     let mut sorted: Vec<&PathBuf> = dirs.iter().collect();
+     sorted.sort();
+     sorted.dedup();
+-    let manifests: Vec<(&PathBuf, Option<Manifest>)> =
+-        sorted.into_iter().map(|dir| (dir, Manifest::read(dir))).collect();
++    let manifests: Vec<(&PathBuf, Option<Manifest>)> = sorted
++        .into_iter()
++        .map(|dir| (dir, Manifest::read(dir)))
++        .collect();
+ 
+     // Every manifest's marks, the lowest path's winning a conflict.
+     let mut marks = Manifest::default();
+Diff in <VERIFICATION_ROOT>/repo/crates/gym/src/runs_microcoder.rs:800:
+     for manifest in manifests.iter().filter_map(|(_, m)| m.as_ref()) {
+         for (name, why) in &manifest.mixed {
+-            marks.mixed.entry(name.clone()).or_insert_with(|| why.clone());
++            marks
++                .mixed
++                .entry(name.clone())
++                .or_insert_with(|| why.clone());
+         }
+         for (name, commit) in &manifest.commits {
+             marks
+Diff in <VERIFICATION_ROOT>/repo/crates/gym/src/runs_microcoder.rs:1445:
+             let run = parent.join(name);
+             std::fs::create_dir_all(&run).unwrap();
+             for file in ["summary.json", "events.jsonl"] {
+-                std::fs::copy(fixtures().join("runs").join(name).join(file), run.join(file))
+-                    .unwrap();
++                std::fs::copy(
++                    fixtures().join("runs").join(name).join(file),
++                    run.join(file),
++                )
++                .unwrap();
+             }
+         }
+         // The manifest marks a run it holds and one only the live
+Diff in <VERIFICATION_ROOT>/repo/crates/gym/src/runs_microcoder.rs:1460:
+             ],
+         });
+         std::fs::write(host.join(MANIFEST), manifest.to_string()).unwrap();
+-        for dirs in [
+-            [live.clone(), host.clone()],
+-            [host.clone(), live.clone()],
+-        ] {
++        for dirs in [[live.clone(), host.clone()], [host.clone(), live.clone()]] {
+             let runs = read_all(&dirs, &Knowledge::default(), 0);
+             assert_eq!(runs.len(), 2);
+             let retained = find(&runs, "drift-check-1790393791");

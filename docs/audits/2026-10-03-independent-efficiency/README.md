@@ -24,9 +24,12 @@ The [focused briefing iteration](briefing-iteration-2/README.md) adds complete
 instructions, a bounded source pack, a conditional Git probe, independent
 checks, and one repair. Its eight development runs all finish successfully;
 the briefing reduces median cost by 12.4%, below the 20% prospective win
-threshold. An unchanged held-out panel and a separately planned
-[model-by-briefing experiment](briefing-model-factorial/plan.md) continue the
-investigation. These later studies do run paid executor sessions; their
+threshold. Its unchanged held-out panel also misses that gate: all final
+patches pass the registered checks, with 12.6% lower median estimated cost and
+7.5% lower recorded time. Source review identifies additional untested order
+conflicts in both arms. A separately registered
+[model and structured-briefing experiment](briefing-model-factorial/README.md)
+continues the investigation. These later studies do run paid executor sessions; their
 scope and accounting are documented separately from the original audit.
 
 The [new iteration theses](iteration-theses.md) turn the observed retrieval,

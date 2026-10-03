@@ -1,0 +1,22 @@
+Diff in <VERIFICATION_ROOT>/repo/crates/gym/src/runs.rs:465:
+                     .map(crate::runs_microcoder::Knowledge::read)
+                     .unwrap_or_default()
+             });
+-            let mut run =
+-                crate::runs_microcoder::read(&run_dir, knowledge, manifest.as_ref(), now);
++            let mut run = crate::runs_microcoder::read(&run_dir, knowledge, manifest.as_ref(), now);
+             let (_, info) = self.task_info(None, &run.task);
+             run.ask = info.ask;
+             run.category = info.category;
+Diff in <VERIFICATION_ROOT>/repo/crates/gym/src/runs_beats_winner.rs:711:
+         assert_eq!(live_first, retained_first);
+         assert_eq!(live_first.len(), 1, "{live_first:#?}");
+         let (claim, caveats) = &live_first[0];
+-        assert!(claim.contains("passed drift-check in 2 of 3 graded runs."), "{claim}");
++        assert!(
++            claim.contains("passed drift-check in 2 of 3 graded runs."),
++            "{claim}"
++        );
+         assert!(
+             caveats.iter().any(|c| c.contains("hold two runs' records")),
+             "{caveats:#?}"

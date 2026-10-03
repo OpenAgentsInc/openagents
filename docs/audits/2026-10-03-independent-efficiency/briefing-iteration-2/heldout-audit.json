@@ -1,0 +1,1014 @@
+{
+  "schema": "openagents.briefing-replay.heldout-audit.v1",
+  "metrics_sha256": "97f82674d3260e1708dab2f732066064bed3f50bf25eb777d9223adc8cc8ab02",
+  "registration_sha256": "54d5fd9573a88e8c5a566908610f1afbbdc911ce5a54ed7dfcd8e67d127e60de",
+  "source_commit": "f29611f211747884b4f508db80634d3f6df2a5e9",
+  "task_title": "Read Microcoder runs independently of directory order",
+  "registered_verdict": "no_clear_win",
+  "independent_recomputation": {
+    "efficiency_gate_passed": false,
+    "correctness_numeric_gate_passed": false,
+    "median_cost_ratio": 0.8739411871623277,
+    "median_cost_reduction_fraction": 0.12605881283767228,
+    "median_recorded_endpoint_wall_ratio": 0.9245985336451025,
+    "median_recorded_endpoint_wall_reduction_fraction": 0.07540146635489753,
+    "cheaper_pairs": 3,
+    "median_paired_cost_reduction_fraction_descriptive": 0.06040667378902603
+  },
+  "conditions": {
+    "control": {
+      "accepted": 4,
+      "completed": 4,
+      "first_attempt_accepted": 3,
+      "repairs": 1,
+      "median_cost_usd_list_estimate": 1.1053063,
+      "median_recorded_endpoint_wall_s": 301.2488118545,
+      "median_without_source_setup_wall_s": 285.615023834,
+      "median_agent_wall_s": 196.818614938,
+      "median_checks_wall_s": 87.09100662499999,
+      "median_source_setup_wall_s": 17.850201187,
+      "source_setup_wall_s_by_run": {
+        "heldout-1-control": 28.256381583,
+        "heldout-4-control": 33.69445475,
+        "heldout-5-control": 3.0111944580000003,
+        "heldout-8-control": 7.444020791
+      },
+      "median_tool_calls": 29.0,
+      "median_read_calls": 8.0,
+      "total_tool_counts": {
+        "Read": 33,
+        "Edit": 44,
+        "Write": 0,
+        "Glob": 5,
+        "Grep": 28
+      }
+    },
+    "treatment": {
+      "accepted": 4,
+      "completed": 4,
+      "first_attempt_accepted": 4,
+      "repairs": 0,
+      "median_cost_usd_list_estimate": 0.9659727,
+      "median_recorded_endpoint_wall_s": 278.53420970300004,
+      "median_without_source_setup_wall_s": 243.02093334900005,
+      "median_agent_wall_s": 150.49723999999998,
+      "median_checks_wall_s": 87.589789917,
+      "median_source_setup_wall_s": 32.450541396,
+      "source_setup_wall_s_by_run": {
+        "heldout-2-treatment": 34.291590292,
+        "heldout-3-treatment": 30.609492499999998,
+        "heldout-6-treatment": 3.295175417,
+        "heldout-7-treatment": 40.417060207999995
+      },
+      "median_tool_calls": 33.5,
+      "median_read_calls": 10.5,
+      "total_tool_counts": {
+        "Read": 40,
+        "Edit": 54,
+        "Write": 0,
+        "Glob": 5,
+        "Grep": 36
+      }
+    }
+  },
+  "pairs": [
+    {
+      "pair": 1,
+      "control": "heldout-1-control",
+      "treatment": "heldout-2-treatment",
+      "control_cost_usd": 1.102048,
+      "treatment_cost_usd": 0.9153686,
+      "treatment_cost_ratio": 0.8306068338221203,
+      "treatment_cheaper": true,
+      "treatment_recorded_endpoint_wall_ratio": 0.8837382404237757
+    },
+    {
+      "pair": 2,
+      "control": "heldout-4-control",
+      "treatment": "heldout-3-treatment",
+      "control_cost_usd": 0.8762152000000001,
+      "treatment_cost_usd": 0.9372168000000001,
+      "treatment_cost_ratio": 1.0696194268257386,
+      "treatment_cheaper": false,
+      "treatment_recorded_endpoint_wall_ratio": 1.0252613651044533
+    },
+    {
+      "pair": 3,
+      "control": "heldout-5-control",
+      "treatment": "heldout-6-treatment",
+      "control_cost_usd": 1.1085646000000002,
+      "treatment_cost_usd": 0.9947286,
+      "treatment_cost_ratio": 0.8973122540625956,
+      "treatment_cheaper": true,
+      "treatment_recorded_endpoint_wall_ratio": 0.8384306551964171
+    },
+    {
+      "pair": 4,
+      "control": "heldout-8-control",
+      "treatment": "heldout-7-treatment",
+      "control_cost_usd": 1.1468639999999999,
+      "treatment_cost_usd": 1.1260764,
+      "treatment_cost_ratio": 0.9818743983593523,
+      "treatment_cheaper": true,
+      "treatment_recorded_endpoint_wall_ratio": 0.7283621706104407
+    }
+  ],
+  "cost_accounting": {
+    "registered_runs_known_cli_cost_usd_list_estimate": 8.207082199999999,
+    "unregistered_runs_known_cli_cost_usd_list_estimate": 0,
+    "shared_warmup_known_cli_cost_usd_list_estimate": 0.11636679999999999,
+    "all_observed_known_cli_cost_usd_list_estimate": 8.323448999999998,
+    "complete_for_observed_runs": true,
+    "note": "Known cumulative reports are counted once per run, including failures. Missing or interrupted usage can make this total a lower bound. Machine and engineering costs are not measured."
+  },
+  "preparation": {
+    "warm_brief_wall_s": 0.1987855990000753,
+    "paid_brief_cost_usd": 0.0,
+    "measurement_sha256": "aa2dfeeffadd7291ec98892755e7917e3604354d7af6754ee152e13322737739",
+    "payload_sha256": "cc5c8d45adfce27ef591feee629d51bc5358dd9e4c9cbc4c5014753fe88108bc",
+    "payload_bytes": 16202,
+    "warm_preview_s": 0.1987855990000753,
+    "runtime_probe_s": 0.0,
+    "policy": "Apply this frozen measured warm preparation to each treatment endpoint; machine charges are not measured."
+  },
+  "shared_cold_index_wall_s": 1.136651354,
+  "run_identities": [
+    {
+      "run": "heldout-1-control",
+      "cli_version": "2.1.287",
+      "model": "claude-opus-5-5",
+      "served_models": [
+        "claude-opus-5-5"
+      ],
+      "effort": "medium",
+      "scope_failure": false
+    },
+    {
+      "run": "heldout-2-treatment",
+      "cli_version": "2.1.287",
+      "model": "claude-opus-5-5",
+      "served_models": [
+        "claude-opus-5-5"
+      ],
+      "effort": "medium",
+      "scope_failure": false
+    },
+    {
+      "run": "heldout-3-treatment",
+      "cli_version": "2.1.287",
+      "model": "claude-opus-5-5",
+      "served_models": [
+        "claude-opus-5-5"
+      ],
+      "effort": "medium",
+      "scope_failure": false
+    },
+    {
+      "run": "heldout-4-control",
+      "cli_version": "2.1.287",
+      "model": "claude-opus-5-5",
+      "served_models": [
+        "claude-opus-5-5"
+      ],
+      "effort": "medium",
+      "scope_failure": false
+    },
+    {
+      "run": "heldout-5-control",
+      "cli_version": "2.1.287",
+      "model": "claude-opus-5-5",
+      "served_models": [
+        "claude-opus-5-5"
+      ],
+      "effort": "medium",
+      "scope_failure": false
+    },
+    {
+      "run": "heldout-6-treatment",
+      "cli_version": "2.1.287",
+      "model": "claude-opus-5-5",
+      "served_models": [
+        "claude-opus-5-5"
+      ],
+      "effort": "medium",
+      "scope_failure": false
+    },
+    {
+      "run": "heldout-7-treatment",
+      "cli_version": "2.1.287",
+      "model": "claude-opus-5-5",
+      "served_models": [
+        "claude-opus-5-5"
+      ],
+      "effort": "medium",
+      "scope_failure": false
+    },
+    {
+      "run": "heldout-8-control",
+      "cli_version": "2.1.287",
+      "model": "claude-opus-5-5",
+      "served_models": [
+        "claude-opus-5-5"
+      ],
+      "effort": "medium",
+      "scope_failure": false
+    }
+  ],
+  "checks": [
+    {
+      "run": "heldout-1-control",
+      "attempt": 1,
+      "name": "initial-format",
+      "exit_code": 1,
+      "test_batches": 0,
+      "test_totals": {
+        "passed": 0,
+        "failed": 0,
+        "ignored": 0
+      },
+      "log": "heldout/heldout-1-control/attempt-1-initial-format.log"
+    },
+    {
+      "run": "heldout-1-control",
+      "attempt": 1,
+      "name": "autoformat",
+      "exit_code": 0,
+      "test_batches": 0,
+      "test_totals": {
+        "passed": 0,
+        "failed": 0,
+        "ignored": 0
+      },
+      "log": "heldout/heldout-1-control/attempt-1-autoformat.log"
+    },
+    {
+      "run": "heldout-1-control",
+      "attempt": 1,
+      "name": "format",
+      "exit_code": 0,
+      "test_batches": 0,
+      "test_totals": {
+        "passed": 0,
+        "failed": 0,
+        "ignored": 0
+      },
+      "log": "heldout/heldout-1-control/attempt-1-format.log"
+    },
+    {
+      "run": "heldout-1-control",
+      "attempt": 1,
+      "name": "own-tests",
+      "exit_code": 0,
+      "test_batches": 16,
+      "test_totals": {
+        "passed": 613,
+        "failed": 0,
+        "ignored": 2
+      },
+      "log": "heldout/heldout-1-control/attempt-1-own-tests.log"
+    },
+    {
+      "run": "heldout-1-control",
+      "attempt": 1,
+      "name": "acceptance",
+      "exit_code": 0,
+      "test_batches": 1,
+      "test_totals": {
+        "passed": 5,
+        "failed": 0,
+        "ignored": 0
+      },
+      "log": "heldout/heldout-1-control/attempt-1-acceptance.log"
+    },
+    {
+      "run": "heldout-2-treatment",
+      "attempt": 1,
+      "name": "initial-format",
+      "exit_code": 1,
+      "test_batches": 0,
+      "test_totals": {
+        "passed": 0,
+        "failed": 0,
+        "ignored": 0
+      },
+      "log": "heldout/heldout-2-treatment/attempt-1-initial-format.log"
+    },
+    {
+      "run": "heldout-2-treatment",
+      "attempt": 1,
+      "name": "autoformat",
+      "exit_code": 0,
+      "test_batches": 0,
+      "test_totals": {
+        "passed": 0,
+        "failed": 0,
+        "ignored": 0
+      },
+      "log": "heldout/heldout-2-treatment/attempt-1-autoformat.log"
+    },
+    {
+      "run": "heldout-2-treatment",
+      "attempt": 1,
+      "name": "format",
+      "exit_code": 0,
+      "test_batches": 0,
+      "test_totals": {
+        "passed": 0,
+        "failed": 0,
+        "ignored": 0
+      },
+      "log": "heldout/heldout-2-treatment/attempt-1-format.log"
+    },
+    {
+      "run": "heldout-2-treatment",
+      "attempt": 1,
+      "name": "own-tests",
+      "exit_code": 0,
+      "test_batches": 16,
+      "test_totals": {
+        "passed": 613,
+        "failed": 0,
+        "ignored": 2
+      },
+      "log": "heldout/heldout-2-treatment/attempt-1-own-tests.log"
+    },
+    {
+      "run": "heldout-2-treatment",
+      "attempt": 1,
+      "name": "acceptance",
+      "exit_code": 0,
+      "test_batches": 1,
+      "test_totals": {
+        "passed": 5,
+        "failed": 0,
+        "ignored": 0
+      },
+      "log": "heldout/heldout-2-treatment/attempt-1-acceptance.log"
+    },
+    {
+      "run": "heldout-3-treatment",
+      "attempt": 1,
+      "name": "initial-format",
+      "exit_code": 1,
+      "test_batches": 0,
+      "test_totals": {
+        "passed": 0,
+        "failed": 0,
+        "ignored": 0
+      },
+      "log": "heldout/heldout-3-treatment/attempt-1-initial-format.log"
+    },
+    {
+      "run": "heldout-3-treatment",
+      "attempt": 1,
+      "name": "autoformat",
+      "exit_code": 0,
+      "test_batches": 0,
+      "test_totals": {
+        "passed": 0,
+        "failed": 0,
+        "ignored": 0
+      },
+      "log": "heldout/heldout-3-treatment/attempt-1-autoformat.log"
+    },
+    {
+      "run": "heldout-3-treatment",
+      "attempt": 1,
+      "name": "format",
+      "exit_code": 0,
+      "test_batches": 0,
+      "test_totals": {
+        "passed": 0,
+        "failed": 0,
+        "ignored": 0
+      },
+      "log": "heldout/heldout-3-treatment/attempt-1-format.log"
+    },
+    {
+      "run": "heldout-3-treatment",
+      "attempt": 1,
+      "name": "own-tests",
+      "exit_code": 0,
+      "test_batches": 16,
+      "test_totals": {
+        "passed": 613,
+        "failed": 0,
+        "ignored": 2
+      },
+      "log": "heldout/heldout-3-treatment/attempt-1-own-tests.log"
+    },
+    {
+      "run": "heldout-3-treatment",
+      "attempt": 1,
+      "name": "acceptance",
+      "exit_code": 0,
+      "test_batches": 1,
+      "test_totals": {
+        "passed": 5,
+        "failed": 0,
+        "ignored": 0
+      },
+      "log": "heldout/heldout-3-treatment/attempt-1-acceptance.log"
+    },
+    {
+      "run": "heldout-4-control",
+      "attempt": 1,
+      "name": "initial-format",
+      "exit_code": 1,
+      "test_batches": 0,
+      "test_totals": {
+        "passed": 0,
+        "failed": 0,
+        "ignored": 0
+      },
+      "log": "heldout/heldout-4-control/attempt-1-initial-format.log"
+    },
+    {
+      "run": "heldout-4-control",
+      "attempt": 1,
+      "name": "autoformat",
+      "exit_code": 0,
+      "test_batches": 0,
+      "test_totals": {
+        "passed": 0,
+        "failed": 0,
+        "ignored": 0
+      },
+      "log": "heldout/heldout-4-control/attempt-1-autoformat.log"
+    },
+    {
+      "run": "heldout-4-control",
+      "attempt": 1,
+      "name": "format",
+      "exit_code": 0,
+      "test_batches": 0,
+      "test_totals": {
+        "passed": 0,
+        "failed": 0,
+        "ignored": 0
+      },
+      "log": "heldout/heldout-4-control/attempt-1-format.log"
+    },
+    {
+      "run": "heldout-4-control",
+      "attempt": 1,
+      "name": "own-tests",
+      "exit_code": 0,
+      "test_batches": 16,
+      "test_totals": {
+        "passed": 612,
+        "failed": 0,
+        "ignored": 2
+      },
+      "log": "heldout/heldout-4-control/attempt-1-own-tests.log"
+    },
+    {
+      "run": "heldout-4-control",
+      "attempt": 1,
+      "name": "acceptance",
+      "exit_code": 0,
+      "test_batches": 1,
+      "test_totals": {
+        "passed": 5,
+        "failed": 0,
+        "ignored": 0
+      },
+      "log": "heldout/heldout-4-control/attempt-1-acceptance.log"
+    },
+    {
+      "run": "heldout-5-control",
+      "attempt": 1,
+      "name": "initial-format",
+      "exit_code": 1,
+      "test_batches": 0,
+      "test_totals": {
+        "passed": 0,
+        "failed": 0,
+        "ignored": 0
+      },
+      "log": "heldout/heldout-5-control/attempt-1-initial-format.log"
+    },
+    {
+      "run": "heldout-5-control",
+      "attempt": 1,
+      "name": "autoformat",
+      "exit_code": 0,
+      "test_batches": 0,
+      "test_totals": {
+        "passed": 0,
+        "failed": 0,
+        "ignored": 0
+      },
+      "log": "heldout/heldout-5-control/attempt-1-autoformat.log"
+    },
+    {
+      "run": "heldout-5-control",
+      "attempt": 1,
+      "name": "format",
+      "exit_code": 0,
+      "test_batches": 0,
+      "test_totals": {
+        "passed": 0,
+        "failed": 0,
+        "ignored": 0
+      },
+      "log": "heldout/heldout-5-control/attempt-1-format.log"
+    },
+    {
+      "run": "heldout-5-control",
+      "attempt": 1,
+      "name": "own-tests",
+      "exit_code": 0,
+      "test_batches": 16,
+      "test_totals": {
+        "passed": 613,
+        "failed": 0,
+        "ignored": 2
+      },
+      "log": "heldout/heldout-5-control/attempt-1-own-tests.log"
+    },
+    {
+      "run": "heldout-5-control",
+      "attempt": 1,
+      "name": "acceptance",
+      "exit_code": 0,
+      "test_batches": 1,
+      "test_totals": {
+        "passed": 5,
+        "failed": 0,
+        "ignored": 0
+      },
+      "log": "heldout/heldout-5-control/attempt-1-acceptance.log"
+    },
+    {
+      "run": "heldout-6-treatment",
+      "attempt": 1,
+      "name": "initial-format",
+      "exit_code": 1,
+      "test_batches": 0,
+      "test_totals": {
+        "passed": 0,
+        "failed": 0,
+        "ignored": 0
+      },
+      "log": "heldout/heldout-6-treatment/attempt-1-initial-format.log"
+    },
+    {
+      "run": "heldout-6-treatment",
+      "attempt": 1,
+      "name": "autoformat",
+      "exit_code": 0,
+      "test_batches": 0,
+      "test_totals": {
+        "passed": 0,
+        "failed": 0,
+        "ignored": 0
+      },
+      "log": "heldout/heldout-6-treatment/attempt-1-autoformat.log"
+    },
+    {
+      "run": "heldout-6-treatment",
+      "attempt": 1,
+      "name": "format",
+      "exit_code": 0,
+      "test_batches": 0,
+      "test_totals": {
+        "passed": 0,
+        "failed": 0,
+        "ignored": 0
+      },
+      "log": "heldout/heldout-6-treatment/attempt-1-format.log"
+    },
+    {
+      "run": "heldout-6-treatment",
+      "attempt": 1,
+      "name": "own-tests",
+      "exit_code": 0,
+      "test_batches": 16,
+      "test_totals": {
+        "passed": 613,
+        "failed": 0,
+        "ignored": 2
+      },
+      "log": "heldout/heldout-6-treatment/attempt-1-own-tests.log"
+    },
+    {
+      "run": "heldout-6-treatment",
+      "attempt": 1,
+      "name": "acceptance",
+      "exit_code": 0,
+      "test_batches": 1,
+      "test_totals": {
+        "passed": 5,
+        "failed": 0,
+        "ignored": 0
+      },
+      "log": "heldout/heldout-6-treatment/attempt-1-acceptance.log"
+    },
+    {
+      "run": "heldout-7-treatment",
+      "attempt": 1,
+      "name": "initial-format",
+      "exit_code": 0,
+      "test_batches": 0,
+      "test_totals": {
+        "passed": 0,
+        "failed": 0,
+        "ignored": 0
+      },
+      "log": "heldout/heldout-7-treatment/attempt-1-initial-format.log"
+    },
+    {
+      "run": "heldout-7-treatment",
+      "attempt": 1,
+      "name": "autoformat",
+      "exit_code": 0,
+      "test_batches": 0,
+      "test_totals": {
+        "passed": 0,
+        "failed": 0,
+        "ignored": 0
+      },
+      "log": "heldout/heldout-7-treatment/attempt-1-autoformat.log"
+    },
+    {
+      "run": "heldout-7-treatment",
+      "attempt": 1,
+      "name": "format",
+      "exit_code": 0,
+      "test_batches": 0,
+      "test_totals": {
+        "passed": 0,
+        "failed": 0,
+        "ignored": 0
+      },
+      "log": "heldout/heldout-7-treatment/attempt-1-format.log"
+    },
+    {
+      "run": "heldout-7-treatment",
+      "attempt": 1,
+      "name": "own-tests",
+      "exit_code": 0,
+      "test_batches": 16,
+      "test_totals": {
+        "passed": 612,
+        "failed": 0,
+        "ignored": 2
+      },
+      "log": "heldout/heldout-7-treatment/attempt-1-own-tests.log"
+    },
+    {
+      "run": "heldout-7-treatment",
+      "attempt": 1,
+      "name": "acceptance",
+      "exit_code": 0,
+      "test_batches": 1,
+      "test_totals": {
+        "passed": 5,
+        "failed": 0,
+        "ignored": 0
+      },
+      "log": "heldout/heldout-7-treatment/attempt-1-acceptance.log"
+    },
+    {
+      "run": "heldout-8-control",
+      "attempt": 1,
+      "name": "initial-format",
+      "exit_code": 1,
+      "test_batches": 0,
+      "test_totals": {
+        "passed": 0,
+        "failed": 0,
+        "ignored": 0
+      },
+      "log": "heldout/heldout-8-control/attempt-1-initial-format.log"
+    },
+    {
+      "run": "heldout-8-control",
+      "attempt": 1,
+      "name": "autoformat",
+      "exit_code": 0,
+      "test_batches": 0,
+      "test_totals": {
+        "passed": 0,
+        "failed": 0,
+        "ignored": 0
+      },
+      "log": "heldout/heldout-8-control/attempt-1-autoformat.log"
+    },
+    {
+      "run": "heldout-8-control",
+      "attempt": 1,
+      "name": "format",
+      "exit_code": 0,
+      "test_batches": 0,
+      "test_totals": {
+        "passed": 0,
+        "failed": 0,
+        "ignored": 0
+      },
+      "log": "heldout/heldout-8-control/attempt-1-format.log"
+    },
+    {
+      "run": "heldout-8-control",
+      "attempt": 1,
+      "name": "own-tests",
+      "exit_code": 0,
+      "test_batches": 16,
+      "test_totals": {
+        "passed": 613,
+        "failed": 0,
+        "ignored": 2
+      },
+      "log": "heldout/heldout-8-control/attempt-1-own-tests.log"
+    },
+    {
+      "run": "heldout-8-control",
+      "attempt": 1,
+      "name": "acceptance",
+      "exit_code": 101,
+      "test_batches": 1,
+      "test_totals": {
+        "passed": 1,
+        "failed": 4,
+        "ignored": 0
+      },
+      "log": "heldout/heldout-8-control/attempt-1-acceptance.log"
+    },
+    {
+      "run": "heldout-8-control",
+      "attempt": 2,
+      "name": "initial-format",
+      "exit_code": 0,
+      "test_batches": 0,
+      "test_totals": {
+        "passed": 0,
+        "failed": 0,
+        "ignored": 0
+      },
+      "log": "heldout/heldout-8-control/attempt-2-initial-format.log"
+    },
+    {
+      "run": "heldout-8-control",
+      "attempt": 2,
+      "name": "autoformat",
+      "exit_code": 0,
+      "test_batches": 0,
+      "test_totals": {
+        "passed": 0,
+        "failed": 0,
+        "ignored": 0
+      },
+      "log": "heldout/heldout-8-control/attempt-2-autoformat.log"
+    },
+    {
+      "run": "heldout-8-control",
+      "attempt": 2,
+      "name": "format",
+      "exit_code": 0,
+      "test_batches": 0,
+      "test_totals": {
+        "passed": 0,
+        "failed": 0,
+        "ignored": 0
+      },
+      "log": "heldout/heldout-8-control/attempt-2-format.log"
+    },
+    {
+      "run": "heldout-8-control",
+      "attempt": 2,
+      "name": "own-tests",
+      "exit_code": 0,
+      "test_batches": 16,
+      "test_totals": {
+        "passed": 613,
+        "failed": 0,
+        "ignored": 2
+      },
+      "log": "heldout/heldout-8-control/attempt-2-own-tests.log"
+    },
+    {
+      "run": "heldout-8-control",
+      "attempt": 2,
+      "name": "acceptance",
+      "exit_code": 0,
+      "test_batches": 1,
+      "test_totals": {
+        "passed": 5,
+        "failed": 0,
+        "ignored": 0
+      },
+      "log": "heldout/heldout-8-control/attempt-2-acceptance.log"
+    }
+  ],
+  "first_attempt_format": {
+    "control_passed": 0,
+    "treatment_passed": 1,
+    "policy": "Both arms receive automatic formatting before scored checks; raw formatting failure does not count as failed acceptance."
+  },
+  "repair_review": {
+    "run": "heldout-8-control",
+    "first_acceptance_passed_cases": 1,
+    "first_acceptance_failed_cases": 4,
+    "first_own_tests_passed": true,
+    "final_acceptance_passed_cases": 5,
+    "final_acceptance_failed_cases": 0,
+    "finding": "The first candidate changed read_all but left the separate Catalog reader in runs.rs unchanged. The independent checker exercised both readers and caught missing marks, wrong retained-copy selection, and an extra counted pass. The repair routed Catalog through the same selection logic.",
+    "evidence": [
+      "heldout/heldout-8-control/candidate-1.patch",
+      "heldout/heldout-8-control/attempt-1-acceptance.log",
+      "heldout/heldout-8-control/final-candidate.patch",
+      "heldout/heldout-8-control/attempt-2-acceptance.log"
+    ]
+  },
+  "final_patch_reviews": [
+    {
+      "run": "heldout-1-control",
+      "artifact": "heldout/heldout-1-control/final-candidate.patch",
+      "sha256": "65a84a1e045b061f63822a757117e155959c38d465caffef8512f14dc616db31",
+      "changed_files": [
+        "crates/gym/src/runs.rs",
+        "crates/gym/src/runs_beats_winner.rs",
+        "crates/gym/src/runs_microcoder.rs",
+        "docs/coder/beat-fable-showcase.md",
+        "docs/gym/terminal-bench-cli.md"
+      ],
+      "applies_to_pinned_source": true,
+      "removed_assertion_or_test_control_lines": 0,
+      "added_test_disable_markers": 0,
+      "manual_review": "Task-related reader changes, regression tests, and documentation updates; no weakened assertions or out-of-scope file changes found."
+    },
+    {
+      "run": "heldout-2-treatment",
+      "artifact": "heldout/heldout-2-treatment/final-candidate.patch",
+      "sha256": "07245eec761b96f087fd669198a229771b417f35fc43e8252d5573ccb98918c5",
+      "changed_files": [
+        "crates/gym/src/runs.rs",
+        "crates/gym/src/runs_beats_winner.rs",
+        "crates/gym/src/runs_microcoder.rs",
+        "docs/coder/beat-fable-showcase.md",
+        "docs/gym/terminal-bench-cli.md"
+      ],
+      "applies_to_pinned_source": true,
+      "removed_assertion_or_test_control_lines": 0,
+      "added_test_disable_markers": 0,
+      "manual_review": "Task-related reader changes, regression tests, and documentation updates; no weakened assertions or out-of-scope file changes found."
+    },
+    {
+      "run": "heldout-3-treatment",
+      "artifact": "heldout/heldout-3-treatment/final-candidate.patch",
+      "sha256": "ad5cd5af9bb5b17f3064dc93c35f6da8831920a610b405d43d82feb6222c5621",
+      "changed_files": [
+        "crates/gym/src/runs.rs",
+        "crates/gym/src/runs_beats_winner.rs",
+        "crates/gym/src/runs_microcoder.rs",
+        "docs/coder/beat-fable-showcase.md",
+        "docs/gym/terminal-bench-cli.md"
+      ],
+      "applies_to_pinned_source": true,
+      "removed_assertion_or_test_control_lines": 0,
+      "added_test_disable_markers": 0,
+      "manual_review": "Task-related reader changes, regression tests, and documentation updates; no weakened assertions or out-of-scope file changes found."
+    },
+    {
+      "run": "heldout-4-control",
+      "artifact": "heldout/heldout-4-control/final-candidate.patch",
+      "sha256": "b3657e16a2402ec3cd2eed923377a48d7ac9aff8f28b0a0856cc39064ef94e6d",
+      "changed_files": [
+        "crates/gym/src/runs.rs",
+        "crates/gym/src/runs_beats_winner.rs",
+        "crates/gym/src/runs_microcoder.rs",
+        "docs/coder/beat-fable-showcase.md",
+        "docs/gym/terminal-bench-cli.md"
+      ],
+      "applies_to_pinned_source": true,
+      "removed_assertion_or_test_control_lines": 0,
+      "added_test_disable_markers": 0,
+      "manual_review": "Task-related reader changes, regression tests, and documentation updates; no weakened assertions or out-of-scope file changes found."
+    },
+    {
+      "run": "heldout-5-control",
+      "artifact": "heldout/heldout-5-control/final-candidate.patch",
+      "sha256": "22fbf81d37a46460de92636b39bc0f11fdeaefba508a0aff7e70e677e3215790",
+      "changed_files": [
+        "crates/gym/src/runs.rs",
+        "crates/gym/src/runs_beats_winner.rs",
+        "crates/gym/src/runs_microcoder.rs",
+        "docs/coder/beat-fable-showcase.md",
+        "docs/gym/terminal-bench-cli.md"
+      ],
+      "applies_to_pinned_source": true,
+      "removed_assertion_or_test_control_lines": 0,
+      "added_test_disable_markers": 0,
+      "manual_review": "Task-related reader changes, regression tests, and documentation updates; no weakened assertions or out-of-scope file changes found."
+    },
+    {
+      "run": "heldout-6-treatment",
+      "artifact": "heldout/heldout-6-treatment/final-candidate.patch",
+      "sha256": "9902f9e2a9c623f4773c45fcb0221df0f018669107a10807df83873f12a0e418",
+      "changed_files": [
+        "crates/gym/src/runs.rs",
+        "crates/gym/src/runs_beats_winner.rs",
+        "crates/gym/src/runs_microcoder.rs",
+        "docs/coder/beat-fable-showcase.md",
+        "docs/gym/terminal-bench-cli.md"
+      ],
+      "applies_to_pinned_source": true,
+      "removed_assertion_or_test_control_lines": 0,
+      "added_test_disable_markers": 0,
+      "manual_review": "Task-related reader changes, regression tests, and documentation updates; no weakened assertions or out-of-scope file changes found."
+    },
+    {
+      "run": "heldout-7-treatment",
+      "artifact": "heldout/heldout-7-treatment/final-candidate.patch",
+      "sha256": "24ba27984c49df306a5ef30808d227e8700c52af50681efc262d4c553247bbd6",
+      "changed_files": [
+        "crates/gym/src/runs.rs",
+        "crates/gym/src/runs_beats_winner.rs",
+        "crates/gym/src/runs_microcoder.rs",
+        "docs/coder/beat-fable-showcase.md",
+        "docs/gym/terminal-bench-cli.md"
+      ],
+      "applies_to_pinned_source": true,
+      "removed_assertion_or_test_control_lines": 0,
+      "added_test_disable_markers": 0,
+      "manual_review": "Task-related reader changes, regression tests, and documentation updates; no weakened assertions or out-of-scope file changes found."
+    },
+    {
+      "run": "heldout-8-control",
+      "artifact": "heldout/heldout-8-control/final-candidate.patch",
+      "sha256": "424c0c317a7e1238b90d0121b6ea909c8ccabd82c239b34b36560f98bad6d963",
+      "changed_files": [
+        "crates/gym/src/runs.rs",
+        "crates/gym/src/runs_beats_winner.rs",
+        "crates/gym/src/runs_microcoder.rs",
+        "docs/coder/beat-fable-showcase.md",
+        "docs/gym/terminal-bench-cli.md"
+      ],
+      "applies_to_pinned_source": true,
+      "removed_assertion_or_test_control_lines": 0,
+      "added_test_disable_markers": 0,
+      "manual_review": "Task-related reader changes, regression tests, and documentation updates; no weakened assertions or out-of-scope file changes found."
+    }
+  ],
+  "scope_of_acceptance": "Accepted means the unchanged registered checks passed. Static review findings outside that checker remain limitations and do not retroactively change the scores.",
+  "validity_notes": [
+    "Four pairs on one historical task are a small engineering panel, not evidence of broad model or briefing superiority.",
+    "Both conditions receive the same complete instructions, task, source pin, tool restrictions, formatting normalization, and at most one external-check repair. The optional evidence is the intended difference.",
+    "Costs are the final cumulative Claude CLI list-price estimates counted once, not verified subscription charges. Warmup and cold indexing are separate; machine and engineering costs are unmeasured.",
+    "Recorded endpoint wall time includes source export and setup, the model session, external checks, executor-process shutdown, and measured warm briefing preparation for treatment. It excludes final candidate/artifact capture, scratch cleanup, and final result serialization.",
+    "The secondary without-source-setup wall statistic removes the whole measured preparation bucket from both conditions and keeps warm briefing time. It is descriptive and does not replace the registered timing gate.",
+    "Provider cache state and filesystem caches are uncontrolled. Tool counts and timing differences do not identify a causal mechanism by themselves.",
+    "The frozen runner records file-byte changes, not chmod-only changes. The final patch review covers retained byte changes.",
+    "The heldout preparation explicitly records probe_triggered=false. The analysis adapter therefore adds zero probe time; an absent probe flag or an unmeasured triggered probe stays unknown."
+  ],
+  "posthoc_quality_review": {
+    "status": "source_reviewed_not_executed",
+    "fixture": "posthoc_equal_rank.rs",
+    "fixture_sha256": "7fe37bbb5d06c251f5f938000917e485ac15021fe2f5cda84f953fae470b6293",
+    "excluded_from_registered_scores": true,
+    "tests": [
+      "equal_rank_divergent_copies_choose_the_same_record_in_both_orders",
+      "conflicting_manifest_marks_resolve_the_same_way_in_both_orders"
+    ],
+    "coverage_gap": "The frozen five-case checker tests live-versus-retained precedence and duplicate identical records. It does not test divergent copies at equal priority or conflicting attributions from multiple manifests.",
+    "historical_reference": {
+      "commit": "47ad4d73dae2d927f919ff1ef6d880c9df4bcedc",
+      "source": "crates/gym/src/runs_microcoder.rs",
+      "source_lines": [
+        806,
+        807,
+        808,
+        812,
+        826,
+        849,
+        850
+      ],
+      "finding": "Static review avoids both identified gaps: source directories are sorted before marks merge, and candidate copies are sorted by preference and path before selection.",
+      "posthoc_tests_executed": false
+    }
+  },
+  "residual_correctness_findings": [
+    {
+      "id": "equal_rank_copy_order",
+      "affected_runs": [
+        "heldout-4-control",
+        "heldout-6-treatment",
+        "heldout-7-treatment"
+      ],
+      "evidence_type": "static source review; post hoc test prepared but not executed",
+      "finding": "Copy selection uses the original directory order to break equal priority. Two manifest-listed copies of one run with different rewards can select different records when the input order reverses.",
+      "scoring_effect": "None: retain the original frozen acceptance results."
+    },
+    {
+      "id": "conflicting_manifest_order",
+      "affected_runs": [
+        "heldout-4-control",
+        "heldout-7-treatment"
+      ],
+      "evidence_type": "static source review; post hoc test prepared but not executed",
+      "finding": "For a live-only record, conflicting commit attribution and mixed-mark reasons from separate manifests are merged in caller order. Reversing the inputs can change attribution or the reported reason.",
+      "scoring_effect": "None: retain the original frozen acceptance results."
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "schema": "openagents.briefing.reserve-public-task.v1",
+  "issue": 9989,
+  "issue_url": "https://github.com/OpenAgentsInc/openagents/issues/9989",
+  "source_commit": "aeb7f9fb19e0d56c13400702894172ae472e3bcf",
+  "reference_commit": "fd305b01df5add38e2bd0ef3f862ee85cc9950c3",
+  "original_reference_parent": "aeb7f9fb19e0d56c13400702894172ae472e3bcf",
+  "original_assignment_utc": {
+    "started": "2026-09-30T00:53:10.007Z",
+    "finished": "2026-09-30T00:58:22.441Z",
+    "observed_elapsed_seconds": 312.434
+  },
+  "private_task_sha256": "55380267d422504710846303bb3d1b0fcfca5d8d66d386c01519104b7f29814d",
+  "private_original_prompt_sha256": "f72339dc89068f41ebcd74c16e579761c4165e0be8520b45cc3729918c4a7a33",
+  "private_instructions_sha256": "70336af075d04e4d255d77d3b1a47b7b7a1590ec0f32fb1f9ad8e548cd2af2df",
+  "public_task_sha256": "834d779f57dc9b693ebaa79d5f3e621ef41601e8c91caaba7c5d74eea297b29a",
+  "checker_sha256": "9f99fdeef15526a9794edc7ce0468c82df24c636e4803dd14be246c4341b0e31",
+  "public_task_bytes": 2792,
+  "private_task_bytes": 2447,
+  "redactions": [
+    "Owner repository path becomes [REPOSITORY].",
+    "Owner historical worktree path becomes [WORKTREE].",
+    "Owner historical test hostname becomes [LINUX_TEST_HOST].",
+    "Historical commit attribution becomes [HISTORICAL_MODEL_ATTRIBUTION]."
+  ],
+  "scope": "Display copy only; the original task and required instructions stay byte-identical across the four experiment arms."
+}

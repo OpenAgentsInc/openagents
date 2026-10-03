@@ -30,6 +30,15 @@ def number(value):
     return value if type(value) in (int, float) and math.isfinite(value) and value >= 0 else None
 
 
+def preparation_times(preparation):
+    timings = preparation.get('timings', {})
+    preview = number(timings.get('warm_preview_s'))
+    probe = number(timings.get('runtime_probe_s'))
+    if probe is None and preparation.get('probe_triggered') is False:
+        probe = 0.0
+    return [preview, probe]
+
+
 def read_json(path, maximum=MAX_JSON):
     with path.open('rb') as handle:
         data = handle.read(maximum + 1)
@@ -388,7 +397,7 @@ def build_report(args):
             raise ValueError('A required panel input differs from its registration: ' + path.name)
     if sha(Path(config['brief_file']).read_bytes()) != preparation['payload_sha256']:
         raise ValueError('Preparation does not bind the configured brief')
-    times = [number(preparation.get('timings', {}).get(key)) for key in ['warm_preview_s', 'runtime_probe_s']]
+    times = preparation_times(preparation)
     prep = {'warm_brief_wall_s': sum(times) if None not in times else None, 'paid_brief_cost_usd': 0.0 if preparation.get('paid_model_calls') == 0 else None, 'measurement_sha256': sha(args.preparation.read_bytes()), 'payload_sha256': preparation['payload_sha256'], 'payload_bytes': preparation.get('payload_bytes'), 'warm_preview_s': times[0], 'runtime_probe_s': times[1], 'policy': 'Apply this frozen measured warm preparation to each treatment endpoint; machine charges are not measured.'}
     args.output.mkdir(parents=True, exist_ok=True)
     builder = PatchBuilder(config['source_repo'], config['source_commit'], config['allowed_roots'])
@@ -452,6 +461,16 @@ def main():
 
 
 class ReportTests(unittest.TestCase):
+    def test_explicit_absent_probe_has_zero_runtime_but_unknown_probe_does_not(self):
+        preparation = {'probe_triggered': False, 'timings': {'warm_preview_s': 0.198785599}}
+        self.assertEqual(preparation_times(preparation), [0.198785599, 0.0])
+        preparation['probe_triggered'] = True
+        self.assertEqual(preparation_times(preparation), [0.198785599, None])
+        del preparation['probe_triggered']
+        self.assertEqual(preparation_times(preparation), [0.198785599, None])
+        preparation['timings']['runtime_probe_s'] = 0.02
+        self.assertEqual(preparation_times(preparation), [0.198785599, 0.02])
+
     def test_scrubber_removes_owned_paths_and_identity(self):
         scrub = Scrubber({'remote_root': '/tmp/private-root'}, Path('/Users/person/private'), 'a' * 32)
         text = '/tmp/private-root/checks/' + 'a' * 32 + '/1 /Users/person/private/account /home/person/key Bearer secret-token'
