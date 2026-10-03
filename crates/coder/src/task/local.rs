@@ -729,6 +729,7 @@ impl Local {
                     .usage_threshold_percent
                     .map(|threshold_percent| UsageProbe { threshold_percent }),
                 access: settings.access,
+                claude: settings.claude,
             },
             changed_at: (self.now)(),
         };

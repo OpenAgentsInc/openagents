@@ -7,6 +7,8 @@ Arms:
   routed-codex-on    routed to Codex, recipe on
   routed-claude-off  routed to Claude Code, recipe off (controller shim)
   routed-codex-off   routed to Codex, recipe off
+  routed-claude-lean routed to Claude Code as one lean session (#10246):
+                     coder.claude = session, recipe on
 
 Usage:
   study.py prepare
@@ -316,7 +318,13 @@ def home_dir():
 # ---------------------------------------------------------------- arms
 
 def settings_file(engine):
-    return os.path.join(BASE, f"settings-{engine}.json")
+    path = os.path.join(BASE, f"settings-{engine}.json")
+    if engine == "claude-lean" and not os.path.exists(path):
+        # #10246: Claude Code only, run as one lean session.
+        settings = json.load(open(settings_file("claude")))
+        settings.setdefault("coder", {})["claude"] = "session"
+        json.dump(settings, open(path, "w"), indent=1)
+    return path
 
 
 def run_raw_claude(prompt, cwd, d):
@@ -390,6 +398,20 @@ def atif_summary(task_dir):
                         s["cache_write"] += u.get("cache_creation_input_tokens", 0)
                         s["output_tokens"] += u.get("output_tokens", 0)
                         s["requests"] += 1
+            if er and er.get("kind") == "claude_session":
+                # #10246: one lean Claude Code session; its own list-price cost.
+                r = er.get("result") or {}
+                s["engine_usd"] += r.get("cost_usd") or 0
+                s["input_tokens"] += (r.get("input_tokens") or 0) + (r.get("cache_read_input_tokens") or 0) + (r.get("cache_creation_input_tokens") or 0)
+                s["cache_read"] += r.get("cache_read_input_tokens") or 0
+                s["cache_write"] += r.get("cache_creation_input_tokens") or 0
+                s["output_tokens"] += ((r.get("usage") or {}).get("output_tokens") or 0)
+                s["requests"] += r.get("api_calls") or 0
+                s["steps"] += r.get("num_turns") or 0
+                s["ending"] = r.get("status")
+            ei = e.get("effect_intent") or e.get("effect")
+            if isinstance(ei, dict) and ei.get("kind") == "claude_session":
+                s["effort"] = (ei.get("arguments") or {}).get("effort")
             m = (e.get("microcoder") or {}).get("event") or {}
             if m.get("event") == "ended":
                 o = m.get("outcome") or {}
@@ -478,6 +500,7 @@ ARMS = {
     "routed-codex-on": lambda p, c, d: run_routed("codex", True, p, c, d),
     "routed-claude-off": lambda p, c, d: run_routed("claude", False, p, c, d),
     "routed-codex-off": lambda p, c, d: run_routed("codex", False, p, c, d),
+    "routed-claude-lean": lambda p, c, d: run_routed("claude-lean", True, p, c, d),
 }
 
 

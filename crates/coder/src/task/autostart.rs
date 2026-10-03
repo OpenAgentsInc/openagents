@@ -144,6 +144,55 @@ pub struct Engine {
     /// (`coder host autostart on --full-access`).
     #[serde(default, skip_serializing_if = "adapter::Access::is_boundary")]
     pub access: adapter::Access,
+    /// How a Claude route runs (#10246): one lean Claude Code session
+    /// briefed by Jev, or Microcoder's step loop. Absent means the default,
+    /// [`ClaudeRuns::default`].
+    #[serde(default, skip_serializing_if = "ClaudeRuns::is_default")]
+    pub claude: ClaudeRuns,
+}
+
+/// How a Claude Code route takes a turn (#10246).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClaudeRuns {
+    /// One Claude Code session, briefed by Jev, with the cost audit's lean
+    /// settings: six tools, the trimmed system prompt, the five-minute
+    /// prompt cache, and medium effort. Under full access only: under the
+    /// boundary or toolchains a Claude route runs the loop, whose commands
+    /// the host bounds.
+    Session,
+    /// Microcoder's step loop: each step is one `claude -p` call that
+    /// returns one action, and the host runs the commands.
+    #[default]
+    Loop,
+}
+
+impl ClaudeRuns {
+    /// The setting's word.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            ClaudeRuns::Session => "session",
+            ClaudeRuns::Loop => "loop",
+        }
+    }
+
+    /// The setting from its word.
+    ///
+    /// # Errors
+    /// A sentence naming the two words when `text` is neither.
+    pub fn parse(text: &str) -> Result<Self, String> {
+        match text.trim() {
+            "session" | "lean" | "lean_session" | "lean-session" => Ok(ClaudeRuns::Session),
+            "loop" | "microcoder" => Ok(ClaudeRuns::Loop),
+            other => Err(format!("`{other}` is not session or loop")),
+        }
+    }
+
+    #[must_use]
+    pub fn is_default(&self) -> bool {
+        *self == ClaudeRuns::default()
+    }
 }
 
 /// The owner's usage-probe setting.
@@ -457,7 +506,16 @@ impl Policy {
             ))
             .then(|| route.effort.clone().or_else(|| engine.effort.clone()))
             .flatten(),
-            generation_endpoint: route.provider.endpoint().into(),
+            // A Claude route runs as one lean session when the owner
+            // chose it and the run has full access (#10246).
+            generation_endpoint: if route.provider == Provider::Claude
+                && engine.claude == ClaudeRuns::Session
+                && engine.access == adapter::Access::Full
+            {
+                super::capacity::CLAUDE_SESSION_ENDPOINT.into()
+            } else {
+                route.provider.endpoint().into()
+            },
         };
         let primary = route(&order[0]);
         adapter::Configuration {
@@ -2161,6 +2219,7 @@ fn cli_inner(args: &[String]) -> std::result::Result<(), String> {
                     } else {
                         adapter::Access::Boundary
                     },
+                    claude: ClaudeRuns::default(),
                 };
                 let threshold = take_one(&mut values, "--usage-threshold")?;
                 let mut engine = engine;
@@ -2609,6 +2668,7 @@ mod tests {
                 routes: Vec::new(),
                 usage_probe: None,
                 access: adapter::Access::Boundary,
+                claude: ClaudeRuns::default(),
             },
             changed_at: 1,
         }
@@ -4432,6 +4492,7 @@ mod tests {
                 routes: Vec::new(),
                 usage_probe: None,
                 access: adapter::Access::Full,
+                claude: ClaudeRuns::default(),
             }
         };
         let grant = temp.path().join("grant.json");

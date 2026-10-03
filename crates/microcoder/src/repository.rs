@@ -655,14 +655,23 @@ enum AgentEngine {
     OpenCode,
     /// Grok Build, `grok agent stdio` ([`grok`]).
     Grok,
+    /// One lean Claude Code session briefed by Jev, `claude -p`
+    /// ([`claude_session`], #10246): a Claude route whose endpoint is
+    /// [`claude_session::CLAUDE_SESSION_ENDPOINT`].
+    ClaudeSession,
 }
 
 impl AgentEngine {
-    fn of(provider: Option<Provider>) -> Option<Self> {
-        match provider? {
+    fn of(route: &GrantRoute) -> Option<Self> {
+        match Provider::from_config(&route.provider)? {
             Provider::Devin => Some(AgentEngine::Devin),
             Provider::OpenCode => Some(AgentEngine::OpenCode),
             Provider::Grok => Some(AgentEngine::Grok),
+            Provider::Claude
+                if route.generation_endpoint == claude_session::CLAUDE_SESSION_ENDPOINT =>
+            {
+                Some(AgentEngine::ClaudeSession)
+            }
             Provider::Codex | Provider::Claude | Provider::Vertex => None,
         }
     }
@@ -672,6 +681,7 @@ impl AgentEngine {
             AgentEngine::Devin => Provider::Devin,
             AgentEngine::OpenCode => Provider::OpenCode,
             AgentEngine::Grok => Provider::Grok,
+            AgentEngine::ClaudeSession => Provider::Claude,
         }
     }
 
@@ -681,6 +691,7 @@ impl AgentEngine {
             AgentEngine::Devin => "Devin",
             AgentEngine::OpenCode => "OpenCode",
             AgentEngine::Grok => "Grok Build",
+            AgentEngine::ClaudeSession => "Claude Code",
         }
     }
 
@@ -690,6 +701,7 @@ impl AgentEngine {
             AgentEngine::Devin => "devin",
             AgentEngine::OpenCode => "opencode",
             AgentEngine::Grok => "grok",
+            AgentEngine::ClaudeSession => "claude_session",
         }
     }
 
@@ -698,6 +710,9 @@ impl AgentEngine {
             AgentEngine::Devin => devin::binary().map_err(|why| (StartCause::Devin, why)),
             AgentEngine::OpenCode => opencode::binary().map_err(|why| (StartCause::OpenCode, why)),
             AgentEngine::Grok => grok::binary().map_err(|why| (StartCause::Grok, why)),
+            AgentEngine::ClaudeSession => {
+                claude_session::binary().map_err(|why| (StartCause::Claude, why))
+            }
         }
     }
 
@@ -712,6 +727,7 @@ impl AgentEngine {
             AgentEngine::Devin => devin::turn(host, route, program, recipe).await,
             AgentEngine::OpenCode => opencode::turn(host, route, program, recipe).await,
             AgentEngine::Grok => grok::turn(host, route, program, recipe).await,
+            AgentEngine::ClaudeSession => claude_session::turn(host, route, program, recipe).await,
         }
     }
 }
@@ -737,7 +753,7 @@ fn stages(
     let mut stages: Vec<Stage<_>> = Vec::new();
     let mut unavailable = Vec::new();
     for (index, route) in routes.into_iter().enumerate() {
-        let built = if let Some(engine) = AgentEngine::of(Provider::from_config(&route.provider)) {
+        let built = if let Some(engine) = AgentEngine::of(&route) {
             engine
                 .binary()
                 .map(|program| Stage::Agent(engine, route.clone(), program))
@@ -831,6 +847,24 @@ pub async fn execute(
         (stages, unavailable)
     } else {
         let mut unavailable = unavailable;
+        // A lean Claude Code session takes its input as text, so a task
+        // with images runs Claude in the loop, which takes them natively.
+        let stages = stages
+            .into_iter()
+            .map(|stage| match stage {
+                Stage::Agent(AgentEngine::ClaudeSession, route, program) => {
+                    let looped = GrantRoute {
+                        generation_endpoint: crate::claude::ENDPOINT.to_owned(),
+                        ..route.clone()
+                    };
+                    match client(&looped, config.access, &session) {
+                        Ok(client) => Stage::Loop(vec![(looped, client)]),
+                        Err(_) => Stage::Agent(AgentEngine::ClaudeSession, route, program),
+                    }
+                }
+                stage => stage,
+            })
+            .collect();
         let kept = image_stages(stages, &mut unavailable);
         if kept.is_empty() {
             return refuse_images(
@@ -1193,6 +1227,7 @@ fn private_spec(host: &Host, spec: acp_client::process::Spec) -> acp_client::pro
     }
 }
 
+pub mod claude_session;
 mod devin;
 mod grok;
 pub mod launch;

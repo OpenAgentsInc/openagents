@@ -249,6 +249,12 @@ impl Configuration {
                     && route.generation_endpoint == super::capacity::GROK_ENDPOINT
                     && self.container.is_none()
                     && acp_client::grok::parse_model(&route.model).is_ok()
+            } else if route.provider == "claude"
+                && route.generation_endpoint == super::capacity::CLAUDE_SESSION_ENDPOINT
+            {
+                // A lean Claude Code session (#10246) is the local `claude`
+                // process, like a whole agent, and runs on the host itself.
+                self.container.is_none()
             } else {
                 matches!(route.provider.as_str(), "codex" | "claude")
             };
@@ -273,6 +279,7 @@ impl Configuration {
                     .iter()
                     .filter(|route| {
                         !matches!(route.provider.as_str(), "devin" | "opencode" | "grok")
+                            && route.generation_endpoint != super::capacity::CLAUDE_SESSION_ENDPOINT
                     })
                     .map(|route| &route.generation_endpoint),
             )

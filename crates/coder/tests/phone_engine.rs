@@ -85,6 +85,7 @@ fn policy() -> Policy {
             ],
             usage_probe: None,
             access: coder::task::adapter::Access::Boundary,
+            claude: coder::task::autostart::ClaudeRuns::default(),
         },
         changed_at: 1,
     }

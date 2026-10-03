@@ -77,6 +77,13 @@ pub const OPENCODE_ENDPOINT: &str = "local:opencode-acp";
 /// not a URL, and no request goes to it from Microcoder.
 pub const GROK_ENDPOINT: &str = "local:grok-acp";
 
+/// The endpoint a grant names for a Claude route that runs as one lean
+/// Claude Code session (#10246) instead of Microcoder's step loop: the
+/// local `claude -p` process, briefed by Jev, with six tools, the trimmed
+/// system prompt, and the five-minute prompt cache. It uses Claude Code's
+/// own login; it is not a URL, and no request goes to it from Microcoder.
+pub const CLAUDE_SESSION_ENDPOINT: &str = "local:claude-code-session";
+
 /// A model provider a repository run can generate through.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

@@ -137,8 +137,12 @@ const ENGINE_TOOLS: Setting = Setting::EnginesOwn("the agent's own tools; ACP se
 const ENGINE_SYSTEM: Setting = Setting::EnginesOwn("the agent's own system prompt; ACP sets none");
 const ENGINE_CACHE: Setting = Setting::EnginesOwn("the agent's own prompt caching");
 
+/// The engine name of a Claude route that runs as one lean Claude Code
+/// session (#10246) instead of Microcoder's loop.
+pub const CLAUDE_SESSION: &str = "claude-session";
+
 /// Every engine's row, task-route engines first.
-pub const ENGINES: [EngineRecipe; 7] = [
+pub const ENGINES: [EngineRecipe; 8] = [
     EngineRecipe {
         engine: "codex",
         runs_as: Runs::MicrocoderLoop,
@@ -176,6 +180,28 @@ pub const ENGINES: [EngineRecipe; 7] = [
         system_prompt: Setting::Applied("replaced (--system-prompt) with the loop's own"),
         prompt_cache: Setting::Applied("five minutes (CLAUDE_CODE_PROMPT_CACHE_TTL=5m)"),
         checks: CHECKS_LOOP,
+    },
+    EngineRecipe {
+        engine: CLAUDE_SESSION,
+        runs_as: Runs::Cli,
+        briefing: BRIEFING,
+        knowledge: KNOWLEDGE,
+        effort_setting: Setting::Applied(
+            "Claude Code's --effort: medium, the cost audit's lean session, low for a question",
+        ),
+        effort: Effort {
+            question: Some("low"),
+            change: Some("medium"),
+            hard: Some("medium"),
+        },
+        tools: Setting::Applied("six: Bash, Read, Edit, Write, Glob, Grep"),
+        system_prompt: Setting::Applied(
+            "replaced (--system-prompt-file) with the headless core sections",
+        ),
+        prompt_cache: Setting::Applied("five minutes (CLAUDE_CODE_PROMPT_CACHE_TTL=5m)"),
+        checks: Setting::Applied(
+            "Jev picks and the host freezes checks as on a loop; the session is told them, and the host runs them once the session ends",
+        ),
     },
     EngineRecipe {
         engine: "grok",
@@ -322,6 +348,12 @@ mod tests {
             assert!(row.knowledge.applied(), "{name}");
             assert!(row.checks.applied(), "{name}");
         }
+        let session = engine(CLAUDE_SESSION).expect("a row for the lean session");
+        assert!(session.briefing.applied() && session.checks.applied());
+        assert_eq!(
+            effort(CLAUDE_SESSION, Some(TaskClass::Change), Some("low")).as_deref(),
+            Some("medium")
+        );
         for name in ["claude-code-cli", "codex-cli"] {
             let row = engine(name).unwrap_or_else(|| panic!("no row for {name}"));
             assert_eq!(row.runs_as, Runs::Cli);
