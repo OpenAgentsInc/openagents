@@ -1,1 +1,0 @@
-shakeout g3
