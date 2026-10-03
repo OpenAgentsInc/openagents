@@ -6,6 +6,8 @@
   and the GCE pool granted as one computer, `openagents cloud up/down/status`
   and `chat work --on gce` (§7,
   [#10225](https://github.com/OpenAgentsInc/openagents/issues/10225)).
+  Measured: Boat vs a GCE spot slot vs the Mac on the same task (§8,
+  [#10221](https://github.com/OpenAgentsInc/openagents/issues/10221)).
 - Question from the owner: today about 16 agents and Coder (`openagents chat
   work --issues`, Codex) run in parallel on two machines (the owner's Mac and
   `coderos-4080`), and they keep filling the Mac's disk. How do we fan work out
@@ -702,6 +704,112 @@ Issue [#10225](https://github.com/OpenAgentsInc/openagents/issues/10225)
 - **Measured.** Create to ready for runs (image ready, ssh, `openagents` and
   `microcoder` built): 134 to 223 s. A one-file issue landed in 73 s on a
   warm host, about $0.002 of host time.
+
+## 8. Measured: Boat vs a GCE spot slot vs the Mac (2026-10-03)
+
+Issue [#10221](https://github.com/OpenAgentsInc/openagents/issues/10221)
+(Boat plan B8). The same task on three placements: nine throwaway issues of
+one shape, "append the line `measure <n>` to `docs/cloud/measure-<n>.md`"
+([#10259](https://github.com/OpenAgentsInc/openagents/issues/10259) to
+[#10267](https://github.com/OpenAgentsInc/openagents/issues/10267)), three
+per placement, each batch `--parallel 3`, all three batches started within
+25 s of each other at 02:42 UTC from `origin/main` `6c4a07a3bc`. The
+orchestrator was `openagents` built from `8f9ac96972` on the Mac (it builds
+nothing else there). The measurement files were removed again with this
+section.
+
+- **Boat**: `chat work --on boat`, `large` sandboxes forked from
+  `oa-coder-main-20261003`, engine logins `api-keys`.
+- **GCE**: `chat work --on gce` on pool `pb22a59`, granted by a concurrent
+  Coder batch: one host already up (`-7739`, one slot busy with that batch),
+  and the batch grew the pool by one cold spot `c3-standard-8` (`-8bde`).
+- **Mac**: `chat work --local`, settings limited to Grok Build.
+
+Columns: **ready** is batch start to the flow's claim comment on the issue
+(sandbox or host start, reach, binaries, worktree); **run** is the claim to
+the landing commit and close (the engine turn, checks, rebase and push);
+**wall** is batch start to the issue's last event; **cost** is the
+placement's own figure (Boat's billed seconds at list price; the GCE run's
+share of its host at the spot list price; the Mac's machine cost is
+already paid). Engine tokens are not in these figures.
+
+| Placement | Issue | Ready | Run | Wall | Cost | Outcome |
+| --- | --- | ---: | ---: | ---: | ---: | --- |
+| Boat | #10260 | 243 s | 57 s | 300 s | $0.0060 | landed `9d396a535a` |
+| Boat | #10261 | 269 s | 47 s | 322 s | $0.0064 | unchanged (engine) |
+| Boat | #10259 | 283 s | 51 s | 342 s | $0.0068 | unchanged (engine) |
+| GCE, cold host `-8bde` | #10263 | 286 s | 50 s | 336 s | $0.0040 | landed `77e8cd65dc` |
+| GCE, warm host `-7739` | #10264 | 419 s | 96 s | 515 s | $0.0081 | landed `821be22fe6` |
+| GCE, `-8bde` after a requeue | #10262 | 442 s | 77 s | 519 s | $0.0042 | landed `24ba9e2406` |
+| Mac | #10265 | 5 s | 42 s | 47 s | $0 | landed `2f5d3085e2` |
+| Mac | #10266 | 9 s | 31 s | 40 s | $0 | landed `51b29ca071` |
+| Mac | #10267 | 9 s | 44 s | 53 s | $0 | landed `3cc384e067` |
+
+Batch wall time: Boat 342 s ($0.0191 for the three sandboxes, deleted at
+the end), GCE 522 s ($0.0163 of run share; the cold host then idled until
+it was deleted, about $0.05 for its 18 minutes), Mac 55 s.
+
+Where the time went:
+
+- **Boat ready, 243 to 283 s**: fork to `ready`, the wait until a plain
+  command runs, the root-owned directory repair, and reading the template's
+  2 GB `openagents` and `microcoder` through Boat's lazy restore. That is
+  the cost [#10251](https://github.com/OpenAgentsInc/openagents/issues/10251)
+  (B5b, a warm fork) attacks; it is open and in progress by another agent,
+  so these figures are before it.
+- **GCE ready**: the cold host was created in 25 s, its image ready at 41 s,
+  reachable at 47 s, and `origin/main`'s binaries built at 166 s; on the
+  host the flow then took about two more minutes to claim (the host's run
+  script rebuilds `openagents` and `microcoder` whenever `origin/main` has
+  moved, and the Mac batch had just landed three commits). #10264 shared
+  its host with the other batch's `cargo test -p coder`; #10262 was first
+  sent to that host, found both slots taken (exit 75), and was requeued.
+- **Mac**: no start at all; the runs are the engine turn and the push.
+- **Runs** themselves are 31 to 96 s everywhere: the engine turn, the checks
+  for a Markdown file, and the rebase-and-push landing (#10226), which raced
+  between the nine runs without a failure.
+
+Outcomes and what they are not:
+
+- **The two Boat misses are the engine, not Boat.** With `XAI_API_KEY`
+  Grok Build connects to its default `grok-4.20-0309-non-reasoning`, which
+  replied "I created `docs/cloud/measure-boat-1.md`" without writing it, as
+  it did once on GCE in §7. The Mac's signed-in Grok Build connected to
+  `grok-4.7` and landed all three, so the engine was the same CLI but not
+  the same model. An attempt to pin the Mac to the cloud's model
+  (`coder.providers grok:grok-4.20-0309-non-reasoning`) still connected
+  `grok-4.7` and stopped at once (#10270 to #10272, not counted).
+  Follow-up: [#10275](https://github.com/OpenAgentsInc/openagents/issues/10275)
+  (pin a model for API-key runs).
+- **A second Boat batch failed before the engine.** Two more runs
+  (#10268, #10269, three minutes after the first batch) could not read the
+  template's binaries through in six tries, fell back to building in the
+  warm slot, and failed with `Permission denied` creating
+  `debug/build/coder-…` there (142 and 199 s, $0.0069, sandboxes stopped
+  and then deleted). Follow-up:
+  [#10274](https://github.com/OpenAgentsInc/openagents/issues/10274).
+- The cloud runs' git token cannot read the project board
+  ([#10258](https://github.com/OpenAgentsInc/openagents/issues/10258)), and
+  their claim comments still say "on this computer"
+  ([#10256](https://github.com/OpenAgentsInc/openagents/issues/10256)).
+
+What this says:
+
+- **For one small issue the Mac wins by minutes** (47 s against 5 to 9
+  minutes): it has no start, and Coder's own work on such an issue is under
+  a minute anywhere. The cloud pays off only for fan-out beyond what the Mac
+  should run, or work that must not touch the Mac's disk.
+- **Today the GCE pool is the dependable cloud placement**: 3 of 3 landed,
+  about $0.004 to $0.008 a run plus a host's idle tail (about $0.03 for its
+  ten idle minutes). Its start is about 3 minutes cold and shorter on a warm
+  host when `main` has not moved; skipping the per-run rebuild when only
+  docs moved would take most of the two minutes off.
+- **Boat costs about the same per run ($0.006) and has no idle tail**, but
+  its start is about 4 to 5 minutes, all of it the template restore, and its
+  fallback build is broken (#10274). Revisit after #10251 lands; Boat's
+  case rests on that start dropping to the tens of seconds.
+- **Both cloud placements need a stronger API-key model** (#10275) before
+  any comparison of outcomes means more than this one.
 
 ## Sources not repeated above
 

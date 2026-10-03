@@ -1,1 +1,0 @@
-measure gce-1
