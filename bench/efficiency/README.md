@@ -184,8 +184,81 @@ average 40–180, disk briefly full; run `d` was discarded for that). Raw and
 routed runs interleave in one run, so both arms shared it. An extension
 to 5 trials was stopped when the disk fell under 12 GB; its 17 rows
 (`final-extension-aborted.jsonl`, both arms failed one `headless-terminal`
-trial) are kept and not counted. Rerun the standing study to publish
-these settings on openagents.com/efficiency.
+trial) are kept and not counted. The standing run `2026-10-03b` below
+publishes these settings with the start-up cut.
+
+## Follow-up: the routed start-up (#10279)
+
+After #10254 the lean session itself was as fast as raw Claude Code, but
+a routed small fix still spent 5 to 10 s (median 7.9 s) outside the
+Claude Code session, three Jev round trips in a row before it started:
+the chat router's judgment, then Jev's issue judgment (does the message
+ask to work a GitHub issue?), then the recipe's class, knowledge search
+and keep, and checks, one after another. On a 15 to 20 s raw run that was
+the whole gap. The changes:
+
+- The chat starts Jev's issue judgment when the message is sent, beside
+  the router's judgment, and a start uses it for the same message.
+- When a run would begin on the lean Claude Code session, the chat also
+  prepares the recipe's groundwork for the exact handoff prompt beside the
+  router (`coder_delegate::recipe::Ahead`, kept in the task store). The
+  run takes it, copies its Jev steps into its own record so their cost is
+  the run's, and asks Jev itself when the prompt differs.
+- Without the survey, the class, knowledge, and checks go to Jev at once.
+- A whole agent's frozen checks run after its turn only when no
+  independent check (#10232) runs them on the candidate right after; they
+  ran twice.
+
+Time outside the session (wall time less the session's own) on the four
+small fixes fell from a median of 7.9 s (mean 9.8 s, 12 runs, `leanspeed-e`
+trials 1 to 3) to 2.2 s (mean 2.5 s, 20 runs, `b-shipped`): the router's
+own judgment (about 1.4 s) and the route settling. Measured on coderos-4080
+against raw Claude Code in the same run, 5 trials, 2 at a time (rows in
+[`docs/cost/2026-10-03-routed-startup/`](../../docs/cost/2026-10-03-routed-startup/),
+95% bootstrap intervals from its `ci.py`):
+
+| Small fix | Before (`leanspeed-e`, n=3 per arm): time / cost | Shipped (`b-shipped`, n=5 per arm): time / cost | Passed (lean / raw) |
+| --- | --- | --- | --- |
+| `fix-git` | 1.36 (1.22–1.47) / 0.46 (0.40–0.53) | 1.39 (1.23–1.58) / 0.47 (0.44–0.50) | 5/5 / 5/5 |
+| `fix-code-vulnerability` | 1.41 (0.94–2.07) / 0.45 (0.43–0.47) | 1.34 (1.17–1.54) / 0.47 (0.44–0.51) | 5/5 / 5/5 |
+| `mi-one` | 1.61 (1.35–1.99) / 0.35 (0.31–0.38) | 0.83 (0.63–1.08) / 0.30 (0.26–0.33) | 5/5 / 5/5 |
+| `headless-terminal` | 1.26 (1.04–1.67) / 0.56 (0.51–0.63) | 0.72 (0.54–0.99) / 0.46 (0.36–0.58) | 5/5 / 5/5 |
+| Sum of means | 1.36 (1.19–1.59) / 0.47 (0.45–0.49) | **0.91 (0.78–1.07) / 0.43 (0.39–0.48)** | 20/20 / 20/20 |
+
+An earlier run with the concurrency but not the single check run
+(`a-concurrent`, n=5) gave 1.06, 1.62, 1.04, and 1.06 on the same four,
+1.13 summed: per-task means of five runs move by 0.3 between runs. Pooled
+over both runs (n=10 per arm): `fix-git` 1.20 (0.96–1.48),
+`fix-code-vulnerability` 1.49 (1.19–1.87), `mi-one` 0.94 (0.69–1.33),
+`headless-terminal` 0.87 (0.71–1.05), 1.02 (0.90–1.15) summed, cost 0.45.
+`mi-one` and `headless-terminal` meet the 1.1 target; `fix-git` and
+`fix-code-vulnerability` do not, and what is left there is inside the
+session, not before it: on `fix-git` the session alone took 19–27 s
+against raw's 16–19 s for the same 6 turns, and on `fix-code-vulnerability`
+the session runs the frozen `pytest` itself (5 turns against raw's 3 to 5)
+and the host runs it before the session and in the independent check
+(about 1.5 s more outside it). Start-up is no longer the cause.
+
+## Results, 2026-10-03b
+
+The standing study after the start-up cut, at `0565629714` (84 runs: 7
+tasks, 4 arms, 3 trials, coderos-4080, 4 at a time). Rows:
+[`results/2026-10-03b.jsonl`](results/2026-10-03b.jsonl). Every run of every
+arm passed its check (21/21 each). From `openagents efficiency`:
+
+| Arm | Cost per checked result | Time to a checked result (median) | Cost against raw Claude Code | Time against raw Claude Code |
+| --- | ---: | ---: | --- | --- |
+| Raw Claude Code | $0.297 | 41 s | 1 | 1 |
+| Raw Codex | $0.110 | 37 s | 0.37 (0.33–0.41) | 1.11 (0.97–1.26) |
+| Routed default (Codex, recipe on) | **$0.094** | 75 s | **0.32 (0.28–0.35)** | 1.83 (1.61–2.07) |
+| Lean Claude Code session | $0.133 | **34 s** | 0.45 (0.39–0.52) | **0.86 (0.74–0.98)** |
+
+The lean session is now faster than raw Claude Code at under half its
+cost. The routed default still loses on time (1.65× raw Codex on the same
+model): its start-up is shorter by the issue judgment only, since the
+groundwork prepared ahead is the lean session's (the Codex route keeps the
+survey), and most of its gap is the Microcoder loop's own model calls.
+The run cost $13.33 at list price.
 
 ## Schedule
 

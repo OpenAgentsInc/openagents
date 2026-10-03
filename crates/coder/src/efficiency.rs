@@ -64,6 +64,12 @@ pub const PUBLISHED: &[Published] = &[
         source: "bench/efficiency/README.md",
         rows: include_str!("../../../bench/efficiency/results/2026-10-03.jsonl"),
     },
+    Published {
+        name: "2026-10-03b",
+        label: "Standing study (#10162): raw Claude Code, raw Codex, routed default, lean session after the start-up cut (#10279), at 0565629714",
+        source: "bench/efficiency/README.md#results-2026-10-03b",
+        rows: include_str!("../../../bench/efficiency/results/2026-10-03b.jsonl"),
+    },
 ];
 
 /// One run, from any source.
