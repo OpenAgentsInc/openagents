@@ -276,6 +276,7 @@ fn local_record() -> Record {
         requested: None,
         shape: Default::default(),
         hooks: None,
+        archived: None,
     }
 }
 

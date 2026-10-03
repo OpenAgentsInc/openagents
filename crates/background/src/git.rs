@@ -100,6 +100,20 @@ pub fn disposable(entry: &str) -> bool {
 /// # Errors
 /// Why it must stay.
 pub fn removable(path: &Path) -> Result<Undo, String> {
+    removable_with(path, None)
+}
+
+/// [`removable`], where `published` is a commit that already holds the
+/// worktree's whole content (a change published as a commit the worktree
+/// itself never made, such as Coder's `git commit-tree` publication):
+/// uncommitted changes then count as saved when the worktree's content,
+/// tracked and untracked, is exactly that commit's tree and the commit is
+/// on some remote. Ignored files and stashes are checked as always, and
+/// the undo recreates the worktree at the published commit.
+///
+/// # Errors
+/// Why it must stay.
+pub fn removable_with(path: &Path, published: Option<&str>) -> Result<Undo, String> {
     let dot = path.join(".git");
     match std::fs::symlink_metadata(&dot) {
         Ok(meta) if meta.is_file() => {}
@@ -119,12 +133,28 @@ pub fn removable(path: &Path) -> Result<Undo, String> {
         ],
     )?;
     let mut ignored = Vec::new();
+    let mut changed = false;
     for entry in status.split('\0').filter(|entry| !entry.is_empty()) {
         match entry.strip_prefix("!! ") {
             Some(path) => ignored.push(path),
-            None => return Err("uncommitted changes".into()),
+            None => changed = true,
         }
     }
+    let saved_at = match (changed, published) {
+        (false, _) => None,
+        (true, None) => return Err("uncommitted changes".into()),
+        (true, Some(commit)) => {
+            let want = git(
+                path,
+                &["rev-parse", "--verify", &format!("{commit}^{{tree}}")],
+            )
+            .map_err(|_| "its published commit is not in this repository".to_owned())?;
+            if content_tree(path)? != want {
+                return Err("uncommitted changes since it was published".into());
+            }
+            Some(commit)
+        }
+    };
     let kept: Vec<&str> = ignored
         .into_iter()
         .filter(|entry| !disposable(entry))
@@ -136,10 +166,13 @@ pub fn removable(path: &Path) -> Result<Undo, String> {
         }
         return Err(format!("holds ignored files: {why}"));
     }
-    let commit = git(path, &["rev-parse", "HEAD"])?;
-    let unpushed = git(path, &["rev-list", "HEAD", "--not", "--remotes"])?;
-    if !unpushed.is_empty() {
-        return Err("commits not on any remote".into());
+    let head = git(path, &["rev-parse", "HEAD"])?;
+    let commit = saved_at.map_or_else(|| head.clone(), str::to_owned);
+    for tip in [&head, &commit] {
+        let unpushed = git(path, &["rev-list", tip, "--not", "--remotes"])?;
+        if !unpushed.is_empty() {
+            return Err("commits not on any remote".into());
+        }
     }
     let branch = git(path, &["symbolic-ref", "-q", "--short", "HEAD"])
         .ok()
@@ -177,6 +210,45 @@ pub fn removable(path: &Path) -> Result<Undo, String> {
     })
 }
 
+/// The tree of the worktree's whole content, tracked and untracked (not
+/// ignored), written through a private index so the worktree's own index
+/// is untouched.
+fn content_tree(path: &Path) -> Result<String, String> {
+    let index = std::env::temp_dir().join(format!(
+        "openagents-removable-{}-{}.index",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |since| since.as_nanos())
+    ));
+    let with_index = |args: &[&str]| -> Result<String, String> {
+        let output = Command::new("git")
+            .arg("-C")
+            .arg(path)
+            .args(args)
+            .env("GIT_INDEX_FILE", &index)
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .stdin(std::process::Stdio::null())
+            .output()
+            .map_err(|error| format!("git: {error}"))?;
+        if output.status.success() {
+            Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned())
+        } else {
+            Err(format!(
+                "git {}: {}",
+                args.first().copied().unwrap_or_default(),
+                String::from_utf8_lossy(&output.stderr).trim()
+            ))
+        }
+    };
+    let tree = with_index(&["read-tree", "HEAD"])
+        .and_then(|_| with_index(&["add", "-A", "--", "."]))
+        .and_then(|_| with_index(&["write-tree"]));
+    let _ = std::fs::remove_file(&index);
+    let _ = std::fs::remove_file(index.with_extension("index.lock"));
+    tree
+}
+
 /// Remove the worktree with `git worktree remove` (which refuses a dirty
 /// one), then prune the repository's worktree list.
 ///
@@ -185,6 +257,19 @@ pub fn removable(path: &Path) -> Result<Undo, String> {
 pub fn remove(undo: &Undo) -> Result<(), String> {
     let path = undo.path.to_string_lossy().into_owned();
     git(&undo.repo, &["worktree", "remove", &path])?;
+    let _ = git(&undo.repo, &["worktree", "prune"]);
+    Ok(())
+}
+
+/// [`remove`] for a worktree [`removable_with`] passed on a published
+/// commit: its uncommitted changes are exactly that commit's tree, so the
+/// removal is forced past them.
+///
+/// # Errors
+/// Git refused.
+pub fn remove_published(undo: &Undo) -> Result<(), String> {
+    let path = undo.path.to_string_lossy().into_owned();
+    git(&undo.repo, &["worktree", "remove", "--force", &path])?;
     let _ = git(&undo.repo, &["worktree", "prune"]);
     Ok(())
 }

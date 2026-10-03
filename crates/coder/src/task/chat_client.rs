@@ -410,7 +410,11 @@ impl Coder for Here {
     }
 
     fn worktree(&self, store: &Path, task: &str) -> Option<PathBuf> {
-        local::record(store, task).map(|record| PathBuf::from(record.worktree))
+        // A worktree removed when its task ended comes back first (#10291).
+        super::retire::ensure(store, task)
+            .ok()
+            .flatten()
+            .map(|record| PathBuf::from(record.worktree))
     }
 
     /// The package record loads and resolves as `openagents plugin

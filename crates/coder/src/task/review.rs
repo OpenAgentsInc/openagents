@@ -90,6 +90,43 @@ pub fn head(worktree: &Path) -> Result<Head, String> {
 /// a worktree that is gone. A diff that cannot be read after that is a
 /// review whose completeness is unknown.
 pub fn read(task: &str, worktree: &Path, base: &str, max: usize) -> Result<TaskReview, String> {
+    let now = head(worktree)?;
+    read_at(task, worktree, base, now, max)
+}
+
+/// [`read`] of a worktree that was removed when its task ended (#10291):
+/// its content is the archived commit, read in the person's checkout.
+///
+/// # Errors
+/// As [`read`].
+pub fn read_archived(
+    task: &str,
+    checkout: &Path,
+    base: &str,
+    commit: &str,
+    max: usize,
+) -> Result<TaskReview, String> {
+    let tree = local::git_out(
+        checkout,
+        &["rev-parse", "--verify", &format!("{commit}^{{tree}}")],
+    )
+    .map_err(|why| format!("Git cannot find the task's archived commit: {}", clip(&why)))?
+    .trim()
+    .to_owned();
+    let now = Head {
+        commit: commit.to_owned(),
+        tree,
+    };
+    read_at(task, checkout, base, now, max)
+}
+
+fn read_at(
+    task: &str,
+    worktree: &Path,
+    base: &str,
+    now: Head,
+    max: usize,
+) -> Result<TaskReview, String> {
     let base = local::git_out(
         worktree,
         &["rev-parse", "--verify", &format!("{base}^{{commit}}")],
@@ -97,7 +134,6 @@ pub fn read(task: &str, worktree: &Path, base: &str, max: usize) -> Result<TaskR
     .map_err(|why| format!("Git cannot find the task's base: {}", clip(&why)))?
     .trim()
     .to_owned();
-    let now = head(worktree)?;
     let mut review = TaskReview {
         task: task.to_owned(),
         base: base.clone(),
@@ -153,7 +189,20 @@ pub fn read_for_wire(
     worktree: &Path,
     base: &str,
 ) -> Result<TaskReview, String> {
-    let mut review = read(task, worktree, base, wire::MAX_DIFF)?;
+    let archived = (!worktree.exists())
+        .then(|| local::record(store, task))
+        .flatten()
+        .and_then(|record| record.archived.map(|archived| (record.checkout, archived)));
+    let mut review = match archived {
+        Some((checkout, archived)) => read_archived(
+            task,
+            Path::new(&checkout),
+            base,
+            &archived.commit,
+            wire::MAX_DIFF,
+        )?,
+        None => read(task, worktree, base, wire::MAX_DIFF)?,
+    };
     review.publication = super::publish::last(store, task);
     fit(&mut review);
     Ok(review)

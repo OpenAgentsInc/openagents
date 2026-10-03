@@ -299,10 +299,27 @@ impl<'a> Publisher<'a> {
     /// # Errors
     /// The task has no worktree here, or its record cannot be kept.
     pub fn publish(&self, task: &str, reviewed: &Reviewed) -> Result<Publication, Refusal> {
+        let publication = self.publish_once(task, reviewed)?;
+        // The pushed commit holds the worktree's whole content: an ended
+        // task's worktree then goes (#10291).
+        if matches!(
+            publication.state,
+            PublishState::Published | PublishState::Pushed
+        ) {
+            let _ = super::retire::retire(&self.store, task);
+        }
+        Ok(publication)
+    }
+
+    fn publish_once(&self, task: &str, reviewed: &Reviewed) -> Result<Publication, Refusal> {
         let _one = PUBLISHING
             .lock()
             .unwrap_or_else(|poison| poison.into_inner());
-        let record = local::record(&self.store, task).ok_or(Refusal::NoWorktree)?;
+        // A worktree removed when its task ended comes back first (#10291).
+        let record = super::retire::ensure(&self.store, task)
+            .ok()
+            .flatten()
+            .ok_or(Refusal::NoWorktree)?;
         let worktree = PathBuf::from(&record.worktree);
         if !worktree.is_dir() {
             return Err(Refusal::NoWorktree);

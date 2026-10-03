@@ -1000,11 +1000,16 @@ pub async fn execute(
     // A local run's independent check, when the run's end listed one
     // (#10232): the recipe's frozen checks and the touched packages' tests
     // on the exact candidate, so the route ends verified or check_failed.
-    if task.checks == task::Checks::Running {
-        return task::local_checks::complete(directory, &task.task_id)
+    let task = if task.checks == task::Checks::Running {
+        task::local_checks::complete(directory, &task.task_id)
             .await
-            .map_err(|error| Failure::run(error.to_string()));
-    }
+            .map_err(|error| Failure::run(error.to_string()))?
+    } else {
+        task
+    };
+    // The task ended with nothing unsaved in its worktree: the worktree
+    // goes now, and a follow-up recreates it (#10291).
+    let _ = task::retire::retire(directory, &task.task_id);
     Ok(task)
 }
 

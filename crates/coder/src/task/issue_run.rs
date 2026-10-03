@@ -2176,6 +2176,9 @@ impl Run<'_> {
         self.flow.finished = true;
         let _ = save(&self.work.store, self.flow);
         let _ = std::fs::remove_file(stop_path(&self.work.store, &self.record.task));
+        // Landed, or nothing to keep: the worktree goes once the task has
+        // ended (#10291). Unsaved work keeps it.
+        let _ = super::retire::retire(&self.work.store, &self.record.task);
     }
 }
 

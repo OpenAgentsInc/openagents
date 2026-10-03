@@ -104,6 +104,7 @@ impl Scratch {
             requested: None,
             shape: Default::default(),
             hooks: None,
+            archived: None,
         };
         std::fs::create_dir_all(store.join("local")).unwrap();
         std::fs::write(

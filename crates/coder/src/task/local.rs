@@ -307,6 +307,11 @@ pub struct Record {
     /// ([`super::worktree_hooks`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hooks: Option<super::worktree_hooks::Ran>,
+    /// The worktree was removed when the task ended with nothing unsaved
+    /// in it (#10291); this recreates it, detached at the commit, before
+    /// anything uses it again ([`super::retire::restore`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub archived: Option<super::retire::Archived>,
 }
 
 /// How a run of a dispatch plan starts (#10183). The plain shape is a run
@@ -363,7 +368,7 @@ pub fn record(store: &Path, task: &str) -> Option<Record> {
         .filter(|record| record.schema == RECORD_SCHEMA && record.task == task)
 }
 
-fn save(store: &Path, record: &Record) -> Result<(), String> {
+pub(crate) fn save(store: &Path, record: &Record) -> Result<(), String> {
     let bytes = serde_json::to_vec_pretty(record).map_err(|e| e.to_string())?;
     autostart::write_private(&record_path(store, &record.task), &bytes)
 }
@@ -1217,6 +1222,7 @@ impl Local {
             requested: requested.map(|provider| provider.as_str().to_owned()),
             shape,
             hooks: (hooks != super::worktree_hooks::Ran::default()).then_some(hooks),
+            archived: None,
         };
         timings.submit_ms = millis(submitting);
         let launching = Instant::now();
@@ -1284,6 +1290,9 @@ impl Local {
     /// # Errors
     /// The task is not waiting, is not a local run, or cannot start.
     pub fn answer(&self, task: &str, text: &str) -> Result<Record, String> {
+        // Held until the next turn started: an ended task's worktree may be
+        // removed (#10291), and is recreated here first; a removal waits.
+        let _held = super::retire::lock(&self.store, task)?;
         let mut record = record(&self.store, task)
             .ok_or("This task was not started on this computer from a chat.")?;
         let current = Store::open(&self.store)
@@ -1301,6 +1310,7 @@ impl Local {
                 "Coder is still checking this task's last turn; wait for the checks to end.".into(),
             );
         }
+        super::retire::restore(&self.store, &mut record)?;
         let requested = record.requested.as_deref().and_then(Provider::from_config);
         let (policy, asked) =
             self.shaped(self.policy(&record.project)?, requested, record.shape)?;
