@@ -671,16 +671,67 @@ fn suite_package(slug: &str) -> String {
     format!("{base}-tests")
 }
 
-/// Runs a prepared suite and prints its summary, on stderr when `quiet`.
-/// Returns the exit code and, when it finished, the results directory.
-fn execute(
-    output: &Output,
+/// The interview's runs on this computer (#10179): the try and the full
+/// run go through the same engine as `plugin test run`, with progress on
+/// stderr, instead of ending with a command to type.
+pub(crate) struct LocalRunner {
+    /// Where each run's results directory goes.
+    pub(crate) results_base: PathBuf,
+}
+
+impl ext_eval::author::Runner for LocalRunner {
+    fn run(
+        &self,
+        request: &ext_eval::author::RunRequest<'_>,
+    ) -> Result<ext_eval::author::Tried, String> {
+        let root = request
+            .extension
+            .ok_or("the plugin isn't on this computer")?;
+        let target = resolve(&root.display().to_string())?;
+        ext_eval::sandbox::confinement_available()
+            .map_err(|error| format!("unconfined_host: {error}"))?;
+        let operator = signer_for(None)?.pubkey().to_string();
+        if !target.installed {
+            ext_eval::trust::check_owner(&target.root).map_err(|e| e.to_string())?;
+            let store = ext_eval::trust::TrustStore::under(&openagents_home());
+            ext_eval::trust::decide(&store, &target.root, ext_eval::trust::Answer::Terminal)
+                .map_err(|e| e.to_string())?;
+        }
+        let suite =
+            Suite::load(request.eval_dir, LoadOptions::default()).map_err(|e| e.to_string())?;
+        let options = Options {
+            runs: Some(request.runs),
+            ..Options::default()
+        };
+        let args = Args::parse(&[], SWITCHES)?;
+        let prepared = prepare(&args, target, suite, options)?;
+        let author = Author {
+            author: operator.clone(),
+            package: suite_package(&prepared.target.package.slug),
+            component: ext_eval::publish::SUITE_COMPONENT.to_string(),
+            evaluator: operator,
+            suite_release: None,
+            requester: None,
+        };
+        let outcome = run_prepared(&prepared, &author, &self.results_base)?;
+        eprintln!(
+            "The report is at {}.",
+            outcome.results.join("report.json").display()
+        );
+        Ok(ext_eval::author::Tried::from_evaluation(
+            &outcome.evaluation,
+            request.runs,
+        ))
+    }
+}
+
+/// Runs a prepared suite with progress on stderr: `run`, `check`, and
+/// the interview's runs.
+fn run_prepared(
     prepared: &Prepared,
     author: &Author,
     results_base: &Path,
-    json_path: Option<&str>,
-    quiet: bool,
-) -> (u8, Option<PathBuf>) {
+) -> Result<run::Outcome, String> {
     let mut held = HeldLock::open(&prepared.target.lock);
     for warning in prepared
         .suite
@@ -725,9 +776,22 @@ fn execute(
         eprintln!("warning: the plugin changed during the run: {refusal}");
     }
     held.finish();
-    let outcome = match outcome {
+    outcome.map_err(|error| error.to_string())
+}
+
+/// Runs a prepared suite and prints its summary, on stderr when `quiet`.
+/// Returns the exit code and, when it finished, the results directory.
+fn execute(
+    output: &Output,
+    prepared: &Prepared,
+    author: &Author,
+    results_base: &Path,
+    json_path: Option<&str>,
+    quiet: bool,
+) -> (u8, Option<PathBuf>) {
+    let outcome = match run_prepared(prepared, author, results_base) {
         Ok(outcome) => outcome,
-        Err(error) => return (output.fail(NAME, &error.to_string()), None),
+        Err(message) => return (output.fail(NAME, &message), None),
     };
     for path in &outcome.kept {
         eprintln!("kept {}", path.display());
@@ -1384,6 +1448,48 @@ fn original_event_ref(original: &nostr::eval_ext::Publication) -> Option<Value> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn request<'a>(
+        tool: &'a ext_eval::author::Tool,
+        evals: &'a Path,
+        extension: Option<&'a Path>,
+    ) -> ext_eval::author::RunRequest<'a> {
+        ext_eval::author::RunRequest {
+            tool,
+            eval_dir: evals,
+            extension,
+            runs: 1,
+        }
+    }
+
+    // #10179: the interview's runs used to end with a command to type.
+    #[test]
+    fn the_interviews_runner_runs_instead_of_naming_a_command() {
+        use ext_eval::author::Runner;
+        let dir = tempfile::tempdir().unwrap();
+        let tool = ext_eval::author::Tool {
+            name: "plain".into(),
+            summary: "A plugin.".into(),
+            words: String::new(),
+            source: ext_eval::author::Source::Made {
+                skill: String::new(),
+                uses: Vec::new(),
+            },
+            operations: Vec::new(),
+        };
+        let runner = LocalRunner {
+            results_base: dir.path().join("results"),
+        };
+        let away = runner.run(&request(&tool, dir.path(), None)).unwrap_err();
+        assert_eq!(away, "the plugin isn't on this computer");
+        let not_a_plugin = runner
+            .run(&request(&tool, dir.path(), Some(dir.path())))
+            .unwrap_err();
+        assert!(
+            !not_a_plugin.contains("plugin test run"),
+            "it tried to run, not name a command: {not_a_plugin}"
+        );
+    }
 
     #[test]
     fn the_template_is_the_spec_s() {

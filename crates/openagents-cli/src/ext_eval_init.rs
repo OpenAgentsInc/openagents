@@ -17,8 +17,8 @@ use coder::generate::{Door, Generate, Message, Role};
 use coder::package::Package;
 use ext_eval::author::runner::{FULL_RUNS, TRY_RUNS};
 use ext_eval::author::{
-    Catalog, Event, Interview, NoRunner, Pick, Planned, RunRequest, Runner, Source, Stage, Surface,
-    Tool, Turn, files,
+    Catalog, Event, Interview, Pick, Planned, RunRequest, Runner, Source, Stage, Surface, Tool,
+    Turn, files,
 };
 use nostr::contracts::parse_definition;
 use serde_json::{Value, json};
@@ -101,7 +101,9 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         &author,
         &root,
         &target,
-        &NoRunner,
+        &crate::ext_eval::LocalRunner {
+            results_base: target.join("results"),
+        },
         stdin.lock(),
         std::io::stdout(),
     ));
@@ -437,7 +439,7 @@ pub async fn interview<G: Generate>(
                 show(&mut out, &turn.say);
                 show(
                     &mut out,
-                    "To add it to the Gym, run `openagents plugin test publish` on the report the run wrote.",
+                    "To add it to the Gym, run `openagents plugin test publish` on that report.",
                 );
             }
             Err(why) => show(&mut out, &format!("We couldn't run it: {why}")),
