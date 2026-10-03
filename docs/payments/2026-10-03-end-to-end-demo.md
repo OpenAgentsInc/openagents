@@ -20,7 +20,7 @@ ledger, payout list, and a fresh reconciliation on `oa-pay-1` over IAP ssh.
 | Pay front | `openagents pay serve` as `openagents-pay-front.service` on `oa-pay-1`, route file [`deploy/pay/openagents-pay-routes.toml`](../../deploy/pay/openagents-pay-routes.toml): `POST /v1/plugins/{id}/invoke` at 5 sats plus the release's fee, the hosted `/x/{resource}` routes, `POST /v1/resources`, `GET /v1/paid-key`; settlements to the ledger. |
 | Public URL | `api.openagents.com` load balancer (`one-production-url-map`, matcher `api`): route rules send `/v1/plugins/{id=*}/invoke`, `/x/*`, `/v1/resources`, and `/v1/paid-key` to backend `oa-pay-front-backend` (zonal NEG `oa-pay-front-neg`, `oa-pay-1:8402`, health check `oa-pay-front-hc` on `/v1/paid-key`); `/v1/sessions*` still goes to voice and everything else to the API service. Firewall `oa-pay-front-from-lb` admits only the load balancer ranges on 8402. |
 | Relay | `relay.openagents.com` was refusing `release.fee_msat` (`unsupported_feature`): its image predated NIP-EXT G9. Rebuilt from `44edd848ed` and shifted to revision `openagents-nostr-relay-00041-fed` (no migrations; `next` smoke: health, NIP-11 key, REQ, a write read back through production, `PUT /upload` 401). Rollback: `00036-toy`. |
-| Check plugin | `097201496ea4…b002d:explain-error-check` 0.1.0 (release `f59b6399…c275d`), published by the pay host's own key with `fee_msat = 10000` and the payout Spark wallet as `payout`, so the priced path could be checked end to end without inventing an author address. It is the same guest as `explain-error`. |
+| Check plugin | `097201496ea4…b002d:explain-error-check` 0.1.0 (release `f59b6399…c275d`), published by the pay host's own key with `fee_msat = 10000` and the payout Spark wallet as `payout`, so the priced path could be checked end to end without inventing an author address. It is the same guest as `explain-error`. After the check, 0.1.1 (release `20407ead…36ee`) dropped the fee, so the listing now sells it at the 5-sat endpoint price with no author share. |
 | Flow names | `pay-host` now names a registry plugin (`<publisher>:<slug>`) by its slug once its signed listing is registered (`OPENAGENTS_PAY_PUBLICATIONS`), so `/live` puts the dots on the committed `plugin-explain-error` node and the author shows by npub; unregistered plugins stay salted aliases. |
 | Health and backups | Since `29f3ac33d6` moved the node's commands to `openagents x402 node`, `openagents-pay-health` and `openagents-pay-backup` had been calling the removed `wallet info` and `wallet backup` and failing; both scripts and `openagents-pay-restore` now use `x402 node`. Health is `healthy` and the hourly backup uploads again. |
 
@@ -68,11 +68,13 @@ reconciliation with money in it. `crates/x402` (`tests/front.rs`),
 
 ## The owner's run
 
-After the 2,000-sat first receive opens the channel, the owner publishes
-**Explain this error** under their own key with their Spark address
-(`scripts/payments-demo.sh --publish --payout spark1… --operator`, or an
-agent does it with the address they give), then runs the script; each paid
-call is approved on the phone (`x402 fetch --pay-with phone`). Expected per
+After the 2,000-sat first receive opens the channel, an agent publishes
+**Explain this error** on `oa-pay-1` with the owner's Spark address as
+`payout` (`scripts/payments-demo.sh --operator --publish --payout spark1…`;
+the release is signed by the pay host's `explain-error-author` key, the author party, and the
+author's money goes to that address), then runs the script on the owner's
+Mac with the released `openagents`; each paid call is approved on the phone
+(`x402 fetch --pay-with phone`). Expected per
 call: 15 sats received less the LSP's fee; shares author 10 sats, OpenAgents
 the rest; on the plugin's first paid call the 1,000-sat bonus, funded only
 out of OpenAgents' share (so `bonus_unfunded` beyond it); the launch match

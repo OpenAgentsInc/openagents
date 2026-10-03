@@ -129,7 +129,7 @@ EOF
 fi
 
 # 0. Publish, on oa-pay-1: its `openagents` signs releases with a fee (NIP-EXT
-#    G9), under the pay host's key, which is then the author party; the
+#    G9), under its `explain-error-author` key, the author party; the
 #    author's money goes to --payout. The plugin directory there is
 #    crates/plugin-explain-error's package.json (publisher cleared) and
 #    program.
@@ -146,7 +146,7 @@ if [ "$publish" = 1 ]; then
     echo $pkg | base64 -d | sudo -u openagents-pay tee $src/explain-error/package.json >/dev/null; \
     sudo -u openagents-pay cp $src/explain-error-check/programs/explain-error.json $src/explain-error/programs/; \
     cd /; sudo -u openagents-pay env HOME=/var/lib/openagents-pay /opt/openagents-pay/current/openagents --json \
-      plugin publish $src/explain-error --fee-msat $fee_msat --payout $payout" > "$work/published.json"
+      plugin publish $src/explain-error --as explain-error-author --fee-msat $fee_msat --payout $payout" > "$work/published.json"
   plugin=$(jq -r .id "$work/published.json")
   jq -r '"   id \(.id)\n   release \(.release) on \(.relay), fee \(.fee.fee_msat) msat to \(.fee.payout)"' "$work/published.json"
   look "openagents plugin search explain-error"
