@@ -201,11 +201,30 @@ pub trait Extras: Send + Sync {
     fn background_notice(&self) -> Option<(u64, String)> {
         None
     }
+    /// The efficiency report (`/efficiency`, #10210): routed against raw
+    /// delegation, from recorded runs. Only here: result cards never show
+    /// cost.
+    ///
+    /// # Errors
+    /// It cannot be read here, in words for the person.
+    fn efficiency(&self) -> Result<Efficiency, String> {
+        Err("The efficiency report is not available here.".into())
+    }
     /// The background watchers running on this computer, by name, for
     /// the welcome card.
     fn watchers(&self) -> Vec<String> {
         Vec::new()
     }
+}
+
+/// The efficiency report as `/efficiency` shows it: a card.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Efficiency {
+    pub title: String,
+    /// One row per arm: its name, then passes, cost, and time.
+    pub rows: Vec<(String, String)>,
+    /// The findings, wins and losses alike, and where the rest is.
+    pub body: Vec<String>,
 }
 
 /// One background rule in `/background`.

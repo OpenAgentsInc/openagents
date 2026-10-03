@@ -166,6 +166,11 @@ pub fn help() -> Vec<GroupHelp<'static>> {
             crate::boat_run::EFFECTS,
         ),
         group("shadow", Some(crate::shadow::USAGE), crate::shadow::EFFECTS),
+        group(
+            "efficiency",
+            Some(crate::efficiency::USAGE),
+            crate::efficiency::EFFECTS,
+        ),
         group("cloud", Some(crate::cloud::USAGE), crate::cloud::EFFECTS),
         group("verse", Some(crate::world::USAGE), crate::world::EFFECTS),
         GroupHelp {

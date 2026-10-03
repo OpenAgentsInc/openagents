@@ -65,10 +65,11 @@ async fn get(router: Router, uri: &str) -> (StatusCode, String) {
 }
 
 /// Every public HTML page a development server serves.
-const PAGES: [&str; 38] = [
+const PAGES: [&str; 39] = [
     "/",
     "/live",
     "/stats",
+    "/efficiency",
     "/download",
     "/terms",
     "/privacy",
@@ -788,6 +789,7 @@ fn the_site_owns_its_pages_and_the_removed_sections() {
         "/connect",
         "/live",
         "/stats",
+        "/efficiency",
         "/ask",
         "/health",
         "/.well-known/apple-app-site-association",

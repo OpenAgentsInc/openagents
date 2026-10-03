@@ -3,6 +3,7 @@
 mod connect;
 mod content;
 mod download;
+mod efficiency;
 mod home;
 mod live;
 mod profile;
@@ -26,6 +27,7 @@ pub(crate) fn routes() -> Router<App> {
         .merge(home::routes())
         .merge(live::routes())
         .merge(stats::routes())
+        .merge(efficiency::routes())
         .merge(content::routes())
         .merge(download::routes())
         .merge(connect::routes())

@@ -58,6 +58,7 @@ enum Done {
     Plugin(String, Result<String, String>),
     Turned(String, Result<String, String>),
     Imported(Result<String, String>),
+    Efficiency(Result<crate::Efficiency, String>),
     Settings(Result<crate::Settings, String>),
     Background(Result<Vec<crate::BackgroundRow>, String>),
     BackgroundCard(String, crate::BackgroundAct, Result<Vec<String>, String>),
@@ -468,6 +469,12 @@ impl Screen {
                     let _ = done.send(Done::Imported(extras.import()));
                 });
             }
+            Action::Efficiency => {
+                let (extras, done) = (self.extras.clone(), self.done.clone());
+                tokio::task::spawn_blocking(move || {
+                    let _ = done.send(Done::Efficiency(extras.efficiency()));
+                });
+            }
             Action::Settings => {
                 let (extras, done) = (self.extras.clone(), self.done.clone());
                 tokio::task::spawn_blocking(move || {
@@ -844,6 +851,14 @@ impl Screen {
             Done::Notice(_) => {}
             Done::Imported(Ok(message)) => self.app.note(message),
             Done::Imported(Err(why)) => self.app.loud(why),
+            Done::Efficiency(Ok(report)) => self.app.push(Row::Card(Card {
+                title: report.title,
+                rows: report.rows,
+                body: report.body,
+                art: Vec::new(),
+                keys: Vec::new(),
+            })),
+            Done::Efficiency(Err(why)) => self.app.loud(why),
         }
     }
 

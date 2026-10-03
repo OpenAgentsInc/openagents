@@ -62,6 +62,7 @@ pub mod delegate_door;
 pub mod doctor;
 pub mod eval_author;
 pub mod evidence;
+pub mod efficiency;
 pub mod execution;
 pub mod executor_door;
 pub mod first;

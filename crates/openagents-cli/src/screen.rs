@@ -638,6 +638,10 @@ impl Extras for ProgramExtras {
     }
 
     #[cfg(unix)]
+    fn efficiency(&self) -> Result<openagents_terminal::Efficiency, String> {
+        Ok(crate::efficiency::card(&crate::efficiency::report(&[])))
+    }
+
     fn watchers(&self) -> Vec<String> {
         crate::background::watchers()
     }

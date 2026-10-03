@@ -20,6 +20,7 @@ pub enum Slash {
     Plugins,
     Background,
     Import,
+    Efficiency,
     Expand,
     Run,
     Open,
@@ -29,7 +30,7 @@ pub enum Slash {
 
 impl Slash {
     /// Every command, in the order `/help` lists them.
-    pub const ALL: [Slash; 15] = [
+    pub const ALL: [Slash; 16] = [
         Slash::New,
         Slash::Resume,
         Slash::Threads,
@@ -40,6 +41,7 @@ impl Slash {
         Slash::Plugins,
         Slash::Background,
         Slash::Import,
+        Slash::Efficiency,
         Slash::Expand,
         Slash::Run,
         Slash::Open,
@@ -60,6 +62,7 @@ impl Slash {
             Slash::Plugins => "plugins",
             Slash::Background => "background",
             Slash::Import => "import",
+            Slash::Efficiency => "efficiency",
             Slash::Expand => "expand",
             Slash::Run => "run",
             Slash::Open => "open",
@@ -100,6 +103,9 @@ impl Slash {
                 "background rules: show, run, pause, log; /background WORDS makes or changes one"
             }
             Slash::Import => "copy this computer's Claude Code and Codex sessions in as threads",
+            Slash::Efficiency => {
+                "routed against raw Claude Code and Codex: cost, time, and passes, from recorded runs"
+            }
             Slash::Expand => "expand or condense tool calls and a run's changes (Ctrl+O)",
             Slash::Run => {
                 "open the Coder run full screen, to watch it and send it messages (Ctrl+R)"

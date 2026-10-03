@@ -106,6 +106,8 @@ pub enum Action {
     },
     /// Copy Claude Code and Codex sessions in as threads.
     Import,
+    /// `/efficiency`: the efficiency report, as a card.
+    Efficiency,
     /// Show the Coder settings.
     Settings,
     /// Turn the setting `key` on or off.
@@ -812,6 +814,7 @@ impl App {
             Slash::Plugins => vec![Action::Plugins],
             Slash::Background => vec![Action::Background],
             Slash::Import => vec![Action::Import],
+            Slash::Efficiency => vec![Action::Efficiency],
             Slash::Expand => {
                 self.toggle_tools();
                 Vec::new()

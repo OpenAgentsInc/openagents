@@ -6214,6 +6214,62 @@
       ]
     },
     {
+      "name": "efficiency",
+      "summary": "Routed against raw delegation, from recorded runs: cost per checked result, time to it, and pass rate, with intervals.",
+      "leaf": {
+        "path": [
+          "efficiency"
+        ],
+        "usage": [
+          "openagents efficiency [--all] [--study FILE]..."
+        ],
+        "forms": [
+          {
+            "tokens": [
+              {
+                "kind": "option",
+                "name": "all",
+                "optional": true
+              },
+              {
+                "kind": "option",
+                "name": "study",
+                "value": "FILE",
+                "open": true,
+                "optional": true,
+                "repeated": true
+              },
+              {
+                "kind": "option",
+                "name": "all:",
+                "optional": true,
+                "repeated": true
+              }
+            ]
+          }
+        ],
+        "summary": "Routed against raw delegation, from recorded runs: cost per checked result, time to it, and pass rate, with intervals.",
+        "effect": "read_only",
+        "runs_on": "connected_computer"
+      },
+      "options": [
+        {
+          "kind": "option",
+          "name": "all:",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "study",
+          "value": "FILE",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        }
+      ]
+    },
+    {
       "name": "cloud",
       "summary": "A GCE spot pool granted as one computer: up, down, status.",
       "children": [

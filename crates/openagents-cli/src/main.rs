@@ -27,6 +27,7 @@ mod computer;
 #[cfg(unix)]
 mod connect;
 mod discover;
+mod efficiency;
 mod eval;
 mod ext_defaults;
 mod ext_eval;
@@ -113,6 +114,8 @@ Coder:
   boat         Build and test this checkout's change on a Boat sandbox, not here.
   shadow       What a sample of Coder runs would have cost through the raw engine
                (off unless set: coder.shadow).
+  efficiency   Routed against raw delegation, from recorded runs: cost per
+               checked result, time to it, and pass rate, with intervals.
   cloud        A GCE spot pool granted as one computer: up, down, status.
 
 Verse (NIP-MV):
@@ -279,6 +282,7 @@ fn main() -> ExitCode {
         "settings" => settings::run(&output, &rest),
         "boat" => boat_run::run(&output, &rest),
         "shadow" => shadow::run(&output, &rest),
+        "efficiency" => efficiency::run(&output, &rest),
         "cloud" => cloud::run(&output, &rest),
         #[cfg(unix)]
         "ssh" => ssh::run(&output, &rest),
