@@ -160,7 +160,7 @@ pub fn escape(text: &str) -> String {
 pub fn agent_card(origin: &str) -> Value {
     json!({
         "name": "OpenAgents decision API",
-        "description": "An HTTP service that answers typed questions (noul, choice, and score) with probabilities, and classifies batches of text. Calls need an API key.",
+        "description": "An HTTP service that answers typed questions (yes/no, choice, and score) with probabilities, and classifies batches of text. Calls need an API key.",
         "version": env!("CARGO_PKG_VERSION"),
         "protocolVersion": "openagents.systemone.v1",
         "provider": {
@@ -184,7 +184,7 @@ pub fn agent_card(origin: &str) -> Value {
         "defaultInputModes": ["application/json"],
         "defaultOutputModes": ["application/json"],
         "skills": [
-            {"id": "typed-decision", "name": "Typed decision", "description": "Answer noul, choice, and score questions about a state you send, each with probabilities.", "tags": ["decision", "classification", "scoring"]},
+            {"id": "typed-decision", "name": "Typed decision", "description": "Answer yes/no, choice, and score questions about a state you send, each with probabilities.", "tags": ["decision", "classification", "scoring"]},
             {"id": "batch-classification", "name": "Batch classification", "description": "Classify batches of inputs with one label, several labels, several dimensions, a yes-or-no label, or a score.", "tags": ["classification", "batch"]},
             {"id": "durable-jobs", "name": "Durable jobs", "description": "Run a batch as a job that you can check, cancel, and download results from later.", "tags": ["jobs", "batch"]},
             {"id": "documentation", "name": "Bundled documentation", "description": "List, read, and search the OpenAgents documentation. No API key needed.", "tags": ["docs"]},
