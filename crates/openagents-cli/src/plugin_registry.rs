@@ -39,6 +39,84 @@ const SEARCH_LIMIT: u64 = 500;
 
 const SWITCHES: &[&str] = &[];
 
+/// The OpenAgents catalog's plugins (`deploy/eval-runner/catalog`), their
+/// package records compiled in. The hosted runner publishes their releases
+/// under its key; until each has a listing of its own, search and install
+/// find them here (#10307).
+const CATALOG: [&str; 6] = [
+    include_str!("../../plugin-repo-map/package.json"),
+    include_str!("../../plugin-code-search/package.json"),
+    include_str!("../../plugin-test-report/package.json"),
+    include_str!("../../plugin-explain-error/package.json"),
+    include_str!("../../plugin-release-notes/package.json"),
+    include_str!("../../plugin-dependency-check/package.json"),
+];
+
+/// The catalog's plugins as listings with no release named yet: `find`
+/// resolves the newest release when one is installed.
+pub(crate) fn catalog() -> Vec<Listing> {
+    CATALOG
+        .iter()
+        .filter_map(|text| serde_json::from_str::<Value>(text).ok())
+        .filter_map(|record| {
+            let slug = record["slug"].as_str()?.to_owned();
+            let publisher = record["publisher"].as_str()?.to_owned();
+            Some(Listing {
+                package: format!("{publisher}:{slug}"),
+                slug,
+                publisher,
+                title: record["name"].as_str().unwrap_or_default().to_owned(),
+                description: record["summary"].as_str().unwrap_or_default().to_owned(),
+                release: Value::Null,
+                // The hosted runner keeps its releases' files in the Gym's
+                // blob bucket.
+                blobs: vec![coder::gym_kb::SUITE_BLOBS.to_owned()],
+                created_at: 0,
+            })
+        })
+        .collect()
+}
+
+/// `listings` and the catalog's plugins that have no listing of their own,
+/// the catalog first.
+pub(crate) fn with_catalog(listings: Vec<Listing>, author: Option<&str>) -> Vec<Listing> {
+    let mut out: Vec<Listing> = catalog()
+        .into_iter()
+        .filter(|entry| author.is_none_or(|author| author == entry.publisher))
+        .filter(|entry| {
+            !listings
+                .iter()
+                .any(|listing| listing.package == entry.package)
+        })
+        .collect();
+    out.extend(listings);
+    out
+}
+
+/// The newest release of the catalog plugin `entry`, as the listing
+/// install reads.
+fn catalog_release(registry: &mut dyn Registry, entry: Listing) -> Result<Listing, String> {
+    let newest = registry
+        .query(json!({
+            "kinds": [nostr::ext::RELEASE_KIND],
+            "authors": [entry.publisher],
+            "#t": ["oa:ext:release:v1"],
+            "limit": SEARCH_LIMIT,
+        }))?
+        .into_iter()
+        .filter(|event| {
+            nostr::ext::parse_record(event)
+                .is_ok_and(|body| body["package"] == entry.package.as_str())
+        })
+        .max_by_key(|event| (event.created_at, event.id.clone()))
+        .ok_or_else(|| format!("{} has no published release yet", entry.title))?;
+    Ok(Listing {
+        release: json!({"id": newest.id}),
+        created_at: newest.created_at,
+        ..entry
+    })
+}
+
 /// Where registry events go and come from: a relay, or a fake in tests.
 pub(crate) trait Registry {
     /// The events matching one NIP-01 filter.
@@ -650,9 +728,14 @@ pub(crate) fn find(registry: &mut dyn Registry, name: &str) -> Result<Listing, S
     };
     let found = listings(registry, author, Some(slug))?;
     match found.as_slice() {
-        [] => Err(format!(
-            "no published plugin is named {name}; `openagents plugin search` lists them"
-        )),
+        [] => match catalog().into_iter().find(|entry| {
+            entry.slug == slug && author.is_none_or(|author| author == entry.publisher)
+        }) {
+            Some(entry) => catalog_release(registry, entry),
+            None => Err(format!(
+                "no published plugin is named {name}; `openagents plugin search` lists them"
+            )),
+        },
         [one] => Ok(one.clone()),
         many => Err(format!(
             "{} publishers have a plugin named {slug}; install one by its id: {}",
@@ -877,6 +960,7 @@ fn publish_command(args: &Args) -> Result<Value, String> {
         args.option("payout"),
     )?;
     let signer = signer_for(args.option("as"))?;
+    let repinned = crate::plugin_new::repinned_note(&dir)?;
     let packed = pack(&dir, signer.pubkey())?;
     let relay = relay_url(args.option("relay"));
     let blobs: Box<dyn Blobs> = match args.option("blobs-dir") {
@@ -901,7 +985,8 @@ fn publish_command(args: &Args) -> Result<Value, String> {
     client.close();
     let published = published?;
     let text = format!(
-        "Published {} {} as {}\nrelease {}\nlisting {}\non {relay}{}\nInstall it with `openagents plugin install {}`.",
+        "{}Published {} {} as {}\nrelease {}\nlisting {}\non {relay}{}\nInstall it with `openagents plugin install {}`.",
+        repinned.map(|note| format!("{note}\n")).unwrap_or_default(),
         packed.name,
         packed.version,
         packed.package,
@@ -935,8 +1020,18 @@ fn search_command(args: &Args) -> Result<Value, String> {
     let relay = relay_url(args.option("relay"));
     let mut client = Client::connect(&relay, signer_for(args.option("as"))?);
     let found = listings(&mut client, author, None);
+    let found: Vec<Listing> = match found {
+        Ok(found) => search(with_catalog(found, author), &query)
+            .into_iter()
+            .take(limit)
+            .collect(),
+        Err(error) => {
+            client.close();
+            return Err(error);
+        }
+    };
+    let fees = fees(&mut client, &found);
     client.close();
-    let found: Vec<Listing> = search(found?, &query).into_iter().take(limit).collect();
     let text = if found.is_empty() {
         if query.trim().is_empty() {
             format!("No plugins are published on {relay}.")
@@ -947,8 +1042,12 @@ fn search_command(args: &Args) -> Result<Value, String> {
         found
             .iter()
             .map(|listing| {
+                let price = fees
+                    .get(&listing.package)
+                    .map(|msat| format!(" · {} a call", sats(*msat)))
+                    .unwrap_or_default();
                 format!(
-                    "{} · {}\n  {}\n  openagents plugin install {}",
+                    "{} · {}\n  {}{price}\n  openagents plugin install {}",
                     listing.title, listing.description, listing.package, listing.slug
                 )
             })
@@ -959,8 +1058,47 @@ fn search_command(args: &Args) -> Result<Value, String> {
         "text": text,
         "relay": relay,
         "count": found.len(),
-        "items": found.iter().map(Listing::row).collect::<Vec<_>>(),
+        "items": found
+            .iter()
+            .map(|listing| {
+                let mut row = listing.row();
+                row["fee_msat"] = json!(fees.get(&listing.package).copied().unwrap_or(0));
+                row
+            })
+            .collect::<Vec<_>>(),
     }))
+}
+
+/// The per-call fee each listed plugin's release asks, by package; a plugin
+/// that asks none, or whose release the relay doesn't answer, is absent.
+fn fees(registry: &mut dyn Registry, found: &[Listing]) -> BTreeMap<String, u64> {
+    let ids: Vec<&str> = found
+        .iter()
+        .filter_map(|listing| listing.release["id"].as_str())
+        .collect();
+    if ids.is_empty() {
+        return BTreeMap::new();
+    }
+    registry
+        .query(json!({"ids": ids, "kinds": [nostr::ext::RELEASE_KIND]}))
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|event| nostr::ext::parse_record(event).ok())
+        .filter_map(|body| {
+            let msat = body["fee_msat"].as_u64().filter(|msat| *msat > 0)?;
+            Some((body["package"].as_str()?.to_owned(), msat))
+        })
+        .collect()
+}
+
+/// `msat` as people read it: `15 sats`, `1.5 sats`.
+fn sats(msat: u64) -> String {
+    if msat % 1000 == 0 {
+        let whole = msat / 1000;
+        format!("{whole} sat{}", if whole == 1 { "" } else { "s" })
+    } else {
+        format!("{} sats", msat as f64 / 1000.0)
+    }
 }
 
 fn install_command(args: &Args, name: &str) -> Result<Value, String> {
@@ -1141,6 +1279,39 @@ mod tests {
             ),
         )
         .unwrap();
+    }
+
+    #[test]
+    fn the_catalog_is_found_without_listings_and_comes_first() {
+        assert_eq!(super::catalog().len(), 6);
+        let stand_in = Listing {
+            package: format!("{}:explain-error-check", "1".repeat(64)),
+            slug: "explain-error-check".into(),
+            publisher: "1".repeat(64),
+            title: "Explain this error (payment check)".into(),
+            description: "Finds the project file a failing command points at.".into(),
+            release: json!({"id": "a"}),
+            blobs: Vec::new(),
+            created_at: 9,
+        };
+        let all = with_catalog(vec![stand_in], None);
+        assert_eq!(all.len(), 7);
+        assert_eq!(all[0].slug, "project-map");
+        assert_eq!(search(all.clone(), "")[0].slug, "project-map");
+        assert_eq!(search(all.clone(), "project map")[0].slug, "project-map");
+        // A catalog plugin someone listed is not shown twice.
+        let listed = super::catalog()[0].clone();
+        assert_eq!(with_catalog(vec![listed], None).len(), 6);
+        // Install resolves the newest release the catalog key signed.
+        let mut relay = FakeRelay::default();
+        assert!(
+            find(&mut relay, "project-map")
+                .unwrap_err()
+                .contains("no published release yet")
+        );
+        assert_eq!(sats(15_000), "15 sats");
+        assert_eq!(sats(1_000), "1 sat");
+        assert_eq!(sats(1_500), "1.5 sats");
     }
 
     #[test]
