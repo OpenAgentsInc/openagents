@@ -65,6 +65,7 @@ const LOG_KINDS: [&str; 8] = [
 ];
 
 /// Everything an episode needs that is not in the world manifest.
+#[derive(Clone)]
 pub struct Plan {
     /// The Minecraft server jar, fetched by `scripts/fetch-mc-server.sh`.
     pub jar: PathBuf,
@@ -141,6 +142,7 @@ impl Report {
 /// check.
 struct Runner<'a> {
     world: &'a World,
+    lease: Option<crate::wow_pool::AccountLease>,
     plan: &'a Plan,
     server: Option<Server>,
     bridge: Bridge,
@@ -191,6 +193,18 @@ struct Runner<'a> {
 /// Returns the first [`Error`] the episode hits; the run directory and
 /// trace are complete up to that point.
 pub fn run(world: &World, plan: &Plan, progress: impl Fn(&str)) -> Result<Report> {
+    let lease = if world.wow.is_some() {
+        Some(crate::wow_pool::AccountLease::acquire(world)?)
+    } else {
+        None
+    };
+    let mut effective = world.clone();
+    if let Some(lease) = &lease {
+        let wow = effective.wow.as_mut().unwrap();
+        wow.accounts = vec![lease.account.clone()];
+        wow.character = lease.character.clone();
+    }
+    let world = &effective;
     let run_dir = plan.runs.join(format!(
         "{}-{}",
         atif::log::session_id(atif::document::now_ms()),
@@ -236,7 +250,15 @@ pub fn run(world: &World, plan: &Plan, progress: impl Fn(&str)) -> Result<Report
         .and_then(|section| section.decisions.as_ref())
         .map(|section| decision_door(section, run_dir.join("decisions")))
         .transpose()?;
-    let store = SkillStore::open(SkillStore::default_dir())?;
+    let skill_dir = if let Some(wow) = &world.wow {
+        SkillStore::default_dir()
+            .join("wow")
+            .join(world.digest.trim_start_matches("sha256:"))
+            .join(&wow.accounts[0])
+    } else {
+        SkillStore::default_dir()
+    };
+    let store = SkillStore::open(skill_dir)?;
 
     let session = Session::opening(
         &run_dir
@@ -255,6 +277,7 @@ pub fn run(world: &World, plan: &Plan, progress: impl Fn(&str)) -> Result<Report
     let log = atif::log::Log::create_at(&trace, &session)?;
     let mut runner = Runner {
         world,
+        lease,
         plan,
         server,
         bridge: Bridge::start(&plan.bridge)?,
@@ -278,14 +301,22 @@ pub fn run(world: &World, plan: &Plan, progress: impl Fn(&str)) -> Result<Report
         progress: &progress,
     };
     runner.note(Source::System, "server ready", json!({"port": plan.port}));
+    if let Some(lease) = &runner.lease {
+        let detail = json!({"account":lease.account,"character":lease.character});
+        runner.note(Source::System, "realm lease acquired", detail);
+    }
 
     let mut result = runner.episode();
     // The shutdown is part of the record too.
     runner.note(Source::System, "episode over", json!({}));
-    if world.wow.is_some() {
-        let cleanup = runner
-            .bridge
-            .call("cleanup", json!({}), Duration::from_secs(60));
+    if world.wow.is_some() && runner.lease.as_mut().is_none_or(|l| l.alive()) {
+        let lease = &mut runner.lease;
+        let cleanup =
+            runner
+                .bridge
+                .call_guarded("cleanup", json!({}), Duration::from_secs(60), || {
+                    lease.as_mut().is_none_or(|l| l.alive())
+                });
         let _ = runner.log.append(&Step::called(Call {
             id: "cleanup".into(),
             name: "wow-bridge:cleanup".into(),
@@ -364,16 +395,31 @@ impl Runner<'_> {
         if let Some(wow) = &self.world.wow
             && !wow.setup_commands.is_empty()
         {
+            let end = Instant::now() + Duration::from_secs(75);
+            let mut setup_lease = loop {
+                self.bounded()?;
+                if let Some(guard) =
+                    crate::wow_pool::Lease::try_acquire("account-GYMSETUP", &wow.lease_host)?
+                {
+                    break guard;
+                }
+                if Instant::now() >= end {
+                    return Err(Error::episode("trusted setup account is busy"));
+                }
+                std::thread::sleep(Duration::from_millis(250));
+            };
             let mut setup = Bridge::start_mode(&self.plan.bridge, true)?;
-            self.setup_call(&mut setup,"join",json!({"auth":wow.auth,"account":"GYMSETUP","character":"Gymsetup","create":{"race":1,"class":1}}),Duration::from_secs(75))?;
+            self.setup_call(&mut setup, &mut setup_lease,"join",json!({"auth":wow.auth,"account":"GYMSETUP","character":"Gymsetup","create":{"race":1,"class":1}}),Duration::from_secs(75))?;
             self.setup_call(
                 &mut setup,
+                &mut setup_lease,
                 "gm",
                 json!({"command":format!(".goname {}",wow.character)}),
                 Duration::from_secs(10),
             )?;
             self.setup_call(
                 &mut setup,
+                &mut setup_lease,
                 "target",
                 json!({"guid":joined["guid"]}),
                 Duration::from_secs(10),
@@ -382,6 +428,7 @@ impl Runner<'_> {
                 let command = command.replace("{character}", &wow.character);
                 let output = self.setup_call(
                     &mut setup,
+                    &mut setup_lease,
                     "gm",
                     json!({"command":command}),
                     Duration::from_secs(10),
@@ -720,6 +767,7 @@ impl Runner<'_> {
     fn setup_call(
         &mut self,
         setup: &mut Bridge,
+        setup_lease: &mut crate::wow_pool::Lease,
         op: &str,
         args: Value,
         deadline: Duration,
@@ -728,7 +776,10 @@ impl Runner<'_> {
         let left = Duration::from_secs(self.world.episode.max_seconds)
             .saturating_sub(self.started.elapsed());
         let started = Instant::now();
-        let result = setup.call(op, args.clone(), deadline.min(left));
+        let lease = &mut self.lease;
+        let result = setup.call_guarded(op, args.clone(), deadline.min(left), || {
+            setup_lease.alive() && lease.as_mut().is_none_or(|l| l.alive())
+        });
         self.actions += 1;
         self.log.append(&Step::called(Call {
             id: format!("a{}", self.actions),
@@ -785,7 +836,12 @@ impl Runner<'_> {
         let started = Instant::now();
         let remaining = Duration::from_secs(self.world.episode.max_seconds)
             .saturating_sub(self.started.elapsed());
-        let outcome = self.bridge.call(op, args.clone(), deadline.min(remaining));
+        let lease = &mut self.lease;
+        let outcome = self
+            .bridge
+            .call_guarded(op, args.clone(), deadline.min(remaining), || {
+                lease.as_mut().is_none_or(|l| l.alive())
+            });
         let milliseconds = started.elapsed().as_millis() as u64;
         self.actions += 1;
         let (output, outcome_result) = match &outcome {
@@ -852,6 +908,9 @@ impl Runner<'_> {
     /// The episode bounds: actions and wall time. Checked before every
     /// exchange so a run can never outrun its manifest.
     fn bounded(&mut self) -> Result<()> {
+        if self.lease.as_mut().is_some_and(|l| !l.alive()) {
+            return Err(Error::episode("realm lease was lost"));
+        }
         if self.actions >= self.world.episode.max_actions as usize {
             return Err(Error::episode(format!(
                 "the episode reached its limit of {} actions",

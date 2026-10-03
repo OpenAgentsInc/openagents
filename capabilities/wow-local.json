@@ -16,7 +16,10 @@
     "max_seconds",
     "world",
     "account",
-    "character"
+    "character",
+    "account_lease",
+    "character_lease",
+    "parallel"
   ],
   "cannot_enforce": [
     "tool_set",
@@ -25,7 +28,7 @@
     "effort"
   ],
   "sees_repository": false,
-  "concurrent_max": 1,
+  "concurrent_max": 2,
   "cost": "local",
   "isolation": [
     "account",

@@ -57,5 +57,6 @@ pub mod server;
 pub mod skills;
 pub mod state;
 pub mod world;
+pub mod wow_pool;
 
 pub use error::{Error, Result};

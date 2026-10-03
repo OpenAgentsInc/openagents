@@ -4,7 +4,26 @@
   "wow": {
     "auth": "100.74.238.61:3724",
     "accounts": [
-      "GYM1"
+      "GYM1",
+      "GYM2",
+      "GYM3",
+      "GYM4",
+      "GYM5",
+      "GYM6",
+      "GYM7",
+      "GYM8",
+      "GYM9",
+      "GYM10",
+      "GYM11",
+      "GYM12",
+      "GYM13",
+      "GYM14",
+      "GYM15",
+      "GYM16",
+      "GYM17",
+      "GYM18",
+      "GYM19",
+      "GYM20"
     ],
     "character": "Gymvoyager",
     "race": 1,
@@ -19,7 +38,9 @@
       "radius": 3,
       "level": 1
     },
-    "setup_commands": []
+    "setup_commands": [],
+    "lease_host": "coderos-4080",
+    "max_parallel": 2
   },
   "agent": {
     "username": "Gymvoyager"

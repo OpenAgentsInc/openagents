@@ -1,0 +1,76 @@
+{
+  "kind": "voyager.world/v1",
+  "name": "northshire-pool",
+  "wow": {
+    "auth": "100.74.238.61:3724",
+    "accounts": [
+      "GYM1",
+      "GYM2",
+      "GYM3",
+      "GYM4",
+      "GYM5",
+      "GYM6",
+      "GYM7",
+      "GYM8",
+      "GYM9",
+      "GYM10",
+      "GYM11",
+      "GYM12",
+      "GYM13",
+      "GYM14",
+      "GYM15",
+      "GYM16",
+      "GYM17",
+      "GYM18",
+      "GYM19",
+      "GYM20"
+    ],
+    "character": "Gymvoyager",
+    "race": 1,
+    "class": 1,
+    "start": {
+      "map": 0,
+      "position": [
+        -8949.95,
+        -132.493,
+        83.5312
+      ],
+      "radius": 3,
+      "level": 1
+    },
+    "setup_commands": [],
+    "lease_host": "coderos-4080",
+    "max_parallel": 2
+  },
+  "agent": {
+    "username": "Gymvoyager"
+  },
+  "episode": {
+    "max_actions": 40,
+    "max_seconds": 120
+  },
+  "curriculum": {
+    "max_tasks": 1,
+    "tasks": [
+      {
+        "id": "a-threat-within",
+        "goal": "Accept and turn in quest 783 for Marshal McBride.",
+        "script": "move_to({x=-8933.54,y=-136.523,z=83.4466,seconds=10}) quest({entry=823,quest=783,action=\"accept\"}) move_to({waypoints={{-8912,-139,82},{-8902.59,-162.606,82.0223}},seconds=20}) quest({entry=197,quest=783,action=\"complete\"}) quest({entry=197,quest=783,action=\"reward\"})",
+        "verify": {
+          "kind": "all",
+          "checks": [
+            {
+              "kind": "quest_status",
+              "quest": 783,
+              "status": "turned_in"
+            },
+            {
+              "kind": "xp_gained",
+              "at_least": 40
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

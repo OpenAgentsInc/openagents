@@ -539,6 +539,9 @@ impl World {
                     .accounts
                     .iter()
                     .any(|a| a.eq_ignore_ascii_case("GYMSETUP"))
+                || wow.max_parallel == 0
+                || wow.max_parallel > 2
+                || wow.lease_host.is_empty()
                 || wow.setup_commands.len() > 32
                 || wow
                     .accounts
@@ -558,6 +561,14 @@ impl World {
                 || self.episode.max_seconds > 3600
             {
                 return Err(Error::world("invalid solo WoW world or episode bounds"));
+            }
+        }
+        if let Some(wow) = &self.wow {
+            let mut accounts = std::collections::HashSet::new();
+            for account in &wow.accounts {
+                if !accounts.insert(account.to_uppercase()) {
+                    return Err(Error::world("duplicate WoW account"));
+                }
             }
         }
         let mut usernames = std::collections::HashSet::new();
@@ -796,6 +807,12 @@ mod tests {
 pub struct Wow {
     /// Authentication endpoint, reachable from the helper host.
     pub auth: String,
+    /// SSH coordinator holding the shared realm lock directory.
+    #[serde(default = "default_lease_host")]
+    pub lease_host: String,
+    /// Measured concurrency cap, at most two in the initial deployment.
+    #[serde(default = "default_parallel")]
+    pub max_parallel: usize,
     /// Ordinary accounts available to episodes.
     pub accounts: Vec<String>,
     /// Character recreated before each episode.
@@ -855,4 +872,11 @@ mod wow_tests {
         std::fs::write(tmp.path(), json.to_string()).unwrap();
         assert!(World::load(tmp.path()).is_err());
     }
+}
+
+fn default_lease_host() -> String {
+    "coderos-4080".into()
+}
+fn default_parallel() -> usize {
+    2
 }
