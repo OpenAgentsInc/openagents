@@ -536,6 +536,9 @@ pub fn run(original_default: bool) -> Result<(), String> {
         proof: None,
     };
     let mode = args.next();
+    if original && mode.is_none() {
+        app.game = Game::combat(app.game.scene.clone(), false)?;
+    }
     if matches!(
         mode.as_deref(),
         Some("--demo" | "--utility-demo" | "--combat-demo" | "--navigation-demo")

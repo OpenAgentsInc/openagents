@@ -554,6 +554,43 @@ mod tests {
         assert!(game.encounter.as_ref().unwrap().used.is_empty());
         assert!(game.snapshot().player.hp < 100);
     }
+    #[test]
+    fn original_character_variants_fight_after_the_cinematic_handoff() {
+        let mut scene = Scene::from_json(include_bytes!(
+            "../../../../assets/verse/original/ritual.json"
+        ))
+        .unwrap();
+        let variants = [
+            "cultist",
+            "cultist-female",
+            "cultist-peasant",
+            "cultist-peasant-female",
+        ];
+        for actor in &mut scene.actors {
+            if actor.model == "cultist" {
+                actor.model = variants[actor.id as usize % variants.len()].into();
+            }
+        }
+        let mut game = Game::combat(scene, false).unwrap();
+        while game.time < game.scene.cut_at {
+            assert!(!game.unlocked());
+            game.tick(1.0 / 30.0, [0.0; 2]).unwrap();
+            assert_eq!(game.snapshot().player.hp, 100);
+        }
+        assert!(game.unlocked());
+        game.activate(Ability::Shield).unwrap();
+        for _ in 0..1200 {
+            game.tick(1.0 / 30.0, [0.0; 2]).unwrap();
+        }
+        let encounter = game.encounter.as_ref().unwrap();
+        assert!(encounter.enemy_casts > 0);
+        assert!(encounter.absorbed > 0);
+        assert!(encounter.damage > 0);
+        assert_eq!(game.snapshot().player.hp, 0);
+        assert!(encounter.ended.is_some());
+        assert_eq!(encounter.used.len(), 1);
+        assert_eq!(encounter.boss_max, 300_000);
+    }
 }
 
 #[cfg(test)]

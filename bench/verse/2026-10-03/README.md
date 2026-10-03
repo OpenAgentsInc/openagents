@@ -94,3 +94,11 @@ cover loop seams on all six rigs, backward/strafe state selection, motion clocks
 and stopped locomotion against collision. These authored clips are a first
 rig-aware motion system; they do not add runtime terrain foot IK or a general
 animation graph.
+# Interactive combat
+
+The normal `verse_play` launch starts the cinematic and then hands control to
+the player in the full encounter. Press F1 to restart manual combat or F2 to
+restart the controller-driven battle. Tab selects an enemy; the action bar and
+number keys activate the ten abilities. Claude has 300,000 hit points, and
+cultists respawn 60 seconds after death. Issue #10434 restores combat on normal
+launch; explicit recording modes retain their existing fixtures.
