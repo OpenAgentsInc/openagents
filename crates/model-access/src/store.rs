@@ -211,7 +211,11 @@ impl Store for Keychain {
             keychain_account(provider),
             key.expose().as_bytes(),
         )
-        .map_err(|_| "the keychain refused the key".into())
+        .map_err(|error| {
+            format!(
+                "the login keychain refused the key ({error}). Unlock it in Keychain Access, or if HOME points somewhere other than your own home folder, run this from your own login"
+            )
+        })
     }
 
     fn delete(&self, provider: Provider) -> Result<(), String> {

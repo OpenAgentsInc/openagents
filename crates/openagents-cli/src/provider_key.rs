@@ -316,7 +316,15 @@ pub(crate) fn run(output: &Output, words: &[String]) -> u8 {
                 |value| {
                     let rows = value["keys"].as_array().cloned().unwrap_or_default();
                     let mut lines: Vec<String> = if rows.is_empty() {
-                        vec!["No provider keys added.".into()]
+                        vec![match provider {
+                            Some(only) if testing => format!(
+                                "You have no {} key to test. Add one with `openagents settings provider-key set {}`.",
+                                only.name(),
+                                only.word()
+                            ),
+                            Some(only) => format!("You have no {} key.", only.name()),
+                            None => "No provider keys added.".into(),
+                        }]
                     } else {
                         rows.iter().map(render_row).collect()
                     };
@@ -330,8 +338,16 @@ pub(crate) fn run(output: &Output, words: &[String]) -> u8 {
             let Some(provider) = provider else {
                 return output.usage("settings provider-key", "clear needs a PROVIDER", USAGE);
             };
+            let had = stored().get(provider).is_some();
             if let Err(message) = store::delete_everywhere(&store::all(&dir), provider) {
                 return output.fail("settings provider-key", &message);
+            }
+            if !had {
+                output.emit(
+                    &json!({ "provider": provider.word(), "cleared": false }),
+                    |_| format!("You have no {} key; nothing was removed.", provider.name()),
+                );
+                return 0;
             }
             let (file, mut loaded) = match load_settings(output) {
                 Ok(pair) => pair,
