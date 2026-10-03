@@ -183,11 +183,11 @@ impl Encounter {
                     .positions
                     .get_mut(&actor.actor.id)
                     .ok_or("Missing combat actor")?;
-                *position += delta.normalize_or_zero()
-                    * dt
-                    * if actor.actor.id % 3 == 0 { 1.8 } else { 0.9 };
-                position.x = position.x.clamp(-11.0, 11.0);
-                position.z = position.z.clamp(-24.0, 10.0);
+                *position = game.move_hostile(
+                    *position,
+                    game.player,
+                    dt * if actor.actor.id % 3 == 0 { 1.8 } else { 0.9 },
+                )?;
             }
             if blocked || casting || game.time < self.ready[&actor.actor.id] {
                 continue;

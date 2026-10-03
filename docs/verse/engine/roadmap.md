@@ -33,6 +33,11 @@ is primitive box collision, not the full capsule/mesh controller of VE-2.
 query for third-person camera clearance against walls, columns, and the floor,
 without changing the requested orbit distance.
 
+[#10430](https://github.com/OpenAgentsInc/openagents/issues/10430) adds bounded,
+deterministic static box navigation in `physics`. Cultists route around columns,
+and shared sweeps constrain their placement and control displacements. This is
+a visibility graph for a flat primitive room, not a crowd solver or navmesh.
+
 This delivers the visual procedural milestone of VE-1/VE-3, not the complete
 VE-0–VE-6 roadmap. Portable authority extraction, original
 rules replacement, service persistence, and multiplayer remain implementation

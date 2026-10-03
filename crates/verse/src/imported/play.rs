@@ -166,6 +166,34 @@ impl Game {
         )?;
         Ok((moved - glam::DVec3::Y * 0.9).as_vec3())
     }
+    pub(super) fn move_hostile(
+        &self,
+        position: Vec3,
+        target: Vec3,
+        distance: f32,
+    ) -> Result<Vec3, String> {
+        if self.colliders.is_empty() {
+            let mut p = position + (target - position).normalize_or_zero() * distance;
+            p.x = p.x.clamp(-11., 11.);
+            p.z = p.z.clamp(-24., 10.);
+            return Ok(p);
+        }
+        let center = position.as_dvec3() + glam::DVec3::Y * 0.9;
+        let goal = glam::DVec3::new(target.x as f64, center.y, target.z as f64);
+        let half = glam::DVec3::new(0.35, 0.9, 0.35);
+        let Some(waypoint) =
+            physics::navigation::next_waypoint(center, goal, half, &self.colliders)?
+        else {
+            return Ok(position);
+        };
+        let delta = waypoint - center;
+        let movement = delta.normalize_or_zero() * delta.length().min(distance as f64);
+        Ok(
+            (physics::kinematic::move_and_slide(center, half, movement, &self.colliders)?
+                - glam::DVec3::Y * 0.9)
+                .as_vec3(),
+        )
+    }
     fn camera_eye(&self, anchor: Vec3, desired: Vec3) -> Vec3 {
         let delta = (desired - anchor).as_dvec3();
         match physics::kinematic::sweep_box(
@@ -463,21 +491,29 @@ impl Game {
                 if !source_actors.iter().any(|a| a.id == *id) {
                     continue;
                 }
-                self.simulation.place_chamber_actor(
+                let desired = self.controls.position(
                     *id,
-                    self.controls
-                        .position(
-                            *id,
-                            self.encounter
-                                .as_ref()
-                                .and_then(|e| e.positions.get(&a.actor.id))
-                                .copied()
-                                .unwrap_or(a.actor.position),
-                            self.time,
-                        )
-                        .to_array(),
-                    a.actor.yaw,
-                )?;
+                    self.encounter
+                        .as_ref()
+                        .and_then(|e| e.positions.get(&a.actor.id))
+                        .copied()
+                        .unwrap_or(a.actor.position),
+                    self.time,
+                );
+                let position = if self.colliders.is_empty() {
+                    desired
+                } else {
+                    let previous = Vec3::from(
+                        source_actors
+                            .iter()
+                            .find(|actor| actor.id == *id)
+                            .unwrap()
+                            .pos,
+                    );
+                    self.move_player(previous, desired - previous)?
+                };
+                self.simulation
+                    .place_chamber_actor(*id, position.to_array(), a.actor.yaw)?;
             }
         }
         let mut remaining = Vec::new();
@@ -1171,5 +1207,18 @@ mod original_collision_tests {
         assert_eq!(g.camera.distance, 10.);
         let floor = g.camera_eye(Vec3::Y * 1.4, Vec3::new(0., -3., -2.));
         assert!(floor.y >= 0.15 && floor.y < 0.151);
+    }
+    #[test]
+    fn original_hostile_routes_around_a_real_chamber_column() {
+        let g = game();
+        let mut position = Vec3::new(13., 0., -13.);
+        let target = Vec3::new(17., 0., -13.);
+        let mut detoured = false;
+        for _ in 0..150 {
+            position = g.move_hostile(position, target, 0.09).unwrap();
+            detoured |= (position.z + 13.).abs() > 1.;
+            assert!(!(position.x > 13.95 && position.x < 16.05 && (position.z + 13.).abs() < 1.05));
+        }
+        assert!(detoured && position.distance(target) < 0.02);
     }
 }

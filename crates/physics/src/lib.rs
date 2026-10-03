@@ -43,6 +43,7 @@ pub mod joint;
 pub mod kinematic;
 pub mod ledger;
 pub mod modal;
+pub mod navigation;
 pub mod oracle;
 pub mod plume;
 pub mod rope;

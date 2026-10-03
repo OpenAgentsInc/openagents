@@ -49,6 +49,10 @@ camera uses those solids to shorten obstructed orbits and restores the requested
 zoom in open space. Teleport occupancy, resource admission, and arrival effects
 use the collision-admitted endpoint.
 
-Capsules, stairs, slopes, gravity, NPC navigation, and projectile collision remain
+Cultists use bounded static box navigation to route around columns, and their
+movement and control displacements respect the same room solids. This has no
+crowd solver or dynamic-obstacle avoidance.
+
+Capsules, stairs, slopes, gravity, and projectile collision remain
 future work. Further engine extraction, durable saves, and multiplayer remain on
 the engine roadmap and #10406/#10407.
