@@ -63,6 +63,103 @@ pub const WALLET: f32 = 64.0;
 /// How far apart a fixture replays its events, in seconds.
 pub const FIXTURE_PACE: f32 = 0.8;
 
+/// Below 2^41 sats an f64's spacing is under half a millisatoshi, so a
+/// fractional amount still reads back exactly to three places.
+const MAX_FRACTIONAL_SATS: f64 = 2_199_023_255_552.0;
+
+/// Exact sats on the wire, stored internally as integer millisatoshis.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Sats(u64);
+
+impl Sats {
+    pub const fn from_msat(msat: u64) -> Self {
+        Self(msat)
+    }
+
+    pub const fn msat(self) -> u64 {
+        self.0
+    }
+
+    fn checked_add(self, other: Self) -> Result<Self, &'static str> {
+        self.0
+            .checked_add(other.0)
+            .map(Self)
+            .ok_or("Flow amount overflow")
+    }
+}
+
+impl<'de> Deserialize<'de> for Sats {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let number = serde_json::Number::deserialize(deserializer)?;
+        // A fractional amount arrives as an f64; refuse one too large to
+        // read back exactly rather than show a wrong number.
+        if number.is_f64()
+            && number
+                .as_f64()
+                .is_none_or(|sats| sats >= MAX_FRACTIONAL_SATS)
+        {
+            return Err(serde::de::Error::custom(
+                "Fractional amount too large to be exact",
+            ));
+        }
+        exact_msat(&number.to_string())
+            .map(Self)
+            .ok_or_else(|| serde::de::Error::custom("Expected nonnegative exact millisatoshis"))
+    }
+}
+
+fn exact_msat(text: &str) -> Option<u64> {
+    if text.starts_with('-') {
+        return None;
+    }
+    let (mantissa, exponent) = match text.split_once(['e', 'E']) {
+        Some((mantissa, exponent)) => (mantissa, exponent.parse::<i64>().ok()?),
+        None => (text, 0),
+    };
+    let (whole, fraction) = mantissa.split_once('.').unwrap_or((mantissa, ""));
+    let digits = format!("{whole}{fraction}");
+    let digits = digits.trim_start_matches('0');
+    if digits.is_empty() {
+        return Some(0);
+    }
+    let scale = exponent
+        .checked_add(3)?
+        .checked_sub(fraction.len() as i64)?;
+    if scale >= 0 {
+        let scale = u32::try_from(scale).ok()?;
+        if digits.len().checked_add(scale as usize)? > 20 {
+            return None;
+        }
+        digits
+            .parse::<u64>()
+            .ok()?
+            .checked_mul(10u64.checked_pow(scale)?)
+    } else {
+        let places = usize::try_from(scale.checked_neg()?).ok()?;
+        let keep = digits.len().checked_sub(places)?;
+        if !digits[keep..].bytes().all(|b| b == b'0') {
+            return None;
+        }
+        digits[..keep].parse().ok()
+    }
+}
+
+impl std::fmt::Display for Sats {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let whole = grouped(self.0 / 1000);
+        let fraction = self.0 % 1000;
+        if fraction == 0 {
+            f.write_str(&whole)
+        } else {
+            write!(
+                f,
+                "{whole}.{}",
+                format!("{fraction:03}").trim_end_matches('0')
+            )
+        }
+    }
+}
+
 /// One public flow event (`openagents.flow-event.v1`). Every field the
 /// scene doesn't draw is optional, so a newer producer still parses.
 #[derive(Clone, Debug, Deserialize, PartialEq)]
@@ -83,9 +180,9 @@ pub struct FlowEvent {
     #[serde(default)]
     pub node: String,
     #[serde(default)]
-    pub amount_sats: Option<u64>,
+    pub amount_sats: Option<Sats>,
     #[serde(default)]
-    pub split: BTreeMap<String, u64>,
+    pub split: BTreeMap<String, Sats>,
     #[serde(default)]
     pub author: Option<String>,
 }
@@ -109,23 +206,29 @@ pub enum EventKind {
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
 pub struct Totals {
     #[serde(default)]
-    pub received_sats: u64,
+    pub received_sats: Sats,
     #[serde(default)]
-    pub paid_out_sats: u64,
+    pub paid_out_sats: Sats,
     #[serde(default)]
     pub calls: u64,
 }
 
 impl Totals {
     /// Counts one more event.
-    pub fn count(&mut self, event: &FlowEvent) {
-        let amount = event.amount_sats.unwrap_or(0);
+    pub fn count(&mut self, event: &FlowEvent) -> Result<(), &'static str> {
+        let amount = event.amount_sats.unwrap_or_default();
         match event.kind {
-            EventKind::Call => self.calls += 1,
-            EventKind::Payment => self.received_sats += amount,
-            EventKind::Payout => self.paid_out_sats += amount,
+            EventKind::Call => {
+                self.calls = self
+                    .calls
+                    .checked_add(1)
+                    .ok_or("Flow call count overflow")?
+            }
+            EventKind::Payment => self.received_sats = self.received_sats.checked_add(amount)?,
+            EventKind::Payout => self.paid_out_sats = self.paid_out_sats.checked_add(amount)?,
             _ => {}
         }
+        Ok(())
     }
 }
 
@@ -407,6 +510,7 @@ pub enum Feed {
     Event(FlowEvent),
     Connected,
     Dropped,
+    Invalid,
 }
 
 /// Where the stream stands, as the scene says it.
@@ -415,6 +519,7 @@ pub enum Status {
     Connecting,
     Live,
     Unreachable,
+    Invalid,
 }
 
 /// The live scene.
@@ -583,19 +688,33 @@ impl RouteLive {
                 }
             }
             Feed::Event(event) => {
-                self.status = Status::Live;
+                if self.status == Status::Invalid {
+                    return;
+                }
                 if event.seq != 0 && event.seq <= self.last_seq {
                     return;
                 }
+                if self.totals.count(&event).is_err() {
+                    self.status = Status::Invalid;
+                    self.schedule.flights.clear();
+                    return;
+                }
+                self.status = Status::Live;
                 self.last_seq = self.last_seq.max(event.seq);
                 self.last_at = Some(event.at);
-                self.totals.count(&event);
                 let map = self.page.map();
                 self.schedule.push(map, &event, at);
             }
-            Feed::Connected => self.status = Status::Live,
+            Feed::Connected if self.status != Status::Invalid => self.status = Status::Live,
+            Feed::Connected => {}
+            Feed::Invalid => {
+                self.status = Status::Invalid;
+                self.schedule.flights.clear();
+            }
             Feed::Dropped => {
-                self.status = Status::Unreachable;
+                if self.status != Status::Invalid {
+                    self.status = Status::Unreachable;
+                }
                 // No dots while the stream is down.
                 self.schedule.flights.clear();
             }
@@ -604,7 +723,7 @@ impl RouteLive {
 
     /// The dots at the current time.
     pub fn pulses(&self) -> Vec<Pulse> {
-        if self.status == Status::Unreachable {
+        if matches!(self.status, Status::Unreachable | Status::Invalid) {
             return Vec::new();
         }
         self.schedule.pulses(
@@ -625,6 +744,7 @@ impl RouteLive {
             Status::Connecting => "Connecting to the flow stream".into(),
             Status::Live => format!("Live \u{b7} {last}"),
             Status::Unreachable => format!("The flow stream is unreachable \u{b7} {last}"),
+            Status::Invalid => format!("The flow stream has invalid data \u{b7} {last}"),
         }
     }
 
@@ -632,8 +752,8 @@ impl RouteLive {
     pub fn totals_line(&self) -> String {
         format!(
             "{} sats received \u{b7} {} sats paid out \u{b7} {} calls",
-            grouped(self.totals.received_sats),
-            grouped(self.totals.paid_out_sats),
+            self.totals.received_sats,
+            self.totals.paid_out_sats,
             grouped(self.totals.calls)
         )
     }
@@ -763,8 +883,14 @@ fn follow(base: &str, send: &Sender<Feed>, stop: &AtomicBool) {
                 .timeout(Duration::from_secs(15))
                 .send()
             && response.status().is_success()
-            && let Ok(snapshot) = response.json::<Snapshot>()
         {
+            let snapshot = match response.json::<Snapshot>() {
+                Ok(snapshot) => snapshot,
+                Err(_) => {
+                    let _ = send.send(Feed::Invalid);
+                    return;
+                }
+            };
             last = snapshot
                 .events
                 .iter()
@@ -796,11 +922,16 @@ fn follow(base: &str, send: &Sender<Feed>, stop: &AtomicBool) {
                     let Some((id, data)) = parser.line(line.trim_end_matches('\r')) else {
                         continue;
                     };
-                    if let Ok(event) = serde_json::from_str::<FlowEvent>(&data) {
-                        last = id.or_else(|| Some(event.seq.to_string()));
-                        if send.send(Feed::Event(event)).is_err() {
+                    let event = match serde_json::from_str::<FlowEvent>(&data) {
+                        Ok(event) => event,
+                        Err(_) => {
+                            let _ = send.send(Feed::Invalid);
                             return;
                         }
+                    };
+                    last = id.or_else(|| Some(event.seq.to_string()));
+                    if send.send(Feed::Event(event)).is_err() {
+                        return;
                     }
                 }
             }
@@ -997,8 +1128,8 @@ mod tests {
         assert_eq!(
             live.totals(),
             Totals {
-                received_sats: 31 + 21 + 12,
-                paid_out_sats: 40,
+                received_sats: Sats::from_msat(64_000),
+                paid_out_sats: Sats::from_msat(40_000),
                 calls: 4,
             }
         );
@@ -1027,8 +1158,8 @@ mod tests {
         send.send(Feed::Snapshot(Snapshot {
             events: fixture(FIXTURE)[..2].to_vec(),
             totals: Totals {
-                received_sats: 31,
-                paid_out_sats: 0,
+                received_sats: Sats::from_msat(31_000),
+                paid_out_sats: Sats::default(),
                 calls: 1,
             },
         }))
@@ -1037,13 +1168,13 @@ mod tests {
         // The snapshot's events are history: counted, not drawn.
         assert_eq!(live.status(), Status::Live);
         assert!(live.pulses().is_empty());
-        assert_eq!(live.totals().received_sats, 31);
+        assert_eq!(live.totals().received_sats.msat(), 31_000);
         // A replayed event the snapshot already had is skipped.
         send.send(Feed::Event(fixture(FIXTURE)[1].clone())).unwrap();
         send.send(Feed::Event(fixture(FIXTURE)[2].clone())).unwrap();
         live.advance(start + Duration::from_millis(500));
         assert_eq!(live.flights().len(), 1);
-        assert_eq!(live.totals().received_sats, 31);
+        assert_eq!(live.totals().received_sats.msat(), 31_000);
         send.send(Feed::Dropped).unwrap();
         live.advance(start + Duration::from_millis(600));
         assert_eq!(live.status(), Status::Unreachable);
@@ -1066,3 +1197,7 @@ mod tests {
         assert_eq!(utc(1_791_043_200_123), "2026-10-03 16:00:00 UTC");
     }
 }
+
+#[cfg(test)]
+#[path = "route_live_tests.rs"]
+mod fractional_tests;

@@ -1,0 +1,73 @@
+{
+  "v": 1,
+  "events": [
+    {
+      "v": 1,
+      "seq": 1,
+      "at": 1791043200001,
+      "type": "call",
+      "resource": "plugin",
+      "plugin": "explain-error",
+      "node": "plugin:explain-error",
+      "rail": "lightning"
+    },
+    {
+      "v": 1,
+      "seq": 2,
+      "at": 1791043200002,
+      "type": "payment",
+      "resource": "plugin",
+      "plugin": "explain-error",
+      "node": "plugin:explain-error",
+      "rail": "lightning",
+      "amount_sats": 31.001,
+      "split": {
+        "author": 10.001,
+        "openagents": 21
+      }
+    },
+    {
+      "v": 1,
+      "seq": 3,
+      "at": 1791043200003,
+      "type": "share",
+      "resource": "plugin",
+      "plugin": "explain-error",
+      "node": "plugin:explain-error",
+      "rail": "lightning",
+      "amount_sats": 10.001,
+      "split": {
+        "author": 10.001
+      }
+    }
+  ],
+  "totals": {
+    "received_sats": 31.001,
+    "paid_out_sats": 0.001,
+    "calls": 1,
+    "pending_accruals_sats": 31,
+    "earnings_sats": 10.001
+  },
+  "topology": {
+    "nodes": [
+      {
+        "id": "front",
+        "kind": "front",
+        "parent": null,
+        "position": {
+          "x": 0,
+          "y": 0
+        }
+      },
+      {
+        "id": "plugin:explain-error",
+        "kind": "plugin",
+        "parent": "front",
+        "position": {
+          "x": 100,
+          "y": 0
+        }
+      }
+    ]
+  }
+}

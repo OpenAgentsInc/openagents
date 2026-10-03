@@ -112,3 +112,73 @@ test("the fixture counts its totals and reads plainly", function () {
     assert.ok(flow.describe(event).indexOf("caller-") < 0);
   });
 });
+
+var fractionalDir = path.join(__dirname, "../../openagents-desktop/tests/fixtures");
+var fractionalSnapshot = JSON.parse(fs.readFileSync(path.join(fractionalDir,
+  "flow-fractional-snapshot.json"), "utf8"));
+var fractionalEvents = fs.readFileSync(path.join(fractionalDir, "flow-fractional-stream.sse"), "utf8")
+  .split("\n").filter(function (line) { return line.startsWith("data: "); })
+  .map(function (line) { return JSON.parse(line.slice(6)); });
+
+test("fractional money keeps up to three places, with integral counts", function () {
+  [[0.001, "0.001"], [31.001, "31.001"], [10.001, "10.001"],
+    [1.01, "1.01"], [1.1, "1.1"], [31, "31"], [1234.001, "1,234.001"]]
+    .forEach(function (pair) { assert.strictEqual(flow.money(pair[0]), pair[1]); });
+  assert.strictEqual(flow.grouped(1234), "1,234");
+  var drift = { received_sats: 0, paid_out_sats: 0, calls: 0 };
+  for (var i = 0; i < 1000; i++) flow.count(drift, { type: "payment", amount_sats: 0.001 });
+  assert.strictEqual(drift.received_sats, 1);
+  assert.strictEqual(fractionalEvents.length, 7);
+  assert.strictEqual(fractionalSnapshot.events[1].split.author, 10.001);
+  assert.strictEqual(fractionalEvents[2].split.author, 0.001);
+  assert.strictEqual(flow.describe(fractionalSnapshot.events[1]),
+    "16:00:00  payment · 31.001 sats · explain-error");
+  assert.strictEqual(flow.describe(fractionalEvents[2]),
+    "16:00:00  payment · 0.001 sats · explain-error");
+});
+
+test("the browser ticker and recent list preserve fractional snapshot and resumed SSE", async function () {
+  var vm = require("node:vm");
+  var elements = {};
+  ["flow", "flow-map", "flow-status", "flow-recent", "flow-received", "flow-paid", "flow-calls"]
+    .forEach(function (id) {
+      elements[id] = { textContent: "", children: [], appendChild: function (child) { this.children.push(child); } };
+    });
+  elements.flow.getAttribute = function (name) {
+    return name === "data-snapshot" ? "/api/flow/snapshot" : "/api/flow/stream";
+  };
+  elements["flow-map"].getContext = function () { return {}; };
+  var sources = [];
+  var context = {
+    document: { getElementById: function (id) { return elements[id]; }, createElement: function () { return {}; } },
+    window: { fetch: true, requestAnimationFrame: function () {} },
+    performance: { now: function () { return 0; } },
+    fetch: function (url) {
+      assert.strictEqual(url, "/api/flow/snapshot");
+      return Promise.resolve({ ok: true, json: function () { return Promise.resolve(fractionalSnapshot); } });
+    },
+    EventSource: function (url) { assert.strictEqual(url, "/api/flow/stream"); sources.push(this); },
+    setTimeout: function () {}
+  };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, "flow.js"), "utf8"), context);
+  await new Promise(function (resolve) { setImmediate(resolve); });
+  assert.strictEqual(sources.length, 1);
+  sources[0].onopen();
+  assert.strictEqual(elements["flow-received"].textContent, "31.001 sats");
+  assert.strictEqual(elements["flow-paid"].textContent, "0.001 sats");
+  assert.strictEqual(elements["flow-calls"].textContent, "1");
+  assert.ok(elements["flow-recent"].children.some(function (li) { return li.textContent.includes("31.001 sats"); }));
+  fractionalEvents.forEach(function (event) { sources[0].onmessage({ data: JSON.stringify(event) }); });
+  assert.strictEqual(elements["flow-received"].textContent, "31.002 sats");
+  assert.strictEqual(elements["flow-paid"].textContent, "10.002 sats");
+  assert.strictEqual(elements["flow-calls"].textContent, "2");
+  assert.ok(elements["flow-recent"].children.some(function (li) { return li.textContent.includes("0.001 sats"); }));
+  sources[0].readyState = 0;
+  sources[0].onerror();
+  assert.ok(elements["flow-status"].textContent.includes("Reconnecting"));
+  sources[0].onopen();
+  fractionalEvents.forEach(function (event) { sources[0].onmessage({ data: JSON.stringify(event) }); });
+  assert.strictEqual(elements["flow-received"].textContent, "31.002 sats");
+  assert.strictEqual(elements["flow-paid"].textContent, "10.002 sats");
+  assert.strictEqual(elements["flow-calls"].textContent, "2");
+});

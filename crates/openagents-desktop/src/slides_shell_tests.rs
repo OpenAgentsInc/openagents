@@ -691,8 +691,8 @@ fn episode_289_shows_live_traffic_from_the_flow_stream() {
     assert_eq!(
         totals,
         Totals {
-            received_sats: 64,
-            paid_out_sats: 40,
+            received_sats: openagents_desktop::route_live::Sats::from_msat(64_000),
+            paid_out_sats: openagents_desktop::route_live::Sats::from_msat(40_000),
             calls: 4,
         }
     );

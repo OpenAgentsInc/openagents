@@ -1,0 +1,23 @@
+: producer-compatible replay, including the resume boundary
+
+id: 3
+data: {"v":1,"seq":3,"at":1791043200003,"type":"share","resource":"plugin","plugin":"explain-error","node":"plugin:explain-error","rail":"lightning","amount_sats":10.001,"split":{"author":10.001}}
+
+id: 4
+data: {"v":1,"seq":4,"at":1791043200004,"type":"call","resource":"plugin","plugin":"explain-error","node":"plugin:explain-error","rail":"lightning"}
+
+id: 5
+data: {"v":1,"seq":5,"at":1791043200005,"type":"payment","resource":"plugin","plugin":"explain-error","node":"plugin:explain-error","rail":"lightning","amount_sats":0.001,"split":{"author":0.001}}
+
+id: 6
+data: {"v":1,"seq":6,"at":1791043200006,"type":"share","resource":"plugin","plugin":"explain-error","node":"plugin:explain-error","rail":"lightning","amount_sats":0.001,"split":{"author":0.001}}
+
+id: 7
+data: {"v":1,"seq":7,"at":1791043200007,"type":"payout","resource":"plugin","plugin":"explain-error","node":"plugin:explain-error","rail":"lightning","amount_sats":10.001,"split":{"author":10.001}}
+
+id: 8
+data: {"v":1,"seq":8,"at":1791043200008,"type":"bonus","resource":"plugin","plugin":"explain-error","node":"plugin:explain-error","rail":"lightning","amount_sats":0.001,"split":{"bonus":0.001}}
+
+id: 9
+data: {"v":1,"seq":9,"at":1791043200009,"type":"run","resource":"plugin","plugin":"explain-error","node":"plugin:explain-error","rail":"lightning"}
+

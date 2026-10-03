@@ -186,13 +186,20 @@
   // Counts one event into the totals.
   function count(totals, event) {
     var amount = Number(event.amount_sats) || 0;
+    // Sum in whole millisatoshis so fractional sats never drift.
+    function plus(sats) { return (Math.round(sats * 1000) + Math.round(amount * 1000)) / 1000; }
     if (event.type === "call") totals.calls += 1;
-    else if (event.type === "payment") totals.received_sats += amount;
-    else if (event.type === "payout") totals.paid_out_sats += amount;
+    else if (event.type === "payment") totals.received_sats = plus(totals.received_sats);
+    else if (event.type === "payout") totals.paid_out_sats = plus(totals.paid_out_sats);
   }
 
   function grouped(n) {
     return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  }
+
+  // Money has millisatoshi precision; call counts remain integral.
+  function money(n) {
+    return Number(n).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 3 });
   }
 
   function utc(ms) {
@@ -207,12 +214,12 @@
     var what = event.plugin || event.node || "";
     var words = { call: "call", payment: "payment", share: "author share",
       payout: "payout", bonus: "bonus", run: "Coder run" }[event.type] || event.type;
-    var amount = event.amount_sats != null ? " · " + grouped(event.amount_sats) + " sats" : "";
+    var amount = event.amount_sats != null ? " · " + money(event.amount_sats) + " sats" : "";
     return utc(event.at).slice(11, 19) + "  " + words + amount + (what ? " · " + what : "");
   }
 
   var api = { topology: topology, target: target, pathTo: pathTo, legs: legs, place: place,
-    along: along, Schedule: Schedule, count: count, grouped: grouped, utc: utc,
+    along: along, Schedule: Schedule, count: count, grouped: grouped, money: money, utc: utc,
     describe: describe, REQUEST: REQUEST, PAYMENT: PAYMENT, TRIP: TRIP, SHARE: SHARE,
     PAYOUT: PAYOUT, MAX_WAIT: MAX_WAIT, AUTHOR: AUTHOR, WALLET: WALLET };
   if (typeof module === "object" && module.exports) module.exports = api;
@@ -246,8 +253,8 @@
       state === "down" ? "The flow stream is unreachable · " + last + ". Retrying." :
       state === "again" ? "The flow stream dropped · " + last + ". Reconnecting." :
       "Connecting to the flow stream.";
-    document.getElementById("flow-received").textContent = grouped(totals.received_sats) + " sats";
-    document.getElementById("flow-paid").textContent = grouped(totals.paid_out_sats) + " sats";
+    document.getElementById("flow-received").textContent = money(totals.received_sats) + " sats";
+    document.getElementById("flow-paid").textContent = money(totals.paid_out_sats) + " sats";
     document.getElementById("flow-calls").textContent = grouped(totals.calls);
   }
 
