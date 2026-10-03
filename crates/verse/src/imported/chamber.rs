@@ -102,6 +102,7 @@ pub fn classic_atlas(dir: &std::path::Path) -> Result<Atlas, String> {
         "web-icon",
         "grease-icon",
         "light-icon",
+        "shield-icon",
     ] {
         let decoder = png::Decoder::new(std::io::BufReader::new(
             std::fs::File::open(dir.join(format!("{name}.png"))).map_err(|e| e.to_string())?,
@@ -218,6 +219,7 @@ pub fn add_effect_models(pack: &mut Pack, dir: &std::path::Path) -> Result<(), S
         ("effect-mist", [0.5, 0.8, 1.0]),
         ("effect-web", [0.7, 0.8, 0.9]),
         ("effect-grease", [0.15, 0.12, 0.07]),
+        ("effect-shadow", [0.7, 0.05, 1.0]),
         ("effect-light", [1.0, 0.85, 0.45]),
     ] {
         pack.models.insert(
@@ -234,6 +236,58 @@ pub fn add_effect_models(pack: &mut Pack, dir: &std::path::Path) -> Result<(), S
                     indices: indices.clone(),
                     texture,
                     blend: if name == "effect-grease" { 2 } else { 3 },
+                    emissive: true,
+                    tint: color,
+                }],
+            },
+        );
+    }
+    // Thin luminous rings keep the shield transparent around the character.
+    for (name, planes, color) in [
+        ("effect-rune", 1, [0.8, 0.04, 0.65]),
+        ("effect-shield", 3, [0.08, 0.6, 1.0]),
+    ] {
+        let mut vertices = Vec::new();
+        let mut indices = Vec::new();
+        for plane in 0..planes {
+            let base = vertices.len() as u32;
+            for segment in 0..=64 {
+                let angle = segment as f32 / 64.0 * std::f32::consts::TAU;
+                for radius in [0.98, 1.0] {
+                    let (x, z) = (angle.cos() * radius, angle.sin() * radius);
+                    let p = match plane {
+                        0 => Vec3::new(x, 0.0, z),
+                        1 => Vec3::new(x, z, 0.0),
+                        _ => Vec3::new(0.0, x, z),
+                    };
+                    vertices.push(Vertex {
+                        position: p.into(),
+                        normal: Vec3::Y.into(),
+                        uv: [0.5, 0.5],
+                        joints: [0; 4],
+                        weights: [1.0, 0.0, 0.0, 0.0],
+                    });
+                }
+            }
+            for segment in 0..64 {
+                let i = base + segment * 2;
+                indices.extend_from_slice(&[i, i + 1, i + 2, i + 1, i + 3, i + 2]);
+            }
+        }
+        pack.models.insert(
+            name.into(),
+            Model {
+                source: format!("verse/procedural/{name}"),
+                source_sha256: format!("{:x}", Sha256::digest(name.as_bytes())),
+                height: 2.0,
+                bones: vec![],
+                clips: vec![],
+                attachments: vec![],
+                surfaces: vec![Surface {
+                    vertices,
+                    indices,
+                    texture,
+                    blend: 3,
                     emissive: true,
                     tint: color,
                 }],
@@ -282,7 +336,7 @@ pub fn spell_instances(game: &super::play::Game) -> Vec<Instance> {
             ),
             Utility::Web => ("effect-web", Vec3::new(3.048, 0.08, 3.048), 0.5),
             Utility::Grease => ("effect-grease", Vec3::new(1.524, 0.045, 1.524), 0.8),
-            Utility::Light => continue,
+            Utility::Light | Utility::Shield => continue,
         };
         out.push(Instance {
             model: model.into(),
@@ -331,6 +385,58 @@ pub fn spell_instances(game: &super::play::Game) -> Vec<Instance> {
             time: game.time,
             emission: Vec3::ONE,
         });
+    }
+    if game.controls.shield > 0 && game.time < game.controls.shield_until {
+        out.push(Instance {
+            model: "effect-shield".into(),
+            transform: Mat4::from_translation(game.player + Vec3::Y * 1.05)
+                * Mat4::from_rotation_y(game.time * 0.7)
+                * Mat4::from_scale(Vec3::new(1.1, 1.25, 1.1)),
+            animation: 0,
+            time: game.time,
+            emission: Vec3::splat(0.8),
+        });
+    }
+    if let Some(encounter) = &game.encounter {
+        for cast in &encounter.casts {
+            out.push(Instance {
+                model: "effect-rune".into(),
+                transform: Mat4::from_translation(cast.target + Vec3::Y * 0.08)
+                    * Mat4::from_scale(Vec3::splat(cast.radius)),
+                animation: 0,
+                time: game.time,
+                emission: Vec3::splat(0.6),
+            });
+            let position = if game.time < cast.release {
+                cast.origin
+            } else {
+                cast.origin.lerp(
+                    cast.target + Vec3::Y,
+                    ((game.time - cast.release) / (cast.impact - cast.release)).clamp(0.0, 1.0),
+                )
+            };
+            let size = if cast.boss { 0.55 } else { 0.23 };
+            out.push(Instance {
+                model: "effect-shadow".into(),
+                transform: Mat4::from_translation(position) * Mat4::from_scale(Vec3::splat(size)),
+                animation: 0,
+                time: game.time,
+                emission: Vec3::ONE,
+            });
+            if game.time >= cast.release {
+                let direction = (cast.target + Vec3::Y - cast.origin).normalize_or_zero();
+                for tail in 1..4 {
+                    out.push(Instance {
+                        model: "effect-shadow".into(),
+                        transform: Mat4::from_translation(position - direction * tail as f32 * 0.3)
+                            * Mat4::from_scale(Vec3::splat(size * (1.0 - tail as f32 * 0.18))),
+                        animation: 0,
+                        time: game.time,
+                        emission: Vec3::ONE,
+                    });
+                }
+            }
+        }
     }
     for (position, at, kind) in &game.impacts {
         let elapsed = game.time - at;

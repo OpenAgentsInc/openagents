@@ -257,3 +257,22 @@ The [native HUD capture](../../bench/wow/2026-10-03/verse-classic-hud.png)
 shows the result. Refresh private assets with `wow-import --ui-only`.
 Menu and bag artwork is decorative; this chamber has no inventory, experience,
 or character-level system. Imported fonts and UI textures remain outside Git.
+
+Press F2 to reset into agent-controlled combat, or F1 to reset into manual
+combat. The same encounter runs in both modes. The local tactical controller
+observes incoming casts, health, range, mana, and cooldowns, then selects
+ordinary admitted actions. Its opening exercises the full kit; subsequent
+actions prioritize shields, evasive movement, and damage. Press 0 to cast
+Shield manually: one mana buys 18 absorption for four seconds, with an
+eight-second cooldown. These are chamber MMO rules, not a full tabletop Shield
+implementation. Cultists approach and cast telegraphed shadow bolts; Claude
+becomes more dangerous below 25% health. Combat taunts are director cues.
+
+Append `--agent` or `--combat` to start either mode directly, or
+`--combat-demo OUTPUT.mp4` to record the full agent encounter. The recorder
+runs the same controller and combat state at 30 frames per second. It retains
+an outcome JSON and a native final-frame PNG beside the video. For visual
+checks, `--combat-proof OUTPUT.png TIME` captures an encounter time between
+20 and 120 seconds. The [agent combat recording](../../bench/wow/2026-10-03/verse-agent-combat.mp4)
+ends in a close defeat: the adventurer falls after killing nine cultists, with
+Claude at 4/400 health. Pending attacks finish without changing that result.

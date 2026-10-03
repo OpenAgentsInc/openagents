@@ -315,6 +315,10 @@ fn main() -> Result<()> {
             "micro-help",
             "Interface\\Buttons\\UI-MicroButton-Help-Up.blp",
         ),
+        (
+            "shield-icon",
+            "Interface\\Icons\\Spell_Arcane_ArcaneResilience.blp",
+        ),
         ("action-frame", "Interface\\Buttons\\UI-Quickslot2.blp"),
         ("bow-icon", "Interface\\Icons\\INV_Weapon_Bow_07.blp"),
         (

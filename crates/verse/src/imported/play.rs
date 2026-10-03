@@ -16,9 +16,10 @@ pub enum Ability {
     Web,
     Grease,
     Light,
+    Shield,
 }
 impl Ability {
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 10] = [
         Self::Bow,
         Self::FireBolt,
         Self::MagicMissile,
@@ -28,6 +29,7 @@ impl Ability {
         Self::Web,
         Self::Grease,
         Self::Light,
+        Self::Shield,
     ];
     pub fn label(self) -> &'static str {
         match self {
@@ -40,6 +42,7 @@ impl Ability {
             Self::Web => "Web",
             Self::Grease => "Grease",
             Self::Light => "Light",
+            Self::Shield => "Shield",
         }
     }
     pub fn icon(self) -> &'static str {
@@ -53,6 +56,7 @@ impl Ability {
             Self::Web => "web-icon",
             Self::Grease => "grease-icon",
             Self::Light => "light-icon",
+            Self::Shield => "shield-icon",
         }
     }
     pub fn utility(self) -> Option<Utility> {
@@ -62,6 +66,7 @@ impl Ability {
             Self::Web => Some(Utility::Web),
             Self::Grease => Some(Utility::Grease),
             Self::Light => Some(Utility::Light),
+            Self::Shield => Some(Utility::Shield),
             _ => None,
         }
     }
@@ -72,6 +77,7 @@ impl Ability {
             Self::Web => "Target area: restrain for 12 seconds",
             Self::Grease => "Target area: knock down for 10 seconds",
             Self::Light => "Place a light on the chamber floor",
+            Self::Shield => "Absorb 18 damage for four seconds",
             _ => "Attack the selected target",
         }
     }
@@ -82,7 +88,8 @@ impl Ability {
             | Self::Thunderwave
             | Self::Web
             | Self::Grease
-            | Self::Light => None,
+            | Self::Light
+            | Self::Shield => None,
             Self::FireBolt => Some(Spell::Firebolt),
             Self::MagicMissile => Some(Spell::MagicMissile),
             Self::Fireball => Some(Spell::Fireball),
@@ -107,6 +114,8 @@ pub struct Casting {
 }
 pub struct Game {
     pub scene: Scene,
+    pub encounter: Option<super::combat::Encounter>,
+    pub agent_controlled: bool,
     pub time: f32,
     pub player: Vec3,
     pub yaw: f32,
@@ -158,6 +167,8 @@ impl Game {
             .ok_or("Missing hostile actors")?;
         Ok(Self {
             scene,
+            encounter: None,
+            agent_controlled: false,
             time: 0.0,
             player,
             yaw: std::f32::consts::PI,
@@ -196,6 +207,15 @@ impl Game {
                 a.animation_time = self.time;
                 a.actor.position = self.player;
                 a.actor.yaw = self.yaw;
+                if snapshot.player.hp == 0 {
+                    a.animation = 1;
+                    a.animation_time = self
+                        .encounter
+                        .as_ref()
+                        .and_then(|e| e.ended)
+                        .map_or(0.8, |at| (self.time - at).min(2.0));
+                    continue;
+                }
                 a.animation = if self.moving {
                     if self.locomotion[1] < 0.0 { 13 } else { 5 }
                 } else {
@@ -215,6 +235,25 @@ impl Game {
                 if let Some(source) = snapshot.actors.iter().find(|s| s.id == *id) {
                     a.health = source.hp.max(0) as u32;
                     a.actor.position = source.pos.into();
+                    if let Some(e) = &self.encounter {
+                        if let Some(cast) = e
+                            .casts
+                            .iter()
+                            .find(|c| c.actor == a.actor.id && self.time < c.release)
+                        {
+                            a.animation = 52;
+                            a.animation_time = self.time - cast.started;
+                        } else if e
+                            .released
+                            .get(&a.actor.id)
+                            .is_some_and(|at| self.time - at < 0.7)
+                        {
+                            a.animation = 53;
+                            a.animation_time = self.time - e.released[&a.actor.id];
+                        }
+                        let direction = self.player - a.actor.position;
+                        a.actor.yaw = (-direction.x).atan2(-direction.z);
+                    }
                     if self.controls.held(*id) {
                         a.animation = 0;
                         a.animation_time = 0.0;
@@ -227,11 +266,20 @@ impl Game {
                         a.animation = 1;
                         a.animation_time = 0.8;
                     }
+                } else {
+                    a.health = 0;
+                    a.animation = 1;
+                    a.animation_time = 1.8;
+                    if let Some(e) = &self.encounter {
+                        if let Some(position) = e.positions.get(&a.actor.id) {
+                            a.actor.position = *position;
+                        }
+                    }
                 }
             }
         }
         let direction = self.camera.direction();
-        let anchor = self.player + Vec3::Y * 1.4;
+        let anchor = self.player + Vec3::Y * if self.agent_controlled { 3.0 } else { 1.4 };
         frame.eye = anchor - direction * self.camera.distance;
         frame.eye.y = frame.eye.y.max(0.25);
         frame.target = frame.eye + direction * 20.0;
@@ -264,6 +312,13 @@ impl Game {
         if !self.unlocked() {
             return Ok(());
         }
+        let movement = if self.agent_controlled {
+            super::combat::drive(self, dt)?
+        } else {
+            movement
+        };
+        let dead = self.snapshot().player.hp == 0;
+        let movement = if dead { [0.0; 2] } else { movement };
         let forward = Vec3::new(-self.yaw.sin(), 0.0, -self.yaw.cos());
         let right = Vec3::new(-forward.z, 0.0, forward.x);
         let input = Vec3::new(
@@ -282,12 +337,24 @@ impl Game {
         self.player += delta;
         self.player.x = self.player.x.clamp(-12.0, 12.0);
         self.player.z = self.player.z.clamp(-25.0, 12.0);
+        let source_actors = self.snapshot().actors;
         for a in self.scene.frame(self.time).actors {
             if let Some(id) = self.ids.get(&a.actor.id) {
+                if !source_actors.iter().any(|a| a.id == *id) {
+                    continue;
+                }
                 self.simulation.place_chamber_actor(
                     *id,
                     self.controls
-                        .position(*id, a.actor.position, self.time)
+                        .position(
+                            *id,
+                            self.encounter
+                                .as_ref()
+                                .and_then(|e| e.positions.get(&a.actor.id))
+                                .copied()
+                                .unwrap_or(a.actor.position),
+                            self.time,
+                        )
                         .to_array(),
                     a.actor.yaw,
                 )?;
@@ -296,7 +363,12 @@ impl Game {
         let mut remaining = Vec::new();
         for arrow in self.arrows.drain(..) {
             if self.time >= arrow.impact {
-                self.simulation.bow_impact(self.ids[&arrow.target], 6)?;
+                if source_actors
+                    .iter()
+                    .any(|a| a.id == self.ids[&arrow.target] && a.alive)
+                {
+                    self.simulation.bow_impact(self.ids[&arrow.target], 6)?;
+                }
                 self.impacts.push((arrow.end, self.time, 0));
             } else {
                 remaining.push(arrow);
@@ -317,8 +389,34 @@ impl Game {
             self.impacts
                 .push((effect.pos.into(), self.time, effect.kind));
         }
+        if let Some(mut encounter) = self.encounter.take() {
+            encounter.step(self, dt)?;
+            self.encounter = Some(encounter);
+        }
         self.impacts.retain(|(_, at, _)| self.time - at < 0.6);
         Ok(())
+    }
+    fn record_ability(&mut self, ability: Ability) {
+        if let Some(e) = &mut self.encounter {
+            *e.used.entry(ability.label().into()).or_default() += 1;
+        }
+    }
+    pub fn hostile_held(&self, id: u64) -> bool {
+        self.ids
+            .get(&id)
+            .is_some_and(|source| self.controls.held(*source))
+    }
+    pub fn hostile_hit(&mut self, damage: i32) -> Result<(i32, i32), String> {
+        if self.snapshot().player.hp == 0 {
+            return Ok((0, 0));
+        }
+        let absorbed = self.controls.absorb(damage, self.time);
+        let lost = (damage - absorbed).min(self.snapshot().player.hp);
+        self.simulation.chamber_player_damage(lost)?;
+        if lost > 0 {
+            self.impacts.push((self.player + Vec3::Y, self.time, 3));
+        }
+        Ok((lost, absorbed))
     }
     pub fn cycle_target(&mut self) {
         let live: Vec<_> = self
@@ -340,6 +438,9 @@ impl Game {
         if !self.unlocked() {
             return Err("Wait for the cinematic camera handoff".into());
         }
+        if self.snapshot().player.hp <= 0 {
+            return Err("The adventurer is dead".into());
+        }
         if self.casting.is_some() {
             return Err("A spell is already being cast".into());
         }
@@ -359,6 +460,7 @@ impl Game {
                 direction,
                 target,
             )?;
+            self.record_ability(ability);
             self.last_cast = Some((ability, self.time));
             self.message = format!("{}: {}", ability.label(), ability.description());
             return Ok(());
@@ -418,6 +520,7 @@ impl Game {
                 target: self.selected,
             });
         }
+        self.record_ability(ability);
         self.last_cast = Some((ability, self.time));
         self.message = ability.label().into();
         Ok(())

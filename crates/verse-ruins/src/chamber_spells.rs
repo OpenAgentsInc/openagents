@@ -11,10 +11,12 @@ pub enum Utility {
     Web,
     Grease,
     Light,
+    Shield,
 }
 impl Utility {
     pub fn cost(self) -> i32 {
         match self {
+            Self::Shield => 1,
             Self::Light => 0,
             Self::MistyStep => 2,
             Self::Thunderwave => 3,
@@ -24,6 +26,7 @@ impl Utility {
     }
     pub fn cooldown(self) -> f32 {
         match self {
+            Self::Shield => 8.0,
             Self::Light => 1.0,
             Self::MistyStep => 6.0,
             Self::Thunderwave => 4.0,
@@ -42,6 +45,8 @@ pub struct Area {
 pub struct Controls {
     pub areas: Vec<Area>,
     pub light: Option<Vec3>,
+    pub shield: i32,
+    pub shield_until: f32,
     light_until: f32,
     ready: BTreeMap<Utility, f32>,
     offsets: BTreeMap<u32, Vec3>,
@@ -77,6 +82,15 @@ impl Controls {
                 && a.until > time
                 && square_distance(position, a.position) < 1.524
         })
+    }
+    /// Absorbs incoming damage while a shield has remaining strength and duration.
+    pub fn absorb(&mut self, damage: i32, time: f32) -> i32 {
+        if time >= self.shield_until {
+            self.shield = 0;
+        }
+        let absorbed = damage.min(self.shield).max(0);
+        self.shield -= absorbed;
+        absorbed
     }
     /// Executes an admitted spell against the shared combat state.
     pub fn cast(
@@ -125,6 +139,10 @@ impl Controls {
         simulation.spend_chamber_mana(spell.cost())?;
         self.ready.insert(spell, time + spell.cooldown());
         match spell {
+            Utility::Shield => {
+                self.shield = 18;
+                self.shield_until = time + 4.0;
+            }
             Utility::MistyStep => {
                 self.areas.push(Area {
                     kind: spell,
@@ -312,5 +330,55 @@ mod tests {
             )
             .is_err()
         );
+    }
+}
+
+#[cfg(test)]
+mod shield_tests {
+    use super::*;
+    #[test]
+    fn shield_spends_mana_absorbs_only_its_capacity_and_expires() {
+        let (mut simulation, _) = Simulation::chamber([0.0; 3], &[]).unwrap();
+        let mut controls = Controls::default();
+        controls
+            .cast(
+                &mut simulation,
+                Utility::Shield,
+                0.0,
+                Vec3::ZERO,
+                Vec3::Z,
+                None,
+            )
+            .unwrap();
+        assert_eq!(simulation.snapshot().player.mana, 19);
+        assert_eq!(controls.absorb(12, 1.0), 12);
+        assert_eq!(controls.absorb(12, 2.0), 6);
+        simulation.chamber_player_damage(6).unwrap();
+        assert_eq!(simulation.snapshot().player.hp, 94);
+        assert!(
+            controls
+                .cast(
+                    &mut simulation,
+                    Utility::Shield,
+                    2.0,
+                    Vec3::ZERO,
+                    Vec3::Z,
+                    None
+                )
+                .is_err()
+        );
+        controls
+            .cast(
+                &mut simulation,
+                Utility::Shield,
+                8.0,
+                Vec3::ZERO,
+                Vec3::Z,
+                None,
+            )
+            .unwrap();
+        assert_eq!(controls.absorb(9, 12.0), 0);
+        assert_eq!(controls.shield, 0);
+        assert!(simulation.chamber_player_damage(-1).is_err());
     }
 }

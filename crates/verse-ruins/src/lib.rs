@@ -347,6 +347,21 @@ impl Simulation {
         Ok(())
     }
 
+    /// Applies admitted hostile damage to the retained player's health state.
+    pub fn chamber_player_damage(&mut self, damage: i32) -> Result<(), String> {
+        if !(0..=10000).contains(&damage) {
+            return Err("Invalid hostile damage".into());
+        }
+        let id = self.source.pc_actor.ok_or("Missing chamber player")?;
+        let player = self
+            .source
+            .ecs
+            .get_mut(id)
+            .ok_or("Missing chamber player")?;
+        player.hp.hp = player.hp.hp.saturating_sub(damage).max(0);
+        Ok(())
+    }
+
     /// Returns the source spell's cooldown duration for HUD progress.
     pub fn cooldown_duration(&self, spell: Spell) -> f32 {
         let spec = match spell {

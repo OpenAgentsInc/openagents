@@ -10,6 +10,7 @@ use crate::{
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3};
 pub mod chamber;
+pub mod combat;
 pub mod controls;
 pub mod lighting;
 pub mod overlay;

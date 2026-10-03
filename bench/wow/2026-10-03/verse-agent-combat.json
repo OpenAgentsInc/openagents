@@ -1,0 +1,54 @@
+{
+  "schema": "openagents.wow.agent-combat.v1",
+  "controller": "local observation-driven tactical controller",
+  "control_mode": "agent",
+  "time": 101.6654281616211,
+  "ended_at": 96.63217163085938,
+  "player": {
+    "hp": 0,
+    "max_hp": 100,
+    "mana": 0,
+    "max_mana": 20
+  },
+  "boss_remaining": 4,
+  "boss_max": 400,
+  "cultists_defeated": 9,
+  "damage_taken": 100,
+  "shield_absorbed": 93,
+  "dodged": 29,
+  "enemy_casts": 61,
+  "ability_uses": {
+    "Fire Bolt": 17,
+    "Fireball": 4,
+    "Grease": 1,
+    "Light": 1,
+    "Magic Missile": 14,
+    "Misty Step": 7,
+    "Shield": 8,
+    "Shoot Bow": 9,
+    "Thunderwave": 6,
+    "Web": 1
+  },
+  "renderer": "owned native GPU pipeline; no grading; no chat-input automation",
+  "artifacts": {
+    "verse-agent-combat.mp4": "e407d2bfd9f7ea1ae9d40da9843a116f0183a49ad0fb0e6d9380cdacc36635aa",
+    "verse-agent-combat.png": "c340f01352c4265cb5905f6a3afdbbe45559c916cfc1fc9825668263cd3ae875",
+    "verse-agent-combat-shield.png": "b37003fa37e5fad9d3a501b6c187d0eb8795cdffca3c5c9d5ddf41ee44420cee"
+  },
+  "video": {
+    "width": 1280,
+    "height": 720,
+    "fps": 30,
+    "frames": 2510,
+    "duration_seconds": 83.666667
+  },
+  "checks": {
+    "verse_unit_passed": 325,
+    "verse_existing_ignored": 8,
+    "verse_integration_passed": 7,
+    "verse_ruins_passed": 16,
+    "verse_wow_passed": 6,
+    "importer": "Build and test passed; no unit tests",
+    "formatting": "Scoped cargo fmt checks passed"
+  }
+}

@@ -36,7 +36,12 @@ pub fn pose(model: &Model, animation: u16, time: f32) -> Vec<Mat4> {
         .or_else(|| model.clips.iter().find(|c| c.id == 0));
     let time = clip.map_or(0.0, |c| {
         if time.is_finite() {
-            time.max(0.0) % c.duration
+            if c.id == 1 {
+                // Classic's Death clip plays once and holds its final pose.
+                time.clamp(0.0, c.duration)
+            } else {
+                time.max(0.0) % c.duration
+            }
         } else {
             0.0
         }
@@ -74,6 +79,35 @@ pub fn pose(model: &Model, animation: u16, time: f32) -> Vec<Mat4> {
 mod tests {
     use super::*;
     use crate::assets::{Bone, BoneKeys, Clip};
+    #[test]
+    fn death_holds_the_final_pose_while_idle_keeps_looping() {
+        let mut model = Model {
+            source: String::new(),
+            source_sha256: String::new(),
+            surfaces: vec![],
+            height: 1.0,
+            attachments: vec![],
+            bones: vec![Bone {
+                parent: -1,
+                pivot: [0.0; 3],
+            }],
+            clips: vec![Clip {
+                id: 1,
+                duration: 2.0,
+                bones: vec![BoneKeys {
+                    bone: 0,
+                    translation: vec![(0.0, [0.0; 3]), (2.0, [2.0, 0.0, 0.0])],
+                    rotation: vec![],
+                    scale: vec![],
+                }],
+            }],
+        };
+        for time in [2.0, 4.0, 12.0] {
+            assert!((pose(&model, 1, time)[0].transform_point3(Vec3::ZERO).x - 2.0).abs() < 0.001);
+        }
+        model.clips[0].id = 0;
+        assert!(pose(&model, 0, 4.0)[0].transform_point3(Vec3::ZERO).x.abs() < 0.001);
+    }
     #[test]
     fn child_inherits_interpolated_parent_motion() {
         let model = Model {

@@ -412,7 +412,11 @@ pub fn action_bar(
                 [0.0, 1.0, 0.0, 1.0],
                 [1.0; 4],
             );
-            let key = (index + 1).to_string();
+            let key = if index == 9 {
+                "0".into()
+            } else {
+                (index + 1).to_string()
+            };
             outlined(
                 ui,
                 &hotkey,
@@ -682,6 +686,70 @@ pub fn action_bar(
             [0.0, 1.0, 0.0, 1.0],
             [1.0; 4],
         );
+    }
+    if let Some(encounter) = &game.encounter {
+        let label = if encounter.ended.is_some() {
+            if snapshot.player.hp == 0 {
+                "Defeat — Claude survives"
+            } else {
+                "Victory"
+            }
+        } else if game.agent_controlled {
+            "Agent control — F1: manual combat"
+        } else {
+            "Player control — F2: agent combat"
+        };
+        outlined(
+            ui,
+            &small,
+            width * 0.5 - small.measure(label) * 0.5,
+            12.0 * s,
+            label,
+            [1.0, 0.82, 0.0, 1.0],
+        );
+        let hp = format!("{} / {}", snapshot.player.hp, snapshot.player.max_hp);
+        outlined(
+            ui,
+            &numbers,
+            147.0 * s - numbers.measure(&hp) * 0.5,
+            44.0 * s,
+            &hp,
+            [1.0; 4],
+        );
+        if game.controls.shield > 0 && game.time < game.controls.shield_until {
+            image(
+                ui,
+                "shield-icon",
+                217.0 * s,
+                20.0 * s,
+                24.0,
+                24.0,
+                [0.0, 1.0, 0.0, 1.0],
+                [1.0; 4],
+            );
+            outlined(
+                ui,
+                &small,
+                218.0 * s,
+                46.0 * s,
+                &format!("{}", game.controls.shield),
+                [0.3, 0.8, 1.0, 1.0],
+            );
+        }
+        if encounter.ended.is_some() {
+            let outcome = format!(
+                "Claude: {} / {} health · {} cultists defeated",
+                encounter.boss_remaining, encounter.boss_max, encounter.kills
+            );
+            outlined(
+                ui,
+                atlas,
+                width * 0.5 - atlas.measure(&outcome) * 0.5,
+                height * 0.35,
+                &outcome,
+                [1.0, 0.82, 0.0, 1.0],
+            );
+        }
     }
     if let Some(cast) = &game.casting {
         let progress = ((game.time - cast.started) / (cast.ends - cast.started)).clamp(0.0, 1.0);

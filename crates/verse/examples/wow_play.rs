@@ -28,6 +28,7 @@ struct App {
     atlas: Atlas,
     game: Game,
     last: Instant,
+    agent_time: f32,
     keys: HashSet<KeyCode>,
     cursor: [f32; 2],
     controls: ClassicControls,
@@ -42,6 +43,9 @@ struct App {
 }
 impl App {
     fn activate(&mut self, ability: Ability) {
+        if self.game.agent_controlled {
+            return;
+        }
         if let Err(e) = self.game.activate(ability) {
             self.game.message = e;
         }
@@ -58,13 +62,22 @@ impl App {
             strafe_left: key(KeyCode::KeyQ),
             strafe_right: key(KeyCode::KeyE),
         };
-        let movement = if self.game.unlocked() {
+        let movement = if self.game.unlocked() && !self.game.agent_controlled {
             self.controls
                 .step(held, dt, &mut self.game.yaw, &mut self.game.camera)
         } else {
             [0.0; 2]
         };
-        self.game.tick(dt, movement)?;
+        if self.game.agent_controlled {
+            self.agent_time += dt;
+            while self.agent_time >= 1.0 / 30.0 {
+                self.game.tick(1.0 / 30.0, [0.0; 2])?;
+                self.agent_time -= 1.0 / 30.0;
+            }
+        } else {
+            self.agent_time = 0.0;
+            self.game.tick(dt, movement)?;
+        }
         self.draw_frame()
     }
     fn capture_pointer(&mut self) {
@@ -253,12 +266,26 @@ impl ApplicationHandler for App {
                         if !event.repeat {
                             match key {
                                 KeyCode::Escape => event_loop.exit(),
+                                KeyCode::F1 | KeyCode::F2 => {
+                                    self.game =
+                                        Game::combat(self.game.scene.clone(), key == KeyCode::F2)
+                                            .expect("The loaded chamber admits combat");
+                                    self.game.time = self.game.scene.cut_at
+                                        - if key == KeyCode::F2 { 3.0 } else { 0.0 };
+                                    self.agent_time = 0.0;
+                                    self.controls.clear();
+                                    self.keys.clear();
+                                    self.pending_select = false;
+                                    self.capture_pointer();
+                                }
                                 KeyCode::NumLock => {
                                     if self.game.unlocked() {
                                         self.controls.autorun = !self.controls.autorun;
                                     }
                                 }
-                                KeyCode::Tab => self.game.cycle_target(),
+                                KeyCode::Tab if !self.game.agent_controlled => {
+                                    self.game.cycle_target()
+                                }
                                 KeyCode::Digit1 => self.activate(Ability::Bow),
                                 KeyCode::Digit2 => self.activate(Ability::FireBolt),
                                 KeyCode::Digit3 => self.activate(Ability::MagicMissile),
@@ -268,6 +295,7 @@ impl ApplicationHandler for App {
                                 KeyCode::Digit7 => self.activate(Ability::Web),
                                 KeyCode::Digit8 => self.activate(Ability::Grease),
                                 KeyCode::Digit9 => self.activate(Ability::Light),
+                                KeyCode::Digit0 => self.activate(Ability::Shield),
                                 _ => {}
                             }
                         }
@@ -297,14 +325,18 @@ impl ApplicationHandler for App {
                     ];
                 }
             }
-            WindowEvent::MouseWheel { delta, .. } if self.game.unlocked() => {
+            WindowEvent::MouseWheel { delta, .. }
+                if self.game.unlocked() && !self.game.agent_controlled =>
+            {
                 let steps = match delta {
                     MouseScrollDelta::LineDelta(_, y) => y,
                     MouseScrollDelta::PixelDelta(p) => p.y as f32 / 40.0,
                 };
                 self.game.camera.zoom(steps);
             }
-            WindowEvent::MouseInput { state, button, .. } if self.game.unlocked() => {
+            WindowEvent::MouseInput { state, button, .. }
+                if self.game.unlocked() && !self.game.agent_controlled =>
+            {
                 let down = state == ElementState::Pressed;
                 match button {
                     MouseButton::Right => {
@@ -315,6 +347,9 @@ impl ApplicationHandler for App {
                             .button(true, down, &mut self.game.yaw, &self.game.camera);
                     }
                     MouseButton::Left => {
+                        if self.game.agent_controlled {
+                            return;
+                        }
                         if down && !self.controls.looking() {
                             if let Some(ability) =
                                 overlay::action_at(self.cursor[0], self.cursor[1], 1280.0, 720.0)
@@ -414,6 +449,7 @@ fn main() -> Result<(), String> {
         atlas,
         game,
         last: Instant::now(),
+        agent_time: 0.0,
         keys: HashSet::new(),
         cursor: [0.0; 2],
         controls: ClassicControls::default(),
@@ -427,12 +463,38 @@ fn main() -> Result<(), String> {
         proof: None,
     };
     let mode = args.next();
-    if matches!(mode.as_deref(), Some("--demo" | "--utility-demo")) {
+    if matches!(
+        mode.as_deref(),
+        Some("--demo" | "--utility-demo" | "--combat-demo")
+    ) {
         return demo(
             &mut app,
             PathBuf::from(args.next().ok_or("Expected demo.mp4")?),
             mode.as_deref() == Some("--utility-demo"),
+            mode.as_deref() == Some("--combat-demo"),
         );
+    }
+    if matches!(mode.as_deref(), Some("--agent" | "--combat")) {
+        app.game = Game::combat(app.game.scene.clone(), mode.as_deref() == Some("--agent"))?;
+        app.game.time = app.game.scene.cut_at - 3.0;
+    }
+    if mode.as_deref() == Some("--combat-proof") {
+        app.proof = Some(PathBuf::from(args.next().ok_or("Expected combat.png")?));
+        let time: f32 = args
+            .next()
+            .ok_or("Expected encounter time")?
+            .parse()
+            .map_err(|_| "Invalid encounter time")?;
+        if !time.is_finite() || !(20.0..=120.0).contains(&time) {
+            return Err("Encounter time must be between 20 and 120 seconds".into());
+        }
+        app.game = Game::combat(app.game.scene.clone(), true)?;
+        for _ in 0..180 {
+            app.game.tick(0.1, [0.0; 2])?;
+        }
+        while app.game.time < time {
+            app.game.tick(1.0 / 30.0, [0.0; 2])?;
+        }
     }
     if mode.as_deref() == Some("--proof") {
         app.proof = Some(PathBuf::from(args.next().ok_or("Expected proof.png")?));
@@ -449,8 +511,11 @@ fn main() -> Result<(), String> {
     event_loop.run_app(&mut app).map_err(|e| e.to_string())
 }
 
-fn demo(app: &mut App, output: PathBuf, utility: bool) -> Result<(), String> {
+fn demo(app: &mut App, output: PathBuf, utility: bool, combat: bool) -> Result<(), String> {
     use std::io::Write;
+    if combat {
+        app.game = Game::combat(app.game.scene.clone(), true)?;
+    }
     for _ in 0..180 {
         app.game.tick(0.1, [0.0, 0.0])?;
     }
@@ -489,12 +554,12 @@ fn demo(app: &mut App, output: PathBuf, utility: bool) -> Result<(), String> {
             "-movflags",
             "+faststart",
         ])
-        .arg(output)
+        .arg(&output)
         .stdin(std::process::Stdio::piped())
         .spawn()
         .map_err(|e| e.to_string())?;
     let mut pipe = encoder.stdin.take().ok_or("Missing encoder input")?;
-    for frame in 0..480 {
+    for frame in 0..if combat { 3600 } else { 480 } {
         app.game.tick(1.0 / 30.0, [0.0, 0.0])?;
         let sequence = if utility {
             [
@@ -514,7 +579,7 @@ fn demo(app: &mut App, output: PathBuf, utility: bool) -> Result<(), String> {
             ]
         };
         for (at, ability) in sequence {
-            if frame == at {
+            if !combat && frame == at {
                 if ability == Ability::Thunderwave {
                     let target = app
                         .game
@@ -533,8 +598,38 @@ fn demo(app: &mut App, output: PathBuf, utility: bool) -> Result<(), String> {
         }
         let pixels = app.draw_frame()?;
         pipe.write_all(&pixels).map_err(|e| e.to_string())?;
-        if frame % 120 == 0 {
-            eprintln!("Rendered {} / 16 seconds", frame as f32 / 30.0);
+        if frame % 300 == 0 {
+            eprintln!(
+                "Rendered {} seconds; player {} HP",
+                frame as f32 / 30.0,
+                app.game.snapshot().player.hp
+            );
+        }
+        if combat {
+            let encounter = app.game.encounter.as_ref().unwrap();
+            if frame % 300 == 0
+                || (app.game.controls.shield > 0
+                    && app.game.time < app.game.controls.shield_until
+                    && frame % 120 == 0)
+            {
+                save_png(&output.with_extension("png"), &pixels)?;
+            }
+            if encounter.ended.is_some_and(|at| app.game.time - at >= 5.0) {
+                save_png(&output.with_extension("png"), &pixels)?;
+                let evidence = serde_json::json!({"schema":"openagents.wow.agent-combat.v1","controller":"local observation-driven tactical controller","control_mode":"agent","time":app.game.time,"ended_at":encounter.ended,"player":app.game.snapshot().player,"boss_remaining":encounter.boss_remaining,"boss_max":encounter.boss_max,"cultists_defeated":encounter.kills,"damage_taken":encounter.damage,"shield_absorbed":encounter.absorbed,"dodged":encounter.dodged,"enemy_casts":encounter.enemy_casts,"ability_uses":encounter.used,"renderer":"owned native GPU pipeline; no grading; no chat-input automation"});
+                std::fs::write(
+                    output.with_extension("json"),
+                    serde_json::to_vec_pretty(&evidence).map_err(|e| e.to_string())?,
+                )
+                .map_err(|e| e.to_string())?;
+                if app.game.snapshot().player.hp != 0
+                    || encounter.boss_remaining == 0
+                    || encounter.boss_remaining * 5 >= encounter.boss_max
+                {
+                    return Err("Combat recording did not reach the expected close defeat".into());
+                }
+                break;
+            }
         }
     }
     drop(pipe);
