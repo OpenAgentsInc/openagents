@@ -1,0 +1,202 @@
+{
+  "schema": "openagents.chat-router.eval.v1",
+  "report": {
+    "system": "chat-router-v5",
+    "split": "held_out",
+    "rows": 269,
+    "errors": 0,
+    "routes": {
+      "account": {
+        "hit": 7,
+        "predicted": 9,
+        "labeled": 8
+      },
+      "capability.missing": {
+        "hit": 11,
+        "predicted": 11,
+        "labeled": 11
+      },
+      "clarify": {
+        "hit": 6,
+        "predicted": 11,
+        "labeled": 6
+      },
+      "cli": {
+        "hit": 10,
+        "predicted": 10,
+        "labeled": 10
+      },
+      "codebase.kb": {
+        "hit": 4,
+        "predicted": 4,
+        "labeled": 11
+      },
+      "end": {
+        "hit": 5,
+        "predicted": 5,
+        "labeled": 5
+      },
+      "eval.author": {
+        "hit": 8,
+        "predicted": 8,
+        "labeled": 8
+      },
+      "eval.check": {
+        "hit": 5,
+        "predicted": 5,
+        "labeled": 6
+      },
+      "eval.credit": {
+        "hit": 7,
+        "predicted": 8,
+        "labeled": 9
+      },
+      "eval.result": {
+        "hit": 7,
+        "predicted": 9,
+        "labeled": 7
+      },
+      "eval.run": {
+        "hit": 9,
+        "predicted": 9,
+        "labeled": 9
+      },
+      "general": {
+        "hit": 19,
+        "predicted": 28,
+        "labeled": 20
+      },
+      "gym.news": {
+        "hit": 7,
+        "predicted": 7,
+        "labeled": 7
+      },
+      "meta": {
+        "hit": 35,
+        "predicted": 37,
+        "labeled": 43
+      },
+      "presentation.open": {
+        "hit": 9,
+        "predicted": 9,
+        "labeled": 9
+      },
+      "product.kb": {
+        "hit": 18,
+        "predicted": 21,
+        "labeled": 23
+      },
+      "refuse": {
+        "hit": 8,
+        "predicted": 8,
+        "labeled": 10
+      },
+      "smalltalk": {
+        "hit": 12,
+        "predicted": 12,
+        "labeled": 12
+      },
+      "standing.rule": {
+        "hit": 0,
+        "predicted": 0,
+        "labeled": 0
+      },
+      "wallet": {
+        "hit": 7,
+        "predicted": 8,
+        "labeled": 8
+      },
+      "work.dispatch": {
+        "hit": 47,
+        "predicted": 50,
+        "labeled": 47
+      }
+    },
+    "route_accuracy": 0.895910780669145,
+    "canned": {
+      "hit": 74,
+      "predicted": 74,
+      "labeled": 108
+    },
+    "canned_over_stem": 0,
+    "dispatch": {
+      "hit": 47,
+      "predicted": 48,
+      "labeled": 47
+    },
+    "refuse": {
+      "hit": 9,
+      "predicted": 9,
+      "labeled": 10
+    },
+    "gym": {
+      "hit": 30,
+      "predicted": 30,
+      "labeled": 37
+    },
+    "secret": {
+      "hit": 7,
+      "predicted": 10,
+      "labeled": 7
+    },
+    "abstained": 53,
+    "latency_p50": 941,
+    "latency_p95": 1203,
+    "wrong_canned": [],
+    "wrong_dispatch": [
+      [
+        "codebase.kb/017",
+        "codebase.kb"
+      ]
+    ],
+    "wrong_gym": [],
+    "owner": [
+      [
+        "meta/001",
+        "Who are you?",
+        "canned",
+        "meta.who"
+      ],
+      [
+        "meta/092",
+        "Connect to my GitHub",
+        "canned",
+        "meta.github"
+      ],
+      [
+        "meta/094",
+        "how do I link my github account",
+        "canned",
+        "meta.github"
+      ],
+      [
+        "work.dispatch/engine-002",
+        "Do a test delegation to claude",
+        "offer",
+        "dispatch.engine_stem"
+      ],
+      [
+        "meta/map-001",
+        "show me how you route things",
+        "canned",
+        "meta.map"
+      ],
+      [
+        "product.kb/plugins-001",
+        "Which plugins are in the Gym?",
+        "grounded",
+        "-"
+      ],
+      [
+        "eval.run/plugins-003",
+        "What plugins can I test?",
+        "gym",
+        "-"
+      ]
+    ]
+  },
+  "canned_precision": 1.0,
+  "dispatch_precision": 0.9791666666666666,
+  "gym_precision": 1.0,
+  "abstention_rate": 0.1970260223048327
+}

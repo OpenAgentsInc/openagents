@@ -376,6 +376,7 @@ mod tests {
             summarize: 0.0,
             risk: Risk::Ok,
             risk_p: 0.99,
+            answer_calibrated: false,
         }
     }
 

@@ -49,6 +49,7 @@ pub mod personalize;
 pub mod policy;
 pub mod rubric;
 pub mod seams;
+pub mod thresholds;
 pub mod wire;
 
 use serde_json::Value;

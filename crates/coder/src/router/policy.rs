@@ -107,8 +107,25 @@ use crate::first::Lane;
 
 /// The least `route` probability for a whole prepared answer or `end`.
 pub const ROUTE_CONFIDENCE: f64 = 0.80;
-/// The least `answer` probability for a whole prepared answer.
+/// The least raw `answer` probability for a whole prepared answer. A
+/// reading that went through the answer map is read against
+/// [`super::thresholds::CALIBRATED_ANSWER_CONFIDENCE`] instead
+/// ([`answer_confidence`]).
 pub const ANSWER_CONFIDENCE: f64 = 0.80;
+
+/// The `answer` threshold this reading is held to, with its name for the
+/// decision record: the cost-derived calibrated one when the answer map
+/// applied (#10386), else the raw one.
+fn answer_confidence(routing: &Routing) -> (&'static str, f64) {
+    if routing.answer_calibrated {
+        (
+            "CALIBRATED_ANSWER_CONFIDENCE",
+            super::thresholds::CALIBRATED_ANSWER_CONFIDENCE,
+        )
+    } else {
+        ("ANSWER_CONFIDENCE", ANSWER_CONFIDENCE)
+    }
+}
 /// The most `needs_specifics` at which a prepared answer may stand whole.
 pub const SPECIFICS_CEILING: f64 = 0.30;
 /// The least `answer` probability for a stem.
@@ -601,15 +618,16 @@ fn canned(routing: &Routing, facts: &Facts, offers: bool) -> Option<Tier> {
         routing.route_p,
         ROUTE_CONFIDENCE,
         "lt",
-    ) || super::decisions::test("answer", "ANSWER_CONFIDENCE", *p, ANSWER_CONFIDENCE, "lt")
-        || super::decisions::test(
-            "needs_specifics",
-            "SPECIFICS_CEILING",
-            routing.needs_specifics,
-            SPECIFICS_CEILING,
-            "ge",
-        )
-        || !entry.answers(routing.route)
+    ) || {
+        let (name, at) = answer_confidence(routing);
+        super::decisions::test("answer", name, *p, at, "lt")
+    } || super::decisions::test(
+        "needs_specifics",
+        "SPECIFICS_CEILING",
+        routing.needs_specifics,
+        SPECIFICS_CEILING,
+        "ge",
+    ) || !entry.answers(routing.route)
         || dispatches(entry)
         || entry.answers(RouteId::Refuse)
         || (!offers && entry.offer.is_some())
@@ -1368,7 +1386,10 @@ fn answered(routing: &Routing) -> Tier {
 /// it: "what is this?" on the website reads as asking who we are.
 fn clarify_or_answer(routing: &Routing, bank: &Bank, facts: &Facts, situation: &Situation) -> Tier {
     if let Some((entry, p)) = &routing.answer
-        && super::decisions::test("answer", "ANSWER_CONFIDENCE", *p, ANSWER_CONFIDENCE, "ge")
+        && {
+            let (name, at) = answer_confidence(routing);
+            super::decisions::test("answer", name, *p, at, "ge")
+        }
         && super::decisions::test(
             "needs_specifics",
             "SPECIFICS_CEILING",
@@ -1471,6 +1492,7 @@ mod tests {
             summarize: 0.0,
             risk: Risk::Ok,
             risk_p: 0.95,
+            answer_calibrated: false,
         }
     }
 

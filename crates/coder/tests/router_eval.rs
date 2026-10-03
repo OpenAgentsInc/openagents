@@ -326,6 +326,8 @@ async fn run_router(name: &str, mode: router::Mode) {
     }
     engines.print(&split_label);
     write_traces(name, &split_label, &traces);
+    write_readings(name, &split_label, &readings);
+    print_thresholds(&split_label, &rows, &readings);
     if publishing() && mode == router::Mode::Router {
         let profile = coder::decision::profile_from_env()
             .ok()
@@ -654,6 +656,73 @@ fn trace(row: &Row, routing: &router::Routing, tier: &router::Tier) -> serde_jso
         "tier": tier.word(),
         "served": tier.answer().map(|e| e.id.clone()),
     })
+}
+
+/// The raw readings, so a threshold or map can be refitted later without
+/// asking Jev again (#10386).
+fn write_readings(name: &str, split: &str, readings: &[Reading]) {
+    let dir = std::env::var_os("ROUTER_EVAL_OUT").map_or_else(
+        || PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target/router-eval"),
+        PathBuf::from,
+    );
+    let _ = std::fs::create_dir_all(&dir);
+    let _ = std::fs::write(
+        dir.join(format!("{name}-{split}-readings.json")),
+        serde_json::to_string_pretty(readings).unwrap_or_default(),
+    );
+}
+
+/// The `answer` and `route` thresholds on these rows (#10386): the raw
+/// policy thresholds against the committed map with the cost-derived
+/// calibrated threshold, each with its served, wrong and fell-through
+/// counts and its mean cost under the written costs.
+fn print_thresholds(split: &str, rows: &[&Row], readings: &[Reading]) {
+    use router::thresholds::{ANSWER_COSTS, CALIBRATED_ANSWER_CONFIDENCE, ROUTE_COSTS, operate};
+    let Ok(calibration) = router::calibration::Calibration::builtin() else {
+        return;
+    };
+    let (route, answer) = coder::router_eval::observations(rows, readings);
+    let show = |question: &str, point: router::thresholds::Operating| {
+        println!(
+            "threshold ({split}) {question} {}{:.2}: n={} served={} wrong={} fell_through={} precision={} cost/item={:.3}",
+            if point.calibrated {
+                "calibrated>="
+            } else {
+                "raw>="
+            },
+            point.threshold,
+            point.items,
+            point.acted,
+            point.wrong,
+            point.fell_through,
+            point
+                .precision()
+                .map_or("-".to_string(), |p| format!("{p:.3}")),
+            point.cost_per_item,
+        );
+    };
+    show(
+        "answer",
+        operate(
+            &answer,
+            None,
+            router::policy::ANSWER_CONFIDENCE,
+            ANSWER_COSTS,
+        ),
+    );
+    show(
+        "answer",
+        operate(
+            &answer,
+            Some(&calibration.answer.map),
+            CALIBRATED_ANSWER_CONFIDENCE,
+            ANSWER_COSTS,
+        ),
+    );
+    show(
+        "route",
+        operate(&route, None, router::policy::ROUTE_CONFIDENCE, ROUTE_COSTS),
+    );
 }
 
 fn write_traces(name: &str, split: &str, traces: &[serde_json::Value]) {

@@ -167,3 +167,30 @@ Every gated decision gets an explicit middle band: clarify, offer instead of act
 8. **Recalibration:** a nightly job, plus re-runs on Jev model change, with a drift notice in the watchers view.
 9. **Public page:** add the "Decisions" section to openagents.com/efficiency.
 10. **Lev:** fit the first real calibration record, so `docs/lev/calibration.md` stops saying "There are no Lev numbers."
+
+## Step 2 result: router thresholds from written costs (#10386, 2026-10-03)
+
+**Costs, written down** (`crates/coder/src/router/thresholds.rs`): serving a wrong prepared reply or route costs 10 model calls (the person reads a wrong answer, has to notice and ask again, and trusts the next reply less); falling through to the model costs 1. On a calibrated probability `p`, acting is cheaper exactly when `(1 − p)·10 < 1`, so the threshold is `1 − 1/10 = 0.90`.
+
+**Which maps serve.** Only maps that passed their held-out gate: `answer` (ECE 0.131 → 0.062, passed) serves; `route` failed its gate and stays raw. `CODER_WORKER_ROUTER_CALIBRATION` is now on by default (`off` turns it off; if the committed map was fitted for another question set, the default serves raw readings instead of refusing to start). A mapped `answer` is read against `CALIBRATED_ANSWER_CONFIDENCE` = 0.90; a raw one keeps `ANSWER_CONFIDENCE` = 0.80. `ROUTE_CONFIDENCE` stays 0.80 raw.
+
+**Dev split** (calibration partition, from the `calibration-v2` map's bins, cost per row under the written costs):
+
+| Question | Threshold | n | Served | Wrong served | Fell through | Precision | Cost / row |
+|---|---|---:|---:|---:|---:|---:|---:|
+| answer | raw ≥ 0.80 (before) | 265 | 116 | 7.7 | 149 | 0.933 | 0.853 |
+| answer | calibrated ≥ 0.90 (after) | 265 | 99 | 3.5 | 166 | 0.965 | 0.757 |
+| route | raw ≥ 0.80 | 406 | 336 | 7.0 | 70 | 0.979 | 0.344 |
+| route | calibrated ≥ 0.85–0.95 (least cost) | 406 | 336 | 7.0 | 70 | 0.979 | 0.344 |
+
+The calibrated least-cost route threshold selects exactly the raw ≥ 0.80 rows, so the raw route threshold was already cost-optimal; it stays.
+
+**Held-out confirmation** (live Jev, `chat-router-v5`, 269 rows, 0 errors; readings in `docs/coder/measurements/2026-10-03-router-thresholds/`):
+
+| Question | Threshold | n | Served | Wrong served | Fell through | Precision (95% Wilson) | Cost / row |
+|---|---|---:|---:|---:|---:|---|---:|
+| answer | raw ≥ 0.80 (before) | 189 | 85 | 5 | 104 | 0.941 (0.870–0.975) | 0.815 |
+| answer | calibrated ≥ 0.90 (after) | 189 | 66 | 3 | 123 | 0.955 (0.875–0.984) | 0.810 |
+| route | raw ≥ 0.80 | 269 | 198 | 2 | 71 | 0.990 | 0.338 |
+
+**Read honestly:** on held-out the calibrated threshold serves 2 fewer wrong prepared answers (5 → 3, −40%) at the price of 19 more fall-throughs, for about the same expected cost (0.815 → 0.810 per row). The precision intervals overlap; n is small. The dev-split gain (−11% cost, −55% wrong served) did not fully carry over. This is a correct, conservative change, not a measured win yet: the live recording from step 1 (a8d2cf346c) is what will tell, and the nightly refit (#10387) should re-derive these from live outcomes.

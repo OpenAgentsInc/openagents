@@ -465,6 +465,10 @@ pub struct Routing {
     pub summarize: f64,
     pub risk: Risk,
     pub risk_p: f64,
+    /// Whether `answer`'s probability went through the served answer map
+    /// ([`super::calibration::Calibration::apply`]): the policy then reads
+    /// it against [`super::thresholds::CALIBRATED_ANSWER_CONFIDENCE`].
+    pub answer_calibrated: bool,
 }
 
 fn choice<'a>(response: &'a jev::SystemOneResponse, id: &str) -> Option<&'a ChoiceAnswer> {
@@ -623,6 +627,7 @@ pub fn reading(
         summarize: noul("summarize"),
         risk: risk_answer.map_or(Risk::Unknown, |risk| Risk::parse(&risk.choice)),
         risk_p: risk_answer.map_or(0.0, |risk| finite(risk.confidence)),
+        answer_calibrated: false,
     }
 }
 

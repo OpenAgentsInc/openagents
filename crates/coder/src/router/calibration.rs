@@ -12,10 +12,12 @@
 //! may be served, and writes the result here as
 //! `crates/coder/fixtures/chat-router/calibration-v2.json` ([`FIXTURE`]).
 //!
-//! Serving the map is the operator's call: `CODER_WORKER_ROUTER_CALIBRATION`
-//! ([`VAR`]) is `off` unless set to `on`, because the policy's thresholds
-//! were tuned on raw probabilities and a map moves every reading through
-//! them. With it on, the worker applies [`Calibration::apply`] to each
+//! Serving the map is on by default since #10386:
+//! `CODER_WORKER_ROUTER_CALIBRATION` ([`VAR`]) is `on` unless set to
+//! `off`. Only maps that passed their held-out gate serve (today `answer`;
+//! `route` failed), and a mapped `answer` is read against the cost-derived
+//! [`super::thresholds::CALIBRATED_ANSWER_CONFIDENCE`] rather than the raw
+//! threshold it was tuned for. With it on, the worker applies [`Calibration::apply`] to each
 //! reading before the policy decides, refuses to start when the map was
 //! fitted for another question set ([`Calibration::check`]), and names the
 //! map in every `router` log line.
@@ -29,8 +31,8 @@ use super::{RouteId, set_id};
 /// The fixture's schema.
 pub const SCHEMA: &str = "openagents.chat-router.calibration.v1";
 
-/// The environment variable that turns the map on: `on`, or `off` (the
-/// default).
+/// The environment variable that turns the map off: `on` (the default since
+/// #10386), or `off`.
 pub const VAR: &str = "CODER_WORKER_ROUTER_CALIBRATION";
 
 /// The committed map, fitted by the last published eval.
@@ -59,6 +61,12 @@ pub struct Question {
 }
 
 impl Question {
+    /// Whether the map passed its held-out gate and may serve.
+    #[must_use]
+    pub fn serves(&self) -> bool {
+        self.verdict == "passed"
+    }
+
     /// Fits a map on `fit` and scores it on `held_out`, judged by `gate`.
     #[must_use]
     pub fn fit(fit: &[Observation], held_out: &[Observation], gate: &gym::gate::Gate) -> Self {
@@ -130,8 +138,8 @@ impl Calibration {
         Self::parse(FIXTURE)
     }
 
-    /// The map from [`VAR`]: `Some` when it is `on`, `None` when it is
-    /// `off` or unset.
+    /// The map from [`VAR`]: `Some` when it is `on` or unset, `None` when
+    /// it is `off`.
     ///
     /// # Errors
     ///
@@ -155,7 +163,15 @@ impl Calibration {
                 record.check(&set_id(), bank)?;
                 Ok(Some(record))
             }
-            Some("off" | "") | None => Ok(None),
+            // The default: serve the map when it was fitted for this
+            // build's question set, and the raw readings when it was not
+            // (a question-set change must not stop the worker; the
+            // published eval refits the map).
+            Some("") | None => {
+                let record = Self::builtin()?;
+                Ok(record.check(&set_id(), bank).is_ok().then_some(record))
+            }
+            Some("off") => Ok(None),
             Some(other) => Err(format!("{VAR} is on or off, not `{other}`")),
         }
     }
@@ -192,12 +208,21 @@ impl Calibration {
     /// fitted tables. The argmax is untouched: a map rescales the winner's
     /// probability and never picks another option. A reading with no route
     /// (`Unknown`) or no answer keeps its zero.
+    ///
+    /// Only a map whose held-out verdict is `passed` serves (#10386): the
+    /// `route` map failed its gate in `calibration-v2`, so `route` stays
+    /// raw and keeps [`super::policy::ROUTE_CONFIDENCE`]; the `answer` map
+    /// passed, so `answer` is mapped and marked
+    /// ([`Routing::answer_calibrated`]) for the calibrated threshold.
     pub fn apply(&self, routing: &mut Routing) {
-        if routing.route != RouteId::Unknown {
+        if self.route.serves() && routing.route != RouteId::Unknown {
             routing.route_p = self.route.map.apply(routing.route_p).clamp(0.0, 1.0);
         }
-        if let Some((_, p)) = &mut routing.answer {
+        if self.answer.serves()
+            && let Some((_, p)) = &mut routing.answer
+        {
             *p = self.answer.map.apply(*p).clamp(0.0, 1.0);
+            routing.answer_calibrated = true;
         }
     }
 
@@ -262,7 +287,8 @@ mod tests {
         let bank = Bank::builtin().id();
         assert!(Calibration::from_setting(Some("on"), &bank).is_ok_and(|c| c.is_some()));
         assert!(Calibration::from_setting(Some("off"), &bank).is_ok_and(|c| c.is_none()));
-        assert!(Calibration::from_setting(None, &bank).is_ok_and(|c| c.is_none()));
+        // On by default since #10386.
+        assert!(Calibration::from_setting(None, &bank).is_ok_and(|c| c.is_some()));
         assert!(Calibration::from_setting(Some("maybe"), &bank).is_err());
     }
 
@@ -275,8 +301,11 @@ mod tests {
             .map(|n| (0.95, n % 10 != 0))
             .chain((0..40).map(|n| (0.55, n % 2 == 0)))
             .collect();
-        let question = Question::fit(&fit(&sure), &fit(&sure), &gate);
-        let record = Calibration {
+        let mut question = Question::fit(&fit(&sure), &fit(&sure), &gate);
+        // Only a map that passed its gate serves (#10386); this test is
+        // about what serving one does.
+        question.verdict = "passed".into();
+        let mut record = Calibration {
             schema: SCHEMA.into(),
             set: set_id(),
             bank: Bank::builtin().id(),
@@ -311,6 +340,7 @@ mod tests {
             summarize: 0.0,
             risk: crate::router::Risk::Ok,
             risk_p: 0.99,
+            answer_calibrated: false,
         };
         record.apply(&mut routing);
         assert_eq!(routing.route, RouteId::Meta);
@@ -328,5 +358,16 @@ mod tests {
         record.apply(&mut unknown);
         assert!(unknown.route_p.abs() < f64::EPSILON);
         assert!(unknown.answer.is_none());
+        assert!(routing.answer_calibrated);
+
+        // A map that failed its gate leaves its reading raw.
+        record.route.verdict = "failed".into();
+        let raw = 0.95;
+        let mut again = routing.clone();
+        again.route_p = raw;
+        again.answer_calibrated = false;
+        record.apply(&mut again);
+        assert!((again.route_p - raw).abs() < 1e-12);
+        assert!(again.answer_calibrated);
     }
 }
