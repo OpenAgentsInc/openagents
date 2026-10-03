@@ -687,6 +687,33 @@ fn split_diff(diff: &str) -> Vec<(String, Vec<&str>)> {
     out
 }
 
+/// Whether one shell command line installs software for the whole
+/// computer rather than in the task's worktree: `pip install --user` (or
+/// with `sudo` or `--break-system-packages`), `npm install -g`, `cargo install`, `brew install`, `gem install`,
+/// `go install`, `apt(-get) install`. A bounded parse of the agent's own
+/// commands, never of what the person asked (#10336).
+#[must_use]
+pub fn installs_outside(line: &str) -> bool {
+    let words: Vec<&str> = line
+        .split(|c: char| c.is_whitespace() || c == ';' || c == '&' || c == '|')
+        .filter(|word| !word.is_empty())
+        .collect();
+    let has = |word: &str| words.contains(&word);
+    let program = |name: &str| {
+        words
+            .iter()
+            .any(|word| word.rsplit('/').next() == Some(name))
+    };
+    let pip = program("pip") || program("pip3") || (has("-m") && has("pip"));
+    (pip && has("install") && (has("--user") || has("sudo") || has("--break-system-packages")))
+        || (program("npm") && has("install") && (has("-g") || has("--global")))
+        || (program("cargo") && has("install"))
+        || (program("brew") && has("install"))
+        || (program("gem") && has("install"))
+        || (program("go") && has("install"))
+        || ((program("apt") || program("apt-get")) && has("install"))
+}
+
 /// The turn finished.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Finished {
@@ -830,6 +857,9 @@ pub struct Mapper {
     /// the answer of a turn the loop ended because its checks passed
     /// before the agent wrote one (#10331).
     checked: Option<String>,
+    /// Commands this turn ran that install software for the whole
+    /// computer, outside the task's worktree (#10336).
+    outside: Vec<String>,
 }
 
 impl Mapper {
@@ -854,13 +884,32 @@ impl Mapper {
     /// because the task's checks passed before the agent wrote one, what
     /// the checks said (#10331).
     fn answer_or_checks(&self) -> String {
-        if !self.reply.trim().is_empty() {
-            return self.reply.clone();
+        let answer = if self.reply.trim().is_empty() {
+            match &self.checked {
+                Some(line) if !line.is_empty() => format!("The task's checks pass: {line}"),
+                Some(_) => "The task's checks pass.".to_owned(),
+                None => String::new(),
+            }
+        } else {
+            self.reply.clone()
+        };
+        if self.outside.is_empty() {
+            return answer;
         }
-        match &self.checked {
-            Some(line) if !line.is_empty() => format!("The task's checks pass: {line}"),
-            Some(_) => "The task's checks pass.".to_owned(),
-            None => String::new(),
+        // What changed this computer outside the worktree, so the person
+        // knows (#10336).
+        let ran = self
+            .outside
+            .iter()
+            .map(|command| format!("`{command}`"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let note =
+            format!("Outside its worktree, this turn installed software on this computer: {ran}.");
+        if answer.trim().is_empty() {
+            note
+        } else {
+            format!("{}\n\n{note}", answer.trim_end())
         }
     }
 
@@ -1052,6 +1101,13 @@ impl Mapper {
                     self.streamed.clear();
                     for command in action["commands"].as_array().into_iter().flatten() {
                         if let Some(command) = command.as_str() {
+                            for line in command.lines() {
+                                if installs_outside(line)
+                                    && !self.outside.iter().any(|seen| seen == line.trim())
+                                {
+                                    self.outside.push(line.trim().to_owned());
+                                }
+                            }
                             events.push(with_call(
                                 make(StepKind::Command, command),
                                 Call {
@@ -2349,6 +2405,33 @@ mod tests {
             panic!("{failing:?}")
         };
         assert_eq!(finished.summary, "");
+    }
+
+    #[test]
+    fn installs_for_the_whole_computer_are_named() {
+        assert!(installs_outside("python3 -m pip install --user pytest"));
+        assert!(!installs_outside("pip install requests"));
+        assert!(installs_outside("sudo pip3 install requests"));
+        assert!(installs_outside("npm install -g typescript"));
+        assert!(installs_outside("cd x && cargo install ripgrep"));
+        assert!(!installs_outside(".venv/bin/pip install pytest"));
+        assert!(!installs_outside("npm install"));
+        assert!(!installs_outside("python3 -m pytest -q"));
+        let mut mapper = Mapper::new(1, None);
+        mapper.step(&step(
+            1,
+            "system",
+            "generated",
+            mc(json!({"event": "generated", "generated": {"action": {"Ok": {"rationale": "", "reply": "Fixed calc.py.", "commands": ["python3 -m pip install --user pytest"]}}}})),
+        ));
+        let end = mapper.end("model_finished", vec![], "/w", "/t", None);
+        let CoderEvent::Result(finished) = &end else {
+            panic!("{end:?}")
+        };
+        assert_eq!(
+            finished.summary,
+            "Fixed calc.py.\n\nOutside its worktree, this turn installed software on this computer: `python3 -m pip install --user pytest`."
+        );
     }
 
     /// When the person asked for an engine, the runner says so first, and
