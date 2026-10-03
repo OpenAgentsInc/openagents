@@ -4,12 +4,14 @@
 //! (`scripts/cloud/coder-host-setup.sh --warm`, the same one the GCE image
 //! `oa-coder-host` uses, #10224), which clones `origin/main` into
 //! `/home/user/openagents` and compiles it into Coder's first target slot,
-//! stops the sandbox, saves it as the named snapshot `oa-coder-main-YYYYMMDD`,
+//! cuts the mtimes Cargo compares to whole seconds (#10251), stops the sandbox, saves it as the named snapshot `oa-coder-main-YYYYMMDD`,
 //! keeps the newest three, and deletes the build sandbox. Runs then create
 //! sandboxes `from` that name and start with a compiled main.
 //!
 //! `boat-template probe NAME` measures a template: create from it, time to
-//! ready, and `cargo build -p openagents-cli` inside it; then deletes it.
+//! ready, run `scripts/cloud/boat-fork-ready.sh` (ownership repair, wait for
+//! Boat's lazy restore), then `cargo build -p openagents-cli` in the clone and
+//! in a fresh worktree of `origin/main`; then deletes it (#10251).
 //!
 //! Runbook: `docs/deployment/boat-template.md`. The key comes from
 //! `BOAT_API_KEY`, else Secret Manager `boat-api-key`; it is never printed.
@@ -24,7 +26,7 @@ const PREFIX: &str = "oa-coder-main-";
 const NAMED_LIMIT: usize = 10;
 const USAGE: &str = "usage:
   boat-template build [--keep N] [--type large] [--name NAME] [--setup-file PATH] [--keep-sandbox]
-  boat-template probe NAME [--package openagents-cli]
+  boat-template probe NAME [--package openagents-cli] [--mode wait|now]
   boat-template list
   boat-template prune [--keep N]";
 
@@ -68,6 +70,7 @@ struct Flags {
     setup_file: Option<String>,
     keep_sandbox: bool,
     package: String,
+    mode: String,
     positional: Vec<String>,
 }
 
@@ -80,6 +83,7 @@ impl Flags {
             setup_file: None,
             keep_sandbox: false,
             package: "openagents-cli".into(),
+            mode: "wait".into(),
             positional: Vec::new(),
         };
         let mut it = args.iter();
@@ -91,6 +95,7 @@ impl Flags {
                 "--name" => flags.name = Some(value()?),
                 "--setup-file" => flags.setup_file = Some(value()?),
                 "--package" => flags.package = value()?,
+                "--mode" => flags.mode = value()?,
                 "--keep-sandbox" => flags.keep_sandbox = true,
                 other if other.starts_with('-') => {
                     return Err(format!("unknown flag {other}\n{USAGE}").into());
@@ -377,7 +382,8 @@ fi
 # The sccache disk cache duplicates the warm target: keep it out of the snapshot.
 printf '.cache/sccache/\n' > ~/.boxignore
 log=~/.oa-coder-host-setup.log
-bash /tmp/coder-host-setup.sh --warm >"$log" 2>&1
+# `chat work --on boat` runs the template's openagents and microcoder in place.
+bash /tmp/coder-host-setup.sh --warm --keep-binaries "openagents microcoder" >"$log" 2>&1
 rc=$?
 grep '^OA_CODER_HOST_SETUP' "$log"
 if [ "$rc" != 0 ]; then tail -n 60 "$log"; exit "$rc"; fi
@@ -386,6 +392,15 @@ slot=$(jq -r .warm_target.slot "$manifest")
 # A build in the default target dir (scripts/boat-run.sh, a hand-run cargo)
 # reuses the warm slot too.
 [ -e ~/openagents/target ] || ln -s "$slot" ~/openagents/target
+# Boat's restore keeps some mtimes to the nanosecond and cuts others to the
+# second, so a dependency built in the same second as its dependent looks
+# newer in a fork and Cargo rebuilds both (53 crates, #10251). Whole-second
+# mtimes everywhere Cargo compares them restore identically.
+s=$(date +%s)
+find "$slot" ~/.cargo/registry/src ~/.cargo/git/checkouts ~/openagents -xdev \
+  -path ~/openagents/.git -prune -o ! -type l -print0 2>/dev/null \
+  | perl -0ne 'chomp; my @s = lstat($_) or next; utime(int($s[8]), int($s[9]), $_)'
+echo "mtime_truncate_seconds=$(( $(date +%s) - s ))"
 echo "rev=$(jq -r .rev "$manifest")"
 echo "slot=$slot"
 echo "slot_bytes=$(du -sb "$slot" | cut -f1)"
@@ -437,6 +452,7 @@ fn fields(output: &str) -> serde_json::Map<String, Value> {
             let value = v
                 .parse::<i64>()
                 .map(Value::from)
+                .or_else(|_| v.parse::<f64>().map(Value::from))
                 .unwrap_or_else(|_| Value::from(v));
             (k.to_string(), value)
         })
@@ -606,21 +622,23 @@ async fn probe(client: &Client, name: &str, flags: &Flags) -> Fallible<Value> {
     Ok(summary)
 }
 
-/// A sandbox created `from` a template comes back with a few dozen
-/// directories owned by root (~/.cargo, ~/.openagents and the warm slot's
-/// directories, ~/.ascii/processes; never files), observed 2026-10-02. Boat's
-/// own detached commands then fail with EACCES, and cargo cannot write the
-/// slot. Every run from a template does this first, synchronously; it takes
-/// about 20 s on a fresh fork.
-const REPAIR_OWNERSHIP: &str =
-    "sudo -n find \"$HOME\" -xdev -user root -exec chown -h \"$(id -u):$(id -g)\" {} +";
+/// What every sandbox started from a template runs first (#10251): repair
+/// the root-owned directories a fork comes back with, then wait until Boat's
+/// lazy restore of `$HOME` is done, reading the warm slot meanwhile. The
+/// same script `chat work --on boat` runs.
+const FORK_READY: &str = include_str!("../../../scripts/cloud/boat-fork-ready.sh");
+const FORK_READY_PATH: &str = "/tmp/oa-boat-fork-ready.sh";
 
+/// Upload the fork-ready script and repair Boat's own directory
+/// synchronously: until then, Boat's detached commands fail with EACCES.
+/// The rest of the repair runs after the restore, in the probe script.
 async fn repair_ownership(client: &Client, id: &str) -> Fallible<()> {
+    client.write_text(id, FORK_READY_PATH, FORK_READY).await?;
     let out = client
         .exec_stream(
             id,
             CommandRequest {
-                command: REPAIR_OWNERSHIP.into(),
+                command: format!("bash {FORK_READY_PATH} --bookkeeping-only"),
                 timeout_seconds: Some(590),
                 ..Default::default()
             },
@@ -634,6 +652,17 @@ async fn repair_ownership(client: &Client, id: &str) -> Fallible<()> {
     }
 }
 
+/// The probe's flags for the fork-ready script.
+fn ready_flags(mode: &str) -> Fallible<&'static str> {
+    Ok(match mode {
+        // Wait for Boat's restore of $HOME, then build (the default).
+        "wait" => "",
+        // Build at once, on the lazy mount (how #10219 measured 701 s).
+        "now" => "--no-wait",
+        other => return Err(format!("unknown --mode {other} (wait, now)").into()),
+    })
+}
+
 async fn probe_on(client: &Client, flags: &Flags, id: &str, started: Instant) -> Fallible<Value> {
     client.wait_until_ready(id, &wait(900, 1)).await?;
     let ready_seconds = secs(started);
@@ -641,39 +670,62 @@ async fn probe_on(client: &Client, flags: &Flags, id: &str, started: Instant) ->
     repair_ownership(client, id).await?;
     let first_command_seconds = secs(first_at);
     let package = &flags.package;
+    let ready = ready_flags(&flags.mode)?;
+    // Each build runs in a new shell that changes directory itself, so no
+    // process keeps a working directory inside the lazy mount.
     let script = format!(
         r#"set -e
-cd ~/openagents
+bash {FORK_READY_PATH} {ready}
 export PATH="$HOME/.cargo/bin:$PATH"
 manifest=~/.openagents/coder-host.json
 slot=$(jq -r .warm_target.slot "$manifest")
 echo "template_rev=$(jq -r .rev "$manifest")"
+echo "slot_bytes=$(du -sb "$slot" | cut -f1)"
 b() {{
   s=$EPOCHREALTIME
-  if ! CARGO_TARGET_DIR="$slot" cargo build -p {package} >/tmp/probe.log 2>&1; then tail -n 30 /tmp/probe.log; exit 1; fi
+  if ! bash -c "cd $2 && CARGO_TARGET_DIR='$slot' cargo build -p {package}" >/tmp/probe.log 2>&1; then tail -n 30 /tmp/probe.log; exit 1; fi
   awk -v a="$s" -v b="$EPOCHREALTIME" -v k="$1" 'BEGIN {{ printf "%s_build_seconds=%.1f\n", k, b - a }}'
   echo "$1_compiled_crates=$(grep -c '^ *Compiling' /tmp/probe.log || true)"
 }}
-b noop
-git fetch -q origin main
-echo "behind_commits=$(git rev-list --count HEAD..origin/main)"
-git checkout -q --detach origin/main
-b main
+# The first build: the template's clone, as `chat work --on boat` builds.
+b first ~/openagents
+b noop ~/openagents
+# A Coder run: a fresh worktree of origin/main on the same slot.
+git -C ~/openagents fetch -q origin main
+echo "behind_commits=$(git -C ~/openagents rev-list --count HEAD..origin/main)"
+git -C ~/openagents worktree add -q --detach /tmp/oa-probe-wt origin/main
+b worktree /tmp/oa-probe-wt
 "#
     );
+    let probe_at = Instant::now();
     client.write_text(id, "/tmp/oa-probe.sh", &script).await?;
     let script = "bash /tmp/oa-probe.sh".to_string();
     let (code, stdout, stderr) = exec(client, id, script, 3 * 3600).await?;
+    let probe_seconds = secs(probe_at);
     eprint!("{stdout}");
     if code != 0 {
         eprint!("{stderr}");
         return Err(format!("probe build exited {code}").into());
     }
+    let build = fields(&stdout);
+    let first_build = [
+        "fork_ready_restore_seconds",
+        "fork_ready_chown_seconds",
+        "first_build_seconds",
+    ]
+    .iter()
+    .filter_map(|k| build.get(*k).and_then(Value::as_f64))
+    .sum::<f64>();
+    let fork_to_first_build =
+        ((ready_seconds + first_command_seconds + first_build) * 10.0).round() / 10.0;
     Ok(json!({
+        "mode": flags.mode,
         "readySeconds": ready_seconds,
         "firstCommandSeconds": first_command_seconds,
+        "forkToFirstBuildSeconds": fork_to_first_build,
+        "probeSeconds": probe_seconds,
         "package": package,
-        "build": fields(&stdout),
+        "build": build,
     }))
 }
 
@@ -690,9 +742,10 @@ mod tests {
 
     #[test]
     fn fields_reads_key_values() {
-        let f = fields("commit=abc\nbuild_seconds=12\nnoise line\n[x] a=b\n");
+        let f = fields("commit=abc\nbuild_seconds=12\nready_seconds=4.5\nnoise line\n[x] a=b\n");
         assert_eq!(f["commit"], "abc");
         assert_eq!(f["build_seconds"], 12);
+        assert_eq!(f["ready_seconds"], 4.5);
         assert!(!f.contains_key("[x] a"));
     }
 
@@ -706,6 +759,14 @@ mod tests {
         assert_eq!(p["packages"], 30);
         assert_eq!(p["repo"], 1);
         assert!(!p.contains_key("finished"));
+    }
+
+    #[test]
+    fn ready_modes() {
+        assert_eq!(ready_flags("wait").unwrap(), "");
+        assert_eq!(ready_flags("now").unwrap(), "--no-wait");
+        assert!(ready_flags("later").is_err());
+        assert!(FORK_READY.contains("ascii-lazyfs"));
     }
 
     #[test]

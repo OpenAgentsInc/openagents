@@ -28,6 +28,11 @@
 #   scripts/cloud/coder-host-setup.sh [--user NAME] [--repo-dir DIR]
 #       [--repo-url URL] [--rev REV] [--warm] [--no-release-binary]
 #       [--sccache-bucket BUCKET] [--no-engines] [--no-prune]
+#       [--keep-binaries "NAME ..."]
+#
+# --keep-binaries keeps those binaries in the warm slot's debug/ when the
+# prune runs (the Boat template keeps `openagents` and `microcoder`, which
+# `chat work --on boat` runs in place).
 #
 # Run as root it sets up the user `coder` (created if missing); run as any
 # other user it sets up that user. It never prints a secret and never reads
@@ -43,6 +48,7 @@ release_binary="true"
 sccache_bucket=""
 engines="true"
 prune="true"
+keep_binaries=""
 # Pinned tool versions. The Rust toolchain itself comes from the repository's
 # rust-toolchain.toml; this is only the fallback before the clone exists.
 RUST_TOOLCHAIN_DEFAULT="1.97.1"
@@ -63,6 +69,7 @@ while [[ $# -gt 0 ]]; do
     --sccache-bucket) sccache_bucket="${2:?}"; shift 2 ;;
     --no-engines) engines="false"; shift ;;
     --no-prune) prune="false"; shift ;;
+    --keep-binaries) keep_binaries="${2:?}"; shift 2 ;;
     -h|--help) sed -n '2,40p' "$0"; exit 0 ;;
     *) echo "coder-host-setup: unknown argument: $1" >&2; exit 2 ;;
   esac
@@ -269,7 +276,9 @@ if [[ "$warm" == "true" ]]; then
     # worktree build reuses; they stay. A build in the clone itself relinks.
     log warm-prune begin
     as_user find "$slot/debug/deps" -maxdepth 1 -type f -executable ! -name '*.so' -delete
-    as_user find "$slot/debug" -maxdepth 1 -type f -executable -delete
+    keep=()
+    for b in $keep_binaries; do keep+=(! -name "$b"); done
+    as_user find "$slot/debug" -maxdepth 1 -type f -executable "${keep[@]}" -delete
     as_user rm -rf "$slot/debug/incremental"
     log warm-prune end "slot_bytes=$(du -sb "$slot" | cut -f1)"
   fi

@@ -315,6 +315,9 @@ fn run_script(issue: u64, land: Option<Land>, build: bool) -> String {
     };
     format!(
         r#"set -uo pipefail
+# Wait for Boat's restore of HOME, then repair ownership on plain disk
+# (#10251, #10274); `ready` uploaded the script.
+bash {FORK_READY_PATH} >&2
 if [ -f {ENV_FILE} ]; then set -a; . {ENV_FILE}; set +a; rm -f {ENV_FILE}; fi
 export PATH="$HOME/.cargo/bin:/usr/local/cargo/bin:$HOME/.grok/bin:$HOME/.local/bin:/usr/local/bin:$PATH" CARGO_INCREMENTAL=0
 [ -z "${{RUSTUP_HOME:-}}" ] && [ -d /usr/local/rustup ] && export RUSTUP_HOME=/usr/local/rustup
@@ -356,7 +359,10 @@ if [ -n "$ready" ]; then
   echo "boat: using the template's openagents and microcoder ($(jq -r .rev ~/.openagents/coder-host.json | cut -c1-10))" >&2
 else
   echo "boat: building origin/main $(git rev-parse --short HEAD) on the warm target" >&2
-  CARGO_TARGET_DIR="$slot" cargo build -q -p openagents-cli --bin openagents -p microcoder --bin microcoder >/tmp/oa-build.log 2>&1 \
+  # One package per invocation, as the template warmed them: a combined
+  # build unifies features and misses the warm target.
+  {{ CARGO_TARGET_DIR="$slot" cargo build -q -p openagents-cli --bin openagents \
+    && CARGO_TARGET_DIR="$slot" cargo build -q -p microcoder --bin microcoder; }} >/tmp/oa-build.log 2>&1 \
     || {{ tail -n 40 /tmp/oa-build.log >&2; exit 3; }}
 fi
 # Run them where they are: a copy reads gigabytes the sandbox may still be
@@ -610,22 +616,31 @@ fn not_reachable_yet(error: &boat::Error) -> bool {
         if matches!(api.code(), Some("sandbox_direct_failed" | "sandbox_starting")))
 }
 
-/// A sandbox from a template comes back with directories under `HOME`
-/// owned by root (`~/.cargo`, `~/.openagents`, parts of the warm slot);
-/// until they are the user's again, builds fail with `Permission denied`
-/// and detached commands are refused. The same repair as `boat-template
-/// probe` (#10219, `docs/deployment/boat-template.md`): about 20 s.
-const REPAIR_OWNERSHIP: &str =
-    "sudo -n find \"$HOME\" -xdev -user root -exec chown -h \"$(id -u):$(id -g)\" {} +";
+/// What a sandbox from a template needs before anything builds
+/// (`scripts/cloud/boat-fork-ready.sh`, #10251, #10274): it comes back with
+/// directories under `HOME` owned by root, and Boat restores `HOME` lazily
+/// through a FUSE mount. A repair walked through that mount is slow (26 to
+/// 100 s) and misses directories the restore creates later, so a build into
+/// the warm slot failed with `Permission denied` (#10274). `ready` repairs
+/// only Boat's own `~/.ascii` (detached commands need it); the run script
+/// waits for the restore and then repairs the rest on plain disk.
+const FORK_READY: &str = include_str!("../../../scripts/cloud/boat-fork-ready.sh");
+const FORK_READY_PATH: &str = "/tmp/oa-boat-fork-ready.sh";
 
-/// Waits until `id` is ready and runs commands, then repairs ownership.
+/// Waits until `id` is ready and runs commands, then repairs Boat's own
+/// directory.
 async fn ready(client: &boat::Client, id: &str) -> Result<(), String> {
     client
         .wait_until_ready(id, &wait(Duration::from_secs(600), Duration::from_secs(3)))
         .await
         .map_err(|e| format!("{id} did not become ready: {}", why(&e)))?;
     reachable(client, id).await?;
-    match sh(client, id, REPAIR_OWNERSHIP.into()).await {
+    client
+        .write_text(id, FORK_READY_PATH, FORK_READY)
+        .await
+        .map_err(|e| format!("uploading the fork setup to {id}: {}", why(&e)))?;
+    let command = format!("bash {FORK_READY_PATH} --bookkeeping-only");
+    match sh(client, id, command).await {
         Ok(done) if done.exit_code == Some(0) => Ok(()),
         Ok(done) => Err(format!(
             "repairing ownership on {id} exited {:?}",
@@ -1516,6 +1531,9 @@ mod tests {
         let removed = script.find("rm -f /tmp/oa-run.env").unwrap();
         let work = script.find("/debug/openagents\" chat work").unwrap();
         assert!(read < removed && removed < work);
+        // Boat's restore and the ownership repair come before anything.
+        let setup = script.find("bash /tmp/oa-boat-fork-ready.sh").unwrap();
+        assert!(setup < read && FORK_READY.contains("ascii-lazyfs"));
         assert!(script.ends_with("--issues 10220 --parallel 1 --land main\n"));
         assert!(script.contains("OPENAGENTS_CODER_CONTROLLER"));
         for word in ["GH_TOKEN=", "ghp_", "gho_", "xai-"] {
