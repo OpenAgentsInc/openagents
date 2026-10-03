@@ -430,3 +430,30 @@ for each run:  POST /sandboxes {from: "oa-coder-main-<date>", type: "large",
   `https://boat.dev/api/v1`. Decide whether the owned Box-compatible server
   stays paused or is retired, along with its GCE host `coder-box-pool`
   (parent audit issue 1).
+
+## 7. B5: the template, measured
+
+First template `oa-coder-main-20261002`, built 2026-10-02 by the Cloud Run job
+`oa-boat-template` from `40bfa2b842` (runbook:
+[boat-template.md](../deployment/boat-template.md)).
+
+| What | Measured |
+| --- | --- |
+| Shared setup (`coder-host-setup.sh --warm`) on a `large` sandbox | 1,031 s (17.2 min): packages 7 s, repo 2 s, rust 6 s, engines 6 s, `cargo fetch` 31 s; `openagents-cli` build 161 s + tests 80 s; `microcoder` 106 s + 44 s; `coder` 36 s + 193 s (some test targets did not compile on that main, `partial=true`); release `openagents` 357 s |
+| Sizes | warm slot 93.2 GB, `~/.cargo` 1.5 GB, rustup 3.3 GB, `/home/user` 98.4 GB (sccache excluded by `.boxignore`) |
+| Named snapshot | 108.2 GB (`sizeBytes`), saved in 10.2 s from the stopped sandbox |
+| Fork to ready (`POST /sandboxes {from}` until `ready`) | 76.4 s |
+| First command in the fork | fails until root-owned directories are repaired (runbook); the repair took 19.7 s |
+| `cargo build -p openagents-cli` in the fork, nothing changed | **701 s**, recompiling 4 workspace crates (`coder`, `coder-labor`, `microcoder`, `openagents-cli`) |
+| The same after fetching `main` (53 commits newer) | failed: `spark-primitives` needs protoc's well-known types (`libprotobuf-dev`, now in the setup script on `main`) |
+
+What this shows:
+- **The template is not yet warm in a fork.** Boat restores files lazily, and
+  cargo reported the workspace under `/var/lib/ascii-lazy/retired/home/openagents`
+  rather than `/home/user/openagents`, so workspace crates' fingerprints no
+  longer matched and rebuilt. Reading about 93 GB of dependency artifacts
+  through the lazy restore made even those 4 crates take 701 s. Boat's own
+  docs warn that build artifacts "slow every restore down". Follow-up:
+  [#10251](https://github.com/OpenAgentsInc/openagents/issues/10251).
+- **Ready is 76 s, not "a few seconds"**, for a 108 GB template.
+- The daily build itself works and costs about $0.05 a day (sandbox plus job).

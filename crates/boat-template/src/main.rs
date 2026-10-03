@@ -203,7 +203,22 @@ async fn exec(
     Ok((done.exit_code.unwrap_or(-1), done.stdout, done.stderr))
 }
 
+async fn state_of(client: &Client, id: &str) -> Fallible<String> {
+    Ok(client
+        .get(&GetParams {
+            sandbox_id: id.into(),
+            ..Default::default()
+        })
+        .await?
+        .sandbox
+        .state)
+}
+
 async fn stop_and_wait(client: &Client, id: &str) -> Fallible<()> {
+    // Boat answers 400 to a stop of a sandbox that is already stopped.
+    if matches!(state_of(client, id).await?.as_str(), "stopped" | "archived") {
+        return Ok(());
+    }
     client
         .stop(&StopParams {
             sandbox_id: id.into(),
@@ -238,10 +253,15 @@ async fn delete_sandbox(client: &Client, id: &str) -> Fallible<()> {
             ..Default::default()
         })
         .await?;
-    client
+    match client
         .wait_for_deletion(&op.operation.id, &wait(900, 5))
-        .await?;
-    Ok(())
+        .await
+    {
+        // "blocked": the sandbox is gone, but Boat keeps the snapshot chain a
+        // named snapshot (the template) still reads. That is the expected end.
+        Ok(_) | Err(Error::DeletionBlocked(_)) => Ok(()),
+        Err(error) => Err(error.into()),
+    }
 }
 
 /// Stop, then delete unless asked to keep it; never fails the caller.
@@ -586,11 +606,39 @@ async fn probe(client: &Client, name: &str, flags: &Flags) -> Fallible<Value> {
     Ok(summary)
 }
 
+/// A sandbox created `from` a template comes back with a few dozen
+/// directories owned by root (~/.cargo, ~/.openagents and the warm slot's
+/// directories, ~/.ascii/processes; never files), observed 2026-10-02. Boat's
+/// own detached commands then fail with EACCES, and cargo cannot write the
+/// slot. Every run from a template does this first, synchronously; it takes
+/// about 20 s on a fresh fork.
+const REPAIR_OWNERSHIP: &str =
+    "sudo -n find \"$HOME\" -xdev -user root -exec chown -h \"$(id -u):$(id -g)\" {} +";
+
+async fn repair_ownership(client: &Client, id: &str) -> Fallible<()> {
+    let out = client
+        .exec_stream(
+            id,
+            CommandRequest {
+                command: REPAIR_OWNERSHIP.into(),
+                timeout_seconds: Some(590),
+                ..Default::default()
+            },
+        )
+        .await?
+        .collect()
+        .await?;
+    match out.exit_code() {
+        Some(0) => Ok(()),
+        code => Err(format!("ownership repair exited {code:?}: {}", out.stderr.trim()).into()),
+    }
+}
+
 async fn probe_on(client: &Client, flags: &Flags, id: &str, started: Instant) -> Fallible<Value> {
     client.wait_until_ready(id, &wait(900, 1)).await?;
     let ready_seconds = secs(started);
     let first_at = Instant::now();
-    exec(client, id, "true".into(), 300).await?;
+    repair_ownership(client, id).await?;
     let first_command_seconds = secs(first_at);
     let package = &flags.package;
     let script = format!(
