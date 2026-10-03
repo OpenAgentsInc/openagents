@@ -4347,7 +4347,7 @@ mod tests {
         let ours = Door::Fallback(Box::new(FallbackDoor::new(
             coder::generate::ResponsesDoor::new(
                 "https://our.door",
-                "stealth/space-bunny-alpha",
+                Lane::SpaceBunny.model(),
                 "our-key",
             ),
             coder::generate::ResponsesDoor::new("https://our.gateway", GEMINI, "our-key"),
@@ -4366,7 +4366,7 @@ mod tests {
             panic!("not two doors");
         };
         assert_eq!(ordered.primary.url, "https://openrouter.ai/api");
-        assert_eq!(ordered.primary.model, "stealth/space-bunny-alpha");
+        assert_eq!(ordered.primary.model, Lane::SpaceBunny.model());
         assert_eq!(ordered.fallback.url, "https://ai-gateway.vercel.sh");
         assert_eq!(ordered.fallback.model, GEMINI);
         assert_eq!(payer.word(), "theirs");

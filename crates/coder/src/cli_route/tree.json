@@ -6784,7 +6784,7 @@
               "look"
             ],
             "usage": [
-              "look [--at X,Y,Z] [--radius CELLS] [--wait SECONDS]"
+              "look [--at X,Y,Z] [--radius METERS] [--wait SECONDS]"
             ],
             "forms": [
               {
@@ -6803,7 +6803,7 @@
                   {
                     "kind": "option",
                     "name": "radius",
-                    "value": "CELLS",
+                    "value": "METERS",
                     "open": true,
                     "optional": true
                   },
@@ -7389,7 +7389,7 @@
         {
           "kind": "option",
           "name": "radius",
-          "value": "CELLS",
+          "value": "METERS",
           "open": true,
           "optional": true,
           "repeated": true

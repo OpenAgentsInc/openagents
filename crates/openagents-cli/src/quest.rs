@@ -115,8 +115,12 @@ fn load_card(
     signer: &nostr::domain::RelaySigner,
 ) -> Result<Event, String> {
     if source.starts_with("naddr1") || source.starts_with("nostr:naddr1") {
-        let naddr = nostr::nip19::decode_naddr(source.trim_start_matches("nostr:"))
-            .map_err(|e| format!("{source} isn't an naddr: {e:?}"))?;
+        let naddr =
+            nostr::nip19::decode_naddr(source.trim_start_matches("nostr:")).map_err(|_| {
+                format!(
+                    "{source} isn't a valid Nostr address (naddr): check its length and checksum"
+                )
+            })?;
         if naddr.kind != u32::from(kinds::CARD_KIND) {
             return Err(format!(
                 "{source} names kind {}, not a trainer card",
@@ -150,7 +154,20 @@ fn load_card(
     } else {
         std::fs::read_to_string(source).map_err(|e| format!("can't read {source}: {e}"))?
     };
-    serde_json::from_str(&text).map_err(|e| format!("{source} isn't a signed Nostr event: {e}"))
+    let label = if source == "-" {
+        "standard input"
+    } else {
+        source
+    };
+    serde_json::from_str(&text).map_err(|error| {
+        let reason = match error.classify() {
+            serde_json::error::Category::Data => {
+                "required event fields are missing or have invalid values"
+            }
+            _ => "the JSON is incomplete or invalid",
+        };
+        format!("{label} isn't a signed Nostr event: {reason}")
+    })
 }
 
 /// `xp verify-card FILE|NADDR`: re-derives a trainer card's level from the

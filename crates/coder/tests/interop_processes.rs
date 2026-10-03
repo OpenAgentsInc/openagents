@@ -85,7 +85,7 @@ fn database() -> Option<String> {
 /// The directory the built binaries land in, holding `nostr-relay`,
 /// `coder-worker`, and `coder` once `scripts/test-postgres.sh` builds them.
 fn binary_dir() -> PathBuf {
-    Path::new(env!("CARGO_BIN_EXE_coder-worker"))
+    Path::new(env!("CARGO_BIN_EXE_coder"))
         .parent()
         .unwrap()
         .to_path_buf()
@@ -305,7 +305,9 @@ struct Worker {
 
 impl Worker {
     fn start(url: &str, variables: &[(&str, String)]) -> Self {
-        let mut command = Command::new(env!("CARGO_BIN_EXE_coder-worker"));
+        let mut command = Command::new(
+            binary_dir().join(format!("coder-worker{}", std::env::consts::EXE_SUFFIX)),
+        );
         for name in CREDENTIALS {
             command.env_remove(name);
         }

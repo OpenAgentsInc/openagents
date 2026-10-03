@@ -106,19 +106,26 @@ async fn desktop_creates_retries_reads_and_cancels_through_the_phone_clients() {
         );
         std::fs::remove_file(&journal).unwrap();
         std::fs::rename(saved, journal).unwrap();
-        // The normal NIP-HOST admission rejects a signing key that differs
-        // from the established owner. Restoring the fixture key restores access.
+        // A different stored key cannot sign for this host. The same-user
+        // socket falls back to local owner admission and preserves retries.
         use openagents_connect::keys::{KeyName, Secret};
         let owner = keys.load(KeyName::Owner).unwrap().unwrap();
         let other = secp256k1::SecretKey::new(&mut secp256k1::rand::rng());
         keys.store(KeyName::Owner, &Secret::from_bytes(other.secret_bytes()))
             .unwrap();
+        let local_request = "6".repeat(64);
+        let workspaces = client
+            .task_operation(&local_request, Operation::ListWorkspaces {})
+            .unwrap();
         assert_eq!(
             client
-                .create_task(&"6".repeat(64), create)
-                .unwrap_err()
-                .code,
-            Code::Forbidden
+                .task_operation(&local_request, Operation::ListWorkspaces {})
+                .unwrap(),
+            workspaces
+        );
+        assert_eq!(
+            client.create_task(&local_request, create).unwrap_err().code,
+            Code::Conflict
         );
         keys.store(KeyName::Owner, &owner).unwrap();
         assert_eq!(

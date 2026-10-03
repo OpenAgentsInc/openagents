@@ -281,12 +281,7 @@ fn main() -> ExitCode {
             println!("{}", world::xp_usage());
             0
         }
-        "xp" => world::run(
-            &output,
-            &std::iter::once("xp".to_owned())
-                .chain(rest.iter().cloned())
-                .collect::<Vec<_>>(),
-        ),
+        "xp" => world::run_xp(&output, &rest),
         "zone" => zone::run(&output, &rest),
         "study" => study::run(&output, &rest),
         "session" | "sessions" => session::run(&output, &rest),

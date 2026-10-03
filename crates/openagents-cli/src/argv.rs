@@ -97,3 +97,51 @@ pub fn command_usage(group: &str, command: &str, usage: &str) -> Option<String> 
         lines[start..end].join("\n").trim_start()
     ))
 }
+
+/// Parse only the options declared by this command, before consuming values.
+pub fn parse_command(
+    words: &[String],
+    command: &str,
+    options: &[&str],
+    switches: &[&str],
+    min: usize,
+    max: usize,
+) -> Result<Args, String> {
+    let mut index = 0;
+    while index < words.len() {
+        let word = &words[index];
+        if word == "--" {
+            break;
+        }
+        if let Some(flag) = word.strip_prefix("--") {
+            let (name, inline) = flag
+                .split_once('=')
+                .map_or((flag, false), |(name, _)| (name, true));
+            if !options.contains(&name) && !switches.contains(&name) {
+                return Err(format!("--{name} isn't an option of {command}"));
+            }
+            if switches.contains(&name) {
+                if inline {
+                    return Err(format!("--{name} doesn't take a value"));
+                }
+            } else if !inline {
+                index += 1;
+                if words.get(index).is_none_or(|value| value.starts_with("--")) {
+                    return Err(format!("--{name} needs a value"));
+                }
+            }
+        }
+        index += 1;
+    }
+    let args = Args::parse(words, switches)?;
+    if args.positional().len() > max {
+        return Err(format!(
+            "unexpected argument `{}` for {command}",
+            args.positional()[max]
+        ));
+    }
+    if args.positional().len() < min {
+        return Err(format!("{command} needs an argument"));
+    }
+    Ok(args)
+}
