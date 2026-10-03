@@ -120,6 +120,13 @@ async fn the_terminal_walks_every_gate_and_never_writes_into_the_extension() {
     let screen = String::from_utf8(screen).unwrap();
     let written = written.unwrap_or_else(|e| panic!("{e:?}\n{screen}"));
     assert_eq!(snapshot(ext.path()), before, "the extension is unchanged");
+    assert!(
+        screen.contains(&format!(
+            "We read Project map at {}. We only read it",
+            ext.path().canonicalize().unwrap().display()
+        )),
+        "{screen}"
+    );
 
     // Each gate's line, in order, with the tests gate asked twice.
     let order = [

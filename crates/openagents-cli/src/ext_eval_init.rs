@@ -324,7 +324,9 @@ pub async fn interview<G: Generate>(
         &format!(
             "We read {} at {}. We only read it; we never change it.",
             tool.name,
-            root.display()
+            root.canonicalize()
+                .unwrap_or_else(|_| root.to_path_buf())
+                .display()
         ),
     );
     let mut interview = Interview::new(Surface::Terminal, author.catalog().clone());

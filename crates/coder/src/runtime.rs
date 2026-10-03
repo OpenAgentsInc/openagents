@@ -4758,12 +4758,21 @@ impl<'a> Capture<'a> {
             return self.add(relative, plugin::Entry::Symlink { target });
         }
         if meta.is_dir() {
-            let mut children = std::fs::read_dir(path)
-                .and_then(|entries| {
-                    entries
-                        .map(|entry| entry.map(|entry| entry.path()))
-                        .collect::<Result<Vec<_>, _>>()
+            // Filter before capture so ignored files do not consume snapshot limits.
+            let mut children = ignore::WalkBuilder::new(path)
+                .max_depth(Some(1))
+                .hidden(false)
+                .require_git(false)
+                .git_global(false)
+                .follow_links(false)
+                .filter_entry(|entry| entry.file_name() != ".git")
+                .build()
+                .filter_map(|entry| match entry {
+                    Ok(entry) if entry.depth() == 0 => None,
+                    other => Some(other),
                 })
+                .map(|entry| entry.map(|entry| entry.into_path()))
+                .collect::<Result<Vec<_>, _>>()
                 .map_err(|error| {
                     self.refuse(
                         "scope_unavailable",
@@ -8099,6 +8108,43 @@ mod tests {
             json!({}),
         );
         assert!(runtime.admit(&pure).is_err(), "a pure step reads nothing");
+    }
+
+    #[test]
+    fn recursive_snapshots_skip_git_and_ignored_files_before_limits() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().canonicalize().unwrap();
+        for sub in [".git/hooks", "cache", "src/nested"] {
+            std::fs::create_dir_all(root.join(sub)).unwrap();
+        }
+        std::fs::write(root.join(".gitignore"), "cache/\n*.log\n!keep.log\n").unwrap();
+        std::fs::write(root.join("src/.gitignore"), "nested/\n").unwrap();
+        for file in [
+            "src/lib.rs",
+            "keep.log",
+            ".hidden",
+            "src/drop.log",
+            "src/nested/drop.rs",
+        ] {
+            std::fs::write(root.join(file), "content").unwrap();
+        }
+        for index in 0..SNAPSHOT_ENTRIES + 1 {
+            std::fs::write(root.join(format!("cache/{index}")), "ignored").unwrap();
+        }
+        std::fs::write(root.join(".git/hooks/pre-rebase.sample"), "git").unwrap();
+        let mut capture = Capture::new("map", &root, 1024);
+        capture.walk(&root).unwrap();
+        let names: Vec<_> = capture.entries.keys().map(String::as_str).collect();
+        assert_eq!(
+            names,
+            [
+                ".gitignore",
+                ".hidden",
+                "keep.log",
+                "src/.gitignore",
+                "src/lib.rs"
+            ]
+        );
     }
 
     #[tokio::test]

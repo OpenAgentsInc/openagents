@@ -654,6 +654,15 @@ fn text<'a>(value: &'a Value, name: &str) -> &'a str {
 }
 
 fn render_list(group: Group, value: &Value) -> String {
+    let rows = render_list_rows(group, value);
+    if matches!(group, Group::Ext) {
+        crate::plugin_registry::published_list_text(text(value, "relay"), &rows)
+    } else {
+        rows
+    }
+}
+
+fn render_list_rows(group: Group, value: &Value) -> String {
     let Some(items) = value["items"].as_array() else {
         return String::new();
     };
@@ -1073,6 +1082,24 @@ mod tests {
             Group::Ext,
             &json!({"relay": "wss://r", "kind": 30_184, "items": []}),
         );
-        assert_eq!(empty, "no kind 30184 records on wss://r");
+        assert!(empty.lines().next().unwrap().contains("Published plugins"));
+        assert!(empty.contains("not your installed plugins"));
+        assert!(empty.contains("openagents plugin installed"));
+        assert!(empty.ends_with("no kind 30184 records on wss://r"));
+        let populated = render_list(
+            Group::Ext,
+            &json!({
+                "relay": "wss://r", "kind": 30184,
+                "items": [{"package": "project-map", "title": "Project map", "valid": true}]
+            }),
+        );
+        assert!(
+            populated
+                .lines()
+                .next()
+                .unwrap()
+                .contains("Published plugins")
+        );
+        assert!(populated.contains("project-map"));
     }
 }

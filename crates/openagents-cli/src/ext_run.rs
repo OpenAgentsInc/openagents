@@ -23,10 +23,10 @@ use serde_json::{Value, json};
 use crate::{Args, Output};
 
 pub(crate) const USAGE: &str =
-    "usage: openagents plugin run DIR [--in WORKSPACE] [--request TEXT | --request-file FILE]
-  Run the workflow of the plugin in DIR once on WORKSPACE (default: the
-  current directory) through Coder's program runtime, the way a Coder turn
-  runs it once selected, and print its reply. The request is what the
+    "usage: openagents plugin run NAME_OR_DIR [--in WORKSPACE] [--request TEXT | --request-file FILE]
+  Run an installed plugin by name (or KEY:SLUG), or a plugin directory,
+  once on WORKSPACE (default: the current directory) through Coder's
+  program runtime, the way a Coder turn runs it once selected, and print its reply. The request is what the
   person would say to Coder, such as a failing command's output.
   The workflow is granted reads only: its Wasm reads the files its
   binding grants, and nothing writes, delegates, spawns, or uses the
@@ -47,7 +47,7 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         Err(message) => return output.usage(NAME, &message, USAGE),
     };
     let Some(dir) = args.positional().first().map(PathBuf::from) else {
-        return output.usage(NAME, "the plugin directory is required", USAGE);
+        return output.usage(NAME, "the plugin name or directory is required", USAGE);
     };
     let workspace = args
         .option("in")
@@ -63,6 +63,10 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         },
         (None, None) => String::new(),
     };
+    let dir = match resolve_plugin(&dir) {
+        Ok(dir) => dir,
+        Err(message) => return output.fail(NAME, &message),
+    };
     match execute(&dir, &workspace, &request) {
         Ok(ran) => {
             let finished = ran["finished"].as_bool() == Some(true);
@@ -71,6 +75,36 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         }
         Err(message) => output.fail(NAME, &message),
     }
+}
+
+fn resolve_plugin(target: &Path) -> Result<PathBuf, String> {
+    if target.join("package.json").is_file() {
+        return Ok(target.to_path_buf());
+    }
+    let layout = background::Layout::from_env().map_err(|error| error.to_string())?;
+    resolve_installed(&layout, target)
+}
+
+fn resolve_installed(layout: &background::Layout, target: &Path) -> Result<PathBuf, String> {
+    if target.join("package.json").is_file() {
+        return Ok(target.to_path_buf());
+    }
+    if target.exists() {
+        let canonical = target.canonicalize().map_err(|error| error.to_string())?;
+        if let Some(plugin) = background::plugins::installed(layout)
+            .into_iter()
+            .find(|plugin| {
+                plugin.dir.parent() == Some(canonical.as_path()) || plugin.dir == canonical
+            })
+        {
+            return Ok(plugin.dir);
+        }
+        return Err(format!(
+            "{} is not a plugin directory (no package.json)",
+            target.display()
+        ));
+    }
+    background::plugins::find(layout, &target.to_string_lossy()).map(|plugin| plugin.dir)
 }
 
 /// The run as a person reads it: the reply, and when the workflow's guest
@@ -249,6 +283,74 @@ pub fn execute(dir: &Path, workspace: &Path, request: &str) -> Result<Value, Str
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn installed_names_and_parent_directories_resolve_to_the_version() {
+        let home = tempfile::tempdir().unwrap();
+        let layout = background::Layout::new(home.path(), None).unwrap();
+        let source = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(source.path().join("programs")).unwrap();
+        let program = json!({
+            "slug": "project-map",
+            "definition": {
+                "id": format!("{}:project-map/project-map", background::plugins::LOCAL_KEY),
+                "steps": [{"name": "repo_map", "kind": "module"}]
+            }
+        })
+        .to_string();
+        std::fs::write(source.path().join("programs/project-map.json"), &program).unwrap();
+        std::fs::write(
+            source.path().join("package.json"),
+            json!({
+                "v": 1, "slug": "project-map", "name": "Project map", "version": "0.1.0",
+                "program": {"name": "project-map", "digest": coder::package::digest(&program)}
+            })
+            .to_string(),
+        )
+        .unwrap();
+        crate::plugin_local::install_into(&layout, source.path()).unwrap();
+        let installed = background::plugins::find(&layout, "project-map").unwrap();
+        assert_eq!(
+            resolve_installed(&layout, Path::new("project-map")).unwrap(),
+            installed.dir
+        );
+        assert_eq!(
+            resolve_installed(&layout, Path::new(&installed.id)).unwrap(),
+            installed.dir
+        );
+        assert_eq!(
+            resolve_installed(&layout, installed.dir.parent().unwrap()).unwrap(),
+            installed.dir
+        );
+        assert_eq!(
+            resolve_installed(&layout, source.path()).unwrap(),
+            source.path()
+        );
+        assert!(
+            resolve_installed(&layout, Path::new("missing-plugin"))
+                .unwrap_err()
+                .contains("No plugin")
+        );
+        let other = layout
+            .extensions()
+            .join("b".repeat(64))
+            .join("project-map/0.1.0");
+        std::fs::create_dir_all(&other).unwrap();
+        std::fs::copy(
+            source.path().join("package.json"),
+            other.join("package.json"),
+        )
+        .unwrap();
+        assert!(
+            resolve_installed(&layout, Path::new("project-map"))
+                .unwrap_err()
+                .contains("Several")
+        );
+        assert_eq!(
+            resolve_installed(&layout, Path::new(&installed.id)).unwrap(),
+            installed.dir
+        );
+    }
 
     #[test]
     fn a_run_whose_guest_renders_nothing_shows_what_it_found() {

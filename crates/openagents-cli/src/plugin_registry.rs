@@ -1013,6 +1013,12 @@ fn publish_command(args: &Args) -> Result<Value, String> {
     }))
 }
 
+pub(crate) fn published_list_text(relay: &str, rows: &str) -> String {
+    format!(
+        "Published plugins from the catalog and {relay}, not your installed plugins.\nUse `openagents plugin installed` to see plugins on this computer.\n\n{rows}"
+    )
+}
+
 fn search_command(args: &Args) -> Result<Value, String> {
     let query = args.positional().join(" ");
     let author = args.option("author");
@@ -1054,6 +1060,7 @@ fn search_command(args: &Args) -> Result<Value, String> {
             .collect::<Vec<_>>()
             .join("\n")
     };
+    let text = published_list_text(&relay, &text);
     Ok(json!({
         "text": text,
         "relay": relay,
@@ -1279,6 +1286,20 @@ mod tests {
             ),
         )
         .unwrap();
+    }
+
+    #[test]
+    fn published_list_identifies_its_source_before_the_rows() {
+        let text = published_list_text("wss://relay.example", "Project map · Maps files");
+        assert!(text.lines().next().unwrap().contains("Published plugins"));
+        assert!(
+            text.lines()
+                .next()
+                .unwrap()
+                .contains("not your installed plugins")
+        );
+        assert!(text.contains("openagents plugin installed"));
+        assert!(text.ends_with("Project map · Maps files"));
     }
 
     #[test]
