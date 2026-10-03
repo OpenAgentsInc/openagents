@@ -2030,6 +2030,9 @@ mod local_run {
         let local = Local::new(store.clone())
             .with_probe(signed_in)
             .with_controller(std::env::current_exe().unwrap())
+            // Not this computer's OpenCode configuration: the order must
+            // not depend on what is installed where the test runs.
+            .with_opencode_model(|| None)
             .with_launcher(Box::new(Scripted(Mutex::new(script), None)));
         let record = local
             .start(
@@ -2057,10 +2060,12 @@ mod local_run {
         };
         assert_eq!(started.provider, "codex");
         assert_eq!(started.reason, "Codex is signed in and has capacity.");
-        // Grok Build follows Claude Code by default (#10091).
+        // Grok Build follows Claude Code by default (#10091), and every
+        // other agent is on unless turned off (#10184); OpenCode, with no
+        // configured model here, is left out.
         assert_eq!(
             started.fallbacks,
-            ["claude:claude-opus-5-5", "grok:default"]
+            ["claude:claude-opus-5-5", "grok:default", "devin:default"]
         );
         let switched = turn_one
             .iter()
