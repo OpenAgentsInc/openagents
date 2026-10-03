@@ -102,8 +102,9 @@ pub(crate) const USAGE: &str = "usage: openagents chat COMMAND [OPTIONS]
         events stream here, and the sandbox's machine time and cost go in
         a comment on the issue. The sandbox stops when its run ends and is
         deleted once the issue landed. --engine-logins api-keys (default:
-        Codex with an OpenAI key when OA_CODER_OPENAI_API_KEY or Secret
-        Manager coder-openai-api-key has one, and Grok Build's XAI_API_KEY)
+        Codex on this computer's ChatGPT login, sent as a copy that
+        can't refresh, else an OpenAI key from OA_CODER_OPENAI_API_KEY or
+        Secret Manager coder-openai-api-key; and Grok Build's XAI_API_KEY)
         or boat (subscriptions connected on Boat's dashboard). Needs BOAT_API_KEY or Secret Manager
         boat-api-key, and a GitHub token (OA_BOAT_GH_TOKEN, Secret Manager
         coder-pool-git-token, or `gh auth token`); docs/cloud/boat-chat-work.md.

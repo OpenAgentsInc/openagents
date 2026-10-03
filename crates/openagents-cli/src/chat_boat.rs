@@ -82,6 +82,9 @@ const XAI_SECRET: &str = "openagents-xai-api-key";
 /// With it Coder prefers Codex (`gpt-6.1-sol`, medium, as one lean
 /// `codex exec` session); without it the run is on Grok Build.
 const OPENAI_SECRET: &str = "coder-openai-api-key";
+/// The least time a ChatGPT access token must have left to go to a cloud
+/// run: a run can take an hour, and the copy it gets cannot be refreshed.
+const CODEX_MIN_LEFT_SECS: u64 = 2 * 3600;
 
 /// How a run's coding agents log in.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -247,6 +250,84 @@ fn secret(name: &str) -> Option<String> {
     (output.status.success() && !value.is_empty()).then_some(value)
 }
 
+/// Where this computer's Codex login is: `OA_CODER_CODEX_AUTH`, else
+/// `$CODEX_HOME/auth.json`, else `~/.codex/auth.json`.
+fn codex_auth_path() -> Option<std::path::PathBuf> {
+    if let Some(path) = variable("OA_CODER_CODEX_AUTH") {
+        return Some(path.into());
+    }
+    if let Some(home) = variable("CODEX_HOME") {
+        return Some(std::path::Path::new(&home).join("auth.json"));
+    }
+    variable("HOME").map(|home| std::path::Path::new(&home).join(".codex/auth.json"))
+}
+
+/// This computer's Codex ChatGPT login as a cloud run carries it, base64:
+/// see [`access_only_login`]. Reads the file and never writes it.
+fn codex_chatgpt_login() -> Result<(String, u64), String> {
+    let path = codex_auth_path().ok_or("HOME is not set")?;
+    let text = std::fs::read_to_string(&path)
+        .map_err(|_| "Codex isn't signed in on this computer (`codex login`)".to_owned())?;
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    let (login, left) = access_only_login(&text, now)?;
+    use base64::Engine as _;
+    Ok((
+        base64::engine::general_purpose::STANDARD.encode(login),
+        left,
+    ))
+}
+
+/// A ChatGPT `auth.json` reduced to what a run needs: the access token, ID
+/// token, and account, with the refresh token blanked. ChatGPT refresh
+/// tokens are single use (Codex's `refresh_token_reused`), so a run that
+/// refreshed a shared one would sign this computer out; a blank one cannot
+/// be used, and Codex keeps its current access token when a refresh fails.
+/// The access token must have [`CODEX_MIN_LEFT_SECS`] left. Returns the
+/// JSON and the seconds left; errors never contain a token.
+pub(super) fn access_only_login(text: &str, now: u64) -> Result<(String, u64), String> {
+    let auth: Value =
+        serde_json::from_str(text).map_err(|_| "the Codex login file can't be read".to_owned())?;
+    let tokens = &auth["tokens"];
+    let access = tokens["access_token"].as_str().unwrap_or_default();
+    if access.is_empty() {
+        return Err("Codex is signed in with an API key, not ChatGPT".to_owned());
+    }
+    let account = tokens["account_id"].as_str().unwrap_or_default();
+    let expires = jwt_expiry(access).ok_or("the Codex access token has no expiry")?;
+    let left = expires.saturating_sub(now);
+    if left < CODEX_MIN_LEFT_SECS {
+        return Err(format!(
+            "the Codex access token expires in {} min; run any Codex command on this computer \
+             to refresh it",
+            left / 60
+        ));
+    }
+    let login = json!({
+        "auth_mode": "chatgpt",
+        "OPENAI_API_KEY": Value::Null,
+        "tokens": {
+            "id_token": tokens["id_token"].clone(),
+            "access_token": access,
+            "refresh_token": "",
+            "account_id": account,
+        },
+        "last_refresh": auth["last_refresh"].clone(),
+    });
+    Ok((login.to_string(), left))
+}
+
+/// A JWT's `exp`, without checking its signature.
+fn jwt_expiry(token: &str) -> Option<u64> {
+    use base64::Engine as _;
+    let payload = token.split('.').nth(1)?;
+    let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(payload.trim_end_matches('='))
+        .ok()?;
+    serde_json::from_slice::<Value>(&bytes).ok()?["exp"].as_u64()
+}
+
 fn variable(name: &str) -> Option<String> {
     std::env::var(name)
         .ok()
@@ -287,19 +368,46 @@ pub(super) fn credentials(logins: EngineLogins) -> Result<Credentials, String> {
     )?;
     variables.insert("GH_TOKEN".to_owned(), token);
     if logins == EngineLogins::ApiKeys {
-        let xai = variable("XAI_API_KEY")
-            .or_else(|| secret(XAI_SECRET))
-            .ok_or(
-                "no engine key for the sandboxes: set XAI_API_KEY or give gcloud access to Secret \
-             Manager openagents-xai-api-key, or use --engine-logins boat once the owner \
-             connected subscriptions on Boat (NEEDS_OWNER: Boat: choose how coding agents log in)",
-            )?;
-        variables.insert("XAI_API_KEY".to_owned(), xai);
-        // Codex takes an API key only through `codex login --with-api-key`,
-        // which the run does on the computer that runs it.
-        if let Some(openai) = variable("OA_CODER_OPENAI_API_KEY").or_else(|| secret(OPENAI_SECRET))
-        {
-            variables.insert("OA_CODEX_API_KEY".to_owned(), openai);
+        // Codex through this computer's ChatGPT login first: the run gets a
+        // copy that cannot refresh ([`codex_chatgpt_login`]), so this
+        // computer's own login is never rotated out from under it.
+        let codex = match codex_chatgpt_login() {
+            Ok((login, left)) => {
+                eprintln!(
+                    "Codex runs on your ChatGPT login (its access token has {} h left).",
+                    left / 3600
+                );
+                variables.insert("OA_CODEX_AUTH".to_owned(), login);
+                true
+            }
+            Err(why) => {
+                // Codex takes an API key only through `codex login
+                // --with-api-key`, which the run does on the computer that
+                // runs it.
+                if let Some(openai) =
+                    variable("OA_CODER_OPENAI_API_KEY").or_else(|| secret(OPENAI_SECRET))
+                {
+                    variables.insert("OA_CODEX_API_KEY".to_owned(), openai);
+                    true
+                } else {
+                    eprintln!("Codex can't run in the cloud: {why}. Runs use Grok Build.");
+                    false
+                }
+            }
+        };
+        match variable("XAI_API_KEY").or_else(|| secret(XAI_SECRET)) {
+            Some(xai) => {
+                variables.insert("XAI_API_KEY".to_owned(), xai);
+            }
+            None if codex => {}
+            None => {
+                return Err(
+                    "no engine login for the sandboxes: sign Codex in on this computer \
+                     (`codex login`), set XAI_API_KEY, or give gcloud access to Secret Manager \
+                     openagents-xai-api-key"
+                        .to_owned(),
+                );
+            }
         }
     }
     for (name, key) in [("OA_GIT_NAME", "user.name"), ("OA_GIT_EMAIL", "user.email")] {
@@ -341,6 +449,14 @@ if [ -n "${{OA_CODEX_API_KEY:-}}" ]; then
   printenv OA_CODEX_API_KEY | codex login --with-api-key >/dev/null 2>&1 || echo "boat: codex login with the API key failed" >&2
 fi
 unset OA_CODEX_API_KEY
+# A ChatGPT login that cannot refresh (no refresh token): Codex runs on it
+# until its access token expires, and it goes when this script ends.
+if [ -n "${{OA_CODEX_AUTH:-}}" ]; then
+  mkdir -p "$HOME/.codex" && (umask 077; printf '%s' "$OA_CODEX_AUTH" | base64 -d >"$HOME/.codex/auth.json") \
+    || echo "boat: the Codex login could not be written" >&2
+  trap 'rm -f /tmp/oa-engine.env "$HOME/.codex/auth.json"' EXIT
+fi
+unset OA_CODEX_AUTH
 if [ -n "${{XAI_API_KEY:-}}" ]; then
   (umask 077; printf 'export XAI_API_KEY=%q\n' "$XAI_API_KEY" > /tmp/oa-engine.env)
   for f in "$HOME/.profile" "$HOME/.bash_profile"; do
@@ -1710,6 +1826,74 @@ mod tests {
         assert!(poll.contains("tail -c +11 /tmp/oa-run.out") && poll.contains("kill -0 41"));
         assert!(launch_command().starts_with("setsid nohup bash -c 'bash /tmp/oa-run.sh >"));
         assert!(launch_command().ends_with("& echo $!"));
+    }
+
+    fn fake_jwt(exp: u64) -> String {
+        use base64::Engine as _;
+        let part = |v: &Value| {
+            base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(v.to_string().as_bytes())
+        };
+        format!(
+            "{}.{}.sig",
+            part(&json!({"alg": "none"})),
+            part(&json!({"exp": exp, "iat": exp - 864_000}))
+        )
+    }
+
+    fn chatgpt_auth(exp: u64) -> String {
+        json!({
+            "auth_mode": "chatgpt",
+            "OPENAI_API_KEY": null,
+            "tokens": {
+                "id_token": "id-token",
+                "access_token": fake_jwt(exp),
+                "refresh_token": "rt-secret-single-use",
+                "account_id": "acct-1",
+            },
+            "last_refresh": "2026-09-25T00:00:00Z",
+        })
+        .to_string()
+    }
+
+    #[test]
+    fn a_cloud_run_gets_the_chatgpt_login_without_its_refresh_token() {
+        let now = 1_000_000;
+        let (login, left) = access_only_login(&chatgpt_auth(now + 50 * 3600), now).unwrap();
+        assert_eq!(left, 50 * 3600);
+        assert!(!login.contains("rt-secret-single-use"));
+        let login: Value = serde_json::from_str(&login).unwrap();
+        assert_eq!(login["auth_mode"], "chatgpt");
+        assert_eq!(login["tokens"]["refresh_token"], "");
+        assert_eq!(login["tokens"]["account_id"], "acct-1");
+        assert_eq!(login["tokens"]["id_token"], "id-token");
+        assert_eq!(
+            login["tokens"]["access_token"].as_str(),
+            Some(fake_jwt(now + 50 * 3600).as_str())
+        );
+    }
+
+    #[test]
+    fn a_nearly_expired_or_api_key_codex_login_stays_here() {
+        let now = 1_000_000;
+        let soon = access_only_login(&chatgpt_auth(now + 3600), now).unwrap_err();
+        assert!(soon.contains("60 min"), "{soon}");
+        assert!(!soon.contains("rt-secret"));
+        let api = json!({"auth_mode": "apikey", "OPENAI_API_KEY": "sk-x"}).to_string();
+        assert!(
+            access_only_login(&api, now)
+                .unwrap_err()
+                .contains("API key")
+        );
+        assert!(access_only_login("not json", now).is_err());
+    }
+
+    #[test]
+    fn the_run_script_writes_the_codex_login_and_removes_it() {
+        let script = run_script(7, None, false);
+        assert!(script.contains("OA_CODEX_AUTH"));
+        assert!(script.contains("base64 -d >\"$HOME/.codex/auth.json\""));
+        assert!(script.contains("trap 'rm -f /tmp/oa-engine.env \"$HOME/.codex/auth.json\"' EXIT"));
+        assert!(script.contains("unset OA_CODEX_AUTH"));
     }
 
     #[test]

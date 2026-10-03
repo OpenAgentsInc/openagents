@@ -121,7 +121,8 @@ The same reader as `--on boat` (`chat_boat::credentials`, engine logins
 | --- | --- |
 | `GH_TOKEN` | `OA_BOAT_GH_TOKEN`; Secret Manager `coder-pool-git-token`; `gh auth token` |
 | `XAI_API_KEY` | `XAI_API_KEY`; Secret Manager `openagents-xai-api-key` |
-| `OA_CODEX_API_KEY` (optional) | `OA_CODER_OPENAI_API_KEY`; Secret Manager `coder-openai-api-key` |
+| `OA_CODEX_AUTH` (preferred) | this computer's `~/.codex/auth.json` (`$CODEX_HOME`, or `OA_CODER_CODEX_AUTH`) | Codex on the owner's ChatGPT login: a copy with the **refresh token blanked**, so no run can rotate it (ChatGPT refresh tokens are single use: Codex's `refresh_token_reused`) and this computer stays signed in. The access token (10 days) must have 2 h left; Codex refreshes it on the Mac within 5 min of expiry. Coder then runs Codex `gpt-6.1-sol`, its first choice |
+| `OA_CODEX_API_KEY` (only without a ChatGPT login) | `OA_CODER_OPENAI_API_KEY`; Secret Manager `coder-openai-api-key` |
 | `OA_GIT_NAME`, `OA_GIT_EMAIL` | the same variables; `git config user.name/email` |
 
 `GH_TOKEN` needs the scopes `repo` and `project`, as for `--on boat`
@@ -139,7 +140,11 @@ the key only in the process environment Grok Build refuses with
 "Authentication required" (seen 2026-10-02). So the run script writes the
 key to `~/.oa-pool/engine.env` (mode 600), which `~/.profile` and
 `~/.bashrc` source. That file goes with the host's disk when the host
-deletes itself. With `OA_CODEX_API_KEY` the script pipes it to `codex login
+deletes itself. With `OA_CODEX_AUTH` (the orchestrating computer's ChatGPT
+login with its refresh token blanked) the script writes `~/.codex/auth.json`
+(mode 600, replaced atomically by each run) and Coder runs Codex
+`gpt-6.1-sol` on it, with no API key and no owner step. Without it, with
+`OA_CODEX_API_KEY` the script pipes it to `codex login
 --with-api-key` (an API-key login on the host's disk) and Coder runs Codex,
 its first choice, as one lean `codex exec` session at `gpt-6.1-sol` medium
 (#10275). Grok Build on the key runs `grok-4.7`, not the API's default

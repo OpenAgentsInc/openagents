@@ -104,6 +104,16 @@ d=$(dirname "$0")
       || echo "pool: codex login with the API key failed" >&2
   fi
   unset OA_CODEX_API_KEY
+  # A ChatGPT login that cannot refresh (no refresh token): Codex runs on
+  # it until its access token expires. Each run writes the newest copy; it
+  # goes with the host's disk.
+  if [ -n "${{OA_CODEX_AUTH:-}}" ]; then
+    mkdir -p "$HOME/.codex" \
+      && (umask 077; printf '%s' "$OA_CODEX_AUTH" | base64 -d >"$HOME/.codex/auth.json.$$" \
+        && mv -f "$HOME/.codex/auth.json.$$" "$HOME/.codex/auth.json") \
+      || echo "pool: the Codex login could not be written" >&2
+  fi
+  unset OA_CODEX_AUTH
   if [ -n "${{XAI_API_KEY:-}}" ]; then
     (umask 077; printf 'export XAI_API_KEY=%q\n' "$XAI_API_KEY" >"$HOME/.oa-pool/engine.env")
     for f in "$HOME/.profile" "$HOME/.bashrc"; do
