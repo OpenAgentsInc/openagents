@@ -8,7 +8,9 @@ use crate::{
     ui::{Atlas, UiBatch},
 };
 use bytemuck::{Pod, Zeroable};
-use glam::Mat4;
+use glam::{Mat4, Vec3};
+pub mod lighting;
+use lighting::{Frame, Lighting};
 use std::{
     collections::{BTreeMap, HashMap},
     path::Path,
@@ -25,6 +27,7 @@ pub struct Instance {
     pub transform: Mat4,
     pub animation: u16,
     pub time: f32,
+    pub emission: Vec3,
 }
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
@@ -55,12 +58,6 @@ struct Pose {
     params: [f32; 4],
     bones: [[[f32; 4]; 4]; 256],
 }
-#[repr(C)]
-#[derive(Clone, Copy, Pod, Zeroable)]
-struct Frame {
-    view: [[f32; 4]; 4],
-    eye: [f32; 4],
-}
 struct Batch {
     vertices: wgpu::Buffer,
     indices: wgpu::Buffer,
@@ -87,6 +84,10 @@ pub struct Renderer {
     row: u32,
     frame: wgpu::Buffer,
     frame_group: wgpu::BindGroup,
+    shadow_views: Vec<wgpu::TextureView>,
+    shadow_groups: Vec<wgpu::BindGroup>,
+    shadow_buffers: Vec<wgpu::Buffer>,
+    shadow_pipeline: wgpu::RenderPipeline,
     pose_layout: wgpu::BindGroupLayout,
     textures: Vec<wgpu::BindGroup>,
     pipelines: Vec<wgpu::RenderPipeline>,
@@ -128,7 +129,11 @@ fn merge(pack: &Pack, instances: &[Instance]) -> Merged {
             let offset = v.len() as u32;
             v.extend(s.vertices.iter().map(|p| {
                 let mut v = GpuVertex::from(p);
-                v.tint = s.tint;
+                v.tint = if s.emissive || s.blend == 3 {
+                    (Vec3::from(s.tint) * instance.emission).to_array()
+                } else {
+                    s.tint
+                };
                 v.position = instance
                     .transform
                     .transform_point3(p.position.into())
@@ -232,7 +237,25 @@ impl Renderer {
         };
         let frame_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("imported frame"),
-            entries: &[uniform(0)],
+            entries: &[
+                uniform(0),
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Depth,
+                        view_dimension: wgpu::TextureViewDimension::D2Array,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Comparison),
+                    count: None,
+                },
+            ],
         });
         let pose_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("imported skeleton"),
@@ -263,20 +286,81 @@ impl Renderer {
         let frame = buffer(
             &device,
             "imported camera",
-            bytemuck::bytes_of(&Frame {
-                view: Mat4::IDENTITY.to_cols_array_2d(),
-                eye: [0.0; 4],
-            }),
+            bytemuck::bytes_of(&Frame::zeroed()),
             wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         );
+        let shadow_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Verse local cube shadows"),
+            size: wgpu::Extent3d {
+                width: 512,
+                height: 512,
+                depth_or_array_layers: 24,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Depth32Float,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+        let shadow_all = shadow_texture.create_view(&wgpu::TextureViewDescriptor {
+            dimension: Some(wgpu::TextureViewDimension::D2Array),
+            ..Default::default()
+        });
+        let shadow_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            compare: Some(wgpu::CompareFunction::LessEqual),
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            ..Default::default()
+        });
         let frame_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
             layout: &frame_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: frame.as_entire_binding(),
-            }],
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: frame.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(&shadow_all),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Sampler(&shadow_sampler),
+                },
+            ],
         });
+        let shadow_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("Verse shadow frame"),
+            entries: &[uniform(0)],
+        });
+        let mut shadow_views = Vec::new();
+        let mut shadow_groups = Vec::new();
+        let mut shadow_buffers = Vec::new();
+        for layer in 0..24 {
+            shadow_views.push(shadow_texture.create_view(&wgpu::TextureViewDescriptor {
+                dimension: Some(wgpu::TextureViewDimension::D2),
+                base_array_layer: layer,
+                array_layer_count: Some(1),
+                ..Default::default()
+            }));
+            let b = buffer(
+                &device,
+                "Verse shadow camera",
+                bytemuck::bytes_of(&Frame::zeroed()),
+                wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            );
+            shadow_groups.push(device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: None,
+                layout: &shadow_layout,
+                entries: &[wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: b.as_entire_binding(),
+                }],
+            }));
+            shadow_buffers.push(b);
+        }
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             address_mode_u: wgpu::AddressMode::Repeat,
             address_mode_v: wgpu::AddressMode::Repeat,
@@ -371,6 +455,17 @@ impl Renderer {
         for blend in 0..4 {
             pipelines.push(device.create_render_pipeline(&wgpu::RenderPipelineDescriptor{label:Some("Verse textured skin"),layout:Some(&layout),vertex:wgpu::VertexState{module:&shader,entry_point:Some("vs"),compilation_options:Default::default(),buffers:&[wgpu::VertexBufferLayout{array_stride:std::mem::size_of::<GpuVertex>() as u64,step_mode:wgpu::VertexStepMode::Vertex,attributes:&wgpu::vertex_attr_array![0=>Float32x3,1=>Float32x3,2=>Float32x2,3=>Uint32x4,4=>Float32x4,5=>Float32x3]}]},primitive:wgpu::PrimitiveState{cull_mode:None,..Default::default()},depth_stencil:Some(wgpu::DepthStencilState{format:wgpu::TextureFormat::Depth32Float,depth_write_enabled:Some(blend<2),depth_compare:Some(wgpu::CompareFunction::LessEqual),stencil:Default::default(),bias:Default::default()}),multisample:Default::default(),fragment:Some(wgpu::FragmentState{module:&shader,entry_point:Some("fs"),compilation_options:Default::default(),targets:&[Some(wgpu::ColorTargetState{format,blend:match blend{2=>Some(wgpu::BlendState::ALPHA_BLENDING),3=>Some(wgpu::BlendState{color:wgpu::BlendComponent{src_factor:wgpu::BlendFactor::SrcAlpha,dst_factor:wgpu::BlendFactor::One,operation:wgpu::BlendOperation::Add},alpha:wgpu::BlendComponent::OVER}),_=>None},write_mask:wgpu::ColorWrites::ALL})]}),multiview_mask:None,cache:None}));
         }
+        let shadow_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: None,
+                bind_group_layouts: &[
+                    Some(&shadow_layout),
+                    Some(&texture_layout),
+                    Some(&pose_layout),
+                ],
+                immediate_size: 0,
+            });
+        let shadow_pipeline=device.create_render_pipeline(&wgpu::RenderPipelineDescriptor{label:Some("Verse skinned local shadow"),layout:Some(&shadow_pipeline_layout),vertex:wgpu::VertexState{module:&shader,entry_point:Some("vs"),compilation_options:Default::default(),buffers:&[wgpu::VertexBufferLayout{array_stride:std::mem::size_of::<GpuVertex>() as u64,step_mode:wgpu::VertexStepMode::Vertex,attributes:&wgpu::vertex_attr_array![0=>Float32x3,1=>Float32x3,2=>Float32x2,3=>Uint32x4,4=>Float32x4,5=>Float32x3]}]},primitive:wgpu::PrimitiveState{cull_mode:None,..Default::default()},depth_stencil:Some(wgpu::DepthStencilState{format:wgpu::TextureFormat::Depth32Float,depth_write_enabled:Some(true),depth_compare:Some(wgpu::CompareFunction::LessEqual),stencil:Default::default(),bias:wgpu::DepthBiasState{constant:1,slope_scale:1.0,clamp:0.0}}),multisample:Default::default(),fragment:Some(wgpu::FragmentState{module:&shader,entry_point:Some("shadow_fs"),compilation_options:Default::default(),targets:&[]}),multiview_mask:None,cache:None});
         let static_batches = upload(&device, merge(&pack, static_instances));
         let mut models = HashMap::new();
         for (name, model) in &pack.models {
@@ -444,6 +539,10 @@ impl Renderer {
             row,
             frame,
             frame_group,
+            shadow_views,
+            shadow_groups,
+            shadow_buffers,
+            shadow_pipeline,
             pose_layout,
             textures,
             pipelines,
@@ -462,6 +561,7 @@ impl Renderer {
         view: View,
         instances: &[Instance],
         ui: &UiBatch,
+        lighting: &Lighting,
     ) -> Result<Vec<u8>, String> {
         if instances.len() > 256
             || instances
@@ -475,14 +575,18 @@ impl Renderer {
         if ui_bytes.len() > 4 * 1024 * 1024 {
             return Err("Imported overlay exceeds 4 MiB".into());
         }
-        self.queue.write_buffer(
-            &self.frame,
-            0,
-            bytemuck::bytes_of(&Frame {
-                view: view.view_proj.to_cols_array_2d(),
-                eye: [view.eye.x, view.eye.y, view.eye.z, 0.0],
-            }),
-        );
+        let frame = lighting::frame(view, lighting)?;
+        self.queue
+            .write_buffer(&self.frame, 0, bytemuck::bytes_of(&frame));
+        for layer in 0..lighting.lights.len().min(lighting.shadowed).min(4) * 6 {
+            let mut shadow_frame = frame;
+            shadow_frame.view = frame.shadow[layer];
+            self.queue.write_buffer(
+                &self.shadow_buffers[layer],
+                0,
+                bytemuck::bytes_of(&shadow_frame),
+            );
+        }
         self.queue.write_buffer(&self.ui_buffer, 0, ui_bytes);
         while self.actors.len() <= instances.len() {
             let buffer = buffer(
@@ -514,6 +618,40 @@ impl Renderer {
             );
         }
         let mut encoder = self.device.create_command_encoder(&Default::default());
+        for layer in 0..lighting.lights.len().min(lighting.shadowed).min(4) * 6 {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Verse cube shadow face"),
+                color_attachments: &[],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &self.shadow_views[layer],
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
+                ..Default::default()
+            });
+            pass.set_pipeline(&self.shadow_pipeline);
+            pass.set_bind_group(0, &self.shadow_groups[layer], &[]);
+            pass.set_bind_group(2, &self.actors[0].group, &[]);
+            for batch in self
+                .static_batches
+                .iter()
+                .filter(|b| b.blend < 2 && !b.emissive)
+            {
+                self.draw_batch(&mut pass, batch);
+            }
+            for (i, instance) in instances.iter().enumerate() {
+                pass.set_bind_group(2, &self.actors[i + 1].group, &[]);
+                for batch in self.models[&instance.model]
+                    .iter()
+                    .filter(|b| b.blend < 2 && !b.emissive)
+                {
+                    self.draw_batch(&mut pass, batch);
+                }
+            }
+        }
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Verse imported world"),

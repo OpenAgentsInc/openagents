@@ -116,3 +116,22 @@ python3 scripts/wow/grade-scene.py \
   bench/wow/2026-10-03/anthropic-ritual.mp4 \
   bench/wow/2026-10-03/anthropic-ritual-cinematic.mp4
 ```
+
+## Verse renderer
+
+The owned renderer imports the private chamber pack through
+[`wow-import`](../../wow-import/README.md). It draws indexed textured geometry,
+GPU-skinned actors, point lighting, cube shadow maps for four local sources,
+and distance fog. Static geometry is merged and uploaded once. The overlay
+uses Verse's glyph pipeline after world rendering, independently of exposure.
+
+```sh
+CARGO_TARGET_DIR="$HOME/work/openagents-target-agent1" cargo run -p verse \
+  --no-default-features --features capture --example wow_capture -- \
+  "$HOME/wow-gym/verse-assets/pack.json" "$HOME/wow-gym/chamber.png"
+```
+
+The capture's `--no-shadows` mode keeps the same camera and lights while disabling
+occlusion. The October 3 check changed 367,300 pixels by more than five channel
+levels when shadows were disabled. This lighting is calculated in the engine;
+there is no video grading step.

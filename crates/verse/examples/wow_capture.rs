@@ -16,6 +16,7 @@ fn main() -> Result<(), String> {
     let mut args = std::env::args().skip(1);
     let path = PathBuf::from(args.next().ok_or("Expected private pack.json")?);
     let output = PathBuf::from(args.next().ok_or("Expected output.png")?);
+    let mode = args.next().unwrap_or_default();
     let pack = Pack::read(&path)?;
     let origin = position_from_wow([-15.0, 141.0, 83.9]);
     let conversion = Mat4::from_translation(-origin) * basis();
@@ -32,6 +33,14 @@ fn main() -> Result<(), String> {
                 ),
             animation: 0,
             time: 0.0,
+            emission: if pack.models[&p.model]
+                .source
+                .ends_with("scholme_greencandelabra.m2")
+            {
+                Vec3::new(1.0, 0.38, 0.1)
+            } else {
+                Vec3::new(0.08, 1.0, 0.03)
+            },
         })
         .collect();
     let mut actors = vec![Instance {
@@ -44,6 +53,7 @@ fn main() -> Result<(), String> {
             ),
         animation: 0,
         time: 0.0,
+        emission: Vec3::new(0.08, 1.0, 0.03),
     }];
     for i in 0..12 {
         let a = i as f32 * std::f32::consts::TAU / 12.0;
@@ -57,6 +67,7 @@ fn main() -> Result<(), String> {
                 ),
             animation: 0,
             time: i as f32 * 0.1,
+            emission: Vec3::ONE,
         });
     }
     let atlas = Atlas::new(16.0);
@@ -75,7 +86,31 @@ fn main() -> Result<(), String> {
             * Mat4::look_at_rh(eye, Vec3::new(0.0, 3.0, 0.0), Vec3::Y),
         eye,
     };
-    let pixels = renderer.draw(view, &actors, &UiBatch::default())?;
+    let mut lighting = verse::imported::lighting::Lighting::default();
+    lighting.ambient = Vec3::new(0.055, 0.06, 0.075);
+    lighting.exposure = 1.35;
+    for (p, c, intensity) in [
+        ([-4.1, 124.2, 87.0], [1.0, 0.38, 0.1], 450.0),
+        ([-4.1, 160.7, 88.0], [1.0, 0.38, 0.1], 450.0),
+        ([-26.66, 138.575, 86.4], [0.18, 0.8, 0.12], 80.0),
+        ([-26.5, 144.56, 86.4], [0.18, 0.8, 0.12], 80.0),
+        ([19.066, 133.143, 86.4], [1.0, 0.38, 0.1], 250.0),
+        ([18.752, 151.100, 86.4], [1.0, 0.38, 0.1], 250.0),
+    ] {
+        lighting.lights.push(verse::imported::lighting::Light {
+            position: position_from_wow(p) - origin,
+            color: c.into(),
+            intensity,
+            range: 38.0,
+        });
+    }
+    if mode == "--no-shadows" {
+        lighting.shadowed = 0;
+    }
+    if mode == "--lights-off" {
+        lighting.lights.clear();
+    }
+    let pixels = renderer.draw(view, &actors, &UiBatch::default(), &lighting)?;
     let mut png = png::Encoder::new(
         std::fs::File::create(output).map_err(|e| e.to_string())?,
         1280,
