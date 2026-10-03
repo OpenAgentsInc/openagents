@@ -519,7 +519,7 @@ async fn settings_change_the_local_run_and_the_defaults_change_nothing() {
             "coder.access": "full",
             "coder.shadow": null,
             "coder.shadow_budget_usd": null,
-            "coder.claude": "loop",
+            "coder.claude": "session",
             "models.payer": "ours",
         })
     );

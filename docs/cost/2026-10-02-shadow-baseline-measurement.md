@@ -31,6 +31,12 @@ session with six tools) on Harbor. That path was not run here, so this
 measurement does not refute those numbers. It shows that the routed path the
 terminal uses today does not reproduce them.
 
+**Update, #10246:** a sixth arm ran the audit's own configuration (Jev
+briefing one lean Claude Code session) as a route. It cost 0.61× raw Claude
+Code (95% CI 0.57–0.65) at 21 of 21 passes with no measurable difference
+in wall time, and is now the default Claude route
+([below](#the-lean-session-arm-10246)).
+
 ## Numbers
 
 105 runs: 7 tasks × 5 arms × 3 trials, all on coderos-4080 on 2026-10-02.
@@ -290,6 +296,70 @@ usage from the Codex login, so list price is not what was billed.
 5. **Shadow real use from now on.** The shadow baseline below turns everyday
    runs into the same comparison.
 
+## The lean session arm (#10246)
+
+Point 4 above, run the same evening: a sixth arm,
+`routed-claude-lean`, is the cost audit's winning configuration made a
+selectable route ([#10246](https://github.com/OpenAgentsInc/openagents/issues/10246)).
+`openagents chat send` routes to a Coder task as before; the task's Claude
+route runs one Claude Code session instead of the Microcoder loop
+(`coder.claude` = `session`,
+[`microcoder::repository::claude_session`](../../crates/microcoder/src/repository/claude_session.rs)).
+The session gets the delegate recipe's briefing (probes, survey, Jev's
+knowledge, frozen checks) as its input and runs Opus 5.5 at medium effort
+with six tools (`Bash, Read, Edit, Write, Glob, Grep`), the headless core
+system prompt in place of Claude Code's own, the five-minute prompt cache,
+and no claude.ai connectors. Same seven tasks, same checks, three trials,
+on coderos-4080, with `openagents` and `microcoder` built at `6b4dbe827d`
+(Claude Code 2.1.286). The other five arms are the rows above, run earlier
+the same day on the same host.
+
+| Arm | n | Passed (Wilson 95%) | Total cost | Median cost per run | Total wall time | Median wall time per run | Cost against raw (95% CI) | Wall time against raw (95% CI) |
+| --- | ---: | --- | ---: | ---: | ---: | ---: | --- | --- |
+| Raw Claude Code | 21 | 21/21 (85%–100%) | $6.24 | $0.238 | 24.3 min | 45 s | – | – |
+| Routed, Claude loop, recipe on | 21 | 21/21 (85%–100%) | $10.52 | $0.285 | 33.9 min | 64 s | 1.68 (1.46–1.95) | 1.39 (1.02–1.89) |
+| **Routed, lean Claude session** | 21 | **21/21 (85%–100%)** | **$3.79** | **$0.125** | 26.5 min | 46 s | **0.61 (0.57–0.65)** | 1.09 (0.83–1.43) |
+
+**The lean session cost 39% less than raw Claude Code at the same 21 of 21
+passes, and its wall time was not distinguishable from raw's.** Against the
+routed Claude loop it cost 0.36× (0.31–0.42) and took 0.78× (0.61–0.99) the
+time. It was cheaper than raw on all seven tasks (median cost per task:
+`fix-git` $0.112, `fix-code-vulnerability` $0.088, `headless-terminal`
+$0.169, `build-cython-ext` $0.506, `mi-seekable` $0.109, `mi-one` $0.103,
+`bottle-etag` $0.237). By median wall time it was faster than raw only on
+`headless-terminal` and `mi-one`, about even on `mi-seekable`, and slower
+on the rest; the router and the recipe's probes add a few seconds before
+the session starts.
+
+The cache is why. The session read 92% of its 3.49 M input tokens from the
+cache and wrote 8%, nearly raw Claude Code's 93% and 7%, with 40% fewer
+input tokens than raw (83 k against 195 k median per run) from the
+briefing, the six tools, and the shorter system prompt. Jev was $0.020 of
+the $3.79 (0.53%). Every run ended `answered`; Jev classed all 21 tasks
+"change" (after the class recalibration, `4ce5742056`), so all ran at
+medium effort; 4 runs kept frozen checks and 9 kept knowledge entries.
+
+So the router now uses it: **`coder.claude` defaults to `session`** (under
+full access, the default; under `toolchains` or `boundary` Claude runs the
+loop, whose commands the host bounds, and a task with images runs Claude in
+the loop, which takes them natively). `openagents settings set coder.claude
+loop` keeps the loop.
+
+### The Codex equivalent (designed, not yet built)
+
+One `codex exec --json` session with the same briefing in place of the
+loop, through the same CLI adapter (`coder_delegate::delegate::Cli` with
+`Agent::Codex`, which already resumes with `codex exec resume`):
+`gpt-6.1-sol` at the route's medium effort (`model_reasoning_effort`), the
+headless core sections as `model_instructions_file`, Codex's own per-session
+prompt cache (it has no tool-list or TTL setting), the recipe's frozen checks
+in the briefing and run once at the end. It would be a `codex-session` row
+in `route_contract::recipe`, a `local:codex-session` endpoint, and a
+`coder.codex` setting beside `coder.claude`. On this panel the Codex loop
+with the recipe off already cost 0.54× raw Claude Code at 1.83× the time;
+the arm to run next is that session against it and against the lean Claude
+session, since the Codex loop's cache read rate was 6–9%.
+
 ## The shadow baseline (shipped with this measurement)
 
 The shadow baseline is opt-in and off by default: `openagents settings set
@@ -315,7 +385,7 @@ settings are documented in [docs/cli/settings.md](../cli/settings.md).
 - [`2026-10-02-shadow-baseline/analyze.py`](2026-10-02-shadow-baseline/analyze.py)
   and [`extra.py`](2026-10-02-shadow-baseline/extra.py): the tables above.
 - [`2026-10-02-shadow-baseline/collected.jsonl`](2026-10-02-shadow-baseline/collected.jsonl):
-  one line per run. Each run's directory on coderos-4080
+  one line per run, 126 with the lean arm. Each run's directory on coderos-4080
   (`~/shadow-10209/runs/<task>/<arm>/<trial>/`) holds `result.json` with the
   check's output, the CLI's event stream, the route record, and the ATIF
   trajectory.

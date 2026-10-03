@@ -8,7 +8,7 @@ import sys
 from collections import defaultdict
 
 rows = [json.loads(l) for l in open(sys.argv[1]) if l.strip()]
-ARMS = ["raw-claude", "routed-claude-on", "routed-claude-off", "routed-codex-on", "routed-codex-off"]
+ARMS = ["raw-claude", "routed-claude-on", "routed-claude-off", "routed-codex-on", "routed-codex-off", "routed-claude-lean"]
 TASKS = ["fix-git", "fix-code-vulnerability", "headless-terminal", "build-cython-ext", "mi-seekable", "mi-one", "bottle-etag"]
 
 
@@ -90,6 +90,15 @@ for e in ["claude", "codex"]:
         w, wlo, whi, _ = boot_ratio(on, off, "wall_s")
         print(f"| {e} | {n} | {c:.2f} ({clo:.2f}–{chi:.2f}) | {w:.2f} ({wlo:.2f}–{whi:.2f}) |")
 
+if any(by[("routed-claude-lean", t)] for t in TASKS):
+    print("\n## Lean session against the routed Claude loop (#10246)\n")
+    print("| Base | Tasks | Cost ratio lean/base (CI) | Wall ratio lean/base (CI) |")
+    print("|---|---:|---|---|")
+    for base in ["routed-claude-on", "routed-claude-off"]:
+        c, clo, chi, n = boot_ratio("routed-claude-lean", base, "cost_usd")
+        w, wlo, whi, _ = boot_ratio("routed-claude-lean", base, "wall_s")
+        print(f"| `{base}` | {n} | {c:.2f} ({clo:.2f}–{chi:.2f}) | {w:.2f} ({wlo:.2f}–{whi:.2f}) |")
+
 print("\n## Per task (passes/n · median cost · median wall)\n")
 print("| Task | " + " | ".join(f"`{a}`" for a in ARMS) + " |")
 print("|---|" + "---|" * len(ARMS))
@@ -108,7 +117,7 @@ for t in TASKS:
 
 # Recipe facts on the routed-on arms.
 print("\n## Recipe on: what it did\n")
-for a in ["routed-claude-on", "routed-codex-on"]:
+for a in ["routed-claude-on", "routed-codex-on", "routed-claude-lean"]:
     rs = [r for r in rows if r["arm"] == a]
     if not rs:
         continue

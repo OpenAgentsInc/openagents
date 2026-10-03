@@ -159,11 +159,13 @@ pub enum ClaudeRuns {
     /// settings: six tools, the trimmed system prompt, the five-minute
     /// prompt cache, and medium effort. Under full access only: under the
     /// boundary or toolchains a Claude route runs the loop, whose commands
-    /// the host bounds.
+    /// the host bounds. The default since #10246 measured it at 0.61x raw
+    /// Claude Code's cost (95% CI 0.57-0.65) at 21 of 21 passes, against
+    /// the loop's 1.68x.
+    #[default]
     Session,
     /// Microcoder's step loop: each step is one `claude -p` call that
     /// returns one action, and the host runs the commands.
-    #[default]
     Loop,
 }
 

@@ -24,7 +24,7 @@ for r in rows:
         except Exception: continue
         if e.get("event")=="step" and e.get("kind")=="command" and repo in e.get("text","") and "worktrees" not in e.get("text",""): n+=1
     if n: print("escape", r["arm"], r["task"], r["trial"], n)
-for arm in ["routed-claude-on","routed-claude-off","routed-codex-on","routed-codex-off"]:
+for arm in ["routed-claude-on","routed-claude-off","routed-codex-on","routed-codex-off","routed-claude-lean"]:
     rs=[r for r in rows if r["arm"]==arm and r.get("route_wall_s")]
     print(arm, "median e2e-minus-run s %.1f" % statistics.median([r["wall_s"]-r["route_wall_s"] for r in rs]), "median steps", statistics.median([r.get("steps") or 0 for r in rs]))
 rs=[r for r in rows if r["arm"]=="raw-claude"]

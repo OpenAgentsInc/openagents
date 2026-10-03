@@ -422,6 +422,7 @@ lever.
 | Grok Build | ACP agent | head of the prompt | Jev-chosen | low / own / high (`--reasoning-effort`) | own | own | own | while it works, on a settled change; ends the turn when they pass |
 | Devin | ACP agent | head of the prompt | Jev-chosen | own | own | own | own | as Grok Build |
 | OpenCode | ACP agent | head of the prompt | Jev-chosen | own | own | own | own | as Grok Build |
+| Claude Code, lean session (default since #10246) | one CLI session | its input | Jev-chosen | low / medium / medium | six | trimmed (core sections) | five minutes | frozen, named in the briefing, run once the session ends |
 | Claude Code CLI (fallback) | CLI session | briefing | Jev-chosen | low (policy) | six | trimmed | five minutes | absent |
 | Codex CLI (fallback) | CLI session | briefing | Jev-chosen | low (policy) | own | policy's | own | absent |
 
@@ -478,6 +479,28 @@ six tools), which the router does not dispatch to. It does mean the claim in
 3. Add the audit's winning CLI-delegate configuration as an arm of this harness.
 
 The study cost $35.60 at list price.
+
+### 5d. Measured, 2026-10-02: the lean session as a route (#10246)
+
+Item 3, done: the audit's configuration became a route (`coder.claude` =
+`session`: the recipe's briefing into one Claude Code session on Opus 5.5 at
+medium effort, six tools, the headless core system prompt, the five-minute
+cache, no connectors) and ran as a sixth arm on the same harness, 7 tasks ×
+3 trials on coderos-4080.
+
+| Arm (21 runs each) | Passed | Total cost | Median wall time | Cost against raw (95% CI) | Wall time against raw (95% CI) |
+| --- | --- | ---: | ---: | --- | --- |
+| Raw Claude Code, defaults (Opus 5.5 1M) | 21/21 | $6.24 | 45 s | – | – |
+| Routed, Claude loop, recipe on | 21/21 | $10.52 | 64 s | 1.68× (1.46–1.95) | 1.39× (1.02–1.89) |
+| **Routed, lean Claude session** | **21/21** | **$3.79** | 46 s | **0.61× (0.57–0.65)** | 1.09× (0.83–1.43) |
+
+The shipped Claude route now saves 39% against raw Claude Code at equal
+passes, from the cache (92% of input read, 8% written, as raw's 93%/7%) and
+40% fewer input tokens per run. It is the default Claude route since this
+change; the loop stays as `coder.claude` = `loop`. The Codex equivalent, one
+`codex exec` session with the briefing, is designed in the
+[measurement](2026-10-02-shadow-baseline-measurement.md#the-codex-equivalent-designed-not-yet-built)
+and not yet built.
 
 Owner rules hold on the default path: Microcoder door runs use
 `Limits::unbounded()` (only an 8-step stuck guard), task grants use

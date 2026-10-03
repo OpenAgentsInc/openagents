@@ -36,6 +36,8 @@ RESULTS = os.path.join(BASE, "results.jsonl")
 TB = os.path.join(HOME, ".openagents/terminal-bench/upstream/terminal-bench-2.1/tasks")
 OA = os.path.join(HOME, "coder-runner/openagents")
 OFF_SHIM = os.path.join(BASE, "bin/microcoder-recipe-off")
+# #10246: the lean arm runs binaries built from the commit that added it.
+LEAN_OA = os.path.join(BASE, "bin-lean/openagents")
 SRC = os.path.join(BASE, "src")
 PY = shutil.which("python3")
 TIMEOUT = 3600
@@ -431,9 +433,10 @@ def run_routed(engine, recipe_on, prompt, cwd, d):
                OPENAGENTS_CHAT_HOME=os.path.join(d, "chat"))
     if not recipe_on:
         env["OPENAGENTS_CODER_CONTROLLER"] = OFF_SHIM
+    oa = LEAN_OA if engine == "claude-lean" else OA
     start = time.time()
     try:
-        r = subprocess.run([OA, "chat", "send", "--local", "--json", "--timeout", str(TIMEOUT), prompt],
+        r = subprocess.run([oa, "chat", "send", "--local", "--json", "--timeout", str(TIMEOUT), prompt],
                            cwd=cwd, env=env, capture_output=True, text=True, timeout=TIMEOUT + 60, stdin=subprocess.DEVNULL)
         out, err, code = r.stdout, r.stderr, r.returncode
     except subprocess.TimeoutExpired as e:
@@ -450,7 +453,7 @@ def run_routed(engine, recipe_on, prompt, cwd, d):
     started = any(e.get("event") == "coder" and e.get("accepted") for e in events)
     if not started and thread:
         # The router only offered: accept the offer, as a person would.
-        r2 = subprocess.run([OA, "chat", "run-coder", "--local", "--json", "--thread", thread], cwd=cwd, env=env,
+        r2 = subprocess.run([oa, "chat", "run-coder", "--local", "--json", "--thread", thread], cwd=cwd, env=env,
                             capture_output=True, text=True, timeout=TIMEOUT + 60, stdin=subprocess.DEVNULL)
         open(os.path.join(d, "out-run-coder.ndjson"), "w").write(r2.stdout)
         for ln in r2.stdout.splitlines():

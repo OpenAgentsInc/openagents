@@ -45,7 +45,7 @@ Keys:
   coder.shadow_budget_usd         The most the shadow baselines may cost in all, in dollars,
                                   or off for no cap (default off).
   coder.claude                    session (one lean Claude Code session briefed by Jev)
-                                  or loop (Microcoder's step loop) (default loop).
+                                  or loop (Microcoder's step loop) (default session).
   models.payer                    ours (default: model calls on OpenAgents) or mine (every
                                   model call on your own keys, never ours; needs an
                                   OpenRouter or Vercel AI Gateway key).
