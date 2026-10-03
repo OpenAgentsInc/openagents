@@ -1004,9 +1004,11 @@ pub(crate) fn stranded_branch(task: &str) -> String {
     format!("coder/stranded-{}", &task[..8.min(task.len())])
 }
 
-/// An exclusive lock on the task store's landing file, held while a flow
-/// lands; `None` when the file cannot be opened or locked.
-fn landing_lock(store: &Path) -> Option<std::fs::File> {
+/// The task store's landing lock file, held while a flow fetches, rebases
+/// and pushes (never while its checks run, #10391), and whether another run
+/// holds it now (then the caller says so and waits with `File::lock`).
+/// `None` when the file cannot be opened or locked.
+fn landing_lock(store: &Path) -> Option<(std::fs::File, bool)> {
     let file = crate::private::file(
         std::fs::OpenOptions::new()
             .create(true)
@@ -1015,8 +1017,18 @@ fn landing_lock(store: &Path) -> Option<std::fs::File> {
     )
     .open(store.join("local").join("issue-landing.lock"))
     .ok()?;
-    file.lock().ok()?;
-    Some(file)
+    match file.try_lock() {
+        Ok(()) => Some((file, false)),
+        Err(std::fs::TryLockError::WouldBlock) => Some((file, true)),
+        Err(std::fs::TryLockError::Error(_)) => None,
+    }
+}
+
+/// This machine's landing lock as one guard: the in-process mutex and the
+/// task store's lock file.
+struct LandingGuard {
+    _shared: Option<std::fs::File>,
+    _local: std::sync::MutexGuard<'static, ()>,
 }
 
 /// Why a flow did not start.
@@ -1806,8 +1818,6 @@ impl Run<'_> {
     }
 
     fn land_main(&mut self) {
-        let _landing = LANDING.lock().unwrap_or_else(|poison| poison.into_inner());
-        let _shared = landing_lock(&self.work.store);
         let branch = self.work.branch.clone();
         if self.stopping() {
             return self.stopped("Stopped by the person who started it, before landing.");
@@ -2258,6 +2268,34 @@ impl landing::Hooks for Run<'_> {
 
     fn stopping(&self) -> bool {
         Run::stopping(self)
+    }
+
+    fn enter(&mut self) -> Option<Box<dyn std::any::Any>> {
+        const WAITING: &str = "Waiting to land behind another run…";
+        let mut said = false;
+        let local = match LANDING.try_lock() {
+            Ok(guard) => guard,
+            Err(std::sync::TryLockError::Poisoned(poison)) => poison.into_inner(),
+            Err(std::sync::TryLockError::WouldBlock) => {
+                Run::note(self, WAITING);
+                said = true;
+                LANDING.lock().unwrap_or_else(|poison| poison.into_inner())
+            }
+        };
+        let shared = match landing_lock(&self.work.store) {
+            Some((file, false)) => Some(file),
+            Some((file, true)) => {
+                if !said {
+                    Run::note(self, WAITING);
+                }
+                file.lock().ok().map(|()| file)
+            }
+            None => None,
+        };
+        Some(Box::new(LandingGuard {
+            _shared: shared,
+            _local: local,
+        }))
     }
 }
 

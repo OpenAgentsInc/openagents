@@ -454,3 +454,116 @@ fn the_backoff_grows_to_its_cap_with_jitter() {
     let waits: std::collections::BTreeSet<Duration> = (0..20).map(|_| backoff.delay(3)).collect();
     assert!(waits.len() > 1, "the waits do not vary");
 }
+
+/// One machine's landing lock, as [`Hooks::enter`] takes it.
+#[derive(Clone, Default)]
+struct Gate(Arc<std::sync::atomic::AtomicBool>);
+
+struct Held(Arc<std::sync::atomic::AtomicBool>);
+
+impl Drop for Held {
+    fn drop(&mut self) {
+        self.0.store(false, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+impl Gate {
+    fn take(&self) -> Box<dyn std::any::Any> {
+        use std::sync::atomic::Ordering::SeqCst;
+        while self
+            .0
+            .compare_exchange(false, true, SeqCst, SeqCst)
+            .is_err()
+        {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        Box::new(Held(Arc::clone(&self.0)))
+    }
+
+    fn held(&self) -> bool {
+        self.0.load(std::sync::atomic::Ordering::SeqCst)
+    }
+}
+
+/// Hooks behind a landing lock, with something to do while the checks run.
+struct Gated {
+    gate: Gate,
+    checks: usize,
+    held_during_check: bool,
+    notes: Vec<String>,
+    during_check: Option<Box<dyn FnMut()>>,
+}
+
+impl Hooks for Gated {
+    fn check(&mut self) -> Vec<String> {
+        self.checks += 1;
+        self.held_during_check |= self.gate.held();
+        if let Some(mut during) = self.during_check.take() {
+            during();
+        }
+        Vec::new()
+    }
+    fn note(&mut self, text: &str) {
+        self.notes.push(text.to_owned());
+    }
+    fn stopping(&self) -> bool {
+        false
+    }
+    fn enter(&mut self) -> Option<Box<dyn std::any::Any>> {
+        Some(self.gate.take())
+    }
+}
+
+/// #10391: the landing lock covers fetch → rebase → push, never the checks.
+/// While one run re-checks its rebased change, another run on the same
+/// machine lands; the first then sees the branch moved again, rebases once
+/// more (re-checking only if the new commit can affect it) and lands.
+#[test]
+fn the_checks_run_outside_the_landing_lock_so_others_land_meanwhile() {
+    let dir = tempfile::tempdir().unwrap();
+    let remote = origin(dir.path());
+    let a = host(dir.path(), &remote, "a", "crates/a/src/x.rs", "// a\n");
+    let c = host(dir.path(), &remote, "c", "crates/c/src/x.rs", "// c\n");
+    let b = host(dir.path(), &remote, "b", "crates/b/src/x.rs", "// b\n");
+    // `c` lands first, so `a` (which depends on `c`) must re-run its checks.
+    land(&plan(&c), &mut Counting::default()).unwrap();
+    let gate = Gate::default();
+    let other = gate.clone();
+    let landed_meanwhile = Arc::new(std::sync::Mutex::new(None));
+    let record = Arc::clone(&landed_meanwhile);
+    let mut hooks = Gated {
+        gate: gate.clone(),
+        checks: 0,
+        held_during_check: false,
+        notes: Vec::new(),
+        during_check: Some(Box::new(move || {
+            // Another run on this machine lands while `a`'s checks run; it
+            // would block forever if `a` still held the lock.
+            let mut theirs = Gated {
+                gate: other.clone(),
+                checks: 0,
+                held_during_check: false,
+                notes: Vec::new(),
+                during_check: None,
+            };
+            let landed = land(&plan(&b), &mut theirs).unwrap();
+            *record.lock().unwrap() = Some(landed.commit);
+        })),
+    };
+    let landed = land(&plan(&a), &mut hooks).unwrap();
+    assert!(!hooks.held_during_check, "the checks ran under the lock");
+    assert!(!gate.held(), "the lock was left held");
+    assert_eq!(hooks.checks, 1, "{:?}", landed.attempts);
+    assert!(
+        hooks.notes.iter().any(|note| note.contains("moved again")),
+        "{:?}",
+        hooks.notes
+    );
+    let theirs = landed_meanwhile.lock().unwrap().clone().unwrap();
+    run(&remote, &["merge-base", "--is-ancestor", &theirs, "main"]);
+    run(
+        &remote,
+        &["merge-base", "--is-ancestor", &landed.commit, "main"],
+    );
+    assert_eq!(run(&remote, &["rev-list", "--count", "main"]), "4");
+}

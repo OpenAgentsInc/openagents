@@ -2,7 +2,11 @@
 //! land at once (#10226).
 //!
 //! The issue flow serializes landings on one machine with a lock
-//! (`issue_run`'s in-process mutex and the task store's lock file). Across
+//! (`issue_run`'s in-process mutex and the task store's lock file), taken
+//! through [`Hooks::enter`] and held only for fetch → rebase → push: the
+//! checks after a rebase and the wait after a refused push run outside it,
+//! so parallel runs on one machine land seconds apart instead of one check
+//! run apart (#10391). Across
 //! machines (the Mac, CoderOS, GCE spot hosts, Boat sandboxes) there is no
 //! shared lock: Git itself is the arbiter, because a plain push (never a
 //! forced one) is refused whenever the branch moved past what the pusher
@@ -99,6 +103,13 @@ pub trait Hooks {
     fn note(&mut self, text: &str);
     /// Whether the person who started the landing asked it to stop.
     fn stopping(&self) -> bool;
+    /// Takes this machine's landing lock, waiting for another run that
+    /// holds it; the lock is held until the returned guard drops. The
+    /// landing holds it only for fetch → rebase → push. `None` when there
+    /// is no lock to take.
+    fn enter(&mut self) -> Option<Box<dyn std::any::Any>> {
+        None
+    }
 }
 
 /// Whether the checks ran again after a rebase, and why.
@@ -250,9 +261,15 @@ pub fn land(plan: &Plan<'_>, hooks: &mut dyn Hooks) -> Result<Landed, NotLanded>
     // Pushes refused in a row while the branch stayed where it was.
     let mut stuck = 0;
     let mut pushed_against: Option<String> = None;
+    // This machine's landing lock: taken at the top of each attempt, let go
+    // while the checks run and while a refused push waits.
+    let mut gate: Option<Box<dyn std::any::Any>> = None;
     for number in 1..=plan.attempts.max(1) {
         if hooks.stopping() {
             return fail(Failure::Stopped, attempts);
+        }
+        if gate.is_none() {
+            gate = hooks.enter();
         }
         if let Err(why) = fetch(plan.worktree, branch) {
             return fail(
@@ -334,6 +351,9 @@ pub fn land(plan: &Plan<'_>, hooks: &mut dyn Hooks) -> Result<Landed, NotLanded>
             match affects(plan.worktree, &base, &upstream) {
                 Some(why) => {
                     hooks.note(&format!("Coder runs the checks again: {why}."));
+                    // The checks run outside the landing lock, so other runs
+                    // here can land meanwhile.
+                    drop(gate.take());
                     let problems = hooks.check();
                     let passed = problems.is_empty();
                     attempt.recheck = Recheck::Ran { why, passed };
@@ -342,6 +362,27 @@ pub fn land(plan: &Plan<'_>, hooks: &mut dyn Hooks) -> Result<Landed, NotLanded>
                         return fail(Failure::Red(problems), attempts);
                     }
                     hooks.note("The checks pass on the rebased change.");
+                    tested_on = Some(upstream.clone());
+                    // Back under the lock: push only if the branch is still
+                    // where the checks ran; otherwise the next attempt
+                    // rebases again (and re-checks only what it affects).
+                    gate = hooks.enter();
+                    if let Err(why) = fetch(plan.worktree, branch) {
+                        attempts.push(attempt);
+                        return fail(
+                            Failure::Unreadable(format!("Git could not fetch {remote}: {why}")),
+                            attempts,
+                        );
+                    }
+                    let now = git(plan.worktree, &["rev-parse", &remote]).unwrap_or_default();
+                    if now != upstream {
+                        hooks.note(&format!(
+                            "`{branch}` moved again while the checks ran; Coder rebases once \
+                             more."
+                        ));
+                        attempts.push(attempt);
+                        continue;
+                    }
                 }
                 None => {
                     let why =
@@ -377,6 +418,7 @@ pub fn land(plan: &Plan<'_>, hooks: &mut dyn Hooks) -> Result<Landed, NotLanded>
                         wait.as_secs_f64()
                     ));
                     attempts.push(attempt);
+                    drop(gate.take());
                     if !pause(wait, hooks) {
                         return fail(Failure::Stopped, attempts);
                     }
