@@ -22,7 +22,8 @@ use coder::cli_route::tree::{Declared, Effect};
 pub(crate) const USAGE: &str = "usage: openagents computer COMMAND [OPTIONS]
   list [--wait SECONDS]     Every host this device knows, with its link and grant.
   show HOST                 One host: grant, devices, pending enrollments, workspaces.
-  link INVITATION           Redeem a coder-host: invitation (QR text or paste).
+  link CODE                 Pair with a computer: its `openagents connect invite --text`
+                            code, or a coder-host: invitation (QR text or paste).
   link --ssh USER@HOST      Install or adopt a host over ssh and redeem its invitation.
   approve HOST ENROLLMENT --code CODE [--rights standard|admin|all|LIST] [--days N]
                             Approve a headless host's enrollment request.
@@ -353,27 +354,88 @@ fn settle(live: &mut Live, seconds: u64) -> Result<Snapshot, String> {
 pub(crate) fn connected(live: &mut Live, host: &str, args: &Args) -> Result<(), String> {
     let seconds: u64 = args.number("wait", 15)?;
     let deadline = std::time::Instant::now() + Duration::from_secs(seconds);
-    let mut last = String::from("no link");
     loop {
         let snapshot = live.snapshot().map_err(|e| e.to_string())?;
         let record = snapshot
             .host(host)
             .ok_or_else(|| format!("this device knows no host {host}"))?;
+        let name = host_name(record, host);
         match record.link.as_ref().map(|link| &link.phase) {
             Some(coder_link::Phase::Connected) => return Ok(()),
             Some(coder_link::Phase::Blocked(reason)) => {
-                return Err(format!("the link to {host} is blocked: {reason:?}"));
+                return Err(format!(
+                    "{name} can't be reached: {}",
+                    blocked_words(*reason)
+                ));
             }
-            Some(phase) => last = format!("{phase:?}"),
-            None => {}
+            _ => {}
         }
         if std::time::Instant::now() >= deadline {
-            return Err(format!(
-                "{host} did not connect within {seconds}s (link {last}); pass --wait SECONDS to wait longer"
-            ));
+            return Err(not_connected(record, &name, seconds, "--wait"));
         }
         std::thread::sleep(Duration::from_millis(200));
     }
+}
+
+/// The computer's label, or its key when it has none.
+pub(crate) fn host_name(record: &coder_computers::model::HostRecord, key: &str) -> String {
+    if record.label.is_empty() {
+        key.to_owned()
+    } else {
+        record.label.clone()
+    }
+}
+
+/// A link's phase in plain words.
+pub(crate) fn phase_words(phase: &coder_link::Phase) -> String {
+    use coder_link::Phase;
+    match phase {
+        Phase::Available => "not connecting".into(),
+        Phase::Offline => "this computer has no network".into(),
+        Phase::Connecting(_) => "connecting".into(),
+        Phase::Backoff { .. } => "retrying".into(),
+        Phase::Connected => "connected".into(),
+        Phase::Blocked(reason) => blocked_words(*reason).into(),
+    }
+}
+
+/// Why a blocked link can't connect, as a person reads it.
+pub(crate) fn blocked_words(reason: coder_link::BlockReason) -> &'static str {
+    use coder_link::BlockReason;
+    match reason {
+        BlockReason::Authentication => "it doesn't recognize this computer",
+        BlockReason::Revoked => "it removed this computer's access",
+        BlockReason::Incompatible => "it runs a version this one can't talk to; update both",
+        BlockReason::Configuration => "this computer's settings for it are invalid",
+    }
+}
+
+/// Why a host did not connect in time, and the next step. A host seals its
+/// presence to each device it admits, so a host that removed this computer
+/// looks exactly like one that is off: it publishes nothing here. Say both,
+/// and how to check and enroll again (#10368).
+pub(crate) fn not_connected(
+    record: &coder_computers::model::HostRecord,
+    name: &str,
+    seconds: u64,
+    flag: &str,
+) -> String {
+    let state = record.link.as_ref().map_or_else(
+        || "not connecting".to_owned(),
+        |link| phase_words(&link.phase),
+    );
+    if record.presence.is_some() {
+        return format!(
+            "{name} did not connect within {seconds}s ({state}); pass {flag} SECONDS to wait longer"
+        );
+    }
+    format!(
+        "{name} did not connect within {seconds}s ({state}). It has published nothing to this \
+         computer: it is off or offline, or it removed this computer. On {name}, `openagents \
+         connect devices` lists the devices it admits; if this one is gone, run `openagents \
+         connect invite --text` there and `openagents computer link CODE` here. Pass {flag} \
+         SECONDS to wait longer."
+    )
 }
 
 fn dispatch(
@@ -455,9 +517,20 @@ fn dispatch(
             if invitation.is_empty() {
                 return Err("INVITATION is required (argument or stdin)".into());
             }
-            let host = live
-                .redeem_invitation(&invitation)
-                .map_err(|e| e.to_string())?;
+            // A connect code (`openagents connect invite --text`, the code a
+            // phone pairs with) pairs as the phone does; a `coder-host:`
+            // invitation is redeemed on the relay it names.
+            let host = match coder_computers::connect::classify(&invitation)? {
+                coder_computers::connect::Scanned::Connect(code) => {
+                    runtime
+                        .block_on(live.pairing().pair(&code))
+                        .map_err(|failure| failure.message)?
+                        .host
+                }
+                coder_computers::connect::Scanned::HostInvitation(text) => {
+                    live.redeem_invitation(&text).map_err(|e| e.to_string())?
+                }
+            };
             let snapshot = settle(live, 5)?;
             let record = snapshot
                 .host(&host)
@@ -726,5 +799,56 @@ fn dispatch(
             ok(output, json!({}))
         }
         other => Ok(output.usage("computer", &format!("unknown command `{other}`"), USAGE)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use coder_computers::model::{Compatibility, DeviceList, Enrollment, HostRecord};
+
+    /// A host that publishes nothing to this computer may be off or may have
+    /// removed it; the message says both and how to check and enroll again,
+    /// in words rather than the supervisor's debug text (#10368).
+    #[test]
+    fn a_silent_host_names_both_causes_and_the_way_back() {
+        let record = HostRecord {
+            key: "93".repeat(32),
+            label: "coderos-4080".into(),
+            listing: None,
+            delisted: false,
+            ssh: None,
+            tunnel: None,
+            enrollment: Enrollment::NotEnrolled,
+            link: None,
+            route: None,
+            compatibility: Compatibility::Unknown,
+            presence: None,
+            devices: DeviceList::NotLoaded,
+            enrollments: Vec::new(),
+            workspaces: None,
+            watchers: None,
+            background: None,
+        };
+        let name = host_name(&record, &record.key);
+        assert_eq!(name, "coderos-4080");
+        let text = not_connected(&record, &name, 15, "--wait");
+        assert!(text.starts_with("coderos-4080 did not connect within 15s (not connecting)."));
+        assert!(text.contains("it removed this computer"));
+        assert!(text.contains("`openagents connect devices`"));
+        assert!(text.contains("`openagents computer link CODE`"));
+        assert!(!text.contains("Backoff"));
+        assert_eq!(
+            phase_words(&coder_link::Phase::Backoff {
+                until: coder_link::Moment(5)
+            }),
+            "retrying"
+        );
+        assert_eq!(
+            phase_words(&coder_link::Phase::Blocked(
+                coder_link::BlockReason::Revoked
+            )),
+            "it removed this computer's access"
+        );
     }
 }

@@ -119,7 +119,7 @@
               "public-key"
             ],
             "usage": [
-              "public-key"
+              "public-key [--control-socket PATH]"
             ],
             "forms": [
               {
@@ -127,6 +127,13 @@
                   {
                     "kind": "literal",
                     "word": "public-key"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "control-socket",
+                    "value": "PATH",
+                    "open": true,
+                    "optional": true
                   }
                 ]
               }
@@ -231,7 +238,7 @@
               "list"
             ],
             "usage": [
-              "list [--json]"
+              "list [--json] [--control-socket PATH]"
             ],
             "forms": [
               {
@@ -243,6 +250,13 @@
                   {
                     "kind": "option",
                     "name": "json",
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "control-socket",
+                    "value": "PATH",
+                    "open": true,
                     "optional": true
                   }
                 ]
@@ -751,6 +765,14 @@
         },
         {
           "kind": "option",
+          "name": "control-socket",
+          "value": "PATH",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
           "name": "rights",
           "value": "LIST",
           "open": true,
@@ -869,14 +891,6 @@
           "kind": "option",
           "name": "control",
           "value": "|",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "control-socket",
-          "value": "PATH",
           "open": true,
           "optional": true,
           "repeated": true
@@ -1207,7 +1221,7 @@
               "link"
             ],
             "usage": [
-              "link INVITATION",
+              "link CODE",
               "link --ssh USER@HOST"
             ],
             "forms": [
@@ -1219,7 +1233,7 @@
                   },
                   {
                     "kind": "positional",
-                    "name": "INVITATION"
+                    "name": "CODE"
                   }
                 ]
               },
@@ -1238,7 +1252,7 @@
                 ]
               }
             ],
-            "summary": "Redeem a coder-host: invitation (QR text or paste).",
+            "summary": "Pair with a computer: its `openagents connect invite --text` code, or a coder-host: invitation (QR text or paste).",
             "effect": "grants",
             "runs_on": "screen",
             "screen": "account.computers"
@@ -2021,6 +2035,12 @@
           "name": "wait",
           "value": "SECONDS",
           "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "text",
           "optional": true,
           "repeated": true
         },

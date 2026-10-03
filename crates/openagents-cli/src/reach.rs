@@ -353,9 +353,12 @@ fn presence(output: &Output, live: &mut Live, args: &Args, timeout: Duration) ->
         .host(&host)
         .ok_or_else(|| format!("this device knows no host {host}"))?;
     let Some(received) = &record.presence else {
-        return Err(Refused(format!(
-            "no presence sample for {host} within {}s; the host may be offline or the relay unreachable",
-            timeout.as_secs()
+        let name = crate::computer::host_name(record, &host);
+        return Err(Refused(crate::computer::not_connected(
+            record,
+            &name,
+            timeout.as_secs(),
+            "--timeout",
         )));
     };
     let verdict = received.judge(snapshot.now, Freshness::default());
@@ -460,15 +463,20 @@ fn probe(
     match phase {
         Some(coder_link::Phase::Connected) => {}
         Some(coder_link::Phase::Blocked(reason)) => {
-            value["error"] = json!(format!("the link to {host} is blocked: {reason:?}"));
+            value["error"] = json!(format!(
+                "{} can't be reached: {}",
+                crate::computer::host_name(record, &host),
+                crate::computer::blocked_words(*reason)
+            ));
             output.emit(&value, render_probe);
             return Ok(out::EXIT_FAILURE);
         }
-        other => {
-            value["error"] = json!(format!(
-                "{host} did not connect within {}s (link {}); pass --timeout SECONDS to wait longer",
+        _ => {
+            value["error"] = json!(crate::computer::not_connected(
+                record,
+                &crate::computer::host_name(record, &host),
                 timeout.as_secs(),
-                other.map_or("none".to_owned(), |phase| format!("{phase:?}"))
+                "--timeout",
             ));
             output.emit(&value, render_probe);
             return Ok(out::EXIT_FAILURE);
