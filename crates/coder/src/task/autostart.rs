@@ -4642,15 +4642,29 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let copy = temp.path().join("openagents");
         std::fs::copy(std::env::current_exe().unwrap(), &copy).unwrap();
-        let output = std::process::Command::new(&copy)
-            .args([
-                "--exact",
-                "task::autostart::tests::a_replaced_program_still_starts_itself",
-                "--nocapture",
-            ])
-            .env(CHILD, "1")
-            .output()
-            .unwrap();
+        // A process another test forks while the copy is being written keeps
+        // its write descriptor until it execs, and Linux refuses to run a
+        // file open for writing ("Text file busy", #10284): wait that out.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        let output = loop {
+            match std::process::Command::new(&copy)
+                .args([
+                    "--exact",
+                    "task::autostart::tests::a_replaced_program_still_starts_itself",
+                    "--nocapture",
+                ])
+                .env(CHILD, "1")
+                .output()
+            {
+                Err(error)
+                    if error.kind() == std::io::ErrorKind::ExecutableFileBusy
+                        && std::time::Instant::now() < deadline =>
+                {
+                    std::thread::sleep(std::time::Duration::from_millis(20));
+                }
+                result => break result.unwrap(),
+            }
+        };
         let printed = String::from_utf8_lossy(&output.stdout);
         assert!(output.status.success(), "{printed}");
         assert!(!copy.exists());

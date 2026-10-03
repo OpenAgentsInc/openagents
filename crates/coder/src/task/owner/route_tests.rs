@@ -22,7 +22,7 @@ use route_contract::record::RouteRecord;
 use route_contract::route::{RefusalReason, RouteFamily};
 use route_contract::snapshot::{CheckScope, Deliverable, Surface, WorkspaceBinding};
 
-use super::tests::{fixture, requirements, settled};
+use super::tests::{fixture, requirements, run_checks, settled};
 use super::*;
 use crate::task::lifecycle;
 
@@ -171,7 +171,6 @@ fn counted(workspace: &str) -> usize {
 /// (unknown for this fixture's bounded command, never a stand-in zero).
 #[tokio::test]
 async fn a_routed_message_delivers_a_retained_patch_with_an_independent_check() {
-    use crate::capability::Trust;
     let (root, _workspace, mut grant) = fixture();
     let dir = root.path().join("store");
     grant.arguments[1] = format!("printf x >> {EFFECTS}; printf output > result.txt");
@@ -187,7 +186,9 @@ async fn a_routed_message_delivers_a_retained_patch_with_an_independent_check() 
     let record = observed(&dir, &journal, "req-ok");
     assert_eq!(record.state, Lifecycle::Completed);
     assert_eq!(record.runs[0].projection.check, CheckLabel::Unchecked);
-    let checked = check(&dir, "task-one", &Trust::everything()).await.unwrap();
+    // A process another test forked can hold the owner lock for a moment
+    // (#10230, #10284), so the check waits for it like the host does.
+    let checked = run_checks(&dir).await;
     assert_eq!(checked.checks, Checks::Passed);
     let record = observed(&dir, &journal, "req-ok");
     assert_eq!(record.state, Lifecycle::Completed);

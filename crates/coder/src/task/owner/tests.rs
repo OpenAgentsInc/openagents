@@ -304,6 +304,25 @@ fn acquired(store: &Store, id: &str) -> Owner {
     waiting(|| Owner::acquire(store, id))
 }
 
+/// Wait until no process holds `id`'s owner lock. The probe holds the lock
+/// for no longer than one `flock` call, so a process forked afterwards
+/// cannot inherit it, unlike a held [`Owner`].
+pub(super) fn released(dir: &Path, id: &str) {
+    let path = dir.join(format!("owner-{id}.lock"));
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        let lock = std::fs::File::open(&path).unwrap();
+        match lock.try_lock() {
+            Ok(()) => return,
+            Err(std::fs::TryLockError::WouldBlock) if Instant::now() < deadline => {
+                drop(lock);
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            Err(error) => panic!("the owner lock stayed held: {error:?}"),
+        }
+    }
+}
+
 /// [`recover`] once no other owner holds `id`.
 fn recovered(dir: &Path, id: &str) -> Task {
     waiting(|| recover(dir, id))
@@ -323,7 +342,7 @@ async fn executed(dir: &Path, bytes: &[u8]) -> Task {
 }
 
 /// [`check`] task-one once no other owner holds it.
-async fn run_checks(dir: &Path) -> Task {
+pub(super) async fn run_checks(dir: &Path) -> Task {
     let deadline = Instant::now() + Duration::from_secs(10);
     loop {
         match check(dir, "task-one", &crate::capability::Trust::everything()).await {
@@ -546,6 +565,10 @@ async fn a_stuck_task_stops_from_any_device_and_says_why() {
         let owner = acquired(&store, "task-one");
         store.record(&owner, Event::OwnerLost, 2).unwrap();
     }
+    // The stop settles the run only once its owner lock is free; a process
+    // another test forked while this test held it can keep it held for a
+    // moment (#10230, #10284).
+    released(&dir, "task-one");
     let stuck = Store::open(&dir).unwrap().show("task-one").unwrap();
     assert_eq!(stuck.status, Status::Unknown);
     // A phone's, desktop's, or terminal's Stop (`task.command` interrupt).
