@@ -40,21 +40,25 @@ it. Each issue runs on a Boat sandbox of its own.
 4. **Credentials.** Written to `/tmp/oa-run.env` through the files API; the
    sandbox's command sources and deletes that file before anything else
    runs. See below.
-5. **Binaries.** The run reads the template's binaries through once first
-   (they stream in from the template, and a read of the 2 GB debug
-   `openagents` failed mid-stream twice on 2026-10-02; a failed read is
-   retried six times, then the run builds its own), then uses the
-   `openagents` and `microcoder` the template built (`<slot>/debug/`, the template's `origin/main`), run in
-   place (a copy reads gigabytes the sandbox may still be streaming in), with
-   `OPENAGENTS_CODER_CONTROLLER` pointing at that `microcoder`. `OA_BOAT_BUILD=1` builds `origin/main`'s instead, on
-   the warm target (not `--locked`). Building in a fresh template sandbox
-   failed on 2026-10-02 while its files were still streaming in (`can't
-   find crate` for rlibs the template holds, `Permission denied` in the
-   slot), so the default does not build. Before anything runs, the
-   directories a template sandbox comes back with owned by root (`~/.cargo`,
-   `~/.openagents`, parts of the warm slot) are given back to the user, the
-   same repair `boat-template probe` does (#10219,
-   `docs/deployment/boat-template.md`; about 20 s).
+5. **Restore, ownership, binaries.** Boat restores a template sandbox's
+   home lazily, through a FUSE mount that is retired when the restore
+   finishes. Building or reading the template's large binaries before then
+   failed or stalled on 2026-10-02/03 (`can't find crate`, `Permission
+   denied` in the slot, a 2 GB read aborted mid-stream), and a repair of the
+   root-owned directories a template sandbox comes back with, walked
+   through the mount, missed directories restored later (#10274). So
+   `ready` repairs only Boat's own `~/.ascii` (a plain command), and the
+   run first runs `scripts/cloud/boat-fork-ready.sh` (uploaded to
+   `/tmp/oa-boat-fork-ready.sh`): it waits until the restore is done (1 to
+   14 minutes for the 33 GB template, #10251) and then gives every
+   root-owned path under `HOME` back to the user, on plain disk, in about a
+   second. The run then reads the template's binaries through (retried six
+   times) and uses the `openagents` and `microcoder` the template built
+   (`<slot>/debug/`, the template's `origin/main`), run in place, with
+   `OPENAGENTS_CODER_CONTROLLER` pointing at that `microcoder`.
+   `OA_BOAT_BUILD=1`, or binaries that cannot be read, build `origin/main`'s
+   instead on the warm target (not `--locked`), one package per invocation
+   as the template warmed them.
 6. **The issue flow** runs there: `openagents chat work --local --json
    --issues N --parallel 1` — the same flow as on a Mac: claim comment,
    worktree of `origin/main`, engine turn, checks, the multi-machine landing

@@ -457,3 +457,73 @@ What this shows:
   [#10251](https://github.com/OpenAgentsInc/openagents/issues/10251).
 - **Ready is 76 s, not "a few seconds"**, for a 108 GB template.
 - The daily build itself works and costs about $0.05 a day (sandbox plus job).
+
+### 7.1 Making a fork warm (#10251, #10274)
+
+Measured 2026-10-03 on Boat `large` forks (8 vCPU, 16 GB), by hand over SSH
+and with `boat-template probe`. "Restore" is the time until Boat's lazy
+`ascii-lazyfs` mount on `/home/user` retires and the home is plain disk.
+
+What was wrong with the first template:
+
+- **The restore never finished.** Boat serves `$HOME` through a FUSE mount
+  while a background extract fills the disk. On the 108 GB template a build
+  waited on two 2 GB debug executables in the slot (`debug/codebase-kb`,
+  `deps/openagents-*`); the restore's watchdog logged "no hydration
+  progress" for over 20 minutes and cargo sat at 0 % CPU. That, not the
+  path, was the 701 s.
+- **The retired path.** When the mount retires it is moved to
+  `/var/lib/ascii-lazy/retired/home`; a process whose working directory was
+  inside keeps that path. Builds must start in a new process after the
+  restore.
+- **Mtimes.** The restore keeps some mtimes to the nanosecond and cuts
+  others to the second. Cargo then saw a dependency newer than its
+  dependent (`StaleDependency`, `max_mtime ... nanos: 0`) for every pair
+  built within one second, and a fork's first build recompiled 53 crates.
+- **Ownership.** The repair walked through the lazy mount took 3 to 100 s
+  and missed directories the restore created later, so a fallback build
+  failed with `Permission denied` in the slot (#10274).
+
+The template on `main` now (`oa-coder-main-20261003` was the first pruned
+one): the slot is pruned like the GCE image's (24.3 GB, template 33.0 GB
+against 108.2 GB), mtimes are cut to whole seconds before the save, and
+`openagents`/`microcoder` stay for `chat work --on boat`. Every fork runs
+`scripts/cloud/boat-fork-ready.sh`: repair `~/.ascii`, wait for the
+restore, repair the rest on plain disk (about 0.5 s).
+
+| Approach (template) | Ready | Restore | First build in the clone | Worktree of `origin/main` |
+| --- | --- | --- | --- | --- |
+| Build at once on the lazy mount (33 GB) | 35.5 s | (not waited) | failed: `Permission denied` removing a build script, then `can't find crate` for rlibs the slot holds | failed |
+| Wait for the restore, reading the slot ahead (33 GB) | 16.1 s | 118.9 s | 59.2 s, 43 crates | 71.3 s, 70 crates |
+| Wait for the restore (33 GB), three forks | 13 to 16 s | 72.5, 160.6, 830.1 s | 56.8 to 58.7 s, 53 crates | 65.5, 66.1 s |
+| Wait, then whole-second mtimes (33 GB), four forks | 7 to 62 s | 316.6, 437.1, 438.5, 439.0 s | **14.8**, 41.6, 44.9, 45.1 s, **1 crate** | 71.3, 121.0, 125.6, 141.1 s |
+| `boat-template probe` of the rebuilt template `oa-coder-main-20261003b` (36.5 GB: the 33 GB layout plus the two kept binaries) | 60.2 s | 446.3 s | 19.7 s, 1 crate | 63.6 s, 70 crates |
+| No target, sccache in GCS, 100 % hits (7.3 GB) | 8.7, 10.4 s | 32.4, 53.5 s | (cold target) 125.6, 230.0, 233.9 s | the same |
+
+What the numbers say:
+
+- **Builds in a fork are warm once the restore is done and mtimes are
+  whole seconds**: the first build in the clone compiles only
+  `openagents-cli` (14.8 s on a quiet machine, about 45 s on busy ones);
+  the worktree build compiles only the 70 workspace crates, as on the GCE
+  image (94 s there).
+- **The restore is the cost, and it varies tenfold**: 33 GB took 72 s on the
+  quietest fork and 830 s on the slowest (75 to 460 MB/s), slowest when
+  several forks restored at once. The best fork-to-first-build was 16 + 73 +
+  15 s, about 105 s; a typical one is 3 to 9 minutes (the probe of the
+  rebuilt template: 528 s, $0.012). The restore log shows why: a machine
+  that already holds a chunk uses it ("identical file already on this
+  machine, not fetched"); the rest comes from object storage at 75 to
+  100 MB/s. That is below what
+  Boat lets us control: the mount gives no ordering (reading the slot ahead
+  made it slower, 118.9 s), and a build before it finishes fails.
+- **A real run works from it.** `openagents chat work --on boat --issues
+  10277` (a throwaway docs issue) from `oa-coder-main-20261003b`: the run
+  waited for the restore, used the template's binaries, and landed and
+  closed the issue in 602 s for $0.0120 (#10274).
+- **sccache from GCS instead of a snapshotted target** restores 7.3 GB in
+  32 to 54 s, but a cold build with every compile a cache hit still took
+  126 to 234 s (754 objects fetched from us-central1), and only hits when
+  the target directory's path is the same as when the cache was written (0
+  of 754 with a different path). It was not adopted; the bucket-scoped
+  service account made for the test was deleted.

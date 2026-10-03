@@ -23,10 +23,12 @@ repaired.
 1. Checks `GET /limits` for a start left today, then creates a `large`
    sandbox (`noEnv: true`, TTL 4 h as a backstop).
 2. Uploads and runs a driver that fetches `coder-host-setup.sh` from
-   `origin/main` and runs it with `--warm` as the sandbox's `user`. The
-   driver also writes `~/.boxignore` with `.cache/sccache/` (the disk sccache
-   duplicates the warm target) and links `~/openagents/target` to the warm
-   slot. It never excludes `target/` or the slot.
+   `origin/main` and runs it with `--warm --keep-binaries "openagents
+   microcoder"` as the sandbox's `user`. The driver also writes
+   `~/.boxignore` with `.cache/sccache/` (the disk sccache duplicates the
+   warm target), links `~/openagents/target` to the warm slot, and cuts the
+   mtimes Cargo compares to whole seconds (below). It never excludes
+   `target/` or the slot.
 3. Stops the sandbox, saves the named snapshot `oa-coder-main-YYYYMMDD` (UTC),
    and waits for it to be `ready`.
 4. Keeps the newest 3 `oa-coder-main-*` and deletes the rest. Boat allows 10
@@ -45,25 +47,67 @@ stopped sandbox costs nothing); its log is `~/.oa-coder-host-setup.log`.
 POST /sandboxes {"from": "oa-coder-main-YYYYMMDD", "type": "large", "noEnv": true, "ttlSeconds": ...}
 ```
 
-Then, **before anything else, synchronously** (not `detached`):
+Then run [`scripts/cloud/boat-fork-ready.sh`](../../scripts/cloud/boat-fork-ready.sh)
+before anything else (#10251, #10274). `boat-template probe` and
+`chat work --on boat` both do:
 
 ```sh
-sudo -n find "$HOME" -xdev -user root -exec chown -h "$(id -u):$(id -g)" {} +
+bash boat-fork-ready.sh --bookkeeping-only   # plain, synchronous command: repairs ~/.ascii
+bash boat-fork-ready.sh                      # waits for the restore, then repairs $HOME
 ```
 
-A sandbox created from a template comes back with about 30 directories owned
-by root (`~/.cargo`, `~/.openagents` and directories in the warm slot,
-`~/.ascii/processes`; never files). Until they are repaired, Boat's own
-detached commands fail with `EACCES ... ~/.ascii/processes/...log` (HTTP 400
-`sandbox_direct_failed`) and cargo cannot write the slot. The repair took
-19.7 s on a fresh fork. `boat-template probe` does it first.
+What it handles:
 
-Build in the warm slot that the manifest names, as Coder does:
+- **Ownership.** A fork comes back with directories owned by root
+  (`~/.cargo`, `~/.openagents`, directories in the warm slot,
+  `~/.ascii/processes`). Until `~/.ascii` is the user's, Boat's detached
+  commands fail with `EACCES ... ~/.ascii/processes/...log`; until the rest
+  is, cargo cannot write the slot. A repair walked through the lazy mount
+  took 26 to 100 s and missed directories the restore created later (the
+  `Permission denied` of #10274); on plain disk it takes about 1 s.
+- **The lazy restore.** Boat serves `/home/user` through a FUSE mount
+  (`ascii-lazyfs`) while a background extract fills the real disk, then
+  "retires" the mount (moves it to `/var/lib/ascii-lazy/retired/...`) and
+  `/home/user` is plain disk. Building before that is slow and unreliable:
+  on the 108 GB template the restore stalled for over 20 minutes on two 2 GB
+  debug executables a build was waiting for, and on the 33 GB template a
+  build on the mount failed (`Permission denied` removing a build script,
+  `can't find crate` for rlibs the slot holds). A process whose working
+  directory is inside the mount when it retires keeps the retired path,
+  which is how #10219 saw the workspace under
+  `/var/lib/ascii-lazy/retired/home/openagents`. The script waits until the
+  mount is gone (`grep '^ascii-lazyfs /home/user fuse' /proc/mounts`); start
+  builds from a new process after it.
+
+Then build in the warm slot that the manifest names, as Coder does:
 
 ```sh
 slot=$(jq -r .warm_target.slot ~/.openagents/coder-host.json)
-CARGO_TARGET_DIR="$slot" cargo build -p openagents-cli
+cd ~/openagents && CARGO_TARGET_DIR="$slot" cargo build -p openagents-cli
 ```
+
+Build one package per invocation, as the template warmed them: a combined
+`-p a -p b` build unifies features and misses the slot.
+
+## What the template holds, and why
+
+- The warm slot is pruned like the GCE image's (#10224): the workspace's
+  own test executables, binaries and incremental caches are deleted, except
+  `openagents` and `microcoder`, which `chat work --on boat` runs in place
+  (`--keep-binaries`). Dependency rlibs, rmeta and build-script outputs
+  stay. The unpruned slot was 93 GB and its 108 GB template never finished
+  restoring; the pruned one is 24 GB in a 33 GB template.
+- **Mtimes cut to whole seconds.** Boat's restore keeps some mtimes to the
+  nanosecond and cuts others to the second. Cargo marks a unit stale when a
+  dependency's output is newer than its own, so a dependency and a
+  dependent built within the same second rebuilt in every fork (53 crates,
+  `StaleDependency` with `max_mtime ... nanos: 0`). The build driver sets
+  every mtime under the slot, `~/.cargo/registry/src`,
+  `~/.cargo/git/checkouts` and the clone (not `.git`) to whole seconds
+  before the save; a fork's first build in the clone then compiles only
+  `openagents-cli` itself.
+- sccache's disk cache stays out of the snapshot (`.boxignore`). sccache in
+  GCS instead of a warm slot was measured and not adopted (see the plan).
 
 ## Operating it
 
@@ -73,9 +117,12 @@ Use the automation account:
 ```sh
 # Build now (same as the schedule)
 gcloud run jobs execute oa-boat-template --region us-central1 --project openagentsgemini
-# Measure a template
+# Measure a template: fork, fork-ready, build in the clone and in a worktree of origin/main
 gcloud run jobs execute oa-boat-template --region us-central1 --project openagentsgemini \
   --args=probe,oa-coder-main-YYYYMMDD
+# ... or build at once on the lazy mount, for comparison
+gcloud run jobs execute oa-boat-template --region us-central1 --project openagentsgemini \
+  --args=probe,oa-coder-main-YYYYMMDD,--mode,now
 # List templates
 gcloud run jobs execute oa-boat-template --region us-central1 --project openagentsgemini --args=list
 # Logs of one execution
@@ -116,7 +163,8 @@ build fails with "too few are ours to drop", remove a stale name with
 - Build sandbox: `large` at $0.072/h for about 20 minutes, about $0.025 a day.
 - Cloud Run job: 1 vCPU and 512 MiB for about 20 minutes, a few cents a day.
 - A fork: $0.072/h while it runs. The 2026-10-02 probe fork ran 7,255 s
-  (mostly the slow first build below), $0.073.
+  (mostly the stalled restore, #10251), $0.073; the 2026-10-03 probe of
+  `oa-coder-main-20261003b` cost $0.012, most of it waiting for the restore.
 - Boat's docs list no separate charge for snapshot storage.
 
 ## Measurements
