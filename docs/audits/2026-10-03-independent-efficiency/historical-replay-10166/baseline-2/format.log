@@ -1,0 +1,12 @@
+Diff in /tmp/replay-10166-check/repo/crates/background/src/tests.rs:352:
+     let [secret, built] = [&trees[0], &trees[1]];
+     let excludes = home.layout.home.join("src/excludes");
+     std::fs::write(&excludes, ".env\nprivate/\ntarget/\n").unwrap();
+-    git(&repo, &["config", "core.excludesFile", excludes.to_str().unwrap()]);
++    git(
++        &repo,
++        &["config", "core.excludesFile", excludes.to_str().unwrap()],
++    );
+     std::fs::write(secret.join(".env"), "TOKEN=local").unwrap();
+     std::fs::create_dir_all(secret.join("private")).unwrap();
+     std::fs::write(secret.join("private/data"), "mine").unwrap();

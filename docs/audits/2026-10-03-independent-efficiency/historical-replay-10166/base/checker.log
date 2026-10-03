@@ -1,0 +1,42 @@
+   Compiling sha2 v0.10.9
+   Compiling background v0.1.0 (/tmp/replay-10166-check/repo/crates/background)
+   Compiling historical-replay-10166-checker v0.0.0 (/tmp/replay-10166-check/base)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.79s
+     Running /tmp/replay-10166-check/checker/ignored_worktrees.rs (/home/user/work/openagents-target-agent3/debug/deps/ignored_worktrees-513e76a6f9e6bae1)
+
+running 7 tests
+test clean_pushed_worktree_remains_eligible ... ok
+test disposable_caches_do_not_hide_ignored_user_data ... FAILED
+test ignored_dotenv_is_kept_with_a_useful_reason ... FAILED
+test ignored_private_directory_is_kept_with_its_contents ... FAILED
+test ordinary_unsaved_work_is_still_protected ... ok
+test recognized_cache_only_worktree_can_still_be_removed ... ok
+test unpushed_commits_are_still_protected ... ok
+
+failures:
+
+---- disposable_caches_do_not_hide_ignored_user_data stdout ----
+
+thread 'disposable_caches_do_not_hide_ignored_user_data' (50447) panicked at /tmp/replay-10166-check/checker/ignored_worktrees.rs:109:9:
+A worktree containing ignored user data must remain: .env
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- ignored_dotenv_is_kept_with_a_useful_reason stdout ----
+
+thread 'ignored_dotenv_is_kept_with_a_useful_reason' (50476) panicked at /tmp/replay-10166-check/checker/ignored_worktrees.rs:109:9:
+A worktree containing ignored user data must remain: .env
+
+---- ignored_private_directory_is_kept_with_its_contents stdout ----
+
+thread 'ignored_private_directory_is_kept_with_its_contents' (50505) panicked at /tmp/replay-10166-check/checker/ignored_worktrees.rs:109:9:
+A worktree containing ignored user data must remain: private/data.bin
+
+
+failures:
+    disposable_caches_do_not_hide_ignored_user_data
+    ignored_dotenv_is_kept_with_a_useful_reason
+    ignored_private_directory_is_kept_with_its_contents
+
+test result: FAILED. 4 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.68s
+
+error: test failed, to rerun pass `--test ignored_worktrees`

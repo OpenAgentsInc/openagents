@@ -1,0 +1,25 @@
+Diff in /tmp/replay-10166-check/repo/crates/background/src/tests.rs:351:
+     let (repo, trees) = repo(&home, &["secret", "built"]);
+     let [secret, built] = [&trees[0], &trees[1]];
+     std::fs::create_dir_all(repo.join(".git/info")).unwrap();
+-    std::fs::write(repo.join(".git/info/exclude"), ".env\n/private/\n/target/\n").unwrap();
++    std::fs::write(
++        repo.join(".git/info/exclude"),
++        ".env\n/private/\n/target/\n",
++    )
++    .unwrap();
+     std::fs::write(secret.join(".env"), "TOKEN=local").unwrap();
+     std::fs::create_dir_all(secret.join("private")).unwrap();
+     std::fs::write(secret.join("private/data"), "mine").unwrap();
+Diff in /tmp/replay-10166-check/repo/crates/background/src/tests.rs:366:
+         Some("holds ignored files: .env, private/")
+     );
+     run::run(&env, &disk(), Cause::Manual, false, true).unwrap();
+-    assert_eq!(std::fs::read_to_string(secret.join(".env")).unwrap(), "TOKEN=local");
++    assert_eq!(
++        std::fs::read_to_string(secret.join(".env")).unwrap(),
++        "TOKEN=local"
++    );
+     assert!(secret.join("private/data").exists());
+     assert!(!built.exists());
+ }

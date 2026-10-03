@@ -1,0 +1,29 @@
+   Compiling background v0.1.0 (/tmp/replay-10166-check/repo/crates/background)
+   Compiling historical-replay-10166-checker v0.0.0 (/tmp/replay-10166-check/baseline-2-holdout)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.47s
+     Running /tmp/replay-10166-check/checker/ignored_worktrees.rs (/home/user/work/openagents-target-agent3/debug/deps/ignored_worktrees-513e76a6f9e6bae1)
+
+running 7 tests
+test clean_pushed_worktree_remains_eligible ... ok
+test disposable_caches_do_not_hide_ignored_user_data ... ok
+test ignored_dotenv_is_kept_with_a_useful_reason ... ok
+test ignored_private_directory_is_kept_with_its_contents ... ok
+test ordinary_unsaved_work_is_still_protected ... ok
+test recognized_cache_only_worktree_can_still_be_removed ... FAILED
+test unpushed_commits_are_still_protected ... ok
+
+failures:
+
+---- recognized_cache_only_worktree_can_still_be_removed stdout ----
+
+thread 'recognized_cache_only_worktree_can_still_be_removed' (55991) panicked at /tmp/replay-10166-check/checker/ignored_worktrees.rs:155:41:
+Recognized ignored caches must not block cleanup: "holds ignored files: web/"
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    recognized_cache_only_worktree_can_still_be_removed
+
+test result: FAILED. 6 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.60s
+
+error: test failed, to rerun pass `--test ignored_worktrees`

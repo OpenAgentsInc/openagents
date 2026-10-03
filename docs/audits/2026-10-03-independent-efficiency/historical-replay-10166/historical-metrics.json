@@ -1,0 +1,246 @@
+{
+  "schema": "private.historical-replay.metrics.v1",
+  "issue": 10166,
+  "method": "Deduplicate assistant message ID, take per-field usage maximum among its streaming records; deduplicate tool-use ID. Phase bounds avoid splitting message IDs. Input counters are recorded repeated exposure, not unique tokens or billing. Time is wall span, not summed tool time.",
+  "phases": {
+    "initial_setup_source_read": {
+      "line_start": 1,
+      "line_end": 27,
+      "first_record": "2026-10-02T15:51:08.754Z",
+      "last_record": "2026-10-02T15:51:24.075Z",
+      "record_span_seconds": 15.321,
+      "unique_assistant_ids": 4,
+      "unique_tool_calls": 4,
+      "tool_names": {
+        "Bash": 4
+      },
+      "models": {
+        "claude-opus-5-5": 4
+      },
+      "effort_values": [
+        "medium"
+      ],
+      "usage": {
+        "input_tokens": 8,
+        "cache_creation_input_tokens": 57710,
+        "cache_read_input_tokens": 219230,
+        "output_tokens": 749
+      }
+    },
+    "personal_cleanup_investigation": {
+      "line_start": 28,
+      "line_end": 46,
+      "first_record": "2026-10-02T15:51:29.857Z",
+      "last_record": "2026-10-02T15:52:16.315Z",
+      "record_span_seconds": 46.458,
+      "unique_assistant_ids": 5,
+      "unique_tool_calls": 5,
+      "tool_names": {
+        "Bash": 5
+      },
+      "models": {
+        "claude-opus-5-5": 5
+      },
+      "effort_values": [
+        "medium"
+      ],
+      "usage": {
+        "input_tokens": 10,
+        "cache_creation_input_tokens": 6449,
+        "cache_read_input_tokens": 389989,
+        "output_tokens": 2444
+      }
+    },
+    "code_test_documentation": {
+      "line_start": 47,
+      "line_end": 81,
+      "first_record": "2026-10-02T15:52:23.237Z",
+      "last_record": "2026-10-02T15:53:50.601Z",
+      "record_span_seconds": 87.364,
+      "unique_assistant_ids": 9,
+      "unique_tool_calls": 9,
+      "tool_names": {
+        "Bash": 9
+      },
+      "models": {
+        "claude-opus-5-5": 9
+      },
+      "effort_values": [
+        "medium"
+      ],
+      "usage": {
+        "input_tokens": 18,
+        "cache_creation_input_tokens": 9281,
+        "cache_read_input_tokens": 767283,
+        "output_tokens": 6838
+      }
+    },
+    "rebase_check_push": {
+      "line_start": 82,
+      "line_end": 85,
+      "first_record": "2026-10-02T15:53:54.770Z",
+      "last_record": "2026-10-02T15:54:06.828Z",
+      "record_span_seconds": 12.058,
+      "unique_assistant_ids": 1,
+      "unique_tool_calls": 1,
+      "tool_names": {
+        "Bash": 1
+      },
+      "models": {
+        "claude-opus-5-5": 1
+      },
+      "effort_values": [
+        "medium"
+      ],
+      "usage": {
+        "input_tokens": 2,
+        "cache_creation_input_tokens": 1253,
+        "cache_read_input_tokens": 90204,
+        "output_tokens": 527
+      }
+    },
+    "through_push": {
+      "line_start": 1,
+      "line_end": 85,
+      "first_record": "2026-10-02T15:51:08.754Z",
+      "last_record": "2026-10-02T15:54:06.828Z",
+      "record_span_seconds": 178.074,
+      "unique_assistant_ids": 19,
+      "unique_tool_calls": 19,
+      "tool_names": {
+        "Bash": 19
+      },
+      "models": {
+        "claude-opus-5-5": 19
+      },
+      "effort_values": [
+        "medium"
+      ],
+      "usage": {
+        "input_tokens": 38,
+        "cache_creation_input_tokens": 74693,
+        "cache_read_input_tokens": 1466706,
+        "output_tokens": 10558
+      }
+    },
+    "first_code_message_through_push": {
+      "line_start": 47,
+      "line_end": 85,
+      "first_record": "2026-10-02T15:52:23.237Z",
+      "last_record": "2026-10-02T15:54:06.828Z",
+      "record_span_seconds": 103.591,
+      "unique_assistant_ids": 10,
+      "unique_tool_calls": 10,
+      "tool_names": {
+        "Bash": 10
+      },
+      "models": {
+        "claude-opus-5-5": 10
+      },
+      "effort_values": [
+        "medium"
+      ],
+      "usage": {
+        "input_tokens": 20,
+        "cache_creation_input_tokens": 10534,
+        "cache_read_input_tokens": 857487,
+        "output_tokens": 7365
+      }
+    },
+    "deployment_and_completion_report": {
+      "line_start": 86,
+      "line_end": 143,
+      "first_record": "2026-10-02T15:54:08.392Z",
+      "last_record": "2026-10-02T15:59:32.616Z",
+      "record_span_seconds": 324.224,
+      "unique_assistant_ids": 15,
+      "unique_tool_calls": 16,
+      "tool_names": {
+        "Bash": 13,
+        "ToolSearch": 1,
+        "Monitor": 1,
+        "TaskStop": 1
+      },
+      "models": {
+        "claude-opus-5-5": 15
+      },
+      "effort_values": [
+        "medium"
+      ],
+      "usage": {
+        "input_tokens": 32,
+        "cache_creation_input_tokens": 11673,
+        "cache_read_input_tokens": 1460129,
+        "output_tokens": 4581
+      }
+    },
+    "old_monitor_tail": {
+      "line_start": 144,
+      "line_end": 146,
+      "first_record": "2026-10-02T16:14:48.768Z",
+      "last_record": "2026-10-02T16:14:52.040Z",
+      "record_span_seconds": 3.272,
+      "unique_assistant_ids": 1,
+      "unique_tool_calls": 0,
+      "tool_names": {},
+      "models": {
+        "claude-opus-5-5": 1
+      },
+      "effort_values": [
+        "medium"
+      ],
+      "usage": {
+        "input_tokens": 4,
+        "cache_creation_input_tokens": 87955,
+        "cache_read_input_tokens": 16764,
+        "output_tokens": 161
+      }
+    },
+    "whole_transcript": {
+      "line_start": 1,
+      "line_end": 146,
+      "first_record": "2026-10-02T15:51:08.754Z",
+      "last_record": "2026-10-02T16:14:52.040Z",
+      "record_span_seconds": 1423.286,
+      "unique_assistant_ids": 35,
+      "unique_tool_calls": 35,
+      "tool_names": {
+        "Bash": 32,
+        "ToolSearch": 1,
+        "Monitor": 1,
+        "TaskStop": 1
+      },
+      "models": {
+        "claude-opus-5-5": 35
+      },
+      "effort_values": [
+        "medium"
+      ],
+      "usage": {
+        "input_tokens": 74,
+        "cache_creation_input_tokens": 174321,
+        "cache_read_input_tokens": 2943599,
+        "output_tokens": 15300
+      }
+    }
+  },
+  "first_prompt_to_push_result_seconds": 178.069,
+  "first_edit_tool_to_push_result_seconds": 95.909,
+  "first_prompt_to_pushed_ack_seconds": 179.638,
+  "cost_fields_found_outside_raw_content": [],
+  "issue_snapshot_comparison": {
+    "historical_result_line": 13,
+    "historical_observed_at": "2026-10-02T15:51:16.457Z",
+    "historical_state": "OPEN",
+    "title_exact_equal": true,
+    "body_equal_after_removing_cli_terminal_newline": true,
+    "current_state": "CLOSED",
+    "current_closed_at": "2026-10-02T15:54:07Z",
+    "body_sha256": "39fb27de8afd3b93ef1b356f6d0d60ddf7763de26135690499eb0cfb122d3271"
+  },
+  "transcript_sha256": "be2d7b681ddb537362fa0284f2fb973929c0a66575de5c55a8b9f9e3d0c8ac32",
+  "original_checkout_commit": "4705102273140a5f381fb75e17a29965662629c8",
+  "fix_commit": "d7f0ab8c6c7f795363ced901b8e08b35db204893",
+  "fix_parent_commit": "3e851134af98d39b07dadd195cb84e09ff310eeb",
+  "rebase_note": "Concurrent #10167 changed background runner/tests/docs between original checkout and landing. Use original checkout for faithful replay."
+}

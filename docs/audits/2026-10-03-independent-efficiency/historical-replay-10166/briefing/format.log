@@ -1,0 +1,12 @@
+Diff in /tmp/replay-10166-check/repo/crates/background/src/tests.rs:381:
+     assert!(why.contains(".env") && why.contains("private/"), "{why}");
+     assert!(!why.contains("target"), "{why}");
+     run::run(&env, &disk(), Cause::Manual, false, true).unwrap();
+-    assert_eq!(std::fs::read_to_string(secret.join(".env")).unwrap(), "TOKEN=x");
++    assert_eq!(
++        std::fs::read_to_string(secret.join(".env")).unwrap(),
++        "TOKEN=x"
++    );
+     assert!(secret.join("private/data").exists());
+     assert!(!built.exists());
+ }

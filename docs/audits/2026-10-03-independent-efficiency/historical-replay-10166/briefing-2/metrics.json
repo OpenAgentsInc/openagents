@@ -1,0 +1,126 @@
+{
+  "name": "briefing-2",
+  "condition": "briefing",
+  "wall_s": 97.567634583,
+  "exit_code": 0,
+  "ending": "success",
+  "model": [
+    "claude-opus-5-5"
+  ],
+  "effort": "medium",
+  "cli_version": "2.1.287",
+  "allowed_tools": [
+    "Edit",
+    "Glob",
+    "Grep",
+    "Read",
+    "Write"
+  ],
+  "cost_usd_list_estimate": 0.699192,
+  "cost_basis": "list",
+  "duration_api_ms": 96847,
+  "reported_turns": 21,
+  "tool_calls": {
+    "Read": 7,
+    "Grep": 4,
+    "Edit": 9
+  },
+  "input_tokens": 26,
+  "cache_creation_input_tokens": 48886,
+  "cache_read_input_tokens": 512300,
+  "output_tokens": 10277,
+  "thinking_tokens": 4259,
+  "prompt_bytes": 46074,
+  "prompt_sha256": "6d3bf3387cbdde75ddd43cde7f99aa80ab762895ce81e85e4756e094b5a78429",
+  "read_grep_result_bytes": 46410,
+  "read_requests": [
+    {
+      "path": "crates/background/src/git.rs",
+      "offset": null,
+      "limit": null
+    },
+    {
+      "path": "docs/background/2026-10-02-background-processes.md",
+      "offset": 155,
+      "limit": 100
+    },
+    {
+      "path": "crates/background/src/tests.rs",
+      "offset": null,
+      "limit": null
+    },
+    {
+      "path": "crates/background/src/plan.rs",
+      "offset": 200,
+      "limit": 60
+    },
+    {
+      "path": "crates/background/src/run.rs",
+      "offset": 270,
+      "limit": 40
+    },
+    {
+      "path": "docs/background/2026-10-02-background-processes.md",
+      "offset": 410,
+      "limit": 10
+    },
+    {
+      "path": "docs/background/2026-10-02-background-processes.md",
+      "offset": 517,
+      "limit": 12
+    }
+  ],
+  "checks": [
+    {
+      "arm": "briefing-2",
+      "check": "own-tests",
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "background"
+      ],
+      "exit_code": 0,
+      "wall_s": 8.361938082999586,
+      "patch_sha256": "2574146e0e6f2c81f1aa9c40a4a3f499f466e908d4d6498e2306cbddf1a32bf3"
+    },
+    {
+      "arm": "briefing-2",
+      "check": "format",
+      "command": [
+        "cargo",
+        "fmt",
+        "-p",
+        "background",
+        "--",
+        "--check"
+      ],
+      "exit_code": 0,
+      "wall_s": 0.2657362350000767,
+      "patch_sha256": "2574146e0e6f2c81f1aa9c40a4a3f499f466e908d4d6498e2306cbddf1a32bf3"
+    },
+    {
+      "arm": "briefing-2",
+      "check": "independent",
+      "command": [
+        "python3",
+        "/tmp/replay-10166-check/checker/run.py",
+        "--repo",
+        "/tmp/replay-10166-check/repo",
+        "--run-dir",
+        "/tmp/replay-10166-check/briefing-2-holdout",
+        "--target-dir",
+        "/home/user/work/openagents-target-agent3"
+      ],
+      "exit_code": 101,
+      "wall_s": 3.3785226790005254,
+      "patch_sha256": "2574146e0e6f2c81f1aa9c40a4a3f499f466e908d4d6498e2306cbddf1a32bf3"
+    }
+  ],
+  "independent_passed": 6,
+  "independent_total": 7,
+  "accepted": false,
+  "own_tests_passed": 22,
+  "patch_sha256": "2574146e0e6f2c81f1aa9c40a4a3f499f466e908d4d6498e2306cbddf1a32bf3",
+  "private_event_stream_sha256": "c8f6865c4bebfa4f89337a903cc8da757117b80ed84746c340babd19834b75a6"
+}

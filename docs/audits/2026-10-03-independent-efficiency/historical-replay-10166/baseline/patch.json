@@ -1,0 +1,21 @@
+{
+  "base": "4705102273140a5f381fb75e17a29965662629c8",
+  "patch_sha256": "11890494e1f8b0f9aede73766e25cb4ef456350ed2f073d923cea471c61dbba3",
+  "files": [
+    {
+      "path": "crates/background/src/git.rs",
+      "old_git_blob": "71b46a5f3623f67534ad1d84ba58c9404630a276",
+      "sha256": "2d6add2df62350ed8ad61153a1634691e8e54c70fa4fea4c376c5f0f91f75a47"
+    },
+    {
+      "path": "crates/background/src/tests.rs",
+      "old_git_blob": "102a840610b89b9f862c1a55aea0301cf1e543a2",
+      "sha256": "d7ea54bd6779e8c9dcee95d6d4f3677f3695c50a9c2efc7c1824c3b5ed92dc3a"
+    },
+    {
+      "path": "docs/background/2026-10-02-background-processes.md",
+      "old_git_blob": "df437e80fa807755833cc5f568013dfd4f77629f",
+      "sha256": "e88c0ec38c933c78952c79b6c841e525423a2cb9c5bf907d394118611f39675c"
+    }
+  ]
+}

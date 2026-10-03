@@ -1,0 +1,6 @@
+{
+  "body": "Found by a Codex review on CoderOS (thread 700865e6, 2026-10-02) of 5ae8d27af8 (#10156).\n\n`crates/background/src/git.rs:75-78`: the \"nothing unsaved\" check uses `git status --porcelain --untracked-files=all`, which excludes ignored files. A finished task's worktree holding ignored local data (`.env`, private datasets) passes the check, and `git worktree remove` deletes those files; the recorded undo only recreates the checkout, not their contents. Verified in a temp repo: an ignored `private/data` file gave an empty status and `git worktree remove` deleted it without force.\n\nFix: refuse to remove a worktree that holds ignored files outside recognized disposable caches (`target/`, `node_modules/`, build outputs the spec lists), or move them to the background trash first so undo restores them. Test with an ignored file in a temp repo.",
+  "number": 10166,
+  "title": "Disk cleanup can delete ignored user files when it removes a finished worktree",
+  "url": "https://github.com/OpenAgentsInc/openagents/issues/10166"
+}

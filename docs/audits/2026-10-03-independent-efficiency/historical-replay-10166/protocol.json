@@ -1,0 +1,44 @@
+{
+  "source_commit": "4705102273140a5f381fb75e17a29965662629c8",
+  "briefing_implementation_commit": "45dffd63ff35585e6b4273ae7b45196b3694c7a6",
+  "issue": 10166,
+  "model": "claude-opus-5-5",
+  "effort": "medium",
+  "arms": [
+    "baseline",
+    "briefing"
+  ],
+  "order": [
+    "baseline",
+    "briefing"
+  ],
+  "tools": [
+    "Read",
+    "Edit",
+    "Write",
+    "Glob",
+    "Grep"
+  ],
+  "budget_usd_per_arm": 10,
+  "timeout_seconds_per_arm": 600,
+  "scope": "One fresh implementation turn; identical read/edit tools; no commands, deployment, owner data access, or model test feedback; independent Boat tests after both outputs frozen.",
+  "briefing_components": "default lexical/symbol/history + execution; no syntax and no prior attempts; manifest crates/background/Cargo.toml; frozen before results",
+  "checker_sha256": "a7fc455b5b22565e494339687f9eb12dc207a11efede22af3c6aadce39fc788b",
+  "checker_frozen_before_reviewing_candidate_outputs": true,
+  "preflight_note": "Checker source frozen while baseline was running; base/fix executable calibration is independent and follows, not a precondition established before first model call.",
+  "replication": {
+    "added_after_first_pair_usage_before_acceptance": "Reverse-order pair to assess direction stability and cache/order sensitivity; same frozen task, tool, model, effort, briefing, checker, and limits. All runs retained.",
+    "order": [
+      "briefing-2",
+      "baseline-2"
+    ],
+    "outcome": "All four candidates fail the same independent case; no further paid trials in this experiment."
+  },
+  "issue_url": "https://github.com/OpenAgentsInc/openagents/issues/10166",
+  "tracking_issue": 10280,
+  "snapshot_method": "git archive, full tracked tree at original commit; no Git objects or remotes; tool-constrained fresh working directory per run",
+  "actual_commands": "run_arm.py; check.py; cargo test -p background; cargo fmt -p background -- --check",
+  "artifact_policy": "Raw CLI streams, original conversation, authentication, user identifiers, and model reasoning remain private. Published patches are benchmark outputs and are not applied to product code.",
+  "treatment_append_preamble": "\n\nThe following briefing was generated automatically from the same pre-task commit. Treat it as potentially incomplete source evidence. The command suggestions are for the independent verifier and do not change your tool restrictions.\n\n",
+  "feedback": "None: all four first attempts frozen and retained; no candidate patches repaired or deployed."
+}

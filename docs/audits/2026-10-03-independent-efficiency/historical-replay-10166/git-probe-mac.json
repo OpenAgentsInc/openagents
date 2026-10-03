@@ -1,0 +1,31 @@
+{
+  "schema": "openagents.briefing.git-probe.v1",
+  "git_version": "git version 2.50.1 (Apple Git-155)",
+  "commands": {
+    "ls_files_directory": [
+      "ls-files",
+      "-z",
+      "--others",
+      "--ignored",
+      "--exclude-standard",
+      "--directory",
+      "--no-empty-directory"
+    ],
+    "status_ignored_matching": [
+      "status",
+      "--porcelain",
+      "-z",
+      "--ignored=matching",
+      "--untracked-files=all"
+    ]
+  },
+  "outputs": {
+    "ls_files_directory": [
+      "web/"
+    ],
+    "status_ignored_matching": [
+      "!! web/node_modules/"
+    ]
+  },
+  "elapsed_seconds": 0.041599750000000005
+}

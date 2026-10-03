@@ -14,6 +14,11 @@ selection independently of file ranking and agent execution.
 The [conversation audit](conversation-briefing-audit.md) examines actual recent
 Claude activity and identifies concrete preparation experiments from observed
 coordination, setup, retrieval, and verification problems.
+The [historical replay of #10166](historical-replay-10166/README.md) runs four
+fresh Claude coding attempts on a pre-fix checkout. Briefing and control each
+produce zero accepted patches; all four pass their own tests but fail the
+same independent nested-cache case. The timing and cost advantage reverses
+between pairs. A separate 26 ms Git probe on Boat exposes the missing fact.
 
 ## Executive assessment
 

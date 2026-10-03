@@ -1,0 +1,137 @@
+{
+  "name": "baseline-2",
+  "condition": "baseline",
+  "wall_s": 95.60402387500001,
+  "exit_code": 0,
+  "ending": "success",
+  "model": [
+    "claude-opus-5-5"
+  ],
+  "effort": "medium",
+  "cli_version": "2.1.287",
+  "allowed_tools": [
+    "Edit",
+    "Glob",
+    "Grep",
+    "Read",
+    "Write"
+  ],
+  "cost_usd_list_estimate": 0.6632348000000001,
+  "cost_basis": "list",
+  "duration_api_ms": 94754,
+  "reported_turns": 23,
+  "tool_calls": {
+    "Read": 9,
+    "Glob": 1,
+    "Grep": 2,
+    "Edit": 10
+  },
+  "input_tokens": 30,
+  "cache_creation_input_tokens": 45343,
+  "cache_read_input_tokens": 537754,
+  "output_tokens": 9641,
+  "thinking_tokens": 3522,
+  "prompt_bytes": 2778,
+  "prompt_sha256": "4cdd9501fefcd7c982397d3ba453e5f36bb1d8004ace8ee410e9a7f0c713b8fe",
+  "read_grep_result_bytes": 86004,
+  "read_requests": [
+    {
+      "path": "AGENTS.md",
+      "offset": null,
+      "limit": null
+    },
+    {
+      "path": "crates/background/src/git.rs",
+      "offset": null,
+      "limit": null
+    },
+    {
+      "path": "crates/background/src/plan.rs",
+      "offset": 200,
+      "limit": 150
+    },
+    {
+      "path": "crates/background/src/tests.rs",
+      "offset": 240,
+      "limit": 110
+    },
+    {
+      "path": "docs/background/2026-10-02-background-processes.md",
+      "offset": 155,
+      "limit": 45
+    },
+    {
+      "path": "docs/background/2026-10-02-background-processes.md",
+      "offset": 468,
+      "limit": null
+    },
+    {
+      "path": "docs/background/2026-10-02-background-processes.md",
+      "offset": 219,
+      "limit": 20
+    },
+    {
+      "path": "crates/background/src/plan.rs",
+      "offset": 690,
+      "limit": 60
+    },
+    {
+      "path": "crates/background/src/git.rs",
+      "offset": 60,
+      "limit": 70
+    }
+  ],
+  "checks": [
+    {
+      "arm": "baseline-2",
+      "check": "own-tests",
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "background"
+      ],
+      "exit_code": 0,
+      "wall_s": 8.653479230999437,
+      "patch_sha256": "91231eb146911689c644018ec2d48bc78caafcb46ec3c4f442441b88cdbd61b1"
+    },
+    {
+      "arm": "baseline-2",
+      "check": "format",
+      "command": [
+        "cargo",
+        "fmt",
+        "-p",
+        "background",
+        "--",
+        "--check"
+      ],
+      "exit_code": 1,
+      "wall_s": 0.26576593600020715,
+      "patch_sha256": "91231eb146911689c644018ec2d48bc78caafcb46ec3c4f442441b88cdbd61b1"
+    },
+    {
+      "arm": "baseline-2",
+      "check": "independent",
+      "command": [
+        "python3",
+        "/tmp/replay-10166-check/checker/run.py",
+        "--repo",
+        "/tmp/replay-10166-check/repo",
+        "--run-dir",
+        "/tmp/replay-10166-check/baseline-2-holdout",
+        "--target-dir",
+        "/home/user/work/openagents-target-agent3"
+      ],
+      "exit_code": 101,
+      "wall_s": 3.227148640999985,
+      "patch_sha256": "91231eb146911689c644018ec2d48bc78caafcb46ec3c4f442441b88cdbd61b1"
+    }
+  ],
+  "independent_passed": 6,
+  "independent_total": 7,
+  "accepted": false,
+  "own_tests_passed": 22,
+  "patch_sha256": "91231eb146911689c644018ec2d48bc78caafcb46ec3c4f442441b88cdbd61b1",
+  "private_event_stream_sha256": "f71e9804d03f5160a0d7415cab30dc98fd087ee2ef77d51887e85908176770a7"
+}

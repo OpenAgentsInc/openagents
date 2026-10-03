@@ -1,0 +1,8 @@
+{
+  "commit": "4705102273140a5f381fb75e17a29965662629c8",
+  "binary_sha256": "f895afd212856bfe140c58b2b9f624aa3eeaa4b9a59467556321411bd9ffaec9",
+  "index_wall_s": 5.506361691000166,
+  "preview_wall_s": 0.6737268120004956,
+  "preview_stdout": "Preview: /tmp/replay-10166-brief/preview/briefing.md\nStructured evidence: /tmp/replay-10166-brief/preview/briefing.json\nComplete local preview including output: 571.701 ms\n",
+  "preview_stderr": ""
+}

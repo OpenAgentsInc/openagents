@@ -1,0 +1,402 @@
+{
+  "schema": "openagents.briefing-lab.preview.v1",
+  "commit": "4705102273140a5f381fb75e17a29965662629c8",
+  "issue": {
+    "title": "Disk cleanup can delete ignored user files when it removes a finished worktree",
+    "body": "Found by a Codex review on CoderOS (thread 700865e6, 2026-10-02) of 5ae8d27af8 (#10156).\n\n`crates/background/src/git.rs:75-78`: the \"nothing unsaved\" check uses `git status --porcelain --untracked-files=all`, which excludes ignored files. A finished task's worktree holding ignored local data (`.env`, private datasets) passes the check, and `git worktree remove` deletes those files; the recorded undo only recreates the checkout, not their contents. Verified in a temp repo: an ignored `private/data` file gave an empty status and `git worktree remove` deleted it without force.\n\nFix: refuse to remove a worktree that holds ignored files outside recognized disposable caches (`target/`, `node_modules/`, build outputs the spec lists), or move them to the background trash first so undo restores them. Test with an ignored file in a temp repo.",
+    "number": 10166,
+    "url": "https://github.com/OpenAgentsInc/openagents/issues/10166"
+  },
+  "components": {
+    "lexical": true,
+    "symbols": true,
+    "history": true
+  },
+  "evidence": [
+    {
+      "path": "crates/background/src/git.rs",
+      "blob": "71b46a5f3623f67534ad1d84ba58c9404630a276",
+      "file_sha256": "d45db250ac0954038e3cd986bca59307409c083b8ae625d0b4f80c1b9e68384e",
+      "excerpt_sha256": "46a267235a901b257bc433fca87f69594effbc38f5daa1fbf37e5982171132c1",
+      "start_line": 4,
+      "end_line": 67,
+      "total_lines": 170,
+      "reasons": [
+        "Explicit issue path",
+        "Lexical overlap: background, check, checkout, crates, empty, env, file, files, first, git, holds, ignored",
+        "Declaration hint: Undo"
+      ],
+      "text": "use std::path::{Path, PathBuf};\nuse std::process::Command;\n\nuse serde::{Deserialize, Serialize};\n\n/// What recreates a removed worktree: its repository, branch, and commit.\n#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]\n#[serde(deny_unknown_fields)]\npub struct Undo {\n    pub repo: PathBuf,\n    pub path: PathBuf,\n    #[serde(default, skip_serializing_if = \"Option::is_none\")]\n    pub branch: Option<String>,\n    pub commit: String,\n}\n\nfn git(dir: &Path, args: &[&str]) -> Result<String, String> {\n    let output = Command::new(\"git\")\n        .arg(\"-C\")\n        .arg(dir)\n        .args(args)\n        .env(\"GIT_TERMINAL_PROMPT\", \"0\")\n        .env(\"GIT_OPTIONAL_LOCKS\", \"0\")\n        .stdin(std::process::Stdio::null())\n        .output()\n        .map_err(|error| format!(\"git: {error}\"))?;\n    if output.status.success() {\n        Ok(String::from_utf8_lossy(&output.stdout)\n            .trim_end()\n            .to_owned())\n    } else {\n        Err(format!(\n            \"git {}: {}\",\n            args.first().copied().unwrap_or_default(),\n            String::from_utf8_lossy(&output.stderr).trim()\n        ))\n    }\n}\n\n/// Whether Git ignores `path` inside the checkout `top`.\n#[must_use]\npub fn ignored(top: &Path, path: &Path) -> bool {\n    let Ok(relative) = path.strip_prefix(top) else {\n        return false;\n    };\n    Command::new(\"git\")\n        .arg(\"-C\")\n        .arg(top)\n        .args([\"check-ignore\", \"-q\", \"--no-index\"])\n        .arg(relative)\n        .stdin(std::process::Stdio::null())\n        .stdout(std::process::Stdio::null())\n        .stderr(std::process::Stdio::null())\n        .status()\n        .is_ok_and(|status| status.success())\n}\n\n/// Check that the worktree at `path` holds nothing that is not saved\n/// elsewhere: it is a linked worktree (its `.git` is a file), `git status`\n/// is clean (untracked files count), every commit is on some remote, and\n/// no stash was made on it. Returns what recreates it.\n///\n/// # Errors\n/// Why it must stay.\n"
+    },
+    {
+      "path": "crates/coder/src/task/local.rs",
+      "blob": "1b8c46efce7b63fd4934363653560a82ebd9da5c",
+      "file_sha256": "38953f50dfd1ebd6c604446ca470fbdb0912dafee3646733b2d285e67e946e43",
+      "excerpt_sha256": "32bd5220e9590a1ac5328d8be402197e44c25aa6b19a2aa7a8aea62c0847ddf4",
+      "start_line": 68,
+      "end_line": 131,
+      "total_lines": 3350,
+      "reasons": [
+        "Lexical overlap: 2026, background, build, checkout, coder, codex, crates, deleted, disk, empty, env, file",
+        "Declaration hint: LOCAL_HOST"
+      ],
+      "text": "/// Names another task store than [`default_store`].\npub const STORE_VAR: &str = \"OPENAGENTS_TASKS\";\n/// Names the engine (`microcoder`) instead of the one beside the running\n/// program or in `~/.openagents/bin`.\npub const CONTROLLER_VAR: &str = \"OPENAGENTS_CODER_CONTROLLER\";\n/// The record a local run keeps beside its task.\npub const RECORD_SCHEMA: &str = \"openagents.coder.local-run.v1\";\n/// The host name a thread's binding gives a local run.\npub const LOCAL_HOST: &str = \"local\";\n// A turn has no step or time limit: it ends when Coder finishes or asks,\n// when the person stops it, or when the loop's stuck guard finds it\n// repeating a failed approach without progress (#10103).\nconst MEMORY_BYTES: u64 = 4096 * 1024 * 1024;\n/// How long a started turn may wait for its owner before a missing\n/// admission counts as a failure, when the owner left no diagnostic.\nconst ADMISSION_WAIT: u64 = 120;\n\n/// The task store local runs use: `$OPENAGENTS_TASKS`, else\n/// `~/.openagents/tasks`, the store `coder task` and a host on this\n/// computer use by default.\n#[must_use]\npub fn default_store() -> PathBuf {\n    if let Some(dir) = std::env::var_os(STORE_VAR).filter(|v| !v.is_empty()) {\n        return PathBuf::from(dir);\n    }\n    std::env::var_os(\"HOME\")\n        .map_or_else(|| PathBuf::from(\".\"), PathBuf::from)\n        .join(\".openagents/tasks\")\n}\n\n/// The engine that runs a turn: `$OPENAGENTS_CODER_CONTROLLER`, else the\n/// `microcoder` beside the running program, in its app bundle, or in\n/// `~/.openagents/bin` ([`autostart::default_controller`]).\n///\n/// # Errors\n/// Names where it looked.\npub fn controller() -> Result<PathBuf, String> {\n    if let Some(path) = std::env::var_os(CONTROLLER_VAR).filter(|v| !v.is_empty()) {\n        return PathBuf::from(path)\n            .canonicalize()\n            .map_err(|_| format!(\"{CONTROLLER_VAR} names no file\"));\n    }\n    autostart::default_controller().and_then(|path| {\n        path.canonicalize()\n            .map_err(|_| \"the microcoder engine is missing\".into())\n    })\n}\n\n/// A person's Git checkout.\n#[derive(Clone, Debug, PartialEq, Eq)]\npub struct Checkout {\n    /// Its top level.\n    pub top: PathBuf,\n    /// Its folder's name, which names the project.\n    pub name: String,\n    /// The commit `HEAD` names.\n    pub head: String,\n}\n\npub(crate) fn git() -> std::process::Command {\n    let program = owner::GIT_PATHS\n        .iter()\n        .find(|path| Path::new(path).exists())\n        .copied()\n"
+    },
+    {
+      "path": "crates/coder/src/delegate.rs",
+      "blob": "034328b01804d2a6ebfbe4c24f591845321d28d3",
+      "file_sha256": "b4875c3cca09dd3ee18306a0584bc5488fe3ce0598cb83a727bb0db7c028d860",
+      "excerpt_sha256": "2ccae96f4cbfbf48148d8e81707f469f8164c3203d2bc611220e67d69751b76d",
+      "start_line": 93,
+      "end_line": 156,
+      "total_lines": 3647,
+      "reasons": [
+        "Lexical overlap: background, build, check, checkout, cleanup, coder, crates, data, deleted, disk, empty, env",
+        "Declaration hint: DEVIN_LOCAL"
+      ],
+      "text": "/// The cap is applied as the bytes arrive rather than to the string at the\n/// end, so it bounds what this process holds and not only what the trace\n/// records. Bytes past it are counted and dropped, and\n/// [`Delegation::bytes`] says how many there were.\npub const OUTPUT_MAX: usize = 64 * 1024;\n\n/// The capability slug the Devin CLI on this computer answers to, as\n/// [NIP-CAP](../../../nips/openagents/NIP-CAP.md) names capabilities.\npub const DEVIN_LOCAL: &str = \"devin-local\";\n\n/// The directory, under the repository, that worktrees are made in.\n///\n/// Under the repository rather than under the system temporary directory,\n/// because a checkout somewhere else is a directory nobody has trusted:\n/// `devin` declines `/private/tmp/…` and accepts a worktree inside a\n/// checkout it already trusts.\npub const WORKTREE_DIR: &str = \".coder/worktrees\";\n\n/// One refusal an executor declares: the code a host records, and the\n/// phrase the executor prints when it refuses that way.\n///\n/// The phrase is matched rather than an exit code because the executor\n/// publishes no typed code — it exits 1 and says why on stderr. Matching a\n/// **declared** phrase from a manifest is not intent routing: the route is\n/// already chosen, the executor is already named, and the phrase is a\n/// bounded field of its description.\n#[derive(Clone, Debug)]\npub struct Refusal {\n    /// What the trace calls this refusal.\n    pub code: String,\n    /// The text the executor prints when it refuses this way.\n    pub phrase: String,\n}\n\nimpl Refusal {\n    /// A declared refusal.\n    #[must_use]\n    pub fn new(code: &str, phrase: &str) -> Self {\n        Refusal {\n            code: code.to_string(),\n            phrase: phrase.to_string(),\n        }\n    }\n}\n\n/// How to drive one executor: the local half of a capability manifest.\n///\n/// The fields a manifest publishes — what it enforces, what it cannot\n/// enforce, whether it sees the repository — belong to the probe and the\n/// admission check. What a delegation needs is narrower: which binary, at\n/// which absolute path, with which arguments, and what it declares it\n/// refuses.\n///\n/// **Nothing here names an executor.** An `Executor` is built by\n/// [`crate::survey::executor`] from a probed manifest, so the binary is\n/// the absolute path the probe resolved and the arguments are the\n/// manifest's `invoke`. A constructor that wrote a binary name and an argv\n/// into this file would be a second source of truth for how to drive an\n/// executor, next to the manifest that exists to be the first.\n#[derive(Clone, Debug)]\npub struct Executor {\n    /// The capability slug, the name a trace records.\n    pub capability: String,\n    /// The absolute path to the binary. Never a bare name: see the module\n"
+    },
+    {
+      "path": "crates/coder/src/task/autostart.rs",
+      "blob": "bfa86bf5e5193a692fb13f1d44c32d9eac8cf5dc",
+      "file_sha256": "5d554cbc69ec57e83aa431bf71de0ab802b3476f498559ac8fb308d9202f90e7",
+      "excerpt_sha256": "f3533def90baf0343ab04aa1f6566200a3525a5da2c9ff6bf493e40b31d69920",
+      "start_line": 48,
+      "end_line": 111,
+      "total_lines": 4435,
+      "reasons": [
+        "Lexical overlap: 2026, background, build, check, checkout, coder, codex, contents, crates, disk, empty, env",
+        "Declaration hint: POLICY_FILE"
+      ],
+      "text": "use super::account;\nuse super::capacity::{self, Connection, Provider};\nuse super::usage;\nuse super::{Action, COMMAND_SCHEMA, Command, Status, Store, adapter, owner};\n\npub use coder_host::StartCause;\n\n/// The policy file in the host root.\npub const POLICY_FILE: &str = \"autostart.json\";\n/// The append-only record in the host root.\npub const JOURNAL_FILE: &str = \"autostart.jsonl\";\npub const POLICY_SCHEMA: &str = \"openagents.coder.host-autostart.v1\";\npub const ENTRY_SCHEMA: &str = \"openagents.coder.host-autostart-entry.v1\";\n/// The most tasks a policy may run at once.\npub const MAX_RUNNING: u32 = 8;\n/// The decision model a new policy names. The engine refuses a Jev reply\n/// whose model differs from the admitted one, so this is an exact version,\n/// never an alias such as `jev-latest`.\npub const DEFAULT_DECISION_MODEL: &str = \"jev-1.13.0\";\n/// How long a started task may stay queued, waiting for its owner process\n/// to admit it, before it stops counting against the concurrency bound.\nconst PENDING_GRACE: u64 = 120;\n/// How long a started task may stay queued while its owner process still\n/// runs before the host ends it as never started. An owner that has exited\n/// without admitting the task ends it at the next sweep instead. It matches\n/// [`StartCause::Timeout`]'s sentence.\nconst ADMISSION_DEADLINE: u64 = 600;\n/// How many times the host launches an owner for one turn when the owner\n/// stops without admitting it for a cause that may be transient.\nconst MAX_ATTEMPTS: usize = 2;\n/// The most of a launch diagnostic the host reads, from its end.\nconst DIAGNOSTIC_TAIL: u64 = 64 * 1024;\n/// How often the host looks for eligible tasks it could not start earlier.\npub const SWEEP_EVERY: Duration = Duration::from_secs(10);\n/// How long a sweep waits for a busy task store. A save's disk sync can\n/// hold the store lock for seconds while a build writes to a nearly full\n/// volume, as on a host being updated; no device waits on a sweep.\npub const STORE_WAIT: Duration = Duration::from_secs(120);\n\n/// The owner's policy.\n#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]\n#[serde(deny_unknown_fields)]\npub struct Policy {\n    pub schema: String,\n    pub enabled: bool,\n    /// Workspace labels whose tasks may start.\n    pub workspaces: Vec<String>,\n    /// Auto-started tasks that may run at once, 1 to 8.\n    pub max_running: u32,\n    pub engine: Engine,\n    /// When the owner last changed the policy, in Unix seconds.\n    pub changed_at: u64,\n}\n\n/// What runs an auto-started task, and its bounds.\n#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]\n#[serde(deny_unknown_fields)]\npub struct Engine {\n    /// Only `microcoder-repository`.\n    pub adapter: String,\n    /// The absolute path of the `microcoder` executable that owns the run.\n    pub controller: PathBuf,\n    /// The model recorded in each eligible task and admitted by its grant.\n    pub model: String,\n"
+    },
+    {
+      "path": "crates/coder-delegate/src/delegate.rs",
+      "blob": "aa56eb54d723e1402dcbeca83ad0ddba7673449b",
+      "file_sha256": "ae4d5c090d6bfc1295bdeb44f233750ce79aba079e212579f7d75f2bc658063b",
+      "excerpt_sha256": "acac5008a4c58773e035ba1a78f6f9f2a6f3efb56966a3cd2e02bcf3f20a9da2",
+      "start_line": 34,
+      "end_line": 97,
+      "total_lines": 4323,
+      "reasons": [
+        "Lexical overlap: 2026, build, caches, check, checkout, coder, codex, contents, crates, data, disk, empty",
+        "Declaration hint: DEFAULT_CODEX_MODEL"
+      ],
+      "text": "use crate::record::{Finish, Implementation, Outcome as RecordOutcome, Recorder, Start};\nuse crate::state::{State, Turn};\n\n/// The model the Claude Code delegate runs on unless the operator names\n/// another.\npub const DEFAULT_MODEL: &str = \"claude-opus-5-5\";\n\n/// The model the Codex delegate runs on unless the operator names another.\npub const DEFAULT_CODEX_MODEL: &str = \"gpt-6.1-sol\";\n\n/// The model the OpenCode delegate runs on unless the operator names\n/// another: empty, which keeps the model the owner configured in OpenCode.\n/// A named model is OpenCode's `provider/model`.\npub const DEFAULT_OPENCODE_MODEL: &str = \"\";\n\n/// Which CLI runs the briefing.\n#[derive(Debug, Clone, Copy, PartialEq, Eq)]\npub enum Agent {\n    /// Claude Code in print mode, `claude -p`.\n    ClaudeCode,\n    /// Codex CLI, `codex exec`.\n    Codex,\n    /// Microluna, in this process: short GPT-6 Luna sessions on the Codex\n    /// login, with no CLI ([`crate::micro`]).\n    Microluna,\n    /// OpenCode, `opencode run --format json`, with OpenCode's own logins.\n    OpenCode,\n}\n\nimpl Agent {\n    /// Parses `claude-code` or `codex`.\n    pub fn parse(text: &str) -> Result<Self, String> {\n        match text.trim() {\n            \"claude-code\" | \"claude\" | \"\" => Ok(Agent::ClaudeCode),\n            \"codex\" => Ok(Agent::Codex),\n            \"microluna\" => Ok(Agent::Microluna),\n            \"opencode\" => Ok(Agent::OpenCode),\n            other => Err(format!(\n                \"delegate agent must be claude-code, codex, opencode, or microluna, not {other}\"\n            )),\n        }\n    }\n\n    /// The name the record uses.\n    #[must_use]\n    pub fn word(self) -> &'static str {\n        match self {\n            Agent::ClaudeCode => \"claude-code\",\n            Agent::Codex => \"codex\",\n            Agent::Microluna => \"microluna\",\n            Agent::OpenCode => \"opencode\",\n        }\n    }\n\n    /// The model this agent delegates to unless the operator names another.\n    #[must_use]\n    pub fn default_model(self) -> &'static str {\n        match self {\n            Agent::ClaudeCode => DEFAULT_MODEL,\n            Agent::Codex | Agent::Microluna => DEFAULT_CODEX_MODEL,\n            Agent::OpenCode => DEFAULT_OPENCODE_MODEL,\n        }\n    }\n\n"
+    },
+    {
+      "path": "crates/coder/src/runtime.rs",
+      "blob": "802bd1422f0e5274cd57b2019295af4b20cee68e",
+      "file_sha256": "92fb747bd4a4457735b167dac8798fe609c8c728bef34edd4f364b6551a10689",
+      "excerpt_sha256": "bf8cecb957e210ce1c56b9550a8e4ca99003268993dc494eeba469e95795c650",
+      "start_line": 197,
+      "end_line": 260,
+      "total_lines": 9417,
+      "reasons": [
+        "Lexical overlap: 2026, build, check, checkout, cleanup, coder, crates, data, disk, empty, env, file",
+        "Declaration hint: holds"
+      ],
+      "text": "            Enforcement::Executor => \"executor\",\n            Enforcement::Ignored => \"ignored\",\n            Enforcement::Unknown => \"unknown\",\n        }\n    }\n\n    /// Whether a delegation may run under a bound in this state.\n    #[must_use]\n    pub fn holds(self) -> bool {\n        matches!(self, Enforcement::Host | Enforcement::Executor)\n    }\n}\n\n/// Why a step, or a program, did not run.\n///\n/// A refusal names the step rather than only the reason, because the\n/// reason alone does not say where a program stopped and a run's evidence\n/// is the pair.\n#[derive(Clone, Debug, PartialEq, Eq)]\npub struct Refused {\n    /// The step that refused, or the empty string when the program\n    /// refused before any step was reached.\n    pub step: String,\n    /// What the host calls this refusal.\n    pub code: String,\n    /// Why, in a sentence.\n    pub reason: String,\n}\n\nimpl Refused {\n    /// A refusal at one step.\n    #[must_use]\n    pub fn at(step: &str, code: &str, reason: impl Into<String>) -> Self {\n        Refused {\n            step: step.to_string(),\n            code: code.to_string(),\n            reason: reason.into(),\n        }\n    }\n}\n\nimpl std::fmt::Display for Refused {\n    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {\n        match self.step.is_empty() {\n            true => write!(f, \"{}\", self.reason),\n            false => write!(f, \"step {}: {}\", self.step, self.reason),\n        }\n    }\n}\n\n/// What this host can hold a program to.\n///\n/// A host is not a policy and not a permission: it is the list of things\n/// this process knows how to enforce. A bound outside it refuses the step\n/// that named it, which is the rule that keeps a program from running\n/// unbounded on a host that shrugged.\n#[derive(Clone, Debug)]\npub struct Host {\n    /// The checkout shapes this host can give a delegation.\n    pub isolation: Vec<Isolation>,\n}\n\nimpl Host {\n    /// The host a machine with a git checkout is: it can share its\n"
+    },
+    {
+      "path": "crates/coder-one/src/micro.rs",
+      "blob": "572b61f5e092473a130e59dc1bd31cbd5def14cb",
+      "file_sha256": "eaf1eed12d2e496ca624fc45c16f54545b02d9872be8b4a6c4684dd4b8cde47b",
+      "excerpt_sha256": "180ba0a6b1e518440f8af8a6a4ea7bc8c75fdff27e966c78bb73e85d43617209",
+      "start_line": 105,
+      "end_line": 168,
+      "total_lines": 5035,
+      "reasons": [
+        "Lexical overlap: check, cleanup, coder, codex, crates, delete, disk, empty, env, file, files, finished",
+        "Declaration hint: by_file"
+      ],
+      "text": "            found.push(clause.to_string());\n        }\n    }\n    found\n}\n\n/// A diff cut into one entry per file, each clipped, so a judge can see\n/// which file carries what.\nfn by_file(diff: &str) -> Map<String, Value> {\n    let mut files = Map::new();\n    let mut name = String::new();\n    let mut body = String::new();\n    let flush = |name: &str, body: &mut String, files: &mut Map<String, Value>| {\n        if !name.is_empty() {\n            files.insert(name.to_string(), json!(clip_lines(body, 5_000)));\n        }\n        body.clear();\n    };\n    for line in diff.lines() {\n        let next = line\n            .strip_prefix(\"diff --git a/\")\n            .and_then(|rest| rest.split(\" b/\").next())\n            .or_else(|| {\n                line.strip_prefix(\"new file \")\n                    .map(|rest| rest.trim_end_matches(':'))\n            });\n        if let Some(next) = next {\n            flush(&name, &mut body, &mut files);\n            name = next.to_string();\n        }\n        body.push_str(line);\n        body.push('\\n');\n    }\n    flush(&name, &mut body, &mut files);\n    files\n}\n\n/// What the workspace at `dir` changed against its Git `HEAD`, with the\n/// text of new files, or `None` when it isn't a Git work tree.\nfn workspace_diff(dir: &Path) -> Option<String> {\n    let run = |args: &[&str]| {\n        std::process::Command::new(\"git\")\n            .args(args)\n            .current_dir(dir)\n            .output()\n            .ok()\n            .filter(|out| out.status.success())\n            .map(|out| String::from_utf8_lossy(&out.stdout).into_owned())\n    };\n    let mut diff = run(&[\"diff\", \"HEAD\"])?;\n    for file in run(&[\"ls-files\", \"--others\", \"--exclude-standard\"])?.lines() {\n        if let Ok(text) = std::fs::read_to_string(dir.join(file)) {\n            diff.push_str(&format!(\n                \"\\nnew file {file}:\\n{}\\n\",\n                crate::judge::clip(&text, 3_000)\n            ));\n        }\n    }\n    Some(diff)\n}\n\n/// The schema of the loop's record.\npub const LOOP_SCHEMA: &str = \"openagents.coder-one.microluna-loop.v1\";\n\n"
+    },
+    {
+      "path": "crates/coder-one/src/micro/lean.rs",
+      "blob": "75f46249f61f1a7469383862658bf95fab1e30d4",
+      "file_sha256": "23ca47a121471cb9202b56c7d6bc01e414a361626128b3d75d55ed450ee48d26",
+      "excerpt_sha256": "c28d463ef0a60f30a837b91d7a32391ebcd1bae1af05bf75681e03c654416390",
+      "start_line": 850,
+      "end_line": 913,
+      "total_lines": 3891,
+      "reasons": [
+        "Lexical overlap: 2026, build, check, cleanup, coder, crates, data, empty, env, excludes, file, files",
+        "Declaration hint: EXAMPLE_FIRST"
+      ],
+      "text": "untouched code with a small script before you change anything, trace it to the component \\\nresponsible, and confirm your change removes it. Check each component on its own against what \\\nit should compute, not only the end-to-end result.\";\n\n/// Added with `example_first`. Every Luna run on one dev task guessed the\n/// mechanism behind a provided input and output pair and never compared\n/// the two; Fable's passing runs compared them first and read the\n/// mechanism off the difference.\npub const EXAMPLE_FIRST: &str = \"When the task provides an input together with its expected \\\noutput, work out the exact transformation from that pair before you design anything: compute \\\nwhat turns each part of the input into the output, and look for the structure in that mapping, \\\nsuch as what repeats, what depends on what came before, and what differs between positions. Test \\\neach hypothesis against the pair, and drop the ones it contradicts.\";\n\n/// Added with `standard_forms`. A session kept a well-known statistic in a\n/// variant its docstring defended, and the verifier required the\n/// standard form.\npub const STANDARD_FORMS: &str = \"The standard definition of a well-known method the code \\\nimplements, such as a statistic, an algorithm, a protocol, or a format, is part of what the task \\\nasks. Where the code or a comment chooses a variant of it, treat the choice as a suspect, and use \\\nthe standard form unless the task says otherwise.\";\n\n/// Added with `holdout`: examples are a sample of a rule, not the answer.\npub const HOLDOUT_GUIDANCE: &str = \"When the task provides examples, training data, or a sample \\\nwith its answer, treat them as a sample of a general rule, not as the answer. The task is judged \\\non inputs you haven't seen. Set part of the examples aside as held out, such as every fifth one, \\\ndevelop on the rest, and measure on the held-out part. Never copy the examples, their answers, \\\nor a table of them into the solution, and never have the solution read a provided answer file.\";\n\n/// Added to the score guidance with `fresh_inputs`. In every live fire loop\n/// run that failed on `interleaved-vigenere`, `risk-scorer-replay`, and\n/// `telecom-entity-resolution`, Luna scored its work only on the provided\n/// sample and failed on the graded inputs; Fable 5.1's winners on all three\n/// built fresh cases first: generated inputs, random inputs checked against\n/// a provided program, or a field held back as labels.\npub const FRESH_INPUTS: &str = \"When the task is judged on inputs it doesn't give you, such as \\\nfreshly generated ones, hidden test data, or inputs made with other keys or seeds, make the \\\nscript build several new inputs the way the task describes them, with answers you can check, and \\\nscore the solution on those, not only on the provided sample. You can make them with a generator \\\nyou write from the task's description, with random inputs compared against a program the task \\\nprovides, or by holding back part of the provided data or one of its fields as the answer. A score \\\non the provided sample alone can't tell a general solution from one fitted to that sample.\";\n\n/// Added to the score guidance with `stated_invariants`. On\n/// `batched-eval-parity`, an Ember run (issue #9665) passed the task's\n/// calibration and runtime checks but crashed in padded mode, which its\n/// score script never ran, although the task says padded and packed must\n/// match and results must not depend on batching or input order.\npub const STATED_INVARIANTS: &str = \"When the task says results must match or stay the same across settings, such as two modes, batch sizes, padding, input order, repeated runs, or a cache, make the script check each one: run the solution on the same input under every setting the task lists, compare the outputs exactly, and count each pair that differs as a failed check. Also run every mode and option value the task names at least once, and count a crash as a failed check. A mode the script never runs is a mode it can't score.\";\n\n/// Added with `keep_best` until the score script exists: where to write it.\n#[must_use]\npub fn score_guidance(eval: &Path) -> String {\n    format!(\n        \"Before your first change to the solution, write an evaluation script at \\\n         `{eval}/score.sh`. It runs the solution in the workspace the way the task will be \\\n         judged and prints, as its last line, `SCORE <passed> <total>`: how many of the task's \\\n         stated checks pass, or how many held-out examples come out exactly right. Keep it under \\\n         60 seconds, and make it score the untouched workspace low. The host freezes a copy of \\\n         it after this session, runs it after every session, and keeps the workspace that scores \\\n         best, so a later change that lowers the score is dropped.\",\n        eval = eval.display()\n    )\n}\n"
+    },
+    {
+      "path": "AGENTS.md",
+      "blob": "2024a68885fc6367b371e2085d9318ebc03d8775",
+      "file_sha256": "1c8b34cd15a84d96dab60bda6cc95c933df6bae7c19de60a94f18e07898d59f2",
+      "excerpt_sha256": "3aa112e2be4bff2a02d2f572c606ca5ab01845d03a3322f9714fc113d6271b85",
+      "start_line": 1,
+      "end_line": 64,
+      "total_lines": 703,
+      "reasons": [
+        "Ancestor instructions, manifest, or crate guide"
+      ],
+      "text": "# OpenAgents agent contract\n\nProduct code in this workspace is Rust. Do not add TypeScript. The existing\nproduct exception is `swift/lev-bridge`, the helper that reaches Apple's\n`FoundationModels` framework, which has no Rust binding; it is built by a\nrepo script and supervised as a child process. Coder's iOS host at `bins/coder-ios/host` also uses thin SwiftUI glue for native controls, mounting, and\ncallbacks, as explicitly requested for that surface. Keep its application state,\ndomain logic, permissions, and transport in Rust; the implemented observer keeps these in `coder-mobile` and `coder-connect`. Read `crates/rust-native/docs/spec.md` and `docs/coder/rust-native/architecture.md`\nbefore adding that boundary.\nThe OpenAgents iOS host at `bins/openagents-ios/host` follows the same thin\nSwiftUI boundary; its application state lives in `crates/openagents-mobile`.\nThe OpenAgents Android host at `bins/openagents-android/host` is thin Kotlin\nover the same crate, through its JNI surface (`src/android.rs`).\nThe Android host at `bins/coder-android/host` uses the equivalent thin Kotlin\nboundary for Android framework widgets, `SurfaceView`, camera, sensors, and\nKeystore access. Keep domain state, Nostr, authorization, cache, and world\nbehavior in the same Rust mobile library; do not import the private Android\nbackend or authentication implementation.\nRetained Python training and\nacceptance tooling and shell orchestration are infrastructure exceptions,\nnot permission to add another product implementation language.\nThe Nix and shell under `os/` (CoderOS) are infrastructure in the same sense:\nthey configure a machine and launch Rust programs, and product behavior\nbelongs in Rust.\n\nTo ship the OpenAgents iOS app to TestFlight (for example when asked from the\nphone), run `scripts/release/testflight.sh start` (add `--validate-only` for\na dry run that archives and validates without uploading), then run\n`scripts/release/testflight.sh wait` again and again until it exits 0 (done)\nor 1 (failed; the reason is its last line); each `wait` returns within four\nminutes. Before a real upload, raise `CURRENT_PROJECT_VERSION` in\n`bins/openagents-ios/host/project.yml` to the build being shipped, add that\nbuild's entry at the top of `CHANGELOG` in\n`crates/openagents-mobile/src/account.rs`, commit, and push to `main`; the\nscript refuses a dirty checkout or a build number App Store Connect already\nhas. Report the build number and the script's last line.\n\n## Velocity (owner, 2026-10-01)\n\nShip small changes fast. The default check for a change is `cargo test -p`\nfor the crates you edited plus `cargo fmt`; that is enough to commit and push.\nDo not run, unless the task is a release or the owner reported that exact\nflow broken:\n\n- Clippy, the release gate (`scripts/release/acceptance.sh`), the phone\n  suite, live runs against real engines, or other crates' tests.\n- New `INVARIANTS.md` rows, design notes, or long docs. Update an existing\n  row only when the change breaks what it says, in one sentence.\n\nReuse one long-lived Cargo target directory per agent slot\n(`~/work/openagents-target-agentN`); never create a fresh one per task or\ndelete it at the end, because a cold build of this workspace costs minutes.\nWhen a test fails only because a checked-in generated file is stale, run its\nregenerate command and commit the result; don't investigate further.\n\nDocumentation-only changes do not require the Rust verification gate, including\nbefore a push. Check links, paths, and retained artifacts for documentation\nreorganizations. Comment edits and documentation path updates do not require\nworkspace-wide tests; if an embedded document's loading path changes, check only\nthe affected consumer.\n\nFor day-to-day Rust behavior changes, use the pinned toolchain and targeted\nchecks for the affected code and its relevant consumers. A bare\n`./scripts/verify-rust.sh` runs changed-package formatting, Clippy, and tests;\n"
+    },
+    {
+      "path": "Cargo.toml",
+      "blob": "653ecf5ff12d1e70f26503e1be7ada525cf546f2",
+      "file_sha256": "f09b99b62b22af0b1e3d04e070efeaa5c86e5ebdfe320119b896299d84675029",
+      "excerpt_sha256": "f09b99b62b22af0b1e3d04e070efeaa5c86e5ebdfe320119b896299d84675029",
+      "start_line": 1,
+      "end_line": 64,
+      "total_lines": 64,
+      "reasons": [
+        "Ancestor instructions, manifest, or crate guide"
+      ],
+      "text": "[workspace]\nmembers = [\n    \"crates/coderbench\",\"crates/*\"]\n# Retained Ruins of Atlantis source is third-party code, not first-party workspace policy.\nexclude = [\n    # Its own workspace, for Breez's SQLite; see its Cargo.toml.\n    \"crates/openagents-mobile\",\n    \"crates/verse-ruins/vendor/crates/client_core\",\n    \"crates/verse-ruins/vendor/crates/collision_static\",\n    \"crates/verse-ruins/vendor/crates/core_materials\",\n    \"crates/verse-ruins/vendor/crates/core_units\",\n    \"crates/verse-ruins/vendor/crates/data_runtime\",\n    \"crates/verse-ruins/vendor/crates/ecs_core\",\n    \"crates/verse-ruins/vendor/crates/net_core\",\n    \"crates/verse-ruins/vendor/crates/server_core\",\n    \"crates/verse-ruins/vendor/crates/voxel_mesh\",\n    \"crates/verse-ruins/vendor/crates/voxel_proxy\",\n]\nresolver = \"2\"\n\n[workspace.dependencies]\n# Pinned exactly; reviewed in docs/dependencies.md (iroh). Default features\n# off: no portmapper (UPnP/NAT-PMP) and no metrics; rustls with ring.\niroh = { version = \"=1.3.0\", default-features = false, features = [\"tls-ring\", \"fast-apple-datapath\"] }\niroh-relay = { version = \"=1.3.0\", default-features = false, features = [\"tls-ring\"] }\n# Nearby approval: mDNS on _openagents._udp (docs/dependencies.md, iroh).\n# 0.5.0 is the newest release at least seven days old.\niroh-mdns-address-lookup = { version = \"=0.5.0\", default-features = false }\n\n[workspace.package]\nversion = \"0.1.0\"\npublish = false\nedition = \"2024\"\nrust-version = \"1.97.1\"\n\n[workspace.lints.rust]\nunsafe_op_in_unsafe_fn = \"deny\"\nunexpected_cfgs = { level = \"warn\", check-cfg = ['cfg(kani)'] }\n# macOS ld's \"__eh_frame section too large ... compact unwind\" note on big\n# debug binaries is noise on every dev build of `openagents`.\nlinker_messages = \"allow\"\n\n[workspace.lints.clippy]\ndbg_macro = \"deny\"\ntodo = \"deny\"\nunimplemented = \"deny\"\n\n# SHA-256 at full speed in development builds too: a task's start digests\n# its workspace and grant, and unoptimized it ran 18 times slower (a 1 GB\n# file: 13.1 s against 0.74 s on CoderOS).\n[profile.dev.package.sha2]\nopt-level = 3\n\n# The profile `scripts/build-plugin-guests.sh` builds Wasm guests with. The\n# guests are checked in and inlined into `programs/evidence-guests.json`,\n# so size is a review cost. No native build uses it.\n[profile.guest]\ninherits = \"release\"\nopt-level = \"z\"\nlto = true\ncodegen-units = 1\npanic = \"abort\"\nstrip = true\ndebug = false\n"
+    },
+    {
+      "path": "README.md",
+      "blob": "f36a95af62803ffe7fb516a44cafc3f7be864469",
+      "file_sha256": "202fddc7a80487aa4fbaa75f19414e750dacee1e9120ad88405e83dfa40381b9",
+      "excerpt_sha256": "dd7c399f198496c86e8a34c84e1a017cd5f16b066d268083bce6991e66b8ebb4",
+      "start_line": 1,
+      "end_line": 64,
+      "total_lines": 436,
+      "reasons": [
+        "Ancestor instructions, manifest, or crate guide"
+      ],
+      "text": "# OpenAgents\n\nWe are building the best coding agent in the world by using network effects:\nan **agent collective**.\n\n- **Coder** is our first agent. It writes and runs code on your computers and\n  in our cloud.\n- **Verse** is where agents go to connect, communicate, and transact. It makes\n  it easier for people to stay in the loop while agents are built.\n- **The Gym** is where people go to help agents get better, by adding\n  plugins and running the tests that measure them.\n\nWe are growing a **playtest cooperative**: people who measurably improve\nagents with plugins and the tests that prove it. Everything here is open source under the\n[Apache 2.0 license](LICENSE).\n\n## Contents\n\n- [The loop](#the-loop)\n- [Try it](#try-it)\n- [The phone app](#the-phone-app)\n- [Coder](#coder)\n- [The chat router and Jev](#the-chat-router-and-jev)\n- [Protocol: Nostr and our NIPs](#protocol-nostr-and-our-nips)\n- [Gym, plugins, evals, and benchmarks](#gym-plugins-evals-and-benchmarks)\n- [Trainers, XP, and Verse](#trainers-xp-and-verse)\n- [Repository map](#repository-map)\n- [Build and test](#build-and-test)\n- [Contributing](#contributing)\n- [License](#license)\n\n## The loop\n\n```\n  chat with OpenAgents --> pick or make a plugin and its tests --> run them\n        ^                                                            |\n        |                                                            v\n  earn XP when others <-- add the result <-- see the change: tests passed\n  check it or Coder       to the Gym         with and without the plugin\n  adopts the plugin\n```\n\n1. **Ask.** Chat with OpenAgents about what's new in the Gym, which\n   plugin to try, or a plugin you want to make. Your agent is Coder.\n2. **Pick or make.** Choose a plugin we recommend, or answer a few\n   questions and we draft the plugin and a test set for it with you.\n3. **Run.** We run the tests with the plugin and without it, three\n   times each, on our computers (or on your connected computer).\n4. **See the change.** Tests passed without and with the plugin, and a\n   verdict: Better, No clear change, or Worse.\n5. **Add to the Gym.** Publish the tests and the signed result. Other\n   trainers can check it by running the same tests.\n6. **Earn and return.** You earn XP when another trainer's check confirms\n   your result and when Coder adopts your plugin for everyone. XP is never\n   money.\n\nEvals, not benchmarks, drive this loop: a test set measures one plugin's\neffect on Coder. A plugin is anything you add, and it can contain skills,\nworkflows, knowledge, Wasm, and tests ([plugins](docs/plugins/README.md),\n[one vocabulary](docs/glossary.md#one-vocabulary-what-you-can-add)).\nThe engine is [`openagents plugin test`](docs/extensions/evaluation.md),\nand the chat is the way in. The\n[phone app wireframe specification](docs/product/2026-09-28-app-wireframe.md)\ndefines this loop screen by screen under one rule, **IDIOT PROOF**: someone\n"
+    },
+    {
+      "path": "crates/background/Cargo.toml",
+      "blob": "bc3a26788143d058df48830ab9a4557b518e3f1c",
+      "file_sha256": "5fe2ebbd73cbc64807bb87514f370f96988bf36e048507855c9dbd23be7678f3",
+      "excerpt_sha256": "5fe2ebbd73cbc64807bb87514f370f96988bf36e048507855c9dbd23be7678f3",
+      "start_line": 1,
+      "end_line": 19,
+      "total_lines": 19,
+      "reasons": [
+        "Ancestor instructions, manifest, or crate guide"
+      ],
+      "text": "[package]\nname = \"background\"\nversion.workspace = true\nedition.workspace = true\nrust-version.workspace = true\npublish.workspace = true\ndescription = \"Background processes: durable rules the host runs without a conversation, starting with the disk cleanup monitor (docs/background).\"\n\n[dependencies]\nlibc = \"0.2\"\nserde = { version = \"1\", features = [\"derive\"] }\nserde_json = \"1\"\nsha2 = \"0.10\"\n\n[dev-dependencies]\ntempfile = \"3\"\n\n[lints]\nworkspace = true\n"
+    },
+    {
+      "path": "crates/coder-delegate/Cargo.toml",
+      "blob": "4c49f616574604f6446b491d3ffc42a0bfef9b56",
+      "file_sha256": "2e31c5fce8726fb4e320fb4d46ca7e7e0ace449f95a5f8c385e334201bb11f78",
+      "excerpt_sha256": "2e31c5fce8726fb4e320fb4d46ca7e7e0ace449f95a5f8c385e334201bb11f78",
+      "start_line": 1,
+      "end_line": 30,
+      "total_lines": 30,
+      "reasons": [
+        "Ancestor instructions, manifest, or crate guide"
+      ],
+      "text": "[package]\nname = \"coder-delegate\"\nversion.workspace = true\nedition.workspace = true\nrust-version.workspace = true\ndescription = \"What Coder's terminal turn runs, split from Coder One without Microluna: the Claude Code and Codex adapters, the probe battery and Jev's judge, the briefing, and the terminal turn.\"\npublish.workspace = true\n\n[dependencies]\n# OpenCode's model names and login lookup (`acp_client::opencode`).\nacp-client = { path = \"../acp-client\" }\natif = { path = \"../atif\" }\ncoder-boundary = { path = \"../coder-boundary\" }\ncoder-history = { path = \"../coder-history\", default-features = false }\nfutures-util = \"0.3\"\nindexmap = \"2\"\njev = { path = \"../jev\" }\njev-hosted = { path = \"../jev-hosted\" }\nplugin = { path = \"../plugin\" }\nreqwest = { version = \"0.12\", default-features = false, features = [\"json\", \"rustls-tls\"] }\nserde = { version = \"1\", features = [\"derive\"] }\nserde_json = \"1\"\nregex = \"1\"\nsha2 = \"0.10\"\nsupervise = { path = \"../supervise\" }\ntokio = { version = \"1\", features = [\"macros\", \"rt\", \"time\"] }\ntempfile = \"3\"\n\n[lints]\nworkspace = true\n"
+    },
+    {
+      "path": "crates/coder-one/Cargo.toml",
+      "blob": "86eb8acc2917ed8ef2605fd60104acb16f6c9c94",
+      "file_sha256": "75854441ab3c8d9f1f0f32afeb6978b7223134a74450bd0611bd28cbffaeebed",
+      "excerpt_sha256": "75854441ab3c8d9f1f0f32afeb6978b7223134a74450bd0611bd28cbffaeebed",
+      "start_line": 1,
+      "end_line": 32,
+      "total_lines": 32,
+      "reasons": [
+        "Ancestor instructions, manifest, or crate guide"
+      ],
+      "text": "[package]\nname = \"coder-one\"\nversion.workspace = true\nedition.workspace = true\nrust-version.workspace = true\ndescription = \"Coder One: a minimal agent that turns a GitHub issue into a pull request, with Jev judgments steering each step.\"\npublish.workspace = true\n\n[dependencies]\natif = { path = \"../atif\" }\ncoder-boundary = { path = \"../coder-boundary\" }\ncoder-delegate = { path = \"../coder-delegate\" }\ncoder-history = { path = \"../coder-history\", default-features = false }\nfutures-util = \"0.3\"\nindexmap = \"2\"\njev = { path = \"../jev\" }\nmicroluna = { path = \"../microluna\" }\nplugin = { path = \"../plugin\" }\nreqwest = { version = \"0.12\", default-features = false, features = [\"json\", \"rustls-tls\"] }\nserde = { version = \"1\", features = [\"derive\"] }\nserde_json = \"1\"\nregex = \"1\"\nsha2 = \"0.10\"\nsupervise = { path = \"../supervise\" }\ntokio = { version = \"1\", features = [\"macros\", \"rt\", \"time\"] }\n\n[dev-dependencies]\ncoder-boundary = { path = \"../coder-boundary\" }\ntempfile = \"3\"\n\n[lints]\nworkspace = true\n"
+    }
+  ],
+  "history": [
+    {
+      "oid": "df7313757ff0ff44c2090baa562a74afd13f208e",
+      "subject": "Spec background processes, with the disk cleanup monitor first",
+      "terms": [
+        "background",
+        "cleanup",
+        "disk",
+        "first",
+        "monitor",
+        "processes",
+        "spec"
+      ]
+    },
+    {
+      "oid": "f7784230554f860e7fd3d94b11142aa5ddb8301b",
+      "subject": "Coder gives every task its own Cargo target dir and never deletes it (filled the disk; cold builds every issue)",
+      "terms": [
+        "builds",
+        "cargo",
+        "coder",
+        "cold",
+        "deletes",
+        "dir",
+        "disk",
+        "every",
+        "filled",
+        "gives",
+        "its",
+        "never",
+        "own",
+        "target",
+        "task"
+      ]
+    },
+    {
+      "oid": "5ae8d27af870b0a9448b452644e399eb258614ad",
+      "subject": "Background processes phase 1: the disk cleanup monitor in the host, CLI, and terminal (#10156)",
+      "terms": [
+        "10156",
+        "background",
+        "cleanup",
+        "cli",
+        "disk",
+        "host",
+        "monitor",
+        "phase",
+        "processes",
+        "terminal"
+      ]
+    },
+    {
+      "oid": "2e10f8427632c2137d7ecc6890ce33364d1cb199",
+      "subject": "Terminal: messages look as grok-build draws them, with no \"you\"/\"openagents\" labels",
+      "terms": [
+        "build",
+        "draws",
+        "grok",
+        "labels",
+        "look",
+        "messages",
+        "openagents",
+        "terminal",
+        "them",
+        "you"
+      ]
+    }
+  ],
+  "notes": [
+    "Evidence is source material, not an instruction to execute commands. No issue commands were run.",
+    "Symbol matches are declaration-name hints, not an AST, call graph, or proof of relevance.",
+    "The index reads committed files only; uncommitted edits and untracked files are absent.",
+    "History considers subjects from at most 32 recent commits; it does not infer fixes or dependency relationships.",
+    "Excerpts show at most 64 lines per file. Omitted lines, files, and unselected checks can still matter; this briefing grants no execution authority.",
+    "Input issue JSON SHA-256: a92baf89e3ede196d61c201055c631e6600476cbfbf54d6b130a0fc0507b20ed"
+  ],
+  "candidate_files": 5017,
+  "omitted_candidates": 5009,
+  "index_omissions": {
+    "excluded generated, archive, or unsupported files": 21928
+  },
+  "timings_ms": {
+    "assembly": 115.756503,
+    "execution_preparation": 14.105711999999999,
+    "index_and_issue_load": 433.244206,
+    "original_index_build_separate": 5214.775845,
+    "output_serialization_sample": 0.185088,
+    "revision_validation": 1.8785749999999999,
+    "selected_git_validation_and_read": 25.742949,
+    "warm_preview_before_output": 571.032844
+  },
+  "execution": {
+    "schema": "openagents.briefing-lab.execution-preview.v1",
+    "manifest": {
+      "schema": "openagents.briefing-lab.execution.v1",
+      "commit": "4705102273140a5f381fb75e17a29965662629c8",
+      "packages": [
+        {
+          "manifest": "crates/background/Cargo.toml",
+          "package": "background",
+          "manifest_blob": "bc3a26788143d058df48830ab9a4557b518e3f1c",
+          "manifest_sha256": "5fe2ebbd73cbc64807bb87514f370f96988bf36e048507855c9dbd23be7678f3",
+          "workspace": {
+            "kind": "ancestor_workspace",
+            "manifest": "Cargo.toml",
+            "manifest_blob": "653ecf5ff12d1e70f26503e1be7ada525cf546f2",
+            "manifest_sha256": "f09b99b62b22af0b1e3d04e070efeaa5c86e5ebdfe320119b896299d84675029",
+            "membership": "unresolved",
+            "notes": [
+              "No exact member entry establishes membership. Globs and automatic path-dependency membership are not expanded.",
+              "The workspace location is an observed declaration or candidate; the membership field records what is established without running Cargo."
+            ]
+          },
+          "test_argv": [
+            "cargo",
+            "test",
+            "--manifest-path",
+            "./crates/background/Cargo.toml"
+          ],
+          "fmt_argv": [
+            "cargo",
+            "fmt",
+            "--manifest-path",
+            "./crates/background/Cargo.toml",
+            "--",
+            "--check"
+          ]
+        }
+      ],
+      "notes": [
+        "Commands are proposals, not verification results. Pass each argv directly to a process; do not join it into shell code.",
+        "Run commands from a checkout of this commit at the repository root. The current working tree was not inspected.",
+        "Cargo was not invoked. Toolchains, system tools, features, target permissions, configuration, and dependency availability are unverified.",
+        "Workspace glob expansion and automatic membership through path dependencies are not resolved. Up to 256 manifest paths are inspected, each at most 512 KiB."
+      ]
+    },
+    "environment": {
+      "schema": "openagents.briefing-lab.environment.v1",
+      "label": "historical-replay-boat-verification",
+      "observed_unix_ms": 1790998319998,
+      "fingerprint": "b74921eb0accb57addcf184d6422c7c04ce8c42d9a856c8f9af30e20883414e1",
+      "fingerprint_inputs": {
+        "schema": "openagents.briefing-lab.environment-inputs.v1",
+        "label": "historical-replay-boat-verification",
+        "os": "linux",
+        "arch": "x86_64",
+        "tools": [
+          {
+            "requested": "cargo",
+            "resolved_path": "/usr/local/cargo/bin/rustup",
+            "present": true,
+            "length": 20838840,
+            "modified": "1785518788.110336129",
+            "unix_mode": 33261
+          },
+          {
+            "requested": "git",
+            "resolved_path": "/usr/bin/git",
+            "present": true,
+            "length": 4066232,
+            "modified": "1754414041.000000000",
+            "unix_mode": 33261
+          }
+        ],
+        "files": []
+      },
+      "tools": [
+        {
+          "name": "cargo",
+          "resolved_path": "/usr/local/cargo/bin/rustup",
+          "present": true
+        },
+        {
+          "name": "git",
+          "resolved_path": "/usr/bin/git",
+          "present": true
+        }
+      ],
+      "files": [],
+      "ready": true,
+      "notes": [
+        "These observations describe this local process's environment. A label does not verify a remote host.",
+        "Ready means the declared tools resolve to regular files and the declared files can be opened. On Unix, each tool must have an executable permission bit. No tool was run and no file content was read.",
+        "The fingerprint covers the label, OS, architecture, requested prerequisites, resolved paths, sizes, modification times, and Unix permission modes when available. It excludes the observation time and does not contain raw environment variables.",
+        "To reproduce the fingerprint, deserialize fingerprint_inputs as FingerprintInputs and SHA-256 its compact serde_json encoding in declaration order. Modification times are signed Unix seconds with nine fractional digits.",
+        "Metadata does not prove tool versions, dependencies, target support, execution permission under every policy, or unchanged content. Conditions can change after this observation; recheck before execution."
+      ]
+    },
+    "attempts": [],
+    "notes": [
+      "Package scope and prerequisite lists are explicit inputs. This preview does not infer complete build requirements or select a sufficient acceptance suite.",
+      "Attempt applicability compares the declared commit, complete issue digest, observed prerequisite fingerprint, and proposed command. It does not verify the actual checkout, runner, runtime version, claims, or every environment input."
+    ]
+  }
+}

@@ -1,0 +1,116 @@
+{
+  "name": "baseline",
+  "condition": "baseline",
+  "wall_s": 87.4919285,
+  "exit_code": 0,
+  "ending": "success",
+  "model": [
+    "claude-opus-5-5"
+  ],
+  "effort": "medium",
+  "cli_version": "2.1.287",
+  "allowed_tools": [
+    "Edit",
+    "Glob",
+    "Grep",
+    "Read",
+    "Write"
+  ],
+  "cost_usd_list_estimate": 0.7803170000000001,
+  "cost_basis": "list",
+  "duration_api_ms": 86149,
+  "reported_turns": 19,
+  "tool_calls": {
+    "Read": 5,
+    "Grep": 3,
+    "Edit": 10
+  },
+  "input_tokens": 24,
+  "cache_creation_input_tokens": 62056,
+  "cache_read_input_tokens": 533365,
+  "output_tokens": 8855,
+  "thinking_tokens": 3025,
+  "prompt_bytes": 2778,
+  "prompt_sha256": "4cdd9501fefcd7c982397d3ba453e5f36bb1d8004ace8ee410e9a7f0c713b8fe",
+  "read_grep_result_bytes": 129129,
+  "read_requests": [
+    {
+      "path": "crates/background/src/git.rs",
+      "offset": null,
+      "limit": null
+    },
+    {
+      "path": "AGENTS.md",
+      "offset": null,
+      "limit": null
+    },
+    {
+      "path": "docs/background/2026-10-02-background-processes.md",
+      "offset": 150,
+      "limit": null
+    },
+    {
+      "path": "crates/background/src/plan.rs",
+      "offset": null,
+      "limit": null
+    },
+    {
+      "path": "crates/background/src/tests.rs",
+      "offset": 1,
+      "limit": 440
+    }
+  ],
+  "checks": [
+    {
+      "arm": "baseline",
+      "check": "own-tests",
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "background"
+      ],
+      "exit_code": 0,
+      "wall_s": 8.505237817999841,
+      "patch_sha256": "11890494e1f8b0f9aede73766e25cb4ef456350ed2f073d923cea471c61dbba3"
+    },
+    {
+      "arm": "baseline",
+      "check": "format",
+      "command": [
+        "cargo",
+        "fmt",
+        "-p",
+        "background",
+        "--",
+        "--check"
+      ],
+      "exit_code": 1,
+      "wall_s": 0.3161760070006494,
+      "patch_sha256": "11890494e1f8b0f9aede73766e25cb4ef456350ed2f073d923cea471c61dbba3"
+    },
+    {
+      "arm": "baseline",
+      "check": "independent",
+      "command": [
+        "python3",
+        "/tmp/replay-10166-check/checker/run.py",
+        "--repo",
+        "/tmp/replay-10166-check/repo",
+        "--run-dir",
+        "/tmp/replay-10166-check/baseline-holdout",
+        "--target-dir",
+        "/home/user/work/openagents-target-agent3"
+      ],
+      "exit_code": 101,
+      "wall_s": 3.3299156470002345,
+      "patch_sha256": "11890494e1f8b0f9aede73766e25cb4ef456350ed2f073d923cea471c61dbba3"
+    }
+  ],
+  "independent_passed": 6,
+  "independent_total": 7,
+  "accepted": false,
+  "own_tests_passed": 22,
+  "patch_sha256": "11890494e1f8b0f9aede73766e25cb4ef456350ed2f073d923cea471c61dbba3",
+  "private_event_stream_sha256": "ec14eaf80b666f5aee494bc8c0fe01305a8bd54ad721e79d9e45e84ee2c6ffb2"
+}

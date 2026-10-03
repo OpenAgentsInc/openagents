@@ -1,0 +1,23 @@
+{
+  "schema": "openagents.private-historical-replay-check.v1",
+  "candidate_head": "4705102273140a5f381fb75e17a29965662629c8 (export plus candidate patch)",
+  "checker_sha256": "a7fc455b5b22565e494339687f9eb12dc207a11efede22af3c6aadce39fc788b",
+  "source_git_rs_sha256": "d45db250ac0954038e3cd986bca59307409c083b8ae625d0b4f80c1b9e68384e",
+  "argv": [
+    "cargo",
+    "+1.97.1",
+    "test",
+    "--manifest-path",
+    "/tmp/replay-10166-check/base/Cargo.toml",
+    "--offline",
+    "--test",
+    "ignored_worktrees",
+    "--",
+    "--test-threads=1"
+  ],
+  "exit_code": 101,
+  "timed_out": false,
+  "elapsed_seconds": 3.5293334990001313,
+  "log": "/tmp/replay-10166-check/base/checker.log",
+  "scope": "Seven deterministic API regressions; no original agent tests, real host cleanup, deployment, or network. Build time is included."
+}

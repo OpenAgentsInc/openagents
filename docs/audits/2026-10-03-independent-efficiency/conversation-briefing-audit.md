@@ -406,3 +406,18 @@ synthetic failure to demonstrate attempt rendering. No proposed check ran in
 this benchmark and no agent efficiency improvement was measured. Real process
 supervision, automatic prerequisite discovery, live claims, and verified
 runtime identity remain separate components to test.
+
+## Historical coding replay
+
+The [#10166 replay](historical-replay-10166/README.md) tests the frozen prototype
+against a fresh control at an actual task boundary. Four Claude sessions
+produce patches from the original checkout; independent Boat checks find the
+same missed nested-cache behavior in every patch, despite passing their own
+tests. The historical implementation passes that check. The two pairs do not
+show a consistent speed or cost advantage for the briefing.
+
+The result narrows the next experiments: preserve applicable instructions,
+honor explicit source anchors, supply cheap executable facts, and give both
+conditions an equal test-and-repair opportunity. A retained Git fixture
+reproduces the missing command behavior in 26 ms on Boat; it was developed
+after the replay and has not yet been tested as an agent treatment.

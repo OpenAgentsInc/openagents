@@ -1,0 +1,116 @@
+{
+  "name": "briefing",
+  "condition": "briefing",
+  "wall_s": 77.587918125,
+  "exit_code": 0,
+  "ending": "success",
+  "model": [
+    "claude-opus-5-5"
+  ],
+  "effort": "medium",
+  "cli_version": "2.1.287",
+  "allowed_tools": [
+    "Edit",
+    "Glob",
+    "Grep",
+    "Read",
+    "Write"
+  ],
+  "cost_usd_list_estimate": 0.6321740000000001,
+  "cost_basis": "list",
+  "duration_api_ms": 76855,
+  "reported_turns": 18,
+  "tool_calls": {
+    "Read": 5,
+    "Grep": 4,
+    "Edit": 8
+  },
+  "input_tokens": 20,
+  "cache_creation_input_tokens": 49348,
+  "cache_read_input_tokens": 367950,
+  "output_tokens": 8186,
+  "thinking_tokens": 2821,
+  "prompt_bytes": 46074,
+  "prompt_sha256": "6d3bf3387cbdde75ddd43cde7f99aa80ab762895ce81e85e4756e094b5a78429",
+  "read_grep_result_bytes": 52848,
+  "read_requests": [
+    {
+      "path": "crates/background/src/git.rs",
+      "offset": null,
+      "limit": null
+    },
+    {
+      "path": "crates/background/src/plan.rs",
+      "offset": 200,
+      "limit": 60
+    },
+    {
+      "path": "crates/background/src/tests.rs",
+      "offset": 1,
+      "limit": 360
+    },
+    {
+      "path": "docs/background/2026-10-02-background-processes.md",
+      "offset": 140,
+      "limit": 120
+    },
+    {
+      "path": "docs/background/2026-10-02-background-processes.md",
+      "offset": 466,
+      "limit": null
+    }
+  ],
+  "checks": [
+    {
+      "arm": "briefing",
+      "check": "own-tests",
+      "command": [
+        "cargo",
+        "test",
+        "-p",
+        "background"
+      ],
+      "exit_code": 0,
+      "wall_s": 8.150626452999859,
+      "patch_sha256": "c21502eaa5662b0040fb7bb097223950d4e1fc225b0c99b0d06137c45bc462d0"
+    },
+    {
+      "arm": "briefing",
+      "check": "format",
+      "command": [
+        "cargo",
+        "fmt",
+        "-p",
+        "background",
+        "--",
+        "--check"
+      ],
+      "exit_code": 1,
+      "wall_s": 0.2154593120003483,
+      "patch_sha256": "c21502eaa5662b0040fb7bb097223950d4e1fc225b0c99b0d06137c45bc462d0"
+    },
+    {
+      "arm": "briefing",
+      "check": "independent",
+      "command": [
+        "python3",
+        "/tmp/replay-10166-check/checker/run.py",
+        "--repo",
+        "/tmp/replay-10166-check/repo",
+        "--run-dir",
+        "/tmp/replay-10166-check/briefing-holdout",
+        "--target-dir",
+        "/home/user/work/openagents-target-agent3"
+      ],
+      "exit_code": 101,
+      "wall_s": 3.2770961590003935,
+      "patch_sha256": "c21502eaa5662b0040fb7bb097223950d4e1fc225b0c99b0d06137c45bc462d0"
+    }
+  ],
+  "independent_passed": 6,
+  "independent_total": 7,
+  "accepted": false,
+  "own_tests_passed": 22,
+  "patch_sha256": "c21502eaa5662b0040fb7bb097223950d4e1fc225b0c99b0d06137c45bc462d0",
+  "private_event_stream_sha256": "f2baf5dbdf558f24cca96cad46de4a3760b211a6203467f378ed83f19fc1983e"
+}
