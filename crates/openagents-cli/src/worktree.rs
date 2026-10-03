@@ -23,7 +23,7 @@ pub(crate) const USAGE: &str = "usage: openagents worktree COMMAND [OPTIONS]
                   state, size, whether removing it would lose anything
                   (uncommitted, unpushed, or ignored files), and age; then
                   the archived ones. Sizing walks every file; --no-size
-                  skips it.
+                  skips it. Build slot sizes follow the archived ones.
   archive NAME    Remove an ended task's worktree and keep what restores it.
                   Refused when it holds anything not saved elsewhere.
   archive NAME --force [--confirm NAME]
@@ -204,8 +204,10 @@ fn ls(output: &Output, store: &Path, worktrees: &Path, sizes: bool) {
             })
         })
         .collect();
-    let value = json!({ "worktrees": rows, "archived": archived, "dir": worktrees });
-    output.emit(&value, |_| render(worktrees, &rows, &archived));
+    let slots = background::view::slots(&background::task_targets(store), sizes);
+    let value =
+        json!({ "worktrees": rows, "archived": archived, "dir": worktrees, "slots": slots });
+    output.emit(&value, |_| render(worktrees, &rows, &archived, &slots));
 }
 
 /// "1 worktree", "2 worktrees".
@@ -217,7 +219,12 @@ fn count(n: usize) -> String {
     }
 }
 
-fn render(worktrees: &Path, rows: &[Value], archived: &[Value]) -> String {
+fn render(
+    worktrees: &Path,
+    rows: &[Value],
+    archived: &[Value],
+    slots: &[background::view::Slot],
+) -> String {
     let text = |value: &Value, key: &str| value[key].as_str().unwrap_or("-").to_owned();
     let mut out = Vec::new();
     if rows.is_empty() {
@@ -269,6 +276,7 @@ fn render(worktrees: &Path, rows: &[Value], archived: &[Value]) -> String {
         }
         out.push(crate::out::table(&table));
     }
+    out.extend(background::view::slot_lines(slots));
     out.join("\n")
 }
 
@@ -415,6 +423,24 @@ mod tests {
     use super::*;
 
     #[test]
+    fn ls_draws_slot_sizes_even_without_worktrees_and_no_size_skips_them() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("targets");
+        std::fs::create_dir_all(root.join("project-slot-0/debug/deps")).unwrap();
+        std::fs::write(root.join("project-slot-0/debug/deps/cached"), [0; 100]).unwrap();
+        let slots = background::view::slots(&root, true);
+        let shown = render(&dir.path().join("worktrees"), &[], &[], &slots);
+        assert!(shown.contains("No task worktrees"));
+        assert!(shown.contains("Build slot project-slot-0 · 0 MB"));
+        let slots = background::view::slots(&root, false);
+        assert!(render(dir.path(), &[], &[], &slots).contains("size not read"));
+        assert_eq!(
+            serde_json::to_value(&slots).unwrap()[0]["bytes"],
+            Value::Null
+        );
+    }
+
+    #[test]
     fn a_worktree_folder_names_its_task_by_the_first_twelve_characters() {
         let tasks: BTreeMap<String, u8> = [
             ("0123456789aa00".to_owned(), 1),
@@ -456,7 +482,7 @@ mod tests {
             "name": "openagents.spare-0123ab", "state": "spare", "bytes": null,
             "age_seconds": 60, "unsaved": "nothing (Coder's spare)",
         })];
-        let text = render(Path::new("/w"), &rows, &[]);
+        let text = render(Path::new("/w"), &rows, &[], &[]);
         assert!(text.starts_with("1 worktree in /w."), "{text}");
         assert!(text.contains("nothing (Coder's spare)"), "{text}");
         assert!(!text.contains("commits not on any remote"), "{text}");

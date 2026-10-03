@@ -787,10 +787,18 @@ impl Host {
         // read as a busy task store (#10301).
         let target = match configuration.access {
             access if builds(access) => {
-                match super::targets::Lease::acquire(&owner.dir, &git_directory) {
-                    Ok(lease) => Some(lease),
-                    Err(Error::Busy) => None,
-                    Err(error) => return Err(error),
+                let started = Instant::now();
+                loop {
+                    match super::targets::Lease::acquire(&owner.dir, &git_directory) {
+                        Ok(lease) => break Some(lease),
+                        Err(Error::BuildDiskLow { .. })
+                            if started.elapsed() < Duration::from_secs(600) =>
+                        {
+                            tokio::time::sleep(Duration::from_secs(2)).await;
+                        }
+                        Err(Error::Busy) => break None,
+                        Err(error) => return Err(error),
+                    }
                 }
             }
             _ => None,

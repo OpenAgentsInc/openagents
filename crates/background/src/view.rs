@@ -276,6 +276,33 @@ mod tests {
     use crate::paths::Layout;
 
     #[test]
+    fn slot_inventory_sizes_nested_files_once_and_renders_each_slot() {
+        let dir = tempfile::tempdir().unwrap();
+        let slot = dir.path().join("project-slot-0");
+        std::fs::create_dir_all(slot.join("debug/deps")).unwrap();
+        std::fs::write(slot.join("debug/deps/dependency"), [0; 100]).unwrap();
+        std::fs::hard_link(
+            slot.join("debug/deps/dependency"),
+            slot.join("debug/output"),
+        )
+        .unwrap();
+        let outside = dir.path().join("unknown");
+        std::fs::create_dir_all(&outside).unwrap();
+        std::fs::write(outside.join("artifact"), [0; 200]).unwrap();
+        std::os::unix::fs::symlink(&outside, slot.join("link")).unwrap();
+        std::os::unix::fs::symlink(&outside, dir.path().join("project-slot-1")).unwrap();
+        std::fs::write(dir.path().join("project-slot-0.lock"), "").unwrap();
+        let slots = super::slots(dir.path(), true);
+        assert_eq!(slots.len(), 1);
+        assert_eq!(slots[0].bytes, Some(100));
+        assert_eq!(
+            super::slot_lines(&slots),
+            ["Build slot project-slot-0 · 0 MB"]
+        );
+        assert_eq!(super::slots(dir.path(), false)[0].bytes, None);
+    }
+
+    #[test]
     fn a_list_line_says_paused_and_when_the_last_result_was() {
         let row = |enabled: bool, last: Option<(u64, &str)>| super::Row {
             id: "worktrees".into(),
@@ -334,4 +361,68 @@ mod tests {
         assert_eq!(super::date(0), "1970-01-01");
         assert_eq!(super::date(1_790_899_200), "2026-10-02");
     }
+}
+
+/// One reusable Cargo build slot, including slots of repositories with no tasks.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Slot {
+    pub name: String,
+    pub path: std::path::PathBuf,
+    pub bytes: Option<u64>,
+}
+
+/// Read slot sizes without following links or creating any files.
+#[must_use]
+pub fn slots(root: &std::path::Path, sizes: bool) -> Vec<Slot> {
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return Vec::new();
+    };
+    let mut out: Vec<_> = entries
+        .flatten()
+        .filter_map(|entry| {
+            let name = entry.file_name().into_string().ok()?;
+            name.rsplit_once("-slot-")?.1.parse::<usize>().ok()?;
+            crate::paths::real_dir(&entry.path()).then(|| Slot {
+                name,
+                bytes: sizes.then(|| slot_bytes(&entry.path()).ok()).flatten(),
+                path: entry.path(),
+            })
+        })
+        .collect();
+    out.sort_by(|a, b| a.name.cmp(&b.name));
+    out
+}
+
+/// File bytes in a slot; Cargo's hard-linked outputs count once.
+pub fn slot_bytes(path: &std::path::Path) -> std::io::Result<u64> {
+    use std::os::unix::fs::MetadataExt;
+    let mut seen = std::collections::HashSet::new();
+    let mut stack = vec![path.to_owned()];
+    let mut total: u64 = 0;
+    while let Some(path) = stack.pop() {
+        let meta = std::fs::symlink_metadata(&path)?;
+        if meta.is_dir() {
+            for entry in std::fs::read_dir(path)? {
+                stack.push(entry?.path());
+            }
+        } else if meta.is_file() && seen.insert((meta.dev(), meta.ino())) {
+            total = total.saturating_add(meta.len());
+        }
+    }
+    Ok(total)
+}
+
+/// Slot sizes shown after the background rule rows, without moving selection.
+#[must_use]
+pub fn slot_lines(slots: &[Slot]) -> Vec<String> {
+    slots
+        .iter()
+        .map(|slot| {
+            format!(
+                "Build slot {} · {}",
+                slot.name,
+                slot.bytes.map_or_else(|| "size not read".into(), bytes)
+            )
+        })
+        .collect()
 }

@@ -1104,17 +1104,23 @@ fn the_checks_build_in_a_slot_of_the_task_store() {
         jev: None,
         store: Some(store.clone()),
     };
-    let first = gate.slot(&repo).expect("a free slot");
+    let first = gate
+        .slot(&repo)
+        .expect("slot admission")
+        .expect("a free slot");
     let root = store.parent().unwrap().join("targets");
     assert!(first.path.starts_with(&root), "{}", first.path.display());
     assert!(first.path.is_dir());
     // A second check at the same time takes another slot, not the same one.
-    let second = gate.slot(&repo).expect("another free slot");
+    let second = gate
+        .slot(&repo)
+        .expect("slot admission")
+        .expect("another free slot");
     assert_ne!(first.path, second.path);
     // Without a store the checks build where `confined` says.
     let unslotted = Gate {
         jev: None,
         store: None,
     };
-    assert!(unslotted.slot(&repo).is_none());
+    assert!(unslotted.slot(&repo).unwrap().is_none());
 }

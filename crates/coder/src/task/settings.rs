@@ -386,6 +386,15 @@ pub struct Coder {
     /// under `toolchains` or `boundary` Codex runs the loop.
     #[serde(default, skip_serializing_if = "CodexRuns::is_default")]
     pub codex: CodexRuns,
+    /// The size, in GB, above which a released Coder build slot is pruned
+    /// (#10384): its incremental caches and older artifacts go, recent
+    /// ones stay. `None` uses the default, 25 GB.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub slot_cap_gb: Option<u64>,
+    /// The free disk, in GB, below which released slots are pruned and no
+    /// new slot starts (#10384). `None` uses the default, 10 GB.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub slot_free_gb: Option<u64>,
 }
 
 impl Default for Coder {
@@ -401,6 +410,8 @@ impl Default for Coder {
             shadow_budget_cents: None,
             claude: ClaudeRuns::default(),
             codex: CodexRuns::default(),
+            slot_cap_gb: None,
+            slot_free_gb: None,
         }
     }
 }
@@ -613,7 +624,7 @@ impl Default for Settings {
 
 /// The flat keys [`Settings::get`] and [`Settings::set`] take.
 #[must_use]
-pub const fn keys() -> [&'static str; 11] {
+pub const fn keys() -> [&'static str; 13] {
     [
         "coder.providers",
         "coder.disabled",
@@ -625,6 +636,8 @@ pub const fn keys() -> [&'static str; 11] {
         "coder.shadow_budget_usd",
         "coder.claude",
         "coder.codex",
+        "coder.slot_cap_gb",
+        "coder.slot_free_gb",
         "models.payer",
     ]
 }
@@ -724,6 +737,8 @@ impl Settings {
             ))),
             "coder.claude" => json!(coder.claude.as_str()),
             "coder.codex" => json!(coder.codex.as_str()),
+            "coder.slot_cap_gb" => json!(coder.slot_cap_gb),
+            "coder.slot_free_gb" => json!(coder.slot_free_gb),
             "models.payer" => json!(self.models.payer.as_str()),
             _ => return Err(unknown(key)),
         })
@@ -835,6 +850,19 @@ impl Settings {
             }
             "coder.claude" => coder.claude = ClaudeRuns::parse(value)?,
             "coder.codex" => coder.codex = CodexRuns::parse(value)?,
+            "coder.slot_cap_gb" | "coder.slot_free_gb" => {
+                let gb = match value.trim().trim_end_matches("GB").trim() {
+                    "default" | "null" | "none" => None,
+                    number => Some(number.parse::<u64>().map_err(|_| {
+                        format!("`{number}` is not a whole number of GB, or default")
+                    })?),
+                };
+                if key == "coder.slot_cap_gb" {
+                    coder.slot_cap_gb = gb;
+                } else {
+                    coder.slot_free_gb = gb;
+                }
+            }
             _ => return Err(unknown(key)),
         }
         coder.validate()?;
@@ -881,6 +909,8 @@ impl Settings {
             "coder.shadow_budget_usd" => coder.shadow_budget_cents = default.shadow_budget_cents,
             "coder.claude" => coder.claude = default.claude,
             "coder.codex" => coder.codex = default.codex,
+            "coder.slot_cap_gb" => coder.slot_cap_gb = default.slot_cap_gb,
+            "coder.slot_free_gb" => coder.slot_free_gb = default.slot_free_gb,
             "models.payer" => self.models.payer = model_access::Mode::Ours,
             _ => return Err(unknown(key)),
         }
@@ -1380,6 +1410,31 @@ mod tests {
         }
         assert_eq!(edited.coder, Coder::default());
         assert_eq!(edited.other["appearance"]["theme"], "dark");
+    }
+
+    /// Build slot limits are the defaults until the person sets them (#10384).
+    #[test]
+    fn slot_limits_default_until_set_and_go_back_on_default() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut settings = Settings::default();
+        assert_eq!(settings.get("coder.slot_cap_gb").unwrap(), Value::Null);
+        settings
+            .set("coder.slot_cap_gb", "40 GB", dir.path())
+            .unwrap();
+        settings
+            .set("coder.slot_free_gb", "20", dir.path())
+            .unwrap();
+        assert_eq!(settings.coder.slot_cap_gb, Some(40));
+        assert_eq!(settings.coder.slot_free_gb, Some(20));
+        assert!(
+            settings
+                .set("coder.slot_cap_gb", "lots", dir.path())
+                .is_err()
+        );
+        settings
+            .set("coder.slot_cap_gb", "default", dir.path())
+            .unwrap();
+        assert_eq!(settings.coder.slot_cap_gb, None);
     }
 
     /// The shadow baseline is off unless the person turns it on (#10209),

@@ -10,7 +10,7 @@ the [Paseo worktree gap analysis](../worktrees/2026-10-03-paseo-worktree-gap-ana
 (#10296).
 
 ```sh
-openagents worktree ls                 # every task worktree, then the archived ones
+openagents worktree ls                 # task worktrees, archived ones, then build slot sizes
 openagents worktree ls --no-size       # skip sizing (it walks every file)
 openagents worktree archive NAME       # remove an ended task's worktree, keep what restores it
 openagents worktree archive NAME --force --confirm NAME
@@ -35,7 +35,11 @@ removing it would lose:
 
 These are the same checks the background cleanup uses before it removes a
 worktree (`background::git::removable`). Archived worktrees follow, with
-their commit and when they went.
+their commit and when they went. Build slots follow, with one size per slot;
+JSON includes a `slots` array with `name`, `path`, and `bytes`. `--no-size`
+skips both worktree and slot sizing (`bytes` is `null`). The background
+watchers view shows the same slot sizes. For pruning limits and environment
+overrides, see [build slots](../coder/guides/tasks.md).
 
 ## `archive`
 

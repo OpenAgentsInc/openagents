@@ -692,6 +692,7 @@ fn refusal(error: Error) -> Code {
         | Error::Corrupt(_)
         | Error::UnsafePath
         | Error::Busy
+        | Error::BuildDiskLow { .. }
         | Error::UnsupportedPlatform
         | Error::ReopenRequired => Code::Unavailable,
     }

@@ -654,7 +654,12 @@ impl Extras for ProgramExtras {
 
     fn worktrees(&self) -> Result<Vec<openagents_terminal::WorktreeRow>, String> {
         let store = coder::task::local::default_store();
-        coder::task::worktrees::list(&store).map(|projects| worktree_rows(&projects))
+        let slots = background::view::slots(&background::task_targets(&store), true);
+        coder::task::worktrees::list(&store).map(|projects| {
+            let mut rows = worktree_rows(&projects);
+            rows.extend(slot_rows(&slots));
+            rows
+        })
     }
 
     fn archive_worktree(&self, task: &str) -> Result<String, String> {
@@ -699,6 +704,22 @@ fn worktree_rows(
         }
     }
     rows
+}
+
+/// `/worktrees`: Coder's build slots after the projects, with their sizes
+/// (#10384). They are shared by every task, so `a` never archives one.
+fn slot_rows(slots: &[background::view::Slot]) -> Vec<openagents_terminal::WorktreeRow> {
+    slots
+        .iter()
+        .map(|slot| openagents_terminal::WorktreeRow {
+            task: None,
+            label: format!("Build slot {}", slot.name),
+            detail: slot
+                .bytes
+                .map_or_else(|| "size not read".to_owned(), coder::task::worktrees::human),
+            ended: false,
+        })
+        .collect()
 }
 
 /// What an import did, in words.
@@ -1410,5 +1431,33 @@ mod tests {
             notice(Event::Migrated { moved: 2 }).as_deref(),
             Some("moved 2 threads kept without a host into this computer's host")
         );
+    }
+}
+
+#[cfg(test)]
+mod slot_row_tests {
+    #[test]
+    fn worktrees_lists_each_build_slot_with_its_size_and_never_archives_one() {
+        let slots = vec![
+            background::view::Slot {
+                name: "openagents-ab12-slot-0".into(),
+                path: "/x/openagents-ab12-slot-0".into(),
+                bytes: Some(26_000_000_000),
+            },
+            background::view::Slot {
+                name: "openagents-ab12-slot-1".into(),
+                path: "/x/openagents-ab12-slot-1".into(),
+                bytes: None,
+            },
+        ];
+        let rows = super::slot_rows(&slots);
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].label, "Build slot openagents-ab12-slot-0");
+        assert_eq!(
+            rows[0].detail,
+            coder::task::worktrees::human(26_000_000_000)
+        );
+        assert_eq!(rows[1].detail, "size not read");
+        assert!(rows.iter().all(|row| row.task.is_none() && !row.ended));
     }
 }

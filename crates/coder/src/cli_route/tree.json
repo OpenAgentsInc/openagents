@@ -5890,7 +5890,7 @@
                 ]
               }
             ],
-            "summary": "Each Coder task worktree here: its task and the task's state, size, whether removing it would lose anything (uncommitted, unpushed, or ignored files), and age; then the archived ones. Sizing walks every file; --no-size skips it.",
+            "summary": "Each Coder task worktree here: its task and the task's state, size, whether removing it would lose anything (uncommitted, unpushed, or ignored files), and age; then the archived ones. Sizing walks every file; --no-size skips it. Build slot sizes follow the archived ones.",
             "effect": "read_only",
             "runs_on": "connected_computer"
           }

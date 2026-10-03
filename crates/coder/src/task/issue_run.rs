@@ -859,24 +859,31 @@ impl Gate {
     /// A build slot for checking `worktree`'s change, waiting up to
     /// [`SLOT_WAIT`] while every slot is taken; `None` without a store, or
     /// when no slot frees up in time.
-    fn slot(&self, worktree: &Path) -> Option<super::targets::Lease> {
-        let store = self.store.as_ref()?;
+    fn slot(&self, worktree: &Path) -> Result<Option<super::targets::Lease>, String> {
+        let Some(store) = self.store.as_ref() else {
+            return Ok(None);
+        };
         let common = std::process::Command::new("git")
             .args(["rev-parse", "--path-format=absolute", "--git-common-dir"])
             .current_dir(worktree)
             .stdin(std::process::Stdio::null())
             .output()
-            .ok()
-            .filter(|output| output.status.success())?;
+            .map_err(|error| error.to_string())?;
+        if !common.status.success() {
+            return Err("cannot find the checks' Git directory".into());
+        }
         let common = PathBuf::from(String::from_utf8_lossy(&common.stdout).trim());
         let started = std::time::Instant::now();
         loop {
             match super::targets::Lease::acquire(store, &common) {
-                Ok(lease) => return Some(lease),
-                Err(super::Error::Busy) if started.elapsed() < SLOT_WAIT => {
+                Ok(lease) => return Ok(Some(lease)),
+                Err(super::Error::Busy | super::Error::BuildDiskLow { .. })
+                    if started.elapsed() < SLOT_WAIT =>
+                {
                     std::thread::sleep(std::time::Duration::from_secs(2));
                 }
-                Err(_) => return None,
+                Err(super::Error::Busy) => return Ok(None),
+                Err(error) => return Err(error.to_string()),
             }
         }
     }
@@ -903,7 +910,15 @@ impl Checks for Gate {
         }));
         // The checks build in one of the task store's build slots, held
         // until they end, so they stay in the slot budget (#10293).
-        let slot = self.slot(worktree);
+        let slot = match self.slot(worktree) {
+            Ok(slot) => slot,
+            Err(error) => {
+                return Checked {
+                    problems: vec![error],
+                    ran: Vec::new(),
+                };
+            }
+        };
         let target = slot.as_ref().map(|lease| lease.path.as_path());
         runtime.block_on(async {
             let recorder = coder_delegate::record::Recorder::default();

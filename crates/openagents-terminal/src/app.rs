@@ -854,7 +854,7 @@ impl App {
                             }
                             Some(crate::WorktreeRow { task: None, .. }) => {
                                 self.note(
-                                    "That row is a project. Move down to one of its ended tasks to archive that task's worktree.",
+                                    "That row isn't a task's worktree. Move to one of the ended tasks to archive its worktree.",
                                 );
                             }
                             None => {}

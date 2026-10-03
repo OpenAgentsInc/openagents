@@ -34,13 +34,38 @@ The [submit fixture](../fixtures/tasks/submit.json) names a synthetic
 The [cancel fixture](../fixtures/tasks/cancel.json) targets revision `1`, the
 revision of a newly queued task. Cancellation advances it to revision `2`.
 
-Full-access repository runs lease one of four Cargo build slots per project
-under `~/.openagents/targets/`, outside the worktree. Sequential tasks reuse
-cached builds; simultaneous runs use separate locked slots. On host startup
-and when a run releases its slot, Coder removes known ended tasks' legacy
-build directories and trims idle slots to a total 64 GiB budget, removing
-incremental caches first. Locked slots and unknown legacy directories remain;
-live builds can temporarily exceed the budget.
+Full-access and toolchain repository runs lease one of four Cargo build slots
+per project under `~/.openagents/targets/`, outside the worktree. Issue-flow
+checks use the same slot pool. Sequential tasks reuse cached builds;
+simultaneous runs use separate locked slots. On host startup and when a run
+releases its slot, Coder removes known ended tasks' legacy build directories.
+
+On release, a slot over **25 GB**, or on a disk with less than **10 GB free**,
+loses its incremental caches and dependency artifacts older than the start
+of its last three leased builds. Debug, release, custom profiles, and
+cross-compilation directories are covered. Recent dependencies remain;
+without pressure, the entire cache stays warm. Slot and Cargo locks prevent
+pruning active builds, and pruning never follows symbolic links. The existing
+64 GiB total pool budget still evicts the oldest idle slots if partial pruning
+is insufficient. Live builds can temporarily exceed these limits.
+
+Set these environment variables on the host before starting Coder:
+
+- `OPENAGENTS_SLOT_CAP_GB`: per-slot pruning threshold, default `25`.
+- `OPENAGENTS_SLOT_FREE_GB`: minimum free disk space, default `10`.
+- `OPENAGENTS_SLOT_KEEP_BUILDS`: number of build starts retained, default `3`
+  (between `1` and `100`).
+
+Sizes use decimal GB. Build admission first tries to prune idle slots when
+free space is below the floor. Repository runs and issue-flow checks then
+wait up to ten minutes, retrying every two seconds. If space stays low, they
+report `build_disk_low` instead of building outside the slots. The floor is
+an admission check, not a reservation for a running build.
+
+`openagents worktree ls`, `openagents background list`, and the terminal's
+`/background` show each slot's size, including slots without a retained task.
+`worktree ls --no-size` skips slot sizing too. See
+[the worktree command](../../cli/worktree.md).
 
 Without `--store`, the inbox uses `~/.openagents/tasks`. All successful
 commands print JSON to standard output. Store and command refusals print

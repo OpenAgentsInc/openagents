@@ -473,6 +473,11 @@ pub enum Error {
     /// Another task's run still holds the workspace's tree (#10124): its
     /// owner or a process it recorded is alive, or its checks run.
     WorkspaceBusy,
+    /// Builds wait instead of starting with insufficient disk space.
+    BuildDiskLow {
+        free: u64,
+        floor: u64,
+    },
 }
 
 impl Error {
@@ -494,6 +499,7 @@ impl Error {
             Self::UnsupportedPlatform => "unsupported_platform",
             Self::ReopenRequired => "reopen_required",
             Self::WorkspaceBusy => "workspace_busy",
+            Self::BuildDiskLow { .. } => "build_disk_low",
         }
     }
 }
@@ -523,6 +529,10 @@ impl std::fmt::Display for Error {
             }
             Self::ReopenRequired => formatter
                 .write_str("a write failed; reopen the store before retrying the exact command"),
+            Self::BuildDiskLow { free, floor } => write!(
+                formatter,
+                "builds are waiting for disk space: {free} bytes free, {floor} required"
+            ),
             Self::WorkspaceBusy => {
                 formatter.write_str("another Coder task is still running in this project")
             }
