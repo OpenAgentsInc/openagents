@@ -761,6 +761,7 @@ fn a_results_changes_expand_with_ctrl_o() {
             worktree: "/w".into(),
             trajectory: "/t".into(),
             issue: None,
+            pushed_to: None,
             cost_microusd: Some(940_000),
         }),
     ));
@@ -1368,6 +1369,7 @@ fn finished() -> CoderEvent {
         worktree: "/w".into(),
         trajectory: "/t".into(),
         issue: None,
+        pushed_to: None,
         cost_microusd: None,
     })
 }

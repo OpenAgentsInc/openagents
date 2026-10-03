@@ -444,6 +444,86 @@ mod tests {
     }
 
     #[test]
+    fn a_guarded_push_tracks_the_relative_origin_and_retires_without_fetch() {
+        let scratch = Scratch::new();
+        git(
+            &scratch.checkout,
+            &["remote", "set-url", "origin", "../remote.git"],
+        );
+        git(&scratch.checkout, &["pack-refs", "--all"]);
+        let guard = coder_boundary::source::Guard::for_worktree(&scratch.worktree)
+            .unwrap()
+            .unwrap();
+        let enforce = guarded(&scratch.worktree) && !coder_boundary::privacy::sandboxed();
+        let allowed: Vec<_> = guard.allowed().collect();
+        assert!(allowed.contains(&scratch.checkout.join(".git/refs/remotes").as_path()));
+        assert!(allowed.contains(&scratch.checkout.join(".git/logs/refs/remotes").as_path()));
+        assert!(!allowed.contains(&scratch.checkout.join(".git/refs/heads").as_path()));
+        let before = git(&scratch.checkout, &["rev-parse", "main"]);
+        let index = std::fs::read(scratch.checkout.join(".git/index")).unwrap();
+        let mut command = if enforce {
+            guard.command("/bin/sh", &[&scratch.worktree])
+        } else {
+            eprintln!(
+                "nested source guard unavailable; checking relative push and retirement without nesting"
+            );
+            std::process::Command::new("/bin/sh")
+        };
+        let output = command
+            .args([
+                "-c",
+                "printf 'fixed\\n' > a.txt && git commit -qam fix && git push origin HEAD:main",
+            ])
+            .current_dir(&scratch.worktree)
+            .envs(guard.environment())
+            .envs(local::remote_override_environment(&scratch.worktree, 0))
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(!String::from_utf8_lossy(&output.stderr).contains("cannot update"));
+        let landed = git(&scratch.worktree, &["rev-parse", "HEAD"]);
+        assert_eq!(
+            git(&scratch.checkout, &["rev-parse", "origin/main"]),
+            landed
+        );
+        assert_eq!(
+            git(
+                &scratch.checkout.parent().unwrap().join("remote.git"),
+                &["rev-parse", "main"]
+            ),
+            landed
+        );
+        assert_eq!(git(&scratch.checkout, &["rev-parse", "main"]), before);
+        assert_eq!(
+            std::fs::read(scratch.checkout.join(".git/index")).unwrap(),
+            index
+        );
+        assert_eq!(
+            std::fs::read_to_string(scratch.checkout.join("a.txt")).unwrap(),
+            "one\n"
+        );
+        assert_eq!(
+            local::pushed_destination(&scratch.record()).as_deref(),
+            Some("origin/main")
+        );
+        scratch.end();
+        assert_eq!(retire(&scratch.store, &scratch.task), Retired::Removed);
+        assert!(!scratch.worktree.exists());
+        assert_eq!(
+            local::pushed_destination(&scratch.record()).as_deref(),
+            Some("origin/main")
+        );
+        assert_eq!(scratch.record().base, scratch.base);
+        assert_eq!(scratch.record().archived.unwrap().commit, landed);
+        ensure(&scratch.store, &scratch.task).unwrap();
+        assert_eq!(git(&scratch.worktree, &["rev-parse", "HEAD"]), landed);
+    }
+
+    #[test]
     fn unsaved_work_keeps_the_worktree() {
         // Uncommitted changes.
         let scratch = Scratch::new();
@@ -455,6 +535,7 @@ mod tests {
         );
         assert!(scratch.worktree.join("a.txt").exists());
         assert_eq!(scratch.record().archived, None);
+        assert_eq!(local::pushed_destination(&scratch.record()), None);
 
         // An ignored file that is not a build cache.
         let scratch = Scratch::new();
@@ -483,6 +564,7 @@ mod tests {
             Retired::Kept("commits not on any remote".into())
         );
         assert!(scratch.worktree.exists());
+        assert_eq!(local::pushed_destination(&scratch.record()), None);
     }
 
     #[test]

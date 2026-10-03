@@ -1778,6 +1778,47 @@ pub fn result_in(store: Option<&Path>, task: &str) -> Option<openagents_chat::ro
     None
 }
 
+/// Where a completed task's committed change is saved. The checkout can
+/// answer even after retirement removed the worktree.
+pub(super) fn pushed_destination(record: &Record) -> Option<String> {
+    let worktree = Path::new(&record.worktree);
+    let (dir, head) = if let Some(archived) = &record.archived {
+        (Path::new(&record.checkout), archived.commit.clone())
+    } else {
+        if !git_out(worktree, &["status", "--porcelain"])
+            .ok()?
+            .trim()
+            .is_empty()
+        {
+            return None;
+        }
+        (
+            worktree,
+            git_out(worktree, &["rev-parse", "HEAD"])
+                .ok()?
+                .trim()
+                .to_owned(),
+        )
+    };
+    if head == record.base {
+        return None;
+    }
+    git_out(
+        dir,
+        &[
+            "for-each-ref",
+            "--format=%(refname:short)",
+            "--contains",
+            &head,
+            "refs/remotes",
+        ],
+    )
+    .ok()?
+    .lines()
+    .find(|name| !name.ends_with("/HEAD"))
+    .map(str::to_owned)
+}
+
 /// How each of `task`'s ended turns ended, oldest first: what `chat read`
 /// shows of Coder's work (#10332). A turn still running is left out.
 pub fn endings_in(store: Option<&Path>, task: &str) -> Vec<CoderEvent> {
@@ -2267,6 +2308,9 @@ impl Follow {
                     // (#10161): information on its card, never a limit.
                     if let CoderEvent::Result(finished) = &mut end {
                         finished.cost_microusd = result.cost_microusd;
+                        if let Some(record) = &record {
+                            finished.pushed_to = pushed_destination(record);
+                        }
                     }
                     // The person stopped it: say so, not that something
                     // refused (#10331).

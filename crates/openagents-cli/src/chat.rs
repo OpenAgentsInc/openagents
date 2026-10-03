@@ -1161,6 +1161,7 @@ mod tests {
             worktree: "/w".into(),
             trajectory: "/t".into(),
             issue: None,
+            pushed_to: None,
             cost_microusd: None,
         }));
         assert!(

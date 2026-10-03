@@ -81,15 +81,8 @@ pub(super) fn show(output: &Output, tools: &mut Stream, line: &Line) {
                 );
             }
             println!("worktree: {}", result.worktree);
-            if let Some(issue) = &result.issue {
-                println!("{}", issue.line());
-            } else if !result.files_changed.is_empty()
-                && let Some(thread) = &line.thread
-            {
-                // Where the change is, and how to bring it here (#10343).
-                eprintln!(
-                    "The change is in Coder's worktree. Apply it to your checkout with: openagents chat apply --thread {thread}"
-                );
+            if let Some(note) = location_note(result, line.thread.as_deref()) {
+                eprintln!("{note}");
             }
             let _ = std::io::stdout().flush();
         }
@@ -105,5 +98,52 @@ pub(super) fn show(output: &Output, tools: &mut Stream, line: &Line) {
                 eprintln!("{text}");
             }
         }
+    }
+}
+
+/// Where the completed change is saved, or how to apply unsaved work.
+fn location_note(result: &coder_events::Finished, thread: Option<&str>) -> Option<String> {
+    if let Some(issue) = &result.issue {
+        Some(issue.line())
+    } else if let Some(destination) = &result.pushed_to {
+        Some(format!("The change is on {destination}."))
+    } else if !result.files_changed.is_empty() {
+        thread.map(|thread| format!("The change is in Coder's worktree. Apply it to your checkout with: openagents chat apply --thread {thread}"))
+    } else {
+        None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_pushed_result_replaces_the_apply_hint() {
+        let mut result = coder_events::Finished {
+            turn: 2,
+            summary: "Committed and pushed.".into(),
+            files_changed: vec![coder_events::FileChange {
+                path: "calc.py".into(),
+                ..Default::default()
+            }],
+            insertions: 1,
+            deletions: 1,
+            worktree: "/removed".into(),
+            trajectory: "/trace".into(),
+            issue: None,
+            pushed_to: Some("origin/main".into()),
+            cost_microusd: None,
+        };
+        assert_eq!(
+            location_note(&result, Some("thread")).unwrap(),
+            "The change is on origin/main."
+        );
+        result.pushed_to = None;
+        assert!(
+            location_note(&result, Some("thread"))
+                .unwrap()
+                .contains("openagents chat apply --thread thread")
+        );
     }
 }

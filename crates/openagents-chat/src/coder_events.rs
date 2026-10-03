@@ -725,6 +725,9 @@ pub struct Finished {
     pub deletions: u64,
     /// Where the changes are: Coder's worktree.
     pub worktree: String,
+    /// The remote-tracking branch that contains the completed change.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pushed_to: Option<String>,
     /// The turn's ATIF trajectory file.
     pub trajectory: String,
     /// The GitHub issue the run worked, and how it landed, when the run
@@ -1273,6 +1276,7 @@ impl Mapper {
                     worktree: worktree.to_owned(),
                     trajectory: trajectory.to_owned(),
                     issue: None,
+                    pushed_to: None,
                     cost_microusd: None,
                 })
             }
@@ -2729,6 +2733,7 @@ mod tests {
                     worktree: "/w".into(),
                     trajectory: "/t".into(),
                     issue: None,
+                    pushed_to: None,
                     cost_microusd: None,
                 }),
             ),

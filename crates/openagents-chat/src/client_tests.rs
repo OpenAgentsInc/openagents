@@ -1684,6 +1684,7 @@ impl Coder for FanCoder {
                 worktree: "/tmp".into(),
                 trajectory: String::new(),
                 issue: None,
+                pushed_to: None,
                 cost_microusd: None,
             }),
         })))

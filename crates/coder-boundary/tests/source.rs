@@ -173,7 +173,9 @@ fn a_checkout_of_its_own_has_nothing_to_guard() {
         allowed,
         [
             &checkout.join(".git/objects"),
-            &checkout.join(".git/worktrees/run")
+            &checkout.join(".git/worktrees/run"),
+            &checkout.join(".git/refs/remotes"),
+            &checkout.join(".git/logs/refs/remotes")
         ]
     );
 }

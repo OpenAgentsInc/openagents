@@ -21,9 +21,12 @@
 //!   store its objects. Objects are named by their content; adding one
 //!   changes no file, branch, tag, or index of the checkout.
 //!
+//! Remote-tracking refs and their reflogs are writable so a push can record
+//! where it saved the task commit. They do not move the checkout's branch.
+//!
 //! Everything else there stays unwritten: the checkout's files, its
-//! index and `HEAD`, every ref (branches, tags, remote-tracking refs, the
-//! stash), `packed-refs`, the configuration, and the hooks. Everything
+//! index and `HEAD`, local refs (branches, tags, and the stash),
+//! `packed-refs`, the configuration, and the hooks. Everything
 //! outside the checkout is as full access always was: writable, readable,
 //! and online.
 //!
@@ -76,8 +79,8 @@ impl Guard {
     /// The guard for the Git worktree at `worktree`, found with Git: the
     /// main working tree (`git worktree list`'s first entry, unless the
     /// repository is bare) and the common Git directory are denied; the
-    /// worktree, its administrative directory, and the object store are
-    /// allowed back. `None` when `worktree` is not a linked worktree (it
+    /// worktree, its administrative directory, the object store, and remote-
+    /// tracking refs and their reflogs are allowed back. `None` when `worktree` is not a linked worktree (it
     /// is the checkout itself, or a repository of its own): there is no
     /// other checkout to keep it out of.
     ///
@@ -113,6 +116,14 @@ impl Guard {
         let mut allowed = vec![worktree.clone(), own];
         if objects.is_dir() {
             allowed.push(existing(&objects)?);
+        }
+        // Git creates loose tracking refs even when the old ref is packed.
+        // Prepare these directories outside the guard: their parents remain
+        // protected, including refs/heads and packed-refs.
+        for relative in ["refs/remotes", "logs/refs/remotes"] {
+            let path = common.join(relative);
+            std::fs::create_dir_all(&path).map_err(Error::Io)?;
+            allowed.push(existing(&path)?);
         }
         Guard::new(&worktree, &protected, &allowed).map(Some)
     }
