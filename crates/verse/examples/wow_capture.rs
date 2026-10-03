@@ -53,7 +53,7 @@ fn main() -> Result<(), String> {
         .iter()
         .map(|(id, m)| (id.clone(), m.height))
         .collect();
-    let atlas = Atlas::new(16.0);
+    let atlas = classic_atlas(path.parent().ok_or("Expected pack directory")?)?;
     let mut renderer = Renderer::new(
         pack.clone(),
         path.parent().ok_or("Expected pack directory")?,
@@ -252,4 +252,30 @@ fn instances(pack: &Pack, frame: &verse_wow::director::Frame) -> Vec<Instance> {
         });
     }
     actors
+}
+
+fn classic_atlas(dir: &std::path::Path) -> Result<Atlas, String> {
+    let font = std::fs::read(dir.join("FRIZQT__.TTF"))
+        .map_err(|e| format!("Import Classic UI assets with wow-import --ui-only: {e}"))?;
+    let mut atlas = Atlas::from_font(&font, 18.0)?;
+    for name in ["status-bar", "nameplate-border"] {
+        let decoder = png::Decoder::new(std::io::BufReader::new(
+            std::fs::File::open(dir.join(format!("{name}.png"))).map_err(|e| e.to_string())?,
+        ));
+        let mut reader = decoder.read_info().map_err(|e| e.to_string())?;
+        let mut rgba = vec![0; reader.output_buffer_size().ok_or("Invalid UI image")?];
+        let info = reader.next_frame(&mut rgba).map_err(|e| e.to_string())?;
+        if info.color_type != png::ColorType::Rgba {
+            return Err("Expected RGBA UI sprite".into());
+        }
+        if name == "nameplate-border" {
+            if info.height != 32 || info.width != 128 {
+                return Err("Unexpected Classic nameplate dimensions".into());
+            }
+            atlas.add_sprite(name, 128, 16, &rgba[128 * 16 * 4..128 * 32 * 4])?;
+        } else {
+            atlas.add_sprite(name, info.width, info.height, &rgba[..info.buffer_size()])?;
+        }
+    }
+    Ok(atlas)
 }

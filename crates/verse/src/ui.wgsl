@@ -36,6 +36,6 @@ fn vs(in: VsIn) -> VsOut {
 
 @fragment
 fn fs(in: VsOut) -> @location(0) vec4<f32> {
-    let coverage = textureSample(atlas, atlas_sampler, in.uv).r;
-    return vec4<f32>(in.color.rgb, in.color.a * coverage);
+    let sample = textureSample(atlas, atlas_sampler, in.uv);
+    return in.color * sample;
 }

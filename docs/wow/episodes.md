@@ -166,3 +166,11 @@ owns geometry submission, skeletal poses, materials, lighting, shadows,
 camera state, and overlays. Realm authority and authored replacement content
 remain tracked in [#10406](https://github.com/OpenAgentsInc/openagents/issues/10406)
 and [#10407](https://github.com/OpenAgentsInc/openagents/issues/10407).
+
+The [Classic UI video](../../bench/wow/2026-10-03/verse-anthropic-ritual-classic-ui.mp4)
+uses the client's `FRIZQT__.TTF` font and original
+nameplate-border and status-bar textures. Names use proportional glyph spacing
+and black outlines above textured red health bars. Programmed yells use outlined
+cinematic text. The temporary backing boxes and connector lines are removed.
+Run the importer with `--ui-only` to extract these assets into the private pack
+before recording; the font and interface textures are not checked into Git.

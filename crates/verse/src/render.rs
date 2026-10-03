@@ -1637,9 +1637,16 @@ pub(crate) fn ui_pipeline(
         mip_level_count: 1,
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
-        format: wgpu::TextureFormat::R8Unorm,
+        format: wgpu::TextureFormat::Rgba8UnormSrgb,
         usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
         view_formats: &[],
+    });
+    let rgba = atlas.rgba.clone().unwrap_or_else(|| {
+        atlas
+            .pixels
+            .iter()
+            .flat_map(|a| [255, 255, 255, *a])
+            .collect()
     });
     queue.write_texture(
         wgpu::TexelCopyTextureInfo {
@@ -1648,10 +1655,10 @@ pub(crate) fn ui_pipeline(
             origin: wgpu::Origin3d::ZERO,
             aspect: wgpu::TextureAspect::All,
         },
-        &atlas.pixels,
+        &rgba,
         wgpu::TexelCopyBufferLayout {
             offset: 0,
-            bytes_per_row: Some(atlas.width),
+            bytes_per_row: Some(atlas.width * 4),
             rows_per_image: Some(atlas.height),
         },
         extent(atlas.width, atlas.height),

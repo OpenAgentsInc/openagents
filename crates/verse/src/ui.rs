@@ -1,11 +1,11 @@
-//! Screen-space UI: an amber monospace glyph atlas and a batch of quads.
+//! Screen-space UI: glyph atlases, optional color sprites, and batches of quads.
 //!
 //! Text is Fira Mono Medium (SIL Open Font License 1.1, `assets/`),
 //! rasterized once at startup into a single-channel atlas. A [`UiBatch`]
 //! collects solid rectangles, frames, and text in physical pixels with the
 //! origin at the top-left; the renderer draws it over the world with alpha
 //! blending. Every color is a step of the amber ladder or the near-black
-//! field, as in the rest of Verse.
+//! field by default. Imported scenes can supply a proportional font and color sprites.
 
 use bytemuck::{Pod, Zeroable};
 use coder_ui::theme::Intensity;
@@ -56,6 +56,7 @@ struct Glyph {
     size: [f32; 2],
     /// Left bearing and distance from the baseline to the bitmap's top.
     offset: [f32; 2],
+    advance: f32,
 }
 
 /// The rasterized font.
@@ -66,8 +67,10 @@ pub struct Atlas {
     pub height: u32,
     /// One coverage byte per pixel.
     pub pixels: Vec<u8>,
+    pub rgba: Option<Vec<u8>>,
+    pub sprites: std::collections::BTreeMap<String, ([f32; 2], [f32; 2])>,
     glyphs: Vec<(char, Glyph)>,
-    /// Horizontal advance of every glyph, in pixels.
+    /// Default glyph advance in pixels; proportional glyphs retain their own metrics.
     pub advance: f32,
     /// Line height in pixels.
     pub line: f32,
@@ -88,6 +91,8 @@ impl Atlas {
             width: self.width,
             height: self.height,
             pixels: Vec::new(),
+            rgba: None,
+            sprites: self.sprites.clone(),
             glyphs: self
                 .glyphs
                 .iter()
@@ -97,6 +102,7 @@ impl Atlas {
                         Glyph {
                             size: glyph.size.map(|value| value / scale),
                             offset: glyph.offset.map(|value| value / scale),
+                            advance: glyph.advance / scale,
                             ..*glyph
                         },
                     )
@@ -116,9 +122,19 @@ impl Atlas {
     /// Panics if the embedded font cannot be parsed, which a test rules out.
     #[must_use]
     pub fn new(px: f32) -> Self {
+        Self::rasterize(FONT, px, false).expect("the embedded font parses")
+    }
+    /// Rasterizes a caller-provided proportional font without retaining its source.
+    pub fn from_font(bytes: &[u8], px: f32) -> Result<Self, String> {
+        if bytes.len() > 16 * 1024 * 1024 || !px.is_finite() || !(1.0..=128.0).contains(&px) {
+            return Err("Invalid UI font size".into());
+        }
+        Self::rasterize(bytes, px, true)
+    }
+    fn rasterize(bytes: &[u8], px: f32, proportional: bool) -> Result<Self, String> {
         use swash::scale::{Render, ScaleContext, Source};
         use swash::zeno::Format;
-        let font = swash::FontRef::from_index(FONT, 0).expect("the embedded font parses");
+        let font = swash::FontRef::from_index(bytes, 0).ok_or("Invalid UI font")?;
         let lines = font.metrics(&[]).scale(px);
         let glyph_metrics = font.glyph_metrics(&[]).scale(px);
         let mut context = ScaleContext::new();
@@ -196,19 +212,80 @@ impl Atlas {
                     ],
                     size: [m.width as f32, m.height as f32],
                     offset: [m.left as f32, m.top as f32],
+                    advance: if proportional {
+                        glyph_metrics.advance_width(font.charmap().map(*c))
+                    } else {
+                        advance
+                    },
                 },
             ));
         }
-        Self {
+        Ok(Self {
             width: ATLAS_WIDTH,
             height,
             pixels,
+            rgba: None,
+            sprites: Default::default(),
             glyphs,
             advance,
             line: (lines.ascent + lines.descent + lines.leading).ceil(),
             ascent: lines.ascent.ceil(),
             solid: [2.0 / ATLAS_WIDTH as f32, 2.0 / height as f32],
+        })
+    }
+
+    /// Adds a color sprite to the same GPU atlas as the glyphs.
+    pub fn add_sprite(
+        &mut self,
+        name: &str,
+        width: u32,
+        height: u32,
+        pixels: &[u8],
+    ) -> Result<(), String> {
+        if width > self.width
+            || height == 0
+            || height > 4096
+            || pixels.len() != (width * height * 4) as usize
+        {
+            return Err("Invalid UI sprite".into());
         }
+        let old = self.height;
+        let new = (old + height).next_power_of_two();
+        let mut rgba = self.rgba.take().unwrap_or_else(|| {
+            self.pixels
+                .iter()
+                .flat_map(|a| [255, 255, 255, *a])
+                .collect()
+        });
+        rgba.resize((self.width * new * 4) as usize, 0);
+        for row in 0..height as usize {
+            let dst = (old as usize + row) * self.width as usize * 4;
+            rgba[dst..dst + width as usize * 4]
+                .copy_from_slice(&pixels[row * width as usize * 4..(row + 1) * width as usize * 4]);
+        }
+        let ratio = old as f32 / new as f32;
+        for (_, g) in &mut self.glyphs {
+            g.uv0[1] *= ratio;
+            g.uv1[1] *= ratio;
+        }
+        for (a, b) in self.sprites.values_mut() {
+            a[1] *= ratio;
+            b[1] *= ratio;
+        }
+        self.solid[1] *= ratio;
+        self.sprites.insert(
+            name.into(),
+            (
+                [0.0, old as f32 / new as f32],
+                [
+                    width as f32 / self.width as f32,
+                    (old + height) as f32 / new as f32,
+                ],
+            ),
+        );
+        self.height = new;
+        self.rgba = Some(rgba);
+        Ok(())
     }
 
     fn glyph(&self, c: char) -> Option<&Glyph> {
@@ -218,22 +295,27 @@ impl Atlas {
     /// Width of `text` in pixels.
     #[must_use]
     pub fn measure(&self, text: &str) -> f32 {
-        text.chars().count() as f32 * self.advance
+        text.chars()
+            .map(|c| self.glyph(c).map_or(self.advance, |g| g.advance))
+            .sum()
     }
 
     /// Splits `text` into lines no wider than `width` pixels, breaking at
     /// spaces where it can.
     #[must_use]
     pub fn wrap(&self, text: &str, width: f32) -> Vec<String> {
-        let per = ((width / self.advance).floor() as usize).max(1);
         let mut lines = Vec::new();
         let mut line = String::new();
         for word in text.split(' ') {
             let mut word = word.to_owned();
             loop {
                 let len = line.chars().count();
-                let need = if len == 0 { 0 } else { 1 } + word.chars().count();
-                if len + need <= per {
+                let candidate = if len == 0 {
+                    word.clone()
+                } else {
+                    format!("{line} {word}")
+                };
+                if self.measure(&candidate) <= width {
                     if len > 0 {
                         line.push(' ');
                     }
@@ -243,6 +325,16 @@ impl Atlas {
                 if len > 0 {
                     lines.push(std::mem::take(&mut line));
                     continue;
+                }
+                let mut per = 0;
+                let mut used = 0.0;
+                for c in word.chars() {
+                    let advance = self.glyph(c).map_or(self.advance, |g| g.advance);
+                    if per > 0 && used + advance > width {
+                        break;
+                    }
+                    per += 1;
+                    used += advance;
                 }
                 let head: String = word.chars().take(per).collect();
                 word = word.chars().skip(per).collect();
@@ -355,6 +447,21 @@ impl UiBatch {
         }
     }
 
+    pub fn image(
+        &mut self,
+        atlas: &Atlas,
+        name: &str,
+        x: f32,
+        y: f32,
+        w: f32,
+        h: f32,
+        color: [f32; 4],
+    ) {
+        if let Some((a, b)) = atlas.sprites.get(name) {
+            self.quad([x, y], [x + w, y + h], *a, *b, color);
+        }
+    }
+
     /// A straight stroke from `a` to `b`, `w` pixels wide.
     pub fn line(&mut self, atlas: &Atlas, a: [f32; 2], b: [f32; 2], w: f32, color: [f32; 4]) {
         let (dx, dy) = (b[0] - a[0], b[1] - a[1]);
@@ -408,7 +515,7 @@ impl UiBatch {
                     color,
                 );
             }
-            pen += atlas.advance;
+            pen += atlas.glyph(c).map_or(atlas.advance, |g| g.advance);
         }
         pen - x
     }
@@ -417,6 +524,27 @@ impl UiBatch {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn color_sprites_preserve_glyph_texels_and_layout() {
+        let mut atlas = Atlas::new(16.0);
+        let old_height = atlas.height;
+        let old_uv = atlas.glyph('A').unwrap().uv0;
+        let old_coverage = atlas.pixels.clone();
+        atlas
+            .add_sprite("border", 2, 1, &[255, 0, 0, 255, 0, 255, 0, 128])
+            .unwrap();
+        let rgba = atlas.rgba.as_ref().unwrap();
+        for (i, alpha) in old_coverage.iter().enumerate() {
+            assert_eq!(&rgba[i * 4..i * 4 + 4], &[255, 255, 255, *alpha]);
+        }
+        assert_eq!(
+            atlas.glyph('A').unwrap().uv0[1] * atlas.height as f32,
+            old_uv[1] * old_height as f32
+        );
+        assert_eq!(atlas.layout_at_scale(2.0).unwrap().sprites, atlas.sprites);
+        assert!(Atlas::from_font(b"invalid", 16.0).is_err());
+    }
 
     #[test]
     fn logical_layout_preserves_uvs_without_copying_the_bitmap() {

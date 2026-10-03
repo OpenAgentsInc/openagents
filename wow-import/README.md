@@ -24,3 +24,9 @@ passes are omitted; the owned renderer supplies illumination instead of baked
 vertex lighting. Texture animation, liquid rendering, arbitrary character
 outfits, and a complete terrain-streaming importer remain future extensions.
 Keep generated packs and client assets outside the repository.
+
+The importer also extracts `Fonts\FRIZQT__.TTF`, the Classic nameplate border,
+and the status-bar texture into the private output directory. The Verse capture
+loads these assets for proportional outlined text and textured health bars.
+To refresh only these UI assets without importing the chamber again, append
+`--ui-only` to the importer command. The font and textures remain outside Git.
