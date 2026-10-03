@@ -1,0 +1,11 @@
+Implement the worktree-removal safety fix described below. Read the relevant implementation, existing tests and test helpers, and docs/background/2026-10-02-background-processes.md, especially its safety and Phase 1 as built sections. Update regression coverage and the safety specification. Keep the worktree rather than archiving ignored data.
+
+Disk cleanup can delete ignored user files when it removes a finished worktree
+
+Found by a Codex review on CoderOS (thread 700865e6, 2026-10-02) of 5ae8d27af8 (#10156).
+
+`crates/background/src/git.rs:75-78`: the "nothing unsaved" check uses `git status --porcelain --untracked-files=all`, which excludes ignored files. A finished task's worktree holding ignored local data (`.env`, private datasets) passes the check, and `git worktree remove` deletes those files; the recorded undo only recreates the checkout, not their contents. Verified in a temp repo: an ignored `private/data` file gave an empty status and `git worktree remove` deleted it without force.
+
+Fix: refuse to remove a worktree that holds ignored files outside recognized disposable caches (`target/`, `node_modules/`, build outputs the spec lists), or move them to the background trash first so undo restores them. Test with an ignored file in a temp repo.
+
+This round strengthens the original task's safety contract. Recognized cache names such as target, node_modules, and .cargo-target* denote actual directories, not arbitrary regular filenames or symlinks. Unknown ignored data and symlinks must keep the worktree. A regular .DS_Store metadata file is the explicit file exception; a .DS_Store directory is not disposable. Nested recognized cache directories must remain eligible. Preserve names and contents containing spaces or newlines. Keep the worktree rather than archive its ignored files for this experiment.

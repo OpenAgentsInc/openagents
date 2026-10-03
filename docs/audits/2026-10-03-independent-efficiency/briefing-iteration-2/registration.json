@@ -1,0 +1,83 @@
+{
+  "schema": "openagents.briefing-replay.registration.v2",
+  "registered_utc": "2026-10-03T04:21:14.015019+00:00",
+  "packer_commit": "64b20e650f2c9545008b14baa91528868aec989a",
+  "cli_version": "2.1.287 (Claude Code)",
+  "model": "claude-opus-5-5",
+  "effort": "medium",
+  "tools": [
+    "Read",
+    "Edit",
+    "Write",
+    "Glob",
+    "Grep"
+  ],
+  "source_pins": {
+    "development": "4705102273140a5f381fb75e17a29965662629c8",
+    "heldout": "f29611f211747884b4f508db80634d3f6df2a5e9"
+  },
+  "packer_binary_sha256": "c120da45111d784183dc391bd5445d78fd9f701a0342d2f9c57110c22f086b3d",
+  "variant": "explicit-scope-with-conditional-git-probe-v2",
+  "order_per_panel": [
+    "control",
+    "treatment",
+    "treatment",
+    "control",
+    "control",
+    "treatment",
+    "treatment",
+    "control"
+  ],
+  "max_repair_turns": 1,
+  "max_agent_seconds_per_run": 600,
+  "max_cli_estimate_usd_per_run": 10,
+  "max_panel_runs": 16,
+  "max_shared_warmups": 2,
+  "development_advance": "4/4 treatment accepted; first-pair treatment failure permits early futility stop",
+  "efficiency_gate": {
+    "heldout_control_accepted": 4,
+    "heldout_treatment_accepted": 4,
+    "minimum_median_cost_reduction_fraction": 0.2,
+    "minimum_cheaper_pairs": 3,
+    "maximum_median_wall_ratio": 1.1
+  },
+  "correctness_gate": {
+    "heldout_control_accepted_max": 1,
+    "heldout_treatment_accepted_min": 3,
+    "maximum_median_cost_ratio": 1.1,
+    "maximum_median_wall_ratio": 1.1,
+    "no_safety_or_instruction_violations": true
+  },
+  "count_repairs": true,
+  "count_preparation": true,
+  "cost_basis": "Final cumulative Claude CLI list-price estimate; not verified subscription charge. No paid briefing model calls. Machine time reported separately.",
+  "cache_policy": "One same-model instruction-prefix warmup per task; balanced order; provider cache state uncontrolled.",
+  "files_sha256": {
+    "crates/briefing-lab/src/focused.rs": "7b78eea6f83874cae133c4c9b33e96b9988b1885fca05c7c7792d7a7b072a3ee",
+    "crates/briefing-lab/src/lib.rs": "3dc63cb886e7220fcec65642d1977cc69e2d7c5e2f84041916d7b00516d48edb",
+    "crates/briefing-lab/src/main.rs": "1ed021e6353205e90d3c44a630c4fc228803e944ae9f44db5de722e514bdb97a",
+    "bench/briefing-replay/replay.py": "84fe93a3be4301cab749d9576caf246917f70e4399cd138a3010d578e3030b4c",
+    "bench/briefing-replay/verify_remote.py": "a5d9e8ed6ed15be3c438dc1aff508e805df04cc67d6036f3d29621e657d8284a",
+    "bench/briefing-replay/instruction_guard.py": "78b66e55928917b88c38eb14b912c5af8ed1bed8fef7263fce1c8be73b0a07be",
+    "bench/briefing-replay/prepare.py": "94800d48971e71820a2e8396a55b6117b21b20079b95609c4aa78b5591371017",
+    "bench/briefing-replay/probe_git.py": "deb29f4f103ca2781d890e3588aaddebec70c8438f33e7f9140d02da359ab56f",
+    "docs/audits/2026-10-03-independent-efficiency/briefing-iteration-2/protocol.md": "457f68648b3eb8ab6ff022368bd3290c80ce5f365f14414373f424059a5d63de",
+    "private-input/development-config.json": "8660f34a967392453e99d7f5ceeb5e4c4e5b1b2fa12b2dd97a110c5074e44b58",
+    "private-input/instructions-10166.txt": "9b2263b8a61955ab13d45283688fb37f08dce9bbb5f5b304e0f2e6c87c2c7761",
+    "private-input/instructions-10166-manifest.json": "3d9a71d7bc46e8c3f9c025cd8862c46aed01c90849f48ffac497097ca7968e66",
+    "private-input/instructions-10166-block.txt": "8db01a119f0ce96a263826b46eb5871789efb13c40ab9b02438bc82bee6d8f7d",
+    "private-input/task-10166.txt": "d0a51a8b7f931f13ea8352e9b3612a6f0b51f904db5520c510106818aa9c63a9",
+    "private-input/issue-10166.json": "48d292a829dc635bb9558dfb95557ba6fa3134b8d08d64c77fe0a9bbd1aaafe1",
+    "private-input/treatment-10166.md": "73f2bbc506691337fee1619b55db3e61f6aabff06bc4b877c7d48f6c5dfed444",
+    "private-input/ignored_worktrees_v2.rs": "c60dc9340187eeea09076f359f7d9c8721bc81dbb70ed95c5d6b8ff586555c70",
+    "private-input/holdout-selection/heldout-config.json": "ba9db1da976a840acb8608f4e8d5e1d48176f5a7b2a1675c4b60bd03f293b2a4",
+    "private-input/holdout-selection/instructions-heldout.txt": "cec4c3cba2fc4d1474ca24a85942acd68836e8330fc78d621222b8386ac675e2",
+    "private-input/holdout-selection/instructions-heldout-block.txt": "55a47ebcc63f0711a0a33f066a26ce7345691e2af5af7bf7c910f5a46a3edcd6",
+    "private-input/holdout-selection/instructions-heldout-manifest.json": "d5650a67d0b6e89d6f8fdad3bf1845461bdec860ff9443f7162a076049dcebaf",
+    "private-input/holdout-selection/task-heldout.txt": "3e0c2c91dcb8bd9afbcc1da70b72cd2048f258747ad1a7088aff5cca5f45d288",
+    "private-input/holdout-selection/issue-heldout.json": "a9c1a22140a29be42b7775a5ca31f27b60a0b6b7a0dce161711469fa2a171c3f",
+    "private-input/holdout-selection/treatment-heldout.md": "cc5c8d45adfce27ef591feee629d51bc5358dd9e4c9cbc4c5014753fe88108bc",
+    "private-input/holdout-selection/checker/retained_marks.rs": "b8db5ec74a4c9df0655600fb80d0e5e18854c1531a7123bf95ca0046756bef8c",
+    "private-input/holdout-selection/checker/hashes.json": "d64af4daecb44c2d791c723fe837080bbf68a9e65bd8be3990b1390ef47b2f95"
+  }
+}
