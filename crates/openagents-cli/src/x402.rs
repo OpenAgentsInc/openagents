@@ -177,7 +177,8 @@ The buyer ceiling for a call is --max-msat if given, else the policy's
 capability, provider, or default ceiling; with neither, the call is refused
 before anything is paid. The allowlist and the daily cap (amounts plus fees
 over the last 24 hours, from the ledger) hold whatever the flags say. Without
---max-fee-msat the fee cap is the policy's, else 1% + 1000 msat.
+--max-fee-msat the fee cap is the policy's, else max(10 sats, 2% of the
+amount) for the wallet; the Lightning node and phone keep 1% + 1000 msat.
 Replay records live in ~/.openagents/x402/replay, native purchases in
 ~/.openagents/x402/native, the policy in ~/.openagents/x402/policy.json, and
 the ledger in ~/.openagents/x402/ledger.ndjson. The preimage is printed only
@@ -776,6 +777,24 @@ pub(crate) fn limits(
     Policy::limits(policy, flags, provider, capability).map_err(|error| error.to_string())
 }
 
+/// Apply the wallet default only when neither flags nor policy set a fee cap.
+/// Before a native challenge arrives, use the amount ceiling for its request.
+pub(crate) fn payer_limits(
+    policy: Option<&Policy>,
+    flags: Flags,
+    provider: Option<&str>,
+    capability: Option<&str>,
+    payer: Payer,
+    amount_msat: Option<u64>,
+) -> Result<Limits, String> {
+    let mut resolved = limits(policy, flags, provider, capability)?;
+    let policy_fee = policy.and_then(|p| p.ceiling(provider, capability).0.max_fee_msat);
+    if payer == Payer::Wallet && flags.max_fee_msat.or(policy_fee).is_none() {
+        resolved.max_fee_msat = (amount_msat.unwrap_or(resolved.max_msat) / 50).max(10_000);
+    }
+    Ok(resolved)
+}
+
 /// Refuse `amount_msat` to `provider` if the ceiling, the allowlist, or the
 /// daily cap says so. Nothing is paid on an error.
 pub(crate) fn admit(
@@ -914,11 +933,13 @@ fn buy(
         }
     }
     let policy = load_policy()?;
-    let limits = limits(
+    let limits = payer_limits(
         policy.as_ref(),
         spend.flags,
         Some(&terms.pay_to),
         spend.capability.as_deref(),
+        spend.payer,
+        Some(invoice.amount_msat()),
     )?;
     admit(
         policy.as_ref(),
@@ -2164,6 +2185,113 @@ fn resolve_descriptor(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn wallet_fee_defaults_use_price_not_spending_ceiling() {
+        for (sats, fee_sats) in [(5, 10), (1_000, 20), (100_000, 2_000)] {
+            let flags = Flags {
+                max_msat: Some(1_000_000_000),
+                max_fee_msat: None,
+            };
+            let resolved =
+                payer_limits(None, flags, None, None, Payer::Wallet, Some(sats * 1_000)).unwrap();
+            assert_eq!(resolved.max_fee_msat, fee_sats * 1_000);
+            assert!(resolved.max_fee_msat >= 3_000);
+            for payer in [Payer::Node, Payer::Phone] {
+                assert_eq!(
+                    payer_limits(None, flags, None, None, payer, Some(sats * 1_000)).unwrap(),
+                    limits(None, flags, None, None).unwrap()
+                );
+            }
+        }
+        let flags = Flags {
+            max_msat: Some(u64::MAX),
+            max_fee_msat: None,
+        };
+        assert_eq!(
+            payer_limits(None, flags, None, None, Payer::Wallet, Some(u64::MAX))
+                .unwrap()
+                .max_fee_msat,
+            u64::MAX / 50
+        );
+    }
+
+    #[test]
+    fn wallet_fee_overrides_keep_policy_precedence_and_zero() {
+        let mut policy = Policy {
+            default: Ceiling {
+                max_msat: Some(100_000),
+                max_fee_msat: Some(1_000),
+            },
+            ..Policy::default()
+        };
+        policy.providers.insert(
+            "node".into(),
+            Ceiling {
+                max_msat: None,
+                max_fee_msat: Some(2_000),
+            },
+        );
+        policy.capabilities.insert(
+            "cap".into(),
+            Ceiling {
+                max_msat: None,
+                max_fee_msat: Some(0),
+            },
+        );
+        for (provider, capability, expected) in [
+            (None, None, 1_000),
+            (Some("node"), None, 2_000),
+            (Some("node"), Some("cap"), 0),
+        ] {
+            assert_eq!(
+                payer_limits(
+                    Some(&policy),
+                    Flags::default(),
+                    provider,
+                    capability,
+                    Payer::Wallet,
+                    Some(5_000)
+                )
+                .unwrap()
+                .max_fee_msat,
+                expected
+            );
+            let flags = Flags {
+                max_msat: None,
+                max_fee_msat: Some(17),
+            };
+            assert_eq!(
+                payer_limits(
+                    Some(&policy),
+                    flags,
+                    provider,
+                    capability,
+                    Payer::Wallet,
+                    Some(5_000)
+                )
+                .unwrap()
+                .max_fee_msat,
+                17
+            );
+        }
+        assert_eq!(
+            payer_limits(
+                None,
+                Flags {
+                    max_msat: Some(5_000),
+                    max_fee_msat: None
+                },
+                None,
+                None,
+                Payer::Wallet,
+                None
+            )
+            .unwrap()
+            .max_fee_msat,
+            10_000
+        );
+    }
 
     fn wallet_config(min_payment_msat: Option<u64>) -> WalletConfig {
         let mut lsp = config::Lsp::parse(

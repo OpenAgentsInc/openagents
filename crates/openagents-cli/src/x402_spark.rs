@@ -108,7 +108,7 @@ mod tests {
                 id: "p1".into(),
                 received: false,
                 amount_sats: 5,
-                fee_sats: 1,
+                fee_sats: 3,
                 method: "Lightning".into(),
                 status: status.into(),
                 at: 0,
@@ -130,7 +130,7 @@ mod tests {
         .expect("proved");
         assert_eq!(proved.payment_hash, hex(&hash));
         assert_eq!(proved.preimage, hex(&preimage));
-        assert_eq!((proved.amount_msat, proved.fee_msat), (5_000, 1_000));
+        assert_eq!((proved.amount_msat, proved.fee_msat), (5_000, 3_000));
 
         let wrong = proof_err(hash, Some(&hex(&[8_u8; 32])));
         assert!(wrong.contains("doesn't match"), "{wrong}");

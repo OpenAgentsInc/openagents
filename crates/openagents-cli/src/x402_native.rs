@@ -29,8 +29,8 @@ use serde_json::{Map, Value, json};
 
 use crate::relay::{Client, identity_for, relay_url, unix_now};
 use crate::x402::{
-    Node, Spend, admit, ceiling_present, expiry, fail_wallet, flags, limits, load_policy,
-    open_wallet, pay_by, payer, record_payment, replay_dir, set_phase, toll_floor,
+    Node, Spend, admit, ceiling_present, expiry, fail_wallet, flags, load_policy, open_wallet,
+    pay_by, payer, payer_limits, record_payment, replay_dir, set_phase, toll_floor,
 };
 use crate::{Args, Output};
 
@@ -946,6 +946,8 @@ struct Receipt {
     challenge: Option<Signed>,
     claim: Option<Signed>,
     paid: Option<String>,
+    #[serde(default)]
+    fee_msat: Option<u64>,
     statuses: Vec<Value>,
 }
 
@@ -1103,7 +1105,18 @@ pub fn buy(output: &Output, words: &[String]) -> u8 {
         Err(message) => return output.fail("x402", &message),
     };
     let expected_capability = format!("{provider}:x402/{slug}");
-    let request_limits = match limits(policy.as_ref(), flags, None, Some(&expected_capability)) {
+    let payer = match payer(&args, false) {
+        Ok(payer) => payer,
+        Err(message) => return usage(output, &message),
+    };
+    let request_limits = match payer_limits(
+        policy.as_ref(),
+        flags,
+        None,
+        Some(&expected_capability),
+        payer,
+        None,
+    ) {
         Ok(limits) => limits,
         Err(message) => return output.fail("x402", &message),
     };
@@ -1112,10 +1125,6 @@ pub fn buy(output: &Output, words: &[String]) -> u8 {
     let wait = match args.number::<u64>("wait", 120) {
         Ok(n) if n > 0 => n,
         _ => return usage(output, "--wait takes seconds above zero"),
-    };
-    let payer = match payer(&args, false) {
-        Ok(payer) => payer,
-        Err(message) => return usage(output, &message),
     };
     let input = match args.option("input") {
         None => Vec::new(),
@@ -1225,6 +1234,7 @@ pub fn buy(output: &Output, words: &[String]) -> u8 {
         challenge: None,
         claim: None,
         paid: None,
+        fee_msat: None,
         statuses: Vec::new(),
     };
     if let Err(message) = save_receipt(&receipt) {
@@ -1309,11 +1319,13 @@ pub fn buy(output: &Output, words: &[String]) -> u8 {
             "the challenge's payTo is not a receiver the capability advertises",
         );
     }
-    let limits = match limits(
+    let limits = match payer_limits(
         policy.as_ref(),
         flags,
         Some(&terms.requirements.pay_to),
         Some(&capability_id),
+        payer,
+        Some(terms.amount_msat),
     )
     .and_then(|limits| {
         admit(
@@ -1365,6 +1377,7 @@ pub fn buy(output: &Output, words: &[String]) -> u8 {
         "paid",
     );
     receipt.paid = Some(proof.payment_hash.clone());
+    receipt.fee_msat = Some(proof.fee_msat);
     let _ = save_receipt(&receipt);
     let mut payload = Map::new();
     payload.insert("preimage".into(), Value::String(proof.preimage.clone()));
@@ -1466,6 +1479,7 @@ fn finish(
         "cause": status.as_ref().and_then(|status| status.cause.clone()),
         "settlement": status.as_ref().and_then(|status| serde_json::to_value(&status.settlement).ok()),
         "payment_hash": receipt.paid,
+        "fee_msat": receipt.fee_msat,
         "output": text,
     });
     if let Some(preimage) = preimage {
@@ -1475,6 +1489,11 @@ fn finish(
         "completed" => 0,
         _ => 1,
     };
+    if !output.json()
+        && let Some(fee) = receipt.fee_msat
+    {
+        eprintln!("{}", fee_receipt(fee));
+    }
     if output.json() {
         output.emit(&doc, |_| String::new());
     } else if let Some(text) = &text {
@@ -1720,4 +1739,33 @@ pub fn status(output: &Output, words: &[String]) -> u8 {
     );
     client.close();
     finish(output, &receipt, newest, bytes, None)
+}
+
+fn fee_receipt(fee_msat: u64) -> String {
+    format!("openagents x402: payment fee {fee_msat} msat")
+}
+
+#[cfg(test)]
+mod fee_tests {
+    use super::*;
+
+    #[test]
+    fn native_receipt_retains_fee_and_reads_older_receipts() {
+        let old = json!({
+            "provider": "provider", "purchase": "purchase",
+            "request": Signed::new(&json!({"request": true})).unwrap(),
+            "challenge": null, "claim": null, "paid": "hash", "statuses": []
+        });
+        let mut receipt: Receipt = serde_json::from_value(old).unwrap();
+        assert_eq!(receipt.fee_msat, None);
+        receipt.fee_msat = Some(3_000);
+        let value = serde_json::to_value(&receipt).unwrap();
+        assert_eq!(value["fee_msat"], 3_000);
+        let restored: Receipt = serde_json::from_value(value).unwrap();
+        assert_eq!(restored.fee_msat, Some(3_000));
+        assert_eq!(
+            fee_receipt(restored.fee_msat.unwrap()),
+            "openagents x402: payment fee 3000 msat"
+        );
+    }
 }
