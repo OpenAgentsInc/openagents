@@ -19,7 +19,7 @@ use coder::cli_route::tree::{Declared, Effect};
 
 pub(crate) const USAGE: &str = "usage: openagents verse COMMAND [OPTIONS]
   who                       Every entity with a state in the world, nearest first.
-  look [--at X,Y,Z] [--radius CELLS] [--wait SECONDS]
+  look [--at X,Y,Z] [--radius METERS] [--wait SECONDS]
                             Listen for live poses around a point (default: where
                             this identity stands) and list what is there.
   chat [--limit N]          Recent world chat lines.
@@ -328,20 +328,81 @@ impl Context {
 }
 
 pub fn run(output: &Output, words: &[String]) -> u8 {
+    run_group(output, words, "verse")
+}
+
+pub fn run_xp(output: &Output, words: &[String]) -> u8 {
+    let words = std::iter::once("xp".to_owned())
+        .chain(words.iter().cloned())
+        .collect::<Vec<_>>();
+    run_group(output, &words, "xp")
+}
+
+fn run_group(output: &Output, words: &[String], group: &str) -> u8 {
     let Some((command, rest)) = words.split_first() else {
-        return output.usage("verse", "a command is required", USAGE);
+        return output.usage(group, "a command is required", USAGE);
     };
     if matches!(command.as_str(), "--help" | "-h" | "help") {
         println!("{USAGE}");
         return 0;
     }
-    let args = match Args::parse(rest, &[]) {
-        Ok(args) => args,
-        Err(message) => return output.usage("verse", &message, USAGE),
+    let (extra, min, max): (&[&str], usize, usize) = match command.as_str() {
+        "who" => (&[], 0, 0),
+        "look" | "nearby" => (&["at", "radius", "wait"], 0, 0),
+        "chat" => (&["limit"], 0, 0),
+        "tail" => (&["wait"], 0, 0),
+        "me" | "leave" => (&[], 0, 0),
+        "move" | "go" => (&["yaw", "name"], 1, 1),
+        "say" => (&["to", "zone", "at"], 1, usize::MAX),
+        "gesture" => (&["to", "at", "duration"], 1, 1),
+        "name" => (&[], 1, usize::MAX),
+        "control" => (&["yaw", "role", "name", "to", "at", "duration"], 2, 3),
+        "quests" | "board" => (&["xp-relay", "referee"], 0, 0),
+        "xp" => (&["xp-relay", "referee", "pubkey"], 0, 2),
+        other => return output.usage(group, &format!("unknown command `{other}`"), USAGE),
     };
+    let label = if group == "xp" {
+        "xp".to_owned()
+    } else {
+        format!("verse {command}")
+    };
+    let usage = if group == "xp" {
+        xp_usage()
+    } else {
+        crate::argv::command_usage("verse", command, USAGE).unwrap_or_else(|| USAGE.to_owned())
+    };
+    let options = ["as", "relay", "world", "entity"]
+        .into_iter()
+        .chain(extra.iter().copied())
+        .collect::<Vec<_>>();
+    let args = match crate::argv::scoped_args(rest, &label, &options, &[], min, max) {
+        Ok(args) => args,
+        Err(message) => return output.usage(group, &message, &usage),
+    };
+    let positional = args.positional();
+    if command == "xp"
+        && !positional.is_empty()
+        && (positional.first().map(String::as_str) != Some("verify-card") || positional.len() != 2)
+    {
+        return output.usage(
+            group,
+            "expected verify-card CARD or no positional arguments",
+            &usage,
+        );
+    }
+    if command == "control" {
+        let expected = match positional.get(1).map(String::as_str) {
+            Some("move" | "go" | "gesture") => 3,
+            Some("leave") => 2,
+            _ => return output.usage(group, "control takes move, gesture, or leave", &usage),
+        };
+        if positional.len() != expected {
+            return output.usage(group, "wrong number of control arguments", &usage);
+        }
+    }
     let wait = match args.number::<u64>("wait", 0) {
         Ok(seconds) => seconds,
-        Err(message) => return output.usage("verse", &message, USAGE),
+        Err(message) => return output.usage(group, &message, &usage),
     };
     let quest = match command.as_str() {
         "quests" => Some(crate::quest::quests(output, &args)),
@@ -352,12 +413,12 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
     if let Some(result) = quest {
         return match result {
             Ok(code) => code,
-            Err(message) => output.fail("verse", &message),
+            Err(message) => output.fail(group, &message),
         };
     }
     let mut context = match Context::open(&args) {
         Ok(context) => context,
-        Err(message) => return output.fail("verse", &message),
+        Err(message) => return output.fail(group, &message),
     };
     let result = match command.as_str() {
         "who" => who(output, &mut context, &args),
@@ -371,12 +432,12 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         "name" => name(output, &mut context, &args),
         "leave" => leave(output, &mut context),
         "control" => control(output, &mut context, &args),
-        other => return output.usage("verse", &format!("unknown command `{other}`"), USAGE),
+        other => return output.usage(group, &format!("unknown command `{other}`"), USAGE),
     };
     context.client.close();
     match result {
         Ok(code) => code,
-        Err(message) => output.fail("verse", &message),
+        Err(message) => output.fail(group, &message),
     }
 }
 
@@ -446,12 +507,15 @@ fn who(output: &Output, context: &mut Context, args: &Args) -> Result<u8, String
 }
 
 fn look(output: &Output, context: &mut Context, args: &Args, wait: u64) -> Result<u8, String> {
-    let radius: i64 = args.number("radius", 1)?;
+    let radius: f32 = args.number("radius", mv::CELL * 1.5)?;
+    if !radius.is_finite() || radius < 0.0 {
+        return Err("--radius takes a finite, nonnegative distance in meters".into());
+    }
     let wait = Duration::from_secs(if wait == 0 { 3 } else { wait });
     let (origin, _) = context.origin(args)?;
     let mut scene = Scene::default();
     context.states(&mut scene, DEFAULT_WAIT)?;
-    let cells = mv::cells_around(origin, radius.clamp(0, 8));
+    let cells = mv::cells_around(origin, (radius / mv::CELL).ceil().clamp(0.0, 8.0) as i64);
     let world = context.world.clone();
     context.client.subscribe(
         vec![json!({
@@ -465,7 +529,7 @@ fn look(output: &Output, context: &mut Context, args: &Args, wait: u64) -> Resul
             scene.absorb(event, &world);
         },
     )?;
-    let reach = (radius as f32 + 0.5) * mv::CELL;
+    let reach = radius;
     let me = context.pubkey().to_owned();
     let rows: Vec<Value> = scene
         .rows(Some(origin), Some(&me))

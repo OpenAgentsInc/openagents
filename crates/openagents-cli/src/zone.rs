@@ -345,10 +345,26 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         println!("{USAGE}");
         return 0;
     }
-    let args = match Args::parse(rest, &["trace"]) {
-        Ok(args) => args,
-        Err(message) => return output.usage("zone", &message, USAGE),
+    let (options, switches, max): (&[&str], &[&str], usize) = match command.as_str() {
+        "info" => (&[], &[], 0),
+        "run" => (&["dt", "timeout"], &["trace"], usize::MAX),
+        "build" => (&["timeout"], &[], 0),
+        "send" => (
+            &["to", "zone", "wait", "as", "relay", "world", "entity"],
+            &[],
+            usize::MAX,
+        ),
+        "listen" => (&["wait", "as", "relay", "world", "entity"], &[], 0),
+        other => return output.usage("zone", &format!("unknown command `{other}`"), USAGE),
     };
+    let usage =
+        crate::argv::command_usage("zone", command, USAGE).unwrap_or_else(|| USAGE.to_owned());
+    let args =
+        match crate::argv::scoped_args(rest, &format!("zone {command}"), options, switches, 0, max)
+        {
+            Ok(args) => args,
+            Err(message) => return output.usage("zone", &message, &usage),
+        };
     let result = match command.as_str() {
         "info" => Ok(info(output)),
         "run" => local(output, &args, None),

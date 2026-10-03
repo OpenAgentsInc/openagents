@@ -116,7 +116,7 @@ fn load_card(
 ) -> Result<Event, String> {
     if source.starts_with("naddr1") || source.starts_with("nostr:naddr1") {
         let naddr = nostr::nip19::decode_naddr(source.trim_start_matches("nostr:"))
-            .map_err(|e| format!("{source} isn't an naddr: {e:?}"))?;
+            .map_err(|e| format!("{source} isn't an naddr: {e}"))?;
         if naddr.kind != u32::from(kinds::CARD_KIND) {
             return Err(format!(
                 "{source} names kind {}, not a trainer card",
@@ -150,7 +150,12 @@ fn load_card(
     } else {
         std::fs::read_to_string(source).map_err(|e| format!("can't read {source}: {e}"))?
     };
-    serde_json::from_str(&text).map_err(|e| format!("{source} isn't a signed Nostr event: {e}"))
+    let label = if source == "-" {
+        "standard input"
+    } else {
+        source
+    };
+    serde_json::from_str(&text).map_err(|_| format!("{label} isn't a signed Nostr event: expected a JSON event with id, pubkey, created_at, kind, tags, content, and sig"))
 }
 
 /// `xp verify-card FILE|NADDR`: re-derives a trainer card's level from the

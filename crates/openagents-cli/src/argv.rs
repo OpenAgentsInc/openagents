@@ -83,3 +83,48 @@ pub fn command_usage(group: &str, command: &str, usage: &str) -> Option<String> 
         lines[start..end].join("\n").trim_start()
     ))
 }
+
+/// Parse only the options declared by this command, before looking for values.
+pub fn scoped_args(
+    words: &[String],
+    command: &str,
+    options: &[&str],
+    switches: &[&str],
+    min: usize,
+    max: usize,
+) -> Result<Args, String> {
+    let mut index = 0;
+    while index < words.len() {
+        let word = &words[index];
+        if word == "--" {
+            break;
+        }
+        if let Some(flag) = word.strip_prefix("--") {
+            let name = flag.split('=').next().unwrap_or(flag);
+            if !options.contains(&name) && !switches.contains(&name) {
+                return Err(format!("--{name} isn't an option of {command}"));
+            }
+            if options.contains(&name) && !flag.contains('=') {
+                if words
+                    .get(index + 1)
+                    .is_none_or(|value| value.starts_with("--"))
+                {
+                    return Err(format!("--{name} needs a value"));
+                }
+                index += 1;
+            }
+        }
+        index += 1;
+    }
+    let args = Args::parse(words, switches)?;
+    if args.positional().len() > max {
+        return Err(format!(
+            "unexpected argument `{}` for {command}",
+            args.positional()[max]
+        ));
+    }
+    if args.positional().len() < min {
+        return Err(format!("{command} needs an argument"));
+    }
+    Ok(args)
+}
