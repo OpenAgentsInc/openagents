@@ -13,6 +13,7 @@ pub mod chamber;
 pub mod combat;
 pub mod controls;
 pub mod lighting;
+pub mod original;
 pub mod overlay;
 pub mod play;
 use lighting::{Frame, Lighting};
@@ -398,7 +399,7 @@ impl Renderer {
         for t in &pack.textures {
             let bytes = std::fs::read(dir.join(&t.file)).map_err(|e| e.to_string())?;
             if format!("{:x}", sha2::Sha256::digest(&bytes)) != t.sha256 {
-                return Err("Private texture digest mismatch".into());
+                return Err("Texture digest mismatch".into());
             }
             let decoder = png::Decoder::new(std::io::Cursor::new(bytes));
             let mut reader = decoder.read_info().map_err(|e| e.to_string())?;

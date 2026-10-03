@@ -9,6 +9,20 @@ Verse Engine is the reusable engine; Verse is the metaverse built on it.
 The original chamber is the first new game fixture, while Lagrange and Physics
 Lab remain regression consumers. This roadmap imports no reference-engine code.
 
+## Original scene implementation
+
+[#10426](https://github.com/OpenAgentsInc/openagents/issues/10426) implements the
+first asset-free procedural scene. The `verse_play` native example generates an
+original chamber, skeletal placeholder actors, weapons, particles, and UI
+sprites; it uses the bundled licensed Fira Mono font. It retains timed dialogue,
+camera handoff, local combat, overhead red health bars, damage numbers, corpses,
+and respawns. See the [scene instructions](../../../assets/verse/original/README.md).
+
+This delivers the visual procedural milestone of VE-1/VE-3, not the complete
+VE-0–VE-6 roadmap. Column collision, portable authority extraction, original
+rules replacement, service persistence, and multiplayer remain implementation
+work. #10406 and #10407 stay open for their full acceptance.
+
 ## Reuse inventory
 
 Review baseline: OpenAgents `843c92dd7e`. The entries below were checked against

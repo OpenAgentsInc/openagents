@@ -174,6 +174,27 @@ pub fn lighting(origin: Vec3) -> super::lighting::Lighting {
             range,
         });
     }
+    if origin == Vec3::ZERO {
+        lights.lights.clear();
+        for x in [-15., 15.] {
+            for z in [-25., -13., 0., 12.] {
+                lights.lights.push(super::lighting::Light {
+                    position: Vec3::new(x, 3.6, z),
+                    color: Vec3::new(0.12, 1., 0.22),
+                    intensity: 180.,
+                    range: 18.,
+                });
+            }
+        }
+    }
+    if origin == Vec3::ZERO {
+        lights.lights.push(super::lighting::Light {
+            position: Vec3::new(0., 4., -5.),
+            color: Vec3::new(0.55, 0.13, 1.),
+            intensity: 110.,
+            range: 13.,
+        });
+    }
     lights
 }
 /// Bind transient illumination to the same combat events that draw the effects.
@@ -307,7 +328,7 @@ fn particle_texture(pack: &mut Pack, dir: &std::path::Path, name: &str) -> Resul
         return Ok(i);
     }
     let bytes = std::fs::read(dir.join(&file))
-        .map_err(|e| format!("Import Classic particle textures with wow-import --ui-only: {e}"))?;
+        .map_err(|e| format!("Missing particle texture {file}: {e}"))?;
     let reader = png::Decoder::new(std::io::Cursor::new(&bytes))
         .read_info()
         .map_err(|e| e.to_string())?;
@@ -769,9 +790,16 @@ fn particle(model: &str, position: Vec3, radius: f32, opacity: f32, time: f32) -
 
 /// Renders model headshots through the owned GPU pipeline for unit-frame portraits.
 pub fn portrait_atlas(dir: &std::path::Path, pack: &Pack) -> Result<Atlas, String> {
+    let atlas = classic_atlas(dir)?;
+    portraits(dir, pack, atlas)
+}
+/// Renders portraits from original geometry and UI graphics.
+pub fn original_portrait_atlas(dir: &std::path::Path, pack: &Pack) -> Result<Atlas, String> {
+    portraits(dir, pack, super::original::atlas()?)
+}
+fn portraits(dir: &std::path::Path, pack: &Pack, mut atlas: Atlas) -> Result<Atlas, String> {
     use super::{Renderer, lighting::Lighting};
     use crate::{render::View, ui::UiBatch};
-    let mut atlas = classic_atlas(dir)?;
     let mut renderer = Renderer::new(pack.clone(), dir, 128, 128, &atlas, &[])?;
     for name in ["adventurer", "cultist", "claude"] {
         let height = pack.models[name].height * 0.9144;

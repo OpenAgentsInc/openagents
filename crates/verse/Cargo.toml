@@ -112,3 +112,7 @@ required-features = ["capture"]
 [[example]]
 name = "wow_play"
 required-features = ["imported-desktop"]
+
+[[example]]
+name = "verse_play"
+required-features = ["imported-desktop"]

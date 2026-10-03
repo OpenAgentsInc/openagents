@@ -5,6 +5,12 @@ records the owner's direction to build Verse Engine from scratch in Rust, with
 owned code and original assets. It specifies future work; it does not claim
 that the engine or authoring tools described below already exist.
 
+The procedural visual slice is now implemented by #10426. The `verse_play`
+example runs the [original ritual pack](../../../assets/verse/original/README.md)
+and records native GPU frames without Blizzard models, textures, UI art, or
+fonts. This does not complete engine extraction, physical character collision,
+or the world service milestones described below.
+
 The first playable milestone is an original dark chamber with an adventurer,
 a large monster, robed enemies, cinematic dialogue, and combat. Its distributed
 build must require no WoW install, assets, fonts, UI textures, DBC tables,
