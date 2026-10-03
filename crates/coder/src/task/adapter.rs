@@ -680,7 +680,7 @@ impl Host {
         }
         let (owner, task) = {
             let store = Store::open_for_owner(directory)?;
-            let owner = owner::Owner::acquire(&store, &grant.task_id)?;
+            let owner = owner::Owner::acquire_waiting(&store, &grant.task_id)?;
             let task = store.show(&grant.task_id)?;
             if task.run.is_some() || task.status != Status::Queued {
                 return Err(Error::InvalidTransition);

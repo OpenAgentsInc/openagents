@@ -828,7 +828,21 @@ pub(super) struct Owner {
 }
 
 impl Owner {
+    /// Take `id`'s owner lock now, or refuse with [`Error::Busy`] while
+    /// another process holds it: how a reader asks whether an owner lives.
     pub(super) fn acquire(store: &Store, id: &str) -> Result<Self, Error> {
+        Self::acquire_within(store, id, Duration::ZERO)
+    }
+
+    /// [`Owner::acquire`] for a process that is about to own `id`'s run:
+    /// it waits out a holder for up to the store's own wait, so a reader
+    /// probing the lock for a moment, or the last turn's owner letting go,
+    /// no longer refuses the new turn's start (#10301).
+    pub(super) fn acquire_waiting(store: &Store, id: &str) -> Result<Self, Error> {
+        Self::acquire_within(store, id, store.wait)
+    }
+
+    fn acquire_within(store: &Store, id: &str, wait: Duration) -> Result<Self, Error> {
         let task = store.show(id)?;
         let path = store.dir.join(format!("owner-{id}.lock"));
         let exists = regular_or_absent(&path)?;
@@ -836,11 +850,7 @@ impl Owner {
             return Err(Error::Corrupt("the execution owner lock is missing"));
         }
         let lock = private_open(&path, !exists, true)?;
-        match lock.try_lock() {
-            Ok(()) => (),
-            Err(std::fs::TryLockError::WouldBlock) => return Err(Error::Busy),
-            Err(std::fs::TryLockError::Error(error)) => return Err(error.into()),
-        }
+        super::take_lock(&lock, wait)?;
         lock.sync_all()?;
         super::sync_directory(&store.dir)?;
         Ok(Self {
@@ -941,7 +951,7 @@ pub async fn check(
 ) -> Result<Task, Error> {
     let (owner, task) = {
         let mut store = Store::open_for_owner(directory)?;
-        let owner = Owner::acquire(&store, id)?;
+        let owner = Owner::acquire_waiting(&store, id)?;
         let task = store.record(&owner, Event::CheckIntent, 1)?;
         (owner, task)
     };
@@ -994,7 +1004,7 @@ pub async fn execute(directory: &Path, bytes: &[u8]) -> Result<Task, Error> {
     }
     let (owner, task) = {
         let store = Store::open_for_owner(directory)?;
-        let owner = Owner::acquire(&store, &grant.task_id)?;
+        let owner = Owner::acquire_waiting(&store, &grant.task_id)?;
         let task = store.show(&grant.task_id)?;
         if task.run.is_some() || task.status != Status::Queued {
             return Err(Error::InvalidTransition);
