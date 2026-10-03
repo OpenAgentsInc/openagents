@@ -313,8 +313,22 @@ fn main_worktree(porcelain: &str) -> Option<PathBuf> {
     path
 }
 
+/// Where [`git`] looks for Git before the bare name: a task owner starts
+/// with a cleared environment, and NixOS keeps Git in none of the usual
+/// folders, so a bare `git` alone isn't found there (#10244).
+const GIT_PATHS: [&str; 4] = [
+    "/usr/bin/git",
+    "/opt/homebrew/bin/git",
+    "/usr/local/bin/git",
+    "/run/current-system/sw/bin/git",
+];
+
 fn git(directory: &Path, arguments: &[&str]) -> Result<String, Error> {
-    let output = Command::new("git")
+    let program = GIT_PATHS
+        .into_iter()
+        .find(|path| Path::new(path).is_file())
+        .unwrap_or("git");
+    let output = Command::new(program)
         .arg("-C")
         .arg(directory)
         .args(arguments)
