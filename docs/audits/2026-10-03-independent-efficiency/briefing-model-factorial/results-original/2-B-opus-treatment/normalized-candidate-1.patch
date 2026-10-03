@@ -1,0 +1,121 @@
+diff --git a/crates/coder-connect/src/direct/watch.rs b/crates/coder-connect/src/direct/watch.rs
+--- a/crates/coder-connect/src/direct/watch.rs
++++ b/crates/coder-connect/src/direct/watch.rs
+@@ -9,10 +9,11 @@
+ //!
+ //! Only changes that can change a chat or the chat list count: a `.jsonl`
+ //! file (every harness's transcripts and title indexes), Coder's
+-//! `archive.json`, or a change the platform could not name. Reads never
++//! `archive.json`, a directory that appeared, whose chats the platform may
++//! not report, or a change the platform could not name. Reads never
+ //! count, so a host reading a chat cannot nudge itself.
+ 
+-use notify::event::{EventKind, ModifyKind};
++use notify::event::{CreateKind, EventKind, ModifyKind};
+ use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
+ use std::collections::{HashMap, HashSet};
+ use std::path::{Path, PathBuf};
+@@ -197,6 +198,19 @@
+         || path.file_name().is_some_and(|n| n == "archive.json")
+ }
+ 
++/// Whether an event made a directory appear under a root. A recursive
++/// watcher that follows directories one by one, as inotify does, starts
++/// watching a new directory only after it reports it, so a chat file written
++/// into it at once, such as the first chat in a new Codex day folder, is
++/// never reported itself. The directory's arrival stands in for it.
++fn arrived_directory(kind: EventKind, path: &Path) -> bool {
++    match kind {
++        EventKind::Create(CreateKind::Folder) => true,
++        EventKind::Create(_) | EventKind::Modify(ModifyKind::Name(_)) => path.is_dir(),
++        _ => false,
++    }
++}
++
+ fn deliver(event: &Event) {
+     if matches!(event.kind, EventKind::Access(_)) {
+         return;
+@@ -215,9 +229,14 @@
+         }
+         return;
+     }
+-    for path in event.paths.iter().filter(|path| relevant(path)) {
++    for path in &event.paths {
++        let file = relevant(path);
++        if !file && !arrived_directory(event.kind, path) {
++            continue;
++        }
+         let name = path.file_name().unwrap_or_default();
+         let listing = match event.kind {
++            _ if !file => true,
+             EventKind::Create(_) => {
+                 let mut announced = lock(&routes.announced);
+                 if announced.len() >= ANNOUNCED {
+@@ -243,3 +262,67 @@
+         }
+     }
+ }
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use notify::event::DataChange;
++
++    /// Route a root to a fresh inbox without a platform watch, so only the
++    /// events a test delivers reach it.
++    fn routed(root: &Path) -> (u64, Arc<Inbox>) {
++        let inbox = Arc::new(Inbox::default());
++        let id = routes()
++            .next
++            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
++        lock(&routes().subscribers).insert(
++            id,
++            Subscriber {
++                roots: vec![(root.to_path_buf(), root.canonicalize().unwrap())],
++                inbox: Arc::downgrade(&inbox),
++            },
++        );
++        (id, inbox)
++    }
++
++    #[test]
++    fn a_directory_that_appears_under_a_root_changes_the_list() {
++        let temp = tempfile::tempdir().unwrap();
++        let root = temp.path().join("sessions");
++        let day = root.join("2026/01/02");
++        std::fs::create_dir_all(&day).unwrap();
++        std::fs::write(root.join("notes.txt"), b"not a chat").unwrap();
++        let (id, inbox) = routed(&root);
++        let listing = Touched {
++            any: true,
++            listing: true,
++        };
++        // inotify names a new directory, then watches it too late to report
++        // the chat written into it.
++        deliver(&Event::new(EventKind::Create(CreateKind::Folder)).add_path(day.clone()));
++        assert_eq!(inbox.take(), listing);
++        // A platform that does not say what it created.
++        deliver(&Event::new(EventKind::Create(CreateKind::Any)).add_path(day.clone()));
++        assert_eq!(inbox.take(), listing);
++        // A directory moved in.
++        deliver(
++            &Event::new(EventKind::Modify(ModifyKind::Name(
++                notify::event::RenameMode::To,
++            )))
++            .add_path(day.clone()),
++        );
++        assert_eq!(inbox.take(), listing);
++        // Neither another file nor a directory's own change counts.
++        deliver(&Event::new(EventKind::Create(CreateKind::File)).add_path(root.join("notes.txt")));
++        deliver(
++            &Event::new(EventKind::Modify(ModifyKind::Data(DataChange::Any))).add_path(day.clone()),
++        );
++        assert_eq!(inbox.take(), Touched::default());
++        // Outside the root, nothing.
++        let elsewhere = temp.path().join("elsewhere");
++        std::fs::create_dir_all(&elsewhere).unwrap();
++        deliver(&Event::new(EventKind::Create(CreateKind::Folder)).add_path(elsewhere));
++        assert_eq!(inbox.take(), Touched::default());
++        lock(&routes().subscribers).remove(&id);
++    }
++}

@@ -1,0 +1,19 @@
+Diff in <VERIFICATION_ROOT>/repo/crates/coder-connect/src/direct/watch.rs:270:
+         let _subscription = subscribe(vec![root.clone()], &inbox);
+         inbox.take();
+         // A file that is neither a chat nor the archive changes nothing.
+-        deliver(
+-            &Event::new(EventKind::Create(CreateKind::File)).add_path(root.join("notes.txt")),
+-        );
++        deliver(&Event::new(EventKind::Create(CreateKind::File)).add_path(root.join("notes.txt")));
+         assert_eq!(inbox.take(), Touched::default());
+         // Inotify watches a new folder only after reporting it, so a chat
+         // written into it at once goes unreported: the folder itself counts.
+Diff in <VERIFICATION_ROOT>/repo/crates/coder-connect/src/direct/watch.rs:279:
+         deliver(
+-            &Event::new(EventKind::Create(CreateKind::Folder))
+-                .add_path(root.join("2026/01/02")),
++            &Event::new(EventKind::Create(CreateKind::Folder)).add_path(root.join("2026/01/02")),
+         );
+         let changed = Touched {
+             any: true,

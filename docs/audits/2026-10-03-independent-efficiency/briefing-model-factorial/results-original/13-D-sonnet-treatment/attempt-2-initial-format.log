@@ -1,0 +1,15 @@
+Diff in <VERIFICATION_ROOT>/repo/crates/coder-connect/src/direct/watch.rs:225:
+         event.kind,
+         EventKind::Create(_) | EventKind::Modify(ModifyKind::Name(_))
+     ) {
+-        for path in event
+-            .paths
+-            .iter()
+-            .filter(|path| matches!(event.kind, EventKind::Create(CreateKind::Folder)) || path.is_dir())
+-        {
++        for path in event.paths.iter().filter(|path| {
++            matches!(event.kind, EventKind::Create(CreateKind::Folder)) || path.is_dir()
++        }) {
+             for subscriber in lock(&routes.subscribers).values() {
+                 if subscriber.roots.iter().any(|(given, canonical)| {
+                     path.starts_with(canonical) || path.starts_with(given)

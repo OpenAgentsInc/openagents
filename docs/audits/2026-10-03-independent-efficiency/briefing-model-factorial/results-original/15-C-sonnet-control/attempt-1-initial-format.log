@@ -1,0 +1,13 @@
+Diff in <VERIFICATION_ROOT>/repo/crates/coder-connect/src/direct/watch.rs:226:
+         }
+         return;
+     }
+-    for path in event.paths.iter().filter(|path| relevant(path) || new_folder(event, path)) {
++    for path in event
++        .paths
++        .iter()
++        .filter(|path| relevant(path) || new_folder(event, path))
++    {
+         let name = path.file_name().unwrap_or_default();
+         let listing = match event.kind {
+             // A new folder can already hold chats the platform never reports,

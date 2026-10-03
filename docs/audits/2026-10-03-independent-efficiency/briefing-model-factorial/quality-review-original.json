@@ -1,0 +1,2715 @@
+{
+  "schema": "openagents.briefing-model-factorial.quality-review.v1",
+  "source_commit": "aeb7f9fb19e0d56c13400702894172ae472e3bcf",
+  "registration_commit": "4eee1cbf3ecc844f89d42abc2b7df7be4411c846",
+  "private_plan_sha256": "90f8091db08d7fc77a062f4a713bd0b526b8501faffde1cbbf7941399d26fa27",
+  "checker_sha256": "9f99fdeef15526a9794edc7ce0468c82df24c636e4803dd14be246c4341b0e31",
+  "status": "review_complete_original_panel_runtime_invalid",
+  "runtime_validity": {
+    "original_panel_valid": false,
+    "invalid_run": "16-B-opus-treatment",
+    "reason": "The actual CLI version was 2.1.288 rather than registered 2.1.287. The coordinator rejected the run; passing candidate tests do not restore protocol validity."
+  },
+  "scope": [
+    "Every captured raw attempt patch and final patch, plus normalized artifacts.",
+    "Observed permitted-tool names and requested file paths from retained event records.",
+    "Existing test/assertion preservation, write scope, and static behavior review."
+  ],
+  "limits": [
+    "Static candidate review, not a proof of complete correctness.",
+    "Tool request inspection is not a complete operating-system access audit; a reply without an error marker does not independently prove successful access.",
+    "No additional Cargo, model, or remote checks were run for this review. The original scored checker and acceptance scores were not changed.",
+    "Original create-then-write coverage is reported separately from the prospectively added atomic-import requirements.",
+    "One historically unstable permissions test was excluded identically before scoring; candidates introduced no additional exclusions."
+  ],
+  "broader_observations": [
+    "The reviewed changes target directory arrivals. Broader removal or move-out behavior was not exercised by the five-case checker and is not counted as a candidate defect here.",
+    "A proposed repeated-directory test without an intervening catalog reread was withdrawn before execution: another nudge may be validly coalesced, while a fresh reader can receive the existing two-second debounced notification within the four-second bound. Historical implementation differences alone did not establish a defect."
+  ],
+  "summary": {
+    "runs_reviewed": 16,
+    "candidates_reviewed": 25,
+    "final_accepted": 15,
+    "original_regression_first_attempt_passed": 16,
+    "original_regression_all_attempts_passed": 25,
+    "first_attempt_independent_full_pass": 7,
+    "first_attempt_import_failures_only": 9,
+    "outside_workspace_requests": 0,
+    "unexpected_tool_names": [],
+    "removed_existing_assertion_or_test_control_lines": 0,
+    "added_test_disable_markers": 0,
+    "tool_counts": {
+      "Grep": 62,
+      "Glob": 9,
+      "Read": 70,
+      "Edit": 90
+    },
+    "tool_total": 231,
+    "changed_files": [
+      "crates/coder-connect/src/direct/watch.rs",
+      "crates/coder-connect/src/tests/direct.rs"
+    ]
+  },
+  "explicit_read_summary": {
+    "A": {
+      "watcher": {
+        "path": "crates/coder-connect/src/direct/watch.rs",
+        "initial_input_runs": 4,
+        "any_input_runs": 4
+      },
+      "original_test_file": {
+        "path": "crates/coder-connect/src/tests/direct.rs",
+        "initial_input_runs": 4,
+        "any_input_runs": 4
+      },
+      "unrelated_brief_test_file": {
+        "path": "crates/coder-connect/src/tests/pairing.rs",
+        "initial_input_runs": 0,
+        "any_input_runs": 0
+      }
+    },
+    "B": {
+      "watcher": {
+        "path": "crates/coder-connect/src/direct/watch.rs",
+        "initial_input_runs": 4,
+        "any_input_runs": 4
+      },
+      "original_test_file": {
+        "path": "crates/coder-connect/src/tests/direct.rs",
+        "initial_input_runs": 4,
+        "any_input_runs": 4
+      },
+      "unrelated_brief_test_file": {
+        "path": "crates/coder-connect/src/tests/pairing.rs",
+        "initial_input_runs": 0,
+        "any_input_runs": 0
+      }
+    },
+    "C": {
+      "watcher": {
+        "path": "crates/coder-connect/src/direct/watch.rs",
+        "initial_input_runs": 4,
+        "any_input_runs": 4
+      },
+      "original_test_file": {
+        "path": "crates/coder-connect/src/tests/direct.rs",
+        "initial_input_runs": 3,
+        "any_input_runs": 3
+      },
+      "unrelated_brief_test_file": {
+        "path": "crates/coder-connect/src/tests/pairing.rs",
+        "initial_input_runs": 0,
+        "any_input_runs": 0
+      }
+    },
+    "D": {
+      "watcher": {
+        "path": "crates/coder-connect/src/direct/watch.rs",
+        "initial_input_runs": 0,
+        "any_input_runs": 4
+      },
+      "original_test_file": {
+        "path": "crates/coder-connect/src/tests/direct.rs",
+        "initial_input_runs": 4,
+        "any_input_runs": 4
+      },
+      "unrelated_brief_test_file": {
+        "path": "crates/coder-connect/src/tests/pairing.rs",
+        "initial_input_runs": 0,
+        "any_input_runs": 0
+      }
+    }
+  },
+  "runs": [
+    {
+      "label": "1-A-opus-control",
+      "arm": "A",
+      "block": 1,
+      "accepted": true,
+      "completed": true,
+      "manual_review_status": "complete",
+      "attempts": [
+        {
+          "attempt": 1,
+          "original_regression_passed": true,
+          "own_tests_passed": true,
+          "own_test_failures": [],
+          "independent_cases": {
+            "a_connection_is_not_notified_before_its_first_catalog_read": "ok",
+            "changes_outside_the_disclosed_root_and_ordinary_files_stay_quiet": "ok",
+            "importing_a_populated_day_directory_notifies_and_then_lists_the_chat": "FAILED",
+            "importing_a_populated_directory_tree_notifies_without_child_writes": "FAILED",
+            "starting_a_chat_in_an_existing_directory_still_notifies": "ok"
+          },
+          "independent_passed": 3,
+          "independent_failed": 2,
+          "raw_format_passed": true,
+          "normalized_format_passed": true
+        },
+        {
+          "attempt": 2,
+          "original_regression_passed": true,
+          "own_tests_passed": true,
+          "own_test_failures": [],
+          "independent_cases": {
+            "a_connection_is_not_notified_before_its_first_catalog_read": "ok",
+            "changes_outside_the_disclosed_root_and_ordinary_files_stay_quiet": "ok",
+            "importing_a_populated_day_directory_notifies_and_then_lists_the_chat": "ok",
+            "importing_a_populated_directory_tree_notifies_without_child_writes": "ok",
+            "starting_a_chat_in_an_existing_directory_still_notifies": "ok"
+          },
+          "independent_passed": 5,
+          "independent_failed": 0,
+          "raw_format_passed": true,
+          "normalized_format_passed": true
+        }
+      ],
+      "expected_cli_version": "2.1.287",
+      "actual_cli_version": "2.1.287",
+      "cli_version_binding_ok": true,
+      "static_findings": [],
+      "tool_counts": {
+        "Grep": 4,
+        "Glob": 1,
+        "Read": 7,
+        "Edit": 10
+      },
+      "tool_path_counts": [
+        {
+          "tool": "Edit",
+          "path": "crates/coder-connect/src/direct/watch.rs",
+          "count": 10
+        },
+        {
+          "tool": "Glob",
+          "path": ".",
+          "count": 1
+        },
+        {
+          "tool": "Grep",
+          "path": ".",
+          "count": 2
+        },
+        {
+          "tool": "Grep",
+          "path": "crates/coder-connect/Cargo.toml",
+          "count": 1
+        },
+        {
+          "tool": "Grep",
+          "path": "crates/coder-connect/src",
+          "count": 1
+        },
+        {
+          "tool": "Read",
+          "path": "crates/coder-connect/Cargo.toml",
+          "count": 1
+        },
+        {
+          "tool": "Read",
+          "path": "crates/coder-connect/src/direct.rs",
+          "count": 1
+        },
+        {
+          "tool": "Read",
+          "path": "crates/coder-connect/src/direct/watch.rs",
+          "count": 3
+        },
+        {
+          "tool": "Read",
+          "path": "crates/coder-connect/src/tests/direct.rs",
+          "count": 2
+        }
+      ],
+      "outside_workspace_requests": 0,
+      "unexpected_tool_names": [],
+      "explicit_reads": {
+        "watcher": {
+          "initial_input_calls": 2,
+          "all_input_calls": 3
+        },
+        "original_test_file": {
+          "initial_input_calls": 2,
+          "all_input_calls": 2
+        },
+        "unrelated_brief_test_file": {
+          "initial_input_calls": 0,
+          "all_input_calls": 0
+        }
+      },
+      "candidate_artifacts": [
+        {
+          "name": "candidate-1.patch",
+          "sha256": "00f5e81b454c6f23b9843890664183fb8563663d84606818ff7cf46c4afc72fb",
+          "candidate_json_sha256": "30fca208644cfb1a92da0790c0f08ac774bbc4b88ba486372b28247a8d5fc3f2",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/1-A-opus-control/candidate-1.patch"
+        },
+        {
+          "name": "candidate-2.patch",
+          "sha256": "efbefe64de3c17f9167526bffdd9a2130351d88552cb7aed06b5838e58921f3e",
+          "candidate_json_sha256": "dd2c58ebd044381bc2bbab7e7509a1c652f8624174ce8dc8d9ff715e8adab091",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/1-A-opus-control/candidate-2.patch"
+        },
+        {
+          "name": "final-candidate.patch",
+          "sha256": "efbefe64de3c17f9167526bffdd9a2130351d88552cb7aed06b5838e58921f3e",
+          "candidate_json_sha256": "dd2c58ebd044381bc2bbab7e7509a1c652f8624174ce8dc8d9ff715e8adab091",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/1-A-opus-control/final-candidate.patch"
+        },
+        {
+          "name": "normalized-candidate-1.patch",
+          "sha256": "00f5e81b454c6f23b9843890664183fb8563663d84606818ff7cf46c4afc72fb",
+          "candidate_json_sha256": "30fca208644cfb1a92da0790c0f08ac774bbc4b88ba486372b28247a8d5fc3f2",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/1-A-opus-control/normalized-candidate-1.patch"
+        },
+        {
+          "name": "normalized-candidate-2.patch",
+          "sha256": "efbefe64de3c17f9167526bffdd9a2130351d88552cb7aed06b5838e58921f3e",
+          "candidate_json_sha256": "dd2c58ebd044381bc2bbab7e7509a1c652f8624174ce8dc8d9ff715e8adab091",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/1-A-opus-control/normalized-candidate-2.patch"
+        }
+      ],
+      "review_summary": [
+        "Both attempts change only crates/coder-connect/src/direct/watch.rs. The original regression test and all existing assertions remain unchanged; no new test exclusions, sleeps, or timing constants were introduced.",
+        "The original create-then-write regression passes in both attempts. Attempt 1 passes its crate tests and three of five independent cases; its only failures are the two prospectively added populated-directory import cases. The repair recognizes structural directory events and passes all five independent cases.",
+        "All 22 observed tool calls use the permitted file tools and workspace paths. No outside-workspace request or hidden-source access was observed. A tool reply without an error marker is not independently verified successful access."
+      ]
+    },
+    {
+      "label": "2-B-opus-treatment",
+      "arm": "B",
+      "block": 1,
+      "accepted": true,
+      "completed": true,
+      "manual_review_status": "complete",
+      "attempts": [
+        {
+          "attempt": 1,
+          "original_regression_passed": true,
+          "own_tests_passed": true,
+          "own_test_failures": [],
+          "independent_cases": {
+            "a_connection_is_not_notified_before_its_first_catalog_read": "ok",
+            "changes_outside_the_disclosed_root_and_ordinary_files_stay_quiet": "ok",
+            "importing_a_populated_day_directory_notifies_and_then_lists_the_chat": "ok",
+            "importing_a_populated_directory_tree_notifies_without_child_writes": "ok",
+            "starting_a_chat_in_an_existing_directory_still_notifies": "ok"
+          },
+          "independent_passed": 5,
+          "independent_failed": 0,
+          "raw_format_passed": true,
+          "normalized_format_passed": true
+        }
+      ],
+      "expected_cli_version": "2.1.287",
+      "actual_cli_version": "2.1.287",
+      "cli_version_binding_ok": true,
+      "static_findings": [],
+      "tool_counts": {
+        "Grep": 5,
+        "Read": 6,
+        "Glob": 1,
+        "Edit": 7
+      },
+      "tool_path_counts": [
+        {
+          "tool": "Edit",
+          "path": "crates/coder-connect/src/direct/watch.rs",
+          "count": 7
+        },
+        {
+          "tool": "Glob",
+          "path": ".",
+          "count": 1
+        },
+        {
+          "tool": "Grep",
+          "path": ".",
+          "count": 1
+        },
+        {
+          "tool": "Grep",
+          "path": "INVARIANTS.md",
+          "count": 1
+        },
+        {
+          "tool": "Grep",
+          "path": "crates/coder-connect",
+          "count": 1
+        },
+        {
+          "tool": "Grep",
+          "path": "crates/coder-connect/Cargo.toml",
+          "count": 1
+        },
+        {
+          "tool": "Grep",
+          "path": "crates/coder-connect/src/direct.rs",
+          "count": 1
+        },
+        {
+          "tool": "Read",
+          "path": "crates/coder-connect/src/direct.rs",
+          "count": 1
+        },
+        {
+          "tool": "Read",
+          "path": "crates/coder-connect/src/direct/watch.rs",
+          "count": 4
+        },
+        {
+          "tool": "Read",
+          "path": "crates/coder-connect/src/tests/direct.rs",
+          "count": 1
+        }
+      ],
+      "outside_workspace_requests": 0,
+      "unexpected_tool_names": [],
+      "explicit_reads": {
+        "watcher": {
+          "initial_input_calls": 4,
+          "all_input_calls": 4
+        },
+        "original_test_file": {
+          "initial_input_calls": 1,
+          "all_input_calls": 1
+        },
+        "unrelated_brief_test_file": {
+          "initial_input_calls": 0,
+          "all_input_calls": 0
+        }
+      },
+      "candidate_artifacts": [
+        {
+          "name": "candidate-1.patch",
+          "sha256": "bdee9385172e21256d21c9a1e020eb4b9edae2a63fdd777600e57386d2455135",
+          "candidate_json_sha256": "2b4d0069b878fc183f883f9fa242d8744c82b8c2caad4b38efcb2f07237f14f4",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/2-B-opus-treatment/candidate-1.patch"
+        },
+        {
+          "name": "final-candidate.patch",
+          "sha256": "bdee9385172e21256d21c9a1e020eb4b9edae2a63fdd777600e57386d2455135",
+          "candidate_json_sha256": "2b4d0069b878fc183f883f9fa242d8744c82b8c2caad4b38efcb2f07237f14f4",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/2-B-opus-treatment/final-candidate.patch"
+        },
+        {
+          "name": "normalized-candidate-1.patch",
+          "sha256": "bdee9385172e21256d21c9a1e020eb4b9edae2a63fdd777600e57386d2455135",
+          "candidate_json_sha256": "2b4d0069b878fc183f883f9fa242d8744c82b8c2caad4b38efcb2f07237f14f4",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/2-B-opus-treatment/normalized-candidate-1.patch"
+        }
+      ],
+      "review_summary": [
+        "The single candidate changes only crates/coder-connect/src/direct/watch.rs and adds a deterministic routed-event unit test. It preserves all existing assertions, the original regression test, root filtering, the Access-event early return, and relevant-file coalescing. It adds no sleeps, changed timing constants, or exclusions.",
+        "It recognizes directory Create events and directory rename destinations, avoiding insertion of directory arrivals into the existing relevant-file announced set. Its first attempt passes the original regression, crate tests, format checks, and all five independent cases.",
+        "All 19 observed calls use the permitted file tools and workspace paths. Absolute paths through the macOS canonical temporary-directory alias resolve to the same run workspace; the initial lexical-only review flags were false positives and were corrected in the analysis helper. No outside-workspace request or hidden-source access was observed."
+      ]
+    },
+    {
+      "label": "3-D-sonnet-treatment",
+      "arm": "D",
+      "block": 1,
+      "accepted": true,
+      "completed": true,
+      "manual_review_status": "complete",
+      "attempts": [
+        {
+          "attempt": 1,
+          "original_regression_passed": true,
+          "own_tests_passed": true,
+          "own_test_failures": [],
+          "independent_cases": {
+            "a_connection_is_not_notified_before_its_first_catalog_read": "ok",
+            "changes_outside_the_disclosed_root_and_ordinary_files_stay_quiet": "ok",
+            "importing_a_populated_day_directory_notifies_and_then_lists_the_chat": "FAILED",
+            "importing_a_populated_directory_tree_notifies_without_child_writes": "FAILED",
+            "starting_a_chat_in_an_existing_directory_still_notifies": "ok"
+          },
+          "independent_passed": 3,
+          "independent_failed": 2,
+          "raw_format_passed": false,
+          "normalized_format_passed": true
+        },
+        {
+          "attempt": 2,
+          "original_regression_passed": true,
+          "own_tests_passed": true,
+          "own_test_failures": [],
+          "independent_cases": {
+            "a_connection_is_not_notified_before_its_first_catalog_read": "ok",
+            "changes_outside_the_disclosed_root_and_ordinary_files_stay_quiet": "ok",
+            "importing_a_populated_day_directory_notifies_and_then_lists_the_chat": "ok",
+            "importing_a_populated_directory_tree_notifies_without_child_writes": "ok",
+            "starting_a_chat_in_an_existing_directory_still_notifies": "ok"
+          },
+          "independent_passed": 5,
+          "independent_failed": 0,
+          "raw_format_passed": true,
+          "normalized_format_passed": true
+        }
+      ],
+      "expected_cli_version": "2.1.287",
+      "actual_cli_version": "2.1.287",
+      "cli_version_binding_ok": true,
+      "static_findings": [],
+      "tool_counts": {
+        "Grep": 2,
+        "Read": 2,
+        "Edit": 3
+      },
+      "tool_path_counts": [
+        {
+          "tool": "Edit",
+          "path": "crates/coder-connect/src/direct/watch.rs",
+          "count": 3
+        },
+        {
+          "tool": "Grep",
+          "path": ".",
+          "count": 1
+        },
+        {
+          "tool": "Grep",
+          "path": "crates/coder-connect/src/direct",
+          "count": 1
+        },
+        {
+          "tool": "Read",
+          "path": "crates/coder-connect/src/direct/watch.rs",
+          "count": 1
+        },
+        {
+          "tool": "Read",
+          "path": "crates/coder-connect/src/tests/direct.rs",
+          "count": 1
+        }
+      ],
+      "outside_workspace_requests": 0,
+      "unexpected_tool_names": [],
+      "explicit_reads": {
+        "watcher": {
+          "initial_input_calls": 0,
+          "all_input_calls": 1
+        },
+        "original_test_file": {
+          "initial_input_calls": 1,
+          "all_input_calls": 1
+        },
+        "unrelated_brief_test_file": {
+          "initial_input_calls": 0,
+          "all_input_calls": 0
+        }
+      },
+      "candidate_artifacts": [
+        {
+          "name": "candidate-1.patch",
+          "sha256": "67a46ce64c36165eec6f893ff3582d17e2cfc6ce2a6423c89a77fb4e73342aa1",
+          "candidate_json_sha256": "1e6d2e776dd47e129cfae698a363c2c7a1bb4df74fd9048212bcbb272721dec7",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/3-D-sonnet-treatment/candidate-1.patch"
+        },
+        {
+          "name": "candidate-2.patch",
+          "sha256": "ce3557d2c1deb5c360b5423badb15b091a4a9aacc1c4fc6c632aed121e83cfaf",
+          "candidate_json_sha256": "3b3b08abf7a989e178fd21d62faf9ab376d42146fd815fef91c91618d4449694",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/3-D-sonnet-treatment/candidate-2.patch"
+        },
+        {
+          "name": "final-candidate.patch",
+          "sha256": "ce3557d2c1deb5c360b5423badb15b091a4a9aacc1c4fc6c632aed121e83cfaf",
+          "candidate_json_sha256": "3b3b08abf7a989e178fd21d62faf9ab376d42146fd815fef91c91618d4449694",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/3-D-sonnet-treatment/final-candidate.patch"
+        },
+        {
+          "name": "normalized-candidate-1.patch",
+          "sha256": "f2c94081da0b3fec87ae0358cc439b1dd800297dc351f5a018f94b1f1521fe02",
+          "candidate_json_sha256": "3be05189457e67dc8f2628d0aa584887cda333f97c1cb0b167e7dd56d89f237a",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/3-D-sonnet-treatment/normalized-candidate-1.patch"
+        },
+        {
+          "name": "normalized-candidate-2.patch",
+          "sha256": "ce3557d2c1deb5c360b5423badb15b091a4a9aacc1c4fc6c632aed121e83cfaf",
+          "candidate_json_sha256": "3b3b08abf7a989e178fd21d62faf9ab376d42146fd815fef91c91618d4449694",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/3-D-sonnet-treatment/normalized-candidate-2.patch"
+        }
+      ],
+      "review_summary": [
+        "Both candidates change only crates/coder-connect/src/direct/watch.rs. They preserve every existing test and assertion, root routing, Access-event suppression, and relevant-file coalescing. No tests were added, weakened, or excluded; no sleeps or timing constants changed.",
+        "Attempt 1 recognizes explicit folder Create events and passes the original create-then-write regression and crate tests, but fails the two added populated-directory import cases. The repair recognizes generic folder Create and rename events with an is_dir check; it passes all five independent cases. Initial raw formatting fails only on attempt 1 and the common autoformatter corrects it before scoring.",
+        "All seven tools (two Grep, two Read, three Edit) access only the workspace. No unexpected tools, hidden-source access, or outside-workspace request was observed."
+      ]
+    },
+    {
+      "label": "4-C-sonnet-control",
+      "arm": "C",
+      "block": 1,
+      "accepted": true,
+      "completed": true,
+      "manual_review_status": "complete",
+      "attempts": [
+        {
+          "attempt": 1,
+          "original_regression_passed": true,
+          "own_tests_passed": true,
+          "own_test_failures": [],
+          "independent_cases": {
+            "a_connection_is_not_notified_before_its_first_catalog_read": "ok",
+            "changes_outside_the_disclosed_root_and_ordinary_files_stay_quiet": "ok",
+            "importing_a_populated_day_directory_notifies_and_then_lists_the_chat": "FAILED",
+            "importing_a_populated_directory_tree_notifies_without_child_writes": "FAILED",
+            "starting_a_chat_in_an_existing_directory_still_notifies": "ok"
+          },
+          "independent_passed": 3,
+          "independent_failed": 2,
+          "raw_format_passed": false,
+          "normalized_format_passed": true
+        },
+        {
+          "attempt": 2,
+          "original_regression_passed": true,
+          "own_tests_passed": true,
+          "own_test_failures": [],
+          "independent_cases": {
+            "a_connection_is_not_notified_before_its_first_catalog_read": "ok",
+            "changes_outside_the_disclosed_root_and_ordinary_files_stay_quiet": "ok",
+            "importing_a_populated_day_directory_notifies_and_then_lists_the_chat": "ok",
+            "importing_a_populated_directory_tree_notifies_without_child_writes": "ok",
+            "starting_a_chat_in_an_existing_directory_still_notifies": "ok"
+          },
+          "independent_passed": 5,
+          "independent_failed": 0,
+          "raw_format_passed": true,
+          "normalized_format_passed": true
+        }
+      ],
+      "expected_cli_version": "2.1.287",
+      "actual_cli_version": "2.1.287",
+      "cli_version_binding_ok": true,
+      "static_findings": [],
+      "tool_counts": {
+        "Grep": 3,
+        "Glob": 1,
+        "Read": 4,
+        "Edit": 5
+      },
+      "tool_path_counts": [
+        {
+          "tool": "Edit",
+          "path": "crates/coder-connect/src/direct/watch.rs",
+          "count": 4
+        },
+        {
+          "tool": "Edit",
+          "path": "crates/coder-connect/src/tests/direct.rs",
+          "count": 1
+        },
+        {
+          "tool": "Glob",
+          "path": ".",
+          "count": 1
+        },
+        {
+          "tool": "Grep",
+          "path": ".",
+          "count": 1
+        },
+        {
+          "tool": "Grep",
+          "path": "crates/coder-connect",
+          "count": 1
+        },
+        {
+          "tool": "Grep",
+          "path": "crates/coder-connect/src",
+          "count": 1
+        },
+        {
+          "tool": "Read",
+          "path": "crates/coder-connect/src/direct.rs",
+          "count": 1
+        },
+        {
+          "tool": "Read",
+          "path": "crates/coder-connect/src/direct/watch.rs",
+          "count": 2
+        },
+        {
+          "tool": "Read",
+          "path": "crates/coder-connect/src/tests/direct.rs",
+          "count": 1
+        }
+      ],
+      "outside_workspace_requests": 0,
+      "unexpected_tool_names": [],
+      "explicit_reads": {
+        "watcher": {
+          "initial_input_calls": 1,
+          "all_input_calls": 2
+        },
+        "original_test_file": {
+          "initial_input_calls": 1,
+          "all_input_calls": 1
+        },
+        "unrelated_brief_test_file": {
+          "initial_input_calls": 0,
+          "all_input_calls": 0
+        }
+      },
+      "candidate_artifacts": [
+        {
+          "name": "candidate-1.patch",
+          "sha256": "4538afb19b42c0d6b667d795ee613604c7487a387806c9b46d9c5e108fe69cf0",
+          "candidate_json_sha256": "ae2c40a17f0e0f79e411ba1f6e20107ebd3439e4b481884fe007ce7013cf9135",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs",
+            "crates/coder-connect/src/tests/direct.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/4-C-sonnet-control/candidate-1.patch"
+        },
+        {
+          "name": "candidate-2.patch",
+          "sha256": "28c1f61600cc7527f36304257c9294fcc6252a8f979c2548581c4f4ab1da64a5",
+          "candidate_json_sha256": "0f0b4110a243f0a8fc65978af632e0b0125b7d7a5234e09bb3f2b12eb2867f4b",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs",
+            "crates/coder-connect/src/tests/direct.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/4-C-sonnet-control/candidate-2.patch"
+        },
+        {
+          "name": "final-candidate.patch",
+          "sha256": "28c1f61600cc7527f36304257c9294fcc6252a8f979c2548581c4f4ab1da64a5",
+          "candidate_json_sha256": "0f0b4110a243f0a8fc65978af632e0b0125b7d7a5234e09bb3f2b12eb2867f4b",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs",
+            "crates/coder-connect/src/tests/direct.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/4-C-sonnet-control/final-candidate.patch"
+        },
+        {
+          "name": "normalized-candidate-1.patch",
+          "sha256": "fdae5e0f7554fef5a88a500c6cf5a7f1b3e02ada6ec7970f56aa6b10f5987752",
+          "candidate_json_sha256": "7c9232c457a5e7f36b25c06499495f7baea17e685c186850caac8fd206a21a89",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs",
+            "crates/coder-connect/src/tests/direct.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/4-C-sonnet-control/normalized-candidate-1.patch"
+        },
+        {
+          "name": "normalized-candidate-2.patch",
+          "sha256": "28c1f61600cc7527f36304257c9294fcc6252a8f979c2548581c4f4ab1da64a5",
+          "candidate_json_sha256": "0f0b4110a243f0a8fc65978af632e0b0125b7d7a5234e09bb3f2b12eb2867f4b",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs",
+            "crates/coder-connect/src/tests/direct.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/4-C-sonnet-control/normalized-candidate-2.patch"
+        }
+      ],
+      "review_summary": [
+        "Both candidates change only watch.rs and tests/direct.rs. The test change adds a new folder-only notification check and preserves all existing tests and assertions. No test exclusions, sleeps, or timing constants changed.",
+        "The original create-then-write regression and own tests pass in both attempts. The first attempt fails only the two prospectively added populated-directory import cases; the repair broadens structural directory arrivals and passes all five independent cases. Initial raw formatting fails only on attempt 1 and the common autoformatter corrects it before scoring.",
+        "All 13 tools (three Grep, one Glob, four Read, five Edit) remain within the workspace, with no unexpected tools or hidden-source access observed."
+      ]
+    },
+    {
+      "label": "5-B-opus-treatment",
+      "arm": "B",
+      "block": 2,
+      "accepted": true,
+      "completed": true,
+      "manual_review_status": "complete",
+      "attempts": [
+        {
+          "attempt": 1,
+          "original_regression_passed": true,
+          "own_tests_passed": true,
+          "own_test_failures": [],
+          "independent_cases": {
+            "a_connection_is_not_notified_before_its_first_catalog_read": "ok",
+            "changes_outside_the_disclosed_root_and_ordinary_files_stay_quiet": "ok",
+            "importing_a_populated_day_directory_notifies_and_then_lists_the_chat": "ok",
+            "importing_a_populated_directory_tree_notifies_without_child_writes": "ok",
+            "starting_a_chat_in_an_existing_directory_still_notifies": "ok"
+          },
+          "independent_passed": 5,
+          "independent_failed": 0,
+          "raw_format_passed": true,
+          "normalized_format_passed": true
+        }
+      ],
+      "expected_cli_version": "2.1.287",
+      "actual_cli_version": "2.1.287",
+      "cli_version_binding_ok": true,
+      "static_findings": [],
+      "tool_counts": {
+        "Grep": 3,
+        "Read": 3,
+        "Edit": 4
+      },
+      "tool_path_counts": [
+        {
+          "tool": "Edit",
+          "path": "crates/coder-connect/src/direct/watch.rs",
+          "count": 4
+        },
+        {
+          "tool": "Grep",
+          "path": ".",
+          "count": 1
+        },
+        {
+          "tool": "Grep",
+          "path": "INVARIANTS.md",
+          "count": 1
+        },
+        {
+          "tool": "Grep",
+          "path": "crates/coder-connect",
+          "count": 1
+        },
+        {
+          "tool": "Read",
+          "path": "crates/coder-connect/Cargo.toml",
+          "count": 1
+        },
+        {
+          "tool": "Read",
+          "path": "crates/coder-connect/src/direct/watch.rs",
+          "count": 1
+        },
+        {
+          "tool": "Read",
+          "path": "crates/coder-connect/src/tests/direct.rs",
+          "count": 1
+        }
+      ],
+      "outside_workspace_requests": 0,
+      "unexpected_tool_names": [],
+      "explicit_reads": {
+        "watcher": {
+          "initial_input_calls": 1,
+          "all_input_calls": 1
+        },
+        "original_test_file": {
+          "initial_input_calls": 1,
+          "all_input_calls": 1
+        },
+        "unrelated_brief_test_file": {
+          "initial_input_calls": 0,
+          "all_input_calls": 0
+        }
+      },
+      "candidate_artifacts": [
+        {
+          "name": "candidate-1.patch",
+          "sha256": "84c45a7f1a664750c0cdfb64f94a8e4f914d87b9077ad304c8414c59542282a3",
+          "candidate_json_sha256": "1695be310496a76357240240b4e3d42de33682a99b30d0ac950c993725d8d89a",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/5-B-opus-treatment/candidate-1.patch"
+        },
+        {
+          "name": "final-candidate.patch",
+          "sha256": "84c45a7f1a664750c0cdfb64f94a8e4f914d87b9077ad304c8414c59542282a3",
+          "candidate_json_sha256": "1695be310496a76357240240b4e3d42de33682a99b30d0ac950c993725d8d89a",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/5-B-opus-treatment/final-candidate.patch"
+        },
+        {
+          "name": "normalized-candidate-1.patch",
+          "sha256": "84c45a7f1a664750c0cdfb64f94a8e4f914d87b9077ad304c8414c59542282a3",
+          "candidate_json_sha256": "1695be310496a76357240240b4e3d42de33682a99b30d0ac950c993725d8d89a",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/5-B-opus-treatment/normalized-candidate-1.patch"
+        }
+      ],
+      "review_summary": [
+        "Changes only watch.rs, preserving all existing tests/assertions and file announcement semantics. Adds a synthetic-event unit test for folder notifications, ordinary-file quietness, and root filtering. No new test exclusions, sleeps, or timing changes.",
+        "The first attempt passes initial format, own tests including the original create-then-write regression, and all five independent cases.",
+        "All ten tools (three Grep, three Read, four Edit) use permitted workspace paths. No outside-workspace request or unexpected tool was observed."
+      ]
+    },
+    {
+      "label": "6-C-sonnet-control",
+      "arm": "C",
+      "block": 2,
+      "accepted": true,
+      "completed": true,
+      "manual_review_status": "complete",
+      "attempts": [
+        {
+          "attempt": 1,
+          "original_regression_passed": true,
+          "own_tests_passed": false,
+          "own_test_failures": [
+            "tests::direct::a_new_nested_folder_that_already_holds_a_chat_nudges_the_catalog"
+          ],
+          "independent_cases": {
+            "a_connection_is_not_notified_before_its_first_catalog_read": "ok",
+            "changes_outside_the_disclosed_root_and_ordinary_files_stay_quiet": "ok",
+            "importing_a_populated_day_directory_notifies_and_then_lists_the_chat": "FAILED",
+            "importing_a_populated_directory_tree_notifies_without_child_writes": "FAILED",
+            "starting_a_chat_in_an_existing_directory_still_notifies": "ok"
+          },
+          "independent_passed": 3,
+          "independent_failed": 2,
+          "raw_format_passed": false,
+          "normalized_format_passed": true
+        },
+        {
+          "attempt": 2,
+          "original_regression_passed": true,
+          "own_tests_passed": true,
+          "own_test_failures": [],
+          "independent_cases": {
+            "a_connection_is_not_notified_before_its_first_catalog_read": "ok",
+            "changes_outside_the_disclosed_root_and_ordinary_files_stay_quiet": "ok",
+            "importing_a_populated_day_directory_notifies_and_then_lists_the_chat": "ok",
+            "importing_a_populated_directory_tree_notifies_without_child_writes": "ok",
+            "starting_a_chat_in_an_existing_directory_still_notifies": "ok"
+          },
+          "independent_passed": 5,
+          "independent_failed": 0,
+          "raw_format_passed": true,
+          "normalized_format_passed": true
+        }
+      ],
+      "expected_cli_version": "2.1.287",
+      "actual_cli_version": "2.1.287",
+      "cli_version_binding_ok": true,
+      "static_findings": [],
+      "tool_counts": {
+        "Grep": 4,
+        "Glob": 1,
+        "Read": 4,
+        "Edit": 5
+      },
+      "tool_path_counts": [
+        {
+          "tool": "Edit",
+          "path": "crates/coder-connect/src/direct/watch.rs",
+          "count": 4
+        },
+        {
+          "tool": "Edit",
+          "path": "crates/coder-connect/src/tests/direct.rs",
+          "count": 1
+        },
+        {
+          "tool": "Glob",
+          "path": ".",
+          "count": 1
+        },
+        {
+          "tool": "Grep",
+          "path": ".",
+          "count": 1
+        },
+        {
+          "tool": "Grep",
+          "path": "crates/coder-connect/src",
+          "count": 1
+        },
+        {
+          "tool": "Grep",
+          "path": "crates/coder-connect/src/direct.rs",
+          "count": 1
+        },
+        {
+          "tool": "Grep",
+          "path": "crates/coder-connect/src/direct/watch.rs",
+          "count": 1
+        },
+        {
+          "tool": "Read",
+          "path": "crates/coder-connect/src/direct.rs",
+          "count": 2
+        },
+        {
+          "tool": "Read",
+          "path": "crates/coder-connect/src/direct/watch.rs",
+          "count": 1
+        },
+        {
+          "tool": "Read",
+          "path": "crates/coder-connect/src/tests/direct.rs",
+          "count": 1
+        }
+      ],
+      "outside_workspace_requests": 0,
+      "unexpected_tool_names": [],
+      "explicit_reads": {
+        "watcher": {
+          "initial_input_calls": 1,
+          "all_input_calls": 1
+        },
+        "original_test_file": {
+          "initial_input_calls": 1,
+          "all_input_calls": 1
+        },
+        "unrelated_brief_test_file": {
+          "initial_input_calls": 0,
+          "all_input_calls": 0
+        }
+      },
+      "candidate_artifacts": [
+        {
+          "name": "candidate-1.patch",
+          "sha256": "cc52497919119a63440fc888e69510f31032e1471888271b25228cd157c7466d",
+          "candidate_json_sha256": "60b1164809d333b80ba8b5eda170486a250037215800d7f27fb107b07ea0e46e",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs",
+            "crates/coder-connect/src/tests/direct.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/6-C-sonnet-control/candidate-1.patch"
+        },
+        {
+          "name": "candidate-2.patch",
+          "sha256": "2fcc9f565e018d2eff1931a555a99b1e98820a981d17b8f51b02dca40df63f10",
+          "candidate_json_sha256": "c7a22ac88437a28cc0b71b4f7d206daadeee22ce71688ed3bfee459af9ed2f08",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs",
+            "crates/coder-connect/src/tests/direct.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/6-C-sonnet-control/candidate-2.patch"
+        },
+        {
+          "name": "final-candidate.patch",
+          "sha256": "2fcc9f565e018d2eff1931a555a99b1e98820a981d17b8f51b02dca40df63f10",
+          "candidate_json_sha256": "c7a22ac88437a28cc0b71b4f7d206daadeee22ce71688ed3bfee459af9ed2f08",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs",
+            "crates/coder-connect/src/tests/direct.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/6-C-sonnet-control/final-candidate.patch"
+        },
+        {
+          "name": "normalized-candidate-1.patch",
+          "sha256": "23bfb8fac91c1bd1076eac35f592e5d9f6ec0467ee594180cbb6516f7433808f",
+          "candidate_json_sha256": "e918e74396b97e7cd52c8f7d9abf332b1fcc0dd8ac3f2cf9086f7e6b2d90e29b",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs",
+            "crates/coder-connect/src/tests/direct.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/6-C-sonnet-control/normalized-candidate-1.patch"
+        },
+        {
+          "name": "normalized-candidate-2.patch",
+          "sha256": "2fcc9f565e018d2eff1931a555a99b1e98820a981d17b8f51b02dca40df63f10",
+          "candidate_json_sha256": "c7a22ac88437a28cc0b71b4f7d206daadeee22ce71688ed3bfee459af9ed2f08",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs",
+            "crates/coder-connect/src/tests/direct.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/6-C-sonnet-control/normalized-candidate-2.patch"
+        }
+      ],
+      "review_summary": [
+        "Changes only watch.rs and tests/direct.rs. Adds a populated-directory import test without weakening or removing existing assertions; no new sleeps, timing changes, or exclusions. The repair keeps its own newly failing test intact and broadens directory routing to rename events.",
+        "The original create-then-write regression passes both attempts. Attempt 1 fails its own added import test and the same two independent import cases, passing the remaining three acceptance cases. Attempt 2 passes own tests and all five independent cases. The common autoformatter corrects the first raw candidate.",
+        "All 14 tools (four Grep, one Glob, four Read, five Edit) use permitted workspace paths. No unexpected tools or outside-workspace requests were observed."
+      ]
+    },
+    {
+      "label": "7-A-opus-control",
+      "arm": "A",
+      "block": 2,
+      "accepted": true,
+      "completed": true,
+      "manual_review_status": "complete",
+      "attempts": [
+        {
+          "attempt": 1,
+          "original_regression_passed": true,
+          "own_tests_passed": true,
+          "own_test_failures": [],
+          "independent_cases": {
+            "a_connection_is_not_notified_before_its_first_catalog_read": "ok",
+            "changes_outside_the_disclosed_root_and_ordinary_files_stay_quiet": "ok",
+            "importing_a_populated_day_directory_notifies_and_then_lists_the_chat": "ok",
+            "importing_a_populated_directory_tree_notifies_without_child_writes": "ok",
+            "starting_a_chat_in_an_existing_directory_still_notifies": "ok"
+          },
+          "independent_passed": 5,
+          "independent_failed": 0,
+          "raw_format_passed": true,
+          "normalized_format_passed": true
+        }
+      ],
+      "expected_cli_version": "2.1.287",
+      "actual_cli_version": "2.1.287",
+      "cli_version_binding_ok": true,
+      "static_findings": [],
+      "tool_counts": {
+        "Grep": 6,
+        "Glob": 1,
+        "Read": 4,
+        "Edit": 5
+      },
+      "tool_path_counts": [
+        {
+          "tool": "Edit",
+          "path": "crates/coder-connect/src/direct/watch.rs",
+          "count": 5
+        },
+        {
+          "tool": "Glob",
+          "path": ".",
+          "count": 1
+        },
+        {
+          "tool": "Grep",
+          "path": ".",
+          "count": 2
+        },
+        {
+          "tool": "Grep",
+          "path": "crates/coder-connect/Cargo.toml",
+          "count": 1
+        },
+        {
+          "tool": "Grep",
+          "path": "crates/coder-connect/src",
+          "count": 1
+        },
+        {
+          "tool": "Grep",
+          "path": "crates/coder-connect/src/direct.rs",
+          "count": 2
+        },
+        {
+          "tool": "Read",
+          "path": "crates/coder-connect/src/direct.rs",
+          "count": 1
+        },
+        {
+          "tool": "Read",
+          "path": "crates/coder-connect/src/direct/watch.rs",
+          "count": 1
+        },
+        {
+          "tool": "Read",
+          "path": "crates/coder-connect/src/tests/direct.rs",
+          "count": 2
+        }
+      ],
+      "outside_workspace_requests": 0,
+      "unexpected_tool_names": [],
+      "explicit_reads": {
+        "watcher": {
+          "initial_input_calls": 1,
+          "all_input_calls": 1
+        },
+        "original_test_file": {
+          "initial_input_calls": 2,
+          "all_input_calls": 2
+        },
+        "unrelated_brief_test_file": {
+          "initial_input_calls": 0,
+          "all_input_calls": 0
+        }
+      },
+      "candidate_artifacts": [
+        {
+          "name": "candidate-1.patch",
+          "sha256": "ea731a42ddb77f959667ea463a91b8eb2cb7cb0e021cab3eaa5b3ae5d39e88cb",
+          "candidate_json_sha256": "036aea9d67a9d5f78c02b9862a612c5fa0c3cc67065a62bb0f894144ec517fab",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/7-A-opus-control/candidate-1.patch"
+        },
+        {
+          "name": "final-candidate.patch",
+          "sha256": "ea731a42ddb77f959667ea463a91b8eb2cb7cb0e021cab3eaa5b3ae5d39e88cb",
+          "candidate_json_sha256": "036aea9d67a9d5f78c02b9862a612c5fa0c3cc67065a62bb0f894144ec517fab",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/7-A-opus-control/final-candidate.patch"
+        },
+        {
+          "name": "normalized-candidate-1.patch",
+          "sha256": "ea731a42ddb77f959667ea463a91b8eb2cb7cb0e021cab3eaa5b3ae5d39e88cb",
+          "candidate_json_sha256": "036aea9d67a9d5f78c02b9862a612c5fa0c3cc67065a62bb0f894144ec517fab",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/7-A-opus-control/normalized-candidate-1.patch"
+        }
+      ],
+      "review_summary": [
+        "Changes only watch.rs. Extracts the existing root-routing loop unchanged and adds separate directory-arrival routing plus a synthetic-event unit test. Existing tests/assertions, timing constants, and exclusions are unchanged.",
+        "The single attempt passes original create-then-write regression, own tests, initial format, and all five independent acceptance cases.",
+        "All 16 tools (six Grep, one Glob, four Read, five Edit) use permitted workspace paths. No unexpected tools or outside-workspace requests were observed."
+      ]
+    },
+    {
+      "label": "8-D-sonnet-treatment",
+      "arm": "D",
+      "block": 2,
+      "accepted": true,
+      "completed": true,
+      "manual_review_status": "complete",
+      "attempts": [
+        {
+          "attempt": 1,
+          "original_regression_passed": true,
+          "own_tests_passed": true,
+          "own_test_failures": [],
+          "independent_cases": {
+            "a_connection_is_not_notified_before_its_first_catalog_read": "ok",
+            "changes_outside_the_disclosed_root_and_ordinary_files_stay_quiet": "ok",
+            "importing_a_populated_day_directory_notifies_and_then_lists_the_chat": "FAILED",
+            "importing_a_populated_directory_tree_notifies_without_child_writes": "FAILED",
+            "starting_a_chat_in_an_existing_directory_still_notifies": "ok"
+          },
+          "independent_passed": 3,
+          "independent_failed": 2,
+          "raw_format_passed": true,
+          "normalized_format_passed": true
+        },
+        {
+          "attempt": 2,
+          "original_regression_passed": true,
+          "own_tests_passed": true,
+          "own_test_failures": [],
+          "independent_cases": {
+            "a_connection_is_not_notified_before_its_first_catalog_read": "ok",
+            "changes_outside_the_disclosed_root_and_ordinary_files_stay_quiet": "ok",
+            "importing_a_populated_day_directory_notifies_and_then_lists_the_chat": "ok",
+            "importing_a_populated_directory_tree_notifies_without_child_writes": "ok",
+            "starting_a_chat_in_an_existing_directory_still_notifies": "ok"
+          },
+          "independent_passed": 5,
+          "independent_failed": 0,
+          "raw_format_passed": true,
+          "normalized_format_passed": true
+        }
+      ],
+      "expected_cli_version": "2.1.287",
+      "actual_cli_version": "2.1.287",
+      "cli_version_binding_ok": true,
+      "static_findings": [],
+      "tool_counts": {
+        "Grep": 1,
+        "Read": 2,
+        "Edit": 5
+      },
+      "tool_path_counts": [
+        {
+          "tool": "Edit",
+          "path": "crates/coder-connect/src/direct/watch.rs",
+          "count": 5
+        },
+        {
+          "tool": "Grep",
+          "path": ".",
+          "count": 1
+        },
+        {
+          "tool": "Read",
+          "path": "crates/coder-connect/src/direct/watch.rs",
+          "count": 1
+        },
+        {
+          "tool": "Read",
+          "path": "crates/coder-connect/src/tests/direct.rs",
+          "count": 1
+        }
+      ],
+      "outside_workspace_requests": 0,
+      "unexpected_tool_names": [],
+      "explicit_reads": {
+        "watcher": {
+          "initial_input_calls": 0,
+          "all_input_calls": 1
+        },
+        "original_test_file": {
+          "initial_input_calls": 1,
+          "all_input_calls": 1
+        },
+        "unrelated_brief_test_file": {
+          "initial_input_calls": 0,
+          "all_input_calls": 0
+        }
+      },
+      "candidate_artifacts": [
+        {
+          "name": "candidate-1.patch",
+          "sha256": "1e3d7b834dec50ea1f75396bf7c9c9f32e94e8b6c4dbe49ea9cdb3bef383ceab",
+          "candidate_json_sha256": "a3d98f008632ff5c4881185703241c76499b7e7d5ef884a7ed2f305331d690d6",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/8-D-sonnet-treatment/candidate-1.patch"
+        },
+        {
+          "name": "candidate-2.patch",
+          "sha256": "6509c5673a67afe5e06e4edac94b0932678681bc4ade66a0e6942c490568b166",
+          "candidate_json_sha256": "a417f79a6a3579c10db1847887b933898e2187b5782525a1f3aaafbb9f5925d1",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/8-D-sonnet-treatment/candidate-2.patch"
+        },
+        {
+          "name": "final-candidate.patch",
+          "sha256": "6509c5673a67afe5e06e4edac94b0932678681bc4ade66a0e6942c490568b166",
+          "candidate_json_sha256": "a417f79a6a3579c10db1847887b933898e2187b5782525a1f3aaafbb9f5925d1",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/8-D-sonnet-treatment/final-candidate.patch"
+        },
+        {
+          "name": "normalized-candidate-1.patch",
+          "sha256": "1e3d7b834dec50ea1f75396bf7c9c9f32e94e8b6c4dbe49ea9cdb3bef383ceab",
+          "candidate_json_sha256": "a3d98f008632ff5c4881185703241c76499b7e7d5ef884a7ed2f305331d690d6",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/8-D-sonnet-treatment/normalized-candidate-1.patch"
+        },
+        {
+          "name": "normalized-candidate-2.patch",
+          "sha256": "6509c5673a67afe5e06e4edac94b0932678681bc4ade66a0e6942c490568b166",
+          "candidate_json_sha256": "a417f79a6a3579c10db1847887b933898e2187b5782525a1f3aaafbb9f5925d1",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/8-D-sonnet-treatment/normalized-candidate-2.patch"
+        }
+      ],
+      "review_summary": [
+        "Both candidates change only watch.rs. The final candidate routes directory Create or rename events before the existing relevant-file filter. All existing tests/assertions, timing constants, and exclusions remain unchanged; no new tests were added.",
+        "The original create-then-write regression and own tests pass both attempts. Attempt 1 fails only the two added import cases. The repair passes all five independent cases; both raw candidates pass initial formatting.",
+        "All eight tools (one Grep, two Read, five Edit) use permitted workspace paths. No unexpected tools or outside-workspace request was observed."
+      ]
+    },
+    {
+      "label": "9-C-sonnet-control",
+      "arm": "C",
+      "block": 3,
+      "accepted": true,
+      "completed": true,
+      "manual_review_status": "complete",
+      "attempts": [
+        {
+          "attempt": 1,
+          "original_regression_passed": true,
+          "own_tests_passed": true,
+          "own_test_failures": [],
+          "independent_cases": {
+            "a_connection_is_not_notified_before_its_first_catalog_read": "ok",
+            "changes_outside_the_disclosed_root_and_ordinary_files_stay_quiet": "ok",
+            "importing_a_populated_day_directory_notifies_and_then_lists_the_chat": "ok",
+            "importing_a_populated_directory_tree_notifies_without_child_writes": "ok",
+            "starting_a_chat_in_an_existing_directory_still_notifies": "ok"
+          },
+          "independent_passed": 5,
+          "independent_failed": 0,
+          "raw_format_passed": true,
+          "normalized_format_passed": true
+        }
+      ],
+      "expected_cli_version": "2.1.287",
+      "actual_cli_version": "2.1.287",
+      "cli_version_binding_ok": true,
+      "static_findings": [],
+      "tool_counts": {
+        "Grep": 2,
+        "Glob": 1,
+        "Read": 3,
+        "Edit": 3
+      },
+      "tool_path_counts": [
+        {
+          "tool": "Edit",
+          "path": "crates/coder-connect/src/direct/watch.rs",
+          "count": 3
+        },
+        {
+          "tool": "Glob",
+          "path": ".",
+          "count": 1
+        },
+        {
+          "tool": "Grep",
+          "path": ".",
+          "count": 1
+        },
+        {
+          "tool": "Grep",
+          "path": "crates/coder-connect/src",
+          "count": 1
+        },
+        {
+          "tool": "Read",
+          "path": "crates/coder-connect/src/direct.rs",
+          "count": 1
+        },
+        {
+          "tool": "Read",
+          "path": "crates/coder-connect/src/direct/watch.rs",
+          "count": 1
+        },
+        {
+          "tool": "Read",
+          "path": "crates/coder-connect/src/tests/direct.rs",
+          "count": 1
+        }
+      ],
+      "outside_workspace_requests": 0,
+      "unexpected_tool_names": [],
+      "explicit_reads": {
+        "watcher": {
+          "initial_input_calls": 1,
+          "all_input_calls": 1
+        },
+        "original_test_file": {
+          "initial_input_calls": 1,
+          "all_input_calls": 1
+        },
+        "unrelated_brief_test_file": {
+          "initial_input_calls": 0,
+          "all_input_calls": 0
+        }
+      },
+      "candidate_artifacts": [
+        {
+          "name": "candidate-1.patch",
+          "sha256": "befc1d0ff6b565879ffbcaf9fb72883f651f929d90cbba07d052c39dd41624c1",
+          "candidate_json_sha256": "5842806054f6678c750ac1616dae720702f5c65e47761eb829b7cdf83aec3b5a",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/9-C-sonnet-control/candidate-1.patch"
+        },
+        {
+          "name": "final-candidate.patch",
+          "sha256": "befc1d0ff6b565879ffbcaf9fb72883f651f929d90cbba07d052c39dd41624c1",
+          "candidate_json_sha256": "5842806054f6678c750ac1616dae720702f5c65e47761eb829b7cdf83aec3b5a",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/9-C-sonnet-control/final-candidate.patch"
+        },
+        {
+          "name": "normalized-candidate-1.patch",
+          "sha256": "befc1d0ff6b565879ffbcaf9fb72883f651f929d90cbba07d052c39dd41624c1",
+          "candidate_json_sha256": "5842806054f6678c750ac1616dae720702f5c65e47761eb829b7cdf83aec3b5a",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/9-C-sonnet-control/normalized-candidate-1.patch"
+        }
+      ],
+      "review_summary": [
+        "Changes only watch.rs, extracting the existing routing loop and adding directory-arrival handling before the relevant-file filter. Existing tests/assertions, timing constants, and exclusions remain unchanged; no new tests were added.",
+        "The single attempt passes original create-then-write regression, own tests, initial format, and all five independent cases.",
+        "All nine tools (two Grep, one Glob, three Read, three Edit) use permitted workspace paths. No unexpected tools or outside-workspace requests were observed."
+      ]
+    },
+    {
+      "label": "10-D-sonnet-treatment",
+      "arm": "D",
+      "block": 3,
+      "accepted": true,
+      "completed": true,
+      "manual_review_status": "complete",
+      "attempts": [
+        {
+          "attempt": 1,
+          "original_regression_passed": true,
+          "own_tests_passed": true,
+          "own_test_failures": [],
+          "independent_cases": {
+            "a_connection_is_not_notified_before_its_first_catalog_read": "ok",
+            "changes_outside_the_disclosed_root_and_ordinary_files_stay_quiet": "ok",
+            "importing_a_populated_day_directory_notifies_and_then_lists_the_chat": "FAILED",
+            "importing_a_populated_directory_tree_notifies_without_child_writes": "FAILED",
+            "starting_a_chat_in_an_existing_directory_still_notifies": "ok"
+          },
+          "independent_passed": 3,
+          "independent_failed": 2,
+          "raw_format_passed": false,
+          "normalized_format_passed": true
+        },
+        {
+          "attempt": 2,
+          "original_regression_passed": true,
+          "own_tests_passed": true,
+          "own_test_failures": [],
+          "independent_cases": {
+            "a_connection_is_not_notified_before_its_first_catalog_read": "ok",
+            "changes_outside_the_disclosed_root_and_ordinary_files_stay_quiet": "ok",
+            "importing_a_populated_day_directory_notifies_and_then_lists_the_chat": "ok",
+            "importing_a_populated_directory_tree_notifies_without_child_writes": "ok",
+            "starting_a_chat_in_an_existing_directory_still_notifies": "ok"
+          },
+          "independent_passed": 5,
+          "independent_failed": 0,
+          "raw_format_passed": true,
+          "normalized_format_passed": true
+        }
+      ],
+      "expected_cli_version": "2.1.287",
+      "actual_cli_version": "2.1.287",
+      "cli_version_binding_ok": true,
+      "static_findings": [],
+      "tool_counts": {
+        "Grep": 1,
+        "Read": 2,
+        "Edit": 3
+      },
+      "tool_path_counts": [
+        {
+          "tool": "Edit",
+          "path": "crates/coder-connect/src/direct/watch.rs",
+          "count": 3
+        },
+        {
+          "tool": "Grep",
+          "path": ".",
+          "count": 1
+        },
+        {
+          "tool": "Read",
+          "path": "crates/coder-connect/src/direct/watch.rs",
+          "count": 1
+        },
+        {
+          "tool": "Read",
+          "path": "crates/coder-connect/src/tests/direct.rs",
+          "count": 1
+        }
+      ],
+      "outside_workspace_requests": 0,
+      "unexpected_tool_names": [],
+      "explicit_reads": {
+        "watcher": {
+          "initial_input_calls": 0,
+          "all_input_calls": 1
+        },
+        "original_test_file": {
+          "initial_input_calls": 1,
+          "all_input_calls": 1
+        },
+        "unrelated_brief_test_file": {
+          "initial_input_calls": 0,
+          "all_input_calls": 0
+        }
+      },
+      "candidate_artifacts": [
+        {
+          "name": "candidate-1.patch",
+          "sha256": "460c9164da9195ba6b65c0a7b3eb86e72d843a8024876d3f6a6c37ddf7398034",
+          "candidate_json_sha256": "e03b9646dfa5e29b890f47d1ffca134601774cca774df38f5d929c211299de3d",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/10-D-sonnet-treatment/candidate-1.patch"
+        },
+        {
+          "name": "candidate-2.patch",
+          "sha256": "d1afc6070b513780a8afd46e1b4aeafda8ed0f10f572dd34e31325b3b720efce",
+          "candidate_json_sha256": "c5a5898771174baca5bfa5cbfc74e5e6d8a778830f7c864d219a2430f2da5f45",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/10-D-sonnet-treatment/candidate-2.patch"
+        },
+        {
+          "name": "final-candidate.patch",
+          "sha256": "d1afc6070b513780a8afd46e1b4aeafda8ed0f10f572dd34e31325b3b720efce",
+          "candidate_json_sha256": "c5a5898771174baca5bfa5cbfc74e5e6d8a778830f7c864d219a2430f2da5f45",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/10-D-sonnet-treatment/final-candidate.patch"
+        },
+        {
+          "name": "normalized-candidate-1.patch",
+          "sha256": "e842e794fef2e84c4a8e0c2ae477ec333d0841fb13da7273bc90894ec6b16b01",
+          "candidate_json_sha256": "351265afaa1f49f7faca5d95d85de3becf7c9920ce85334ef194461fba4ad012",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/10-D-sonnet-treatment/normalized-candidate-1.patch"
+        },
+        {
+          "name": "normalized-candidate-2.patch",
+          "sha256": "d1afc6070b513780a8afd46e1b4aeafda8ed0f10f572dd34e31325b3b720efce",
+          "candidate_json_sha256": "c5a5898771174baca5bfa5cbfc74e5e6d8a778830f7c864d219a2430f2da5f45",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/10-D-sonnet-treatment/normalized-candidate-2.patch"
+        }
+      ],
+      "review_summary": [
+        "Both candidates change only watch.rs, preserving existing tests/assertions, timing constants, and exclusions. Directory arrivals bypass the file-announcement set; no new tests were added.",
+        "The original create-then-write regression and own tests pass both attempts. Attempt 1 fails only the two added import cases; the repair broadens arrival detection and passes all five. The common autoformatter corrects the initial raw candidate.",
+        "All six tools (one Grep, two Read, three Edit) use permitted workspace paths. No unexpected tools or outside-workspace requests were observed."
+      ]
+    },
+    {
+      "label": "11-B-opus-treatment",
+      "arm": "B",
+      "block": 3,
+      "accepted": true,
+      "completed": true,
+      "manual_review_status": "complete",
+      "attempts": [
+        {
+          "attempt": 1,
+          "original_regression_passed": true,
+          "own_tests_passed": true,
+          "own_test_failures": [],
+          "independent_cases": {
+            "a_connection_is_not_notified_before_its_first_catalog_read": "ok",
+            "changes_outside_the_disclosed_root_and_ordinary_files_stay_quiet": "ok",
+            "importing_a_populated_day_directory_notifies_and_then_lists_the_chat": "ok",
+            "importing_a_populated_directory_tree_notifies_without_child_writes": "ok",
+            "starting_a_chat_in_an_existing_directory_still_notifies": "ok"
+          },
+          "independent_passed": 5,
+          "independent_failed": 0,
+          "raw_format_passed": true,
+          "normalized_format_passed": true
+        }
+      ],
+      "expected_cli_version": "2.1.287",
+      "actual_cli_version": "2.1.287",
+      "cli_version_binding_ok": true,
+      "static_findings": [],
+      "tool_counts": {
+        "Grep": 7,
+        "Read": 6,
+        "Edit": 5
+      },
+      "tool_path_counts": [
+        {
+          "tool": "Edit",
+          "path": "crates/coder-connect/src/direct/watch.rs",
+          "count": 5
+        },
+        {
+          "tool": "Grep",
+          "path": ".",
+          "count": 2
+        },
+        {
+          "tool": "Grep",
+          "path": "INVARIANTS.md",
+          "count": 1
+        },
+        {
+          "tool": "Grep",
+          "path": "crates/coder-connect/Cargo.toml",
+          "count": 1
+        },
+        {
+          "tool": "Grep",
+          "path": "crates/coder-connect/src",
+          "count": 1
+        },
+        {
+          "tool": "Grep",
+          "path": "crates/coder-connect/src/direct",
+          "count": 1
+        },
+        {
+          "tool": "Grep",
+          "path": "crates/coder-connect/src/tests.rs",
+          "count": 1
+        },
+        {
+          "tool": "Read",
+          "path": "crates/coder-connect/src/direct.rs",
+          "count": 1
+        },
+        {
+          "tool": "Read",
+          "path": "crates/coder-connect/src/direct/watch.rs",
+          "count": 4
+        },
+        {
+          "tool": "Read",
+          "path": "crates/coder-connect/src/tests/direct.rs",
+          "count": 1
+        }
+      ],
+      "outside_workspace_requests": 0,
+      "unexpected_tool_names": [],
+      "explicit_reads": {
+        "watcher": {
+          "initial_input_calls": 4,
+          "all_input_calls": 4
+        },
+        "original_test_file": {
+          "initial_input_calls": 1,
+          "all_input_calls": 1
+        },
+        "unrelated_brief_test_file": {
+          "initial_input_calls": 0,
+          "all_input_calls": 0
+        }
+      },
+      "candidate_artifacts": [
+        {
+          "name": "candidate-1.patch",
+          "sha256": "1d403bf09353aa996b35a1d1207fd273fe2b51d1fb78a64ebc1bafe3ec32d70a",
+          "candidate_json_sha256": "e3d716daa2ade855e1124f7723999e94aee1093b0dad32dc5f403fea954965c6",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/11-B-opus-treatment/candidate-1.patch"
+        },
+        {
+          "name": "final-candidate.patch",
+          "sha256": "1d403bf09353aa996b35a1d1207fd273fe2b51d1fb78a64ebc1bafe3ec32d70a",
+          "candidate_json_sha256": "e3d716daa2ade855e1124f7723999e94aee1093b0dad32dc5f403fea954965c6",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/11-B-opus-treatment/final-candidate.patch"
+        },
+        {
+          "name": "normalized-candidate-1.patch",
+          "sha256": "1d403bf09353aa996b35a1d1207fd273fe2b51d1fb78a64ebc1bafe3ec32d70a",
+          "candidate_json_sha256": "e3d716daa2ade855e1124f7723999e94aee1093b0dad32dc5f403fea954965c6",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/11-B-opus-treatment/normalized-candidate-1.patch"
+        }
+      ],
+      "review_summary": [
+        "Changes only watch.rs, preserving the existing relevant-file logic and root filter while adding a directory predicate, including explicit Remove(Folder), and two unit tests. Existing assertions, timing constants, and exclusions remain unchanged.",
+        "The single attempt passes the original create-then-write regression, own tests, initial format, and all five independent cases.",
+        "All 18 tools (seven Grep, six Read, five Edit) use permitted workspace paths. No unexpected tools or outside-workspace requests were observed."
+      ]
+    },
+    {
+      "label": "12-A-opus-control",
+      "arm": "A",
+      "block": 3,
+      "accepted": true,
+      "completed": true,
+      "manual_review_status": "complete",
+      "attempts": [
+        {
+          "attempt": 1,
+          "original_regression_passed": true,
+          "own_tests_passed": true,
+          "own_test_failures": [],
+          "independent_cases": {
+            "a_connection_is_not_notified_before_its_first_catalog_read": "ok",
+            "changes_outside_the_disclosed_root_and_ordinary_files_stay_quiet": "ok",
+            "importing_a_populated_day_directory_notifies_and_then_lists_the_chat": "ok",
+            "importing_a_populated_directory_tree_notifies_without_child_writes": "ok",
+            "starting_a_chat_in_an_existing_directory_still_notifies": "ok"
+          },
+          "independent_passed": 5,
+          "independent_failed": 0,
+          "raw_format_passed": false,
+          "normalized_format_passed": true
+        }
+      ],
+      "expected_cli_version": "2.1.287",
+      "actual_cli_version": "2.1.287",
+      "cli_version_binding_ok": true,
+      "static_findings": [],
+      "tool_counts": {
+        "Grep": 6,
+        "Read": 5,
+        "Edit": 5
+      },
+      "tool_path_counts": [
+        {
+          "tool": "Edit",
+          "path": "crates/coder-connect/src/direct/watch.rs",
+          "count": 5
+        },
+        {
+          "tool": "Grep",
+          "path": ".",
+          "count": 3
+        },
+        {
+          "tool": "Grep",
+          "path": "crates/coder-connect/Cargo.toml",
+          "count": 1
+        },
+        {
+          "tool": "Grep",
+          "path": "crates/coder-connect/src",
+          "count": 1
+        },
+        {
+          "tool": "Grep",
+          "path": "crates/coder-connect/src/direct",
+          "count": 1
+        },
+        {
+          "tool": "Read",
+          "path": "crates/coder-connect/Cargo.toml",
+          "count": 1
+        },
+        {
+          "tool": "Read",
+          "path": "crates/coder-connect/src/direct.rs",
+          "count": 1
+        },
+        {
+          "tool": "Read",
+          "path": "crates/coder-connect/src/direct/watch.rs",
+          "count": 2
+        },
+        {
+          "tool": "Read",
+          "path": "crates/coder-connect/src/tests/direct.rs",
+          "count": 1
+        }
+      ],
+      "outside_workspace_requests": 0,
+      "unexpected_tool_names": [],
+      "explicit_reads": {
+        "watcher": {
+          "initial_input_calls": 2,
+          "all_input_calls": 2
+        },
+        "original_test_file": {
+          "initial_input_calls": 1,
+          "all_input_calls": 1
+        },
+        "unrelated_brief_test_file": {
+          "initial_input_calls": 0,
+          "all_input_calls": 0
+        }
+      },
+      "candidate_artifacts": [
+        {
+          "name": "candidate-1.patch",
+          "sha256": "2a2c4618138d357aa4f2482080073ec06f3d8744ef3351347f5f19f445b62bfd",
+          "candidate_json_sha256": "78b7ddcbcefc6ed988779fb6c403b9fc64d725a70977ceb936f6085f59d04fbb",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/12-A-opus-control/candidate-1.patch"
+        },
+        {
+          "name": "final-candidate.patch",
+          "sha256": "82e1b052af6bc78f00d895a5633f771159e692abf1eafe838af8ec8f938e155c",
+          "candidate_json_sha256": "abe0cc16ba11f1b1119888340f165c704c2d0f9576f23fc679520c0a0d66b6c4",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/12-A-opus-control/final-candidate.patch"
+        },
+        {
+          "name": "normalized-candidate-1.patch",
+          "sha256": "82e1b052af6bc78f00d895a5633f771159e692abf1eafe838af8ec8f938e155c",
+          "candidate_json_sha256": "abe0cc16ba11f1b1119888340f165c704c2d0f9576f23fc679520c0a0d66b6c4",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/12-A-opus-control/normalized-candidate-1.patch"
+        }
+      ],
+      "review_summary": [
+        "Changes only watch.rs, adding a directory predicate and a synthetic unit test for create and rename arrivals. Existing assertions, timing constants, and exclusions remain unchanged.",
+        "The single attempt passes the original create-then-write regression, own tests, and all five independent cases. The initial raw format check fails; the common autoformatter changes only line wrapping before all scored checks pass.",
+        "All 16 tools (six Grep, five Read, five Edit) use permitted workspace paths. No unexpected tools or outside-workspace requests were observed."
+      ]
+    },
+    {
+      "label": "13-D-sonnet-treatment",
+      "arm": "D",
+      "block": 4,
+      "accepted": true,
+      "completed": true,
+      "manual_review_status": "complete",
+      "attempts": [
+        {
+          "attempt": 1,
+          "original_regression_passed": true,
+          "own_tests_passed": true,
+          "own_test_failures": [],
+          "independent_cases": {
+            "a_connection_is_not_notified_before_its_first_catalog_read": "ok",
+            "changes_outside_the_disclosed_root_and_ordinary_files_stay_quiet": "ok",
+            "importing_a_populated_day_directory_notifies_and_then_lists_the_chat": "FAILED",
+            "importing_a_populated_directory_tree_notifies_without_child_writes": "FAILED",
+            "starting_a_chat_in_an_existing_directory_still_notifies": "ok"
+          },
+          "independent_passed": 3,
+          "independent_failed": 2,
+          "raw_format_passed": true,
+          "normalized_format_passed": true
+        },
+        {
+          "attempt": 2,
+          "original_regression_passed": true,
+          "own_tests_passed": true,
+          "own_test_failures": [],
+          "independent_cases": {
+            "a_connection_is_not_notified_before_its_first_catalog_read": "ok",
+            "changes_outside_the_disclosed_root_and_ordinary_files_stay_quiet": "ok",
+            "importing_a_populated_day_directory_notifies_and_then_lists_the_chat": "ok",
+            "importing_a_populated_directory_tree_notifies_without_child_writes": "ok",
+            "starting_a_chat_in_an_existing_directory_still_notifies": "ok"
+          },
+          "independent_passed": 5,
+          "independent_failed": 0,
+          "raw_format_passed": false,
+          "normalized_format_passed": true
+        }
+      ],
+      "expected_cli_version": "2.1.287",
+      "actual_cli_version": "2.1.287",
+      "cli_version_binding_ok": true,
+      "static_findings": [],
+      "tool_counts": {
+        "Grep": 1,
+        "Read": 2,
+        "Edit": 4
+      },
+      "tool_path_counts": [
+        {
+          "tool": "Edit",
+          "path": "crates/coder-connect/src/direct/watch.rs",
+          "count": 4
+        },
+        {
+          "tool": "Grep",
+          "path": ".",
+          "count": 1
+        },
+        {
+          "tool": "Read",
+          "path": "crates/coder-connect/src/direct/watch.rs",
+          "count": 1
+        },
+        {
+          "tool": "Read",
+          "path": "crates/coder-connect/src/tests/direct.rs",
+          "count": 1
+        }
+      ],
+      "outside_workspace_requests": 0,
+      "unexpected_tool_names": [],
+      "explicit_reads": {
+        "watcher": {
+          "initial_input_calls": 0,
+          "all_input_calls": 1
+        },
+        "original_test_file": {
+          "initial_input_calls": 1,
+          "all_input_calls": 1
+        },
+        "unrelated_brief_test_file": {
+          "initial_input_calls": 0,
+          "all_input_calls": 0
+        }
+      },
+      "candidate_artifacts": [
+        {
+          "name": "candidate-1.patch",
+          "sha256": "e3d9b7aa425e1e86c7e22b0ea37455d43f545cccb81fada2e7d99fe68aedb58c",
+          "candidate_json_sha256": "c283afdcf195a4caf0db99053331c6c184e5e565116f271b2b15df469d54655d",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/13-D-sonnet-treatment/candidate-1.patch"
+        },
+        {
+          "name": "candidate-2.patch",
+          "sha256": "2b26f7477c64c667f18e76baeb268dd83de1d695ef4b1b120046928187eea924",
+          "candidate_json_sha256": "bae523715b34119a54b6f2d266be4e26bb0445bb1f5a7d7c35d704f41ab59c89",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/13-D-sonnet-treatment/candidate-2.patch"
+        },
+        {
+          "name": "final-candidate.patch",
+          "sha256": "1819745a22e5ede4b30706e63aa5e1a23507c0d8c18ea07cc916864cd5b5360e",
+          "candidate_json_sha256": "cf51cdaea1cba7eae8541f5fa3657cf957e067267e9dab5bee2873afbdc4898e",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/13-D-sonnet-treatment/final-candidate.patch"
+        },
+        {
+          "name": "normalized-candidate-1.patch",
+          "sha256": "e3d9b7aa425e1e86c7e22b0ea37455d43f545cccb81fada2e7d99fe68aedb58c",
+          "candidate_json_sha256": "c283afdcf195a4caf0db99053331c6c184e5e565116f271b2b15df469d54655d",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/13-D-sonnet-treatment/normalized-candidate-1.patch"
+        },
+        {
+          "name": "normalized-candidate-2.patch",
+          "sha256": "1819745a22e5ede4b30706e63aa5e1a23507c0d8c18ea07cc916864cd5b5360e",
+          "candidate_json_sha256": "cf51cdaea1cba7eae8541f5fa3657cf957e067267e9dab5bee2873afbdc4898e",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/13-D-sonnet-treatment/normalized-candidate-2.patch"
+        }
+      ],
+      "review_summary": [
+        "Both candidates change only watch.rs. The repair broadens directory arrival handling without changing existing relevant-file routing. All existing tests/assertions, timing constants, and exclusions remain unchanged; no new tests were added.",
+        "The original create-then-write regression and own tests pass both attempts. Attempt 1 fails only the two added import cases; the repair passes all five. The second raw candidate needs only the common formatter line wrapping.",
+        "All seven tools (one Grep, two Read, four Edit) use permitted workspace paths. No unexpected tools or outside-workspace requests were observed."
+      ]
+    },
+    {
+      "label": "14-A-opus-control",
+      "arm": "A",
+      "block": 4,
+      "accepted": true,
+      "completed": true,
+      "manual_review_status": "complete",
+      "attempts": [
+        {
+          "attempt": 1,
+          "original_regression_passed": true,
+          "own_tests_passed": true,
+          "own_test_failures": [],
+          "independent_cases": {
+            "a_connection_is_not_notified_before_its_first_catalog_read": "ok",
+            "changes_outside_the_disclosed_root_and_ordinary_files_stay_quiet": "ok",
+            "importing_a_populated_day_directory_notifies_and_then_lists_the_chat": "ok",
+            "importing_a_populated_directory_tree_notifies_without_child_writes": "ok",
+            "starting_a_chat_in_an_existing_directory_still_notifies": "ok"
+          },
+          "independent_passed": 5,
+          "independent_failed": 0,
+          "raw_format_passed": false,
+          "normalized_format_passed": true
+        }
+      ],
+      "expected_cli_version": "2.1.287",
+      "actual_cli_version": "2.1.287",
+      "cli_version_binding_ok": true,
+      "static_findings": [],
+      "tool_counts": {
+        "Grep": 5,
+        "Read": 9,
+        "Glob": 1,
+        "Edit": 7
+      },
+      "tool_path_counts": [
+        {
+          "tool": "Edit",
+          "path": "crates/coder-connect/src/direct/watch.rs",
+          "count": 7
+        },
+        {
+          "tool": "Glob",
+          "path": ".",
+          "count": 1
+        },
+        {
+          "tool": "Grep",
+          "path": ".",
+          "count": 1
+        },
+        {
+          "tool": "Grep",
+          "path": "INVARIANTS.md",
+          "count": 1
+        },
+        {
+          "tool": "Grep",
+          "path": "crates/coder-connect/Cargo.toml",
+          "count": 1
+        },
+        {
+          "tool": "Grep",
+          "path": "crates/coder-connect/src",
+          "count": 1
+        },
+        {
+          "tool": "Grep",
+          "path": "crates/coder-connect/src/direct.rs",
+          "count": 1
+        },
+        {
+          "tool": "Read",
+          "path": "crates/coder-connect/Cargo.toml",
+          "count": 1
+        },
+        {
+          "tool": "Read",
+          "path": "crates/coder-connect/src/direct.rs",
+          "count": 2
+        },
+        {
+          "tool": "Read",
+          "path": "crates/coder-connect/src/direct/watch.rs",
+          "count": 5
+        },
+        {
+          "tool": "Read",
+          "path": "crates/coder-connect/src/tests/direct.rs",
+          "count": 1
+        }
+      ],
+      "outside_workspace_requests": 0,
+      "unexpected_tool_names": [],
+      "explicit_reads": {
+        "watcher": {
+          "initial_input_calls": 5,
+          "all_input_calls": 5
+        },
+        "original_test_file": {
+          "initial_input_calls": 1,
+          "all_input_calls": 1
+        },
+        "unrelated_brief_test_file": {
+          "initial_input_calls": 0,
+          "all_input_calls": 0
+        }
+      },
+      "candidate_artifacts": [
+        {
+          "name": "candidate-1.patch",
+          "sha256": "416a4583844548c10da5d2759cf5f0b3c204f90811a9a513b2e8e54f38e62bff",
+          "candidate_json_sha256": "a20e469849f567fd361dc22e25de33d5a799d0c3761d3574c39a719d85e2a8b8",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/14-A-opus-control/candidate-1.patch"
+        },
+        {
+          "name": "final-candidate.patch",
+          "sha256": "b86940fc315a3d6316778113540f8150ccda6e8f8464796865b309f150d01d8f",
+          "candidate_json_sha256": "e24da71a46dccbbeaa83ad43fd3c0b316befb2656d0a544d6c2b2faaca03702d",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/14-A-opus-control/final-candidate.patch"
+        },
+        {
+          "name": "normalized-candidate-1.patch",
+          "sha256": "b86940fc315a3d6316778113540f8150ccda6e8f8464796865b309f150d01d8f",
+          "candidate_json_sha256": "e24da71a46dccbbeaa83ad43fd3c0b316befb2656d0a544d6c2b2faaca03702d",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/14-A-opus-control/normalized-candidate-1.patch"
+        }
+      ],
+      "review_summary": [
+        "Changes only watch.rs. Extracts existing file-listing logic, adds directory arrivals strictly below a watched root, and adds a synthetic unit test. All existing assertions, timing constants, and exclusions remain unchanged.",
+        "The single attempt passes the original create-then-write regression, own tests, and all five independent cases. The common autoformatter corrects only line wrapping before scored checks.",
+        "All 22 tools (five Grep, one Glob, nine Read, seven Edit) use permitted workspace paths. No unexpected tools or outside-workspace requests were observed."
+      ]
+    },
+    {
+      "label": "15-C-sonnet-control",
+      "arm": "C",
+      "block": 4,
+      "accepted": true,
+      "completed": true,
+      "manual_review_status": "complete",
+      "attempts": [
+        {
+          "attempt": 1,
+          "original_regression_passed": true,
+          "own_tests_passed": true,
+          "own_test_failures": [],
+          "independent_cases": {
+            "a_connection_is_not_notified_before_its_first_catalog_read": "ok",
+            "changes_outside_the_disclosed_root_and_ordinary_files_stay_quiet": "ok",
+            "importing_a_populated_day_directory_notifies_and_then_lists_the_chat": "FAILED",
+            "importing_a_populated_directory_tree_notifies_without_child_writes": "FAILED",
+            "starting_a_chat_in_an_existing_directory_still_notifies": "ok"
+          },
+          "independent_passed": 3,
+          "independent_failed": 2,
+          "raw_format_passed": false,
+          "normalized_format_passed": true
+        },
+        {
+          "attempt": 2,
+          "original_regression_passed": true,
+          "own_tests_passed": true,
+          "own_test_failures": [],
+          "independent_cases": {
+            "a_connection_is_not_notified_before_its_first_catalog_read": "ok",
+            "changes_outside_the_disclosed_root_and_ordinary_files_stay_quiet": "ok",
+            "importing_a_populated_day_directory_notifies_and_then_lists_the_chat": "ok",
+            "importing_a_populated_directory_tree_notifies_without_child_writes": "ok",
+            "starting_a_chat_in_an_existing_directory_still_notifies": "ok"
+          },
+          "independent_passed": 5,
+          "independent_failed": 0,
+          "raw_format_passed": true,
+          "normalized_format_passed": true
+        }
+      ],
+      "expected_cli_version": "2.1.287",
+      "actual_cli_version": "2.1.287",
+      "cli_version_binding_ok": true,
+      "static_findings": [],
+      "tool_counts": {
+        "Grep": 5,
+        "Glob": 2,
+        "Read": 5,
+        "Edit": 8
+      },
+      "tool_path_counts": [
+        {
+          "tool": "Edit",
+          "path": "crates/coder-connect/src/direct/watch.rs",
+          "count": 8
+        },
+        {
+          "tool": "Glob",
+          "path": ".",
+          "count": 2
+        },
+        {
+          "tool": "Grep",
+          "path": ".",
+          "count": 1
+        },
+        {
+          "tool": "Grep",
+          "path": "crates/coder-connect/src/direct",
+          "count": 1
+        },
+        {
+          "tool": "Grep",
+          "path": "crates/coder-connect/src/direct.rs",
+          "count": 1
+        },
+        {
+          "tool": "Grep",
+          "path": "crates/coder-connect/src/direct/watch.rs",
+          "count": 1
+        },
+        {
+          "tool": "Grep",
+          "path": "crates/coder-connect/src/tests/direct.rs",
+          "count": 1
+        },
+        {
+          "tool": "Read",
+          "path": "crates/coder-connect/src/direct.rs",
+          "count": 1
+        },
+        {
+          "tool": "Read",
+          "path": "crates/coder-connect/src/direct/watch.rs",
+          "count": 4
+        }
+      ],
+      "outside_workspace_requests": 0,
+      "unexpected_tool_names": [],
+      "explicit_reads": {
+        "watcher": {
+          "initial_input_calls": 3,
+          "all_input_calls": 4
+        },
+        "original_test_file": {
+          "initial_input_calls": 0,
+          "all_input_calls": 0
+        },
+        "unrelated_brief_test_file": {
+          "initial_input_calls": 0,
+          "all_input_calls": 0
+        }
+      },
+      "candidate_artifacts": [
+        {
+          "name": "candidate-1.patch",
+          "sha256": "80a7c4ca84506fbecbb2837721332930c9e09226da075c37dd5342b4b1eacf24",
+          "candidate_json_sha256": "3bb051821510d514e36775fd347149cac048e6ad3b3ca99e54249e5e22a0048c",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/15-C-sonnet-control/candidate-1.patch"
+        },
+        {
+          "name": "candidate-2.patch",
+          "sha256": "a6e87f9a9ef84c520117351fd40ef952127b4910df70c4bdaa311c63a4108574",
+          "candidate_json_sha256": "5259b5f3c85221a6f66cf46c7fcc7135a4fae71ebc80097c2035c83daaf38f49",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/15-C-sonnet-control/candidate-2.patch"
+        },
+        {
+          "name": "final-candidate.patch",
+          "sha256": "a6e87f9a9ef84c520117351fd40ef952127b4910df70c4bdaa311c63a4108574",
+          "candidate_json_sha256": "5259b5f3c85221a6f66cf46c7fcc7135a4fae71ebc80097c2035c83daaf38f49",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/15-C-sonnet-control/final-candidate.patch"
+        },
+        {
+          "name": "normalized-candidate-1.patch",
+          "sha256": "9bbfd8bfb431ffdc27f00595e695cc28b3f79d8695688f831ac5916256fced0d",
+          "candidate_json_sha256": "0a97c9fb21404dfbda9375d8f58dd58e66c6cbd12dd36ac0328d5a664519fa3d",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/15-C-sonnet-control/normalized-candidate-1.patch"
+        },
+        {
+          "name": "normalized-candidate-2.patch",
+          "sha256": "a6e87f9a9ef84c520117351fd40ef952127b4910df70c4bdaa311c63a4108574",
+          "candidate_json_sha256": "5259b5f3c85221a6f66cf46c7fcc7135a4fae71ebc80097c2035c83daaf38f49",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/15-C-sonnet-control/normalized-candidate-2.patch"
+        }
+      ],
+      "review_summary": [
+        "Both candidates change only watch.rs, adding a directory predicate and unit test. The repair expands the predicate to rename and explicit folder removals, and updates its newly added test accordingly. No original assertions or tests were weakened or removed; timing constants and exclusions are unchanged.",
+        "The original create-then-write regression and own tests pass both attempts. Attempt 1 fails only the two added import cases; the repair passes all five. The common formatter corrects the first raw candidate.",
+        "All 20 tools (five Grep, two Glob, five Read, eight Edit) use permitted workspace paths. No unexpected tools or outside-workspace requests were observed."
+      ]
+    },
+    {
+      "label": "16-B-opus-treatment",
+      "arm": "B",
+      "block": 4,
+      "accepted": false,
+      "completed": true,
+      "manual_review_status": "complete",
+      "attempts": [
+        {
+          "attempt": 1,
+          "original_regression_passed": true,
+          "own_tests_passed": true,
+          "own_test_failures": [],
+          "independent_cases": {
+            "a_connection_is_not_notified_before_its_first_catalog_read": "ok",
+            "changes_outside_the_disclosed_root_and_ordinary_files_stay_quiet": "ok",
+            "importing_a_populated_day_directory_notifies_and_then_lists_the_chat": "FAILED",
+            "importing_a_populated_directory_tree_notifies_without_child_writes": "FAILED",
+            "starting_a_chat_in_an_existing_directory_still_notifies": "ok"
+          },
+          "independent_passed": 3,
+          "independent_failed": 2,
+          "raw_format_passed": true,
+          "normalized_format_passed": true
+        },
+        {
+          "attempt": 2,
+          "original_regression_passed": true,
+          "own_tests_passed": true,
+          "own_test_failures": [],
+          "independent_cases": {
+            "a_connection_is_not_notified_before_its_first_catalog_read": "ok",
+            "changes_outside_the_disclosed_root_and_ordinary_files_stay_quiet": "ok",
+            "importing_a_populated_day_directory_notifies_and_then_lists_the_chat": "ok",
+            "importing_a_populated_directory_tree_notifies_without_child_writes": "ok",
+            "starting_a_chat_in_an_existing_directory_still_notifies": "ok"
+          },
+          "independent_passed": 5,
+          "independent_failed": 0,
+          "raw_format_passed": true,
+          "normalized_format_passed": true
+        }
+      ],
+      "expected_cli_version": "2.1.287",
+      "actual_cli_version": "2.1.288",
+      "cli_version_binding_ok": false,
+      "static_findings": [
+        {
+          "classification": "static_unexecuted_ordinary_file_false_positive",
+          "scoring_effect": "none",
+          "path": "crates/coder-connect/src/direct/watch.rs",
+          "detail": "The final rename predicate treats any missing extensionless path as a directory. Moving an ordinary extensionless file such as notes or README produces a nonexistent old path with no extension and therefore a Catalog nudge. This conflicts with ordinary-file quietness. The added test checks only the existing destination notes.txt, which does not cover this sequence. This source-based finding was not executed; the five-case score remains unchanged, and the runtime-version violation independently makes this original run invalid."
+        }
+      ],
+      "tool_counts": {
+        "Grep": 7,
+        "Read": 6,
+        "Edit": 11
+      },
+      "tool_path_counts": [
+        {
+          "tool": "Edit",
+          "path": "crates/coder-connect/src/direct/watch.rs",
+          "count": 11
+        },
+        {
+          "tool": "Grep",
+          "path": ".",
+          "count": 1
+        },
+        {
+          "tool": "Grep",
+          "path": "INVARIANTS.md",
+          "count": 1
+        },
+        {
+          "tool": "Grep",
+          "path": "crates/coder-connect/Cargo.toml",
+          "count": 1
+        },
+        {
+          "tool": "Grep",
+          "path": "crates/coder-connect/src",
+          "count": 2
+        },
+        {
+          "tool": "Grep",
+          "path": "crates/coder-connect/src/direct",
+          "count": 1
+        },
+        {
+          "tool": "Grep",
+          "path": "crates/coder-connect/src/direct/watch.rs",
+          "count": 1
+        },
+        {
+          "tool": "Read",
+          "path": "crates/coder-connect/Cargo.toml",
+          "count": 1
+        },
+        {
+          "tool": "Read",
+          "path": "crates/coder-connect/src/direct.rs",
+          "count": 1
+        },
+        {
+          "tool": "Read",
+          "path": "crates/coder-connect/src/direct/watch.rs",
+          "count": 3
+        },
+        {
+          "tool": "Read",
+          "path": "crates/coder-connect/src/tests/direct.rs",
+          "count": 1
+        }
+      ],
+      "outside_workspace_requests": 0,
+      "unexpected_tool_names": [],
+      "explicit_reads": {
+        "watcher": {
+          "initial_input_calls": 3,
+          "all_input_calls": 3
+        },
+        "original_test_file": {
+          "initial_input_calls": 1,
+          "all_input_calls": 1
+        },
+        "unrelated_brief_test_file": {
+          "initial_input_calls": 0,
+          "all_input_calls": 0
+        }
+      },
+      "candidate_artifacts": [
+        {
+          "name": "candidate-1.patch",
+          "sha256": "5d107fbaec5eae1fae7b44b05defbacff8d4acdadaf9ede8f658641040110952",
+          "candidate_json_sha256": "552e604f002f4a80d8814525ebea7cc750ab13a7864f4d2575a1579fa79101cb",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/16-B-opus-treatment/candidate-1.patch"
+        },
+        {
+          "name": "candidate-2.patch",
+          "sha256": "f9d60137817fca6d7638730ea3e30f9c4d9bed00c742e871ae0a852ef4a9e912",
+          "candidate_json_sha256": "7c3853d52bc73e71419b45a31ab2cca4df1d3d0d12b4a9db34c831ab1baf23be",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/16-B-opus-treatment/candidate-2.patch"
+        },
+        {
+          "name": "final-candidate.patch",
+          "sha256": "f9d60137817fca6d7638730ea3e30f9c4d9bed00c742e871ae0a852ef4a9e912",
+          "candidate_json_sha256": "7c3853d52bc73e71419b45a31ab2cca4df1d3d0d12b4a9db34c831ab1baf23be",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/16-B-opus-treatment/final-candidate.patch"
+        },
+        {
+          "name": "normalized-candidate-1.patch",
+          "sha256": "5d107fbaec5eae1fae7b44b05defbacff8d4acdadaf9ede8f658641040110952",
+          "candidate_json_sha256": "552e604f002f4a80d8814525ebea7cc750ab13a7864f4d2575a1579fa79101cb",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/16-B-opus-treatment/normalized-candidate-1.patch"
+        },
+        {
+          "name": "normalized-candidate-2.patch",
+          "sha256": "f9d60137817fca6d7638730ea3e30f9c4d9bed00c742e871ae0a852ef4a9e912",
+          "candidate_json_sha256": "7c3853d52bc73e71419b45a31ab2cca4df1d3d0d12b4a9db34c831ab1baf23be",
+          "changed_files": [
+            "crates/coder-connect/src/direct/watch.rs"
+          ],
+          "binary_files": [],
+          "removed_assertion_or_test_control_lines": 0,
+          "added_test_disable_markers": 0,
+          "path": "results-original/16-B-opus-treatment/normalized-candidate-2.patch"
+        }
+      ],
+      "review_summary": [
+        "Both candidates change only watch.rs, extracting root routing and adding a synthetic unit test. The repair expands directory handling to imports and removals. All original assertions, timing constants, and exclusions remain unchanged.",
+        "The original create-then-write regression and own tests pass both attempts. Attempt 1 fails only the two added import cases; the repair passes all five. Both raw candidates pass formatting. These code-check outcomes do not override the separate CLI-version protocol violation.",
+        "All 24 tools (seven Grep, six Read, eleven Edit) use permitted workspace paths. No unexpected tools or outside-workspace requests were observed."
+      ]
+    }
+  ],
+  "retained_results": "results-original/metrics.json",
+  "review_immutability": "Retained review of the original panel. Replacement-block evidence is documented separately."
+}

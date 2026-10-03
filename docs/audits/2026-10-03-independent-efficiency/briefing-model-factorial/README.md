@@ -6,8 +6,29 @@ blocks compare all four combinations on the same historical issue. The
 [prospective protocol](plan.md) fixes the order, models, checks, one-repair
 limit, and cost and time thresholds before scored calls.
 
-Scored calls have not started. Calibration is complete; the final registration
-binds every input before execution.
+The original 16-run panel completed but is **not valid for the registered
+comparison**: the final run initialized Claude CLI 2.1.288 instead of the
+required 2.1.287. The coordinator retained the result and stopped. Its
+[complete report](results-original/README.md) retains every patch, check,
+and cost. Calibration and the original registration were published before
+warmups and scored calls.
+
+The protocol permits replacing a whole block after a confirmed infrastructure
+defect. A [separate prospective registration](replacement-registration.json)
+and [amendment](replacement-block-4.md) replace all four positions in block 4
+with a privately pinned 2.1.287 executable. The first three blocks
+and original warmups remain unchanged. The original block stays visible and
+charged; no outcome from it enters the replacement comparison.
+
+The [original source review](quality-review-original.md) also identifies an
+unexecuted concern in the last candidate: its missing, extensionless rename
+path heuristic can classify an ordinary renamed file as a directory. This
+case is outside the frozen checker's coverage. It remains visible alongside
+the version failure. The replacement is triggered by the registered version
+rule, and its checker remains unchanged.
+The [independent numerical audit](independent-audit-original.json) confirms
+complete original accounting and rejects all five original cost gates while
+the CLI binding is invalid.
 
 ## Why this follows the previous rounds
 
@@ -138,3 +159,50 @@ indexing remain separate; machine and engineering costs are unmeasured.
 Four repetitions of one reserved issue support a narrow engineering result.
 They do not establish general model superiority, production routing policy,
 or a net return on the engineering work required to build this prototype.
+
+## What this tests in our tooling
+
+Both executors are native Claude CLI sessions. Our experimental contribution
+is the Rust source packer and the external, bounded verification-and-repair
+loop. The optional source pack is the only difference within each model pair.
+The shared checks let the experiment compare models at the same acceptance
+boundary. No TypeSafe judgment, learned router, escalation cascade, or change
+to Coder's default execution path runs in this panel.
+
+The practical candidate is a small workflow: preserve complete instructions,
+prepare bounded source evidence, use the less expensive executor, verify the
+patch independently, and permit one repair with the actual failures. Treat
+verification as part of its cost and behavior. This experiment cannot justify
+removing those checks or sending every kind of issue to the same model.
+
+The briefing still selects the wrong nearby test, despite receiving the exact
+regression name in the task. Syntax-complete declarations help preserve local
+code, but they do not establish coverage of the requested behavior. The
+executor's additional reads and the checker's feedback remain useful work.
+The next preparation changes should earn their place through small component
+experiments before another paid executor panel.
+
+## Next isolated experiments
+
+These proposals follow the recorded gaps. They are untested and change none
+of this panel's frozen inputs. The broader [iteration theses](../iteration-theses.md)
+remain the prospective design record.
+
+| Component | Small experiment and independent oracle | Measure before another executor trial |
+| --- | --- | --- |
+| Resolve the requested test | Give the index exact test names and historical path variants. Add tiny Rust fixtures with duplicate function names, import aliases, and one or two caller hops, with a separately authored expected-link table. Keep unresolved trait and macro calls explicit. | Exact-name recall, false canonical links, top-one selection, and bytes. Static reachability alone cannot establish behavioral relevance. |
+| Complete fixture bindings | Compare the current declaration-wide shadowing set with call-site scope intervals. Cover `let helper = helper()`, earlier and later bindings, parameters, nested blocks, genuine shadowing, and cycles against a separate expected-resolution table. | Correct and incorrect dependencies, complete fixture bundles before and after the byte budget, and added preview time. Hold test selection fixed. |
+| Reuse environment facts safely | Replay synthetic manifest and filesystem changes: nested workspaces, missing tools/includes, changed PATH precedence, updated launchers, symlink targets, modes, and another run's receipt. Compare recomputation, blind reuse, and reuse with required refreshes. | Stale positive reuse, rejected wrong-run receipts, correct cache hits, filesystem operations, and cold/warm latency. Metadata presence does not prove executable version or usability. |
+
+Start with the binding fixtures because their expected result is narrow and
+precise. Measure command and environment reuse on a scripted timeline, then
+expand task-to-test resolution. Report failures as well as successes, including
+same-size/same-mtime replacements that the current metadata key cannot detect.
+Measure preview latency across fixed repository sizes; this panel's one warm
+sample cannot establish a subsecond guarantee for arbitrary issue fetches.
+
+After these component tests, freeze any improved packer and evaluate it on a
+new task set. Keep model choice and briefing separate again. Add a TypeSafe
+relevance judgment only when the deterministic candidate pool contains the
+needed evidence; charge its preparation time and usage to the treatment. No
+new confidence threshold or expected saving follows from this experiment.

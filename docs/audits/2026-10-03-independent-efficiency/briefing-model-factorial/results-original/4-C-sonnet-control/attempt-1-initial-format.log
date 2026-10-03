@@ -1,0 +1,13 @@
+Diff in <VERIFICATION_ROOT>/repo/crates/coder-connect/src/direct/watch.rs:220:
+     // one by one (inotify) starts on it only after this event, and misses a
+     // file written in the meantime.
+     let folder = matches!(event.kind, EventKind::Create(CreateKind::Folder));
+-    for path in event
+-        .paths
+-        .iter()
+-        .filter(|path| folder || relevant(path))
+-    {
++    for path in event.paths.iter().filter(|path| folder || relevant(path)) {
+         let name = path.file_name().unwrap_or_default();
+         let listing = match event.kind {
+             EventKind::Create(_) => {

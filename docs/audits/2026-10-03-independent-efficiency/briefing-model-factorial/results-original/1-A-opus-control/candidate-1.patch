@@ -1,0 +1,79 @@
+diff --git a/crates/coder-connect/src/direct/watch.rs b/crates/coder-connect/src/direct/watch.rs
+--- a/crates/coder-connect/src/direct/watch.rs
++++ b/crates/coder-connect/src/direct/watch.rs
+@@ -9,10 +9,12 @@
+ //!
+ //! Only changes that can change a chat or the chat list count: a `.jsonl`
+ //! file (every harness's transcripts and title indexes), Coder's
+-//! `archive.json`, or a change the platform could not name. Reads never
++//! `archive.json`, a new folder (a chat written into it before the platform
++//! watches it would otherwise go unreported), or a change the platform
++//! could not name. Reads never
+ //! count, so a host reading a chat cannot nudge itself.
+ 
+-use notify::event::{EventKind, ModifyKind};
++use notify::event::{CreateKind, EventKind, ModifyKind};
+ use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
+ use std::collections::{HashMap, HashSet};
+ use std::path::{Path, PathBuf};
+@@ -215,7 +217,18 @@
+         }
+         return;
+     }
+-    for path in event.paths.iter().filter(|path| relevant(path)) {
++    for path in event.paths.iter() {
++        // A platform that watches a new folder only once it reports the
++        // folder (inotify) misses a chat written into it at once, so a new
++        // folder under a root counts as a chat that may have appeared.
++        let folder = match event.kind {
++            EventKind::Create(CreateKind::Folder) => true,
++            EventKind::Create(_) => path.is_dir(),
++            _ => false,
++        };
++        if !folder && !relevant(path) {
++            continue;
++        }
+         let name = path.file_name().unwrap_or_default();
+         let listing = match event.kind {
+             EventKind::Create(_) => {
+@@ -243,3 +256,40 @@
+         }
+     }
+ }
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn a_new_folder_changes_the_listing_though_its_chat_goes_unreported() {
++        // Routed without a platform watch, so only the events below arrive.
++        let root = PathBuf::from("/nonexistent/coder-connect-watch-test");
++        let inbox = Arc::new(Inbox::default());
++        let id = routes()
++            .next
++            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
++        lock(&routes().subscribers).insert(
++            id,
++            Subscriber {
++                roots: vec![(root.clone(), root.clone())],
++                inbox: Arc::downgrade(&inbox),
++            },
++        );
++        // inotify reports the folder, then misses the chat written into it
++        // before it watches the folder.
++        let day = root.join("sessions/2026/01/02");
++        deliver(&Event::new(EventKind::Create(CreateKind::Folder)).add_path(day));
++        assert_eq!(
++            inbox.take(),
++            Touched {
++                any: true,
++                listing: true
++            }
++        );
++        // A file that holds no chat still nudges nothing.
++        deliver(&Event::new(EventKind::Create(CreateKind::File)).add_path(root.join("notes.txt")));
++        assert_eq!(inbox.take(), Touched::default());
++        lock(&routes().subscribers).remove(&id);
++    }
++}

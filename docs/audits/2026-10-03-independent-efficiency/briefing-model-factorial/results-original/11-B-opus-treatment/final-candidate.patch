@@ -1,0 +1,144 @@
+diff --git a/crates/coder-connect/src/direct/watch.rs b/crates/coder-connect/src/direct/watch.rs
+--- a/crates/coder-connect/src/direct/watch.rs
++++ b/crates/coder-connect/src/direct/watch.rs
+@@ -9,10 +9,11 @@
+ //!
+ //! Only changes that can change a chat or the chat list count: a `.jsonl`
+ //! file (every harness's transcripts and title indexes), Coder's
+-//! `archive.json`, or a change the platform could not name. Reads never
+-//! count, so a host reading a chat cannot nudge itself.
+-
+-use notify::event::{EventKind, ModifyKind};
++//! `archive.json`, a directory that appears or leaves, or a change the
++//! platform could not name. Reads never count, so a host reading a chat
++//! cannot nudge itself.
++
++use notify::event::{CreateKind, EventKind, ModifyKind, RemoveKind};
+ use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
+ use std::collections::{HashMap, HashSet};
+ use std::path::{Path, PathBuf};
+@@ -197,6 +198,19 @@
+         || path.file_name().is_some_and(|n| n == "archive.json")
+ }
+ 
++/// Whether an event made, removed, or renamed a directory. A recursive
++/// watch on Linux (inotify) starts watching a new directory only after it
++/// reports it, so a chat written into the directory at once, as Codex does
++/// in a new day's folder, can go unreported. The directory's own event
++/// stands for what it holds: the chat list may have changed.
++fn directory(kind: &EventKind, path: &Path) -> bool {
++    match kind {
++        EventKind::Create(CreateKind::Folder) | EventKind::Remove(RemoveKind::Folder) => true,
++        EventKind::Create(_) | EventKind::Modify(ModifyKind::Name(_)) => path.is_dir(),
++        _ => false,
++    }
++}
++
+ fn deliver(event: &Event) {
+     if matches!(event.kind, EventKind::Access(_)) {
+         return;
+@@ -215,21 +229,27 @@
+         }
+         return;
+     }
+-    for path in event.paths.iter().filter(|path| relevant(path)) {
++    for path in &event.paths {
+         let name = path.file_name().unwrap_or_default();
+-        let listing = match event.kind {
+-            EventKind::Create(_) => {
+-                let mut announced = lock(&routes.announced);
+-                if announced.len() >= ANNOUNCED {
+-                    announced.clear();
++        let listing = if relevant(path) {
++            match event.kind {
++                EventKind::Create(_) => {
++                    let mut announced = lock(&routes.announced);
++                    if announced.len() >= ANNOUNCED {
++                        announced.clear();
++                    }
++                    announced.insert(path.clone())
+                 }
+-                announced.insert(path.clone())
+-            }
+-            EventKind::Remove(_) => {
+-                lock(&routes.announced).remove(path);
+-                true
+-            }
+-            _ => structural || name == "session_index.jsonl" || name == "archive.json",
++                EventKind::Remove(_) => {
++                    lock(&routes.announced).remove(path);
++                    true
++                }
++                _ => structural || name == "session_index.jsonl" || name == "archive.json",
++            }
++        } else if directory(&event.kind, path) {
++            true
++        } else {
++            continue;
+         };
+         for subscriber in lock(&routes.subscribers).values() {
+             if subscriber
+@@ -243,3 +263,63 @@
+         }
+     }
+ }
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use notify::event::{AccessKind, DataChange};
++
++    /// A subscription's inbox under a fresh root, cleared of anything the
++    /// platform reported while it started.
++    fn subscribed() -> (tempfile::TempDir, Arc<Inbox>, Subscription) {
++        let root = tempfile::tempdir().unwrap();
++        let inbox = Arc::new(Inbox::default());
++        let subscription = subscribe(vec![root.path().to_path_buf()], &inbox);
++        (root, inbox, subscription)
++    }
++
++    fn event(kind: EventKind, path: &Path) -> Event {
++        Event::new(kind).add_path(path.to_path_buf())
++    }
++
++    #[test]
++    fn a_new_directory_changes_the_listing_even_when_its_chat_goes_unreported() {
++        let (root, inbox, _subscription) = subscribed();
++        let day = root.path().join("sessions/2026/01/02");
++        std::fs::create_dir_all(&day).unwrap();
++        let _ = inbox.take();
++        // inotify reports the folder, then misses a chat written into it
++        // before its watch on the folder starts.
++        deliver(&event(EventKind::Create(CreateKind::Folder), &day));
++        assert_eq!(
++            inbox.take(),
++            Touched {
++                any: true,
++                listing: true
++            }
++        );
++        // A platform that does not say what it created.
++        let other = root.path().join("sessions/2026/01/03");
++        std::fs::create_dir(&other).unwrap();
++        let _ = inbox.take();
++        deliver(&event(EventKind::Create(CreateKind::Any), &other));
++        assert!(inbox.take().listing);
++        deliver(&event(EventKind::Remove(RemoveKind::Folder), &other));
++        assert!(inbox.take().listing);
++    }
++
++    #[test]
++    fn files_that_hold_no_chat_change_nothing() {
++        let (root, inbox, _subscription) = subscribed();
++        let note = root.path().join("notes.txt");
++        std::fs::write(&note, b"x").unwrap();
++        let _ = inbox.take();
++        deliver(&event(EventKind::Create(CreateKind::File), &note));
++        deliver(&event(
++            EventKind::Modify(ModifyKind::Data(DataChange::Any)),
++            root.path(),
++        ));
++        deliver(&event(EventKind::Access(AccessKind::Any), root.path()));
++        assert_eq!(inbox.take(), Touched::default());
++    }
++}

@@ -1,0 +1,112 @@
+diff --git a/crates/coder-connect/src/direct/watch.rs b/crates/coder-connect/src/direct/watch.rs
+--- a/crates/coder-connect/src/direct/watch.rs
++++ b/crates/coder-connect/src/direct/watch.rs
+@@ -9,7 +9,8 @@
+ //!
+ //! Only changes that can change a chat or the chat list count: a `.jsonl`
+ //! file (every harness's transcripts and title indexes), Coder's
+-//! `archive.json`, or a change the platform could not name. Reads never
++//! `archive.json`, a folder that appears under a root, or a change the
++//! platform could not name. Reads never
+ //! count, so a host reading a chat cannot nudge itself.
+ 
+ use notify::event::{EventKind, ModifyKind};
+@@ -215,6 +216,16 @@
+         }
+         return;
+     }
++    // A folder that appears under a root, such as a new day's Codex folder,
++    // changes the list: a platform that watches it only once it reports it
++    // (inotify) never reports a chat written into it before then.
++    let arrived = matches!(
++        event.kind,
++        EventKind::Create(_) | EventKind::Modify(ModifyKind::Name(_))
++    );
++    for path in event.paths.iter().filter(|path| arrived && path.is_dir()) {
++        touch(routes, path, true);
++    }
+     for path in event.paths.iter().filter(|path| relevant(path)) {
+         let name = path.file_name().unwrap_or_default();
+         let listing = match event.kind {
+@@ -231,15 +242,69 @@
+             }
+             _ => structural || name == "session_index.jsonl" || name == "archive.json",
+         };
+-        for subscriber in lock(&routes.subscribers).values() {
+-            if subscriber
+-                .roots
+-                .iter()
+-                .any(|(given, canonical)| path.starts_with(canonical) || path.starts_with(given))
+-                && let Some(inbox) = subscriber.inbox.upgrade()
+-            {
+-                inbox.touch(listing);
+-            }
+-        }
+-    }
+-}
++        touch(routes, path, listing);
++    }
++}
++
++/// Mark every connection that watches a root containing `path`.
++fn touch(routes: &Routes, path: &Path, listing: bool) {
++    for subscriber in lock(&routes.subscribers).values() {
++        if subscriber
++            .roots
++            .iter()
++            .any(|(given, canonical)| path.starts_with(canonical) || path.starts_with(given))
++            && let Some(inbox) = subscriber.inbox.upgrade()
++        {
++            inbox.touch(listing);
++        }
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use notify::event::CreateKind;
++
++    #[test]
++    fn a_new_folder_under_a_root_changes_the_list() {
++        let root = tempfile::tempdir().unwrap();
++        let inbox = Arc::new(Inbox::default());
++        let canonical = root.path().canonicalize().unwrap();
++        // Route without the platform watcher, so only these events arrive.
++        let id = routes()
++            .next
++            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
++        lock(&routes().subscribers).insert(
++            id,
++            Subscriber {
++                roots: vec![(root.path().to_path_buf(), canonical.clone())],
++                inbox: Arc::downgrade(&inbox),
++            },
++        );
++        let day = canonical.join("sessions/2026/01/02");
++        std::fs::create_dir_all(&day).unwrap();
++        // inotify reports only the folder; the chat written into it before
++        // the folder was watched is never reported.
++        deliver(&Event::new(EventKind::Create(CreateKind::Folder)).add_path(day.clone()));
++        assert_eq!(
++            inbox.take(),
++            Touched {
++                any: true,
++                listing: true
++            }
++        );
++        // A folder outside every root marks nothing.
++        let elsewhere = tempfile::tempdir().unwrap();
++        deliver(
++            &Event::new(EventKind::Create(CreateKind::Folder))
++                .add_path(elsewhere.path().to_path_buf()),
++        );
++        assert_eq!(inbox.take(), Touched::default());
++        // A path that is not a folder and not a chat file marks nothing.
++        let other = canonical.join("notes.txt");
++        std::fs::write(&other, b"x").unwrap();
++        deliver(&Event::new(EventKind::Create(CreateKind::File)).add_path(other));
++        assert_eq!(inbox.take(), Touched::default());
++        lock(&routes().subscribers).remove(&id);
++    }
++}

@@ -1,0 +1,13 @@
+Diff in <VERIFICATION_ROOT>/repo/crates/coder-connect/src/direct/watch.rs:219:
+     // (inotify adds the watch after the create), so it counts as a change of
+     // the list, whatever its name.
+     let folder = matches!(event.kind, EventKind::Create(CreateKind::Folder));
+-    for path in event
+-        .paths
+-        .iter()
+-        .filter(|path| folder || relevant(path))
+-    {
++    for path in event.paths.iter().filter(|path| folder || relevant(path)) {
+         let name = path.file_name().unwrap_or_default();
+         let listing = match event.kind {
+             EventKind::Create(CreateKind::Folder) => {

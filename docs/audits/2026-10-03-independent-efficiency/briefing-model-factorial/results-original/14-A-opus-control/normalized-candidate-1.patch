@@ -1,0 +1,151 @@
+diff --git a/crates/coder-connect/src/direct/watch.rs b/crates/coder-connect/src/direct/watch.rs
+--- a/crates/coder-connect/src/direct/watch.rs
++++ b/crates/coder-connect/src/direct/watch.rs
+@@ -9,10 +9,12 @@
+ //!
+ //! Only changes that can change a chat or the chat list count: a `.jsonl`
+ //! file (every harness's transcripts and title indexes), Coder's
+-//! `archive.json`, or a change the platform could not name. Reads never
++//! `archive.json`, a directory arriving under a root (it may already hold
++//! chats the platform never reported), or a change the platform could not
++//! name. Reads never
+ //! count, so a host reading a chat cannot nudge itself.
+ 
+-use notify::event::{EventKind, ModifyKind};
++use notify::event::{CreateKind, EventKind, ModifyKind};
+ use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
+ use std::collections::{HashMap, HashSet};
+ use std::path::{Path, PathBuf};
+@@ -215,31 +217,112 @@
+         }
+         return;
+     }
+-    for path in event.paths.iter().filter(|path| relevant(path)) {
+-        let name = path.file_name().unwrap_or_default();
+-        let listing = match event.kind {
+-            EventKind::Create(_) => {
+-                let mut announced = lock(&routes.announced);
+-                if announced.len() >= ANNOUNCED {
+-                    announced.clear();
+-                }
+-                announced.insert(path.clone())
+-            }
+-            EventKind::Remove(_) => {
+-                lock(&routes.announced).remove(path);
+-                true
+-            }
+-            _ => structural || name == "session_index.jsonl" || name == "archive.json",
++    for path in &event.paths {
++        let listing = if relevant(path) {
++            chat_listing(event, path, structural)
++        } else if arrived_directory(event, path) {
++            // A directory that arrives under a root may already hold chats:
++            // a recursive inotify watch adds a new directory only after it
++            // reports it, so files created in it before then go unreported.
++            true
++        } else {
++            continue;
+         };
+         for subscriber in lock(&routes.subscribers).values() {
+-            if subscriber
+-                .roots
+-                .iter()
+-                .any(|(given, canonical)| path.starts_with(canonical) || path.starts_with(given))
+-                && let Some(inbox) = subscriber.inbox.upgrade()
++            if subscriber.roots.iter().any(|(given, canonical)| {
++                // A root itself arriving is no new chat folder under it.
++                (path.starts_with(canonical) && path != canonical)
++                    || (path.starts_with(given) && path != given)
++            }) && let Some(inbox) = subscriber.inbox.upgrade()
+             {
+                 inbox.touch(listing);
+             }
+         }
+     }
+ }
++
++/// Whether an event brings a directory under a root, by creation or rename.
++fn arrived_directory(event: &Event, path: &Path) -> bool {
++    match event.kind {
++        EventKind::Create(CreateKind::Folder) => true,
++        EventKind::Create(_) | EventKind::Modify(ModifyKind::Name(_)) => path.is_dir(),
++        _ => false,
++    }
++}
++
++/// Whether a change to a chat file changed the chat list.
++fn chat_listing(event: &Event, path: &Path, structural: bool) -> bool {
++    let routes = routes();
++    let name = path.file_name().unwrap_or_default();
++    match event.kind {
++        EventKind::Create(_) => {
++            let mut announced = lock(&routes.announced);
++            if announced.len() >= ANNOUNCED {
++                announced.clear();
++            }
++            announced.insert(path.to_path_buf())
++        }
++        EventKind::Remove(_) => {
++            lock(&routes.announced).remove(path);
++            true
++        }
++        _ => structural || name == "session_index.jsonl" || name == "archive.json",
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use notify::event::RenameMode;
++
++    /// Route events to one inbox without a platform watcher, so only the
++    /// events a test delivers reach it.
++    fn routed(root: &Path) -> (u64, Arc<Inbox>) {
++        let inbox = Arc::new(Inbox::default());
++        let id = routes()
++            .next
++            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
++        lock(&routes().subscribers).insert(
++            id,
++            Subscriber {
++                roots: vec![(root.to_path_buf(), root.canonicalize().unwrap())],
++                inbox: Arc::downgrade(&inbox),
++            },
++        );
++        (id, inbox)
++    }
++
++    #[test]
++    fn a_directory_arriving_under_a_root_changes_the_list() {
++        let dir = tempfile::tempdir().unwrap();
++        let root = dir.path().canonicalize().unwrap();
++        let day = root.join("sessions/2026/01/02");
++        std::fs::create_dir_all(&day).unwrap();
++        let moved = root.join("moved");
++        std::fs::create_dir_all(&moved).unwrap();
++        let (id, inbox) = routed(&root);
++        // inotify adds a new directory's watch only after reporting it, so a
++        // chat written in it at once is never reported: the folder must count.
++        deliver(&Event::new(EventKind::Create(CreateKind::Folder)).add_path(day.clone()));
++        assert_eq!(
++            inbox.take(),
++            Touched {
++                any: true,
++                listing: true
++            }
++        );
++        // A platform that cannot say what it created, or a directory renamed
++        // in, counts by what the path is now.
++        deliver(&Event::new(EventKind::Create(CreateKind::Any)).add_path(day));
++        assert!(inbox.take().listing);
++        deliver(&Event::new(EventKind::Modify(ModifyKind::Name(RenameMode::To))).add_path(moved));
++        assert!(inbox.take().listing);
++        // The root itself, and a file that is no chat, change nothing.
++        deliver(&Event::new(EventKind::Create(CreateKind::Folder)).add_path(root.clone()));
++        let other = root.join("notes.txt");
++        std::fs::write(&other, b"x").unwrap();
++        deliver(&Event::new(EventKind::Create(CreateKind::Any)).add_path(other));
++        assert_eq!(inbox.take(), Touched::default());
++        lock(&routes().subscribers).remove(&id);
++    }
++}

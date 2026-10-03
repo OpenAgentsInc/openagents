@@ -1,0 +1,44 @@
+diff --git a/crates/coder-connect/src/direct/watch.rs b/crates/coder-connect/src/direct/watch.rs
+--- a/crates/coder-connect/src/direct/watch.rs
++++ b/crates/coder-connect/src/direct/watch.rs
+@@ -12,7 +12,7 @@
+ //! `archive.json`, or a change the platform could not name. Reads never
+ //! count, so a host reading a chat cannot nudge itself.
+ 
+-use notify::event::{EventKind, ModifyKind};
++use notify::event::{CreateKind, EventKind, ModifyKind};
+ use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
+ use std::collections::{HashMap, HashSet};
+ use std::path::{Path, PathBuf};
+@@ -215,6 +215,31 @@
+         }
+         return;
+     }
++    // A new folder can hold chats written before the platform watches it
++    // (inotify adds the watch after the folder's creation event), so those
++    // files raise no event of their own: the folder itself says the list may
++    // have changed.
++    // A folder moved in with chats already inside arrives as a rename or a
++    // create of another kind, so any structural event on a directory counts.
++    if matches!(
++        event.kind,
++        EventKind::Create(_) | EventKind::Modify(ModifyKind::Name(_))
++    ) {
++        for path in event
++            .paths
++            .iter()
++            .filter(|path| matches!(event.kind, EventKind::Create(CreateKind::Folder)) || path.is_dir())
++        {
++            for subscriber in lock(&routes.subscribers).values() {
++                if subscriber.roots.iter().any(|(given, canonical)| {
++                    path.starts_with(canonical) || path.starts_with(given)
++                }) && let Some(inbox) = subscriber.inbox.upgrade()
++                {
++                    inbox.touch(true);
++                }
++            }
++        }
++    }
+     for path in event.paths.iter().filter(|path| relevant(path)) {
+         let name = path.file_name().unwrap_or_default();
+         let listing = match event.kind {

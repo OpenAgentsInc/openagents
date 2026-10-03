@@ -1,0 +1,21 @@
+Diff in <VERIFICATION_ROOT>/repo/crates/coder-connect/src/direct/watch.rs:229:
+             continue;
+         };
+         for subscriber in lock(&routes.subscribers).values() {
+-            if subscriber
+-                .roots
+-                .iter()
+-                .any(|(given, canonical)| {
+-                    // A root itself arriving is no new chat folder under it.
+-                    (path.starts_with(canonical) && path != canonical)
+-                        || (path.starts_with(given) && path != given)
+-                })
+-                && let Some(inbox) = subscriber.inbox.upgrade()
++            if subscriber.roots.iter().any(|(given, canonical)| {
++                // A root itself arriving is no new chat folder under it.
++                (path.starts_with(canonical) && path != canonical)
++                    || (path.starts_with(given) && path != given)
++            }) && let Some(inbox) = subscriber.inbox.upgrade()
+             {
+                 inbox.touch(listing);
+             }
