@@ -1,11 +1,14 @@
 # Verse
 
-The [owned engine specification](engine/architecture.md) defines the Rust runtime,
-GPU pipeline, authoring tools, and near-term migration to original assets.
+[Verse Engine](engine/architecture.md) is the Rust game engine that powers Verse.
+Its specification defines the runtime, GPU pipeline, authoring tools, and
+near-term migration to original assets.
 
 For cross-project priorities and dependencies, see the [master roadmap](../roadmap.md).
 
-Verse is the OpenAgents desktop, iOS, and Android world. Its global plaza is a
+Verse is the OpenAgents metaverse for people and agents, available on desktop,
+iOS, and Android. It contains shared places and separately loaded worlds.
+Its global plaza is a
 walkable 3D city drawn in amber lines on a near-black field, with a third-person
 character and World of Warcraft-style controls. Separately loaded zones can use
 their own appearance and supported simulation profiles.

@@ -1,7 +1,7 @@
-# Owned Verse engine architecture
+# Verse Engine architecture
 
 Status: proposed implementation specification, October 3, 2026. This document
-records the owner's direction to build an engine from scratch in Rust, with
+records the owner's direction to build Verse Engine from scratch in Rust, with
 owned code and original assets. It specifies future work; it does not claim
 that the engine or authoring tools described below already exist.
 
@@ -10,6 +10,19 @@ a large monster, robed enemies, cinematic dialogue, and combat. Its distributed
 build must require no WoW install, assets, fonts, UI textures, DBC tables,
 vmangos SQL, or server. Original content begins alongside the engine foundation;
 it does not wait for the entire MMORPG service to be complete.
+
+## Names and product boundary
+
+**Verse Engine** is the game engine: the reusable Rust runtime, renderer,
+animation, physics, audio, content pipeline, and authoring tools. **Verse** is
+the metaverse built on Verse Engine: its worlds, people, agents, places,
+identity, communication, and transactions. The engine can power other games
+and worlds without depending on Verse product rules or services.
+
+Existing crate names and compatibility paths remain implementation identifiers.
+The `verse` crate currently contains both application and engine facilities;
+the module boundaries below describe their planned separation. Engine naming
+does not rename the Verse app, metaverse, world IDs, or network identities.
 
 ## Scope and meaning of ownership
 

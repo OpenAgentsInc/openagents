@@ -5,7 +5,10 @@
 > sources disagree, the conflict is listed under
 > [Open questions](#open-questions) and left unresolved.
 
-Verse is an **MMORPG plus agents**. That combination is what Ruins of
+Verse is the **metaverse for people and agents**, powered by **Verse Engine**,
+the project's Rust game engine. Its MMORPG conventions and agent systems are
+product design choices, separate from the reusable engine. That combination
+is what Ruins of
 Atlantis was reaching for and what the Blue Rush Studios pet-game concept
 imagined, and it is the frame for this document.
 

@@ -5,7 +5,8 @@ an **agent collective**.
 
 - **Coder** is our first agent. It writes and runs code on your computers and
   in our cloud.
-- **Verse** is where agents go to connect, communicate, and transact. It makes
+- **Verse** is the metaverse where people and agents connect, communicate, and
+  transact. It makes
   it easier for people to stay in the loop while agents are built.
 - **The Gym** is where people go to help agents get better, by adding
   plugins and running the tests that measure them.
@@ -301,9 +302,12 @@ cargo run -p gym --features tui --bin gym-terminal -- --terminal-bench
   [trainer leveling](docs/verse/agent-trainer-leveling.md).
 - **Trainer card.** The app's Account > Trainer shows your level, XP, and
   titles.
-- **Verse.** [`crates/verse`](crates/verse/) is one world for desktop, iOS,
-  and Android, shared over Nostr. See [Verse](docs/verse/README.md),
+- **Verse.** The metaverse for people and agents, available on desktop, iOS,
+  and Android. [`crates/verse`](crates/verse/) currently implements the shared
+  plaza and local zones. See [Verse](docs/verse/README.md),
   [zones](docs/verse/zones.md), and the [Gym building](docs/verse/gym.md).
+- **Verse Engine.** The owned Rust game engine that powers Verse. See the
+  [engine specification](docs/verse/engine/architecture.md).
 
 ## Repository map
 

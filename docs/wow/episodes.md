@@ -1,5 +1,10 @@
 # WoW episodes
 
+These episodes are private research fixtures for [Verse Engine](../verse/engine/architecture.md),
+the game engine powering the Verse metaverse. The original-content milestone
+replaces WoW assets in the product path; retained recordings document the
+compatibility research.
+
 Build `wow-bridge` with `scripts/build-wow-bridge.sh` and Voyager with
 `cargo build -p voyager --bin voyager`. Keep the realm running as described in
 [the realm runbook](realm.md). Run:
