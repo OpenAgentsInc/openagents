@@ -59,7 +59,7 @@ fn a_request_and_cancel_survive_restart_and_retries_keep_the_original_receipts()
     assert_eq!(queued["status"], "queued");
     assert_eq!(queued["execution"], "not_started");
     assert_eq!(
-        success(read(root.path(), &["list"]))
+        success(read(root.path(), &["list", "--json"]))
             .as_array()
             .unwrap()
             .len(),
@@ -103,7 +103,7 @@ fn simultaneous_processes_return_one_submission_receipt() {
         .collect();
     assert!(receipts.iter().all(|receipt| receipt == &receipts[0]));
     assert_eq!(
-        success(read(root.path(), &["list"]))
+        success(read(root.path(), &["list", "--json"]))
             .as_array()
             .unwrap()
             .len(),
@@ -232,7 +232,10 @@ fn corruption_is_preserved_and_never_replaced_by_an_empty_store() {
         .path()
         .join(".openagents/tasks/task/example-task-1.json");
     std::fs::write(&state, b"{truncated").unwrap();
-    assert_eq!(read(root.path(), &["list"]).status.code(), Some(1));
+    assert_eq!(
+        read(root.path(), &["list", "--json"]).status.code(),
+        Some(1)
+    );
     assert_eq!(apply(root.path(), "submit", SUBMIT).status.code(), Some(1));
     assert_eq!(std::fs::read(&state).unwrap(), b"{truncated");
 }

@@ -268,7 +268,7 @@ fn main() -> ExitCode {
         "doctor" => doctor(&output),
         "host" => runtime().block_on(host(&rest)),
         "pair" => runtime().block_on(pair(&rest)),
-        "task" => runtime().block_on(coder::task::cli::run(&rest)),
+        "task" => runtime().block_on(coder::task::cli::run_with_json(&rest, json)),
         "issue" => issue::run(&output, &rest),
         "chat" => chat::run(&output, &rest),
         "terminal" => screen::run(&output, &rest),

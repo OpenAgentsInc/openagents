@@ -3853,7 +3853,7 @@
               "list"
             ],
             "usage": [
-              "list [--store DIRECTORY]"
+              "list [--json] [--store DIRECTORY]"
             ],
             "forms": [
               {
@@ -3861,6 +3861,11 @@
                   {
                     "kind": "literal",
                     "word": "list"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "json",
+                    "optional": true
                   },
                   {
                     "kind": "option",
@@ -4208,6 +4213,12 @@
           "name": "store",
           "value": "DIRECTORY",
           "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "json",
           "optional": true,
           "repeated": true
         },

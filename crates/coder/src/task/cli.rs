@@ -14,7 +14,7 @@ Usage:
   openagents task cancel --file COMMAND.json [--store DIRECTORY]
   openagents task correct --file COMMAND.json [--store DIRECTORY]
   openagents task check TASK_ID [--store DIRECTORY]
-  openagents task list [--store DIRECTORY]
+  openagents task list [--json] [--store DIRECTORY]
   openagents task show TASK_ID [--store DIRECTORY]
   openagents task start --grant GRANT.json [--store DIRECTORY]
   openagents task execute --grant GRANT.json [--store DIRECTORY]
@@ -26,7 +26,8 @@ Usage:
 
 Submit and cancel read the exact versioned command bytes from a file (or -
 for stdin). Keep the same command ID and file bytes when retrying. Cancellation
-requires the task's current expected_revision. Results are JSON.
+requires the task's current expected_revision. Results are JSON, except list,
+which prints one line per task unless --json is set.
 
 The default store is ~/.openagents/tasks. Submission is inert. An explicit
 execution grant admits the bounded-command adapter through start (detached host)
@@ -206,6 +207,17 @@ fn read_command(path: &str) -> std::io::Result<Vec<u8>> {
 
 /// Runs a task command; checking loads only the operator capability trust store.
 pub async fn run(arguments: &[String]) -> u8 {
+    let json = arguments.iter().any(|argument| argument == "--json");
+    let arguments: Vec<String> = arguments
+        .iter()
+        .filter(|argument| *argument != "--json")
+        .cloned()
+        .collect();
+    run_with_json(&arguments, json).await
+}
+
+/// Runs a task command with an explicit output format from the calling CLI.
+pub async fn run_with_json(arguments: &[String], json: bool) -> u8 {
     if matches!(arguments, [argument] if argument == "--help" || argument == "-h") {
         println!("{USAGE}");
         return 0;
@@ -333,12 +345,10 @@ pub async fn run(arguments: &[String]) -> u8 {
         Operation::Show(id) => store.show(&id).map(|task| json!(task)),
         _ => unreachable!("owner operation dispatched above"),
     };
-    // A person at a terminal reads a short table ("No tasks." when empty)
-    // where a script reads the JSON; the full records are `task show ID`
-    // (#10320: the JSON of every task ran to megabytes).
+    // Lists stay compact on terminals and in pipes; full records require --json.
     if listing
+        && !json
         && let Ok(Value::Array(tasks)) = &result
-        && std::io::IsTerminal::is_terminal(&std::io::stdout())
     {
         println!("{}", task_table(tasks));
         return 0;
