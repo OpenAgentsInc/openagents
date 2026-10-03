@@ -160,7 +160,7 @@ impl SparkNode {
         let parsed = self
             .runtime
             .block_on(self.sdk.parse(input))
-            .map_err(|_| QuoteFailure::Refused(UNREADABLE.into()))?;
+            .map_err(|_| QuoteFailure::Refused(unparsed(input)))?;
         let parsed = match parsed {
             // A BIP21 URI pays through the best method it lists.
             InputType::Bip21(details) => {
@@ -385,6 +385,36 @@ impl Drop for SparkNode {
 }
 
 const UNREADABLE: &str = "That isn't a payment request this wallet can pay: paste a Lightning invoice, Lightning address, Spark address, or Bitcoin address.";
+
+/// Why `input` could not be read: for something shaped like a Lightning
+/// address (`name@domain`), that its domain did not answer, since reading
+/// one asks that domain for an invoice; otherwise [`UNREADABLE`].
+fn unparsed(input: &str) -> String {
+    match lightning_address_domain(input) {
+        Some(domain) => format!(
+            "Couldn't reach {domain} to get an invoice for that Lightning address. Check the address, or try again in a minute."
+        ),
+        None => UNREADABLE.into(),
+    }
+}
+
+/// The domain of `input` when it is shaped like a Lightning address.
+fn lightning_address_domain(input: &str) -> Option<&str> {
+    let input = input.trim();
+    let input = input
+        .strip_prefix("lightning:")
+        .or_else(|| input.strip_prefix("LIGHTNING:"))
+        .unwrap_or(input);
+    let (name, domain) = input.split_once('@')?;
+    let plain = |text: &str| {
+        !text.is_empty()
+            && text
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_' | '+'))
+    };
+    (plain(name) && plain(domain) && domain.contains('.') && !domain.starts_with('.'))
+        .then_some(domain)
+}
 
 fn sats_of(amount: u128) -> Result<u64, QuoteFailure> {
     u64::try_from(amount).map_err(|_| QuoteFailure::Refused("The amount is too large.".into()))
@@ -855,5 +885,27 @@ fn row(payment: &Payment) -> PaymentRow {
         }
         .to_owned(),
         at: payment.timestamp,
+    }
+}
+
+#[cfg(test)]
+mod unparsed_tests {
+    use super::*;
+
+    #[test]
+    fn an_unreachable_lightning_address_names_its_domain() {
+        assert_eq!(
+            lightning_address_domain("someone@example.invalid"),
+            Some("example.invalid")
+        );
+        assert_eq!(
+            lightning_address_domain("lightning:a.b@pay.example.com"),
+            Some("pay.example.com")
+        );
+        assert_eq!(lightning_address_domain("lnbc10u1pjexample"), None);
+        assert_eq!(lightning_address_domain("a@localhost"), None);
+        assert_eq!(lightning_address_domain("a b@example.com"), None);
+        assert!(unparsed("someone@example.invalid").starts_with("Couldn't reach example.invalid"));
+        assert_eq!(unparsed("garbage"), UNREADABLE);
     }
 }

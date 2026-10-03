@@ -4,7 +4,7 @@
 //! seed is BIP39 entropy as hex in `seed`, a 0600 file in a 0700 directory,
 //! the way the computer keeps its other keys; it is the same seed as the
 //! phone's wallet, brought here by `openagents wallet link` or typed with
-//! `openagents wallet restore`. Breez's records are a JSON file
+//! `openagents wallet restore`, or a new one from `openagents wallet create`. Breez's records are a JSON file
 //! ([`crate::store`]) under `wallets/<fingerprint>/`, so another seed never
 //! reads this one's history. The wallet always runs on Bitcoin mainnet, as
 //! the phone's does; nothing here switches it to another network. The
@@ -120,7 +120,7 @@ pub fn open_with(home: &Path, seed: &Seed, network: Network) -> Result<SparkNode
 }
 
 /// What a computer without the wallet says.
-pub const NOT_SET_UP: &str = "This computer doesn't have your wallet yet. Run `openagents wallet link` to bring it over from your phone, or `openagents wallet restore` to type your recovery words.";
+pub const NOT_SET_UP: &str = "This computer doesn't have a wallet yet. Run `openagents wallet create` to start one, `openagents wallet link` to bring your phone's over, or `openagents wallet restore` to type your recovery words.";
 
 fn network_name(network: Network) -> &'static str {
     match network {

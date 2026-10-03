@@ -545,6 +545,7 @@ one balance on every device (owner decision 8 in
 on Bitcoin mainnet only, through the shared `crates/spark-wallet`.
 
 ```sh
+openagents wallet create            # a new wallet, for a person or agent without the phone app
 openagents wallet link              # bring the phone's wallet here (approve on the phone)
 openagents wallet restore           # or type the recovery words (not shown as you type)
 openagents wallet balance           # Your balance is ₿12,000 (0.00012000 BTC).
@@ -570,7 +571,9 @@ entropy with NIP-44 to the one-time key, which only the waiting command
 holds. The host and relay see ciphertext; the request is removed once read.
 `restore` reads 12 or 24 recovery words with echo off (or one line from a
 pipe). Both refuse to replace a different wallet without `--replace`.
-Nothing prints the seed or the words.
+`create` makes a new seed and shows its 12 words once: on a terminal, until
+the person types `saved`; elsewhere only with `--show-words`. Nothing else
+prints the seed or the words. More in [wallet.md](wallet.md).
 
 Files live in `~/.openagents/spark` (`OPENAGENTS_SPARK_HOME` overrides): the
 seed as hex entropy in `seed` (mode 0600, folder 0700), and Breez's records

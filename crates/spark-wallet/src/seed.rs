@@ -18,6 +18,18 @@ impl Seed {
         Ok(Self { entropy, mnemonic })
     }
 
+    /// A new seed with 12 recovery words, from the system's randomness.
+    pub fn generate() -> Result<Self, String> {
+        let mut entropy = vec![0_u8; 16];
+        getrandom::fill(&mut entropy).map_err(|_| "No randomness is available.".to_string())?;
+        Self::from_entropy(entropy)
+    }
+
+    /// The recovery words, one per item, in order.
+    pub fn words(&self) -> Vec<&str> {
+        self.mnemonic.split_whitespace().collect()
+    }
+
     /// A one-way fingerprint that tells this seed apart from another, for
     /// the words-saved marker. It reveals nothing about the seed.
     pub fn fingerprint(&self) -> String {
@@ -36,6 +48,9 @@ pub fn restore_entropy(words: &str) -> Result<String, String> {
         .split_whitespace()
         .map(|word| word.to_lowercase())
         .collect();
+    if words.is_empty() {
+        return Err("No recovery words were entered. Type your 12 or 24 words.".into());
+    }
     if words.len() != 12 && words.len() != 24 {
         return Err(format!(
             "Enter 12 or 24 recovery words; that was {}.",
@@ -63,4 +78,26 @@ pub fn restore_entropy(words: &str) -> Result<String, String> {
 
 fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_new_seed_has_twelve_words_that_restore_to_it() {
+        let seed = Seed::generate().expect("seed");
+        assert_eq!(seed.words().len(), 12);
+        let entropy = restore_entropy(&seed.mnemonic).expect("valid words");
+        assert_eq!(entropy, hex(&seed.entropy));
+        assert_ne!(Seed::generate().expect("seed").entropy, seed.entropy);
+    }
+
+    #[test]
+    fn no_words_says_none_were_entered() {
+        let none = restore_entropy("  \n").unwrap_err();
+        assert!(none.starts_with("No recovery words were entered"), "{none}");
+        let three = restore_entropy("one two three").unwrap_err();
+        assert!(three.contains("that was 3"), "{three}");
+    }
 }
