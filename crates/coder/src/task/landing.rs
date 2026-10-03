@@ -237,7 +237,7 @@ pub(super) fn fetch(worktree: &Path, branch: &str) -> Result<(), String> {
     result.and(unlocked)
 }
 
-fn fetch_lock(worktree: &Path) -> Result<std::fs::File, String> {
+pub(super) fn fetch_lock(worktree: &Path) -> Result<std::fs::File, String> {
     let common = git(
         worktree,
         &["rev-parse", "--path-format=absolute", "--git-common-dir"],

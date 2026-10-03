@@ -1047,6 +1047,11 @@ impl Local {
             )
             .map_err(|_| format!("{base} names no commit in {}", checkout.top.display()))?;
             checkout.head = commit.trim().to_owned();
+        } else if let super::freshen::Fresh::Tracked { base, .. } =
+            super::freshen::base(&checkout.top, &checkout.head, super::freshen::TIMEOUT)
+        {
+            // A branch behind its remote starts at the fetched tip (#10298).
+            checkout.head = base;
         }
         let mut timings = Timings {
             project_ms: millis(began),

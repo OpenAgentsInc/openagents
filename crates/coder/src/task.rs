@@ -39,6 +39,7 @@ pub mod chat_client;
 pub mod checks;
 pub mod cli;
 pub mod commands;
+pub mod freshen;
 pub mod interaction;
 pub mod issue_pick;
 pub mod issue_run;
