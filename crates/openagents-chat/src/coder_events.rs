@@ -687,13 +687,18 @@ fn split_diff(diff: &str) -> Vec<(String, Vec<&str>)> {
     out
 }
 
-/// Whether one shell command line installs software for the whole
-/// computer rather than in the task's worktree: `pip install --user` (or
-/// with `sudo` or `--break-system-packages`), `npm install -g`, `cargo install`, `brew install`, `gem install`,
-/// `go install`, `apt(-get) install`. A bounded parse of the agent's own
-/// commands, never of what the person asked (#10336).
+/// Where software one shell command line installs lands (#10336), or
+/// `None` when the line installs nothing outside the task's worktree. A
+/// bounded parse of the agent's own commands, never of what the person
+/// asked.
+///
+/// A full-access run points the usual per-user destinations at its own
+/// prefix (`pip install --user`, `npm install -g`, `cargo install`, `gem
+/// install`, `go install`), so those stay with the run. A system package
+/// manager, `sudo`, or `--break-system-packages` still changes the
+/// computer.
 #[must_use]
-pub fn installs_outside(line: &str) -> bool {
+pub fn install_reach(line: &str) -> Option<InstallReach> {
     let words: Vec<&str> = line
         .split(|c: char| c.is_whitespace() || c == ';' || c == '&' || c == '|')
         .filter(|word| !word.is_empty())
@@ -704,14 +709,28 @@ pub fn installs_outside(line: &str) -> bool {
             .iter()
             .any(|word| word.rsplit('/').next() == Some(name))
     };
-    let pip = program("pip") || program("pip3") || (has("-m") && has("pip"));
-    (pip && has("install") && (has("--user") || has("sudo") || has("--break-system-packages")))
+    let pip = (program("pip") || program("pip3") || (has("-m") && has("pip"))) && has("install");
+    let system = (program("brew") && has("install"))
+        || ((program("apt") || program("apt-get") || program("dnf") || program("yum"))
+            && has("install"))
+        || (has("sudo") && has("install"))
+        || (pip && has("--break-system-packages"));
+    if system {
+        return Some(InstallReach::Computer);
+    }
+    let run = (pip && has("--user"))
         || (program("npm") && has("install") && (has("-g") || has("--global")))
         || (program("cargo") && has("install"))
-        || (program("brew") && has("install"))
         || (program("gem") && has("install"))
-        || (program("go") && has("install"))
-        || ((program("apt") || program("apt-get")) && has("install"))
+        || (program("go") && has("install"));
+    run.then_some(InstallReach::Run)
+}
+
+/// Where an install landed: in the run's own prefix, or on the computer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InstallReach {
+    Run,
+    Computer,
 }
 
 /// The turn finished.
@@ -860,9 +879,9 @@ pub struct Mapper {
     /// the answer of a turn the loop ended because its checks passed
     /// before the agent wrote one (#10331).
     checked: Option<String>,
-    /// Commands this turn ran that install software for the whole
-    /// computer, outside the task's worktree (#10336).
-    outside: Vec<String>,
+    /// Commands this turn ran that install software outside the task's
+    /// worktree, and where it landed (#10336).
+    installs: Vec<(String, InstallReach)>,
 }
 
 impl Mapper {
@@ -883,6 +902,19 @@ impl Mapper {
         &self.reply
     }
 
+    /// Notes each line of `command` that installs software outside the
+    /// worktree, once (#10336).
+    fn note_installs(installs: &mut Vec<(String, InstallReach)>, command: &str) {
+        for line in command.lines() {
+            let line = line.trim();
+            if let Some(reach) = install_reach(line)
+                && !installs.iter().any(|(seen, _)| seen == line)
+            {
+                installs.push((line.to_owned(), reach));
+            }
+        }
+    }
+
     /// The turn's answer: Coder's reply, or, when the loop ended the turn
     /// because the task's checks passed before the agent wrote one, what
     /// the checks said (#10331).
@@ -896,19 +928,32 @@ impl Mapper {
         } else {
             self.reply.clone()
         };
-        if self.outside.is_empty() {
+        if self.installs.is_empty() {
             return answer;
         }
-        // What changed this computer outside the worktree, so the person
-        // knows (#10336).
-        let ran = self
-            .outside
-            .iter()
-            .map(|command| format!("`{command}`"))
-            .collect::<Vec<_>>()
-            .join(", ");
-        let note =
-            format!("Outside its worktree, this turn installed software on this computer: {ran}.");
+        // What the turn installed and where, so the person knows (#10336).
+        let listed = |reach: InstallReach| {
+            self.installs
+                .iter()
+                .filter(|(_, held)| *held == reach)
+                .map(|(command, _)| format!("`{command}`"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        let mut notes = Vec::new();
+        let computer = listed(InstallReach::Computer);
+        if !computer.is_empty() {
+            notes.push(format!(
+                "Outside its worktree, this turn installed software on this computer: {computer}."
+            ));
+        }
+        let run = listed(InstallReach::Run);
+        if !run.is_empty() {
+            notes.push(format!(
+                "This turn installed software just for this run, gone when it ends: {run}."
+            ));
+        }
+        let note = notes.join(" ");
         if answer.trim().is_empty() {
             note
         } else {
@@ -1104,13 +1149,7 @@ impl Mapper {
                     self.streamed.clear();
                     for command in action["commands"].as_array().into_iter().flatten() {
                         if let Some(command) = command.as_str() {
-                            for line in command.lines() {
-                                if installs_outside(line)
-                                    && !self.outside.iter().any(|seen| seen == line.trim())
-                                {
-                                    self.outside.push(line.trim().to_owned());
-                                }
-                            }
+                            Self::note_installs(&mut self.installs, command);
                             events.push(with_call(
                                 make(StepKind::Command, command),
                                 Call {
@@ -1209,6 +1248,14 @@ impl Mapper {
             for call in step["tool_calls"].as_array().into_iter().flatten() {
                 if is_decision_call(call) {
                     continue;
+                }
+                // An engine's own shell calls (Claude, Codex, Grok Build)
+                // install software too (#10336).
+                if let Some(command) = ["command", "cmd"]
+                    .iter()
+                    .find_map(|name| call["arguments"][*name].as_str())
+                {
+                    Self::note_installs(&mut self.installs, command);
                 }
                 let (line, mut typed) = tool_call(call, &step["extra"]);
                 typed.failed = results.iter().any(|result| {
@@ -2412,21 +2459,45 @@ mod tests {
     }
 
     #[test]
-    fn installs_for_the_whole_computer_are_named() {
-        assert!(installs_outside("python3 -m pip install --user pytest"));
-        assert!(!installs_outside("pip install requests"));
-        assert!(installs_outside("sudo pip3 install requests"));
-        assert!(installs_outside("npm install -g typescript"));
-        assert!(installs_outside("cd x && cargo install ripgrep"));
-        assert!(!installs_outside(".venv/bin/pip install pytest"));
-        assert!(!installs_outside("npm install"));
-        assert!(!installs_outside("python3 -m pytest -q"));
+    fn installs_are_named_with_where_they_landed() {
+        assert_eq!(
+            install_reach("python3 -m pip install --user pytest"),
+            Some(InstallReach::Run)
+        );
+        assert_eq!(install_reach("pip install requests"), None);
+        assert_eq!(
+            install_reach("sudo pip3 install requests"),
+            Some(InstallReach::Computer)
+        );
+        assert_eq!(
+            install_reach("pip install --break-system-packages x"),
+            Some(InstallReach::Computer)
+        );
+        assert_eq!(
+            install_reach("npm install -g typescript"),
+            Some(InstallReach::Run)
+        );
+        assert_eq!(
+            install_reach("cd x && cargo install ripgrep"),
+            Some(InstallReach::Run)
+        );
+        assert_eq!(
+            install_reach("brew install jq"),
+            Some(InstallReach::Computer)
+        );
+        assert_eq!(
+            install_reach("apt-get install -y jq"),
+            Some(InstallReach::Computer)
+        );
+        assert_eq!(install_reach(".venv/bin/pip install pytest"), None);
+        assert_eq!(install_reach("npm install"), None);
+        assert_eq!(install_reach("python3 -m pytest -q"), None);
         let mut mapper = Mapper::new(1, None);
         mapper.step(&step(
             1,
             "system",
             "generated",
-            mc(json!({"event": "generated", "generated": {"action": {"Ok": {"rationale": "", "reply": "Fixed calc.py.", "commands": ["python3 -m pip install --user pytest"]}}}})),
+            mc(json!({"event": "generated", "generated": {"action": {"Ok": {"rationale": "", "reply": "Fixed calc.py.", "commands": ["python3 -m pip install --user pytest\nbrew install jq"]}}}})),
         ));
         let end = mapper.end("model_finished", vec![], "/w", "/t", None);
         let CoderEvent::Result(finished) = &end else {
@@ -2434,7 +2505,31 @@ mod tests {
         };
         assert_eq!(
             finished.summary,
-            "Fixed calc.py.\n\nOutside its worktree, this turn installed software on this computer: `python3 -m pip install --user pytest`."
+            "Fixed calc.py.\n\nOutside its worktree, this turn installed software on this computer: `brew install jq`. This turn installed software just for this run, gone when it ends: `python3 -m pip install --user pytest`."
+        );
+    }
+
+    /// An engine session's own shell calls are read too, not only the
+    /// Microcoder loop's commands (#10336).
+    #[test]
+    fn an_engines_shell_call_that_installs_is_named() {
+        let mut mapper = Mapper::new(1, None);
+        mapper.step(&json!({
+            "step_id": 2, "source": "agent", "message": "",
+            "tool_calls": [{"tool_call_id": "c1", "function_name": "Bash",
+                "arguments": {"command": "npm install -g typescript"}}],
+        }));
+        mapper.step(&json!({"step_id": 3, "source": "agent", "message": "Done."}));
+        let end = mapper.end("model_finished", vec![], "/w", "/t", None);
+        let CoderEvent::Result(finished) = &end else {
+            panic!("{end:?}")
+        };
+        assert!(
+            finished
+                .summary
+                .contains("just for this run, gone when it ends: `npm install -g typescript`"),
+            "{}",
+            finished.summary
         );
     }
 

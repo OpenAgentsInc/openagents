@@ -12,6 +12,7 @@ use serde_json::{Value, json};
 use supervise::{Input, Job, Limits};
 
 pub mod container;
+mod installs;
 pub mod login;
 
 pub const NAME: &str = "microcoder-repository";
@@ -614,6 +615,9 @@ async fn group_settles(group: Option<i32>, wait: Duration, every: Duration) -> b
 /// A single task owner. It is deliberately neither serializable nor cloneable.
 pub struct Host {
     target: Option<super::targets::Lease>,
+    /// Where software the run's agent installs lands (#10336): a private
+    /// prefix for a full-access run, removed when the run ends.
+    installs: Option<installs::Prefix>,
     owner: owner::Owner,
     task: Task,
     admission: owner::Admission,
@@ -985,9 +989,23 @@ impl Host {
                 effect_id: owner::effect_id_for(&task),
             })?;
         }
+        let installs = if login_reading.is_some() {
+            let prefix = installs::Prefix::create()?;
+            trace.append(
+                &Step::said(
+                    Source::System,
+                    "Software this run installs lands in its own prefix, not the owner's.",
+                )
+                .noting("install_prefix", json!({"path": prefix.path()})),
+            )?;
+            Some(prefix)
+        } else {
+            None
+        };
         let trace_bytes = std::fs::metadata(trace.path())?.len() as usize;
         Ok(Self {
             target,
+            installs,
             owner,
             task,
             admission,
@@ -1225,6 +1243,10 @@ impl Host {
                         "CARGO_TARGET_DIR".into(),
                         target.path.as_os_str().to_owned(),
                     ));
+                }
+                // Installs go to this run's own prefix (#10336).
+                if let Some(prefix) = &self.installs {
+                    prefix.apply(&mut environment.variables);
                 }
                 // A relative local remote resolves against the main
                 // checkout, not this worktree (#10333).
