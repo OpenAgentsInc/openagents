@@ -301,3 +301,11 @@ explosion flash; two shadow slots follow the brightest nearby effects. The
 shows the resulting illumination. Active cultists use combat-ready or directed
 spell-ready poses between casts. Corpses keep their death pose after ECS removal,
 rest above the floor, and have no overhead nameplate.
+
+The [shorter combat recording](../../bench/wow/2026-10-03/verse-fast-combat.mp4)
+ends after about 27 seconds of fighting, with all ten abilities used, ten
+cultists defeated, and Claude at 12/135 health. Claude deals 18 damage per
+normal hit and 45 while enraged; cultists deal 8 and cast more often. Cultists
+have 15 health. Floating damage numbers use the imported Classic Friz font,
+with yellow text above enemies and red text above the adventurer. Numbers rise
+and fade, show actual health lost, and exclude damage absorbed by shields.

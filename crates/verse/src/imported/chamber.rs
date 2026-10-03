@@ -119,6 +119,7 @@ pub fn classic_atlas(dir: &std::path::Path) -> Result<Atlas, String> {
         atlas.add_sprite(name, info.width, info.height, &rgba[..info.buffer_size()])?;
     }
     atlas.add_font("small", &font, 10.0)?;
+    atlas.add_font("combat", &font, 28.0)?;
     let numbers = std::fs::read(dir.join("ARIALN.TTF")).map_err(|e| e.to_string())?;
     atlas.add_font("hotkey", &numbers, 12.0)?;
     atlas.add_font("numbers", &numbers, 14.0)?;

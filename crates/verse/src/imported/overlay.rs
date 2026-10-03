@@ -167,6 +167,55 @@ pub fn cinematic(
     ui
 }
 
+/// Floating combat text reflects admitted health loss, including lethal hits.
+pub fn damage_numbers(
+    ui: &mut UiBatch,
+    atlas: &Atlas,
+    game: &super::play::Game,
+    frame: &Frame,
+    heights: &BTreeMap<String, f32>,
+    projection: Mat4,
+    width: f32,
+    height: f32,
+) {
+    let font = atlas
+        .font("combat")
+        .layout_at_scale(720.0 / height)
+        .unwrap();
+    for number in &game.damage_numbers {
+        let age = game.time - number.at;
+        if !(0.0..1.35).contains(&age) {
+            continue;
+        }
+        let actor = frame.actors.iter().find(|a| a.actor.id == number.actor);
+        let head_height = actor.map_or(2.0, |a| heights[&a.actor.model] * a.actor.scale * 0.9144);
+        let anchor = actor.map_or(number.position, |a| a.actor.position)
+            + glam::Vec3::Y * (head_height + 0.8);
+        let clip = projection * anchor.extend(1.0);
+        if clip.w <= 0.0 {
+            continue;
+        }
+        let ndc = clip.truncate() / clip.w;
+        if ndc.x.abs() > 1.1 || ndc.y.abs() > 1.1 {
+            continue;
+        }
+        let alpha = ((1.35 - age) / 0.35).clamp(0.0, 1.0);
+        let text = format!("-{}", number.amount);
+        let lane = (number.serial % 3) as f32 - 1.0;
+        let x = (ndc.x * 0.5 + 0.5) * width + lane * 24.0 - font.measure(&text) * 0.5;
+        let y = (0.5 - ndc.y * 0.5) * height - age * 55.0;
+        for (dx, dy) in [(-2.0, 0.0), (2.0, 0.0), (0.0, -2.0), (0.0, 2.0)] {
+            ui.text(&font, x + dx, y + dy, &text, [0.0, 0.0, 0.0, alpha]);
+        }
+        let color = if number.incoming {
+            [1.0, 0.15, 0.08, alpha]
+        } else {
+            [1.0, 0.88, 0.15, alpha]
+        };
+        ui.text(&font, x, y, &text, color);
+    }
+}
+
 pub(crate) fn outlined(
     ui: &mut UiBatch,
     atlas: &Atlas,

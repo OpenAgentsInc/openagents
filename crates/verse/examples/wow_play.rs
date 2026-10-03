@@ -132,6 +132,16 @@ impl App {
             1280.0,
             720.0,
         );
+        overlay::damage_numbers(
+            &mut ui,
+            &self.atlas,
+            &self.game,
+            &frame,
+            &self.heights,
+            view.view_proj,
+            1280.0,
+            720.0,
+        );
         let hover = overlay::action_at(self.cursor[0], self.cursor[1], 1280.0, 720.0);
         overlay::action_bar(&mut ui, &self.atlas, &self.game, 1280.0, 720.0, hover);
         let mut actors = chamber::instances(&self.pack, &frame);

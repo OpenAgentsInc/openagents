@@ -1,0 +1,53 @@
+{
+  "schema": "openagents.wow.agent-combat.v1",
+  "controller": "local observation-driven tactical controller",
+  "control_mode": "agent",
+  "time": 51.9328498840332,
+  "ended_at": 46.899593353271484,
+  "player": {
+    "hp": 0,
+    "max_hp": 100,
+    "mana": 0,
+    "max_mana": 20
+  },
+  "boss_remaining": 12,
+  "boss_max": 135,
+  "cultists_defeated": 10,
+  "damage_taken": 100,
+  "shield_absorbed": 54,
+  "dodged": 11,
+  "enemy_casts": 32,
+  "ability_uses": {
+    "Fire Bolt": 1,
+    "Fireball": 4,
+    "Grease": 1,
+    "Light": 1,
+    "Magic Missile": 3,
+    "Misty Step": 2,
+    "Shield": 3,
+    "Shoot Bow": 3,
+    "Thunderwave": 2,
+    "Web": 1
+  },
+  "renderer": "owned native GPU pipeline; no grading; no chat-input automation",
+  "fight_seconds": 26.899593353271484,
+  "verification": {
+    "verse_unit_tests": 333,
+    "integration_tests": 7,
+    "ignored_tests": 8,
+    "format": "passed",
+    "video_decode": "passed",
+    "video_frames": 1018,
+    "video_fps": 30,
+    "video_seconds": 33.933333
+  },
+  "sha256": {
+    "crates/verse/examples/wow_play.rs": "bd1339905de22f2d6db6f955465a926700d0885d8a3895813f652363f939c715",
+    "crates/verse/src/imported/chamber.rs": "86be9f8a83be1045ff040ea8d6fe50762a76967432fc19ebd0e61b261ce56b8f",
+    "crates/verse/src/imported/combat.rs": "abafc6df92cf5bf3f85315aafa74d5c7265996e011e8f2f6ce6368a3426a948a",
+    "crates/verse/src/imported/overlay.rs": "d57bc3b83bdece6e63f16c6fc369d9d6000a8c300eafd74107e64b6b331c59a0",
+    "crates/verse/src/imported/play.rs": "979b8f55f5abf83e0acb01a75a8b08f169260cf8e7693bf6da75965573751bca",
+    "bench/wow/2026-10-03/verse-fast-combat.mp4": "f25018af28e46f9663473eb34b8b5b279c5c5fdd30a32eb047fd6d73bdcf035f",
+    "bench/wow/2026-10-03/verse-fast-combat.png": "a60d084eb4da9e4221239686585eb9f30e2d706f3de56e273c705b0c14bd85fe"
+  }
+}

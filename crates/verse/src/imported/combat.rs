@@ -43,7 +43,7 @@ impl Game {
         scene.duration = 200.0;
         for actor in &mut scene.actors {
             if actor.nameplate {
-                actor.health = if actor.model == "claude" { 400 } else { 30 };
+                actor.health = if actor.model == "claude" { 135 } else { 15 };
             }
         }
         // Combat dialogue and attacks replace the staged post-handoff reactions.
@@ -69,8 +69,8 @@ impl Game {
                 );
             }
         }
-        encounter.boss_max = 400;
-        encounter.boss_remaining = 400;
+        encounter.boss_max = 135;
+        encounter.boss_remaining = 135;
         game.encounter = Some(encounter);
         game.agent_controlled = agent;
         game.selected = 1;
@@ -196,9 +196,9 @@ impl Encounter {
                 release,
                 impact: release + if boss { 0.65 } else { 0.8 },
                 damage: if boss {
-                    if enraged { 32 } else { 7 }
+                    if enraged { 45 } else { 18 }
                 } else {
-                    3
+                    8
                 },
                 radius: if boss {
                     if enraged { 4.5 } else { 3.2 }
@@ -214,7 +214,7 @@ impl Encounter {
                     + if boss {
                         if enraged { 2.4 } else { 4.4 }
                     } else {
-                        9.5 + (actor.actor.id % 3) as f32
+                        6.5 + (actor.actor.id % 3) as f32
                     },
             );
         }
@@ -382,6 +382,63 @@ mod tests {
             }
         }
         assert!(walked && cast && !deaths.is_empty());
+    }
+    #[test]
+    fn floating_numbers_account_for_health_loss_and_fight_ends_under_35_seconds() {
+        let scene = Scene::from_json(include_bytes!(
+            "../../../../assets/verse/wow/anthropic.json"
+        ))
+        .unwrap();
+        let mut game = Game::combat(scene, true).unwrap();
+        let initial_enemy_hp: u32 = game
+            .scene
+            .actors
+            .iter()
+            .filter(|a| a.nameplate)
+            .map(|a| a.health)
+            .sum();
+        let mut serial = 0;
+        let (mut incoming, mut outgoing) = (0, 0);
+        for _ in 0..180 {
+            game.tick(0.1, [0.0; 2]).unwrap();
+        }
+        for _ in 0..1800 {
+            game.tick(1.0 / 30.0, [0.0; 2]).unwrap();
+            for number in game.damage_numbers.iter().filter(|n| n.serial > serial) {
+                if number.incoming {
+                    incoming += number.amount;
+                } else {
+                    outgoing += number.amount;
+                }
+            }
+            serial = game
+                .damage_numbers
+                .iter()
+                .map(|n| n.serial)
+                .max()
+                .unwrap_or(serial);
+            if game
+                .encounter
+                .as_ref()
+                .unwrap()
+                .ended
+                .is_some_and(|at| game.time - at >= 5.0)
+            {
+                break;
+            }
+        }
+        let remaining: u32 = game
+            .frame()
+            .actors
+            .iter()
+            .filter(|a| a.actor.model != "adventurer")
+            .map(|a| a.health)
+            .sum();
+        assert_eq!(incoming, 100 - game.snapshot().player.hp);
+        assert_eq!(outgoing, (initial_enemy_hp - remaining) as i32);
+        let e = game.encounter.as_ref().unwrap();
+        assert!(e.ended.unwrap() - game.scene.cut_at < 35.0);
+        assert!(e.used.len() == Ability::ALL.len());
     }
     fn run() -> Game {
         let scene = Scene::from_json(include_bytes!(

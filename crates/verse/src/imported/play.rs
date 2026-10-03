@@ -112,6 +112,15 @@ pub struct Casting {
     pub origin: Vec3,
     pub direction: Vec3,
 }
+#[derive(Clone, Debug)]
+pub struct DamageNumber {
+    pub actor: u64,
+    pub amount: i32,
+    pub at: f32,
+    pub position: Vec3,
+    pub incoming: bool,
+    pub serial: u64,
+}
 pub struct Game {
     pub scene: Scene,
     pub encounter: Option<super::combat::Encounter>,
@@ -130,6 +139,9 @@ pub struct Game {
     pub last_cast: Option<(Ability, f32)>,
     pub casting: Option<Casting>,
     pub impacts: Vec<(Vec3, f32, u8)>,
+    pub damage_numbers: Vec<DamageNumber>,
+    damage_serial: u64,
+    observed_health: BTreeMap<u32, i32>,
     pub moving: bool,
     locomotion: [f32; 2],
     npc_motion: BTreeMap<u64, Vec3>,
@@ -168,6 +180,12 @@ impl Game {
             .find(|id| **id != 1)
             .or_else(|| ids.keys().next())
             .ok_or("Missing hostile actors")?;
+        let observed_health = simulation
+            .snapshot()
+            .actors
+            .iter()
+            .map(|a| (a.id, a.hp.max(0)))
+            .collect();
         Ok(Self {
             scene,
             encounter: None,
@@ -186,6 +204,9 @@ impl Game {
             last_cast: None,
             casting: None,
             impacts: vec![],
+            damage_numbers: vec![],
+            damage_serial: 0,
+            observed_health,
             moving: false,
             locomotion: [0.0; 2],
             npc_motion: BTreeMap::new(),
@@ -505,8 +526,47 @@ impl Game {
                 }
             }
         }
+        let after_damage = self.snapshot();
+        for (actor, source) in self.ids.clone() {
+            let after = after_damage.actors.iter().find(|a| a.id == source);
+            let hp = after.map_or(0, |a| a.hp.max(0));
+            let previous = self.observed_health.insert(source, hp).unwrap_or(hp);
+            let lost = previous - hp;
+            if lost > 0 {
+                let position = after
+                    .map(|a| Vec3::from(a.pos))
+                    .or_else(|| self.npc_deaths.get(&actor).map(|(_, p)| *p))
+                    .unwrap_or_else(|| {
+                        self.scene
+                            .actors
+                            .iter()
+                            .find(|a| a.id == actor)
+                            .unwrap()
+                            .position
+                    });
+                self.damage_number(actor, lost, position, false);
+            }
+        }
+        self.damage_numbers.retain(|n| self.time - n.at < 1.35);
         self.impacts.retain(|(_, at, _)| self.time - at < 0.6);
         Ok(())
+    }
+    fn damage_number(&mut self, actor: u64, amount: i32, position: Vec3, incoming: bool) {
+        if amount <= 0 {
+            return;
+        }
+        self.damage_serial += 1;
+        if self.damage_numbers.len() >= 64 {
+            self.damage_numbers.remove(0);
+        }
+        self.damage_numbers.push(DamageNumber {
+            actor,
+            amount,
+            at: self.time,
+            position,
+            incoming,
+            serial: self.damage_serial,
+        });
     }
     fn record_ability(&mut self, ability: Ability) {
         if let Some(e) = &mut self.encounter {
@@ -526,6 +586,13 @@ impl Game {
         let lost = (damage - absorbed).min(self.snapshot().player.hp);
         self.simulation.chamber_player_damage(lost)?;
         if lost > 0 {
+            let actor = self
+                .scene
+                .actors
+                .iter()
+                .find(|a| a.model == "adventurer")
+                .map_or(14, |a| a.id);
+            self.damage_number(actor, lost, self.player, true);
             self.impacts.push((self.player + Vec3::Y, self.time, 3));
         }
         Ok((lost, absorbed))
@@ -650,6 +717,48 @@ mod tests {
             .unwrap(),
         )
         .unwrap()
+    }
+    #[test]
+    fn manual_instant_spell_reports_damage_once() {
+        let mut g = game();
+        g.time = 30.0;
+        let target = g
+            .frame()
+            .actors
+            .into_iter()
+            .find(|a| a.actor.model == "cultist")
+            .unwrap();
+        g.player = target.actor.position + Vec3::Z;
+        g.yaw = 0.0;
+        g.activate(Ability::Thunderwave).unwrap();
+        g.tick(0.01, [0.0; 2]).unwrap();
+        assert!(
+            g.damage_numbers
+                .iter()
+                .any(|n| n.actor == target.actor.id && n.amount == 9 && !n.incoming)
+        );
+        let count = g.damage_numbers.len();
+        g.tick(0.01, [0.0; 2]).unwrap();
+        assert_eq!(g.damage_numbers.len(), count);
+    }
+    #[test]
+    fn floating_incoming_damage_excludes_absorption_and_caps_lethal_hits() {
+        let mut g = game();
+        g.time = 30.0;
+        g.controls.shield = 18;
+        g.controls.shield_until = 34.0;
+        assert_eq!(g.hostile_hit(45).unwrap(), (27, 18));
+        assert_eq!(g.damage_numbers.len(), 1);
+        assert_eq!(g.damage_numbers[0].amount, 27);
+        assert!(g.damage_numbers[0].incoming);
+        assert_eq!(g.hostile_hit(1000).unwrap(), (73, 0));
+        assert_eq!(g.damage_numbers[1].amount, 73);
+        assert_eq!(g.hostile_hit(45).unwrap(), (0, 0));
+        assert_eq!(g.damage_numbers.len(), 2);
+        for _ in 0..14 {
+            g.tick(0.1, [0.0; 2]).unwrap();
+        }
+        assert!(g.damage_numbers.is_empty());
     }
     #[test]
     fn classic_movement_uses_backpedal_speed_and_never_boosts_diagonals() {
