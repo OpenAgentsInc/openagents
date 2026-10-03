@@ -29,7 +29,7 @@ use serde_json::json;
 
 pub use coder_delegate::decision::{
     EVIDENCE_EDIT_TARGET, EVIDENCE_YES, ISSUE_TURN_DEPENDS, ISSUE_TURN_PLAIN, JUDGE_READY,
-    PACK_SELECTED, SYSTEM_SELECT, Setting, TERMINAL_ASKS_ONLY,
+    PACK_SELECTED, RECIPE_CHECK_KEEP, RECIPE_HARD, SYSTEM_SELECT, Setting, TERMINAL_ASKS_ONLY,
 };
 
 /// `stall.next`: the lowest probability of the pick for a next-step
@@ -142,6 +142,8 @@ pub const CODE: &[Setting] = &[
     MICRO_SHARED,
     MICRO_PART_MET,
     PACK_SELECTED,
+    RECIPE_CHECK_KEEP,
+    RECIPE_HARD,
     STALL_NEXT,
     SYSTEM_SELECT,
     TERMINAL_ASKS_ONLY,
@@ -263,6 +265,8 @@ mod tests {
             ("micro.parallel.shared", 0.4),
             ("micro.part_met", 0.75),
             ("pack.selected", 0.5),
+            ("recipe.check_keep", 0.7),
+            ("recipe.hard", 0.8),
             ("stall.next", 0.5),
             ("system.select", 0.5),
             ("terminal.asks_only", 0.6),

@@ -373,6 +373,9 @@ pub enum Action {
     /// Compress traces, gate logs, and run artifacts older than
     /// `compress_days`; remove those older than `keep_days`.
     RotateLogs { compress_days: u64, keep_days: u64 },
+    /// Refit the decision thresholds from joined run outcomes and adopt
+    /// only those that pass their held-out check (#10387).
+    Recalibrate,
 }
 
 impl Action {
@@ -533,7 +536,7 @@ pub fn disk() -> Rule {
 
 /// The built-in rules, by id. `disk` first; the rest are the spec's
 /// other background processes ([`crate::builtins`]).
-pub const BUILT_IN: [&str; 9] = [
+pub const BUILT_IN: [&str; 10] = [
     "disk",
     "worktrees",
     "claims",
@@ -543,6 +546,7 @@ pub const BUILT_IN: [&str; 9] = [
     "qa",
     "usage",
     "rotate",
+    "calibration",
 ];
 
 /// The built-in rules, by id.

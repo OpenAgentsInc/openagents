@@ -21,6 +21,7 @@
 //! is typed in by hand.
 
 pub mod decisions;
+pub mod refit;
 
 use std::collections::BTreeMap;
 use std::path::Path;

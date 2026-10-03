@@ -298,6 +298,7 @@ pub fn admit(mut asked: Rule, plugin: &Installed) -> Result<Rule, String> {
             | rule::Action::HealthWatch { .. }
             | rule::Action::FlakeWatch
             | rule::Action::UsageSummary
+            | rule::Action::Recalibrate
             | rule::Action::RotateLogs { .. } => {
                 return Err(named(
                     "that action belongs to the host's built-in rules".into(),
@@ -425,6 +426,7 @@ pub fn package(layout: &Layout, id: &str, dir: &Path) -> Result<PathBuf, String>
             | rule::Action::HealthWatch { .. }
             | rule::Action::FlakeWatch
             | rule::Action::UsageSummary
+            | rule::Action::Recalibrate
             | rule::Action::RotateLogs { .. } => {
                 return Err(format!(
                     "{} uses an action only this computer's own rules take; it cannot be a plugin",

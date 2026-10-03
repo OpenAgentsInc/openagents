@@ -18,6 +18,8 @@ Arms (STANDING is the default set):
   routed-codex    routed to Codex only, recipe on
 
 Usage:
+  study.py standing-hard RUN_ID [TRIALS [PARALLEL]]  the same over the hard
+                                                 set (efficiency-hard-v1, #10387)
   study.py standing RUN_ID [TRIALS [PARALLEL]]   prepare, run STANDING x TASKS x
                                                   trials, write RUN_ID.jsonl
   study.py prepare
@@ -59,6 +61,10 @@ TIMEOUT = 3600
 # The pinned task set. Change the tasks, prompts, or checks and this name
 # changes with them, so rows from different sets never pool.
 TASKSET = "efficiency-v1"
+# The hard tasks (#10387): Terminal-Bench 2.1 tasks its authors rate hard,
+# so `recipe.hard` has positive examples to be measured against. Their own
+# set name, so efficiency-v1 rows never pool with them.
+HARD_TASKSET = "efficiency-hard-v1"
 # The routed default's Codex model and effort (crates/coder settings), and
 # its list price per million tokens: input, cached input, output.
 CODEX_MODEL, CODEX_EFFORT = "gpt-6.1-sol", "medium"
@@ -158,6 +164,29 @@ def prep_repo(name, rev):
     return prep
 
 
+def prep_empty(name, extra=None):
+    """A fresh repository with a README, and optionally the task's own
+    environment files copied in (`extra`: path under the task folder)."""
+    def prep(dest):
+        os.makedirs(dest)
+        sh(["git", "init", "-q", "-b", "main"], cwd=dest)
+        open(os.path.join(dest, "README.md"), "w").write(f"Workspace for {name}.\n")
+        if extra:
+            shutil.copytree(os.path.join(TB, name, extra), os.path.join(dest, os.path.basename(extra)))
+        commit_all(dest, "Workspace")
+        return "."
+    return prep
+
+
+def tb_prompt(name, *swaps):
+    def prompt(v):
+        text = open(os.path.join(TB, name, "instruction.md")).read().split("# Terminal-Bench Canary")[0].strip()
+        for a, b in swaps:
+            text = text.replace(a, b(v) if callable(b) else b)
+        return text
+    return prompt
+
+
 TB_NOTE = ""
 
 TASKS = {
@@ -220,13 +249,36 @@ TASKS = {
             "the existing tests passing (`python3 -m unittest discover -s test`).")),
 }
 
+# The hard set (#10387). Each runs on this host's toolchain with the task's
+# own tests as the independent check, paths moved from /app to the work tree.
+HARD = {
+    "cancel-async-tasks": dict(
+        prep=prep_empty("cancel-async-tasks"), venv=("pytest==8.4.1",),
+        prompt=tb_prompt("cancel-async-tasks",
+                         ("in a file called `/app/run.py`", "in a file called `run.py` in the repository root (the current directory)"),
+                         ("Just use the system python to implement.",
+                          lambda v: f"Use the Python environment at {v} ({v}/bin/python); the tests run with it."))),
+    "polyglot-rust-c": dict(
+        prep=prep_empty("polyglot-rust-c"), venv=("pytest==8.4.1",),
+        prompt=tb_prompt("polyglot-rust-c", ("/app/polyglot/", "polyglot/"),
+                         ("I'm using rustc 1.75.0 and g++ 13.2.0.", "Use this computer's rustc and g++."))),
+    "llm-inference-batching-scheduler": dict(
+        prep=prep_empty("llm-inference-batching-scheduler", "environment/task_file"),
+        venv=("pytest==8.4.1",),
+        prompt=tb_prompt("llm-inference-batching-scheduler", ("/app/task_file/", "task_file/"))),
+}
+TASKS.update(HARD)
+
 
 # What each task is, for the report's "by task class" rows.
 CLASS = {
     "fix-git": "terminal-bench", "fix-code-vulnerability": "terminal-bench",
     "headless-terminal": "terminal-bench", "build-cython-ext": "terminal-bench",
     "mi-seekable": "repository", "mi-one": "repository", "bottle-etag": "repository",
+    **{name: "hard" for name in HARD},
 }
+# The efficiency-v1 set `standing` runs, unchanged by the hard set.
+V1 = [t for t in TASKS if t not in HARD]
 
 
 def sources():
@@ -344,6 +396,8 @@ def check(task, work, venv):
         src = open(tests).read().replace("/app/pyknotid", f"{work}/pyknotid")
         sh([os.path.join(venv, "bin/pip"), "-q", "install", "pytest==8.4.1", "packaging"])
         return run_pytest(src, venv, home_dir())
+    if task in HARD:
+        return check_hard(task, work, venv)
     if task in ("mi-seekable", "mi-one", "bottle-etag"):
         rev = {"mi-seekable": ("more-itertools", "6b1907d", ["tests/test_more.py"], ["-m", "unittest", "tests.test_more"]),
                "mi-one": ("more-itertools", "def2dab", ["tests/test_more.py"], ["-m", "unittest", "tests.test_more"]),
@@ -370,6 +424,34 @@ def check(task, work, venv):
             return (not bad and len(ids) > 10), f"{len(ids)} tests, failing: {bad}"
         r = subprocess.run([PY, *cmd], cwd=os.path.join(td, "w"), capture_output=True, text=True, timeout=600)
         return r.returncode == 0, r.stderr[-2000:]
+    raise KeyError(task)
+
+
+def check_hard(task, work, venv):
+    """The task's own tests against the work tree."""
+    tests_dir = os.path.join(TB, task, "tests")
+    src = open(os.path.join(tests_dir, "test_outputs.py")).read()
+    if task == "cancel-async-tasks":
+        td = tempfile.mkdtemp(prefix="check-", dir=os.path.join(BASE, "checks"))
+        shutil.copy(os.path.join(tests_dir, "test.py"), td)
+        shutil.copy(os.path.join(work, "run.py"), td) if os.path.exists(os.path.join(work, "run.py")) else None
+        return run_pytest(src.replace('Path("/app/run.py")', f'Path("{td}/run.py")'), venv, td)
+    if task == "polyglot-rust-c":
+        return run_pytest(src.replace("/app/polyglot", f"{work}/polyglot"), venv, work)
+    if task == "llm-inference-batching-scheduler":
+        # The tests import their cost model relatively: run them as a package.
+        td = tempfile.mkdtemp(prefix="check-", dir=os.path.join(BASE, "checks"))
+        pkg = os.path.join(td, "hardtests")
+        shutil.copytree(tests_dir, pkg)
+        open(os.path.join(pkg, "__init__.py"), "a").close()
+        test = os.path.join(pkg, "test_outputs.py")
+        open(test, "w").write(src.replace("/app/task_file/", f"{work}/task_file/"))
+        env = dict(os.environ)
+        env["PATH"] = os.path.join(venv, "bin") + ":" + env["PATH"]
+        r = subprocess.run([os.path.join(venv, "bin/python"), "-m", "pytest", "-q", "-p", "no:cacheprovider",
+                            "hardtests/test_outputs.py", "-rA"], cwd=td, env=env, capture_output=True, text=True,
+                           timeout=1200)
+        return r.returncode == 0, (r.stdout[-3000:] + r.stderr[-1000:])
     raise KeyError(task)
 
 
@@ -641,7 +723,7 @@ def one(run_id, arm, task, trial, meta=None):
         make_venv(venv, t["venv"])
     prompt = t["prompt"](venv)
     cwd = os.path.normpath(os.path.join(d, "repo", sub))
-    res = dict(study=run_id, taskset=TASKSET, arm=arm, mode=arm.split("-")[0], task=task, task_class=CLASS[task],
+    res = dict(study=run_id, taskset=HARD_TASKSET if task in HARD else TASKSET, arm=arm, mode=arm.split("-")[0], task=task, task_class=CLASS[task],
                trial=trial, started=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), **(meta or versions()))
     res.update(ARMS[arm](prompt, cwd, d))
     work = res.get("work")
@@ -687,7 +769,15 @@ def main():
         trials = int(sys.argv[3]) if len(sys.argv) > 3 else 3
         par = int(sys.argv[4]) if len(sys.argv) > 4 else 4
         prepare()
-        run(run_id, STANDING, list(TASKS), list(range(1, trials + 1)), par)
+        run(run_id, STANDING, V1, list(range(1, trials + 1)), par)
+        collect(run_id)
+    elif cmd == "standing-hard":
+        # The hard set (#10387): labels for `recipe.hard`, own set name.
+        run_id = sys.argv[2]
+        trials = int(sys.argv[3]) if len(sys.argv) > 3 else 3
+        par = int(sys.argv[4]) if len(sys.argv) > 4 else 4
+        prepare()
+        run(run_id, STANDING, list(HARD), list(range(1, trials + 1)), par)
         collect(run_id)
     elif cmd == "run":
         run(sys.argv[2], sys.argv[3].split(","), sys.argv[4].split(","),

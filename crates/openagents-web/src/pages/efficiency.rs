@@ -118,6 +118,75 @@ fn study_section(study: &Value, latest: bool) -> String {
     out
 }
 
+/// The Decisions section (#10387): how often Jev's thresholded decisions
+/// were right, from the committed refit summary. Small samples say so.
+fn decisions_section() -> String {
+    let p = efficiency::refit::published();
+    let mut out = String::from(
+        "<h2>Decisions</h2><p>Coder turns Jev's probabilities into actions at fixed thresholds: \
+whether a task is hard, which checks to keep, which guidance to include. Each decision is now \
+recorded with its probability and joined to the run's independent check. A nightly refit \
+proposes a new threshold and adopts it only when it beats the default on held-out runs.</p>",
+    );
+    let questions = p["questions"].as_array().cloned().unwrap_or_default();
+    let measured: Vec<&Value> = questions
+        .iter()
+        .filter(|q| q["checked_n"].as_u64().unwrap_or(0) >= 20)
+        .collect();
+    if measured.is_empty() {
+        out.push_str(
+            "<p class=\"dim\">Not enough data yet: no decision has 20 checked runs. \
+Accuracy and reliability appear here once one does.</p>",
+        );
+    } else {
+        out.push_str(
+            "<table><thead><tr><th>Decision</th><th>Threshold</th><th>Runs</th>\
+<th>Checked</th><th>Right at threshold</th></tr></thead><tbody>",
+        );
+        for q in measured {
+            let acc = q["accuracy_at_threshold"]
+                .as_f64()
+                .map_or_else(|| "\u{2014}".to_owned(), |a| format!("{:.0}%", 100.0 * a));
+            out.push_str(&format!(
+                "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+                escape(q["site"].as_str().unwrap_or("")),
+                q["threshold"],
+                q["n"],
+                q["checked_n"],
+                acc
+            ));
+        }
+        out.push_str("</tbody></table>");
+    }
+    out.push_str(
+        "<table><thead><tr><th>Setting</th><th>Default</th><th>In effect</th>\
+<th>Labelled runs</th><th>Status</th></tr></thead><tbody>",
+    );
+    for s in p["settings"].as_array().into_iter().flatten() {
+        let name = s["setting"].as_str().unwrap_or("");
+        let flag = if s["unmeasured_default"] == serde_json::json!(true) {
+            " <span class=\"dim\">(default never measured)</span>"
+        } else {
+            ""
+        };
+        out.push_str(&format!(
+            "<tr><td>{}{flag}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>",
+            escape(name),
+            s["default"],
+            s["in_effect"],
+            s["labelled_n"],
+            escape(s["reason"].as_str().unwrap_or(""))
+        ));
+    }
+    out.push_str(&format!(
+        "</tbody></table><p class=\"dim\">Accuracy is measured against the run's independent \
+check, a proxy for whether each decision was right; the hard decision is measured against \
+whether the run took more than 10 minutes. See <a href=\"{REPO}docs/research/typesafe/2026-10-03-calibration.md\">\
+the calibration plan</a>.</p>"
+    ));
+    out
+}
+
 fn body() -> &'static str {
     static BODY: OnceLock<String> = OnceLock::new();
     BODY.get_or_init(|| {
@@ -146,6 +215,7 @@ the code, arms, and tasks changed between them.</p>");
                 }
             }
         }
+        out.push_str(&decisions_section());
         out.push_str(&format!(
             "<h2>Method</h2><ul>\
 <li><b>Tasks.</b> A pinned set: Terminal-Bench 2.1 tasks moved onto a host, and real fixes from \
@@ -178,4 +248,17 @@ the rows behind every number on this page are in the repository. On your own com
 
 async fn efficiency_page() -> Response {
     page("Efficiency", None, body())
+}
+
+#[cfg(test)]
+mod decisions_tests {
+    #[test]
+    fn the_page_has_a_decisions_section_that_says_when_data_is_short() {
+        let html = super::decisions_section();
+        assert!(html.contains("<h2>Decisions</h2>"));
+        assert!(html.contains("recipe.hard"));
+        assert!(html.contains("default never measured"));
+        assert!(html.contains("Not enough data yet") || html.contains("Right at threshold"));
+        assert!(super::body().contains("<h2>Decisions</h2>"));
+    }
 }

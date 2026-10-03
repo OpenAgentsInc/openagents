@@ -284,7 +284,11 @@ impl JevJudge {
             return;
         }
         let gated = evidence::setup_decide(&commands, |id| {
-            asked.gate(id, "evidence.setup", evidence::YES)
+            asked.gate(
+                id,
+                "evidence.setup",
+                crate::decision::EVIDENCE_YES.threshold().value(),
+            )
         });
         let scope = crate::ops::Scope::new(&self.workdir);
         let mut ran = Vec::new();
@@ -685,7 +689,11 @@ impl JevJudge {
             return;
         }
         let selected = evidence::probe_keep(&outputs, |id| {
-            asked.gate(id, "evidence.probe_keep", evidence::YES)
+            asked.gate(
+                id,
+                "evidence.probe_keep",
+                crate::decision::EVIDENCE_YES.threshold().value(),
+            )
         });
         let mut total = 0;
         for choice in selected.iter().filter(|s| s.decision == "kept") {
@@ -908,7 +916,11 @@ impl JevJudge {
                     candidate.path.clone(),
                     Some(
                         asked
-                            .gate(&format!("rel_{i}"), "evidence.relevance", evidence::YES)
+                            .gate(
+                                &format!("rel_{i}"),
+                                "evidence.relevance",
+                                crate::decision::EVIDENCE_YES.threshold().value(),
+                            )
                             .unwrap_or(0.0),
                     ),
                     Some(
@@ -1589,7 +1601,11 @@ impl JevJudge {
             .ask_jev(&client, "exec.system", "jev_system", jev_state, questions)
             .await;
         crate::system::selection_answers(ids, |id| {
-            asked.gate(id, "system.select", crate::system::SELECT)
+            asked.gate(
+                id,
+                "system.select",
+                crate::decision::SYSTEM_SELECT.threshold().value(),
+            )
         })
     }
 

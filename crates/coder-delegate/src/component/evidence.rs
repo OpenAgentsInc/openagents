@@ -15,7 +15,9 @@ use serde_json::{Value, json};
 use crate::judge::clip;
 use crate::record::Implementation;
 
-/// A Noul at or above this reads as yes. An unmeasured development value.
+/// A Noul at or above this reads as yes. Unmeasured: no outcome has
+/// checked it yet ([`crate::decision::UNMEASURED`]); the nightly refit
+/// replaces it once enough joined outcomes pass (#10387).
 pub const YES: f64 = 0.5;
 
 /// The most characters of the issue body a Jev state carries.
@@ -61,7 +63,7 @@ pub fn setup_implementation() -> Implementation {
         "evidence.setup",
         "jev-gated setup pack",
         &json!({
-            "threshold": YES,
+            "threshold": crate::decision::EVIDENCE_YES.threshold().value(),
             "question": setup_question(0),
             "max_commands": 3,
             "deadline_sec": 240,
@@ -132,7 +134,7 @@ pub fn probe_implementation() -> Implementation {
         "evidence.probes.selector",
         "probe keep question",
         &json!({
-            "threshold": YES,
+            "threshold": crate::decision::EVIDENCE_YES.threshold().value(),
             "keep": PROBE_KEEP,
             "total_chars": PROBE_TOTAL_CHARS,
             "jev_output_chars": PROBE_JEV_CHARS,
@@ -253,7 +255,7 @@ pub fn select_implementation() -> Implementation {
         &json!({
             "batch": SURVEY_BATCH,
             "keep": SURVEY_KEEP,
-            "threshold": YES,
+            "threshold": crate::decision::EVIDENCE_YES.threshold().value(),
             "edit_target": EDIT_TARGET,
             "rank": "relevance + 0.1 × edit",
             "relevance_question": relevance_question(0),

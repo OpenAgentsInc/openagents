@@ -261,7 +261,7 @@ pub fn class_of(asks_only: Option<f64>, hard: Option<f64>) -> Option<TaskClass> 
     match (asks_only, hard) {
         (None, None) => None,
         (Some(p), _) if crate::decision::TERMINAL_ASKS_ONLY.yes(p) => Some(TaskClass::Question),
-        (_, Some(p)) if p >= HARD_AT => Some(TaskClass::Hard),
+        (_, Some(p)) if crate::decision::RECIPE_HARD.yes(p) => Some(TaskClass::Hard),
         _ => Some(TaskClass::Change),
     }
 }
@@ -275,7 +275,7 @@ pub fn keep_checks(candidates: &[Candidate]) -> Vec<String> {
         .iter()
         .enumerate()
         .filter_map(|(i, c)| {
-            c.p.filter(|p| *p >= CHECK_KEEP)
+            c.p.filter(|p| crate::decision::RECIPE_CHECK_KEEP.yes(*p))
                 .map(|p| (i, p, c.command.as_str()))
         })
         .collect();
@@ -560,7 +560,7 @@ pub async fn prepare(input: Input<'_>) -> Prepared {
         "ahead": ahead_record,
         "briefing": briefing.record(),
         "knowledge": knowledge_record,
-        "checks": {"set": CHECK, "keep": CHECK_KEEP, "candidates": candidates,
+        "checks": {"set": CHECK, "keep": crate::decision::RECIPE_CHECK_KEEP.threshold().value(), "candidates": candidates,
             "kept": checks, "error": checks_error},
         "jev": usage.pointer("/components/jev").cloned().unwrap_or(Value::Null),
         "seconds": seconds,
@@ -938,13 +938,21 @@ async fn ask_class(
     )
     .await;
     let (asks_only, hard) = (
-        asked.gate("asks_only", "terminal.asks_only", 0.6),
-        asked.gate("hard", "recipe.hard", HARD_AT),
+        asked.gate(
+            "asks_only",
+            "terminal.asks_only",
+            crate::decision::TERMINAL_ASKS_ONLY.threshold().value(),
+        ),
+        asked.gate(
+            "hard",
+            "recipe.hard",
+            crate::decision::RECIPE_HARD.threshold().value(),
+        ),
     );
     let class = class_of(asks_only, hard);
     (
         class,
-        json!({"set": CLASS_SET, "hard_at": HARD_AT, "asks_only": asks_only, "hard": hard,
+        json!({"set": CLASS_SET, "hard_at": crate::decision::RECIPE_HARD.threshold().value(), "asks_only": asks_only, "hard": hard,
             "class": class.map(TaskClass::word), "error": asked.error}),
     )
 }
@@ -984,7 +992,11 @@ async fn ask_checks(
     )
     .await;
     for (i, candidate) in candidates.iter_mut().enumerate() {
-        candidate.p = asked.gate(&format!("check_{i}"), "recipe.check_keep", CHECK_KEEP);
+        candidate.p = asked.gate(
+            &format!("check_{i}"),
+            "recipe.check_keep",
+            crate::decision::RECIPE_CHECK_KEEP.threshold().value(),
+        );
     }
     (candidates, asked.error)
 }

@@ -268,3 +268,23 @@ on coderos-4080, the owner's working machine; a timer there would compete
 with real work and the subscription's limits, and the GCE pool has no
 engine logins. Run it after a change to routing, the
 delegate recipe, or an engine's defaults, and publish the rows.
+
+## Hard tasks and the nightly refit (#10387)
+
+`recipe.hard` had no positive examples: every efficiency-v1 task is a change.
+The hard set adds three Terminal-Bench 2.1 tasks its authors rate hard —
+`cancel-async-tasks`, `polyglot-rust-c`, `llm-inference-batching-scheduler` —
+each checked by the task's own tests with paths moved to the work tree (every
+check fails on untouched work and passes on the reference solution). It has
+its own set name, `efficiency-hard-v1`, so its rows never pool with v1:
+
+    python3 bench/efficiency/study.py standing-hard RUN_ID 3 4
+
+`openagents efficiency refit` reads the decision readings joined to run
+outcomes (`openagents efficiency decisions`), proposes a threshold per
+delegation setting, and with `--write` adopts it only when it beats the
+default on held-out runs (at least 40 fit and 20 held-out labelled samples),
+writing a versioned file under `~/.openagents/calibration/` that Coder reads.
+The `calibration` background rule runs it nightly at 04:30 on CoderOS and
+cloud pool hosts. `--export bench/efficiency/decisions/latest.json` writes
+the public summary the Decisions section of openagents.com/efficiency shows.

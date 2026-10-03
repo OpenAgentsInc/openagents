@@ -140,6 +140,17 @@ pub trait Services: Send + Sync {
     fn run_plugin(&self, plugin: &str, _input: &str) -> Result<String, String> {
         Err(format!("plugin {plugin} cannot run from here"))
     }
+
+    /// Refit the decision thresholds from joined run outcomes, adopting
+    /// only fits that pass their held-out check; one line saying what
+    /// changed.
+    ///
+    /// # Errors
+    /// The outcomes or the adopted-settings file could not be read or
+    /// written.
+    fn recalibrate(&self, _dry_run: bool) -> Result<String, String> {
+        Err("decision thresholds cannot be refitted from here".into())
+    }
 }
 
 /// A host that does none of it.

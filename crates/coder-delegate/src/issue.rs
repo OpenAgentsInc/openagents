@@ -1364,7 +1364,11 @@ pub async fn unclear_text(
         .iter()
         .enumerate()
         .filter_map(|(i, (file, text))| {
-            let p = asked.gate(&format!("plain_{}", i + 1), "issue_turn.plain", PLAIN_FLAG)?;
+            let p = asked.gate(
+                &format!("plain_{}", i + 1),
+                "issue_turn.plain",
+                crate::decision::ISSUE_TURN_PLAIN.threshold().value(),
+            )?;
             (!crate::decision::ISSUE_TURN_PLAIN.yes(p)).then(|| {
                 format!(
                     "{file}: \"{}\" reads as shorthand (Jev {p:.2}); say it in plain, complete \
@@ -1379,6 +1383,9 @@ pub async fn unclear_text(
 /// How sure Jev must be that a newcomer understands a text for it to
 /// pass. Measured on 2026-09-24: shorthand view lines read 0.04 and 0.06,
 /// and a plain sentence with figures 0.38, so the line sits between.
+/// Three hand-read lines, not outcomes: flagged unmeasured
+/// ([`crate::decision::UNMEASURED`]) until the nightly refit (#10387)
+/// replaces it from joined outcomes.
 pub(crate) const PLAIN_FLAG: f64 = 0.2;
 
 /// The request for a fix round: the problems, then the diff.

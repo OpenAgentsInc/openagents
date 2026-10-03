@@ -1,7 +1,8 @@
 //! The other built-in background processes (phase 3), in the spec's
 //! order, and the steps their actions take. Each ships off, except
 //! keeping `~/openagents` on `main` on CoderOS and pruning stale Coder
-//! worktrees on CoderOS and cloud pool hosts (#10292); a person turns one on with
+//! worktrees on CoderOS and cloud pool hosts (#10292), and the nightly
+//! decision recalibration there (#10387); a person turns one on with
 //! `openagents background resume ID`, `/background`, or the desktop's
 //! Background settings, and edits it like any rule.
 //!
@@ -163,6 +164,13 @@ pub fn rule(id: &str) -> Option<Rule> {
             }];
             rule
         }
+        "calibration" => {
+            let mut rule = base(id, "Nightly decision recalibration");
+            rule.enabled = coder_host();
+            rule.triggers = vec![Trigger::Daily { at: "04:30".into() }];
+            rule.actions = vec![Action::Recalibrate];
+            rule
+        }
         _ => return None,
     })
 }
@@ -277,6 +285,24 @@ pub fn steps(
             flakes(env.layout, rule, services, powers.judge, env.now, dry_run)
         }
         Action::UsageSummary => vec![summary(env.layout, services, env.now)],
+        Action::Recalibrate => {
+            let Some(services) = services else {
+                return Some(vec![missing("recalibrate")]);
+            };
+            vec![match services.recalibrate(dry_run) {
+                Ok(line) => step(
+                    "recalibrate",
+                    None,
+                    if dry_run {
+                        StepOutcome::Would
+                    } else {
+                        StepOutcome::Done
+                    },
+                    line,
+                ),
+                Err(why) => step("recalibrate", None, StepOutcome::Failed, why),
+            }]
+        }
         Action::RotateLogs {
             compress_days,
             keep_days,

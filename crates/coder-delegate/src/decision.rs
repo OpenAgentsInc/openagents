@@ -26,11 +26,11 @@ impl Setting {
         }
     }
 
-    /// The threshold in effect. A question built in code has no file to
-    /// carry a block, so this is the default.
+    /// The threshold in effect: the value the nightly refit adopted after
+    /// its held-out check ([`crate::calibration`]), else the default.
     #[must_use]
     pub fn threshold(self) -> Threshold {
-        self.default
+        crate::calibration::adopted(self.name).map_or(self.default, Threshold::at)
     }
 
     /// Whether a probability reads as yes under this setting.
@@ -39,6 +39,17 @@ impl Setting {
         self.threshold().yes(p)
     }
 }
+
+/// `recipe.hard`: a class Noul at or above this classes a task as hard.
+pub const RECIPE_HARD: Setting = Setting::new("recipe.hard", crate::recipe::HARD_AT);
+
+/// `recipe.check_keep`: a judged check at or above this is kept.
+pub const RECIPE_CHECK_KEEP: Setting = Setting::new("recipe.check_keep", crate::recipe::CHECK_KEEP);
+
+/// Settings whose defaults no outcome has measured yet, flagged wherever
+/// thresholds are reported (#10387); the nightly refit replaces each once
+/// enough joined outcomes pass its held-out check.
+pub const UNMEASURED: &[&str] = &["system.select", "evidence.yes", "issue_turn.plain"];
 
 /// `system.select`: a Noul at or above this selects an optional section.
 pub const SYSTEM_SELECT: Setting = Setting::new("system.select", crate::system::SELECT);

@@ -702,6 +702,7 @@ Judgment, escalation, the other built-ins, desktop and phone, and plugins
   | `qa` | daily 02:00 | `StartCoderRun` with the simulated-user QA prompt (`docs/qa/simulated-users.md`). |
   | `usage` | daily 21:00 | `UsageSummary`: "Today: 12 Coder runs ended (10 finished, 2 failed), $3.40 (1 unpriced); background rules ran 3 times and freed 41 GB." A task's time is its store file's last change. Never a limit. |
   | `rotate` | daily 04:00 | `RotateLogs { compress_days: 7, keep_days: 30 }` over `~/.openagents/traces`, `logs`, `log`, `run-artifacts`, and `gate/logs`: log, trace, and text files only, never through a link or into another volume, never one a process has open; compressed with gzip keeping the modification time, removed after `keep_days`. The task store's own traces are on the deny list and stay. |
+  | `calibration` | daily 04:30 | `Recalibrate`: `openagents efficiency refit --write` — refit each delegation threshold from decision readings joined to run outcomes and adopt only fits that beat the default on held-out runs (#10387). On by default on CoderOS and cloud pool hosts; off elsewhere. |
 
 - **Manual runs** of a rule that is not a cleanup (`background run ID`,
   `/background`) now go through the engine with Jev and the host's

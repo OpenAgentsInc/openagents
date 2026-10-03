@@ -29,8 +29,19 @@ fn median(mut values: Vec<f64>) -> f64 {
 
 #[test]
 fn labels_cover_all_105_runs_and_follow_passing_time_and_steps() {
-    let runs = lines(RUNS);
     let labels: Value = serde_json::from_str(LABELS).unwrap();
+    // The collected study later gained the Codex arms (#10250); the
+    // class-v2 labels cover the five arms measured then.
+    let labelled_arms: BTreeSet<String> = labels["labels"][0]["arms"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .cloned()
+        .collect();
+    let runs: Vec<Value> = lines(RUNS)
+        .into_iter()
+        .filter(|r| r["arm"].as_str().is_some_and(|a| labelled_arms.contains(a)))
+        .collect();
     assert_eq!(runs.len(), 105);
     assert_eq!(labels["labels"].as_array().unwrap().len(), 7);
     let mut covered = BTreeSet::new();

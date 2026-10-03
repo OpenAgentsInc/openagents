@@ -375,6 +375,11 @@ impl HostServices {
 }
 
 impl background::services::Services for HostServices {
+    fn recalibrate(&self, dry_run: bool) -> Result<String, String> {
+        let (report, _) = crate::efficiency::recalibrate(&self.store, !dry_run)?;
+        Ok(coder::efficiency::refit::line(&report))
+    }
+
     fn start_coder_run(&self, run: &background::services::CoderRun) -> Result<String, String> {
         let dir = self.workspace(run.workspace.as_deref())?;
         coder::task::local::Local::here(self.store.clone())

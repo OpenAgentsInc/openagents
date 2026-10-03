@@ -42,8 +42,9 @@ pub const CLAUDE_CODE_VERSION: &str = "2.1.280";
 pub const CODEX_VERSION: &str = "0.155.1";
 pub const CODEX_MODEL: &str = "gpt-6.1-sol";
 
-/// A Noul at or above this selects an optional section. An unmeasured
-/// development value.
+/// A Noul at or above this selects an optional section. Unmeasured: no
+/// outcome has checked it yet ([`crate::decision::UNMEASURED`]); the
+/// nightly refit replaces it once enough joined outcomes pass (#10387).
 pub const SELECT: f64 = 0.5;
 
 /// A section's role.
@@ -801,7 +802,7 @@ pub fn implementation() -> Implementation {
         "exec.system",
         "section library with Jev selection",
         &json!({
-            "threshold": SELECT,
+            "threshold": crate::decision::SYSTEM_SELECT.threshold().value(),
             "core": CORE,
             "optional": OPTIONAL.iter().map(|id| json!({
                 "id": id,
@@ -863,7 +864,7 @@ pub fn library_record() -> Value {
         "protected": PROTECTED,
         "core": CORE,
         "optional": OPTIONAL,
-        "select_threshold": SELECT,
+        "select_threshold": crate::decision::SYSTEM_SELECT.threshold().value(),
         "defaults": default_list,
         "library": list(LIBRARY),
         "presets": presets,

@@ -6507,6 +6507,20 @@
               },
               {
                 "kind": "option",
+                "name": "write",
+                "optional": true,
+                "repeated": true
+              },
+              {
+                "kind": "option",
+                "name": "export",
+                "value": "FILE",
+                "open": true,
+                "optional": true,
+                "repeated": true
+              },
+              {
+                "kind": "option",
                 "name": "all:",
                 "optional": true,
                 "repeated": true
@@ -6523,6 +6537,20 @@
           "kind": "option",
           "name": "store",
           "value": "DIR",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "write",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "export",
+          "value": "FILE",
           "open": true,
           "optional": true,
           "repeated": true

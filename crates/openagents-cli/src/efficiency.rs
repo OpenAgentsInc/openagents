@@ -13,6 +13,7 @@ use coder::task::{local, shadow};
 
 pub(crate) const USAGE: &str = "usage: openagents efficiency [--all] [--study FILE]...
        openagents efficiency decisions [--store DIR]
+       openagents efficiency refit [--store DIR] [--write] [--export FILE]
 Cost per checked result, time to a checked result, and pass rate, routed
 against raw Claude Code and raw Codex, with run counts and 95% intervals:
   - the standing Gym study's latest run (--all: every committed study),
@@ -24,12 +25,108 @@ against raw Claude Code and raw Codex, with run counts and 95% intervals:
   decisions      per-question counts, threshold accuracy (run-pass proxy), and
                  raw-probability reliability, joined to independent checks,
                  cost, and time; --store DIR selects a task store.
+  refit          refit each delegation threshold from the joined outcomes and
+                 report what a held-out check would adopt; --write adopts
+                 those that pass (a new versioned file serving reads, under
+                 ~/.openagents/calibration; hosts run it nightly), --export
+                 FILE writes the public summary openagents.com/efficiency shows.
 Methodology: bench/efficiency/README.md; public summary: openagents.com/efficiency.";
 
 /// What the command does and where the phone runs it, for the chat
 /// router's command tree (`coder::cli_route::tree`).
 #[cfg(test)]
 pub(crate) const EFFECTS: &[Declared] = &[Declared::computer("", Effect::ReadOnly)];
+
+/// Refit the delegation thresholds; with `write`, adopt those that pass.
+/// The report, and the versioned file written, if any.
+pub(crate) fn recalibrate(
+    store: &std::path::Path,
+    write: bool,
+) -> Result<(serde_json::Value, Option<std::path::PathBuf>), String> {
+    let rows = efficiency::decisions::rows(store);
+    let previous = coder_delegate::calibration::path()
+        .map(|p| coder_delegate::calibration::read(&p))
+        .unwrap_or_default();
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs());
+    let now = crate::wallet::date(secs);
+    let (report, next) = efficiency::refit::refit(&rows, &previous, &now);
+    let written = match (write, next) {
+        (true, Some(file)) => Some(efficiency::refit::write(&file)?),
+        _ => None,
+    };
+    Ok((report, written))
+}
+
+fn refit(output: &Output, words: &[String]) -> u8 {
+    let mut store = local::default_store();
+    let mut write = false;
+    let mut export = None;
+    let mut rest = words.iter();
+    while let Some(word) = rest.next() {
+        match word.as_str() {
+            "--help" | "-h" | "help" => {
+                println!("{USAGE}");
+                return 0;
+            }
+            "--write" => write = true,
+            "--store" => match rest.next() {
+                Some(p) => store = std::path::PathBuf::from(p),
+                None => return output.usage("efficiency refit", "--store needs a DIR", USAGE),
+            },
+            "--export" => match rest.next() {
+                Some(p) => export = Some(std::path::PathBuf::from(p)),
+                None => return output.usage("efficiency refit", "--export needs a FILE", USAGE),
+            },
+            other => {
+                return output.usage(
+                    "efficiency refit",
+                    &format!("unexpected argument {other}"),
+                    USAGE,
+                );
+            }
+        }
+    }
+    let (report, written) = match recalibrate(&store, write) {
+        Ok(v) => v,
+        Err(why) => {
+            eprintln!("openagents efficiency refit: {why}");
+            return 1;
+        }
+    };
+    if let Some(path) = &export {
+        let decisions = efficiency::decisions::report(&efficiency::decisions::rows(&store));
+        let public = efficiency::refit::public(&decisions, &report);
+        let text = serde_json::to_string_pretty(&public).unwrap_or_default() + "\n";
+        if let Err(e) = std::fs::write(path, text) {
+            eprintln!(
+                "openagents efficiency refit: cannot write {}: {e}",
+                path.display()
+            );
+            return 1;
+        }
+    }
+    let written_text = written.as_ref().map(|p| p.display().to_string());
+    output.emit(
+        &json!({"refit": report, "written": written_text, "exported": export.map(|p| p.display().to_string())}),
+        |v| {
+            let mut t = efficiency::refit::text(&v["refit"]);
+            match v["written"].as_str() {
+                Some(p) => t.push_str(&format!("\nAdopted: wrote {p}.")),
+                None if v["refit"]["changed"] == true => {
+                    t.push_str("\nNothing written; pass --write to adopt.");
+                }
+                None => {}
+            }
+            if let Some(p) = v["exported"].as_str() {
+                t.push_str(&format!("\nPublic summary: {p}."));
+            }
+            t
+        },
+    );
+    0
+}
 
 /// The report for this computer, with any extra studies' rows.
 pub(crate) fn report(extra: &[(String, String)]) -> serde_json::Value {
@@ -43,6 +140,9 @@ pub(crate) fn report(extra: &[(String, String)]) -> serde_json::Value {
 }
 
 pub fn run(output: &Output, words: &[String]) -> u8 {
+    if words.first().is_some_and(|w| w == "refit") {
+        return refit(output, &words[1..]);
+    }
     if words.first().is_some_and(|w| w == "decisions") {
         if words[1..]
             .iter()

@@ -844,7 +844,11 @@ async fn asks_only<X>(request: &Request<X>, recorder: &Recorder) -> bool {
     )
     .await;
     asked
-        .gate("asks_only", "terminal.asks_only", 0.6)
+        .gate(
+            "asks_only",
+            "terminal.asks_only",
+            crate::decision::TERMINAL_ASKS_ONLY.threshold().value(),
+        )
         .is_some_and(|p| crate::decision::TERMINAL_ASKS_ONLY.yes(p))
 }
 

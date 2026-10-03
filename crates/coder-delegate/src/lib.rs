@@ -14,6 +14,7 @@ pub mod adapter;
 pub mod agent;
 pub mod briefing_jev;
 pub mod briefing_knowledge;
+pub mod calibration;
 pub mod collect;
 pub mod component;
 pub mod credentials;

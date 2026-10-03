@@ -237,6 +237,8 @@ pub fn environment(command: &mut Command, setup: &Setup, scratch: Option<&Path>)
     }
     setup.seal.apply(command);
     command.env("CARGO_TARGET_DIR", &setup.target);
+    // Checks test the code's defaults, not this host's adopted calibration.
+    command.env("OPENAGENTS_CALIBRATION", "off");
     if let Some(scratch) = scratch {
         command.env("TMPDIR", scratch);
     }
