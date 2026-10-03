@@ -1536,25 +1536,25 @@ fn delegate_grok(gate: &mut Gate) -> Outcome {
             ));
         }
     }
-    let mut commands = 0;
+    let mut tools = 0;
     if let Some(done) = &seen.finished {
         let _ = std::fs::copy(
             &done.trajectory,
             gate.evidence("delegate-grok").join("turn.atif.jsonl"),
         );
-        // At the default full access Grok Build runs with
-        // `--always-approve` (#10104); under a named toolchains access the
-        // host allows the commands it asks for inside its boundary
-        // (#10092). Either way the turn ran at least one.
-        commands = ran_commands(&std::fs::read_to_string(&done.trajectory).unwrap_or_default());
-        if commands == 0 {
-            problems.push("Grok Build ran no shell command".into());
+        // A test delegation is a read-only question (feb4bc8270), so Grok
+        // Build may only list and read the project with its own tools
+        // rather than run a shell command (#10236). Any tool call it
+        // completed shows it worked in the project.
+        tools = grok_tool_calls(&std::fs::read_to_string(&done.trajectory).unwrap_or_default());
+        if tools == 0 {
+            problems.push("Grok Build used no tool in the project".into());
         }
     }
     if problems.is_empty() {
         let started = seen.started.as_ref();
         Ok(format!(
-            "Coder {} started on Grok Build ({}, {:?}), ran {commands} command(s), and finished: {:?}",
+            "Coder {} started on Grok Build ({}, {:?}), made {tools} tool call(s), and finished: {:?}",
             seen.task.unwrap_or_default(),
             started.map_or("?", |s| s.model.as_str()),
             started.map(|s| s.reason.clone()).unwrap_or_default(),
@@ -1636,17 +1636,56 @@ fn push_main(gate: &mut Gate) -> Outcome {
     }
 }
 
-/// The shell commands a Grok Build turn's trajectory shows completed: tool
-/// calls with a `command` argument. Grok Build runs a read-only command
-/// such as `ls` without asking, and asks for the rest, which the host
-/// allows inside its boundary.
-fn ran_commands(trajectory: &str) -> usize {
+/// The tool calls a Grok Build turn's trajectory shows completed: shell
+/// commands and Grok Build's own list, read and search tools alike, but
+/// not Coder's own decisions (Jev's `decision-…` calls) recorded in the
+/// same trajectory.
+fn grok_tool_calls(trajectory: &str) -> usize {
     trajectory
         .lines()
         .filter_map(|line| serde_json::from_str::<Value>(line).ok())
         .filter_map(|line| line.pointer("/step/call").cloned())
-        .filter(|call| call["arguments"]["command"].is_string() && call["outcome"] == "Completed")
+        .filter(|call| {
+            call["outcome"] == "Completed"
+                && !call["id"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .starts_with("decision-")
+        })
         .count()
+}
+
+#[cfg(test)]
+mod grok_tool_call_tests {
+    use super::grok_tool_calls;
+
+    /// A recorded read-only test delegation (#10236): Grok Build listed the
+    /// project and read four files, ran no shell command, and the
+    /// trajectory also holds Jev's decision.
+    const READ_ONLY: &str = include_str!("../fixtures/grok-read-only.atif.jsonl");
+
+    #[test]
+    fn a_read_only_delegation_counts_grok_builds_own_tools() {
+        assert_eq!(grok_tool_calls(READ_ONLY), 5);
+    }
+
+    #[test]
+    fn coder_decisions_and_unfinished_calls_are_not_grok_working() {
+        let decisions_only: String = READ_ONLY
+            .lines()
+            .filter(|line| !line.contains("\"call-"))
+            .map(|line| format!("{line}\n"))
+            .collect();
+        assert_eq!(grok_tool_calls(&decisions_only), 0);
+        let failed = READ_ONLY.replace("\"outcome\": \"Completed\"", "\"outcome\": \"Failed\"");
+        assert_eq!(grok_tool_calls(&failed), 0);
+    }
+
+    #[test]
+    fn a_shell_command_still_counts() {
+        let shell = r#"{"record":"step","step":{"source":"Agent","message":"","call":{"id":"call-1","name":"run","arguments":{"command":"ls"},"outcome":"Completed"}}}"#;
+        assert_eq!(grok_tool_calls(shell), 1);
+    }
 }
 
 /// While Coder runs, the transcript's **Stop Coder** is as wide as its
