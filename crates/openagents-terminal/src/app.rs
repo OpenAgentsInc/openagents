@@ -213,6 +213,14 @@ pub struct App {
     /// The background rule whose dry run was just shown: `r` on it in
     /// `/background` runs it for real.
     pub background_armed: Option<String>,
+    /// `/worktrees` is open and its rows are still being read.
+    pub worktrees_loading: bool,
+    /// What a rule's show, log, or run said, shown inside the watchers
+    /// view in place of its list (#10347): a title and its lines.
+    pub background_detail: Option<(String, Vec<String>)>,
+    /// When this screen opened: a background notification older than that
+    /// is shown with its age but not counted as new.
+    pub opened_at: u64,
     /// When the last background notification taken in was sent.
     pub notice_seen: u64,
     /// Background notifications, newest last (#10283). They never go into
@@ -287,6 +295,11 @@ impl App {
             offline: None,
             plugin: None,
             background_armed: None,
+            worktrees_loading: false,
+            background_detail: None,
+            opened_at: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |elapsed| elapsed.as_secs()),
             notice_seen: std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map_or(0, |since| since.as_secs()),
@@ -323,6 +336,18 @@ impl App {
     /// A background watcher's notification ("Disk almost full", a run's
     /// result): kept for the watchers view and counted on the status
     /// rail, never written into the transcript (#10283).
+    /// A background notification sent at `at` (Unix seconds), as of
+    /// `now`: it says how old it is, and one from before this screen
+    /// opened waits in the view without counting as new (#10347).
+    pub fn notice_at(&mut self, at: u64, line: &str, now: u64) {
+        let age = crate::picker::time_ago(at, now);
+        let unseen = self.unseen_notices;
+        self.notice(format!("{} · {line}", age.trim()));
+        if at < self.opened_at {
+            self.unseen_notices = unseen;
+        }
+    }
+
     pub fn notice(&mut self, text: impl Into<String>) {
         const KEPT: usize = 20;
         self.notices.push(text.into());
@@ -336,6 +361,7 @@ impl App {
     /// notifications, which are then seen.
     pub fn watchers_view(&mut self) -> Vec<Action> {
         self.unseen_notices = 0;
+        self.background_detail = None;
         vec![Action::Background]
     }
 
@@ -428,15 +454,69 @@ impl App {
         self.running && self.task.is_some() && self.phase == Phase::Idle
     }
 
+    /// A paste (bracketed, so it arrives whole): it lands in whatever takes
+    /// typing — the input with its newlines kept, a key prompt on one line,
+    /// the thread search — and nothing is sent until Enter (#10344).
+    pub fn paste(&mut self, text: &str) {
+        let text = text.replace("\r\n", "\n").replace('\r', "\n");
+        self.selection = None;
+        if let Some(overlay) = &mut self.overlay {
+            if let Overlay::Threads(picker) = overlay {
+                picker.paste(&text);
+            }
+            return;
+        }
+        if let Some((_, _, editor)) = &mut self.secret {
+            editor.insert_str(text.trim());
+            return;
+        }
+        if self.file.is_some() {
+            return;
+        }
+        self.editor.insert_str(&text);
+    }
+
+    /// The slash commands a draft of `/` and the start of a word could
+    /// become, with what each does (#10348); none once it is a message.
+    #[must_use]
+    pub fn slash_hints(&self) -> Vec<(String, &'static str)> {
+        let Some(word) = self.editor.text().strip_prefix('/') else {
+            return Vec::new();
+        };
+        if self.overlay.is_some()
+            || self.secret.is_some()
+            || !word.chars().all(|c| c.is_ascii_lowercase())
+        {
+            return Vec::new();
+        }
+        crate::slash::Slash::ALL
+            .iter()
+            .filter(|slash| slash.word().starts_with(word))
+            .map(|slash| (slash.usage(), slash.about()))
+            .collect()
+    }
+
     /// One key. `width` is the screen's.
     pub fn key(&mut self, key: &KeyEvent, width: u16) -> Vec<Action> {
+        // Esc pressed and another key soon after reach us as one Alt key:
+        // split them, so the Esc is honored and the key still lands (#10345).
+        if let Some(rest) = self.escape_then(key) {
+            let mut actions = self.key(&KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE), width);
+            actions.extend(self.key(&rest, width));
+            return actions;
+        }
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         let alt = key.modifiers.contains(KeyModifiers::ALT);
         let armed = std::mem::take(&mut self.armed);
         let copied = std::mem::take(&mut self.copied);
         self.selection = None;
         if self.overlay.is_some() {
-            return self.overlay_key(key);
+            if !self.overlay_typing(key) {
+                return self.overlay_key(key);
+            }
+            // A letter a list doesn't use means the person is typing: the
+            // list closes and the letter starts their message (#10345).
+            self.overlay = None;
         }
         if let Some((setting, label, editor)) = &mut self.secret {
             if key.code == KeyCode::Esc {
@@ -523,6 +603,16 @@ impl App {
             {
                 self.watchers_view()
             }
+            // Tab completes a slash command's word when one is left.
+            (KeyCode::Tab, false, false) => {
+                let hints = self.slash_hints();
+                if let [(usage, _)] = hints.as_slice() {
+                    let word = usage.split(' ').next().unwrap_or(usage).to_owned();
+                    self.editor.take();
+                    self.editor.insert_str(&word);
+                }
+                Vec::new()
+            }
             (KeyCode::Char('t'), true, _) => vec![Action::Threads],
             (KeyCode::Char('n'), true, _) => vec![Action::New],
             (KeyCode::Char('y'), true, _) => self.copy(copied),
@@ -548,6 +638,48 @@ impl App {
                 }
                 _ => Vec::new(),
             },
+        }
+    }
+
+    /// The key after an Esc that arrived glued to it as Alt+key, when no
+    /// Alt binding owns that key here. The composer's own Alt keys (Enter
+    /// for a newline, b/f and the arrows for words, a number for a run)
+    /// stay whole while it takes typing; lists have no Alt keys.
+    fn escape_then(&self, key: &KeyEvent) -> Option<KeyEvent> {
+        if !key.modifiers.contains(KeyModifiers::ALT) {
+            return None;
+        }
+        let composing = self.overlay.is_none() && self.file.is_none();
+        // The composer's Alt keys, and Alt+number for a run in the rail.
+        let composer_alt = matches!(
+            key.code,
+            KeyCode::Enter | KeyCode::Left | KeyCode::Right | KeyCode::Char('b' | 'f' | '1'..='9')
+        ) && !key.modifiers.contains(KeyModifiers::CONTROL);
+        if composing && composer_alt {
+            return None;
+        }
+        let mut rest = *key;
+        rest.modifiers.remove(KeyModifiers::ALT);
+        Some(rest)
+    }
+
+    /// Whether `key` is plain typing that the open list has no use for.
+    fn overlay_typing(&self, key: &KeyEvent) -> bool {
+        let KeyCode::Char(c) = key.code else {
+            return false;
+        };
+        if key
+            .modifiers
+            .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT)
+        {
+            return false;
+        }
+        match &self.overlay {
+            Some(Overlay::Background { .. }) => !matches!(c, 'r' | 'p' | 'l'),
+            Some(Overlay::Worktrees { .. }) => c != 'a',
+            Some(Overlay::Plugins { .. } | Overlay::Settings { .. }) => c != ' ',
+            // The thread list has its own letters and search.
+            Some(Overlay::Threads(_)) | None => false,
         }
     }
 
@@ -579,7 +711,9 @@ impl App {
             };
         }
         if key.code == KeyCode::Esc {
-            self.overlay = None;
+            if self.background_detail.take().is_none() {
+                self.overlay = None;
+            }
             return Vec::new();
         }
         match overlay {
@@ -634,6 +768,25 @@ impl App {
                 Vec::new()
             }
             Overlay::Background { rows, selected } => {
+                // A rule's detail is open: Esc and ← go back to the list;
+                // `r` runs the rule whose dry run it shows.
+                if self.background_detail.is_some() {
+                    match key.code {
+                        KeyCode::Left | KeyCode::Enter => self.background_detail = None,
+                        KeyCode::Char('r') => {
+                            if let Some(id) = self.background_armed.take() {
+                                self.background_detail =
+                                    Some((format!("{id} · run"), vec!["Running…".to_owned()]));
+                                return vec![Action::BackgroundAct {
+                                    id,
+                                    act: crate::BackgroundAct::Run,
+                                }];
+                            }
+                        }
+                        _ => {}
+                    }
+                    return Vec::new();
+                }
                 let picked = rows.get(*selected).cloned();
                 let shown = rows.len() + notices;
                 let act = match key.code {
@@ -668,8 +821,13 @@ impl App {
                 };
                 match (act, picked) {
                     (Some(act), Some(row)) => {
-                        self.overlay = None;
+                        // The answer shows inside this view, not in the
+                        // chat (#10347).
                         self.background_armed = None;
+                        self.background_detail = Some((
+                            format!("{} · {}", row.id, act.words()),
+                            vec!["Reading…".to_owned()],
+                        ));
                         vec![Action::BackgroundAct { id: row.id, act }]
                     }
                     _ => Vec::new(),
@@ -693,7 +851,12 @@ impl App {
                             Some(crate::WorktreeRow { task: Some(_), .. }) => {
                                 self.note("That task is still going, so its worktree stays.");
                             }
-                            _ => {}
+                            Some(crate::WorktreeRow { task: None, .. }) => {
+                                self.note(
+                                    "That row is a project. Move down to one of its ended tasks to archive that task's worktree.",
+                                );
+                            }
+                            None => {}
                         }
                     }
                     _ => {}

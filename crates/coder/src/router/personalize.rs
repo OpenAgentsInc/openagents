@@ -127,6 +127,9 @@ pub enum Refusal {
     /// A time, price, or guarantee, or a claim that work is already
     /// settled, that the user did not write.
     Promise,
+    /// After a stem ending "on", the first word is not an -ing verb, so
+    /// the sentence reads "Working on calc.add and … to fix calc.add" (#10348).
+    NotVerbFirst,
     /// A rule of the router's own validator.
     Router(super::Invalid),
 }
@@ -144,6 +147,7 @@ impl Refusal {
             Refusal::BrokenWord => "broken_word".to_string(),
             Refusal::Button => "button".to_string(),
             Refusal::Promise => "promise".to_string(),
+            Refusal::NotVerbFirst => "not_verb_first".to_string(),
             Refusal::Router(invalid) => format!("{invalid:?}"),
         }
     }
@@ -280,7 +284,23 @@ pub fn check(written: &str, stem: &str, message: &str, cut_off: bool) -> Result<
     {
         return Err(Refusal::Promise);
     }
-    super::validate_continuation(&text, message).map_err(Refusal::Router)
+    let text = super::validate_continuation(&text, message).map_err(Refusal::Router)?;
+    // "Working on" takes an -ing verb next ("fixing calc.add"); anything
+    // else repeats itself as "Working on X to fix X" (#10348).
+    if stem
+        .rsplit(' ')
+        .next()
+        .is_some_and(|last| last.eq_ignore_ascii_case("on"))
+        && !text.split_whitespace().next().is_some_and(|first| {
+            first
+                .to_lowercase()
+                .trim_end_matches([',', '.'])
+                .ends_with("ing")
+        })
+    {
+        return Err(Refusal::NotVerbFirst);
+    }
+    Ok(text)
 }
 
 /// What a provider wrote.
@@ -734,7 +754,40 @@ mod tests {
         );
         assert!(check("closing issue 9920.", STEM, "close issue 9920", false).is_ok());
         // A promise word the user wrote is theirs to repeat.
-        assert!(check("ship it today", STEM, "ship it today", false).is_ok());
+        assert!(check("shipping it today", STEM, "ship it today", false).is_ok());
+    }
+
+    #[test]
+    fn after_on_the_continuation_starts_with_its_verb() {
+        let message = "fix calc.add and run the test";
+        assert_eq!(
+            check(
+                "calc.add and test_calc.py to fix calc.add and run the test.",
+                STEM,
+                message,
+                false
+            ),
+            Err(Refusal::NotVerbFirst)
+        );
+        assert!(
+            check(
+                "fixing calc.add and running the test.",
+                STEM,
+                message,
+                false
+            )
+            .is_ok()
+        );
+        // A stem that does not end in "on" takes its object first.
+        assert!(
+            check(
+                "your repo to find the test.",
+                "Looking through",
+                "find the test in my repo",
+                false
+            )
+            .is_ok()
+        );
     }
 
     #[test]
@@ -813,11 +866,11 @@ mod tests {
 
     #[tokio::test]
     async fn the_seam_answers_a_checked_continuation_and_names_its_recipient() {
-        let seam = stub(Ok("fix your login bug"));
+        let seam = stub(Ok("fixing your login bug"));
         assert!(seam.available());
         assert_eq!(seam.recipients(), vec!["a test stub".to_string()]);
         let continuation = seam.continuation(&ask("fix my login bug")).await.unwrap();
-        assert_eq!(continuation.text, " fix your login bug.");
+        assert_eq!(continuation.text, " fixing your login bug.");
         assert_eq!(continuation.model, "stub");
     }
 

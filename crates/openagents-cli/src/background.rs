@@ -974,7 +974,7 @@ pub(crate) fn rows() -> Result<Vec<openagents_terminal::BackgroundRow>, String> 
     Ok(view::list(&layout)
         .into_iter()
         .map(|row| openagents_terminal::BackgroundRow {
-            line: row.line(),
+            line: terminal_line(&row),
             paused: !row.enabled
                 || row
                     .paused_until
@@ -982,6 +982,16 @@ pub(crate) fn rows() -> Result<Vec<openagents_terminal::BackgroundRow>, String> 
             id: row.id,
         })
         .collect())
+}
+
+/// A rule's row in the watchers view (#10347): its name is the row's
+/// label, so the line starts at its state ([`view::Row::line`] already says
+/// how long ago its reading and result were).
+fn terminal_line(row: &view::Row) -> String {
+    let full = row.line();
+    full.strip_prefix(&format!("{} · ", row.id))
+        .unwrap_or(&full)
+        .to_owned()
 }
 
 /// What `/background` does to a rule, as the lines of a card.
@@ -992,20 +1002,16 @@ pub(crate) fn act(
     use openagents_terminal::BackgroundAct as Act;
     let layout = home_layout()?;
     match act {
+        // The rule in plain words; its full text is `openagents background
+        // show` (#10347).
         Act::Show => {
             let rule = store::load(&layout, id)?;
-            let mut lines = vec![format!(
-                "{} · version {} · {}",
-                rule.name,
-                rule.version,
-                rule.digest()
-            )];
-            lines.extend(
-                serde_json::to_string_pretty(&rule)
-                    .unwrap_or_default()
-                    .lines()
-                    .map(str::to_owned),
-            );
+            let mut lines = vec![format!("{} · version {}", rule.name, rule.version)];
+            lines.extend(background::compile::describe(&rule));
+            lines.push(format!(
+                "Its full definition: openagents background show {}",
+                rule.id
+            ));
             Ok(lines)
         }
         Act::DryRun | Act::Run => {
@@ -1037,7 +1043,12 @@ pub(crate) fn act(
             if records.is_empty() {
                 return Ok(vec!["No runs yet.".into()]);
             }
-            Ok(records.iter().map(view::log_line).collect())
+            // Without the run's internal id, which only the CLI's log
+            // needs (#10347).
+            Ok(records
+                .iter()
+                .map(|record| view::log_line(record).replacen(&format!(" {}", record.run), "", 1))
+                .collect())
         }
     }
 }

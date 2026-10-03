@@ -107,7 +107,7 @@ impl Outage {
     }
 }
 /// The message the apps show when a person stops a reply.
-pub const STOPPED: &str = "Stopped receiving this reply. The hosted worker may still finish.";
+pub const STOPPED: &str = "Stopped showing this reply. OpenAgents may still finish it.";
 
 /// A refusal before or outside an operation's events.
 #[derive(Clone, Debug, PartialEq, Eq)]

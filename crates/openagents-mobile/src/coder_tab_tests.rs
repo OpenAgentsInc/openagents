@@ -2491,7 +2491,7 @@ fn a_computers_streaming_reply_stops_from_the_phone_and_offers_to_stop_its_coder
         if node(&chat, "thread-coder-stop").is_some()
             && chat["root"]
                 .to_string()
-                .contains("Stopped receiving this reply")
+                .contains("Stopped showing this reply")
         {
             break chat;
         }

@@ -160,7 +160,13 @@ impl App {
                 RailRow {
                     number,
                     agent: held.agent.clone(),
-                    doing: held.doing.clone(),
+                    // A live status ("Thinking…") said while it ran is
+                    // stale once it finished (#10348).
+                    doing: if held.running || !held.doing.ends_with('…') {
+                        held.doing.clone()
+                    } else {
+                        String::new()
+                    },
                     elapsed: held.running.then(|| {
                         coder_terminal::grok_spinner::elapsed(self.tick.saturating_sub(held.since))
                     }),

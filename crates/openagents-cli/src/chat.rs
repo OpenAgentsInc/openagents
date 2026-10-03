@@ -122,7 +122,7 @@ they move into it, keeping their IDs (docs/cli/chat.md). Coder tasks live in
 computer's host serves. --scratch uses a throwaway identity, thread store,
 and task store in the system temporary directory; continue that thread with
 --scratch --thread ID. --timeout (default 120) and Ctrl-C stop receiving a
-reply; the hosted worker may still finish it. Every run prints the thread ID
+reply; OpenAgents may still finish it. Every run prints the thread ID
 it used. Under --json, send prints NDJSON events: accepted, partial, route,
 offer, result, coder, and failure, then the Coder task's events
 (coder_started, step, output, provider_switched, progress, question,

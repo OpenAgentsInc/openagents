@@ -51,7 +51,7 @@ pub fn list(store: &Path) -> Result<Vec<Project>, String> {
             let path = PathBuf::from(&record.worktree);
             path.is_dir().then(|| {
                 (
-                    task.intent.workspace.path.clone(),
+                    project_of(&path, &task.intent.workspace.path),
                     Worktree {
                         task: task.task_id.clone(),
                         bytes: 0,
@@ -82,6 +82,46 @@ pub fn list(store: &Path) -> Result<Vec<Project>, String> {
         .collect();
     out.sort_by(|a, b| b.bytes.cmp(&a.bytes).then(a.project.cmp(&b.project)));
     Ok(out)
+}
+
+/// The project a task worktree belongs to: the repository it was made
+/// from, read from its `.git` file (`gitdir: <repo>/.git/worktrees/<name>`),
+/// so worktrees of one repository group together even when a task named a
+/// worktree as its folder (#10346). `fallback` when the file says nothing.
+fn project_of(worktree: &Path, fallback: &str) -> String {
+    let Ok(text) = std::fs::read_to_string(worktree.join(".git")) else {
+        return fallback.to_owned();
+    };
+    let Some(gitdir) = text.lines().find_map(|line| line.strip_prefix("gitdir:")) else {
+        return fallback.to_owned();
+    };
+    let gitdir = Path::new(gitdir.trim());
+    // <common>/worktrees/<name>: the common Git directory is two up.
+    let Some(common) = gitdir
+        .parent()
+        .filter(|parent| parent.file_name().is_some_and(|name| name == "worktrees"))
+        .and_then(Path::parent)
+    else {
+        return fallback.to_owned();
+    };
+    // A checkout's common directory is its `.git`; a bare repository's is
+    // the repository itself.
+    let repo = if common.file_name().is_some_and(|name| name == ".git") {
+        common.parent().unwrap_or(common)
+    } else {
+        common
+    };
+    // The task's own spelling of the same folder wins (`/var` and
+    // `/private/var` are one folder on macOS).
+    let same = |a: &Path, b: &Path| {
+        a.canonicalize()
+            .ok()
+            .is_some_and(|a| b.canonicalize().ok() == Some(a))
+    };
+    if same(repo, Path::new(fallback)) {
+        return fallback.to_owned();
+    }
+    repo.to_string_lossy().into_owned()
 }
 
 /// Archive the worktree of the ended task `task`: remove it when nothing in
@@ -309,6 +349,27 @@ mod tests {
         assert_eq!(human(1_234_000), "1.2 MB");
         assert_eq!(human(340_000_000), "340 MB");
         assert_eq!(human(12_500_000_000), "12 GB");
+    }
+
+    #[test]
+    fn worktrees_group_under_the_repository_they_came_from() {
+        let dir = tempfile::tempdir().unwrap();
+        let worktree = dir.path().join("wt");
+        std::fs::create_dir_all(&worktree).unwrap();
+        std::fs::write(
+            worktree.join(".git"),
+            "gitdir: /Users/me/code/app/.git/worktrees/app-1234\n",
+        )
+        .unwrap();
+        assert_eq!(project_of(&worktree, "fallback"), "/Users/me/code/app");
+        std::fs::write(
+            worktree.join(".git"),
+            "gitdir: /srv/origin.git/worktrees/x\n",
+        )
+        .unwrap();
+        assert_eq!(project_of(&worktree, "fallback"), "/srv/origin.git");
+        std::fs::remove_file(worktree.join(".git")).unwrap();
+        assert_eq!(project_of(&worktree, "fallback"), "fallback");
     }
 
     #[test]

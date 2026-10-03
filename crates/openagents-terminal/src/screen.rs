@@ -60,7 +60,7 @@ enum Done {
     Imported(Result<String, String>),
     Efficiency(Result<crate::Efficiency, String>),
     Worktrees(Result<Vec<crate::WorktreeRow>, String>),
-    WorktreeArchived(Result<String, String>),
+    WorktreeArchived(String, Result<String, String>),
     Settings(Result<crate::Settings, String>),
     Background(Result<Vec<crate::BackgroundRow>, String>),
     BackgroundCard(String, crate::BackgroundAct, Result<Vec<String>, String>),
@@ -240,6 +240,7 @@ async fn drive(
                         screen.act(action).await;
                     }
                 }
+                Some(Ok(TermEvent::Paste(text))) => screen.app.paste(&text),
                 Some(Ok(TermEvent::Mouse(mouse))) => {
                     for action in screen.app.mouse(&mouse) {
                         screen.act(action).await;
@@ -451,12 +452,6 @@ impl Screen {
                 });
             }
             Action::BackgroundAct { id, act } => {
-                if matches!(
-                    act,
-                    crate::BackgroundAct::DryRun | crate::BackgroundAct::Run
-                ) {
-                    self.app.note(format!("Running {id}…"));
-                }
                 let (extras, done) = (self.extras.clone(), self.done.clone());
                 tokio::task::spawn_blocking(move || {
                     let result = extras.background_act(&id, act);
@@ -478,6 +473,13 @@ impl Screen {
                 });
             }
             Action::Worktrees => {
+                // The list opens at once and says it is reading; a result
+                // that arrives after it closed is dropped (#10346).
+                self.app.overlay = Some(Overlay::Worktrees {
+                    rows: Vec::new(),
+                    selected: 0,
+                });
+                self.app.worktrees_loading = true;
                 let (extras, done) = (self.extras.clone(), self.done.clone());
                 tokio::task::spawn_blocking(move || {
                     let _ = done.send(Done::Worktrees(extras.worktrees()));
@@ -487,7 +489,8 @@ impl Screen {
                 self.app.note("Archiving the worktree…");
                 let (extras, done) = (self.extras.clone(), self.done.clone());
                 tokio::task::spawn_blocking(move || {
-                    let _ = done.send(Done::WorktreeArchived(extras.archive_worktree(&task)));
+                    let archived = extras.archive_worktree(&task);
+                    let _ = done.send(Done::WorktreeArchived(task, archived));
                 });
             }
             Action::Settings => {
@@ -783,7 +786,7 @@ impl Screen {
                         ),
                     ],
                     art: invite.qr.clone(),
-                    keys: vec![("Esc".into(), "cancel the code".into())],
+                    keys: vec![("Esc".into(), "cancels the code".into())],
                 }));
                 self.app.pairing = true;
                 self.invite = Some(invite);
@@ -834,34 +837,38 @@ impl Screen {
             }
             Done::Settings(Err(why)) => self.app.loud(why),
             Done::Background(Ok(rows)) => {
+                self.app.background_detail = None;
                 self.app.overlay = Some(Overlay::Background { rows, selected: 0 });
             }
             Done::Background(Err(why)) => self.app.loud(why),
-            Done::BackgroundCard(id, act, Ok(lines)) => {
-                let what = match act {
-                    crate::BackgroundAct::Show => "rule",
-                    crate::BackgroundAct::DryRun => "dry run",
-                    crate::BackgroundAct::Run => "run",
-                    crate::BackgroundAct::Pause | crate::BackgroundAct::Resume => "state",
-                    crate::BackgroundAct::Log => "log",
+            // What a rule did shows inside the watchers view, never in the
+            // chat (#10283, #10347); with the view closed it waits there.
+            Done::BackgroundCard(id, act, result) => {
+                let mut lines = match result {
+                    Ok(lines) => lines,
+                    Err(why) => vec![why],
                 };
-                self.app.push(Row::Card(Card {
-                    title: format!("Background {id} · {what}"),
-                    rows: Vec::new(),
-                    body: lines,
-                    art: Vec::new(),
-                    keys: Vec::new(),
-                }));
                 if act == crate::BackgroundAct::DryRun {
-                    self.app.background_armed = Some(id);
-                    self.app
-                        .note("Press r on it in /background again to run it.");
+                    self.app.background_armed = Some(id.clone());
+                    lines.push(String::new());
+                    lines.push("Press r to run it for real.".to_owned());
+                }
+                let title = format!("{id} · {}", act.words());
+                if matches!(self.app.overlay, Some(Overlay::Background { .. })) {
+                    self.app.background_detail = Some((title, lines));
+                } else {
+                    self.app.notice(format!(
+                        "{title}: {}",
+                        lines.first().map_or("", String::as_str)
+                    ));
                 }
             }
-            Done::BackgroundCard(id, _, Err(why)) => self.app.loud(format!("{id}: {why}")),
             Done::Notice(Some((at, line))) if at > self.app.notice_seen => {
                 self.app.notice_seen = at;
-                self.app.notice(line);
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_or(0, |elapsed| elapsed.as_secs());
+                self.app.notice_at(at, &line, now);
             }
             Done::Notice(_) => {}
             Done::Imported(Ok(message)) => self.app.note(message),
@@ -874,11 +881,25 @@ impl Screen {
                 keys: Vec::new(),
             })),
             Done::Efficiency(Err(why)) => self.app.loud(why),
-            Done::Worktrees(Ok(rows)) => {
-                self.app.overlay = Some(Overlay::Worktrees { rows, selected: 0 });
+            Done::Worktrees(result) => {
+                self.app.worktrees_loading = false;
+                if !matches!(self.app.overlay, Some(Overlay::Worktrees { .. })) {
+                    return;
+                }
+                match result {
+                    Ok(rows) => self.app.overlay = Some(Overlay::Worktrees { rows, selected: 0 }),
+                    Err(why) => {
+                        self.app.overlay = None;
+                        self.app.loud(why);
+                    }
+                }
             }
-            Done::Worktrees(Err(why)) | Done::WorktreeArchived(Err(why)) => self.app.loud(why),
-            Done::WorktreeArchived(Ok(message)) => self.app.note(message),
+            Done::WorktreeArchived(_, Err(why)) => self.app.loud(why),
+            // Say how it comes back (#10346).
+            Done::WorktreeArchived(task, Ok(message)) => self.app.note(format!(
+                "{message} To bring it back: openagents worktree restore {}",
+                &task[..task.len().min(8)]
+            )),
         }
     }
 

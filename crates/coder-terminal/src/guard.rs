@@ -18,7 +18,9 @@ use std::io::{self, Write};
 use std::sync::{Arc, Mutex, Once};
 
 use crossterm::cursor::{SetCursorStyle, Show};
-use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
+use crossterm::event::{
+    DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
+};
 use crossterm::execute;
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
@@ -46,6 +48,9 @@ pub enum Step {
     /// Mouse reports: clicks, drags, and the wheel come to the shell, which
     /// then does its own selection.
     MouseCapture,
+    /// Bracketed paste: a paste arrives as one event, newlines and all,
+    /// rather than as keys where its first newline would press Enter.
+    BracketedPaste,
 }
 
 /// The steps a full-screen shell takes, in the order they apply.
@@ -81,6 +86,7 @@ impl Console for Stdout {
                 out.flush()
             }
             Step::MouseCapture => execute!(out, EnableMouseCapture),
+            Step::BracketedPaste => execute!(out, EnableBracketedPaste),
         }
     }
 
@@ -95,6 +101,7 @@ impl Console for Stdout {
                 out.flush()
             }
             Step::MouseCapture => execute!(out, DisableMouseCapture),
+            Step::BracketedPaste => execute!(out, DisableBracketedPaste),
         }
     }
 }
@@ -176,10 +183,13 @@ impl Guard<Stdout> {
         Ok(guard)
     }
 
-    /// [`Guard::full_screen`] with mouse reports on ([`Step::MouseCapture`]).
+    /// [`Guard::full_screen`] with mouse reports ([`Step::MouseCapture`])
+    /// and bracketed paste ([`Step::BracketedPaste`]) on; the shell must
+    /// handle paste events.
     pub fn full_screen_with_mouse() -> io::Result<Self> {
         let mut steps = FULL_SCREEN.to_vec();
         steps.push(Step::MouseCapture);
+        steps.push(Step::BracketedPaste);
         let guard = Self::enter(Stdout, &steps)?;
         guard.arm_panic_hook();
         Ok(guard)

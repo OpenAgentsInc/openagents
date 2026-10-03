@@ -1477,6 +1477,7 @@ fn background_runs_only_after_its_dry_run() {
             rows: rows.clone(),
             selected: 0,
         });
+        app.background_detail = None;
     };
     let act = |act| {
         vec![Action::BackgroundAct {
@@ -1489,7 +1490,27 @@ fn background_runs_only_after_its_dry_run() {
         app.key(&key(KeyCode::Char('r')), 80),
         act(BackgroundAct::DryRun)
     );
+    // The answer shows inside the view, never in the chat (#10347); Esc
+    // goes back to the list, and again closes it.
+    assert!(app.overlay.is_some());
+    assert_eq!(
+        app.background_detail
+            .as_ref()
+            .map(|(title, _)| title.as_str()),
+        Some("disk · dry run")
+    );
+    app.key(&key(KeyCode::Esc), 80);
+    assert!(app.background_detail.is_none() && app.overlay.is_some());
+    app.key(&key(KeyCode::Esc), 80);
     assert!(app.overlay.is_none());
+    // With a dry run's detail open, r runs it for real.
+    open(&mut app);
+    app.background_armed = Some("disk".into());
+    app.background_detail = Some(("disk · dry run".into(), vec!["…".into()]));
+    assert_eq!(
+        app.key(&key(KeyCode::Char('r')), 80),
+        act(BackgroundAct::Run)
+    );
     app.background_armed = Some("disk".into());
     open(&mut app);
     assert_eq!(
@@ -2064,4 +2085,94 @@ fn worktrees_view_lists_projects_and_archives_only_ended_tasks() {
     app.overlay = Some(Overlay::Worktrees { rows, selected: 0 });
     app.key(&key(KeyCode::Esc), 80);
     assert!(app.overlay.is_none());
+}
+
+/// #10344: a bracketed paste lands whole in the input, newlines kept, and
+/// nothing is sent until Enter.
+#[test]
+fn a_multi_line_paste_waits_in_the_input() {
+    let mut app = app();
+    app.paste("Count the lines:\r\nalpha\nbeta\n");
+    assert_eq!(app.editor.text(), "Count the lines:\nalpha\nbeta\n");
+    assert!(app.take_sent().is_none());
+}
+
+/// #10345: Esc and a key soon after arrive as one Alt key; the Esc closes
+/// the list and the key still lands. A letter a list has no use for closes
+/// it and starts the message, so nothing typed is lost.
+#[test]
+fn a_quick_esc_is_honored_and_typing_closes_a_list() {
+    use crate::BackgroundRow;
+    let mut app = app();
+    let open = |app: &mut App| {
+        app.overlay = Some(Overlay::Background {
+            rows: vec![BackgroundRow {
+                id: "disk".into(),
+                line: "on".into(),
+                paused: false,
+            }],
+            selected: 0,
+        });
+    };
+    open(&mut app);
+    let glued = KeyEvent {
+        modifiers: KeyModifiers::ALT | KeyModifiers::CONTROL,
+        ..key(KeyCode::Char('n'))
+    };
+    assert_eq!(app.key(&glued, 80), vec![Action::New]);
+    assert!(app.overlay.is_none());
+    open(&mut app);
+    assert!(app.key(&key(KeyCode::Char('I')), 80).is_empty());
+    assert!(app.overlay.is_none());
+    for c in "n this repo".chars() {
+        app.key(&key(KeyCode::Char(c)), 80);
+    }
+    assert_eq!(app.editor.text(), "In this repo");
+    // The composer's own Alt keys stay whole.
+    let newline = KeyEvent {
+        modifiers: KeyModifiers::ALT,
+        ..key(KeyCode::Enter)
+    };
+    app.key(&newline, 80);
+    assert_eq!(app.editor.text(), "In this repo\n");
+}
+
+/// #10348: typing `/` lists the commands it could become; Tab completes
+/// the only one left.
+#[test]
+fn a_slash_lists_commands_and_tab_completes_one() {
+    let mut app = app();
+    app.key(&key(KeyCode::Char('/')), 80);
+    assert_eq!(app.slash_hints().len(), crate::slash::Slash::ALL.len());
+    for c in "wor".chars() {
+        app.key(&key(KeyCode::Char(c)), 80);
+    }
+    let hints = app.slash_hints();
+    assert_eq!(hints.len(), 1);
+    assert_eq!(hints[0].0, "/worktrees");
+    app.key(&key(KeyCode::Tab), 80);
+    assert_eq!(app.editor.text(), "/worktrees");
+    app.key(&key(KeyCode::Char(' ')), 80);
+    assert!(app.slash_hints().is_empty(), "a message lists nothing");
+}
+
+/// #10347: a notification from before the screen opened says its age and
+/// does not count as new.
+#[test]
+fn an_old_background_notice_says_its_age() {
+    let mut app = app();
+    app.opened_at = 1_000_000;
+    app.notice_at(
+        1_000_000 - 2 * 86_400,
+        "Disk almost full (22 GB free).",
+        1_000_000,
+    );
+    assert_eq!(
+        app.notices,
+        vec!["2d ago · Disk almost full (22 GB free).".to_owned()]
+    );
+    assert_eq!(app.unseen_notices, 0);
+    app.notice_at(1_000_060, "Freed 3 GB.", 1_000_120);
+    assert_eq!(app.unseen_notices, 1);
+    assert_eq!(app.notices[1], "1m ago · Freed 3 GB.");
 }

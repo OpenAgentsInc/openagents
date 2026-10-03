@@ -14,11 +14,6 @@ use crate::app::{App, Overlay};
 use crate::rows::Row;
 use crate::view::{Shown, paint};
 
-/// Grok Build's spinner frame at animation tick `tick`, as one cell.
-fn spinner_char(tick: u64) -> char {
-    grok_spinner::frame(tick).chars().next().unwrap_or(PROMPT)
-}
-
 /// The line that says what is in progress, as Grok Build draws its
 /// "Starting session…": the spinner, the words, and the timer, all in
 /// its dim gray.
@@ -41,6 +36,9 @@ pub fn working(
 pub const MIN_WIDTH: u16 = 12;
 /// The fewest rows: the composer's three and one of transcript.
 pub const MIN_HEIGHT: u16 = 4;
+/// The fewest rows above the input a list draws in; on a shorter screen it
+/// takes the whole screen.
+const OVERLAY_MIN_HEIGHT: u16 = 6;
 
 /// Draws `app` into `buf` over `area`; the caret's position comes back for
 /// the terminal's own cursor.
@@ -54,12 +52,14 @@ pub fn draw(app: &mut App, area: Rect, buf: &mut Buffer) -> (u16, u16) {
         return draw_file(app, area, buf);
     }
     let status = app.status();
+    let hints = app.slash_hints();
     let working_line = app
         .live_status()
         .map(|(text, elapsed)| working(text, elapsed, app.tick, ladder));
     let tail = app.tail();
-    let busy = app.busy();
-    let prompt = if busy { spinner_char(app.tick) } else { PROMPT };
+    // The prompt stays `>` while a reply or run goes: typing still works
+    // then, and the working line above already spins (#10348).
+    let prompt = PROMPT;
     // The rail of Coder runs under the composer (#10169), leaving the
     // transcript at least one row. The same cells as the transcript: two
     // in from the left, two free at the right.
@@ -155,6 +155,35 @@ pub fn draw(app: &mut App, area: Rect, buf: &mut Buffer) -> (u16, u16) {
     if let Some(selection) = &app.selection {
         paint(buf, log, selection, ladder);
     }
+    // Typing `/` lists the commands it could become, just above the input
+    // (#10348).
+    if !hints.is_empty() {
+        let shown = hints.len().min(usize::from(log.height));
+        let top = log.bottom().saturating_sub(shown as u16);
+        let usage_width = hints
+            .iter()
+            .map(|(usage, _)| usage.len())
+            .max()
+            .unwrap_or(0);
+        for (offset, (usage, about)) in hints.iter().take(shown).enumerate() {
+            let y = top + offset as u16;
+            for x in log.left()..log.right() {
+                buf[(x, y)].reset();
+                buf[(x, y)].set_style(base);
+            }
+            let line = Line::from(vec![
+                ratatui::text::Span::styled(
+                    format!("{usage:<usage_width$}  "),
+                    ladder.style(coder_terminal::Intensity::Full),
+                ),
+                ratatui::text::Span::styled(
+                    (*about).to_owned(),
+                    ladder.style(coder_terminal::Intensity::Half),
+                ),
+            ]);
+            buf.set_line(log.x + 2, y, &line, width.saturating_sub(1));
+        }
+    }
 
     let caret = composer.render(composer_area, buf);
     for (offset, line) in rail_rows.iter().take(usize::from(rail_height)).enumerate() {
@@ -166,10 +195,18 @@ pub fn draw(app: &mut App, area: Rect, buf: &mut Buffer) -> (u16, u16) {
         );
     }
 
+    // A list takes the room above the input, so the input and its rails
+    // stay in sight and the list scrolls (#10346); only on a screen too
+    // short for that does it take the whole screen.
+    let over = if log.height >= OVERLAY_MIN_HEIGHT {
+        log
+    } else {
+        area
+    };
     if let Some(overlay) = &app.overlay {
         let (title, items, selected, hint, empty): (String, Vec<Item>, _, _, _) = match overlay {
             Overlay::Threads(picker) => {
-                picker.render(area, buf, ladder, &app.thread, now());
+                picker.render(over, buf, ladder, &app.thread, now());
                 return caret;
             }
             Overlay::Plugins { rows, selected } => (
@@ -215,6 +252,22 @@ pub fn draw(app: &mut App, area: Rect, buf: &mut Buffer) -> (u16, u16) {
                     .as_deref()
                     .unwrap_or("There are no settings to change here."),
             ),
+            Overlay::Background { .. } if app.background_detail.is_some() => {
+                let (title, lines) = app.background_detail.clone().unwrap_or_default();
+                (
+                    title,
+                    lines
+                        .into_iter()
+                        .map(|line| Item {
+                            label: line,
+                            detail: String::new(),
+                        })
+                        .collect(),
+                    0,
+                    "r runs a dry-run rule · Esc or ← back to the list",
+                    "Nothing to show.",
+                )
+            }
             Overlay::Background { rows, selected } => (
                 "Background watchers".to_owned(),
                 rows.iter()
@@ -243,7 +296,11 @@ pub fn draw(app: &mut App, area: Rect, buf: &mut Buffer) -> (u16, u16) {
                     .collect(),
                 *selected,
                 "a archive an ended task's worktree (only when nothing in it is unsaved) · Esc close",
-                "No task worktrees on this computer.",
+                if app.worktrees_loading {
+                    "Reading the task worktrees and their sizes…"
+                } else {
+                    "No task worktrees on this computer."
+                },
             ),
         };
         ListOverlay {
@@ -254,7 +311,7 @@ pub fn draw(app: &mut App, area: Rect, buf: &mut Buffer) -> (u16, u16) {
             empty,
             ladder,
         }
-        .render(area, buf);
+        .render(over, buf);
     }
     caret
 }

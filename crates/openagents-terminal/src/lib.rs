@@ -277,6 +277,20 @@ pub enum BackgroundAct {
     Log,
 }
 
+impl BackgroundAct {
+    /// What the act is, for the title of what it shows.
+    #[must_use]
+    pub fn words(self) -> &'static str {
+        match self {
+            Self::Show => "rule",
+            Self::DryRun => "dry run",
+            Self::Run => "run",
+            Self::Pause | Self::Resume => "state",
+            Self::Log => "log",
+        }
+    }
+}
+
 /// Nothing beyond the chat: every extra says it is not available here.
 pub struct NoExtras;
 

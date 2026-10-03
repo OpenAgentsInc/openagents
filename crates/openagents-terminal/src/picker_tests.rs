@@ -208,7 +208,7 @@ fn it_draws_the_title_the_search_hint_the_groups_and_the_rows() {
         "/ to search",
         " demo ──",
         " Chats ──",
-        "› Parser docs open · Coder",
+        "› Parser docs · open · Coder",
         "› Lunch plans",
         "15m ago",
         "Enter select",

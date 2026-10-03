@@ -789,7 +789,7 @@ impl BasicChats {
             self.save(id);
             self.failures.insert(
                 id.into(),
-                "Stopped receiving this reply. The hosted worker may still finish.".into(),
+                "Stopped showing this reply. OpenAgents may still finish it.".into(),
             );
         }
     }
@@ -899,7 +899,7 @@ impl BasicChats {
             .is_some_and(|turn| turn.role == Role::User && turn.stopped)
         {
             return Tail::Failed(
-                "Stopped receiving this reply. The hosted worker may still finish.".into(),
+                "Stopped showing this reply. OpenAgents may still finish it.".into(),
             );
         }
         match self.failures.get(id) {

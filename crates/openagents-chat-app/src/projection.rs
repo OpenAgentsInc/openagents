@@ -176,9 +176,8 @@ impl Projection {
                         key: "talk-stopped-text".into(),
                         style: appearance.status_style,
                         element: Element::Text {
-                            value:
-                                "Stopped receiving this reply. The hosted worker may still finish."
-                                    .into(),
+                            value: "Stopped showing this reply. OpenAgents may still finish it."
+                                .into(),
                             role: rust_native::TextRole::Status,
                         },
                     }],

@@ -153,6 +153,23 @@ impl Picker {
             .unwrap_or(0)
     }
 
+    /// A paste while searching lands in the query on one line; with no
+    /// search open it does nothing, as typed letters there act on rows.
+    pub fn paste(&mut self, text: &str) {
+        if !self.search {
+            return;
+        }
+        let line = text.split_whitespace().collect::<Vec<_>>().join(" ");
+        if line.is_empty() {
+            return;
+        }
+        if !self.query.is_empty() && !self.query.ends_with(' ') {
+            self.query.push(' ');
+        }
+        self.query.push_str(&line);
+        self.queried();
+    }
+
     /// The query changed: the first row selected, and every row it finds
     /// expanded (none with no query).
     fn queried(&mut self) {
@@ -565,10 +582,12 @@ fn row_line(
     let glyph = if expanded { "◆ " } else { "› " };
     let badge = badge(row, open);
     let prefix = cells(indent) + cells(glyph);
+    // " · " sets the badge apart, so "Coder" never reads as the title's
+    // last word (#10348).
     let badge_width = if badge.is_empty() {
         0
     } else {
-        cells(&badge) + 1
+        cells(&badge) + 3
     };
     let content = width.saturating_sub(prefix + 1 + badge_width);
     let usable = content.saturating_sub(2);
@@ -581,7 +600,7 @@ fn row_line(
         (label, label_style),
     ];
     if !badge.is_empty() {
-        spans.push((format!(" {badge}"), meta));
+        spans.push((format!(" · {badge}"), meta));
     }
     spans.push((" ".repeat(gap), meta));
     spans.push((right, meta));
@@ -661,8 +680,9 @@ fn found<'a>(rows: &'a [Summary], query: &str) -> Vec<&'a Summary> {
 
 /// The thread `/resume ARG` or `--resume ARG` names: a whole ID; else one
 /// title equal to it, ignoring case (among several, the sole renamed one);
-/// else the one ID that starts with it. `None` when nothing or more than
-/// one thing matches: the picker then opens narrowed to it.
+/// else the one ID that starts with it; else the one thread the search
+/// finds. `None` when nothing or more than one thing matches: the picker
+/// then opens narrowed to it.
 pub fn resolve<'a>(rows: &'a [Summary], arg: &str) -> Option<&'a Summary> {
     let arg = arg.trim();
     if arg.is_empty() {
@@ -692,6 +712,13 @@ pub fn resolve<'a>(rows: &'a [Summary], arg: &str) -> Option<&'a Summary> {
         .filter(|row| row.id.starts_with(&needle))
         .collect();
     match prefixed.as_slice() {
+        [only] => return Some(only),
+        [] => {}
+        _ => return None,
+    }
+    // Part of a title: the one thread the search finds opens, as the help
+    // says, every time (#10348); several open the picker narrowed to it.
+    match found(rows, arg).as_slice() {
         [only] => Some(only),
         _ => None,
     }
