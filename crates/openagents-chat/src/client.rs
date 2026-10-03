@@ -1857,13 +1857,24 @@ impl Client {
             let seen = tokio::task::spawn_blocking(move || {
                 tasks
                     .into_iter()
-                    .filter_map(|task| coder.observe(&store, &task).map(|seen| (task, seen)))
+                    .filter_map(|task| {
+                        let seen = coder.observe(&store, &task)?;
+                        // The engine the turn ran on: a continuation is
+                        // dispatched before it is known (#10335).
+                        let engine = coder.result(&store, &task).and_then(|run| run.engine);
+                        Some((task, seen, engine))
+                    })
                     .collect::<Vec<_>>()
             })
             .await
             .unwrap_or_default();
-            for (task, seen) in seen {
+            for (task, seen, engine) in seen {
                 record.observe(&task, seen, crate::route::now_ms());
+                if let Some(run) = record.runs.iter_mut().find(|run| run.task == task)
+                    && run.engine.is_none()
+                {
+                    run.engine = engine;
+                }
             }
         }
         let _ = self.journal(id).write(&record);

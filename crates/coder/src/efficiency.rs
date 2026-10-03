@@ -801,9 +801,10 @@ pub fn text(report: &Value, all: bool) -> String {
     ));
     for g in runs["groups"].as_array().into_iter().flatten() {
         out.push(format!(
-            "  {:<34} {} runs · {}{}",
+            "  {:<34} {} run{} · {}{}",
             g["arm"].as_str().unwrap_or(""),
             g["n"],
+            if g["n"].as_u64() == Some(1) { "" } else { "s" },
             arm_line(g),
             g["cost_total_usd"]
                 .as_f64()
