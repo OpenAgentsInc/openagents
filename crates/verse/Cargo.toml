@@ -22,6 +22,7 @@ coder-ui = { path = "../coder-ui" }
 rust-native = { path = "../rust-native" }
 physics = { path = "../physics" }
 verse-lagrange = { path = "../verse-lagrange" }
+verse-wow = { path = "../verse-wow" }
 verse-ruins = { path = "../verse-ruins" }
 glam = "0.30.10"
 # Replays read retained Microcoder runs and Fable 5.1 trajectories with the

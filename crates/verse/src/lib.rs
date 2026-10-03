@@ -32,6 +32,7 @@ pub mod gym_replay;
 pub mod gym_results;
 pub mod hud;
 pub mod identity;
+pub mod imported;
 pub mod mesh;
 pub mod minimap;
 pub mod mv;

@@ -1619,7 +1619,7 @@ impl Targets {
 
 /// The UI pipeline: screen-space quads sampling the glyph atlas, alpha
 /// blended, drawn last with no depth test.
-fn ui_pipeline(
+pub(crate) fn ui_pipeline(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     format: wgpu::TextureFormat,

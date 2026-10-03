@@ -113,3 +113,5 @@ mod tests {
 }
 
 pub mod assets;
+
+pub mod animation;

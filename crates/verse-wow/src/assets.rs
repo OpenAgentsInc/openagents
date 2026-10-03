@@ -14,6 +14,10 @@ pub struct Vertex {
     pub weights: [f32; 4],
 }
 
+fn white() -> [f32; 3] {
+    [1.0; 3]
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Surface {
     pub vertices: Vec<Vertex>,
@@ -22,6 +26,8 @@ pub struct Surface {
     /// 0 opaque, 1 cutout, 2 alpha blend, 3 additive.
     pub blend: u8,
     pub emissive: bool,
+    #[serde(default = "white")]
+    pub tint: [f32; 3],
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

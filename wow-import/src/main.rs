@@ -121,12 +121,18 @@ impl Importer {
                     _ => 2,
                 }
             };
+            let tint = sub
+                .rgb_anim
+                .as_ref()
+                .or_else(|| sub.rgb_seq.as_ref().and_then(|seq| seq.seq(None)))
+                .map_or([1.0; 3], |rgb| rgb.sample(0.0));
             surfaces.push(Surface {
                 vertices,
                 indices: sub.indices,
                 texture,
                 blend,
                 emissive: sub.emissive,
+                tint,
             });
         }
         let (bones, clips) = if path.ends_with(".m2") {
