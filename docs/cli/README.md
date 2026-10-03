@@ -199,7 +199,7 @@ phone.
 
 `session` is the other end of `openagents pair`: it redeems a `coder-pair:`
 invitation with the `--as` profile key, keeps the public connection code
-under `~/.openagents/session/` (`OPENAGENTS_SESSION_HOME` or `--store PATH`
+under `~/.openagents/session-observer/` (`OPENAGENTS_SESSION_HOME` or `--store PATH`
 overrides it), and reads the retained Codex and Claude chats the computer
 disclosed, through `coder-connect`'s history-observer client. The
 `coder-connect` binary keeps working as before; it is the host side.
@@ -214,6 +214,14 @@ openagents session steer CHAT "prefer the smaller change"  # refused: exit 1
 openagents session interrupt CHAT                          # refused: exit 1
 openagents session forget GRANT                            # drop the saved connection; the host still holds the grant
 ```
+
+The command migrates an existing `~/.openagents/session/` observer directory
+to the new path on first use. The older Coder Terminal GitHub sign-in flow
+writes its login token to `~/.openagents/session`, as recorded in the
+[terminal scope](../terminal/scope.md). That file stays untouched. Explicit store overrides are not migrated. If both
+directories exist, the command asks you to consolidate them without overwriting
+either store. With no saved connections, run `openagents pair` on the other
+computer, then run `openagents session pair INVITATION` here.
 
 `CHAT` is the chat ID that `list` prints, or its source ID. `read` pages
 through the transcript until it has `--limit` records (default 200) or the

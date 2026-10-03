@@ -44,7 +44,7 @@ Every command also takes --store PATH to use another connection directory.
 SESSION is a chat ID from `list`, or its source ID. --as names the profile
 key that redeemed the invitation (default: default). --timeout defaults to
 20 seconds for a request and bounds the whole command. Connections live in
-~/.openagents/session/ (OPENAGENTS_SESSION_HOME overrides the directory).";
+~/.openagents/session-observer/ (OPENAGENTS_SESSION_HOME overrides the directory).";
 
 /// What each command above does and where the phone runs it, for the
 /// chat router's command tree (`coder::cli_route::tree`).
@@ -93,6 +93,9 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
             let Some(invitation) = args.positional().first() else {
                 return output.usage("session", "an invitation is required", USAGE);
             };
+            if let Err(message) = store.prepare() {
+                return output.fail("session", &message);
+            }
             let identity = match crate::relay::identity_for(args.option("as")) {
                 Ok(identity) => identity,
                 Err(message) => return output.fail("session", &message),
@@ -180,7 +183,11 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
                             .collect()
                     })
                     .unwrap_or_default();
-                crate::out::table(&rows)
+                if rows.is_empty() {
+                    "No saved connections. Run `openagents pair` on the other computer, then run `openagents session pair INVITATION` here.".to_owned()
+                } else {
+                    crate::out::table(&rows)
+                }
             });
             0
         }
@@ -336,13 +343,15 @@ fn control_refusal(connections: &[ConnectionCode], command: &str, session: &str)
 }
 
 /// Where connections are kept: `--store`, `OPENAGENTS_SESSION_HOME`, or
-/// `~/.openagents/session`.
+/// `~/.openagents/session-observer`.
 struct Store {
     dir: PathBuf,
+    legacy: Option<PathBuf>,
 }
 
 impl Store {
     fn new(flag: Option<&str>) -> Self {
+        let overridden = flag.is_some() || std::env::var_os("OPENAGENTS_SESSION_HOME").is_some();
         let dir = flag
             .map(PathBuf::from)
             .or_else(|| std::env::var_os("OPENAGENTS_SESSION_HOME").map(PathBuf::from))
@@ -350,9 +359,37 @@ impl Store {
                 std::env::var_os("HOME")
                     .map_or_else(|| PathBuf::from("."), PathBuf::from)
                     .join(".openagents")
-                    .join("session")
+                    .join("session-observer")
             });
-        Self { dir }
+        let legacy = (!overridden).then(|| dir.with_file_name("session"));
+        Self { dir, legacy }
+    }
+
+    /// Move only the old observer directory, never the historical login file.
+    fn prepare(&self) -> Result<(), String> {
+        check_directory(&self.dir)?;
+        if let Some(legacy) = &self.legacy {
+            match std::fs::metadata(legacy) {
+                Ok(metadata) if metadata.is_dir() => {
+                    if self.dir.exists() {
+                        return Err(format!(
+                            "both legacy observer directory {} and {} exist; move the saved connections into {} and rename the legacy directory before retrying; neither store was changed",
+                            legacy.display(),
+                            self.dir.display(),
+                            self.connections_dir().display()
+                        ));
+                    }
+                    std::fs::rename(legacy, &self.dir).map_err(|error| format!(
+                        "cannot migrate observer directory {} to {}: {error}; neither store was overwritten",
+                        legacy.display(), self.dir.display()
+                    ))?;
+                }
+                Ok(_) => {} // The old login command owns a file at this path.
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(format!("cannot inspect {}: {error}", legacy.display())),
+            }
+        }
+        check_directory(&self.connections_dir())
     }
 
     fn connections_dir(&self) -> PathBuf {
@@ -364,6 +401,7 @@ impl Store {
     }
 
     fn save(&self, code: &ConnectionCode) -> Result<(), String> {
+        self.prepare()?;
         let dir = self.connections_dir();
         create_private_dir(&dir)?;
         let text = serde_json::to_vec(code).map_err(|error| error.to_string())?;
@@ -371,6 +409,7 @@ impl Store {
     }
 
     fn forget(&self, grant: &str) -> Result<(), String> {
+        self.prepare()?;
         let path = self.path(grant);
         std::fs::remove_file(&path)
             .map_err(|error| format!("cannot remove {}: {error}", path.display()))
@@ -378,6 +417,7 @@ impl Store {
 
     /// Every saved connection, narrowed by `--host` and `--relay`.
     fn load_all(&self, args: &Args) -> Result<Vec<ConnectionCode>, String> {
+        self.prepare()?;
         let dir = self.connections_dir();
         let entries = match std::fs::read_dir(&dir) {
             Ok(entries) => entries,
@@ -426,6 +466,18 @@ impl Store {
             clients.push(client);
         }
         Ok(clients)
+    }
+}
+
+fn check_directory(path: &Path) -> Result<(), String> {
+    match std::fs::metadata(path) {
+        Ok(metadata) if !metadata.is_dir() => Err(format!(
+            "{} is a file, but the session observer store requires a directory. The historical OpenAgents login command stored its token at ~/.openagents/session; do not delete that token. Choose another directory with --store PATH or OPENAGENTS_SESSION_HOME, or move the conflicting file before retrying.",
+            path.display()
+        )),
+        Ok(_) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!("cannot inspect {}: {error}", path.display())),
     }
 }
 
