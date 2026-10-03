@@ -10531,7 +10531,7 @@
               "advertise"
             ],
             "usage": [
-              "advertise --slug SLUG --merchant ID [--url PUBLIC_URL] [--front URL] [--local] [--binding http:1|mcp:1|nostr:openagents:1] [--relays URL]... [--summary TEXT] [--dry-run] [--as PROFILE] [--relay URL]"
+              "advertise --slug SLUG --merchant ID [--url PUBLIC_URL] [--front URL] [--local] [--binding http:1|mcp:1|nostr:openagents:1] [--relays URL]... [--summary TEXT] [--test] [--dev] [--dry-run] [--as PROFILE] [--relay URL]"
             ],
             "forms": [
               {
@@ -10599,6 +10599,16 @@
                   },
                   {
                     "kind": "option",
+                    "name": "test",
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "dev",
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
                     "name": "dry-run",
                     "optional": true
                   },
@@ -10619,7 +10629,7 @@
                 ]
               }
             ],
-            "summary": "Publish (or print) the kind 30180 adapter definition that advertises a paid resource (NIP-CAP feature oa-x402-v1) over one binding. http:1 (default) advertises the resource SLUG this key published (`publish`) at the pay front's URL with the front's payTo; --local advertises PUBLIC_URL paid to this computer's wallet instead (self-hosting). mcp:1 advertises the MCP server URI PUBLIC_URL, and nostr:openagents:1 this key on --relays (default: --relay) with recovery native-record-v1, both paid to this wallet.",
+            "summary": "Publish (or print) the kind 30180 adapter definition that advertises a paid resource (NIP-CAP feature oa-x402-v1) over one binding. http:1 (default) advertises the resource SLUG this key published (`publish`) at the pay front's URL with the front's payTo; --local advertises PUBLIC_URL paid to this computer's wallet instead (self-hosting). mcp:1 advertises the MCP server URI PUBLIC_URL, and nostr:openagents:1 this key on --relays (default: --relay) with recovery native-record-v1, both paid to this wallet. --test and --dev mark demo listings, hidden from `cap list` unless --all.",
             "effect": "publishes",
             "runs_on": "screen",
             "screen": "wallet"
@@ -12063,6 +12073,24 @@
           "name": "relays",
           "value": "URL",
           "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "test",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "dev",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "all",
           "optional": true,
           "repeated": true
         },
@@ -15162,7 +15190,7 @@
               "list"
             ],
             "usage": [
-              "list [--author PUBKEY] [--profile PROFILE] [--limit N]"
+              "list [--author PUBKEY] [--profile PROFILE] [--limit N] [--all]"
             ],
             "forms": [
               {
@@ -15191,11 +15219,16 @@
                     "value": "N",
                     "open": true,
                     "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "all",
+                    "optional": true
                   }
                 ]
               }
             ],
-            "summary": "List published capability heads (kind 30180, oa:cap:v1), newest first, one row per signer and slug.",
+            "summary": "List published capability heads (kind 30180, oa:cap:v1), newest first, one row per signer and slug. Hide test/dev listings and publishers without signed presence within 7 days. --all includes them with old/test.",
             "effect": "read_only",
             "runs_on": "connected_computer"
           }
@@ -15271,6 +15304,12 @@
           "name": "limit",
           "value": "N",
           "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "all",
           "optional": true,
           "repeated": true
         },

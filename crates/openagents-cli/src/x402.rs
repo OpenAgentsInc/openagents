@@ -147,7 +147,7 @@ pub(crate) const USAGE: &str = "usage: openagents x402 COMMAND [OPTIONS]
                           execute_until_passed) and publish the status.
   advertise --slug SLUG --merchant ID [--url PUBLIC_URL] [--front URL]
         [--local] [--binding http:1|mcp:1|nostr:openagents:1] [--relays URL]...
-        [--summary TEXT] [--dry-run] [--as PROFILE] [--relay URL]
+        [--summary TEXT] [--test] [--dev] [--dry-run] [--as PROFILE] [--relay URL]
                           Publish (or print) the kind 30180 adapter definition
                           that advertises a paid resource (NIP-CAP feature
                           oa-x402-v1) over one binding. http:1 (default)
@@ -158,7 +158,8 @@ pub(crate) const USAGE: &str = "usage: openagents x402 COMMAND [OPTIONS]
                           advertises the MCP server URI PUBLIC_URL, and
                           nostr:openagents:1 this key on --relays (default:
                           --relay) with recovery native-record-v1, both paid
-                          to this wallet.
+                          to this wallet. --test and --dev mark demo listings,
+                          hidden from `cap list` unless --all.
   policy [show]           Print the buyer policy and where it lives.
   policy set [--max-msat N|-] [--max-fee-msat F|-] [--daily-cap-msat N|-]
         [--provider NODE_ID | --cap PUBKEY:SLUG]
@@ -210,7 +211,7 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::screen("ledger", Effect::ReadOnly, "wallet"),
 ];
 
-const SWITCHES: &[&str] = &["show-proof", "dry-run", "local"];
+const SWITCHES: &[&str] = &["show-proof", "dry-run", "local", "test", "dev"];
 
 /// The pay front `publish` and `advertise` talk to by default.
 pub(crate) fn pay_front(flag: Option<&str>) -> String {
@@ -1728,6 +1729,14 @@ fn paid_definition(ad: &Advertisement<'_>) -> Value {
     })
 }
 
+fn listing_tags(args: &Args) -> Vec<nostr::domain::Tag> {
+    ["test", "dev"]
+        .into_iter()
+        .filter(|name| args.switch(name))
+        .map(|name| nostr::domain::Tag::new(vec!["t".into(), format!("oa:{name}")]))
+        .collect()
+}
+
 fn advertise(output: &Output, words: &[String]) -> u8 {
     let args = match Args::parse(words, SWITCHES) {
         Ok(args) => args,
@@ -1848,7 +1857,7 @@ fn advertise(output: &Output, words: &[String]) -> u8 {
         Ok(definition) => definition,
         Err(error) => return output.usage("x402", &format!("definition: {error}"), USAGE),
     };
-    let tags = vec![
+    let mut tags = vec![
         nostr::domain::Tag::new(vec!["d".to_owned(), slug.to_owned()]),
         nostr::domain::Tag::new(vec!["t".to_owned(), nostr::cap::CAP_MARKER.to_owned()]),
         nostr::domain::Tag::new(vec!["t".to_owned(), definition.profile.tag().to_owned()]),
@@ -1857,6 +1866,7 @@ fn advertise(output: &Output, words: &[String]) -> u8 {
             format!("oa:transport:{}", definition.transport),
         ]),
     ];
+    tags.extend(listing_tags(&args));
     let event = signer.sign(
         crate::relay::unix_now(),
         nostr::cap::DISCOVERY_KIND,
@@ -2194,6 +2204,22 @@ fn resolve_descriptor(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn advertisement_marks_only_explicit_test_and_dev_flags() {
+        for (words, expected) in [
+            (vec![], vec![]),
+            (vec!["--test"], vec!["oa:test"]),
+            (vec!["--dev"], vec!["oa:dev"]),
+            (vec!["--test", "--dev"], vec!["oa:test", "oa:dev"]),
+        ] {
+            let words: Vec<String> = words.into_iter().map(str::to_owned).collect();
+            let args = Args::parse(&words, SWITCHES).unwrap();
+            let tags = listing_tags(&args);
+            let values: Vec<&str> = tags.iter().map(|t| t.as_slice()[1].as_str()).collect();
+            assert_eq!(values, expected);
+        }
+    }
 
     #[test]
     fn wallet_fee_defaults_use_price_not_spending_ceiling() {

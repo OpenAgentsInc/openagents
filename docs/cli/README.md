@@ -869,7 +869,7 @@ event id without publishing. A signet or regtest wallet is refused because
 those networks have no x402 network id.
 
 ```sh
-openagents x402 advertise --slug echo --url https://host.example/echo \
+openagents x402 advertise --test --slug echo --url https://host.example/echo \
     --merchant host.example --summary "echo the body" --json
 openagents cap describe PUBKEY:echo        # shows x402 bindings and receivers
 echo hi | openagents x402 fetch https://host.example/echo --method POST --body - \
@@ -934,7 +934,7 @@ over a NIP-42 authenticated connection. The wire records and the ledger
 rules live in `crates/x402::native`.
 
 ```sh
-openagents x402 advertise --slug echo --binding nostr:openagents:1 \
+openagents x402 advertise --test --slug echo --binding nostr:openagents:1 \
     --merchant demo --summary "echo bytes over Nostr" --json
 openagents x402 native-serve --slug echo --msat 1000 --seconds 600 --json -- cat
 echo -n hi | openagents x402 buy PROVIDER_PUBKEY --slug echo --input - \
@@ -1122,6 +1122,11 @@ openagents relay publish event.json      # a file, inline JSON, or - for stdin
 `relay` answers NIP-42 challenges with the `--as` profile key.
 
 ## Discovery (NIP-CAP, NIP-PRG, NIP-EXT)
+
+By default, `cap list` hides listings tagged `oa:test` or `oa:dev` and
+publishers without validated signed NIP-MV avatar or agent state within the
+past 7 days. `--all` includes them with an `old/test` column. Mark demo
+advertisements with `x402 advertise --test` or `--dev`.
 
 ```sh
 openagents cap list --profile executor --limit 20
