@@ -280,8 +280,7 @@ fn openai_key() -> Result<String, String> {
 pub fn key_from_file(path: &std::path::Path) -> Result<String, String> {
     let text = std::fs::read_to_string(path).map_err(|_| {
         format!(
-            "no OpenAI key: set {OPENAI_KEY_VAR} or put api_key in {}",
-            path.display()
+            "no OpenAI key: set {OPENAI_KEY_VAR}; or run openagents settings provider-key set openrouter"
         )
     })?;
     #[cfg(unix)]

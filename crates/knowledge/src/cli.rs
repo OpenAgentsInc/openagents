@@ -83,7 +83,7 @@ Sharing entries (microcoder only):
 
 Options:
   --dir DIR         the knowledge directory (default OPENAGENTS_KNOWLEDGE, or
-                    knowledge/ in the checkout this binary was built from)
+                    ~/.openagents/knowledge/entries, seeded with bundled entries)
   --candidates      include candidate entries, not only admitted ones
   --trust MODE      remote entries search includes: own, listed, or all
                     (default the mode in ~/.openagents/knowledge/trust.json, else own)
@@ -103,8 +103,9 @@ Options:
   --runs DIR       run records (default ~/.openagents/microcoder/runs)
   --evidence-dir DIR  evidence reports (default ~/.openagents/knowledge/evidence)
 
-Embeddings use OpenAI's text-embedding-3-small directly when OPENAI_API_KEY or
-~/.openagents/openai.json (mode 600) holds a key, else through OpenRouter; without
+Embeddings use OpenAI's text-embedding-3-small directly when OPENAI_API_KEY is
+set, else through OpenRouter. Run openagents settings provider-key set openrouter
+to configure a key; without
 either, search and the harvests' near-duplicate check rank by words and say so.
 Each model's vectors are cached apart, and a query is compared only with entries
 the same model embedded.";
@@ -113,6 +114,8 @@ the same model embedded.";
 #[derive(Debug, Default)]
 pub struct Options {
     pub dir: PathBuf,
+    /// Whether entries came from the bundled cache rather than an override.
+    pub bundled: bool,
     pub candidates: bool,
     pub limit: usize,
     pub corpora: Vec<PathBuf>,
@@ -195,6 +198,15 @@ impl Options {
     }
 }
 
+/// Describes the local entry source for text and structured output.
+pub fn source(o: &Options) -> String {
+    if o.bundled {
+        format!("bundled entries and local changes in {}", o.dir.display())
+    } else {
+        format!("local entries in {}", o.dir.display())
+    }
+}
+
 /// Parses `kb`'s arguments after the command.
 ///
 /// # Errors
@@ -203,6 +215,7 @@ impl Options {
 pub fn parse(args: &[String]) -> Result<Options, String> {
     let mut o = Options {
         dir: default_dir(),
+        bundled: std::env::var_os(crate::DIR_VAR).is_none_or(|value| value.is_empty()),
         limit: 10,
         ..Options::default()
     };
@@ -210,7 +223,10 @@ pub fn parse(args: &[String]) -> Result<Options, String> {
     while let Some(arg) = iter.next() {
         let mut value = || iter.next().cloned().ok_or(format!("{arg} needs a value"));
         match arg.as_str() {
-            "--dir" => o.dir = PathBuf::from(value()?),
+            "--dir" => {
+                o.dir = PathBuf::from(value()?);
+                o.bundled = false;
+            }
             "--candidates" => o.candidates = true,
             "--limit" => {
                 let text = value()?;
@@ -265,6 +281,9 @@ pub fn parse(args: &[String]) -> Result<Options, String> {
             }
             word => o.words.push(word.to_string()),
         }
+    }
+    if o.bundled {
+        crate::seed_bundled(&o.dir)?;
     }
     Ok(o)
 }
@@ -336,7 +355,7 @@ async fn search_json(o: &Options) -> Result<Value, (u8, String)> {
     Ok(
         json!({ "query": query, "hits": hits, "lexical_only": search.lexical_only,
         "usd": search.usd, "provider": retriever.embedder().map(|e| e.provider.to_string()),
-        "local": loaded.local, "remote": loaded.remote }),
+        "local": loaded.local, "remote": loaded.remote, "source": source(o), "dir": o.dir }),
     )
 }
 
@@ -348,7 +367,9 @@ fn show_json(o: &Options) -> Result<Value, (u8, String)> {
     let (_, document, entry) = read_entry(&o.dir, id).map_err(|error| (1, error))?;
     let pending = pending(&o.dir, id, entry.version)
         .map(|(path, next)| json!({ "path": path, "version": next.version }));
-    Ok(json!({ "entry": entry, "document": document, "pending": pending }))
+    Ok(
+        json!({ "entry": entry, "document": document, "pending": pending, "source": source(o), "dir": o.dir }),
+    )
 }
 
 fn withdraw_json(o: &Options) -> Result<Value, (u8, String)> {
@@ -360,7 +381,7 @@ fn withdraw_json(o: &Options) -> Result<Value, (u8, String)> {
     let entry = withdraw_entry(o).map_err(|error| (1, error))?;
     Ok(
         json!({ "id": id, "version": entry.version, "status": entry.status,
-        "previous_status": before.status, "digest": entry.digest }),
+        "previous_status": before.status, "digest": entry.digest, "source": source(o), "dir": o.dir }),
     )
 }
 
@@ -419,6 +440,7 @@ async fn search(o: &Options) -> Result<u8, String> {
         }
     };
     let search = retriever.search(&query, o.limit).await;
+    println!("entries: {}", source(o));
     match &search.lexical_only {
         Some(why) => println!("ranked by words alone: {why}"),
         None => println!(
@@ -472,7 +494,12 @@ fn show(o: &Options) -> Result<u8, String> {
     let id = one_id(o, "show")?;
     match read_entry(&o.dir, id) {
         Ok((_, text, entry)) => {
-            println!("{}\n{}", entry.digest, text.trim_end());
+            println!(
+                "entries: {}\n{}\n{}",
+                source(o),
+                entry.digest,
+                text.trim_end()
+            );
             if let Some((path, next)) = pending(&o.dir, id, entry.version) {
                 println!(
                     "\nVersion {} is waiting as a candidate in {}; kb admit promotes it.",

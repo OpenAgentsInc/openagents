@@ -516,7 +516,7 @@ impl fmt::Display for Error {
         match self {
             Error::NoKey => write!(
                 f,
-                "no OpenRouter key: set {KEY_VAR} or put api_key in ~/.openagents/openrouter.json"
+                "no OpenRouter key: set {KEY_VAR} or run openagents settings provider-key set openrouter"
             ),
             Error::Client(why) => write!(f, "the HTTP client couldn't start: {why}"),
             Error::Api {

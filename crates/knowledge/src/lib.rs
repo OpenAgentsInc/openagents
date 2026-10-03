@@ -152,17 +152,39 @@ impl Base {
 /// The variable that names the knowledge directory.
 pub const DIR_VAR: &str = "OPENAGENTS_KNOWLEDGE";
 
-/// The knowledge directory: `OPENAGENTS_KNOWLEDGE`, or else `knowledge/`
-/// in the checkout this binary was built from.
+include!(concat!(env!("OUT_DIR"), "/bundled.rs"));
+
+/// The knowledge directory: `OPENAGENTS_KNOWLEDGE`, or the user's cache.
 #[must_use]
 pub fn default_dir() -> PathBuf {
     match std::env::var_os(DIR_VAR) {
         Some(dir) if !dir.is_empty() => PathBuf::from(dir),
-        _ => {
-            let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../knowledge");
-            dir.canonicalize().unwrap_or(dir)
+        _ => std::env::var_os("HOME")
+            .map(|home| PathBuf::from(home).join(".openagents/knowledge/entries"))
+            .unwrap_or_else(|| PathBuf::from(".openagents/knowledge/entries")),
+    }
+}
+
+/// Copies bundled entries to a writable cache without replacing local edits
+/// or withdrawals. Explicit directories are never seeded.
+pub fn seed_bundled(dir: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(dir).map_err(|e| format!("can't create {}: {e}", dir.display()))?;
+    for (name, text) in BUNDLED {
+        use std::io::Write;
+        let path = dir.join(name);
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+        {
+            Ok(mut file) => file
+                .write_all(text.as_bytes())
+                .map_err(|e| format!("can't write {}: {e}", path.display()))?,
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(e) => return Err(format!("can't write {}: {e}", path.display())),
         }
     }
+    Ok(())
 }
 
 /// `~/.openagents/knowledge/embeddings.json`, where entry embeddings are

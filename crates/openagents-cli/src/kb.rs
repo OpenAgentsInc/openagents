@@ -18,6 +18,9 @@ pub(crate) const USAGE: &str = "usage: openagents kb COMMAND [OPTIONS]
         Fetch, verify, and cache entries from the relay.
   head ID --relay URL --timeout SECONDS [--author KEY] [--key-file FILE]
         Read the latest verified head for an author and entry.
+Default entries: bundled entries and local changes in ~/.openagents/knowledge/entries.
+Override with --dir DIR or OPENAGENTS_KNOWLEDGE.
+For embeddings, run openagents settings provider-key set openrouter.
 --json returns one JSON document; errors return 1, and invalid usage returns 64.";
 
 /// What each command above does and where the phone runs it, for the
@@ -58,7 +61,10 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
 fn render(command: &str, value: &Value) -> String {
     match command {
         "search" => {
-            let mut lines = Vec::new();
+            let mut lines = vec![format!(
+                "entries: {}",
+                value["source"].as_str().unwrap_or("unknown")
+            )];
             if let Some(reason) = value["lexical_only"].as_str() {
                 lines.push(format!("ranked by words alone: {reason}"));
             }
@@ -79,7 +85,8 @@ fn render(command: &str, value: &Value) -> String {
             lines.join("\n")
         }
         "show" => format!(
-            "{}\n{}",
+            "entries: {}\n{}\n{}",
+            value["source"].as_str().unwrap_or("unknown"),
             value["entry"]["digest"].as_str().unwrap_or(""),
             value["document"].as_str().unwrap_or("")
         ),
