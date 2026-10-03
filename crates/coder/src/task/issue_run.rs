@@ -1611,6 +1611,22 @@ impl Run<'_> {
                 self.issue.number,
                 &self.checked.problems,
             );
+            // The turn's own checks may still run on the host; the task
+            // continues only once they end (#10273).
+            let store = self.work.store.clone();
+            let task = self.record.task.clone();
+            let stopping = || stop_requested(&store, &task);
+            match local::await_checks(&store, &task, &stopping, POLL) {
+                Ok(true) => {}
+                Ok(false) => return self.stopped("Stopped by the person who started it."),
+                Err(why) => {
+                    let problems = self.checked.problems.clone();
+                    return self.failed(
+                        &format!("The fix turn could not start: {why}"),
+                        Some(&problems),
+                    );
+                }
+            }
             match self.work.local.answer(&self.record.task, &request) {
                 Ok(_) => self.turn += 1,
                 Err(why) => {

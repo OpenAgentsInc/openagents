@@ -1243,6 +1243,13 @@ impl Local {
         if !matches!(current.status, Status::Finished | Status::Cancelled) {
             return Err("Coder is still working on this task; wait for it to ask.".into());
         }
+        // Its checks run after the turn ends; the task continues once they
+        // end (#10273).
+        if current.checks == super::Checks::Running {
+            return Err(
+                "Coder is still checking this task's last turn; wait for the checks to end.".into(),
+            );
+        }
         let requested = record.requested.as_deref().and_then(Provider::from_config);
         let (policy, asked) =
             self.shaped(self.policy(&record.project)?, requested, record.shape)?;
@@ -2097,6 +2104,45 @@ impl Follow {
             self.ended = Some(state);
             return Ok((out, state));
         }
+    }
+}
+
+/// Waits until the host's checks of `task`'s last turn end (#10273).
+///
+/// A turn's owner records its result, then runs the checks the turn's
+/// grant froze; while they run the task is finished but cannot continue
+/// (`Action::Continue` refuses a task whose checks run). A caller that
+/// starts the next turn on its own schedule, such as an issue flow's fix
+/// turn after its own checks fail, waits here first. A check whose owner
+/// is gone is settled as unavailable, so this never waits on a dead
+/// process.
+///
+/// Returns `Ok(true)` once no check runs, `Ok(false)` as soon as
+/// `stopping` says so.
+///
+/// # Errors
+/// The task cannot be read, or its store stays busy past
+/// [`super::READER_BUSY_WAIT`].
+pub fn await_checks(
+    store: &Path,
+    task: &str,
+    stopping: &dyn Fn() -> bool,
+    poll: Duration,
+) -> Result<bool, String> {
+    let mut reading = super::Reading::default();
+    loop {
+        if stopping() {
+            return Ok(false);
+        }
+        if let Ok(mut inbox) = Store::open(store) {
+            let _ = inbox.settle(task);
+        }
+        match reading.show(store, task) {
+            Ok(Some(current)) if current.checks != super::Checks::Running => return Ok(true),
+            Ok(_) => {}
+            Err(error) => return Err(format!("Coder's task could not be read: {error}")),
+        }
+        std::thread::sleep(poll);
     }
 }
 
