@@ -466,11 +466,15 @@ impl Local {
     /// Make the spare worktree for the project `dir` is in, in the
     /// background, unless one is ready or being made: what a terminal or
     /// chat does when it opens in a project, so its first start is quick.
+    /// Nothing is made when no run could start here (no agent signed in):
+    /// a worktree nobody can use only takes space (#10314).
     pub fn warm(&self, dir: &Path) {
         if !self.spares {
             return;
         }
-        if let Ok(checkout) = self.project(dir) {
+        if let Ok(checkout) = self.project(dir)
+            && self.ready()
+        {
             spare::prepare_in_background(
                 self.worktrees.clone(),
                 checkout.top,
@@ -1553,36 +1557,22 @@ fn names(policy: &Policy) -> Vec<Provider> {
 }
 
 /// Why no admitted provider can start: none of `providers` is signed in.
+/// The same sentence the chat shows ([`coder_events::not_signed_in`]),
+/// except when one agent is left because every other is turned off.
 fn unconnected(providers: &[Provider]) -> String {
-    let how = |provider: Provider| match provider {
-        Provider::Codex => "`codex login`",
-        Provider::Claude => "run `claude` and log in",
-        Provider::Devin => "`devin auth login`",
-        Provider::OpenCode => "install `opencode` and run `opencode auth login`",
-        Provider::Grok => "run `grok` and log in, or set XAI_API_KEY",
-        Provider::Vertex => "turn on the OpenAgents cloud",
-    };
     match providers {
-        [Provider::Codex, Provider::Claude] | [Provider::Claude, Provider::Codex] => {
-            "Neither Codex nor Claude Code is signed in on this computer. Sign in to one \
-             (`codex login`, or run `claude` and log in) and try again."
-                .into()
-        }
         [one] => format!(
             "{} is not signed in on this computer, and every other coding agent is turned off \
              in your settings. Sign in ({}) or turn another agent back on \
              (`openagents settings enable AGENT`).",
             settings::provider_name(*one),
-            how(*one)
+            coder_events::sign_in_step(one.as_str())
         ),
-        many => format!(
-            "None of the coding agents Coder can use ({}) is signed in on this computer. \
-             Sign in to one ({}) and try again.",
-            many.iter()
-                .map(|p| settings::provider_name(*p))
-                .collect::<Vec<_>>()
-                .join(", "),
-            many.iter().map(|p| how(*p)).collect::<Vec<_>>().join("; ")
+        many => coder_events::not_signed_in(
+            &many
+                .iter()
+                .map(|p| p.as_str().to_owned())
+                .collect::<Vec<_>>(),
         ),
     }
 }
@@ -2964,8 +2954,9 @@ mod tests {
         let why = none.choose(&policy).unwrap_err();
         assert!(
             why.contains(
-                "None of the coding agents Coder can use (Codex, Claude Code, Grok Build, Devin) \
-                 is signed in"
+                "No coding agent Coder can use is signed in on this computer. Sign in to one, \
+                 then ask again: Codex (run `codex login`); Claude Code (run `claude` and log \
+                 in); Grok Build"
             ),
             "{why}"
         );
@@ -3155,7 +3146,7 @@ mod tests {
         assert!(
             none.choose(&policy)
                 .unwrap_err()
-                .contains("None of the coding agents Coder can use (OpenCode, Devin, Codex")
+                .contains("then ask again: OpenCode (install `opencode`")
         );
     }
 
@@ -3467,8 +3458,9 @@ mod tests {
         );
         assert_eq!(
             none.predict(None).unwrap().text(),
-            "None of Codex, Claude Code, Grok Build, Devin is signed in on this computer. \
-             Sign in to one to run Coder here."
+            "No coding agent Coder can use is signed in on this computer. Sign in to one, then \
+             ask again: Codex (run `codex login`); Claude Code (run `claude` and log in); Grok \
+             Build (run `grok` and log in, or set XAI_API_KEY); Devin (run `devin auth login`)."
         );
     }
 

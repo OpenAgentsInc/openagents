@@ -6737,7 +6737,7 @@ mod tests {
         )
         .await;
         let result = &frames.last().unwrap().1;
-        assert_eq!(result["answer"], "dispatch.no_computer.here@2");
+        assert_eq!(result["answer"], "dispatch.no_computer.here@3");
         assert!(
             !result["text"].as_str().unwrap().contains("Connect one"),
             "{result}"

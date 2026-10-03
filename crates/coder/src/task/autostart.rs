@@ -2485,7 +2485,9 @@ pub fn default_controller() -> std::result::Result<PathBuf, String> {
         .into_iter()
         .find(|path| path.is_file())
         .ok_or_else(|| {
-            "no microcoder beside coder or in ~/.openagents/bin; pass --controller".into()
+            "Coder's engine, microcoder, is missing: it ships beside openagents (or in \
+             ~/.openagents/bin). Reinstall OpenAgents to put it back."
+                .into()
         })
 }
 

@@ -892,8 +892,8 @@ mod tests {
             ),
             (
                 Runner::NotSignedIn { providers: vec![] },
-                "Neither Codex nor Claude Code is signed in on this computer. \
-                 Sign in to one to run Coder here.",
+                "No coding agent is signed in on this computer. Sign in to one, then ask again: \
+                 Codex (run `codex login`); Claude Code (run `claude` and log in).",
             ),
         ];
         for (runner, words) in states {

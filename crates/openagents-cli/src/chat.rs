@@ -98,8 +98,9 @@ pub(crate) const USAGE: &str = "usage: openagents chat COMMAND [OPTIONS]
         events stream here, and the sandbox's machine time and cost go in
         a comment on the issue. The sandbox stops when its run ends and is
         deleted once the issue landed. --engine-logins api-keys (default:
-        Grok Build's XAI_API_KEY) or boat (subscriptions connected on
-        Boat's dashboard). Needs BOAT_API_KEY or Secret Manager
+        Codex with an OpenAI key when OA_CODER_OPENAI_API_KEY or Secret
+        Manager coder-openai-api-key has one, and Grok Build's XAI_API_KEY)
+        or boat (subscriptions connected on Boat's dashboard). Needs BOAT_API_KEY or Secret Manager
         boat-api-key, and a GitHub token (OA_BOAT_GH_TOKEN, Secret Manager
         coder-pool-git-token, or `gh auth token`); docs/cloud/boat-chat-work.md.
         --on gce runs each issue on the GCE pool this computer granted with
@@ -108,8 +109,8 @@ pub(crate) const USAGE: &str = "usage: openagents chat COMMAND [OPTIONS]
         runs and lands on a pool host, its events stream here, and its wall
         time and estimated cost go in a comment on the issue. Hosts delete
         themselves when idle. Without a live grant it refuses; it never
-        runs elsewhere. Engine logins are API keys (Grok Build's
-        XAI_API_KEY), as for boat; docs/cloud/gce-pool.md.
+        runs elsewhere. Engine logins are API keys (Codex's OpenAI key and
+        Grok Build's XAI_API_KEY), as for boat; docs/cloud/gce-pool.md.
 Every command also takes --scratch, --local, and --socket PATH. When this
 computer's host runs (the OpenAgents app, or `openagents host serve
 --control`), threads live in the host and the desktop app shows them;
@@ -583,8 +584,15 @@ impl<'a> Printer<'a> {
                     output,
                     json!({"event": "coder", "thread": thread, "accepted": accepted, "message": message, "task": task}),
                 );
-                // A start's own line (`coder_started`) says who works.
-                if !output.json() && !quiet {
+                // A start's own line (`coder_started`) says who works; a
+                // refusal the runner line already said is not said twice.
+                let said = !accepted
+                    && SAID
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .as_deref()
+                        == Some(message.as_str());
+                if !output.json() && !quiet && !said {
                     eprintln!("{message}");
                 }
             }
@@ -808,10 +816,13 @@ fn accept(id: &str, offer: &Offer) -> Option<String> {
 }
 
 /// The router's observations, on stderr so stdout stays the reply.
+/// The runner line [`notes`] last showed: a start refused for the same
+/// reason says nothing more (#10314).
+static SAID: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+/// Which product answer replied is the router's own bookkeeping: `--json`
+/// and the thread's export carry it, not the person's screen (#10315).
 fn notes(id: &str, meta: &Meta, computer: bool, running: bool) {
-    if let Some(answer) = &meta.answer {
-        eprintln!("answered from product knowledge: {answer}");
-    }
     let mut coder = computer;
     for offer in &meta.offers {
         match offer {
@@ -844,7 +855,11 @@ fn notes(id: &str, meta: &Meta, computer: bool, running: bool) {
         }
     }
     if let Some(runner) = &meta.runner {
-        eprintln!("coder: {}", runner.text());
+        let text = runner.text();
+        eprintln!("coder: {text}");
+        *SAID
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(text);
     }
     for followup in &meta.followups {
         eprintln!("suggestion: {}", followup.label);

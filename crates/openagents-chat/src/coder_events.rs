@@ -417,28 +417,7 @@ impl Runner {
                     format!("{}; {who} will do this.", why.join("; "))
                 }
             }
-            Runner::NotSignedIn { providers } => {
-                let names: Vec<String> = providers
-                    .iter()
-                    .map(|p| provider_name(&Value::String(p.clone())))
-                    .collect();
-                match names.as_slice() {
-                    [] => "Neither Codex nor Claude Code is signed in on this computer. \
-                           Sign in to one to run Coder here."
-                        .into(),
-                    [one] => format!(
-                        "{one} is not signed in on this computer. Sign in to it to run Coder here."
-                    ),
-                    [a, b] => format!(
-                        "Neither {a} nor {b} is signed in on this computer. \
-                         Sign in to one to run Coder here."
-                    ),
-                    many => format!(
-                        "None of {} is signed in on this computer. Sign in to one to run Coder here.",
-                        many.join(", ")
-                    ),
-                }
-            }
+            Runner::NotSignedIn { providers } => not_signed_in(providers),
             Runner::NoCapacity { until } => format!(
                 "No coding agent signed in on this computer is available right now{}.",
                 until
@@ -1453,6 +1432,51 @@ fn route(value: &Value) -> String {
     }
 }
 
+/// How a person signs in to `provider`'s coding agent, in words they can
+/// act on.
+#[must_use]
+pub fn sign_in_step(provider: &str) -> &'static str {
+    match provider {
+        "codex" => "run `codex login`",
+        "claude" => "run `claude` and log in",
+        "devin" => "run `devin auth login`",
+        "opencode" => "install `opencode` and run `opencode auth login`",
+        "grok" => "run `grok` and log in, or set XAI_API_KEY",
+        _ => "sign in to it",
+    }
+}
+
+/// Why Coder cannot run here: none of `providers` (the agents Coder may
+/// use, in order) is signed in. One sentence every client shows, with how
+/// to sign in to each (#10314).
+#[must_use]
+pub fn not_signed_in(providers: &[String]) -> String {
+    let named = |provider: &String| {
+        format!(
+            "{} ({})",
+            provider_name(&Value::String(provider.clone())),
+            sign_in_step(provider)
+        )
+    };
+    match providers {
+        [] => format!(
+            "No coding agent is signed in on this computer. Sign in to one, then ask again: {}; {}.",
+            named(&"codex".to_owned()),
+            named(&"claude".to_owned())
+        ),
+        [one] => format!(
+            "{} is not signed in on this computer. Sign in ({}), then ask again.",
+            provider_name(&Value::String(one.clone())),
+            sign_in_step(one)
+        ),
+        many => format!(
+            "No coding agent Coder can use is signed in on this computer. Sign in to one, \
+             then ask again: {}.",
+            many.iter().map(named).collect::<Vec<_>>().join("; ")
+        ),
+    }
+}
+
 /// The provider's product name.
 #[must_use]
 pub fn provider_name(provider: &Value) -> String {
@@ -2453,8 +2477,8 @@ mod tests {
         };
         assert_eq!(
             nobody.text(),
-            "Neither Codex nor Claude Code is signed in on this computer. \
-             Sign in to one to run Coder here."
+            "No coding agent Coder can use is signed in on this computer. Sign in to one, \
+             then ask again: Codex (run `codex login`); Claude Code (run `claude` and log in)."
         );
         assert_eq!(nobody.provider(), None);
         assert_eq!(
@@ -2466,7 +2490,8 @@ mod tests {
                 providers: vec!["claude".into()]
             }
             .text(),
-            "Claude Code is not signed in on this computer. Sign in to it to run Coder here."
+            "Claude Code is not signed in on this computer. Sign in (run `claude` and log in), \
+             then ask again."
         );
         assert_eq!(
             Runner::NoCapacity {

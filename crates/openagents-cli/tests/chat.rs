@@ -537,8 +537,9 @@ async fn settings_change_the_local_run_and_the_defaults_change_nothing() {
     assert_eq!(plain.code, 1, "{}\n{}", plain.stdout, plain.stderr);
     assert!(
         coder_message(&plain).contains(
-            "None of the coding agents Coder can use (Codex, Claude Code, Grok Build, Devin) \
-             is signed in"
+            "No coding agent Coder can use is signed in on this computer. Sign in to one, then \
+             ask again: Codex (run `codex login`); Claude Code (run `claude` and log in); Grok \
+             Build"
         ),
         "{}",
         plain.stdout

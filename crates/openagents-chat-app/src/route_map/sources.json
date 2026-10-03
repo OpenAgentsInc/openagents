@@ -1,8 +1,8 @@
 {
   "schema": "openagents.route-map.sources.v1",
   "generated_by": "crates/coder/tests/route_map_sources.rs",
-  "set": "chat-router-v4@60fb0f55d6ab",
-  "bank": "chat-answers-v1@78eb3422431f",
+  "set": "chat-router-v5@226865d8437b",
+  "bank": "chat-answers-v1@a4b2858f9f09",
   "routes": [
     {
       "id": "meta",
@@ -49,7 +49,7 @@
       "family": "work",
       "description": "The user wants work done on code, a repository, files, or a machine: change, fix, build, test, refactor, review a pull request, look through a repository, find where something is in their code, run a command, or pick up a GitHub issue",
       "what": "The user hands us a task on their own code, repository, files, or machine: change, fix, build, test, deploy, refactor, review a pull request, look through their repository, find something in their code, or pick up a GitHub issue; or asks us to delegate to Coder, hand the conversation to Coder, or run or start Coder now, including a trial or test delegation that names no task; or, when the conversation has the line in parentheses saying Coder's run in this chat ended, asks for more work on it: another change, a fix, a test, undoing or redoing a step, or the same for another place, which Coder takes as its next turn",
-      "not_for": "Asking what Coder's run in this chat did, changed, or ran, why it chose an engine, or for a summary or explanation of it (general); asking whether or how we can help, or whether we can do a kind of work or work on GitHub for them, without handing us the task itself; asking us to connect, sign in to, or link GitHub (meta); questions about how the OpenAgents code works or what one of its files contains (codebase.kb); summarizing, explaining, or comparing our own published essays (product.kb); checking their computers, sessions, XP, or other things an `openagents` command reads (cli); testing one of our Gym plugins on Coder or running its tests, even when the plugin's name reads like a task, such as Explain this error or Dependency check (eval.run); making a new plugin with us, even when they describe in detail what it should do on their computer or in their files, such as one that cleans their disk in the background, or writing a test set for a plugin with us (eval.author), including tests for one of our Gym plugins, which are Coder's plugins, not the user's code; reaching a service, site, account, or device outside their code and computer, such as email, a calendar, or a booking (capability.missing)",
+      "not_for": "Asking what Coder's run in this chat did, changed, or ran, why it chose an engine, or for a summary or explanation of it (general); asking whether or how we can help, or whether we can do a kind of work or work on GitHub for them, without handing us the task itself; asking us to connect, sign in to, or link GitHub (meta); questions about how the OpenAgents code works or what one of its files contains (codebase.kb); summarizing, explaining, or comparing our own published essays (product.kb); checking their computers, sessions, XP, or other things an `openagents` command reads (cli); testing one of our Gym plugins on Coder or running its tests, even when the plugin's name reads like a task, such as Explain this error or Dependency check (eval.run); making a new plugin with us, even when they describe in detail what it should do on their computer or in their files, such as one that cleans their disk in the background, or writing a test set for a plugin with us (eval.author), including tests for one of our Gym plugins, which are Coder's plugins, not the user's code; reaching a service, site, account, or device outside their code and computer, such as email, a calendar, or a booking (capability.missing); something to keep happening on its own from now on, such as keeping disk space free, a cleanup or pull every morning, or telling them whenever a run fails, or a change to such a background rule (standing.rule)",
       "examples": 13
     },
     {
@@ -153,7 +153,7 @@
       "family": "boundaries",
       "description": "The user asks us to do or reach something now that would take a capability we don't have: book, buy, or order something, send or read their email or messages, use their calendar or another account or service, browse or open a site, control a device, or fetch live data; not a question about whether we can, and not work on their code, which Coder does",
       "what": "The user asks us to do or reach something now that would take a capability: book, buy, or order something, send or read their email, texts, or messages, use their calendar, a service, or an account of theirs, browse or open a site, control a device, play or set something on their phone, or fetch live data such as prices, weather, or traffic",
-      "not_for": "Asking whether we can do such a thing, or what we can do (meta); work on their own code, repository, files, or a computer they connected, which Coder does (work.dispatch); an openagents command for their own account or devices (cli); the wallet (wallet); advice or an explanation with nothing to do now (general); making a new capability with us (eval.author); opening, showing, or presenting one of our decks or slide presentations (presentation.open)",
+      "not_for": "Asking whether we can do such a thing, or what we can do (meta); work on their own code, repository, files, or a computer they connected, which Coder does (work.dispatch); an openagents command for their own account or devices (cli); the wallet (wallet); advice or an explanation with nothing to do now (general); making a new capability with us (eval.author); opening, showing, or presenting one of our decks or slide presentations (presentation.open); something to keep happening on its own on their own computer, such as keeping disk space free or telling them whenever a Coder run fails (standing.rule)",
       "examples": 6
     },
     {
@@ -162,6 +162,14 @@
       "description": "The user wants one of our presentations or slide decks opened, shown, or presented now; not a question about what a deck or talk says, and not making a new deck",
       "what": "The user asks us to open, show, pull up, or present a presentation, a slide deck, or a talk's slides now, whether they name one of our decks, describe it, name a deck we may not have, or name none",
       "not_for": "Writing, outlining, or advice about a talk or slides (general); opening a site, another app, or a file, or sharing a screen (capability.missing); slides or files in the user's own repository (work.dispatch); where our deck or slide viewer code lives (codebase.kb); opening our route map, the map of how we route messages (meta)",
+      "examples": 6
+    },
+    {
+      "id": "standing.rule",
+      "family": "work",
+      "description": "The user wants something to keep happening on its own on their computer, over time or whenever something happens (a standing instruction or background rule: keep free disk space above a level, clean up on a schedule, tell them when a Coder run fails, keep a checkout up to date every morning), or changes, pauses, resumes, or removes such a rule; not something to do once now",
+      "what": "The user wants something to keep happening on its own on their computer from now on, over time or whenever something happens, rather than done once now: a standing instruction such as keeping free disk space above a level, cleaning up old build folders or finished worktrees on a schedule, telling them whenever a Coder run fails or ends or the disk runs low, or keeping a checkout up to date every morning; or a change to such a background rule (how much space it keeps, how many build folders it keeps, a folder it must never touch, deleting or only reporting something, when it runs), or pausing, resuming, or removing one",
+      "not_for": "Doing it once now, such as cleaning up the disk or pulling main today, or writing a script or cron job in their code (work.dispatch); a one-time reminder at a time, or anything outside their computer, such as email or a calendar (capability.missing); how background rules work in general (product.kb); listing what rules run or what an openagents command shows (cli)",
       "examples": 6
     }
   ],
@@ -277,7 +285,7 @@
     },
     {
       "id": "meta.capabilities.here",
-      "version": 2,
+      "version": 3,
       "routes": [
         "meta"
       ],
@@ -705,7 +713,7 @@
     },
     {
       "id": "dispatch.no_computer.here",
-      "version": 2,
+      "version": 3,
       "routes": [
         "work.dispatch"
       ],
@@ -1233,6 +1241,36 @@
       ]
     },
     {
+      "id": "standing.rule",
+      "version": 1,
+      "routes": [
+        "standing.rule"
+      ],
+      "chip": null,
+      "place": "any",
+      "records": true,
+      "offer": null,
+      "sources": [
+        "docs/background/2026-10-02-background-processes.md",
+        "crates/background/src/compile.rs"
+      ]
+    },
+    {
+      "id": "standing.elsewhere",
+      "version": 1,
+      "routes": [
+        "standing.rule"
+      ],
+      "chip": null,
+      "place": "any",
+      "records": true,
+      "offer": null,
+      "sources": [
+        "docs/background/2026-10-02-background-processes.md",
+        "crates/openagents-cli/src/background.rs"
+      ]
+    },
+    {
       "id": "refuse.secret_shared",
       "version": 1,
       "routes": [
@@ -1294,9 +1332,9 @@
     }
   ],
   "labeled": {
-    "set": "chat-router-labeled-v4",
+    "set": "chat-router-labeled-v5",
     "path": "crates/coder/fixtures/chat-router/routes-v4.json",
-    "created": "2026-09-30",
+    "created": "2026-10-02",
     "routes": {
       "account": {
         "rows": 27,
@@ -1305,10 +1343,10 @@
         "near_misses": 4
       },
       "capability.missing": {
-        "rows": 44,
+        "rows": 46,
         "held_out": 11,
-        "tune": 33,
-        "near_misses": 4
+        "tune": 35,
+        "near_misses": 6
       },
       "clarify": {
         "rows": 21,
@@ -1317,10 +1355,10 @@
         "near_misses": 0
       },
       "cli": {
-        "rows": 37,
+        "rows": 39,
         "held_out": 10,
-        "tune": 27,
-        "near_misses": 8
+        "tune": 29,
+        "near_misses": 10
       },
       "codebase.kb": {
         "rows": 42,
@@ -1365,10 +1403,10 @@
         "near_misses": 9
       },
       "general": {
-        "rows": 93,
+        "rows": 95,
         "held_out": 20,
-        "tune": 73,
-        "near_misses": 30
+        "tune": 75,
+        "near_misses": 32
       },
       "gym.news": {
         "rows": 27,
@@ -1389,10 +1427,10 @@
         "near_misses": 1
       },
       "product.kb": {
-        "rows": 91,
+        "rows": 93,
         "held_out": 23,
-        "tune": 68,
-        "near_misses": 22
+        "tune": 70,
+        "near_misses": 24
       },
       "refuse": {
         "rows": 30,
@@ -1406,6 +1444,12 @@
         "tune": 21,
         "near_misses": 2
       },
+      "standing.rule": {
+        "rows": 42,
+        "held_out": 0,
+        "tune": 42,
+        "near_misses": 0
+      },
       "wallet": {
         "rows": 34,
         "held_out": 8,
@@ -1413,10 +1457,10 @@
         "near_misses": 5
       },
       "work.dispatch": {
-        "rows": 157,
+        "rows": 163,
         "held_out": 47,
-        "tune": 110,
-        "near_misses": 34
+        "tune": 116,
+        "near_misses": 40
       }
     }
   },
