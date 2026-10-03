@@ -536,7 +536,7 @@ fn pause(wait: Duration, hooks: &dyn Hooks) -> bool {
 fn workspace_wide(path: &str) -> bool {
     matches!(
         path,
-        "Cargo.toml" | "Cargo.lock" | "rust-toolchain" | "rust-toolchain.toml" | "build.rs"
+        "Cargo.toml" | "rust-toolchain" | "rust-toolchain.toml" | "build.rs"
     ) || path.starts_with(".cargo/")
 }
 
@@ -545,6 +545,8 @@ fn workspace_wide(path: &str) -> bool {
 /// cannot, so its checks need not run again:
 ///
 /// - they touch a workspace-wide build file → they can;
+/// - they change the resolved dependencies of a changed package → they can;
+/// - the run changes `Cargo.lock` itself → re-run conservatively;
 /// - they touch one of the change's packages, a package those depend on, or one that
 ///   depends on them (tests and dev-dependencies included) → they can;
 /// - the change touches files outside any package (its diff checks read
@@ -570,6 +572,9 @@ pub fn affects(worktree: &Path, base: &str, upstream: &str) -> Option<String> {
     }
     let change = git(worktree, &["diff", "--name-only", upstream, "HEAD"]).unwrap_or_default();
     let change_files: Vec<String> = change.lines().map(str::to_owned).collect();
+    if change_files.iter().any(|file| file == "Cargo.lock") {
+        return Some("the change itself touches `Cargo.lock`".to_owned());
+    }
     if let Some(file) = landed_files.iter().find(|f| workspace_wide(f)) {
         return Some(format!(
             "they change `{file}`, which every package builds with"
@@ -577,6 +582,23 @@ pub fn affects(worktree: &Path, base: &str, upstream: &str) -> Option<String> {
     }
     let landed_packages = packages(worktree, &landed_files);
     let change_packages = packages(worktree, &change_files);
+    if landed_files.iter().any(|file| file == "Cargo.lock") && !change_packages.is_empty() {
+        let unchanged = git(worktree, &["show", &format!("{base}:Cargo.lock")])
+            .ok()
+            .zip(git(worktree, &["show", &format!("HEAD:Cargo.lock")]).ok())
+            .and_then(|(before, after)| {
+                Some(
+                    lock_resolution(&before, &change_packages)?
+                        == lock_resolution(&after, &change_packages)?,
+                )
+            });
+        if unchanged != Some(true) {
+            return Some(format!(
+                "they change `Cargo.lock`, and the resolved dependencies of {} changed or could not be read",
+                names(&change_packages)
+            ));
+        }
+    }
     let outside = change_files
         .iter()
         .any(|file| packages(worktree, std::slice::from_ref(file)).is_empty());
@@ -614,6 +636,87 @@ pub fn affects(worktree: &Path, base: &str, upstream: &str) -> Option<String> {
             names(&change_packages)
         ))
     }
+}
+
+/// Compares package identities and resolved edges, not lockfile ordering. Include
+/// every dependency kind and target; uncertain resolution must not skip checks.
+fn lock_resolution(text: &str, roots: &[String]) -> Option<std::collections::BTreeSet<String>> {
+    #[derive(serde::Deserialize)]
+    struct Lock {
+        version: u32,
+        package: Vec<Package>,
+    }
+    #[derive(serde::Deserialize)]
+    struct Package {
+        name: String,
+        version: String,
+        source: Option<String>,
+        checksum: Option<String>,
+        #[serde(default)]
+        dependencies: Vec<String>,
+    }
+    let lock: Lock = toml::from_str(text).ok()?;
+    if !(3..=4).contains(&lock.version) {
+        return None;
+    }
+    let identity = |p: &Package| (p.name.clone(), p.version.clone(), p.source.clone());
+    let mut identities = std::collections::BTreeSet::new();
+    for p in &lock.package {
+        if !identities.insert(identity(p)) {
+            return None;
+        }
+    }
+    let mut next = Vec::new();
+    for root in roots {
+        let candidates: Vec<_> = lock
+            .package
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| p.name == *root && p.source.is_none())
+            .collect();
+        if candidates.len() != 1 {
+            return None;
+        }
+        next.push(candidates[0].0);
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    let mut resolution = std::collections::BTreeSet::new();
+    while let Some(index) = next.pop() {
+        if !seen.insert(index) {
+            continue;
+        }
+        let p = &lock.package[index];
+        let mut edges = std::collections::BTreeSet::new();
+        for dependency in &p.dependencies {
+            let mut parts = dependency.splitn(3, ' ');
+            let name = parts.next()?;
+            let version = parts.next();
+            let source = parts.next().map(|s| s.strip_prefix('(')?.strip_suffix(')'));
+            let source = match source {
+                Some(Some(source)) => Some(source),
+                Some(None) => return None,
+                None => None,
+            };
+            let candidates: Vec<_> = lock
+                .package
+                .iter()
+                .enumerate()
+                .filter(|(_, candidate)| {
+                    candidate.name == name
+                        && version.is_none_or(|v| candidate.version == v)
+                        && source.is_none_or(|s| candidate.source.as_deref() == Some(s))
+                })
+                .collect();
+            if candidates.len() != 1 {
+                return None;
+            }
+            let (target, candidate) = candidates[0];
+            edges.insert(identity(candidate));
+            next.push(target);
+        }
+        resolution.insert(format!("{:?}", (identity(p), &p.checksum, edges)));
+    }
+    Some(resolution)
 }
 
 /// The workspace packages `files` are in.

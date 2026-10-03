@@ -1,0 +1,28 @@
+version = 4
+
+[[package]]
+name = "a"
+version = "0.1.0"
+dependencies = ["c"]
+
+[[package]]
+name = "b"
+version = "0.1.0"
+dependencies = ["other"]
+
+[[package]]
+name = "c"
+version = "0.1.0"
+dependencies = ["leaf 1.0.0"]
+
+[[package]]
+name = "leaf"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+[[package]]
+name = "other"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"

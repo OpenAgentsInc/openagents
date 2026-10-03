@@ -743,3 +743,106 @@ fn unresolved_markers_after_the_fix_turn_abort_without_pushing() {
     assert_eq!(run(&second, &["rev-parse", "HEAD"]), original);
     assert_eq!(run(&second, &["status", "--porcelain"]), "");
 }
+
+const BEFORE_LOCK: &str = include_str!("../../tests/fixtures/landing/before.lock");
+const UNRELATED_LOCK: &str = include_str!("../../tests/fixtures/landing/unrelated.lock");
+const TRANSITIVE_LOCK: &str = include_str!("../../tests/fixtures/landing/transitive.lock");
+
+#[test]
+fn lockfile_resolution_tracks_only_reachable_dependencies() {
+    let roots = vec!["a".to_owned()];
+    let before = lock_resolution(BEFORE_LOCK, &roots).unwrap();
+    assert_eq!(
+        Some(before.clone()),
+        lock_resolution(UNRELATED_LOCK, &roots)
+    );
+    assert_ne!(
+        Some(before.clone()),
+        lock_resolution(TRANSITIVE_LOCK, &roots)
+    );
+    for changed in [
+        BEFORE_LOCK.replace("checksum = \"aaaa", "checksum = \"cccc"),
+        BEFORE_LOCK.replace("registry+https", "git+https"),
+        BEFORE_LOCK.replace(
+            "dependencies = [\"c\"]",
+            "dependencies = [\"c\", \"other\"]",
+        ),
+    ] {
+        assert_ne!(Some(before.clone()), lock_resolution(&changed, &roots));
+    }
+    let reordered = format!(
+        "version = 4\n{}",
+        BEFORE_LOCK
+            .split("[[package]]")
+            .skip(1)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .map(|part| format!("[[package]]{part}"))
+            .collect::<String>()
+    );
+    assert_eq!(Some(before), lock_resolution(&reordered, &roots));
+}
+
+#[test]
+fn uncertain_lockfile_resolution_requires_checks() {
+    let roots = vec!["a".to_owned()];
+    for invalid in [
+        "not toml".to_owned(),
+        BEFORE_LOCK.replace("version = 4", "version = 99"),
+        BEFORE_LOCK.replace("dependencies = [\"c\"]", "dependencies = [\"missing\"]"),
+        format!("{BEFORE_LOCK}\n[[package]]\nname = \"c\"\nversion = \"0.2.0\"\n"),
+        format!("{BEFORE_LOCK}\n[[package]]\nname = \"c\"\nversion = \"0.1.0\"\n"),
+    ] {
+        assert!(lock_resolution(&invalid, &roots).is_none(), "{invalid}");
+    }
+    assert!(lock_resolution(BEFORE_LOCK, &["missing".to_owned()]).is_none());
+}
+
+#[test]
+fn landing_skips_unrelated_lock_updates_but_checks_relevant_or_unknown_ones() {
+    for (after, own_lock, expected) in [
+        (UNRELATED_LOCK, false, 0),
+        (TRANSITIVE_LOCK, false, 1),
+        ("invalid lockfile", false, 1),
+        (UNRELATED_LOCK, true, 1),
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let remote = origin(dir.path());
+        let seed = dir.path().join("seed");
+        write(&seed, ".gitignore", "target\n");
+        write(&seed, "Cargo.lock", BEFORE_LOCK);
+        run(&seed, &["add", "-A"]);
+        run(&seed, &["commit", "-qm", "track fixture lock"]);
+        run(
+            &seed,
+            &[
+                "push",
+                "-q",
+                remote.to_str().unwrap(),
+                "HEAD:refs/heads/main",
+            ],
+        );
+        let ours = host(
+            dir.path(),
+            &remote,
+            "ours",
+            "crates/a/src/x.rs",
+            "// ours\n",
+        );
+        if own_lock {
+            write(
+                &ours,
+                "Cargo.lock",
+                &format!("# run-owned change\n{BEFORE_LOCK}"),
+            );
+            run(&ours, &["commit", "-qam", "run changes lock"]);
+        }
+        let theirs = host(dir.path(), &remote, "theirs", "Cargo.lock", after);
+        run(&theirs, &["push", "-q", "origin", "HEAD:refs/heads/main"]);
+        let mut hooks = Counting::default();
+        let landed = land(&plan(&ours), &mut hooks).unwrap();
+        assert_eq!(hooks.checks, expected, "{:?}", landed.attempts);
+        assert_eq!(landed.attempts[0].moved, 1);
+    }
+}
