@@ -9,7 +9,7 @@ use std::{
 };
 
 const HELP: &str = "briefing-lab index --repo PATH --rev COMMIT_OR_REF --output FILE [--syntax]
-briefing-lab preview --repo PATH --rev COMMIT_OR_REF --index FILE --issue-file FILE --output-dir DIR [--no-lexical] [--no-symbols] [--no-history] [--syntax]
+briefing-lab preview --repo PATH --rev COMMIT_OR_REF --index FILE --issue-file FILE --output-dir DIR [--no-lexical] [--no-symbols] [--no-history] [--syntax] [--focused]
   [--execution --manifest PACKAGE/Cargo.toml --environment-id LABEL]
   [--require-tool NAME] [--require-file PATH] [--attempt-dir RUN_DIR]
 briefing-lab prepare-run --repo PATH --rev COMMIT_OR_REF --issue-file FILE --manifest PACKAGE/Cargo.toml --environment-id LABEL --artifact-root DIR
@@ -30,6 +30,7 @@ struct Args {
     files: Vec<PathBuf>,
     attempts: Vec<PathBuf>,
     execution: bool,
+    focused: bool,
     components: Components,
     options: Options,
 }
@@ -53,6 +54,7 @@ impl Args {
                 ("preview", "--no-symbols") => result.components.symbols = false,
                 ("preview", "--no-history") => result.components.history = false,
                 ("preview", "--execution") => result.execution = true,
+                ("preview", "--focused") => result.focused = true,
                 (command, key) => {
                     let common = command != "record-result" && matches!(key, "--repo" | "--rev");
                     let allowed = common
@@ -246,14 +248,18 @@ fn run() -> Result<()> {
     }
     let index: Index = serde_json::from_slice(&fs::read(args.required("--index")?)?)?;
     let load_ms = load_start.elapsed().as_secs_f64() * 1000.0;
-    let mut brief = briefing_lab::assemble_with_options(
-        &repo,
-        &index,
-        &commit,
-        issue,
-        args.components,
-        args.options,
-    )?;
+    let mut brief = if args.focused {
+        briefing_lab::assemble_focused(&repo, &index, &commit, issue, args.components)?
+    } else {
+        briefing_lab::assemble_with_options(
+            &repo,
+            &index,
+            &commit,
+            issue,
+            args.components,
+            args.options,
+        )?
+    };
     if args.execution {
         let preparation_start = Instant::now();
         if args.manifests.is_empty() {
@@ -293,6 +299,9 @@ fn run() -> Result<()> {
     briefing_lab::check_output(&repo, &directory)?;
     briefing_lab::check_output(&repo, &directory.join("briefing.json"))?;
     briefing_lab::check_output(&repo, &directory.join("briefing.md"))?;
+    if args.focused {
+        briefing_lab::check_output(&repo, &directory.join("focused.md"))?;
+    }
     brief
         .timings_ms
         .insert("revision_validation".into(), verify_ms);
@@ -326,6 +335,9 @@ fn run() -> Result<()> {
         directory.join("briefing.md"),
         briefing_lab::markdown(&brief),
     )?;
+    if let Some(pack) = &brief.focused {
+        fs::write(directory.join("focused.md"), &pack.markdown)?;
+    }
     println!(
         "Preview: {}\nStructured evidence: {}\nComplete local preview including output: {:.3} ms",
         directory.join("briefing.md").display(),

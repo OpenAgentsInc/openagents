@@ -6,7 +6,7 @@ usage() {
 Usage: briefing-preview.sh --repo LOCAL_PATH --rev COMMIT_OR_REF
        (--issue-file JSON | --issue URL_OR_NUMBER [--github-repo OWNER/REPO])
        [--output-dir OUTSIDE_REPO] [--index INDEX_JSON]
-       [--no-lexical] [--no-symbols] [--no-history] [--syntax]
+       [--no-lexical] [--no-symbols] [--no-history] [--syntax] [--focused]
        [--execution --manifest PACKAGE/Cargo.toml --environment-id LABEL]
        [--require-tool NAME] [--require-file PATH] [--attempt-dir RUN_DIR]
 
@@ -29,7 +29,7 @@ while (($#)); do
       esac
       shift 2 ;;
     --syntax) components+=("$1"); index_options+=("$1"); shift ;;
-    --execution) components+=("$1"); shift ;;
+    --execution|--focused) components+=("$1"); shift ;;
     --manifest|--environment-id|--require-tool|--require-file|--attempt-dir)
       (($# >= 2)) || { echo "Missing value for $1" >&2; exit 2; }
       components+=("$1" "$2"); shift 2 ;;

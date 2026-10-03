@@ -115,6 +115,34 @@ Separate attributes and comments are outside declaration spans. The parser
 can improve boundaries without establishing that the selected declaration
 answers the issue.
 
+## Opt-in focused evidence pack
+
+Add `--focused` to `preview` or the wrapper to write `focused.md`, an optional
+source payload bounded to 16 KiB of UTF-8 text, including headings and
+provenance. Use this file when comparing equal optional-context budgets.
+`briefing.md` and `briefing.json` also retain the complete issue, coverage
+records, and timings; their total size is outside that budget.
+
+Explicit repository paths and line anchors (`path.rs:42`, `path.rs:42-48`, or
+`path.rs#L42-L48`) rank before lexical candidates. The pack retains complete
+files up to 6 KiB. For larger Rust files, it selects the complete function
+containing an explicit anchor or a declaration candidate matching issue
+identifiers or terms. A function that exceeds the remaining budget is omitted
+without clipping. Invalid anchors and anchors outside a complete Rust function
+produce coverage warnings. Other large text files use labeled partial excerpts.
+
+Named documents, nearby tests, and package manifests carry separate roles.
+Nearby fixture paths are reported as candidates; their contents remain excluded
+from the index. The pack reads at most 24 candidate files and includes at most
+16 excerpts. History is omitted. A compatible syntax cache avoids reparsing;
+a regular index parses selected committed Rust blobs during assembly. Both
+paths verify selected source against the pinned commit and record preparation
+time. The default preview remains unchanged.
+
+The optional pack omits `AGENTS.md`, `CLAUDE.md`, and `SKILL.md`. Supply complete
+applicable instructions separately and identically to both experiment arms.
+The pack does not replace instructions or establish requirement coverage.
+
 ## Execution facts and prior attempts
 
 The opt-in execution treatment adds committed Cargo manifest facts, local

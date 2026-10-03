@@ -2,6 +2,7 @@
 pub mod attempt;
 pub mod environment;
 pub mod execution;
+pub mod focused;
 pub mod syntax;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -119,6 +120,8 @@ pub struct Brief {
     pub syntax: Option<syntax::Provenance>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub execution: Option<ExecutionBrief>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub focused: Option<focused::Pack>,
 }
 
 #[derive(Debug, Serialize)]
@@ -575,6 +578,45 @@ pub fn assemble_with_options(
     components: Components,
     options: Options,
 ) -> Result<Brief> {
+    assemble_internal(
+        repo,
+        index,
+        expected_commit,
+        issue,
+        components,
+        options,
+        false,
+    )
+}
+
+/// Pack explicit references and nearby evidence under a fixed optional-context budget.
+pub fn assemble_focused(
+    repo: &Path,
+    index: &Index,
+    expected_commit: &str,
+    issue: Issue,
+    components: Components,
+) -> Result<Brief> {
+    assemble_internal(
+        repo,
+        index,
+        expected_commit,
+        issue,
+        components,
+        Options::default(),
+        true,
+    )
+}
+
+fn assemble_internal(
+    repo: &Path,
+    index: &Index,
+    expected_commit: &str,
+    issue: Issue,
+    components: Components,
+    options: Options,
+    focused: bool,
+) -> Result<Brief> {
     let start = Instant::now();
     if index.schema != SCHEMA {
         return Err("Unsupported index schema; rebuild the index.".into());
@@ -618,6 +660,9 @@ pub fn assemble_with_options(
         {
             return Err("The index has an invalid symbol or line range; rebuild it.".into());
         }
+    }
+    if focused {
+        return focused::assemble(repo, index, issue, components, start);
     }
     if options.syntax {
         for source in &index.files {
@@ -842,6 +887,7 @@ pub fn assemble_with_options(
         notes.push(format!("Syntax parsing reports errors or bounded extraction in {limited} indexed Rust files; see each file's cached limitations."));
     }
     Ok(Brief {
+        focused: None,
         execution: None,
         syntax: options.syntax.then(syntax::Provenance::default),
         schema: "openagents.briefing-lab.preview.v1".into(),
@@ -931,21 +977,25 @@ pub fn markdown(brief: &Brief) -> String {
         }
         out.push('\n');
     }
-    out.push_str("## Selected evidence\n\n");
-    for e in &brief.evidence {
-        if let Some(selection) = &e.syntax_selection {
-            out.push_str(&format!(
-                "Syntax selection: `{}`; declaration {}.\n\n",
-                selection.declaration.qualified_name,
-                if selection.partial {
-                    "partially shown under the 64-line limit"
-                } else {
-                    "fully shown"
-                }
-            ));
+    if let Some(pack) = &brief.focused {
+        out.push_str(&pack.markdown);
+    } else {
+        out.push_str("## Selected evidence\n\n");
+        for e in &brief.evidence {
+            if let Some(selection) = &e.syntax_selection {
+                out.push_str(&format!(
+                    "Syntax selection: `{}`; declaration {}.\n\n",
+                    selection.declaration.qualified_name,
+                    if selection.partial {
+                        "partially shown under the 64-line limit"
+                    } else {
+                        "fully shown"
+                    }
+                ));
+            }
+            let mark = fence(&e.text);
+            out.push_str(&format!("### `{}`: {}–{} of {} lines\n\n{}\n\nFile SHA-256: `{}`. Git blob: `{}`.\n\n{mark}text\n{}\n{mark}\n\n", e.path, e.start_line, e.end_line, e.total_lines, e.reasons.join("; "), e.file_sha256, e.blob, e.text));
         }
-        let mark = fence(&e.text);
-        out.push_str(&format!("### `{}`: {}–{} of {} lines\n\n{}\n\nFile SHA-256: `{}`. Git blob: `{}`.\n\n{mark}text\n{}\n{mark}\n\n", e.path, e.start_line, e.end_line, e.total_lines, e.reasons.join("; "), e.file_sha256, e.blob, e.text));
     }
     out.push_str("## Recent history candidates\n\n");
     if brief.history.is_empty() {
