@@ -364,7 +364,20 @@ slot=$(jq -r .warm_target.slot ~/.openagents/coder-host.json 2>/dev/null)
 # caused connection abort") on 2026-10-02. A failed read is retried, then
 # the run builds its own.
 ready=""
-if [ -z "{build}" ] && [ -x "$slot/debug/openagents" ] && [ -x "$slot/debug/microcoder" ]; then
+# The template's binaries are from the day it was built. Use them only when
+# no Rust source changed between that revision and origin/main; otherwise a
+# run would check out today's main but run yesterday's Coder, bringing back
+# bugs main already fixed (a stale template ran Grok's non-reasoning model
+# after #10275 pinned grok-4.7, and its run changed nothing).
+rev=$(jq -r .rev ~/.openagents/coder-host.json 2>/dev/null)
+current=""
+if [ -n "$rev" ] && [ "$rev" != null ] && git cat-file -e "$rev^{{commit}}" 2>/dev/null \
+  && git diff --quiet "$rev" HEAD -- Cargo.toml Cargo.lock crates; then
+  current=1
+else
+  echo "boat: the template's binaries ($(printf %s "$rev" | cut -c1-10)) predate Rust changes on main; building" >&2
+fi
+if [ -z "{build}" ] && [ -n "$current" ] && [ -x "$slot/debug/openagents" ] && [ -x "$slot/debug/microcoder" ]; then
   for attempt in 1 2 3 4 5 6; do
     cat "$slot/debug/openagents" "$slot/debug/microcoder" >/dev/null 2>&1 && {{ ready=1; break; }}
     echo "boat: the template's binaries are still streaming in (attempt $attempt)" >&2
@@ -1561,6 +1574,24 @@ mod tests {
         assert!(script.contains(r#"printf 'export XAI_API_KEY=%q\n' "$XAI_API_KEY""#));
         assert!(script.contains("trap 'rm -f /tmp/oa-engine.env' EXIT"));
         assert!(run_script(1, None, true).ends_with("--parallel 1\n"));
+    }
+
+    #[test]
+    fn the_template_binaries_are_used_only_when_no_rust_changed_since_its_revision() {
+        let script = run_script(10342, Some(Land::Main), false);
+        let gate = script
+            .find(r#"git diff --quiet "$rev" HEAD -- Cargo.toml Cargo.lock crates"#)
+            .unwrap();
+        let reuse = script.find(r#"[ -n "$current" ]"#).unwrap();
+        let used = script.find("using the template's openagents").unwrap();
+        assert!(gate < reuse && reuse < used);
+        assert!(script.contains(r#"git cat-file -e "$rev^{commit}""#));
+        // The script parses.
+        let checked = std::process::Command::new("bash")
+            .args(["-n", "-c", &script])
+            .status()
+            .unwrap();
+        assert!(checked.success());
     }
 
     #[test]
