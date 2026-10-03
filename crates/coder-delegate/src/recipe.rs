@@ -776,7 +776,9 @@ impl Ahead {
     /// earlier preparations left that no run took.
     pub fn begin(path: &Path) {
         if let Some(dir) = path.parent() {
-            let _ = std::fs::create_dir_all(dir);
+            // Private, as the task store it sits in requires of every
+            // folder and file it may meet, its own root included.
+            let _ = private_dir(dir);
             if let Ok(entries) = std::fs::read_dir(dir) {
                 for entry in entries.flatten() {
                     let old = entry
@@ -791,7 +793,7 @@ impl Ahead {
                 }
             }
         }
-        let _ = std::fs::write(Self::pending(path), b"");
+        let _ = private_write(&Self::pending(path), b"");
     }
 
     /// Keep the groundwork at `path` for the run, or, with none, say it
@@ -800,7 +802,10 @@ impl Ahead {
         if let Some(ahead) = ahead
             && let Ok(text) = serde_json::to_vec(ahead)
         {
-            let _ = crate::record::write_atomic(path, &text);
+            let staged = path.with_extension("staged");
+            if private_write(&staged, &text).is_ok() {
+                let _ = std::fs::rename(&staged, path);
+            }
         }
         let _ = std::fs::remove_file(Self::pending(path));
     }
@@ -833,6 +838,26 @@ impl Ahead {
             tokio::time::sleep(std::time::Duration::from_millis(25)).await;
         }
     }
+}
+
+/// `dir` and the folders above it that are missing, readable by this user
+/// only.
+fn private_dir(dir: &Path) -> std::io::Result<()> {
+    let mut builder = std::fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
+    builder.create(dir)
+}
+
+/// Write `bytes` to a new file at `path` readable by this user only.
+fn private_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    use std::io::Write as _;
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    options.open(path)?.write_all(bytes)
 }
 
 /// Prepare the groundwork of `request` after `earlier` in `workdir`
@@ -1318,6 +1343,15 @@ mod tests {
                 .is_none()
         );
         Ahead::finish(&path, Some(&prepared));
+        #[cfg(unix)]
+        {
+            // The task store refuses a folder or file others can read.
+            use std::os::unix::fs::PermissionsExt;
+            let mode = |p: &Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode(&store), 0o700);
+            assert_eq!(mode(path.parent().unwrap()), 0o700);
+            assert_eq!(mode(&path), 0o600);
+        }
         let taken = Ahead::take(&store, request, "", AHEAD_WAIT).await.unwrap();
         assert!(Ahead::take(&store, request, "", AHEAD_WAIT).await.is_none());
 
