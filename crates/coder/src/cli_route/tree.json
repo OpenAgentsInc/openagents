@@ -1961,7 +1961,7 @@
                 ]
               }
             ],
-            "summary": "Name a host; every HOST above accepts a name, a key, or a unique key prefix. `alias --list`, `alias --remove NAME`.",
+            "summary": "Name a host; every HOST above accepts a name, the label `list` shows, a key, or a unique prefix of a key or label. `alias --list`, `alias --remove NAME`.",
             "effect": "local_write",
             "runs_on": "this_device"
           }

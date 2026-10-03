@@ -48,8 +48,9 @@ pub(crate) const USAGE: &str = "usage: openagents computer COMMAND [OPTIONS]
                             exits 0), printing every result; --json is NDJSON.
   tail HOST PATH [--lines N] [--follow]
                             The end of a file on the host; --json is one line each.
-  alias NAME HOST           Name a host; every HOST above accepts a name, a key,
-                            or a unique key prefix. `alias --list`, `alias --remove NAME`.
+  alias NAME HOST           Name a host; every HOST above accepts a name, the label
+                            `list` shows, a key, or a unique prefix of a key or label.
+                            `alias --list`, `alias --remove NAME`.
   journal [HOST] [--lines N]
                             What exec, watch, and tail ran, from this device's log.
   client-only               Record that this machine runs no local host.
@@ -322,12 +323,15 @@ fn host_arg(live: &mut Live, args: &Args, index: usize) -> Result<String, String
 }
 
 pub(crate) fn host_arg_text(live: &mut Live, args: &Args, text: &str) -> Result<String, String> {
-    let known: Vec<String> = live
+    let known: Vec<crate::hosts::Known> = live
         .snapshot()
         .map_err(|e| e.to_string())?
         .hosts
         .iter()
-        .map(|h| h.key.clone())
+        .map(|h| crate::hosts::Known {
+            key: h.key.clone(),
+            label: h.label.clone(),
+        })
         .collect();
     crate::hosts::resolve(&store_dir(args.option("store")), &known, text)
 }

@@ -2,7 +2,8 @@
 //!
 //! Host keys are 64 hex characters; nobody wants to type one. An alias file
 //! in the computer store maps short names to keys, and every host argument
-//! accepts a name, a whole key, or a unique key prefix. The journal is an
+//! accepts a name, the label `computer list` shows, a whole key, or a unique
+//! prefix of a key or label. The journal is an
 //! append-only NDJSON file in the same store, one line per remote command,
 //! so someone following along can read what ran, when, and how it ended,
 //! without the output itself (a digest stands in for it).
@@ -74,23 +75,49 @@ pub fn alias_of(store: &Path, host: &str) -> Option<String> {
         .map(|(name, _)| name)
 }
 
-/// The host key `text` names: an alias, a whole key, or a prefix that
-/// matches exactly one of `known`. Anything else is an error that says so.
-pub fn resolve(store: &Path, known: &[String], text: &str) -> Result<String, String> {
+/// A host this device knows: its key and the label `computer list` shows
+/// (empty when it has none).
+pub struct Known {
+    pub key: String,
+    pub label: String,
+}
+
+/// The host key `text` names: an alias, a whole key, the label `computer
+/// list` shows, or a prefix of exactly one key or label among `known`.
+/// Anything else is an error that says so.
+pub fn resolve(store: &Path, known: &[Known], text: &str) -> Result<String, String> {
     if let Some(key) = aliases(store).get(text) {
         return Ok(key.clone());
     }
     if text.len() == 64 && text.chars().all(|c| c.is_ascii_hexdigit()) {
         return Ok(text.to_owned());
     }
-    let matches: Vec<&String> = known.iter().filter(|k| k.starts_with(text)).collect();
+    let labelled: Vec<&Known> = known
+        .iter()
+        .filter(|h| !h.label.is_empty() && h.label == text)
+        .collect();
+    if let [one] = labelled.as_slice() {
+        return Ok(one.key.clone());
+    }
+    if labelled.len() > 1 {
+        return Err(format!(
+            "{} hosts are labelled `{text}`; give part of the key or an alias",
+            labelled.len()
+        ));
+    }
+    let mut matches: Vec<&String> = known
+        .iter()
+        .filter(|h| h.key.starts_with(text) || !h.label.is_empty() && h.label.starts_with(text))
+        .map(|h| &h.key)
+        .collect();
+    matches.dedup();
     match matches.as_slice() {
         [one] => Ok((*one).clone()),
         [] => Err(format!(
-            "`{text}` is not an alias, a host key, or a prefix of a known host (see `openagents computer list`)"
+            "`{text}` is not an alias, a label, a host key, or a prefix of a known host (see `openagents computer list`)"
         )),
         many => Err(format!(
-            "`{text}` matches {} hosts; give more of the key or an alias",
+            "`{text}` matches {} hosts; give more of the key or label, or an alias",
             many.len()
         )),
     }
@@ -203,7 +230,16 @@ mod tests {
     #[test]
     fn resolves_aliases_keys_and_unique_prefixes() {
         let store = temp("resolve");
-        let known = vec![KEY.to_owned(), OTHER.to_owned()];
+        let known = vec![
+            Known {
+                key: KEY.to_owned(),
+                label: String::new(),
+            },
+            Known {
+                key: OTHER.to_owned(),
+                label: String::new(),
+            },
+        ];
         set_alias(&store, "coderos", KEY).unwrap();
         assert_eq!(resolve(&store, &known, "coderos").unwrap(), KEY);
         assert_eq!(resolve(&store, &known, KEY).unwrap(), KEY);
@@ -218,6 +254,48 @@ mod tests {
         assert!(remove_alias(&store, "coderos").unwrap());
         assert!(!remove_alias(&store, "coderos").unwrap());
         assert!(resolve(&store, &known, "coderos").is_err());
+        let _ = std::fs::remove_dir_all(&store);
+    }
+
+    #[test]
+    fn resolves_the_label_computer_list_shows_and_its_unique_prefix() {
+        let store = temp("label");
+        let known = vec![
+            Known {
+                key: KEY.to_owned(),
+                label: "coderos-4080".to_owned(),
+            },
+            Known {
+                key: OTHER.to_owned(),
+                label: "coder-mac".to_owned(),
+            },
+        ];
+        assert_eq!(resolve(&store, &known, "coderos-4080").unwrap(), KEY);
+        assert_eq!(resolve(&store, &known, "coderos").unwrap(), KEY);
+        assert_eq!(resolve(&store, &known, "coder-m").unwrap(), OTHER);
+        assert!(
+            resolve(&store, &known, "coder")
+                .unwrap_err()
+                .contains("matches 2")
+        );
+        // An alias wins over a label.
+        set_alias(&store, "coderos-4080", OTHER).unwrap();
+        assert_eq!(resolve(&store, &known, "coderos-4080").unwrap(), OTHER);
+        let twins = vec![
+            Known {
+                key: KEY.to_owned(),
+                label: "box".to_owned(),
+            },
+            Known {
+                key: OTHER.to_owned(),
+                label: "box".to_owned(),
+            },
+        ];
+        assert!(
+            resolve(&store, &twins, "box")
+                .unwrap_err()
+                .contains("2 hosts are labelled")
+        );
         let _ = std::fs::remove_dir_all(&store);
     }
 

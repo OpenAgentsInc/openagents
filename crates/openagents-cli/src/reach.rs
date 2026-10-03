@@ -37,7 +37,8 @@ Options:
                       on this machine; otherwise the probe refuses loopback hints.
   --loopback-test     Accept loopback relays. Only a local test run uses this.
 
-HOST is a host key, a unique key prefix, or an alias set with
+HOST is the label `openagents computer list` shows, a host key, a unique
+prefix of either, or an alias set with
 `openagents computer alias`. Directory edits need the owner key on this
 device; `openagents computer` imports it. Nothing here prints a key or an
 invitation.";
@@ -158,12 +159,15 @@ fn host_arg(live: &mut Live, args: &Args, index: usize) -> Result<String, Stop> 
         .positional()
         .get(index)
         .ok_or_else(|| Usage("HOST is required".to_owned()))?;
-    let known: Vec<String> = live
+    let known: Vec<crate::hosts::Known> = live
         .snapshot()
         .map_err(|e| e.to_string())?
         .hosts
         .iter()
-        .map(|h| h.key.clone())
+        .map(|h| crate::hosts::Known {
+            key: h.key.clone(),
+            label: h.label.clone(),
+        })
         .collect();
     crate::hosts::resolve(&store_dir(args.option("store")), &known, text).map_err(Refused)
 }
