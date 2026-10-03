@@ -14,6 +14,7 @@ from unittest import mock
 
 SCHEMA = 'openagents.briefing.factorial.v1'
 MODELS = {'opus': 'claude-opus-5-5', 'sonnet': 'claude-sonnet-5-5'}
+CLAUDE_CLI_VERSION = '2.1.287'
 ARMS = {'A': ('opus', 'control'), 'B': ('opus', 'treatment'), 'C': ('sonnet', 'control'), 'D': ('sonnet', 'treatment')}
 ORDER = ['ABDC', 'BCAD', 'CDBA', 'DACB']
 PRIOR_ORDER = ['control', 'treatment', 'treatment', 'control', 'control', 'treatment', 'treatment', 'control']
@@ -43,11 +44,11 @@ def schedule():
 
 
 def validate_plan(plan):
-    required = {'schema', 'models', 'effort', 'order', 'runner', 'instruction_guard', 'coordinator_sha256', 'task_config', 'input_files', 'prior_round_runs'}
+    required = {'schema', 'models', 'claude_cli_version', 'effort', 'order', 'runner', 'instruction_guard', 'coordinator_sha256', 'task_config', 'input_files', 'prior_round_runs'}
     if set(plan) != required or plan['schema'] != SCHEMA:
         raise ValueError('Unknown or missing factorial plan fields')
-    if plan['models'] != MODELS or plan['effort'] != 'medium' or plan['order'] != ORDER:
-        raise ValueError('The registered models, effort, and balanced order must match the prospective protocol')
+    if plan['models'] != MODELS or plan['claude_cli_version'] != CLAUDE_CLI_VERSION or plan['effort'] != 'medium' or plan['order'] != ORDER:
+        raise ValueError('The registered models, CLI version, effort, and balanced order must match the prospective protocol')
     if plan['coordinator_sha256'] != sha(read(__file__)):
         raise ValueError('The coordinator differs from its registration')
     for item in [plan['runner'], plan['instruction_guard'], plan['task_config'], *plan['input_files']]:
@@ -114,6 +115,11 @@ def served_models(result):
     return sorted(models)
 
 
+def cli_version_binding(result):
+    actual = result.get('init', {}).get('claude_code_version')
+    return actual == CLAUDE_CLI_VERSION, actual
+
+
 def execute(plan, output, first=1, last=16):
     if not 1 <= first <= last <= 16:
         raise ValueError('Choose a contiguous interval within the 16 registered runs')
@@ -142,11 +148,12 @@ def execute(plan, output, first=1, last=16):
         result = runner.run(config, row['condition'], run_dir)
         models = served_models(result)
         binding_ok = result.get('model') == row['model'] and result.get('effort') == 'medium' and result.get('init', {}).get('model') == row['model'] and models == [row['model']]
-        record = {'schema': 'openagents.briefing.factorial-arm.v1', 'plan_sha256': plan_digest, **row, 'served_models_from_cumulative_usage': models, 'model_binding_ok': binding_ok, 'accepted': bool(result.get('accepted') and binding_ok), 'completed': bool(result.get('completed')), 'cost_complete': bool(result.get('cost_complete')), 'cost_usd_list_estimate': result.get('cost_usd_list_estimate'), 'runner_result_sha256': sha(read(run_dir / 'result.json'))}
+        version_ok, version = cli_version_binding(result)
+        record = {'schema': 'openagents.briefing.factorial-arm.v1', 'plan_sha256': plan_digest, **row, 'served_models_from_cumulative_usage': models, 'model_binding_ok': binding_ok, 'expected_claude_cli_version': CLAUDE_CLI_VERSION, 'claude_cli_version': version, 'cli_version_binding_ok': version_ok, 'accepted': bool(result.get('accepted') and binding_ok and version_ok), 'completed': bool(result.get('completed')), 'cost_complete': bool(result.get('cost_complete')), 'cost_usd_list_estimate': result.get('cost_usd_list_estimate'), 'runner_result_sha256': sha(read(run_dir / 'result.json'))}
         save(run_dir / 'arm-result.json', record)
         print(json.dumps({'finished': record}), flush=True)
-        if not result.get('completed') or not result.get('cost_complete') or not binding_ok:
-            raise RuntimeError('The run is retained; inspect its error, accounting, or model binding before continuing')
+        if not result.get('completed') or not result.get('cost_complete') or not binding_ok or not version_ok:
+            raise RuntimeError('The run is retained; inspect its error, accounting, model binding, or CLI version before continuing')
 
 
 def main():
@@ -207,6 +214,12 @@ class CoordinatorTests(unittest.TestCase):
         result = {'attempts': [{'result': {'modelUsage': {MODELS['sonnet']: {}}}}, {'result': {'modelUsage': {MODELS['sonnet']: {}, MODELS['opus']: {}}}}]}
         self.assertEqual(served_models(result), sorted(MODELS.values()))
 
+    def test_cli_version_requires_the_exact_init_version(self):
+        self.assertEqual(cli_version_binding({'init': {'claude_code_version': CLAUDE_CLI_VERSION}}), (True, CLAUDE_CLI_VERSION))
+        for version in [None, '', '2.1.288']:
+            self.assertEqual(cli_version_binding({'init': {'claude_code_version': version}}), (False, version))
+        self.assertEqual(cli_version_binding({}), (False, None))
+
     def test_registered_execution_and_resume_with_a_fake_runner(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -225,13 +238,14 @@ class CoordinatorTests(unittest.TestCase):
             save(config_path, config)
             for name in ['runner', 'guard']:
                 (root / name).write_text('Synthetic file; never executed.\n')
-            plan = {'schema': SCHEMA, 'models': MODELS, 'effort': 'medium', 'order': ORDER, 'runner': {'path': str(root / 'runner'), 'sha256': sha(read(root / 'runner'))}, 'instruction_guard': {'path': str(root / 'guard'), 'sha256': sha(read(root / 'guard'))}, 'coordinator_sha256': sha(read(__file__)), 'task_config': {'path': str(config_path), 'sha256': sha(read(config_path))}, 'input_files': inputs, 'prior_round_runs': str(prior)}
+            plan = {'schema': SCHEMA, 'models': MODELS, 'claude_cli_version': CLAUDE_CLI_VERSION, 'effort': 'medium', 'order': ORDER, 'runner': {'path': str(root / 'runner'), 'sha256': sha(read(root / 'runner'))}, 'instruction_guard': {'path': str(root / 'guard'), 'sha256': sha(read(root / 'guard'))}, 'coordinator_sha256': sha(read(__file__)), 'task_config': {'path': str(config_path), 'sha256': sha(read(config_path))}, 'input_files': inputs, 'prior_round_runs': str(prior)}
             class FakeRunner:
                 MODEL = MODELS['opus']
+                version = CLAUDE_CLI_VERSION
 
                 def run(self, config, condition, run_dir):
                     run_dir.mkdir(parents=True, exist_ok=False)
-                    result = {'model': self.MODEL, 'effort': 'medium', 'init': {'model': self.MODEL}, 'accepted': True, 'completed': True, 'cost_complete': True, 'cost_usd_list_estimate': 0.1, 'attempts': [{'result': {'modelUsage': {self.MODEL: {}}}}]}
+                    result = {'model': self.MODEL, 'effort': 'medium', 'init': {'model': self.MODEL, 'claude_code_version': self.version}, 'accepted': True, 'completed': True, 'cost_complete': True, 'cost_usd_list_estimate': 0.1, 'attempts': [{'result': {'modelUsage': {self.MODEL: {}}}}]}
                     save(run_dir / 'result.json', result)
                     return result
             fake = FakeRunner()
@@ -240,12 +254,22 @@ class CoordinatorTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, 'already exists'):
                     execute(plan, root / 'study', 1, 1)
                 execute(plan, root / 'study', 2, 3)
+                fake.version = '2.1.288'
+                with self.assertRaisesRegex(RuntimeError, 'CLI version'):
+                    execute(plan, root / 'study', 4, 4)
             rows = schedule()
             result = json.loads(read(root / 'study/runs' / rows[2]['label'] / 'arm-result.json'))
             self.assertEqual(result['model'], MODELS['sonnet'])
             self.assertEqual(result['condition'], 'treatment')
             self.assertTrue(result['model_binding_ok'])
+            self.assertTrue(result['cli_version_binding_ok'])
+            self.assertEqual(result['claude_cli_version'], CLAUDE_CLI_VERSION)
             self.assertTrue(result['accepted'])
+            mismatch = json.loads(read(root / 'study/runs' / rows[3]['label'] / 'arm-result.json'))
+            self.assertFalse(mismatch['accepted'])
+            self.assertFalse(mismatch['cli_version_binding_ok'])
+            self.assertEqual(mismatch['claude_cli_version'], '2.1.288')
+            self.assertEqual(mismatch['cost_usd_list_estimate'], 0.1)
             (root / 'brief_file').write_text('Changed input.\n')
             with self.assertRaisesRegex(ValueError, 'changed'):
                 validate_plan(plan)

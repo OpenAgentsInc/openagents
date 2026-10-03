@@ -29,6 +29,11 @@ Use medium effort in every arm. This fixes the requested effort label; it does
 not establish equal internal computation across models. Pin full model IDs,
 check initialization and final served-model accounting, and disable fallback.
 Record any mismatch and its cost. Do not silently replace a model mid-panel.
+Pin Claude CLI to `2.1.287` in the registration. Require that exact value in
+the session initialization's `claude_code_version` for every scored run and
+shared warmup. A missing or different version blocks the comparison; retain
+the run, candidate checks, and paid cost. The coordinator stops after saving
+a scored run with a version mismatch.
 
 ## Independent task and frozen inputs
 

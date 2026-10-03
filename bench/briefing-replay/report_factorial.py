@@ -75,7 +75,7 @@ def cold_index_wall(prep, supplied):
 
 
 def verify_inputs(plan, preparation_path, protocol_path):
-    if plan.get('schema') != coordinator.SCHEMA or plan.get('models') != coordinator.MODELS or plan.get('effort') != 'medium' or plan.get('order') != coordinator.ORDER:
+    if plan.get('schema') != coordinator.SCHEMA or plan.get('models') != coordinator.MODELS or plan.get('claude_cli_version') != coordinator.CLAUDE_CLI_VERSION or plan.get('effort') != 'medium' or plan.get('order') != coordinator.ORDER:
         raise ValueError('This reporter requires the registered Opus/Sonnet four-block plan')
     bound = {}
     for item in [plan['runner'], plan['instruction_guard'], plan['task_config'], *plan['input_files']]:
@@ -108,6 +108,9 @@ def export_registered(row, run_dir, plan, config, runs_root, output, builder, pr
     exported.update(arm=row['arm'], block=row['block'], ordinal=row['ordinal'], expected_model=row['model'])
     exported['runner_reported_accepted'] = exported['accepted']
     exported['model_binding_ok'] = False
+    exported['expected_claude_cli_version'] = coordinator.CLAUDE_CLI_VERSION
+    exported['claude_cli_version'] = None
+    exported['cli_version_binding_ok'] = False
     exported['arm_record_valid'] = False
     exported['served_models_from_cumulative_usage'] = []
     if not run_dir.is_dir():
@@ -117,7 +120,8 @@ def export_registered(row, run_dir, plan, config, runs_root, output, builder, pr
     if final.exists():
         metadata = report.read_json(final)
         valid, served = binding(metadata, row['model'])
-        exported.update(model_binding_ok=valid, served_models_from_cumulative_usage=served)
+        version_ok, version = coordinator.cli_version_binding(metadata)
+        exported.update(model_binding_ok=valid, served_models_from_cumulative_usage=served, cli_version_binding_ok=version_ok, claude_cli_version=version)
         errors = exported.setdefault('input_consistency_errors', [])
         instructions = coordinator.read(config['instructions_file'])
         task = coordinator.read(config['task_file'])
@@ -128,16 +132,18 @@ def export_registered(row, run_dir, plan, config, runs_root, output, builder, pr
                 errors.append('registered_' + key)
         if not valid:
             errors.append('served_model_binding')
+        if not version_ok:
+            errors.append('claude_cli_version_binding')
         if arm_path.exists():
             arm = report.read_json(arm_path)
-            wanted = {'plan_sha256': plan_digest(plan), 'runner_result_sha256': report.sha(final.read_bytes()), 'ordinal': row['ordinal'], 'block': row['block'], 'arm': row['arm'], 'model': row['model'], 'condition': row['condition'], 'model_binding_ok': valid, 'served_models_from_cumulative_usage': served, 'accepted': bool(metadata.get('accepted') and valid), 'completed': bool(metadata.get('completed')), 'cost_complete': bool(metadata.get('cost_complete')), 'cost_usd_list_estimate': metadata.get('cost_usd_list_estimate')}
+            wanted = {'plan_sha256': plan_digest(plan), 'runner_result_sha256': report.sha(final.read_bytes()), 'ordinal': row['ordinal'], 'block': row['block'], 'arm': row['arm'], 'model': row['model'], 'condition': row['condition'], 'model_binding_ok': valid, 'served_models_from_cumulative_usage': served, 'expected_claude_cli_version': coordinator.CLAUDE_CLI_VERSION, 'claude_cli_version': version, 'cli_version_binding_ok': version_ok, 'accepted': bool(metadata.get('accepted') and valid and version_ok), 'completed': bool(metadata.get('completed')), 'cost_complete': bool(metadata.get('cost_complete')), 'cost_usd_list_estimate': metadata.get('cost_usd_list_estimate')}
             if all(arm.get(key) == value for key, value in wanted.items()):
                 exported['arm_record_valid'] = True
             else:
                 errors.append('arm_record_identity')
         else:
             errors.append('missing_arm_record')
-    exported['accepted'] = bool(exported['runner_reported_accepted'] and exported['model_binding_ok'] and exported['arm_record_valid'])
+    exported['accepted'] = bool(exported['runner_reported_accepted'] and exported['model_binding_ok'] and exported['cli_version_binding_ok'] and exported['arm_record_valid'])
     exported['first_attempt_accepted'] = bool(exported['accepted'] and exported.get('attempt_count') == 1)
     return exported
 
@@ -209,7 +215,7 @@ def analyze(rows, setup_errors=()):
     errors = common_input_errors(rows) + list(setup_errors)
     final_count = sum(row.get('final_result_available', False) for row in registered)
     ready = len(registered) == 16 and final_count == 16 and not errors
-    ready = ready and all(row.get('cost_complete') and row.get('model_binding_ok') and row.get('arm_record_valid') and not row.get('input_consistency_errors') and not row.get('artifact_errors') and row.get('cost_with_preparation_usd_list_estimate') is not None and row.get('total_wall_with_preparation_s') is not None for row in registered)
+    ready = ready and all(row.get('cost_complete') and row.get('model_binding_ok') and row.get('cli_version_binding_ok') and row.get('arm_record_valid') and not row.get('input_consistency_errors') and not row.get('artifact_errors') and row.get('cost_with_preparation_usd_list_estimate') is not None and row.get('total_wall_with_preparation_s') is not None for row in registered)
     comparisons = {name: compare(rows, a, b, ready) for name, (a, b) in COMPARISONS.items()}
     result = {'registered_runs': len(registered), 'final_results': final_count, 'panel_ready': ready, 'input_errors': errors, 'comparisons': comparisons, 'primary_verdict': comparisons['D_vs_A']['verdict'], 'attribution': 'Pending: the complete registered panel is required.'}
     if not ready:
@@ -292,14 +298,17 @@ def build_report(args):
         path = warmup_root / family
         row = report.export_run(path, 'warmup-' + family, config, warmup_root, args.output, builder, dict(prep, warm_brief_wall_s=0.0, paid_brief_cost_usd=0.0))
         valid = False
+        row.update(expected_claude_cli_version=coordinator.CLAUDE_CLI_VERSION, claude_cli_version=None, cli_version_binding_ok=False)
         if (path / 'result.json').exists():
             metadata = report.read_json(path / 'result.json')
             valid, served = binding(metadata, model)
+            version_ok, version = coordinator.cli_version_binding(metadata)
+            row.update(claude_cli_version=version, cli_version_binding_ok=version_ok)
             valid = valid and metadata.get('instructions_sha256') == report.sha(coordinator.read(config['instructions_file'])) and metadata.get('warmup') is True and metadata.get('input_turns_sent') == metadata.get('session_results') == 1
             row['served_models_from_cumulative_usage'] = served
         row['model_binding_ok'] = valid
-        if not row.get('completed') or not row.get('cost_complete') or not valid:
-            setup_errors.append('The ' + family + ' shared warmup is missing or incomplete.')
+        if not row.get('completed') or not row.get('cost_complete') or not valid or not row['cli_version_binding_ok']:
+            setup_errors.append('The ' + family + ' shared warmup is missing, incomplete, or has a different CLI version.')
         warmups.append(row)
     observed = [row for row in rows + warmups if row['status'] != 'missing']
     document = {'schema': SCHEMA, 'plan_sha256': plan_digest(plan), 'protocol_sha256': report.sha(args.protocol.read_bytes()), 'source_commit': config['source_commit'], 'preparation': prep, 'shared_setup': {'warmups': warmups, 'cold_index_wall_s': cold_index_wall(prep, args.cold_index_seconds), 'machine_cost_usd': None, 'engineering_cost_usd': None}, 'runs': rows, 'analysis': analyze(rows, setup_errors), 'cost_accounting': {'registered_known_cli_cost_usd_list_estimate': sum(row.get('cost_usd_list_estimate') or 0 for row in rows if row['registered']), 'unregistered_known_cli_cost_usd_list_estimate': sum(row.get('cost_usd_list_estimate') or 0 for row in rows if not row['registered']), 'shared_warmup_known_cli_cost_usd_list_estimate': sum(row.get('cost_usd_list_estimate') or 0 for row in warmups), 'all_observed_known_cli_cost_usd_list_estimate': sum(row.get('cost_usd_list_estimate') or 0 for row in observed), 'complete_for_observed_runs': all(row.get('cost_complete') for row in observed), 'note': 'Each cumulative CLI report is counted once. Unknown usage can make these sums lower bounds. No costs from previous task panels are pooled.'}}
@@ -373,7 +382,7 @@ class FactorialTests(unittest.TestCase):
         costs = {'A': 1.0, 'B': 0.9, 'C': 0.6, 'D': 0.55}
         rows = []
         for item in coordinator.schedule():
-            rows.append({**item, 'registered': True, 'expected_model': item['model'], 'final_result_available': True, 'accepted': True, 'first_attempt_accepted': True, 'cost_complete': True, 'model_binding_ok': True, 'arm_record_valid': True, 'input_consistency_errors': [], 'artifact_errors': [], 'cost_with_preparation_usd_list_estimate': costs[item['arm']], 'total_wall_with_preparation_s': 100, 'common_input_sha256': 'a' * 64, 'instructions_sha256': 'b' * 64, 'source_commit': 'c' * 40, 'prompt_sha256': ('d' if item['condition'] == 'control' else 'e') * 64, 'suffix_sha256': ('f' if item['condition'] == 'control' else '0') * 64})
+            rows.append({**item, 'registered': True, 'expected_model': item['model'], 'final_result_available': True, 'accepted': True, 'first_attempt_accepted': True, 'cost_complete': True, 'model_binding_ok': True, 'cli_version_binding_ok': True, 'arm_record_valid': True, 'input_consistency_errors': [], 'artifact_errors': [], 'cost_with_preparation_usd_list_estimate': costs[item['arm']], 'total_wall_with_preparation_s': 100, 'common_input_sha256': 'a' * 64, 'instructions_sha256': 'b' * 64, 'source_commit': 'c' * 40, 'prompt_sha256': ('d' if item['condition'] == 'control' else 'e') * 64, 'suffix_sha256': ('f' if item['condition'] == 'control' else '0') * 64})
         return rows
 
     def test_model_control_prevents_misattributed_briefing_benefit(self):
@@ -384,7 +393,7 @@ class FactorialTests(unittest.TestCase):
         self.assertIn('model selection', value['attribution'])
 
     def test_missing_invalid_or_incomplete_registered_rows_stay_pending(self):
-        for key, invalid in [('final_result_available', False), ('cost_complete', False), ('model_binding_ok', False), ('arm_record_valid', False), ('common_input_sha256', 'changed'), ('prompt_sha256', 'changed')]:
+        for key, invalid in [('final_result_available', False), ('cost_complete', False), ('model_binding_ok', False), ('cli_version_binding_ok', False), ('arm_record_valid', False), ('common_input_sha256', 'changed'), ('prompt_sha256', 'changed')]:
             with self.subTest(key=key):
                 rows = self.rows()
                 rows[0][key] = invalid
@@ -456,7 +465,7 @@ class FactorialTests(unittest.TestCase):
             (study / 'harness').mkdir(parents=True)
             for name in ['replay.py', 'instruction_guard.py']:
                 (study / 'harness' / name).write_text('Synthetic source; never executed.\n')
-            plan = {'schema': coordinator.SCHEMA, 'models': coordinator.MODELS, 'effort': 'medium', 'order': coordinator.ORDER, 'runner': bound(study / 'harness/replay.py'), 'instruction_guard': bound(study / 'harness/instruction_guard.py'), 'task_config': bound(config_path), 'input_files': inputs}
+            plan = {'schema': coordinator.SCHEMA, 'models': coordinator.MODELS, 'claude_cli_version': coordinator.CLAUDE_CLI_VERSION, 'effort': 'medium', 'order': coordinator.ORDER, 'runner': bound(study / 'harness/replay.py'), 'instruction_guard': bound(study / 'harness/instruction_guard.py'), 'task_config': bound(config_path), 'input_files': inputs}
             plan_path = study / 'plan.json'
             report.write_json(plan_path, plan)
             report.write_json(study / 'schedule.json', {'plan_sha256': plan_digest(plan), 'runs': coordinator.schedule()})
@@ -466,14 +475,14 @@ class FactorialTests(unittest.TestCase):
                 suffix = BRIEF_PREFIX + Path(config['brief_file']).read_bytes() if condition == 'treatment' else b''
                 costs = [cost] if warmup else [cost * 0.8, cost]
                 attempts = [{'result': {'type': 'result', 'subtype': 'success', 'is_error': False, 'result': 'PRIVATE_RESPONSE', 'total_cost_usd': value, 'modelUsage': {model: {'cacheReadInputTokens': 500 if i == 0 else 900, 'account': 'PRIVATE_ACCOUNT'}}}, 'verification': {'passed': i == len(costs) - 1, 'checks': [{'name': 'acceptance', 'exit_code': 0 if i == len(costs) - 1 else 1, 'log': '/Users/private-person/account\n'}]}} for i, value in enumerate(costs)]
-                return {'condition': condition, 'source_commit': config['source_commit'], 'model': model, 'effort': 'medium', 'init': {'model': model, 'account': 'PRIVATE_ACCOUNT'}, 'warmup': warmup, 'input_turns_sent': len(costs), 'session_results': len(costs), 'completed': True, 'accepted': not warmup, 'cost_complete': True, 'cost_status': 'complete_cli_report', 'cost_usd_list_estimate': cost, 'wall_s': 100, 'agent_wall_s': 80, 'checks_wall_s': 20, 'preparation_wall_s': 2, 'attempts': attempts, 'instructions_sha256': report.sha(instructions), 'common_input_sha256': report.sha(instructions + b'\0' + task), 'prompt_sha256': report.sha(task + suffix), 'suffix_sha256': report.sha(suffix)}
+                return {'condition': condition, 'source_commit': config['source_commit'], 'model': model, 'effort': 'medium', 'init': {'model': model, 'claude_code_version': coordinator.CLAUDE_CLI_VERSION, 'account': 'PRIVATE_ACCOUNT'}, 'warmup': warmup, 'input_turns_sent': len(costs), 'session_results': len(costs), 'completed': True, 'accepted': not warmup, 'cost_complete': True, 'cost_status': 'complete_cli_report', 'cost_usd_list_estimate': cost, 'wall_s': 100, 'agent_wall_s': 80, 'checks_wall_s': 20, 'preparation_wall_s': 2, 'attempts': attempts, 'instructions_sha256': report.sha(instructions), 'common_input_sha256': report.sha(instructions + b'\0' + task), 'prompt_sha256': report.sha(task + suffix), 'suffix_sha256': report.sha(suffix)}
             for row in coordinator.schedule():
                 run = study / 'runs' / row['label']
                 value = metadata(row['model'], row['condition'], {'A': 1.0, 'B': 0.9, 'C': 0.6, 'D': 0.55}[row['arm']])
                 report.write_json(run / 'result.json', value)
                 report.write_json(run / 'candidate-1.json', [])
                 report.write_json(run / 'normalized-candidate-2.json', [])
-                report.write_json(run / 'arm-result.json', {**row, 'plan_sha256': plan_digest(plan), 'runner_result_sha256': report.sha((run / 'result.json').read_bytes()), 'served_models_from_cumulative_usage': [row['model']], 'model_binding_ok': True, 'accepted': True, 'completed': True, 'cost_complete': True, 'cost_usd_list_estimate': value['cost_usd_list_estimate']})
+                report.write_json(run / 'arm-result.json', {**row, 'plan_sha256': plan_digest(plan), 'runner_result_sha256': report.sha((run / 'result.json').read_bytes()), 'served_models_from_cumulative_usage': [row['model']], 'model_binding_ok': True, 'expected_claude_cli_version': coordinator.CLAUDE_CLI_VERSION, 'claude_cli_version': coordinator.CLAUDE_CLI_VERSION, 'cli_version_binding_ok': True, 'accepted': True, 'completed': True, 'cost_complete': True, 'cost_usd_list_estimate': value['cost_usd_list_estimate']})
             for family, model in coordinator.MODELS.items():
                 report.write_json(study / 'warmups' / family / 'result.json', metadata(model, 'control', 0.01, True))
             args = argparse.Namespace(plan=plan_path, study_root=study, preparation=preparation_path, protocol=protocol_path, output=root / 'public', warmups_root=None, cold_index_seconds=None)
@@ -490,6 +499,28 @@ class FactorialTests(unittest.TestCase):
             public = '\n'.join(path.read_text() for path in args.output.rglob('*') if path.is_file())
             for private in ['PRIVATE_RESPONSE', 'PRIVATE_ACCOUNT', '/Users/private-person']:
                 self.assertNotIn(private, public)
+            warmup_path = study / 'warmups/sonnet/result.json'
+            warmup = report.read_json(warmup_path)
+            warmup['init']['claude_code_version'] = '2.1.288'
+            report.write_json(warmup_path, warmup)
+            with mock.patch.object(report, 'PatchBuilder', return_value=builder):
+                mismatch = build_report(args)
+            self.assertEqual(mismatch['analysis']['primary_verdict'], 'pending')
+            self.assertFalse(mismatch['shared_setup']['warmups'][1]['cli_version_binding_ok'])
+            self.assertEqual(mismatch['shared_setup']['warmups'][1]['cost_usd_list_estimate'], 0.01)
+            first_run = study / 'runs' / coordinator.schedule()[0]['label']
+            first = report.read_json(first_run / 'result.json')
+            first['init']['claude_code_version'] = '2.1.288'
+            report.write_json(first_run / 'result.json', first)
+            with mock.patch.object(report, 'PatchBuilder', return_value=builder):
+                mismatch = build_report(args)
+            self.assertEqual(mismatch['analysis']['primary_verdict'], 'pending')
+            self.assertTrue(mismatch['runs'][0]['runner_reported_accepted'])
+            self.assertFalse(mismatch['runs'][0]['accepted'])
+            self.assertFalse(mismatch['runs'][0]['cli_version_binding_ok'])
+            self.assertEqual(mismatch['runs'][0]['claude_cli_version'], '2.1.288')
+            self.assertEqual(mismatch['runs'][0]['cost_usd_list_estimate'], 1.0)
+            self.assertAlmostEqual(mismatch['cost_accounting']['all_observed_known_cli_cost_usd_list_estimate'], 12.22)
 
 
 if __name__ == '__main__':
