@@ -77,6 +77,14 @@ A public `30180` has `t` tags `oa:cap:v1` and
 `oa:profile:<profile>`. Transport hints use `t: oa:transport:<transport>`.
 Duplicate semantic tags or disagreement with the resolved definition refuse.
 
+A discovery head MAY carry `t: oa:cap:test` or `t: oa:cap:dev` to mark a
+nonproduction listing, including a head that references a definition. Catalogs
+hide these listings by default. `openagents cap list` also requires signed
+NIP-MV entity-state presence from the publisher within the past seven days;
+publication alone is not presence. `--all` includes publishers with no recent
+presence and test/dev listings, with an `old/test` column. This catalog filter
+is not a usability observation or permission to invoke a binding.
+
 ## Capability body
 
 `v` is `1`; `requires` is the common feature list. A body is exactly one of:

@@ -20,9 +20,11 @@ use crate::{Args, Output, out};
 use coder::cli_route::tree::{Declared, Effect};
 
 pub(crate) const CAP_USAGE: &str = "usage: openagents cap COMMAND [OPTIONS]
-  list [--author PUBKEY] [--profile PROFILE] [--limit N]
+  list [--author PUBKEY] [--profile PROFILE] [--limit N] [--all]
         List published capability heads (kind 30180, oa:cap:v1), newest
-        first, one row per signer and slug.
+        first, one row per signer and slug. By default, show only publishers
+        seen in signed presence within 7 days, excluding test/dev listings.
+        --all includes everything with an old/test column.
   describe PUBKEY:SLUG | --author PUBKEY SLUG
         Print one capability head with its parsed definition.
 Options for every command:
@@ -231,7 +233,7 @@ fn run(group: Group, output: &Output, words: &[String]) -> u8 {
         println!("{usage}");
         return 0;
     }
-    let args = match Args::parse(rest, &[]) {
+    let args = match Args::parse(rest, &["all"]) {
         Ok(args) => args,
         Err(message) => return output.usage(name, &message, usage),
     };
@@ -273,20 +275,42 @@ fn run(group: Group, output: &Output, words: &[String]) -> u8 {
     let outcome = client.subscribe(vec![request.filter.clone()], false, timeout, |event| {
         events.push(event.clone());
     });
-    client.close();
     if let Err(message) = outcome {
+        client.close();
         return output.fail(name, &message);
     }
     let kind = request.filter["kinds"][0].as_u64().unwrap_or(0);
     let records = records(kind, events);
+    let now = unix_now();
+    let mut presence = Vec::new();
+    if matches!(group, Group::Cap) && matches!(request.shape, Shape::List) && !records.is_empty() {
+        let authors: Vec<&str> = records.iter().map(|r| r.event.pubkey.as_str()).collect();
+        let outcome = client.subscribe(
+            vec![presence_filter(&authors, now)],
+            false,
+            timeout,
+            |event| presence.push(event.clone()),
+        );
+        if let Err(message) = outcome {
+            client.close();
+            return output.fail(name, &message);
+        }
+    }
+    client.close();
     match request.shape {
         Shape::List => {
-            let items: Vec<Value> = records.iter().map(|record| record.row(group)).collect();
+            let all = args.switch("all");
+            let items: Vec<Value> = if matches!(group, Group::Cap) {
+                cap_rows(&records, &presence, now, all)
+            } else {
+                records.iter().map(|record| record.row(group)).collect()
+            };
             output.emit(
                 &json!({
                     "relay": url,
                     "kind": request.filter["kinds"][0],
                     "count": items.len(),
+                    "all": all,
                     "items": items,
                 }),
                 |value| render_list(group, value),
@@ -528,6 +552,55 @@ impl Record {
     }
 }
 
+const RECENT_SECONDS: u64 = 7 * 24 * 60 * 60;
+
+fn presence_filter(authors: &[&str], now: u64) -> Value {
+    json!({"kinds": [verse::mv::STATE_KIND], "authors": authors,
+        "since": now.saturating_sub(RECENT_SECONDS), "until": now})
+}
+
+/// Publication age does not establish publisher presence. Only a verified
+/// publisher entity state counts, including a recent departure.
+fn cap_rows(records: &[Record], presence: &[Event], now: u64, all: bool) -> Vec<Value> {
+    let mut seen = BTreeMap::<&str, u64>::new();
+    for event in presence {
+        if event.created_at > now
+            || now.saturating_sub(event.created_at) > RECENT_SECONDS
+            || event.is_expired(now)
+        {
+            continue;
+        }
+        let Some(world) = event.tag_values("w").next() else {
+            continue;
+        };
+        if let Ok(verse::mv::Received::State { state, .. }) = verse::mv::decode(event, world)
+            && matches!(state.role.as_str(), "avatar" | "agent")
+        {
+            let at = seen.entry(event.pubkey.as_str()).or_default();
+            *at = (*at).max(event.created_at);
+        }
+    }
+    records
+        .iter()
+        .filter_map(|record| {
+            let last_seen = seen.get(record.event.pubkey.as_str()).copied();
+            let old = last_seen.is_none();
+            let test = record
+                .event
+                .tag_values("t")
+                .any(|tag| matches!(tag, "oa:cap:test" | "oa:cap:dev"));
+            if !all && (old || test) {
+                return None;
+            }
+            let mut row = record.row(Group::Cap);
+            row["last_seen"] = json!(last_seen);
+            row["old"] = json!(old);
+            row["test"] = json!(test);
+            Some(row)
+        })
+        .collect()
+}
+
 fn copy(row: &mut serde_json::Map<String, Value>, body: &Value, names: &[&str]) {
     for name in names {
         if let Some(value) = body.get(*name)
@@ -676,7 +749,12 @@ fn render_list_rows(group: Group, value: &Value) -> String {
     let mut rows = Vec::new();
     match group {
         Group::Cap => {
-            rows.push(row(&["SIGNER", "SLUG", "PROFILE", "VALID", "SUMMARY"]));
+            let all = value["all"].as_bool().unwrap_or(false);
+            let mut header = row(&["SIGNER", "SLUG", "PROFILE", "VALID", "SUMMARY"]);
+            if all {
+                header.push("old/test".into());
+            }
+            rows.push(header);
             for item in items {
                 let profile = text(item, "profile").to_owned();
                 let profile = if profile.is_empty() {
@@ -692,13 +770,25 @@ fn render_list_rows(group: Group, value: &Value) -> String {
                 } else {
                     profile
                 };
-                rows.push(vec![
+                let mut cells = vec![
                     short(text(item, "pubkey")),
                     text(item, "d").to_owned(),
                     profile,
                     verdict(item),
                     summary(item),
-                ]);
+                ];
+                if all {
+                    cells.push(
+                        match (item["old"] == true, item["test"] == true) {
+                            (true, true) => "old/test",
+                            (true, false) => "old",
+                            (false, true) => "test",
+                            (false, false) => "-",
+                        }
+                        .into(),
+                    );
+                }
+                rows.push(cells);
             }
         }
         Group::Prg => {
@@ -889,6 +979,112 @@ mod tests {
             .map(|(name, value)| Tag::new(vec![(*name).to_owned(), (*value).to_owned()]))
             .collect();
         signer.sign(1_700_000_000, kind, tags, body.to_string())
+    }
+
+    fn presence(signer: &RelaySigner, at: u64, role: &str) -> Event {
+        signer.sign(
+            at,
+            verse::mv::STATE_KIND,
+            vec![
+                Tag::new(vec!["w".into(), "plaza".into()]),
+                Tag::new(vec!["d".into(), "plaza/avatar".into()]),
+                Tag::new(vec!["role".into(), role.into()]),
+            ],
+            json!({"v":1,"id":"avatar","role":role,"p":[0,0,0],
+            "q":[0,0,0,1],"t":at * 1000,"online":false})
+            .to_string(),
+        )
+    }
+
+    #[test]
+    fn cap_presence_boundary_and_verification() {
+        let signer = signer();
+        let now = 1_700_000_000;
+        let records = records(
+            30_180,
+            vec![head(
+                &signer,
+                30_180,
+                &[("d", "real"), ("t", "oa:cap:v1")],
+                &json!({"v":1,"definition":{}}),
+            )],
+        );
+        assert!(cap_rows(&records, &[], now, false).is_empty());
+        let at = now - RECENT_SECONDS;
+        assert_eq!(
+            cap_rows(&records, &[presence(&signer, at, "avatar")], now, false).len(),
+            1
+        );
+        for event in [
+            presence(&signer, at - 1, "avatar"),
+            presence(&signer, now + 1, "avatar"),
+            presence(&signer, now, "object"),
+            presence(
+                &RelaySigner::from_secret_hex(&"8".repeat(64)).unwrap(),
+                now,
+                "avatar",
+            ),
+        ] {
+            assert!(cap_rows(&records, &[event], now, false).is_empty());
+        }
+        let mut forged = presence(&signer, now, "avatar");
+        forged.content.push(' ');
+        assert!(cap_rows(&records, &[forged], now, false).is_empty());
+        let filter = presence_filter(&[signer.pubkey()], now);
+        assert_eq!(filter["since"], json!(at));
+        assert_eq!(filter["until"], json!(now));
+        assert_eq!(filter["authors"], json!([signer.pubkey()]));
+    }
+
+    #[test]
+    fn cap_all_shows_old_test_and_dev_rows_in_text_and_json() {
+        let signer = signer();
+        let now = 1_700_000_000;
+        let events = [
+            ("real", ""),
+            ("cjtest", "oa:cap:test"),
+            ("slow", "oa:cap:dev"),
+        ]
+        .into_iter()
+        .map(|(slug, marker)| {
+            head(
+                &signer,
+                30_180,
+                &[("d", slug), ("t", "oa:cap:v1"), ("t", marker)],
+                &json!({"v":1,"definition":{}}),
+            )
+        })
+        .collect();
+        let records = records(30_180, events);
+        let recent = vec![presence(&signer, now, "agent")];
+        let visible = cap_rows(&records, &recent, now, false);
+        assert_eq!(visible.len(), 1);
+        assert_eq!(visible[0]["d"], "real");
+        let all = cap_rows(&records, &recent, now, true);
+        assert_eq!(all.len(), 3);
+        let text = render_list(Group::Cap, &json!({"all":true,"items":all}));
+        assert!(text.lines().next().unwrap().contains("old/test"));
+        assert!(
+            text.lines()
+                .any(|line| line.contains("cjtest") && line.ends_with("test"))
+        );
+        assert!(
+            text.lines()
+                .any(|line| line.contains("slow") && line.ends_with("test"))
+        );
+        let old = cap_rows(&records, &[], now, true);
+        assert!(old.iter().all(|row| row["old"] == true));
+        let text = render_list(Group::Cap, &json!({"all":true,"items":old}));
+        assert!(
+            text.lines()
+                .any(|line| line.contains("real") && line.ends_with("old"))
+        );
+        assert!(
+            text.lines()
+                .any(|line| line.contains("cjtest") && line.ends_with("old/test"))
+        );
+        let args = Args::parse(&words("--all"), &["all"]).unwrap();
+        assert!(args.switch("all"));
     }
 
     #[test]

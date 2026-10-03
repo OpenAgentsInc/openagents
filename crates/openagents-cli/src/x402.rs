@@ -147,7 +147,8 @@ pub(crate) const USAGE: &str = "usage: openagents x402 COMMAND [OPTIONS]
                           execute_until_passed) and publish the status.
   advertise --slug SLUG --merchant ID [--url PUBLIC_URL] [--front URL]
         [--local] [--binding http:1|mcp:1|nostr:openagents:1] [--relays URL]...
-        [--summary TEXT] [--dry-run] [--as PROFILE] [--relay URL]
+        [--summary TEXT] [--test | --dev] [--dry-run] [--as PROFILE] [--relay URL]
+                          Mark test/development listings with --test or --dev.
                           Publish (or print) the kind 30180 adapter definition
                           that advertises a paid resource (NIP-CAP feature
                           oa-x402-v1) over one binding. http:1 (default)
@@ -210,7 +211,7 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::screen("ledger", Effect::ReadOnly, "wallet"),
 ];
 
-const SWITCHES: &[&str] = &["show-proof", "dry-run", "local"];
+const SWITCHES: &[&str] = &["show-proof", "dry-run", "local", "test", "dev"];
 
 /// The pay front `publish` and `advertise` talk to by default.
 pub(crate) fn pay_front(flag: Option<&str>) -> String {
@@ -1728,6 +1729,14 @@ fn paid_definition(ad: &Advertisement<'_>) -> Value {
     })
 }
 
+fn advertisement_labels(args: &Args) -> Vec<nostr::domain::Tag> {
+    [("test", "oa:cap:test"), ("dev", "oa:cap:dev")]
+        .into_iter()
+        .filter(|(switch, _)| args.switch(switch))
+        .map(|(_, marker)| nostr::domain::Tag::new(vec!["t".into(), marker.into()]))
+        .collect()
+}
+
 fn advertise(output: &Output, words: &[String]) -> u8 {
     let args = match Args::parse(words, SWITCHES) {
         Ok(args) => args,
@@ -1848,7 +1857,7 @@ fn advertise(output: &Output, words: &[String]) -> u8 {
         Ok(definition) => definition,
         Err(error) => return output.usage("x402", &format!("definition: {error}"), USAGE),
     };
-    let tags = vec![
+    let mut tags = vec![
         nostr::domain::Tag::new(vec!["d".to_owned(), slug.to_owned()]),
         nostr::domain::Tag::new(vec!["t".to_owned(), nostr::cap::CAP_MARKER.to_owned()]),
         nostr::domain::Tag::new(vec!["t".to_owned(), definition.profile.tag().to_owned()]),
@@ -1857,6 +1866,7 @@ fn advertise(output: &Output, words: &[String]) -> u8 {
             format!("oa:transport:{}", definition.transport),
         ]),
     ];
+    tags.extend(advertisement_labels(&args));
     let event = signer.sign(
         crate::relay::unix_now(),
         nostr::cap::DISCOVERY_KIND,
@@ -2384,6 +2394,24 @@ mod tests {
             })
         );
         assert!(flags(&parse(&["--max-msat", "0"])).is_err());
+    }
+
+    #[test]
+    fn advertisements_are_production_unless_explicitly_marked() {
+        for (words, expected) in [
+            (vec![], vec![]),
+            (vec!["--test".to_owned()], vec!["oa:cap:test"]),
+            (vec!["--dev".to_owned()], vec!["oa:cap:dev"]),
+        ] {
+            let args = Args::parse(&words, SWITCHES).unwrap();
+            let tags = advertisement_labels(&args);
+            assert_eq!(
+                tags.iter()
+                    .filter_map(|tag| tag.value())
+                    .collect::<Vec<_>>(),
+                expected
+            );
+        }
     }
 
     #[test]

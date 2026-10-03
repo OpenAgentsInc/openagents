@@ -171,7 +171,10 @@ struct Worker {
 
 impl Worker {
     fn start(url: &str, arguments: &[&str], variables: &[(&str, &str)]) -> Self {
-        let mut command = Command::new(env!("CARGO_BIN_EXE_coder-worker"));
+        let mut command = Command::new(
+            std::path::Path::new(env!("CARGO_BIN_EXE_coder"))
+                .with_file_name(format!("coder-worker{}", std::env::consts::EXE_SUFFIX)),
+        );
         for name in CREDENTIALS {
             command.env_remove(name);
         }

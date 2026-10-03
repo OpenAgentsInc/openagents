@@ -863,7 +863,7 @@ event id without publishing. A signet or regtest wallet is refused because
 those networks have no x402 network id.
 
 ```sh
-openagents x402 advertise --slug echo --url https://host.example/echo \
+openagents x402 advertise --test --slug echo --url https://host.example/echo \
     --merchant host.example --summary "echo the body" --json
 openagents cap describe PUBKEY:echo        # shows x402 bindings and receivers
 echo hi | openagents x402 fetch https://host.example/echo --method POST --body - \
@@ -929,7 +929,7 @@ rules live in `crates/x402::native`.
 
 ```sh
 openagents x402 advertise --slug echo --binding nostr:openagents:1 \
-    --merchant demo --summary "echo bytes over Nostr" --json
+    --merchant demo --test --summary "echo bytes over Nostr" --json
 openagents x402 native-serve --slug echo --msat 1000 --seconds 600 --json -- cat
 echo -n hi | openagents x402 buy PROVIDER_PUBKEY --slug echo --input - \
     --max-msat 2000 --wait 60 --as buyer --json
