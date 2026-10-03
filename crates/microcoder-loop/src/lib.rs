@@ -35,6 +35,7 @@ pub mod models;
 pub mod reply;
 pub mod run;
 pub mod state;
+pub mod transcript;
 pub mod usage;
 pub mod vertex;
 

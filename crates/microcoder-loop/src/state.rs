@@ -285,26 +285,33 @@ and set `finished` to true: Jev checks each failing test and drops one it agrees
             ));
         }
         for action in &self.actions[older..] {
+            out.push_str(&format!("\n## Step {}\n\n{}", action.step, action.render()));
+        }
+        out
+    }
+}
+
+impl Action {
+    /// The action in full, under no heading: its rationale, then each
+    /// command with its status and output.
+    #[must_use]
+    pub fn render(&self) -> String {
+        let mut out = format!("Rationale: {}\n", self.rationale);
+        for result in &self.results {
+            let status = match (result.exit, result.timed_out) {
+                (_, true) => format!("timed out after {:.0} s", result.seconds),
+                (Some(code), _) => format!("exit {code}, {:.1} s", result.seconds),
+                (None, _) => "killed".to_string(),
+            };
             out.push_str(&format!(
-                "\n## Step {}\n\nRationale: {}\n",
-                action.step, action.rationale
+                "\n$ {}\n[{status}]\n{}\n",
+                result.command, result.output
             ));
-            for result in &action.results {
-                let status = match (result.exit, result.timed_out) {
-                    (_, true) => format!("timed out after {:.0} s", result.seconds),
-                    (Some(code), _) => format!("exit {code}, {:.1} s", result.seconds),
-                    (None, _) => "killed".to_string(),
-                };
-                out.push_str(&format!(
-                    "\n$ {}\n[{status}]\n{}\n",
-                    result.command, result.output
-                ));
-            }
-            for command in &action.skipped {
-                out.push_str(&format!(
-                    "\n$ {command}\n[not run: an earlier command failed]\n"
-                ));
-            }
+        }
+        for command in &self.skipped {
+            out.push_str(&format!(
+                "\n$ {command}\n[not run: an earlier command failed]\n"
+            ));
         }
         out
     }

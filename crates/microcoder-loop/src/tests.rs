@@ -536,7 +536,7 @@ async fn the_retrieval_mode_names_embeddings_lexical_or_mixed() {
 }
 
 #[tokio::test]
-async fn each_prompt_is_rebuilt_from_state_not_a_conversation() {
+async fn each_prompt_extends_the_last_one_not_a_conversation() {
     let script = Script::new(vec![
         Ok(act("first reason", &["echo one"], false)),
         Ok(act("done", &[], true)),
@@ -544,10 +544,12 @@ async fn each_prompt_is_rebuilt_from_state_not_a_conversation() {
     go(&script, &plain()).await;
     let prompts = script.prompts.into_inner();
     assert_eq!(prompts.len(), 2);
-    assert!(prompts[0].contains("None yet."));
-    // The second prompt carries the first step's result as state, and Jev's
-    // judgment, not the model's earlier reply as a message.
-    assert!(prompts[1].contains("## Step 1") && prompts[1].contains("output of echo one"));
+    assert!(!prompts[0].contains("# Step 1"));
+    // The second prompt is the first, byte for byte, with the first step's
+    // result and Jev's judgment appended, not the model's earlier reply as
+    // a message (#10244).
+    assert!(prompts[1].starts_with(&prompts[0]));
+    assert!(prompts[1].contains("# Step 1") && prompts[1].contains("output of echo one"));
     assert!(prompts[1].contains("- done: probability 0.30"));
     assert!(prompts[1].contains("Rationale: first reason"));
 }
@@ -730,11 +732,7 @@ async fn files_in_view_appear_in_full_in_the_next_prompt() {
     let script = Script::new(vec![Ok(first), Ok(act("done", &[], true))]);
     let (state, _, _, _) = go(&script, &plain()).await;
     let prompts = script.prompts.into_inner();
-    assert!(
-        prompts[0].contains(
-            "# Files in view (current: read after the last step's commands ran)\n\nNone."
-        )
-    );
+    assert!(prompts[0].contains("## Files in view\n\nNone."));
     assert!(prompts[1].contains("## a.py\n\n```\ncontents of a.py\n```"));
     assert!(prompts[1].contains("## missing.txt\n\n(no such file)"));
     // Duplicates are read once.
@@ -769,8 +767,8 @@ async fn replies_that_run_nothing_are_noted_then_stop_the_loop() {
     assert_eq!(ran, ["echo hi"]);
     let prompts = script.prompts.into_inner();
     assert!(prompts[1].contains("Step 1 ran no commands"));
-    // A step that ran something clears the note.
-    assert!(!prompts[2].contains("ran no commands and asked"));
+    // A step that ran something clears the note from the current state.
+    assert!(!crate::transcript::current(&prompts[2]).contains("ran no commands and asked"));
 }
 
 fn freeze(rationale: &str, commands: &[&str]) -> NextAction {
@@ -801,6 +799,11 @@ async fn finished_waits_for_the_frozen_tests_to_pass() {
     assert!(prompts[2].contains("## b.sh: FAIL"));
     assert!(prompts[2].contains("The frozen script:\n\n```\n  1  check b\n```"));
     assert!(prompts[3].contains("1 acceptance tests fail"));
+    // Through freezes, notes, and test runs, each prompt starts with the
+    // one before it, byte for byte, so the cache reads it back (#10244).
+    for pair in prompts.windows(2) {
+        assert!(pair[1].starts_with(&pair[0]));
+    }
     let tested = log
         .0
         .iter()

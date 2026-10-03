@@ -8,8 +8,11 @@
 //!     run next_action's commands
 //! ```
 //!
-//! Every generation is built fresh from the current state. There's no
-//! conversation: no earlier model reply is sent back as a message.
+//! There's no conversation: no earlier model reply is sent back as a
+//! message. Each step's prompt is the previous step's prompt, unchanged,
+//! with what that step ran and the state after it appended
+//! ([`crate::transcript`]), so a provider's prompt cache reads the earlier
+//! steps back instead of writing them again (#10244).
 //!
 //! With the knowledge base on, building the state also retrieves entries:
 //! a search over the base, then one Jev question per candidate, and the
@@ -30,6 +33,7 @@ use crate::models::{
     dispute_set, knowledge_set, relevance_set,
 };
 use crate::state::{Action, CommandResult, Dropped, Kept, State, Test, cut};
+use crate::transcript::{Inputs, Transcript};
 
 /// What every generation is told, before the prompt.
 pub const SYSTEM: &str = "You work on a task by running shell commands in its working \
@@ -38,9 +42,10 @@ environment, what earlier steps ran and printed, and judgments from Jev, a decis
 about the state. Treat Jev's judgments as evidence, not orders. Each command is a bash script, \
 run in order in the working directory and fed to bash as written, so never wrap it in sh -c or \
 bash -c. Commands stop at the first one that fails; nobody answers questions, and there is no \
-editor, so write files with heredocs. The Files section shows, in full, the current contents of \
-every path in `view`: keep the files you need there instead of printing them with cat, and \
-you'll see them after each step's commands run. A non-empty `view` replaces the list; an empty \
+editor, so write files with heredocs. The Files in view part of each state section shows the \
+contents of every path in `view`, read after the last step's commands ran, or says the file is \
+unchanged since an earlier section: keep the files you need there instead of printing them with \
+cat. A non-empty `view` replaces the list; an empty \
 one keeps it. Set `finished` to true, with no commands, \
 only when the task is complete. Every other step must run at least one command: the \
 files in view are already current, so asking to see them again does nothing. The user reads \
@@ -1240,6 +1245,9 @@ pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
     let mut checked: Vec<String> = Vec::new();
     // Steps in a row judged repeating without progress (the stuck guard).
     let mut stuck_for = 0usize;
+    // Each step's prompt extends the last one's, so its provider's prompt
+    // cache reads every earlier step back (#10244).
+    let mut transcript = Transcript::new();
     let mut step = 0usize;
     let ending = loop {
         if env.stopped() {
@@ -1316,12 +1324,15 @@ pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
         let beside =
             limits.first_judgment_beside && step == 1 && state.actions.is_empty() && !strong_tests;
         let (judgment, early) = if beside {
-            let text = prompt(
+            let text = transcript.next(
                 &state,
-                user_prompt,
-                FIRST_STEP_JEV,
-                knowledge_text.as_deref(),
-                limits.acceptance,
+                &Inputs {
+                    user_prompt,
+                    jev: FIRST_STEP_JEV,
+                    knowledge: knowledge_text.as_deref(),
+                    acceptance: limits.acceptance,
+                    step,
+                },
             );
             let jev_input = jev_state(&state);
             let (judgment, generated) = tokio::join!(
@@ -1362,12 +1373,15 @@ pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
         let (text, generator, generated) = match early {
             Some((text, generated)) => (text, models.generator, generated),
             None => {
-                let text = prompt(
+                let text = transcript.next(
                     &state,
-                    user_prompt,
-                    &jev_text,
-                    knowledge_text.as_deref(),
-                    limits.acceptance,
+                    &Inputs {
+                        user_prompt,
+                        jev: &jev_text,
+                        knowledge: knowledge_text.as_deref(),
+                        acceptance: limits.acceptance,
+                        step,
+                    },
                 );
                 let generator = match models.strong {
                     Some(strong)
@@ -1505,7 +1519,7 @@ pub async fn run<E: Env, G: Generate, J: Judge, O: Observer>(
             }
             state.notes.push(format!(
                 "Step {step} ran no commands and asked for no file that wasn't already in view. \
-The Files in view section already holds the current contents of those files, read after the last \
+The latest Files in view already holds the current contents of those files, read after the last \
 command ran; asking for them again shows nothing new. Run a command that moves the task forward, \
 or set finished to true if the task is complete."
             ));

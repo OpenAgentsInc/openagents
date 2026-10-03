@@ -29,6 +29,21 @@
 //! until the prompt arrives. A warm process that is never used is killed
 //! when the generator is dropped.
 //!
+//! The prompt cache (#10244): Claude Code marks its system prompt and an
+//! environment message it adds after the user's message for caching, but
+//! nothing inside the user's message, so a step whose prompt extends the
+//! last step's still wrote the whole prompt to the cache again (the shadow
+//! baseline read back only 12 to 15% of its input). When a step's prompt
+//! starts with the previous step's prompt under the same system text
+//! ([`crate::transcript`]), the message carries the earlier prompt's
+//! blocks unchanged and the new text as one more block, and marks that
+//! last block `cache_control` ([`ClaudeGenerator::blocks`]). The API then
+//! reads everything up to the earlier step's mark from the cache and
+//! writes only the new block. Claude Code passes a block's own mark
+//! through; with its three that is the API's limit of four, and a call the
+//! API refuses for too many marks is sent again without one, and later
+//! calls send none.
+//!
 //! Claude Code reports the request's list-price cost (`total_cost_usd`) and
 //! its tokens, so a step's cost basis is [`Basis::ListPrice`]. A call that
 //! fails before a request is sent cost nothing; one that fails after may
@@ -113,8 +128,13 @@ pub struct ClaudeGenerator {
     pub bypass_permissions: bool,
     /// A process started ahead of its prompt ([`ClaudeGenerator::warm`]).
     warm: std::sync::Mutex<Option<Box<Warm>>>,
-    /// Images every step's user message carries after its text.
+    /// Images every step's user message carries after its first block.
     images: Vec<crate::images::InputImage>,
+    /// The system text and blocks of the last prompt sent.
+    sent: std::sync::Mutex<Option<(String, Vec<String>)>>,
+    /// Whether a message marks its last block for caching; cleared when
+    /// the API refuses the mark.
+    mark: std::sync::atomic::AtomicBool,
 }
 
 /// A started binary waiting for its prompt, and the system text it was
@@ -144,6 +164,8 @@ impl ClaudeGenerator {
             bypass_permissions: false,
             warm: std::sync::Mutex::new(None),
             images: Vec::new(),
+            sent: std::sync::Mutex::new(None),
+            mark: std::sync::atomic::AtomicBool::new(true),
         }
     }
 
@@ -154,20 +176,49 @@ impl ClaudeGenerator {
         self
     }
 
-    /// The `stream-json` user message one step writes to the binary: the
-    /// prompt, then each image as a base64 `image` block.
+    /// The `stream-json` user message one step writes to the binary: each
+    /// block as a text block, with each image as a base64 `image` block
+    /// after the first, so a later step's message starts with this one's.
+    /// With `mark`, the last block is marked for caching.
     #[must_use]
-    pub fn message(&self, prompt: &str) -> serde_json::Value {
-        let content = if self.images.is_empty() {
-            json!(prompt)
-        } else {
-            serde_json::Value::Array(
-                std::iter::once(json!({"type":"text","text":prompt}))
-                    .chain(self.images.iter().map(crate::images::InputImage::claude))
-                    .collect(),
-            )
-        };
+    pub fn message(&self, blocks: &[String], mark: bool) -> serde_json::Value {
+        let mut content: Vec<Value> = Vec::new();
+        for (index, text) in blocks.iter().enumerate() {
+            content.push(json!({"type":"text","text":text}));
+            if index == 0 {
+                content.extend(self.images.iter().map(crate::images::InputImage::claude));
+            }
+        }
+        if mark && let Some(Value::Object(last)) = content.last_mut() {
+            last.insert("cache_control".into(), json!({"type":"ephemeral"}));
+        }
         json!({"type":"user","message":{"role":"user","content":content}})
+    }
+
+    /// The blocks a step sends `prompt` as: when the last prompt sent under
+    /// `system` is a prefix of it, that prompt's blocks unchanged and the
+    /// rest as one more block; else the prompt as one block.
+    #[must_use]
+    pub fn blocks(&self, system: &str, prompt: &str) -> Vec<String> {
+        let sent = self.sent.lock().ok();
+        if let Some((sent_system, blocks)) = sent.as_ref().and_then(|sent| sent.as_ref())
+            && sent_system == system
+        {
+            let mut at = 0;
+            let extends = blocks.iter().all(|block| {
+                let starts = prompt[at..].starts_with(block.as_str());
+                at += block.len();
+                starts
+            });
+            if extends {
+                let mut out = blocks.clone();
+                if at < prompt.len() {
+                    out.push(prompt[at..].to_owned());
+                }
+                return out;
+            }
+        }
+        vec![prompt.to_owned()]
     }
 
     /// The images each step carries.
@@ -637,6 +688,20 @@ pub struct Invocation {
 }
 
 impl Invocation {
+    /// Whether the API refused the call for its cache marks, such as for
+    /// more than four: an API error about `cache_control`, not a model's
+    /// answer.
+    #[must_use]
+    pub fn refused_mark(&self) -> bool {
+        self.is_error
+            && self
+                .generated
+                .action
+                .as_ref()
+                .err()
+                .is_some_and(|why| why.contains("cache_control") || why.contains("cache control"))
+    }
+
     /// The capacity refusal this call met, if a usage or rate limit
     /// refused it, with the reset the stream reported.
     #[must_use]
@@ -718,6 +783,28 @@ impl ClaudeGenerator {
         prompt: &str,
         partial: &mut dyn FnMut(&str),
     ) -> Invocation {
+        use std::sync::atomic::Ordering;
+        let blocks = self.blocks(system, prompt);
+        let mark = self.mark.load(Ordering::Relaxed);
+        let mut invocation = self.invoke_once(system, &blocks, mark, partial).await;
+        if mark && invocation.is_error && invocation.refused_mark() {
+            self.mark.store(false, Ordering::Relaxed);
+            invocation = self.invoke_once(system, &blocks, false, partial).await;
+        }
+        if let Ok(mut sent) = self.sent.lock() {
+            *sent = Some((system.to_owned(), blocks));
+        }
+        invocation
+    }
+
+    async fn invoke_once(
+        &self,
+        system: &str,
+        blocks: &[String],
+        mark: bool,
+        partial: &mut dyn FnMut(&str),
+    ) -> Invocation {
+        let prompt = blocks.concat();
         let started = Instant::now();
         let milliseconds = || u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
         let failed = |why: String, usd: Option<f64>| Invocation {
@@ -755,7 +842,7 @@ impl ClaudeGenerator {
             },
         };
         if let Some(mut stdin) = child.stdin.take() {
-            let mut line = self.message(prompt).to_string();
+            let mut line = self.message(blocks, mark).to_string();
             line.push('\n');
             let written = stdin.write_all(line.as_bytes()).await;
             drop(stdin);
@@ -820,7 +907,7 @@ impl ClaudeGenerator {
         let report = Report::parse(&stdout);
         dump_request(
             "claude",
-            &json!({ "binary": self.binary, "args": args, "prompt": prompt }),
+            &json!({ "binary": self.binary, "args": args, "prompt": prompt, "blocks": blocks.len(), "cache_mark": mark }),
             json!({
                 "status": status,
                 "stdout": stdout,
@@ -1154,7 +1241,9 @@ printf '{{"type":"result","is_error":false,"result":"","structured_output":{{"re
         let line: Value = serde_json::from_str(&std::fs::read_to_string(&prompt).unwrap()).unwrap();
         assert_eq!(
             line,
-            json!({"type":"user","message":{"role":"user","content":"the \"prompt\""}})
+            json!({"type":"user","message":{"role":"user","content":[
+                {"type":"text","text":"the \"prompt\"","cache_control":{"type":"ephemeral"}}
+            ]}})
         );
         // A step under other system text starts its own binary.
         generator.warm("OTHER");
@@ -1205,6 +1294,112 @@ printf '%s\n' '{{"type":"result","is_error":false,"result":"","structured_output
             .unwrap();
         assert_eq!(bytes, png);
         assert_eq!(nostr::contracts::digest_bytes(&bytes), image.digest());
+    }
+
+    #[test]
+    fn a_prompt_that_extends_the_last_one_keeps_its_blocks_byte_for_byte() {
+        let generator = ClaudeGenerator::new("opus".into(), None, PathBuf::from("claude"));
+        let sent = |blocks: &[String]| {
+            *generator.sent.lock().unwrap() = Some(("SYS".to_owned(), blocks.to_vec()));
+        };
+        let first = generator.blocks("SYS", "task. state 1.");
+        assert_eq!(first, vec!["task. state 1."]);
+        sent(&first);
+        let second = generator.blocks("SYS", "task. state 1. step 1. state 2.");
+        assert_eq!(second, vec!["task. state 1.", " step 1. state 2."]);
+        sent(&second);
+        let third = generator.blocks("SYS", "task. state 1. step 1. state 2. step 2.");
+        assert_eq!(third[..2], second[..]);
+        assert_eq!(third.concat(), "task. state 1. step 1. state 2. step 2.");
+        sent(&third);
+        // Under other system text, or with a changed start, it starts again.
+        assert_eq!(
+            generator.blocks("OTHER", "task. state 1. x"),
+            vec!["task. state 1. x"]
+        );
+        assert_eq!(
+            generator.blocks("SYS", "task. state 9."),
+            vec!["task. state 9."]
+        );
+        // Only the last block is marked, and earlier blocks are sent as they
+        // were: the next message starts with this one's content.
+        let earlier = generator.message(&second, true);
+        let later = generator.message(&third, true);
+        let content = |m: &Value| m["message"]["content"].as_array().unwrap().clone();
+        let (earlier, later) = (content(&earlier), content(&later));
+        assert_eq!(earlier[1]["cache_control"], json!({"type":"ephemeral"}));
+        assert!(earlier[0].get("cache_control").is_none());
+        assert_eq!(later.len(), 3);
+        for (a, b) in earlier.iter().zip(&later) {
+            assert_eq!(a["text"], b["text"]);
+        }
+        assert!(later[1].get("cache_control").is_none());
+        assert_eq!(later[2]["cache_control"], json!({"type":"ephemeral"}));
+        assert!(
+            content(&generator.message(&third, false))
+                .iter()
+                .all(|block| block.get("cache_control").is_none())
+        );
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn steps_send_growing_blocks_and_a_refused_mark_is_dropped() {
+        let dir = tempfile::tempdir().unwrap();
+        let log = dir.path().join("log");
+        // A stand-in that keeps each message and refuses a marked one when
+        // told to.
+        let binary = stand_in(
+            dir.path(),
+            &format!(
+                r#"read -r line
+printf '%s\n' "$line" >> '{log}'
+if [ -e '{dir}/refuse' ] && printf '%s' "$line" | grep -q cache_control; then
+printf '%s\n' '{{"type":"result","is_error":true,"api_error_status":400,"result":"API Error: 400 A maximum of 4 blocks with cache_control may be provided. Found 5."}}'
+exit 1
+fi
+printf '%s\n' '{{"type":"result","is_error":false,"result":"","structured_output":{{"reply":"ok","ask":"none","rationale":"r","commands":[],"view":[],"freeze_tests":false,"expand":[],"finished":true}}}}'
+"#,
+                log = log.display(),
+                dir = dir.path().display()
+            ),
+        );
+        let generator = ClaudeGenerator::new("opus".into(), None, binary);
+        let messages = || -> Vec<Value> {
+            std::fs::read_to_string(&log)
+                .unwrap()
+                .lines()
+                .map(|l| serde_json::from_str::<Value>(l).unwrap()["message"]["content"].clone())
+                .collect()
+        };
+        for prompt in ["head", "head step1", "head step1 step2"] {
+            let reply = generator.invoke("SYS", prompt).await;
+            assert_eq!(reply.generated.action.unwrap().reply, "ok");
+        }
+        let sent = messages();
+        assert_eq!(sent.len(), 3);
+        assert_eq!(sent[2].as_array().unwrap().len(), 3);
+        // Each message starts with the previous one's blocks.
+        for pair in sent.windows(2) {
+            let (a, b) = (pair[0].as_array().unwrap(), pair[1].as_array().unwrap());
+            for (x, y) in a.iter().zip(b) {
+                assert_eq!(x["text"], y["text"]);
+            }
+        }
+        // A refused mark: the call is sent again unmarked, and so are later
+        // calls.
+        std::fs::write(dir.path().join("refuse"), "").unwrap();
+        let reply = generator.invoke("SYS", "head step1 step2 step3").await;
+        assert_eq!(reply.generated.action.unwrap().reply, "ok");
+        generator
+            .invoke("SYS", "head step1 step2 step3 step4")
+            .await;
+        let sent = messages();
+        assert_eq!(sent.len(), 6);
+        assert!(sent[3].to_string().contains("cache_control"));
+        assert!(!sent[4].to_string().contains("cache_control"));
+        assert!(!sent[5].to_string().contains("cache_control"));
+        assert_eq!(sent[5].as_array().unwrap().len(), 5);
     }
 
     #[test]
