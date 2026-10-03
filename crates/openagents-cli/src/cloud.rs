@@ -508,9 +508,14 @@ UNIT
 systemctl daemon-reload
 systemctl enable --now oa-pool-idle.timer
 # Coder's run boundary on Linux is bubblewrap; images baked before
-# 2026-10-03 lack it (and the bake dropped the apt lists).
-command -v bwrap >/dev/null || { apt-get update -q >/dev/null 2>&1; DEBIAN_FRONTEND=noninteractive apt-get install -y -q bubblewrap >/dev/null 2>&1; } \
-  || echo "OA_POOL_AGENT bubblewrap could not be installed" >/dev/ttyS0
+# 2026-10-03 lack it (and the bake dropped the apt lists). Right after boot
+# apt can be locked or offline, which left a host without it (#10275): retry.
+for attempt in 1 2 3 4 5 6; do
+  command -v bwrap >/dev/null && break
+  apt-get update -q >/dev/null 2>&1 && DEBIAN_FRONTEND=noninteractive apt-get install -y -q bubblewrap >/dev/null 2>&1 && break
+  sleep 10
+done
+command -v bwrap >/dev/null || echo "OA_POOL_AGENT bubblewrap could not be installed" >/dev/ttyS0
 touch /home/coder/.oa-pool/agent-ready
 echo "OA_POOL_AGENT_READY" >/dev/ttyS0
 "#;
