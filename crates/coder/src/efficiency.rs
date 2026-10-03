@@ -388,7 +388,6 @@ pub fn study(name: &str, label: &str, source: &str, rows: &[Row]) -> Value {
     let mut classes: Vec<String> = rows.iter().map(|r| r.class.clone()).collect();
     classes.sort();
     classes.dedup();
-    let base = of(BASELINE, None);
     let compare = |arm: &str, baseline: &str| -> Option<Value> {
         let base = of(baseline, None);
         if base.is_empty() || arm == baseline {

@@ -895,7 +895,8 @@ pub fn check_reply(reply: &str, items: &[Item]) -> Cited {
 /// Words the app never shows on a card, a label, or a Gym reply: the
 /// wireframe's banned list (`docs/product/2026-09-28-app-wireframe.md`,
 /// Words on screen; `CHK-02`), lowercased. The phone keeps the same list
-/// (`crates/openagents-chat-app/src/eval_cards.rs`). The word for anything
+/// and [`NAMES`] (`crates/openagents-chat-app/src/eval_cards.rs`); a test
+/// holds them equal. The word for anything
 /// a person adds is "plugin" since 2026-10-01 (#10087): "capability",
 /// "extension", and "tool" are banned as names for it. A model's tool call
 /// in a transcript is the model's text, not ours.
@@ -1712,6 +1713,13 @@ mod tests {
 
     /// "Your keys" names a person's own API keys; any other key is still
     /// a banned word.
+    #[test]
+    fn the_phone_keeps_the_same_banned_words_and_names() {
+        use openagents_chat_app::eval_cards;
+        assert_eq!(BANNED, eval_cards::BANNED);
+        assert_eq!(NAMES, eval_cards::NAMES);
+    }
+
     #[test]
     fn your_keys_is_a_name_and_any_other_key_is_banned() {
         assert_eq!(jargon("Your own keys"), None);

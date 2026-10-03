@@ -76,10 +76,22 @@ pub const BANNED: &[&str] = &[
     "hex",
 ];
 
-/// Whether `text` contains a banned word as a whole word, in any case.
+/// Product names that hold a banned word on purpose: bring-your-own-keys
+/// names a person's own API keys "Your keys". Longest first. "Key" anywhere
+/// else ("Your Nostr key", "secret key") stays banned. The host keeps the
+/// same lists (`crates/coder/src/router/gym.rs`); a test there holds them
+/// equal.
+#[cfg(any(test, feature = "test-support"))]
+pub const NAMES: &[&str] = &["your own keys", "use my keys", "your keys", "my keys"];
+
+/// Whether `text` contains a banned word as a whole word, in any case,
+/// outside the product [`NAMES`].
 #[cfg(any(test, feature = "test-support"))]
 pub fn jargon(text: &str) -> Option<&'static str> {
-    let lower = text.to_lowercase();
+    let mut lower = text.to_lowercase();
+    for name in NAMES {
+        lower = lower.replace(name, " ");
+    }
     let words: Vec<&str> = lower
         .split(|c: char| !(c.is_alphanumeric() || c == '-' || c == '₿'))
         .filter(|w| !w.is_empty())
@@ -1063,6 +1075,10 @@ mod tests {
         assert_eq!(jargon("TB score"), Some("tb"));
         // A word that contains a banned word is fine.
         assert_eq!(jargon("Keyboard shortcuts and hosting"), None);
+        // "Your keys" names a person's own API keys; any other key is banned.
+        assert_eq!(jargon("Your own keys"), None);
+        assert_eq!(jargon("Turn on Use my keys"), None);
+        assert_eq!(jargon("Account, then Your keys: add a key"), Some("key"));
     }
 
     #[test]
