@@ -1633,3 +1633,19 @@ dirs", "tell me whenever a coder run fails", "every morning pull main in
 ~/work/openagents", and "pause disk cleanup until tomorrow" to
 `standing.rule`, and "clean up my disk right now" to `work.dispatch`
 ([the measurement](../coder/measurements/2026-10-02-standing-rule-route.md#live-end-to-end)).
+
+Release `bbed5d89af` (2026-10-03 UTC, shakeout batch B, 899ee13fe3): the
+"no coding agent" first line ("No coding agent is signed in on this
+computer yet, so Coder can't run here. …") and the "what can you do"
+answer that names the wallet and plugins. Built on this Mac with `cargo
+zigbuild --locked --release -p coder --bin coder-worker --target
+x86_64-unknown-linux-musl` from a clean worktree at that commit, installed
+as `/opt/coder-worker/releases/bbed5d89af` with `knowledge/` from `git
+archive bbed5d89af knowledge/` (`._*` files removed) and `codebase-kb.gz`
+copied from `16063d5024`, checked with `--check`, and put live by moving
+the `chat` symlink from `16063d5024` (kept for rollback) and restarting
+`coder-worker-chat`. The environment file and unit did not change, and
+`coder-worker.service` and `/opt/coder-worker/current` were not touched.
+The log names `router chat-router-v5@226865d8437b (Live)`, bank
+`chat-answers-v1@a4b2858f9f09` (75 answers) and the product KB at 106
+entries. Fresh-home `openagents chat send` runs returned the new wording.

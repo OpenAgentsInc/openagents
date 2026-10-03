@@ -206,3 +206,13 @@ host variable and both VPC annotations kept, serves 100% of the traffic;
 coder-web-16006f7873=100`). Built from GitHub by the automation account,
 applied as `chris@`; the tag `new` URL served the page and `/api/stats`
 from the pay host before traffic moved.
+
+Live (2026-10-03, shakeout): revision `coder-web-bbed5d89af` (image
+`openagents/openagents-web:bbed5d89af`, built from GitHub by the automation
+account), copied from `coder-web-2f838a3b1d`'s spec with the pay host
+variable and both VPC annotations kept, serves 100% of the traffic;
+`coder-web-2f838a3b1d` is the rollback (`--to-revisions
+coder-web-2f838a3b1d=100`). `/`, `/live`, `/stats`, `/efficiency` and
+`/api/stats` answered 200 on the `new` tag before traffic moved.
+`/.well-known/agent-card.json` still returns 404: no deployed service
+serves the `discovery` crate's card (#10364).
