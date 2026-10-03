@@ -225,3 +225,7 @@ both VPC annotations kept, serves 100% of the traffic;
 `coder-web-bbed5d89af` is the rollback (`--to-revisions
 coder-web-bbed5d89af=100`). `/`, `/live`, `/stats`, `/efficiency` and
 `/api/stats` answered 200 on the `new` tag before traffic moved.
+
+## 2026-10-03: coder-web-6522f448de
+
+Serves `/.well-known/agent-card.json`, the skills index and `SKILL.md` from the discovery crate (#10318, 6522f448de). Applied as tag `new` from the live spec (pay-host VPC and env kept), checked `/`, `/live`, `/stats`, `/efficiency`, `/api/stats` and the agent card at 200, then moved 100% of traffic. `openagents discover --origin https://openagents.com` reads the live card. Rollback: `gcloud run services update-traffic coder --region us-central1 --project openagentsgemini --to-revisions coder-web-530b207410=100`.
