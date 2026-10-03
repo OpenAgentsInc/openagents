@@ -72,3 +72,36 @@ workspace. A fresh reset repeat earned the expected 40 XP for quest 783. Trusted
 setup and gray-item sale passed separately. The retained summary is
 [`bench/wow/2026-10-03/northshire.json`](../../bench/wow/2026-10-03/northshire.json);
 raw traces and game assets stay private.
+
+## Staged ritual scene
+
+[The Anthropic scene](../../scripts/wow/scenes/anthropic.json) places Claude and
+twelve NPCs named `Cultist of Anthropic` in Scholomance's laboratory. The filming
+script sends real NPC yells and emotes, starts with a cinematic camera, cuts
+behind the adventurer, and fires a bow. Subtitles repeat the actual dialogue.
+This is a directed set with idle, hostile NPCs, not a graded combat episode.
+
+On the private Linux realm host, with MariaDB, Wine, Xvfb, xdotool, xclip, and an FFmpeg
+build that supports X11 capture and subtitles on `PATH`, run:
+
+```sh
+export WOW_GYM_ROOT="$HOME/wow-gym"
+python3 scripts/wow/stage-scene.py scripts/wow/scenes/anthropic.json
+scripts/wow/realm.sh stop
+scripts/wow/realm.sh start
+python3 scripts/wow/film-scene.py scripts/wow/scenes/anthropic.json
+```
+
+Use a separate client copy under `~/wow-gym/video-client`, configured for a
+1280×720 window, with its first-launch loader prompt already accepted. The
+bundled `VanillaFixes.exe` and `WoW_tweaked.exe` provide the extended nameplate
+range. Tool paths can be supplied through the scripts' flags. Credentials stay
+in the private `accounts.json`; filming exclusively leases `GYMSETUP`, uses its
+existing character, and returns it to Northshire at level 1. Original room spawn
+settings are saved beside the private recording for restoration. The scene's
+names, dialogue, and final video are retained in this repository; client assets,
+credentials, and Wine state are not.
+
+The [recorded sequence](../../bench/wow/2026-10-03/anthropic-ritual.mp4) runs for
+72 seconds. Its [cue log](../../bench/wow/2026-10-03/anthropic-film-events.json)
+records the actual dialogue, camera cut, and five bow shots.
