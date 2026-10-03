@@ -153,24 +153,132 @@ pub fn static_instances(pack: &Pack, origin: Vec3) -> Vec<Instance> {
 }
 pub fn lighting(origin: Vec3) -> super::lighting::Lighting {
     let mut lights = super::lighting::Lighting::default();
-    lights.ambient = Vec3::new(0.055, 0.06, 0.075);
-    lights.exposure = 1.35;
-    for (p, c, intensity) in [
-        ([-4.1, 124.2, 87.0], [1.0, 0.38, 0.1], 450.0),
-        ([-4.1, 160.7, 88.0], [1.0, 0.38, 0.1], 450.0),
-        ([-26.66, 138.575, 86.4], [0.18, 0.8, 0.12], 80.0),
-        ([-26.5, 144.56, 86.4], [0.18, 0.8, 0.12], 80.0),
-        ([19.066, 133.143, 86.4], [1.0, 0.38, 0.1], 250.0),
-        ([18.752, 151.100, 86.4], [1.0, 0.38, 0.1], 250.0),
+    lights.ambient = Vec3::new(0.009, 0.012, 0.017);
+    lights.exposure = 1.1;
+    lights.fog = Vec3::new(0.0015, 0.003, 0.004);
+    lights.density = 0.012;
+    // Place the light outside each vessel so its housing does not hide the spill.
+    for (p, c, intensity, range) in [
+        ([-7.5, 124.2, 88.0], [0.1, 1.0, 0.035], 155.0, 14.0),
+        ([-7.5, 160.7, 89.0], [0.1, 1.0, 0.035], 155.0, 14.0),
+        ([-26.66, 138.575, 86.4], [0.13, 0.85, 0.06], 65.0, 10.0),
+        ([-26.5, 144.56, 86.4], [0.13, 0.85, 0.06], 65.0, 10.0),
+        ([19.066, 133.143, 86.4], [1.0, 0.3, 0.04], 75.0, 10.0),
+        ([18.752, 151.100, 86.4], [1.0, 0.3, 0.04], 75.0, 10.0),
     ] {
         lights.lights.push(super::lighting::Light {
             position: position_from_wow(p) - origin,
             color: c.into(),
             intensity,
-            range: 38.0,
+            range,
         });
     }
     lights
+}
+/// Bind transient illumination to the same combat events that draw the effects.
+pub fn combat_lighting(game: &super::play::Game) -> super::lighting::Lighting {
+    use super::lighting::{Light, MAX_LIGHTS};
+    use verse_ruins::chamber_spells::Utility;
+    let mut lighting = lighting(position_from_wow(game.scene.origin_wow));
+    lighting.time = game.time;
+    let mut effects = Vec::new();
+    if let Some(position) = game.controls.light {
+        effects.push(Light {
+            position,
+            color: Vec3::new(1.0, 0.8, 0.4),
+            intensity: 55.0,
+            range: 10.0,
+        });
+    }
+    for p in game.snapshot().projectiles {
+        let (color, intensity, range) = match p.kind {
+            verse_ruins::Spell::Fireball => (Vec3::new(1.0, 0.23, 0.025), 260.0, 13.0),
+            verse_ruins::Spell::MagicMissile => (Vec3::new(0.2, 0.3, 1.0), 42.0, 6.0),
+            _ => (Vec3::new(1.0, 0.3, 0.04), 95.0, 8.0),
+        };
+        effects.push(Light {
+            position: p.pos.into(),
+            color,
+            intensity,
+            range,
+        });
+    }
+    for (position, at, kind) in &game.impacts {
+        let age = game.time - at;
+        if !(0.0..0.6).contains(&age) {
+            continue;
+        }
+        let fade = (1.0 - age / 0.6).powi(2);
+        effects.push(Light {
+            position: *position + Vec3::Y * 0.35,
+            color: match *kind {
+                2 => Vec3::new(0.2, 0.3, 1.0),
+                3 => Vec3::new(0.65, 0.04, 1.0),
+                _ => Vec3::new(1.0, 0.32, 0.055),
+            },
+            intensity: if *kind == 1 {
+                850.0 * fade
+            } else {
+                110.0 * fade
+            },
+            range: if *kind == 1 { 15.0 } else { 7.0 },
+        });
+    }
+    if game.controls.shield > 0 && game.time < game.controls.shield_until {
+        effects.push(Light {
+            position: game.player + Vec3::Y * 1.3,
+            color: Vec3::new(0.08, 0.5, 1.0),
+            intensity: 22.0,
+            range: 4.5,
+        });
+    }
+    for area in &game.controls.areas {
+        let left = area.until - game.time;
+        if left <= 0.0 {
+            continue;
+        }
+        let (intensity, range) = match area.kind {
+            Utility::Thunderwave => (115.0 * (left / 0.7).clamp(0.0, 1.0).powi(2), 9.0),
+            Utility::MistyStep => (30.0 * (left / 0.7).clamp(0.0, 1.0), 4.5),
+            _ => continue,
+        };
+        effects.push(Light {
+            position: area.position + Vec3::Y,
+            color: Vec3::new(0.18, 0.45, 1.0),
+            intensity,
+            range,
+        });
+    }
+    if let Some(encounter) = &game.encounter {
+        for cast in &encounter.casts {
+            let position = if game.time < cast.release {
+                cast.origin
+            } else {
+                cast.origin.lerp(
+                    cast.target + Vec3::Y,
+                    ((game.time - cast.release) / (cast.impact - cast.release)).clamp(0.0, 1.0),
+                )
+            };
+            let charge =
+                ((game.time - cast.started) / (cast.release - cast.started)).clamp(0.0, 1.0);
+            effects.push(Light {
+                position,
+                color: Vec3::new(0.65, 0.04, 1.0),
+                intensity: if cast.boss { 100.0 } else { 35.0 } * (0.25 + 0.75 * charge),
+                range: if cast.boss { 9.0 } else { 5.0 },
+            });
+        }
+    }
+    // Reserve two shadow slots for the brightest nearby effects; keep fixture light stable.
+    let priority = |l: &Light| l.intensity / (1.0 + l.position.distance_squared(game.player));
+    effects.sort_by(|a, b| priority(b).total_cmp(&priority(a)));
+    effects.truncate(MAX_LIGHTS - lighting.lights.len());
+    let shadowed_effects = effects.len().min(2);
+    lighting
+        .lights
+        .splice(2..2, effects.drain(..shadowed_effects));
+    lighting.lights.extend(effects);
+    lighting
 }
 fn particle_quad() -> (Vec<verse_wow::assets::Vertex>, Vec<u32>) {
     use verse_wow::assets::Vertex;
@@ -707,6 +815,46 @@ pub fn portrait_atlas(dir: &std::path::Path, pack: &Pack) -> Result<Atlas, Strin
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn explosions_light_the_room_then_fade_with_the_effect() {
+        let scene = verse_wow::director::Scene::from_json(include_bytes!(
+            "../../../../assets/verse/wow/anthropic.json"
+        ))
+        .unwrap();
+        let mut game = super::super::play::Game::new(scene).unwrap();
+        game.time = 30.0;
+        game.impacts.push((game.player, 30.0, 1));
+        let flash = combat_lighting(&game);
+        assert!(flash.ambient.max_element() < 0.02);
+        assert!(flash.lights[2].intensity > 800.0);
+        assert!(flash.lights[2].color.x > flash.lights[2].color.y);
+        game.time = 30.5;
+        let fading = combat_lighting(&game);
+        assert!(fading.lights[2].intensity < flash.lights[2].intensity * 0.05);
+        game.time = 30.7;
+        assert_eq!(combat_lighting(&game).lights.len(), 6);
+    }
+    #[test]
+    fn many_effects_keep_the_brightest_local_lights_and_respect_the_gpu_bound() {
+        let scene = verse_wow::director::Scene::from_json(include_bytes!(
+            "../../../../assets/verse/wow/anthropic.json"
+        ))
+        .unwrap();
+        let mut game = super::super::play::Game::new(scene).unwrap();
+        game.time = 30.0;
+        game.impacts = (0..100)
+            .map(|n| (game.player + Vec3::X * n as f32, 30.0, 1))
+            .collect();
+        let lights = combat_lighting(&game);
+        assert_eq!(lights.lights.len(), super::super::lighting::MAX_LIGHTS);
+        assert_eq!(lights.lights[2].position, game.player + Vec3::Y * 0.35);
+        assert!(
+            lights
+                .lights
+                .iter()
+                .all(|l| l.position.is_finite() && l.intensity.is_finite())
+        );
+    }
     #[test]
     fn simultaneous_impacts_keep_a_finite_deterministic_particle_budget() {
         let scene = verse_wow::director::Scene::from_json(include_bytes!(

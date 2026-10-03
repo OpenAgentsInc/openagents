@@ -1,0 +1,83 @@
+{
+  "schema": "openagents.wow.agent-combat.v1",
+  "controller": "local observation-driven tactical controller",
+  "control_mode": "agent",
+  "time": 101.6654281616211,
+  "ended_at": 96.63217163085938,
+  "player": {
+    "hp": 0,
+    "max_hp": 100,
+    "mana": 0,
+    "max_mana": 20
+  },
+  "boss_remaining": 4,
+  "boss_max": 400,
+  "cultists_defeated": 9,
+  "damage_taken": 100,
+  "shield_absorbed": 93,
+  "dodged": 29,
+  "enemy_casts": 61,
+  "ability_uses": {
+    "Fire Bolt": 17,
+    "Fireball": 4,
+    "Grease": 1,
+    "Light": 1,
+    "Magic Missile": 14,
+    "Misty Step": 7,
+    "Shield": 8,
+    "Shoot Bow": 9,
+    "Thunderwave": 6,
+    "Web": 1
+  },
+  "renderer": "owned native GPU pipeline; no grading; no chat-input automation",
+  "presentation": {
+    "ambient": [
+      0.009,
+      0.012,
+      0.017
+    ],
+    "max_point_lights": 32,
+    "dynamic_shadow_slots": 2,
+    "lights": "localized green fixtures; strong traveling fireballs; fading impact flashes; blue shield and arcane lights; purple hostile spell lights",
+    "cultist_combat_clips": [
+      25,
+      51
+    ],
+    "dead_nameplates": false,
+    "corpses": "retained after ECS removal; skinned bounds raised above logical floor",
+    "fireball_frame_video_seconds": 20.3,
+    "corpse_frame_video_seconds": 42.0
+  },
+  "verification": {
+    "verse_unit_passed": 330,
+    "verse_unit_ignored": 8,
+    "verse_integration_passed": 7,
+    "format_passed": true,
+    "native_video_decode_passed": true,
+    "duration_seconds": 83.666667,
+    "frames": 2510,
+    "fps": 30,
+    "resolution": [
+      1280,
+      720
+    ]
+  },
+  "artifacts": {
+    "verse-dark-combat.mp4": "53647727a6a8401f22177d9c5ef33283867d17e19a733354311f8847488215e0",
+    "verse-dark-combat.png": "ef0172cc59cf290682dc44c844aef04244bf28e04216b50f9bb06ee13936d6ec",
+    "verse-dark-combat-fireball.png": "c1d627247f054f51c25e9436b4e31e0e32d5e2e9387cb59ee3ed6287cda78b77",
+    "verse-dark-combat-corpses.png": "5f34874884fa485f0e45c59920eee3a256960e488d819311f1612770ac9d9131"
+  },
+  "source_sha256": {
+    "crates/verse/src/imported/lighting.rs": "29aed4d639a9474968cc61ed6cc3efe7a27289957e3bfa82cbd7b5728bb3adc2",
+    "crates/verse/src/imported/play.rs": "f974d775d835c167c6da73080bb67ee383a1298f47807259b447c37383ec702f",
+    "crates/verse/src/imported/combat.rs": "cbf8c6ffadf0d2693fb63c54433346d608c90e4ae5ba70121b5e5918c1cee952",
+    "crates/verse/src/imported/overlay.rs": "2d59fe675648fe56025b7fbe3f2d50b8a026ed510bfd6c485926423d004cdc8d",
+    "crates/verse/src/imported/controls.rs": "c35d84f30675c90c86e7bd1e912359c24481dd37e5fc0f8d13a21565467be8a3",
+    "crates/verse/src/imported/mod.rs": "8a2e63e44b065a288fa2e69a208b6e6cf7ee9dfcdc2437b49926c6a0082abe55",
+    "crates/verse/src/imported/chamber.rs": "5449f752fdf504cc46f32465542071a6e2d567c1a1c19934ad0a93ecb93e5ebc",
+    "crates/verse/src/imported/scene.wgsl": "aa86dc65ebd0afd20917456b07dc04fea425a66f4265c66758fa3ebb50a65866",
+    "crates/verse/examples/wow_play.rs": "703926fa85ca8e280d9654dd7c81392b22ea2a1b80a882394c6dfed52bebe9f5",
+    "crates/verse/examples/wow_capture.rs": "85f151eba55251afdab53d60004d96c6e6e923b7de1b99c3105b03a90eea2281"
+  }
+}

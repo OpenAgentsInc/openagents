@@ -34,7 +34,7 @@ pub fn cinematic(
     for actor in frame
         .actors
         .iter()
-        .filter(|a| a.visible && a.actor.nameplate)
+        .filter(|a| a.visible && a.actor.nameplate && a.health > 0)
     {
         let head = actor.actor.position
             + glam::Vec3::Y * (heights[&actor.actor.model] * actor.actor.scale * 0.9144 + 0.6096);

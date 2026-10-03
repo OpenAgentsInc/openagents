@@ -1,4 +1,4 @@
-struct Frame { view:mat4x4<f32>,eye:vec4<f32>,ambient:vec4<f32>,fog:vec4<f32>,settings:vec4<f32>,lights:array<vec4<f32>,16>,shadow:array<mat4x4<f32>,24> };
+struct Frame { view:mat4x4<f32>,eye:vec4<f32>,ambient:vec4<f32>,fog:vec4<f32>,settings:vec4<f32>,lights:array<vec4<f32>,64>,shadow:array<mat4x4<f32>,24> };
 struct Pose { model:mat4x4<f32>,params:vec4<f32>,bones:array<mat4x4<f32>,256> };
 struct Material { params:vec4<f32> };
 @group(0) @binding(0) var<uniform> frame:Frame;

@@ -666,6 +666,25 @@ impl Renderer {
                     *dst = bone.to_cols_array_2d();
                 }
             }
+            if instance.animation == 1 {
+                // Classic death poses extend below the logical floor; keep the full body visible.
+                let model = &self.pack.models[&instance.model];
+                let transform = Mat4::from_cols_array_2d(&palette.model);
+                let bones: Vec<_> = palette.bones.iter().map(Mat4::from_cols_array_2d).collect();
+                let mut lowest = f32::INFINITY;
+                for vertex in model.surfaces.iter().flat_map(|s| &s.vertices) {
+                    let point = vertex.joints.iter().zip(vertex.weights).fold(
+                        Vec3::ZERO,
+                        |p, (joint, weight)| {
+                            p + bones[*joint as usize].transform_point3(vertex.position.into())
+                                * weight
+                        },
+                    );
+                    lowest = lowest.min(transform.transform_point3(point).y);
+                }
+                let lift = (instance.transform.w_axis.y + 0.05 - lowest).clamp(0.0, 0.6);
+                palette.model[3][1] += lift;
+            }
             if instance.model == "adventurer" {
                 adventurer_pose = Some(palette);
             }

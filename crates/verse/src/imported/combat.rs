@@ -364,9 +364,17 @@ mod tests {
                 .into_iter()
                 .filter(|a| a.actor.model == "cultist")
             {
+                if game.unlocked()
+                    && a.health > 0
+                    && game.encounter.as_ref().is_some_and(|e| e.ended.is_none())
+                {
+                    assert_ne!(a.animation, 0, "Living cultist must keep a combat pose");
+                }
                 walked |= a.animation == 4;
                 cast |= a.animation == 52;
                 if a.animation == 1 {
+                    assert!(a.visible, "Corpse must survive ECS removal");
+                    assert!(!a.actor.nameplate, "Corpse must hide its nameplate");
                     if let Some(previous) = deaths.insert(a.actor.id, a.animation_time) {
                         assert!(a.animation_time >= previous);
                     }

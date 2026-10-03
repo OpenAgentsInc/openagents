@@ -63,24 +63,7 @@ fn main() -> Result<(), String> {
         view_proj: frame.view_projection(1280.0 / 720.0),
         eye: frame.eye,
     };
-    let mut lighting = verse::imported::lighting::Lighting::default();
-    lighting.ambient = Vec3::new(0.055, 0.06, 0.075);
-    lighting.exposure = 1.35;
-    for (p, c, intensity) in [
-        ([-4.1, 124.2, 87.0], [1.0, 0.38, 0.1], 450.0),
-        ([-4.1, 160.7, 88.0], [1.0, 0.38, 0.1], 450.0),
-        ([-26.66, 138.575, 86.4], [0.18, 0.8, 0.12], 80.0),
-        ([-26.5, 144.56, 86.4], [0.18, 0.8, 0.12], 80.0),
-        ([19.066, 133.143, 86.4], [1.0, 0.38, 0.1], 250.0),
-        ([18.752, 151.100, 86.4], [1.0, 0.38, 0.1], 250.0),
-    ] {
-        lighting.lights.push(verse::imported::lighting::Light {
-            position: position_from_wow(p) - origin,
-            color: c.into(),
-            intensity,
-            range: 38.0,
-        });
-    }
+    let mut lighting = verse::imported::chamber::lighting(origin);
     if mode == "--no-shadows" {
         lighting.shadowed = 0;
     }

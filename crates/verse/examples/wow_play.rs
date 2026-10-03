@@ -5,7 +5,6 @@ use verse::{
     imported::{
         Renderer, WindowPresenter, chamber,
         controls::{ClassicControls, Held},
-        lighting::Light,
         overlay,
         play::{Ability, Game},
     },
@@ -137,38 +136,7 @@ impl App {
         overlay::action_bar(&mut ui, &self.atlas, &self.game, 1280.0, 720.0, hover);
         let mut actors = chamber::instances(&self.pack, &frame);
         actors.extend(chamber::spell_instances(&self.game));
-        let mut lighting = chamber::lighting(position_from_wow(self.game.scene.origin_wow));
-        lighting.time = self.game.time;
-        if let Some(position) = self.game.controls.light {
-            lighting.lights.push(Light {
-                position,
-                color: Vec3::new(1.0, 0.85, 0.55),
-                intensity: 35.0,
-                range: 12.192,
-            });
-        }
-        for p in
-            self.game
-                .snapshot()
-                .projectiles
-                .iter()
-                .take(if self.game.controls.light.is_some() {
-                    1
-                } else {
-                    2
-                })
-        {
-            lighting.lights.push(Light {
-                position: p.pos.into(),
-                color: if p.kind == verse_ruins::Spell::MagicMissile {
-                    Vec3::new(0.3, 0.15, 1.0)
-                } else {
-                    Vec3::new(1.0, 0.22, 0.03)
-                },
-                intensity: 12.0,
-                range: 7.0,
-            });
-        }
+        let lighting = chamber::combat_lighting(&self.game);
         self.renderer
             .as_mut()
             .unwrap()

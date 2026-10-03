@@ -248,6 +248,8 @@ impl Game {
                             .is_some_and(|v| v.length_squared() > 0.01)
                         {
                             4
+                        } else if a.actor.model == "cultist" && e.ended.is_none() {
+                            if a.actor.id % 3 == 0 { 25 } else { 51 }
                         } else {
                             0
                         };
@@ -280,8 +282,14 @@ impl Game {
                             .unwrap_or_else(|| (-direction.x).atan2(-direction.z));
                     }
                     if self.controls.held(*id) {
-                        a.animation = 0;
-                        a.animation_time = 0.0;
+                        a.animation = if a.actor.model == "cultist"
+                            && self.encounter.as_ref().is_some_and(|e| e.ended.is_none())
+                        {
+                            if a.actor.id % 3 == 0 { 25 } else { 51 }
+                        } else {
+                            0
+                        };
+                        a.animation_time = self.time + a.actor.id as f32 * 0.19;
                     }
                     if self.controls.prone(a.actor.position, self.time) {
                         a.animation = 100;
@@ -314,6 +322,11 @@ impl Game {
                         }
                     }
                 }
+            }
+        }
+        for actor in &mut frame.actors {
+            if actor.health == 0 {
+                actor.actor.nameplate = false;
             }
         }
         let direction = self.camera.direction();

@@ -3,6 +3,8 @@ use crate::render::View;
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3};
 
+pub const MAX_LIGHTS: usize = 32;
+
 /// A point source in meters. The first four sources receive cube shadow maps.
 #[derive(Clone, Copy, Debug)]
 pub struct Light {
@@ -43,11 +45,11 @@ pub(super) struct Frame {
     pub ambient: [f32; 4],
     pub fog: [f32; 4],
     pub meta: [f32; 4],
-    pub lights: [[f32; 4]; 16],
+    pub lights: [[f32; 4]; MAX_LIGHTS * 2],
     pub shadow: [[[f32; 4]; 4]; 24],
 }
 pub(super) fn frame(view: View, lighting: &Lighting) -> Result<Frame, String> {
-    if lighting.lights.len() > 8
+    if lighting.lights.len() > MAX_LIGHTS
         || !lighting.ambient.is_finite()
         || !lighting.fog.is_finite()
         || !lighting.exposure.is_finite()
@@ -110,6 +112,30 @@ pub(super) fn frame(view: View, lighting: &Lighting) -> Result<Frame, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn uniform_capacity_admits_all_slots_and_refuses_overflow() {
+        let light = Light {
+            position: Vec3::ZERO,
+            color: Vec3::ONE,
+            intensity: 1.0,
+            range: 5.0,
+        };
+        let mut lighting = Lighting::default();
+        lighting.lights = vec![light; MAX_LIGHTS];
+        let view = View {
+            view_proj: Mat4::IDENTITY,
+            eye: Vec3::ZERO,
+        };
+        let frame_data = frame(view, &lighting).unwrap();
+        assert_eq!(frame_data.meta[0], MAX_LIGHTS as f32);
+        assert_eq!(
+            frame_data.lights[MAX_LIGHTS * 2 - 1][3],
+            1.0 + 0.04 * ((MAX_LIGHTS - 1) as f32).sin()
+                + 0.025 * (((MAX_LIGHTS - 1) * 2) as f32).sin()
+        );
+        lighting.lights.push(light);
+        assert!(frame(view, &lighting).is_err());
+    }
     #[test]
     fn all_cube_faces_look_outward_and_bad_lights_are_refused() {
         let mut lighting = Lighting::default();

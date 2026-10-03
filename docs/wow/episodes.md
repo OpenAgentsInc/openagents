@@ -292,3 +292,12 @@ shell. The [updated combat recording](../../bench/wow/2026-10-03/verse-smooth-co
 comes directly from the native renderer. These are authored chamber effects,
 not complete playback of every Classic M2 emitter feature. Source textures
 remain outside Git.
+
+The chamber now uses low ambient light and localized green vessel and candle
+illumination. Up to 32 point lights follow projectiles, hostile casts, shields,
+teleports, and impacts. Fireballs create a stronger traveling light and a fading
+explosion flash; two shadow slots follow the brightest nearby effects. The
+[native dark combat recording](../../bench/wow/2026-10-03/verse-dark-combat.mp4)
+shows the resulting illumination. Active cultists use combat-ready or directed
+spell-ready poses between casts. Corpses keep their death pose after ECS removal,
+rest above the floor, and have no overhead nameplate.
