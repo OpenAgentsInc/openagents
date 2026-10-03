@@ -28,6 +28,9 @@ use serde_json::{Value, json};
 
 use crate::{Args, Output};
 
+mod completion_scripts;
+use completion_scripts::{bash, fish, zsh};
+
 pub const PROTOCOL_VERSIONS: [&str; 3] = ["2025-06-18", "2025-03-26", "2024-11-05"];
 pub const SERVER_NAME: &str = "openagents";
 const MAX_MESSAGE_BYTES: u64 = 1024 * 1024;
@@ -48,7 +51,7 @@ pub const USAGE: &str = "usage: openagents mcp serve [--timeout SECONDS]
 
 pub const COMPLETIONS_USAGE: &str = "usage: openagents completions SHELL
   SHELL is bash, zsh, or fish. Prints a completion script for the command
-  groups and --json to stdout; source it or save it where the shell reads.";
+  groups, subcommands, and flags to stdout; source it or save it where the shell reads.";
 
 /// One row of the top-level help table.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -148,15 +151,14 @@ pub fn run(output: &Output, words: &[String], usage: &str) -> u8 {
 }
 
 /// `openagents completions SHELL`.
-pub fn completions(output: &Output, words: &[String], usage: &str) -> u8 {
+pub fn completions(output: &Output, words: &[String], _usage: &str) -> u8 {
     let Some(shell) = words.first() else {
         return output.usage("completions", "SHELL is required", COMPLETIONS_USAGE);
     };
-    let names: Vec<String> = groups(usage).into_iter().map(|g| g.name).collect();
     let script = match shell.as_str() {
-        "bash" => bash(&names),
-        "zsh" => zsh(&names),
-        "fish" => fish(&names),
+        "bash" => bash(),
+        "zsh" => zsh(),
+        "fish" => fish(),
         "--help" | "-h" | "help" => {
             println!("{COMPLETIONS_USAGE}");
             return 0;
@@ -177,36 +179,6 @@ pub fn completions(output: &Output, words: &[String], usage: &str) -> u8 {
         print!("{script}");
     }
     0
-}
-
-fn bash(names: &[String]) -> String {
-    format!(
-        "# openagents bash completion: source this file.\n_openagents() {{\n  local cur=${{COMP_WORDS[COMP_CWORD]}}\n  if [ \"$COMP_CWORD\" -eq 1 ] || {{ [ \"$COMP_CWORD\" -eq 2 ] && [ \"${{COMP_WORDS[1]}}\" = --json ]; }}; then\n    COMPREPLY=( $(compgen -W \"--json {}\" -- \"$cur\") )\n  else\n    COMPREPLY=( $(compgen -W \"--json --help\" -- \"$cur\") )\n  fi\n}}\ncomplete -F _openagents openagents\n",
-        names.join(" ")
-    )
-}
-
-fn zsh(names: &[String]) -> String {
-    format!(
-        "#compdef openagents\n# openagents zsh completion: put this file on $fpath as _openagents.\n_openagents() {{\n  local -a groups\n  groups=({})\n  if (( CURRENT == 2 )) || (( CURRENT == 3 && ${{words[2]}} == --json )); then\n    _describe 'command' groups\n    _arguments '--json[machine-readable output]'\n  else\n    _arguments '--json[machine-readable output]' '--help[show usage]'\n  fi\n}}\n_openagents \"$@\"\n",
-        names
-            .iter()
-            .map(|n| format!("'{n}'"))
-            .collect::<Vec<_>>()
-            .join(" ")
-    )
-}
-
-fn fish(names: &[String]) -> String {
-    let mut script = String::from(
-        "# openagents fish completion: save as ~/.config/fish/completions/openagents.fish\ncomplete -c openagents -l json -d 'machine-readable output'\ncomplete -c openagents -l help -d 'show usage'\n",
-    );
-    for name in names {
-        script.push_str(&format!(
-            "complete -c openagents -n '__fish_use_subcommand' -a {name}\n"
-        ));
-    }
-    script
 }
 
 /// The lifecycle phase of one stdio session.
@@ -785,8 +757,12 @@ Exit codes: 0 success, 1 refused or failed, 64 invalid usage.";
 
     #[test]
     fn completion_scripts_name_every_group() {
-        let names: Vec<String> = groups(TABLE).into_iter().map(|g| g.name).collect();
-        for script in [bash(&names), zsh(&names), fish(&names)] {
+        let names: Vec<String> = coder::cli_route::tree::bundled()
+            .groups
+            .iter()
+            .map(|g| g.name.clone())
+            .collect();
+        for script in [bash(), zsh(), fish()] {
             for name in &names {
                 assert!(script.contains(name.as_str()), "{script}");
             }
