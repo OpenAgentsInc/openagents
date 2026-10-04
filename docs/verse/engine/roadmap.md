@@ -92,6 +92,20 @@ VE-0–VE-6 roadmap. #10437 supplies owned headless chamber rules; service
 persistence, multiplayer, full physics, tools, and platform acceptance remain
 implementation work. #10406 and #10407 stay open for their full acceptance.
 
+[#10438](https://github.com/OpenAgentsInc/openagents/issues/10438) adds scoped
+ray, capsule overlap, and capsule sweep queries in `physics::queries`. Validated
+triangle meshes use a deterministic bounding hierarchy; query results have
+instance/layer/usage filters, exact ignored-life matching, stable hit ordering,
+bounded output, and traversal counters. Capsule sweeps return time of impact,
+contact normals, and initial surface penetration; failure to converge is a
+refusal rather than an unreported miss. The chamber compiles the same room
+solids into triangle query fixtures. Meshes describe two-sided surfaces, not
+automatic filled-volume occupancy. Conservative advancement is independently
+implemented; the public method also appears in
+[Pan, Zhang, and Manocha's collision-checking study](https://www.roboticsproceedings.org/rss07/p32.pdf).
+No planner or reference-engine code is imported. #10439 integrates grounded
+character movement and 120 Hz substeps; that acceptance remains pending.
+
 ## Reuse inventory
 
 Review baseline: OpenAgents `843c92dd7e`. The entries below were checked against

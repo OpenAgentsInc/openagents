@@ -46,6 +46,7 @@ pub mod modal;
 pub mod navigation;
 pub mod oracle;
 pub mod plume;
+pub mod queries;
 pub mod rope;
 pub mod sensors;
 pub mod solid;

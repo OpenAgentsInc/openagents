@@ -73,3 +73,58 @@ pub fn colliders() -> Vec<physics::kinematic::Aabb> {
         })
         .collect()
 }
+
+/// Compiles the same authored room solids into scoped triangle query geometry.
+pub fn query_scene(instance: u64) -> Result<physics::queries::Scene, String> {
+    use physics::queries::{ColliderKey, Life, Mesh, MeshCollider, Scene, Usage};
+    let mut scene = Scene::default();
+    for (shape, bounds) in colliders().into_iter().enumerate() {
+        scene.insert(MeshCollider {
+            key: ColliderKey {
+                life: Life {
+                    instance,
+                    entity: 0,
+                    generation: 0,
+                },
+                shape: shape as u32,
+            },
+            layers: 1,
+            usage: Usage::Blocking,
+            mesh: Mesh::from_box(bounds.min, bounds.max)?,
+        })?;
+    }
+    Ok(scene)
+}
+
+#[cfg(test)]
+mod query_tests {
+    use super::*;
+    use physics::queries::{Capsule, Filter};
+    #[test]
+    fn compiled_room_queries_match_floor_column_and_instance_scope() {
+        let scene = query_scene(7).unwrap();
+        let origin = glam::DVec3::new(13., 0.9, -13.);
+        let filter = Filter::blocking(7);
+        let wall = scene
+            .sweep(
+                Capsule {
+                    a: origin - glam::DVec3::Y * 0.55,
+                    b: origin + glam::DVec3::Y * 0.55,
+                    radius: 0.35,
+                },
+                glam::DVec3::X * 100.,
+                filter,
+            )
+            .unwrap();
+        assert!((wall.hits[0].distance - 0.95).abs() < 1e-6);
+        let floor = scene.ray(origin, -glam::DVec3::Y, 3., filter).unwrap();
+        assert!((floor.hits[0].distance - 0.9).abs() < 1e-9);
+        assert!(
+            scene
+                .ray(origin, -glam::DVec3::Y, 3., Filter::blocking(8))
+                .unwrap()
+                .hits
+                .is_empty()
+        );
+    }
+}
