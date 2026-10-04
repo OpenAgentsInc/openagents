@@ -123,6 +123,7 @@ mod tests {
             clips: vec![],
             attachments: vec![],
             surfaces: vec![Surface {
+                material: Default::default(),
                 vertices: [[-2., 0., 1.], [1., 2., -1.], [0., -1., 0.]]
                     .into_iter()
                     .map(|position| Vertex {

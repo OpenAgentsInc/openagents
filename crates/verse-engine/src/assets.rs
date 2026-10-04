@@ -23,11 +23,20 @@ pub struct Surface {
     pub vertices: Vec<Vertex>,
     pub indices: Vec<u32>,
     pub texture: usize,
+    #[serde(default)]
+    pub material: crate::material::Material,
     /// 0 opaque, 1 cutout, 2 alpha blend, 3 additive.
     pub blend: u8,
     pub emissive: bool,
     #[serde(default = "white")]
     pub tint: [f32; 3],
+}
+
+impl Surface {
+    /// Full image dependency closure, including the retained base-color slot.
+    pub fn texture_slots(&self) -> impl Iterator<Item = usize> + '_ {
+        std::iter::once(self.texture).chain(self.material.textures())
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -260,6 +269,7 @@ impl Pack {
                 }
             }
             for surface in &model.surfaces {
+                surface.material.validate(self.textures.len())?;
                 vertices += surface.vertices.len();
                 if vertices > 2_000_000
                     || surface.texture >= self.textures.len()

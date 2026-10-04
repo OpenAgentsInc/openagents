@@ -153,16 +153,15 @@ impl Inventory {
                 }
             }
             if let Binding::Model { key } = &asset.binding {
-                for surface in &pack.models[key].surfaces {
+                for slot in pack.models[key]
+                    .surfaces
+                    .iter()
+                    .flat_map(|surface| surface.texture_slots())
+                {
                     let texture = self
                         .assets
                         .iter()
-                        .find(|a| {
-                            a.binding
-                                == Binding::Texture {
-                                    slot: surface.texture,
-                                }
-                        })
+                        .find(|a| a.binding == Binding::Texture { slot })
                         .ok_or("Missing material texture identity")?;
                     if !asset.dependencies.contains(&texture.id) {
                         return Err("Inventory omits a material texture dependency".into());
@@ -323,6 +322,7 @@ mod tests {
             clips: vec![],
             attachments: vec![],
             surfaces: vec![Surface {
+                material: Default::default(),
                 vertices: vec![
                     Vertex {
                         position: [0.; 3],
@@ -391,6 +391,42 @@ mod tests {
             ],
         };
         (pack, inventory)
+    }
+    #[test]
+    fn every_authored_material_map_requires_a_provenance_dependency() {
+        for channel in 0..4 {
+            let (mut pack, mut inventory) = fixture();
+            let mut map = pack.textures[0].clone();
+            map.file = "material-map.png".into();
+            pack.textures.push(map);
+            let material = &mut pack.models.get_mut("fixture").unwrap().surfaces[0].material;
+            match channel {
+                0 => material.normal_texture = Some(1),
+                1 => material.metallic_roughness_texture = Some(1),
+                2 => material.occlusion_texture = Some(1),
+                _ => material.emissive_texture = Some(1),
+            }
+            let mut map_asset = inventory.assets[1].clone();
+            map_asset.id = aid("material-map");
+            map_asset.binding = Binding::Texture { slot: 1 };
+            inventory.assets.push(map_asset);
+            assert!(
+                inventory
+                    .admit(&pack, Purpose::Capture, &inventory.roots())
+                    .unwrap_err()
+                    .contains("material texture dependency")
+            );
+            inventory.assets[2].dependencies.push(aid("material-map"));
+            assert!(
+                inventory
+                    .admit(&pack, Purpose::Capture, &inventory.roots())
+                    .is_ok()
+            );
+            pack.models.get_mut("fixture").unwrap().surfaces[0]
+                .material
+                .normal_texture = Some(2);
+            assert!(pack.validate().is_err());
+        }
     }
     #[test]
     fn renamed_research_and_local_only_origins_cannot_cross_rights_gates() {

@@ -563,6 +563,7 @@ mod tests {
             .unwrap()
             .surfaces
             .push(crate::assets::Surface {
+                material: Default::default(),
                 vertices: vec![],
                 indices: vec![],
                 texture: 0,

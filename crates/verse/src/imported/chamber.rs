@@ -509,6 +509,7 @@ pub fn add_effect_models(pack: &mut Pack, dir: &std::path::Path) -> Result<(), S
                 clips: vec![],
                 attachments: vec![],
                 surfaces: vec![Surface {
+                    material: Default::default(),
                     vertices: mesh,
                     indices: triangles,
                     texture,
@@ -547,6 +548,7 @@ pub fn add_effect_models(pack: &mut Pack, dir: &std::path::Path) -> Result<(), S
                 clips: vec![],
                 attachments: vec![],
                 surfaces: vec![Surface {
+                    material: Default::default(),
                     vertices,
                     indices,
                     texture,
@@ -571,6 +573,7 @@ pub fn add_effect_models(pack: &mut Pack, dir: &std::path::Path) -> Result<(), S
             clips: vec![],
             attachments: vec![],
             surfaces: vec![Surface {
+                material: Default::default(),
                 vertices: mesh,
                 indices: triangles,
                 texture,
@@ -624,6 +627,7 @@ pub fn add_effect_models(pack: &mut Pack, dir: &std::path::Path) -> Result<(), S
                 clips: vec![],
                 attachments: vec![],
                 surfaces: vec![Surface {
+                    material: Default::default(),
                     vertices,
                     indices,
                     texture,
@@ -637,6 +641,7 @@ pub fn add_effect_models(pack: &mut Pack, dir: &std::path::Path) -> Result<(), S
     let texture = particle_texture(pack, dir, "particle-rune")?;
     let (quad, triangles) = particle_quad();
     pack.models.get_mut("effect-rune").unwrap().surfaces[0] = Surface {
+        material: Default::default(),
         vertices: quad,
         indices: triangles,
         texture,

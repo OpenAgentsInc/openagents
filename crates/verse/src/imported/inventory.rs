@@ -210,6 +210,7 @@ pub fn compile(pack: &mut Pack, dir: &Path, bestiary_path: Option<&Path>) -> Res
         include_bytes!("../ui.rs"),
         include_bytes!("../../../verse-engine/src/overlay.rs"),
         include_bytes!("../../../verse-engine/src/render_world.rs"),
+        include_bytes!("../../../verse-engine/src/material.rs"),
         include_bytes!("../render.rs"),
         include_bytes!("../../../../assets/verse/original/ritual.json"),
     ]);
@@ -313,7 +314,12 @@ pub fn compile(pack: &mut Pack, dir: &Path, bestiary_path: Option<&Path>) -> Res
         let users: Vec<_> = pack
             .models
             .iter()
-            .filter(|(_, model)| model.surfaces.iter().any(|s| s.texture == slot))
+            .filter(|(_, model)| {
+                model
+                    .surfaces
+                    .iter()
+                    .any(|s| s.texture_slots().any(|dependency| dependency == slot))
+            })
             .collect();
         let authored = match texture.file.as_str() {
             "original-white.png" => Some("white"),
@@ -331,14 +337,24 @@ pub fn compile(pack: &mut Pack, dir: &Path, bestiary_path: Option<&Path>) -> Res
         let name = if let Some(name) = authored {
             format!("verse:texture:original/{name}")
         } else if let Some((name, model)) = users.first() {
-            format!(
-                "verse:texture:material/{name}/{}",
-                model
-                    .surfaces
-                    .iter()
-                    .position(|s| s.texture == slot)
-                    .unwrap()
-            )
+            let index = model
+                .surfaces
+                .iter()
+                .position(|s| s.texture_slots().any(|dependency| dependency == slot))
+                .unwrap();
+            let surface = &model.surfaces[index];
+            let channel = if surface.texture == slot {
+                ""
+            } else if surface.material.normal_texture == Some(slot) {
+                "/normal"
+            } else if surface.material.metallic_roughness_texture == Some(slot) {
+                "/metallic-roughness"
+            } else if surface.material.occlusion_texture == Some(slot) {
+                "/occlusion"
+            } else {
+                "/emissive"
+            };
+            format!("verse:texture:material/{name}/{index}{channel}")
         } else {
             format!("verse:texture:unused-blob/{}", texture.sha256)
         };
@@ -380,7 +396,8 @@ pub fn compile(pack: &mut Pack, dir: &Path, bestiary_path: Option<&Path>) -> Res
             model
                 .surfaces
                 .iter()
-                .map(|s| texture_ids[&s.texture].clone()),
+                .flat_map(|s| s.texture_slots())
+                .map(|slot| texture_ids[&slot].clone()),
         );
         let (sha256, bytes) = fingerprint(model)?;
         assets.push(Asset {

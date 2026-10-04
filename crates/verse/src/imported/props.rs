@@ -97,6 +97,7 @@ pub fn install(pack: &mut Pack, dir: &Path, root: &Path) -> Result<(), String> {
             })
             .collect();
         flame.surfaces.push(Surface {
+            material: Default::default(),
             vertices,
             indices: vec![0, 4, 1, 1, 4, 2, 2, 4, 3, 3, 4, 0],
             texture: 0,
@@ -130,6 +131,7 @@ pub fn install(pack: &mut Pack, dir: &Path, root: &Path) -> Result<(), String> {
         indices.extend([0, (i + 1) % 32 + 1, i + 1]);
     }
     liquid.surfaces = vec![Surface {
+        material: Default::default(),
         vertices,
         indices,
         texture: 0,
@@ -182,6 +184,7 @@ pub fn install(pack: &mut Pack, dir: &Path, root: &Path) -> Result<(), String> {
         quad([start - side, end - side, end + side, start + side]);
     }
     seal.surfaces = vec![Surface {
+        material: Default::default(),
         vertices,
         indices,
         texture: 0,

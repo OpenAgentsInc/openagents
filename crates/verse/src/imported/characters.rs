@@ -284,6 +284,7 @@ pub fn import(pack: &mut Pack, dir: &Path, path: &Path) -> Result<Model, String>
                 })
                 .collect();
             model.surfaces.push(Surface {
+                material: Default::default(),
                 vertices,
                 indices: reader
                     .read_indices()

@@ -43,6 +43,7 @@ fn cuboid(
     emissive: bool,
 ) {
     let mut s = Surface {
+        material: Default::default(),
         vertices: vec![],
         indices: vec![],
         texture: 0,
