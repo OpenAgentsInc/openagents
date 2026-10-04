@@ -15,6 +15,8 @@ pub struct Config {
     pub certificate_der: PathBuf,
     pub private_key_der: PathBuf,
     pub enrollments: Vec<Enrollment>,
+    #[serde(default)]
+    pub state_dir: Option<PathBuf>,
 }
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -52,6 +54,13 @@ impl Config {
             if path.as_os_str().is_empty() {
                 return Err("Host configuration requires explicit file paths".into());
             }
+        }
+        if self
+            .state_dir
+            .as_ref()
+            .is_some_and(|p| p.as_os_str().is_empty())
+        {
+            return Err("Host state directory must be explicit".into());
         }
         let mut keys = BTreeSet::new();
         let mut primary = 0;
@@ -99,6 +108,66 @@ impl Config {
         }
         Ok(gateway)
     }
+    /// Refuses changed startup rights instead of silently replacing saved character ownership.
+    pub fn validate_recovered(&self, gateway: &Gateway) -> Result<(), String> {
+        self.validate()?;
+        if gateway.game().player_life().instance != self.instance
+            || gateway.chamber.grants.len() != self.enrollments.len()
+        {
+            return Err("Recovered host enrollment context is incompatible".into());
+        }
+        for enrollment in &self.enrollments {
+            let principal = super::Principal(public_key(&enrollment.public_key)?);
+            let rights = gateway
+                .chamber
+                .grants
+                .get(&principal)
+                .ok_or("Recovered principal is missing")?;
+            let compatible = match (&enrollment.role, rights) {
+                (Role::Primary {}, super::Rights::Player(actor)) => {
+                    *actor == gateway.game().player_life().actor
+                }
+                (Role::Player { spawn }, super::Rights::Player(actor)) => {
+                    *actor != gateway.game().player_life().actor
+                        && gateway.game().player_spawn(*actor) == Some(Vec3::from(*spawn))
+                }
+                (Role::Spectator {}, super::Rights::Spectator) => true,
+                _ => false,
+            };
+            if !compatible {
+                return Err("Recovered principal rights or spawn are incompatible".into());
+            }
+        }
+        Ok(())
+    }
+    /// Additional adventurer appearances belong to the save, not the authored scene.
+    pub fn validate_recovered_scene(
+        &self,
+        gateway: &Gateway,
+        prepared: &Game,
+    ) -> Result<(), String> {
+        self.validate_recovered(gateway)?;
+        if prepared.player_life().instance != self.instance {
+            return Err("Prepared host instance is incompatible".into());
+        }
+        let mut scene = gateway.game().scene.clone();
+        if scene.actors.iter().any(|a| {
+            !prepared.scene.actors.iter().any(|b| a.id == b.id)
+                && (a.model != "adventurer" || gateway.game().player_admission(a.id).is_none())
+        }) {
+            return Err("Recovered scene has an unauthored actor".into());
+        }
+        scene
+            .actors
+            .retain(|a| prepared.scene.actors.iter().any(|b| a.id == b.id));
+        if serde_json::to_vec(&scene).map_err(|_| "Cannot validate recovered scene")?
+            != serde_json::to_vec(&prepared.scene)
+                .map_err(|_| "Cannot validate configured scene")?
+        {
+            return Err("Recovered scene is incompatible with configured content".into());
+        }
+        Ok(())
+    }
 }
 fn public_key(text: &str) -> Result<[u8; 32], String> {
     if text.len() != 64 {
@@ -111,6 +180,12 @@ fn public_key(text: &str) -> Result<[u8; 32], String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn key(n: u8) -> String {
+        super::super::net::tests::key(n)
+            .x_only_public_key()
+            .0
+            .to_string()
+    }
     fn config() -> Config {
         let keys = super::super::net::tests::key(1)
             .x_only_public_key()
@@ -127,6 +202,7 @@ mod tests {
                 public_key: keys,
                 role: Role::Primary {},
             }],
+            state_dir: None,
         }
     }
     fn game(instance: u64) -> Game {
@@ -135,6 +211,54 @@ mod tests {
         ))
         .unwrap();
         Game::combat_in(scene, false, instance).unwrap()
+    }
+    #[test]
+    fn recovery_refuses_changed_identity_roles_and_spawns() {
+        let mut config = config();
+        config.enrollments.push(Enrollment {
+            public_key: key(52),
+            role: Role::Player {
+                spawn: [3., 0., -22.],
+            },
+        });
+        config.enrollments.push(Enrollment {
+            public_key: key(53),
+            role: Role::Spectator {},
+        });
+        let gateway = config
+            .gateway(game(config.instance))
+            .unwrap()
+            .with_content([8; 32])
+            .unwrap();
+        let mut recovered =
+            Gateway::restore(&gateway.checkpoint().unwrap(), [8; 32], config.instance).unwrap();
+        config.validate_recovered(&recovered).unwrap();
+        config
+            .validate_recovered_scene(&recovered, &game(config.instance))
+            .unwrap();
+        for case in 0..5 {
+            let mut changed = config.clone();
+            match case {
+                0 => changed.enrollments[1].public_key = key(54),
+                1 => changed.enrollments[1].role = Role::Spectator {},
+                2 => {
+                    changed.enrollments[1].role = Role::Player {
+                        spawn: [4., 0., -22.],
+                    }
+                }
+                3 => {
+                    changed.enrollments.pop();
+                }
+                _ => changed.state_dir = Some(PathBuf::new()),
+            }
+            assert!(changed.validate_recovered(&recovered).is_err());
+        }
+        recovered.chamber.game.scene.actors[0].scale += 1.;
+        assert!(
+            config
+                .validate_recovered_scene(&recovered, &game(config.instance))
+                .is_err()
+        );
     }
     #[test]
     fn strict_configuration_refuses_duplicate_keys_roles_and_spawn_budgets() {

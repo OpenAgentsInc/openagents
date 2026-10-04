@@ -110,6 +110,11 @@ impl Gateway {
     pub fn content(&self) -> Option<[u8; 32]> {
         self.content
     }
+    /// Binds durable storage to this live host authority.
+    #[cfg(feature = "service-net")]
+    pub(super) fn server_identity(&self) -> [u8; 32] {
+        self.server
+    }
     /// Saves the world and grants without connection challenges or sessions.
     pub fn checkpoint(&self) -> Result<Vec<u8>, String> {
         super::save::encode(self)

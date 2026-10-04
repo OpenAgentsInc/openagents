@@ -5,7 +5,7 @@ use std::{
 };
 use verse_world::{
     play::Game,
-    service::{host::Config, net},
+    service::{host::Config, net, persistence::Store},
 };
 fn bounded(path: &Path, limit: usize, private: bool) -> Result<Vec<u8>, String> {
     use std::io::Read;
@@ -63,7 +63,18 @@ async fn serve(config: Config) -> Result<(), String> {
     )?;
     let mut game = Game::combat_in(scene, false, config.instance)?;
     verse::imported::props::admit_collision(&pack, &mut game)?;
-    let gateway = config.gateway(game)?.with_content(content)?;
+    let mut store = config
+        .state_dir
+        .as_ref()
+        .map(|path| Store::open(path, content, config.instance))
+        .transpose()?;
+    let gateway = match store.as_mut().and_then(Store::recover) {
+        Some(gateway) => {
+            config.validate_recovered_scene(&gateway, &game)?;
+            gateway
+        }
+        None => config.gateway(game)?.with_content(content)?,
+    };
     let certificate = rustls::pki_types::CertificateDer::from(bounded(
         &config.certificate_der,
         1024 * 1024,
@@ -95,18 +106,25 @@ async fn serve(config: Config) -> Result<(), String> {
     );
     let signal_failure = Arc::new(Mutex::new(None));
     let failure = signal_failure.clone();
-    let exit = net::serve(listener, Arc::new(tls), gateway, async move {
+    let shutdown = async move {
         if shutdown().await.is_err() {
             *failure.lock().unwrap() = Some("Cannot await chamber shutdown signal".to_string());
         }
-    })
-    .await;
+    };
+    let exit = match store {
+        Some(store) => net::serve_durable(listener, Arc::new(tls), gateway, store, shutdown).await,
+        None => net::serve(listener, Arc::new(tls), gateway, shutdown).await,
+    };
     println!(
         "Chamber stopped: {} ticks, {} requests, {} completed connections, {:.6} dropped seconds",
         exit.stats.ticks,
         exit.stats.requests,
         exit.stats.completed_connections,
         exit.stats.dropped_seconds
+    );
+    println!(
+        "Checkpoint storage: {} commits, {} bytes, {:.6} seconds",
+        exit.stats.checkpoint_commits, exit.stats.checkpoint_bytes, exit.stats.checkpoint_seconds
     );
     if let Some(error) = exit.failure {
         return Err(error);

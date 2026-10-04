@@ -17,7 +17,8 @@ use tokio_rustls::TlsAcceptor;
 
 use super::{
     auth::{ConnectionId, Gateway},
-    wire::{MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES},
+    persistence::Store,
+    wire::{Body, MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES, Request},
 };
 
 const CONNECTIONS: usize = 128;
@@ -37,6 +38,9 @@ pub struct Stats {
     pub requests: u64,
     pub ticks: u64,
     pub dropped_seconds: f64,
+    pub checkpoint_commits: u64,
+    pub checkpoint_bytes: u64,
+    pub checkpoint_seconds: f64,
 }
 /// Retains the authority after shutdown, including runtime failure diagnostics.
 pub struct Exit {
@@ -47,6 +51,14 @@ pub struct Exit {
 
 type OpenReply = Result<(ConnectionId, Vec<u8>), String>;
 type DispatchReply = Result<(Vec<u8>, bool), String>;
+struct PendingReply {
+    reply: oneshot::Sender<DispatchReply>,
+    response: PendingResponse,
+}
+enum PendingResponse {
+    Outcome(DispatchReply),
+    Read { id: ConnectionId, bytes: Vec<u8> },
+}
 enum Event {
     Open(oneshot::Sender<OpenReply>),
     Request {
@@ -106,7 +118,39 @@ pub async fn write_frame<W: AsyncWrite + Unpin>(
 pub async fn serve<F: Future<Output = ()>>(
     listener: TcpListener,
     tls: Arc<ServerConfig>,
+    gateway: Gateway,
+    shutdown: F,
+) -> Exit {
+    serve_with_store(listener, tls, gateway, None, shutdown).await
+}
+/// Commits world mutations before replies and stops on any durability failure.
+pub async fn serve_durable<F: Future<Output = ()>>(
+    listener: TcpListener,
+    tls: Arc<ServerConfig>,
+    gateway: Gateway,
+    store: Store,
+    shutdown: F,
+) -> Exit {
+    serve_with_store(listener, tls, gateway, Some(store), shutdown).await
+}
+fn persist(gateway: &Gateway, store: &mut Option<Store>, stats: &mut Stats) -> Result<(), String> {
+    if let Some(store) = store {
+        let start = Instant::now();
+        let committed = store.commit(gateway);
+        stats.checkpoint_seconds += start.elapsed().as_secs_f64();
+        let committed = committed?;
+        if committed.written {
+            stats.checkpoint_commits += 1;
+            stats.checkpoint_bytes += committed.bytes as u64;
+        }
+    }
+    Ok(())
+}
+async fn serve_with_store<F: Future<Output = ()>>(
+    listener: TcpListener,
+    tls: Arc<ServerConfig>,
     mut gateway: Gateway,
+    mut store: Option<Store>,
     shutdown: F,
 ) -> Exit {
     let acceptor = TlsAcceptor::from(tls);
@@ -120,6 +164,15 @@ pub async fn serve<F: Future<Output = ()>>(
     ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
     let mut stats = Stats::default();
     let mut failure = None;
+    let mut pending: Vec<PendingReply> = Vec::with_capacity(QUEUE);
+    let mut dirty = false;
+    if let Err(error) = persist(&gateway, &mut store, &mut stats) {
+        return Exit {
+            gateway,
+            stats,
+            failure: Some(error),
+        };
+    }
     tokio::pin!(shutdown);
     loop {
         tokio::select! {
@@ -146,6 +199,17 @@ pub async fn serve<F: Future<Output = ()>>(
                 let dt = elapsed.min(0.1);
                 stats.dropped_seconds += elapsed - dt;
                 if let Err(error) = gateway.tick(dt as f32) { failure = Some(error); break; }
+                if let Err(error) = persist(&gateway, &mut store, &mut stats) { failure = Some(error); break; }
+                let now = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
+                for response in pending.drain(..) {
+                    let result = match response.response {
+                        PendingResponse::Outcome(result) => result,
+                        PendingResponse::Read { id, bytes } => gateway.dispatch_json(id, now, &bytes)
+                            .map(|bytes| (bytes, gateway.authenticated(id))),
+                    };
+                    let _ = response.reply.send(result);
+                }
+                dirty = false;
                 stats.ticks += 1;
             }
             event = receive.recv() => {
@@ -157,10 +221,29 @@ pub async fn serve<F: Future<Output = ()>>(
                     }
                     Some(Event::Request { id, bytes, reply }) => {
                         stats.requests += 1;
-                        let result = gateway.dispatch_json(id, now, &bytes).map(|bytes| (bytes, gateway.authenticated(id)));
-                        let _ = reply.send(result);
+                        if store.is_some() && pending.len() >= QUEUE {
+                            let error = "Chamber durable reply budget exceeded".to_string();
+                            let _ = reply.send(Err(error.clone()));
+                            failure = Some(error);
+                            break;
+                        }
+                        let mutating = store.is_some() && Request::decode(&bytes).is_ok_and(|request| matches!(request.body,
+                            Body::Authenticate { .. } | Body::Command { .. } | Body::Respawn { .. }));
+                        if mutating {
+                            let result = gateway.dispatch_json(id, now, &bytes).map(|bytes| (bytes, gateway.authenticated(id)));
+                            dirty = true;
+                            pending.push(PendingReply { reply, response: PendingResponse::Outcome(result) });
+                        } else if store.is_some() && dirty {
+                            pending.push(PendingReply { reply, response: PendingResponse::Read { id, bytes } });
+                        } else {
+                            let result = gateway.dispatch_json(id, now, &bytes).map(|bytes| (bytes, gateway.authenticated(id)));
+                            let _ = reply.send(result);
+                        }
                     }
-                    Some(Event::Close(id)) => { let _ = gateway.close(id); }
+                    Some(Event::Close(id)) => {
+                        let _ = gateway.close(id);
+                        dirty |= store.is_some();
+                    }
                     None => { failure = Some("Chamber dispatch queue closed".into()); break; }
                 }
             }
@@ -172,6 +255,9 @@ pub async fn serve<F: Future<Output = ()>>(
         stats.completed_connections += 1;
     }
     if let Err(error) = gateway.close_all() {
+        failure.get_or_insert(error);
+    }
+    if let Err(error) = persist(&gateway, &mut store, &mut stats) {
         failure.get_or_insert(error);
     }
     Exit {
@@ -397,6 +483,327 @@ pub(super) mod tests {
         state
     }
 
+    #[tokio::test]
+    async fn durable_two_player_input_cadence_records_checkpoint_cost() {
+        use crate::{Intent, service::client::Client};
+        let dir = tempfile::tempdir().unwrap();
+        let keys = [key(117), key(118), key(119)];
+        let store = Store::open(&dir.path().join("state"), [8; 32], 120).unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (tls, connector) = tls();
+        let (stop, stopped) = oneshot::channel();
+        let server = tokio::spawn(serve_durable(
+            listener,
+            tls,
+            gateway(&keys).with_content([8; 32]).unwrap(),
+            store,
+            async {
+                let _ = stopped.await;
+            },
+        ));
+        let name = || ServerName::try_from("localhost").unwrap();
+        let mut a = Client::connect_with_content(
+            address,
+            name(),
+            connector.config().clone(),
+            120,
+            Some([8; 32]),
+            &keys[0],
+        )
+        .await
+        .unwrap();
+        let mut b = Client::connect_with_content(
+            address,
+            name(),
+            connector.config().clone(),
+            120,
+            Some([8; 32]),
+            &keys[1],
+        )
+        .await
+        .unwrap();
+        let mut spectator = Client::connect_with_content(
+            address,
+            name(),
+            connector.config().clone(),
+            120,
+            Some([8; 32]),
+            &keys[2],
+        )
+        .await
+        .unwrap();
+        let start = Instant::now();
+        timeout(Duration::from_secs(12), async {
+            let mut clock = tokio::time::interval(Duration::from_millis(33));
+            clock.set_missed_tick_behavior(MissedTickBehavior::Skip);
+            for _ in 0..90 {
+                clock.tick().await;
+                let (state_a, state_b, state_s) =
+                    tokio::join!(a.snapshot(), b.snapshot(), spectator.snapshot());
+                state_a.unwrap();
+                state_b.unwrap();
+                assert!(state_s.unwrap().hud.is_none());
+                let movement = Intent::Move {
+                    axes: [0., 0.],
+                    yaw: 0.,
+                };
+                let (reply_a, reply_b) =
+                    tokio::join!(a.command(movement.clone()), b.command(movement));
+                assert!(matches!(reply_a.unwrap().body, Reply::Accepted));
+                assert!(matches!(reply_b.unwrap().body, Reply::Accepted));
+            }
+        })
+        .await
+        .unwrap();
+        let elapsed = start.elapsed().as_secs_f64();
+        stop.send(()).unwrap();
+        let exit = server.await.unwrap();
+        assert!(exit.failure.is_none());
+        assert!(exit.stats.checkpoint_commits >= 90);
+        eprintln!(
+            "{}",
+            serde_json::json!({"schema":"verse.durable.fixture.v1","players":2,"spectators":1,
+            "accepted_movement_commands":180,"wall_seconds":elapsed,"world_ticks":exit.stats.ticks,
+            "checkpoint_commits":exit.stats.checkpoint_commits,"checkpoint_bytes":exit.stats.checkpoint_bytes,
+            "checkpoint_seconds":exit.stats.checkpoint_seconds,"dropped_seconds":exit.stats.dropped_seconds})
+        );
+    }
+    #[tokio::test]
+    async fn durable_tls_host_recovers_acknowledged_combat_after_abrupt_restart() {
+        use crate::{Intent, play::Ability, service::client::Client};
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("state");
+        let keys = [key(111), key(112), key(113)];
+        let gateway = gateway(&keys).with_content([8; 32]).unwrap();
+        let target = gateway.game().actor_life(1).unwrap();
+        let store = Store::open(&root, [8; 32], 120).unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (server_tls, connector) = tls();
+        let (_stop, stopped) = oneshot::channel::<()>();
+        let server = tokio::spawn(serve_durable(
+            listener,
+            server_tls.clone(),
+            gateway,
+            store,
+            async {
+                let _ = stopped.await;
+            },
+        ));
+        let name = || ServerName::try_from("localhost").unwrap();
+        let mut a = Client::connect_with_content(
+            address,
+            name(),
+            connector.config().clone(),
+            120,
+            Some([8; 32]),
+            &keys[0],
+        )
+        .await
+        .unwrap();
+        let mut b = Client::connect_with_content(
+            address,
+            name(),
+            connector.config().clone(),
+            120,
+            Some([8; 32]),
+            &keys[1],
+        )
+        .await
+        .unwrap();
+        let old_a = a.control().unwrap().clone();
+        let old_b = b.control().unwrap().clone();
+        assert!(matches!(
+            a.command(Intent::Cast {
+                ability: Ability::Shield,
+                target: None,
+                aim: [0., 0., 1.]
+            })
+            .await
+            .unwrap()
+            .body,
+            Reply::Accepted
+        ));
+        assert!(matches!(
+            b.command(Intent::Cast {
+                ability: Ability::Fireball,
+                target: Some(target),
+                aim: [0., 0., 1.]
+            })
+            .await
+            .unwrap()
+            .body,
+            Reply::Accepted
+        ));
+        let before_a = a.snapshot().await.unwrap();
+        let before_b = b.snapshot().await.unwrap();
+        assert_eq!(before_a.hud.as_ref().unwrap().resources.mana, 19);
+        assert!(before_b.hud.as_ref().unwrap().casting.is_some());
+        let committed: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(root.join("chamber.json")).unwrap()).unwrap();
+        let disk = Gateway::restore(
+            committed["checkpoint"].as_str().unwrap().as_bytes(),
+            [8; 32],
+            120,
+        )
+        .unwrap();
+        assert_eq!(
+            disk.game()
+                .player_hud(old_a.life.into())
+                .unwrap()
+                .resources
+                .mana,
+            19
+        );
+        assert!(
+            disk.game()
+                .player_hud(old_b.life.into())
+                .unwrap()
+                .casting
+                .is_some()
+        );
+        server.abort();
+        assert!(matches!(server.await, Err(error) if error.is_cancelled()));
+        assert!(a.snapshot().await.is_err());
+        let mut store = Store::open(&root, [8; 32], 120).unwrap();
+        let recovered = store.recover().unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (stop, stopped) = oneshot::channel();
+        let server = tokio::spawn(serve_durable(
+            listener,
+            server_tls,
+            recovered,
+            store,
+            async {
+                let _ = stopped.await;
+            },
+        ));
+        let mut a = Client::connect_with_content(
+            address,
+            name(),
+            connector.config().clone(),
+            120,
+            Some([8; 32]),
+            &keys[0],
+        )
+        .await
+        .unwrap();
+        let mut b = Client::connect_with_content(
+            address,
+            name(),
+            connector.config().clone(),
+            120,
+            Some([8; 32]),
+            &keys[1],
+        )
+        .await
+        .unwrap();
+        let mut spectator = Client::connect_with_content(
+            address,
+            name(),
+            connector.config().clone(),
+            120,
+            Some([8; 32]),
+            &keys[2],
+        )
+        .await
+        .unwrap();
+        assert_eq!(a.control().unwrap().life, old_a.life);
+        assert_eq!(b.control().unwrap().life, old_b.life);
+        assert!(a.control().unwrap().epoch > old_a.epoch);
+        assert!(b.control().unwrap().epoch > old_b.epoch);
+        let after_a = a.snapshot().await.unwrap();
+        let after_b = b.snapshot().await.unwrap();
+        assert_eq!(
+            after_a.hud.as_ref().unwrap().resources.hp,
+            before_a.hud.as_ref().unwrap().resources.hp
+        );
+        assert_eq!(after_a.hud.as_ref().unwrap().resources.mana, 19);
+        assert!(after_b.hud.as_ref().unwrap().casting.is_some());
+        assert!(spectator.snapshot().await.unwrap().hud.is_none());
+        assert_eq!(
+            after_a
+                .presentation
+                .actors
+                .iter()
+                .filter(|p| p.actor.model == "adventurer")
+                .count(),
+            2
+        );
+        let stale = Input {
+            actor: old_a.life,
+            epoch: old_a.epoch,
+            sequence: 1,
+            tick: a.tick(),
+            intent: Action::Move {
+                axes: [1., 0.],
+                yaw: 0.,
+            },
+        };
+        assert!(matches!(
+            a.request(Body::Command { command: stale })
+                .await
+                .unwrap()
+                .body,
+            Reply::Refused { .. }
+        ));
+        stop.send(()).unwrap();
+        let exit = server.await.unwrap();
+        assert!(exit.failure.is_none());
+        assert!(exit.stats.checkpoint_commits > 0 && exit.stats.checkpoint_bytes > 0);
+        assert!(exit.stats.checkpoint_seconds.is_finite());
+    }
+    #[tokio::test]
+    async fn durable_host_stops_without_acknowledgment_on_storage_failure() {
+        use crate::{Intent, play::Ability, service::client::Client};
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("state");
+        let keys = [key(114), key(115), key(116)];
+        let store = Store::open(&root, [8; 32], 120).unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (tls, connector) = tls();
+        let (_stop, stopped) = oneshot::channel::<()>();
+        let server = tokio::spawn(serve_durable(
+            listener,
+            tls,
+            gateway(&keys).with_content([8; 32]).unwrap(),
+            store,
+            async {
+                let _ = stopped.await;
+            },
+        ));
+        let mut client = Client::connect_with_content(
+            address,
+            ServerName::try_from("localhost").unwrap(),
+            connector.config().clone(),
+            120,
+            Some([8; 32]),
+            &keys[0],
+        )
+        .await
+        .unwrap();
+        let committed = std::fs::read(root.join("chamber.json")).unwrap();
+        std::fs::create_dir(root.join("next.json")).unwrap();
+        assert!(
+            client
+                .command(Intent::Cast {
+                    ability: Ability::Shield,
+                    target: None,
+                    aim: [0., 0., 1.]
+                })
+                .await
+                .is_err()
+        );
+        let exit = timeout(Duration::from_secs(3), server)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(exit.failure.as_deref(), Some("Cannot stage chamber commit"));
+        assert_eq!(std::fs::read(root.join("chamber.json")).unwrap(), committed);
+    }
     #[tokio::test]
     async fn tls_players_and_spectator_share_one_world_and_shutdown_parks_controls() {
         let keys = [key(21), key(22), key(23)];

@@ -173,6 +173,17 @@ impl Game {
             self.additional_players.get(&actor).map(|p| &p.admission)
         }
     }
+    pub(crate) fn player_spawn(&self, actor: u64) -> Option<Vec3> {
+        if actor == self.player_actor() {
+            self.scene
+                .actors
+                .iter()
+                .find(|a| a.model == "adventurer")
+                .map(|a| a.position)
+        } else {
+            self.additional_players.get(&actor).map(|p| p.spawn)
+        }
+    }
     pub fn player_snapshot(&self, life: LifeId) -> Result<Snapshot, String> {
         if self
             .player_admission(life.actor)

@@ -24,6 +24,7 @@ glam = { version = "0.30.10", features = ["serde"] }
 physics = { path = "../physics" }
 
 [dev-dependencies]
+tempfile = "3"
 rcgen = { version = "0.14", default-features = false, features = ["crypto", "ring"] }
 
 [lints]

@@ -12,6 +12,8 @@ pub mod event_cursor;
 pub mod host;
 #[cfg(feature = "service-net")]
 pub mod net;
+#[cfg(feature = "service-net")]
+pub mod persistence;
 #[cfg(feature = "service-auth")]
 pub mod presentation;
 #[cfg(feature = "service-auth")]
