@@ -25,6 +25,8 @@ pub struct Transaction {
     pub experience: u64,
     pub items: Vec<Entry>,
     pub quests: Vec<Entry>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub spent: Vec<Entry>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -74,6 +76,7 @@ impl Policy {
         source[16..24].copy_from_slice(&life.actor.to_be_bytes());
         source[24..].copy_from_slice(&life.generation.to_be_bytes());
         Transaction {
+            spent: vec![],
             instance: life.instance,
             actor: recipient,
             source,
@@ -163,12 +166,14 @@ impl Ledger {
             || transaction.source == [0; 32]
             || (transaction.experience == 0
                 && transaction.items.is_empty()
-                && transaction.quests.is_empty())
+                && transaction.quests.is_empty()
+                && transaction.spent.is_empty())
         {
             return Err("Reward identity or grant is empty".into());
         }
         entries(&transaction.items)?;
         entries(&transaction.quests)?;
+        entries(&transaction.spent)?;
         if let Some(receipt) = self.receipts.iter().find(|receipt| {
             receipt.transaction.actor == transaction.actor
                 && receipt.transaction.source == transaction.source
@@ -202,6 +207,20 @@ impl Ledger {
             .ok_or("Character experience exceeded")?;
         add(&mut next.items, &transaction.items)?;
         add(&mut next.quests, &transaction.quests)?;
+        for entry in &transaction.spent {
+            let count = next
+                .items
+                .get(&entry.id)
+                .copied()
+                .unwrap_or(0)
+                .checked_sub(entry.count)
+                .ok_or("Not enough owned items")?;
+            if count == 0 {
+                next.items.remove(&entry.id);
+            } else {
+                next.items.insert(entry.id, count);
+            }
+        }
         let receipt = Receipt {
             revision: self.receipts.len() as u64 + 1,
             transaction,
@@ -217,6 +236,7 @@ mod tests {
     use super::*;
     fn transaction(source: u8) -> Transaction {
         Transaction {
+            spent: vec![],
             instance: 4,
             actor: 10,
             source: [source; 32],

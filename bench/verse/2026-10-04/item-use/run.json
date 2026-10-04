@@ -1,0 +1,202 @@
+{
+  "schema": "verse.item-use.acceptance.v1",
+  "issue": 10536,
+  "date": "2026-10-04",
+  "fixture": {
+    "after": {
+      "catalog": {
+        "items": [
+          {
+            "health": 45,
+            "id": 1,
+            "mana": 5,
+            "name": "Recovery ember"
+          }
+        ],
+        "version": 1
+      },
+      "experience": 1,
+      "items": [
+        {
+          "count": 1,
+          "id": 1
+        }
+      ],
+      "level": {
+        "level": 1,
+        "next": null,
+        "start": 0
+      },
+      "life": {
+        "actor": 14,
+        "generation": 0,
+        "instance": 120
+      },
+      "quest_log": [],
+      "quests": [],
+      "revision": 2
+    },
+    "before": {
+      "catalog": {
+        "items": [
+          {
+            "health": 45,
+            "id": 1,
+            "mana": 5,
+            "name": "Recovery ember"
+          }
+        ],
+        "version": 1
+      },
+      "experience": 1,
+      "items": [
+        {
+          "count": 2,
+          "id": 1
+        }
+      ],
+      "level": {
+        "level": 1,
+        "next": null,
+        "start": 0
+      },
+      "life": {
+        "actor": 14,
+        "generation": 0,
+        "instance": 120
+      },
+      "quest_log": [],
+      "quests": [],
+      "revision": 1
+    },
+    "duplicate_recovery": false,
+    "duplicate_spending": false,
+    "failed_storage_ack_withheld": true,
+    "health_after": 145,
+    "health_before": 100,
+    "recovered": {
+      "catalog": {
+        "items": [
+          {
+            "health": 45,
+            "id": 1,
+            "mana": 5,
+            "name": "Recovery ember"
+          }
+        ],
+        "version": 1
+      },
+      "experience": 1,
+      "items": [
+        {
+          "count": 1,
+          "id": 1
+        }
+      ],
+      "level": {
+        "level": 1,
+        "next": null,
+        "start": 0
+      },
+      "life": {
+        "actor": 14,
+        "generation": 0,
+        "instance": 120
+      },
+      "quest_log": [],
+      "quests": [],
+      "revision": 2
+    },
+    "restart": "aborted_host_task",
+    "schema": "verse.item-use.fixture.v1",
+    "wire_version": 12
+  },
+  "source_sha256": {
+    "crates/verse-world/src/play/multiplayer.rs": "24f4eff59a9748bbc8dcc3b2fa3e66eb1d2fc1f88190f4d38841f12adda81c0a",
+    "crates/verse-world/src/rules.rs": "e8e309094a90bada6c368a9c0230936f70c560628c7e8c0748571c58743739ee",
+    "crates/verse-world/src/service.rs": "3d3e75d2015aa51c0b6dae3ffa6b8334dee0da37c853f772a88583066c01111c",
+    "crates/verse-world/src/service/auth.rs": "6a596b639fc40be90be74864730c805f2e85d966fe14ec4e096ece03390addaf",
+    "crates/verse-world/src/service/client.rs": "64fa83682a74a0a5ecc0307fe50e5bbbf5af9856e94ce14a87fcb96fe9d21005",
+    "crates/verse-world/src/service/host.rs": "abce86e9cda64edbb545e1a185185d6eb06e9938c92e17c361e7f2a99c3e4600",
+    "crates/verse-world/src/service/net.rs": "183aa38ae8cb8099c9ae931fa375aaccc8c1cb48ce19690a70cd4f128a013642",
+    "crates/verse-world/src/service/persistence.rs": "935bc80ade1732be8509ed6393d22943e3b73584257e592a39299b5239458450",
+    "crates/verse-world/src/service/progression.rs": "ff5fe523edfdb9a76e703fa9a0a4e7d0365d70cdcd8756be4d04388d66be90ff",
+    "crates/verse-world/src/service/rewards.rs": "dff17c4261f377873c145ab5de16f6ba7e9343327ed5bb84c91e08299e705eee",
+    "crates/verse-world/src/service/save.rs": "1fa7b4c919238404317a59f4370677fd5f961a804c7bb0a8d4650fa6c296f383",
+    "crates/verse-world/src/service/view.rs": "d50c55c4ed8313e92340206fa2bdc95b200c773900e38a517e97c70a40428ca0",
+    "crates/verse-world/src/service/wire.rs": "2559995f28e5ebbf508f8313c4aaa11e541de2a49aa7f7f499b9b57774e63f22",
+    "crates/verse-world/src/service/worker.rs": "611f2b58ca76e664ba833232544bddd6be3667c87715df4f4aff03b42ecaf226",
+    "crates/verse/src/imported/character_panel.rs": "21f27dd5edf66ac5dc0533842999137423a568812fb0419d19c3f8447baa8001",
+    "crates/verse/src/imported/remote_window.rs": "744ab214cd8afe4e0fbd6e4593368057606951baf4df6fb59a6d0ae3cbd99708",
+    "crates/verse-world/src/service/items.rs": "2a4720f4b08610441e19ab35c3e7eb45549c9405bcf82944eb008eeb3b24fd71"
+  },
+  "artifacts": [
+    {
+      "path": "ready.png",
+      "sha256": "fcf04bb66e343f89d46196d1bb176b62dd2c046200219d669fd93043417f7df7",
+      "native_dimensions": [
+        2700,
+        1860
+      ],
+      "logical_dimensions": [
+        900,
+        620
+      ],
+      "visually_inspected": true,
+      "content": "Synthetic inventory with authored recovery item, alongside ready/completed campaign quest presentation"
+    },
+    {
+      "path": "panels.png",
+      "sha256": "dfc18a6066b04e1c4451150d284efa9022b0199bb2de0ad24cb59cf39b053b8d",
+      "native_dimensions": [
+        2700,
+        1860
+      ],
+      "logical_dimensions": [
+        900,
+        620
+      ],
+      "visually_inspected": true,
+      "content": "Synthetic inventory with authored recovery item, alongside ready/completed campaign quest presentation"
+    }
+  ],
+  "verification": [
+    {
+      "command": "cargo fmt -p verse-world -p verse",
+      "result": "passed"
+    },
+    {
+      "command": "cargo test -p verse-world --features service-net service:: -- --test-threads=1 --nocapture",
+      "passed": 87,
+      "failed": 0
+    },
+    {
+      "command": "cargo test -p verse --no-default-features --features remote-chamber,imported-desktop imported::character_panel -- --include-ignored --nocapture",
+      "passed": 4,
+      "failed": 0
+    },
+    {
+      "command": "cargo test -p verse --no-default-features --features remote-chamber,imported-desktop imported::remote_window",
+      "passed": 5,
+      "failed": 0
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "checks": [
+    "Recovery items debit one stack and clamp owned living-player health/mana.",
+    "Empty stacks, full resources, malformed catalog, dead players, foreign control and conflicting retry identities leave authority unchanged.",
+    "Ordered save replay validates authored debit sources without reapplying world restoration.",
+    "TLS storage staging failure withholds acknowledgment and recovers the previous health and item stack.",
+    "Abrupt host-task restart retains acknowledged debit/health and original receipt on exact retry.",
+    "Native Use hit targets emit only owned catalog IDs without locally spending inventory."
+  ],
+  "limits": [
+    "TLS fixture uses generated keys/certificates, scratch durable storage and synthetic initial damage/reward stacks. It is not a live combat/window input acceptance run.",
+    "GPU captures use synthetic campaign/inventory counters; they establish layout rather than end-to-end item-use acceptance through OS input.",
+    "Native worker generates one operation identity per click and does not automatically retry uncertain transport effects. Programmatic callers must retain their explicit identity.",
+    "Equipment, visual gear, combat stat scaling, broader quests, prediction/reconciliation and full Verse roadmap acceptance remain."
+  ]
+}

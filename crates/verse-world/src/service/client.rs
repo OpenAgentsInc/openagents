@@ -159,6 +159,17 @@ impl Client {
             _ => Err("Unexpected inventory response".into()),
         }
     }
+    /// Callers retain the operation ID when an acknowledgment is uncertain.
+    pub async fn use_item(&mut self, item: u64, operation: [u8; 16]) -> Result<Response, String> {
+        let control = self.control().ok_or("Client has no admitted adventurer")?;
+        self.request(Body::UseItem {
+            life: control.life,
+            epoch: control.epoch,
+            item,
+            operation,
+        })
+        .await
+    }
     pub async fn claim_quest(&mut self, quest: u64) -> Result<Response, String> {
         let control = self.control().ok_or("Client has no admitted adventurer")?;
         self.request(Body::ClaimQuest {
@@ -297,6 +308,33 @@ impl Client {
                         .is_none_or(|c| c.life != *life || c.epoch != *epoch)
                 {
                     return Err("Quest claim acknowledgment is incompatible".into());
+                }
+                Ok(())
+            }
+            (
+                Reply::ItemUsed {
+                    item,
+                    operation,
+                    revision,
+                },
+                Body::UseItem {
+                    life,
+                    epoch,
+                    item: requested,
+                    operation: identity,
+                },
+            ) => {
+                if item != requested
+                    || operation != identity
+                    || *item == 0
+                    || *operation == [0; 16]
+                    || *revision == 0
+                    || *revision > super::rewards::MAX_TRANSACTIONS as u64
+                    || r.control
+                        .as_ref()
+                        .is_none_or(|c| c.life != *life || c.epoch != *epoch)
+                {
+                    return Err("Item use acknowledgment is incompatible".into());
                 }
                 Ok(())
             }
@@ -580,6 +618,7 @@ mod tests {
             .unwrap();
         let actor = g.game().player_life().actor;
         g.grant_reward(Transaction {
+            spent: vec![],
             instance: 120,
             actor,
             source: [8; 32],
@@ -662,6 +701,149 @@ mod tests {
         assert!(server.await.unwrap().failure.is_none());
     }
     #[tokio::test]
+    async fn durable_item_use_withholds_failed_ack_and_retries_without_duplicate_recovery() {
+        use crate::service::{
+            items::{Catalog, Item},
+            net,
+            persistence::Store,
+            rewards::{Entry, Transaction},
+        };
+        let keys = [key(71), key(72), key(73)];
+        let mut g = gateway(&keys)
+            .with_content([7; 32])
+            .unwrap()
+            .with_items(Catalog {
+                version: 1,
+                items: vec![Item {
+                    id: 1,
+                    name: "Recovery ember".into(),
+                    health: 45,
+                    mana: 5,
+                }],
+            })
+            .unwrap();
+        let actor = g.game().player_life().actor;
+        g.grant_reward(Transaction {
+            instance: 120,
+            actor,
+            source: [8; 32],
+            experience: 1,
+            items: vec![Entry { id: 1, count: 2 }],
+            quests: vec![],
+            spent: vec![],
+        })
+        .unwrap();
+        g.chamber.game.simulation.player_damage_for(0, 100).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("state");
+        let store = Store::open(&root, [7; 32], 120).unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (server_tls, connector) = tls();
+        let server = tokio::spawn(net::serve_durable(
+            listener,
+            server_tls.clone(),
+            g,
+            store,
+            std::future::pending::<()>(),
+        ));
+        let mut client = Client::connect_with_content(
+            address,
+            name(),
+            connector.config().clone(),
+            120,
+            Some([7; 32]),
+            &keys[0],
+        )
+        .await
+        .unwrap();
+        let before = client.inventory().await.unwrap();
+        assert_eq!(before.catalog.items[0].health, 45);
+        std::fs::create_dir(root.join("next.json")).unwrap();
+        assert!(client.use_item(1, [1; 16]).await.is_err());
+        let exit = tokio::time::timeout(std::time::Duration::from_secs(3), server)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(exit.failure.as_deref(), Some("Cannot stage chamber commit"));
+        drop(exit);
+        std::fs::remove_dir(root.join("next.json")).unwrap();
+        let mut store = Store::open(&root, [7; 32], 120).unwrap();
+        let g = store.recover().unwrap();
+        assert_eq!(g.game().snapshot().player.hp, 100);
+        assert_eq!(g.character_rewards(actor).unwrap().items[&1], 2);
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(net::serve_durable(
+            listener,
+            server_tls.clone(),
+            g,
+            store,
+            std::future::pending::<()>(),
+        ));
+        let mut client = Client::connect_with_content(
+            address,
+            name(),
+            connector.config().clone(),
+            120,
+            Some([7; 32]),
+            &keys[0],
+        )
+        .await
+        .unwrap();
+        let ack = client.use_item(1, [1; 16]).await.unwrap();
+        assert!(matches!(
+            ack.body,
+            Reply::ItemUsed {
+                item: 1,
+                revision: 2,
+                ..
+            }
+        ));
+        assert_eq!(
+            serde_json::to_value(client.use_item(1, [1; 16]).await.unwrap().body).unwrap(),
+            serde_json::to_value(&ack.body).unwrap()
+        );
+        let after = client.inventory().await.unwrap();
+        assert_eq!(after.items[0].count, 1);
+        server.abort();
+        assert!(matches!(server.await,Err(error) if error.is_cancelled()));
+        let mut store = Store::open(&root, [7; 32], 120).unwrap();
+        let g = store.recover().unwrap();
+        assert_eq!(g.game().snapshot().player.hp, 145);
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (stop, stopping) = oneshot::channel();
+        let server = tokio::spawn(net::serve_durable(listener, server_tls, g, store, async {
+            let _ = stopping.await;
+        }));
+        let mut client = Client::connect_with_content(
+            address,
+            name(),
+            connector.config().clone(),
+            120,
+            Some([7; 32]),
+            &keys[0],
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            serde_json::to_value(client.use_item(1, [1; 16]).await.unwrap().body).unwrap(),
+            serde_json::to_value(&ack.body).unwrap()
+        );
+        let recovered = client.inventory().await.unwrap();
+        assert_eq!(after, recovered);
+        client.close().await.unwrap();
+        stop.send(()).unwrap();
+        let exit = server.await.unwrap();
+        assert!(exit.failure.is_none());
+        assert_eq!(exit.gateway.game().snapshot().player.hp, 145);
+        println!(
+            "VERSE_ITEM_USE {}",
+            serde_json::json!({"schema":"verse.item-use.fixture.v1","wire_version":VERSION,"before":before,"after":after,"recovered":recovered,"health_before":100,"health_after":145,"restart":"aborted_host_task","failed_storage_ack_withheld":true,"duplicate_spending":false,"duplicate_recovery":false})
+        );
+    }
+    #[tokio::test]
     async fn reward_overflow_stops_durable_host_without_saving_partial_death() {
         use crate::service::{
             net,
@@ -681,6 +863,7 @@ mod tests {
             .unwrap();
         let actor = g.game().player_life().actor;
         g.grant_reward(Transaction {
+            spent: vec![],
             instance: 120,
             actor,
             source: [90; 32],

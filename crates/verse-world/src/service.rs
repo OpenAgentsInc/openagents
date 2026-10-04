@@ -10,6 +10,7 @@ pub mod client;
 pub mod event_cursor;
 #[cfg(feature = "service-net")]
 pub mod host;
+pub mod items;
 #[cfg(feature = "service-net")]
 pub mod net;
 #[cfg(feature = "service-net")]
@@ -77,6 +78,7 @@ pub struct Chamber {
     reward_policy: Vec<rewards::Policy>,
     reward_cursor: u64,
     progression: progression::Config,
+    items: items::Catalog,
 }
 
 impl Chamber {
@@ -94,6 +96,7 @@ impl Chamber {
             reward_policy: Vec::new(),
             reward_cursor: 0,
             progression: Default::default(),
+            items: Default::default(),
         })
     }
 
@@ -112,7 +115,10 @@ impl Chamber {
         {
             return Err("Reward character or instance is foreign".into());
         }
-        if progression::reserved(&transaction.source) {
+        if progression::reserved(&transaction.source)
+            || items::reserved(&transaction.source)
+            || !transaction.spent.is_empty()
+        {
             return Err("Campaign claim source is reserved".into());
         }
         self.rewards.apply(transaction)
@@ -130,7 +136,37 @@ impl Chamber {
             self.progression
                 .validate_claim(&transaction, &self.rewards)?;
         }
+        if items::reserved(&transaction.source) {
+            self.items.validate_use(&transaction)?;
+        } else if !transaction.spent.is_empty() {
+            return Err("Saved debit source is not an admitted item use".into());
+        }
         self.rewards.apply(transaction)
+    }
+    pub fn use_item(
+        &mut self,
+        principal: Principal,
+        session: Session,
+        life: LifeId,
+        epoch: u64,
+        item: u64,
+        operation: [u8; 16],
+    ) -> Result<rewards::Receipt, String> {
+        let admission = self.admission(principal, session)?;
+        if admission.actor() != life || admission.epoch() != epoch {
+            return Err("Item use life or control is stale or foreign".into());
+        }
+        let definition = self.items.item(item)?;
+        let tx = items::transaction(life.instance, life.actor, item, operation)?;
+        if self.rewards.contains(life.actor, tx.source) {
+            return self.rewards.apply(tx);
+        }
+        let mut next = self.rewards.clone();
+        let receipt = next.apply(tx)?;
+        self.game
+            .recover_player_resources(life.actor, definition.health, definition.mana)?;
+        self.rewards = next;
+        Ok(receipt)
     }
     pub fn claim_quest(
         &mut self,

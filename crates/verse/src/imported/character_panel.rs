@@ -1,4 +1,4 @@
-//! Read-only character windows over authenticated inventory presentation.
+//! Character windows and typed intents over authenticated inventory presentation.
 use crate::ui::{Atlas, UiBatch};
 use verse_world::service::wire::Inventory;
 
@@ -12,6 +12,7 @@ pub struct Panel {
     pub kind: Option<Kind>,
     page: usize,
     claim: Option<u64>,
+    use_item: Option<u64>,
 }
 fn inside(rect: [f32; 4], point: [f32; 2]) -> bool {
     point[0] >= rect[0]
@@ -29,9 +30,6 @@ fn geometry(width: f32, height: f32) -> Option<[f32; 4]> {
         (width - 32.).min(410.),
         (height - 230.).min(424.),
     ])
-}
-fn rows(rect: [f32; 4]) -> usize {
-    ((rect[3] - 122.) / 44.).floor().max(1.) as usize
 }
 fn icon(ui: &mut UiBatch, atlas: &Atlas, kind: Kind, x: f32, y: f32) {
     ui.rect(atlas, x, y, 28., 28., [0.026, 0.020, 0.015, 1.]);
@@ -84,16 +82,24 @@ impl Panel {
         };
         self.page = 0;
         self.claim = None;
+        self.use_item = None;
     }
     pub fn close(&mut self) -> bool {
         self.claim = None;
+        self.use_item = None;
         self.kind.take().is_some()
     }
     pub fn take_claim(&mut self) -> Option<u64> {
         self.claim.take()
     }
+    pub fn take_use(&mut self) -> Option<u64> {
+        self.use_item.take()
+    }
     fn row_height(&self, inventory: Option<&Inventory>) -> f32 {
-        if self.kind == Some(Kind::Quests) && inventory.is_some_and(|i| !i.quest_log.is_empty()) {
+        if (self.kind == Some(Kind::Quests) && inventory.is_some_and(|i| !i.quest_log.is_empty()))
+            || (self.kind == Some(Kind::Inventory)
+                && inventory.is_some_and(|i| !i.catalog.items.is_empty()))
+        {
             56.
         } else {
             44.
@@ -147,6 +153,30 @@ impl Panel {
             self.page(false, inventory, width, height);
         } else if inside([x + w - 40., y + h - 36., 28., 24.], point) {
             self.page(true, inventory, width, height);
+        } else if self.kind == Some(Kind::Inventory) {
+            if let Some(inventory) = inventory {
+                for (index, entry) in inventory
+                    .items
+                    .iter()
+                    .skip(self.page * self.row_count(Some(inventory), [x, y, w, h]))
+                    .take(self.row_count(Some(inventory), [x, y, w, h]))
+                    .enumerate()
+                {
+                    if inventory.catalog.item(entry.id).is_ok()
+                        && inside(
+                            [
+                                x + w - 96.,
+                                y + 82. + index as f32 * self.row_height(Some(inventory)) + 23.,
+                                80.,
+                                23.,
+                            ],
+                            point,
+                        )
+                    {
+                        self.use_item = Some(entry.id);
+                    }
+                }
+            }
         } else if self.kind == Some(Kind::Quests) {
             if let Some(inventory) = inventory {
                 for (index, quest) in inventory
@@ -382,12 +412,19 @@ impl Panel {
             }
             for (index, entry) in values
                 .iter()
-                .skip(self.page * rows(rect))
-                .take(rows(rect))
+                .skip(self.page * self.row_count(Some(inventory), rect))
+                .take(self.row_count(Some(inventory), rect))
                 .enumerate()
             {
-                let row = y + 82. + index as f32 * 44.;
-                ui.rect(atlas, x + 12., row, w - 24., 40., [0.075, 0.055, 0.038, 1.]);
+                let row = y + 82. + index as f32 * self.row_height(Some(inventory));
+                ui.rect(
+                    atlas,
+                    x + 12.,
+                    row,
+                    w - 24.,
+                    self.row_height(Some(inventory)) - 4.,
+                    [0.075, 0.055, 0.038, 1.],
+                );
                 ui.frame(
                     atlas,
                     x + 16.,
@@ -399,9 +436,17 @@ impl Panel {
                 );
                 icon(ui, atlas, kind, x + 18., row + 6.);
                 let name = match (kind, entry.id) {
-                    (Kind::Inventory, 1) => "Ritual ember".to_string(),
+                    (Kind::Inventory, 1) => inventory
+                        .catalog
+                        .item(1)
+                        .map(|i| i.name.clone())
+                        .unwrap_or_else(|_| "Ritual ember".to_string()),
                     (Kind::Quests, 1) => "Disrupt the summoning".to_string(),
-                    (Kind::Inventory, id) => format!("Item {id}"),
+                    (Kind::Inventory, id) => inventory
+                        .catalog
+                        .item(id)
+                        .map(|i| i.name.clone())
+                        .unwrap_or_else(|_| format!("Item {id}")),
                     (Kind::Quests, id) => format!("Objective {id}"),
                 };
                 // Fit unknown content labels within the row without covering the count.
@@ -416,17 +461,47 @@ impl Panel {
                     x + 58.,
                     row + 24.,
                     if kind == Kind::Inventory {
-                        "Collected"
+                        if inventory.catalog.item(entry.id).is_ok() {
+                            ""
+                        } else {
+                            "Collected"
+                        }
                     } else {
                         "Progress"
                     },
                     white,
                 );
+                if kind == Kind::Inventory {
+                    if let Ok(item) = inventory.catalog.item(entry.id) {
+                        let description = format!("+{} HP / +{} MP", item.health, item.mana);
+                        ui.text(small, x + 58., row + 24., &description, white);
+                        ui.rect(
+                            atlas,
+                            x + w - 96.,
+                            row + 23.,
+                            80.,
+                            23.,
+                            [0.24, 0.14, 0.035, 1.],
+                        );
+                        ui.frame(atlas, x + w - 96., row + 23., 80., 23., 1., gold);
+                        ui.text(
+                            font,
+                            x + w - 56. - font.measure("Use") * 0.5,
+                            row + 27.,
+                            "Use",
+                            gold,
+                        );
+                    }
+                }
                 let count = entry.count.to_string();
                 ui.text(
                     font,
                     x + w - 22. - font.measure(&count),
-                    row + 13.,
+                    row + if kind == Kind::Inventory && inventory.catalog.item(entry.id).is_ok() {
+                        5.
+                    } else {
+                        13.
+                    },
                     &count,
                     white,
                 );
@@ -469,7 +544,35 @@ mod tests {
                 next: None,
             },
             quest_log: vec![],
+            catalog: Default::default(),
         }
+    }
+    #[test]
+    fn use_buttons_select_only_owned_authored_items_without_spending_locally() {
+        let mut data = inventory();
+        let mut panel = Panel::default();
+        panel.toggle(Kind::Inventory);
+        let [x, y, w, _] = geometry(900., 620.).unwrap();
+        let point = [x + w - 56., y + 116.];
+        assert!(panel.click(point, Some(&data), 900., 620.));
+        assert_eq!(panel.take_use(), None);
+        data.catalog = verse_world::service::items::Catalog {
+            version: 1,
+            items: vec![verse_world::service::items::Item {
+                id: 1,
+                name: "Recovery ember".into(),
+                health: 45,
+                mana: 5,
+            }],
+        };
+        assert!(panel.click(point, Some(&data), 900., 620.));
+        assert_eq!(panel.take_use(), Some(1));
+        assert_eq!(data.items[0].count, 1);
+        panel.page(true, Some(&data), 900., 620.);
+        assert!(panel.click(point, Some(&data), 900., 620.));
+        assert_eq!(panel.take_use(), None);
+        panel.close();
+        assert_eq!(panel.take_use(), None);
     }
     #[test]
     fn panel_consumes_blank_rows_closes_and_pages_all_bounded_entries() {
@@ -536,6 +639,15 @@ mod tests {
         };
         for completed in [false, true] {
             let mut data = inventory();
+            data.catalog = verse_world::service::items::Catalog {
+                version: 1,
+                items: vec![verse_world::service::items::Item {
+                    id: 1,
+                    name: "Ritual recovery ember".into(),
+                    health: 45,
+                    mana: 5,
+                }],
+            };
             data.experience = if completed { 120 } else { 45 };
             data.items = vec![Entry {
                 id: 1,

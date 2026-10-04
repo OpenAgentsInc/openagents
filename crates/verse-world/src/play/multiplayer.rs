@@ -207,6 +207,17 @@ impl Game {
             self, life, snapshot, controls, bow_ready, casting,
         ))
     }
+    pub(crate) fn recover_player_resources(
+        &mut self,
+        actor: u64,
+        health: u32,
+        mana: u32,
+    ) -> Result<(), String> {
+        let source = self
+            .player_source(actor)
+            .ok_or("Unknown controlled player")?;
+        self.simulation.recover_resources(source, health, mana)
+    }
     pub(super) fn player_source(&self, actor: u64) -> Option<u32> {
         if actor == self.player_actor() {
             Some(0)

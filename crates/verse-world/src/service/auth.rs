@@ -191,6 +191,29 @@ impl Gateway {
         self.chamber
             .claim_quest(b.principal, b.session, life, epoch, quest)
     }
+    pub fn with_items(mut self, catalog: super::items::Catalog) -> Result<Self, String> {
+        if self.next_connection != 1 || self.chamber.items != super::items::Catalog::default() {
+            return Err("Item catalog is already bound".into());
+        }
+        catalog.validate()?;
+        self.chamber.items = catalog;
+        Ok(self)
+    }
+    pub fn items(&self) -> &super::items::Catalog {
+        &self.chamber.items
+    }
+    pub fn use_item(
+        &mut self,
+        id: ConnectionId,
+        life: LifeId,
+        epoch: u64,
+        item: u64,
+        operation: [u8; 16],
+    ) -> Result<super::rewards::Receipt, String> {
+        let b = self.binding(id)?;
+        self.chamber
+            .use_item(b.principal, b.session, life, epoch, item, operation)
+    }
     fn clock(&mut self, now_ms: u64) -> Result<(), String> {
         if now_ms < self.last_now {
             return Err("Authentication clock moved backward".into());

@@ -312,7 +312,7 @@ Trusted hosts use `Gateway::grant_reward` for bounded character experience,
 item stacks, and quest counters. A stable source ID binds one exact transaction
 per character; retries return its original receipt, and conflicting reuse or
 limit failures leave every field unchanged. Call `Store::commit` before
-acknowledging a host-created reward. Version-three chamber saves replay the retained
+acknowledging a host-created reward. Version-four chamber saves replay the retained
 transactions; version-one saves upgrade with an empty ledger. Instance reset
 retains rewards and retry identities. Receipts are never evicted: after 4,096
 transactions, new grants are refused. Host JSON accepts an optional sorted `rewards` array of NPC targets and grants,
@@ -325,13 +325,13 @@ policies are refused on recovery. With no configured rewards, combat grants none
 An authority or storage failure stops the host and retains its previous durable
 checkpoint, including when an entire cooperative reward batch cannot fit.
 
-Wire version eleven provides an authenticated `inventory` read. The connection determines
+Wire version twelve provides an authenticated `inventory` read. The connection determines
 the character; request bodies contain no actor or grant amounts. Players can read
 their experience, bounded item stacks, and quest counters while dead. Spectators
 are refused. `service::client::Client::inventory` validates the owned life, counts,
 and nonregressing transaction revision. The [combat reward receipt](../../bench/verse/2026-10-04/combat-rewards/run.json)
 retains real loopback TLS spell/reward/restart assertions and their synthetic
-fixture limits. Item spending, equipment, and combat stat progression remain.
+fixture limits. Equipment and combat stat progression remain.
 
 The native worker refreshes owned inventory once per second and immediately after
 an owned-life change; spectators send no inventory requests. `service::view::View`
@@ -356,6 +356,26 @@ once per character and instance, including across respawn, reset, and recovery.
 Durable hosts commit before acknowledging claims. Saved progression configuration
 is immutable on recovery; earlier saves upgrade with no configured quests and
 level one. Level thresholds affect presentation only. Quest enrollment, abandonment,
-repeatable quests, quest givers, item actions, and combat stat scaling remain.
+repeatable quests, quest givers, equipment, and combat stat scaling remain.
 The [campaign receipt](../../bench/verse/2026-10-04/campaign/run.json) retains
 focused TLS recovery checks and synthetic ready/completed GPU panel captures.
+
+Host JSON accepts optional version-one `items` configuration, for example
+`{"version":1,"items":[{"id":1,"name":"Ritual recovery ember","health":45,"mana":5}]}`.
+The catalog contains up to 64 recovery definitions, with health capped at 200
+and mana at 20. Definitions are immutable on recovery. Reward stacks without
+a recovery definition remain collectible. The native remote inventory shows
+authored names, effects, and **Use** buttons for owned recovery items.
+
+`Client::use_item` requires an explicit nonzero 16-byte operation ID. Retain that
+ID when an acknowledgment is uncertain; exact retries return the original
+receipt without spending or restoring again. Requests use the current owned life
+and control epoch, with no client-supplied amounts. One item restores a living
+player's resources up to their caps; dead players, empty stacks, and already-full
+resources are refused without mutation. Durable hosts commit the stack debit and
+world restoration before acknowledgment. Version-four saves replay ordered
+grants/debits without repeating restoration; earlier saves upgrade with an empty
+catalog. The native worker generates one operation ID per click and stops on an
+uncertain transport failure instead of automatically retrying with a fresh ID.
+The [item-use receipt](../../bench/verse/2026-10-04/item-use/run.json) retains
+TLS storage-failure/restart checks and a synthetic GPU inventory capture.

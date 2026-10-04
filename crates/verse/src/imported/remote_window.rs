@@ -300,6 +300,9 @@ impl App {
                     ) {
                         self.status = "Quest completed".into();
                     }
+                    if matches!(r.body, verse_world::service::wire::Reply::ItemUsed { .. }) {
+                        self.status = "Item used".into();
+                    }
                     if let verse_world::service::wire::Reply::Refused { message, .. } = r.body {
                         self.status = message;
                     }
@@ -764,6 +767,9 @@ impl ApplicationHandler for App {
                             width,
                             720.,
                         );
+                        if let Some(item) = self.character_panel.take_use() {
+                            self.send(Input::UseItem(item));
+                        }
                         if let Some(quest) = self.character_panel.take_claim() {
                             self.send(Input::ClaimQuest(quest));
                         }

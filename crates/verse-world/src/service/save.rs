@@ -27,6 +27,8 @@ struct Saved {
     reward_cursor: u64,
     #[serde(default)]
     progression: Option<super::progression::Config>,
+    #[serde(default)]
+    items: Option<super::items::Catalog>,
 }
 fn grants(saved: &[Grant], game: &Game) -> Result<BTreeMap<Principal, Rights>, String> {
     if saved.len() > 128 {
@@ -54,7 +56,7 @@ fn grants(saved: &[Grant], game: &Game) -> Result<BTreeMap<Principal, Rights>, S
 }
 pub(super) fn encode(gateway: &Gateway) -> Result<Vec<u8>, String> {
     let saved = Saved {
-        version: 3,
+        version: 4,
         content: gateway
             .content()
             .ok_or("Saved chamber requires bound content")?,
@@ -64,6 +66,7 @@ pub(super) fn encode(gateway: &Gateway) -> Result<Vec<u8>, String> {
         reward_policy: gateway.chamber.reward_policy.clone(),
         reward_cursor: gateway.chamber.reward_cursor,
         progression: Some(gateway.chamber.progression.clone()),
+        items: Some(gateway.chamber.items.clone()),
         grants: gateway
             .chamber
             .grants
@@ -89,11 +92,13 @@ pub(super) fn decode(bytes: &[u8], content: [u8; 32], instance: u64) -> Result<G
         return Err("Saved chamber byte budget exceeded".into());
     }
     let saved: Saved = serde_json::from_slice(bytes).map_err(|_| "Invalid saved chamber")?;
-    if !matches!(saved.version, 1 | 2 | 3)
+    if !matches!(saved.version, 1 | 2 | 3 | 4)
         || (saved.version == 1 && saved.rewards.is_some())
         || (saved.version >= 2 && saved.rewards.is_none())
         || (saved.version < 3 && saved.progression.is_some())
-        || (saved.version == 3 && saved.progression.is_none())
+        || (saved.version >= 3 && saved.progression.is_none())
+        || (saved.version < 4 && saved.items.is_some())
+        || (saved.version == 4 && saved.items.is_none())
         || saved.content != content
         || instance == 0
     {
@@ -108,7 +113,12 @@ pub(super) fn decode(bytes: &[u8], content: [u8; 32], instance: u64) -> Result<G
     chamber.grants = grants;
     chamber.progression = saved.progression.unwrap_or_default();
     chamber.progression.validate()?;
+    chamber.items = saved.items.unwrap_or_default();
+    chamber.items.validate()?;
     for (index, transaction) in saved.rewards.unwrap_or_default().into_iter().enumerate() {
+        if saved.version < 4 && !transaction.spent.is_empty() {
+            return Err("Legacy save cannot contain item debits".into());
+        }
         if chamber.restore_reward(transaction)?.revision != index as u64 + 1 {
             return Err("Saved reward transaction is duplicated".into());
         }
@@ -320,6 +330,7 @@ mod tests {
         assert!(g.claim_quest(a, own.actor(), own.epoch(), 1).is_err());
         for actor in [own.actor().actor, other.actor().actor] {
             g.grant_reward(Transaction {
+                spent: vec![],
                 instance: 240,
                 actor,
                 source: [5; 32],
@@ -351,6 +362,7 @@ mod tests {
                 .is_err()
         );
         g.grant_reward(Transaction {
+            spent: vec![],
             instance: 240,
             actor: other.actor().actor,
             source: [9; 32],
@@ -404,6 +416,7 @@ mod tests {
         }
         let mut legacy: serde_json::Value = serde_json::from_slice(&saved).unwrap();
         legacy["version"] = 2.into();
+        legacy.as_object_mut().unwrap().remove("items");
         legacy.as_object_mut().unwrap().remove("progression");
         legacy["rewards"].as_array_mut().unwrap().truncate(2);
         let legacy = Gateway::restore(&serde_json::to_vec(&legacy).unwrap(), [6; 32], 240).unwrap();
@@ -422,6 +435,7 @@ mod tests {
         let (mut g, _) = fixture();
         let actor = g.game().player_life().actor;
         let tx = Transaction {
+            spent: vec![],
             instance: 240,
             actor,
             source: [8; 32],
@@ -462,6 +476,7 @@ mod tests {
         }
         let mut legacy: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         legacy["version"] = 1.into();
+        legacy.as_object_mut().unwrap().remove("items");
         legacy.as_object_mut().unwrap().remove("rewards");
         legacy.as_object_mut().unwrap().remove("progression");
         let upgraded =
@@ -470,7 +485,146 @@ mod tests {
         assert_eq!(upgraded.game().player_life(), g.game().player_life());
         let saved: serde_json::Value =
             serde_json::from_slice(&upgraded.checkpoint().unwrap()).unwrap();
-        assert_eq!(saved["version"], 3);
+        assert_eq!(saved["version"], 4);
+    }
+    #[test]
+    fn recovery_items_spend_once_restore_only_owned_resources_and_validate_saved_debits() {
+        use super::super::{
+            items::{Catalog, Item},
+            rewards::{Entry, Transaction},
+        };
+        let (g, keys) = fixture();
+        let mut g = g
+            .with_items(Catalog {
+                version: 1,
+                items: vec![
+                    Item {
+                        id: 1,
+                        name: "Recovery ember".into(),
+                        health: 45,
+                        mana: 5,
+                    },
+                    Item {
+                        id: 2,
+                        name: "Mana draught".into(),
+                        health: 0,
+                        mana: 10,
+                    },
+                ],
+            })
+            .unwrap();
+        let actor = g.game().player_life().actor;
+        g.grant_reward(Transaction {
+            instance: 240,
+            actor,
+            source: [1; 32],
+            experience: 1,
+            items: vec![Entry { id: 1, count: 2 }, Entry { id: 2, count: 1 }],
+            quests: vec![],
+            spent: vec![],
+        })
+        .unwrap();
+        let a = join(&mut g, &keys[0]);
+        let b = join(&mut g, &keys[1]);
+        let spectator = join(&mut g, &keys[2]);
+        let own = g.admission(a).unwrap();
+        let life = own.actor();
+        let epoch = own.epoch();
+        let before = g.checkpoint().unwrap();
+        for (connection, context, control, item, operation) in [
+            (a, life, epoch, 1, [0; 16]),
+            (a, life, epoch, 3, [1; 16]),
+            (a, life, epoch + 1, 1, [1; 16]),
+            (b, life, epoch, 1, [1; 16]),
+            (spectator, life, epoch, 1, [1; 16]),
+            (a, life, epoch, 1, [1; 16]),
+        ] {
+            assert!(
+                g.use_item(connection, context, control, item, operation)
+                    .is_err()
+            );
+            assert_eq!(g.checkpoint().unwrap(), before);
+        }
+        g.chamber.game.simulation.player_damage_for(0, 100).unwrap();
+        g.chamber.game.simulation.spend_mana_for(0, 10).unwrap();
+        let secondary = g
+            .game()
+            .player_snapshot(g.admission(b).unwrap().actor())
+            .unwrap();
+        let first = g.use_item(a, life, epoch, 1, [1; 16]).unwrap();
+        assert_eq!(first.revision, 2);
+        assert_eq!(g.game().snapshot().player.hp, 145);
+        assert_eq!(g.game().snapshot().player.mana, 15);
+        assert_eq!(
+            serde_json::to_value(
+                g.game()
+                    .player_snapshot(g.admission(b).unwrap().actor())
+                    .unwrap()
+                    .player
+            )
+            .unwrap(),
+            serde_json::to_value(secondary.player).unwrap()
+        );
+        assert_eq!(g.character_rewards(actor).unwrap().items[&1], 1);
+        let after = g.checkpoint().unwrap();
+        assert_eq!(g.use_item(a, life, epoch, 1, [1; 16]).unwrap(), first);
+        assert!(g.use_item(a, life, epoch, 2, [1; 16]).is_err());
+        assert_eq!(g.checkpoint().unwrap(), after);
+        let mut recovered = Gateway::restore(&after, [6; 32], 240).unwrap();
+        let session = join(&mut recovered, &keys[0]);
+        let own = recovered.admission(session).unwrap();
+        assert_eq!(
+            recovered
+                .use_item(session, own.actor(), own.epoch(), 1, [1; 16])
+                .unwrap(),
+            first
+        );
+        assert_eq!(recovered.game().snapshot().player.hp, 145);
+        recovered
+            .use_item(session, own.actor(), own.epoch(), 1, [2; 16])
+            .unwrap();
+        assert_eq!(recovered.game().snapshot().player.hp, 190);
+        assert_eq!(recovered.game().snapshot().player.mana, 20);
+        let after = recovered.checkpoint().unwrap();
+        assert!(
+            recovered
+                .use_item(session, own.actor(), own.epoch(), 1, [3; 16])
+                .is_err()
+        );
+        assert!(
+            recovered
+                .use_item(session, own.actor(), own.epoch(), 2, [3; 16])
+                .is_err()
+        );
+        assert_eq!(recovered.checkpoint().unwrap(), after);
+        recovered
+            .chamber
+            .game
+            .simulation
+            .player_damage_for(0, 1000)
+            .unwrap();
+        assert!(
+            recovered
+                .use_item(session, own.actor(), own.epoch(), 2, [3; 16])
+                .is_err()
+        );
+        // Saved world already includes restoration; replay validates only the debit.
+        for case in 0..5 {
+            let mut bad: serde_json::Value = serde_json::from_slice(&after).unwrap();
+            match case {
+                0 => bad["rewards"][1]["spent"][0]["count"] = 2.into(),
+                1 => bad["rewards"][1]["experience"] = 9.into(),
+                2 => bad["items"]["items"] = serde_json::json!([]),
+                3 => {
+                    bad["rewards"].as_array_mut().unwrap().swap(0, 1);
+                }
+                _ => {
+                    bad["version"] = 3.into();
+                    bad.as_object_mut().unwrap().remove("items");
+                }
+            }
+            assert!(Gateway::restore(&serde_json::to_vec(&bad).unwrap(), [6; 32], 240).is_err());
+        }
     }
     #[test]
     fn malformed_or_incompatible_saves_never_admit_ownership() {
@@ -483,7 +637,7 @@ mod tests {
         for case in 0..8 {
             let mut saved: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
             match case {
-                0 => saved["version"] = 4.into(),
+                0 => saved["version"] = 5.into(),
                 1 => saved["grants"][0]["key"] = serde_json::to_value([0u8; 32]).unwrap(),
                 2 => {
                     let grant = saved["grants"][0].clone();

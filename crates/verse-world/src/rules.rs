@@ -453,6 +453,30 @@ impl Simulation {
         }
         Ok(())
     }
+    /// Restores a living player's resources without changing cooldowns or other players.
+    pub(crate) fn recover_resources(
+        &mut self,
+        id: u32,
+        health: u32,
+        mana: u32,
+    ) -> Result<(), String> {
+        if health > 200 || mana > 20 || (health == 0 && mana == 0) {
+            return Err("Invalid recovery amounts".into());
+        }
+        let player = &mut self.players.get_mut(&id).ok_or("Unknown player")?.resources;
+        if player.hp == 0 {
+            return Err("The player is defeated".into());
+        }
+        let hp = (player.hp + health as i32).min(player.max_hp);
+        let mp = (player.mana + mana as i32).min(player.max_mana);
+        if hp == player.hp && mp == player.mana {
+            return Err("Player resources are already full".into());
+        }
+        player.hp = hp;
+        player.mana = mp;
+        self.actors.get_mut(&id).unwrap().hp = hp;
+        Ok(())
+    }
     pub fn spend_chamber_mana(&mut self, cost: i32) -> Result<(), String> {
         self.spend_mana_for(0, cost)
     }
