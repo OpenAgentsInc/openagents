@@ -14,11 +14,22 @@ struct Grant {
 }
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+struct Owner {
+    key: [u8; 32],
+    actor: u64,
+}
+pub const CHARACTER_SCHEMA: u16 = 2;
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct Saved {
     version: u32,
     content: [u8; 32],
     world: String,
     grants: Vec<Grant>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    character_schema: Option<u16>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    owners: Option<Vec<Owner>>,
     #[serde(default)]
     rewards: Option<Vec<super::rewards::Transaction>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -60,12 +71,40 @@ fn grants(saved: &[Grant], game: &Game) -> Result<BTreeMap<Principal, Rights>, S
     }
     Ok(result)
 }
+fn ownership(
+    saved: &[Owner],
+    game: &Game,
+    grants: &BTreeMap<Principal, Rights>,
+) -> Result<BTreeMap<Principal, u64>, String> {
+    if saved.len() > 64 {
+        return Err("Saved character ownership budget exceeded".into());
+    }
+    let mut owners = BTreeMap::new();
+    let mut actors = BTreeSet::new();
+    for owner in saved {
+        XOnlyPublicKey::from_byte_array(owner.key)
+            .map_err(|_| "Saved owner public key is invalid")?;
+        if game.player_admission(owner.actor).is_none()
+            || !actors.insert(owner.actor)
+            || owners.insert(Principal(owner.key), owner.actor).is_some()
+        {
+            return Err("Saved character ownership is foreign or duplicated".into());
+        }
+    }
+    if grants.iter().any(
+        |(key, right)| matches!(right, Rights::Player(actor) if owners.get(key) != Some(actor)),
+    ) {
+        return Err("Saved enrollment does not match character ownership".into());
+    }
+    Ok(owners)
+}
 /// An owned persistence copy has no connection challenges or dispatch interface.
 pub(super) struct Prepared {
     pub(super) owner: [u8; 32],
     pub(super) content: [u8; 32],
     game: Game,
     grants: Vec<Grant>,
+    owners: Vec<Owner>,
     rewards: super::rewards::Ledger,
     reward_policy: Vec<super::rewards::Policy>,
     reward_cursor: u64,
@@ -94,6 +133,14 @@ impl Prepared {
                     },
                 })
                 .collect(),
+            owners: chamber
+                .owners
+                .iter()
+                .map(|(key, actor)| Owner {
+                    key: key.0,
+                    actor: *actor,
+                })
+                .collect(),
             rewards: chamber.rewards.clone(),
             reward_policy: chamber.reward_policy.clone(),
             reward_cursor: chamber.reward_cursor,
@@ -109,7 +156,7 @@ impl Prepared {
     pub(super) fn encode(&self) -> Result<Vec<u8>, String> {
         let ledger = self.rewards.checkpoint();
         let saved = Saved {
-            version: if ledger.is_some() { 8 } else { 7 },
+            version: 9,
             content: self.content,
             world: String::from_utf8(self.game.checkpoint()?)
                 .map_err(|_| "Cannot encode saved world")?,
@@ -129,8 +176,19 @@ impl Prepared {
                     actor: g.actor,
                 })
                 .collect(),
+            character_schema: Some(CHARACTER_SCHEMA),
+            owners: Some(
+                self.owners
+                    .iter()
+                    .map(|o| Owner {
+                        key: o.key,
+                        actor: o.actor,
+                    })
+                    .collect(),
+            ),
         };
-        grants(&saved.grants, &self.game)?;
+        let grants = grants(&saved.grants, &self.game)?;
+        ownership(saved.owners.as_ref().unwrap(), &self.game, &grants)?;
         let bytes = serde_json::to_vec(&saved).map_err(|_| "Cannot encode saved chamber")?;
         if bytes.len() > MAX_BYTES {
             return Err("Saved chamber byte budget exceeded".into());
@@ -155,11 +213,16 @@ pub(super) fn decode_with_history(
         return Err("Saved chamber byte budget exceeded".into());
     }
     let saved: Saved = serde_json::from_slice(bytes).map_err(|_| "Invalid saved chamber")?;
-    if !matches!(saved.version, 1..=8)
+    if !matches!(saved.version, 1..=9)
         || (saved.version == 1 && saved.rewards.is_some())
         || ((2..=7).contains(&saved.version) && saved.rewards.is_none())
         || (saved.version < 8 && saved.ledger.is_some())
         || (saved.version == 8 && (saved.ledger.is_none() || saved.rewards.is_some()))
+        || (saved.version == 9
+            && (saved.ledger.is_some() == saved.rewards.is_some()
+                || saved.character_schema != Some(CHARACTER_SCHEMA)
+                || saved.owners.is_none()))
+        || (saved.version < 9 && (saved.character_schema.is_some() || saved.owners.is_some()))
         || (saved.version < 3 && saved.progression.is_some())
         || (saved.version >= 3 && saved.progression.is_none())
         || (saved.version < 4 && saved.items.is_some())
@@ -180,6 +243,18 @@ pub(super) fn decode_with_history(
     let grants = grants(&saved.grants, &game)?;
     let mut chamber = Chamber::new(game)?;
     chamber.grants = grants;
+    if let Some(owners) = saved.owners {
+        chamber.owners = ownership(&owners, &chamber.game, &chamber.grants)?;
+    } else {
+        chamber.owners = chamber
+            .grants
+            .iter()
+            .filter_map(|(key, right)| match right {
+                Rights::Player(actor) => Some((*key, *actor)),
+                Rights::Spectator => None,
+            })
+            .collect();
+    }
     chamber.progression = saved.progression.unwrap_or_default();
     chamber.validate_givers(&chamber.progression)?;
     chamber.items = saved.items.unwrap_or_default();
@@ -822,6 +897,8 @@ mod tests {
             assert!(Gateway::restore(&serde_json::to_vec(&value).unwrap(), [6; 32], 240).is_err());
         }
         let mut legacy: serde_json::Value = serde_json::from_slice(&saved).unwrap();
+        legacy.as_object_mut().unwrap().remove("owners");
+        legacy.as_object_mut().unwrap().remove("character_schema");
         legacy["version"] = 2.into();
         legacy.as_object_mut().unwrap().remove("items");
         legacy.as_object_mut().unwrap().remove("outfits");
@@ -887,6 +964,8 @@ mod tests {
             assert!(Gateway::restore(&serde_json::to_vec(&saved).unwrap(), [6; 32], 240).is_err());
         }
         let mut legacy: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        legacy.as_object_mut().unwrap().remove("owners");
+        legacy.as_object_mut().unwrap().remove("character_schema");
         legacy["version"] = 1.into();
         legacy.as_object_mut().unwrap().remove("items");
         legacy.as_object_mut().unwrap().remove("outfits");
@@ -899,7 +978,7 @@ mod tests {
         assert_eq!(upgraded.game().player_life(), g.game().player_life());
         let saved: serde_json::Value =
             serde_json::from_slice(&upgraded.checkpoint().unwrap()).unwrap();
-        assert_eq!(saved["version"], 7);
+        assert_eq!(saved["version"], 9);
     }
     #[test]
     fn recovery_items_spend_once_restore_only_owned_resources_and_validate_saved_debits() {
@@ -1145,6 +1224,8 @@ mod tests {
             assert!(Gateway::restore(&serde_json::to_vec(&bad).unwrap(), [6; 32], 240).is_err());
         }
         let mut legacy: serde_json::Value = serde_json::from_slice(&before).unwrap();
+        legacy.as_object_mut().unwrap().remove("owners");
+        legacy.as_object_mut().unwrap().remove("character_schema");
         legacy["version"] = 4.into();
         legacy.as_object_mut().unwrap().remove("outfits");
         legacy.as_object_mut().unwrap().remove("equipment");

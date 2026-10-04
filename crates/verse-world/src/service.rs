@@ -74,6 +74,7 @@ struct Connection {
 pub struct Chamber {
     game: Game,
     grants: BTreeMap<Principal, Rights>,
+    owners: BTreeMap<Principal, u64>,
     connections: BTreeMap<u64, Connection>,
     next_session: u64,
     rewards: rewards::Ledger,
@@ -94,6 +95,7 @@ impl Chamber {
         Ok(Self {
             game,
             grants: BTreeMap::new(),
+            owners: BTreeMap::new(),
             connections: BTreeMap::new(),
             next_session: 1,
             rewards: rewards::Ledger::default(),
@@ -367,6 +369,9 @@ impl Chamber {
             .find(|q| q.id == quest)
             .ok_or("Campaign quest is not defined")?;
         let transaction = quest.transaction(life.instance, life.actor);
+        if let Some(receipt) = self.rewards.receipt(life.actor, transaction.source)? {
+            return Ok(receipt);
+        }
         self.progression
             .validate_claim(&transaction, &self.rewards)?;
         if !self.rewards.contains(life.actor, transaction.source)? {
@@ -476,21 +481,41 @@ impl Chamber {
         self.room_for_grant(principal)?;
         let actor = self.game.player_life().actor;
         if self
-            .grants
-            .values()
-            .any(|r| matches!(r, Rights::Player(a) if *a == actor))
+            .owners
+            .iter()
+            .any(|(owner, owned)| *owned == actor && *owner != principal)
+            || self
+                .owners
+                .get(&principal)
+                .is_some_and(|owned| *owned != actor)
         {
             return Err("Primary adventurer already owned".into());
         }
         self.grants.insert(principal, Rights::Player(actor));
+        self.owners.insert(principal, actor);
         Ok(())
     }
 
     /// Adds an adventurer at a spawn selected and collision-checked by the host.
     pub fn enroll_player(&mut self, principal: Principal, spawn: Vec3) -> Result<LifeId, String> {
         self.room_for_grant(principal)?;
+        if let Some(actor) = self.owners.get(&principal) {
+            if *actor == self.game.player_life().actor
+                || self.game.player_spawn(*actor) != Some(spawn)
+            {
+                return Err("Owned adventurer role or spawn is incompatible".into());
+            }
+            let life = self
+                .game
+                .player_admission(*actor)
+                .ok_or("Owned adventurer is missing")?
+                .actor();
+            self.grants.insert(principal, Rights::Player(*actor));
+            return Ok(life);
+        }
         let life = self.game.add_player(Controller(0), spawn)?;
         self.grants.insert(principal, Rights::Player(life.actor));
+        self.owners.insert(principal, life.actor);
         Ok(life)
     }
 

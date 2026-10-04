@@ -247,6 +247,8 @@ pub struct Mover<'a> {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SpellWorld {
+    #[serde(default)]
+    pub generation: u64,
     pub world: physics::World,
     pub props: Vec<Prop>,
     pub ledger: Ledger,
@@ -323,6 +325,7 @@ impl SpellWorld {
             );
         }
         Self {
+            generation: 0,
             ledger: Ledger::new(DVec3::ZERO, world.momentum(DVec3::ZERO)),
             world,
             props: vec![],
@@ -679,7 +682,7 @@ impl SpellWorld {
             life: physics::queries::Life {
                 instance,
                 entity: PROP_ENTITY_BASE + self.props.len() as u64,
-                generation: 0,
+                generation: self.generation,
             },
             name: name.into(),
             spec,

@@ -7,8 +7,8 @@ use std::collections::BTreeMap;
 use verse_engine::director::{Action, Frame, Scene};
 use verse_engine::motion::State;
 
-/// Checkpoint revision. v18 retains physical spell controls alongside friendly scene roles.
-pub const RULES_REVISION: &str = "verse-chamber-owned-v18";
+/// Checkpoint revision. v19 fences world and prop identities across content migrations.
+pub const RULES_REVISION: &str = "verse-chamber-owned-v19";
 /// Seed of the chamber's spell dice; scenarios may reseed before acting.
 pub const SPELL_SEED: u64 = 0x5EED_0451;
 
@@ -180,6 +180,8 @@ struct Route {
 pub struct Game {
     additional_players: BTreeMap<u64, multiplayer::Player>,
     next_player_actor: u64,
+    #[serde(default)]
+    migration_generation: u64,
     pub(crate) admission: crate::Admission,
     pending_movement: Option<[f32; 2]>,
     #[serde(default)]
@@ -241,7 +243,34 @@ pub struct Game {
     npc_deaths: BTreeMap<u64, (f32, Vec3)>,
 }
 impl Game {
+    fn fence_world_generation(&mut self, previous: &Self) -> Result<(), String> {
+        let generation = previous
+            .lives
+            .values()
+            .map(|life| life.generation)
+            .chain(
+                previous
+                    .spells
+                    .props
+                    .iter()
+                    .map(|prop| prop.life.generation),
+            )
+            .chain([previous.migration_generation])
+            .max()
+            .unwrap_or(0)
+            .checked_add(1)
+            .ok_or("World generation exhausted")?;
+        self.migration_generation = generation;
+        self.spells.generation = generation;
+        for prop in &mut self.spells.props {
+            self.query_scene.remove(prop.query_key());
+            prop.life.generation = generation;
+        }
+        self.spells.insert_query_colliders(&mut self.query_scene)?;
+        Ok(())
+    }
     pub(super) fn adopt_restart_fences(&mut self, previous: &Self) -> Result<(), String> {
+        self.fence_world_generation(previous)?;
         self.admission = previous.admission.clone();
         self.admission
             .respawn()
@@ -381,6 +410,7 @@ impl Game {
         let saved: Saved = serde_json::from_slice(bytes).map_err(|e| e.to_string())?;
         if saved.version != 1
             || (saved.rules_revision != RULES_REVISION
+                && saved.rules_revision != "verse-chamber-owned-v18"
                 && !(saved.rules_revision == "verse-chamber-owned-v16"
                     && saved.world.scene.actors.iter().all(|a| !a.friendly)))
         {
@@ -546,6 +576,9 @@ impl Game {
         Ok(world)
     }
     fn validate_clock(&self) -> Result<(), String> {
+        if self.spells.generation != self.migration_generation {
+            return Err("World and prop generation namespace disagree".into());
+        }
         let elapsed = self.physics_steps as f64 * self.physics_clock.dt;
         if self.snapshot().elapsed != elapsed as f32
             || self.clock_origin.is_none() && self.physics_steps != 0
@@ -1240,6 +1273,7 @@ impl Game {
         let mut world = Self {
             additional_players: BTreeMap::new(),
             next_player_actor,
+            migration_generation: 0,
             pending_movement: None,
             held_movement: Default::default(),
             pending_jump: false,
@@ -2426,7 +2460,7 @@ impl Game {
         let life = physics::queries::Life {
             instance: self.admission.actor().instance,
             entity: crate::spells::PROP_ENTITY_BASE + index,
-            generation: 0,
+            generation: self.migration_generation,
         };
         let index = self
             .spells

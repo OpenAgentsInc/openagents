@@ -8,7 +8,7 @@ chamber reads its snapshots and cinematic projection. Human and controller
 requests share admission. A trusted adapter supplies controller identity;
 this crate does not authenticate network connections.
 
-The `verse-chamber-owned-v18` rules profile independently implements retained
+The `verse-chamber-owned-v19` rules profile independently implements retained
 chamber behavior; it imports no vendor source. Firebolt deals 8 damage, each of
 three magic missiles deals 4, and fireball deals 15 in a visible 6.096-meter radius
 with three 6-damage burn ticks. Living characters regenerate one mana per second.
@@ -382,13 +382,72 @@ the earlier synchronous implementation; the
 [ordered durability fixture](../../bench/verse/2026-10-04/ordered-durability/run.json)
 records the background writer's local checks and measurements.
 
+Offline content updates use `service::persistence::migration` and the
+`verse_migrate` example. Save version nine records character schema two separately
+from the world rules revision and asset digest. Character ownership survives
+revocation and re-enrollment; existing saves derive ownership from their retained
+player grants. Legacy saves cannot reconstruct ownership already removed before
+this schema existed. Characters remain local to the bounded instance roster.
+
+1. Stop the host and retain both source and target configs and asset packs.
+2. Generate and inspect a plan:
+
+   ```sh
+   cargo run -p verse --no-default-features --features remote-chamber \
+     --example verse_migrate -- plan SOURCE.json TARGET.json > REVIEW.json
+   ```
+
+3. Apply that exact plan:
+
+   ```sh
+   cargo run -p verse --no-default-features --features remote-chamber \
+     --example verse_migrate -- apply SOURCE.json TARGET.json REVIEW.json
+   ```
+
+4. Start the host with the target config, or roll back before starting it:
+
+   ```sh
+   cargo run -p verse --no-default-features --features remote-chamber \
+     --example verse_migrate -- rollback TARGET.json MIGRATION_ID
+   ```
+
+The plan pins source revision and state, source and target asset/rules/schema
+identities, complete config digests, candidate state, and enrollment changes.
+Changed source state or inputs require a new plan. Planning validates a candidate
+without publishing it; opening the store still performs ordinary crash recovery.
+Both configs must retain the instance and storage directory. Known owners cannot
+be replaced by another key. New keys receive new characters; revoked characters
+retain their ownership, balances, and roster slot. Re-enrollment preserves the
+actor and can explicitly change its authored spawn.
+
+Apply retains XP, inventory, outfit, equipment, quest counters, accepted quest
+baselines, completed quest status, and exact original receipts. It restarts world
+dynamics and encounters, advances NPC/prop and player life fences, respawns
+players, and refills resources to the target equipment limits. Existing catalog
+IDs and equipment slots must remain. Changing an active quest's objective,
+giver, prerequisites, or increasing its goal requires a separate progress adapter
+and is refused. Completed quest retries return their original reward, even when
+its definition changes. Unsupported rules and schema revisions remain refused;
+this workflow does not invent adapters for arbitrary future revisions.
+
+Each operation retains `migrations/MIGRATION_ID/{before,after,record,seal}.json`
+beside the shared immutable receipt history. Back up that directory, the snapshot,
+journal, and rewards together. An exclusive writer lock covers plan, apply,
+rollback, and recovery. A synced marker precedes snapshot replacement; interrupted
+operations recover the source until their target seal is synced. A sealed
+operation recovers its target. Storage errors withhold success and may require
+restoring storage availability before recovery. Rollback uses the same protocol,
+records a new commit revision, and refuses any later commit, including host
+startup. Backups never grant permission to discard acknowledged later progress.
+Keep source packs available for rollback; migration does not rewrite asset files.
+
 Trusted hosts use `Gateway::grant_reward` for bounded character experience,
 item stacks, and quest counters. A stable source ID binds one exact transaction
 per character; retries return its original receipt, and conflicting reuse or
 limit failures leave every field unchanged. Call `Store::commit` before
 acknowledging a host-created reward. Legacy chamber saves replay the retained
-transactions; version-one saves upgrade with an empty ledger. Version-eight
-saves retain bounded character state, up to 128 active receipts, and the root of
+transactions; version-one saves upgrade with an empty ledger. Versions eight
+and nine retain bounded character state, up to 128 active receipts, and the root of
 an immutable indexed history under `state_dir/rewards`. Recover them through
 `Store::open` and back up that directory with `chamber.json` and `journal.jsonl`; a checkpoint that
 references archived receipts requires those files. Exact retries preserve the

@@ -165,7 +165,7 @@ fn add(target: &mut BTreeMap<u64, u32>, additions: &[Entry]) -> Result<(), Strin
     Ok(())
 }
 impl Ledger {
-    fn receipt(&self, actor: u64, source: [u8; 32]) -> Result<Option<Receipt>, String> {
+    pub(super) fn receipt(&self, actor: u64, source: [u8; 32]) -> Result<Option<Receipt>, String> {
         if let Some(receipt) = self
             .receipts
             .iter()

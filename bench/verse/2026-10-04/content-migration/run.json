@@ -1,0 +1,103 @@
+{
+  "schema": "verse.content.migration.v1",
+  "acceptance": "local_code_checks_passed",
+  "issue": 10575,
+  "date": "2026-10-04",
+  "source_parent": "444370b8b796f3b9ef48ac6a63cd448eabafe43f",
+  "source_sha256": {
+    "crates/verse-world/src/service/persistence/migration.rs": "3c0ef9c68491b235318241b2e3d22a79d36a39da36e834875970322f9d49856a",
+    "crates/verse-world/src/service/persistence/migration/tests.rs": "a66fb68e3cc6d6505972aac8ff4f0047b5bce331b050e6f3939772c7e3b98018",
+    "crates/verse-world/src/service/persistence.rs": "49ffc411b923af043e8ead8c173e58ef766a972879788e6841b5d23c18e14806",
+    "crates/verse-world/src/service/save.rs": "9566fd18ea4262d7090ab2726a7c6b789ffa1852b93b597bdd828d9dc0f7a1e1",
+    "crates/verse-world/src/service.rs": "79ee65dedae69f8b34a294f36a9cb24049251f664e18a618aee9ff9902e3793b",
+    "crates/verse-world/src/play.rs": "995ebe7478c99bede04cc7a91fb98e23d638144e01f9a8eea5526213582461c7",
+    "crates/verse-world/src/play/multiplayer.rs": "76b879dc0f8f7ced67fb1340c6d9675e4a5dca40b331327f0f4277dc6f5c1974",
+    "crates/verse-world/src/spells/mod.rs": "aa238495f14d6a6eacaed9c24317bcbfa085429c4a08e9aa8848c6c61700b508",
+    "crates/verse-world/src/service/progression.rs": "1066ac4915dd689c4f92f4b34c4bbb527b1abbd257cdf016d71d998835315f77",
+    "crates/verse/examples/verse_migrate.rs": "24a164c98bb857fbacbad5ab9f7b443d49ff094d0bf2416c32b44cb61763d6e3",
+    "crates/physics/src/character.rs": "13624a07093053fb58b8d991d6f5740d62f27f8a02eac94d1926e59063ba2099"
+  },
+  "fixture": {
+    "source_save_version": 8,
+    "target_save_version": 9,
+    "source_character_schema": 1,
+    "target_character_schema": 2,
+    "source_rules": "verse-chamber-owned-v18",
+    "target_rules": "verse-chamber-owned-v19",
+    "persistent_characters_before": 2,
+    "characters_after_enrollment_change": 3,
+    "reward_transactions": 155,
+    "archived_receipts": 27,
+    "primary_experience": 225,
+    "primary_owned_item_balance": 5,
+    "source_max_health_with_equipment": 220,
+    "target_max_health_with_equipment": 240,
+    "changes": [
+      "Authored scene NPC rename, removal, addition, and later reintroduction",
+      "Recovery item effect/name, equipment health, outfit model, quest goal/reward",
+      "Player revocation, new enrollment, and later re-enrollment with explicit spawn",
+      "Independent save, character schema, content, and rules identities"
+    ]
+  },
+  "crash_boundaries": {
+    "apply": [
+      "migration_prepared",
+      "before_snapshot_sync",
+      "after_snapshot_sync",
+      "after_snapshot_rename",
+      "migration_snapshot",
+      "migration_journal",
+      "migration_sealed"
+    ],
+    "rollback": [
+      "migration_prepared",
+      "migration_snapshot",
+      "migration_journal",
+      "migration_sealed"
+    ]
+  },
+  "checks": [
+    {
+      "command": "cargo test -p verse-world --features service-net --quiet -- --test-threads=2",
+      "passed": 391,
+      "ignored": 2,
+      "seconds": 117.22,
+      "scope": "Full service suite before integration of 91c8cd6d87; subsequent focused checks cover its prediction change and final migration guards."
+    },
+    {
+      "command": "cargo test -p verse-world --quiet",
+      "passed": 275,
+      "seconds": 6.6,
+      "scope": "Rechecked after integration of 444370b8b7 and its typed character recovery API."
+    },
+    {
+      "command": "cargo test -p verse-world --features service-net service::persistence::migration::tests:: --quiet -- --test-threads=2",
+      "passed": 9,
+      "ignored": 1,
+      "seconds": 5.76,
+      "note": "Ignored child is invoked by both parent crash tests.",
+      "scope": "Final migration fixture, guards, archive retries, and all eleven subprocess crash boundaries rechecked after integration."
+    },
+    {
+      "command": "cargo test -p verse-world --features service-net prediction:: --quiet",
+      "passed": 20
+    },
+    {
+      "command": "cargo check -p verse --no-default-features --features remote-chamber --example verse_migrate --example verse_host --quiet",
+      "result": "passed"
+    },
+    {
+      "command": "cargo fmt -p verse-world -p verse --check",
+      "result": "passed"
+    }
+  ],
+  "limits": [
+    "Scratch fixtures and deliberate process termination; no production data or devices are touched.",
+    "Process termination verifies recovery ordering, not physical power-loss behavior.",
+    "Plans refuse arbitrary unsupported rules/schema revisions, catalog ID removal, equipment slot changes, implicit ownership transfer, and unsupported active quest changes.",
+    "World dynamics restart and characters respawn/refill under the reviewed policy; there is no offline simulation catch-up.",
+    "Rollback refuses any later commit; backup receipt roots require the retained shared rewards directory.",
+    "Characters remain instance-scoped and bounded; global identity is V09.",
+    "Operational backup verification and retention remain V19; CLI asset loading remains renderer-dependent until V17."
+  ]
+}

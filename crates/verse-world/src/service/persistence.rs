@@ -11,6 +11,7 @@ use std::{
 #[cfg(test)]
 mod checks;
 mod journal;
+pub mod migration;
 pub(super) mod writer;
 
 const FILE_BYTES: usize = MAX_BYTES * 2 + 4096;
@@ -116,6 +117,7 @@ impl Store {
             .map_err(|_| "Cannot open chamber writer lock")?;
         lock.try_lock()
             .map_err(|_| "Chamber storage already has a writer or cannot lock")?;
+        migration::recover_pending(root)?;
         let history = super::rewards::history::History::open(&root.join("rewards"))?;
         history.defer_writes();
         let log = root.join("journal.jsonl");

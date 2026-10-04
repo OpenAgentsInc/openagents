@@ -2,10 +2,10 @@
 use super::{Chamber, auth::Gateway};
 use crate::play::Game;
 use glam::Vec3;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::{collections::BTreeSet, net::SocketAddr, path::PathBuf};
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
     pub listen: SocketAddr,
@@ -30,13 +30,13 @@ pub struct Config {
     #[serde(default)]
     pub equipment: super::equipment::Catalog,
 }
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct Enrollment {
     pub public_key: String,
     pub role: Role,
 }
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Role {
     Primary {},
@@ -204,7 +204,7 @@ impl Config {
         Ok(())
     }
 }
-fn public_key(text: &str) -> Result<[u8; 32], String> {
+pub(super) fn public_key(text: &str) -> Result<[u8; 32], String> {
     if text.len() != 64 {
         return Err("Configured enrollment key must be a 32-byte public key".into());
     }

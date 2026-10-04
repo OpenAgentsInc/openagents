@@ -917,6 +917,85 @@ impl Game {
         self.sync_bodies(0.)?;
         Ok(())
     }
+    /// Restarts target content while preserving persistent player identities.
+    pub(crate) fn migrate_content(
+        mut self,
+        previous: &Game,
+        spawns: &BTreeMap<u64, Vec3>,
+    ) -> Result<Self, String> {
+        if self.player_life().instance != previous.player_life().instance
+            || self.player_actor() != previous.player_actor()
+            || !self.additional_players.is_empty()
+            || previous
+                .additional_players
+                .keys()
+                .any(|id| self.scene.actors.iter().any(|a| a.id == *id))
+        {
+            return Err("Target content conflicts with persistent player identity".into());
+        }
+        self.fence_world_generation(previous)?;
+        for life in self.lives.values_mut() {
+            life.generation = self.migration_generation;
+        }
+        self.routes.clear();
+        self.navigation_goals.clear();
+        self.admission = previous.admission.clone();
+        self.admission
+            .respawn()
+            .map_err(|e| format!("Migration life refused: {e:?}"))?;
+        self.authority_tick = previous.authority_tick;
+        self.event_serial = previous.event_serial;
+        self.events = previous.events.clone();
+        self.sync_bodies(0.)?;
+        let appearance = self
+            .scene
+            .actors
+            .iter()
+            .find(|a| a.id == self.player_actor())
+            .ok_or("Missing migration player appearance")?
+            .clone();
+        for (actor, old) in &previous.additional_players {
+            let spawn = spawns.get(actor).copied().unwrap_or(old.spawn);
+            if !spawn.is_finite()
+                || spawn.abs().max_element() > 10_000.
+                || self.scene.actors.len() >= 256
+            {
+                return Err("Migrated player spawn or appearance budget is invalid".into());
+            }
+            let mut admission = old.admission.clone();
+            admission
+                .respawn()
+                .map_err(|e| format!("Migration player refused: {e:?}"))?;
+            let mut character = physics::character::Character::new(spawn.as_dvec3());
+            if !self.colliders.is_empty() {
+                character.teleport(
+                    &self.query_scene,
+                    self.actor_filter(admission.actor()),
+                    physics::character::Settings::default(),
+                    spawn.as_dvec3(),
+                )?;
+            }
+            let source = self
+                .simulation
+                .spawn_player(character.feet.as_vec3().to_array())?;
+            let mut player = Player::new(admission, source, spawn);
+            player.character = character;
+            player.position = character.feet.as_vec3();
+            player.previous = player.position;
+            self.additional_players.insert(*actor, player);
+            let mut actor_appearance = appearance.clone();
+            actor_appearance.id = *actor;
+            actor_appearance.position = spawn;
+            actor_appearance.name = format!("Adventurer {actor}");
+            actor_appearance.nameplate = false;
+            actor_appearance.health = 200;
+            self.scene.actors.push(actor_appearance);
+            self.sync_bodies(0.)?;
+        }
+        self.next_player_actor = self.next_player_actor.max(previous.next_player_actor);
+        self.checkpoint()?;
+        Ok(self)
+    }
     pub(super) fn validate_players(&self) -> Result<(), String> {
         if self.additional_players.len() > 63 || self.next_player_actor >= 1_000_000 {
             return Err("Player checkpoint capacity exceeded".into());

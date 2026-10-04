@@ -26,15 +26,15 @@ reliable; adding visual features alone cannot establish MMORPG readiness.
 The reward-history lifetime blocker (V01) is resolved in
 [#10573](https://github.com/OpenAgentsInc/openagents/issues/10573). V02 remediation
 in [#10574](https://github.com/OpenAgentsInc/openagents/issues/10574) adds ordered
-background storage and bounded backpressure. Three findings still deserve
-immediate engineering attention:
+background storage and bounded backpressure. V03 remediation in
+[#10575](https://github.com/OpenAgentsInc/openagents/issues/10575) adds reviewed
+offline migration, retained backups, and guarded rollback. Two findings still
+deserve immediate engineering attention:
 
-1. Content and rules updates lack a general populated-save migration path.
-   An ordinary content update can make a persistent world incompatible.
-2. A sustained 20-player/40-NPC battle fails performance acceptance, and a
-   newer four-contact recovery failure again stops the whole host. Recoverable
+1. A sustained 20-player/40-NPC battle fails performance acceptance, and a
+   newer three-contact recovery failure again stops the whole host. Recoverable
    per-character failure lacks containment.
-3. The latest retained delayed-network measurement improves ordinary movement
+2. The retained delayed-network measurement improves ordinary movement
    correction p95 to 0.43 and 0.30 meters, but still reports failed acceptance,
    a 6.5-meter outlier, and missed frame budgets.
 
@@ -132,7 +132,7 @@ Evidence labels:
 | --- | --- | --- | --- | --- | --- |
 | V01 | P0 | Reward history is archived without a transaction lifetime cap. | Code | Character storage and world service | Complete ([#10573](https://github.com/OpenAgentsInc/openagents/issues/10573)) |
 | V02 | P0 | Full synchronous checkpoint commits occupy the tick loop. | Code, risk | World service persistence | Complete ([#10574](https://github.com/OpenAgentsInc/openagents/issues/10574)) |
-| V03 | P0 | Content/rules changes lack a general durable migration path. | Code, gap | Content and save versions | Open |
+| V03 | P0 | Content/rules changes lack a general durable migration path. | Code, gap | Content and save versions | Complete ([#10575](https://github.com/OpenAgentsInc/openagents/issues/10575)) |
 | V04 | P1 | Prediction exists, but acceptable delayed movement is unproven. | Recorded, code | Movement and client replication | Open |
 | V05 | P1 | Replication polls full snapshots without spatial relevance. | Code, gap | World service replication | Open |
 | V06 | P1 | One chamber process does not provide realm/instance management. | Code, gap | World hosting | Open |
@@ -277,6 +277,45 @@ audited operation rather than silently weakening recovery validation.
 rules revision. Preserve character ownership, XP, equipment, receipt identities,
 and completed objectives. A failed migration leaves the original save usable.
 
+**Remediation:** [#10575](https://github.com/OpenAgentsInc/openagents/issues/10575)
+adds [`persistence::migration`](../../crates/verse-world/src/service/persistence/migration.rs)
+and the [`verse_migrate` command](../../crates/verse/examples/verse_migrate.rs).
+A reviewed plan pins source commit/state, source and target content/rules/schema
+identities, both configs, candidate state, and enrollment changes. Save version
+nine adds character schema two and retained ownership independent of active
+grants. Legacy versions remain explicit compatibility paths; arbitrary future
+rules or schema revisions require implemented adapters.
+
+Apply retains character IDs, XP, item balances, equipment/outfits, accepted
+quest baselines, completed quests, and the immutable original receipt index.
+It explicitly restarts world dynamics and encounters, respawns players, refills
+target equipment limits, and advances player/NPC/prop fences. Catalog IDs and
+slots remain stable. Unsupported changes to active quest semantics are refused.
+Revoked owners retain their characters; re-enrollment preserves the actor and
+can change spawn explicitly. Implicit ownership transfer is refused. Normal
+startup continues to require the configured content, enrollment, and catalogs.
+
+Synced before/after snapshots and a digested operation record live under
+`migrations/`. The writer lock covers the entire operation. A pending marker
+precedes active replacement; until the operation's target seal is synced,
+interrupted apply restores its complete source, including acknowledged journal
+changes. A sealed operation recovers its target. Rollback uses the same protocol,
+retains its own record, increments the commit revision, and refuses any later
+commit. Storage failure withholds success; recovery can resume when storage is
+available. Backups retain receipt-history roots and require their shared files.
+
+The [migration receipt](../../bench/verse/2026-10-04/content-migration/run.json)
+records a populated version-eight/rules-v18 fixture upgraded across changed
+scene actors, items, equipment, outfit, quest reward/goal, and rules. Regressions
+cover exact archived grant/claim/use/equip retries, retained ownership and
+re-enrollment, input drift, active-objective refusal, storage failure, later-commit
+rollback refusal, deleted/reintroduced NPC and prop generations, seven apply
+crash boundaries, and four rollback boundaries. These are local scratch-store
+checks, not a power-loss or production rollout experiment. Instance-scoped
+character capacity and global identity remain V09; verified operational backups
+and retention remain V19. The asset-loading command still depends on the
+renderer crate until V17 separates that boundary.
+
 ### V04: Delayed movement acceptance remains open
 
 Prediction is implemented in [`prediction`](../../crates/verse-world/src/prediction.rs)
@@ -296,7 +335,11 @@ compiled at `af701a4151c815b6e82d434616cb4cd1adfb9f69`, records improvement to
 It still reports failed acceptance: a 6.5 m correction outlier, frame-interval
 p95 around 28–30 ms on the shared GPU, and no life-change coverage. Those
 measurements demonstrate improvement, not accepted movement or isolated-client
-rendering performance.
+rendering performance. A subsequent
+[clock-alignment fix](https://github.com/OpenAgentsInc/openagents/commit/533d3b0cde)
+prevents repeated late baselines from advancing the prediction clock or renewing
+expired input holds. Its focused regressions pass; the later three-contact
+battle stops before it can establish sustained prediction acceptance.
 
 **Improve:** Specify exactly when a movement input becomes effective, which
 physics steps an acknowledgment covers, and how coalesced inputs retain their
@@ -652,16 +695,30 @@ starting position needed for reproduction. A subsequent
 reproduces those four contacts and searches a limited horizontal exit through
 already embedding capsules, while walls and newly encountered obstacles still
 block it. Its regression also refuses a wall enclosure without changing the
-character. No later retained battle establishes this fix under sustained load,
-and per-character failure containment remains open. These runs have zero checkpoint
-commits. The harness now samples host process CPU; no retained measurement here
-yet establishes an isolated server CPU or GPU budget.
+character. Later runs retain all forty NPCs: the
+[anchored battle](../../bench/verse/2026-10-04/battle-scale-anchored/run.json)
+records frame p95 of 82.048 ms; the
+[instanced-shadow battle](../../bench/verse/2026-10-04/battle-scale-instanced-shadows/run.json)
+records 74.605 ms, correction p95 of 2.210 m, and a 4.385 m maximum. Different
+trajectories prevent isolated attribution. The newest
+[three-contact failure](../../bench/verse/2026-10-04/battle-scale-three-contacts/run.json),
+compiled at `533d3b0cde`, stops the host at 1,352 ticks for actor 216, with 8.094
+dropped seconds and a simulation p99 histogram upper bound of 250 ms. This
+truncated run cannot establish prediction or sustained-scale acceptance.
+Per-character failure containment remains open. A subsequent
+[typed recovery outcome](https://github.com/OpenAgentsInc/openagents/commit/9051f1f282)
+adds an atomic `Step::BlockedRecovery` result that preserves the character while
+keeping invalid inputs and query failures as errors. Host integration remains
+required at this revision. These runs disable persistent
+storage; external host CPU sampling does not establish an isolated per-tick CPU
+or GPU budget.
 
-The harness disables durable storage. Its earlier failed run produces no
-completed native or load profile. Zero dropped server seconds is not a passing
-timing distribution. The headless generator
-writes its profile only after all player tasks succeed and caps timing samples
-without recording omitted observations, making failures harder to diagnose.
+The harness now retains partial player measurements after failures, including
+all nineteen headless rows and their observation stages in the three-contact run.
+Its optional scratch state directory permits future durable benchmarks but has
+no retained runtime acceptance yet. Historical nondurable failures and missing
+profiles remain evidence of their original revisions. Zero dropped server
+seconds alone is not a passing timing distribution.
 
 **Improve:** Preserve the upstream crowd-recovery regressions and historical
 contact sequences. Measure combined scale with the corrected authored-health

@@ -198,6 +198,9 @@ impl Config {
                 accepted: quest.giver.is_none()
                     || ledger
                         .character(actor)
+                        .is_some_and(|c| c.claimed_quests.contains(&quest.id))
+                    || ledger
+                        .character(actor)
                         .is_some_and(|c| c.accepted_quests.contains_key(&quest.id)),
                 giver: quest.giver,
                 giver_life: None,
@@ -216,11 +219,14 @@ impl Config {
             .collect()
     }
     fn available(&self, quest: &Quest, actor: u64, ledger: &Ledger) -> bool {
-        quest.prerequisites.iter().all(|id| {
-            ledger
-                .character(actor)
-                .is_some_and(|c| c.claimed_quests.contains(id))
-        })
+        ledger
+            .character(actor)
+            .is_some_and(|c| c.claimed_quests.contains(&quest.id))
+            || quest.prerequisites.iter().all(|id| {
+                ledger
+                    .character(actor)
+                    .is_some_and(|c| c.claimed_quests.contains(id))
+            })
     }
     pub(super) fn validate_acceptance(
         &self,
@@ -274,6 +280,9 @@ impl Quest {
             .unwrap_or(0)
     }
     pub(super) fn progress(&self, character: Option<&Character>) -> u32 {
+        if character.is_some_and(|c| c.claimed_quests.contains(&self.id)) {
+            return self.goal;
+        }
         if self.giver.is_none() {
             return self.count(character);
         }
