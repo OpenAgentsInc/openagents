@@ -367,6 +367,7 @@ fn the_handoff_prompt_is_not_shown_again_under_the_chat() {
             source: "user".into(),
             text: text.into(),
             call: None,
+            plan: None,
         }),
     };
     let mut run = fed(
@@ -572,4 +573,55 @@ fn tool_calls_show_grouped_and_open_to_each_call() {
         )
         .unwrap();
     assert_eq!(group.key, format!("coder-{}", lines[4].seq));
+}
+
+/// A running task that records a plan shows the plan panel under its
+/// transcript, not a "plan updated" line in it; the panel's controls are
+/// the run's actions (#10471).
+#[test]
+fn a_running_task_that_records_a_plan_shows_the_plan_panel() {
+    use openagents_chat::coder_events::Mapper;
+    use serde_json::json;
+    let task = "b".repeat(64);
+    let mut mapper = Mapper::new(1, None);
+    let mut lines: Vec<Line> = vec![];
+    for step in [
+        json!({"step_id": 1, "source": "user", "message": "fix the parser"}),
+        json!({"step_id": 2, "source": "system", "message": "Devin's plan.",
+            "extra": {"devin_plan": [
+                {"content": "Read the parser", "status": "completed"},
+                {"content": "Fix the bug", "status": "in_progress"},
+                {"content": "Add a test", "status": "pending"}]}}),
+    ] {
+        for event in mapper.step(&step) {
+            lines.push(Line {
+                seq: lines.len() as u64 + 1,
+                task: task.clone(),
+                thread: None,
+                event,
+            });
+        }
+    }
+    let mut run = fed(&lines, State::Running);
+    let text = text_of(&run.rows());
+    assert!(text.contains("Plan · 1/3 · Fix the bug"), "{text}");
+    assert!(text.contains("✓ Read the parser"), "{text}");
+    assert!(text.contains("◐ Fix the bug"), "{text}");
+    assert!(text.contains("○ Add a test"), "{text}");
+    assert!(!text.contains("Updated the plan"), "{text}");
+    assert!(!text.contains("Dismiss"), "a live plan stays: {text}");
+    // The header closes the list.
+    let toggle = run.actions.get("coder-plan-toggle").cloned().unwrap();
+    assert_eq!(toggle, Action::Plan(crate::plan_panel::Control::Toggle));
+    assert!(toggle.late());
+    let revision = run.revision;
+    assert!(run.action(toggle, "").is_none());
+    assert!(run.revision > revision);
+    let text = text_of(&run.rows());
+    assert!(text.contains("Plan · 1/3 · Fix the bug"), "{text}");
+    assert!(!text.contains("○ Add a test"), "{text}");
+    // A run with no plan draws no panel.
+    let mut plain = fed(&lines[..1], State::Running);
+    assert!(plain.plan_items().is_none());
+    assert!(!text_of(&plain.rows()).contains("Plan ·"));
 }

@@ -550,6 +550,7 @@ mod tests {
                 about: None,
                 failed: false,
             }),
+            plan: None,
         })
     }
 
@@ -561,6 +562,7 @@ mod tests {
             source: "agent".into(),
             text: text.into(),
             call: None,
+            plan: None,
         })
     }
 
@@ -723,6 +725,7 @@ mod tests {
             source: "system".into(),
             text: "running without Jev".into(),
             call: None,
+            plan: None,
         });
         assert!(!s.push(1, &note));
         // An observation with no call before it is not the stretch's.
@@ -769,6 +772,7 @@ mod tests {
             source: "agent".into(),
             text: "done".into(),
             call: None,
+            plan: None,
         });
         // What a printed call returned is not a line of its own.
         let returned = CoderEvent::Step(Step {
@@ -778,6 +782,7 @@ mod tests {
             source: "system".into(),
             text: "found 3 matches".into(),
             call: None,
+            plan: None,
         });
         let mut acted = Stream::default();
         let mut edit = call(Verb::Edit, "a.rs");

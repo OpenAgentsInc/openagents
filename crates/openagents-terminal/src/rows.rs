@@ -250,6 +250,7 @@ mod tests {
             source: "agent".into(),
             text: "done".into(),
             call: None,
+            plan: None,
         });
         assert_eq!(run_row(&reply), None);
         let progress = CoderEvent::Progress(Progress {

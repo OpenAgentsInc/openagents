@@ -2202,6 +2202,7 @@ impl Follow {
                 source: "system".into(),
                 text: note.text.clone(),
                 call: None,
+                plan: None,
             });
             self.line(event, out);
         }

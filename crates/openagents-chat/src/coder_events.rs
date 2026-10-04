@@ -468,6 +468,11 @@ pub struct Step {
     /// it existed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub call: Option<Call>,
+    /// For a plan update, the whole plan as it now stands; empty when the
+    /// engine cleared it ([`crate::plan`]). Absent from other steps and
+    /// from lines written before it existed, so older readers skip it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plan: Option<Vec<crate::plan::Item>>,
 }
 
 /// What a command or a tool call did, and to what (#10117).
@@ -1013,11 +1018,23 @@ impl Mapper {
                 source,
                 text: bounded(text, MAX_TEXT).0,
                 call: None,
+                plan: None,
             })
         };
         let with_call = |event: CoderEvent, call: Call| match event {
             CoderEvent::Step(step) => CoderEvent::Step(Step {
                 call: Some(call),
+                ..step
+            }),
+            other => other,
+        };
+        // A plan update: one note naming the count, carrying the whole plan.
+        let planned = |items: Vec<crate::plan::Item>| match make(
+            StepKind::Note,
+            &crate::plan::Summary::of(&items).line(),
+        ) {
+            CoderEvent::Step(step) => CoderEvent::Step(Step {
+                plan: Some(items),
                 ..step
             }),
             other => other,
@@ -1073,6 +1090,11 @@ impl Mapper {
                 reason,
                 resets_at,
             }));
+            return events;
+        }
+        // An Agent Client Protocol engine's plan, as its adapter noted it.
+        if let Some(items) = crate::plan::noted(&extra) {
+            events.push(planned(items));
             return events;
         }
         if extra.get("decision_unavailable").is_some() || extra.get("routes_unavailable").is_some()
@@ -1231,12 +1253,13 @@ impl Mapper {
         if source == "agent" {
             // A decision-model call (a Jev judgment such as
             // `openagents.microcoder.judge.v1`) is evidence for the
-            // trajectory, never a row of the person's transcript (#10073).
+            // trajectory, never a row of the person's transcript (#10073);
+            // a plan call's acknowledgement is not one either.
             let decisions: Vec<&str> = step["tool_calls"]
                 .as_array()
                 .into_iter()
                 .flatten()
-                .filter(|call| is_decision_call(call))
+                .filter(|call| is_decision_call(call) || crate::plan::called(call).is_some())
                 .filter_map(|call| call["tool_call_id"].as_str())
                 .collect();
             let results: Vec<&Value> = step
@@ -1247,6 +1270,11 @@ impl Mapper {
                 .collect();
             for call in step["tool_calls"].as_array().into_iter().flatten() {
                 if is_decision_call(call) {
+                    continue;
+                }
+                // `TodoWrite` or `update_plan`: the plan, not a tool row.
+                if let Some(items) = crate::plan::called(call) {
+                    events.push(planned(items));
                     continue;
                 }
                 // An engine's own shell calls (Claude, Codex, Grok Build)
@@ -2009,6 +2037,59 @@ mod tests {
 
     /// The same calls, typed (#10117): the verb and target every surface
     /// groups by, read from the same fields as the line. Devin's and
+    /// A plan an engine records, as an ACP note or a `TodoWrite` call,
+    /// is one note carrying the whole plan; the call's acknowledgement
+    /// draws nothing (#10471).
+    #[test]
+    fn a_recorded_plan_is_a_note_carrying_the_plan() {
+        use crate::plan::{Item, Status};
+        let mut mapper = Mapper::new(1, None);
+        let noted = mapper.step(&json!({
+            "step_id": 2, "source": "system", "message": "Devin's plan.",
+            "extra": {"devin_plan": [
+                {"content": "Read", "status": "completed"},
+                {"content": "Fix", "status": "in_progress"}]},
+        }));
+        let [CoderEvent::Step(step)] = noted.as_slice() else {
+            panic!("one step: {noted:?}")
+        };
+        assert_eq!(step.kind, StepKind::Note);
+        assert_eq!(step.text, "Updated the plan: 1 of 2 done.");
+        assert_eq!(
+            step.plan.as_deref(),
+            Some(
+                &[
+                    Item::new("Read", Status::Completed),
+                    Item::new("Fix", Status::InProgress)
+                ][..]
+            )
+        );
+        let called = mapper.step(&json!({
+            "step_id": 3, "source": "agent", "message": "",
+            "tool_calls": [{"tool_call_id": "t", "function_name": "TodoWrite",
+                "arguments": {"todos": [{"content": "Read", "status": "completed"},
+                    {"content": "Fix", "status": "completed"}]}}],
+            "observation": {"results": [{"source_call_id": "t",
+                "content": "Todos have been modified successfully."}]},
+        }));
+        let [CoderEvent::Step(step)] = called.as_slice() else {
+            panic!("one step: {called:?}")
+        };
+        assert_eq!(step.text, "Updated the plan: 2 of 2 done.");
+        assert!(step.call.is_none());
+        let line = serde_json::to_value(&called[0]).unwrap();
+        assert_eq!(
+            line["plan"][1],
+            json!({"text": "Fix", "status": "completed"})
+        );
+        assert_eq!(
+            serde_json::from_value::<CoderEvent>(line).unwrap(),
+            called[0]
+        );
+        let latest = crate::plan::latest(noted.iter().chain(&called)).unwrap();
+        assert_eq!(latest[1].status, Status::Completed);
+    }
+
     /// OpenCode's argument names (`file_path`, `filePath`, `path`) type the
     /// same way Grok Build's do.
     #[test]
@@ -2788,6 +2869,7 @@ mod tests {
             source: "agent".into(),
             text: text.into(),
             call: None,
+            plan: None,
         })
     }
 

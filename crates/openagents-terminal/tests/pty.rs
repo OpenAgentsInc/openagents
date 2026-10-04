@@ -248,6 +248,7 @@ impl Coder for FakeCoder {
                 source: "agent".into(),
                 text: "Reading the failing test.".into(),
                 call: None,
+                plan: None,
             }));
             // Tool calls as an engine's typed steps carry them (#10117):
             // two that look, which group, then a command that fails.
@@ -264,6 +265,7 @@ impl Coder for FakeCoder {
                         about: None,
                         failed: false,
                     }),
+                    plan: None,
                 })
             };
             emit(tool(StepKind::ToolCall, Verb::Read, "lib.rs"));
@@ -274,6 +276,7 @@ impl Coder for FakeCoder {
                 source: "system".into(),
                 text: "pub fn add(a: i32, b: i32) -> i32 { a - b }".into(),
                 call: None,
+                plan: None,
             }));
             emit(tool(StepKind::ToolCall, Verb::Search, "fn add"));
             emit(tool(StepKind::Command, Verb::Run, "cargo test"));
@@ -369,6 +372,7 @@ impl Coder for FakeCoder {
                 source: "user".into(),
                 text: text.into(),
                 call: None,
+                plan: None,
             }),
         });
         Ok(client::Steering::NextStep)

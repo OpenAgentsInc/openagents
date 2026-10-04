@@ -136,6 +136,8 @@ pub enum Action {
     ChooseFolder,
     RemoveQueued(usize),
     SendQueuedNow(usize),
+    /// A control of the task's plan panel ([`crate::plan_panel`]).
+    Plan(crate::plan_panel::Control),
 }
 
 impl Action {
@@ -152,6 +154,7 @@ impl Action {
                 | Self::ChooseFolder
                 | Self::SendQueuedNow(_)
                 | Self::RemoveQueued(_)
+                | Self::Plan(_)
         )
     }
 }
@@ -221,6 +224,8 @@ pub struct Run {
     reviewer: crate::changes::Reviewer,
     /// The result the reviewer follows.
     reviewed_seq: Option<u64>,
+    /// The plan panel's state for this run's task (#10471).
+    plan: crate::plan_panel::Panel,
 }
 
 impl Run {
@@ -289,6 +294,7 @@ impl Run {
             bind: None,
             reviewer: crate::changes::Reviewer::new(),
             reviewed_seq: None,
+            plan: crate::plan_panel::Panel::default(),
         }
     }
 
@@ -829,6 +835,12 @@ impl Run {
                 self.revision += 1;
                 None
             }
+            Action::Plan(control) => {
+                let items = self.plan_items()?;
+                self.plan.apply(control, &items);
+                self.revision += 1;
+                None
+            }
             Action::SendQueuedNow(index) => {
                 let text = self.queue.remove(index)?;
                 self.revision += 1;
@@ -840,6 +852,13 @@ impl Run {
                 }
             }
         }
+    }
+
+    /// The task's plan as it stands: the latest one a turn recorded, or
+    /// `None` when it recorded none or cleared it.
+    #[must_use]
+    pub fn plan_items(&self) -> Option<Vec<openagents_chat::plan::Item>> {
+        openagents_chat::plan::latest(self.lines.iter().map(|line| &line.event)).map(<[_]>::to_vec)
     }
 
     /// Whether the composer's text was queued rather than sent: the draft
@@ -917,6 +936,16 @@ impl Run {
             anchored.push((at, row));
         }
         let mut rows = Vec::new();
+        // The task's plan, above what the run is doing now (#10471).
+        if let Some(items) = self.plan_items() {
+            let live = self.state == State::Running;
+            if let Some((panel, controls)) = self.plan.view("coder-plan", &items, live) {
+                for (key, control) in controls {
+                    self.actions.insert(key, Action::Plan(control));
+                }
+                rows.push(panel);
+            }
+        }
         if self.state == State::Running && self.phase == Phase::Following && self.task.is_some() {
             rows.push(Node {
                 key: "coder-working".into(),
@@ -1230,6 +1259,8 @@ impl Rows {
                 // before it reaches here.
                 StepKind::Thinking | StepKind::Command | StepKind::ToolCall => {}
                 StepKind::Observation => self.rows.push(status(&key, &step.text)),
+                // A plan update draws in the plan panel, not the transcript.
+                StepKind::Note if step.plan.is_some() => {}
                 StepKind::Note => self.rows.push(status(&key, &step.text)),
                 StepKind::Reply => {}
             },

@@ -8,6 +8,7 @@ pub mod client;
 pub mod coder_events;
 pub mod delegation;
 pub mod migrate;
+pub mod plan;
 pub mod plugin_flow;
 pub mod route;
 pub mod router;

@@ -558,6 +558,7 @@ fn a_long_run_of_commands_folds_its_oldest() {
                     about: None,
                     failed: false,
                 }),
+                plan: None,
             }),
         ));
         seq += 1;
@@ -1150,6 +1151,7 @@ fn the_run_view_shows_the_run_alone_and_its_composer_steers_it() {
             source: "user".into(),
             text: "Use tabs, not spaces.".into(),
             call: None,
+            plan: None,
         }),
     ));
     assert!(run_shown(&mut app).contains("Coder read your message."));
