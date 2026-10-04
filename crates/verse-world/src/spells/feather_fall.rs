@@ -807,11 +807,11 @@ pub fn scenario() -> crate::playground::Scenario {
         setup: |scene, _| {
             // The wizard stands on the tower's top, behind the dummies.
             scene.actors[0].position = CASTER;
-            scene.actors[0].yaw = -FRAC_PI_2;
+            scene.actors[0].yaw = FRAC_PI_2;
             for (id, name, place) in DUMMIES {
                 scene
                     .actors
-                    .push(creature(id, name, "dummy", place, FRAC_PI_2, 100));
+                    .push(creature(id, name, "dummy", place, -FRAC_PI_2, 100));
             }
             Ok(())
         },
@@ -838,7 +838,7 @@ pub fn scenario() -> crate::playground::Scenario {
             vec![
                 Cue {
                     at: 0.3,
-                    step: Step::Face(-FRAC_PI_2),
+                    step: Step::Face(FRAC_PI_2),
                 },
                 Cue {
                     at: 1.5,
@@ -851,17 +851,17 @@ pub fn scenario() -> crate::playground::Scenario {
             ]
         },
         camera: || {
-            // Close on the tower's top from the south-east, then wide from
-            // the south so the falls read against the floor.
-            let top = (Vec3::new(-6.5, 22., -4.), Vec3::new(-13.5, 17.6, 7.));
-            // The eye sits between the pillars' sight lines to the tower.
-            let wide = (Vec3::new(3., 9.5, -20.5), Vec3::new(-1., 7.5, 7.));
+            // Close on the tower's top from the north-west, then wide from
+            // the north end of the hall, over the chasm, so the tower sits
+            // on the right and the glides cross the frame below the overlay.
+            let top = (Vec3::new(8., 24., 16.), Vec3::new(15., 19.5, 6.));
+            let wide = (Vec3::new(0., 12., 23.5), Vec3::new(0., 10., 4.));
             [(0., top), (2.6, top), (4.2, wide), (12., wide)]
                 .into_iter()
                 .map(|(at, (eye, target))| Shot { at, eye, target })
                 .collect()
         },
-        replay_camera: (Vec3::new(-6.5, 22., -4.), Vec3::new(-13.5, 17.6, 7.)),
+        replay_camera: (Vec3::new(8., 24., 16.), Vec3::new(15., 19.5, 6.)),
         check: |game| verdict(game).map_err(|e| format!("{e}; {}", diagnose(game))),
     }
 }
@@ -946,7 +946,7 @@ fn verdict(game: &Game) -> Result<(), String> {
     }
     let reach = |id: u64| {
         game.actor_position(id)
-            .map(|p| p.x - TOWER_EDGE)
+            .map(|p| TOWER_EDGE - p.x)
             .ok_or(format!("{} is gone", game.actor_name(id)))
     };
     let glider = reach(103)?;
@@ -969,31 +969,26 @@ fn verdict(game: &Game) -> Result<(), String> {
 /// before it leaves the tower, so the top stands 61.5 feet tall for the
 /// fall from where the dummies go airborne to measure a full 60 feet.
 const TOWER_HEIGHT: f32 = 18.75;
-const TOWER_X: f32 = -16.;
-/// The tower spans z 2 to 12, so every glide clears the stone wall (z up to
-/// 0.9) and the chasm (z from 14).
-const TOWER_Z: f32 = 7.;
-/// The tower's east face, which the dummies go over.
-const TOWER_EDGE: f32 = -12.;
-const CASTER: Vec3 = Vec3::new(-18.3, TOWER_HEIGHT, TOWER_Z);
+const TOWER_X: f32 = 16.;
+/// The tower spans x 12 to 20 and z 1 to 11 in the hall's east half. The
+/// dummies glide west along the open floor: north of the stone wall (z up
+/// to 0.9) and the ledge (z up to 4), and south of the chasm (z from 14).
+const TOWER_Z: f32 = 6.;
+/// The tower's west face, which the dummies go over.
+const TOWER_EDGE: f32 = 12.;
+const CASTER: Vec3 = Vec3::new(18.15, TOWER_HEIGHT, TOWER_Z);
 /// Five dummies 1 m apart ahead of the wizard, inside the Thunderwave Cube.
 /// Each stands where the 10-foot push, along the line from the wizard,
-/// carries its center 0.4 m past the edge: the outer four leave at about
-/// 3 m/s and the middle one at about 4.5 m/s.
+/// carries its center 0.4 m past the edge with speed to spare: the two
+/// caught at the sides leave at about 3.5 m/s (a 0.4 m margin), and the
+/// glider in the middle and the two left falling at about 5 m/s (a 0.8 m
+/// margin), so contacts on the edge cannot strand them on the tower.
 const DUMMIES: [(u64, &str, Vec3); 5] = [
-    (101, "Dummy 1", Vec3::new(-14.1, TOWER_HEIGHT, TOWER_Z - 2.)),
-    (
-        102,
-        "Dummy 2",
-        Vec3::new(-14.28, TOWER_HEIGHT, TOWER_Z - 1.),
-    ),
-    (103, "Dummy 3", Vec3::new(-14.02, TOWER_HEIGHT, TOWER_Z)),
-    (
-        104,
-        "Dummy 4",
-        Vec3::new(-14.28, TOWER_HEIGHT, TOWER_Z + 1.),
-    ),
-    (105, "Dummy 5", Vec3::new(-14.1, TOWER_HEIGHT, TOWER_Z + 2.)),
+    (101, "Dummy 1", Vec3::new(13.67, TOWER_HEIGHT, TOWER_Z - 2.)),
+    (102, "Dummy 2", Vec3::new(14.19, TOWER_HEIGHT, TOWER_Z - 1.)),
+    (103, "Dummy 3", Vec3::new(13.87, TOWER_HEIGHT, TOWER_Z)),
+    (104, "Dummy 4", Vec3::new(14.19, TOWER_HEIGHT, TOWER_Z + 1.)),
+    (105, "Dummy 5", Vec3::new(13.67, TOWER_HEIGHT, TOWER_Z + 2.)),
 ];
 
 #[cfg(test)]
