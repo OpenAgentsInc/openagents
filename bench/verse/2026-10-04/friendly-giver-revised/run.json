@@ -1,0 +1,39 @@
+{
+  "schema": "openagents.verse.friendly-giver-acceptance.v1",
+  "capture_commit": "097faf6c89",
+  "capture_command": "verse_play --quest-giver --lair-proof bench/verse/2026-10-04/friendly-giver-revised",
+  "capture_exit_code": 0,
+  "dimensions": [
+    1920,
+    1080
+  ],
+  "inspected_images": [
+    "ritual-wide.png",
+    "summoning.png",
+    "player-handoff.png"
+  ],
+  "inspection": {
+    "friendly_body_visible": true,
+    "friendly_bar_green": true,
+    "hostile_bars_red": true,
+    "giver_name_overlap": false,
+    "foreground_character_lighting_needs_polish": true
+  },
+  "tls_check": {
+    "command": "cargo test -p verse-world --features service-net --lib service::view::tests::authored_friendly_giver",
+    "passed": 1,
+    "scene": "assets/verse/original/ritual-quests.json",
+    "quest_catalog": "assets/verse/original/ritual-progression.json",
+    "assertions": [
+      "giver reachable",
+      "friendly combat selection refused",
+      "quest 101 acceptance revision 1",
+      "exact retry revision 1",
+      "quest 102 unavailable until prerequisite claim",
+      "spectator acceptance refused",
+      "host shutdown has no failure"
+    ],
+    "test_source_sha256": "aa8103266e3d94caa04581bdb0fa2fc382acd408a26eddb734b371c368094b45"
+  },
+  "scope": "Offscreen native scene and real loopback TLS enrollment. No OS input, complete quest turn-in campaign, performance budget, or full roadmap acceptance."
+}

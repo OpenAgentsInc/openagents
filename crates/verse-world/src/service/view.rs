@@ -471,6 +471,131 @@ mod tests {
     use crate::service::{replica::tests::response, wire::State};
     #[cfg(feature = "service-net")]
     #[tokio::test]
+    async fn authored_friendly_giver_enrolls_over_tls_and_fences_quest_chain() {
+        use crate::service::{
+            Chamber,
+            auth::Gateway,
+            client::Client,
+            net,
+            net::tests::{key, tls},
+            progression::Config,
+            wire::Body,
+        };
+        use rustls::pki_types::ServerName;
+        use tokio::{net::TcpListener, sync::oneshot};
+        let keys = [key(131), key(132)];
+        let scene = verse_engine::director::Scene::from_json(include_bytes!(
+            "../../../../assets/verse/original/ritual-quests.json"
+        ))
+        .unwrap();
+        let config: Config = serde_json::from_slice(include_bytes!(
+            "../../../../assets/verse/original/ritual-progression.json"
+        ))
+        .unwrap();
+        let mut game = crate::play::Game::combat_in(scene, false, 120).unwrap();
+        game.time = game.scene.cut_at;
+        game.tick(0., [0.; 2]).unwrap();
+        game.encounter
+            .as_mut()
+            .unwrap()
+            .postpone_casts_until(600.)
+            .unwrap();
+        let mut gateway = Gateway::new(Chamber::new(game).unwrap())
+            .unwrap()
+            .with_progression(config)
+            .unwrap();
+        gateway
+            .enroll_primary(keys[0].x_only_public_key().0.serialize())
+            .unwrap();
+        gateway
+            .enroll_spectator(keys[1].x_only_public_key().0.serialize())
+            .unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (tls, connector) = tls();
+        let (stop, stopping) = oneshot::channel();
+        let server = tokio::spawn(net::serve(listener, tls, gateway, async {
+            let _ = stopping.await;
+        }));
+        let mut client = Client::connect(
+            address,
+            ServerName::try_from("localhost").unwrap(),
+            connector.config().clone(),
+            120,
+            &keys[0],
+        )
+        .await
+        .unwrap();
+        let mut view = View::new(120, 12., 0).unwrap();
+        view.push_snapshot(&client.request(Body::Snapshot {}).await.unwrap())
+            .unwrap();
+        view.push_inventory(&client.request(Body::Inventory {}).await.unwrap())
+            .unwrap();
+        let quest = &view.inventory().unwrap().quest_log[0];
+        assert!(quest.interactable && quest.available && !quest.accepted);
+        let giver = quest.giver_life.unwrap();
+        assert_eq!(giver.actor, 1_000_000);
+        assert!(view.select_target(Some(giver)).is_err());
+        let control = client.control().unwrap().clone();
+        let accept = Body::AcceptQuest {
+            life: control.life,
+            epoch: control.epoch,
+            quest: 101,
+            giver: giver.into(),
+        };
+        let first = client.request(accept.clone()).await.unwrap();
+        assert!(matches!(
+            first.body,
+            Reply::QuestAccepted {
+                quest: 101,
+                revision: 1
+            }
+        ));
+        assert!(matches!(
+            client.request(accept.clone()).await.unwrap().body,
+            Reply::QuestAccepted {
+                quest: 101,
+                revision: 1
+            }
+        ));
+        view.push_inventory(&client.request(Body::Inventory {}).await.unwrap())
+            .unwrap();
+        assert!(view.inventory().unwrap().quest_log[0].accepted);
+        assert!(!view.inventory().unwrap().quest_log[1].available);
+        assert!(matches!(
+            client
+                .request(Body::AcceptQuest {
+                    life: control.life,
+                    epoch: control.epoch,
+                    quest: 102,
+                    giver: giver.into()
+                })
+                .await
+                .unwrap()
+                .body,
+            Reply::Refused { .. }
+        ));
+        let mut observer = Client::connect(
+            address,
+            ServerName::try_from("localhost").unwrap(),
+            connector.config().clone(),
+            120,
+            &keys[1],
+        )
+        .await
+        .unwrap();
+        assert!(matches!(
+            observer.request(accept).await.unwrap().body,
+            Reply::Refused { .. }
+        ));
+        drop(observer);
+        drop(client);
+        stop.send(()).unwrap();
+        assert!(server.await.unwrap().failure.is_none());
+    }
+
+    #[cfg(feature = "service-net")]
+    #[tokio::test]
     async fn tls_movement_updates_giver_availability_at_unchanged_reward_revision() {
         use crate::service::{
             client::Client,
