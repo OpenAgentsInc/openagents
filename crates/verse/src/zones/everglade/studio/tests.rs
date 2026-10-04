@@ -571,6 +571,7 @@ fn decision(
         },
         text: text.into(),
         based_on: 1,
+        approval: None,
     }
 }
 
