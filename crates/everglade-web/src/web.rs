@@ -353,7 +353,6 @@ impl Page {
             }
         }
 
-        let size = self.renderer.size();
         let aspect = self.renderer.aspect();
         let view = self.runtime.view(aspect);
         let dynamic = self.runtime.dynamic_mesh();
