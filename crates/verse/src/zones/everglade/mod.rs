@@ -319,10 +319,12 @@ impl Everglade {
     }
 }
 
-/// The hall's interior, inset from its walls, and the height under its
-/// eaves, m: the third-person camera stays inside while the player does.
+/// The hall's interior, inset from its walls, and the camera's height
+/// limit there, m: the third-person camera stays inside while the player
+/// does, at about head height so it looks along the hall rather than up
+/// into the roof slopes.
 const INTERIOR: ([f32; 2], [f32; 2]) = ([-7.4, 1.5], [7.4, 10.5]);
-const INTERIOR_TOP: f32 = 2.9;
+const INTERIOR_TOP: f32 = 2.2;
 
 /// Pulls the camera's `eye` toward the player's `focus` so it stays inside
 /// the hall while the focus is inside, instead of looking through a wall or

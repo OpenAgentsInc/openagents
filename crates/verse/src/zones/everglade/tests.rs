@@ -476,7 +476,7 @@ fn the_camera_stays_inside_the_hall_with_the_player() {
     let focus = Vec3::new(0.0, 1.6, 5.0);
     // Behind and above: pulled in under the eaves and inside the doors.
     let eye = keep_eye_inside(focus, Vec3::new(0.0, 4.8, -3.4));
-    assert!(eye.z >= 1.5 - 1e-4 && eye.y <= 2.9 + 1e-4, "{eye}");
+    assert!(eye.z >= 1.5 - 1e-4 && eye.y <= 2.2 + 1e-4, "{eye}");
     let direction = (eye - focus).normalize();
     assert!(direction.dot(Vec3::new(0.0, 3.2, -8.4).normalize()) > 0.999);
     // Already inside: unchanged.
@@ -489,7 +489,7 @@ fn the_camera_stays_inside_the_hall_with_the_player() {
     let mut runtime = entered();
     runtime.set_spawn(Vec3::new(0.0, 0.0, 5.0), 0.0).unwrap();
     let view = runtime.view(1.6);
-    assert!(view.eye.z >= 1.5 - 1e-4 && view.eye.y <= 2.9 + 1e-4);
+    assert!(view.eye.z >= 1.5 - 1e-4 && view.eye.y <= 2.2 + 1e-4);
 }
 
 #[test]
