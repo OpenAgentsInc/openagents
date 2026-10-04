@@ -335,6 +335,98 @@ mod tests {
         );
     }
     #[test]
+    fn quest_chains_unlock_per_character_and_survive_recovery() {
+        use super::super::{
+            progression::{Config, Quest},
+            rewards::{Entry, Transaction},
+        };
+        let (g, keys) = fixture();
+        let config = Config {
+            version: 1,
+            levels: vec![0, 100],
+            quests: vec![
+                Quest {
+                    prerequisites: vec![],
+                    id: 1,
+                    name: "Disrupt the ritual".into(),
+                    objective: 1,
+                    goal: 2,
+                    experience: 25,
+                    items: vec![],
+                },
+                Quest {
+                    prerequisites: vec![1],
+                    id: 2,
+                    name: "Secure the chamber".into(),
+                    objective: 1,
+                    goal: 2,
+                    experience: 75,
+                    items: vec![],
+                },
+            ],
+        };
+        let mut g = g.with_progression(config).unwrap();
+        let a = join(&mut g, &keys[0]);
+        let b = join(&mut g, &keys[1]);
+        let own = g.admission(a).unwrap();
+        let other = g.admission(b).unwrap();
+        for actor in [own.actor().actor, other.actor().actor] {
+            g.grant_reward(Transaction {
+                instance: 240,
+                actor,
+                source: [7; 32],
+                experience: 0,
+                items: vec![],
+                quests: vec![Entry { id: 1, count: 2 }],
+                spent: vec![],
+                outfit: None,
+                equipment: None,
+            })
+            .unwrap();
+        }
+        assert!(!g.quest_log(own.actor().actor)[1].available);
+        assert_eq!(g.quest_log(own.actor().actor)[1].progress, 2);
+        let before = g.checkpoint().unwrap();
+        assert!(g.claim_quest(a, own.actor(), own.epoch(), 2).is_err());
+        assert_eq!(g.checkpoint().unwrap(), before);
+        let first = g.claim_quest(a, own.actor(), own.epoch(), 1).unwrap();
+        assert!(g.quest_log(own.actor().actor)[1].available);
+        assert!(!g.quest_log(other.actor().actor)[1].available);
+        assert!(g.claim_quest(b, other.actor(), other.epoch(), 2).is_err());
+        let second = g.claim_quest(a, own.actor(), own.epoch(), 2).unwrap();
+        assert_eq!(
+            g.claim_quest(a, own.actor(), own.epoch(), 2).unwrap(),
+            second
+        );
+        let saved = g.checkpoint().unwrap();
+        let mut recovered = Gateway::restore(&saved, [6; 32], 240).unwrap();
+        let connection = join(&mut recovered, &keys[0]);
+        let admission = recovered.admission(connection).unwrap();
+        assert_eq!(
+            recovered
+                .claim_quest(connection, admission.actor(), admission.epoch(), 1)
+                .unwrap(),
+            first
+        );
+        assert_eq!(
+            recovered
+                .claim_quest(connection, admission.actor(), admission.epoch(), 2)
+                .unwrap(),
+            second
+        );
+        assert_eq!(
+            recovered
+                .character_rewards(admission.actor().actor)
+                .unwrap()
+                .experience,
+            100
+        );
+        let mut corrupt: serde_json::Value = serde_json::from_slice(&saved).unwrap();
+        let rewards = corrupt["rewards"].as_array_mut().unwrap();
+        rewards.swap(2, 3);
+        assert!(Gateway::restore(&serde_json::to_vec(&corrupt).unwrap(), [6; 32], 240).is_err());
+    }
+    #[test]
     fn campaign_claims_are_owned_once_and_validated_on_recovery() {
         use super::super::{
             progression::{Config, Quest},
@@ -345,6 +437,7 @@ mod tests {
             version: 1,
             levels: vec![0, 100, 300],
             quests: vec![Quest {
+                prerequisites: vec![],
                 id: 1,
                 name: "Disrupt the summoning".into(),
                 objective: 1,

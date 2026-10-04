@@ -299,7 +299,8 @@ impl Panel {
                     .take(self.row_count(Some(inventory), [x, y, w, h]))
                     .enumerate()
                 {
-                    if !quest.claimed
+                    if quest.available
+                        && !quest.claimed
                         && quest.progress == quest.goal
                         && inside(
                             [x + w - 96., y + 82. + index as f32 * 56. + 23., 80., 23.],
@@ -352,13 +353,15 @@ impl Panel {
                 &progress,
                 [0.92, 0.90, 0.82, 1.],
             );
-            let ready = quest.progress == quest.goal;
+            let ready = quest.available && quest.progress == quest.goal;
             ui.text(
                 small,
                 x + 58.,
                 row + 24.,
                 if quest.claimed {
                     "Completed"
+                } else if !quest.available {
+                    "Locked: complete prior quests"
                 } else if ready {
                     "Ready to complete"
                 } else {
@@ -870,6 +873,7 @@ mod tests {
     fn quest_buttons_emit_only_ready_unclaimed_intents_without_changing_counters() {
         let mut data = inventory();
         data.quest_log = vec![verse_world::service::progression::Progress {
+            available: true,
             id: 1,
             name: "Disrupt the summoning".into(),
             progress: 2,
@@ -889,6 +893,10 @@ mod tests {
         assert_eq!(panel.take_claim(), Some(1));
         assert_eq!(data.experience, 45);
         assert!(!data.quest_log[0].claimed);
+        data.quest_log[0].available = false;
+        assert!(panel.click(point, Some(&data), 1280., 720.));
+        assert!(panel.take_claim().is_none());
+        data.quest_log[0].available = true;
         data.quest_log[0].claimed = true;
         assert!(panel.click(point, Some(&data), 1280., 720.));
         assert!(panel.take_claim().is_none());
@@ -975,6 +983,7 @@ mod tests {
                 next: Some(if completed { 300 } else { 100 }),
             };
             data.quest_log = vec![verse_world::service::progression::Progress {
+                available: true,
                 id: 1,
                 name: "Disrupt the summoning".into(),
                 progress: 1,

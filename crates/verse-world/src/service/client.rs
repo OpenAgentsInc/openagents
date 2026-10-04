@@ -473,14 +473,26 @@ mod tests {
             .with_progression(super::super::progression::Config {
                 version: 1,
                 levels: vec![0, 100, 300],
-                quests: vec![super::super::progression::Quest {
-                    id: 1,
-                    name: "Disrupt the summoning".into(),
-                    objective: 1,
-                    goal: 1,
-                    experience: 75,
-                    items: vec![Entry { id: 1, count: 2 }],
-                }],
+                quests: vec![
+                    super::super::progression::Quest {
+                        prerequisites: vec![],
+                        id: 1,
+                        name: "Disrupt the summoning".into(),
+                        objective: 1,
+                        goal: 1,
+                        experience: 75,
+                        items: vec![Entry { id: 1, count: 2 }],
+                    },
+                    super::super::progression::Quest {
+                        prerequisites: vec![1],
+                        id: 2,
+                        name: "Secure the chamber".into(),
+                        objective: 1,
+                        goal: 1,
+                        experience: 25,
+                        items: vec![],
+                    },
+                ],
             })
             .unwrap();
         let source = g.game().ids[&2];
@@ -582,6 +594,11 @@ mod tests {
         assert_eq!(left.level.level, 1);
         assert_eq!(left.quest_log[0].progress, 1);
         assert!(!left.quest_log[0].claimed);
+        assert!(!left.quest_log[1].available);
+        assert!(matches!(
+            a.claim_quest(2).await.unwrap().body,
+            Reply::Refused { .. }
+        ));
         let ready = left.clone();
         let own = a.control().unwrap().clone();
         assert!(matches!(
@@ -625,6 +642,8 @@ mod tests {
         assert_eq!(left.level.level, 2);
         assert_eq!(left.items, vec![Entry { id: 1, count: 3 }]);
         assert!(left.quest_log[0].claimed);
+        assert!(left.quest_log[1].available);
+        assert!(right.quest_log[1].available);
         assert_eq!(left.revision, 4);
         server.abort();
         assert!(matches!(server.await,Err(error) if error.is_cancelled()));
@@ -692,6 +711,7 @@ mod tests {
                 version: 1,
                 levels: vec![0, 100, 300],
                 quests: vec![Quest {
+                    prerequisites: vec![],
                     id: 1,
                     name: "Disrupt the summoning".into(),
                     objective: 1,

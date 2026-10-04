@@ -5,6 +5,8 @@ const CLAIM_DOMAIN: &[u8; 8] = b"VQUEST01";
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Quest {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub prerequisites: Vec<u64>,
     pub id: u64,
     pub name: String,
     pub objective: u64,
@@ -52,6 +54,7 @@ impl Level {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Progress {
+    pub available: bool,
     pub id: u64,
     pub name: String,
     pub progress: u32,
@@ -84,6 +87,15 @@ impl Config {
             {
                 return Err("Invalid campaign quest definition".into());
             }
+            if quest.prerequisites.len() > 16
+                || quest.prerequisites.windows(2).any(|w| w[0] >= w[1])
+                || quest
+                    .prerequisites
+                    .iter()
+                    .any(|id| *id >= quest.id || !self.quests.iter().any(|prior| prior.id == *id))
+            {
+                return Err("Quest prerequisites require sorted unique earlier quest IDs".into());
+            }
             super::rewards::entries(&quest.items)?;
             previous = quest.id;
         }
@@ -105,6 +117,7 @@ impl Config {
         self.quests
             .iter()
             .map(|quest| Progress {
+                available: self.available(quest, instance, actor, ledger),
                 id: quest.id,
                 name: quest.name.clone(),
                 progress: quest.count(ledger.character(actor)).min(quest.goal),
@@ -114,6 +127,16 @@ impl Config {
                 items: quest.items.clone(),
             })
             .collect()
+    }
+    fn available(&self, quest: &Quest, instance: u64, actor: u64, ledger: &Ledger) -> bool {
+        quest.prerequisites.iter().all(|id| {
+            self.quests
+                .iter()
+                .find(|prior| prior.id == *id)
+                .is_some_and(|prior| {
+                    ledger.contains(actor, prior.transaction(instance, actor).source)
+                })
+        })
     }
     pub(super) fn validate_claim(
         &self,
@@ -128,6 +151,7 @@ impl Config {
             .ok_or("Claimed campaign quest is not defined")?;
         if transaction != &quest.transaction(transaction.instance, transaction.actor)
             || quest.count(ledger.character(transaction.actor)) < quest.goal
+            || !self.available(quest, transaction.instance, transaction.actor, ledger)
         {
             return Err(
                 "Campaign claim does not match its definition or completed objective".into(),
@@ -174,7 +198,7 @@ pub fn validate_progress(values: &[Progress]) -> Result<(), String> {
             || !name(&quest.name)
             || !(1..=1_000_000).contains(&quest.goal)
             || quest.progress > quest.goal
-            || (quest.claimed && quest.progress != quest.goal)
+            || (quest.claimed && (quest.progress != quest.goal || !quest.available))
             || (quest.experience == 0 && quest.items.is_empty())
         {
             return Err("Invalid campaign quest presentation".into());
@@ -188,11 +212,53 @@ pub fn validate_progress(values: &[Progress]) -> Result<(), String> {
 mod tests {
     use super::*;
     #[test]
+    fn prerequisite_graph_rejects_invalid_edges_and_preserves_legacy_configs() {
+        let original = Config {
+            version: 1,
+            levels: vec![0],
+            quests: vec![
+                Quest {
+                    prerequisites: vec![],
+                    id: 1,
+                    name: "First".into(),
+                    objective: 1,
+                    goal: 1,
+                    experience: 1,
+                    items: vec![],
+                },
+                Quest {
+                    prerequisites: vec![1],
+                    id: 3,
+                    name: "Second".into(),
+                    objective: 1,
+                    goal: 1,
+                    experience: 1,
+                    items: vec![],
+                },
+            ],
+        };
+        original.validate().unwrap();
+        for edges in [vec![0], vec![2], vec![3], vec![4], vec![1, 1], vec![1; 17]] {
+            let mut bad = original.clone();
+            bad.quests[1].prerequisites = edges;
+            assert!(bad.validate().is_err());
+        }
+        let mut legacy = serde_json::to_value(&original).unwrap();
+        legacy["quests"][1]
+            .as_object_mut()
+            .unwrap()
+            .remove("prerequisites");
+        let decoded: Config = serde_json::from_value(legacy).unwrap();
+        decoded.validate().unwrap();
+        assert!(decoded.quests[1].prerequisites.is_empty());
+    }
+    #[test]
     fn authored_levels_and_quest_definitions_enforce_boundaries() {
         let config = Config {
             version: 1,
             levels: vec![0, 100, 300],
             quests: vec![Quest {
+                prerequisites: vec![],
                 id: 1,
                 name: "Disrupt the summoning".into(),
                 objective: 1,

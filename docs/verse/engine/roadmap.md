@@ -299,6 +299,8 @@ The [inventory window profile](../../../bench/verse/2026-10-03/inventory-window/
 
 [#10540](https://github.com/OpenAgentsInc/openagents/issues/10540) adds portable leaf mounts bound to an exact parent life, render model, and socket, with catalog admission independent of instance order. Native rendering evaluates body animation/grounding first, then resolves gear and each bow from that final palette before bounds, shadows, and color submission; the single-adventurer bow assumption and separate gear pose sampling are removed. The [mount receipt](../../../bench/verse/2026-10-04/mounts/run.json) retains two-rig interrupted transitions, alternating instance order, grounded death poses, generation fencing, and a programmatic four-second video. This is a rendering fixture, not authoritative combat, OS input, or frame-budget acceptance; other VE-3/VE-5/VE-6 requirements remain.
 
+[#10550](https://github.com/OpenAgentsInc/openagents/issues/10550) adds authored campaign prerequisite chains. Host claims require every prerequisite receipt for the same character and instance; recovery validates ledger order, and wire version fifteen exposes availability to the native quest panel. Objective counters retain progress earned before unlocking. Quest giver/enrollment interactions, repeatable quests, progression stat scaling, prediction/reconciliation, and full VE-5 acceptance remain.
+
 ## Reuse inventory
 
 Review baseline: OpenAgents `843c92dd7e`. The entries below were checked against

@@ -348,15 +348,22 @@ retains a GPU layout capture, source/artifact hashes, and focused checks. Its
 synthetic counters establish layout, not live rewarded-combat acceptance.
 
 Host JSON accepts optional version-one `progression` configuration, for example
-`{"version":1,"levels":[0,100,300],"quests":[{"id":1,"name":"Disrupt the summoning","objective":1,"goal":12,"experience":75,"items":[{"id":1,"count":2}]}]}`.
-Campaign quests are active for every enrolled character. Kill reward counters
-supply objectives; claims select only the quest ID under the current owned life
-and control epoch. The host checks completion and applies configured rewards
+`{"version":1,"levels":[0,100,300],"quests":[{"id":1,"name":"Disrupt the summoning","objective":1,"goal":12,"experience":75,"items":[{"id":1,"count":2}]},{"id":2,"name":"Secure the chamber","prerequisites":[1],"objective":1,"goal":24,"experience":150,"items":[]}]}`.
+Campaign quests without prerequisites are active for every enrolled character.
+An optional `prerequisites` array lists up to 16 sorted, unique earlier quest IDs.
+The host unlocks a quest only after that character claims every prerequisite in
+the same instance. Kill reward counters supply objectives, including counters
+earned before unlocking; claims select only the quest ID under the current owned life
+and control epoch. The host checks availability and completion and applies configured rewards
 once per character and instance, including across respawn, reset, and recovery.
 Durable hosts commit before acknowledging claims. Saved progression configuration
 is immutable on recovery; earlier saves upgrade with no configured quests and
 level one. Level thresholds affect presentation only. Quest enrollment, abandonment,
-repeatable quests, quest givers, equipment, and combat stat scaling remain.
+repeatable quests, quest givers, and combat stat scaling remain.
+Wire version fifteen carries quest availability. Locked quests show their status
+and expose no claim action. Recovery replays prerequisite claims in ledger order
+and rejects follow-up claims whose prerequisites are absent. Existing saves
+without prerequisite arrays retain their original behavior.
 The [campaign receipt](../../bench/verse/2026-10-04/campaign/run.json) retains
 focused TLS recovery checks and synthetic ready/completed GPU panel captures.
 

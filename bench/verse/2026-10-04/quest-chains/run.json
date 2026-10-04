@@ -1,0 +1,33 @@
+{
+  "schema": "verse.quest-chains.receipt.v1",
+  "issue": 10550,
+  "base_commit": "bc2a67f993a21338efe3593042ebb5f8f296c84f",
+  "wire_version": 15,
+  "checks": {
+    "service_net": 94,
+    "native_character_panel": 5,
+    "formatting": "passed",
+    "diff_whitespace": "passed"
+  },
+  "covered": [
+    "Invalid prerequisite graphs and absent-field compatibility",
+    "Completed objectives cannot bypass locked claims",
+    "Per-character unlock isolation",
+    "Exact reward retries and checkpoint recovery",
+    "Rejected follow-up receipts reordered before prerequisites",
+    "TLS denied locked claims and replicated availability",
+    "Native locked quests emit no claim intent"
+  ],
+  "limits": [
+    "No live OS interaction or new GPU capture",
+    "Objective counters include progress earned before unlock",
+    "Quest enrollment, givers, repeatability, progression stat scaling and full VE-5 acceptance remain"
+  ],
+  "source_sha256": {
+    "crates/verse-world/src/service/client.rs": "06c2903f93379580cfbb165b64c0e3ee59301875491ea1f3c9a996b1ddd0e849",
+    "crates/verse-world/src/service/progression.rs": "356427107e4a57a7e687ae9f380ec975790f90f135e955330cbfe96018fecf5c",
+    "crates/verse-world/src/service/save.rs": "a5e8a9bef558dbd25deec8aa7da064879debf0d59d89d17c51d5817aac8ab447",
+    "crates/verse-world/src/service/wire.rs": "9f33e5169a49b38806b1e64a2f1b488750a16900a5286810accdcafabf9c9aca",
+    "crates/verse/src/imported/character_panel.rs": "627aec68bde9eda199433935ab6d868efaf3ddb7daa766b2d2c173d5541e21b4"
+  }
+}
