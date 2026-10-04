@@ -48,6 +48,21 @@ persistence format, or its code. The design is reimplemented here in Rust
 against existing OpenAgents crates. The AgentCraft checkout's own instructions
 are reference material, not workspace instructions.
 
+## Why a place
+
+> my strong suspicion is that the optimal way to manage multiple
+> intelligences is that which is closet to our primordial state: wandering
+> around a small town, seeing people we know well, physically embodied
+>
+> the cybersynesque dashboards feel productive, but i doubt they really are
+
+— [Will Manidis](https://x.com/WillManidis/status/2106401558565134823), replying about AgentCraft
+
+That is the bet behind the studio: managing several agents works better as
+walking among them than as reading a wall of status. The world carries the
+glanceable state (who is working, waiting, or stuck), and the panels hold the
+detail for the one station the person is standing at.
+
 ## Goals
 
 - A goal typed in Verse becomes a plan, tasks, worktrees, reviewed diffs, and

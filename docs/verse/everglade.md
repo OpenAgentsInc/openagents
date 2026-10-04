@@ -10,6 +10,23 @@ Minecraft studio; Everglade is the same workspace built in Verse Engine from
 stylized CC0 kits, and its panels are the Zeron-derived interface the studio
 already specifies.
 
+## Inspiration
+
+> my strong suspicion is that the optimal way to manage multiple
+> intelligences is that which is closet to our primordial state: wandering
+> around a small town, seeing people we know well, physically embodied
+>
+> the cybersynesque dashboards feel productive, but i doubt they really are
+
+— [Will Manidis](https://x.com/WillManidis/status/2106401558565134823), replying about AgentCraft
+
+Everglade takes that literally. The studio is a small town in a glade, the
+agents are people the player knows by name and silhouette, and where an agent
+stands says what it is doing. Panels open only when the player walks up to a
+station and asks for detail; the default view is the place, not a dashboard.
+
+## Placement
+
 Everglade replaces the earlier plan to put the studio in a plaza building. The
 studio's host coordinator, protocol, and panels are unchanged; only where they
 are drawn moves.
