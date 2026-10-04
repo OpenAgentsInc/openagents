@@ -225,13 +225,7 @@ impl Pack {
             if let Some(graph) = &model.graph {
                 graph.validate(model)?;
             }
-            if model
-                .attachments
-                .iter()
-                .any(|a| a.bone >= model.bones.len() || a.position.iter().any(|v| !v.is_finite()))
-            {
-                return Err("Invalid model attachment".into());
-            }
+            crate::sockets::Sockets::admit(model)?;
             for surface in &model.surfaces {
                 surface.material.validate(self.textures.len())?;
                 vertices += surface.vertices.len();

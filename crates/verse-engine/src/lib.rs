@@ -20,6 +20,7 @@ pub mod presentation;
 pub mod render_graph;
 pub mod render_world;
 pub mod residency;
+pub mod sockets;
 
 /// Converts version-one pack source coordinates to Y-up meters.
 ///

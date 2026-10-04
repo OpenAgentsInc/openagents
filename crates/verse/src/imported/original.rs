@@ -82,6 +82,68 @@ fn cuboid(
     }
     m.surfaces.push(s);
 }
+fn equipment_samples(pack: &mut Pack) {
+    let mut hat = model("gear-hat", 0.45);
+    let mut surface = Surface {
+        material: Default::default(),
+        vertices: vec![],
+        indices: vec![],
+        texture: 0,
+        blend: 0,
+        emissive: false,
+        tint: [0.34, 0.13, 0.56],
+    };
+    for i in 0..16 {
+        let angle = i as f32 * std::f32::consts::TAU / 16.;
+        for point in [
+            [0., 0., 0.45],
+            [0.22 * angle.cos(), 0.22 * angle.sin(), 0.],
+            {
+                let next = angle + std::f32::consts::TAU / 16.;
+                [0.22 * next.cos(), 0.22 * next.sin(), 0.]
+            },
+        ] {
+            let normal = Vec3::new(angle.cos(), angle.sin(), 0.49).normalize();
+            let index = surface.vertices.len() as u32;
+            surface.vertices.push(Vertex {
+                position: point,
+                normal: normal.to_array(),
+                uv: [0.5; 2],
+                joints: [0; 4],
+                weights: [1., 0., 0., 0.],
+            });
+            surface.indices.push(index);
+        }
+    }
+    hat.surfaces.push(surface);
+    cuboid(
+        &mut hat,
+        [0., 0., 0.],
+        [0.27, 0.27, 0.015],
+        [0.34, 0.13, 0.56],
+        0,
+        false,
+    );
+    pack.models.insert("gear-hat".into(), hat);
+    let mut wand = model("gear-wand", 0.6);
+    cuboid(
+        &mut wand,
+        [0., 0., 0.18],
+        [0.022, 0.022, 0.28],
+        [0.32, 0.14, 0.045],
+        0,
+        false,
+    );
+    cuboid(
+        &mut wand,
+        [0., 0., 0.5],
+        [0.055, 0.055, 0.07],
+        [0.17, 0.75, 1.],
+        0,
+        true,
+    );
+    pack.models.insert("gear-wand".into(), wand);
+}
 fn bow() -> Model {
     let mut bow = model("bow", 1.4);
     // Tapered curved limbs in the pack's Z-up coordinates, centered on the grip.
@@ -451,6 +513,7 @@ pub fn generate(dir: &Path) -> Result<Pack, String> {
         scale: 1.,
     });
     pack.models.insert("bow".into(), bow());
+    equipment_samples(&mut pack);
     for (name, half, color) in [("arrow", [0.55, 0.025, 0.025], [0.75, 0.65, 0.35])] {
         let mut m = model(name, 1.4);
         cuboid(&mut m, [0.; 3], half, color, 0, false);

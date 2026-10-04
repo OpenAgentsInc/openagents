@@ -1,0 +1,59 @@
+{
+  "schema": "verse.sockets.receipt.v1",
+  "issue": 10538,
+  "fixture": {
+    "schema": "verse.sockets.fixture.v1",
+    "models": [
+      "universal-male-peasant",
+      "universal-female-ranger"
+    ],
+    "animation": "walk",
+    "animation_time": 0.25,
+    "socket_ids": [
+      5,
+      6
+    ],
+    "geometric_items": [
+      "gear-hat",
+      "gear-wand"
+    ],
+    "equipment_instances": 4,
+    "dimensions": [
+      1920,
+      1080
+    ]
+  },
+  "checks": {
+    "engine": 74,
+    "native": 1,
+    "original": 3,
+    "inventory": 1,
+    "chamber": 8
+  },
+  "images": {
+    "gear.png": "e6ab419f8b824a178cf0249f057f736462be10a749dadefeaf4ed5f6a419c587",
+    "body-bow.png": "55b2e8bb2a3b49b5e70495590828bdd2949bc6dda3cb54f4833aa127c628f533"
+  },
+  "source_sha256": {
+    "crates/verse-engine/src/sockets.rs": "2d45dc22fa29d528506640f61e7215dc12bfbee0ee3d127f6f22f44d3037bd6f",
+    "crates/verse-engine/src/assets.rs": "34fb611d2c694719e62bf850eacfd683d404bf9c227112fcb9d7271c762daac6",
+    "crates/verse/src/imported/chamber.rs": "cca72988ca69237c83de94d48a954a2e72473304cae2a1dc7f63d6b127f80e63",
+    "crates/verse/src/imported/characters.rs": "e91f89ad7bbbbfecca3a33f19dd247743a845e793d6fbf12c06fe4f6d4300ed3",
+    "crates/verse/src/imported/original.rs": "ecef66c65bd97766f4ebbcae6d273167b76472ac53a31e21ff3faa38c83b6b53"
+  },
+  "body_bow_comparison": {
+    "reference": "bench/verse/2026-10-04/outfits/models.png",
+    "dimensions": [
+      1920,
+      1080
+    ],
+    "rgb_pixels_equal": true
+  },
+  "provenance": "Bundled CC0 Universal character rigs and project-owned raw geometric hat and wand; no World of Warcraft assets.",
+  "limits": [
+    "Standalone programmatic walking-pose GPU fixture, not live combat equipment switching.",
+    "Native socket sampling uses pose_selected; shared final graph-transition palette scheduling remains.",
+    "Owned individual equipment slots and stat bonuses remain.",
+    "This fixture does not establish an OS input or frame-time budget."
+  ]
+}

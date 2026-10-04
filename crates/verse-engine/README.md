@@ -27,3 +27,16 @@ The portable `residency` catalog resolves logical model names and pack-local tex
 `presentation` owns portable instance values and immutable catalog-bound frame extraction. It borrows source instances, preserves actor lives and animation selections, limits a frame to 256 instances, and rejects missing models or nonfinite transforms, animation times, and emissions. Native drawing consumes this extracted contract and validates its catalog before GPU writes, including empty frames. Camera, lighting, UI batches, and GPU submission remain renderer contracts.
 
 `presentation::View` owns finite camera projection and eye values. `lighting` owns local point sources, atmosphere, the 32-light/four-shadow-source budget, authored flicker sampling, and cube-shadow camera construction. Admission rejects invalid inputs and nonfinite sampled intensities or shadow projections before native uniform writes. GPU uniform packing and shader layouts remain in the renderer.
+
+`sockets` resolves bind-space attachment frames from an admitted model and a
+caller-supplied evaluated skinning palette. Socket IDs are unique and bounded to
+64 per model. Palettes must match the exact borrowed model, bone count, and finite
+affine matrix contract; local joint transforms are not interchangeable with
+skinning matrices. Frames preserve parent and animated joint rotation/scale,
+then apply the socket's bind-space position and authored equipment transform.
+Missing sockets, foreign palettes, invalid inputs, and derived overflow are
+explicit errors. Resolution owns no playback clock, world state, or inventory.
+Native bow positioning consumes this contract. Universal compilation retains
+bow sockets 2–4 and adds head socket 5 and right-palm socket 6. Graph playback
+callers can supply their final palette; native socket drawing still samples its
+selected clip, so shared graph-transition palette scheduling remains.

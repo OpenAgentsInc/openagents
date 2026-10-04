@@ -848,7 +848,7 @@ fn animations(model: &mut Model, path: &Path) -> Result<(), String> {
             position: wrist.lerp(knuckle, 0.55).to_array(),
         });
     }
-    for (id, name) in [(3, "spine_03"), (4, "lowerarm_l")] {
+    for (id, name) in [(3, "spine_03"), (4, "lowerarm_l"), (5, "Head")] {
         if let Some((bone, position)) = at(name) {
             model.attachments.push(Attachment {
                 id,
@@ -856,6 +856,13 @@ fn animations(model: &mut Model, path: &Path) -> Result<(), String> {
                 position: position.to_array(),
             });
         }
+    }
+    if let (Some((hand, wrist)), Some((_, knuckle))) = (at("hand_r"), at("middle_01_r")) {
+        model.attachments.push(Attachment {
+            id: 6,
+            bone: hand,
+            position: wrist.lerp(knuckle, 0.55).to_array(),
+        });
     }
     super::original::bind_states(model);
     Ok(())

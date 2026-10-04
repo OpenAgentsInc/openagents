@@ -127,14 +127,15 @@ fn instances_with_outfits(
             * Mat4::from_rotation_y(a.actor.yaw)
             * Mat4::from_scale(Vec3::splat(a.actor.scale))
             * basis();
-        let point = |id| {
-            model
-                .attachments
-                .iter()
-                .find(|x| x.id == id)
-                .map(|x| (body * pose[x.bone]).transform_point3(x.position.into()))
-        };
-        if let (Some(palm), Some(back), Some(elbow)) = (point(2), point(3), point(4)) {
+        let sockets = verse_engine::sockets::Sockets::admit(model)?;
+        let palette = verse_engine::sockets::Palette::admit(model, &pose)?;
+        if model.attachments.iter().any(|a| a.id == 2)
+            && model.attachments.iter().any(|a| a.id == 3)
+            && model.attachments.iter().any(|a| a.id == 4)
+        {
+            let palm = sockets.point(palette, body, 2)?;
+            let back = sockets.point(palette, body, 3)?;
+            let elbow = sockets.point(palette, body, 4)?;
             actors.push(Instance {
                 actor: None,
                 model: "bow".into(),
@@ -1262,10 +1263,49 @@ mod tests {
         for name in outfits.values() {
             super::super::remote_content::outfit_model(&pack, name).unwrap();
         }
+        for name in super::super::characters::APPEARANCES {
+            let model = &pack.models[&format!("universal-{name}")];
+            for id in [2, 3, 4, 5, 6] {
+                assert!(
+                    model.attachments.iter().any(|a| a.id == id),
+                    "Missing socket {id} on {name}"
+                );
+            }
+        }
         let drawn = instances_with_outfits(&pack, &frame, &outfits).unwrap();
         assert_eq!(drawn[0].model, "universal-male-peasant");
         assert_eq!(drawn[1].model, "universal-female-ranger");
         assert_eq!(drawn.iter().filter(|i| i.model == "bow").count(), 2);
+        let mut equipped = drawn.clone();
+        for actor in &frame.actors {
+            let model = &pack.models[&outfits[&actor.actor.id]];
+            let pose = verse_engine::animation::pose_selected(
+                model,
+                actor.animation,
+                actor.animation_time,
+            )
+            .unwrap();
+            let palette = verse_engine::sockets::Palette::admit(model, &pose).unwrap();
+            let sockets = verse_engine::sockets::Sockets::admit(model).unwrap();
+            let parent = Mat4::from_translation(actor.actor.position)
+                * Mat4::from_rotation_y(actor.actor.yaw)
+                * Mat4::from_scale(Vec3::splat(actor.actor.scale))
+                * basis();
+            for (socket, model, local) in [
+                (5, "gear-hat", Mat4::from_translation(Vec3::Z * 0.23)),
+                (6, "gear-wand", Mat4::IDENTITY),
+            ] {
+                let transform = sockets.frame(palette, parent, socket, local).unwrap();
+                equipped.push(Instance {
+                    actor: None,
+                    model: model.into(),
+                    transform,
+                    animation: 0.into(),
+                    time: frame.time,
+                    emission: Vec3::ONE,
+                });
+            }
+        }
         let atlas = super::super::original::atlas().unwrap();
         let mut renderer =
             super::super::Renderer::new(pack, dir.path(), 1920, 1080, &atlas, &[]).unwrap();
@@ -1293,6 +1333,23 @@ mod tests {
             .unwrap()
             .write_image_data(&pixels)
             .unwrap();
+        if let Some(path) = std::env::var_os("VERSE_SOCKET_CAPTURE") {
+            let pixels = renderer
+                .draw(camera, &equipped, &crate::ui::UiBatch::default(), &lighting)
+                .unwrap();
+            let mut encoder = png::Encoder::new(std::fs::File::create(path).unwrap(), 1920, 1080);
+            encoder.set_color(png::ColorType::Rgba);
+            encoder.set_depth(png::BitDepth::Eight);
+            encoder
+                .write_header()
+                .unwrap()
+                .write_image_data(&pixels)
+                .unwrap();
+            println!(
+                "VERSE_SOCKETS {}",
+                serde_json::json!({"schema":"verse.sockets.fixture.v1","models":["universal-male-peasant","universal-female-ranger"],"animation":"walk","animation_time":0.25,"socket_ids":[5,6],"geometric_items":["gear-hat","gear-wand"],"equipment_instances":equipped.len()-drawn.len(),"dimensions":[1920,1080]})
+            );
+        }
     }
     #[test]
     fn local_and_read_only_blocker_bounds_share_native_transforms_and_table_proxy_rules() {
