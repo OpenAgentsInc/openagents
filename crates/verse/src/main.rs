@@ -29,6 +29,10 @@
 //! click on the badge, opens them. A bell rings for a new decision and a
 //! chime for a finished task or goal, with a desktop notice while the
 //! window is not in front; `V` mutes them, and `--studio-mute` starts muted.
+//! the podium, and merge decisions from the merge station.
+//! `--everglade` opens straight into Everglade instead of the plaza, and
+//! `--studio-notice <text>` leads Everglade's caption with a notice;
+//! `openagents studio up` passes both.
 //!
 //! `verse --seed-rooms <relay-key-file>` creates the NIP-29 chat rooms as
 //! the relay; `scripts/verse-relay.sh` runs it.
@@ -169,6 +173,8 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<(Option<Shot>, Option
             "--studio-sim" => options.studio_sim = true,
             "--studio-socket" => options.studio_socket = Some(value()?.into()),
             "--studio-mute" => options.studio_muted = true,
+            "--everglade" => options.everglade = true,
+            "--studio-notice" => options.studio_notice = Some(value()?),
             "--at" => {
                 let v = value()?;
                 at = Some(

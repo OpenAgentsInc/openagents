@@ -285,6 +285,9 @@ pub(crate) struct State {
     /// The Agent Studio Everglade draws. It keeps its source across visits
     /// and observes only while the player is in Everglade.
     studio: everglade::studio::Studio,
+    /// What Everglade's caption leads with, such as that no coding agent
+    /// can sign in ([`crate::runtime::WorldRuntime::set_studio_notice`]).
+    studio_notice: Option<String>,
     destination: ZoneId,
     plaza_pose: Option<(glam::Vec3, f32)>,
     elapsed: f32,
@@ -306,6 +309,7 @@ impl Default for State {
             lab: None,
             everglade: None,
             studio: everglade::studio::Studio::default(),
+            studio_notice: None,
             destination: ZoneId::Ruins,
             plaza_pose: None,
             elapsed: 0.0,

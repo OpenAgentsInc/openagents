@@ -767,6 +767,18 @@ pub fn record(root: &Path, entry: &Entry) -> Result<(), String> {
         .map_err(|_| "cannot write the auto-start journal".into())
 }
 
+/// Record in the journal under `root` that the owner turned the policy on
+/// (`policy_on`) or off (`policy_off`), with `detail` naming its bounds, as
+/// `coder host autostart` does. `openagents studio up` and `down` change
+/// the policy this way.
+///
+/// # Errors
+/// Reports a failed write.
+pub fn note_policy(root: &Path, at: u64, on: bool, detail: &str) -> Result<(), String> {
+    let event = if on { "policy_on" } else { "policy_off" };
+    record(root, &Entry::new(at, event).detail(detail))
+}
+
 /// Record in the journal under `root` that `device` made `task`'s turn
 /// starting at revision `turn` eligible in `workspace`, asking for
 /// `requested` first. The policy's sweep starts it under its own bounds;

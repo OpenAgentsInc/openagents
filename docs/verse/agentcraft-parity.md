@@ -39,9 +39,9 @@ limit; **Missing** does not exist.
 
 | AgentCraft | Studio today | Gap issue |
 | --- | --- | --- |
-| One command to launch everything on a repository | Missing: seven manual steps | One-command launch |
-| A free simulated team for demos | Partial: a test fixture and `verse --studio-sim` | One-command launch |
-| Graceful authentication failure with a banner | Missing | One-command launch |
+| One command to launch everything on a repository | Done: `openagents studio up --repo PATH` admits the workspace, turns auto-start on, seats a team, starts the host, and opens Everglade; `studio down` undoes only what it did | #10545 |
+| A free simulated team for demos | Done: `openagents studio up --sim` | #10545 |
+| Graceful authentication failure with a banner | Done: with no coding agent signed in, `studio up` says so and Everglade's caption leads with it | #10545 |
 
 ## The world
 

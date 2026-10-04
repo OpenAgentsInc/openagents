@@ -71,6 +71,7 @@ mod sov_host;
 #[cfg(unix)]
 mod ssh;
 mod studio;
+mod studio_up;
 mod study;
 mod terminal;
 #[cfg(test)]
@@ -123,8 +124,9 @@ Coder:
                would lose, archive an ended task's, and restore an archived one.
   ssh          Start or adopt a host over SSH and tunnel to it.
   boat         Build and test this checkout's change on a Boat sandbox, not here.
-  studio       Agent Studio: seats, goals a lead plans, plan entries released as their
-               dependencies finish, shared memory, and messages to seats.
+  studio       Agent Studio: one command to launch it on a repository, seats, goals a
+               lead plans, plan entries released as their dependencies finish,
+               shared memory, and messages to seats.
   shadow       What a sample of Coder runs would have cost through the raw engine
                (off unless set: coder.shadow).
   efficiency   Routed against raw delegation, from recorded runs: cost per

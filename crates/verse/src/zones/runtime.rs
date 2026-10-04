@@ -703,7 +703,12 @@ impl WorldRuntime {
                 let label = crate::zones::everglade::button_label(&panel);
                 add("interact", label, Intent::Interact, true);
             }
-            Everglade::caption(self.player.pos, self.interact_hint)
+            let caption = Everglade::caption(self.player.pos, self.interact_hint);
+            match &self.zone_state.studio_notice {
+                Some(notice) if caption.is_empty() => notice.clone(),
+                Some(notice) => format!("{notice} · {caption}"),
+                None => caption,
+            }
         } else if portal.near && portal.visible {
             if self.nearest_portal().0 == ZoneId::Lagrange1 {
                 add("enter", "Enter L1", Intent::Enter, true);
@@ -990,6 +995,34 @@ impl WorldRuntime {
         {
             let _ = self.zone_intent(Intent::Return);
         }
+    }
+
+    /// Start loading Everglade from the plaza without walking to its
+    /// portal, as `verse --everglade` asks at launch. [`Self::zone_tick`]
+    /// installs it once its pack loads, as after a portal entry.
+    ///
+    /// # Errors
+    /// The player is not in the plaza, a load is under way, or the pack
+    /// cannot be requested.
+    pub fn enter_everglade(&mut self) -> Result<(), String> {
+        if !self.is_plaza() || self.zone_loading() {
+            return Err("Everglade enters only from the plaza".into());
+        }
+        self.zone_state.destination = ZoneId::Everglade;
+        let result = self.start_zone_load(ZoneId::Everglade);
+        if let Err(error) = &result {
+            self.zone_state.error = Some(error.chars().take(180).collect());
+        }
+        result
+    }
+
+    /// Lead Everglade's caption with `notice`, or with nothing for `None`.
+    /// A blank notice counts as none, and a long one is cut to 180
+    /// characters.
+    pub fn set_studio_notice(&mut self, notice: Option<String>) {
+        self.zone_state.studio_notice = notice
+            .map(|text| text.trim().chars().take(180).collect::<String>())
+            .filter(|text| !text.is_empty());
     }
 
     /// Where Everglade's Agent Studio comes from. Nothing is read until the

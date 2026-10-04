@@ -62,6 +62,12 @@ pub struct Options {
     /// Start with the studio's bell and chimes silent; V toggles them in
     /// Everglade.
     pub studio_muted: bool,
+    /// Open straight into Everglade once the window shows, as
+    /// `openagents studio up` asks, rather than in the plaza.
+    pub everglade: bool,
+    /// A notice Everglade's caption leads with, such as that no coding
+    /// agent can sign in, so the studio's seats cannot work.
+    pub studio_notice: Option<String>,
 }
 
 impl Default for Options {
@@ -77,6 +83,8 @@ impl Default for Options {
             studio_sim: false,
             studio_socket: None,
             studio_muted: false,
+            everglade: false,
+            studio_notice: None,
         }
     }
 }
@@ -704,6 +712,7 @@ impl App {
                 crate::zones::everglade::studio::live::Live::control(path),
             ));
         }
+        runtime.set_studio_notice(options.studio_notice.clone());
         let zone_operators = zone_operators_for(session.as_ref());
         Ok(Self {
             window: None,
@@ -1223,6 +1232,20 @@ impl App {
             self.keys = Keys::default();
             self.capture(false);
             self.sync_zone_services(true);
+        }
+    }
+
+    /// Start loading Everglade from the plaza without walking to its
+    /// portal, then hand off as a portal entry does.
+    fn open_everglade(&mut self) {
+        match self.runtime.enter_everglade() {
+            Ok(()) => {
+                self.stop_map();
+                self.keys = Keys::default();
+                self.capture(false);
+                self.sync_zone_services(true);
+            }
+            Err(error) => eprintln!("verse: cannot open Everglade: {error}"),
         }
     }
 
@@ -3002,6 +3025,11 @@ impl ApplicationHandler for App {
             }
         }
         self.window = Some(window);
+        // `--everglade` enters once, at the first window; a later resume
+        // leaves the player where they are.
+        if std::mem::take(&mut self.connection_options.everglade) {
+            self.open_everglade();
+        }
     }
 
     fn suspended(&mut self, _: &ActiveEventLoop) {

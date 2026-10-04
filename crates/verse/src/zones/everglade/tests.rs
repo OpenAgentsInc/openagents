@@ -634,6 +634,44 @@ fn other_zones_intents_are_refused_in_everglade() {
     }
 }
 
+#[test]
+fn a_launch_into_everglade_loads_from_anywhere_in_the_plaza() {
+    let mut runtime = WorldRuntime::new();
+    // No zone storage: nothing to load from.
+    assert!(runtime.enter_everglade().is_err());
+    assert!(runtime.is_plaza() && !runtime.zone_loading());
+    let cache = cached_pack();
+    runtime.configure_zone_cache(cache.path().to_path_buf());
+    // At the spawn, far from every portal, the launch still enters.
+    runtime.enter_everglade().unwrap();
+    assert!(runtime.zone_loading());
+    assert!(runtime.enter_everglade().is_err(), "one load at a time");
+    finish_loading(&mut runtime);
+    assert_eq!(runtime.zone, ZoneId::Everglade);
+    assert!(runtime.enter_everglade().is_err(), "only from the plaza");
+}
+
+#[test]
+fn a_studio_notice_leads_the_everglade_caption() {
+    let mut runtime = entered();
+    let wall = STATIONS.iter().find(|s| s.id == "task_wall").unwrap();
+    runtime.set_spawn(wall.position(), wall.facing).unwrap();
+    runtime.set_studio_notice(Some("  No coding agent can sign in.  ".into()));
+    let caption = runtime.zone_snapshot(1.0).caption;
+    assert!(
+        caption.starts_with("No coding agent can sign in. · "),
+        "{caption}"
+    );
+    assert!(caption.contains("Task Wall"), "{caption}");
+    runtime.set_studio_notice(Some("   ".into()));
+    assert!(
+        !runtime
+            .zone_snapshot(1.0)
+            .caption
+            .contains("No coding agent")
+    );
+}
+
 /// A zone cache that already holds the pinned pack, so an entry loads
 /// offline.
 fn cached_pack() -> tempfile::TempDir {
