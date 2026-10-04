@@ -433,34 +433,29 @@ fn the_everglade_arch_loads_its_pack_pauses_presence_and_the_return_rejoins() {
         .place_player([podium[0], 0.0, podium[1]].into(), 0.0)
         .unwrap();
     assert!(scene.world.studio_panel_here().is_some());
-    // The movement hotbar shares touch routing with the held stick.
-    assert!(scene.bare_zone_panel());
-    let hud = scene.zone_hud_snapshot();
-    assert!(hud.visible);
-    assert!(hud.caption.is_empty());
-    assert_eq!(hud.buttons.len(), 5);
-    let button = hud
-        .buttons
+    // The icon hotbar shares touch routing with the held stick; no zone
+    // panel is drawn inside Everglade.
+    assert!(!scene.bare_zone_panel());
+    assert!(scene.everglade_hotbar_shown());
+    let size = scene.lifecycle.viewport().logical_size();
+    let bottom = scene.hotbar_bottom();
+    let [left, top, width, height] = verse::zones::everglade::hotbar::frame(size, bottom);
+    let slot = verse::zones::everglade::hotbar::SLOTS
         .iter()
-        .find(|b| b.action == Intent::Levitate)
+        .position(|(intent, _)| *intent == Intent::Levitate)
         .unwrap();
-    let [x, y, w, h] = button.frame;
+    let step = width / verse::zones::everglade::hotbar::SLOTS.len() as f32;
+    let (x, y) = (left + step * (slot as f32 + 0.5), top + height / 2.0);
+    assert_eq!(
+        verse::zones::everglade::hotbar::hit([x, y], size, bottom),
+        Some(Intent::Levitate)
+    );
     let [sx, sy] = scene.stick_center();
     scene.pointer(8, PointerPhase::Down, sx, sy).unwrap();
-    scene
-        .pointer(9, PointerPhase::Down, x + w / 2.0, y + h / 2.0)
-        .unwrap();
-    scene
-        .pointer(9, PointerPhase::Up, x + w / 2.0, y + h / 2.0)
-        .unwrap();
+    scene.pointer(9, PointerPhase::Down, x, y).unwrap();
+    scene.pointer(9, PointerPhase::Up, x, y).unwrap();
     assert!(scene.touches.contains_key(&8));
-    assert!(
-        scene
-            .zone_hud_snapshot()
-            .buttons
-            .iter()
-            .any(|b| b.action == Intent::Rise && b.enabled)
-    );
+    assert!(scene.world.everglade_levitating());
     scene.pointer(8, PointerPhase::Up, sx, sy).unwrap();
     assert!(scene.zone_intent(Intent::Interact).is_err());
     assert!(scene.studio.is_none());

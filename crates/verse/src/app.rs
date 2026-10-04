@@ -36,6 +36,10 @@ use crate::xp;
 use crate::zones::everglade::studio::PanelKind as StudioPanel;
 use crate::zones::{self, Intent as ZoneIntent};
 
+/// How far Everglade's hotbar sits above the window's bottom edge, logical
+/// units.
+const HOTBAR_BOTTOM: f32 = 14.0;
+
 /// How the window joins the shared world.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Options {
@@ -1870,32 +1874,19 @@ impl App {
         }
     }
 
-    /// Everglade draws no map, and its zone panel is only the movement
-    /// hotbar (owner, 2026-10-04): the glade is the screen, and the player
-    /// leaves through the arch. A load in progress or a failed one still
-    /// shows the full panel.
+    /// Everglade draws no map and no zone panel, only the movement hotbar
+    /// (owner, 2026-10-04): the glade is the screen, and the player leaves
+    /// through the arch. A load in progress or a failed one still shows the
+    /// panel.
     fn in_bare_everglade(&self) -> bool {
         self.runtime.zone == zones::ZoneId::Everglade
             && self.runtime.zone_load_state() == zones::LoadState::Idle
     }
 
-    /// The zone panel's snapshot: in Everglade, only the movement hotbar,
-    /// which the panel draws without its caption.
-    fn zone_hud_snapshot(&self, aspect: f32) -> zones::Snapshot {
-        let mut snapshot = self.runtime.zone_snapshot(aspect);
-        if self.in_bare_everglade() {
-            snapshot.controls.retain(|control| {
-                matches!(
-                    control.action,
-                    ZoneIntent::Jump
-                        | ZoneIntent::Sprint
-                        | ZoneIntent::Levitate
-                        | ZoneIntent::Rise
-                        | ZoneIntent::Lower
-                )
-            });
-        }
-        snapshot
+    /// Everglade's hotbar slot under `at`, in logical units.
+    fn hotbar_at(&self, at: [f32; 2]) -> Option<ZoneIntent> {
+        let size = self.renderer.as_ref()?.size();
+        zones::everglade::hotbar::hit(at, size.map(|v| v / self.scale), HOTBAR_BOTTOM)
     }
 
     fn map_visible(&self) -> bool {
@@ -2008,10 +1999,17 @@ impl App {
                 });
                 return;
             }
-            // Everglade's movement: L levitates or lands, and while
-            // levitating Space rises and X descends.
+            // Everglade's movement: 1 to 5 are the hotbar's slots, L
+            // levitates or lands, and while levitating Space rises and X
+            // descends.
             if self.in_bare_everglade() {
+                let slot = |index: usize| Some(zones::everglade::hotbar::SLOTS[index].0);
                 let intent = match code {
+                    KeyCode::Digit1 => slot(0),
+                    KeyCode::Digit2 => slot(1),
+                    KeyCode::Digit3 => slot(2),
+                    KeyCode::Digit4 => slot(3),
+                    KeyCode::Digit5 => slot(4),
                     KeyCode::KeyL => Some(ZoneIntent::Levitate),
                     KeyCode::Space if self.runtime.everglade_levitating() => Some(ZoneIntent::Rise),
                     KeyCode::KeyX if self.runtime.everglade_levitating() => Some(ZoneIntent::Lower),
@@ -2347,6 +2345,16 @@ impl App {
             }
         }
         if self.map.captured(1) {
+            return;
+        }
+        if button == MouseButton::Left
+            && pressed
+            && !self.keys.left_button
+            && !self.keys.right_button
+            && self.in_bare_everglade()
+            && let Some(intent) = self.hotbar_at(self.cursor.map(|v| v / self.scale))
+        {
+            self.zone_action(intent);
             return;
         }
         if button == MouseButton::Left {
@@ -2881,16 +2889,29 @@ impl App {
                     });
                 self.zone_frame = Some(self.zone_hud.snapshot(
                     size.map(|v| v / self.scale),
-                    &self.zone_hud_snapshot(size[0] / size[1].max(1.0)),
+                    &self.runtime.zone_snapshot(size[0] / size[1].max(1.0)),
                     !self.map.expanded
                         && !self.chat.open
                         && !self.board_open
                         && !self.gym_open
-                        && self.picker.is_none(),
+                        && self.picker.is_none()
+                        && !self.in_bare_everglade(),
                 ));
                 if let (Some(atlas), Some(frame)) = (&self.map_atlas, &self.zone_frame) {
                     ui.vertices
                         .extend(self.zone_hud.draw(atlas, frame, self.scale).vertices);
+                }
+                if self.in_bare_everglade()
+                    && let (Some(atlas), Some(slots)) =
+                        (&self.map_atlas, self.runtime.everglade_hotbar())
+                {
+                    zones::everglade::hotbar::draw(
+                        &mut ui,
+                        atlas,
+                        size.map(|v| v / self.scale),
+                        HOTBAR_BOTTOM,
+                        &slots,
+                    );
                 }
                 self.layout = layout;
                 ui
@@ -3061,7 +3082,10 @@ impl ApplicationHandler for App {
             }
         };
         self.scale = window.scale_factor() as f32;
-        let atlas = Atlas::new((14.0 * self.scale).round());
+        let mut atlas = Atlas::new((14.0 * self.scale).round());
+        if let Err(error) = zones::everglade::hotbar::add_sprites(&mut atlas) {
+            eprintln!("verse: Everglade's hotbar has no icons: {error}");
+        }
         match Renderer::new(window.clone(), &self.runtime.world.mesh, &atlas) {
             Ok(mut renderer) => {
                 if let Err(error) = renderer.set_atmosphere(zones::atmosphere(self.runtime.zone)) {

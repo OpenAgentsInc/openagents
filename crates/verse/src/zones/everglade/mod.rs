@@ -16,11 +16,13 @@
 
 mod boards;
 mod draw;
+pub mod hotbar;
 pub mod layout;
 pub mod player;
 pub mod pose;
 mod scene;
 pub mod signals;
+pub mod solids;
 pub mod studio;
 #[cfg(test)]
 mod tests;
@@ -226,6 +228,7 @@ pub(crate) struct Everglade {
     pub altitude: f32,
     pub jump: bool,
     landing: bool,
+    solids: solids::Solids,
     rendered: Mesh,
     cast: Option<player::Cast>,
 }
@@ -245,6 +248,7 @@ impl Everglade {
             altitude: 0.0,
             jump: false,
             landing: false,
+            solids: solids::Solids::build(pack, &layout::placements())?,
             rendered: Self::stage(0.0),
             cast: player::Cast::new(pack, at)?,
         })
@@ -337,26 +341,48 @@ impl Everglade {
         blockers: &[Footprint],
         dt: f32,
     ) {
+        // The solids carry every blocker with its height; `blockers` is
+        // the same set without heights.
+        let _ = blockers;
         let mut input = *input;
         input.sprint |= self.sprinting;
         input.jump |= std::mem::take(&mut self.jump);
         if self.levitating || self.landing {
             input.jump = false;
             let before = player.pos.y;
-            Self::move_player(player, &input, blockers, dt);
+            self.move_on_solids(player, &input, dt);
+            let floor = self.solids.floor(player.pos.x, player.pos.z, before);
             if self.landing {
-                self.altitude = (before - 2.0 * dt).max(height(player.pos.x, player.pos.z));
-                self.landing = self.altitude > height(player.pos.x, player.pos.z) + 0.001;
+                self.altitude = (before - 2.0 * dt).max(floor);
+                self.landing = self.altitude > floor + 0.001;
             }
+            self.altitude = self.altitude.max(floor);
             player.hold_altitude(before + (self.altitude - before).clamp(-2.0 * dt, 3.0 * dt));
         } else {
-            Self::move_player(player, &input, blockers, dt);
+            self.move_on_solids(player, &input, dt);
         }
     }
 
+    /// One step of the shared controller over the solids: the blockers the
+    /// feet are not above, standing on the highest surface under them.
+    fn move_on_solids(&self, player: &mut PlayerController, input: &InputState, dt: f32) {
+        let feet = player.pos.y;
+        let floor = self.solids.floor(player.pos.x, player.pos.z, feet);
+        let blockers = self.solids.blocking(feet);
+        player.pos.y -= floor;
+        player.set_surface_height(0.0);
+        player.update(input, dt, &blockers, HALF_EXTENT);
+        player.pos.y += floor;
+        let landed = self.solids.floor(player.pos.x, player.pos.z, player.pos.y);
+        player.pos.y = player.pos.y.max(landed);
+        player.set_surface_height(landed);
+    }
+
+    /// Levitate, or stop: the character then falls under gravity, as from
+    /// a jump.
     pub fn toggle_levitate(&mut self, player: &PlayerController) {
         self.levitating = !self.levitating;
-        self.landing = !self.levitating;
+        self.landing = false;
         self.altitude = if self.levitating {
             (player.pos.y + 1.5).min(height(player.pos.x, player.pos.z) + 18.0)
         } else {

@@ -569,6 +569,22 @@ impl WorldRuntime {
                 .map(|_| ()),
         )
     }
+    /// Everglade's movement hotbar, in [`super::everglade::hotbar::SLOTS`]
+    /// order, or `None` outside Everglade.
+    #[must_use]
+    pub fn everglade_hotbar(&self) -> Option<[super::everglade::hotbar::Slot; 5]> {
+        use super::everglade::hotbar::Slot;
+        let glade = self.zone_state.everglade.as_ref()?;
+        let on = |enabled, active| Slot { enabled, active };
+        Some([
+            on(!self.player.airborne() && !glade.levitating, false),
+            on(true, glade.sprinting),
+            on(true, glade.levitating),
+            on(glade.levitating, false),
+            on(glade.levitating, false),
+        ])
+    }
+
     /// Whether the player is levitating in Everglade.
     #[must_use]
     pub fn everglade_levitating(&self) -> bool {

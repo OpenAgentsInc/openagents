@@ -117,6 +117,27 @@ pub const ICONS: &[Icon] = &[
         TRANSMUTATION,
         true
     ),
+    // Everglade's movement hotbar.
+    icon!(
+        "jump-icon",
+        "delapouite/jump-across.svg",
+        "Delapouite",
+        PARCHMENT
+    ),
+    icon!("sprint-icon", "lorc/run.svg", "Lorc", PARCHMENT),
+    icon!(
+        "rise-icon",
+        "delapouite/plain-arrow.svg",
+        "Delapouite",
+        TRANSMUTATION,
+        true
+    ),
+    icon!(
+        "descend-icon",
+        "delapouite/plain-arrow.svg",
+        "Delapouite",
+        TRANSMUTATION
+    ),
 ];
 
 /// Edge length of a rasterized icon. The slot draws 36 logical units at up to

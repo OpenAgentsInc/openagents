@@ -939,10 +939,15 @@ fn movement_hotbar_levitates_changes_altitude_and_lands() {
         runtime.tick(&InputState::default(), 0.05);
     }
     assert!((runtime.player.pos.y - hovering).abs() < 0.01);
+    // Stopping drops the character under gravity, faster and faster.
     runtime.zone_intent(Intent::Levitate).unwrap();
     let before = runtime.player.pos.y;
     runtime.tick(&InputState::default(), 0.05);
-    assert!((before - runtime.player.pos.y - 0.1).abs() < 0.001);
+    let first = before - runtime.player.pos.y;
+    let mid = runtime.player.pos.y;
+    runtime.tick(&InputState::default(), 0.05);
+    assert!(runtime.player.airborne());
+    assert!(mid - runtime.player.pos.y > first, "falls, not floats");
     for _ in 0..30 {
         runtime.tick(&InputState::default(), 0.05);
     }
@@ -965,4 +970,32 @@ fn movement_hotbar_levitates_changes_altitude_and_lands() {
     );
     runtime.zone_intent(Intent::Return).unwrap();
     assert!(runtime.zone_intent(Intent::Levitate).is_err());
+}
+
+#[test]
+fn landing_over_the_hall_comes_down_on_its_roof() {
+    use crate::controller::InputState;
+    let mut runtime = entered();
+    runtime.zone_intent(Intent::Levitate).unwrap();
+    for _ in 0..5 {
+        runtime.zone_intent(Intent::Rise).unwrap();
+    }
+    for _ in 0..80 {
+        runtime.tick(&InputState::default(), 0.05);
+    }
+    assert!(runtime.player.pos.y > 8.0, "{}", runtime.player.pos.y);
+    // Drift over the middle of the hall's west roof, then land.
+    let ([cx, cz], [hx, _]) = super::HALL;
+    runtime.player.pos.x = cx - hx / 2.0;
+    runtime.player.pos.z = cz;
+    runtime.zone_intent(Intent::Levitate).unwrap();
+    for _ in 0..200 {
+        runtime.tick(&InputState::default(), 0.05);
+    }
+    assert!(!runtime.player.airborne());
+    assert!(
+        runtime.player.pos.y > super::layout::WALL_TOP + 1.0,
+        "landed at {}, inside the hall",
+        runtime.player.pos.y
+    );
 }

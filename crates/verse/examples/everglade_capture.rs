@@ -83,12 +83,15 @@ fn main() -> Result<(), String> {
     for _ in 0..10 {
         runtime.tick(&idle, 0.05);
     }
-    let atlas = verse::ui::Atlas::new(16.0);
-    let mut hud = zones::hud::Hud::default();
-    hud.set_bottom_clearance(0.0)?;
+    let mut atlas = verse::ui::Atlas::new(16.0);
+    zones::everglade::hotbar::add_sprites(&mut atlas)?;
     let snapshot = runtime.zone_snapshot(1.6);
     eprintln!("{}", snapshot.caption);
-    let mut ui = hud.draw(&atlas, &hud.snapshot([1280.0, 800.0], &snapshot, true), 1.0);
+    // Everglade's only HUD is the movement hotbar, as the apps draw it.
+    let mut ui = verse::ui::UiBatch::default();
+    if let Some(slots) = runtime.everglade_hotbar() {
+        zones::everglade::hotbar::draw(&mut ui, &atlas, [1280.0, 800.0], 14.0, &slots);
+    }
     if let Some(summary) = runtime
         .studio()
         .view()

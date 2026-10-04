@@ -930,6 +930,15 @@ impl Scene {
             }
             world.configure_zone_cache(directory.into());
         }
+        // The bare world's only text is players' tags over the world, so
+        // its font is rasterized at the screen's pixel scale. Everglade's
+        // hotbar icons share the atlas.
+        let mut atlas = verse::ui::Atlas::new(if config.bare {
+            12.0 * config.scale.clamp(1.0, 4.0)
+        } else {
+            12.0
+        });
+        verse::zones::everglade::hotbar::add_sprites(&mut atlas)?;
         let mut zone_hud = verse::zones::hud::Hud::default();
         if config.bare {
             // Lagrange 1's panel stands above the Grid's sticks.
@@ -954,13 +963,7 @@ impl Scene {
         }
         Ok(Self {
             world,
-            // The bare world's only text is players' tags over the world, so
-            // its font is rasterized at the screen's pixel scale.
-            atlas: verse::ui::Atlas::new(if config.bare {
-                12.0 * config.scale.clamp(1.0, 4.0)
-            } else {
-                12.0
-            }),
+            atlas,
             map: verse::minimap::MapHud::default(),
             map_error: None,
             door_hud: verse::doors::hud::DoorHud::default(),
@@ -1266,6 +1269,18 @@ impl Scene {
         // The bare world draws no map or door controls to touch, and zone
         // controls only while a zone loads or inside the zone a portal leads
         // to.
+        if matches!(phase, PointerPhase::Down)
+            && self.everglade_hotbar_shown()
+            && let Some(intent) = verse::zones::everglade::hotbar::hit(
+                point,
+                self.lifecycle.viewport().logical_size(),
+                self.hotbar_bottom(),
+            )
+        {
+            self.cancel_taps();
+            self.zone_intent(intent)?;
+            return Ok(());
+        }
         if matches!(phase, PointerPhase::Down) && self.bare_zone_panel() {
             let snapshot = self.zone_hud_snapshot();
             if self.zone_hud.down(id, point, &snapshot) {
@@ -2545,17 +2560,28 @@ impl Scene {
 
     pub fn map_ui(&self) -> verse::ui::UiBatch {
         if self.world.is_bare() {
-            // Loading controls and Everglade's hotbar share the Grid's
-            // neutral palette and leave the movement sticks available.
+            // Loading controls take the Grid's neutral palette; Everglade's
+            // hotbar is the chamber's icon tray. Both stand above the sticks.
             let mut ui = self.player_tags();
-            if self.bare_zone_panel() {
-                let scale = self.lifecycle.viewport().scale();
-                if let Some(layout) = self.atlas.layout_at_scale(scale) {
+            let scale = self.lifecycle.viewport().scale();
+            if let Some(layout) = self.atlas.layout_at_scale(scale) {
+                if self.bare_zone_panel() {
                     let mut zone_ui = self
                         .zone_hud
                         .draw(&layout, &self.zone_hud_snapshot(), scale);
                     zone_ui.neutralize();
                     ui.vertices.extend(zone_ui.vertices);
+                }
+                if self.everglade_hotbar_shown()
+                    && let Some(slots) = self.world.everglade_hotbar()
+                {
+                    verse::zones::everglade::hotbar::draw(
+                        &mut ui,
+                        &layout,
+                        self.lifecycle.viewport().logical_size(),
+                        self.hotbar_bottom(),
+                        &slots,
+                    );
                 }
             }
             ui.vertices.extend(self.stick_ui().vertices);
@@ -2614,11 +2640,23 @@ impl Scene {
         )
     }
 
-    /// Show loading controls and Everglade's compact movement hotbar.
+    /// Whether the bare world draws the zone panel: only while a zone loads
+    /// or failed to load (with Cancel, or Retry and Dismiss). Inside a zone
+    /// it draws none (owner, 2026-10-04); Everglade draws its hotbar.
     fn bare_zone_panel(&self) -> bool {
+        self.world.is_bare() && self.world.zone_load_state() != verse::zones::LoadState::Idle
+    }
+
+    /// Whether the bare world draws Everglade's movement hotbar.
+    fn everglade_hotbar_shown(&self) -> bool {
         self.world.is_bare()
-            && (self.world.zone_load_state() != verse::zones::LoadState::Idle
-                || self.world.zone == verse::zones::ZoneId::Everglade)
+            && self.world.zone == verse::zones::ZoneId::Everglade
+            && self.world.zone_load_state() == verse::zones::LoadState::Idle
+    }
+
+    /// The hotbar's distance above the screen's bottom edge: above the sticks.
+    fn hotbar_bottom(&self) -> f32 {
+        self.insets[2] + STICK_MARGIN_POINTS + 2.0 * STICK_RADIUS_POINTS + 8.0
     }
 
     fn plaza_online_allowed(&self) -> bool {
