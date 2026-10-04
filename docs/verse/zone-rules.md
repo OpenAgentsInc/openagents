@@ -90,6 +90,13 @@ revisions, ownership, undo, and collaborative assembly remain future work;
 shared editing needs admitted edit authority, conflict behavior, and
 authoritative snapshots before a public construction world.
 
+## Everglade: exploration only
+
+[Everglade](everglade.md) uses the same zone lifecycle with the plaza's walking
+rules on a generated heightfield and no combat or construction. Its station
+markers are fixed coordinates for the Agent Studio; they open nothing yet.
+It is local-only and keeps no state between visits.
+
 ## Sources and attribution
 
 The Ruins's source license, original notices, exact revision, and modification

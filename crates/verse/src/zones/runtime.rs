@@ -1,8 +1,9 @@
-//! Zone transition admission and the Ruins, Lagrange 1, and Physics Lab
-//! simulations.
+//! Zone transition admission and the Ruins, Lagrange 1, Physics Lab, and
+//! Everglade simulations.
 
 use super::{
-    Control, Intent, Lab, Lagrange, LoadState, PortalProjection, Ruins, Snapshot, ZoneId, assets,
+    Control, Everglade, Intent, Lab, Lagrange, LoadState, PortalProjection, Ruins, Snapshot,
+    ZoneId, assets,
 };
 use crate::{
     controller::{InputState, PlayerController},
@@ -21,6 +22,8 @@ impl WorldRuntime {
             ruins.move_player(&mut self.player, input, dt);
         } else if let Some(lagrange) = &mut self.zone_state.lagrange {
             lagrange.move_player(&mut self.player, input, self.camera.pitch, dt);
+        } else if self.zone_state.everglade.is_some() {
+            Everglade::move_player(&mut self.player, input, &self.world.blockers, dt);
         } else {
             self.player
                 .update(input, dt, &self.world.blockers, self.zone_half());
@@ -150,6 +153,25 @@ impl WorldRuntime {
         let _ = self.set_spawn(Lab::spawn(), Lab::spawn_yaw());
         self.camera = crate::camera::FollowCamera::default();
     }
+    /// Enter Everglade's generated glade. Nothing is downloaded.
+    pub fn install_everglade(&mut self) {
+        if !self.is_plaza() {
+            return;
+        }
+        self.zone_state.plaza_pose = Some((self.player.pos, self.player.yaw));
+        self.zone_cancel_loading();
+        self.world = Everglade::world();
+        self.zone_state.everglade = Some(Everglade::new());
+        self.zone = ZoneId::Everglade;
+        self.zone_state.progress = 1.0;
+        self.zone_revision = self.zone_revision.saturating_add(1);
+        let _ = self.set_spawn(Everglade::spawn(), Everglade::spawn_yaw());
+        self.player.set_surface_height(super::everglade::height(
+            self.player.pos.x,
+            self.player.pos.z,
+        ));
+        self.camera = crate::camera::FollowCamera::default();
+    }
     /// The nearest portal in this zone and its destination.
     fn nearest_portal(&self) -> (ZoneId, Vec3) {
         let at = self.player.pos;
@@ -199,6 +221,12 @@ impl WorldRuntime {
                     self.install_lab();
                     return Ok(());
                 }
+                if destination == ZoneId::Everglade {
+                    self.cancel_navigation();
+                    self.doors.cancel_transient();
+                    self.install_everglade();
+                    return Ok(());
+                }
                 super::Manifest::ruins()?;
                 let loader = self
                     .zone_state
@@ -224,6 +252,7 @@ impl WorldRuntime {
                 self.zone_state.ruins = None;
                 self.zone_state.lagrange = None;
                 self.zone_state.lab = None;
+                self.zone_state.everglade = None;
                 self.zone = ZoneId::Plaza;
                 self.zone_revision = self.zone_revision.saturating_add(1);
                 if self.is_bare() {
@@ -596,6 +625,9 @@ impl WorldRuntime {
             add("step", "Step", Intent::Step, true);
             add("return", "Plaza", Intent::Return, true);
             Lab::caption(&lab.snapshot())
+        } else if self.zone_state.everglade.is_some() {
+            add("return", self.return_label(), Intent::Return, true);
+            Everglade::caption(self.player.pos)
         } else if portal.near && portal.visible {
             if self.nearest_portal().0 == ZoneId::Lagrange1 {
                 add("enter", "Enter L1", Intent::Enter, true);
@@ -603,6 +635,9 @@ impl WorldRuntime {
             } else if self.nearest_portal().0 == ZoneId::PhysicsLab {
                 add("enter", "Enter Lab", Intent::Enter, true);
                 "Physics Lab · live rigid-body sandbox".into()
+            } else if self.nearest_portal().0 == ZoneId::Everglade {
+                add("enter", "Enter Everglade", Intent::Enter, true);
+                "Everglade · the Agent Studio's forest glade".into()
             } else {
                 add(
                     "enter",
@@ -711,6 +746,8 @@ impl WorldRuntime {
             crate::runtime::mesh_occludes(lagrange.dynamic(), eye, direction, distance)
         } else if let Some(lab) = &self.zone_state.lab {
             crate::runtime::mesh_occludes(lab.dynamic(), eye, direction, distance)
+        } else if let Some(everglade) = &self.zone_state.everglade {
+            crate::runtime::mesh_occludes(everglade.dynamic(), eye, direction, distance)
         } else {
             crate::runtime::mesh_occludes(&self.dynamic_mesh(), eye, direction, distance)
         }
@@ -811,6 +848,9 @@ impl WorldRuntime {
         if let Some(lab) = &mut self.zone_state.lab {
             lab.tick(dt);
         }
+        if let Some(everglade) = &mut self.zone_state.everglade {
+            everglade.tick(dt);
+        }
     }
     pub(crate) fn zone_dynamic_mesh(&self) -> crate::mesh::Mesh {
         let elapsed = self.zone_state.elapsed;
@@ -828,6 +868,11 @@ impl WorldRuntime {
         if let Some(lab) = &self.zone_state.lab {
             mesh.extend(lab.dynamic());
             // The lab has no suit of its own; the plaza character walks it.
+            mesh.extend(&crate::avatar::mesh(&self.player, &self.gait));
+        }
+        if let Some(everglade) = &self.zone_state.everglade {
+            mesh.extend(everglade.dynamic());
+            // Until the studio's seats arrive, the plaza character walks it.
             mesh.extend(&crate::avatar::mesh(&self.player, &self.gait));
         }
         mesh

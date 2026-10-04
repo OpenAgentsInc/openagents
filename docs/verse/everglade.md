@@ -1,7 +1,10 @@
 # Everglade
 
-Status: proposed specification, October 4, 2026. Nothing in this document is
-implemented yet.
+Status: proposed specification, October 4, 2026. Delivery step 3 is
+implemented: `ZoneId::Everglade` with generated ground, the plaza arch, and
+greybox station markers in
+[`zones/everglade/`](../../crates/verse/src/zones/everglade/mod.rs). The rest
+is not implemented yet.
 
 Everglade is a loaded Verse zone: a forest glade with a small timber-and-plaster
 workshop where a person works with a team of coding agents. It is where the

@@ -370,8 +370,9 @@ jumping stops it. Camera input can continue while walking. See
 
 ## Enter a zone
 
-Three arches on the plaza lead to local zones: **Ruins** (west),
-**Lagrange 1** (east), and the **Physics Lab** (north, behind the spawn).
+Four arches on the plaza lead to local zones: **Ruins** (west),
+**Lagrange 1** (east), the **Physics Lab** (north, behind the spawn), and
+**Everglade** (southwest).
 
 ### Ruins
 
@@ -414,6 +415,14 @@ readouts above two rows of controls: tap **Prev** or **Next** to select a knob,
 **-** or **+** to change it, **Reset**, **Pause** or **Run**, **Step**, and
 **Plaza**. The first knob switches among nine scenarios. See
 [Physics Lab](physics-lab.md).
+
+### Everglade
+
+Choose **Everglade portal** on the map, then tap the arch or **Enter
+Everglade**. The glade is generated on the device, so it opens immediately.
+Walk its ground with the joystick; the map lists the studio stations, and the
+caption names the station whose marker you stand at. Choose **Plaza** to leave.
+See [Everglade](everglade.md).
 
 The OpenAgents app's bare world reaches no zone for now; its
 [walk-in portal](#the-grids-portal-to-lagrange-1) to Lagrange 1 is hidden.

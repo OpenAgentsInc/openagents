@@ -468,6 +468,11 @@ impl WorldRuntime {
             eye.y = eye
                 .y
                 .max(verse_ruins::scene::Terrain::bundled().height(eye.x, eye.z) + 0.4);
+        } else if self.zone == crate::zones::ZoneId::Everglade {
+            eye = self.camera.unclamped_eye(self.player.pos, self.player.yaw);
+            eye.y = eye
+                .y
+                .max(crate::zones::everglade::height(eye.x, eye.z) + 0.4);
         }
         View {
             view_proj: self.camera.view_proj_from_eye(eye, self.player.yaw, aspect),

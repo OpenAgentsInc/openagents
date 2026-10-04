@@ -18,7 +18,7 @@ pub struct Landmark {
     pub z: f32,
 }
 
-pub const LANDMARKS: [Landmark; 11] = [
+pub const LANDMARKS: [Landmark; 12] = [
     Landmark {
         id: "computer",
         label: "Computer",
@@ -84,6 +84,12 @@ pub const LANDMARKS: [Landmark; 11] = [
         label: "Lab portal",
         x: 0.0,
         z: -25.0,
+    },
+    Landmark {
+        id: "everglade",
+        label: "Everglade portal",
+        x: -24.0,
+        z: -27.0,
     },
 ];
 
@@ -247,6 +253,27 @@ impl MapHud {
                     z: -3.0,
                 },
             ],
+            crate::zones::ZoneId::Everglade => {
+                let portal = crate::zones::ZoneId::Everglade.portal();
+                std::iter::once(Landmark {
+                    id: "return",
+                    label: "Plaza portal",
+                    x: portal.x,
+                    z: portal.z - 3.0,
+                })
+                .chain(
+                    crate::zones::everglade::STATIONS
+                        .iter()
+                        .filter(|s| s.id != "approach")
+                        .map(|s| Landmark {
+                            id: s.id,
+                            label: s.studio,
+                            x: s.at[0],
+                            z: s.at[1],
+                        }),
+                )
+                .collect()
+            }
             crate::zones::ZoneId::Ruins => vec![
                 Landmark {
                     id: "return",

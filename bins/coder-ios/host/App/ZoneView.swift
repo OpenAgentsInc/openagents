@@ -15,7 +15,7 @@ struct VerseZone: Codable {
     let hud: VerseZoneHud
 
     var valid: Bool {
-        ["plaza", "ruins", "lagrange1", "physics_lab"].contains(id) && label.utf8.count <= 128 &&
+        ["plaza", "ruins", "lagrange1", "physics_lab", "everglade"].contains(id) && label.utf8.count <= 128 &&
         ["idle", "loading", "failed"].contains(state) && progress.isFinite &&
         (0...1).contains(progress) && (error?.utf8.count ?? 0) <= 2048 &&
         caption.utf8.count <= 2048 && (combat?.valid ?? true) && portal.valid && controls.count <= 16 && controls.allSatisfy(\.valid) && hud.valid

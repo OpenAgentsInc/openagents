@@ -4,6 +4,7 @@
 use serde::{Deserialize, Serialize};
 
 pub mod assets;
+pub mod everglade;
 pub mod gate;
 pub mod hud;
 mod lab;
@@ -14,6 +15,7 @@ mod runtime;
 #[cfg(test)]
 mod tests;
 
+pub(crate) use everglade::Everglade;
 pub use gate::Gate;
 pub(crate) use lab::Lab;
 pub use lab::{Kind as LabScenario, KnobView, Snapshot as LabSnapshot};
@@ -44,6 +46,7 @@ pub enum ZoneId {
     Ruins,
     Lagrange1,
     PhysicsLab,
+    Everglade,
 }
 impl ZoneId {
     pub const fn world_id(self) -> &'static str {
@@ -52,6 +55,7 @@ impl ZoneId {
             Self::Ruins => "ruins-v1",
             Self::Lagrange1 => "lagrange-1-v1",
             Self::PhysicsLab => "physics-lab-v1",
+            Self::Everglade => "everglade-v1",
         }
     }
     pub const fn label(self) -> &'static str {
@@ -60,6 +64,7 @@ impl ZoneId {
             Self::Ruins => "Ruins",
             Self::Lagrange1 => "Lagrange 1",
             Self::PhysicsLab => "Physics Lab",
+            Self::Everglade => "Everglade",
         }
     }
     pub const fn half_extent(self) -> f32 {
@@ -67,6 +72,7 @@ impl ZoneId {
             Self::Plaza => crate::world::HALF,
             Self::Ruins | Self::Lagrange1 => 150.0,
             Self::PhysicsLab => lab::HALF_EXTENT,
+            Self::Everglade => everglade::HALF_EXTENT,
         }
     }
     /// The zone's primary portal: the plaza's Ruins arch, or a zone's return.
@@ -80,6 +86,7 @@ impl ZoneId {
                 (Self::Ruins, glam::Vec3::new(-12.0, 0.0, 12.0)),
                 (Self::Lagrange1, glam::Vec3::new(12.0, 0.0, 12.0)),
                 (Self::PhysicsLab, glam::Vec3::new(0.0, 0.0, -22.0)),
+                (Self::Everglade, glam::Vec3::new(-24.0, 0.0, -24.0)),
             ],
             Self::Ruins => vec![(
                 Self::Plaza,
@@ -91,6 +98,7 @@ impl ZoneId {
             )],
             Self::Lagrange1 => vec![(Self::Plaza, lagrange::RETURN_PORTAL)],
             Self::PhysicsLab => vec![(Self::Plaza, lab::RETURN_PORTAL)],
+            Self::Everglade => vec![(Self::Plaza, everglade::RETURN_PORTAL)],
         }
     }
     /// Short arch lettering for a destination.
@@ -100,6 +108,7 @@ impl ZoneId {
             Self::Ruins => "RUINS",
             Self::Lagrange1 => "LAGRANGE 1",
             Self::PhysicsLab => "PHYSICS LAB",
+            Self::Everglade => "EVERGLADE",
         }
     }
 }
@@ -151,6 +160,12 @@ pub fn atmosphere(zone: ZoneId) -> Atmosphere {
             color: [0.006, 0.01, 0.018],
             fog_start: 30.0,
             fog_end: 90.0,
+        },
+        // A green-gold day sky; warm haze softens the tree ring.
+        ZoneId::Everglade => Atmosphere {
+            color: [0.4, 0.44, 0.22],
+            fog_start: 40.0,
+            fog_end: 170.0,
         },
     }
 }
@@ -260,6 +275,7 @@ pub(crate) struct State {
     ruins: Option<Ruins>,
     lagrange: Option<Lagrange>,
     lab: Option<Lab>,
+    everglade: Option<Everglade>,
     destination: ZoneId,
     plaza_pose: Option<(glam::Vec3, f32)>,
     elapsed: f32,
@@ -278,6 +294,7 @@ impl Default for State {
             ruins: None,
             lagrange: None,
             lab: None,
+            everglade: None,
             destination: ZoneId::Ruins,
             plaza_pose: None,
             elapsed: 0.0,
@@ -357,6 +374,7 @@ fn arch(mesh: &mut crate::mesh::Mesh, zone: ZoneId, sign: &str, at: glam::Vec3, 
         ZoneId::Ruins => [0.13, 0.55, 0.34],
         ZoneId::Lagrange1 => [0.35, 0.7, 1.0],
         ZoneId::PhysicsLab => [0.3, 0.85, 1.0],
+        ZoneId::Everglade => [0.95, 0.85, 0.4],
     };
     // Broken concentric arcs leave the destination visible through the opening.
     for ring in 0..3 {

@@ -132,6 +132,26 @@ final class ZoneUITests: XCTestCase {
         XCTAssertEqual(returned.position[2], plaza.position[2], accuracy: 0.1)
     }
 
+    func testEvergladePortalEntersGladeAndReturns() throws {
+        try approachPortal("everglade")
+        let plaza = try observation()
+        XCTAssertTrue(plaza.zone.hud.buttons.contains { $0.action == "enter" && $0.label == "Enter Everglade" })
+        surface.coordinate(withNormalizedOffset: CGVector(dx: plaza.zone.portal.screen_x,
+                                                          dy: plaza.zone.portal.screen_y)).tap()
+        waitFor { $0.zone.id == "everglade" && $0.zone.state == "idle" }
+        let glade = try observation()
+        XCTAssertNil(glade.zone.combat)
+        XCTAssertFalse(glade.gym_active)
+        XCTAssertTrue(glade.map.landmarks.contains { $0.id == "task_wall" })
+        XCTAssertTrue(glade.zone.caption.hasPrefix("Everglade"))
+        attach("Everglade greybox glade")
+        try tapAction("return")
+        waitFor { $0.zone.id == "plaza" && $0.zone.state == "idle" }
+        let returned = try observation()
+        XCTAssertEqual(returned.position[0], plaza.position[0], accuracy: 0.1)
+        XCTAssertEqual(returned.position[2], plaza.position[2], accuracy: 0.1)
+    }
+
     func testRulesAndArtworkNoticesShipWithoutLoadingRuins() throws {
         app.openWorldComputer()
         app.buttons["computer-settings"].tap()
