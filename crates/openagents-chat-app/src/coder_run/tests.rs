@@ -165,6 +165,74 @@ fn every_event_type_the_scripted_provider_emits_draws_a_row() {
 }
 
 #[test]
+fn a_run_that_landed_or_opened_a_pull_request_shows_where_its_change_went() {
+    let issue = |outcome: &str| coder_events::IssueLink {
+        repository: "acme/app".into(),
+        number: 42,
+        url: "https://github.com/acme/app/issues/42".into(),
+        title: "Fix the docs".into(),
+        outcome: outcome.into(),
+        commits: vec!["0123456789abcdef".into()],
+        pull_request: None,
+        closed: outcome == "landed",
+        not_landed: None,
+    };
+    // Every ending in the fixtures names `link` as its issue.
+    let with_issue = |lines: &[Line], link: &coder_events::IssueLink| {
+        let mut lines = lines.to_vec();
+        for line in &mut lines {
+            match &mut line.event {
+                CoderEvent::Result(result) => result.issue = Some(link.clone()),
+                CoderEvent::Failure(failure) => failure.issue = Some(link.clone()),
+                _ => {}
+            }
+        }
+        text_of(&fed(&lines, State::Ended).rows())
+    };
+    let finished = &tasks(QUESTION_THEN_RESULT)[0];
+
+    let text = with_issue(finished, &issue("landed"));
+    assert!(
+        text.contains(
+            "Landed\n0123456789 on the default branch · closed #42 · \
+             https://github.com/acme/app/commit/0123456789abcdef"
+        ),
+        "{text}"
+    );
+
+    let mut opened = issue("pull_request");
+    opened.pull_request = Some("https://github.com/acme/app/pull/7".into());
+    let text = with_issue(finished, &opened);
+    assert!(
+        text.contains("Pull request open\nFor #42 · https://github.com/acme/app/pull/7"),
+        "{text}"
+    );
+
+    // A landing that failed ends in the failure card, with its reason.
+    let failed = tasks(OTHER_ENDINGS)
+        .into_iter()
+        .find(|lines| {
+            lines
+                .iter()
+                .any(|line| matches!(line.event, CoderEvent::Failure(_)))
+        })
+        .unwrap();
+    let mut conflict = issue("failed");
+    conflict.not_landed = Some("conflict".into());
+    let text = with_issue(&failed, &conflict);
+    assert!(
+        text.contains("Conflict\n#42 stays open; nothing landed"),
+        "{text}"
+    );
+    conflict.not_landed = Some("push_refused".into());
+    let text = with_issue(&failed, &conflict);
+    assert!(
+        text.contains("Push refused\n#42 stays open; nothing landed"),
+        "{text}"
+    );
+}
+
+#[test]
 fn a_running_turn_shows_its_progress_and_open_command() {
     let whole = &tasks(QUESTION_THEN_RESULT)[0];
     // Up to the first command, before its output.

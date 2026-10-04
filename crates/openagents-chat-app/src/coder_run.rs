@@ -1359,6 +1359,9 @@ impl Rows {
                         });
                     }
                     children.extend(card_lines(&key, &lines));
+                    if let Some(status) = crate::landing::Status::from_result(&result) {
+                        children.push(status.node(&format!("{key}-landing")));
+                    }
                 }
                 self.rows.push(node);
             }
@@ -1368,7 +1371,16 @@ impl Rows {
                 if let Some(issue) = &failure.issue {
                     lines.push((issue.line(), false));
                 }
-                self.rows.push(card(&key, "Coder didn't finish", &lines));
+                let mut node = card(&key, "Coder didn't finish", &lines);
+                if let Element::Stack { children, .. } = &mut node.element
+                    && let Some(status) = failure
+                        .issue
+                        .as_ref()
+                        .and_then(crate::landing::Status::from_issue)
+                {
+                    children.push(status.node(&format!("{key}-landing")));
+                }
+                self.rows.push(node);
             }
             CoderEvent::Stopped(stopped) => {
                 self.close_turn();

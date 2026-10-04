@@ -115,6 +115,7 @@ async fn following_an_issue_flow_whose_process_died_ends_the_wait() {
             commits: Vec::new(),
             pull_request: None,
             closed: false,
+            not_landed: None,
         },
         notes: Vec::new(),
         finished: false,

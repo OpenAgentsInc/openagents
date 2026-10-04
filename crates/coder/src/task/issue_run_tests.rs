@@ -169,6 +169,7 @@ fn flow(outcome: &str) -> Flow {
             commits: vec!["0123456789abcdef".into()],
             pull_request: None,
             closed: outcome == "landed",
+            not_landed: None,
         },
         notes: Vec::new(),
         finished: true,

@@ -784,6 +784,12 @@ pub struct IssueLink {
     pub pull_request: Option<String>,
     /// Whether the run closed the issue.
     pub closed: bool,
+    /// Why a committed change did not land, when the outcome is `failed`
+    /// at landing: `conflict` (the change conflicts with the newer
+    /// branch), `push_refused` (the remote kept refusing the push), or
+    /// `checks_failed` (the checks failed on the rebased change).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub not_landed: Option<String>,
 }
 
 impl IssueLink {

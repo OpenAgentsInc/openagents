@@ -588,6 +588,7 @@ mod tests {
                 commits: Vec::new(),
                 pull_request: None,
                 closed: true,
+                not_landed: None,
             },
             notes: Vec::new(),
             finished: false,

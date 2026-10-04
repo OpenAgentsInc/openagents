@@ -1337,6 +1337,7 @@ impl Runner {
                 commits: Vec::new(),
                 pull_request: None,
                 closed: false,
+                not_landed: None,
             },
             notes,
             finished: false,
@@ -1481,6 +1482,7 @@ impl Started {
                 commits: Vec::new(),
                 pull_request: None,
                 closed: false,
+                not_landed: None,
             },
             notes: Vec::new(),
             finished: false,
@@ -1966,6 +1968,12 @@ impl Run<'_> {
                     let _ = local::git_out(self.worktree, &["reset", "-q", "--soft", "HEAD~1"]);
                 }
                 let tried = format!("\n\n**Landing**: {tries}");
+                self.flow.link.not_landed = match &not.failure {
+                    landing::Failure::Conflict(_) => Some("conflict".into()),
+                    landing::Failure::GaveUp(_) => Some("push_refused".into()),
+                    landing::Failure::Red(_) => Some("checks_failed".into()),
+                    landing::Failure::Stopped | landing::Failure::Unreadable(_) => None,
+                };
                 return match not.failure {
                     landing::Failure::Stopped => {
                         self.stopped("Stopped by the person who started it, before landing.")
@@ -2080,6 +2088,7 @@ impl Run<'_> {
             self.worktree,
             &["push", "-q", "origin", &format!("HEAD:refs/heads/{branch}")],
         ) {
+            self.flow.link.not_landed = Some("push_refused".into());
             return self.failed(&format!("Git could not push {branch}: {why}"), None);
         }
         let files = changed_by(self.worktree, &format!("{commit}~1"), &commit);
