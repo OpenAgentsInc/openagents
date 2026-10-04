@@ -92,7 +92,8 @@ struct AppTabs: View {
         TabView(selection: $tab) {
             CoderTab(bridge: bridge)
                 .tabIcon(.coder)
-            VerseTab(selected: tab == .verse) { bridge.gymTrain() }
+            VerseTab(selected: tab == .verse, studioComputer: bridge.studioComputer,
+                     connectStudio: bridge.studioConnect) { bridge.gymTrain() }
                 .tabIcon(.verse)
             WalletTab(bridge: bridge)
                 .tabIcon(.wallet)

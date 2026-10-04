@@ -422,7 +422,8 @@ fn the_everglade_arch_loads_its_pack_pauses_presence_and_the_return_rejoins() {
     assert!(scene.session.is_none());
     assert_eq!(scene.packet().connection.state, "local_zone");
 
-    // At a station the app offers no studio panel, since it has none.
+    // At a station the app offers no studio panel until its host connects
+    // the studio to a computer.
     let podium = verse::zones::everglade::STATIONS
         .iter()
         .find(|s| s.id == "podium")

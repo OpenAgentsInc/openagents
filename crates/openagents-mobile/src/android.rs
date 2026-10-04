@@ -225,6 +225,44 @@ pub(crate) fn surface_config(text: &str) -> Result<SurfaceConfig, BridgeError> {
     Ok(config)
 }
 
+/// The links to paired computers the app's worker took for Everglade's
+/// studio, by token, until the main thread connects a Verse handle with one
+/// (`crate::studio`). An app handle lives on the worker and a Verse handle
+/// on the main thread, so no one call can reach both. At most
+/// [`MAX_HANDLES`] wait; a newer one drops the oldest.
+static STUDIO_LINKS: std::sync::Mutex<
+    std::collections::BTreeMap<i64, Result<crate::studio::Links, String>>,
+> = std::sync::Mutex::new(std::collections::BTreeMap::new());
+static NEXT_STUDIO_TOKEN: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(1);
+
+/// On the app's worker: takes `app`'s link to the paired computer `host`,
+/// or the reason it has none, and answers a token for
+/// [`take_studio_links`].
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+pub(crate) fn hold_studio_links(app: &App, host: &str) -> i64 {
+    let links = crate::studio::links(app, host);
+    let token = NEXT_STUDIO_TOKEN.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let mut held = STUDIO_LINKS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    while held.len() >= MAX_HANDLES {
+        held.pop_first();
+    }
+    held.insert(token, links);
+    token
+}
+
+/// On the main thread: the link [`hold_studio_links`] took under `token`,
+/// once.
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
+pub(crate) fn take_studio_links(token: i64) -> Result<crate::studio::Links, String> {
+    STUDIO_LINKS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .remove(&token)
+        .unwrap_or_else(|| Err("Try connecting the studio again".into()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -288,6 +326,21 @@ mod tests {
         )
         .expect("json");
         assert!(packet["computers_home"].is_null());
+    }
+
+    #[test]
+    fn a_held_studio_link_is_taken_once() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let app = create_app(&config(&dir)).expect("app");
+        let token = hold_studio_links(&app, "  ");
+        assert_eq!(
+            take_studio_links(token).err().as_deref(),
+            Some("Choose a computer for the studio")
+        );
+        assert_eq!(
+            take_studio_links(token).err().as_deref(),
+            Some("Try connecting the studio again")
+        );
     }
 
     #[test]

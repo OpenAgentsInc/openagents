@@ -159,6 +159,66 @@ fn interact(scene: &mut Scene) -> Result<(), String> {
     })
 }
 
+/// The OpenAgents app's bare world offers Interact at a station only once
+/// its host connected the studio to a computer, and then opens the panel.
+#[test]
+fn the_bare_world_offers_interact_only_with_a_studio_source() {
+    let mut scene = Scene::new(Config {
+        world_offline: true,
+        ..crate::verse_ffi::bare_config(800, 1200, 2.0, false, None)
+    })
+    .unwrap();
+    scene.activate(true).unwrap();
+    scene.world.install_everglade(pack());
+    assert!(scene.world.is_bare());
+    assert_eq!(scene.world.zone, ZoneId::Everglade);
+    scene.reset_zone_inputs();
+    // The scripted checks' `station=podium` stands the player there.
+    assert!(
+        scene
+            .action(Request::GoStation {
+                station: "nowhere".into()
+            })
+            .is_err()
+    );
+    scene
+        .action(Request::GoStation {
+            station: "podium".into(),
+        })
+        .unwrap();
+    scene.update(1.0).unwrap();
+    scene.update(1.02).unwrap();
+    assert!(scene.world.studio_panel_here().is_some());
+    let offered = |scene: &Scene| {
+        scene
+            .zone_snapshot()
+            .controls
+            .iter()
+            .any(|control| control.action == ZoneIntent::Interact && control.enabled)
+    };
+    assert!(!offered(&scene));
+    assert!(interact(&mut scene).is_err());
+    assert!(scene.studio.is_none());
+
+    scene
+        .world
+        .set_studio_source(Box::new(Once(Some(studio()))));
+    assert!(offered(&scene));
+    interact(&mut scene).unwrap();
+    assert_eq!(
+        scene.studio.as_ref().map(|open| open.kind.clone()),
+        Some(verse::zones::everglade::studio::PanelKind::Decisions)
+    );
+    // Return stays the arch's job in the bare world.
+    assert!(
+        !scene
+            .zone_snapshot()
+            .controls
+            .iter()
+            .any(|control| control.action == ZoneIntent::Return)
+    );
+}
+
 #[test]
 fn interact_opens_the_station_panel_and_pauses_the_world() {
     let mut scene = in_everglade(station("podium"));

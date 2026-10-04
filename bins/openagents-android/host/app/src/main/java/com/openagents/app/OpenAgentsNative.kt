@@ -32,4 +32,15 @@ object OpenAgentsNative {
     @JvmStatic external fun verseDetach(handle: Long)
     @JvmStatic external fun verseCall(handle: Long, request: String): String
     @JvmStatic external fun verseDestroy(handle: Long)
+    /**
+     * On the app worker: takes the app's link to the paired computer [host]
+     * for Everglade's studio and answers a token for [verseStudioConnect].
+     */
+    @JvmStatic external fun studioLinks(handle: Long, host: String): Long
+    /**
+     * On the main thread: connects the world's studio through the link taken
+     * under [token]. Answers `{"connected":true,"rights":[...]}` or
+     * `{"connected":false,"error":"..."}`.
+     */
+    @JvmStatic external fun verseStudioConnect(handle: Long, token: Long): String
 }

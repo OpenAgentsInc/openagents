@@ -62,6 +62,28 @@ struct WorldPacket: Decodable {
     let evals_view: EvalsView?
     /// Compare notes is on, for the host to remember.
     let gym_notes: Bool?
+    /// The zone the player is in and the controls it offers there, such as
+    /// Everglade's Interact at a station.
+    let zone: ZonePacket?
+    /// Everglade's Agent Studio panel: open, the view revision Rust holds,
+    /// and the Rust Native view itself in answer to the studio requests.
+    let studio_open: Bool?
+    let studio_revision: UInt64?
+    let studio_view: NativeView?
+
+    struct ZonePacket: Decodable {
+        /// `plaza`, `everglade`, and so on.
+        let id: String
+        /// `idle`, `loading`, or `failed`.
+        let state: String
+        let controls: [Control]
+
+        struct Control: Decodable {
+            let label: String
+            let action: String
+            let enabled: Bool
+        }
+    }
 
     struct GymPacket: Decodable {
         let inside: Bool
@@ -93,6 +115,13 @@ struct WorldPacket: Decodable {
     }
 }
 
+/// Rust's answer to connecting the studio: the grant's rights, or why not.
+private struct StudioConnectReply: Decodable {
+    let connected: Bool
+    let rights: [String]?
+    let error: String?
+}
+
 /// The world connection's state: offline, paused, connecting, connected, or
 /// retrying.
 struct WorldConnectionPacket: Decodable {
@@ -121,6 +150,24 @@ final class VerseWorld: ObservableObject {
     @Published private(set) var evalsAnchor = CGPoint(x: 0.5, y: 0.5)
     @Published private(set) var evalsView: EvalsView?
     private var evalsRequestedRevision: UInt64?
+    /// The player is in Everglade, loaded.
+    @Published private(set) var inEverglade = false
+    /// Everglade's Interact control while a station is in reach: the label
+    /// names the station's panel, such as Decisions.
+    @Published private(set) var interactLabel: String?
+    /// Everglade's Agent Studio panel is open, with Rust's view of it.
+    @Published private(set) var studioOpen = false
+    @Published private(set) var studioView: NativeView?
+    private var studioRequestedRevision: UInt64?
+    /// One line about the studio's connection: the computer and its rights,
+    /// or why it did not connect.
+    @Published private(set) var studioStatus: String?
+    /// The last connect failed; Try again connects again.
+    @Published private(set) var studioFailed = false
+    /// The computer and world handle the studio is connected through, or
+    /// last failed with, so a frame never connects twice.
+    private var studioAttempt: String?
+    private var studioConnecting = false
     /// Where the Compare notes switch is saved between launches.
     static let gymNotesKey = "verse.gymNotes"
     let motionDriver = DeviceMotionDriver(source: CoreMotionSource())
@@ -160,6 +207,65 @@ final class VerseWorld: ObservableObject {
 
     /// Walks into the Gym before the EVALS board and opens it.
     func goToEvals() { send(["action": "go_evals"]) }
+
+    /// Everglade's Interact: opens the panel of the station in reach.
+    func interact() { send(["action": "zone", "intent": "interact"]) }
+
+    /// A studio panel control was activated. The event names the node only;
+    /// Rust resolves it against its current view.
+    func activateStudio(_ node: String) {
+        guard let view = studioView else { return }
+        send(["action": "studio_activate", "instance": view.instance,
+              "revision": view.revision, "node": node])
+    }
+
+    func closeStudio() { send(["action": "close_studio"]) }
+
+    /// Text typed into the open studio panel: an answer, a message, or a
+    /// change request, as the panel says. False when Rust refused it; the
+    /// reason is the world's error.
+    func studioText(_ text: String) -> Bool {
+        guard let packet = send(["action": "studio_text", "text": text]) else { return false }
+        return packet.error == nil
+    }
+
+    /// Connects Everglade's studio to `computer` while the player is in
+    /// Everglade, once per computer and world handle. Rust answers the
+    /// grant's rights or why it could not connect.
+    func syncStudio(_ computer: StudioComputer?, connect: @escaping VerseTab.StudioConnect) {
+        guard inEverglade, !studioConnecting, let handle = surface?.nativeHandle else { return }
+        guard let computer else {
+            if studioAttempt == nil {
+                studioStatus = "No computer is online for the studio. Check Account > Computers."
+            }
+            return
+        }
+        let attempt = "\(computer.host)@\(UInt(bitPattern: handle))"
+        guard attempt != studioAttempt else { return }
+        studioAttempt = attempt
+        studioConnecting = true
+        studioStatus = "Connecting the studio to \(computer.name)…"
+        connect(computer.host, { [weak self] in self?.surface?.nativeHandle }) { [weak self] data in
+            guard let self else { return }
+            self.studioConnecting = false
+            let reply = data.flatMap { try? JSONDecoder().decode(StudioConnectReply.self, from: $0) }
+            if let reply, reply.connected {
+                let rights = (reply.rights ?? []).joined(separator: ", ")
+                self.studioStatus = "Studio on \(computer.name)" + (rights.isEmpty ? "" : ": \(rights)")
+                self.studioFailed = false
+            } else {
+                self.studioStatus = reply?.error ?? "The studio could not connect to \(computer.name)."
+                self.studioFailed = true
+            }
+        }
+    }
+
+    /// Try again after a failed connect.
+    func retryStudio(_ computer: StudioComputer?, connect: @escaping VerseTab.StudioConnect) {
+        studioAttempt = nil
+        studioFailed = false
+        syncStudio(computer, connect: connect)
+    }
 
     /// The saved Gym connection for this world key, if any.
     func storedGymCode() -> String? {
@@ -252,6 +358,30 @@ final class VerseWorld: ObservableObject {
                 self.send(["action": "evals_view"])
             }
         }
+        let zone = packet.zone
+        let everglade = zone?.id == "everglade" && zone?.state == "idle"
+        if inEverglade != everglade { inEverglade = everglade }
+        let interact = zone?.controls.first { $0.action == "interact" && $0.enabled }?.label
+        if interactLabel != interact { interactLabel = interact }
+        let studioOpen = packet.studio_open == true
+        if self.studioOpen != studioOpen { self.studioOpen = studioOpen }
+        if !studioOpen {
+            if studioView != nil { studioView = nil }
+            studioRequestedRevision = nil
+        } else if let view = packet.studio_view, view.schema == "rust-native.view.v2" {
+            studioView = view
+            studioRequestedRevision = view.revision
+        }
+        // Rust rebuilds the panel as the studio changes; a frame carries only
+        // its revision, so ask for the view when it changed.
+        if studioOpen, let revision = packet.studio_revision, studioView?.revision != revision,
+           studioRequestedRevision != revision {
+            studioRequestedRevision = revision
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.studioOpen else { return }
+                self.send(["action": "studio_view"])
+            }
+        }
         if let notes = packet.gym_notes, UserDefaults.standard.bool(forKey: Self.gymNotesKey) != notes {
             UserDefaults.standard.set(notes, forKey: Self.gymNotesKey)
         }
@@ -269,14 +399,28 @@ final class VerseWorld: ObservableObject {
 }
 
 struct VerseTab: View {
+    /// Connects the world's studio to a paired computer by host key
+    /// (`MobileBridge.studioConnect`): the host, the world's live handle
+    /// when the call runs, and Rust's JSON reply.
+    typealias StudioConnect = (String, @escaping () -> UnsafeMutableRawPointer?,
+                               @escaping (Data?) -> Void) -> Void
+
     /// The Verse tab is selected.
     let selected: Bool
+    /// The paired computer Everglade's studio acts through, if one is online.
+    let studioComputer: StudioComputer?
+    let connectStudio: StudioConnect
     /// Train Coder on the Gym's board: opt into the Gym on the Chat tab.
     let train: () -> Void
     @StateObject private var world = VerseWorld()
     @Environment(\.scenePhase) private var phase
+    /// What the person types into the open studio panel.
+    @State private var studioDraft = ""
+    /// How far the software keyboard reaches up from the screen's bottom.
+    @State private var keyboard: CGFloat = 0
 
     private var active: Bool { selected && phase == .active }
+    private var boardOpen: Bool { world.gymOpen || world.resultsOpen || world.evalsOpen }
 
     var body: some View {
         GeometryReader { outer in
@@ -305,18 +449,23 @@ struct VerseTab: View {
                                     VerseEvalsPanel(world: world, train: train) { world.send(["action": "close_evals"]) }
                                 }
                             }.ignoresSafeArea()
+                        } else if world.studioOpen {
+                            GeometryReader { full in
+                                studioPanel(size: full.size, safe: safe)
+                            }.ignoresSafeArea()
                         }
                     }
                 // Bottom center, between the movement stick at the bottom
                 // left and the look stick at the bottom right.
-                if !world.gymOpen && !world.resultsOpen && !world.evalsOpen {
+                if !boardOpen && !world.studioOpen {
                     controls
                         .padding(.bottom, 12)
                 }
             }
             .overlay(alignment: .top) {
-                // The Gym, results, and EVALS panels show their own errors.
-                if let error = world.error, !world.gymOpen, !world.resultsOpen, !world.evalsOpen {
+                // The Gym, results, EVALS, and studio panels show their own
+                // errors.
+                if let error = world.error, !boardOpen, !world.studioOpen {
                     VStack(spacing: 8) {
                         Text(error).font(.callout).textSelection(.enabled)
                             .accessibilityIdentifier("verse-error")
@@ -324,10 +473,118 @@ struct VerseTab: View {
                     }
                     .padding(.top, 12)
                     .padding(.horizontal, 16)
+                } else if world.inEverglade, !boardOpen, !world.studioOpen, let status = world.studioStatus {
+                    studioStatus(status)
+                        .padding(.top, 12)
+                        .padding(.horizontal, 16)
+                }
+            }
+            .overlay(alignment: .trailing) {
+                // Interact sits on the right edge, clear of the sticks and
+                // Everglade's hotbar, while a station is in reach.
+                if let label = world.interactLabel, !boardOpen, !world.studioOpen {
+                    Button { world.interact() } label: {
+                        Text(label).font(.callout.weight(.semibold))
+                            .padding(.horizontal, 14).padding(.vertical, 10)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.white.opacity(0.18))
+                    .disabled(!active)
+                    .accessibilityLabel("Interact: \(label)")
+                    .accessibilityHint("Opens this station's studio panel.")
+                    .accessibilityIdentifier("verse-interact")
+                    .padding(.trailing, safe.trailing + 16)
                 }
             }
         }
         .background(Color.black.ignoresSafeArea())
+        .onAppear { world.syncStudio(studioComputer, connect: connectStudio) }
+        .onChange(of: world.inEverglade) { _, _ in world.syncStudio(studioComputer, connect: connectStudio) }
+        .onChange(of: studioComputer) { _, _ in world.syncStudio(studioComputer, connect: connectStudio) }
+        .onChange(of: world.studioOpen) { _, open in if !open { studioDraft = "" } }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { note in
+            guard let frame = note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else { return }
+            keyboard = max(0, UIScreen.main.bounds.height - frame.minY)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+            keyboard = 0
+        }
+    }
+
+    /// The studio connection's line in Everglade, with Try again after a
+    /// failed connect.
+    private func studioStatus(_ status: String) -> some View {
+        HStack(spacing: 10) {
+            Text(status).font(.caption).foregroundStyle(.white.opacity(0.8))
+                .multilineTextAlignment(.center)
+                .accessibilityIdentifier("verse-studio-status")
+            if world.studioFailed {
+                Button("Try again") { world.retryStudio(studioComputer, connect: connectStudio) }
+                    .font(.caption.weight(.semibold))
+                    .accessibilityIdentifier("verse-studio-retry")
+            }
+        }
+        .padding(.horizontal, 12).padding(.vertical, 6)
+        .background(.black.opacity(0.55), in: Capsule())
+    }
+
+    /// Everglade's Agent Studio panel: Rust's view mounted as is, with its
+    /// own close control, and a field whose text Rust sends as the panel
+    /// says (an answer, a message, or a change request). It stays above the
+    /// keyboard.
+    private func studioPanel(size: CGSize, safe: EdgeInsets) -> some View {
+        let top = safe.top + 12
+        let bottom = max(safe.bottom, keyboard) + 16
+        let bounds = CGRect(x: safe.leading + 12, y: top,
+                            width: max(1, size.width - safe.leading - safe.trailing - 24),
+                            height: max(120, size.height - top - bottom))
+        let width = min(bounds.width, 540)
+        return VStack(spacing: 0) {
+            // The view's list scrolls its own rows.
+            Group {
+                if let view = world.studioView {
+                    NativeRenderer(node: view.root, revision: view.revision,
+                                   followTarget: nil, followChanged: nil) { key in
+                        world.activateStudio(key)
+                    }
+                } else {
+                    ProgressView("Loading studio…")
+                        .padding(.top, 24)
+                        .accessibilityIdentifier("verse-studio-loading")
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            if let error = world.error {
+                Text(error).font(.caption).foregroundStyle(.white.opacity(0.8))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 12).padding(.top, 6)
+                    .accessibilityIdentifier("verse-studio-error")
+            }
+            HStack(alignment: .bottom, spacing: 8) {
+                TextField("Answer or message", text: $studioDraft, axis: .vertical)
+                    .lineLimit(1...4)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityIdentifier("verse-studio-text")
+                Button("Send") { sendStudioText() }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(studioDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .accessibilityIdentifier("verse-studio-send")
+            }
+            .padding(10)
+        }
+        .frame(width: width, height: bounds.height, alignment: .top)
+        .background(Color(white: 0.04).opacity(0.97), in: RoundedRectangle(cornerRadius: 16))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(.white.opacity(0.55), lineWidth: 1))
+        .accessibilityIdentifier("verse-studio-panel")
+        .position(x: bounds.midX, y: bounds.midY)
+        .frame(width: size.width, height: size.height)
+    }
+
+    private func sendStudioText() {
+        let text = studioDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, text.utf8.count <= 60_000 else { return }
+        if world.studioText(text) { studioDraft = "" }
     }
 
     /// A board's panel over the world, with a leader line from the board it
@@ -638,10 +895,19 @@ final class VerseWorldView: UIView {
         #endif
     }
 
+    /// The world's live Rust handle, for connecting its studio.
+    fileprivate var nativeHandle: UnsafeMutableRawPointer? { handle }
+
     @discardableResult
     func send(_ request: [String: Any]) -> WorldPacket? {
-        // A Gym connection code is the one large request.
-        let limit = request["action"] as? String == "gym_configure" ? 96 * 1024 : 4096
+        // A Gym connection code and a plan typed at the podium are the large
+        // requests.
+        let limit: Int
+        switch request["action"] as? String {
+        case "gym_configure": limit = 96 * 1024
+        case "studio_text": limit = 64 * 1024
+        default: limit = 4096
+        }
         guard let handle,
               let input = try? JSONSerialization.data(withJSONObject: request),
               input.count <= limit else { return nil }
@@ -895,8 +1161,12 @@ final class VerseWorldView: UIView {
 /// `r=attempt:<id>`, `r=filter:beats`, `r=caveats`, `r=trace`,
 /// `r=tab:agent`, `r=step`, `r=seek:0.5`, `r=play`, `r=back`), `evals` taps
 /// the EVALS board (`walk,walk,walk,left` first), `goevals` walks straight to
-/// it as See the board does, `e=notes:on` switches Compare notes, and `wait`
-/// does nothing for a step.
+/// it as See the board does, `e=notes:on` switches Compare notes, `everglade`
+/// enters Everglade, `station=podium` stands at that station, `interact`
+/// sends Everglade's Interact (the studio panel opens once the studio is
+/// connected to a paired computer), `s=text` sends `text` into the open
+/// studio panel, `closestudio` closes it, and `wait` does nothing for a
+/// step.
 /// Debug and simulator builds only.
 @MainActor
 private final class VerseWorldScript {
@@ -951,6 +1221,12 @@ private final class VerseWorldScript {
         case ("walkpinch", 89): view.pointer(pointer, phase: "up", at: CGPoint(x: stick.x, y: stick.y - 56))
         case ("recenter", 0): view.send(["action": "recenter_camera"])
         case ("everglade", 0): view.send(["action": "enter_everglade"])
+        case ("interact", 0): view.send(["action": "zone", "intent": "interact"])
+        case ("closestudio", 0): view.send(["action": "close_studio"])
+        case (let place, 0) where place.hasPrefix("station="):
+            view.send(["action": "go_station", "station": String(place.dropFirst("station=".count))])
+        case (let text, 0) where text.hasPrefix("s="):
+            view.send(["action": "studio_text", "text": String(text.dropFirst(2))])
         case ("turn", 0): view.pointer(pointer, phase: "down", at: look)
         case ("turn", 1): view.pointer(pointer, phase: "move", at: CGPoint(x: look.x + 40, y: look.y))
         case ("turn", 80): view.pointer(pointer, phase: "up", at: CGPoint(x: look.x + 40, y: look.y))

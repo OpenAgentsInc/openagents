@@ -97,6 +97,13 @@ struct ComputersHome: Decodable, Equatable {
     let add_other: String
 }
 
+/// A paired computer Everglade's studio can act through: its host key and
+/// its name on the Computers list.
+struct StudioComputer: Equatable {
+    let host: String
+    let name: String
+}
+
 /// Account > Your keys (BYOK, #10176), as Rust shows it. Never a key: each
 /// row has its last four characters and its last test.
 struct ProviderKeysState: Decodable, Equatable {
@@ -582,6 +589,40 @@ final class MobileBridge: ObservableObject {
 
     func activate(_ surface: String, view: NativeView, node: String) {
         send(["op": "\(surface)_activate", "instance": view.instance, "revision": view.revision, "node": node])
+    }
+
+    /// The paired computer Everglade's studio acts through: the first
+    /// computer the Computers list shows online, with its name.
+    var studioComputer: StudioComputer? {
+        packet?.computers_home?.rows.first { $0.tone == "online" }
+            .map { StudioComputer(host: $0.host, name: $0.name) }
+    }
+
+    /// Connects the Verse world's Everglade studio to the paired computer
+    /// `host` (`openagents_verse_studio_connect`). The call needs the app
+    /// handle with no other call running and the Verse handle on the main
+    /// thread, so it holds this bridge's queue and runs on the main thread.
+    /// `verse` answers the world's live handle then, or nil once it is gone.
+    /// `done` gets Rust's JSON reply on the main thread, or nil.
+    func studioConnect(host: String, verse: @escaping () -> UnsafeMutableRawPointer?,
+                       done: @escaping (Data?) -> Void) {
+        let key = Data(host.utf8)
+        guard let handle, !key.isEmpty, key.count <= 256 else { return done(nil) }
+        queue.async {
+            let data: Data? = DispatchQueue.main.sync {
+                MainActor.assumeIsolated {
+                    guard let world = verse() else { return nil }
+                    return key.withUnsafeBytes { bytes -> Data? in
+                        let buffer = openagents_verse_studio_connect(
+                            world, handle, bytes.bindMemory(to: UInt8.self).baseAddress, bytes.count)
+                        defer { openagents_mobile_buffer_free(buffer) }
+                        guard let pointer = buffer.data, buffer.len > 0 else { return nil }
+                        return Data(bytes: pointer, count: buffer.len)
+                    }
+                }
+            }
+            DispatchQueue.main.async { done(data) }
+        }
     }
 
     /// Hand Rust the Spark wallet's seed from Keychain. Rust ignores a

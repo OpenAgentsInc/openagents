@@ -215,8 +215,21 @@ pack first.
   Levitation holds altitude while you move; Up and Down adjust it by 1.5 m,
   up to 18 m above the ground. Land descends gently at 2 m/s. The bar works
   while you hold a stick and disappears on returning to the Grid.
-  The OpenAgents app has no studio panel, so it offers no **Interact** at a
-  station; Coder's phones keep theirs.
+- **The studio.** In Everglade, the app connects the Agent Studio to the
+  first computer that **Account > Computers** shows online, under the grant
+  the phone holds for it (`openagents_verse_studio_connect` on iOS; on
+  Android, `studioLinks` on the app worker and then `verseStudioConnect` on
+  the main thread). A line at the top says which computer and rights the
+  studio uses, or why it could not connect, with **Try again**. Without a
+  connected computer, the app offers no **Interact**. With one, an
+  **Interact** button on the right edge, labeled with the station's panel,
+  opens that station's panel. The panel is the Rust Native view described
+  in [Everglade](#everglade), with a text field below it: what you type is
+  sent as `studio_text`, which answers the podium's first decision,
+  messages seats, or requests changes at the merge station. **Back to
+  world**, or Android's Back gesture, closes it. For simulator checks,
+  `--verse-script everglade,station=podium,interact,s=text` enters
+  Everglade, stands at the podium, opens its panel, and sends `text`.
 - **Returning.** The return arch, lettered **THE GRID**, stands 7 m behind
   Everglade's spawn. Walking through it comes back 3.5 m in front of the Grid's Everglade arch, facing away from
   it, and presence rejoins `verse-bare` there.
@@ -487,7 +500,8 @@ decision or messages seats; with `review`, the merge station offers
 answer shows as the panel's first row.
 See [Everglade](everglade.md).
 
-The OpenAgents app's bare world reaches no zone for now; its
+The OpenAgents app's bare world reaches Everglade through its walk-in arch,
+with the studio connected to a paired computer; its
 [walk-in portal](#the-grids-portal-to-lagrange-1) to Lagrange 1 is hidden.
 
 Plaza presence and Gym observation pause while loading or visiting a zone,

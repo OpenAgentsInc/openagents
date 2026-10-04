@@ -146,6 +146,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var worldRetry: TextView
     private lateinit var worldControls: LinearLayout
     private lateinit var panels: VersePanels
+    private lateinit var studio: VerseStudio
 
     private var cameraCallback: ((Boolean) -> Unit)? = null
     private val cameraPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -250,6 +251,7 @@ class MainActivity : ComponentActivity() {
             val density = resources.displayMetrics.density
             world.setHudInsets(bars.top / density, 0f, 0f, 0f)
             panels.setTopInset(bars.top)
+            studio.setTopInset(bars.top)
             WindowInsetsCompat.CONSUMED
         }
 
@@ -261,6 +263,7 @@ class MainActivity : ComponentActivity() {
                         bridge.packet?.objectOrNull("computers_home") == null -> bridge.computersGo("home")
                     tab == AppTab.ACCOUNT && route != null -> open(null)
                     tab == AppTab.VERSE && panels.showing -> panels.back()
+                    tab == AppTab.VERSE && studio.showing -> studio.back()
                     tab != AppTab.CODER -> select(AppTab.CODER)
                     else -> { isEnabled = false; onBackPressedDispatcher.onBackPressed(); isEnabled = true }
                 }
@@ -380,6 +383,7 @@ class MainActivity : ComponentActivity() {
         val gymPreview = BuildConfig.DEBUG && intent.getBooleanExtra("gym_preview", false)
         world = VerseSurface(this, gymPreview, xpPreview) { packet, _ ->
             if (::panels.isInitialized) panels.update(packet)
+            if (::studio.isInitialized) studio.update(packet)
             if (tab == AppTab.VERSE) renderVerse()
         }
         if (BuildConfig.DEBUG) intent.getStringExtra("verse_script")?.let { world.script = VerseScript.parse(it) }
@@ -406,6 +410,9 @@ class MainActivity : ComponentActivity() {
         worldControls = controls
         page.addView(controls, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply {
             setMargins(dp(16), dp(16), dp(16), dp(16)) })
+        // Everglade's studio: its connection line, Interact, and panel.
+        studio = VerseStudio(this, world, { bridge.studioComputer() }) { host, done -> bridge.studioLinks(host, done) }
+        page.addView(studio.root, FrameLayout.LayoutParams(-1, -1))
         page.addView(panels.root, FrameLayout.LayoutParams(-1, -1))
     }
 
@@ -417,7 +424,8 @@ class MainActivity : ComponentActivity() {
         cameraButton.alpha = if (world.motionAvailable) 1f else 0.4f
         // The Gym and results panels show their own errors and hide the
         // camera controls.
-        worldControls.visibility = if (panels.showing) View.GONE else View.VISIBLE
+        worldControls.visibility = if (panels.showing || studio.showing) View.GONE else View.VISIBLE
+        studio.setBoardOpen(panels.showing)
         val problem = world.nativeError ?: world.snapshot?.textOrNull("error") ?: world.motionError
         worldStatus.text = problem ?: ""
         worldStatus.visibility = if (problem == null) View.GONE else View.VISIBLE
@@ -720,6 +728,8 @@ class MainActivity : ComponentActivity() {
             }
         }
         val packet = bridge.packet
+        // A computer that comes online connects Everglade's studio.
+        if (::studio.isInitialized) studio.sync()
         if (::connect.isInitialized) connect.update(packet?.objectOrNull("connect"))
         mount(coderRenderer, coderContent, fixture ?: packet?.objectOrNull("coder"))
         renderGym(packet?.objectOrNull("gym"))

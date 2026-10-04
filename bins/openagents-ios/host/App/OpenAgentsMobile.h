@@ -44,5 +44,11 @@ void *openagents_verse_create(void *layer, const uint8_t *configuration, size_t 
 OpenAgentsMobileBuffer openagents_verse_create_error(void);
 OpenAgentsMobileBuffer openagents_verse_call(void *handle, const uint8_t *request, size_t length);
 void openagents_verse_destroy(void *handle);
+// Connects the world's Everglade studio to the paired computer whose host key
+// is the UTF-8 `host`, under the grant the app handle holds for it. Answers
+// {"connected":true,"rights":[...]} or {"connected":false,"error":"..."}.
+// Call it on the main thread while no other call uses the app handle.
+OpenAgentsMobileBuffer openagents_verse_studio_connect(void *verse, void *app, const uint8_t *host,
+                                                       size_t length);
 
 #endif

@@ -172,8 +172,13 @@ class VerseSurface(context: Context, private val gymPreview: Boolean, private va
         if (handle == 0L) return null
         return try {
             val encoded = request.toString()
-            // A Gym connection code is the one large request.
-            val limit = if (request.optString("action") == "gym_configure") 98_304 else 4096
+            // A Gym connection code and a plan typed at the podium are the
+            // large requests.
+            val limit = when (request.optString("action")) {
+                "gym_configure" -> 98_304
+                "studio_text" -> 65_536
+                else -> 4096
+            }
             require(encoded.toByteArray().size <= limit) { "The world request is too large." }
             val result = packet(OpenAgentsNative.verseCall(handle, encoded), "coder.verse.v1")
             require(result.getJSONArray("position").length() == 3 &&
@@ -234,6 +239,20 @@ class VerseSurface(context: Context, private val gymPreview: Boolean, private va
         catch (_: Exception) { gymStorageError = "The Gym connection works for this session but couldn't be saved securely." }
         changed(result, null)
         return true
+    }
+
+    /** The world's Rust handle ID, or 0 before it starts; a new world gets a new ID. */
+    val handleId get() = handle
+
+    /**
+     * Connects the world's Everglade studio through the computer link the app
+     * worker took under [token] (`MobileBridge.studioLinks`). Answers Rust's
+     * reply: the grant's rights, or why it could not connect.
+     */
+    fun connectStudio(token: Long): JSONObject? {
+        if (handle == 0L || disposed) return null
+        return try { JSONObject(OpenAgentsNative.verseStudioConnect(handle, token)) }
+        catch (failure: Exception) { json("connected" to false, "error" to (failure.message ?: "The studio couldn't connect.")) }
     }
 
     /** Walks into the Gym and opens its EVALS board on the next frame. */

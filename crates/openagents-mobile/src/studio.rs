@@ -10,8 +10,12 @@
 //!
 //! The host calls [`openagents_verse_studio_connect`] with its Verse handle,
 //! its app handle, and the computer's host key, as it lists the computer
-//! on the Computers screen. Text the person types into an open studio
-//! panel goes to the Verse handle as `{"action":"studio_text","text":...}`.
+//! on the Computers screen. The Android host makes the same call in two
+//! steps, since its app and Verse handles live on different threads: it
+//! takes the computer's link on the app's worker, then connects the Verse
+//! handle on the main thread (`crate::android`). Text the person types into
+//! an open studio panel goes to the Verse handle as
+//! `{"action":"studio_text","text":...}`.
 use crate::{App, OpenAgentsMobileBuffer, buffer};
 use coder_mobile::VerseHandle;
 use serde::Serialize;
@@ -49,6 +53,44 @@ impl Reply {
     }
 }
 
+/// A paired computer's supervised NIP-HOST link and the runtime that runs
+/// its calls, as [`App::studio_links`] hands them out.
+pub(crate) type Links = (
+    coder_computers::terminal::session::Links,
+    tokio::runtime::Handle,
+);
+
+/// The link `app`'s live Computers client keeps to the paired computer
+/// `host`, for [`connect_through`].
+///
+/// # Errors
+/// A plain sentence: no computer is named, or the app has no live
+/// Computers client.
+pub(crate) fn links(app: &App, host: &str) -> Result<Links, String> {
+    let host = host.trim();
+    if host.is_empty() {
+        return Err("Choose a computer for the studio".into());
+    }
+    app.studio_links(host)
+        .ok_or_else(|| "This phone has no live connection to its computers".into())
+}
+
+/// Connects `verse`'s Everglade studio to the paired computer `links`
+/// reaches. Returns the grant's rights.
+///
+/// # Errors
+/// `links` failed, or the computer is not connected now.
+pub(crate) fn connect_through(
+    verse: &mut VerseHandle,
+    links: Result<Links, String>,
+) -> Result<Vec<&'static str>, String> {
+    let (links, runtime) = links?;
+    let rights = verse
+        .connect_studio(links, runtime)
+        .map_err(|error| coder_computers::describe(&error))?;
+    Ok(rights.into_iter().map(|right| right.as_str()).collect())
+}
+
 /// Connects `verse`'s Everglade studio to the paired computer `host`
 /// through `app`'s live Computers client. Returns the grant's rights.
 ///
@@ -60,17 +102,12 @@ pub(crate) fn connect(
     app: &App,
     host: &str,
 ) -> Result<Vec<&'static str>, String> {
-    let host = host.trim();
-    if host.is_empty() {
-        return Err("Choose a computer for the studio".into());
-    }
-    let (links, runtime) = app
-        .studio_links(host)
-        .ok_or("This phone has no live connection to its computers")?;
-    let rights = verse
-        .connect_studio(links, runtime)
-        .map_err(|error| coder_computers::describe(&error))?;
-    Ok(rights.into_iter().map(|right| right.as_str()).collect())
+    connect_through(verse, links(app, host))
+}
+
+/// The JSON reply a connect call answers: the rights, or the reason.
+pub(crate) fn reply(result: Result<Vec<&'static str>, String>) -> Vec<u8> {
+    serde_json::to_vec(&Reply::of(result)).unwrap_or_default()
 }
 
 /// Connects the Verse handle's Everglade studio to the paired computer
@@ -98,7 +135,7 @@ pub unsafe extern "C" fn openagents_verse_studio_connect(
             Ok(host) => connect(unsafe { &mut *verse }, unsafe { &*app }, host),
             Err(_) => Err("The computer's key is not text".into()),
         };
-        serde_json::to_vec(&Reply::of(result)).unwrap_or_default()
+        reply(result)
     }))
     .map(buffer)
     .unwrap_or_else(|_| buffer(vec![]))

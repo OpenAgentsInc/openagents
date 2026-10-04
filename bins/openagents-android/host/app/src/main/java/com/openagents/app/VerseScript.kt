@@ -10,9 +10,11 @@ import org.json.JSONObject
  * `look` drags the view, `turn` holds the look stick right, `walkpinch`
  * holds the stick while two other fingers pinch in, `board` and `results`
  * tap the Gym's boards where the last packet placed them, `r=do:value`
- * sends a results choice, `gym` asks for the Gym board, and `wait` does
- * nothing. Each step runs for 90 frames after a one-second settle. Debug
- * builds only.
+ * sends a results choice, `gym` asks for the Gym board, `everglade` enters
+ * Everglade, `station=podium` stands at that station, `interact` sends
+ * Everglade's Interact, `s=text` sends text into the open studio panel,
+ * `closestudio` closes it, and `wait` does nothing. Each step runs for 90
+ * frames after a one-second settle. Debug builds only.
  */
 class VerseScript private constructor(private val steps: ArrayDeque<String>) {
     private var frame = 0
@@ -60,6 +62,11 @@ class VerseScript private constructor(private val steps: ArrayDeque<String>) {
             current == "board" -> tap(world.snapshot?.objectOrNull("gym"))
             current == "results" -> tap(world.snapshot?.objectOrNull("results"))
             current == "gym" -> if (t == 0) world.send(json("action" to "interact_gym"))
+            current == "everglade" -> if (t == 0) world.send(json("action" to "enter_everglade"))
+            current == "interact" -> if (t == 0) world.send(json("action" to "zone", "intent" to "interact"))
+            current == "closestudio" -> if (t == 0) world.send(json("action" to "close_studio"))
+            current.startsWith("station=") -> if (t == 0) world.send(json("action" to "go_station", "station" to current.removePrefix("station=")))
+            current.startsWith("s=") -> if (t == 0) world.send(json("action" to "studio_text", "text" to current.removePrefix("s=")))
             current.startsWith("r=") -> if (t == 0) world.results(command(current.removePrefix("r=")))
         }
         if (t >= 89) { steps.removeFirst(); frame = 30 }

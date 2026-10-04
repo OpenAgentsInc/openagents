@@ -375,6 +375,32 @@ class MobileBridge(private val context: Context, private val computersFixture: B
     fun refreshComputers() = send(json("op" to "computers_refresh"))
     fun snapshot() = send(json("op" to "snapshot"))
 
+    /**
+     * The paired computer Everglade's studio acts through: the first one the
+     * Computers list shows online, as its host key and name.
+     */
+    fun studioComputer(): Pair<String, String>? {
+        val rows = packet?.objectOrNull("computers_home")?.optJSONArray("rows") ?: return null
+        return rows.objects().firstOrNull { it.optString("tone") == "online" }
+            ?.let { it.getString("host") to it.optString("name") }
+    }
+
+    /**
+     * Takes the app's link to the paired computer [host] for the studio, on
+     * the worker, and hands [done] its token on the main thread (null when
+     * the app is not running). The Verse surface connects with it.
+     */
+    fun studioLinks(host: String, done: (Long?) -> Unit) {
+        if (disposed) return done(null)
+        worker.execute {
+            val token = runCatching {
+                check(handle != 0L) { failure ?: "OpenAgents has not started." }
+                OpenAgentsNative.studioLinks(handle, host)
+            }.getOrNull()
+            main.post { if (!disposed) done(token) }
+        }
+    }
+
     /** An activation on a surface: `computers`, `coder`, `tailnet`, or `terminal`. */
     fun activate(surface: String, view: JSONObject, node: String) =
         send(json("op" to "${surface}_activate", "instance" to view.getString("instance"),

@@ -106,6 +106,11 @@ pub(crate) enum Request {
     /// Load and enter Everglade from the Grid without walking to its arch,
     /// for scripted checks (`--verse-script everglade`).
     EnterEverglade,
+    /// Stand at Everglade's station `station` (its map landmark ID, such as
+    /// `podium`), for scripted checks (`--verse-script station=podium`).
+    GoStation {
+        station: String,
+    },
     HudInsets {
         top: f32,
         right: f32,
@@ -2093,6 +2098,7 @@ impl Scene {
                 Ok(())
             }
             Request::EnterEverglade => self.world.enter_everglade(),
+            Request::GoStation { station } => self.go_station(&station),
             Request::RecenterCamera => {
                 self.reset_motion();
                 self.world.camera.yaw_offset = 0.0;
@@ -2463,6 +2469,21 @@ impl Scene {
         self.studio.as_ref().map(|open| open.view.view().clone())
     }
 
+    /// Stands the player at Everglade's station `id`, for scripted checks.
+    fn go_station(&mut self, id: &str) -> Result<(), String> {
+        if self.world.zone != verse::zones::ZoneId::Everglade || self.world.zone_loading() {
+            return Err("Enter Everglade first".into());
+        }
+        let at = verse::zones::everglade::STATIONS
+            .iter()
+            .find(|station| station.id == id)
+            .ok_or("Everglade has no such station")?
+            .at;
+        self.world.cancel_navigation();
+        self.reset_motion();
+        self.world.place_player([at[0], 0.0, at[1]].into(), 0.0)
+    }
+
     /// Opens the panel of the Everglade station in reach. Called only after
     /// the shared runtime admitted the Interact intent where the player
     /// stands.
@@ -2710,9 +2731,14 @@ impl Scene {
     fn zone_snapshot(&self) -> verse::zones::Snapshot {
         let mut snapshot = self.world.zone_snapshot(self.aspect());
         if self.world.is_bare() {
-            // The OpenAgents app has no studio panel to open at a station.
-            snapshot.controls.retain(|control| {
-                !matches!(control.action, ZoneIntent::Interact | ZoneIntent::Return)
+            // The OpenAgents app offers a station's studio panel only once
+            // its host connected the studio to a paired computer
+            // (`connect_studio`); the return arch replaces Return.
+            let studio = self.world.studio().has_source();
+            snapshot.controls.retain(|control| match control.action {
+                ZoneIntent::Return => false,
+                ZoneIntent::Interact => studio,
+                _ => true,
             });
         }
         let size = self.lifecycle.viewport().logical_size();
@@ -2789,8 +2815,11 @@ impl Scene {
         {
             return Err("Return to the world to use the portal".into());
         }
-        if intent == ZoneIntent::Interact && self.world.is_bare() {
-            return Err("This app has no studio panel".into());
+        if intent == ZoneIntent::Interact
+            && self.world.is_bare()
+            && !self.world.studio().has_source()
+        {
+            return Err("Connect a computer to use the studio".into());
         }
         if intent == ZoneIntent::Enter {
             let portal = self.world.zone_snapshot(self.aspect()).portal;

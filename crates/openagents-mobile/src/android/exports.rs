@@ -1,8 +1,8 @@
 //! Android's JNI exports. See the parent module for the contract.
 use super::{
     BridgeError, MAX_CONFIG_BYTES, MAX_HANDLES, MAX_REQUEST_BYTES, MAX_VERSE_CONFIG_BYTES,
-    MAX_VERSE_REQUEST_BYTES, create_app, editors, error, guarded, packet_text, respond,
-    surface_config, transcripts,
+    MAX_VERSE_REQUEST_BYTES, create_app, editors, error, guarded, hold_studio_links, packet_text,
+    respond, surface_config, take_studio_links, transcripts,
 };
 use crate::App;
 use coder_mobile::VerseHandle;
@@ -399,6 +399,68 @@ pub extern "system" fn Java_com_openagents_app_OpenAgentsNative_verseCall<'local
                         .handle
                         .call_bytes(request.as_bytes())
                         .map_err(BridgeError::from)
+                })
+            })?;
+            output(env, bytes)
+        })
+        .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+/// On the app's worker: takes the app's link to the paired computer whose
+/// host key is `host` for Everglade's studio, and answers a token for
+/// `verseStudioConnect`. A missing link is not an error here; the connect
+/// call answers its reason.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_openagents_app_OpenAgentsNative_studioLinks<'local>(
+    mut unowned: EnvUnowned<'local>,
+    _class: JClass<'local>,
+    handle: i64,
+    host: JString<'local>,
+) -> i64 {
+    unowned
+        .with_env(|env| -> Result<_, BridgeError> {
+            main_thread(false)?;
+            let host = input(env, &host, 256)?;
+            guarded(|| {
+                APPS.with(|apps| {
+                    let apps = apps
+                        .try_borrow()
+                        .map_err(|_| error("An app call is already in progress"))?;
+                    let app = apps
+                        .get(&handle)
+                        .ok_or_else(|| error("App handle is stale or belongs to another thread"))?;
+                    Ok(hold_studio_links(app, &host))
+                })
+            })
+        })
+        .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+/// On the main thread: connects the Verse handle's Everglade studio through
+/// the link `studioLinks` took under `token`, as
+/// `openagents_verse_studio_connect` does. Answers
+/// `{"connected":true,"rights":[...]}` or `{"connected":false,"error":"..."}`.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_openagents_app_OpenAgentsNative_verseStudioConnect<'local>(
+    mut unowned: EnvUnowned<'local>,
+    _class: JClass<'local>,
+    handle: i64,
+    token: i64,
+) -> JString<'local> {
+    unowned
+        .with_env(|env| -> Result<_, BridgeError> {
+            main_thread(true)?;
+            let bytes = guarded(|| {
+                VERSES.with(|verses| {
+                    let mut verses = verses
+                        .try_borrow_mut()
+                        .map_err(|_| error("A Verse call is already in progress"))?;
+                    let verse = verses.get_mut(&handle).ok_or_else(|| {
+                        error("Verse handle is stale or belongs to another thread")
+                    })?;
+                    let result =
+                        crate::studio::connect_through(&mut verse.handle, take_studio_links(token));
+                    Ok(crate::studio::reply(result))
                 })
             })?;
             output(env, bytes)
