@@ -1654,6 +1654,7 @@ impl Game {
             } else {
                 glam::DVec3::ZERO
             };
+            let velocity = self.levitated_walk(self.player_actor(), velocity);
             player_path.push(self.character.feet.as_vec3().to_array());
             let filter = self.actor_filter(self.admission.actor());
             let mut fell = 0.;
@@ -1748,7 +1749,9 @@ impl Game {
                     // A knocked character does not walk; its authored place
                     // follows wherever the shove leaves it.
                     let knocked = character.knocked();
-                    let velocity = if knocked {
+                    // A levitated character moves only by pushing off.
+                    let levitated = self.spells.levitations.holds(a.actor.id);
+                    let velocity = if knocked || levitated {
                         glam::DVec3::ZERO
                     } else {
                         glam::DVec3::new(velocity.x, 0., velocity.z).clamp_length_max(100.)
@@ -1768,7 +1771,7 @@ impl Game {
                         npc_path.push(character.feet.as_vec3().to_array());
                     }
                     let feet = character.feet.as_vec3();
-                    if knocked || character.knocked() {
+                    if knocked || levitated || character.knocked() {
                         self.controls.displace(id, feet - previous);
                     }
                     if fell > 0. {
@@ -2022,6 +2025,7 @@ impl Game {
     pub fn hostile_held(&self, id: u64) -> bool {
         self.ids.get(&id).is_some_and(|source| {
             self.controls.held(*source)
+                || self.spells.levitations.holds(id)
                 || self
                     .additional_players
                     .values()
@@ -2316,6 +2320,7 @@ impl Game {
                 self.spells.end_concentration(*actor)?;
             }
         }
+        self.levitate_tick(steps)?;
         Ok(())
     }
     pub fn jump(&mut self) -> Result<(), String> {

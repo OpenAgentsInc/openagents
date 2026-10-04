@@ -18,11 +18,11 @@
 //! show that nothing else moves the target.
 
 use glam::DVec3;
-use physics::{BodyId, BodyKind, Collider, Filter, Ledger, World};
+use physics::{BodyId, BodyKind, Collider, ColliderId, Filter, Ledger, World};
 use serde::{Deserialize, Serialize};
 
-/// One foot, m.
-pub const FEET: f64 = 0.3048;
+pub use crate::spells::{FEET, GRAVITY, SPELL_SAVE_DC};
+
 /// One pound, kg.
 pub const POUNDS: f64 = 0.453_592_37;
 /// SRD range: 60 feet. The target must stay this close to the caster.
@@ -50,10 +50,6 @@ pub const CLIMB_SPEED: f64 = WALK_SPEED / 2.0;
 /// Feather Fall's descent rate, 60 feet per round, m/s. The end of
 /// Levitate lowers its target no faster than this.
 pub const FEATHER_FALL_SPEED: f64 = 10.0 * FEET;
-/// The player wizard's spell save DC.
-pub const SPELL_SAVE_DC: i32 = 15;
-/// Standard gravity, m/s^2.
-pub const GRAVITY: f64 = 9.81;
 
 /// Altitude error to commanded vertical speed, 1/s.
 const HOLD_GAIN: f64 = 1.5;
@@ -184,6 +180,8 @@ pub enum End {
     Duration,
     /// The target left the 60-foot range.
     OutOfRange,
+    /// The target died or left the world.
+    TargetGone,
 }
 
 /// Where a levitation is in its life.
@@ -213,8 +211,8 @@ pub enum AltitudeRefusal {
 /// the world and replays exactly.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Levitation {
-    /// The target's reference height (center of mass) when resting on the
-    /// ground under it at cast time, m.
+    /// The target's reference height when resting on the ground under it at
+    /// cast time, m: a body's center of mass, or a character's feet.
     pub base: f64,
     /// Commanded height above `base`, 0 to [`MAX_RISE`], m.
     pub rise: f64,
@@ -315,6 +313,13 @@ impl Levitation {
         }
     }
 
+    /// The vertical speed the hold commands at height `y`, m/s: toward the
+    /// commanded height, no faster than [`RISE_SPEED`].
+    #[must_use]
+    pub fn hold_speed(&self, y: f64) -> f64 {
+        (HOLD_GAIN * (self.target_height() - y)).clamp(-RISE_SPEED, RISE_SPEED)
+    }
+
     /// Vertical acceleration the spell adds to a target at height `y` with
     /// vertical speed `vy` under gravity `g` (positive, m/s^2), m/s^2.
     /// Holding, it cancels gravity and tracks the commanded height at no
@@ -324,9 +329,7 @@ impl Levitation {
     pub fn vertical_accel(&self, y: f64, vy: f64, g: f64, dt: f64) -> f64 {
         match self.phase {
             Phase::Holding => {
-                let wanted =
-                    (HOLD_GAIN * (self.target_height() - y)).clamp(-RISE_SPEED, RISE_SPEED);
-                g + (HOLD_RESPONSE * (wanted - vy)).clamp(-HOLD_ACCEL, HOLD_ACCEL)
+                g + (HOLD_RESPONSE * (self.hold_speed(y) - vy)).clamp(-HOLD_ACCEL, HOLD_ACCEL)
             }
             Phase::Descending(_) => {
                 let next = vy - g * dt;
@@ -362,6 +365,7 @@ pub struct Surface {
     pub gap: f64,
     /// The body the surface belongs to.
     pub body: BodyId,
+    pub collider: ColliderId,
 }
 
 /// The velocity change a push-off gives a levitated target with velocity
@@ -404,20 +408,10 @@ pub fn surface_in_reach(
     reach: f64,
     accept: &dyn Fn(BodyId) -> bool,
 ) -> Option<Surface> {
-    nearest_surface(world, id, reach, accept, &|_| true)
-}
-
-fn nearest_surface(
-    world: &World,
-    id: BodyId,
-    reach: f64,
-    accept: &dyn Fn(BodyId) -> bool,
-    keep: &dyn Fn(&Surface) -> bool,
-) -> Option<Surface> {
     let center = world[id].pos;
     let own: Vec<&Collider> = world.colliders().iter().filter(|c| c.body == id).collect();
     let mut best: Option<Surface> = None;
-    for other in world.colliders() {
+    for (index, other) in world.colliders().iter().enumerate() {
         if other.body == id || other.filter == Filter::NONE || !accept(other.body) {
             continue;
         }
@@ -438,8 +432,9 @@ fn nearest_surface(
                 normal,
                 gap,
                 body: other.body,
+                collider: ColliderId(index as u32),
             };
-            if gap <= reach && keep(&surface) && best.is_none_or(|b| gap < b.gap) {
+            if gap <= reach && best.is_none_or(|b| gap < b.gap) {
                 best = Some(surface);
             }
         }
@@ -447,22 +442,68 @@ fn nearest_surface(
     best
 }
 
-/// A surface in reach that movement input can push or pull against: a
-/// wall, pillar, or ceiling, but not the floor, which would let a lowered
-/// target walk.
+/// The surface in reach that movement input pushes or pulls against: a
+/// wall, a pillar, a ceiling, a ledge top, or the floor under a lowered
+/// target, which it can only crawl along at climbing speed.
 #[must_use]
-pub fn wall_in_reach(
+pub fn push_surface(world: &World, id: BodyId, accept: &dyn Fn(BodyId) -> bool) -> Option<Surface> {
+    surface_in_reach(world, id, REACH, &|b| accept(b) && !world[b].removed)
+}
+
+/// The nearest surface within `reach` of an upright capsule from `a` to `b`
+/// with `radius` (a character), among colliders on bodies `accept` allows.
+#[must_use]
+pub fn capsule_surface(
     world: &World,
-    id: BodyId,
+    a: DVec3,
+    b: DVec3,
+    radius: f64,
+    reach: f64,
     accept: &dyn Fn(BodyId) -> bool,
 ) -> Option<Surface> {
-    nearest_surface(
-        world,
-        id,
-        REACH,
-        &|b| accept(b) && !world[b].removed,
-        &|s| s.normal.y < 0.7,
-    )
+    let axis = b - a;
+    let segment = |q: DVec3| {
+        let t = if axis.length_squared() > 0.0 {
+            ((q - a).dot(axis) / axis.length_squared()).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        a + axis * t
+    };
+    let middle = (a + b) * 0.5;
+    let extent = axis.length() * 0.5 + radius + reach;
+    let mut best: Option<Surface> = None;
+    for (index, collider) in world.colliders().iter().enumerate() {
+        if collider.filter == Filter::NONE
+            || world[collider.body].removed
+            || !accept(collider.body)
+            || collider.pose(world).0.distance(middle) > collider.shape.bound() + extent
+        {
+            continue;
+        }
+        let mut p = collider.closest_point(world, middle);
+        let mut q = segment(p);
+        for _ in 0..3 {
+            p = collider.closest_point(world, q);
+            q = segment(p);
+        }
+        let gap = (p.distance(q) - radius).max(0.0);
+        if gap > reach || best.is_some_and(|s| s.gap <= gap) {
+            continue;
+        }
+        let normal = (q - p)
+            .try_normalize()
+            .or_else(|| (middle - collider.pose(world).0).try_normalize())
+            .unwrap_or(DVec3::Y);
+        best = Some(Surface {
+            point: p,
+            normal,
+            gap,
+            body: collider.body,
+            collider: ColliderId(index as u32),
+        });
+    }
+    best
 }
 
 /// The height of the ground under body `id`, m, by a ray straight down
@@ -520,7 +561,7 @@ impl Levitation {
     }
 
     /// Apply movement `input` to a held body `id` through a push-off
-    /// against a wall in reach, if any. The surface takes the reaction when
+    /// against a surface in reach, if any. The surface takes the reaction when
     /// it is dynamic; a fixed surface's reaction is recorded in `ledger`.
     /// Returns the velocity change.
     pub fn steer(
@@ -534,7 +575,7 @@ impl Levitation {
         if !self.holding() {
             return DVec3::ZERO;
         }
-        let surface = wall_in_reach(world, id, accept);
+        let surface = push_surface(world, id, accept);
         let dv = push_off(input, world[id].vel, surface.as_ref());
         if dv == DVec3::ZERO {
             return dv;

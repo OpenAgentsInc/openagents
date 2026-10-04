@@ -269,21 +269,22 @@ fn input_without_a_surface_in_reach_does_nothing() {
     let body = world[dummy];
     assert_eq!(horizontal(body.vel), DVec3::ZERO);
     assert_eq!(horizontal(body.pos), horizontal(before));
-    // Even lowered to the floor, the floor is not something to push along.
+    // Lowered to the floor, the floor is in reach: the target can only crawl
+    // along it at climbing speed.
     let mut low = lev;
     low.command(-MAX_RISE, 20.0).unwrap();
     for _ in 0..(8 * 120) {
         step(&mut world, &low, dummy, DVec3::ZERO, &mut ledger);
     }
     let dv = step(&mut world, &low, dummy, DVec3::X, &mut ledger);
-    assert_eq!(dv, DVec3::ZERO);
+    assert!((dv - DVec3::X * CLIMB_SPEED).length() < 1e-9, "{dv}");
 }
 
 #[test]
 fn a_push_off_in_reach_moves_the_target_no_faster_than_climbing() {
     let (mut hall, lev) = lifted();
     let mut ledger = Ledger::default();
-    let surface = wall_in_reach(&hall.world, hall.dummy, &|_| true).unwrap();
+    let surface = push_surface(&hall.world, hall.dummy, &|_| true).unwrap();
     assert_eq!(surface.body, hall.pillar);
     assert!((surface.gap - 0.2).abs() < 1e-6, "{}", surface.gap);
     assert!((surface.normal - DVec3::X).length() < 1e-9);

@@ -12,6 +12,7 @@
 //! slot) and one line to `crate::playground::scenarios`.
 pub mod dice;
 pub mod fields;
+pub mod levitate;
 pub mod props;
 pub mod thunderwave;
 pub mod wind_wall;
@@ -67,7 +68,7 @@ pub struct SpellDef {
 /// 1 Wall of Stone (#10453), 2 Levitate (#10454), 3 Feather Fall (#10455),
 /// 4 Gust of Wind (#10456), 5 Wind Wall (#10457), 6 Black Tentacles
 /// (#10458), 7 Meteor Swarm (#10459), 8 Reverse Gravity (#10460).
-pub const CATALOG: &[SpellDef] = &[wind_wall::DEF];
+pub const CATALOG: &[SpellDef] = &[wind_wall::DEF, levitate::DEF];
 
 pub fn spell_in_slot(slot: u8) -> Option<&'static SpellDef> {
     CATALOG.iter().find(|s| s.slot == slot)
@@ -163,6 +164,8 @@ pub struct SpellWorld {
     /// Standing wind walls and what they track.
     #[serde(default)]
     pub wind: wind_wall::Wind,
+    #[serde(default)]
+    pub levitations: levitate::Levitations,
 }
 
 impl Default for SpellWorld {
@@ -205,12 +208,14 @@ impl SpellWorld {
             previous: vec![],
             removed: 0,
             wind: wind_wall::Wind::default(),
+            levitations: Default::default(),
         }
     }
 
     pub fn validate(&self, instance: u64) -> Result<(), String> {
         self.world.check_version()?;
         self.dice.validate()?;
+        self.levitations.validate(self.props.len(), self.casts)?;
         let bodies = self.world.bodies().len();
         let mut lives = std::collections::BTreeSet::new();
         if self.props.len() > MAX_PROPS
@@ -295,6 +300,7 @@ impl SpellWorld {
         self.wind.end_cast(cast, &mut self.world, &self.props);
         self.fields.retain(|f| f.cast != cast);
         self.concentration.retain(|_, held| *held != cast);
+        self.levitations.end_cast(cast);
         let owned: Vec<_> = self
             .owned
             .iter()
@@ -534,6 +540,8 @@ impl SpellWorld {
             let dt = self.world.dt;
             self.wind
                 .before_step(&mut self.world, &self.props, &mut self.ledger);
+            self.levitations
+                .drive(&mut self.world, &mut self.ledger, &self.props);
             // What the field adds: only bodies that respond this step.
             let mut field_terms: Vec<(String, DVec3, DVec3)> = vec![];
             for body in self.world.bodies() {

@@ -181,6 +181,7 @@ pub fn scenarios() -> Vec<Scenario> {
     vec![
         crate::spells::thunderwave::scenario(),
         crate::spells::wind_wall::scenario(),
+        crate::spells::levitate::scenario(),
         bow_stance(),
     ]
 }
