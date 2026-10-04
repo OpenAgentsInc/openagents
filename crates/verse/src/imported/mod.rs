@@ -130,7 +130,16 @@ pub struct FrameTimings {
     pub grounded_vertices: usize,
     pub readback: bool,
     pub shadow_draws: usize,
+    pub marker_events: usize,
 }
+/// A presentation marker sampled at the actor's current world placement.
+#[derive(Clone, Debug)]
+pub struct MarkerEvent {
+    pub model: String,
+    pub position: [f32; 3],
+    pub event: verse_engine::markers::Event,
+}
+
 #[derive(Clone)]
 struct GpuContext {
     #[cfg(feature = "imported-desktop")]
@@ -260,6 +269,7 @@ pub struct Renderer {
     static_batches: Vec<Batch>,
     static_world_bundles: Vec<wgpu::RenderBundle>,
     actors: Vec<Actor>,
+    marker_events: Vec<MarkerEvent>,
     playback: HashMap<(verse_engine::core::LifeId, String), animation::Playback>,
     grounding: HashMap<(Option<verse_engine::core::LifeId>, String), Grounding>,
     bounds: HashMap<String, Option<culling::BoneBounds>>,
@@ -425,6 +435,11 @@ impl PendingCapture {
 }
 
 impl Renderer {
+    /// Consumes this frame's presentation events; these grant no gameplay authority.
+    pub fn take_marker_events(&mut self) -> Vec<MarkerEvent> {
+        std::mem::take(&mut self.marker_events)
+    }
+
     /// Submit a copy without redrawing, GPU waiting, or PNG encoding on the render thread.
     pub fn capture_submitted(&self) -> PendingCapture {
         let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
@@ -997,6 +1012,7 @@ impl Renderer {
             ui_group,
             _ui_screen: ui_screen,
             ui_buffer,
+            marker_events: Vec::new(),
             playback: HashMap::new(),
             grounding: HashMap::new(),
             bounds,
@@ -1186,6 +1202,7 @@ impl Renderer {
     ) -> Result<Vec<u8>, String> {
         let started = Instant::now();
         world.validate(&self.catalog)?;
+        self.marker_events.clear();
         let view = world.view();
         let lighting = world.lighting();
         let resolved = world.instances();
@@ -1255,17 +1272,26 @@ impl Renderer {
         for (i, instance) in instances.iter().enumerate() {
             let mut palette = make_pose(&self.pack, Some(instance))?;
             if let Some(id) = instance.actor {
-                let bones = self
+                let (bones, events) = self
                     .playback
                     .entry((id, instance.model.clone()))
                     .or_default()
-                    .update_for_life(
+                    .update_with_markers(
                         id,
                         &self.pack.models[&instance.model],
                         instance.animation,
                         instance.time,
                         lighting.time,
                     )?;
+                if self.marker_events.len() + events.len() > 4096 {
+                    return Err("Frame animation markers exceed the presentation budget".into());
+                }
+                self.marker_events
+                    .extend(events.into_iter().map(|event| MarkerEvent {
+                        model: instance.model.clone(),
+                        position: instance.transform.w_axis.truncate().to_array(),
+                        event,
+                    }));
                 for (dst, bone) in palette.bones.iter_mut().zip(bones) {
                     *dst = bone.to_cols_array_2d();
                 }
@@ -1640,6 +1666,7 @@ impl Renderer {
                 grounded_vertices,
                 readback: false,
                 shadow_draws,
+                marker_events: self.marker_events.len(),
                 ..Default::default()
             };
             return Ok(vec![]);
@@ -1678,6 +1705,7 @@ impl Renderer {
             grounded_vertices,
             readback: true,
             shadow_draws,
+            marker_events: self.marker_events.len(),
         };
         Ok(out)
     }

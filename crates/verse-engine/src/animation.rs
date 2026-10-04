@@ -168,8 +168,60 @@ pub struct Playback {
     changed: f32,
     from: Vec<Local>,
     current: Vec<Local>,
+    marker_cursor: crate::markers::Cursor,
+    marker_epoch: u64,
 }
 impl Playback {
+    /// Evaluates the pose and presentation markers together. Marker refusals occur
+    /// before pose mutation; new selections and backward clocks establish baselines.
+    pub fn update_with_markers(
+        &mut self,
+        life: crate::core::LifeId,
+        model: &Model,
+        selection: Selection,
+        time: f32,
+        clock: f32,
+    ) -> Result<(Vec<Mat4>, Vec<crate::markers::Event>), String> {
+        valid_time(time, clock)?;
+        let binding = resolve(model, selection)?;
+        let reset = self.life != Some(life) || self.clip != Some(selection) || clock < self.clock;
+        let epoch = if reset {
+            self.marker_epoch
+                .checked_add(1)
+                .ok_or("Animation selection epoch exhausted")?
+        } else {
+            self.marker_epoch
+        };
+        let mut cursor = self.marker_cursor.clone();
+        let events = if let Some(authored) = model
+            .markers
+            .iter()
+            .find(|track| track.clip == binding.clip)
+        {
+            let clip = model
+                .clips
+                .iter()
+                .find(|clip| clip.id == binding.clip)
+                .ok_or("Missing animation marker clip")?;
+            if authored.track.duration != f64::from(clip.duration) {
+                return Err("Animation marker duration differs from its clip".into());
+            }
+            cursor.advance(
+                &authored.track,
+                life,
+                epoch,
+                f64::from(time),
+                binding.mode == Mode::Loop,
+            )?
+        } else {
+            cursor = crate::markers::Cursor::default();
+            Vec::new()
+        };
+        let pose = self.update_for_life(life, model, selection, time, clock)?;
+        self.marker_cursor = cursor;
+        self.marker_epoch = epoch;
+        Ok((pose, events))
+    }
     /// Compatibility playback for retained numeric clips.
     pub fn update(&mut self, model: &Model, animation: u16, time: f32, clock: f32) -> Vec<Mat4> {
         self.update_selected(model, animation.into(), time, clock)
@@ -532,6 +584,54 @@ mod semantic_tests {
         let mut bad = m.clone();
         bad.states.get_mut(&State::Walk).unwrap().clip = 600;
         assert!(pose_selected(&bad, State::Walk.into(), 0.).is_err());
+    }
+    #[test]
+    fn selected_playback_delivers_markers_and_preserves_pose_on_refusal() {
+        use crate::markers::{ClipTrack, Marker, Track};
+        let mut m = model();
+        m.markers.push(ClipTrack {
+            clip: 403,
+            track: Track {
+                duration: 1.,
+                markers: vec![Marker {
+                    id: 7,
+                    seconds: 0.5,
+                }],
+            },
+        });
+        let life = LifeId {
+            instance: 1,
+            actor: 2,
+            generation: 0,
+        };
+        let mut p = Playback::default();
+        assert!(
+            p.update_with_markers(life, &m, State::Walk.into(), 0., 0.)
+                .unwrap()
+                .1
+                .is_empty()
+        );
+        let (pose, events) = p
+            .update_with_markers(life, &m, State::Walk.into(), 0.5, 0.5)
+            .unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].life, life);
+        assert_eq!(events[0].marker, 7);
+        assert!(
+            p.update_with_markers(life, &m, State::Walk.into(), 500., 500.)
+                .is_err()
+        );
+        let (retry, events) = p
+            .update_with_markers(life, &m, State::Walk.into(), 0.5, 0.5)
+            .unwrap();
+        assert!(pose[0].abs_diff_eq(retry[0], 1e-6));
+        assert!(events.is_empty());
+        assert!(
+            p.update_with_markers(life.next().unwrap(), &m, State::Walk.into(), 5., 5.)
+                .unwrap()
+                .1
+                .is_empty()
+        );
     }
     #[test]
     fn legacy_json_and_numeric_sampling_remain_an_explicit_compatibility_path() {

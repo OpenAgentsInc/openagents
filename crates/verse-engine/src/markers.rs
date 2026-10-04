@@ -52,7 +52,7 @@ pub struct Event {
     pub marker: u32,
     pub playback_seconds: f64,
 }
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct Cursor {
     previous: Option<(LifeId, u64, Track, bool, f64)>,
 }
