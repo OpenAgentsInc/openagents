@@ -16,6 +16,7 @@ pub mod characters;
 pub mod combat;
 pub mod controls;
 mod culling;
+pub mod icons;
 pub mod inventory;
 pub mod lighting;
 mod material_gpu;

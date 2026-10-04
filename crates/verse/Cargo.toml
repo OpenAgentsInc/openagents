@@ -54,6 +54,7 @@ verse-lagrange = { path = "../verse-lagrange" }
 verse-wow = { path = "../verse-wow" }
 verse-ruins = { path = "../verse-ruins" }
 glam = "0.30.10"
+resvg = { version = "0.48.1", default-features = false }
 # Replays read retained Microcoder runs and Fable 5.1 trajectories with the
 # Gym's own readers, so a replay and `gym runs` agree on every number.
 gym = { path = "../gym", optional = true }

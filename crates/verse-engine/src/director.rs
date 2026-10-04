@@ -199,7 +199,7 @@ impl Scene {
         for a in &self.actors {
             let actor = self.actor_at(a, time);
             let mut animation = Selection::Legacy(0);
-            if self.collision_profile.as_deref() == Some("original-chamber-v1") {
+            if self.semantic_animation() {
                 animation = State::Idle.into();
             }
             let mut animation_time = time + a.id as f32 * 0.19;
@@ -208,14 +208,14 @@ impl Scene {
                 && time > self.cut_at + 2.0
                 && time < self.cut_at + 7.0
             {
-                animation = if self.collision_profile.as_deref() == Some("original-chamber-v1") {
+                animation = if self.semantic_animation() {
                     State::Run.into()
                 } else {
                     5.into()
                 };
             }
             if actor.model == "adventurer" {
-                animation = if self.collision_profile.as_deref() == Some("original-chamber-v1") {
+                animation = if self.semantic_animation() {
                     if time < self.cut_at + 4.0 {
                         State::Run
                     } else {
@@ -240,12 +240,11 @@ impl Scene {
                         animation_time = time - c.at;
                     }
                     Action::Bow { .. } => {
-                        animation =
-                            if self.collision_profile.as_deref() == Some("original-chamber-v1") {
-                                State::BowRelease.into()
-                            } else {
-                                46.into()
-                            };
+                        animation = if self.semantic_animation() {
+                            State::BowRelease.into()
+                        } else {
+                            46.into()
+                        };
                         animation_time = (time - c.at).min(0.65);
                     }
                     _ => {}
@@ -434,5 +433,16 @@ mod tests {
             action: Action::CameraCut,
         });
         assert!(s.validate().is_err());
+    }
+}
+
+impl Scene {
+    /// Original scenes select named animation states; retained research
+    /// scenes keep their numeric clip selections.
+    fn semantic_animation(&self) -> bool {
+        matches!(
+            self.collision_profile.as_deref(),
+            Some("original-chamber-v1" | "spell-playground-v1")
+        )
     }
 }

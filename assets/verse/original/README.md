@@ -80,3 +80,7 @@ Original packs include persistent asset IDs and provenance declarations. Compila
 The default chamber now includes the retained CC0 [Fantasy Props MegaKit subset](../props/quaternius/README.md): ritual worktables, candles, cauldrons, cages, banners, and storage around a clear combat lane. Warm torch and chandelier lights mix with green cauldron and violet summoning light. Compiled furniture bounds enter the world prop collision path and are restored on encounter reset. `--greybox` retains the procedural fixture. `verse_play --lair-proof OUTPUT_DIR` captures the wide ritual, summoning, and player handoff views with a source-admission receipt.
 
 The desktop renderer uses the window’s physical pixel dimensions, including Retina scaling and window resizing, with four-sample scene anti-aliasing, filtered texture mipmaps, and four-times anisotropic filtering. Viewport changes recreate attachments without reimporting the scene or clearing the static shadow cache. Fonts use a three-times-density atlas while retaining logical layout sizes. Restart the running simulator after rebuilding to use these changes.
+
+Action-bar icons are from [game-icons.net](https://game-icons.net) under CC BY 3.0.
+Icons made by Lorc and Delapouite; [`assets/verse/icons/game-icons/CREDITS.md`](../icons/game-icons/CREDITS.md)
+lists each file and the ability it marks.

@@ -14939,6 +14939,7 @@ dependencies = [
  "png",
  "pollster",
  "reqwest 0.12.28",
+ "resvg",
  "rust-native",
  "rust-native-desktop",
  "rustls",

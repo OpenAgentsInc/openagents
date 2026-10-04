@@ -34,6 +34,8 @@ impl<'de> Deserialize<'de> for AssetId {
 pub enum License {
     Apache2,
     Cc0,
+    /// Creative Commons Attribution 3.0: redistributable with credit.
+    CcBy30,
     Ofl11,
     OwnerSuppliedLocal,
     Research,

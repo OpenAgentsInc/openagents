@@ -234,6 +234,17 @@ pub fn compile(pack: &mut Pack, dir: &Path, bestiary_path: Option<&Path>) -> Res
         font_hash,
         font_bytes,
     )?);
+    let mut icons: Vec<&[u8]> = super::icons::ICONS.iter().map(|i| i.svg).collect();
+    icons.extend([super::icons::LICENSE, super::icons::CREDITS]);
+    let (icons_hash, icons_bytes) = bundle(&icons);
+    assets.push(source(
+        "verse:source:game-icons",
+        "Lorc and Delapouite, game-icons.net",
+        License::CcBy30,
+        "svg/credits",
+        icons_hash,
+        icons_bytes,
+    )?);
     let manifest: serde_json::Value =
         serde_json::from_slice(CHARACTER_MANIFEST).map_err(|e| e.to_string())?;
     let known: BTreeSet<_> = manifest["files"]

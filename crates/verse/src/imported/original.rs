@@ -600,7 +600,7 @@ pub fn atlas() -> Result<Atlas, String> {
     ] {
         atlas.add_font(name, font, size * 3.)?;
     }
-    for (i, name) in [
+    for name in [
         "unit-frame",
         "elite-frame",
         "unit-name",
@@ -625,8 +625,18 @@ pub fn atlas() -> Result<Atlas, String> {
     ]
     .into_iter()
     .chain(verse_world::spells::CATALOG.iter().map(|s| s.icon))
-    .enumerate()
     {
+        if name.ends_with("-icon") {
+            let icon = super::icons::icon(name)
+                .ok_or_else(|| format!("No hotbar icon is registered for {name}"))?;
+            atlas.add_sprite(
+                name,
+                super::icons::SIZE,
+                super::icons::SIZE,
+                &super::icons::rasterize(icon)?,
+            )?;
+            continue;
+        }
         let mut pixels = vec![];
         for y in 0..64 {
             for x in 0..64 {
@@ -644,19 +654,8 @@ pub fn atlas() -> Result<Atlas, String> {
                     "unit-frame" | "elite-frame" => false,
                     _ => x < 3 || y < 3 || x > 60 || y > 60,
                 };
-                let icon = name.ends_with("icon");
-                let mark = icon
-                    && (((x as f32 - 32.).hypot(y as f32 - 32.) - 18.).abs() < 2.
-                        || (x as i32 - y as i32).abs() < 3);
                 let color = if border {
                     [140, 110, 65, 255]
-                } else if mark {
-                    [
-                        (80 + i * 47 % 175) as u8,
-                        (90 + i * 71 % 160) as u8,
-                        (90 + i * 29 % 160) as u8,
-                        255,
-                    ]
                 } else if name == "status-bar" {
                     [255; 4]
                 } else if name == "nameplate-border"
