@@ -150,6 +150,7 @@ impl Quest {
         source[16..24].copy_from_slice(&self.id.to_be_bytes());
         Transaction {
             outfit: None,
+            equipment: None,
             spent: vec![],
             instance,
             actor,

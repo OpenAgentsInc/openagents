@@ -10,6 +10,7 @@ use verse_engine::{director::Actor, motion::Selection};
 pub struct Pose {
     pub actor: Actor,
     pub outfit_model: Option<String>,
+    pub equipment: Vec<super::equipment::Gear>,
     pub life: Life,
     pub teleport_stamp: Option<f32>,
     pub animation: Selection,
@@ -93,6 +94,7 @@ impl Presentation {
                 Some(Pose {
                     actor: a.actor.clone(),
                     outfit_model: None,
+                    equipment: vec![],
                     life: life.into(),
                     teleport_stamp: None,
                     animation: a.animation,
@@ -110,6 +112,7 @@ impl Presentation {
                 Some(Pose {
                     actor: a.actor,
                     outfit_model: None,
+                    equipment: vec![],
                     life: life.into(),
                     teleport_stamp: teleports.get(&life).copied().flatten(),
                     animation: a.animation,
@@ -207,6 +210,16 @@ impl Presentation {
             {
                 return Err("Invalid chamber actor presentation".into());
             }
+            let mut slots = BTreeSet::new();
+            if p.equipment.len() > 2 {
+                return Err("Equipment presentation budget exceeded".into());
+            }
+            for gear in &p.equipment {
+                gear.validate()?;
+                if p.actor.model != "adventurer" || !slots.insert(gear.slot) {
+                    return Err("Invalid equipment presentation slot".into());
+                }
+            }
             if p.outfit_model.as_ref().is_some_and(|model| {
                 p.actor.model != "adventurer" || !super::outfits::model_name(model)
             }) {
@@ -226,6 +239,7 @@ impl Presentation {
                 || p.health != 0
                 || p.actor.nameplate
                 || p.outfit_model.is_some()
+                || !p.equipment.is_empty()
                 || p.actor.model == "adventurer"
                 || p.animation != verse_engine::motion::State::Death.into()
                 || p.teleport_stamp.is_some()

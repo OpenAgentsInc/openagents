@@ -5,7 +5,7 @@ use verse_engine::core::LifeId;
 use super::auth::{Challenge, ConnectionId, Gateway};
 use crate::{Command, Intent, events::Event, play::Ability, rules::Snapshot};
 
-pub const VERSION: u16 = 13;
+pub const VERSION: u16 = 14;
 pub const MAX_REQUEST_BYTES: usize = 16 * 1024;
 pub const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 
@@ -128,6 +128,13 @@ pub enum Body {
     UseItem {
         life: Life,
         epoch: u64,
+        item: u64,
+        operation: [u8; 16],
+    },
+    EquipGear {
+        life: Life,
+        epoch: u64,
+        slot: super::equipment::Slot,
         item: u64,
         operation: [u8; 16],
     },
@@ -335,6 +342,8 @@ pub struct Inventory {
     pub catalog: super::items::Catalog,
     pub outfits: super::outfits::Catalog,
     pub outfit: u64,
+    pub equipment: super::equipment::Catalog,
+    pub equipped: std::collections::BTreeMap<super::equipment::Slot, u64>,
 }
 impl Inventory {
     pub fn validate(&self, control: &Option<Control>) -> Result<(), String> {
@@ -344,7 +353,13 @@ impl Inventory {
         super::rewards::entries(&self.items)?;
         super::rewards::entries(&self.quests)?;
         self.level.validate(self.experience)?;
-        self.outfits.validate_items(&self.catalog)?;
+        self.equipment
+            .validate_catalogs(&self.catalog, &self.outfits)?;
+        self.equipment.limits(&super::rewards::Character {
+            items: self.items.iter().map(|i| (i.id, i.count)).collect(),
+            equipment: self.equipped.clone(),
+            ..Default::default()
+        })?;
         if self.outfit != 0 {
             self.outfits.outfit(self.outfit)?;
             if self.items.iter().all(|i| i.id != self.outfit) {
@@ -367,6 +382,12 @@ impl Inventory {
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Reply {
     Accepted,
+    GearEquipped {
+        slot: super::equipment::Slot,
+        item: u64,
+        operation: [u8; 16],
+        revision: u64,
+    },
     OutfitEquipped {
         outfit: u64,
         operation: [u8; 16],
@@ -487,6 +508,23 @@ impl Gateway {
                 self.respawn(id, life.into()).map_err(|e| ("command", e))?;
                 Ok(Reply::Accepted)
             }
+            Body::EquipGear {
+                life,
+                epoch,
+                slot,
+                item,
+                operation,
+            } => {
+                let receipt = self
+                    .equip_gear(id, life.into(), epoch, slot, item, operation)
+                    .map_err(|e| ("equipment", e))?;
+                Ok(Reply::GearEquipped {
+                    slot,
+                    item,
+                    operation,
+                    revision: receipt.revision,
+                })
+            }
             Body::EquipOutfit {
                 life,
                 epoch,
@@ -549,6 +587,12 @@ impl Gateway {
                     super::presentation::Presentation::extract(self.game(), &actors);
                 for pose in &mut presentation.actors {
                     if let Some(character) = self.character_rewards(pose.life.actor) {
+                        pose.equipment = character
+                            .equipment
+                            .values()
+                            .map(|id| self.equipment().item(*id).cloned())
+                            .collect::<Result<_, _>>()
+                            .map_err(|e| ("equipment", e))?;
                         if character.outfit != 0 {
                             pose.outfit_model = Some(
                                 self.outfits()
@@ -595,6 +639,8 @@ impl Gateway {
                         catalog: self.items().clone(),
                         outfits: self.outfits().clone(),
                         outfit: character.outfit,
+                        equipment: self.equipment().clone(),
+                        equipped: character.equipment.clone(),
                         experience: character.experience,
                         items: entries(character.items),
                         quests: entries(character.quests),
@@ -1199,6 +1245,8 @@ mod tests {
             catalog: Default::default(),
             outfits: Default::default(),
             outfit: 0,
+            equipment: Default::default(),
+            equipped: Default::default(),
         };
         inventory.validate(&control).unwrap();
         for case in 0..6 {
@@ -1230,9 +1278,9 @@ mod tests {
         let reply = send(&mut g, id, 1, Body::Snapshot {});
         assert!(matches!(reply.body, Reply::Refused { .. }));
         for bytes in [
-            br#"{"version":14,"request_id":1,"body":{"type":"snapshot"}}"#.to_vec(),
-            br#"{"version":13,"request_id":1,"controller":1,"body":{"type":"snapshot"}}"#.to_vec(),
-            br#"{"version":13,"request_id":1,"body":{"type":"snapshot","principal":"fake"}}"#
+            br#"{"version":15,"request_id":1,"body":{"type":"snapshot"}}"#.to_vec(),
+            br#"{"version":14,"request_id":1,"controller":1,"body":{"type":"snapshot"}}"#.to_vec(),
+            br#"{"version":14,"request_id":1,"body":{"type":"snapshot","principal":"fake"}}"#
                 .to_vec(),
             vec![b' '; MAX_REQUEST_BYTES + 1],
         ] {

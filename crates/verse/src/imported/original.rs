@@ -403,6 +403,18 @@ fn actor(name: &str, robe: [f32; 3], monster: bool) -> Model {
         bone: 1,
         position: [0., -0.52, 0.88],
     });
+    m.attachments.extend([
+        Attachment {
+            id: 5,
+            bone: 0,
+            position: [0., 0., 2.12],
+        },
+        Attachment {
+            id: 6,
+            bone: 2,
+            position: [0., 0.52, 0.88],
+        },
+    ]);
     bind_states(&mut m);
     m
 }

@@ -163,7 +163,9 @@ impl View {
                         || inventory.quest_log != previous.quest_log
                         || inventory.catalog != previous.catalog
                         || inventory.outfits != previous.outfits
-                        || inventory.outfit != previous.outfit))
+                        || inventory.outfit != previous.outfit
+                        || inventory.equipment != previous.equipment
+                        || inventory.equipped != previous.equipped))
             {
                 return Err("Remote inventory revision or counters regressed".into());
             }
@@ -442,6 +444,8 @@ mod tests {
             catalog: Default::default(),
             outfits: Default::default(),
             outfit: 0,
+            equipment: Default::default(),
+            equipped: Default::default(),
         };
         let mut reply = snapshot.clone();
         reply.request_id = 2;

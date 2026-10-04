@@ -195,7 +195,9 @@ impl Gateway {
         if self.next_connection != 1 || self.chamber.items != super::items::Catalog::default() {
             return Err("Item catalog is already bound".into());
         }
-        self.chamber.outfits.validate_items(&catalog)?;
+        self.chamber
+            .equipment
+            .validate_catalogs(&catalog, &self.chamber.outfits)?;
         self.chamber.items = catalog;
         Ok(self)
     }
@@ -218,9 +220,37 @@ impl Gateway {
         if self.next_connection != 1 || self.chamber.outfits != super::outfits::Catalog::default() {
             return Err("Outfit catalog is already bound".into());
         }
-        catalog.validate_items(&self.chamber.items)?;
+        self.chamber
+            .equipment
+            .validate_catalogs(&self.chamber.items, &catalog)?;
         self.chamber.outfits = catalog;
         Ok(self)
+    }
+    pub fn with_equipment(mut self, catalog: super::equipment::Catalog) -> Result<Self, String> {
+        if self.next_connection != 1
+            || self.chamber.equipment != super::equipment::Catalog::default()
+        {
+            return Err("Equipment catalog is already bound".into());
+        }
+        catalog.validate_catalogs(&self.chamber.items, &self.chamber.outfits)?;
+        self.chamber.equipment = catalog;
+        Ok(self)
+    }
+    pub fn equipment(&self) -> &super::equipment::Catalog {
+        &self.chamber.equipment
+    }
+    pub fn equip_gear(
+        &mut self,
+        id: ConnectionId,
+        life: LifeId,
+        epoch: u64,
+        slot: super::equipment::Slot,
+        item: u64,
+        operation: [u8; 16],
+    ) -> Result<super::rewards::Receipt, String> {
+        let b = self.binding(id)?;
+        self.chamber
+            .equip_gear(b.principal, b.session, life, epoch, slot, item, operation)
     }
     pub fn outfits(&self) -> &super::outfits::Catalog {
         &self.chamber.outfits

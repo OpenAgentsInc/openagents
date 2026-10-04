@@ -50,6 +50,13 @@ fn render_remote_sample(
         super::remote_content::outfit_model(pack, name)?;
     }
     let mut drawn = instances_with_outfits(pack, &sample.frame, &outfits)?;
+    append_equipment(
+        pack,
+        &sample.frame,
+        &outfits,
+        &sample.presentation.actors,
+        &mut drawn,
+    )?;
     drawn.extend(prop_instances_from_poses(
         pack,
         &sample.presentation.props,
@@ -67,6 +74,66 @@ fn render_remote_sample(
         instances: drawn,
         lighting,
     })
+}
+
+#[cfg(feature = "remote-chamber")]
+fn append_equipment(
+    pack: &Pack,
+    frame: &verse_engine::director::Frame,
+    outfits: &std::collections::BTreeMap<u64, String>,
+    presentation: &[verse_world::service::presentation::Pose],
+    drawn: &mut Vec<Instance>,
+) -> Result<(), String> {
+    for actor in frame
+        .actors
+        .iter()
+        .filter(|a| a.visible && a.actor.model == "adventurer")
+    {
+        let Some(pose) = presentation
+            .iter()
+            .find(|p| Some(p.life.into()) == actor.life)
+        else {
+            continue;
+        };
+        if pose.equipment.is_empty() {
+            continue;
+        }
+        let name = outfits
+            .get(&actor.actor.id)
+            .map(String::as_str)
+            .unwrap_or(&actor.actor.model);
+        let model = pack
+            .models
+            .get(name)
+            .ok_or("Equipment parent rig is missing")?;
+        let matrices =
+            verse_engine::animation::pose_selected(model, actor.animation, actor.animation_time)?;
+        let palette = verse_engine::sockets::Palette::admit(model, &matrices)?;
+        let sockets = verse_engine::sockets::Sockets::admit(model)?;
+        let parent = Mat4::from_translation(actor.actor.position)
+            * Mat4::from_rotation_y(actor.actor.yaw)
+            * Mat4::from_scale(Vec3::splat(actor.actor.scale))
+            * basis();
+        for gear in &pose.equipment {
+            super::remote_content::equipment_model(pack, gear)?;
+            // A readied bow occupies the hands; holster the main-hand model for that pose.
+            if gear.slot == verse_world::service::equipment::Slot::MainHand
+                && bow_drawn(actor.animation)
+            {
+                continue;
+            }
+            let local = Mat4::from_translation(Vec3::from(gear.offset.map(|v| v as f32 / 1000.)));
+            drawn.push(Instance {
+                actor: None,
+                model: gear.model.clone(),
+                transform: sockets.frame(palette, parent, gear.slot.socket(), local)?,
+                animation: 0.into(),
+                time: frame.time,
+                emission: Vec3::ONE,
+            });
+        }
+    }
+    Ok(())
 }
 
 pub fn basis() -> Mat4 {
@@ -1277,35 +1344,60 @@ mod tests {
         assert_eq!(drawn[1].model, "universal-female-ranger");
         assert_eq!(drawn.iter().filter(|i| i.model == "bow").count(), 2);
         let mut equipped = drawn.clone();
-        for actor in &frame.actors {
-            let model = &pack.models[&outfits[&actor.actor.id]];
-            let pose = verse_engine::animation::pose_selected(
-                model,
-                actor.animation,
-                actor.animation_time,
-            )
-            .unwrap();
-            let palette = verse_engine::sockets::Palette::admit(model, &pose).unwrap();
-            let sockets = verse_engine::sockets::Sockets::admit(model).unwrap();
-            let parent = Mat4::from_translation(actor.actor.position)
-                * Mat4::from_rotation_y(actor.actor.yaw)
-                * Mat4::from_scale(Vec3::splat(actor.actor.scale))
-                * basis();
-            for (socket, model, local) in [
-                (5, "gear-hat", Mat4::from_translation(Vec3::Z * 0.23)),
-                (6, "gear-wand", Mat4::IDENTITY),
-            ] {
-                let transform = sockets.frame(palette, parent, socket, local).unwrap();
-                equipped.push(Instance {
-                    actor: None,
-                    model: model.into(),
-                    transform,
-                    animation: 0.into(),
-                    time: frame.time,
-                    emission: Vec3::ONE,
-                });
-            }
+        for actor in &mut frame.actors {
+            actor.life = Some(verse_engine::core::LifeId {
+                instance: 1,
+                actor: actor.actor.id,
+                generation: 0,
+            });
         }
+        let poses = frame
+            .actors
+            .iter()
+            .map(|a| verse_world::service::presentation::Pose {
+                actor: a.actor.clone(),
+                outfit_model: Some(outfits[&a.actor.id].clone()),
+                life: a.life.unwrap().into(),
+                teleport_stamp: None,
+                animation: a.animation,
+                animation_time: a.animation_time,
+                visible: a.visible,
+                health: a.health,
+                equipment: vec![
+                    verse_world::service::equipment::Gear {
+                        id: 3,
+                        name: "Ritual hat".into(),
+                        slot: verse_world::service::equipment::Slot::Head,
+                        model: "gear-hat".into(),
+                        offset: [0, 0, 230],
+                        health: 100,
+                        mana: 0,
+                    },
+                    verse_world::service::equipment::Gear {
+                        id: 4,
+                        name: "Ritual wand".into(),
+                        slot: verse_world::service::equipment::Slot::MainHand,
+                        model: "gear-wand".into(),
+                        offset: [0; 3],
+                        health: 0,
+                        mana: 10,
+                    },
+                ],
+            })
+            .collect::<Vec<_>>();
+        append_equipment(&pack, &frame, &outfits, &poses, &mut equipped).unwrap();
+        assert_eq!(equipped.len() - drawn.len(), 4);
+        let mut bow_frame = frame.clone();
+        for a in &mut bow_frame.actors {
+            a.animation = verse_engine::motion::State::BowReady.into();
+        }
+        let mut bow_gear = vec![];
+        append_equipment(&pack, &bow_frame, &outfits, &poses, &mut bow_gear).unwrap();
+        assert_eq!(bow_gear.len(), 2);
+        assert!(bow_gear.iter().all(|g| g.model == "gear-hat"));
+        let mut bad = poses.clone();
+        bad[0].equipment[0].model = "missing-gear".into();
+        assert!(append_equipment(&pack, &frame, &outfits, &bad, &mut vec![]).is_err());
         let atlas = super::super::original::atlas().unwrap();
         let mut renderer =
             super::super::Renderer::new(pack, dir.path(), 1920, 1080, &atlas, &[]).unwrap();

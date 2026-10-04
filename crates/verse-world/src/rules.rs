@@ -218,10 +218,10 @@ impl Simulation {
         }
         for (id, state) in &self.players {
             let p = &state.resources;
-            if p.max_hp != 200
-                || p.max_mana != 20
-                || !(0..=200).contains(&p.hp)
-                || !(0..=20).contains(&p.mana)
+            if !(200..=600).contains(&p.max_hp)
+                || !(20..=60).contains(&p.max_mana)
+                || !(0..=p.max_hp).contains(&p.hp)
+                || !(0..=p.max_mana).contains(&p.mana)
                 || !state.mana_fraction.is_finite()
                 || !(0. ..1.).contains(&state.mana_fraction)
                 || !state.global_ready.is_finite()
@@ -453,6 +453,21 @@ impl Simulation {
         }
         Ok(())
     }
+    /// Applies host-derived equipment maxima without healing or resetting cooldowns.
+    pub(crate) fn equipment_limits(&mut self, id: u32, hp: i32, mana: i32) -> Result<(), String> {
+        if !(200..=600).contains(&hp) || !(20..=60).contains(&mana) {
+            return Err("Invalid equipment resource limits".into());
+        }
+        let player = &mut self.players.get_mut(&id).ok_or("Unknown player")?.resources;
+        player.max_hp = hp;
+        player.max_mana = mana;
+        player.hp = player.hp.min(hp);
+        player.mana = player.mana.min(mana);
+        let actor = self.actors.get_mut(&id).unwrap();
+        actor.hp = player.hp;
+        actor.max_hp = hp;
+        Ok(())
+    }
     /// Restores a living player's resources without changing cooldowns or other players.
     pub(crate) fn recover_resources(
         &mut self,
@@ -460,7 +475,7 @@ impl Simulation {
         health: u32,
         mana: u32,
     ) -> Result<(), String> {
-        if health > 200 || mana > 20 || (health == 0 && mana == 0) {
+        if health > 600 || mana > 60 || (health == 0 && mana == 0) {
             return Err("Invalid recovery amounts".into());
         }
         let player = &mut self.players.get_mut(&id).ok_or("Unknown player")?.resources;
@@ -506,7 +521,14 @@ impl Simulation {
         }
         self.teleport_chamber_actor(id, position, yaw)?;
         let state = self.players.get_mut(&id).unwrap();
+        let (hp, mana) = (state.resources.max_hp, state.resources.max_mana);
         *state = PlayerState::default();
+        state.resources = Player {
+            hp,
+            max_hp: hp,
+            mana,
+            max_mana: mana,
+        };
         state.global_ready = self.elapsed;
         let actor = self.actors.get_mut(&id).unwrap();
         actor.hp = state.resources.hp;

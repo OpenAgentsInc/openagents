@@ -25,6 +25,8 @@ pub struct Config {
     pub items: super::items::Catalog,
     #[serde(default)]
     pub outfits: super::outfits::Catalog,
+    #[serde(default)]
+    pub equipment: super::equipment::Catalog,
 }
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -72,7 +74,8 @@ impl Config {
         }
         super::rewards::Policy::validate(&self.rewards)?;
         self.progression.validate()?;
-        self.outfits.validate_items(&self.items)?;
+        self.equipment
+            .validate_catalogs(&self.items, &self.outfits)?;
         let mut keys = BTreeSet::new();
         let mut primary = 0;
         let mut players = 0;
@@ -121,7 +124,8 @@ impl Config {
             .with_rewards(self.rewards.clone())?
             .with_progression(self.progression.clone())?
             .with_items(self.items.clone())?
-            .with_outfits(self.outfits.clone())
+            .with_outfits(self.outfits.clone())?
+            .with_equipment(self.equipment.clone())
     }
     /// Refuses changed startup rights instead of silently replacing saved character ownership.
     pub fn validate_recovered(&self, gateway: &Gateway) -> Result<(), String> {
@@ -132,6 +136,7 @@ impl Config {
             || gateway.progression() != &self.progression
             || gateway.items() != &self.items
             || gateway.outfits() != &self.outfits
+            || gateway.equipment() != &self.equipment
         {
             return Err("Recovered host enrollment context is incompatible".into());
         }
@@ -226,6 +231,7 @@ mod tests {
             progression: Default::default(),
             items: Default::default(),
             outfits: Default::default(),
+            equipment: Default::default(),
         }
     }
     fn game(instance: u64) -> Game {

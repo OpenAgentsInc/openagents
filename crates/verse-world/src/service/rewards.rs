@@ -29,6 +29,8 @@ pub struct Transaction {
     pub spent: Vec<Entry>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub outfit: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub equipment: Option<super::equipment::Change>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -37,6 +39,7 @@ pub struct Character {
     pub items: BTreeMap<u64, u32>,
     pub quests: BTreeMap<u64, u32>,
     pub outfit: u64,
+    pub equipment: BTreeMap<super::equipment::Slot, u64>,
 }
 
 /// Version-one cooperative reward for each defeated life of an authored NPC.
@@ -80,6 +83,7 @@ impl Policy {
         source[24..].copy_from_slice(&life.generation.to_be_bytes());
         Transaction {
             outfit: None,
+            equipment: None,
             spent: vec![],
             instance: life.instance,
             actor: recipient,
@@ -172,7 +176,8 @@ impl Ledger {
                 && transaction.items.is_empty()
                 && transaction.quests.is_empty()
                 && transaction.spent.is_empty()
-                && transaction.outfit.is_none())
+                && transaction.outfit.is_none()
+                && transaction.equipment.is_none())
         {
             return Err("Reward identity or grant is empty".into());
         }
@@ -206,6 +211,7 @@ impl Ledger {
                 items: BTreeMap::new(),
                 quests: BTreeMap::new(),
                 outfit: 0,
+                equipment: BTreeMap::new(),
             });
         next.experience = next
             .experience
@@ -233,6 +239,23 @@ impl Ledger {
             }
             next.outfit = outfit;
         }
+        if let Some(change) = transaction.equipment {
+            if change.item == 0 {
+                next.equipment.remove(&change.slot);
+            } else {
+                if next.items.get(&change.item).copied().unwrap_or(0) == 0 {
+                    return Err("Equipment item is not owned".into());
+                }
+                next.equipment.insert(change.slot, change.item);
+            }
+        }
+        if next
+            .equipment
+            .values()
+            .any(|id| next.items.get(id).copied().unwrap_or(0) == 0)
+        {
+            return Err("Cannot spend equipped gear".into());
+        }
         if next.outfit != 0 && next.items.get(&next.outfit).copied().unwrap_or(0) == 0 {
             return Err("Cannot spend the equipped outfit".into());
         }
@@ -252,6 +275,7 @@ mod tests {
     fn transaction(source: u8) -> Transaction {
         Transaction {
             outfit: None,
+            equipment: None,
             spent: vec![],
             instance: 4,
             actor: 10,

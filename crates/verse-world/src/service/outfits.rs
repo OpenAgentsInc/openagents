@@ -71,6 +71,7 @@ impl Catalog {
         if !reserved(&tx.source)
             || tx.source[8..16] != tx.instance.to_be_bytes()
             || tx.source[16..] == [0; 16]
+            || tx.equipment.is_some()
             || tx.experience != 0
             || !tx.items.is_empty()
             || !tx.quests.is_empty()
@@ -110,6 +111,7 @@ pub(super) fn transaction(
         quests: vec![],
         spent: vec![],
         outfit: Some(outfit),
+        equipment: None,
     })
 }
 

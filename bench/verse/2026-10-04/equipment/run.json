@@ -1,0 +1,409 @@
+{
+  "schema": "verse.equipment.receipt.v1",
+  "issue": 10539,
+  "base_commit": "9dfb2639e6",
+  "wire_version": 14,
+  "saved_version": 6,
+  "checks": {
+    "world": 304,
+    "native_initial": 47,
+    "native_final_without_unchanged_character_tests": 46,
+    "gpu": 2,
+    "host_example": 2,
+    "panel_recapture": 1
+  },
+  "distinct_checks": 356,
+  "tls_fixture": {
+    "after": {
+      "catalog": {
+        "items": [],
+        "version": 1
+      },
+      "equipment": {
+        "gear": [
+          {
+            "health": 100,
+            "id": 3,
+            "mana": 0,
+            "model": "gear-hat",
+            "name": "Ritual hat",
+            "offset": [
+              0,
+              0,
+              230
+            ],
+            "slot": "head"
+          },
+          {
+            "health": 0,
+            "id": 4,
+            "mana": 10,
+            "model": "gear-wand",
+            "name": "Ritual wand",
+            "offset": [
+              0,
+              0,
+              0
+            ],
+            "slot": "main_hand"
+          }
+        ],
+        "version": 1
+      },
+      "equipped": {
+        "head": 3,
+        "main_hand": 4
+      },
+      "experience": 1,
+      "items": [
+        {
+          "count": 2,
+          "id": 1
+        },
+        {
+          "count": 1,
+          "id": 3
+        },
+        {
+          "count": 1,
+          "id": 4
+        }
+      ],
+      "level": {
+        "level": 1,
+        "next": null,
+        "start": 0
+      },
+      "life": {
+        "actor": 14,
+        "generation": 0,
+        "instance": 120
+      },
+      "outfit": 1,
+      "outfits": {
+        "outfits": [
+          {
+            "id": 1,
+            "model": "universal-male-peasant",
+            "name": "Peasant outfit"
+          },
+          {
+            "id": 2,
+            "model": "universal-female-ranger",
+            "name": "Ranger outfit"
+          }
+        ],
+        "version": 1
+      },
+      "quest_log": [],
+      "quests": [],
+      "revision": 7
+    },
+    "before": {
+      "catalog": {
+        "items": [],
+        "version": 1
+      },
+      "equipment": {
+        "gear": [
+          {
+            "health": 100,
+            "id": 3,
+            "mana": 0,
+            "model": "gear-hat",
+            "name": "Ritual hat",
+            "offset": [
+              0,
+              0,
+              230
+            ],
+            "slot": "head"
+          },
+          {
+            "health": 0,
+            "id": 4,
+            "mana": 10,
+            "model": "gear-wand",
+            "name": "Ritual wand",
+            "offset": [
+              0,
+              0,
+              0
+            ],
+            "slot": "main_hand"
+          }
+        ],
+        "version": 1
+      },
+      "equipped": {},
+      "experience": 1,
+      "items": [
+        {
+          "count": 2,
+          "id": 1
+        },
+        {
+          "count": 1,
+          "id": 3
+        },
+        {
+          "count": 1,
+          "id": 4
+        }
+      ],
+      "level": {
+        "level": 1,
+        "next": null,
+        "start": 0
+      },
+      "life": {
+        "actor": 14,
+        "generation": 0,
+        "instance": 120
+      },
+      "outfit": 0,
+      "outfits": {
+        "outfits": [
+          {
+            "id": 1,
+            "model": "universal-male-peasant",
+            "name": "Peasant outfit"
+          },
+          {
+            "id": 2,
+            "model": "universal-female-ranger",
+            "name": "Ranger outfit"
+          }
+        ],
+        "version": 1
+      },
+      "quest_log": [],
+      "quests": [],
+      "revision": 2
+    },
+    "failed_storage_ack_withheld": true,
+    "health": 100,
+    "max_health": 300,
+    "max_mana": 30,
+    "recovered": {
+      "catalog": {
+        "items": [],
+        "version": 1
+      },
+      "equipment": {
+        "gear": [
+          {
+            "health": 100,
+            "id": 3,
+            "mana": 0,
+            "model": "gear-hat",
+            "name": "Ritual hat",
+            "offset": [
+              0,
+              0,
+              230
+            ],
+            "slot": "head"
+          },
+          {
+            "health": 0,
+            "id": 4,
+            "mana": 10,
+            "model": "gear-wand",
+            "name": "Ritual wand",
+            "offset": [
+              0,
+              0,
+              0
+            ],
+            "slot": "main_hand"
+          }
+        ],
+        "version": 1
+      },
+      "equipped": {
+        "head": 3,
+        "main_hand": 4
+      },
+      "experience": 1,
+      "items": [
+        {
+          "count": 2,
+          "id": 1
+        },
+        {
+          "count": 1,
+          "id": 3
+        },
+        {
+          "count": 1,
+          "id": 4
+        }
+      ],
+      "level": {
+        "level": 1,
+        "next": null,
+        "start": 0
+      },
+      "life": {
+        "actor": 14,
+        "generation": 0,
+        "instance": 120
+      },
+      "outfit": 1,
+      "outfits": {
+        "outfits": [
+          {
+            "id": 1,
+            "model": "universal-male-peasant",
+            "name": "Peasant outfit"
+          },
+          {
+            "id": 2,
+            "model": "universal-female-ranger",
+            "name": "Ranger outfit"
+          }
+        ],
+        "version": 1
+      },
+      "quest_log": [],
+      "quests": [],
+      "revision": 7
+    },
+    "restart": "aborted_host_task",
+    "retry_receipt": {
+      "body": {
+        "item": 3,
+        "operation": [
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3,
+          3
+        ],
+        "revision": 4,
+        "slot": "head",
+        "type": "gear_equipped"
+      },
+      "control": {
+        "accepted_sequence": 0,
+        "epoch": 5,
+        "life": {
+          "actor": 14,
+          "generation": 0,
+          "instance": 120
+        }
+      },
+      "instance": 120,
+      "request_id": 4,
+      "tick": 20,
+      "version": 14
+    },
+    "schema": "verse.equipment.fixture.v1",
+    "secondary_equipped_slots": 1,
+    "spectator_equipment_instances": 3,
+    "wire_version": 14
+  },
+  "gpu_fixture": {
+    "schema": "verse.sockets.fixture.v1",
+    "models": [
+      "universal-male-peasant",
+      "universal-female-ranger"
+    ],
+    "animation": "walk",
+    "animation_time": 0.25,
+    "socket_ids": [
+      5,
+      6
+    ],
+    "geometric_items": [
+      "gear-hat",
+      "gear-wand"
+    ],
+    "equipment_instances": 4,
+    "dimensions": [
+      1920,
+      1080
+    ]
+  },
+  "images": {
+    "gear.png": {
+      "sha256": "e6ab419f8b824a178cf0249f057f736462be10a749dadefeaf4ed5f6a419c587",
+      "dimensions": [
+        1920,
+        1080
+      ]
+    },
+    "body-bow.png": {
+      "sha256": "55b2e8bb2a3b49b5e70495590828bdd2949bc6dda3cb54f4833aa127c628f533",
+      "dimensions": [
+        1920,
+        1080
+      ]
+    },
+    "panels.png": {
+      "sha256": "99fc8503a600503ae9e315c6323f8aeabab0e000f1127413abed6dd71a4092f5",
+      "dimensions": [
+        2700,
+        1860
+      ]
+    },
+    "ready.png": {
+      "sha256": "f4ae9d7a9a01ae7bb5bd4f464b536794cf398f911d45743e33574ff0becb10db",
+      "dimensions": [
+        2700,
+        1860
+      ]
+    }
+  },
+  "source_sha256": {
+    "crates/verse-world/src/play.rs": "9f111c05bc1ad2bb54a865423419a3c586e5253057183d9f4c8dbb016a119d73",
+    "crates/verse-world/src/play/multiplayer.rs": "ab15620f5b721f023064eafcb4864315fed355ed46a351413d11378cef9d0a4b",
+    "crates/verse-world/src/rules.rs": "04025781fe1e112aace881ec94311e183c8e96f2a847663dca74ae006e723ac9",
+    "crates/verse-world/src/service.rs": "8c0c4b5f84a0ba7bd46598b337ce1455c0b017a0d6990e6a0681811dfbe09b09",
+    "crates/verse-world/src/service/auth.rs": "c565d59ce7c45e1124acda303594459a704debf132566992e74511b29e851e76",
+    "crates/verse-world/src/service/client.rs": "687d57dde0fb0c187c38c3ca53261aaed6b2a94c8e2b184d3585ac107115f818",
+    "crates/verse-world/src/service/equipment.rs": "f20fca34fc8bfa11f834b110829253d5654fdb8742e1098ba991e04cedc66173",
+    "crates/verse-world/src/service/host.rs": "6c7d5a6e337380f4cb28cfa5d3ee78e3d0c9ebb5eaba2f475e81faf1d9b026e7",
+    "crates/verse-world/src/service/items.rs": "dbba996d042714c2aa6c5ea44e5300e362decf415f26c8a473e3c4f28209fae8",
+    "crates/verse-world/src/service/net.rs": "59df8268e23804ef323709ff8ee67d4bbc593381f65b19859c67892f051633c9",
+    "crates/verse-world/src/service/outfits.rs": "d2dc0aa613e1984e2fc0b52e46a879b5c0835af65745dc58f2efffa21c2c2fd5",
+    "crates/verse-world/src/service/persistence.rs": "58cac96efe014b99465da07ccd5d94def72ec20df7e0ef90d03427ce6b8b8f29",
+    "crates/verse-world/src/service/presentation.rs": "3b8efd6033448957f1199fdaf035b831a73afc9693726a4dbfc159d0c9cfd536",
+    "crates/verse-world/src/service/progression.rs": "84610a27aa2d3dbb809d2374bdc541a7488a6d0386057edf9f0a12d06c2db201",
+    "crates/verse-world/src/service/rewards.rs": "7ae95dc670a2353dea96d023c9bc2222adad063af0bcfd2db176dcb0a5745f66",
+    "crates/verse-world/src/service/save.rs": "aba48137b1948bb5a1130acbbd3eeba405e8b32be05b8a26e79d66306b5f70e5",
+    "crates/verse-world/src/service/view.rs": "599831b03c83a02f1d416e19f01119de9ee58e0685479c4116e43e6abfd3e71f",
+    "crates/verse-world/src/service/wire.rs": "019eea66dc72c75f449fa3d35aa3b3b5ddcc4ec9182a8d6b5369625816a24414",
+    "crates/verse-world/src/service/worker.rs": "97dbd30901eed154c1b0035d84b6509a216ae4171fb89d224b76cae59098b9d6",
+    "crates/verse/examples/verse_host.rs": "8b2330cde65893dfc5c4a484887eb239bc83c2e26125e4215cfe2ef4b5fff489",
+    "crates/verse/src/imported/chamber.rs": "1f92faeaa818ff11ced9b86a9b46010f1b3c8ea2defbb10f1535111fa6da962a",
+    "crates/verse/src/imported/character_panel.rs": "5cf9bd8c7a8bf5b1888502ef326ac12a4e6ba875d3960df4460fac360d729bea",
+    "crates/verse/src/imported/original.rs": "7b31cb31e8ade99a730dca015418bfb3a1b2ce20b8e26711425cc030a8b44185",
+    "crates/verse/src/imported/remote_content.rs": "e2434dd794df50c1ac51c3712b37c7358fdba15b38410aac1d720a1ca07d9400",
+    "crates/verse/src/imported/remote_window.rs": "7b0c4a9419bc9d4f547178e8c727d09e22b8ec575163502a382d3f7b9699ba4c"
+  },
+  "body_bow_comparison": {
+    "reference": "bench/verse/2026-10-04/outfits/models.png",
+    "rgb_pixels_equal": true
+  },
+  "provenance": "Bundled CC0 Universal characters, original geometric gear and icons, and the existing licensed Fira Mono atlas; no WoW assets.",
+  "limits": [
+    "TLS fixture uses two enrolled synthetic players and a spectator on a temporary loopback TLS host with generated credentials.",
+    "Native walking-gear and panel captures are separate synthetic GPU fixtures using production extraction, not a live TLS-to-GPU combat or OS mouse-input proof.",
+    "Health/mana bonuses are implemented; damage, armor, and additional equipment slots remain.",
+    "Sockets currently use pose_selected; final interrupted animation-graph palettes remain scheduling work.",
+    "This receipt does not establish frame-time budgets or complete VE-3/VE-5/VE-6 acceptance."
+  ]
+}

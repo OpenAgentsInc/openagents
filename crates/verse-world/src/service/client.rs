@@ -159,6 +159,22 @@ impl Client {
             _ => Err("Unexpected inventory response".into()),
         }
     }
+    pub async fn equip_gear(
+        &mut self,
+        slot: super::equipment::Slot,
+        item: u64,
+        operation: [u8; 16],
+    ) -> Result<Response, String> {
+        let control = self.control().ok_or("Client has no admitted adventurer")?;
+        self.request(Body::EquipGear {
+            life: control.life,
+            epoch: control.epoch,
+            slot,
+            item,
+            operation,
+        })
+        .await
+    }
     pub async fn equip_outfit(
         &mut self,
         outfit: u64,
@@ -349,6 +365,35 @@ impl Client {
                         .is_none_or(|c| c.life != *life || c.epoch != *epoch)
                 {
                     return Err("Item use acknowledgment is incompatible".into());
+                }
+                Ok(())
+            }
+            (
+                Reply::GearEquipped {
+                    slot,
+                    item,
+                    operation,
+                    revision,
+                },
+                Body::EquipGear {
+                    life,
+                    epoch,
+                    slot: requested_slot,
+                    item: requested_item,
+                    operation: identity,
+                },
+            ) => {
+                if slot != requested_slot
+                    || item != requested_item
+                    || operation != identity
+                    || *operation == [0; 16]
+                    || *revision == 0
+                    || *revision > super::rewards::MAX_TRANSACTIONS as u64
+                    || r.control
+                        .as_ref()
+                        .is_none_or(|c| c.life != *life || c.epoch != *epoch)
+                {
+                    return Err("Equipment acknowledgment is incompatible".into());
                 }
                 Ok(())
             }
@@ -659,6 +704,7 @@ mod tests {
         let actor = g.game().player_life().actor;
         g.grant_reward(Transaction {
             outfit: None,
+            equipment: None,
             spent: vec![],
             instance: 120,
             actor,
@@ -766,6 +812,7 @@ mod tests {
         let actor = g.game().player_life().actor;
         g.grant_reward(Transaction {
             outfit: None,
+            equipment: None,
             instance: 120,
             actor,
             source: [8; 32],
@@ -912,15 +959,44 @@ mod tests {
                     },
                 ],
             })
+            .unwrap()
+            .with_equipment(crate::service::equipment::Catalog {
+                version: 1,
+                gear: vec![
+                    crate::service::equipment::Gear {
+                        id: 3,
+                        name: "Ritual hat".into(),
+                        slot: crate::service::equipment::Slot::Head,
+                        model: "gear-hat".into(),
+                        offset: [0, 0, 230],
+                        health: 100,
+                        mana: 0,
+                    },
+                    crate::service::equipment::Gear {
+                        id: 4,
+                        name: "Ritual wand".into(),
+                        slot: crate::service::equipment::Slot::MainHand,
+                        model: "gear-wand".into(),
+                        offset: [0; 3],
+                        health: 0,
+                        mana: 10,
+                    },
+                ],
+            })
             .unwrap();
         let actor = g.game().player_life().actor;
         g.grant_reward(Transaction {
             outfit: None,
+            equipment: None,
             instance: 120,
             actor,
             source: [8; 32],
             experience: 1,
-            items: vec![Entry { id: 1, count: 2 }],
+            items: vec![
+                Entry { id: 1, count: 2 },
+                Entry { id: 3, count: 1 },
+                Entry { id: 4, count: 1 },
+            ],
             quests: vec![],
             spent: vec![],
         })
@@ -937,10 +1013,11 @@ mod tests {
             actor: secondary_actor,
             source: [9; 32],
             experience: 1,
-            items: vec![Entry { id: 2, count: 1 }],
+            items: vec![Entry { id: 2, count: 1 }, Entry { id: 3, count: 1 }],
             quests: vec![],
             spent: vec![],
             outfit: None,
+            equipment: None,
         })
         .unwrap();
         let dir = tempfile::tempdir().unwrap();
@@ -969,7 +1046,12 @@ mod tests {
         let before = client.inventory().await.unwrap();
         assert_eq!(before.outfit, 0);
         std::fs::create_dir(root.join("next.json")).unwrap();
-        assert!(client.equip_outfit(1, [1; 16]).await.is_err());
+        assert!(
+            client
+                .equip_gear(crate::service::equipment::Slot::Head, 3, [3; 16])
+                .await
+                .is_err()
+        );
         let exit = tokio::time::timeout(std::time::Duration::from_secs(3), server)
             .await
             .unwrap()
@@ -1013,6 +1095,34 @@ mod tests {
             serde_json::to_value(client.equip_outfit(1, [1; 16]).await.unwrap().body).unwrap(),
             serde_json::to_value(&ack.body).unwrap()
         );
+        let gear_ack = client
+            .equip_gear(crate::service::equipment::Slot::Head, 3, [3; 16])
+            .await
+            .unwrap();
+        assert!(matches!(
+            gear_ack.body,
+            Reply::GearEquipped { revision: 4, .. }
+        ));
+        client
+            .equip_gear(crate::service::equipment::Slot::MainHand, 4, [4; 16])
+            .await
+            .unwrap();
+        assert_eq!(
+            serde_json::to_value(
+                client
+                    .equip_gear(crate::service::equipment::Slot::Head, 3, [3; 16])
+                    .await
+                    .unwrap()
+                    .body
+            )
+            .unwrap(),
+            serde_json::to_value(&gear_ack.body).unwrap()
+        );
+        let resources = client.snapshot().await.unwrap().snapshot.player;
+        assert_eq!(
+            (resources.hp, resources.max_hp, resources.max_mana),
+            (100, 300, 30)
+        );
         let mut second = Client::connect_with_content(
             address,
             name(),
@@ -1027,10 +1137,14 @@ mod tests {
             second.equip_outfit(2, [2; 16]).await.unwrap().body,
             Reply::OutfitEquipped {
                 outfit: 2,
-                revision: 4,
+                revision: 6,
                 ..
             }
         ));
+        second
+            .equip_gear(crate::service::equipment::Slot::Head, 3, [5; 16])
+            .await
+            .unwrap();
         second.close().await.unwrap();
         let after = client.inventory().await.unwrap();
         assert_eq!(after.items[0].count, 2);
@@ -1053,6 +1167,8 @@ mod tests {
             .iter()
             .find(|p| p.life.actor == actor)
             .unwrap();
+        assert_eq!(pose.equipment.len(), 2);
+        assert_eq!(pose.actor.health, 300);
         assert_eq!(pose.actor.model, "adventurer");
         assert_eq!(pose.outfit_model.as_deref(), Some("universal-male-peasant"));
         let second_pose = state
@@ -1061,6 +1177,8 @@ mod tests {
             .iter()
             .find(|p| p.life.actor == secondary_actor)
             .unwrap();
+        assert_eq!(second_pose.equipment.len(), 1);
+        assert_eq!(second_pose.actor.health, 300);
         assert_eq!(second_pose.actor.model, "adventurer");
         assert_eq!(
             second_pose.outfit_model.as_deref(),
@@ -1092,6 +1210,17 @@ mod tests {
             serde_json::to_value(client.equip_outfit(1, [1; 16]).await.unwrap().body).unwrap(),
             serde_json::to_value(&ack.body).unwrap()
         );
+        assert_eq!(
+            serde_json::to_value(
+                client
+                    .equip_gear(crate::service::equipment::Slot::Head, 3, [3; 16])
+                    .await
+                    .unwrap()
+                    .body
+            )
+            .unwrap(),
+            serde_json::to_value(&gear_ack.body).unwrap()
+        );
         let recovered = client.inventory().await.unwrap();
         assert_eq!(after, recovered);
         client.close().await.unwrap();
@@ -1099,6 +1228,10 @@ mod tests {
         let exit = server.await.unwrap();
         assert!(exit.failure.is_none());
         assert_eq!(exit.gateway.game().snapshot().player.hp, 100);
+        println!(
+            "VERSE_EQUIPMENT {}",
+            serde_json::json!({"schema":"verse.equipment.fixture.v1","wire_version":VERSION,"before":before,"after":after,"recovered":recovered,"health":100,"max_health":300,"max_mana":30,"secondary_equipped_slots":1,"spectator_equipment_instances":3,"failed_storage_ack_withheld":true,"restart":"aborted_host_task","retry_receipt":gear_ack})
+        );
         println!(
             "VERSE_OUTFIT {}",
             serde_json::json!({"schema":"verse.outfit.fixture.v1","wire_version":VERSION,"before":before,"after":after,"recovered":recovered,"health_before":100,"health_after":100,"restart":"aborted_host_task","failed_storage_ack_withheld":true,"duplicate_spending":false,"duplicate_outfit_change":false,"secondary_outfit":2,"spectator_models_verified":2})
@@ -1125,6 +1258,7 @@ mod tests {
         let actor = g.game().player_life().actor;
         g.grant_reward(Transaction {
             outfit: None,
+            equipment: None,
             spent: vec![],
             instance: 120,
             actor,

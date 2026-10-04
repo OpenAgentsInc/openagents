@@ -228,7 +228,7 @@ async fn serve_with_store<F: Future<Output = ()>>(
                             break;
                         }
                         let mutating = store.is_some() && Request::decode(&bytes).is_ok_and(|request| matches!(request.body,
-                            Body::Authenticate { .. } | Body::Command { .. } | Body::Respawn { .. } | Body::ClaimQuest {..} | Body::UseItem {..} | Body::EquipOutfit {..}));
+                            Body::Authenticate { .. } | Body::Command { .. } | Body::Respawn { .. } | Body::ClaimQuest {..} | Body::UseItem {..} | Body::EquipOutfit {..} | Body::EquipGear {..}));
                         if mutating {
                             let result = gateway.dispatch_json(id, now, &bytes).map(|bytes| (bytes, gateway.authenticated(id)));
                             dirty = true;

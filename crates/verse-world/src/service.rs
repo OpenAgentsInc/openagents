@@ -6,6 +6,7 @@
 pub mod auth;
 #[cfg(feature = "service-net")]
 pub mod client;
+pub mod equipment;
 #[cfg(feature = "service-auth")]
 pub mod event_cursor;
 #[cfg(feature = "service-net")]
@@ -81,6 +82,7 @@ pub struct Chamber {
     progression: progression::Config,
     items: items::Catalog,
     outfits: outfits::Catalog,
+    equipment: equipment::Catalog,
 }
 
 impl Chamber {
@@ -100,6 +102,7 @@ impl Chamber {
             progression: Default::default(),
             items: Default::default(),
             outfits: Default::default(),
+            equipment: Default::default(),
         })
     }
 
@@ -121,6 +124,8 @@ impl Chamber {
         if progression::reserved(&transaction.source)
             || items::reserved(&transaction.source)
             || outfits::reserved(&transaction.source)
+            || equipment::reserved(&transaction.source)
+            || transaction.equipment.is_some()
             || transaction.outfit.is_some()
             || !transaction.spent.is_empty()
         {
@@ -151,7 +156,41 @@ impl Chamber {
         } else if transaction.outfit.is_some() {
             return Err("Saved outfit source is not an admitted change".into());
         }
+        if equipment::reserved(&transaction.source) {
+            self.equipment.validate_change(&transaction)?;
+        } else if transaction.equipment.is_some() {
+            return Err("Saved equipment source is not an admitted change".into());
+        }
         self.rewards.apply(transaction)
+    }
+    pub fn equip_gear(
+        &mut self,
+        principal: Principal,
+        session: Session,
+        life: LifeId,
+        epoch: u64,
+        slot: equipment::Slot,
+        item: u64,
+        operation: [u8; 16],
+    ) -> Result<rewards::Receipt, String> {
+        let admission = self.admission(principal, session)?;
+        if admission.actor() != life || admission.epoch() != epoch {
+            return Err("Equipment life or control is stale or foreign".into());
+        }
+        let tx = equipment::transaction(life.instance, life.actor, slot, item, operation)?;
+        self.equipment.validate_change(&tx)?;
+        if self.rewards.contains(life.actor, tx.source) {
+            return self.rewards.apply(tx);
+        }
+        if self.game.player_snapshot(life)?.player.hp == 0 {
+            return Err("Cannot change equipment while defeated".into());
+        }
+        let mut next = self.rewards.clone();
+        let receipt = next.apply(tx)?;
+        let (hp, mana) = self.equipment.limits(next.character(life.actor).unwrap())?;
+        self.game.equipment_limits(life.actor, hp, mana)?;
+        self.rewards = next;
+        Ok(receipt)
     }
     pub fn equip_outfit(
         &mut self,
@@ -501,6 +540,20 @@ impl Chamber {
             })
             .unwrap_or(Controller(0));
         self.game.handoff_player(primary, controller)?;
+        for actor in self
+            .game
+            .controlled_effects()
+            .map(|(life, _, _)| life.actor)
+            .collect::<Vec<_>>()
+        {
+            let character = self.rewards.character(actor).cloned().unwrap_or_default();
+            let (hp, mana) = self.equipment.limits(&character)?;
+            self.game.equipment_limits(actor, hp, mana)?;
+            if hp > 200 || mana > 20 {
+                self.game
+                    .recover_player_resources(actor, (hp - 200) as u32, (mana - 20) as u32)?;
+            }
+        }
         Ok(())
     }
 }

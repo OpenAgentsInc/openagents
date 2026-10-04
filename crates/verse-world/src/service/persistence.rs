@@ -285,6 +285,7 @@ mod tests {
         let actor = g.game().player_life().actor;
         let tx = Transaction {
             outfit: None,
+            equipment: None,
             spent: vec![],
             instance: 120,
             actor,

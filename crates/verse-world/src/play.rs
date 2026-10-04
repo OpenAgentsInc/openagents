@@ -1224,6 +1224,14 @@ impl Game {
             actor.life = self.actor_life(actor.actor.id);
         }
         if !self.unlocked() {
+            for actor in &mut frame.actors {
+                if let Some(source) = self.player_source(actor.actor.id) {
+                    if let Ok(snapshot) = self.simulation.snapshot_for(source) {
+                        actor.actor.health = snapshot.player.max_hp as u32;
+                        actor.health = snapshot.player.hp as u32;
+                    }
+                }
+            }
             return frame;
         }
         let snapshot = self.snapshot();
@@ -1237,11 +1245,17 @@ impl Game {
                     .iter()
                     .find(|a| a.id == p.source)
                     .map_or(0, |a| a.hp.max(0) as u32);
+                a.actor.health = snapshot
+                    .actors
+                    .iter()
+                    .find(|a| a.id == p.source)
+                    .map_or(200, |a| a.max_hp as u32);
                 p.frame(a, hp, self.time, !self.colliders.is_empty());
                 continue;
             }
             if a.actor.id == self.player_actor() {
                 a.health = snapshot.player.hp.max(0) as u32;
+                a.actor.health = snapshot.player.max_hp as u32;
                 a.animation_time = if self.moving {
                     self.motion_clock
                 } else {
@@ -2322,7 +2336,7 @@ impl Game {
         self.controls = Default::default();
         self.impacts.clear();
         self.damage_numbers.retain(|n| n.actor != old.actor);
-        self.observed_health.insert(0, 200);
+        self.observed_health.insert(0, self.snapshot().player.hp);
         self.moving = false;
         self.locomotion = [0.; 2];
         self.motion_clock = 0.;

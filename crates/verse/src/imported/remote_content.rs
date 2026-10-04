@@ -26,6 +26,56 @@ pub fn outfit_model(pack: &Pack, name: &str) -> Result<(), String> {
     }
     model.validate_animation()
 }
+/// Admits static equipment models and required sockets on every possible player rig.
+pub fn equipment_models(
+    pack: &Pack,
+    scene: &Scene,
+    outfits: &verse_world::service::outfits::Catalog,
+    catalog: &verse_world::service::equipment::Catalog,
+) -> Result<(), String> {
+    catalog.validate()?;
+    if catalog.gear.is_empty() {
+        return Ok(());
+    }
+    for gear in &catalog.gear {
+        equipment_model(pack, gear)?;
+    }
+    let names = scene
+        .actors
+        .iter()
+        .filter(|a| a.model == "adventurer")
+        .map(|a| a.model.as_str())
+        .chain(outfits.outfits.iter().map(|o| o.model.as_str()));
+    for name in names {
+        let model = pack
+            .models
+            .get(name)
+            .ok_or("Equipment parent rig is missing")?;
+        verse_engine::sockets::Sockets::admit(model)?;
+        if catalog
+            .gear
+            .iter()
+            .any(|g| !model.attachments.iter().any(|a| a.id == g.slot.socket()))
+        {
+            return Err("Equipment parent rig is missing a required socket".into());
+        }
+    }
+    Ok(())
+}
+pub fn equipment_model(
+    pack: &Pack,
+    gear: &verse_world::service::equipment::Gear,
+) -> Result<(), String> {
+    gear.validate()?;
+    let model = pack
+        .models
+        .get(&gear.model)
+        .ok_or("Equipped gear model is missing from admitted pack")?;
+    if !model.clips.is_empty() {
+        return Err("Equipment model must be static".into());
+    }
+    model.validate_animation()
+}
 /// Computes once before login. The supplied asset directory is not part of the digest.
 pub fn identity(pack: &Pack, scene: &Scene, dir: &Path) -> Result<[u8; 32], String> {
     pack.validate()?;
@@ -86,6 +136,51 @@ pub fn identity(pack: &Pack, scene: &Scene, dir: &Path) -> Result<[u8; 32], Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn equipment_preflight_requires_static_models_and_parent_sockets() {
+        use verse_world::service::equipment::{Catalog, Gear, Slot};
+        let dir = tempfile::tempdir().unwrap();
+        let pack = super::super::original::generate(dir.path()).unwrap();
+        let scene = Scene::from_json(include_bytes!(
+            "../../../../assets/verse/original/ritual.json"
+        ))
+        .unwrap();
+        let mut catalog = Catalog {
+            version: 1,
+            gear: vec![Gear {
+                id: 3,
+                name: "Ritual hat".into(),
+                slot: Slot::Head,
+                model: "gear-hat".into(),
+                offset: [0, 0, 230],
+                health: 100,
+                mana: 0,
+            }],
+        };
+        equipment_models(&pack, &scene, &Default::default(), &catalog).unwrap();
+        let mut missing = pack.clone();
+        missing
+            .models
+            .get_mut("adventurer")
+            .unwrap()
+            .attachments
+            .retain(|a| a.id != 5);
+        assert!(equipment_models(&missing, &scene, &Default::default(), &catalog).is_err());
+        catalog.gear[0].model = "missing-model".into();
+        assert!(equipment_models(&pack, &scene, &Default::default(), &catalog).is_err());
+        catalog.gear[0].model = "adventurer".into();
+        assert!(equipment_models(&pack, &scene, &Default::default(), &catalog).is_err());
+        catalog.gear[0].model = "gear-hat".into();
+        let outfits = verse_world::service::outfits::Catalog {
+            version: 1,
+            outfits: vec![verse_world::service::outfits::Outfit {
+                id: 2,
+                name: "Broken outfit".into(),
+                model: "missing-rig".into(),
+            }],
+        };
+        assert!(equipment_models(&pack, &scene, &outfits, &catalog).is_err());
+    }
     #[test]
     fn outfit_admission_refuses_missing_models_and_animation_states() {
         let dir = tempfile::tempdir().unwrap();

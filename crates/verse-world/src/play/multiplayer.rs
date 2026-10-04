@@ -207,6 +207,20 @@ impl Game {
             self, life, snapshot, controls, bow_ready, casting,
         ))
     }
+    pub(crate) fn equipment_limits(
+        &mut self,
+        actor: u64,
+        hp: i32,
+        mana: i32,
+    ) -> Result<(), String> {
+        let source = self
+            .player_source(actor)
+            .ok_or("Unknown controlled player")?;
+        self.simulation.equipment_limits(source, hp, mana)?;
+        let current = self.simulation.snapshot_for(source)?.player.hp;
+        self.observed_health.insert(source, current);
+        Ok(())
+    }
     pub(crate) fn recover_player_resources(
         &mut self,
         actor: u64,

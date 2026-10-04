@@ -14,6 +14,7 @@ pub struct Panel {
     claim: Option<u64>,
     use_item: Option<u64>,
     equip: Option<u64>,
+    gear: Option<(verse_world::service::equipment::Slot, u64)>,
 }
 fn inside(rect: [f32; 4], point: [f32; 2]) -> bool {
     point[0] >= rect[0]
@@ -42,6 +43,55 @@ fn outfit_icon(ui: &mut UiBatch, atlas: &Atlas, x: f32, y: f32) {
     ui.rect(atlas, x + 11., y + 5., 6., 4., [0.026, 0.020, 0.015, 1.]);
     ui.frame(atlas, x + 8., y + 9., 12., 16., 1., trim);
     ui.rect(atlas, x + 8., y + 18., 12., 2., trim);
+}
+fn gear_icon(
+    ui: &mut UiBatch,
+    atlas: &Atlas,
+    slot: verse_world::service::equipment::Slot,
+    x: f32,
+    y: f32,
+) {
+    ui.rect(atlas, x, y, 28., 28., [0.026, 0.020, 0.015, 1.]);
+    match slot {
+        verse_world::service::equipment::Slot::Head => {
+            for i in 0..16 {
+                let w = 2. + i as f32;
+                ui.rect(
+                    atlas,
+                    x + 14. - w * 0.5,
+                    y + 4. + i as f32,
+                    w,
+                    1.,
+                    [0.5, 0.22, 0.68, 1.],
+                );
+            }
+            ui.line(
+                atlas,
+                [x + 3., y + 21.],
+                [x + 25., y + 21.],
+                3.,
+                [0.65, 0.32, 0.8, 1.],
+            );
+            ui.line(
+                atlas,
+                [x + 7., y + 17.],
+                [x + 21., y + 17.],
+                2.,
+                [0.9, 0.7, 0.3, 1.],
+            );
+        }
+        verse_world::service::equipment::Slot::MainHand => {
+            ui.line(
+                atlas,
+                [x + 6., y + 23.],
+                [x + 20., y + 7.],
+                3.,
+                [0.6, 0.38, 0.15, 1.],
+            );
+            ui.disc(atlas, x + 20., y + 7., 5., [0.1, 0.6, 0.8, 1.]);
+            ui.disc(atlas, x + 19., y + 6., 2., [0.7, 1., 1., 1.]);
+        }
+    }
 }
 fn icon(ui: &mut UiBatch, atlas: &Atlas, kind: Kind, x: f32, y: f32) {
     ui.rect(atlas, x, y, 28., 28., [0.026, 0.020, 0.015, 1.]);
@@ -96,11 +146,13 @@ impl Panel {
         self.claim = None;
         self.use_item = None;
         self.equip = None;
+        self.gear = None;
     }
     pub fn close(&mut self) -> bool {
         self.claim = None;
         self.use_item = None;
         self.equip = None;
+        self.gear = None;
         self.kind.take().is_some()
     }
     pub fn take_claim(&mut self) -> Option<u64> {
@@ -112,11 +164,17 @@ impl Panel {
     pub fn take_equip(&mut self) -> Option<u64> {
         self.equip.take()
     }
+    pub fn take_gear(&mut self) -> Option<(verse_world::service::equipment::Slot, u64)> {
+        self.gear.take()
+    }
     fn row_height(&self, inventory: Option<&Inventory>) -> f32 {
         if (self.kind == Some(Kind::Quests) && inventory.is_some_and(|i| !i.quest_log.is_empty()))
             || (self.kind == Some(Kind::Inventory)
-                && inventory
-                    .is_some_and(|i| !i.catalog.items.is_empty() || !i.outfits.outfits.is_empty()))
+                && inventory.is_some_and(|i| {
+                    !i.catalog.items.is_empty()
+                        || !i.outfits.outfits.is_empty()
+                        || !i.equipment.gear.is_empty()
+                }))
         {
             56.
         } else {
@@ -180,6 +238,26 @@ impl Panel {
                     .take(self.row_count(Some(inventory), [x, y, w, h]))
                     .enumerate()
                 {
+                    if let Ok(gear) = inventory.equipment.item(entry.id) {
+                        if inside(
+                            [
+                                x + w - 96.,
+                                y + 82. + index as f32 * self.row_height(Some(inventory)) + 23.,
+                                80.,
+                                23.,
+                            ],
+                            point,
+                        ) {
+                            self.gear = Some((
+                                gear.slot,
+                                if inventory.equipped.get(&gear.slot) == Some(&entry.id) {
+                                    0
+                                } else {
+                                    entry.id
+                                },
+                            ));
+                        }
+                    }
                     if inventory.outfits.outfit(entry.id).is_ok()
                         && inside(
                             [
@@ -469,13 +547,23 @@ impl Panel {
                     1.,
                     [0.39, 0.30, 0.16, 1.],
                 );
-                if kind == Kind::Inventory && inventory.outfits.outfit(entry.id).is_ok() {
+                if kind == Kind::Inventory && inventory.equipment.item(entry.id).is_ok() {
+                    gear_icon(
+                        ui,
+                        atlas,
+                        inventory.equipment.item(entry.id).unwrap().slot,
+                        x + 18.,
+                        row + 6.,
+                    );
+                } else if kind == Kind::Inventory && inventory.outfits.outfit(entry.id).is_ok() {
                     outfit_icon(ui, atlas, x + 18., row + 6.);
                 } else {
                     icon(ui, atlas, kind, x + 18., row + 6.);
                 }
-                let name = if kind == Kind::Inventory && inventory.outfits.outfit(entry.id).is_ok()
+                let name = if kind == Kind::Inventory && inventory.equipment.item(entry.id).is_ok()
                 {
+                    inventory.equipment.item(entry.id).unwrap().name.clone()
+                } else if kind == Kind::Inventory && inventory.outfits.outfit(entry.id).is_ok() {
                     inventory.outfits.outfit(entry.id).unwrap().name.clone()
                 } else {
                     match (kind, entry.id) {
@@ -507,6 +595,7 @@ impl Panel {
                     if kind == Kind::Inventory {
                         if inventory.catalog.item(entry.id).is_ok()
                             || inventory.outfits.outfit(entry.id).is_ok()
+                            || inventory.equipment.item(entry.id).is_ok()
                         {
                             ""
                         } else {
@@ -535,6 +624,46 @@ impl Panel {
                             x + w - 56. - font.measure("Use") * 0.5,
                             row + 27.,
                             "Use",
+                            gold,
+                        );
+                    }
+                }
+                if kind == Kind::Inventory {
+                    if let Ok(gear) = inventory.equipment.item(entry.id) {
+                        let equipped = inventory.equipped.get(&gear.slot) == Some(&entry.id);
+                        let action = if equipped { "Unequip" } else { "Equip" };
+                        ui.text(
+                            small,
+                            x + 58.,
+                            row + 24.,
+                            &format!("{} +{} HP +{} MP", gear.slot.name(), gear.health, gear.mana),
+                            white,
+                        );
+                        ui.text(
+                            small,
+                            x + 58.,
+                            row + 38.,
+                            if equipped {
+                                "Equipped"
+                            } else {
+                                "Owned equipment"
+                            },
+                            gold,
+                        );
+                        ui.rect(
+                            atlas,
+                            x + w - 96.,
+                            row + 23.,
+                            80.,
+                            23.,
+                            [0.24, 0.14, 0.035, 1.],
+                        );
+                        ui.frame(atlas, x + w - 96., row + 23., 80., 23., 1., gold);
+                        ui.text(
+                            font,
+                            x + w - 56. - font.measure(action) * 0.5,
+                            row + 27.,
+                            action,
                             gold,
                         );
                     }
@@ -572,7 +701,8 @@ impl Panel {
                     x + w - 22. - font.measure(&count),
                     row + if kind == Kind::Inventory
                         && (inventory.catalog.item(entry.id).is_ok()
-                            || inventory.outfits.outfit(entry.id).is_ok())
+                            || inventory.outfits.outfit(entry.id).is_ok()
+                            || inventory.equipment.item(entry.id).is_ok())
                     {
                         5.
                     } else {
@@ -623,7 +753,45 @@ mod tests {
             catalog: Default::default(),
             outfits: Default::default(),
             outfit: 0,
+            equipment: Default::default(),
+            equipped: Default::default(),
         }
+    }
+    #[test]
+    fn gear_buttons_emit_owned_slot_changes_without_mutating_inventory() {
+        let mut data = inventory();
+        data.equipment = verse_world::service::equipment::Catalog {
+            version: 1,
+            gear: vec![verse_world::service::equipment::Gear {
+                id: 1,
+                name: "Ritual hat".into(),
+                slot: verse_world::service::equipment::Slot::Head,
+                model: "gear-hat".into(),
+                offset: [0, 0, 230],
+                health: 100,
+                mana: 5,
+            }],
+        };
+        let mut panel = Panel::default();
+        panel.toggle(Kind::Inventory);
+        let [x, y, w, _] = geometry(900., 620.).unwrap();
+        let point = [x + w - 56., y + 82. + 34.];
+        assert!(panel.click(point, Some(&data), 900., 620.));
+        assert_eq!(
+            panel.take_gear(),
+            Some((verse_world::service::equipment::Slot::Head, 1))
+        );
+        assert!(data.equipped.is_empty());
+        data.equipped
+            .insert(verse_world::service::equipment::Slot::Head, 1);
+        assert!(panel.click(point, Some(&data), 900., 620.));
+        assert_eq!(
+            panel.take_gear(),
+            Some((verse_world::service::equipment::Slot::Head, 0))
+        );
+        assert_eq!(data.items[0].count, 1);
+        panel.close();
+        assert!(panel.take_gear().is_none());
     }
     #[test]
     fn outfit_buttons_emit_equipping_and_base_selection_without_local_changes() {
@@ -768,6 +936,39 @@ mod tests {
                 count: if completed { 3 } else { 1 },
             }];
             data.items.push(Entry { id: 2, count: 1 });
+            if std::env::var_os("VERSE_EQUIPMENT_PANEL").is_some() {
+                data.equipment = verse_world::service::equipment::Catalog {
+                    version: 1,
+                    gear: vec![
+                        verse_world::service::equipment::Gear {
+                            id: 3,
+                            name: "Ritual hat".into(),
+                            slot: verse_world::service::equipment::Slot::Head,
+                            model: "gear-hat".into(),
+                            offset: [0, 0, 230],
+                            health: 100,
+                            mana: 0,
+                        },
+                        verse_world::service::equipment::Gear {
+                            id: 4,
+                            name: "Ritual wand".into(),
+                            slot: verse_world::service::equipment::Slot::MainHand,
+                            model: "gear-wand".into(),
+                            offset: [0; 3],
+                            health: 0,
+                            mana: 10,
+                        },
+                    ],
+                };
+                data.items
+                    .extend([Entry { id: 3, count: 1 }, Entry { id: 4, count: 1 }]);
+                if completed {
+                    data.equipped
+                        .insert(verse_world::service::equipment::Slot::Head, 3);
+                    data.equipped
+                        .insert(verse_world::service::equipment::Slot::MainHand, 4);
+                }
+            }
             data.level = verse_world::service::progression::Level {
                 level: if completed { 2 } else { 1 },
                 start: if completed { 100 } else { 0 },

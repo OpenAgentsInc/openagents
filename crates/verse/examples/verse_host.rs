@@ -57,6 +57,12 @@ async fn serve(config: Config) -> Result<(), String> {
         verse_engine::director::Scene::from_json(&bounded(&config.scene, 1024 * 1024, false)?)?;
     let pack = verse_engine::assets::Pack::read(&config.pack)?;
     verse::imported::remote_content::outfit_models(&pack, &config.outfits)?;
+    verse::imported::remote_content::equipment_models(
+        &pack,
+        &scene,
+        &config.outfits,
+        &config.equipment,
+    )?;
     let content = verse::imported::remote_content::identity(
         &pack,
         &scene,

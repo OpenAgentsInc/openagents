@@ -398,5 +398,25 @@ native extraction refuse missing outfit models or missing chamber animation
 states. The existing Universal pack includes six `universal-*` appearances.
 The [outfit receipt](../../bench/verse/2026-10-04/outfits/run.json) retains
 TLS ownership/restart checks, synthetic panel layouts, and an animated-model GPU
-capture. Individual armor/weapon attachments, equipment stats, and live window
-input acceptance remain separate work.
+capture. Head/main-hand attachments and resource bonuses are described below;
+other gear slots, damage/armor modifiers, and live window input acceptance remain.
+
+Host JSON also accepts version-one `equipment`, with up to 64 sorted, unique
+gear definitions. For example:
+`{"version":1,"gear":[{"id":3,"name":"Ritual hat","slot":"head","model":"gear-hat","offset":[0,0,230],"health":100,"mana":0},{"id":4,"name":"Ritual wand","slot":"main_hand","model":"gear-wand","offset":[0,0,0],"health":0,"mana":10}]}`.
+Gear IDs must differ from recovery and outfit IDs. Reward entries grant ownership;
+the inventory's **Equip** and **Unequip** actions select one item per slot without
+spending its stack. `Client::equip_gear` requires a retained operation ID, current
+life, and current control. New changes refuse defeated characters. Exact retries
+return the original receipt without restoring a later unequipped selection.
+
+Health and mana bonuses raise the owned maxima without healing current resources
+or resetting cooldowns. Removing a bonus clamps current resources. Respawn and
+instance reset restore full resources at the selected maxima. Saved chamber
+version six checks derived maxima against the replayed ownership ledger; older
+saves upgrade with no gear. Wire version fourteen carries slot selections and
+visible static gear for both players and spectators. The native host admits gear
+models and required sockets before serving; the renderer hides the main-hand
+model while the bow occupies the hands. The [equipment receipt](../../bench/verse/2026-10-04/equipment/run.json)
+retains TLS storage-failure/restart evidence and native rendering/panel fixtures.
+Damage/armor modifiers and final animation-graph palette scheduling remain.

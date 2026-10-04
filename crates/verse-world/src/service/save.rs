@@ -31,6 +31,8 @@ struct Saved {
     items: Option<super::items::Catalog>,
     #[serde(default)]
     outfits: Option<super::outfits::Catalog>,
+    #[serde(default)]
+    equipment: Option<super::equipment::Catalog>,
 }
 fn grants(saved: &[Grant], game: &Game) -> Result<BTreeMap<Principal, Rights>, String> {
     if saved.len() > 128 {
@@ -58,7 +60,7 @@ fn grants(saved: &[Grant], game: &Game) -> Result<BTreeMap<Principal, Rights>, S
 }
 pub(super) fn encode(gateway: &Gateway) -> Result<Vec<u8>, String> {
     let saved = Saved {
-        version: 5,
+        version: 6,
         content: gateway
             .content()
             .ok_or("Saved chamber requires bound content")?,
@@ -70,6 +72,7 @@ pub(super) fn encode(gateway: &Gateway) -> Result<Vec<u8>, String> {
         progression: Some(gateway.chamber.progression.clone()),
         items: Some(gateway.chamber.items.clone()),
         outfits: Some(gateway.chamber.outfits.clone()),
+        equipment: Some(gateway.chamber.equipment.clone()),
         grants: gateway
             .chamber
             .grants
@@ -95,7 +98,7 @@ pub(super) fn decode(bytes: &[u8], content: [u8; 32], instance: u64) -> Result<G
         return Err("Saved chamber byte budget exceeded".into());
     }
     let saved: Saved = serde_json::from_slice(bytes).map_err(|_| "Invalid saved chamber")?;
-    if !matches!(saved.version, 1 | 2 | 3 | 4 | 5)
+    if !matches!(saved.version, 1 | 2 | 3 | 4 | 5 | 6)
         || (saved.version == 1 && saved.rewards.is_some())
         || (saved.version >= 2 && saved.rewards.is_none())
         || (saved.version < 3 && saved.progression.is_some())
@@ -103,7 +106,9 @@ pub(super) fn decode(bytes: &[u8], content: [u8; 32], instance: u64) -> Result<G
         || (saved.version < 4 && saved.items.is_some())
         || (saved.version >= 4 && saved.items.is_none())
         || (saved.version < 5 && saved.outfits.is_some())
-        || (saved.version == 5 && saved.outfits.is_none())
+        || (saved.version >= 5 && saved.outfits.is_none())
+        || (saved.version < 6 && saved.equipment.is_some())
+        || (saved.version == 6 && saved.equipment.is_none())
         || saved.content != content
         || instance == 0
     {
@@ -120,8 +125,14 @@ pub(super) fn decode(bytes: &[u8], content: [u8; 32], instance: u64) -> Result<G
     chamber.progression.validate()?;
     chamber.items = saved.items.unwrap_or_default();
     chamber.outfits = saved.outfits.unwrap_or_default();
-    chamber.outfits.validate_items(&chamber.items)?;
+    chamber.equipment = saved.equipment.unwrap_or_default();
+    chamber
+        .equipment
+        .validate_catalogs(&chamber.items, &chamber.outfits)?;
     for (index, transaction) in saved.rewards.unwrap_or_default().into_iter().enumerate() {
+        if saved.version < 6 && transaction.equipment.is_some() {
+            return Err("Legacy save cannot contain equipment changes".into());
+        }
         if saved.version < 5 && transaction.outfit.is_some() {
             return Err("Legacy save cannot contain outfit changes".into());
         }
@@ -130,6 +141,18 @@ pub(super) fn decode(bytes: &[u8], content: [u8; 32], instance: u64) -> Result<G
         }
         if chamber.restore_reward(transaction)?.revision != index as u64 + 1 {
             return Err("Saved reward transaction is duplicated".into());
+        }
+    }
+    for (life, _, _) in chamber.game.controlled_effects() {
+        let character = chamber
+            .rewards
+            .character(life.actor)
+            .cloned()
+            .unwrap_or_default();
+        let (hp, mana) = chamber.equipment.limits(&character)?;
+        let resources = chamber.game.player_snapshot(life)?.player;
+        if resources.max_hp != hp || resources.max_mana != mana {
+            return Err("Saved equipment resource limits do not match owned selections".into());
         }
     }
     if saved.version == 1 && (!saved.reward_policy.is_empty() || saved.reward_cursor != 0) {
@@ -340,6 +363,7 @@ mod tests {
         for actor in [own.actor().actor, other.actor().actor] {
             g.grant_reward(Transaction {
                 outfit: None,
+                equipment: None,
                 spent: vec![],
                 instance: 240,
                 actor,
@@ -373,6 +397,7 @@ mod tests {
         );
         g.grant_reward(Transaction {
             outfit: None,
+            equipment: None,
             spent: vec![],
             instance: 240,
             actor: other.actor().actor,
@@ -429,6 +454,7 @@ mod tests {
         legacy["version"] = 2.into();
         legacy.as_object_mut().unwrap().remove("items");
         legacy.as_object_mut().unwrap().remove("outfits");
+        legacy.as_object_mut().unwrap().remove("equipment");
         legacy.as_object_mut().unwrap().remove("progression");
         legacy["rewards"].as_array_mut().unwrap().truncate(2);
         let legacy = Gateway::restore(&serde_json::to_vec(&legacy).unwrap(), [6; 32], 240).unwrap();
@@ -448,6 +474,7 @@ mod tests {
         let actor = g.game().player_life().actor;
         let tx = Transaction {
             outfit: None,
+            equipment: None,
             spent: vec![],
             instance: 240,
             actor,
@@ -491,6 +518,7 @@ mod tests {
         legacy["version"] = 1.into();
         legacy.as_object_mut().unwrap().remove("items");
         legacy.as_object_mut().unwrap().remove("outfits");
+        legacy.as_object_mut().unwrap().remove("equipment");
         legacy.as_object_mut().unwrap().remove("rewards");
         legacy.as_object_mut().unwrap().remove("progression");
         let upgraded =
@@ -499,7 +527,7 @@ mod tests {
         assert_eq!(upgraded.game().player_life(), g.game().player_life());
         let saved: serde_json::Value =
             serde_json::from_slice(&upgraded.checkpoint().unwrap()).unwrap();
-        assert_eq!(saved["version"], 5);
+        assert_eq!(saved["version"], 6);
     }
     #[test]
     fn recovery_items_spend_once_restore_only_owned_resources_and_validate_saved_debits() {
@@ -530,6 +558,7 @@ mod tests {
         let actor = g.game().player_life().actor;
         g.grant_reward(Transaction {
             outfit: None,
+            equipment: None,
             instance: 240,
             actor,
             source: [1; 32],
@@ -676,6 +705,7 @@ mod tests {
             quests: vec![],
             spent: vec![],
             outfit: None,
+            equipment: None,
         })
         .unwrap();
         let a = join(&mut g, &keys[0]);
@@ -743,10 +773,239 @@ mod tests {
         let mut legacy: serde_json::Value = serde_json::from_slice(&before).unwrap();
         legacy["version"] = 4.into();
         legacy.as_object_mut().unwrap().remove("outfits");
+        legacy.as_object_mut().unwrap().remove("equipment");
         let upgraded =
             Gateway::restore(&serde_json::to_vec(&legacy).unwrap(), [6; 32], 240).unwrap();
         assert!(upgraded.outfits().outfits.is_empty());
         assert_eq!(upgraded.character_rewards(actor).unwrap().outfit, 0);
+    }
+    #[test]
+    fn equipment_slots_preserve_resources_retry_identity_and_saved_derivation() {
+        use super::super::{
+            equipment::{Catalog, Gear, Slot},
+            rewards::{Entry, Transaction},
+        };
+        let (g, keys) = fixture();
+        let mut g = g
+            .with_equipment(Catalog {
+                version: 1,
+                gear: vec![
+                    Gear {
+                        id: 10,
+                        name: "Ritual hat".into(),
+                        slot: Slot::Head,
+                        model: "gear-hat".into(),
+                        offset: [0, 0, 230],
+                        health: 100,
+                        mana: 5,
+                    },
+                    Gear {
+                        id: 11,
+                        name: "Ritual wand".into(),
+                        slot: Slot::MainHand,
+                        model: "gear-wand".into(),
+                        offset: [0; 3],
+                        health: 25,
+                        mana: 10,
+                    },
+                    Gear {
+                        id: 12,
+                        name: "Unowned hat".into(),
+                        slot: Slot::Head,
+                        model: "gear-hat".into(),
+                        offset: [0; 3],
+                        health: 1,
+                        mana: 0,
+                    },
+                ],
+            })
+            .unwrap();
+        let actor = g.game().player_life().actor;
+        g.grant_reward(Transaction {
+            instance: 240,
+            actor,
+            source: [8; 32],
+            experience: 1,
+            items: vec![Entry { id: 10, count: 1 }, Entry { id: 11, count: 1 }],
+            quests: vec![],
+            spent: vec![],
+            outfit: None,
+            equipment: None,
+        })
+        .unwrap();
+        g.chamber.game.simulation.player_damage_for(0, 75).unwrap();
+        g.chamber.game.simulation.spend_mana_for(0, 7).unwrap();
+        let a = join(&mut g, &keys[0]);
+        let b = join(&mut g, &keys[1]);
+        let spectator = join(&mut g, &keys[2]);
+        let admission = g.admission(a).unwrap();
+        let life = admission.actor();
+        let epoch = admission.epoch();
+        let before = g.checkpoint().unwrap();
+        for (session, control, slot, item, operation) in [
+            (a, epoch, Slot::Head, 10, [0; 16]),
+            (a, epoch, Slot::Head, 12, [1; 16]),
+            (a, epoch, Slot::Head, 11, [1; 16]),
+            (a, epoch, Slot::Head, 999, [1; 16]),
+            (a, epoch + 1, Slot::Head, 10, [1; 16]),
+            (b, epoch, Slot::Head, 10, [1; 16]),
+            (spectator, epoch, Slot::Head, 10, [1; 16]),
+        ] {
+            assert!(
+                g.equip_gear(session, life, control, slot, item, operation)
+                    .is_err()
+            );
+            assert_eq!(g.checkpoint().unwrap(), before);
+        }
+        let first = g
+            .equip_gear(a, life, epoch, Slot::Head, 10, [1; 16])
+            .unwrap();
+        g.equip_gear(a, life, epoch, Slot::MainHand, 11, [2; 16])
+            .unwrap();
+        let resources = g.game().snapshot().player;
+        assert_eq!(
+            (
+                resources.hp,
+                resources.mana,
+                resources.max_hp,
+                resources.max_mana
+            ),
+            (125, 13, 325, 35)
+        );
+        assert_eq!(
+            g.game()
+                .player_snapshot(g.admission(b).unwrap().actor())
+                .unwrap()
+                .player
+                .max_hp,
+            200
+        );
+        assert_eq!(g.character_rewards(actor).unwrap().items[&10], 1);
+        assert_eq!(
+            g.equip_gear(a, life, epoch, Slot::Head, 10, [1; 16])
+                .unwrap(),
+            first
+        );
+        assert!(
+            g.equip_gear(a, life, epoch, Slot::Head, 0, [1; 16])
+                .is_err()
+        );
+        let saved = g.checkpoint().unwrap();
+        for case in 0..7 {
+            let mut bad: serde_json::Value = serde_json::from_slice(&saved).unwrap();
+            match case {
+                0 => bad["rewards"][1]["equipment"]["item"] = 12.into(),
+                1 => bad["rewards"][1]["equipment"]["slot"] = "main_hand".into(),
+                2 => bad["equipment"]["gear"][0]["health"] = 99.into(),
+                3 => bad["equipment"]["gear"] = serde_json::json!([]),
+                4 => {
+                    let mut world: serde_json::Value =
+                        serde_json::from_str(bad["world"].as_str().unwrap()).unwrap();
+                    world["world"]["simulation"]["players"]["0"]["resources"]["max_mana"] =
+                        34.into();
+                    bad["world"] = serde_json::to_string(&world).unwrap().into();
+                }
+                5 => {
+                    bad["version"] = 5.into();
+                    bad.as_object_mut().unwrap().remove("equipment");
+                }
+                _ => bad["rewards"].as_array_mut().unwrap().swap(0, 1),
+            }
+            assert!(
+                Gateway::restore(&serde_json::to_vec(&bad).unwrap(), [6; 32], 240).is_err(),
+                "tamper {case}"
+            );
+        }
+        let mut recovered = Gateway::restore(&saved, [6; 32], 240).unwrap();
+        let session = join(&mut recovered, &keys[0]);
+        let control = recovered.admission(session).unwrap();
+        let epoch = control.epoch();
+        recovered
+            .equip_gear(session, life, epoch, Slot::Head, 0, [3; 16])
+            .unwrap();
+        assert_eq!(
+            recovered
+                .equip_gear(session, life, epoch, Slot::Head, 10, [1; 16])
+                .unwrap(),
+            first
+        );
+        assert!(
+            !recovered
+                .character_rewards(actor)
+                .unwrap()
+                .equipment
+                .contains_key(&Slot::Head)
+        );
+        assert_eq!(recovered.game().snapshot().player.max_hp, 225);
+        recovered
+            .chamber
+            .game
+            .simulation
+            .player_damage_for(0, 1000)
+            .unwrap();
+        recovered.tick(1. / 30.).unwrap();
+        let before = recovered.checkpoint().unwrap();
+        assert!(
+            recovered
+                .equip_gear(session, life, epoch, Slot::Head, 10, [4; 16])
+                .is_err()
+        );
+        assert_eq!(recovered.checkpoint().unwrap(), before);
+        let new_life = recovered.respawn(session, life).unwrap();
+        let resources = recovered.game().snapshot().player;
+        assert_eq!(
+            (
+                resources.hp,
+                resources.max_hp,
+                resources.mana,
+                resources.max_mana
+            ),
+            (225, 225, 30, 30)
+        );
+        let control = recovered.admission(session).unwrap();
+        assert!(
+            recovered
+                .equip_gear(session, life, epoch, Slot::Head, 10, [5; 16])
+                .is_err()
+        );
+        recovered
+            .equip_gear(session, new_life, control.epoch(), Slot::Head, 10, [5; 16])
+            .unwrap();
+        recovered.reset().unwrap();
+        let resources = recovered.game().snapshot().player;
+        assert_eq!(
+            (
+                resources.hp,
+                resources.max_hp,
+                resources.mana,
+                resources.max_mana
+            ),
+            (325, 325, 35, 35)
+        );
+        Gateway::restore(&recovered.checkpoint().unwrap(), [6; 32], 240).unwrap();
+        // Removing a bonus clamps current resources; putting it back never heals.
+        let control = recovered.admission(session).unwrap();
+        recovered
+            .equip_gear(
+                session,
+                control.actor(),
+                control.epoch(),
+                Slot::Head,
+                0,
+                [6; 16],
+            )
+            .unwrap();
+        recovered
+            .equip_gear(
+                session,
+                control.actor(),
+                control.epoch(),
+                Slot::Head,
+                10,
+                [7; 16],
+            )
+            .unwrap();
+        assert_eq!(recovered.game().snapshot().player.hp, 225);
     }
     #[test]
     fn malformed_or_incompatible_saves_never_admit_ownership() {
@@ -759,7 +1018,7 @@ mod tests {
         for case in 0..8 {
             let mut saved: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
             match case {
-                0 => saved["version"] = 6.into(),
+                0 => saved["version"] = 7.into(),
                 1 => saved["grants"][0]["key"] = serde_json::to_value([0u8; 32]).unwrap(),
                 2 => {
                     let grant = saved["grants"][0].clone();
