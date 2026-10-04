@@ -12,6 +12,7 @@ pub struct Panel {
     pub kind: Option<Kind>,
     page: usize,
     claim: Option<u64>,
+    accept: Option<(u64, verse_engine::core::LifeId)>,
     use_item: Option<u64>,
     equip: Option<u64>,
     gear: Option<(verse_world::service::equipment::Slot, u64)>,
@@ -144,16 +145,21 @@ impl Panel {
         };
         self.page = 0;
         self.claim = None;
+        self.accept = None;
         self.use_item = None;
         self.equip = None;
         self.gear = None;
     }
     pub fn close(&mut self) -> bool {
         self.claim = None;
+        self.accept = None;
         self.use_item = None;
         self.equip = None;
         self.gear = None;
         self.kind.take().is_some()
+    }
+    pub fn take_accept(&mut self) -> Option<(u64, verse_engine::core::LifeId)> {
+        self.accept.take()
     }
     pub fn take_claim(&mut self) -> Option<u64> {
         self.claim.take()
@@ -300,14 +306,19 @@ impl Panel {
                     .enumerate()
                 {
                     if quest.available
+                        && quest.interactable
                         && !quest.claimed
-                        && quest.progress == quest.goal
+                        && (!quest.accepted || quest.progress == quest.goal)
                         && inside(
                             [x + w - 96., y + 82. + index as f32 * 56. + 23., 80., 23.],
                             point,
                         )
                     {
-                        self.claim = Some(quest.id);
+                        if quest.accepted {
+                            self.claim = Some(quest.id);
+                        } else if let Some(giver) = quest.giver_life {
+                            self.accept = Some((quest.id, giver));
+                        }
                         break;
                     }
                 }
@@ -353,7 +364,7 @@ impl Panel {
                 &progress,
                 [0.92, 0.90, 0.82, 1.],
             );
-            let ready = quest.available && quest.progress == quest.goal;
+            let ready = quest.available && quest.accepted && quest.progress == quest.goal;
             ui.text(
                 small,
                 x + 58.,
@@ -362,6 +373,10 @@ impl Panel {
                     "Completed"
                 } else if !quest.available {
                     "Locked: complete prior quests"
+                } else if !quest.accepted {
+                    "Speak to the quest giver"
+                } else if ready && !quest.interactable {
+                    "Return to the quest giver"
                 } else if ready {
                     "Ready to complete"
                 } else {
@@ -383,7 +398,9 @@ impl Panel {
                 }
             );
             ui.text(small, x + 58., row + 38., &reward, [0.92, 0.90, 0.82, 1.]);
-            if ready && !quest.claimed {
+            if quest.available && quest.interactable && !quest.claimed && (!quest.accepted || ready)
+            {
+                let action = if quest.accepted { "Claim" } else { "Accept" };
                 ui.rect(
                     atlas,
                     x + w - 96.,
@@ -395,9 +412,9 @@ impl Panel {
                 ui.frame(atlas, x + w - 96., row + 23., 80., 23., 1., gold);
                 ui.text(
                     font,
-                    x + w - 56. - font.measure("Claim") * 0.5,
+                    x + w - 56. - font.measure(action) * 0.5,
                     row + 27.,
-                    "Claim",
+                    action,
                     gold,
                 );
             }
@@ -870,9 +887,56 @@ mod tests {
         assert!(!panel.close());
     }
     #[test]
+    fn giver_quest_buttons_require_authoritative_acceptance_and_interaction() {
+        use verse_engine::core::LifeId;
+        let mut data = inventory();
+        let giver = LifeId {
+            instance: data.life.instance,
+            actor: 2,
+            generation: 3,
+        };
+        data.quest_log = vec![verse_world::service::progression::Progress {
+            available: true,
+            accepted: false,
+            giver: Some(2),
+            giver_life: Some(giver),
+            interactable: false,
+            id: 1,
+            name: "Disrupt the ritual".into(),
+            progress: 0,
+            goal: 2,
+            claimed: false,
+            experience: 75,
+            items: vec![],
+        }];
+        let mut panel = Panel::default();
+        panel.toggle(Kind::Quests);
+        let [x, y, w, _] = geometry(1280., 720.).unwrap();
+        let point = [x + w - 56., y + 82. + 34.];
+        panel.click(point, Some(&data), 1280., 720.);
+        assert!(panel.take_accept().is_none());
+        data.quest_log[0].interactable = true;
+        panel.click(point, Some(&data), 1280., 720.);
+        assert_eq!(panel.take_accept(), Some((1, giver)));
+        assert!(panel.take_claim().is_none());
+        assert!(!data.quest_log[0].accepted);
+        data.quest_log[0].accepted = true;
+        data.quest_log[0].progress = 2;
+        data.quest_log[0].interactable = false;
+        panel.click(point, Some(&data), 1280., 720.);
+        assert!(panel.take_claim().is_none());
+        data.quest_log[0].interactable = true;
+        panel.click(point, Some(&data), 1280., 720.);
+        assert_eq!(panel.take_claim(), Some(1));
+    }
+    #[test]
     fn quest_buttons_emit_only_ready_unclaimed_intents_without_changing_counters() {
         let mut data = inventory();
         data.quest_log = vec![verse_world::service::progression::Progress {
+            accepted: true,
+            giver: None,
+            giver_life: None,
+            interactable: true,
             available: true,
             id: 1,
             name: "Disrupt the summoning".into(),
@@ -983,6 +1047,10 @@ mod tests {
                 next: Some(if completed { 300 } else { 100 }),
             };
             data.quest_log = vec![verse_world::service::progression::Progress {
+                accepted: true,
+                giver: None,
+                giver_life: None,
+                interactable: true,
                 available: true,
                 id: 1,
                 name: "Disrupt the summoning".into(),
@@ -992,6 +1060,46 @@ mod tests {
                 experience: 75,
                 items: vec![Entry { id: 1, count: 2 }],
             }];
+            if std::env::var_os("VERSE_GIVER_PANEL").is_some() {
+                let mut offer = data.quest_log[0].clone();
+                offer.giver = Some(2);
+                offer.giver_life = Some(verse_engine::core::LifeId {
+                    instance: data.life.instance,
+                    actor: 2,
+                    generation: 0,
+                });
+                offer.accepted = completed;
+                offer.progress = if completed { 2 } else { 0 };
+                offer.goal = 2;
+                offer.name = "Disrupt the ritual".into();
+                let mut active = offer.clone();
+                active.id = 2;
+                active.name = "Gather ritual embers".into();
+                active.accepted = true;
+                active.claimed = false;
+                active.progress = if completed { 2 } else { 1 };
+                let mut return_quest = offer.clone();
+                return_quest.id = 3;
+                return_quest.name = "Secure the chamber".into();
+                return_quest.claimed = false;
+                return_quest.accepted = !completed;
+                return_quest.progress = if completed { 0 } else { 2 };
+                return_quest.interactable = completed;
+                let mut locked = offer.clone();
+                locked.id = 4;
+                locked.name = "Seal the summoning circle".into();
+                locked.available = false;
+                locked.accepted = false;
+                locked.claimed = false;
+                locked.progress = 0;
+                data.quest_log = vec![offer, active, return_quest, locked];
+                data.validate(&Some(verse_world::service::wire::Control {
+                    life: data.life,
+                    epoch: 1,
+                    accepted_sequence: 0,
+                }))
+                .unwrap();
+            }
             let mut ui = UiBatch::default();
             let mut panel = Panel::default();
             panel.toggle(Kind::Inventory);

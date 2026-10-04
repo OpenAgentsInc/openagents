@@ -349,7 +349,7 @@ synthetic counters establish layout, not live rewarded-combat acceptance.
 
 Host JSON accepts optional version-one `progression` configuration, for example
 `{"version":1,"levels":[0,100,300],"quests":[{"id":1,"name":"Disrupt the summoning","objective":1,"goal":12,"experience":75,"items":[{"id":1,"count":2}]},{"id":2,"name":"Secure the chamber","prerequisites":[1],"objective":1,"goal":24,"experience":150,"items":[]}]}`.
-Campaign quests without prerequisites are active for every enrolled character.
+Campaign quests without prerequisites are available to every enrolled character.
 An optional `prerequisites` array lists up to 16 sorted, unique earlier quest IDs.
 The host unlocks a quest only after that character claims every prerequisite in
 the same instance. Kill reward counters supply objectives, including counters
@@ -358,12 +358,32 @@ and control epoch. The host checks availability and completion and applies confi
 once per character and instance, including across respawn, reset, and recovery.
 Durable hosts commit before acknowledging claims. Saved progression configuration
 is immutable on recovery; earlier saves upgrade with no configured quests and
-level one. Level thresholds affect presentation only. Quest enrollment, abandonment,
+level one. Level thresholds affect presentation only. Abandonment,
 repeatable quests, quest givers, and combat stat scaling remain.
 Wire version fifteen carries quest availability. Locked quests show their status
 and expose no claim action. Recovery replays prerequisite claims in ledger order
 and rejects follow-up claims whose prerequisites are absent. Existing saves
 without prerequisite arrays retain their original behavior.
+A quest can declare a `giver` with an authored scene NPC ID. These quests require
+explicit acceptance: the current adventurer and giver must be alive, within
+four meters, and visible through collision queries. The request binds both life
+generations and the adventurer's control epoch. Acceptance retains the current
+objective counter as a baseline; only later progress counts. First turn-in
+requires the same proximity and sight checks. Exact acceptance/claim retries
+return original receipts under current character control without requiring a
+repeat interaction. This does not change NPC faction or combat behavior.
+
+Saved chamber version seven replays acceptance records before claims and checks
+each baseline against prior objective transactions. Earlier saves retain their
+automatic quest behavior. Wire version sixteen carries acceptance, giver life,
+and interaction availability. The native quest panel shows **Accept** while near
+an available giver and **Claim** for a completed accepted quest; outside range it
+asks the player to return. The network worker refreshes inventory after actions.
+Quest enrollment is permanent for the first campaign; abandonment, repeatability,
+dialogue authoring, and friendly NPC behavior remain.
+The [enrollment receipt](../../bench/verse/2026-10-04/quest-enrollment/run.json)
+retains TLS storage-failure/restart evidence and synthetic GPU panel captures.
+
 The [campaign receipt](../../bench/verse/2026-10-04/campaign/run.json) retains
 focused TLS recovery checks and synthetic ready/completed GPU panel captures.
 

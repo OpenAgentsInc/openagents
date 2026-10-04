@@ -5,7 +5,7 @@ use verse_engine::core::LifeId;
 use super::auth::{Challenge, ConnectionId, Gateway};
 use crate::{Command, Intent, events::Event, play::Ability, rules::Snapshot};
 
-pub const VERSION: u16 = 15;
+pub const VERSION: u16 = 16;
 pub const MAX_REQUEST_BYTES: usize = 16 * 1024;
 pub const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 
@@ -143,6 +143,12 @@ pub enum Body {
         epoch: u64,
         outfit: u64,
         operation: [u8; 16],
+    },
+    AcceptQuest {
+        life: Life,
+        epoch: u64,
+        quest: u64,
+        giver: Life,
     },
     ClaimQuest {
         life: Life,
@@ -367,6 +373,12 @@ impl Inventory {
             }
         }
         super::progression::validate_progress(&self.quest_log)?;
+        if self.quest_log.iter().any(|q| {
+            q.giver_life
+                .is_some_and(|g| g.instance != self.life.instance)
+        }) {
+            return Err("Quest giver belongs to a foreign instance".into());
+        }
         if self.revision > super::rewards::MAX_TRANSACTIONS as u64 {
             return Err("Inventory transaction budget exceeded".into());
         }
@@ -391,6 +403,10 @@ pub enum Reply {
     OutfitEquipped {
         outfit: u64,
         operation: [u8; 16],
+        revision: u64,
+    },
+    QuestAccepted {
+        quest: u64,
         revision: u64,
     },
     QuestClaimed {
@@ -552,6 +568,20 @@ impl Gateway {
                 Ok(Reply::ItemUsed {
                     item,
                     operation,
+                    revision: receipt.revision,
+                })
+            }
+            Body::AcceptQuest {
+                life,
+                epoch,
+                quest,
+                giver,
+            } => {
+                let receipt = self
+                    .accept_quest(id, life.into(), epoch, quest, giver.into())
+                    .map_err(|e| ("quest", e))?;
+                Ok(Reply::QuestAccepted {
+                    quest,
                     revision: receipt.revision,
                 })
             }
@@ -1278,9 +1308,9 @@ mod tests {
         let reply = send(&mut g, id, 1, Body::Snapshot {});
         assert!(matches!(reply.body, Reply::Refused { .. }));
         for bytes in [
-            br#"{"version":16,"request_id":1,"body":{"type":"snapshot"}}"#.to_vec(),
-            br#"{"version":15,"request_id":1,"controller":1,"body":{"type":"snapshot"}}"#.to_vec(),
-            br#"{"version":15,"request_id":1,"body":{"type":"snapshot","principal":"fake"}}"#
+            br#"{"version":17,"request_id":1,"body":{"type":"snapshot"}}"#.to_vec(),
+            br#"{"version":16,"request_id":1,"controller":1,"body":{"type":"snapshot"}}"#.to_vec(),
+            br#"{"version":16,"request_id":1,"body":{"type":"snapshot","principal":"fake"}}"#
                 .to_vec(),
             vec![b' '; MAX_REQUEST_BYTES + 1],
         ] {

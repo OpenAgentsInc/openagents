@@ -125,6 +125,7 @@ impl Chamber {
             || items::reserved(&transaction.source)
             || outfits::reserved(&transaction.source)
             || equipment::reserved(&transaction.source)
+            || transaction.acceptance.is_some()
             || transaction.equipment.is_some()
             || transaction.outfit.is_some()
             || !transaction.spent.is_empty()
@@ -142,7 +143,12 @@ impl Chamber {
         {
             return Err("Saved reward character or instance is foreign".into());
         }
-        if progression::reserved(&transaction.source) {
+        if progression::acceptance_source(&transaction.source) {
+            self.progression
+                .validate_acceptance(&transaction, &self.rewards)?;
+        } else if transaction.acceptance.is_some() {
+            return Err("Saved acceptance source is not an admitted quest enrollment".into());
+        } else if progression::reserved(&transaction.source) {
             self.progression
                 .validate_claim(&transaction, &self.rewards)?;
         }
@@ -236,6 +242,112 @@ impl Chamber {
         self.rewards = next;
         Ok(receipt)
     }
+    fn validate_givers(&self, config: &progression::Config) -> Result<(), String> {
+        config.validate()?;
+        for quest in &config.quests {
+            if quest.giver.is_some_and(|actor| {
+                self.game.player_admission(actor).is_some()
+                    || !self.game.scene.actors.iter().any(|a| a.id == actor)
+            }) {
+                return Err("Quest giver must be an authored NPC".into());
+            }
+        }
+        Ok(())
+    }
+    fn quest_interaction(&self, life: LifeId, giver: LifeId) -> Result<(), String> {
+        if self.game.actor_life(giver.actor) != Some(giver)
+            || self.game.player_admission(giver.actor).is_some()
+            || life.instance != giver.instance
+            || self.game.player_snapshot(life)?.player.hp == 0
+        {
+            return Err("Quest interaction life is stale, foreign, or defeated".into());
+        }
+        let source = self
+            .game
+            .ids
+            .get(&giver.actor)
+            .ok_or("Quest giver is not an NPC")?;
+        if !self
+            .game
+            .snapshot()
+            .actors
+            .iter()
+            .any(|a| a.id == *source && a.alive && a.hp > 0)
+        {
+            return Err("Quest giver is defeated or unavailable".into());
+        }
+        let player = self
+            .game
+            .actor_position(life.actor)
+            .ok_or("Quest adventurer is unavailable")?;
+        let npc = self
+            .game
+            .actor_position(giver.actor)
+            .ok_or("Quest giver is unavailable")?;
+        if player.distance_squared(npc) > 16.
+            || !self
+                .game
+                .attack_clear(player + Vec3::Y * 1.4, npc + Vec3::Y * 1.4)
+        {
+            return Err("Approach the quest giver with a clear line of sight".into());
+        }
+        Ok(())
+    }
+    fn quest_log(&self, actor: u64) -> Vec<progression::Progress> {
+        let instance = self.game.player_life().instance;
+        let mut progress = self.progression.progress(actor, instance, &self.rewards);
+        for quest in &mut progress {
+            if let Some(giver) = quest.giver {
+                quest.giver_life = self.game.actor_life(giver);
+                quest.interactable = self
+                    .game
+                    .actor_life(actor)
+                    .zip(quest.giver_life)
+                    .is_some_and(|(life, npc)| self.quest_interaction(life, npc).is_ok());
+            }
+        }
+        progress
+    }
+    pub fn accept_quest(
+        &mut self,
+        principal: Principal,
+        session: Session,
+        life: LifeId,
+        epoch: u64,
+        quest: u64,
+        giver: LifeId,
+    ) -> Result<rewards::Receipt, String> {
+        let admission = self.admission(principal, session)?;
+        if admission.actor() != life || admission.epoch() != epoch {
+            return Err("Quest acceptance life or control is stale or foreign".into());
+        }
+        let quest = self
+            .progression
+            .quests
+            .iter()
+            .find(|q| q.id == quest)
+            .ok_or("Quest is not defined")?;
+        if quest.giver != Some(giver.actor) || giver.instance != life.instance {
+            return Err("Quest giver does not match its authored definition".into());
+        }
+        if let Some(baseline) = self
+            .rewards
+            .character(life.actor)
+            .and_then(|c| c.accepted_quests.get(&quest.id))
+        {
+            return self
+                .rewards
+                .apply(quest.acceptance(life.instance, life.actor, *baseline));
+        }
+        self.quest_interaction(life, giver)?;
+        let tx = quest.acceptance(
+            life.instance,
+            life.actor,
+            quest.count(self.rewards.character(life.actor)),
+        );
+        self.progression.validate_acceptance(&tx, &self.rewards)?;
+        self.rewards.apply(tx)
+    }
     pub fn claim_quest(
         &mut self,
         principal: Principal,
@@ -257,6 +369,16 @@ impl Chamber {
         let transaction = quest.transaction(life.instance, life.actor);
         self.progression
             .validate_claim(&transaction, &self.rewards)?;
+        if !self.rewards.contains(life.actor, transaction.source) {
+            if let Some(giver) = quest.giver {
+                self.quest_interaction(
+                    life,
+                    self.game
+                        .actor_life(giver)
+                        .ok_or("Quest giver is unavailable")?,
+                )?;
+            }
+        }
         self.rewards.apply(transaction)
     }
 

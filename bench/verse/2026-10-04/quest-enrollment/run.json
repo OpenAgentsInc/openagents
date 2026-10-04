@@ -1,0 +1,69 @@
+{
+  "schema": "verse.quest-enrollment.receipt.v1",
+  "issue": 10554,
+  "base_commit": "1be9b90ac3651974929c286ef820685fcd76b3fd",
+  "wire_version": 16,
+  "save_version": 7,
+  "checks": {
+    "service_net": 97,
+    "service_scope": "96 suite checks passed; the repaired recovery-clock check passed separately",
+    "native_consumers": 39,
+    "gpu_panel": 1,
+    "formatting": "passed",
+    "diff_whitespace": "passed"
+  },
+  "fixture": "tls.json",
+  "assets": {
+    "completed.png": {
+      "sha256": "92d58822d5f6c2fecc909461729fed4ec72721c5c833933e016755aef80cc11f",
+      "dimensions": [
+        2700,
+        1860
+      ]
+    },
+    "ready.png": {
+      "sha256": "77660dd25fa507ffa337f7c22b6b2e508fa4c5222f0dba0d6201b522c937df54",
+      "dimensions": [
+        2700,
+        1860
+      ]
+    },
+    "tls.json": {
+      "sha256": "8776e7485d7506a20218d97525fb43501958fa73184378e5f0f204a89ca7467c"
+    }
+  },
+  "source_sha256": {
+    "crates/verse-world/src/service.rs": "1590fbc013e86cc05fb868f918b9374696c872862806fcf8ca24f434c8930141",
+    "crates/verse-world/src/service/auth.rs": "4d0fdb8dfad4ed7b7b9b7c1583f3b2be10eff760c86d14a1c8ce85124c5e4f7d",
+    "crates/verse-world/src/service/client.rs": "11549ee401c493f6a3f8bd0607447ea48ae1c723b95670ab56e33aa8f310873a",
+    "crates/verse-world/src/service/equipment.rs": "3ad7d2d9c0b3e751c6070155a0a85c5b9b95f14d599de4b4ec9915930722b1a3",
+    "crates/verse-world/src/service/items.rs": "ed874b43752722784ffb74781656cd87ba263ac7505260173b6cde6c808b91a7",
+    "crates/verse-world/src/service/net.rs": "cd65f621f4dee60a9dc9f0700eed6a0ecdb7873104c3399ef653cf3abc72d113",
+    "crates/verse-world/src/service/outfits.rs": "1a17922790a291753d5be51451f52d3d3163bd7e71671e0e791e0c487113f34c",
+    "crates/verse-world/src/service/persistence.rs": "10873a2ffe11b98b3a5ee7fff595ef40cf974d8eec8d09a26d447387db6d0f0e",
+    "crates/verse-world/src/service/progression.rs": "a27de02ce4996a0b2edc5abdab23015cf682a80fb190649bdabd4b8b8dfa9cb7",
+    "crates/verse-world/src/service/rewards.rs": "c9124efaba26c9fde47f95d0ebb6a7a7c98b6088b43aa8ad378c812df01ed0b1",
+    "crates/verse-world/src/service/save.rs": "6048ea726ee1f7c4a49d867e3253522d030045b8b19483a83770c0a1b703b784",
+    "crates/verse-world/src/service/wire.rs": "ed35292c8fd910ad8ff02fe5b8188f792bb11d46597c48c8b249eaecb9d4d53d",
+    "crates/verse-world/src/service/worker.rs": "a1c282654dfeca81a3f54e9b17ec8d06b4b4d2535e37a384efc9aba495c435ff",
+    "crates/verse/src/imported/character_panel.rs": "f29656057c24038c9dc52e23fb503eb7ae98ea50e45b2aee5b86c4cdc6e80e9d",
+    "crates/verse/src/imported/remote_window.rs": "4b1cf8f5a0784f5fdcab7acaeffb77d9d1e9a27d6063f7dd5e92e76e5e6a003c"
+  },
+  "covered": [
+    "Per-character enrollment and post-acceptance objective baselines",
+    "Owned current player/control and giver generation admission",
+    "Living actors, four-meter range, and collision line of sight",
+    "Exact acceptance and claim retries without duplicated progress or rewards",
+    "Malformed baselines, foreign payloads, reordered receipts and legacy-version refusal",
+    "Failed storage withholds acknowledgment; aborted-host restart restores acceptance and earned rewards",
+    "Native typed Accept/Claim intents and GPU offer/active/return/locked/completed layouts"
+  ],
+  "limits": [
+    "GPU panels contain synthetic layout states; authoritative inventory evidence is in the separate TLS fixture",
+    "No live OS mouse input, friendly giver scene, dialogue, or frame-budget proof",
+    "First enrollment and turn-in require interaction; exact acknowledged retries require current character control and preserve original receipts without repeating interaction",
+    "Giver binding does not change NPC faction or combat behavior",
+    "Enrollment is permanent; abandonment and repeatable quests remain",
+    "The full Verse roadmap and VE-5 acceptance remain incomplete"
+  ]
+}

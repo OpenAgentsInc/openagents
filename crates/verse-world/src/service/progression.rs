@@ -1,10 +1,13 @@
 //! Versioned campaign quests and experience levels owned by the chamber host.
 use super::rewards::{Character, Entry, Ledger, Transaction};
 use serde::{Deserialize, Serialize};
+const ACCEPT_DOMAIN: &[u8; 8] = b"VACCEPT1";
 const CLAIM_DOMAIN: &[u8; 8] = b"VQUEST01";
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Quest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub giver: Option<u64>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub prerequisites: Vec<u64>,
     pub id: u64,
@@ -13,6 +16,12 @@ pub struct Quest {
     pub goal: u32,
     pub experience: u64,
     pub items: Vec<Entry>,
+}
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Acceptance {
+    pub quest: u64,
+    pub baseline: u32,
 }
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -54,6 +63,10 @@ impl Level {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Progress {
+    pub accepted: bool,
+    pub giver: Option<u64>,
+    pub giver_life: Option<verse_engine::core::LifeId>,
+    pub interactable: bool,
     pub available: bool,
     pub id: u64,
     pub name: String,
@@ -79,7 +92,8 @@ impl Config {
         }
         let mut previous = 0;
         for quest in &self.quests {
-            if quest.id <= previous
+            if quest.giver == Some(0)
+                || quest.id <= previous
                 || !name(&quest.name)
                 || quest.objective == 0
                 || !(1..=1_000_000).contains(&quest.goal)
@@ -117,10 +131,17 @@ impl Config {
         self.quests
             .iter()
             .map(|quest| Progress {
+                accepted: quest.giver.is_none()
+                    || ledger
+                        .character(actor)
+                        .is_some_and(|c| c.accepted_quests.contains_key(&quest.id)),
+                giver: quest.giver,
+                giver_life: None,
+                interactable: quest.giver.is_none(),
                 available: self.available(quest, instance, actor, ledger),
                 id: quest.id,
                 name: quest.name.clone(),
-                progress: quest.count(ledger.character(actor)).min(quest.goal),
+                progress: quest.progress(ledger.character(actor)).min(quest.goal),
                 goal: quest.goal,
                 claimed: ledger.contains(actor, quest.transaction(instance, actor).source),
                 experience: quest.experience,
@@ -138,6 +159,28 @@ impl Config {
                 })
         })
     }
+    pub(super) fn validate_acceptance(
+        &self,
+        tx: &Transaction,
+        ledger: &Ledger,
+    ) -> Result<(), String> {
+        let acceptance = tx.acceptance.ok_or("Quest acceptance payload is absent")?;
+        let quest = self
+            .quests
+            .iter()
+            .find(|q| q.id == acceptance.quest)
+            .ok_or("Accepted quest is not defined")?;
+        if quest.giver.is_none()
+            || tx != &quest.acceptance(tx.instance, tx.actor, acceptance.baseline)
+            || acceptance.baseline != quest.count(ledger.character(tx.actor))
+            || !self.available(quest, tx.instance, tx.actor, ledger)
+        {
+            return Err(
+                "Quest acceptance does not match its definition or objective baseline".into(),
+            );
+        }
+        Ok(())
+    }
     pub(super) fn validate_claim(
         &self,
         transaction: &Transaction,
@@ -150,7 +193,7 @@ impl Config {
             .find(|quest| quest.id == id)
             .ok_or("Claimed campaign quest is not defined")?;
         if transaction != &quest.transaction(transaction.instance, transaction.actor)
-            || quest.count(ledger.character(transaction.actor)) < quest.goal
+            || quest.progress(ledger.character(transaction.actor)) < quest.goal
             || !self.available(quest, transaction.instance, transaction.actor, ledger)
         {
             return Err(
@@ -167,12 +210,34 @@ impl Quest {
             .copied()
             .unwrap_or(0)
     }
+    pub(super) fn progress(&self, character: Option<&Character>) -> u32 {
+        if self.giver.is_none() {
+            return self.count(character);
+        }
+        character
+            .and_then(|c| c.accepted_quests.get(&self.id))
+            .map_or(0, |baseline| {
+                self.count(character).saturating_sub(*baseline)
+            })
+    }
+    pub(super) fn acceptance(&self, instance: u64, actor: u64, baseline: u32) -> Transaction {
+        let mut tx = self.transaction(instance, actor);
+        tx.source[..8].copy_from_slice(ACCEPT_DOMAIN);
+        tx.experience = 0;
+        tx.items.clear();
+        tx.acceptance = Some(Acceptance {
+            quest: self.id,
+            baseline,
+        });
+        tx
+    }
     pub(super) fn transaction(&self, instance: u64, actor: u64) -> Transaction {
         let mut source = [0; 32];
         source[..8].copy_from_slice(CLAIM_DOMAIN);
         source[8..16].copy_from_slice(&instance.to_be_bytes());
         source[16..24].copy_from_slice(&self.id.to_be_bytes());
         Transaction {
+            acceptance: None,
             outfit: None,
             equipment: None,
             spent: vec![],
@@ -186,7 +251,10 @@ impl Quest {
     }
 }
 pub(super) fn reserved(source: &[u8; 32]) -> bool {
-    source[..8] == CLAIM_DOMAIN[..]
+    source[..8] == CLAIM_DOMAIN[..] || acceptance_source(source)
+}
+pub(super) fn acceptance_source(source: &[u8; 32]) -> bool {
+    source[..8] == ACCEPT_DOMAIN[..]
 }
 pub fn validate_progress(values: &[Progress]) -> Result<(), String> {
     if values.len() > 64 {
@@ -194,7 +262,14 @@ pub fn validate_progress(values: &[Progress]) -> Result<(), String> {
     }
     let mut previous = 0;
     for quest in values {
-        if quest.id <= previous
+        if quest.giver == Some(0)
+            || quest
+                .giver_life
+                .is_some_and(|life| life.instance == 0 || Some(life.actor) != quest.giver)
+            || (quest.interactable && quest.giver.is_some() && quest.giver_life.is_none())
+            || (quest.claimed && !quest.accepted)
+            || (!quest.accepted && (quest.giver.is_none() || quest.progress != 0))
+            || quest.id <= previous
             || !name(&quest.name)
             || !(1..=1_000_000).contains(&quest.goal)
             || quest.progress > quest.goal
@@ -218,6 +293,7 @@ mod tests {
             levels: vec![0],
             quests: vec![
                 Quest {
+                    giver: None,
                     prerequisites: vec![],
                     id: 1,
                     name: "First".into(),
@@ -227,6 +303,7 @@ mod tests {
                     items: vec![],
                 },
                 Quest {
+                    giver: None,
                     prerequisites: vec![1],
                     id: 3,
                     name: "Second".into(),
@@ -258,6 +335,7 @@ mod tests {
             version: 1,
             levels: vec![0, 100, 300],
             quests: vec![Quest {
+                giver: None,
                 prerequisites: vec![],
                 id: 1,
                 name: "Disrupt the summoning".into(),

@@ -284,6 +284,7 @@ mod tests {
         let mut g = prepared();
         let actor = g.game().player_life().actor;
         let tx = Transaction {
+            acceptance: None,
             outfit: None,
             equipment: None,
             spent: vec![],

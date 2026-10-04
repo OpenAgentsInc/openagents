@@ -166,7 +166,7 @@ impl Gateway {
         {
             return Err("Campaign progression is already bound".into());
         }
-        config.validate()?;
+        self.chamber.validate_givers(&config)?;
         self.chamber.progression = config;
         Ok(self)
     }
@@ -174,11 +174,19 @@ impl Gateway {
         &self.chamber.progression
     }
     pub fn quest_log(&self, actor: u64) -> Vec<super::progression::Progress> {
-        self.chamber.progression.progress(
-            actor,
-            self.game().player_life().instance,
-            &self.chamber.rewards,
-        )
+        self.chamber.quest_log(actor)
+    }
+    pub fn accept_quest(
+        &mut self,
+        id: ConnectionId,
+        life: LifeId,
+        epoch: u64,
+        quest: u64,
+        giver: LifeId,
+    ) -> Result<super::rewards::Receipt, String> {
+        let b = self.binding(id)?;
+        self.chamber
+            .accept_quest(b.principal, b.session, life, epoch, quest, giver)
     }
     pub fn claim_quest(
         &mut self,

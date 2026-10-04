@@ -19,6 +19,8 @@ pub struct Entry {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Transaction {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub acceptance: Option<super::progression::Acceptance>,
     pub instance: u64,
     pub actor: u64,
     pub source: [u8; 32],
@@ -35,6 +37,7 @@ pub struct Transaction {
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct Character {
+    pub accepted_quests: BTreeMap<u64, u32>,
     pub experience: u64,
     pub items: BTreeMap<u64, u32>,
     pub quests: BTreeMap<u64, u32>,
@@ -82,6 +85,7 @@ impl Policy {
         source[16..24].copy_from_slice(&life.actor.to_be_bytes());
         source[24..].copy_from_slice(&life.generation.to_be_bytes());
         Transaction {
+            acceptance: None,
             outfit: None,
             equipment: None,
             spent: vec![],
@@ -177,7 +181,8 @@ impl Ledger {
                 && transaction.quests.is_empty()
                 && transaction.spent.is_empty()
                 && transaction.outfit.is_none()
-                && transaction.equipment.is_none())
+                && transaction.equipment.is_none()
+                && transaction.acceptance.is_none())
         {
             return Err("Reward identity or grant is empty".into());
         }
@@ -207,12 +212,24 @@ impl Ledger {
             .get(&transaction.actor)
             .cloned()
             .unwrap_or(Character {
+                accepted_quests: BTreeMap::new(),
                 experience: 0,
                 items: BTreeMap::new(),
                 quests: BTreeMap::new(),
                 outfit: 0,
                 equipment: BTreeMap::new(),
             });
+        if let Some(acceptance) = transaction.acceptance {
+            if acceptance.quest == 0
+                || acceptance.baseline > MAX_COUNT
+                || next.accepted_quests.contains_key(&acceptance.quest)
+                || next.accepted_quests.len() >= MAX_ENTRIES
+            {
+                return Err("Invalid or repeated quest acceptance".into());
+            }
+            next.accepted_quests
+                .insert(acceptance.quest, acceptance.baseline);
+        }
         next.experience = next
             .experience
             .checked_add(transaction.experience)
@@ -274,6 +291,7 @@ mod tests {
     use super::*;
     fn transaction(source: u8) -> Transaction {
         Transaction {
+            acceptance: None,
             outfit: None,
             equipment: None,
             spent: vec![],

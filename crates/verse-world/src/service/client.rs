@@ -200,6 +200,20 @@ impl Client {
         })
         .await
     }
+    pub async fn accept_quest(
+        &mut self,
+        quest: u64,
+        giver: verse_engine::core::LifeId,
+    ) -> Result<Response, String> {
+        let control = self.control().ok_or("Client has no admitted adventurer")?;
+        self.request(Body::AcceptQuest {
+            life: control.life,
+            epoch: control.epoch,
+            quest,
+            giver: giver.into(),
+        })
+        .await
+    }
     pub async fn claim_quest(&mut self, quest: u64) -> Result<Response, String> {
         let control = self.control().ok_or("Client has no admitted adventurer")?;
         self.request(Body::ClaimQuest {
@@ -320,6 +334,29 @@ impl Client {
             }
             (Reply::Snapshot { state }, Body::Snapshot {}) => {
                 state.validate_control(self.instance, &r.control)
+            }
+            (
+                Reply::QuestAccepted { quest, revision },
+                Body::AcceptQuest {
+                    life,
+                    epoch,
+                    quest: requested,
+                    giver,
+                },
+            ) => {
+                if quest != requested
+                    || *quest == 0
+                    || *revision == 0
+                    || *revision > super::rewards::MAX_TRANSACTIONS as u64
+                    || giver.actor == 0
+                    || giver.instance != self.instance
+                    || r.control
+                        .as_ref()
+                        .is_none_or(|c| c.life != *life || c.epoch != *epoch)
+                {
+                    return Err("Quest acceptance acknowledgment is incompatible".into());
+                }
+                Ok(())
             }
             (
                 Reply::QuestClaimed { quest, revision },
@@ -452,6 +489,209 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn npc_quest_acceptance_is_durable_owned_and_withheld_on_storage_failure() {
+        use crate::service::{
+            net,
+            net::tests::gateway_at,
+            persistence::Store,
+            progression::{Config, Quest},
+            rewards::{Entry, Transaction},
+        };
+        let keys = [key(101), key(102), key(103)];
+        let g = gateway_at(&keys, Some(glam::Vec3::new(-1., 0., -22.)))
+            .with_content([9; 32])
+            .unwrap()
+            .with_progression(Config {
+                version: 1,
+                levels: vec![0, 100],
+                quests: vec![Quest {
+                    giver: Some(2),
+                    prerequisites: vec![],
+                    id: 1,
+                    name: "Disrupt the ritual".into(),
+                    objective: 1,
+                    goal: 2,
+                    experience: 75,
+                    items: vec![],
+                }],
+            })
+            .unwrap();
+        let actor = g.game().player_life().actor;
+        let giver = g.game().actor_life(2).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("state");
+        let store = Store::open(&root, [9; 32], 120).unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (server_tls, connector) = tls();
+        let server = tokio::spawn(net::serve_durable(
+            listener,
+            server_tls.clone(),
+            g,
+            store,
+            std::future::pending::<()>(),
+        ));
+        let mut a = Client::connect_with_content(
+            address,
+            name(),
+            connector.config().clone(),
+            120,
+            Some([9; 32]),
+            &keys[0],
+        )
+        .await
+        .unwrap();
+        let before = a.inventory().await.unwrap();
+        assert!(!before.quest_log[0].accepted);
+        assert!(before.quest_log[0].interactable);
+        std::fs::create_dir(root.join("next.json")).unwrap();
+        assert!(a.accept_quest(1, giver).await.is_err());
+        let exit = tokio::time::timeout(Duration::from_secs(5), server)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(exit.failure.is_some());
+        drop(exit);
+        std::fs::remove_dir(root.join("next.json")).unwrap();
+        let mut store = Store::open(&root, [9; 32], 120).unwrap();
+        let g = store.recover().unwrap();
+        assert!(!g.quest_log(actor)[0].accepted);
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(net::serve_durable(
+            listener,
+            server_tls.clone(),
+            g,
+            store,
+            std::future::pending::<()>(),
+        ));
+        let mut a = Client::connect_with_content(
+            address,
+            name(),
+            connector.config().clone(),
+            120,
+            Some([9; 32]),
+            &keys[0],
+        )
+        .await
+        .unwrap();
+        let mut b = Client::connect_with_content(
+            address,
+            name(),
+            connector.config().clone(),
+            120,
+            Some([9; 32]),
+            &keys[1],
+        )
+        .await
+        .unwrap();
+        let mut spectator = Client::connect_with_content(
+            address,
+            name(),
+            connector.config().clone(),
+            120,
+            Some([9; 32]),
+            &keys[2],
+        )
+        .await
+        .unwrap();
+        assert!(spectator.accept_quest(1, giver).await.is_err());
+        let accepted = a.accept_quest(1, giver).await.unwrap();
+        assert!(matches!(
+            accepted.body,
+            Reply::QuestAccepted {
+                quest: 1,
+                revision: 1
+            }
+        ));
+        assert!(matches!(
+            a.accept_quest(1, giver).await.unwrap().body,
+            Reply::QuestAccepted {
+                quest: 1,
+                revision: 1
+            }
+        ));
+        let after = a.inventory().await.unwrap();
+        assert!(after.quest_log[0].accepted);
+        assert_eq!(after.quest_log[0].progress, 0);
+        assert!(!b.inventory().await.unwrap().quest_log[0].accepted);
+        server.abort();
+        assert!(matches!(server.await, Err(error) if error.is_cancelled()));
+        let mut store = Store::open(&root, [9; 32], 120).unwrap();
+        let mut g = store.recover().unwrap();
+        assert!(g.quest_log(actor)[0].accepted);
+        g.grant_reward(Transaction {
+            acceptance: None,
+            instance: 120,
+            actor,
+            source: [71; 32],
+            experience: 0,
+            items: vec![],
+            quests: vec![Entry { id: 1, count: 2 }],
+            spent: vec![],
+            outfit: None,
+            equipment: None,
+        })
+        .unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(net::serve_durable(
+            listener,
+            server_tls,
+            g,
+            store,
+            std::future::pending::<()>(),
+        ));
+        let mut a = Client::connect_with_content(
+            address,
+            name(),
+            connector.config().clone(),
+            120,
+            Some([9; 32]),
+            &keys[0],
+        )
+        .await
+        .unwrap();
+        assert!(matches!(
+            a.accept_quest(1, giver).await.unwrap().body,
+            Reply::QuestAccepted {
+                quest: 1,
+                revision: 1
+            }
+        ));
+        assert_eq!(a.inventory().await.unwrap().quest_log[0].progress, 2);
+        assert!(matches!(
+            a.claim_quest(1).await.unwrap().body,
+            Reply::QuestClaimed {
+                quest: 1,
+                revision: 3
+            }
+        ));
+        assert!(matches!(
+            a.claim_quest(1).await.unwrap().body,
+            Reply::QuestClaimed {
+                quest: 1,
+                revision: 3
+            }
+        ));
+        let completed = a.inventory().await.unwrap();
+        assert!(completed.quest_log[0].claimed);
+        assert_eq!(completed.experience, 75);
+        server.abort();
+        assert!(matches!(server.await, Err(error) if error.is_cancelled()));
+        let mut store = Store::open(&root, [9; 32], 120).unwrap();
+        let recovered = store.recover().unwrap();
+        assert_eq!(recovered.character_rewards(actor).unwrap().experience, 75);
+        assert!(recovered.quest_log(actor)[0].claimed);
+        println!(
+            "VERSE_QUEST_ENROLLMENT {}",
+            serde_json::json!({"schema":"verse.quest-enrollment.fixture.v1",
+            "wire_version":VERSION,"before":before,"accepted":after,"completed":completed,
+            "failed_storage_ack_withheld":true,"restart":"aborted_host_task","duplicate_acceptance":false,"duplicate_claim":false,
+            "other_character_accepted":false,"recovered_experience":75})
+        );
+    }
+    #[tokio::test]
     async fn tls_combat_rewards_are_owned_and_survive_durable_host_restart() {
         use crate::service::{
             net,
@@ -475,6 +715,7 @@ mod tests {
                 levels: vec![0, 100, 300],
                 quests: vec![
                     super::super::progression::Quest {
+                        giver: None,
                         prerequisites: vec![],
                         id: 1,
                         name: "Disrupt the summoning".into(),
@@ -484,6 +725,7 @@ mod tests {
                         items: vec![Entry { id: 1, count: 2 }],
                     },
                     super::super::progression::Quest {
+                        giver: None,
                         prerequisites: vec![1],
                         id: 2,
                         name: "Secure the chamber".into(),
@@ -711,6 +953,7 @@ mod tests {
                 version: 1,
                 levels: vec![0, 100, 300],
                 quests: vec![Quest {
+                    giver: None,
                     prerequisites: vec![],
                     id: 1,
                     name: "Disrupt the summoning".into(),
@@ -723,6 +966,7 @@ mod tests {
             .unwrap();
         let actor = g.game().player_life().actor;
         g.grant_reward(Transaction {
+            acceptance: None,
             outfit: None,
             equipment: None,
             spent: vec![],
@@ -831,6 +1075,7 @@ mod tests {
             .unwrap();
         let actor = g.game().player_life().actor;
         g.grant_reward(Transaction {
+            acceptance: None,
             outfit: None,
             equipment: None,
             instance: 120,
@@ -1006,6 +1251,7 @@ mod tests {
             .unwrap();
         let actor = g.game().player_life().actor;
         g.grant_reward(Transaction {
+            acceptance: None,
             outfit: None,
             equipment: None,
             instance: 120,
@@ -1029,6 +1275,7 @@ mod tests {
             .find(|id| *id != actor)
             .unwrap();
         g.grant_reward(Transaction {
+            acceptance: None,
             instance: 120,
             actor: secondary_actor,
             source: [9; 32],
@@ -1277,6 +1524,7 @@ mod tests {
             .unwrap();
         let actor = g.game().player_life().actor;
         g.grant_reward(Transaction {
+            acceptance: None,
             outfit: None,
             equipment: None,
             spent: vec![],

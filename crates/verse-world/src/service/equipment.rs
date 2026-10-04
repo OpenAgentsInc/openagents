@@ -158,6 +158,7 @@ pub(super) fn transaction(
     source[8..16].copy_from_slice(&instance.to_be_bytes());
     source[16..].copy_from_slice(&operation);
     Ok(Transaction {
+        acceptance: None,
         instance,
         actor,
         source,

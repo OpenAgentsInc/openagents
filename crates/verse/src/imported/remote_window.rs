@@ -788,6 +788,9 @@ impl ApplicationHandler for App {
                         if let Some(item) = self.character_panel.take_use() {
                             self.send(Input::UseItem(item));
                         }
+                        if let Some((quest, giver)) = self.character_panel.take_accept() {
+                            self.send(Input::AcceptQuest(quest, giver));
+                        }
                         if let Some(quest) = self.character_panel.take_claim() {
                             self.send(Input::ClaimQuest(quest));
                         }

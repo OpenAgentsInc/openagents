@@ -18,6 +18,7 @@ pub enum Input {
     Command(Intent<Ability>),
     Respawn,
     ClaimQuest(u64),
+    AcceptQuest(u64, verse_engine::core::LifeId),
     UseItem(u64),
     EquipOutfit(u64),
     EquipGear(super::equipment::Slot, u64),
@@ -87,6 +88,7 @@ pub async fn run(
                         Input::EquipGear(slot,item) => {let mut operation=[0;16];getrandom::fill(&mut operation).map_err(|_|"Cannot generate equipment retry identity")?;next_inventory=tokio::time::Instant::now();client.equip_gear(slot,item,operation).await?}
                         Input::EquipOutfit(outfit) => {let mut operation=[0;16];getrandom::fill(&mut operation).map_err(|_|"Cannot generate outfit retry identity")?;next_inventory=tokio::time::Instant::now();client.equip_outfit(outfit,operation).await?}
                         Input::UseItem(item) => {let mut operation=[0;16];getrandom::fill(&mut operation).map_err(|_|"Cannot generate item retry identity")?;next_inventory=tokio::time::Instant::now();client.use_item(item,operation).await?}
+                        Input::AcceptQuest(quest,giver) => {next_inventory=tokio::time::Instant::now();client.accept_quest(quest,giver).await?}
                         Input::ClaimQuest(quest) => {next_inventory=tokio::time::Instant::now();client.claim_quest(quest).await?}
                     };
                     Update::Outcome(response)

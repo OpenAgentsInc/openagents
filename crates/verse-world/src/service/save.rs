@@ -60,7 +60,7 @@ fn grants(saved: &[Grant], game: &Game) -> Result<BTreeMap<Principal, Rights>, S
 }
 pub(super) fn encode(gateway: &Gateway) -> Result<Vec<u8>, String> {
     let saved = Saved {
-        version: 6,
+        version: 7,
         content: gateway
             .content()
             .ok_or("Saved chamber requires bound content")?,
@@ -98,7 +98,7 @@ pub(super) fn decode(bytes: &[u8], content: [u8; 32], instance: u64) -> Result<G
         return Err("Saved chamber byte budget exceeded".into());
     }
     let saved: Saved = serde_json::from_slice(bytes).map_err(|_| "Invalid saved chamber")?;
-    if !matches!(saved.version, 1 | 2 | 3 | 4 | 5 | 6)
+    if !matches!(saved.version, 1 | 2 | 3 | 4 | 5 | 6 | 7)
         || (saved.version == 1 && saved.rewards.is_some())
         || (saved.version >= 2 && saved.rewards.is_none())
         || (saved.version < 3 && saved.progression.is_some())
@@ -108,7 +108,7 @@ pub(super) fn decode(bytes: &[u8], content: [u8; 32], instance: u64) -> Result<G
         || (saved.version < 5 && saved.outfits.is_some())
         || (saved.version >= 5 && saved.outfits.is_none())
         || (saved.version < 6 && saved.equipment.is_some())
-        || (saved.version == 6 && saved.equipment.is_none())
+        || (saved.version >= 6 && saved.equipment.is_none())
         || saved.content != content
         || instance == 0
     {
@@ -122,7 +122,7 @@ pub(super) fn decode(bytes: &[u8], content: [u8; 32], instance: u64) -> Result<G
     let mut chamber = Chamber::new(game)?;
     chamber.grants = grants;
     chamber.progression = saved.progression.unwrap_or_default();
-    chamber.progression.validate()?;
+    chamber.validate_givers(&chamber.progression)?;
     chamber.items = saved.items.unwrap_or_default();
     chamber.outfits = saved.outfits.unwrap_or_default();
     chamber.equipment = saved.equipment.unwrap_or_default();
@@ -130,6 +130,9 @@ pub(super) fn decode(bytes: &[u8], content: [u8; 32], instance: u64) -> Result<G
         .equipment
         .validate_catalogs(&chamber.items, &chamber.outfits)?;
     for (index, transaction) in saved.rewards.unwrap_or_default().into_iter().enumerate() {
+        if saved.version < 7 && transaction.acceptance.is_some() {
+            return Err("Legacy save cannot contain quest enrollments".into());
+        }
         if saved.version < 6 && transaction.equipment.is_some() {
             return Err("Legacy save cannot contain equipment changes".into());
         }
@@ -199,10 +202,21 @@ mod tests {
         id
     }
     fn fixture() -> (Gateway, [Keypair; 3]) {
-        let scene = Scene::from_json(include_bytes!(
+        fixture_at(None)
+    }
+    fn fixture_at(giver: Option<Vec3>) -> (Gateway, [Keypair; 3]) {
+        let mut scene = Scene::from_json(include_bytes!(
             "../../../../assets/verse/original/ritual.json"
         ))
         .unwrap();
+        if let Some(position) = giver {
+            scene
+                .actors
+                .iter_mut()
+                .find(|a| a.id == 2)
+                .unwrap()
+                .position = position;
+        }
         let mut game = Game::combat_in(scene, false, 240).unwrap();
         game.time = game.scene.cut_at;
         game.tick(0., [0.; 2]).unwrap();
@@ -334,6 +348,181 @@ mod tests {
             serde_json::to_value(recovered.snapshot(new_a).unwrap()).unwrap()
         );
     }
+    fn giver_campaign() -> super::super::progression::Config {
+        use super::super::progression::{Config, Quest};
+        Config {
+            version: 1,
+            levels: vec![0, 100],
+            quests: vec![Quest {
+                giver: Some(2),
+                prerequisites: vec![],
+                id: 1,
+                name: "Disrupt the ritual".into(),
+                objective: 1,
+                goal: 2,
+                experience: 75,
+                items: vec![],
+            }],
+        }
+    }
+    fn objective(g: &mut Gateway, actor: u64, count: u32, source: u8) {
+        use super::super::rewards::{Entry, Transaction};
+        g.grant_reward(Transaction {
+            acceptance: None,
+            instance: 240,
+            actor,
+            source: [source; 32],
+            experience: 0,
+            items: vec![],
+            quests: vec![Entry { id: 1, count }],
+            spent: vec![],
+            outfit: None,
+            equipment: None,
+        })
+        .unwrap();
+    }
+    #[test]
+    fn npc_enrollment_baselines_retries_and_claims_survive_recovery() {
+        let (g, keys) = fixture_at(Some(Vec3::new(-1., 0., -22.)));
+        let mut g = g.with_progression(giver_campaign()).unwrap();
+        let a = join(&mut g, &keys[0]);
+        let b = join(&mut g, &keys[1]);
+        let spectator = join(&mut g, &keys[2]);
+        let own = g.admission(a).unwrap();
+        let other = g.admission(b).unwrap();
+        let giver = g.game().actor_life(2).unwrap();
+        objective(&mut g, own.actor().actor, 3, 30);
+        assert_eq!(g.quest_log(own.actor().actor)[0].progress, 0);
+        assert!(!g.quest_log(own.actor().actor)[0].accepted);
+        assert!(g.quest_log(own.actor().actor)[0].interactable);
+        assert!(
+            g.accept_quest(b, own.actor(), own.epoch(), 1, giver)
+                .is_err()
+        );
+        assert!(
+            g.accept_quest(spectator, own.actor(), own.epoch(), 1, giver)
+                .is_err()
+        );
+        assert!(
+            g.accept_quest(a, own.actor(), own.epoch() + 1, 1, giver)
+                .is_err()
+        );
+        assert!(
+            g.accept_quest(a, own.actor(), own.epoch(), 1, giver.next().unwrap())
+                .is_err()
+        );
+        let accepted = g
+            .accept_quest(a, own.actor(), own.epoch(), 1, giver)
+            .unwrap();
+        assert_eq!(accepted.transaction.acceptance.unwrap().baseline, 3);
+        assert!(g.quest_log(own.actor().actor)[0].accepted);
+        assert!(!g.quest_log(other.actor().actor)[0].accepted);
+        assert!(g.claim_quest(a, own.actor(), own.epoch(), 1).is_err());
+        objective(&mut g, own.actor().actor, 2, 31);
+        assert_eq!(g.quest_log(own.actor().actor)[0].progress, 2);
+        assert_eq!(
+            g.accept_quest(a, own.actor(), own.epoch(), 1, giver)
+                .unwrap(),
+            accepted
+        );
+        let receipt = g.claim_quest(a, own.actor(), own.epoch(), 1).unwrap();
+        assert_eq!(
+            g.claim_quest(a, own.actor(), own.epoch(), 1).unwrap(),
+            receipt
+        );
+        let saved = g.checkpoint().unwrap();
+        let mut recovered = Gateway::restore(&saved, [6; 32], 240).unwrap();
+        let connection = join(&mut recovered, &keys[0]);
+        let admission = recovered.admission(connection).unwrap();
+        assert_eq!(
+            recovered
+                .accept_quest(connection, admission.actor(), admission.epoch(), 1, giver)
+                .unwrap(),
+            accepted
+        );
+        assert_eq!(
+            recovered
+                .claim_quest(connection, admission.actor(), admission.epoch(), 1)
+                .unwrap(),
+            receipt
+        );
+        assert_eq!(
+            recovered
+                .character_rewards(admission.actor().actor)
+                .unwrap()
+                .experience,
+            75
+        );
+        for case in 0..5 {
+            let mut bad: serde_json::Value = serde_json::from_slice(&saved).unwrap();
+            match case {
+                0 => bad["rewards"][1]["acceptance"]["baseline"] = 4.into(),
+                1 => bad["rewards"].as_array_mut().unwrap().swap(1, 2),
+                2 => bad["version"] = 6.into(),
+                3 => bad["rewards"][0]["acceptance"] = serde_json::json!({"quest":1,"baseline":0}),
+                _ => bad["rewards"][1]["acceptance"]["quest"] = 2.into(),
+            }
+            assert!(
+                Gateway::restore(&serde_json::to_vec(&bad).unwrap(), [6; 32], 240).is_err(),
+                "case {case}"
+            );
+        }
+    }
+    #[test]
+    fn giver_interaction_requires_live_owned_actors_range_and_clear_sight() {
+        for giver in [Some(0), Some(14), Some(9999)] {
+            let (g, _) = fixture();
+            let mut config = giver_campaign();
+            config.quests[0].giver = giver;
+            assert!(g.with_progression(config).is_err());
+        }
+        let (g, keys) = fixture();
+        let mut g = g.with_progression(giver_campaign()).unwrap();
+        let a = join(&mut g, &keys[0]);
+        let own = g.admission(a).unwrap();
+        let giver = g.game().actor_life(2).unwrap();
+        assert!(!g.quest_log(own.actor().actor)[0].interactable);
+        assert!(
+            g.accept_quest(a, own.actor(), own.epoch(), 1, giver)
+                .is_err()
+        );
+        let (g, keys) = fixture_at(Some(Vec3::new(-2., 0., -22.)));
+        let mut g = g.with_progression(giver_campaign()).unwrap();
+        let a = join(&mut g, &keys[0]);
+        let own = g.admission(a).unwrap();
+        let giver = g.game().actor_life(2).unwrap();
+        g.chamber.game.colliders.push(physics::kinematic::Aabb {
+            min: glam::DVec3::new(-1.1, 0., -23.),
+            max: glam::DVec3::new(-0.9, 3., -21.),
+        });
+        assert!(
+            g.accept_quest(a, own.actor(), own.epoch(), 1, giver)
+                .is_err()
+        );
+        g.chamber.game.colliders.pop();
+        let source = g.game().ids[&2];
+        g.chamber.game.simulation.bow_impact(source, 10000).unwrap();
+        assert!(
+            g.accept_quest(a, own.actor(), own.epoch(), 1, giver)
+                .is_err()
+        );
+        g.tick(1. / 30.).unwrap();
+        assert!(Gateway::restore(&g.checkpoint().unwrap(), [6; 32], 240).is_ok());
+        let (g, keys) = fixture_at(Some(Vec3::new(-1., 0., -22.)));
+        let mut g = g.with_progression(giver_campaign()).unwrap();
+        let a = join(&mut g, &keys[0]);
+        let own = g.admission(a).unwrap();
+        let giver = g.game().actor_life(2).unwrap();
+        g.chamber
+            .game
+            .simulation
+            .chamber_player_damage(10000)
+            .unwrap();
+        assert!(
+            g.accept_quest(a, own.actor(), own.epoch(), 1, giver)
+                .is_err()
+        );
+    }
     #[test]
     fn quest_chains_unlock_per_character_and_survive_recovery() {
         use super::super::{
@@ -346,6 +535,7 @@ mod tests {
             levels: vec![0, 100],
             quests: vec![
                 Quest {
+                    giver: None,
                     prerequisites: vec![],
                     id: 1,
                     name: "Disrupt the ritual".into(),
@@ -355,6 +545,7 @@ mod tests {
                     items: vec![],
                 },
                 Quest {
+                    giver: None,
                     prerequisites: vec![1],
                     id: 2,
                     name: "Secure the chamber".into(),
@@ -372,6 +563,7 @@ mod tests {
         let other = g.admission(b).unwrap();
         for actor in [own.actor().actor, other.actor().actor] {
             g.grant_reward(Transaction {
+                acceptance: None,
                 instance: 240,
                 actor,
                 source: [7; 32],
@@ -437,6 +629,7 @@ mod tests {
             version: 1,
             levels: vec![0, 100, 300],
             quests: vec![Quest {
+                giver: None,
                 prerequisites: vec![],
                 id: 1,
                 name: "Disrupt the summoning".into(),
@@ -455,6 +648,7 @@ mod tests {
         assert!(g.claim_quest(a, own.actor(), own.epoch(), 1).is_err());
         for actor in [own.actor().actor, other.actor().actor] {
             g.grant_reward(Transaction {
+                acceptance: None,
                 outfit: None,
                 equipment: None,
                 spent: vec![],
@@ -489,6 +683,7 @@ mod tests {
                 .is_err()
         );
         g.grant_reward(Transaction {
+            acceptance: None,
             outfit: None,
             equipment: None,
             spent: vec![],
@@ -566,6 +761,7 @@ mod tests {
         let (mut g, _) = fixture();
         let actor = g.game().player_life().actor;
         let tx = Transaction {
+            acceptance: None,
             outfit: None,
             equipment: None,
             spent: vec![],
@@ -620,7 +816,7 @@ mod tests {
         assert_eq!(upgraded.game().player_life(), g.game().player_life());
         let saved: serde_json::Value =
             serde_json::from_slice(&upgraded.checkpoint().unwrap()).unwrap();
-        assert_eq!(saved["version"], 6);
+        assert_eq!(saved["version"], 7);
     }
     #[test]
     fn recovery_items_spend_once_restore_only_owned_resources_and_validate_saved_debits() {
@@ -650,6 +846,7 @@ mod tests {
             .unwrap();
         let actor = g.game().player_life().actor;
         g.grant_reward(Transaction {
+            acceptance: None,
             outfit: None,
             equipment: None,
             instance: 240,
@@ -790,6 +987,7 @@ mod tests {
             .unwrap();
         let actor = g.game().player_life().actor;
         g.grant_reward(Transaction {
+            acceptance: None,
             instance: 240,
             actor,
             source: [4; 32],
@@ -915,6 +1113,7 @@ mod tests {
             .unwrap();
         let actor = g.game().player_life().actor;
         g.grant_reward(Transaction {
+            acceptance: None,
             instance: 240,
             actor,
             source: [8; 32],
@@ -1111,7 +1310,7 @@ mod tests {
         for case in 0..8 {
             let mut saved: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
             match case {
-                0 => saved["version"] = 7.into(),
+                0 => saved["version"] = 8.into(),
                 1 => saved["grants"][0]["key"] = serde_json::to_value([0u8; 32]).unwrap(),
                 2 => {
                     let grant = saved["grants"][0].clone();

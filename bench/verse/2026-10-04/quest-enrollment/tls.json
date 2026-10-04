@@ -1,0 +1,165 @@
+{
+  "accepted": {
+    "catalog": {
+      "items": [],
+      "version": 1
+    },
+    "equipment": {
+      "gear": [],
+      "version": 1
+    },
+    "equipped": {},
+    "experience": 0,
+    "items": [],
+    "level": {
+      "level": 1,
+      "next": 100,
+      "start": 0
+    },
+    "life": {
+      "actor": 14,
+      "generation": 0,
+      "instance": 120
+    },
+    "outfit": 0,
+    "outfits": {
+      "outfits": [],
+      "version": 1
+    },
+    "quest_log": [
+      {
+        "accepted": true,
+        "available": true,
+        "claimed": false,
+        "experience": 75,
+        "giver": 2,
+        "giver_life": {
+          "actor": 2,
+          "generation": 0,
+          "instance": 120
+        },
+        "goal": 2,
+        "id": 1,
+        "interactable": true,
+        "items": [],
+        "name": "Disrupt the ritual",
+        "progress": 0
+      }
+    ],
+    "quests": [],
+    "revision": 1
+  },
+  "before": {
+    "catalog": {
+      "items": [],
+      "version": 1
+    },
+    "equipment": {
+      "gear": [],
+      "version": 1
+    },
+    "equipped": {},
+    "experience": 0,
+    "items": [],
+    "level": {
+      "level": 1,
+      "next": 100,
+      "start": 0
+    },
+    "life": {
+      "actor": 14,
+      "generation": 0,
+      "instance": 120
+    },
+    "outfit": 0,
+    "outfits": {
+      "outfits": [],
+      "version": 1
+    },
+    "quest_log": [
+      {
+        "accepted": false,
+        "available": true,
+        "claimed": false,
+        "experience": 75,
+        "giver": 2,
+        "giver_life": {
+          "actor": 2,
+          "generation": 0,
+          "instance": 120
+        },
+        "goal": 2,
+        "id": 1,
+        "interactable": true,
+        "items": [],
+        "name": "Disrupt the ritual",
+        "progress": 0
+      }
+    ],
+    "quests": [],
+    "revision": 0
+  },
+  "completed": {
+    "catalog": {
+      "items": [],
+      "version": 1
+    },
+    "equipment": {
+      "gear": [],
+      "version": 1
+    },
+    "equipped": {},
+    "experience": 75,
+    "items": [],
+    "level": {
+      "level": 1,
+      "next": 100,
+      "start": 0
+    },
+    "life": {
+      "actor": 14,
+      "generation": 0,
+      "instance": 120
+    },
+    "outfit": 0,
+    "outfits": {
+      "outfits": [],
+      "version": 1
+    },
+    "quest_log": [
+      {
+        "accepted": true,
+        "available": true,
+        "claimed": true,
+        "experience": 75,
+        "giver": 2,
+        "giver_life": {
+          "actor": 2,
+          "generation": 0,
+          "instance": 120
+        },
+        "goal": 2,
+        "id": 1,
+        "interactable": true,
+        "items": [],
+        "name": "Disrupt the ritual",
+        "progress": 2
+      }
+    ],
+    "quests": [
+      {
+        "count": 2,
+        "id": 1
+      }
+    ],
+    "revision": 3
+  },
+  "duplicate_acceptance": false,
+  "duplicate_claim": false,
+  "failed_storage_ack_withheld": true,
+  "other_character_accepted": false,
+  "recovered_experience": 75,
+  "restart": "aborted_host_task",
+  "schema": "verse.quest-enrollment.fixture.v1",
+  "wire_version": 16
+}

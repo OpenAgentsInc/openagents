@@ -228,7 +228,7 @@ async fn serve_with_store<F: Future<Output = ()>>(
                             break;
                         }
                         let mutating = store.is_some() && Request::decode(&bytes).is_ok_and(|request| matches!(request.body,
-                            Body::Authenticate { .. } | Body::Command { .. } | Body::Respawn { .. } | Body::ClaimQuest {..} | Body::UseItem {..} | Body::EquipOutfit {..} | Body::EquipGear {..}));
+                            Body::Authenticate { .. } | Body::Command { .. } | Body::Respawn { .. } | Body::ClaimQuest {..} | Body::AcceptQuest {..} | Body::UseItem {..} | Body::EquipOutfit {..} | Body::EquipGear {..}));
                         if mutating {
                             let result = gateway.dispatch_json(id, now, &bytes).map(|bytes| (bytes, gateway.authenticated(id)));
                             dirty = true;
@@ -354,10 +354,21 @@ pub(super) mod tests {
         k.x_only_public_key().0.serialize()
     }
     pub(in crate::service) fn gateway(keys: &[Keypair; 3]) -> Gateway {
-        let scene = Scene::from_json(include_bytes!(
+        gateway_at(keys, None)
+    }
+    pub(in crate::service) fn gateway_at(keys: &[Keypair; 3], giver: Option<Vec3>) -> Gateway {
+        let mut scene = Scene::from_json(include_bytes!(
             "../../../../assets/verse/original/ritual.json"
         ))
         .unwrap();
+        if let Some(position) = giver {
+            scene
+                .actors
+                .iter_mut()
+                .find(|a| a.id == 2)
+                .unwrap()
+                .position = position;
+        }
         let mut game = Game::combat_in(scene, false, 120).unwrap();
         game.time = game.scene.cut_at;
         game.tick(0., [0.; 2]).unwrap();
@@ -672,6 +683,7 @@ pub(super) mod tests {
         assert!(a.snapshot().await.is_err());
         let mut store = Store::open(&root, [8; 32], 120).unwrap();
         let recovered = store.recover().unwrap();
+        let mut expected = Game::restore(&recovered.game().checkpoint().unwrap()).unwrap();
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let (stop, stopped) = oneshot::channel();
@@ -724,7 +736,21 @@ pub(super) mod tests {
             after_a.hud.as_ref().unwrap().resources.hp,
             before_a.hud.as_ref().unwrap().resources.hp
         );
-        assert_eq!(after_a.hud.as_ref().unwrap().resources.mana, 19);
+        // Reconnection advances world time; compare regeneration against the recovered simulation.
+        while expected.time < after_a.presentation.time {
+            expected
+                .tick(expected.physics_clock.dt as f32, [0.; 2])
+                .unwrap();
+        }
+        assert_eq!(expected.time, after_a.presentation.time);
+        assert_eq!(
+            after_a.hud.as_ref().unwrap().resources.mana,
+            expected
+                .player_hud(old_a.life.into())
+                .unwrap()
+                .resources
+                .mana
+        );
         assert!(after_b.hud.as_ref().unwrap().casting.is_some());
         assert!(spectator.snapshot().await.unwrap().hud.is_none());
         assert_eq!(
