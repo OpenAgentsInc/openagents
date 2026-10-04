@@ -9,6 +9,7 @@ pub mod inventory;
 pub mod lighting;
 #[cfg(feature = "asset-io")]
 pub mod loading;
+pub mod markers;
 pub mod material;
 pub mod motion;
 pub mod overlay;
