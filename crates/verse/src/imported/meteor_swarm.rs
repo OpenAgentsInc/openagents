@@ -1,5 +1,5 @@
 //! Meteor Swarm presentation: each falling meteor as a blazing orb (a dark
-//! core inside a fire shell with a hot center) trailing flame and smoke,
+//! core inside an orange fire shell with a yellow glow) trailing flame and smoke,
 //! each detonation as a fireball that swells to the 40-foot Sphere with a
 //! flash, a rising fire column, and smoke, scorch marks where they struck,
 //! and the light all of it casts. The instance counts come from
@@ -13,6 +13,11 @@ use verse_world::spells::meteor_swarm::{
     BLAST_COLUMN_INSTANCES, BLAST_GROW, BLAST_SHOW, BLAST_SMOKE_INSTANCES, MAX_SCORCHES,
     METEOR_SMOKE_INSTANCES, METEOR_TRAIL_INSTANCES, METEOR_TRAIL_SPACING,
 };
+
+/// Peak light of a detonation, and of a falling meteor. Brighter washes the
+/// frame out to white.
+const BLAST_LIGHT: f32 = 500.0;
+const METEOR_LIGHT: f32 = 150.0;
 
 fn particle(model: &str, center: Vec3, radius: f32, opacity: f32, time: f32) -> Instance {
     Instance {
@@ -50,23 +55,19 @@ pub fn instances(game: &Game) -> Vec<Instance> {
     for (pos, vel) in state.falling(&game.spells.world) {
         let (p, v) = (pos.as_vec3(), vel.as_vec3());
         let flicker = 1.0 + 0.08 * (time * 41.0 + p.x).sin();
-        // The core, the fire shell around it, and the white-hot front.
-        out.push(particle("effect-grease", p, r * 1.1, 1.0, time));
-        out.push(particle("effect-fire", p, r * 2.6 * flicker, 1.0, time));
-        out.push(particle(
-            "effect-light",
-            p + v.normalize_or_zero() * r * 0.5,
-            r * 1.3,
-            1.0,
-            time,
-        ));
+        // A dark core inside an orange fire shell and a yellow glow. Fire
+        // sprites add up, so each stays well below full strength; stacked
+        // at full strength they burn out to white.
+        out.push(particle("effect-grease", p, r * 1.4, 1.0, time));
+        out.push(particle("effect-fire", p, r * 4.5 * flicker, 0.55, time));
+        out.push(particle("effect-light", p, r * 2.2, 0.25, time));
         for n in 1..=METEOR_TRAIL_INSTANCES {
             let f = n as f32 / METEOR_TRAIL_INSTANCES as f32;
             out.push(particle(
                 "effect-fire",
                 p - v * METEOR_TRAIL_SPACING * n as f32,
-                r * (2.2 - 1.6 * f),
-                1.0 - 0.7 * f,
+                r * (3.6 - 2.4 * f),
+                0.42 * (1.0 - 0.8 * f),
                 time,
             ));
         }
@@ -75,8 +76,8 @@ pub fn instances(game: &Game) -> Vec<Instance> {
             out.push(particle(
                 "particle-smoke",
                 p - v * back,
-                r * (1.6 + n as f32),
-                0.55,
+                r * (2.0 + n as f32),
+                0.45,
                 time,
             ));
         }
@@ -92,15 +93,15 @@ pub fn instances(game: &Game) -> Vec<Instance> {
             "effect-impact",
             c + Vec3::Y * radius * 0.3 * swell,
             radius * (0.25 + 0.75 * swell.sqrt()),
-            fade.powf(0.7),
+            0.5 * fade.powf(0.7),
             time,
         ));
         // The flash at the moment of impact.
         out.push(particle(
-            "effect-light",
+            "effect-fire",
             c + Vec3::Y,
-            6.0 * (1.0 - age / 0.35).max(0.0),
-            1.0,
+            5.0 * (1.0 - age / 0.35).max(0.0),
+            0.6,
             time,
         ));
         for n in 0..BLAST_COLUMN_INSTANCES {
@@ -109,7 +110,7 @@ pub fn instances(game: &Game) -> Vec<Instance> {
                 "effect-fire",
                 c + Vec3::Y * (1.0 + age * (6.0 + 10.0 * k)),
                 3.5 - 1.5 * k,
-                fade,
+                0.5 * fade,
                 time,
             ));
         }
@@ -147,8 +148,8 @@ pub fn lights(game: &Game, lighting: &mut Lighting) {
             let age = time - blast.at;
             Light {
                 position: blast.center.as_vec3() + Vec3::Y * 2.0,
-                color: Vec3::new(1.0, 0.45, 0.08),
-                intensity: 4_000.0 * (1.0 - age / BLAST_SHOW).powi(2),
+                color: Vec3::new(1.0, 0.32, 0.04),
+                intensity: BLAST_LIGHT * (1.0 - age / BLAST_SHOW).powi(2),
                 range: 2.5 * RADIUS as f32,
             }
         })
@@ -159,9 +160,9 @@ pub fn lights(game: &Game, lighting: &mut Lighting) {
             .into_iter()
             .map(|(pos, _)| Light {
                 position: pos.as_vec3(),
-                color: Vec3::new(1.0, 0.55, 0.12),
-                intensity: 900.0,
-                range: 30.0,
+                color: Vec3::new(1.0, 0.4, 0.06),
+                intensity: METEOR_LIGHT,
+                range: 25.0,
             }),
     );
     // Meteor Swarm's light outshines the small effects it replaces.

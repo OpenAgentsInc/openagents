@@ -815,19 +815,22 @@ pub fn scenario() -> crate::playground::Scenario {
                     0.,
                 )?;
             }
-            // A tower of six 40 cm stone bricks (154 kg, Small) beside the
-            // second point, light enough for the blast to topple.
+            // A tower of eight 30 cm stone bricks (65 kg each, Small) 1.5 m
+            // beyond the second point, on the far side from the meteor's
+            // approach. The blast throws each at about 4.5 m/s, the upper
+            // bricks, farther from the center, a little less, so the tower
+            // comes apart instead of sliding as one piece.
             let brick = PropSpec {
                 size: super::Size::Small,
-                dimensions: glam::DVec3::splat(0.4),
-                mass: 154.,
+                dimensions: glam::DVec3::splat(0.3),
+                mass: 65.,
                 ..PropSpec::reference(PropKind::StoneBlock)
             };
-            for n in 0..6 {
+            for n in 0..8 {
                 game.spawn_prop(
                     &format!("Tower brick {}", n + 1),
                     brick.clone(),
-                    Vec3::new(-11.5, 0.2 + 0.402 * n as f32, 10.8),
+                    Vec3::new(-11.8, 0.15 + 0.302 * n as f32, 9.7),
                     0.,
                 )?;
             }
@@ -879,7 +882,7 @@ pub fn scenario() -> crate::playground::Scenario {
             let falling = (Vec3::new(1., 6., -4.), Vec3::new(2., 22., -6.));
             let south = (Vec3::new(-1., 7.5, -5.5), Vec3::new(-1.5, 1., -18.5));
             let overhang = (Vec3::new(9., 4.5, 4.), Vec3::new(16.3, 2.4, 11.4));
-            let tower = (Vec3::new(-3., 4.5, 2.), Vec3::new(-11.2, 1., 10.));
+            let tower = (Vec3::new(-4., 3.5, 3.), Vec3::new(-11.5, 1., 9.5));
             let wide = (Vec3::new(16., 7., -10.), Vec3::new(-1., 1.5, -18.5));
             [
                 (0., shoulder),
@@ -901,7 +904,7 @@ pub fn scenario() -> crate::playground::Scenario {
             .collect()
         },
         // The second impact (C) and the tower falling, at 0.25x.
-        replay_camera: (Vec3::new(-3., 4.5, 2.), Vec3::new(-11.2, 1., 10.)),
+        replay_camera: (Vec3::new(-4., 3.5, 3.), Vec3::new(-11.5, 1., 9.5)),
         check: |game| {
             let state = &game.spells.meteor_swarm;
             if state.impacts.len() != METEORS {
