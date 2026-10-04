@@ -229,6 +229,12 @@ impl Buffer {
         self.blocker_generations = blocker_generations;
         Ok(())
     }
+    pub fn tick(&self) -> Option<u64> {
+        self.current.as_ref().map(|f| f.tick)
+    }
+    pub fn control(&self) -> Option<&Control> {
+        self.current.as_ref().and_then(|f| f.control.as_ref())
+    }
     pub fn latest(&self) -> Option<&State> {
         self.current.as_ref().map(|f| &f.state)
     }
@@ -373,7 +379,7 @@ pub(super) mod tests {
             },
         }
     }
-    fn attach_hud(r: &mut Response) {
+    pub(in crate::service) fn attach_hud(r: &mut Response) {
         let life = r.control.as_ref().unwrap().life.into();
         let s = state(r);
         s.hud = Some(crate::hud::Own {

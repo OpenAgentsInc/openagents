@@ -333,3 +333,16 @@ and nonregressing transaction revision. The [combat reward receipt](../../bench/
 retains real loopback TLS spell/reward/restart assertions and their synthetic
 fixture limits. Native inventory presentation, item spending/equipment, quest
 completion, and progression rules remain.
+
+The native worker refreshes owned inventory once per second and immediately after
+an owned-life change; spectators send no inventory requests. `service::view::View`
+retains bounded read-only counters, rejects conflicting revisions, and hides
+inventory until its exact life matches the owned snapshot. The native remote
+window opens inventory with **B** or **I** and the quest log with **L**. **Escape**
+closes an open window first. Use the arrow buttons, **Page Up**/**Page Down**, or
+the mouse wheel over the panel to page through entries. Panel clicks do not reach
+spell or camera input. These windows display existing counters; quest completion,
+item actions, and level rules remain separate authority work.
+The [native panel receipt](../../bench/verse/2026-10-04/character-panels/run.json)
+retains a GPU layout capture, source/artifact hashes, and focused checks. Its
+synthetic counters establish layout, not live rewarded-combat acceptance.

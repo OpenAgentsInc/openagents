@@ -21,6 +21,7 @@ pub enum Input {
 /// Ordered updates; persist event progress only after consuming its delivery.
 pub enum Update {
     Snapshot(Response),
+    Inventory(Response),
     Events {
         delivery: Delivery,
         checkpoint: Vec<u8>,
@@ -51,9 +52,13 @@ pub async fn run(
     let work = async {
         let mut interval = tokio::time::interval(cadence);
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        let mut next_inventory = tokio::time::Instant::now();
+        let mut inventory_life = None;
         loop {
+            let mut polling = false;
             let update = tokio::select! {
                 _ = interval.tick() => {
+                    polling = true;
                     let response = client.request(Body::Snapshot {}).await?;
                     if let Reply::Refused { message, .. } = &response.body {
                         return Err(message.clone());
@@ -83,6 +88,22 @@ pub async fn run(
                 .send(update)
                 .await
                 .map_err(|_| "Chamber update consumer closed")?;
+            let life = client.control().map(|c| c.life);
+            if polling
+                && life.is_some()
+                && (life != inventory_life || tokio::time::Instant::now() >= next_inventory)
+            {
+                let response = client.request(Body::Inventory {}).await?;
+                if let Reply::Refused { message, .. } = &response.body {
+                    return Err(message.clone());
+                }
+                inventory_life = client.control().map(|c| c.life);
+                next_inventory = tokio::time::Instant::now() + Duration::from_secs(1);
+                updates
+                    .send(Update::Inventory(response))
+                    .await
+                    .map_err(|_| "Chamber update consumer closed")?;
+            }
         }
     };
     tokio::select! {
@@ -113,6 +134,56 @@ mod tests {
     use rustls::pki_types::ServerName;
     use tokio::time::timeout;
 
+    #[tokio::test]
+    async fn native_inventory_polling_is_bounded_and_excludes_spectators() {
+        for player in [true, false] {
+            let keys = [key(81), key(82), key(83)];
+            let (address, connector, server_stop, server) = start(&keys).await;
+            let client = Client::connect(
+                address,
+                ServerName::try_from("localhost").unwrap(),
+                connector.config().clone(),
+                120,
+                &keys[if player { 0 } else { 2 }],
+            )
+            .await
+            .unwrap();
+            let (_input, inputs, updates, mut output) = channels();
+            let (stop, stopped) = oneshot::channel();
+            let task = tokio::spawn(run(
+                client,
+                Cursor::new(120),
+                NATIVE_CADENCE,
+                inputs,
+                updates,
+                stopped,
+            ));
+            let mut inventories = 0;
+            let mut snapshots = 0;
+            let deadline = tokio::time::Instant::now() + Duration::from_millis(1250);
+            loop {
+                tokio::select! {
+                    _=tokio::time::sleep_until(deadline)=>break,
+                    update=output.recv()=>match update.unwrap() {
+                        Update::Snapshot(_)=>snapshots+=1,
+                        Update::Inventory(response)=> {assert!(player);let Reply::Inventory{inventory}=response.body else {panic!("Missing inventory");};assert_eq!(inventory.experience,0);inventories+=1;},
+                        Update::Events{..}=>{},
+                        Update::Outcome(_)=>panic!("No player commands submitted"),
+                    }
+                }
+            }
+            assert!(snapshots > 0);
+            assert!(if player {
+                (1..=2).contains(&inventories)
+            } else {
+                inventories == 0
+            });
+            stop.send(()).unwrap();
+            assert!(task.await.unwrap().is_ok());
+            server_stop.send(()).unwrap();
+            assert!(server.await.unwrap().failure.is_none());
+        }
+    }
     #[tokio::test]
     async fn native_polling_and_sustained_movement_fit_the_tls_request_budget() {
         let keys = [key(81), key(82), key(83)];
@@ -178,7 +249,7 @@ mod tests {
                             accepted += 1;
                         }
                     }
-                    Update::Events { .. } => {}
+                    Update::Events { .. } | Update::Inventory(_) => {}
                 }
             }
         })
@@ -244,6 +315,9 @@ mod tests {
                 Update::Events { checkpoint, .. } => {
                     Cursor::restore(&checkpoint, 120).unwrap();
                     events = true;
+                }
+                Update::Inventory(r) => {
+                    assert!(matches!(r.body, Reply::Inventory { .. }));
                 }
                 Update::Outcome(r) => {
                     assert!(matches!(r.body, Reply::Accepted));

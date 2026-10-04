@@ -91,6 +91,7 @@ struct App {
     scene: Scene,
     dir: PathBuf,
     view: View,
+    character_panel: super::character_panel::Panel,
     input: mpsc::Sender<Input>,
     output: mpsc::Receiver<Update>,
     window: Option<Arc<Window>>,
@@ -139,6 +140,7 @@ impl App {
             scene,
             dir,
             view,
+            character_panel: Default::default(),
             input,
             output,
             window: None,
@@ -281,6 +283,7 @@ impl App {
                         }
                     }
                 }
+                Ok(Update::Inventory(r)) => self.view.push_inventory(&r)?,
                 Ok(Update::Outcome(r)) => {
                     let ability = self.pending.pop_front().flatten();
                     if matches!(r.body, verse_world::service::wire::Reply::Accepted) {
@@ -446,6 +449,16 @@ impl App {
         if !self.status.is_empty() {
             ui.text(&self.atlas, 20., 126., &self.status, [1., 0.8, 0.4, 1.]);
         }
+        if self.unlocked()
+            && self
+                .view
+                .replica()
+                .latest()
+                .is_some_and(|s| s.hud.is_some())
+        {
+            self.character_panel
+                .draw(&mut ui, &self.atlas, self.view.inventory(), width, 720.);
+        }
         let renderer = self.renderer.as_mut().unwrap();
         renderer.resize(size.width, size.height)?;
         renderer.set_overlay_size(width, 720.);
@@ -569,7 +582,7 @@ impl App {
             let dropped = recorder.dropped;
             let stats = recorder.finish()?;
             let options = self.record.as_ref().unwrap();
-            let proof = serde_json::json!({"schema":"verse.remote.capture.v1","frames":stats.frames,"sampled_frames":stats.sampled,"duplicated_frames":stats.duplicated,"dropped_capture_frames":dropped,"encoded_size":[1280,720],"world_start":self.recorded_world_start,"world_end":self.view.replica().latest().map(|s|s.presentation.time),"accepted_cast_commands":self.accepted_casts,"demo_trace":self.demo_trace,"demo_slot":self.demo_slot,"pending_commands":self.pending.len(),"final_status":self.status,"window_failure":self.error,"damage_events":self.damage_events,"dialogue_events":self.dialogue_events,"minimum_owned_hp":(self.min_hp != i32::MAX).then_some(self.min_hp),"programmatic_controller":options.controller,"programmatic_respawn":options.respawn,"respawn_attempts":self.respawn_attempts,"owned_life_changes":self.owned_life_changes,"native_dimensions":self.renderer.as_ref().map(|r|r.dimensions()),"capture_wall_seconds":self.record_started.map(|s|s.elapsed().as_secs_f64()),"wire_version":verse_world::service::wire::VERSION,"final_state":self.view.replica().latest()});
+            let proof = serde_json::json!({"schema":"verse.remote.capture.v1","frames":stats.frames,"sampled_frames":stats.sampled,"duplicated_frames":stats.duplicated,"dropped_capture_frames":dropped,"encoded_size":[1280,720],"world_start":self.recorded_world_start,"world_end":self.view.replica().latest().map(|s|s.presentation.time),"accepted_cast_commands":self.accepted_casts,"demo_trace":self.demo_trace,"demo_slot":self.demo_slot,"pending_commands":self.pending.len(),"final_status":self.status,"window_failure":self.error,"damage_events":self.damage_events,"dialogue_events":self.dialogue_events,"minimum_owned_hp":(self.min_hp != i32::MAX).then_some(self.min_hp),"programmatic_controller":options.controller,"programmatic_respawn":options.respawn,"respawn_attempts":self.respawn_attempts,"owned_life_changes":self.owned_life_changes,"native_dimensions":self.renderer.as_ref().map(|r|r.dimensions()),"capture_wall_seconds":self.record_started.map(|s|s.elapsed().as_secs_f64()),"wire_version":verse_world::service::wire::VERSION,"final_inventory":self.view.inventory(),"final_state":self.view.replica().latest()});
             std::fs::write(
                 options.output.with_extension("json"),
                 serde_json::to_vec_pretty(&proof)
@@ -664,7 +677,41 @@ impl ApplicationHandler for App {
                     } else if !event.repeat {
                         self.keys.insert(key);
                         match key {
-                            KeyCode::Escape => event_loop.exit(),
+                            KeyCode::Escape => {
+                                if !self.character_panel.close() {
+                                    event_loop.exit();
+                                }
+                            }
+                            KeyCode::KeyB | KeyCode::KeyI | KeyCode::KeyL
+                                if self.unlocked()
+                                    && self
+                                        .view
+                                        .replica()
+                                        .latest()
+                                        .is_some_and(|s| s.hud.is_some()) =>
+                            {
+                                self.character_panel.toggle(if key == KeyCode::KeyL {
+                                    super::character_panel::Kind::Quests
+                                } else {
+                                    super::character_panel::Kind::Inventory
+                                });
+                                self.controls.left = false;
+                                self.controls.right = false;
+                                let window = self.window.as_ref().unwrap();
+                                let _ = window.set_cursor_grab(CursorGrabMode::None);
+                                window.set_cursor_visible(true);
+                            }
+                            KeyCode::PageDown | KeyCode::PageUp
+                                if self.character_panel.kind.is_some() =>
+                            {
+                                let size = self.window.as_ref().unwrap().inner_size();
+                                self.character_panel.page(
+                                    key == KeyCode::PageDown,
+                                    self.view.inventory(),
+                                    720. * size.width as f32 / size.height.max(1) as f32,
+                                    720.,
+                                );
+                            }
                             KeyCode::Tab => {
                                 self.view.cycle_target();
                             }
@@ -684,13 +731,36 @@ impl ApplicationHandler for App {
                 }
             }
             WindowEvent::MouseWheel { delta, .. } if self.unlocked() => {
-                self.camera.zoom(match delta {
+                let amount = match delta {
                     MouseScrollDelta::LineDelta(_, y) => y,
                     MouseScrollDelta::PixelDelta(p) => p.y as f32 / 40.,
-                });
+                };
+                let size = self.window.as_ref().unwrap().inner_size();
+                let width = 720. * size.width as f32 / size.height.max(1) as f32;
+                if self.character_panel.contains(self.pointer, width, 720.) {
+                    if amount != 0. {
+                        self.character_panel
+                            .page(amount < 0., self.view.inventory(), width, 720.);
+                    }
+                } else {
+                    self.camera.zoom(amount);
+                }
             }
             WindowEvent::MouseInput { state, button, .. } if self.unlocked() => {
                 let down = state == ElementState::Pressed;
+                let size = self.window.as_ref().unwrap().inner_size();
+                let width = 720. * size.width as f32 / size.height.max(1) as f32;
+                if down && self.character_panel.contains(self.pointer, width, 720.) {
+                    if button == MouseButton::Left {
+                        self.character_panel.click(
+                            self.pointer,
+                            self.view.inventory(),
+                            width,
+                            720.,
+                        );
+                    }
+                    return;
+                }
                 if button == MouseButton::Left && down {
                     if let Some(hud) = self.view.replica().latest().and_then(|s| s.hud.as_ref()) {
                         let size = self.window.as_ref().unwrap().inner_size();

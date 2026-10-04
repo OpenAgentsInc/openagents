@@ -1,0 +1,85 @@
+{
+  "schema": "verse.native.character.panels.acceptance.v1",
+  "date": "2026-10-04",
+  "issue": 10533,
+  "source_sha256": {
+    "crates/verse-world/src/service/replica.rs": "888e0d752d38e55decbd48c4243aacb0dd32e1861f9ac9859704c813510b5d73",
+    "crates/verse-world/src/service/view.rs": "0ba0540a55521ec1e9a546200b6a7fd6847647f72514bf53f48f5b26b09b64fe",
+    "crates/verse-world/src/service/worker.rs": "fb0239e11842c6c5eaf1f3c9c88a454d02619c1787190b3ff663434649e16516",
+    "crates/verse/src/imported/mod.rs": "5a676e3b6052712d8be0321d383b2d251243af8466bb0f025c167a0475cfd319",
+    "crates/verse/src/imported/character_panel.rs": "348899c170a33d409fd7ee7b4d6e01ca9178011ddfed4a212cdb1de3956893f3",
+    "crates/verse/src/imported/remote_window.rs": "8988c1fc72a6e734a3f28ebefb13fa57eddcd0beb7bc9c58ded4196907e88e24"
+  },
+  "artifact": {
+    "path": "panels.png",
+    "sha256": "0c28bf43b4fc204eefbb959e46e7606e836a208f4a3a986776ce9999ae00f399",
+    "native_dimensions": [
+      2700,
+      1860
+    ],
+    "logical_dimensions": [
+      900,
+      620
+    ],
+    "render_path": "verse::imported::Renderer::draw with the native glyph/quad overlay",
+    "content": "Synthetic 45 XP, two ritual embers and three quest-progress increments; two panels composed for inspection",
+    "icons": "Original ember and parchment UI geometry; existing OFL font atlas",
+    "visually_inspected": true
+  },
+  "verification": [
+    {
+      "command": "cargo fmt -p verse -p verse-world",
+      "result": "passed"
+    },
+    {
+      "command": "cargo test -p verse-world --features service-net service::",
+      "passed": 81,
+      "failed": 0
+    },
+    {
+      "command": "cargo test -p verse --no-default-features --features remote-chamber,imported-desktop imported::remote_window",
+      "passed": 5,
+      "failed": 0
+    },
+    {
+      "command": "VERSE_CHARACTER_PANEL_CAPTURE=<explicit output path> cargo test -p verse --no-default-features --features remote-chamber,imported-desktop imported::character_panel -- --include-ignored --nocapture",
+      "passed": 2,
+      "failed": 0
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "checks": [
+    "Native 1 Hz inventory polling stays bounded during sustained movement and never polls spectators",
+    "Inventory ownership/control/revision checks are atomic; future-life counters remain hidden until the matching snapshot",
+    "All 64 entries are reachable through paging; close and blank-panel clicks are consumed before world input",
+    "Native client mounts inventory updates outside rendering and keeps keyboard movement/autorun while releasing mouse capture on panel opening"
+  ],
+  "controls": {
+    "inventory": [
+      "B",
+      "I"
+    ],
+    "quests": [
+      "L"
+    ],
+    "close": [
+      "Escape",
+      "X button"
+    ],
+    "paging": [
+      "Page Up",
+      "Page Down",
+      "mouse wheel over panel",
+      "arrow buttons"
+    ]
+  },
+  "limits": [
+    "The retained image uses synthetic counters for UI layout; it is not a live rewarded-combat scene or an OS keyboard/mouse acceptance run.",
+    "Live window input dispatch is wired and compiled; the panel input test exercises its shared hit/paging behavior without a native window.",
+    "Only original ritual item/objective ID one has a named presentation label; authored catalog expansion remains.",
+    "Item actions/equipment, quest completion, progression rules, remote audio, prediction/reconciliation and full VE-5 remain incomplete."
+  ]
+}

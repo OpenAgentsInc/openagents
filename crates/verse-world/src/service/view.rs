@@ -50,6 +50,7 @@ pub struct View {
     event_tick: u64,
     handoff: Option<f32>,
     gap: Option<Gap>,
+    inventory: Option<(u64, super::wire::Inventory)>,
 }
 impl View {
     pub fn new(instance: u64, displacement: f32, after: u64) -> Result<Self, String> {
@@ -63,6 +64,7 @@ impl View {
             event_tick: 0,
             handoff: None,
             gap: None,
+            inventory: None,
         })
     }
     fn targetable(&self, life: verse_engine::core::LifeId) -> bool {
@@ -118,6 +120,51 @@ impl View {
     }
     pub fn replica(&self) -> &Buffer {
         &self.replica
+    }
+    /// Hides retained counters until their exact life matches the owned snapshot.
+    pub fn inventory(&self) -> Option<&super::wire::Inventory> {
+        let (_, inventory) = self.inventory.as_ref()?;
+        (self.replica.latest()?.hud.as_ref()?.life == inventory.life.into()).then_some(inventory)
+    }
+    /// Admits inventory updates independently of rendering or gameplay rules.
+    pub fn push_inventory(&mut self, response: &Response) -> Result<(), String> {
+        let Reply::Inventory { inventory } = &response.body else {
+            return Err("Remote inventory reply is missing".into());
+        };
+        inventory.validate(&response.control)?;
+        let control = self
+            .replica
+            .control()
+            .ok_or("Spectator cannot receive owned inventory")?;
+        let received = response.control.as_ref().unwrap();
+        if response.version != super::wire::VERSION
+            || response.request_id == 0
+            || response.instance != self.instance
+            || inventory.life.instance != self.instance
+            || inventory.life.actor != control.life.actor
+            || response.tick < self.replica.tick().unwrap_or(0)
+            || inventory.life.generation < control.life.generation
+            || received.epoch < control.epoch
+            || (received.epoch == control.epoch
+                && (received.life != control.life
+                    || received.accepted_sequence < control.accepted_sequence))
+        {
+            return Err("Remote inventory ownership or control fence is incompatible".into());
+        }
+        if let Some((tick, previous)) = &self.inventory {
+            if response.tick < *tick
+                || inventory.revision < previous.revision
+                || inventory.life.generation < previous.life.generation
+                || (inventory.revision == previous.revision
+                    && (inventory.experience != previous.experience
+                        || inventory.items != previous.items
+                        || inventory.quests != previous.quests))
+            {
+                return Err("Remote inventory revision or counters regressed".into());
+            }
+        }
+        self.inventory = Some((response.tick, inventory.clone()));
+        Ok(())
     }
     pub fn camera_handoff(&self) -> bool {
         self.handoff.is_some_and(|at| {
@@ -355,6 +402,100 @@ impl View {
 mod tests {
     use super::*;
     use crate::service::{replica::tests::response, wire::State};
+    #[test]
+    fn inventory_admission_is_atomic_and_future_lives_wait_for_their_snapshot() {
+        use super::super::{
+            rewards::Entry,
+            wire::{Control, Inventory, Life},
+        };
+        let life = Life {
+            instance: 130,
+            actor: 14,
+            generation: 0,
+        };
+        let mut snapshot = response(1);
+        snapshot.control = Some(Control {
+            life,
+            epoch: 1,
+            accepted_sequence: 0,
+        });
+        super::super::replica::tests::attach_hud(&mut snapshot);
+        let mut view = View::new(130, 10., 0).unwrap();
+        view.push_snapshot(&snapshot).unwrap();
+        let data = Inventory {
+            life,
+            revision: 1,
+            experience: 45,
+            items: vec![Entry { id: 1, count: 2 }],
+            quests: vec![],
+        };
+        let mut reply = snapshot.clone();
+        reply.request_id = 2;
+        reply.body = Reply::Inventory {
+            inventory: data.clone(),
+        };
+        view.push_inventory(&reply).unwrap();
+        assert_eq!(view.inventory(), Some(&data));
+        for case in 0..7 {
+            let mut bad = reply.clone();
+            match case {
+                0 => bad.instance = 131,
+                1 => bad.tick = 0,
+                2 => bad.request_id = 0,
+                3 => bad.control.as_mut().unwrap().epoch = 0,
+                4 => bad.control = None,
+                5 => {
+                    if let Reply::Inventory { inventory } = &mut bad.body {
+                        inventory.experience += 1;
+                    }
+                }
+                _ => {
+                    if let Reply::Inventory { inventory } = &mut bad.body {
+                        inventory.life.actor += 1;
+                    }
+                }
+            }
+            assert!(view.push_inventory(&bad).is_err());
+            assert_eq!(view.inventory(), Some(&data));
+        }
+        let mut future = reply.clone();
+        future.tick = 2;
+        future.control.as_mut().unwrap().life.generation = 1;
+        future.control.as_mut().unwrap().epoch = 2;
+        if let Reply::Inventory { inventory } = &mut future.body {
+            inventory.life.generation = 1;
+        }
+        view.push_inventory(&future).unwrap();
+        assert!(view.inventory().is_none());
+        let mut value = serde_json::to_value(&snapshot).unwrap();
+        fn advance(value: &mut serde_json::Value) {
+            if let Some(object) = value.as_object_mut() {
+                if object.get("actor").and_then(|v| v.as_u64()) == Some(14)
+                    && object.contains_key("generation")
+                {
+                    object.insert("generation".into(), 1.into());
+                }
+                for value in object.values_mut() {
+                    advance(value);
+                }
+            } else if let Some(array) = value.as_array_mut() {
+                for value in array {
+                    advance(value);
+                }
+            }
+        }
+        advance(&mut value);
+        value["tick"] = 2.into();
+        value["control"]["epoch"] = 2.into();
+        let next: Response = serde_json::from_value(value).unwrap();
+        view.push_snapshot(&next).unwrap();
+        assert_eq!(view.inventory().unwrap().life.generation, 1);
+        assert_eq!(view.inventory().unwrap().experience, 45);
+        assert!(view.push_inventory(&reply).is_err());
+        let mut spectator = View::new(130, 10., 0).unwrap();
+        spectator.push_snapshot(&response(1)).unwrap();
+        assert!(spectator.push_inventory(&reply).is_err());
+    }
     fn state(r: &mut Response) -> &mut State {
         let Reply::Snapshot { state } = &mut r.body else {
             panic!("Expected snapshot")
@@ -713,7 +854,9 @@ mod tests {
                     view.push_events(&delivery).unwrap();
                     received_events = true;
                 }
-                Update::Outcome(_) => panic!("Spectator issued no command"),
+                Update::Outcome(_) | Update::Inventory(_) => {
+                    panic!("Spectator issued no private request")
+                }
             }
             if received_events {
                 break;

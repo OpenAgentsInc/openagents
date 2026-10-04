@@ -10,6 +10,8 @@ use crate::{
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3};
 pub mod chamber;
+#[cfg(feature = "remote-chamber")]
+pub mod character_panel;
 pub mod characters;
 pub mod combat;
 pub mod controls;
