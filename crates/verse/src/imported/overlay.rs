@@ -306,17 +306,26 @@ pub fn action_at(x: f32, y: f32, width: f32, height: f32) -> Option<super::play:
     let (left, top, scale) = bar_geometry(width, height);
     let x = (x - left) / scale - 8.0;
     let y = (y - top) / scale;
-    if x < 0.0 || !(0.0..36.0).contains(&y) || x % 42.0 >= 36.0 {
+    if x < 0.0 || x % 42.0 >= 36.0 {
         return None;
     }
-    super::play::Ability::ALL
-        .get((x / 42.0).floor() as usize)
-        .copied()
+    let row = if (0.0..36.0).contains(&y) {
+        &super::play::Ability::ALL
+    } else if (-ROW_TWO_RISE..36.0 - ROW_TWO_RISE).contains(&y) {
+        &super::play::Ability::ROW_TWO
+    } else {
+        return None;
+    };
+    row.get((x / 42.0).floor() as usize).copied()
 }
+/// The second row sits this many reference pixels above the first.
+const ROW_TWO_RISE: f32 = 50.0;
 /// Decorative chrome consumes pointer presses instead of selecting the world behind it.
 pub fn chrome_at(x: f32, y: f32, width: f32, height: f32) -> bool {
     let (left, _, s) = bar_geometry(width, height);
-    (x >= left && x <= left + 430.0 * s && (height - 60.0 * s..height - 8.0 * s).contains(&y))
+    (x >= left
+        && x <= left + 430.0 * s
+        && (height - (60.0 + ROW_TWO_RISE) * s..height - 8.0 * s).contains(&y))
         || (y <= 104.0 * s && (x <= 213.0 * s || (250.0 * s..482.0 * s).contains(&x)))
 }
 fn respawn_rect(width: f32, height: f32) -> [f32; 4] {
@@ -457,6 +466,77 @@ pub fn action_bar(
                 [0.6, 0.6, 0.6, 1.0],
             );
         }
+    }
+    // Row two: spells from the spell catalog, hotkeys Shift+1 to Shift+0.
+    let row = y - ROW_TWO_RISE * s;
+    for (inset, color) in [
+        (0.0, [0.08, 0.07, 0.06, 0.9]),
+        (1.0, [0.36, 0.31, 0.2, 1.0]),
+        (3.0, [0.035, 0.03, 0.025, 0.9]),
+    ] {
+        ui.rect(
+            atlas,
+            left + inset * s,
+            row + (inset - 6.0) * s,
+            (430.0 - inset * 2.0) * s,
+            (48.0 - inset * 2.0) * s,
+            color,
+        );
+    }
+    for (index, ability) in Ability::ROW_TWO.iter().enumerate() {
+        let x = left + (8.0 + index as f32 * 42.0) * s;
+        let spell = ability.catalog();
+        let (ready, cd, total) = match (ability, spell) {
+            (Ability::Spell(slot), Some(spell)) => {
+                let cd = game
+                    .spells
+                    .ready
+                    .get(slot)
+                    .map_or(0.0, |at| (at - game.time).max(0.0));
+                (
+                    cd == 0.0 && snapshot.player.mana >= spell.cost,
+                    cd,
+                    spell.cooldown.max(0.01),
+                )
+            }
+            _ => (false, 0.0, 1.0),
+        };
+        image(
+            ui,
+            ability.icon(),
+            x,
+            row,
+            36.0,
+            36.0,
+            [0.0, 1.0, 0.0, 1.0],
+            if spell.is_none() {
+                [0.35, 0.35, 0.35, 0.8]
+            } else if ready || cd > 0.0 {
+                [1.0; 4]
+            } else {
+                [0.5, 0.5, 1.0, 1.0]
+            },
+        );
+        ui.cooldown(atlas, [x, row + s, 36.0 * s], cd / total);
+        image(
+            ui,
+            "action-frame",
+            x - 15.0 * s,
+            row - 14.0 * s,
+            66.0,
+            66.0,
+            [0.0, 1.0, 0.0, 1.0],
+            [1.0; 4],
+        );
+        let key = format!("s{}", (index + 1) % 10);
+        outlined(
+            ui,
+            &hotkey,
+            x + 34.0 * s - hotkey.measure(&key),
+            row + 2.0 * s,
+            &key,
+            [0.6, 0.6, 0.6, 1.0],
+        );
     }
     let health = snapshot.player.hp as f32 / snapshot.player.max_hp as f32;
     ui.rect(
@@ -718,7 +798,16 @@ pub fn action_bar(
         let cost = ability
             .spell()
             .and_then(|spell| snapshot.abilities.iter().find(|a| a.id == spell))
-            .map_or_else(|| ability.utility().map_or(0, |s| s.cost()), |a| a.cost);
+            .map_or_else(
+                || {
+                    ability
+                        .utility()
+                        .map(|s| s.cost())
+                        .or(ability.catalog().map(|s| s.cost))
+                        .unwrap_or(0)
+                },
+                |a| a.cost,
+            );
         let text = format!(
             "{} · {} mana · {}",
             ability.label(),
@@ -794,6 +883,17 @@ mod action_tests {
             None
         );
         assert_eq!(action_at(left, 600.0, 1280.0, 720.0), None);
+        for (i, ability) in super::super::play::Ability::ROW_TWO.iter().enumerate() {
+            assert_eq!(
+                action_at(
+                    left + (8.0 + i as f32 * 42.0 + 20.0) * s,
+                    top + (20.0 - ROW_TWO_RISE) * s,
+                    1280.0,
+                    720.0
+                ),
+                Some(*ability)
+            );
+        }
     }
 }
 
@@ -809,5 +909,121 @@ mod respawn_tests {
             assert!(!respawn_at(x + width, y, w, h));
             assert!(!respawn_at(x, y + height, w, h));
         }
+    }
+}
+
+/// Projects a world point to overlay pixels; `None` behind the camera.
+fn project(view_proj: Mat4, p: glam::Vec3, width: f32, height: f32) -> Option<[f32; 2]> {
+    let clip = view_proj * p.extend(1.0);
+    if clip.w <= 0.05 {
+        return None;
+    }
+    let ndc = clip.truncate() / clip.w;
+    Some([(ndc.x + 1.0) * 0.5 * width, (1.0 - ndc.y) * 0.5 * height])
+}
+
+/// The spell playground's overlay: the spell's title, SRD line, save rolls,
+/// measured displacements, displacement traces on the floor, and the
+/// physics world's contact and joint debug lines.
+#[allow(clippy::too_many_arguments)]
+pub fn spell_panel(
+    ui: &mut UiBatch,
+    atlas: &Atlas,
+    lines: &[String],
+    game: &super::play::Game,
+    view_proj: Mat4,
+    width: f32,
+    height: f32,
+    replaying: bool,
+) {
+    use verse_world::playground::measure;
+    for track in &game.spells.tracks {
+        let Some((now, _)) = measure(game, track) else {
+            continue;
+        };
+        let lift = glam::DVec3::Y * 0.03;
+        let (Some(a), Some(b)) = (
+            project(
+                view_proj,
+                (glam::DVec3::new(track.start.x, track.start.y.min(now.y), track.start.z) + lift)
+                    .as_vec3(),
+                width,
+                height,
+            ),
+            project(
+                view_proj,
+                (glam::DVec3::new(now.x, track.start.y.min(now.y), now.z) + lift).as_vec3(),
+                width,
+                height,
+            ),
+        ) else {
+            continue;
+        };
+        let color = if track.requested > 0.0 {
+            [1.0, 0.85, 0.2, 0.95]
+        } else {
+            [0.4, 1.0, 0.5, 0.95]
+        };
+        ui.line(atlas, a, b, 3.0, color);
+        ui.disc(atlas, a[0], a[1], 4.0, color);
+    }
+    for line in game.spells.world.debug_lines() {
+        let color = match line.kind {
+            physics::DebugKind::ContactImpulse => [1.0, 0.45, 0.1, 0.9],
+            physics::DebugKind::Joint | physics::DebugKind::Strained => [0.9, 0.3, 1.0, 0.9],
+            _ => [0.3, 0.85, 1.0, 0.7],
+        };
+        if let (Some(a), Some(b)) = (
+            project(view_proj, line.from.as_vec3(), width, height),
+            project(view_proj, line.to.as_vec3(), width, height),
+        ) {
+            ui.line(atlas, a, b, 1.5, color);
+        }
+    }
+    let font = atlas.font("numbers");
+    let (x, mut y) = (16.0, 112.0);
+    let panel_width = lines.iter().map(|l| font.measure(l)).fold(
+        atlas.measure(lines.first().map_or("", |s| s.as_str())),
+        f32::max,
+    ) + 20.0;
+    let panel_height = 30.0 + lines.len() as f32 * 17.0;
+    ui.rect(
+        atlas,
+        x - 8.0,
+        y - 6.0,
+        panel_width,
+        panel_height,
+        [0.0, 0.0, 0.0, 0.62],
+    );
+    for (i, line) in lines.iter().enumerate() {
+        if i == 0 {
+            outlined(ui, atlas, x, y, line, [1.0, 0.82, 0.3, 1.0]);
+            y += 26.0;
+            continue;
+        }
+        let color = if i == 2 && replaying {
+            [1.0, 0.4, 0.3, 1.0]
+        } else if i == 1 {
+            [0.85, 0.85, 1.0, 1.0]
+        } else if line.contains("succeeds") || line.contains("no push") {
+            [0.55, 1.0, 0.6, 1.0]
+        } else if line.contains("fails") || line.contains("pushed") {
+            [1.0, 0.85, 0.45, 1.0]
+        } else {
+            [0.92, 0.92, 0.92, 1.0]
+        };
+        outlined(ui, font, x, y, line, color);
+        y += 17.0;
+    }
+    if replaying {
+        let banner = "SLOW MOTION 0.25x";
+        outlined(
+            ui,
+            atlas.font("combat"),
+            width * 0.5 - atlas.font("combat").measure(banner) * 0.5,
+            40.0,
+            banner,
+            [1.0, 0.45, 0.3, 1.0],
+        );
     }
 }

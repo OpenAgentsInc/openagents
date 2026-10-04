@@ -348,6 +348,11 @@ impl App {
         let mut actors = chamber::instances(&self.pack, &frame)?;
         actors.extend(chamber::spell_instances(&self.game));
         actors.extend(chamber::blocker_instances(&self.pack, &self.game));
+        actors.extend(chamber::prop_instances(
+            &self.pack,
+            &self.game,
+            self.interpolation,
+        ));
         let lighting = chamber::combat_lighting(&self.game);
         let renderer = self.renderer.as_mut().unwrap();
         renderer.set_overlay_size(width, height);
@@ -503,8 +508,14 @@ impl ApplicationHandler for App {
                 if let PhysicalKey::Code(key) = event.physical_key {
                     if event.state == ElementState::Pressed {
                         self.keys.insert(key);
+                        let shift = self.keys.contains(&KeyCode::ShiftLeft)
+                            || self.keys.contains(&KeyCode::ShiftRight);
                         if !event.repeat {
                             match key {
+                                // Shift+1 through Shift+0 cast the second row.
+                                key if shift && row_two_slot(key).is_some() => {
+                                    self.activate(Ability::Spell(row_two_slot(key).unwrap()))
+                                }
                                 KeyCode::Escape => event_loop.exit(),
                                 KeyCode::F1 | KeyCode::F2 => {
                                     self.game
@@ -765,6 +776,24 @@ impl ApplicationHandler for App {
             window.request_redraw();
         }
     }
+}
+/// Second action-bar row slot for a digit key: 1 is slot 0 and 0 is slot 9.
+fn row_two_slot(key: KeyCode) -> Option<u8> {
+    [
+        KeyCode::Digit1,
+        KeyCode::Digit2,
+        KeyCode::Digit3,
+        KeyCode::Digit4,
+        KeyCode::Digit5,
+        KeyCode::Digit6,
+        KeyCode::Digit7,
+        KeyCode::Digit8,
+        KeyCode::Digit9,
+        KeyCode::Digit0,
+    ]
+    .iter()
+    .position(|k| *k == key)
+    .map(|slot| slot as u8)
 }
 fn save_png(path: &std::path::Path, pixels: &[u8]) -> Result<(), String> {
     save_png_size(path, pixels, [1280, 720])
@@ -1147,7 +1176,7 @@ pub fn run(original_default: bool) -> Result<(), String> {
             app.game.tick(1. / 30., [0., 1.])?;
         }
         let evidence = serde_json::json!({"schema":"openagents.verse.player-respawn.v1",
-            "rules_revision":"verse-chamber-owned-v13", "prepared_pack":app.renderer.as_ref().unwrap().pack_receipt, "old_life":old,
+            "rules_revision":verse::imported::play::RULES_REVISION, "prepared_pack":app.renderer.as_ref().unwrap().pack_receipt, "old_life":old,
             "new_life":app.game.player_life(), "player":app.game.snapshot().player,
             "player_position":app.game.player, "control_mode":"human", "shield_cast":true,
             "world_time":app.game.time, "npc_lives":app.game.frame().actors.iter()
@@ -1194,6 +1223,11 @@ pub fn run(original_default: bool) -> Result<(), String> {
         )
         .map_err(|e| e.to_string())?;
         return Ok(());
+    }
+    if mode.as_deref() == Some("--spell-playground") {
+        let spell = args.next().ok_or("Expected a spell name or all")?;
+        let output = PathBuf::from(args.next().ok_or("Expected OUT.mp4 or OUT_DIR")?);
+        return spell_playground(&mut app, &spell, output);
     }
     let demonstration = match mode.as_deref() {
         Some("--demo") => Some(Demo::Spells),
@@ -1392,37 +1426,7 @@ fn demo(app: &mut App, output: PathBuf, mode: Demo) -> Result<(), String> {
         &app.atlas,
         &chamber::static_instances(&app.pack, position_from_wow(app.game.scene.origin_wow)),
     )?);
-    let mut encoder = std::process::Command::new("ffmpeg")
-        .args([
-            "-y",
-            "-loglevel",
-            "error",
-            "-f",
-            "rawvideo",
-            "-pixel_format",
-            "rgba",
-            "-video_size",
-            "1280x720",
-            "-framerate",
-            "30",
-            "-i",
-            "pipe:0",
-            "-an",
-            "-c:v",
-            "libx264",
-            "-preset",
-            "fast",
-            "-crf",
-            "20",
-            "-pix_fmt",
-            "yuv420p",
-            "-movflags",
-            "+faststart",
-        ])
-        .arg(&output)
-        .stdin(std::process::Stdio::piped())
-        .spawn()
-        .map_err(|e| e.to_string())?;
+    let mut encoder = encoder(&output)?;
     let mut pipe = encoder.stdin.take().ok_or("Missing encoder input")?;
     let mut movement_max_height: f32 = 0.;
     app.interpolation = 1.;
@@ -1526,7 +1530,7 @@ fn demo(app: &mut App, output: PathBuf, mode: Demo) -> Result<(), String> {
                 return Err("Movement capture did not climb, jump, and land".into());
             }
             std::fs::write(output.with_extension("json"),serde_json::to_vec_pretty(&serde_json::json!({
-                "schema":"openagents.verse.grounded-movement.v1", "rules_revision":"verse-chamber-owned-v13",
+                "schema":"openagents.verse.grounded-movement.v1", "rules_revision":verse::imported::play::RULES_REVISION,
                 "authority_tick":app.game.authority_tick, "physics_steps":app.game.physics_steps,
                 "physics_dropped_seconds":app.game.physics_clock.dropped,"max_height_m":movement_max_height,
                 "final_feet":app.game.player.to_array(),"jump_command_frame":110,
@@ -1553,7 +1557,7 @@ fn demo(app: &mut App, output: PathBuf, mode: Demo) -> Result<(), String> {
                 ));
             }
             std::fs::write(output.with_extension("json"),serde_json::to_vec_pretty(&serde_json::json!({
-                "schema":"openagents.verse.navigation.v2","rules_revision":"verse-chamber-owned-v13",
+                "schema":"openagents.verse.navigation.v2","rules_revision":verse::imported::play::RULES_REVISION,
                 "start":[18.,0.,-32.],"target":target.to_array(),"cultist_final":position.to_array(),
                 "authority_tick":app.game.authority_tick,"physics_steps":app.game.physics_steps,
                 "navigation_plans":app.game.navigation_plans,"navigation_budget_refusals":app.game.navigation_budget_refusals,
@@ -1588,7 +1592,7 @@ fn demo(app: &mut App, output: PathBuf, mode: Demo) -> Result<(), String> {
             }
             if encounter.ended.is_some_and(|at| app.game.time - at >= 5.0) {
                 save_png(&output.with_extension("png"), &pixels)?;
-                let evidence = serde_json::json!({"schema":"openagents.verse.agent-combat.v1","rules_revision":"verse-chamber-owned-v13","authority_tick":app.game.authority_tick,"physics_steps":app.game.physics_steps,"physics_dropped_seconds":app.game.physics_clock.dropped,"committed_event_count":app.game.events.len(),"asset_pack":app.pack.source_revision,"controller":"local observation-driven tactical controller","control_mode":"agent","time":app.game.time,"ended_at":encounter.ended,"player":app.game.snapshot().player,"boss_remaining":encounter.boss_remaining,"boss_max":encounter.boss_max,"cultists_defeated":encounter.kills,"damage_taken":encounter.damage,"shield_absorbed":encounter.absorbed,"dodged":encounter.dodged,"enemy_casts":encounter.enemy_casts,"ability_uses":encounter.used,"boss_model":{"source":app.pack.models["claude"].source,"sha256":app.pack.models["claude"].source_sha256,"height_m":app.game.scene.actors.iter().find(|a|a.model=="claude").unwrap().scale * app.pack.models["claude"].height * 0.9144},"prepared_pack":app.renderer.as_ref().unwrap().pack_receipt,"animation_contract":"named states and life-aware local-space transitions", "animation_bindings":app.pack.models.iter().filter(|(_,m)|!m.states.is_empty()).map(|(name,m)|(name, &m.states)).collect::<std::collections::BTreeMap<_,_>>(), "renderer":"owned native GPU pipeline; no grading; no chat-input automation"});
+                let evidence = serde_json::json!({"schema":"openagents.verse.agent-combat.v1","rules_revision":verse::imported::play::RULES_REVISION,"authority_tick":app.game.authority_tick,"physics_steps":app.game.physics_steps,"physics_dropped_seconds":app.game.physics_clock.dropped,"committed_event_count":app.game.events.len(),"asset_pack":app.pack.source_revision,"controller":"local observation-driven tactical controller","control_mode":"agent","time":app.game.time,"ended_at":encounter.ended,"player":app.game.snapshot().player,"boss_remaining":encounter.boss_remaining,"boss_max":encounter.boss_max,"cultists_defeated":encounter.kills,"damage_taken":encounter.damage,"shield_absorbed":encounter.absorbed,"dodged":encounter.dodged,"enemy_casts":encounter.enemy_casts,"ability_uses":encounter.used,"boss_model":{"source":app.pack.models["claude"].source,"sha256":app.pack.models["claude"].source_sha256,"height_m":app.game.scene.actors.iter().find(|a|a.model=="claude").unwrap().scale * app.pack.models["claude"].height * 0.9144},"prepared_pack":app.renderer.as_ref().unwrap().pack_receipt,"animation_contract":"named states and life-aware local-space transitions", "animation_bindings":app.pack.models.iter().filter(|(_,m)|!m.states.is_empty()).map(|(name,m)|(name, &m.states)).collect::<std::collections::BTreeMap<_,_>>(), "renderer":"owned native GPU pipeline; no grading; no chat-input automation"});
                 std::fs::write(
                     output.with_extension("json"),
                     serde_json::to_vec_pretty(&evidence).map_err(|e| e.to_string())?,
@@ -1625,4 +1629,167 @@ fn combat_game(pack: &Pack, scene: Scene, agent: bool) -> Result<Game, String> {
     let mut game = Game::combat(scene, agent)?;
     verse::imported::props::admit_collision(pack, &mut game)?;
     Ok(game)
+}
+
+/// Starts an H.264 encoder that reads 1280x720 RGBA frames at 30 fps.
+fn encoder(output: &std::path::Path) -> Result<std::process::Child, String> {
+    std::process::Command::new("ffmpeg")
+        .args([
+            "-y",
+            "-loglevel",
+            "error",
+            "-f",
+            "rawvideo",
+            "-pixel_format",
+            "rgba",
+            "-video_size",
+            "1280x720",
+            "-framerate",
+            "30",
+            "-i",
+            "pipe:0",
+            "-an",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "fast",
+            "-crf",
+            "20",
+            "-pix_fmt",
+            "yuv420p",
+            "-movflags",
+            "+faststart",
+        ])
+        .arg(output)
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| e.to_string())
+}
+
+/// `--spell-playground SPELL OUT.mp4` records one scenario;
+/// `--spell-playground all OUT_DIR` records every registered one as
+/// `OUT_DIR/spell-<name>.mp4`. Each writes its evidence beside the video.
+fn spell_playground(app: &mut App, spell: &str, output: PathBuf) -> Result<(), String> {
+    use verse_world::playground::scenarios;
+    if spell == "all" {
+        std::fs::create_dir_all(&output).map_err(|e| e.to_string())?;
+        for scenario in scenarios() {
+            let path = output.join(format!("spell-{}.mp4", scenario.key));
+            record_spell(app, scenario, &path)?;
+        }
+        return Ok(());
+    }
+    let scenario = scenarios()
+        .into_iter()
+        .find(|s| s.key == spell)
+        .ok_or_else(|| {
+            format!(
+                "Unknown spell {spell}; registered: {}",
+                scenarios()
+                    .iter()
+                    .map(|s| s.key)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        })?;
+    record_spell(app, scenario, &output)
+}
+
+fn record_spell(
+    app: &mut App,
+    scenario: verse_world::playground::Scenario,
+    output: &std::path::Path,
+) -> Result<(), String> {
+    let mut run = verse_world::playground::Run::new(scenario)?;
+    app.renderer = Some(Renderer::new(
+        (*app.pack).clone(),
+        &app.dir,
+        1280,
+        720,
+        &app.atlas,
+        &chamber::playground_static_instances(),
+    )?);
+    let mut encoder = encoder(output)?;
+    let mut pipe = encoder.stdin.take().ok_or("Missing encoder input")?;
+    let poster = run.live_frames() + run.frames().saturating_sub(run.live_frames()) / 2;
+    while !run.done() {
+        run.advance()?;
+        let game = &run.game;
+        let mut frame = game.interpolated_frame(run.alpha)?;
+        let (eye, target) = run.camera();
+        frame.eye = eye;
+        frame.target = target;
+        frame.fov = 1.0;
+        let view = View {
+            view_proj: frame.view_projection(1280.0 / 720.0),
+            eye: frame.eye,
+        };
+        let mut ui = overlay::cinematic(
+            &app.atlas,
+            &frame,
+            &app.heights,
+            view.view_proj,
+            1280.0,
+            720.0,
+        );
+        overlay::damage_numbers(
+            &mut ui,
+            &app.atlas,
+            game,
+            &frame,
+            &app.heights,
+            view.view_proj,
+            1280.0,
+            720.0,
+        );
+        overlay::action_bar(&mut ui, &app.atlas, game, 1280.0, 720.0, None);
+        overlay::spell_panel(
+            &mut ui,
+            &app.atlas,
+            &run.overlay(),
+            game,
+            view.view_proj,
+            1280.0,
+            720.0,
+            run.replaying(),
+        );
+        let mut actors = chamber::instances(&app.pack, &frame)?;
+        actors.extend(chamber::spell_instances(game));
+        actors.extend(chamber::prop_instances(&app.pack, game, run.alpha));
+        let lighting = chamber::combat_lighting(game);
+        let pixels = app
+            .renderer
+            .as_mut()
+            .unwrap()
+            .draw(view, &actors, &ui, &lighting)?;
+        pipe.write_all(&pixels).map_err(|e| e.to_string())?;
+        if run.frame() == poster {
+            save_png(&output.with_extension("png"), &pixels)?;
+        }
+    }
+    drop(pipe);
+    if !encoder.wait().map_err(|e| e.to_string())?.success() {
+        return Err("Spell playground encoder failed".into());
+    }
+    if run.replay_identical != Some(true) {
+        return Err("The slow-motion replay diverged from the live run".into());
+    }
+    let mut evidence = run.evidence()?;
+    evidence["renderer"] =
+        "owned native GPU pipeline; scripted admitted commands; no grading".into();
+    evidence["prepared_pack"] =
+        serde_json::to_value(app.renderer.as_ref().unwrap().pack_receipt.clone())
+            .map_err(|e| e.to_string())?;
+    std::fs::write(
+        output.with_extension("json"),
+        serde_json::to_vec_pretty(&evidence).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
+    eprintln!(
+        "Recorded {} ({} frames) to {}",
+        run.scenario.title,
+        run.frames(),
+        output.display()
+    );
+    Ok(())
 }

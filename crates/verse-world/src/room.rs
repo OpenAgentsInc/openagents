@@ -84,11 +84,29 @@ pub fn colliders() -> Vec<physics::kinematic::Aabb> {
         .collect()
 }
 
+/// Collision boxes of a scene's named collision profile; none without one.
+pub fn profile_colliders(profile: Option<&str>) -> Result<Vec<physics::kinematic::Aabb>, String> {
+    match profile {
+        None => Ok(vec![]),
+        Some("original-chamber-v1") => Ok(colliders()),
+        Some(crate::playground::PROFILE) => Ok(crate::playground::hall()?.colliders()),
+        Some(_) => Err("Unsupported scene collision profile".into()),
+    }
+}
+
 /// Compiles the same authored room solids into scoped triangle query geometry.
 pub fn query_scene(instance: u64) -> Result<physics::queries::Scene, String> {
+    profile_query_scene(Some("original-chamber-v1"), instance)
+}
+
+/// Compiles a collision profile's solids into scoped triangle query geometry.
+pub fn profile_query_scene(
+    profile: Option<&str>,
+    instance: u64,
+) -> Result<physics::queries::Scene, String> {
     use physics::queries::{ColliderKey, Life, Mesh, MeshCollider, Scene, Usage};
     let mut scene = Scene::default();
-    for (shape, bounds) in colliders().into_iter().enumerate() {
+    for (shape, bounds) in profile_colliders(profile)?.into_iter().enumerate() {
         scene.insert(MeshCollider {
             key: ColliderKey {
                 life: Life {

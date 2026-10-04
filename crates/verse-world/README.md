@@ -8,7 +8,7 @@ chamber reads its snapshots and cinematic projection. Human and controller
 requests share admission. A trusted adapter supplies controller identity;
 this crate does not authenticate network connections.
 
-The `verse-chamber-owned-v13` rules profile independently implements retained
+The `verse-chamber-owned-v14` rules profile independently implements retained
 chamber behavior; it imports no vendor source. Firebolt deals 8 damage, each of
 three magic missiles deals 4, and fireball deals 15 in a visible 6.096-meter radius
 with three 6-damage burn ticks. Living characters regenerate one mana per second.
@@ -45,3 +45,22 @@ replication, and authoring tools remain on the
 The adventurer starts with 200 HP. After defeat, **Respawn** restores health and mana at the authored spawn, returns human control, and advances the player life and command epoch. NPC health and cultist respawn deadlines remain intact.
 
 Presentation snapshots carry named animation states and exact actor lives. They select locomotion, combat, casting, prone, and death poses without assuming any model’s internal clip IDs.
+
+## Spell physics and the spell playground
+
+`spells::SpellWorld` gives the chamber a `physics::World` of dynamic props
+(kind, SRD size, mass, material, `secured`, `flammable`, object hit points),
+stepped on the 120 Hz clock and saved in checkpoints. Characters carry
+external motion (`physics::character::Character::external`, friction decay on
+the ground, ballistic in the air), a gravity override, and the fall height
+SRD falling damage reads. `push` speeds are calibrated so an unobstructed push
+travels its SRD distance; walls and contacts change the result. Spell fields
+(box, cylinder, wall polyline, sphere) add acceleration; spell-owned bodies,
+joints, and concentration end with their cast. Every external impulse is a
+named `physics::Ledger` term.
+
+To add a spell: write `src/spells/<name>.rs` with its cast and a
+`playground::Scenario`, add one `SpellDef` line to `spells::CATALOG` (its
+reserved row-two slot), and one line to `playground::scenarios`. Record it with
+`cargo run -p verse --features imported-desktop --example verse_play --
+--original --spell-playground <name> bench/verse/<date>/spell-<name>.mp4`.

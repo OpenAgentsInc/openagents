@@ -345,6 +345,8 @@ pub fn generate(dir: &Path) -> Result<Pack, String> {
     );
     pack.models
         .insert("claude".into(), actor("claude", [0.26, 0.09, 0.075], true));
+    pack.models
+        .insert("dummy".into(), actor("dummy", [0.72, 0.58, 0.3], false));
     let mut room = model("chamber", 12.);
     // Author world-space boxes, then convert to the pack's Z-up convention.
     let inverse = super::chamber::basis().inverse();
@@ -357,6 +359,56 @@ pub fn generate(dir: &Path) -> Result<Pack, String> {
         world_box(b.center, b.half, b.color, b.emissive);
     }
     pack.models.insert("chamber".into(), room);
+    // The spell playground hall is drawn only by `--spell-playground`.
+    let mut hall = model("playground-hall", 12.);
+    {
+        let mut world_box = |center: Vec3, half: Vec3, color, emissive| {
+            let c = inverse.transform_point3(center).to_array();
+            let h = inverse.transform_vector3(half).abs().to_array();
+            cuboid(&mut hall, c, h, color, 0, emissive);
+        };
+        for s in &verse_world::playground::hall()?.solids {
+            world_box(s.center, s.half, s.color, s.emissive);
+        }
+        // Floor tiles every 2 m make slides easy to read against the floor.
+        for x in -11..11 {
+            for z in -12..7 {
+                if (x + z) % 2 == 0 {
+                    world_box(
+                        Vec3::new(x as f32 * 2. + 1., 0.002, z as f32 * 2. + 1.),
+                        Vec3::new(0.98, 0.002, 0.98),
+                        [0.37, 0.355, 0.33],
+                        false,
+                    );
+                }
+            }
+        }
+    }
+    pack.models.insert("playground-hall".into(), hall);
+    // Dynamic props are unit cubes (half 0.5 in pack units) that instances
+    // scale to their collision box; stripes show how they turn.
+    for (name, body, band) in [
+        ("prop-crate", [0.55, 0.36, 0.17], [0.32, 0.19, 0.08]),
+        ("prop-crate-secured", [0.45, 0.33, 0.2], [0.55, 0.57, 0.62]),
+        ("prop-barrel", [0.5, 0.28, 0.13], [0.3, 0.3, 0.32]),
+        ("prop-dummy", [0.75, 0.62, 0.32], [0.45, 0.3, 0.12]),
+        ("prop-anvil", [0.22, 0.23, 0.26], [0.12, 0.12, 0.14]),
+        ("prop-stone", [0.5, 0.49, 0.46], [0.36, 0.35, 0.33]),
+    ] {
+        let mut m = model(name, 1.);
+        cuboid(&mut m, [0.; 3], [0.5; 3], body, 0, false);
+        for k in 0..3 {
+            let mut half = [0.506; 3];
+            half[k] = 0.08;
+            let mut other = [0.506; 3];
+            other[(k + 1) % 3] = 0.08;
+            cuboid(&mut m, [0.; 3], half, band, 0, false);
+            if name == "prop-crate-secured" {
+                cuboid(&mut m, [0.; 3], other, band, 0, false);
+            }
+        }
+        pack.models.insert(name.into(), m);
+    }
     let mut blocker = model("navigation-blocker", 1.);
     cuboid(&mut blocker, [0.; 3], [0.5; 3], [0.65, 0.32, 0.1], 0, false);
     pack.models.insert("navigation-blocker".into(), blocker);
@@ -452,8 +504,10 @@ pub fn atlas() -> Result<Atlas, String> {
         "portrait-adventurer",
         "portrait-claude",
         "portrait-cultist",
+        "spell-slot-empty",
     ]
     .into_iter()
+    .chain(verse_world::spells::CATALOG.iter().map(|s| s.icon))
     .enumerate()
     {
         let mut pixels = vec![];

@@ -972,6 +972,7 @@ pub fn install(pack: &mut Pack, dir: &Path, root: &Path, appearance: &str) -> Re
         ("cultist-peasant", "male-peasant"),
         ("cultist-peasant-female", "female-peasant"),
         ("claude", "male-ranger"),
+        ("dummy", "male-peasant"),
     ] {
         let mut model = pack.models[&format!("universal-{appearance}")].clone();
         if role.starts_with("cultist") {
@@ -982,6 +983,12 @@ pub fn install(pack: &mut Pack, dir: &Path, root: &Path, appearance: &str) -> Re
         if role == "claude" {
             for surface in &mut model.surfaces {
                 surface.tint = [0.65, 0.24, 0.35];
+            }
+        }
+        if role == "dummy" {
+            // Straw training dummies for the spell playground.
+            for surface in &mut model.surfaces {
+                surface.tint = [0.95, 0.78, 0.4];
             }
         }
         pack.models.insert(role.into(), model);
