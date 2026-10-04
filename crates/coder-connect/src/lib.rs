@@ -5,7 +5,9 @@ use std::fmt;
 
 #[cfg(feature = "host")]
 pub mod cli;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod client;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod direct;
 #[cfg(feature = "host")]
 pub mod host;
@@ -15,7 +17,9 @@ mod pairing_ui;
 pub mod protocol;
 #[cfg(feature = "host")]
 pub mod store;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod transport;
+#[cfg(not(target_arch = "wasm32"))]
 pub use client::Client;
 pub use coder_history;
 pub use protocol::{

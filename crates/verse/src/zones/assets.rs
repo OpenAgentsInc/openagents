@@ -3,11 +3,14 @@
 //! The pack contains bounded geometry and sampled animation frames. It carries
 //! no executable scripts, URLs, textures, or application authority.
 
-use std::io::{Read, Write};
+#[cfg(not(target_arch = "wasm32"))]
+use std::io::Read;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, mpsc};
 use std::thread::JoinHandle;
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::Duration;
 
 use sha2::{Digest, Sha256};
@@ -18,6 +21,7 @@ use crate::mesh::{Mesh, Vertex};
 pub const PACK_SHA256: &str = "7c1535256a4687e70a0f624f4b97c651bfd0b36ba91347a09041698ef8d246a7";
 /// Transfer size of the reviewed ruins pack.
 pub const PACK_BYTES: u64 = 6_629_578;
+#[cfg(not(target_arch = "wasm32"))]
 const PACK_URL: &str = "https://raw.githubusercontent.com/OpenAgentsInc/openagents/main/assets/verse/ruins/7c1535256a4687e70a0f624f4b97c651bfd0b36ba91347a09041698ef8d246a7.vzp";
 const MAX_PACK_BYTES: u64 = 25 * 1024 * 1024;
 const MAX_DECODED_BYTES: usize = 96 * 1024 * 1024;
@@ -382,6 +386,23 @@ fn load(
         // every check. Explicit retry can repair an unreadable cache entry.
     }
     canceled(cancel)?;
+    let bytes = download(cancel, tx)?;
+    canceled(cancel)?;
+    let assets = LoadedAssets::decode(&bytes)?;
+    canceled(cancel)?;
+    install_cache(cache, &bytes, cancel)?;
+    Ok(assets)
+}
+
+/// A browser build has no blocking HTTP client; the Ruins pack does not
+/// load there.
+#[cfg(target_arch = "wasm32")]
+fn download(_cancel: &AtomicBool, _tx: &mpsc::Sender<LoadEvent>) -> Result<Vec<u8>, String> {
+    Err("Ruins download is not available in a browser build".into())
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn download(cancel: &AtomicBool, tx: &mpsc::Sender<LoadEvent>) -> Result<Vec<u8>, String> {
     let client = reqwest::blocking::Client::builder()
         .https_only(true)
         .redirect(reqwest::redirect::Policy::none())
@@ -426,11 +447,7 @@ fn load(
             last_update = bytes.len();
         }
     }
-    canceled(cancel)?;
-    let assets = LoadedAssets::decode(&bytes)?;
-    canceled(cancel)?;
-    install_cache(cache, &bytes, cancel)?;
-    Ok(assets)
+    Ok(bytes)
 }
 
 fn install_cache(cache: &Path, bytes: &[u8], cancel: &AtomicBool) -> Result<(), String> {

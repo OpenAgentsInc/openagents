@@ -143,6 +143,19 @@ fn the_everglade_portal_loads_the_pinned_pack_and_returns_to_the_plaza_pose() {
 }
 
 #[test]
+fn pack_bytes_a_browser_downloaded_install_only_when_pinned() {
+    let bytes = std::fs::read(pack_path()).expect("the committed pack reads");
+    let mut runtime = WorldRuntime::new();
+    assert!(runtime.install_everglade_bytes(&bytes[..1024]).is_err());
+    let mut tampered = bytes.clone();
+    tampered[4096] ^= 1;
+    assert!(runtime.install_everglade_bytes(&tampered).is_err());
+    assert_eq!(runtime.zone, ZoneId::Plaza);
+    runtime.install_everglade_bytes(&bytes).unwrap();
+    assert_eq!(runtime.zone, ZoneId::Everglade);
+}
+
+#[test]
 fn a_canceled_load_stays_in_the_plaza() {
     let mut runtime = at_everglade_portal();
     let cache = tempfile::tempdir().unwrap();

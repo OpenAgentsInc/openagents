@@ -1632,6 +1632,8 @@ pub(crate) fn decode<T: DeserializeOwned>(bytes: &[u8]) -> Result<T> {
     coder_connect::protocol::decode(bytes)
         .map_err(|_| Error::new(Code::Malformed, "invalid bounded host access JSON"))
 }
+// Only the relay clients seal; a browser build has none.
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
 pub(crate) fn seal(
     value: &impl Serialize,
     schema: &str,
@@ -1658,6 +1660,8 @@ pub(crate) fn open<T: DeserializeOwned>(
     })
 }
 /// Read an artifact's schema without trusting its content.
+// Only the relay clients read it; a browser build has none.
+#[cfg_attr(target_arch = "wasm32", allow(dead_code))]
 pub(crate) fn schema_of(event: &Event, secret: &SecretKey) -> Result<String> {
     if event.content.len() > 400 * 1024 {
         return fail(

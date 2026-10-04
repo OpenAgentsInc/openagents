@@ -6,9 +6,12 @@
 //! Cleanup removes only this file's named earlier revisions and its own
 //! abandoned temporary files.
 
-use std::io::{Read, Write};
+#[cfg(not(target_arch = "wasm32"))]
+use std::io::Read;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::Duration;
 
 use sha2::{Digest, Sha256};
@@ -129,6 +132,18 @@ impl PinnedFile {
         Ok(value)
     }
 
+    /// A browser build has no blocking HTTP client: the page fetches the
+    /// file itself and decodes it with the caller's decoder.
+    #[cfg(target_arch = "wasm32")]
+    fn download(
+        &self,
+        _cancel: &AtomicBool,
+        _progress: &mut dyn FnMut(u64, u64),
+    ) -> Result<Vec<u8>, String> {
+        Err(self.error("download is not available in a browser build"))
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
     fn download(
         &self,
         cancel: &AtomicBool,

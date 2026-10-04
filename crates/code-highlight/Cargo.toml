@@ -12,7 +12,9 @@ description = "Syntax highlighting for code blocks: tree-sitter classes for the 
 # does not build syntect.
 grok = ["dep:syntect", "dep:two-face", "dep:ratatui", "dep:supports-color"]
 
-[dependencies]
+# The grammars are C, which the browser build (`wasm32`) does not compile;
+# there, no language has a grammar and every block stays plain.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 tree-sitter-highlight = "0.27.0"
 tree-sitter-rust = "0.24.2"
 tree-sitter-python = "0.25.0"
@@ -25,6 +27,8 @@ tree-sitter-cpp = "0.23.4"
 tree-sitter-c = "0.24.2"
 tree-sitter-html = "0.23.2"
 tree-sitter-css = "0.25.0"
+
+[dependencies]
 # grok-build's workspace pins, verbatim.
 syntect = { version = "5.3", default-features = false, features = ["default-onig"], optional = true }
 ratatui = { version = "0.30", optional = true }

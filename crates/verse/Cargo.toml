@@ -21,6 +21,10 @@ studio-host = ["dep:openagents-connect"]
 imported-desktop = ["dep:winit", "capture", "native-audio"]
 native-audio = ["dep:cpal"]
 remote-chamber = ["verse-world/service-net", "tokio/signal"]
+# The browser build (`wasm32-unknown-unknown`), used without default
+# features: WebGL2 as well as WebGPU. Network, threads, processes, and disk
+# are native-only by target, so this feature only adds what the web needs.
+web = ["wgpu/webgl"]
 
 [dependencies]
 cpal = { version = "=0.18.2", optional = true }
@@ -51,15 +55,13 @@ glam = "0.30.10"
 # Replays read retained Microcoder runs and Fable 5.1 trajectories with the
 # Gym's own readers, so a replay and `gym runs` agree on every number.
 gym = { path = "../gym", optional = true }
-gym-bridge = { path = "../gym-bridge", default-features = false }
-# The Gym's published results: the contract, the results panel's view
-# model, and the fetch-verify-cache client, without the generator.
-gym-leaderboard = { path = "../gym-leaderboard", default-features = false, features = ["client"] }
+# The Gym's published results: the contract and the results panel's view
+# model, without the generator. Native builds add the client.
+gym-leaderboard = { path = "../gym-leaderboard", default-features = false }
 knowledge = { path = "../knowledge", optional = true }
 # The XP ledger alone, so the phone reads XP without the knowledge base's
 # model clients.
 xp-ledger = { path = "../xp-ledger", optional = true }
-libc = "0.2"
 nostr = { path = "../nostr" }
 png = "0.18.1"
 pollster = "0.4"
@@ -67,16 +69,28 @@ secp256k1 = { version = "0.31.1", features = ["rand"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
-reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
 swash = "0.2.10"
-tokio = { version = "1", features = ["rt", "time", "net", "sync", "macros"] }
 futures-util = "0.3"
-tokio-tungstenite = { version = "0.30", features = ["rustls-tls-webpki-roots"] }
-rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
-webpki-roots = "1"
 wgpu = "29.0.4"
 # `wayland-csd-adwaita` is off: it pulls BSD-2-Clause `arrayref`, which deny.toml refuses.
 winit = { version = "0.30.13", default-features = false, features = ["rwh_06", "x11", "wayland", "wayland-dlopen"], optional = true }
+
+# Network, TLS, threads, and the disk caches: native only.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+gym-bridge = { path = "../gym-bridge", default-features = false }
+# The fetch-verify-cache client for the Gym's published results.
+gym-leaderboard = { path = "../gym-leaderboard", default-features = false, features = ["client"] }
+libc = "0.2"
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "rustls-tls"] }
+tokio = { version = "1", features = ["rt", "time", "net", "sync", "macros"] }
+tokio-tungstenite = { version = "0.30", features = ["rustls-tls-webpki-roots"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+webpki-roots = "1"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+# The browser's `crypto.getRandomValues` for key generation; the
+# `getrandom_backend` flag is set in `.cargo/config.toml`.
+getrandom = { version = "0.3", features = ["wasm_js"] }
 
 [dev-dependencies]
 tempfile = "3"

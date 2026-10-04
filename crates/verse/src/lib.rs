@@ -26,11 +26,13 @@ pub mod doors;
 pub mod edr;
 pub mod feed;
 pub(crate) mod gles;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod gym;
 pub mod gym_evals;
 pub mod gym_hall;
 pub mod gym_notes;
 pub mod gym_replay;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod gym_results;
 pub mod hud;
 pub mod identity;

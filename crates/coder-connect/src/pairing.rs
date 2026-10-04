@@ -1,5 +1,8 @@
 //! Short-lived computer invitations. Only the intended temporary capability is
 //! displayed; device and host identity secrets stay in their protected stores.
+// A browser build keeps the invitation and grant shapes but cannot redeem,
+// so the request and reply halves go unused there.
+#![cfg_attr(target_arch = "wasm32", allow(dead_code, unused_imports))]
 use crate::{Error, ErrorCode, Result, fail, protocol::*, unix_time};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use nostr::domain::Event;
@@ -249,6 +252,7 @@ pub(crate) fn verify(
         }
     }
 }
+#[cfg(not(target_arch = "wasm32"))]
 /// Redeem a computer invitation with the phone's protected identity. The caller
 /// saves the returned connection only after success; errors change no local state.
 /// Cancellation drops the finite socket and a retry uses the same device key.

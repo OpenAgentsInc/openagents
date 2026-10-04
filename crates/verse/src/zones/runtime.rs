@@ -210,6 +210,22 @@ impl WorldRuntime {
         ));
         self.camera = crate::camera::FollowCamera::default();
     }
+    /// Enter Everglade from pack bytes the caller already holds, such as a
+    /// browser's own download. The bytes must be the pinned pack: their
+    /// length and SHA-256 are checked before anything is decoded.
+    pub fn install_everglade_bytes(&mut self, bytes: &[u8]) -> Result<(), String> {
+        let pack = everglade_pack::ZonePack::decode_pinned(bytes)?;
+        self.install_everglade(&pack);
+        if self.zone == ZoneId::Everglade {
+            Ok(())
+        } else {
+            Err(self
+                .zone_state
+                .error
+                .clone()
+                .unwrap_or_else(|| "Everglade enters only from the plaza".into()))
+        }
+    }
     /// The nearest portal in this zone and its destination.
     fn nearest_portal(&self) -> (ZoneId, Vec3) {
         let at = self.player.pos;

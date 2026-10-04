@@ -1,0 +1,13 @@
+# The browser build (`crates/everglade-web`) draws key material from
+# `crypto.getRandomValues` through getrandom's `wasm_js` backend. Native
+# targets are unaffected.
+[target.wasm32-unknown-unknown]
+rustflags = ["--cfg=getrandom_backend=\"wasm_js\""]
+
+[env]
+# secp256k1-sys's WebAssembly sysroot declares no `memmove`, which its C
+# source calls; clang lowers the call to the intrinsic that Rust's
+# `compiler_builtins` provides. Only the wasm32 C compile reads this name.
+# Compiling for wasm32 also needs a clang with the WebAssembly target in
+# `CC_wasm32_unknown_unknown`; `scripts/build-everglade-web.sh` finds one.
+CFLAGS_wasm32_unknown_unknown = "-Wno-implicit-function-declaration"

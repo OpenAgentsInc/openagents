@@ -12,7 +12,9 @@
 //! and titles sit at the top left, and `B` opens the quest board panel
 //! above the chat windows (`crate::xp` writes their lines).
 
+#[cfg(not(target_arch = "wasm32"))]
 mod gym;
+#[cfg(not(target_arch = "wasm32"))]
 pub use gym::{GymPanel, gym_panel};
 
 use std::collections::VecDeque;

@@ -6,7 +6,9 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
+#[cfg(not(target_arch = "wasm32"))]
 pub mod cj;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod client;
 #[cfg(feature = "host")]
 pub mod host;
@@ -19,6 +21,7 @@ pub mod studio;
 pub mod thread;
 pub mod wallet_link;
 
+#[cfg(not(target_arch = "wasm32"))]
 pub use client::{Client, Pending};
 pub use coder_connect::RelayPolicy;
 pub use protocol::{Access, CommandAction, Enrollment, Grant, Operation, Outcome, TaskCommand};

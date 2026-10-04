@@ -465,7 +465,38 @@ impl Renderer {
     ) -> Result<Self, String> {
         let options = options.validate()?;
         validate_extent(width, height, options.max_extent)?;
-        let (adapter, device, queue) = open(&instance, Some(&surface))?;
+        let opened = open(&instance, Some(&surface))?;
+        Self::assemble(surface, opened, width, height, world, atlas, options)
+    }
+
+    /// [`Self::from_surface`] without blocking: a browser cannot wait for its
+    /// adapter and device, so the page awaits this instead.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn from_surface_async(
+        instance: wgpu::Instance,
+        surface: wgpu::Surface<'static>,
+        width: u32,
+        height: u32,
+        world: &Mesh,
+        atlas: &Atlas,
+        options: RenderOptions,
+    ) -> Result<Self, String> {
+        let options = options.validate()?;
+        validate_extent(width, height, options.max_extent)?;
+        let opened = open_async(&instance, Some(&surface)).await?;
+        Self::assemble(surface, opened, width, height, world, atlas, options)
+    }
+
+    /// Configures `surface` on an opened device and uploads the world.
+    fn assemble(
+        surface: wgpu::Surface<'static>,
+        (adapter, device, queue): (wgpu::Adapter, wgpu::Device, wgpu::Queue),
+        width: u32,
+        height: u32,
+        world: &Mesh,
+        atlas: &Atlas,
+        options: RenderOptions,
+    ) -> Result<Self, String> {
         let max_extent = options
             .max_extent
             .min(device.limits().max_texture_dimension_2d);
@@ -1252,23 +1283,55 @@ fn open(
     instance: &wgpu::Instance,
     surface: Option<&wgpu::Surface<'_>>,
 ) -> Result<(wgpu::Adapter, wgpu::Device, wgpu::Queue), String> {
-    let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-        power_preference: wgpu::PowerPreference::HighPerformance,
-        force_fallback_adapter: false,
-        compatible_surface: surface,
-    }))
-    .map_err(|e| format!("no graphics adapter: {e}"))?;
+    pollster::block_on(open_async(instance, surface))
+}
+
+async fn open_async(
+    instance: &wgpu::Instance,
+    surface: Option<&wgpu::Surface<'_>>,
+) -> Result<(wgpu::Adapter, wgpu::Device, wgpu::Queue), String> {
+    let adapter = instance
+        .request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::HighPerformance,
+            force_fallback_adapter: false,
+            compatible_surface: surface,
+        })
+        .await
+        .map_err(|e| format!("no graphics adapter: {e}"))?;
     let required_limits = scene_limits(adapter.limits())?;
     // The physical path prefers a compact 32-bit floating-point scene target.
     let required_features = adapter.features() & wgpu::Features::RG11B10UFLOAT_RENDERABLE;
-    let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-        label: Some("verse"),
-        required_limits,
-        required_features,
-        ..Default::default()
-    }))
-    .map_err(|e| format!("no graphics device: {e}"))?;
+    let (device, queue) = adapter
+        .request_device(&wgpu::DeviceDescriptor {
+            label: Some("verse"),
+            required_limits,
+            required_features,
+            ..Default::default()
+        })
+        .await
+        .map_err(|e| format!("no graphics device: {e}"))?;
     Ok((adapter, device, queue))
+}
+
+/// An error scope's result, waited for natively. A browser cannot block:
+/// WebGL settles a scope at once and is read here, and a WebGPU scope that
+/// has not settled reads as no error, which the browser's console reports.
+fn scope_error(
+    scope: impl std::future::Future<Output = Option<wgpu::Error>>,
+) -> Option<wgpu::Error> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        pollster::block_on(scope)
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        let mut scope = std::pin::pin!(scope);
+        let mut context = std::task::Context::from_waker(std::task::Waker::noop());
+        match scope.as_mut().poll(&mut context) {
+            std::task::Poll::Ready(error) => error,
+            std::task::Poll::Pending => None,
+        }
+    }
 }
 
 // The world shader passes color, world position, and fog at locations 0..2;
@@ -1592,8 +1655,8 @@ impl Scene {
             let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
             let internal = device.push_error_scope(wgpu::ErrorFilter::Internal);
             let created = Photo::new(device, queue, self.capability, self.format);
-            let failure =
-                pollster::block_on(internal.pop()).or(pollster::block_on(validation.pop()));
+            let internal = scope_error(internal.pop());
+            let failure = internal.or(scope_error(validation.pop()));
             match (created, failure) {
                 (Ok(photo), None) => self.photo = Some(photo),
                 (Err(error), _) => {

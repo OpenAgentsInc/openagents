@@ -10,10 +10,13 @@
 //!
 //! Unknown languages, inputs over [`MAX_BYTES`], and lines over
 //! [`MAX_LINE`] bytes give no classes. No content leaves this process.
+//! A browser build (`wasm32`) has no grammars, so every block is plain.
 
+#[cfg(not(target_arch = "wasm32"))]
 use std::collections::BTreeMap;
 use std::sync::{LazyLock, Mutex};
 
+#[cfg(not(target_arch = "wasm32"))]
 use tree_sitter_highlight::{HighlightConfiguration, HighlightEvent, Highlighter};
 
 #[cfg(feature = "grok")]
@@ -68,6 +71,7 @@ pub struct Class {
     pub kind: Option<Kind>,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 const CAPTURES: [(&str, Kind); 30] = [
     ("comment", Kind::Comment),
     ("string", Kind::String),
@@ -103,9 +107,18 @@ const CAPTURES: [(&str, Kind); 30] = [
 
 /// The compiled grammars. Building them takes a moment; keep one.
 pub struct Grammars {
+    #[cfg(not(target_arch = "wasm32"))]
     configs: BTreeMap<&'static str, HighlightConfiguration>,
 }
 
+#[cfg(target_arch = "wasm32")]
+impl Default for Grammars {
+    fn default() -> Self {
+        Self {}
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 impl Default for Grammars {
     fn default() -> Self {
         let mut configs = BTreeMap::new();
@@ -194,13 +207,27 @@ impl Default for Grammars {
 impl Grammars {
     /// Whether `language` (a fence's first word, such as `rs` or `python`)
     /// has a grammar here.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn knows(&self, language: &str) -> bool {
         self.configs.contains_key(canonical(language))
+    }
+
+    /// Whether `language` has a grammar here: never, in a browser build.
+    #[cfg(target_arch = "wasm32")]
+    pub fn knows(&self, _language: &str) -> bool {
+        false
+    }
+
+    /// No classes: a browser build has no grammars.
+    #[cfg(target_arch = "wasm32")]
+    pub fn classes(&self, _language: &str, _text: &str) -> Vec<Class> {
+        vec![]
     }
 
     /// `text` split into ranges covering it in order, each with its kind;
     /// adjacent ranges of one kind are joined. Empty when the language is
     /// unknown, the text is over the bounds, or the grammar fails.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn classes(&self, language: &str, text: &str) -> Vec<Class> {
         if text.len() > MAX_BYTES || text.lines().any(|line| line.len() > MAX_LINE) {
             return vec![];
@@ -256,6 +283,7 @@ pub fn classes(language: &str, text: &str) -> Vec<Class> {
 }
 
 /// A fence's language name as the grammars know it.
+#[cfg(not(target_arch = "wasm32"))]
 fn canonical(language: &str) -> &str {
     match language {
         "rs" => "rust",
