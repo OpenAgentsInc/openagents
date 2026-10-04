@@ -95,7 +95,9 @@ cargo run -p verse --features imported-desktop --example verse_play -- --quest-g
 The variant is `ritual-quests.json`; `ritual-progression.json` supplies its two
 prerequisite-linked giver quests. For an authenticated chamber host, select the
 variant in the host configuration's `scene` field and copy the progression JSON
-object into its `progression` field. Use a separate state directory because the
+object into its `progression` field and `ritual-rewards.json` into its
+`rewards` field so defeated summoners credit the quest objectives. Use a
+separate state directory because the
 variant has a different content identity. The local preview shows the NPC;
 quest enrollment and turn-in use the authenticated remote client. Press F near
 a reachable giver to open authored dialogue, use Accept or Complete, and press

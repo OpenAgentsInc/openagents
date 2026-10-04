@@ -1,0 +1,32 @@
+{
+  "schema": "verse.giver-dialogue.capture.v1",
+  "source_parent": "a5bf796034de5811bbbea64dc3dbb397a9ca544a",
+  "source_sha256": "db304388f6a4ee50cdf452704c0d7324cbc3acce174f42de2c44466f95fb8109",
+  "scope": "Native offscreen procedural actor fixture using unchanged authored ritual entrance positions, signed Gateway JSON requests, real combat, replicated View inventory, markers and dialogue. Not a TLS transport run, OS interaction, dressed lair, or performance acceptance.",
+  "size": [
+    1920,
+    1080
+  ],
+  "checks": {
+    "focused_tests": 3,
+    "passed": 3,
+    "both_quests_completed": true,
+    "turn_in_retry_experience": 175,
+    "panel_opaque": true
+  },
+  "inspection": {
+    "offer.png": "Gold !, authored offer, Accept, objective 0/1. Text fits; no background nameplate bleed.",
+    "active.png": "Gray ?, active reminder, In progress, objective 0/1.",
+    "turn-in.png": "Gold ?, turn-in text, Complete, objective 1/1. Friendly green bar visible."
+  },
+  "artifacts": {
+    "offer.png": "bf276394b0d4c8755fda0758020bd904f89c23faf0f9060d554f517cf234dfc5",
+    "turn-in.png": "48bdc612d303cc563c9ed50c1fa857d59b9704e414d9c3a953c40c2f577fded9",
+    "active.png": "faa9ee249ac469e2d25ed70a286c1da0fbfc623bebac012729acf5d51c999228"
+  },
+  "remaining": [
+    "Full dressed entrance capture",
+    "Transport-complete authored chain evidence",
+    "Broader roadmap acceptance"
+  ]
+}
