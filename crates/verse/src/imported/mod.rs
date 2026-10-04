@@ -118,6 +118,10 @@ pub struct FrameTimings {
     pub prepare_ms: f64,
     pub encode_ms: f64,
     pub command_encode_ms: f64,
+    pub shadow_encode_ms: f64,
+    pub world_encode_ms: f64,
+    pub overlay_encode_ms: f64,
+    pub command_finish_ms: f64,
     pub queue_submit_ms: f64,
     pub gpu_wait_ms: f64,
     pub readback_copy_ms: f64,
@@ -1474,6 +1478,7 @@ impl Renderer {
                 Some(actor.shadow_bundles[layer].as_ref().unwrap())
             }));
         }
+        let shadows_encoded = Instant::now();
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Verse imported world"),
@@ -1531,6 +1536,7 @@ impl Renderer {
                 pass.execute_bundles(static_bundles.chain(actor_bundles));
             }
         }
+        let world_encoded = Instant::now();
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Verse imported names and dialogue"),
@@ -1550,6 +1556,7 @@ impl Renderer {
             pass.set_vertex_buffer(0, self.ui_buffer.slice(..));
             pass.draw(0..world.overlay().vertices().len() as u32, 0..1);
         }
+        let overlay_encoded = Instant::now();
         if capture {
             encoder.copy_texture_to_buffer(
                 wgpu::TexelCopyTextureInfo {
@@ -1569,6 +1576,7 @@ impl Renderer {
                 extent(self.width, self.height),
             );
         }
+        let finish_started = Instant::now();
         let commands = encoder.finish();
         let encoded = Instant::now();
         self.queue.submit([commands]);
@@ -1578,6 +1586,12 @@ impl Renderer {
                 prepare_ms: prepared.duration_since(started).as_secs_f64() * 1000.,
                 encode_ms: submitted.duration_since(prepared).as_secs_f64() * 1000.,
                 command_encode_ms: encoded.duration_since(prepared).as_secs_f64() * 1000.,
+                shadow_encode_ms: shadows_encoded.duration_since(prepared).as_secs_f64() * 1000.,
+                world_encode_ms: world_encoded.duration_since(shadows_encoded).as_secs_f64()
+                    * 1000.,
+                overlay_encode_ms: overlay_encoded.duration_since(world_encoded).as_secs_f64()
+                    * 1000.,
+                command_finish_ms: encoded.duration_since(finish_started).as_secs_f64() * 1000.,
                 queue_submit_ms: submitted.duration_since(encoded).as_secs_f64() * 1000.,
                 total_ms: started.elapsed().as_secs_f64() * 1000.,
                 instances: instances.len(),
@@ -1610,6 +1624,10 @@ impl Renderer {
             prepare_ms: prepared.duration_since(started).as_secs_f64() * 1000.,
             encode_ms: submitted.duration_since(prepared).as_secs_f64() * 1000.,
             command_encode_ms: encoded.duration_since(prepared).as_secs_f64() * 1000.,
+            shadow_encode_ms: shadows_encoded.duration_since(prepared).as_secs_f64() * 1000.,
+            world_encode_ms: world_encoded.duration_since(shadows_encoded).as_secs_f64() * 1000.,
+            overlay_encode_ms: overlay_encoded.duration_since(world_encoded).as_secs_f64() * 1000.,
+            command_finish_ms: encoded.duration_since(finish_started).as_secs_f64() * 1000.,
             queue_submit_ms: submitted.duration_since(encoded).as_secs_f64() * 1000.,
             gpu_wait_ms: waited.duration_since(submitted).as_secs_f64() * 1000.,
             readback_copy_ms: waited.elapsed().as_secs_f64() * 1000.,
