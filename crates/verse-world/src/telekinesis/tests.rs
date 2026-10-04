@@ -528,7 +528,9 @@ mod chamber {
             .iter()
             .find(|r| r.spell == "Falling")
             .expect("the dummy fell");
-        assert!(fall.text.contains("1d6"), "{}", fall.text);
+        // Lifted 6 m by the hand plus its spring's settle, it falls just
+        // over 20 feet from the arc's peak: 2d6.
+        assert!(fall.text.contains("2d6"), "{}", fall.text);
     }
 
     #[test]
