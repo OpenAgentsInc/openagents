@@ -304,3 +304,14 @@ name and image changed (`CODER_CHAT_SYNC` quoted). On the `new` tag,
 `/everglade` served the full-screen page and its CSS, and `/`, `/docs`,
 `/live`, `/stats`, `/api/stats`, the build files, and the pack answered 200
 before traffic moved. Rollback: `--to-revisions coder-web-570fe0ba18=100`.
+
+## 2026-10-04: coder-web-61053682b1
+
+`/everglade` carries the Universal Animation Library walk and run, the
+cultist-style hotbar with held climbing, roofs to land on, and the
+rebuilt pack `cf6abad272…` (61053682b1). Built from GitHub by the
+automation account and applied from the live spec with only the revision
+name and image changed (`CODER_CHAT_SYNC` quoted). On the `new` tag, `/`,
+`/everglade`, `/docs`, `/live`, `/stats`, `/api/stats`, and the new pack
+answered 200, and the served wasm pins the new pack, before traffic moved.
+Rollback: `--to-revisions coder-web-36fbc814b1=100`.
