@@ -103,19 +103,28 @@ case "$command" in
     [ "$root" = "$checkout" ] || { echo "follow runs from $checkout; use follow-on" >&2; exit 64; }
     mkdir "$base/follow.lock" 2>/dev/null || exit 0
     trap 'rmdir "$base/follow.lock"' EXIT
-    export CARGO_TARGET_DIR="${OA_DEV_HOST_TARGET:-$HOME/work/openagents-target-devhost}"
-    # rustup's cargo first, so the checkout's pinned toolchain builds it
-    # rather than another cargo earlier on the login PATH.
-    [ -d "$HOME/.cargo/bin" ] && export PATH="$HOME/.cargo/bin:$PATH"
     git -C "$root" fetch -q origin main || { note "fetch failed"; exit 1; }
     target="$(git -C "$root" rev-parse --short=10 origin/main)"
     installed="$(basename "$(readlink "$base/current" 2>/dev/null || echo none)")"
     [ "$target" = "$installed" ] && exit 0
     [ "$(cat "$base/follow.failed" 2>/dev/null)" = "$target" ] && exit 0
     git -C "$root" checkout -q --detach --force origin/main
+    # The checkout now holds main's copy of this script; it builds and
+    # installs, and releases the lock.
+    trap - EXIT
+    exec /bin/bash "$root/scripts/desktop/dev-host.sh" follow-build ;;
+  follow-build)
+    # The second half of a follow pass, run by `follow` with the lock held.
+    trap 'rmdir "$base/follow.lock"' EXIT
+    export CARGO_TARGET_DIR="${OA_DEV_HOST_TARGET:-$HOME/work/openagents-target-devhost}"
+    # rustup's cargo first, and run from the checkout, so its pinned
+    # toolchain builds it rather than another cargo on the login PATH.
+    [ -d "$HOME/.cargo/bin" ] && export PATH="$HOME/.cargo/bin:$PATH"
+    target="$(git -C "$root" rev-parse --short=10 HEAD)"
+    installed="$(basename "$(readlink "$base/current" 2>/dev/null || echo none)")"
     note "building $target (installed: $installed)"
-    if ! nice -n 10 cargo build -q --release --manifest-path "$root/Cargo.toml" \
-        -p coder --bin coder -p microcoder --bin microcoder >> "$follow_log" 2>&1; then
+    if ! (cd "$root" && nice -n 10 cargo build -q --release \
+        -p coder --bin coder -p microcoder --bin microcoder) >> "$follow_log" 2>&1; then
       echo "$target" > "$base/follow.failed"
       note "build of $target failed; staying on $installed"
       exit 1
