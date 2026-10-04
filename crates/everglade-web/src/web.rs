@@ -125,8 +125,6 @@ struct Page {
     canvas: HtmlCanvasElement,
     runtime: WorldRuntime,
     renderer: Renderer,
-    hud: zones::hud::Hud,
-    hud_atlas: Option<Atlas>,
     input: Input,
     rendered_revision: u64,
     /// Device pixels per CSS pixel.
@@ -221,8 +219,6 @@ async fn run() -> Result<(), String> {
         rendered_revision: runtime.zone_revision,
         runtime,
         renderer,
-        hud: zones::hud::Hud::default(),
-        hud_atlas: atlas.layout_at_scale(scale),
         input: Input::default(),
         scale,
         last: None,
@@ -346,16 +342,9 @@ impl Page {
         let aspect = self.renderer.aspect();
         let view = self.runtime.view(aspect);
         let dynamic = self.runtime.dynamic_mesh();
-        let ui = match &self.hud_atlas {
-            Some(atlas) => {
-                let logical = size.map(|v| v / self.scale);
-                let frame = self
-                    .hud
-                    .snapshot(logical, &self.runtime.zone_snapshot(aspect), true);
-                self.hud.draw(atlas, &frame, self.scale)
-            }
-            None => verse::ui::UiBatch::default(),
-        };
+        // No zone panel over the world (owner, 2026-10-04): the page is the
+        // glade alone, and its caption and controls live outside the canvas.
+        let ui = verse::ui::UiBatch::default();
         if let DrawStatus::Error(error) = self.renderer.draw(view, &dynamic, &ui) {
             self.fail(&error);
         }
