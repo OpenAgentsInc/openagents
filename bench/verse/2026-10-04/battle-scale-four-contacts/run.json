@@ -1,0 +1,11 @@
+{
+  "schema": "verse.battle.scale.run.v1",
+  "acceptance": "failed",
+  "compiled_revision": "ed2188453c",
+  "failure": "Host stops after 1273 ticks on actor 9 recovery among four overlapping NPC capsules.",
+  "limits": [
+    "No completed native profile or headless receipt; renderer improvement remains unproven.",
+    "Proxy records twelve connection resets near 41.94\u201341.99 seconds, coinciding with host termination.",
+    "Recorded host log retains exact starting position and contacted capsule geometry for reproduction."
+  ]
+}
