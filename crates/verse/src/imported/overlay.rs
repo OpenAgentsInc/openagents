@@ -760,6 +760,128 @@ pub fn owned_hud(
     }
     Ok(())
 }
+fn shared_target_frame(
+    ui: &mut UiBatch,
+    atlas: &Atlas,
+    target: &verse_engine::director::ActorFrame,
+    height: f32,
+) {
+    let s = height / 768.;
+    let small = atlas.font("small").layout_at_scale(1.0 / s).unwrap();
+    let numbers = atlas.font("numbers").layout_at_scale(1.0 / s).unwrap();
+    let image =
+        |ui: &mut UiBatch,
+         name: &str,
+         x: f32,
+         y: f32,
+         w: f32,
+         h: f32,
+         uv: [f32; 4],
+         color: [f32; 4]| ui.image_region(atlas, name, [x, y, w * s, h * s], uv, color);
+    let health = target.health as f32 / target.actor.health as f32;
+    ui.rect(
+        atlas,
+        257.0 * s,
+        26.0 * s,
+        119.0 * s,
+        41.0 * s,
+        [0.0, 0.0, 0.0, 0.5],
+    );
+    image(
+        ui,
+        "unit-name",
+        257.0 * s,
+        26.0 * s,
+        119.0,
+        19.0,
+        [0.0, 1.0, 0.0, 1.0],
+        [1.0, 0.0, 0.0, 1.0],
+    );
+    image(
+        ui,
+        &format!("portrait-{}", target.actor.model),
+        376.0 * s,
+        16.0 * s,
+        64.0,
+        64.0,
+        [0.0, 1.0, 0.0, 1.0],
+        [1.0; 4],
+    );
+    status(
+        ui,
+        atlas,
+        [257.0 * s, 45.0 * s, 119.0 * s, 12.0 * s],
+        health,
+        health_color(health),
+    );
+    image(
+        ui,
+        if target.actor.model == "claude" {
+            "elite-frame"
+        } else {
+            "unit-frame"
+        },
+        250.0 * s,
+        4.0 * s,
+        232.0,
+        100.0,
+        [0.09375, 1.0, 0.0, 0.78125],
+        [1.0; 4],
+    );
+    outlined(
+        ui,
+        &small,
+        316.0 * s - small.measure(&target.actor.name) * 0.5,
+        30.0 * s,
+        &target.actor.name,
+        [1.0, 0.82, 0.0, 1.0],
+    );
+    let hp = format!("{} / {}", target.health, target.actor.health);
+    outlined(
+        ui,
+        &numbers,
+        316.0 * s - numbers.measure(&hp) * 0.5,
+        44.0 * s,
+        &hp,
+        [1.0; 4],
+    );
+    image(
+        ui,
+        "unit-skull",
+        421.0 * s,
+        62.0 * s,
+        16.0,
+        16.0,
+        [0.0, 1.0, 0.0, 1.0],
+        [1.0; 4],
+    );
+}
+/// Draws the same target frame for an admitted exact life; dead targets are hidden.
+pub fn target_hud(
+    ui: &mut UiBatch,
+    atlas: &Atlas,
+    frame: &Frame,
+    life: verse_engine::core::LifeId,
+    width: f32,
+    height: f32,
+) -> Result<(), String> {
+    if !width.is_finite() || !height.is_finite() || width < 1. || height < 1. {
+        return Err("Invalid target HUD viewport".into());
+    }
+    let target = frame
+        .actors
+        .iter()
+        .find(|p| p.life == Some(life))
+        .ok_or("Target HUD life is stale")?;
+    if !target.visible || target.health == 0 {
+        return Ok(());
+    }
+    if target.actor.health == 0 || target.health > target.actor.health {
+        return Err("Invalid target HUD health".into());
+    }
+    shared_target_frame(ui, atlas, target, height);
+    Ok(())
+}
 pub fn action_bar(
     ui: &mut UiBatch,
     atlas: &Atlas,
@@ -895,86 +1017,11 @@ pub fn action_bar(
         .frame()
         .actors
         .iter()
-        .find(|a| a.actor.id == game.selected)
+        .find(|p| p.actor.id == game.selected && p.visible && p.health > 0)
     {
-        let health = target.health as f32 / target.actor.health as f32;
-        ui.rect(
-            atlas,
-            257.0 * s,
-            26.0 * s,
-            119.0 * s,
-            41.0 * s,
-            [0.0, 0.0, 0.0, 0.5],
-        );
-        image(
-            ui,
-            "unit-name",
-            257.0 * s,
-            26.0 * s,
-            119.0,
-            19.0,
-            [0.0, 1.0, 0.0, 1.0],
-            [1.0, 0.0, 0.0, 1.0],
-        );
-        image(
-            ui,
-            &format!("portrait-{}", target.actor.model),
-            376.0 * s,
-            16.0 * s,
-            64.0,
-            64.0,
-            [0.0, 1.0, 0.0, 1.0],
-            [1.0; 4],
-        );
-        status(
-            ui,
-            atlas,
-            [257.0 * s, 45.0 * s, 119.0 * s, 12.0 * s],
-            health,
-            health_color(health),
-        );
-        image(
-            ui,
-            if target.actor.model == "claude" {
-                "elite-frame"
-            } else {
-                "unit-frame"
-            },
-            250.0 * s,
-            4.0 * s,
-            232.0,
-            100.0,
-            [0.09375, 1.0, 0.0, 0.78125],
-            [1.0; 4],
-        );
-        outlined(
-            ui,
-            &small,
-            316.0 * s - small.measure(&target.actor.name) * 0.5,
-            30.0 * s,
-            &target.actor.name,
-            [1.0, 0.82, 0.0, 1.0],
-        );
-        let hp = format!("{} / {}", target.health, target.actor.health);
-        outlined(
-            ui,
-            &numbers,
-            316.0 * s - numbers.measure(&hp) * 0.5,
-            44.0 * s,
-            &hp,
-            [1.0; 4],
-        );
-        image(
-            ui,
-            "unit-skull",
-            421.0 * s,
-            62.0 * s,
-            16.0,
-            16.0,
-            [0.0, 1.0, 0.0, 1.0],
-            [1.0; 4],
-        );
+        shared_target_frame(ui, atlas, target, height);
     }
+
     if let Some(encounter) = &game.encounter {
         let label = if encounter.ended.is_some() {
             if snapshot.player.hp == 0 {
@@ -1079,6 +1126,63 @@ pub fn action_bar(
 #[cfg(test)]
 mod action_tests {
     use super::*;
+    #[test]
+    fn exact_target_frame_reuses_portraits_health_and_hides_dead_or_stale_lives() {
+        let scene = verse_engine::director::Scene::from_json(include_bytes!(
+            "../../../../assets/verse/original/ritual.json"
+        ))
+        .unwrap();
+        let mut game = verse_world::play::Game::new(scene).unwrap();
+        game.time = game.scene.cut_at;
+        game.tick(0., [0.; 2]).unwrap();
+        let mut frame = game.frame();
+        let index = frame
+            .actors
+            .iter()
+            .position(|p| p.actor.model == "claude")
+            .unwrap();
+        let life = frame.actors[index].life.unwrap();
+        let atlas = super::super::original::atlas().unwrap();
+        for height in [720., 1080.] {
+            frame.actors[index].health = 150000;
+            let mut shared = UiBatch::default();
+            shared_target_frame(&mut shared, &atlas, &frame.actors[index], height);
+            let mut remote = UiBatch::default();
+            target_hud(&mut remote, &atlas, &frame, life, 1920., height).unwrap();
+            assert!(!remote.vertices.is_empty());
+            assert_eq!(
+                format!("{:?}", shared.vertices),
+                format!("{:?}", remote.vertices)
+            );
+            assert!(
+                remote
+                    .vertices
+                    .iter()
+                    .all(|v| v.pos.iter().all(|p| p.is_finite()))
+            );
+            frame.actors[index].health = 0;
+            let mut dead = UiBatch::default();
+            target_hud(&mut dead, &atlas, &frame, life, 1920., height).unwrap();
+            assert!(dead.vertices.is_empty());
+            let mut stale = UiBatch::default();
+            assert!(
+                target_hud(
+                    &mut stale,
+                    &atlas,
+                    &frame,
+                    verse_engine::core::LifeId {
+                        generation: life.generation + 1,
+                        ..life
+                    },
+                    1920.,
+                    height
+                )
+                .is_err()
+            );
+            assert!(stale.vertices.is_empty());
+        }
+    }
+
     #[test]
     fn owned_hud_uses_shared_icons_resources_cast_and_respawn_geometry() {
         let scene = verse_engine::director::Scene::from_json(include_bytes!(

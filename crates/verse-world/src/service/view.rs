@@ -35,6 +35,7 @@ impl Camera {
 /// Owns presentation history only. Initialize progress from the worker's cursor.
 pub struct View {
     instance: u64,
+    target: Option<verse_engine::core::LifeId>,
     replica: Buffer,
     events: Vec<Event>,
     after: u64,
@@ -47,6 +48,7 @@ impl View {
     pub fn new(instance: u64, displacement: f32, after: u64) -> Result<Self, String> {
         Ok(Self {
             instance,
+            target: None,
             replica: Buffer::new(instance, displacement)?,
             events: Vec::new(),
             after,
@@ -55,6 +57,57 @@ impl View {
             handoff: None,
             gap: None,
         })
+    }
+    fn targetable(&self, life: verse_engine::core::LifeId) -> bool {
+        !self
+            .events
+            .iter()
+            .any(|e| e.actor == Some(life) && matches!(e.kind, Kind::Death))
+            && self.replica.latest().is_some_and(|s| {
+                s.presentation.actors.iter().any(|p| {
+                    verse_engine::core::LifeId::from(p.life) == life
+                        && p.visible
+                        && p.health > 0
+                        && p.actor.nameplate
+                        && p.actor.model != "adventurer"
+                })
+            })
+    }
+    pub fn target(&self) -> Option<verse_engine::core::LifeId> {
+        self.target
+    }
+    /// Retains selection locally; casting still passes through host command admission.
+    pub fn select_target(
+        &mut self,
+        life: Option<verse_engine::core::LifeId>,
+    ) -> Result<(), String> {
+        if life.is_some_and(|l| l.instance != self.instance || !self.targetable(l)) {
+            return Err("Remote target life is unavailable".into());
+        }
+        self.target = life;
+        Ok(())
+    }
+    pub fn cycle_target(&mut self) -> Option<verse_engine::core::LifeId> {
+        let mut lives: Vec<verse_engine::core::LifeId> = self
+            .replica
+            .latest()
+            .into_iter()
+            .flat_map(|s| &s.presentation.actors)
+            .filter(|p| self.targetable(p.life.into()))
+            .map(|p| p.life.into())
+            .collect();
+        lives.sort_by_key(|life| life.actor);
+        self.target = if lives.is_empty() {
+            None
+        } else {
+            Some(
+                lives[self
+                    .target
+                    .and_then(|life| lives.iter().position(|l| *l == life))
+                    .map_or(0, |i| (i + 1) % lives.len())],
+            )
+        };
+        self.target
     }
     pub fn replica(&self) -> &Buffer {
         &self.replica
@@ -111,6 +164,9 @@ impl View {
             _ => false,
         };
         self.replica.push(response)?;
+        if self.target.is_some_and(|life| !self.targetable(life)) {
+            self.target = None;
+        }
         if reset {
             self.events.clear();
             self.handoff = None;
@@ -193,6 +249,9 @@ impl View {
         {
             if matches!(event.kind, Kind::CameraHandoff) {
                 self.handoff = Some(event.time);
+            }
+            if matches!(event.kind, Kind::Death) && event.actor == self.target {
+                self.target = None;
             }
             self.events.push(event.clone());
         }
@@ -595,5 +654,91 @@ mod tests {
         state(&mut r).presentation.time = time + 1.4;
         view.push_snapshot(&r).unwrap();
         assert!(view.damage_numbers(1.).unwrap().is_empty());
+    }
+    #[test]
+    fn exact_life_selection_cycles_stably_and_clears_on_committed_death_or_respawn() {
+        let mut r = response(10);
+        let mut view = View::new(130, 5., 0).unwrap();
+        assert!(view.cycle_target().is_none());
+        view.push_snapshot(&r).unwrap();
+        let first = view.cycle_target().unwrap();
+        let second = view.cycle_target().unwrap();
+        assert!(second.actor > first.actor);
+        view.select_target(Some(first)).unwrap();
+        let player = state(&mut r)
+            .presentation
+            .actors
+            .iter()
+            .find(|p| p.actor.model == "adventurer")
+            .unwrap()
+            .life
+            .into();
+        for bad in [
+            player,
+            verse_engine::core::LifeId {
+                instance: 131,
+                ..first
+            },
+            verse_engine::core::LifeId {
+                generation: first.generation + 1,
+                ..first
+            },
+        ] {
+            assert!(view.select_target(Some(bad)).is_err());
+            assert_eq!(view.target(), Some(first));
+        }
+        let mut invalid = r.clone();
+        invalid.instance = 131;
+        assert!(view.push_snapshot(&invalid).is_err());
+        assert_eq!(view.target(), Some(first));
+        let time = state(&mut r).presentation.time;
+        let death = Event {
+            instance: 130,
+            serial: 1,
+            tick: 10,
+            time,
+            actor: Some(first),
+            kind: Kind::Death,
+        };
+        view.push_events(&Delivery {
+            events: vec![death],
+            gap: None,
+        })
+        .unwrap();
+        assert!(view.target().is_none());
+        assert_ne!(view.cycle_target(), Some(first));
+        assert!(view.select_target(Some(first)).is_err());
+        view.select_target(Some(second)).unwrap();
+        r.tick = 11;
+        let s = state(&mut r);
+        for p in &mut s.presentation.actors {
+            if p.life.actor == second.actor {
+                p.life.generation += 1;
+            }
+        }
+        for b in &mut s.actors {
+            if b.life.actor == second.actor {
+                b.life.generation += 1;
+            }
+        }
+        view.push_snapshot(&r).unwrap();
+        assert!(view.target().is_none());
+        assert!(view.select_target(Some(second)).is_err());
+        let fresh = verse_engine::core::LifeId {
+            generation: second.generation + 1,
+            ..second
+        };
+        view.select_target(Some(fresh)).unwrap();
+        r.tick = 12;
+        state(&mut r)
+            .presentation
+            .actors
+            .iter_mut()
+            .find(|p| p.life.actor == fresh.actor)
+            .unwrap()
+            .visible = false;
+        view.push_snapshot(&r).unwrap();
+        assert!(view.target().is_none());
+        view.select_target(None).unwrap();
     }
 }

@@ -254,6 +254,8 @@ The [inventory window profile](../../../bench/verse/2026-10-03/inventory-window/
 
 [#10513](https://github.com/OpenAgentsInc/openagents/issues/10513) draws owned remote HUD values through shared native helpers. Local/remote play share the ten-slot icon row, portrait, health/mana bars and numbers, cast progress, and death/respawn button. Rendering validates the owned life against the frame; cinematic hiding and owned pointer tests exclude hidden catalog slots and gate death controls. Tests cover identical row vertices, original icons, finite geometry at two UI sizes, cast/respawn colors, hit regions, and atomic foreign-life refusal. Remote window/transport mounting, target HUD, catalog shared-caster adapters, audio/props/blockers, prediction, persistence, and full acceptance remain.
 
+[#10514](https://github.com/OpenAgentsInc/openagents/issues/10514) adds exact-life remote target selection and shared native target frames. Stable cycling includes live visible hostile poses; friendly, foreign, and stale lives are refused. Death events clear targets before the next snapshot, while dead/hidden poses and new generations clear snapshot-based selection. Invalid snapshot admission preserves the prior target. Native local/remote portrait, name, and health drawing share one helper; dead targets are hidden and stale frame lives are refused. Tests cover cycling, lifecycle/event fences, atomic refusal, and matching target frame vertices at two UI sizes. Native mounting, cinematic camera/audio/props/blockers, catalog adapters, prediction, persistence, and full acceptance remain.
+
 ## Reuse inventory
 
 Review baseline: OpenAgents `843c92dd7e`. The entries below were checked against

@@ -166,6 +166,12 @@ portrait/resources, cast bar, and respawn button. Owned hit tests exclude hidden
 catalog slots and gate death/respawn controls. Remote window mounting, target
 HUD, and catalog shared-caster adapters remain.
 
+The remote view retains an exact-life target and cycles live hostile poses in
+stable actor order. Death events, hidden/dead snapshots, and new generations
+clear selection; friendly/foreign/stale lives are refused. Native `target_hud`
+shares local portrait/name/health drawing, hides dead targets, and rejects stale
+frame lives before drawing. Remote mounting and catalog adapters remain.
+
 Revocation leaves an uncontrolled actor in the world; actor retirement and capacity reclamation remain lifecycle work.
 Transactional saves, multiplayer
 replication, and authoring tools remain on the
