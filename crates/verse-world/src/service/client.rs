@@ -28,6 +28,7 @@ pub struct Client {
     next_request: u64,
     logged_in: bool,
     player: bool,
+    inventory_revision: u64,
 }
 impl Client {
     pub async fn connect(
@@ -87,6 +88,7 @@ impl Client {
             next_request: 1,
             logged_in: false,
             player: false,
+            inventory_revision: 0,
         };
         let response = client
             .request(Body::Authenticate {
@@ -140,12 +142,22 @@ impl Client {
         .map_err(|_| "Chamber request timed out")??;
         self.validate(request_id, &body, &response)?;
         self.tick = response.tick;
+        if let Reply::Inventory { inventory } = &response.body {
+            self.inventory_revision = inventory.revision;
+        }
         let lost_control = self.player && response.control.is_none();
         self.control = response.control.clone();
         if !lost_control {
             self.stream = Some(stream);
         }
         Ok(response)
+    }
+    pub async fn inventory(&mut self) -> Result<super::wire::Inventory, String> {
+        match self.request(Body::Inventory {}).await?.body {
+            Reply::Inventory { inventory } => Ok(inventory),
+            Reply::Refused { message, .. } => Err(message),
+            _ => Err("Unexpected inventory response".into()),
+        }
     }
     pub async fn command(&mut self, intent: Intent<Ability>) -> Result<Response, String> {
         let control = self.control().ok_or("Client has no admitted adventurer")?;
@@ -259,6 +271,13 @@ impl Client {
             (Reply::Snapshot { state }, Body::Snapshot {}) => {
                 state.validate_control(self.instance, &r.control)
             }
+            (Reply::Inventory { inventory }, Body::Inventory {}) => {
+                inventory.validate(&r.control)?;
+                if inventory.revision < self.inventory_revision {
+                    return Err("Inventory transaction revision regressed".into());
+                }
+                Ok(())
+            }
             (Reply::Events { page }, Body::Events { after, limit }) => {
                 page.validate(self.instance, r.tick, *after, *limit)
             }
@@ -278,6 +297,262 @@ mod tests {
     use tokio_rustls::TlsAcceptor;
     fn name() -> ServerName<'static> {
         ServerName::try_from("localhost").unwrap()
+    }
+
+    #[tokio::test]
+    async fn tls_combat_rewards_are_owned_and_survive_durable_host_restart() {
+        use crate::service::{
+            net,
+            persistence::Store,
+            rewards::{Entry, Policy},
+        };
+        use std::time::Duration;
+        let keys = [key(61), key(62), key(63)];
+        let mut g = gateway(&keys)
+            .with_content([7; 32])
+            .unwrap()
+            .with_rewards(vec![Policy {
+                target: 2,
+                experience: 45,
+                items: vec![Entry { id: 1, count: 1 }],
+                quests: vec![Entry { id: 1, count: 1 }],
+            }])
+            .unwrap();
+        let source = g.game().ids[&2];
+        let hp = g
+            .game()
+            .snapshot()
+            .actors
+            .iter()
+            .find(|a| a.id == source)
+            .unwrap()
+            .hp;
+        g.chamber
+            .game
+            .simulation
+            .bow_impact(source, hp - 1)
+            .unwrap();
+        g.tick(0.).unwrap();
+        let target = g.game().actor_life(2).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("state");
+        let store = Store::open(&root, [7; 32], 120).unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (server_tls, connector) = tls();
+        let server = tokio::spawn(net::serve_durable(
+            listener,
+            server_tls.clone(),
+            g,
+            store,
+            std::future::pending::<()>(),
+        ));
+        let mut a = Client::connect_with_content(
+            address,
+            name(),
+            connector.config().clone(),
+            120,
+            Some([7; 32]),
+            &keys[0],
+        )
+        .await
+        .unwrap();
+        let mut b = Client::connect_with_content(
+            address,
+            name(),
+            connector.config().clone(),
+            120,
+            Some([7; 32]),
+            &keys[1],
+        )
+        .await
+        .unwrap();
+        let mut spectator = Client::connect_with_content(
+            address,
+            name(),
+            connector.config().clone(),
+            120,
+            Some([7; 32]),
+            &keys[2],
+        )
+        .await
+        .unwrap();
+        assert_eq!(a.inventory().await.unwrap().experience, 0);
+        assert!(spectator.inventory().await.is_err());
+        assert!(spectator.connected());
+        a.snapshot().await.unwrap();
+        assert!(matches!(
+            a.command(Intent::Cast {
+                ability: Ability::MagicMissile,
+                target: Some(target),
+                aim: [0., 0., 1.]
+            })
+            .await
+            .unwrap()
+            .body,
+            Reply::Accepted
+        ));
+        let left = tokio::time::timeout(Duration::from_secs(4), async {
+            loop {
+                let inv = a.inventory().await.unwrap();
+                if inv.experience == 45 {
+                    break inv;
+                }
+                tokio::time::sleep(Duration::from_millis(33)).await;
+            }
+        })
+        .await
+        .unwrap();
+        let right = b.inventory().await.unwrap();
+        assert_eq!(right.experience, 45);
+        assert_ne!(left.life.actor, right.life.actor);
+        assert_eq!(left.items, vec![Entry { id: 1, count: 1 }]);
+        assert_eq!(left.quests, vec![Entry { id: 1, count: 1 }]);
+        assert_eq!(left.revision, 2);
+        assert_eq!(right.revision, 2);
+        server.abort();
+        assert!(matches!(server.await,Err(error) if error.is_cancelled()));
+        let mut store = Store::open(&root, [7; 32], 120).unwrap();
+        let g = store.recover().unwrap();
+        assert_eq!(g.character_rewards(left.life.actor).unwrap().experience, 45);
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (stop, stopping) = oneshot::channel();
+        let server = tokio::spawn(net::serve_durable(listener, server_tls, g, store, async {
+            let _ = stopping.await;
+        }));
+        let mut recovered = Client::connect_with_content(
+            address,
+            name(),
+            connector.config().clone(),
+            120,
+            Some([7; 32]),
+            &keys[0],
+        )
+        .await
+        .unwrap();
+        let after = recovered.inventory().await.unwrap();
+        assert_eq!(after, left);
+        tokio::time::sleep(Duration::from_millis(70)).await;
+        assert_eq!(recovered.inventory().await.unwrap(), after);
+        recovered.close().await.unwrap();
+        stop.send(()).unwrap();
+        assert!(server.await.unwrap().failure.is_none());
+        println!(
+            "VERSE_COMBAT_REWARDS {}",
+            serde_json::json!({
+                "schema":"verse.combat.rewards.fixture.v1","wire_version":VERSION,"instance":120,
+                "ability":"magic_missile","target":target,"target_fixture_health":1,
+                "primary":left,"secondary":right,"recovered_primary":after,
+                "spectator_inventory_refused":true,"restart":"aborted_host_task",
+                "reward_repeat_after_restart":false
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn reward_overflow_stops_durable_host_without_saving_partial_death() {
+        use crate::service::{
+            net,
+            persistence::Store,
+            rewards::{Policy, Transaction},
+        };
+        let keys = [key(64), key(65), key(66)];
+        let mut g = gateway(&keys)
+            .with_content([7; 32])
+            .unwrap()
+            .with_rewards(vec![Policy {
+                target: 2,
+                experience: 45,
+                items: vec![],
+                quests: vec![],
+            }])
+            .unwrap();
+        let actor = g.game().player_life().actor;
+        g.grant_reward(Transaction {
+            instance: 120,
+            actor,
+            source: [90; 32],
+            experience: u64::MAX,
+            items: vec![],
+            quests: vec![],
+        })
+        .unwrap();
+        let source = g.game().ids[&2];
+        let hp = g
+            .game()
+            .snapshot()
+            .actors
+            .iter()
+            .find(|a| a.id == source)
+            .unwrap()
+            .hp;
+        g.chamber
+            .game
+            .simulation
+            .bow_impact(source, hp - 1)
+            .unwrap();
+        g.tick(0.).unwrap();
+        let target = g.game().actor_life(2).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("state");
+        let store = Store::open(&root, [7; 32], 120).unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (server_tls, connector) = tls();
+        let server = tokio::spawn(net::serve_durable(
+            listener,
+            server_tls,
+            g,
+            store,
+            std::future::pending::<()>(),
+        ));
+        let mut a = Client::connect_with_content(
+            address,
+            name(),
+            connector.config().clone(),
+            120,
+            Some([7; 32]),
+            &keys[0],
+        )
+        .await
+        .unwrap();
+        a.snapshot().await.unwrap();
+        assert!(matches!(
+            a.command(Intent::Cast {
+                ability: Ability::MagicMissile,
+                target: Some(target),
+                aim: [0., 0., 1.]
+            })
+            .await
+            .unwrap()
+            .body,
+            Reply::Accepted
+        ));
+        let exit = tokio::time::timeout(std::time::Duration::from_secs(4), server)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            exit.failure.as_deref(),
+            Some("Character experience exceeded")
+        );
+        drop(exit);
+        let mut store = Store::open(&root, [7; 32], 120).unwrap();
+        let recovered = store.recover().unwrap();
+        assert_eq!(
+            recovered.character_rewards(actor).unwrap().experience,
+            u64::MAX
+        );
+        let npc = recovered
+            .game()
+            .snapshot()
+            .actors
+            .into_iter()
+            .find(|a| a.id == source)
+            .unwrap();
+        assert!(npc.alive && npc.hp > 0);
+        assert_eq!(recovered.chamber.rewards.revision(), 1);
     }
 
     #[tokio::test]
@@ -574,6 +849,7 @@ mod tests {
             next_request: 2,
             logged_in: true,
             player: true,
+            inventory_revision: 0,
         };
         let response = Response {
             version: VERSION,

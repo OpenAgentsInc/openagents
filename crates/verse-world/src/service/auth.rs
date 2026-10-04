@@ -142,6 +142,24 @@ impl Gateway {
     pub fn character_rewards(&self, actor: u64) -> Option<&super::rewards::Character> {
         self.chamber.character_rewards(actor)
     }
+    /// Fixes the cooperative reward policy before issuing connection challenges.
+    pub fn with_rewards(mut self, policies: Vec<super::rewards::Policy>) -> Result<Self, String> {
+        if self.next_connection != 1 || !self.chamber.reward_policy.is_empty() {
+            return Err("Combat reward policy is already bound".into());
+        }
+        self.chamber.configure_rewards(policies)?;
+        Ok(self)
+    }
+    pub fn reward_policy(&self) -> &[super::rewards::Policy] {
+        &self.chamber.reward_policy
+    }
+    pub fn inventory(
+        &self,
+        id: ConnectionId,
+    ) -> Result<(LifeId, u64, super::rewards::Character), String> {
+        let b = self.binding(id)?;
+        self.chamber.inventory(b.principal, b.session)
+    }
     fn clock(&mut self, now_ms: u64) -> Result<(), String> {
         if now_ms < self.last_now {
             return Err("Authentication clock moved backward".into());

@@ -315,6 +315,21 @@ limit failures leave every field unchanged. Call `Store::commit` before
 acknowledging a host-created reward. Version-two chamber saves replay the retained
 transactions; version-one saves upgrade with an empty ledger. Instance reset
 retains rewards and retry identities. Receipts are never evicted: after 4,096
-transactions, new grants are refused. Authored combat/quest reward policies,
-client inventory presentation, item spending/equipment, and progression rules
-remain.
+transactions, new grants are refused. Host JSON accepts an optional sorted `rewards` array of NPC targets and grants,
+for example `[{"target":2,"experience":45,"items":[{"id":1,"count":1}],"quests":[{"id":1,"count":1}]}]`.
+The cooperative version-one policy grants every enrolled adventurer, including
+disconnected or dead party members, once per defeated NPC life. Spectators receive
+none. Respawns and instance resets create new NPC life generations; saved source
+IDs and the event cursor prevent duplicate rewards after recovery. Changed reward
+policies are refused on recovery. With no configured rewards, combat grants none.
+An authority or storage failure stops the host and retains its previous durable
+checkpoint, including when an entire cooperative reward batch cannot fit.
+
+Wire version ten adds an authenticated `inventory` read. The connection determines
+the character; request bodies contain no actor or grant amounts. Players can read
+their experience, bounded item stacks, and quest counters while dead. Spectators
+are refused. `service::client::Client::inventory` validates the owned life, counts,
+and nonregressing transaction revision. The [combat reward receipt](../../bench/verse/2026-10-04/combat-rewards/run.json)
+retains real loopback TLS spell/reward/restart assertions and their synthetic
+fixture limits. Native inventory presentation, item spending/equipment, quest
+completion, and progression rules remain.

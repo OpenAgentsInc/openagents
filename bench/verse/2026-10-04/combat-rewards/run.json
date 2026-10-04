@@ -1,0 +1,125 @@
+{
+  "schema": "verse.combat.rewards.acceptance.v1",
+  "date": "2026-10-04",
+  "issue": 10532,
+  "source_sha256": {
+    "crates/verse-world/src/service.rs": "bf232fb7891fd86c130078410f5d2e6cb76a7696cc2cf52e312120cd59a3fe73",
+    "crates/verse-world/src/service/auth.rs": "55d6e5d39c3d2ce10b4c057b5c6f77c29373ba75ebe224ff7b5cd78b37ff78cb",
+    "crates/verse-world/src/service/client.rs": "b51f853e775143279b521dbca80d41c673437bdab7d0f817a5563c463dab234a",
+    "crates/verse-world/src/service/host.rs": "c4968e232aa490af8bcb1c483791030644f6e071f4906fa2dae76115f1ab2860",
+    "crates/verse-world/src/service/net.rs": "b08a9a69cab71a0425fa0ae33534de51d6e720127dfadd48e0cbb6635e74f841",
+    "crates/verse-world/src/service/rewards.rs": "7b044a7a273005f591702467d541b4bc8fba833c284180ae446a1e5cc7590a01",
+    "crates/verse-world/src/service/save.rs": "7e3b453d052b2b83109c176ca087612c3d0680da0a3b356dc94ac6e09821827a",
+    "crates/verse-world/src/service/wire.rs": "b3f44222af6afc2d2e3afd29e132413d96ade3a8cd1f8c24ce0a235e8b1994f7"
+  },
+  "fixture": {
+    "ability": "magic_missile",
+    "instance": 120,
+    "primary": {
+      "experience": 45,
+      "items": [
+        {
+          "count": 1,
+          "id": 1
+        }
+      ],
+      "life": {
+        "actor": 14,
+        "generation": 0,
+        "instance": 120
+      },
+      "quests": [
+        {
+          "count": 1,
+          "id": 1
+        }
+      ],
+      "revision": 2
+    },
+    "recovered_primary": {
+      "experience": 45,
+      "items": [
+        {
+          "count": 1,
+          "id": 1
+        }
+      ],
+      "life": {
+        "actor": 14,
+        "generation": 0,
+        "instance": 120
+      },
+      "quests": [
+        {
+          "count": 1,
+          "id": 1
+        }
+      ],
+      "revision": 2
+    },
+    "restart": "aborted_host_task",
+    "reward_repeat_after_restart": false,
+    "schema": "verse.combat.rewards.fixture.v1",
+    "secondary": {
+      "experience": 45,
+      "items": [
+        {
+          "count": 1,
+          "id": 1
+        }
+      ],
+      "life": {
+        "actor": 15,
+        "generation": 0,
+        "instance": 120
+      },
+      "quests": [
+        {
+          "count": 1,
+          "id": 1
+        }
+      ],
+      "revision": 2
+    },
+    "spectator_inventory_refused": true,
+    "target": {
+      "actor": 2,
+      "generation": 0,
+      "instance": 120
+    },
+    "target_fixture_health": 1,
+    "wire_version": 10
+  },
+  "verification": [
+    {
+      "command": "cargo fmt -p verse-world",
+      "result": "passed"
+    },
+    {
+      "command": "cargo test -p verse-world --features service-net -- --test-threads=1 --nocapture",
+      "passed": 291,
+      "failed": 0
+    },
+    {
+      "command": "cargo test -p verse --no-default-features --features remote-chamber,imported-desktop --example verse_host",
+      "passed": 2,
+      "failed": 0
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "additional_checks": [
+    "NPC respawn and instance reset grant new generations without duplicating prior rewards",
+    "Disconnected enrolled players retain cooperative eligibility; spectators cannot read player inventories",
+    "Cooperative batch overflow changes no character or receipt; durable host retains prior world checkpoint on failure",
+    "Changed saved policies, invalid NPC targets, malformed inventory counts and foreign life bindings are refused"
+  ],
+  "limits": [
+    "Synthetic loopback TLS fixture weakens one original cultist to one hit point before the client casts; this is not full combat balance or native rendering acceptance.",
+    "Restart evidence aborts the host Tokio task and reopens its temporary store; power-loss recovery is not established.",
+    "Native inventory UI, item spending/equipment, quest completion, progression rules and full VE-5 acceptance remain.",
+    "Ledger receipt capacity remains 4096; new grants are refused at the limit."
+  ]
+}

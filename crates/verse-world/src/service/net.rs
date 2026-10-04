@@ -257,8 +257,10 @@ async fn serve_with_store<F: Future<Output = ()>>(
     if let Err(error) = gateway.close_all() {
         failure.get_or_insert(error);
     }
-    if let Err(error) = persist(&gateway, &mut store, &mut stats) {
-        failure.get_or_insert(error);
+    if failure.is_none() {
+        if let Err(error) = persist(&gateway, &mut store, &mut stats) {
+            failure = Some(error);
+        }
     }
     Exit {
         gateway,
@@ -614,6 +616,7 @@ pub(super) mod tests {
         .unwrap();
         let old_a = a.control().unwrap().clone();
         let old_b = b.control().unwrap().clone();
+        a.snapshot().await.unwrap();
         assert!(matches!(
             a.command(Intent::Cast {
                 ability: Ability::Shield,
@@ -625,6 +628,7 @@ pub(super) mod tests {
             .body,
             Reply::Accepted
         ));
+        b.snapshot().await.unwrap();
         assert!(matches!(
             b.command(Intent::Cast {
                 ability: Ability::Fireball,

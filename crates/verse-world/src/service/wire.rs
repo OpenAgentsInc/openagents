@@ -5,7 +5,7 @@ use verse_engine::core::LifeId;
 use super::auth::{Challenge, ConnectionId, Gateway};
 use crate::{Command, Intent, events::Event, play::Ability, rules::Snapshot};
 
-pub const VERSION: u16 = 9;
+pub const VERSION: u16 = 10;
 pub const MAX_REQUEST_BYTES: usize = 16 * 1024;
 pub const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 
@@ -124,6 +124,7 @@ pub enum Body {
         command: Input,
     },
     Snapshot {},
+    Inventory {},
     Events {
         after: u64,
         limit: u16,
@@ -303,12 +304,41 @@ pub struct EventPage {
     pub oldest: Option<u64>,
     pub gap: bool,
 }
+/// Owned character state; clients cannot choose a different character to read.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Inventory {
+    pub life: Life,
+    pub revision: u64,
+    pub experience: u64,
+    pub items: Vec<super::rewards::Entry>,
+    pub quests: Vec<super::rewards::Entry>,
+}
+impl Inventory {
+    pub fn validate(&self, control: &Option<Control>) -> Result<(), String> {
+        if control.as_ref().is_none_or(|c| c.life != self.life) {
+            return Err("Inventory does not match admitted character life".into());
+        }
+        super::rewards::entries(&self.items)?;
+        super::rewards::entries(&self.quests)?;
+        if self.revision > super::rewards::MAX_TRANSACTIONS as u64 {
+            return Err("Inventory transaction budget exceeded".into());
+        }
+        if self.revision == 0
+            && (self.experience != 0 || !self.items.is_empty() || !self.quests.is_empty())
+        {
+            return Err("Inventory has grants without a transaction revision".into());
+        }
+        Ok(())
+    }
+}
 #[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Reply {
     Accepted,
     Snapshot { state: State },
     Events { page: EventPage },
+    Inventory { inventory: Inventory },
     Refused { code: String, message: String },
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -436,6 +466,25 @@ impl Gateway {
                             .map_err(|e| ("presentation", e))?,
                         snapshot,
                         actors,
+                    },
+                })
+            }
+            Body::Inventory {} => {
+                let (life, revision, character) =
+                    self.inventory(id).map_err(|e| ("authentication", e))?;
+                let entries = |values: std::collections::BTreeMap<u64, u32>| {
+                    values
+                        .into_iter()
+                        .map(|(id, count)| super::rewards::Entry { id, count })
+                        .collect()
+                };
+                Ok(Reply::Inventory {
+                    inventory: Inventory {
+                        life: life.into(),
+                        revision,
+                        experience: character.experience,
+                        items: entries(character.items),
+                        quests: entries(character.quests),
                     },
                 })
             }
@@ -1011,15 +1060,57 @@ mod tests {
         assert!(hud.slots.iter().all(|s| !s.ready));
     }
     #[test]
+    fn inventory_refuses_foreign_lives_unbounded_counts_and_client_selected_characters() {
+        let life = Life {
+            instance: 110,
+            actor: 14,
+            generation: 0,
+        };
+        let control = Some(Control {
+            life,
+            epoch: 1,
+            accepted_sequence: 0,
+        });
+        let inventory = Inventory {
+            life,
+            revision: 1,
+            experience: 45,
+            items: vec![super::super::rewards::Entry { id: 1, count: 1 }],
+            quests: vec![],
+        };
+        inventory.validate(&control).unwrap();
+        for case in 0..6 {
+            let mut bad = inventory.clone();
+            match case {
+                0 => bad.life.actor += 1,
+                1 => bad.revision = 0,
+                2 => bad.revision = 4097,
+                3 => bad.items[0].count = 1_000_001,
+                4 => bad.items[0].count = 0,
+                _ => bad.items.push(bad.items[0].clone()),
+            }
+            assert!(bad.validate(&control).is_err());
+        }
+        assert!(inventory.validate(&None).is_err());
+        let mut request = serde_json::to_value(Request {
+            version: VERSION,
+            request_id: 1,
+            body: Body::Inventory {},
+        })
+        .unwrap();
+        request["body"]["actor"] = 14.into();
+        assert!(Request::decode(&serde_json::to_vec(&request).unwrap()).is_err());
+    }
+    #[test]
     fn strict_request_budget_versions_and_nested_fields_are_enforced() {
         let mut g = gateway();
         let (id, _) = g.open(0).unwrap();
         let reply = send(&mut g, id, 1, Body::Snapshot {});
         assert!(matches!(reply.body, Reply::Refused { .. }));
         for bytes in [
-            br#"{"version":10,"request_id":1,"body":{"type":"snapshot"}}"#.to_vec(),
-            br#"{"version":9,"request_id":1,"controller":1,"body":{"type":"snapshot"}}"#.to_vec(),
-            br#"{"version":9,"request_id":1,"body":{"type":"snapshot","principal":"fake"}}"#
+            br#"{"version":11,"request_id":1,"body":{"type":"snapshot"}}"#.to_vec(),
+            br#"{"version":10,"request_id":1,"controller":1,"body":{"type":"snapshot"}}"#.to_vec(),
+            br#"{"version":10,"request_id":1,"body":{"type":"snapshot","principal":"fake"}}"#
                 .to_vec(),
             vec![b' '; MAX_REQUEST_BYTES + 1],
         ] {

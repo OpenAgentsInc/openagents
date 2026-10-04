@@ -73,6 +73,8 @@ pub struct Chamber {
     connections: BTreeMap<u64, Connection>,
     next_session: u64,
     rewards: rewards::Ledger,
+    reward_policy: Vec<rewards::Policy>,
+    reward_cursor: u64,
 }
 
 impl Chamber {
@@ -87,6 +89,8 @@ impl Chamber {
             connections: BTreeMap::new(),
             next_session: 1,
             rewards: rewards::Ledger::default(),
+            reward_policy: Vec::new(),
+            reward_cursor: 0,
         })
     }
 
@@ -110,6 +114,81 @@ impl Chamber {
 
     pub fn character_rewards(&self, actor: u64) -> Option<&rewards::Character> {
         self.rewards.character(actor)
+    }
+
+    fn configure_rewards(&mut self, policies: Vec<rewards::Policy>) -> Result<(), String> {
+        rewards::Policy::validate(&policies)?;
+        for policy in &policies {
+            if self.game.actor_life(policy.target).is_none()
+                || self.game.player_admission(policy.target).is_some()
+            {
+                return Err("Combat reward target must be an authored NPC".into());
+            }
+        }
+        self.reward_cursor = if policies.is_empty() {
+            0
+        } else {
+            self.game.events.last().map_or(0, |e| e.serial)
+        };
+        self.reward_policy = policies;
+        Ok(())
+    }
+    fn process_rewards(&mut self) -> Result<(), String> {
+        if self.reward_policy.is_empty() {
+            return Ok(());
+        }
+        let latest = self.game.events.last().map_or(0, |e| e.serial);
+        if self.reward_cursor > latest
+            || self
+                .game
+                .events
+                .first()
+                .is_some_and(|e| self.reward_cursor.saturating_add(1) < e.serial)
+        {
+            return Err("Combat reward cursor lost authoritative events".into());
+        }
+        if latest == self.reward_cursor {
+            return Ok(());
+        }
+        let mut transactions = Vec::new();
+        for event in self
+            .game
+            .events
+            .iter()
+            .filter(|e| e.serial > self.reward_cursor)
+        {
+            if !matches!(event.kind, crate::events::Kind::Death) {
+                continue;
+            }
+            let Some(life) = event.actor else {
+                continue;
+            };
+            if let Some(policy) = self.reward_policy.iter().find(|p| p.target == life.actor) {
+                for rights in self.grants.values() {
+                    if let Rights::Player(actor) = rights {
+                        transactions.push(policy.transaction(*actor, life));
+                    }
+                }
+            }
+        }
+        self.rewards.batch(transactions)?;
+        self.reward_cursor = latest;
+        Ok(())
+    }
+    pub fn inventory(
+        &self,
+        principal: Principal,
+        session: Session,
+    ) -> Result<(LifeId, u64, rewards::Character), String> {
+        let (_, life) = self.player(principal, session)?;
+        Ok((
+            life,
+            self.rewards.revision(),
+            self.rewards
+                .character(life.actor)
+                .cloned()
+                .unwrap_or_default(),
+        ))
     }
 
     fn room_for_grant(&self, principal: Principal) -> Result<(), String> {
@@ -296,7 +375,8 @@ impl Chamber {
 
     /// Advances the shared world once, independent of session count.
     pub fn tick(&mut self, dt: f32) -> Result<(), String> {
-        self.game.tick(dt, [0.; 2])
+        self.game.tick(dt, [0.; 2])?;
+        self.process_rewards()
     }
 
     /// Resets this instance and fences commands while retaining enrolled rights.
@@ -351,6 +431,49 @@ mod tests {
             .unwrap()
     }
 
+    #[test]
+    fn cooperative_rewards_follow_npc_lives_without_connection_duplicates() {
+        let mut c = chamber(99);
+        c.configure_rewards(vec![rewards::Policy {
+            target: 2,
+            experience: 45,
+            items: vec![rewards::Entry { id: 1, count: 1 }],
+            quests: vec![rewards::Entry { id: 1, count: 1 }],
+        }])
+        .unwrap();
+        c.enroll_primary(A).unwrap();
+        let extra = c.enroll_player(B, Vec3::new(3., 0., -22.)).unwrap();
+        c.enroll_spectator(S).unwrap();
+        let a = c.connect(A).unwrap();
+        let b = c.connect(B).unwrap();
+        let spectator = c.connect(S).unwrap();
+        let primary = c.game.player_life().actor;
+        let defeated = c.game.actor_life(2).unwrap();
+        c.game.simulation.bow_impact(c.game.ids[&2], 1000).unwrap();
+        c.tick(1. / 30.).unwrap();
+        assert_eq!(c.inventory(A, a).unwrap().2.experience, 45);
+        assert_eq!(c.inventory(B, b).unwrap().2.experience, 45);
+        assert!(c.inventory(S, spectator).is_err());
+        assert_eq!(c.rewards.revision(), 2);
+        c.reward_cursor = 0;
+        c.process_rewards().unwrap();
+        assert_eq!(c.rewards.revision(), 2);
+        c.disconnect(B, b).unwrap();
+        c.game.time += 61.;
+        c.tick(0.).unwrap();
+        assert_eq!(c.game.actor_life(2).unwrap(), defeated.next().unwrap());
+        c.game.simulation.bow_impact(c.game.ids[&2], 1000).unwrap();
+        c.tick(1. / 30.).unwrap();
+        assert_eq!(c.character_rewards(primary).unwrap().experience, 90);
+        assert_eq!(c.character_rewards(extra.actor).unwrap().experience, 90);
+        c.reset().unwrap();
+        c.game.time = c.game.scene.cut_at;
+        c.tick(0.).unwrap();
+        c.game.simulation.bow_impact(c.game.ids[&2], 1000).unwrap();
+        c.tick(1. / 30.).unwrap();
+        assert_eq!(c.character_rewards(primary).unwrap().experience, 135);
+        assert_eq!(c.character_rewards(extra.actor).unwrap().items[&1], 3);
+    }
     #[test]
     fn two_players_and_spectator_share_one_clock_with_owned_commands() {
         let mut c = chamber(90);

@@ -21,6 +21,10 @@ struct Saved {
     grants: Vec<Grant>,
     #[serde(default)]
     rewards: Option<Vec<super::rewards::Transaction>>,
+    #[serde(default)]
+    reward_policy: Vec<super::rewards::Policy>,
+    #[serde(default)]
+    reward_cursor: u64,
 }
 fn grants(saved: &[Grant], game: &Game) -> Result<BTreeMap<Principal, Rights>, String> {
     if saved.len() > 128 {
@@ -55,6 +59,8 @@ pub(super) fn encode(gateway: &Gateway) -> Result<Vec<u8>, String> {
         world: String::from_utf8(gateway.game().checkpoint()?)
             .map_err(|_| "Cannot encode saved world")?,
         rewards: Some(gateway.chamber.rewards.transactions()),
+        reward_policy: gateway.chamber.reward_policy.clone(),
+        reward_cursor: gateway.chamber.reward_cursor,
         grants: gateway
             .chamber
             .grants
@@ -100,6 +106,22 @@ pub(super) fn decode(bytes: &[u8], content: [u8; 32], instance: u64) -> Result<G
             return Err("Saved reward transaction is duplicated".into());
         }
     }
+    if saved.version == 1 && (!saved.reward_policy.is_empty() || saved.reward_cursor != 0) {
+        return Err("Legacy chamber cannot contain combat reward policy".into());
+    }
+    chamber.configure_rewards(saved.reward_policy)?;
+    if (chamber.reward_policy.is_empty() && saved.reward_cursor != 0)
+        || saved.reward_cursor > chamber.reward_cursor
+        || (!chamber.reward_policy.is_empty()
+            && chamber
+                .game
+                .events
+                .first()
+                .is_some_and(|e| saved.reward_cursor.saturating_add(1) < e.serial))
+    {
+        return Err("Saved combat reward cursor is incompatible".into());
+    }
+    chamber.reward_cursor = saved.reward_cursor;
     Gateway::new(chamber)?.with_content(content)
 }
 

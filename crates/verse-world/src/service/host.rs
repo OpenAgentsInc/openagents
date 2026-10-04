@@ -17,6 +17,8 @@ pub struct Config {
     pub enrollments: Vec<Enrollment>,
     #[serde(default)]
     pub state_dir: Option<PathBuf>,
+    #[serde(default)]
+    pub rewards: Vec<super::rewards::Policy>,
 }
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -62,6 +64,7 @@ impl Config {
         {
             return Err("Host state directory must be explicit".into());
         }
+        super::rewards::Policy::validate(&self.rewards)?;
         let mut keys = BTreeSet::new();
         let mut primary = 0;
         let mut players = 0;
@@ -106,13 +109,14 @@ impl Config {
                 Role::Spectator {} => gateway.enroll_spectator(key)?,
             }
         }
-        Ok(gateway)
+        gateway.with_rewards(self.rewards.clone())
     }
     /// Refuses changed startup rights instead of silently replacing saved character ownership.
     pub fn validate_recovered(&self, gateway: &Gateway) -> Result<(), String> {
         self.validate()?;
         if gateway.game().player_life().instance != self.instance
             || gateway.chamber.grants.len() != self.enrollments.len()
+            || gateway.reward_policy() != self.rewards
         {
             return Err("Recovered host enrollment context is incompatible".into());
         }
@@ -203,6 +207,7 @@ mod tests {
                 role: Role::Primary {},
             }],
             state_dir: None,
+            rewards: Vec::new(),
         }
     }
     fn game(instance: u64) -> Game {
@@ -259,6 +264,35 @@ mod tests {
                 .validate_recovered_scene(&recovered, &game(config.instance))
                 .is_err()
         );
+    }
+    #[test]
+    fn reward_configuration_and_recovery_refuse_changed_or_foreign_policies() {
+        use super::super::rewards::Policy;
+        let mut config = config();
+        config.rewards = vec![Policy {
+            target: 2,
+            experience: 45,
+            items: vec![],
+            quests: vec![],
+        }];
+        let g = config
+            .gateway(game(config.instance))
+            .unwrap()
+            .with_content([8; 32])
+            .unwrap();
+        let recovered =
+            Gateway::restore(&g.checkpoint().unwrap(), [8; 32], config.instance).unwrap();
+        config.validate_recovered(&recovered).unwrap();
+        let mut changed = config.clone();
+        changed.rewards[0].experience = 90;
+        assert!(changed.validate_recovered(&recovered).is_err());
+        for target in [14, 99999] {
+            let mut changed = config.clone();
+            changed.rewards[0].target = target;
+            assert!(changed.gateway(game(config.instance)).is_err());
+        }
+        config.rewards.push(config.rewards[0].clone());
+        assert!(config.validate().is_err());
     }
     #[test]
     fn strict_configuration_refuses_duplicate_keys_roles_and_spawn_budgets() {
