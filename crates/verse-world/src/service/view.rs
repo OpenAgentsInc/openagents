@@ -69,6 +69,37 @@ impl View {
     pub fn events(&self) -> &[Event] {
         &self.events
     }
+    /// Projects actual committed damage only onto the matching sampled actor life.
+    pub fn damage_numbers(&self, alpha: f32) -> Result<Vec<crate::play::DamageNumber>, String> {
+        let Some(presentation) = self.replica.sample(alpha)? else {
+            return Ok(Vec::new());
+        };
+        Ok(self
+            .events
+            .iter()
+            .filter_map(|event| {
+                let Kind::Damage { amount, incoming } = event.kind else {
+                    return None;
+                };
+                if !(0.0..1.35).contains(&(presentation.time - event.time)) {
+                    return None;
+                }
+                let life = event.actor?;
+                let pose = presentation
+                    .actors
+                    .iter()
+                    .find(|p| verse_engine::core::LifeId::from(p.life) == life)?;
+                Some(crate::play::DamageNumber {
+                    actor: life.actor,
+                    amount,
+                    at: event.time,
+                    position: pose.actor.position,
+                    incoming,
+                    serial: event.serial,
+                })
+            })
+            .collect())
+    }
     pub fn last_gap(&self) -> Option<Gap> {
         self.gap
     }
@@ -498,5 +529,71 @@ mod tests {
         task.await.unwrap().unwrap();
         server_stop.send(()).unwrap();
         assert!(server.await.unwrap().failure.is_none());
+    }
+    #[test]
+    fn actual_damage_numbers_expire_and_never_attach_to_a_respawned_life() {
+        let mut r = response(10);
+        let time = state(&mut r).presentation.time;
+        let life = state(&mut r).presentation.actors[0].life;
+        let mut view = View::new(130, 5., 0).unwrap();
+        view.push_snapshot(&r).unwrap();
+        let mut a = dialogue(1, time, life.into());
+        a.kind = Kind::Damage {
+            amount: 45,
+            incoming: false,
+        };
+        let mut b = dialogue(2, time, life.into());
+        b.kind = Kind::Damage {
+            amount: 20,
+            incoming: true,
+        };
+        let delivery = Delivery {
+            events: vec![a, b],
+            gap: None,
+        };
+        view.push_events(&delivery).unwrap();
+        view.push_events(&delivery).unwrap();
+        let numbers = view.damage_numbers(1.).unwrap();
+        assert_eq!(numbers.len(), 2);
+        assert_eq!(numbers[0].amount, 45);
+        assert!(!numbers[0].incoming);
+        assert_eq!(numbers[1].amount, 20);
+        assert!(numbers[1].incoming);
+        r.tick = 11;
+        state(&mut r).presentation.actors[0].health = 0;
+        view.push_snapshot(&r).unwrap();
+        assert_eq!(view.damage_numbers(1.).unwrap().len(), 2);
+        r.tick = 12;
+        let s = state(&mut r);
+        s.presentation.actors[0].life.generation += 1;
+        for b in &mut s.actors {
+            if b.life == life {
+                b.life.generation += 1;
+            }
+        }
+        for e in &mut s.presentation.effects {
+            if e.life == life {
+                e.life.generation += 1;
+            }
+        }
+        view.push_snapshot(&r).unwrap();
+        assert!(view.damage_numbers(1.).unwrap().is_empty());
+        let fresh = state(&mut r).presentation.actors[0].life;
+        let mut e = dialogue(3, time, fresh.into());
+        e.tick = 12;
+        e.kind = Kind::Damage {
+            amount: 17,
+            incoming: true,
+        };
+        view.push_events(&Delivery {
+            events: vec![e],
+            gap: None,
+        })
+        .unwrap();
+        assert_eq!(view.damage_numbers(1.).unwrap()[0].amount, 17);
+        r.tick = 13;
+        state(&mut r).presentation.time = time + 1.4;
+        view.push_snapshot(&r).unwrap();
+        assert!(view.damage_numbers(1.).unwrap().is_empty());
     }
 }

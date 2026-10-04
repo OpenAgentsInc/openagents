@@ -152,7 +152,10 @@ native scene frames using a validated client-owned camera. Ordered events
 provide life-bound dialogue and camera handoff; duplicate delivery does not
 replay cues. Respawn and world reset fence old dialogue, and retention gaps
 remain visible. The view retains bounded read-only event history for HUD/audio
-adapters. Native window/transport mounting and remote HUD still remain.
+adapters. `View::damage_numbers` projects actual committed amounts onto matching
+sampled lives, including lethal damage, and expires them after 1.35 seconds.
+Local and remote values share native floating-text rendering and colors. Native
+window/transport mounting and remote action/resource HUD still remain.
 
 Revocation leaves an uncontrolled actor in the world; actor retirement and capacity reclamation remain lifecycle work.
 Transactional saves, multiplayer

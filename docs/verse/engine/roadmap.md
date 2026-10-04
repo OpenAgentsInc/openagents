@@ -248,6 +248,8 @@ The [inventory window profile](../../../bench/verse/2026-10-03/inventory-window/
 
 [#10510](https://github.com/OpenAgentsInc/openagents/issues/10510) projects admitted remote replicas into native scene frames. Interpolated poses retain lives, animation phases, health, and visibility; bow flights retain positions and stable directions. A validated client-owned camera supplies the view. Ordered committed events drive life-bound dialogue and pending camera handoff, with atomic malformed-batch rejection, duplicate suppression, retention-gap reporting, and respawn/reset fences. Tests cover frame projection, camera admission, event continuity/tick regressions, gaps, stale lives, resets, and real TLS worker-to-frame delivery. Native window/transport mounting, remote HUD/audio/props/blockers, cinematic camera routing, prediction, persistence, and full acceptance remain.
 
+[#10511](https://github.com/OpenAgentsInc/openagents/issues/10511) connects committed remote damage to shared native floating text. Projection preserves actual amounts, incoming/outgoing colors, serial lanes, sampled head positions, and lethal hits, with 1.35-second expiry and exact life fences. Duplicate deliveries produce no extra numbers; respawned lives cannot inherit old text. Local and remote values use the same renderer. Tests cover amounts/colors, duplicate suppression, lethal damage, respawn, expiry, and native vertex output. Remote action/resource HUD, native mounting, audio/props/blockers, prediction, persistence, and full acceptance remain.
+
 ## Reuse inventory
 
 Review baseline: OpenAgents `843c92dd7e`. The entries below were checked against

@@ -178,17 +178,43 @@ pub fn damage_numbers(
     width: f32,
     height: f32,
 ) {
+    damage_numbers_from_values(
+        ui,
+        atlas,
+        &game.damage_numbers,
+        game.time,
+        frame,
+        heights,
+        projection,
+        width,
+        height,
+    );
+}
+/// Shares native floating text rendering with admitted remote damage values.
+pub fn damage_numbers_from_values(
+    ui: &mut UiBatch,
+    atlas: &Atlas,
+    numbers: &[verse_world::play::DamageNumber],
+    time: f32,
+    frame: &Frame,
+    heights: &BTreeMap<String, f32>,
+    projection: Mat4,
+    width: f32,
+    height: f32,
+) {
     let font = atlas
         .font("combat")
         .layout_at_scale(720.0 / height)
         .unwrap();
-    for number in &game.damage_numbers {
-        let age = game.time - number.at;
+    for number in numbers {
+        let age = time - number.at;
         if !(0.0..1.35).contains(&age) {
             continue;
         }
         let actor = frame.actors.iter().find(|a| a.actor.id == number.actor);
-        let head_height = actor.map_or(2.0, |a| heights[&a.actor.model] * a.actor.scale * 0.9144);
+        let head_height = actor.map_or(2.0, |a| {
+            heights.get(&a.actor.model).copied().unwrap_or(2.0) * a.actor.scale * 0.9144
+        });
         let anchor = actor.map_or(number.position, |a| a.actor.position)
             + glam::Vec3::Y * (head_height + 0.8);
         let clip = projection * anchor.extend(1.0);
@@ -233,6 +259,89 @@ pub(crate) fn outlined(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn shared_damage_text_matches_local_rendering_and_preserves_colors_and_expiry() {
+        let scene = verse_engine::director::Scene::from_json(include_bytes!(
+            "../../../../assets/verse/original/ritual.json"
+        ))
+        .unwrap();
+        let mut game = verse_world::play::Game::new(scene).unwrap();
+        game.time = game.scene.cut_at;
+        game.tick(0., [0.; 2]).unwrap();
+        let mut frame = game.frame();
+        let actor = frame.actors[0].actor.id;
+        frame.actors[0].actor.position = glam::Vec3::ZERO;
+        let heights = frame
+            .actors
+            .iter()
+            .map(|a| (a.actor.model.clone(), 0.))
+            .collect();
+        game.damage_numbers = vec![verse_world::play::DamageNumber {
+            actor,
+            amount: 45,
+            at: game.time - 0.2,
+            position: glam::Vec3::ZERO,
+            incoming: false,
+            serial: 1,
+        }];
+        let atlas = Atlas::new(16.);
+        let mut local = UiBatch::default();
+        let mut remote = UiBatch::default();
+        damage_numbers(
+            &mut local,
+            &atlas,
+            &game,
+            &frame,
+            &heights,
+            Mat4::IDENTITY,
+            1280.,
+            720.,
+        );
+        damage_numbers_from_values(
+            &mut remote,
+            &atlas,
+            &game.damage_numbers,
+            game.time,
+            &frame,
+            &heights,
+            Mat4::IDENTITY,
+            1280.,
+            720.,
+        );
+        assert!(!local.vertices.is_empty());
+        assert_eq!(
+            format!("{:?}", local.vertices),
+            format!("{:?}", remote.vertices)
+        );
+        assert!(remote.vertices.iter().any(|v| v.color[1] == 0.88));
+        game.damage_numbers[0].incoming = true;
+        let mut incoming = UiBatch::default();
+        damage_numbers_from_values(
+            &mut incoming,
+            &atlas,
+            &game.damage_numbers,
+            game.time,
+            &frame,
+            &heights,
+            Mat4::IDENTITY,
+            1280.,
+            720.,
+        );
+        assert!(incoming.vertices.iter().any(|v| v.color[1] == 0.15));
+        let mut expired = UiBatch::default();
+        damage_numbers_from_values(
+            &mut expired,
+            &atlas,
+            &game.damage_numbers,
+            game.time + 2.,
+            &frame,
+            &heights,
+            Mat4::IDENTITY,
+            1280.,
+            720.,
+        );
+        assert!(expired.vertices.is_empty());
+    }
     #[test]
     fn ritual_keeps_all_thirteen_hostile_bars_in_both_camera_shots() {
         let scene = verse_engine::director::Scene::from_json(include_bytes!(
