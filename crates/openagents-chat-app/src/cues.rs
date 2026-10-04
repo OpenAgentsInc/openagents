@@ -127,7 +127,17 @@ const LEVEL: f32 = 0.32;
 /// it, down to bare ALSA `aplay`.
 #[must_use]
 pub fn wav(cue: Cue) -> Vec<u8> {
-    let notes = cue.notes();
+    tones(&cue.notes())
+}
+
+/// `notes`, each a (frequency in hertz, start in seconds) pair, as a mono
+/// 16-bit PCM WAV file in the same voice as [`wav`]: a sine with a quieter
+/// octave, a short attack, and a decay over [`RING`]. Another surface's
+/// cues, such as the Agent Studio's chimes in Verse, use it so every cue
+/// shares one voice. Overlapping notes may sum past the usual level, so a
+/// chord of more than two notes should stagger its starts.
+#[must_use]
+pub fn tones(notes: &[(f32, f32)]) -> Vec<u8> {
     let length = notes
         .iter()
         .map(|(_, start)| start)
@@ -140,7 +150,7 @@ pub fn wav(cue: Cue) -> Vec<u8> {
     for index in 0..count {
         let t = index as f32 / rate;
         let mut value = 0.0;
-        for (frequency, start) in notes {
+        for &(frequency, start) in notes {
             let local = t - start;
             if !(0.0..RING).contains(&local) {
                 continue;
@@ -313,5 +323,6 @@ mod tests {
         assert_ne!(seen[0], seen[1]);
         assert_ne!(seen[1], seen[2]);
         assert_eq!(wav(Cue::Done), seen[0], "synthesis is deterministic");
+        assert_eq!(tones(&Cue::Done.notes()), seen[0]);
     }
 }

@@ -1,12 +1,14 @@
 //! The boards Verse draws in the glade, as the Gym draws its boards: the
-//! Task Wall in the yard and a monitor on every desk. They are depth-tested
-//! faces on the zone's vertex-color path. The frames are part of the world
-//! ([`draw`]); the cards and the log lines are the studio's live data
-//! ([`live`]), redrawn when a snapshot changes.
+//! Task Wall in the yard, a monitor on every desk, and the goal board in
+//! the atrium inside the gate. They are depth-tested faces on the zone's
+//! vertex-color path. The frames are part of the world ([`draw`]); the
+//! cards, the log lines, and the goal's text, progress ring, and counts
+//! are the studio's live data ([`live`]), redrawn when a snapshot changes.
 
-use super::layout::{Board, DESKS, TASK_COLUMNS, TASK_WALL};
+use super::layout::{Board, DESKS, GOAL_BOARD, TASK_COLUMNS, TASK_WALL};
+use super::signals::Summary;
 use crate::mesh::{Mesh, Vertex};
-use coder_access::studio::{Activity, TaskStatus, View};
+use coder_access::studio::{Activity, GoalStatus, TaskStatus, View};
 use glam::{Mat4, Vec3};
 
 const WOOD: [f32; 3] = [0.2, 0.12, 0.05];
@@ -191,9 +193,57 @@ fn monitor(world: &mut Mesh, board: &Board) {
     place(world, board, mesh);
 }
 
+/// The goal board: a framed slate on two legs with its title and a rule.
+fn goal_board(world: &mut Mesh) {
+    let board = GOAL_BOARD;
+    let [w, h] = board.size;
+    let (hw, hh) = (w / 2.0, h / 2.0);
+    let mut mesh = Mesh::default();
+    slab(
+        &mut mesh,
+        Vec3::new(-hw, -hh, 0.0),
+        Vec3::new(hw, hh, 0.04),
+        SLATE,
+    );
+    let bar = 0.07;
+    for (min, max) in [
+        ([-hw - bar, hh], [hw + bar, hh + bar]),
+        ([-hw - bar, -hh - bar], [hw + bar, -hh]),
+        ([-hw - bar, -hh], [-hw, hh]),
+        ([hw, -hh], [hw + bar, hh]),
+    ] {
+        slab(
+            &mut mesh,
+            Vec3::new(min[0], min[1], -0.03),
+            Vec3::new(max[0], max[1], 0.06),
+            WOOD,
+        );
+    }
+    let ground = -board.center.y;
+    for x in [-hw + 0.1, hw - 0.1] {
+        slab(
+            &mut mesh,
+            Vec3::new(x - 0.06, ground, 0.0),
+            Vec3::new(x + 0.06, -hh - bar, 0.08),
+            WOOD,
+        );
+    }
+    let face = -0.01;
+    letters(&mut mesh, "GOAL", 0.0, hh - 0.2, face, 0.12, CHALK);
+    panel(
+        &mut mesh,
+        [-hw + 0.06, hh - 0.27],
+        [hw - 0.06, hh - 0.258],
+        face,
+        CHALK_DIM,
+    );
+    place(world, &board, mesh);
+}
+
 /// Every board in the glade.
 pub(super) fn draw(world: &mut Mesh) {
     task_wall(world);
+    goal_board(world);
     for desk in &DESKS {
         monitor(world, &desk.monitor);
     }
@@ -409,14 +459,179 @@ fn screen(world: &mut Mesh, index: usize, view: Option<&View>) {
     place(world, &board, mesh);
 }
 
-/// The live boards: the Task Wall's cards and every monitor's text, from
-/// `view`, or idle monitors without one.
+/// Segments in the goal board's progress ring.
+pub const RING_SEGMENTS: usize = 32;
+/// The ring's lit part, its lit part for a finished goal, and its unlit
+/// part.
+const RING_LIT: [f32; 3] = [0.45, 0.85, 0.55];
+const RING_DONE: [f32; 3] = [1.0, 0.82, 0.35];
+const RING_DIM: [f32; 3] = [0.16, 0.16, 0.13];
+/// The goal text's lettering height and its most lines.
+const GOAL_TEXT: f32 = 0.075;
+const GOAL_LINES: usize = 3;
+
+/// A flat quad through `corners` at depth `z`, wound as [`panel`] winds.
+fn quad(mesh: &mut Mesh, corners: [[f32; 2]; 4], z: f32, color: [f32; 3]) {
+    let [a, b, c, _] = corners;
+    let turn = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+    let mut corners = corners;
+    if turn < 0.0 {
+        corners.reverse();
+    }
+    let [a, b, c, d] = corners.map(|[x, y]| vertex(Vec3::new(x, y, z), color));
+    mesh.faces.extend_from_slice(&[a, b, c, a, c, d]);
+}
+
+/// The ring's lit segments for `progress`: none at zero, and every one
+/// only at one.
+#[must_use]
+pub fn lit_segments(progress: f32) -> usize {
+    let progress = if progress.is_finite() {
+        progress.clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    (progress * RING_SEGMENTS as f32).floor() as usize
+}
+
+/// A progress ring centered on `center`, between the `radius` pair, lit
+/// clockwise from the top as the viewer sees it for `progress`. Board -X is
+/// the viewer's right, so a clockwise turn starts toward -X.
+fn ring(mesh: &mut Mesh, center: [f32; 2], radius: [f32; 2], progress: f32, lit: [f32; 3]) {
+    let lit_count = lit_segments(progress);
+    let step = std::f32::consts::TAU / RING_SEGMENTS as f32;
+    // A hair of gap between segments, so the ring reads as a dial.
+    let gap = step * 0.08;
+    let point = |r: f32, angle: f32| [center[0] - r * angle.sin(), center[1] + r * angle.cos()];
+    let [inner, outer] = radius;
+    for segment in 0..RING_SEGMENTS {
+        let (a0, a1) = (
+            segment as f32 * step + gap,
+            (segment + 1) as f32 * step - gap,
+        );
+        let color = if segment < lit_count { lit } else { RING_DIM };
+        quad(
+            mesh,
+            [
+                point(inner, a0),
+                point(outer, a0),
+                point(outer, a1),
+                point(inner, a1),
+            ],
+            -0.012,
+            color,
+        );
+    }
+}
+
+/// `text` in at most `lines` lines of at most `width` characters, broken
+/// between words, in the board alphabet. A word longer than a line is cut,
+/// and text past the last line is dropped.
+#[must_use]
+pub fn wrap(text: &str, width: usize, lines: usize) -> Vec<String> {
+    let text = super::studio::lettering(text, usize::MAX);
+    let mut out: Vec<String> = Vec::new();
+    let mut line = String::new();
+    for word in text.split_whitespace() {
+        if out.len() == lines {
+            return out;
+        }
+        let word: String = word.chars().take(width).collect();
+        if line.is_empty() {
+            line = word;
+        } else if line.chars().count() + 1 + word.chars().count() <= width {
+            line.push(' ');
+            line.push_str(&word);
+        } else {
+            out.push(std::mem::replace(&mut line, word));
+        }
+    }
+    if !line.is_empty() && out.len() < lines {
+        out.push(line);
+    }
+    out
+}
+
+/// The goal board's live face: the ring with the task count in it on the
+/// viewer's left, and to its right the goal's text, its state, and the
+/// decisions waiting. A studio with no goal says so; no studio leaves the
+/// ring dark.
+fn goal(world: &mut Mesh, view: Option<&View>) {
+    let board = GOAL_BOARD;
+    let [w, h] = board.size;
+    let (hw, hh) = (w / 2.0, h / 2.0);
+    let text = -0.018;
+    let mut mesh = Mesh::default();
+    let center = [hw - 0.42, -0.1];
+    let summary = view.and_then(Summary::of);
+    let (progress, lit) = match &summary {
+        Some(summary) if summary.status == GoalStatus::Done => (1.0, RING_DONE),
+        Some(summary) => (summary.progress(), RING_LIT),
+        None => (0.0, RING_LIT),
+    };
+    ring(&mut mesh, center, [0.24, 0.32], progress, lit);
+    // The text column runs from just right of the ring to the frame.
+    let left = hw - 0.86;
+    let width = left - (-hw + 0.08);
+    match (view, &summary) {
+        (_, Some(summary)) => {
+            if summary.total > 0 {
+                let count = format!("{}/{}", summary.done, summary.total);
+                letters(
+                    &mut mesh,
+                    &count,
+                    center[0],
+                    center[1] - 0.05,
+                    text,
+                    0.1,
+                    CHALK,
+                );
+            }
+            let lines = wrap(&summary.text, fit(width, GOAL_TEXT), GOAL_LINES);
+            for (i, line) in lines.iter().enumerate() {
+                let y = hh - 0.43 - i as f32 * (GOAL_TEXT + 0.04);
+                left_letters(&mut mesh, line, left, y, text, GOAL_TEXT, CHALK);
+            }
+            let state = super::studio::lettering(&summary.counts(), fit(width, 0.06));
+            left_letters(&mut mesh, &state, left, -hh + 0.24, text, 0.06, CHALK_DIM);
+            if summary.waiting > 0 {
+                let waiting = format!("{} WAITING", summary.waiting);
+                left_letters(
+                    &mut mesh,
+                    &waiting,
+                    left,
+                    -hh + 0.1,
+                    text,
+                    0.06,
+                    PAPER_REVIEW,
+                );
+            }
+        }
+        (Some(_), None) => {
+            left_letters(
+                &mut mesh,
+                "NO GOAL YET",
+                left,
+                -0.05,
+                text,
+                GOAL_TEXT,
+                CHALK_DIM,
+            );
+        }
+        (None, None) => {}
+    }
+    place(world, &board, mesh);
+}
+
+/// The live boards: the Task Wall's cards, every monitor's text, and the
+/// goal board's face, from `view`, or idle boards without one.
 #[must_use]
 pub(super) fn live(view: Option<&View>) -> Mesh {
     let mut mesh = Mesh::default();
     if let Some(view) = view {
         cards(&mut mesh, view);
     }
+    goal(&mut mesh, view);
     for index in 0..DESKS.len() {
         screen(&mut mesh, index, view);
     }
@@ -460,5 +675,61 @@ mod tests {
             "both top cards share a row"
         );
         assert!(running.distance(held) > 0.1, "in different columns");
+    use coder_access::studio::Goal;
+
+    #[test]
+    fn the_ring_lights_whole_segments_for_progress() {
+        assert_eq!(lit_segments(0.0), 0);
+        assert_eq!(lit_segments(0.5), RING_SEGMENTS / 2);
+        assert_eq!(lit_segments(0.99), RING_SEGMENTS - 1);
+        assert_eq!(lit_segments(1.0), RING_SEGMENTS);
+        assert_eq!(lit_segments(7.0), RING_SEGMENTS);
+        assert_eq!(lit_segments(f32::NAN), 0);
+    }
+
+    #[test]
+    fn goal_text_wraps_between_words_into_the_board_alphabet() {
+        assert_eq!(
+            wrap("Add a dark mode, then ship it!", 12, 3),
+            ["ADD A DARK", "MODE THEN", "SHIP IT"]
+        );
+        assert_eq!(wrap("one two three four", 9, 1), ["ONE TWO"]);
+        assert_eq!(wrap("supercalifragilistic", 5, 2), ["SUPER"]);
+        assert!(wrap("", 10, 2).is_empty());
+    }
+
+    #[test]
+    fn the_goal_board_faces_the_approach_and_shows_the_goal() {
+        // Its face looks down the approach path, toward the return portal.
+        let front = GOAL_BOARD
+            .transform()
+            .transform_vector3(Vec3::NEG_Z)
+            .normalize();
+        assert!(front.dot(Vec3::NEG_Z) > 0.99);
+        let mut idle = Mesh::default();
+        goal(&mut idle, None);
+        let mut empty = Mesh::default();
+        goal(&mut empty, Some(&View::default()));
+        let view = View {
+            goals: vec![Goal {
+                goal: "g1".into(),
+                text: "Add a dark mode".into(),
+                workspace: "repo".into(),
+                lead: "lead".into(),
+                status: GoalStatus::Running,
+                final_tasks: 1,
+                total_tasks: 3,
+                submitted_at: 1,
+            }],
+            ..View::default()
+        };
+        let mut shown = Mesh::default();
+        goal(&mut shown, Some(&view));
+        // The dark ring alone, then lettering for no goal, then the goal's.
+        assert_eq!(idle.faces.len(), RING_SEGMENTS * 6);
+        assert!(empty.faces.len() > idle.faces.len());
+        assert!(shown.faces.len() > empty.faces.len());
+        let lit = shown.faces.iter().filter(|v| v.color == RING_LIT).count();
+        assert_eq!(lit, lit_segments(1.0 / 3.0) * 6);
     }
 }

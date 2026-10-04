@@ -16,6 +16,8 @@
 mod gym;
 #[cfg(not(target_arch = "wasm32"))]
 pub use gym::{GymPanel, gym_panel};
+mod studio;
+pub use studio::{StudioStrip, studio_strip};
 
 use std::collections::VecDeque;
 

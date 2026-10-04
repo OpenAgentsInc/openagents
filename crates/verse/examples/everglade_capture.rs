@@ -1,5 +1,5 @@
 //! Offline visual acceptance of Everglade with the shared renderer.
-//! Usage: everglade_capture OUTPUT.png [approach|yard|hall|studio-yard|studio-hall] [FRAME]
+//! Usage: everglade_capture OUTPUT.png [approach|yard|hall|studio-yard|studio-hall|studio-atrium] [FRAME]
 //!
 //! Installs Everglade from the committed, pinned pack, as a portal entry
 //! does after the download, and renders one of these views with the zone
@@ -11,13 +11,15 @@
 //!   proving ring, and the podium to the hall's facade.
 //! - `hall`: inside the hall, over the desks and their monitors toward the
 //!   gallery and the hearth.
-//! - `studio-yard` and `studio-hall`: the same views of a running Agent
-//!   Studio. The example records the simulated team
+//! - `studio-atrium`: inside the gate, at the goal board, with the goal
+//!   bar and its waiting badge over the view.
+//! - `studio-yard`, `studio-hall`, and `studio-atrium`: views of a running
+//!   Agent Studio. The example records the simulated team
 //!   (`coder::task::studio_sim`) against a scratch repository in a
 //!   temporary directory, with no model or network, and shows frame
 //!   `FRAME` of the recording: by default, the first with a seat at the
-//!   proving ground for the yard, and the first with a seat editing for the
-//!   hall. It prints every frame's index and label, so another frame can
+//!   proving ground for the yard, the first with a seat editing for the
+//!   hall, and the first with a decision waiting for the atrium. It prints every frame's index and label, so another frame can
 //!   be chosen. These views need the `model-host` feature.
 use std::path::{Path, PathBuf};
 use verse::{
@@ -56,9 +58,12 @@ fn main() -> Result<(), String> {
         "yard" | "studio-yard" => (glam::Vec3::new(-3.0, 0.0, -15.0), 0.25, 80.0),
         // At the desks station; the camera stays inside, by the doors.
         "hall" | "studio-hall" => (glam::Vec3::new(0.0, 0.0, 5.0), 0.0, 20.0),
+        // Inside the gate, looking up at the goal board.
+        "studio-atrium" => (glam::Vec3::new(2.8, 0.0, -13.3), 0.5, 10.0),
         other => {
             return Err(format!(
-                "unknown view `{other}`; use approach, yard, hall, studio-yard, or studio-hall"
+                "unknown view `{other}`; use approach, yard, hall, studio-yard, studio-hall, \
+                 or studio-atrium"
             ));
         }
     };
@@ -79,7 +84,14 @@ fn main() -> Result<(), String> {
     hud.set_bottom_clearance(0.0)?;
     let snapshot = runtime.zone_snapshot(1.6);
     eprintln!("{}", snapshot.caption);
-    let ui = hud.draw(&atlas, &hud.snapshot([1280.0, 800.0], &snapshot, true), 1.0);
+    let mut ui = hud.draw(&atlas, &hud.snapshot([1280.0, 800.0], &snapshot, true), 1.0);
+    if let Some(summary) = runtime
+        .studio()
+        .view()
+        .and_then(zones::everglade::signals::Summary::of)
+    {
+        let _ = verse::hud::studio_strip(&mut ui, &atlas, [1280.0, 800.0], 1.0, &summary, false);
+    }
     verse::render::capture_with_atmosphere(
         &output,
         1280,
@@ -114,7 +126,13 @@ fn studio(
         Activity::Editing
     };
     let index = frame
-        .or_else(|| recording.find(|v| v.seats.iter().any(|s| s.activity == wanted)))
+        .or_else(|| {
+            if view == "studio-atrium" {
+                recording.find(|v| !v.decisions.is_empty())
+            } else {
+                recording.find(|v| v.seats.iter().any(|s| s.activity == wanted))
+            }
+        })
         .unwrap_or(0)
         .min(recording.frames().len().saturating_sub(1));
     eprintln!(

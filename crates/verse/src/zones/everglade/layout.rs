@@ -184,14 +184,30 @@ pub const TASK_WALL: Board = Board {
 /// The Task Wall's columns, from the viewer's left.
 pub const TASK_COLUMNS: [&str; 5] = ["PLANNED", "RUNNING", "REVIEW", "DONE", "BLOCKED"];
 
-/// The Task Wall's own blocker: its slate, frame, and legs.
+/// The goal board: the atrium inside the yard's gate, east of the path,
+/// facing the approach, so a player coming from the portal reads the goal,
+/// its progress ring, and its task counts first.
+pub const GOAL_BOARD: Board = Board {
+    center: Vec3::new(3.9, 1.75, -11.5),
+    facing: PI,
+    size: [2.4, 1.4],
+};
+
+/// The boards' own blockers: each slate, frame, and legs.
 #[must_use]
 pub fn board_blockers() -> Vec<Footprint> {
     let half = TASK_WALL.size[0] / 2.0 + 0.1;
-    vec![Footprint {
-        min: [TASK_WALL.center.x - 0.2, TASK_WALL.center.z - half],
-        max: [TASK_WALL.center.x + 0.2, TASK_WALL.center.z + half],
-    }]
+    let goal = GOAL_BOARD.size[0] / 2.0 + 0.1;
+    vec![
+        Footprint {
+            min: [TASK_WALL.center.x - 0.2, TASK_WALL.center.z - half],
+            max: [TASK_WALL.center.x + 0.2, TASK_WALL.center.z + half],
+        },
+        Footprint {
+            min: [GOAL_BOARD.center.x - goal, GOAL_BOARD.center.z - 0.2],
+            max: [GOAL_BOARD.center.x + goal, GOAL_BOARD.center.z + 0.2],
+        },
+    ]
 }
 
 /// The walked routes, as segments a player-wide body must pass along

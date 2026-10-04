@@ -441,6 +441,10 @@ pub struct Studio {
     status: Option<Answer>,
     /// Whether `/sound off` silenced the studio for the session.
     muted: bool,
+    /// What the last snapshot showed, for the changes that ring a signal.
+    signals: super::signals::Signals,
+    /// Signals not yet taken ([`Studio::take_events`]).
+    events: Vec<super::signals::Event>,
 }
 
 impl Default for Studio {
@@ -454,6 +458,8 @@ impl Default for Studio {
             revision: 0,
             status: None,
             muted: false,
+            signals: super::signals::Signals::default(),
+            events: Vec::new(),
         }
     }
 }
@@ -499,8 +505,16 @@ impl Studio {
             self.seats.clear();
             self.boards = boards::live(None);
             self.status = None;
+            self.signals.reset();
+            self.events.clear();
             self.revision += 1;
         }
+    }
+
+    /// The signals the snapshots taken since the last call rang, oldest
+    /// first (`signals::Signals::observe`).
+    pub fn take_events(&mut self) -> Vec<super::signals::Event> {
+        std::mem::take(&mut self.events)
     }
 
     /// Polls the source, when active, and takes a changed studio and the
@@ -624,6 +638,14 @@ impl Studio {
             seats.push(agent);
         }
         self.seats = seats;
+        let events = self.signals.observe(view);
+        self.events.extend(events);
+        // A host that never takes them keeps only the newest.
+        let over = self
+            .events
+            .len()
+            .saturating_sub(super::signals::MAX_PENDING);
+        self.events.drain(..over);
         self.boards = boards::live(Some(view));
         self.snapshot = Some(snapshot);
         self.revision += 1;

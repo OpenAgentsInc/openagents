@@ -24,7 +24,11 @@
 //! through the control socket the desktop app uses; `--studio-socket <path>`
 //! names another host's socket, such as a scratch host's. The panels send
 //! the studio's intents: goals and messages from the console, answers from
-//! the podium, and merge decisions from the merge station.
+//! the podium, and merge decisions from the merge station. A bar at the top
+//! shows the newest goal's progress and how many decisions wait; `J`, or a
+//! click on the badge, opens them. A bell rings for a new decision and a
+//! chime for a finished task or goal, with a desktop notice while the
+//! window is not in front; `V` mutes them, and `--studio-mute` starts muted.
 //!
 //! `verse --seed-rooms <relay-key-file>` creates the NIP-29 chat rooms as
 //! the relay; `scripts/verse-relay.sh` runs it.
@@ -164,6 +168,7 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<(Option<Shot>, Option
             "--gym-connection" => options.gym_connection = Some(value()?.into()),
             "--studio-sim" => options.studio_sim = true,
             "--studio-socket" => options.studio_socket = Some(value()?.into()),
+            "--studio-mute" => options.studio_muted = true,
             "--at" => {
                 let v = value()?;
                 at = Some(

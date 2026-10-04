@@ -4,19 +4,21 @@
 //! The ground is a heightfield computed in Rust: flat inside the clearing,
 //! rising toward the tree ring. The glade and the workshop are placements
 //! of the pinned Everglade pack's models (`layout`), drawn as textured,
-//! alpha-tested cells on a lit stage, with the Task Wall and the desk
-//! monitors drawn by Verse (`boards`). The pack loads on portal entry, as
-//! the Ruins pack does. The studio's stations have fixed standing points in
-//! [`STATIONS`]; the Agent Studio's seats walk between them and the
-//! stations open its panels ([`studio`]). The player walks the shared
-//! plaza controller over the heightfield as the ritual chamber's outfitted
-//! character from the pack ([`player`]), and no companion follows.
+//! alpha-tested cells on a lit stage, with the Task Wall, the desk
+//! monitors, and the atrium's goal board drawn by Verse (`boards`, from
+//! [`signals`]). The pack loads on portal entry, as the Ruins pack does.
+//! The studio's stations have fixed standing points in [`STATIONS`]; the
+//! Agent Studio's seats walk between them and the stations open its panels
+//! ([`studio`]). The player walks the shared plaza controller over the
+//! heightfield as the ritual chamber's outfitted character from the pack
+//! ([`player`]), and no companion follows.
 
 mod boards;
 mod draw;
 pub mod layout;
 pub mod player;
 mod scene;
+pub mod signals;
 pub mod studio;
 #[cfg(test)]
 mod tests;

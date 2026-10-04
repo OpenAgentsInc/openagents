@@ -52,8 +52,8 @@ limit; **Missing** does not exist.
 | Speech bubbles for messages; a "!" over the agent that owns a decision | Missing | Characters and life |
 | State particles (thinking, working, error, done) | Missing: one attention lamp | Characters and life |
 | Waiting agent walks to the podium or to you | Partial: walks to the podium | Characters and life |
-| Goal atrium with a progress ring; HUD goal bar; "n waiting" badge | Missing | Signals |
-| Bell for a new decision, chimes for task and goal done, toasts, desktop notifications | Missing in Verse | Signals |
+| Goal atrium with a progress ring; HUD goal bar; "n waiting" badge | Done on desktop; the phone has no panels for the badge to open | Signals |
+| Bell for a new decision, chimes for task and goal done, toasts, desktop notifications | Partial: bell, chimes, mute (`V`), and notices on macOS and Linux; no in-world toasts, and Windows stays silent | Signals |
 | Live monitors and Task Wall | Done | |
 
 ## Screens

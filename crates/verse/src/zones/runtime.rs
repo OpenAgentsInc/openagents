@@ -1015,6 +1015,12 @@ impl WorldRuntime {
         &self.zone_state.studio
     }
 
+    /// The studio's signals since the last call: new decisions, finished
+    /// tasks, and finished goals ([`Studio::take_events`]).
+    pub fn take_studio_events(&mut self) -> Vec<crate::zones::everglade::signals::Event> {
+        self.zone_state.studio.take_events()
+    }
+
     /// The review the studio's source holds of `task`, while in Everglade.
     pub fn studio_review(&mut self, task: &str) -> Option<coder_access::review::TaskReview> {
         self.zone_state.studio.review(task)

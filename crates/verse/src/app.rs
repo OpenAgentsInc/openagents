@@ -59,6 +59,9 @@ pub struct Options {
     /// The control socket of the host whose Agent Studio Everglade shows,
     /// in place of this computer's own host (`openagents_connect::control::socket_path`).
     pub studio_socket: Option<std::path::PathBuf>,
+    /// Start with the studio's bell and chimes silent; V toggles them in
+    /// Everglade.
+    pub studio_muted: bool,
 }
 
 impl Default for Options {
@@ -73,6 +76,7 @@ impl Default for Options {
             gym_connection: None,
             studio_sim: false,
             studio_socket: None,
+            studio_muted: false,
         }
     }
 }
@@ -529,6 +533,13 @@ struct App {
     /// What the studio console keeps while its panel is closed: the
     /// history and the unsent draft.
     studio_recall: crate::panels::studio::Recall,
+    /// Whether the studio's bell and chimes are silent (V in Everglade).
+    studio_muted: bool,
+    /// The goal bar's waiting badge this frame, which opens the decisions.
+    studio_badge: Option<hud::Rect>,
+    /// Whether the window is in front, so a studio signal also raises a
+    /// desktop notice while it is not.
+    window_focused: bool,
 }
 
 /// The replay list: the retained `beats-winner` runs and which is chosen.
@@ -770,7 +781,30 @@ impl App {
             studio_target: None,
             panel_shift: false,
             studio_recall: crate::panels::studio::Recall::default(),
+            studio_muted: options.studio_muted,
+            studio_badge: None,
+            window_focused: true,
         })
+    }
+
+    /// Plays the studio's signals since the last frame, the most urgent
+    /// one of a burst, unless muted, and raises a desktop notice for it
+    /// while the window is not in front.
+    fn studio_signals(&mut self) {
+        use crate::zones::everglade::signals::{Signal, deliver};
+        let events = self.runtime.take_studio_events();
+        let Some(signal) = Signal::most_urgent(events.iter().map(|e| e.signal)) else {
+            return;
+        };
+        // V mutes for the window; the console's `/sound off` for the session.
+        if !self.studio_muted && self.runtime.studio().sounds() {
+            deliver::play(signal);
+        }
+        if !self.window_focused
+            && let Some(event) = events.iter().find(|e| e.signal == signal)
+        {
+            deliver::notify(event);
+        }
     }
 
     /// Opens the panel, or closes it when it is open.
@@ -1903,6 +1937,21 @@ impl App {
                 self.open_studio_panel(kind);
                 return;
             }
+            // In Everglade J opens the waiting decisions, and V mutes the
+            // studio's bell and chimes.
+            if self.runtime.studio().active() {
+                match code {
+                    KeyCode::KeyJ => {
+                        self.open_studio_panel(StudioPanel::Decisions);
+                        return;
+                    }
+                    KeyCode::KeyV => {
+                        self.studio_muted = !self.studio_muted;
+                        return;
+                    }
+                    _ => {}
+                }
+            }
             if !self.runtime.is_plaza() {
                 // Number keys press the zone's controls in order.
                 let index = match code {
@@ -2163,6 +2212,16 @@ impl App {
 
     fn button(&mut self, button: MouseButton, pressed: bool) {
         if button == MouseButton::Left && self.panel_button(pressed) {
+            return;
+        }
+        // The goal bar's waiting badge opens the decisions.
+        if button == MouseButton::Left
+            && pressed
+            && self
+                .studio_badge
+                .is_some_and(|badge| badge.contains(self.cursor[0], self.cursor[1]))
+        {
+            self.open_studio_panel(StudioPanel::Decisions);
             return;
         }
         // Other buttons pressed over the panel do not reach the world.
@@ -2455,6 +2514,7 @@ impl App {
                 .tick_with_mode(&input, dt, self.keys.left_button, self.replay.is_none());
         self.update_gym(true);
         self.runtime.update_studio(true, dt);
+        self.studio_signals();
         self.refresh_studio_panel();
         self.step_agents(dt);
         if self.plaza_interactive() {
@@ -2661,6 +2721,27 @@ impl App {
                     );
                     layout.panels.push(panel);
                 }
+                // The studio's goal bar and waiting badge, in Everglade. The
+                // bar sits at the top, so it is not one of the bottom panels
+                // the zone controls clear.
+                let summary = self
+                    .runtime
+                    .studio()
+                    .active()
+                    .then(|| self.runtime.studio().view())
+                    .flatten()
+                    .and_then(crate::zones::everglade::signals::Summary::of);
+                self.studio_badge = summary.and_then(|summary| {
+                    hud::studio_strip(
+                        &mut ui,
+                        atlas,
+                        size,
+                        self.scale,
+                        &summary,
+                        self.studio_muted,
+                    )
+                    .badge
+                });
                 if let (Some(map_atlas), Some(map_frame)) = (&self.map_atlas, &self.map_frame) {
                     ui.vertices.extend(
                         self.map
@@ -3045,6 +3126,7 @@ impl ApplicationHandler for App {
                 }
             }
             WindowEvent::Focused(focused) => {
+                self.window_focused = focused;
                 if !focused {
                     self.suspend_world();
                 }
