@@ -579,7 +579,11 @@ impl App {
             .actors
             .iter()
             .filter(|p| {
-                p.health > 0 && p.visible && p.actor.nameplate && p.actor.model != "adventurer"
+                p.health > 0
+                    && p.visible
+                    && p.actor.nameplate
+                    && !p.actor.friendly
+                    && p.actor.model != "adventurer"
             })
             .min_by(|a, b| {
                 a.actor

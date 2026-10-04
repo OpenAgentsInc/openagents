@@ -1,4 +1,4 @@
-//! Head-anchored hostile health bars and scripted cinematic dialogue.
+//! Head-anchored NPC health bars and scripted cinematic dialogue.
 use crate::ui::{Atlas, UiBatch};
 use glam::Mat4;
 use std::collections::BTreeMap;
@@ -88,6 +88,11 @@ pub fn cinematic(
             [0.025, 0.005, 0.005, 1.0],
         );
         let fill = 102.912 * plate_scale * actor.health as f32 / actor.actor.health as f32;
+        let bar_color = if actor.actor.friendly {
+            [0.15, 0.85, 0.25, 1.0]
+        } else {
+            [1.0, 0.0, 0.0, 1.0]
+        };
         if atlas.sprites.contains_key("status-bar") {
             ui.image_region(
                 atlas,
@@ -104,7 +109,7 @@ pub fn cinematic(
                     0.0,
                     1.0,
                 ],
-                [1.0, 0.0, 0.0, 1.0],
+                bar_color,
             );
         } else {
             ui.rect(
@@ -113,7 +118,7 @@ pub fn cinematic(
                 y + 19.008 * plate_scale,
                 fill,
                 8.992 * plate_scale,
-                [1.0, 0.0, 0.0, 1.0],
+                bar_color,
             );
         }
         ui.image_region(
@@ -342,6 +347,48 @@ mod tests {
         );
         assert!(expired.vertices.is_empty());
     }
+    #[test]
+    fn friendly_nameplates_are_green_and_dead_plates_are_hidden() {
+        let scene = verse_engine::director::Scene::from_json(include_bytes!(
+            "../../../../assets/verse/original/ritual.json"
+        ))
+        .unwrap();
+        let mut frame = scene.frame(scene.cut_at + 1.);
+        let heights = frame
+            .actors
+            .iter()
+            .map(|a| (a.actor.model.clone(), 2.))
+            .collect();
+        let giver = frame.actors.iter_mut().find(|a| a.actor.id == 2).unwrap();
+        giver.actor.friendly = true;
+        giver.actor.position = glam::Vec3::ZERO;
+        frame.actors.retain(|a| a.actor.id == 2);
+        let atlas = Atlas::new(16.);
+        let projection = Mat4::perspective_rh(1., 16. / 9., 0.1, 100.)
+            * Mat4::look_at_rh(
+                glam::Vec3::new(0., 3., -8.),
+                glam::Vec3::Y * 2.,
+                glam::Vec3::Y,
+            );
+        let draw = |frame: &Frame| cinematic(&atlas, frame, &heights, projection, 1280., 720.);
+        let green = [0.15, 0.85, 0.25, 1.];
+        let ui = draw(&frame);
+        assert_eq!(ui.vertices.iter().filter(|v| v.color == green).count(), 6);
+        assert!(!ui.vertices.iter().any(|v| v.color == [1., 0., 0., 1.]));
+        frame.actors[0].health = 0;
+        assert!(!draw(&frame).vertices.iter().any(|v| v.color == green));
+        frame.actors[0].health = 100;
+        frame.actors[0].actor.friendly = false;
+        assert_eq!(
+            draw(&frame)
+                .vertices
+                .iter()
+                .filter(|v| v.color == [1., 0., 0., 1.])
+                .count(),
+            6
+        );
+    }
+
     #[test]
     fn ritual_keeps_all_thirteen_hostile_bars_in_both_camera_shots() {
         let scene = verse_engine::director::Scene::from_json(include_bytes!(
