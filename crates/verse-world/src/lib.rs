@@ -241,6 +241,7 @@ pub mod gust;
 pub mod hud;
 pub mod levitate;
 pub mod meteor_swarm;
+pub mod movement;
 pub mod play;
 pub mod playground;
 pub mod reverse_gravity;

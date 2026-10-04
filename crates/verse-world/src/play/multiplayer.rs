@@ -475,12 +475,9 @@ impl Game {
                 } else {
                     p.pending_move.take().unwrap_or([0.; 2])
                 };
-                let forward = Vec3::new(-p.yaw.sin(), 0., -p.yaw.cos());
-                let right = Vec3::new(-forward.z, 0., forward.x);
-                let input = Vec3::from([axes[0], 0., axes[1]]);
-                let input = input / input.length().max(1.);
-                let speed = if input.z < 0. { 4.1148 } else { 6.4008 };
-                let velocity = (right * input.x + forward * input.z) * speed;
+                let walk = crate::movement::walk(axes, p.yaw)?;
+                let speed = walk.speed;
+                let velocity = walk.direction * speed;
                 if dead || velocity.length_squared() > 0. {
                     p.casting = None;
                 }
@@ -498,18 +495,17 @@ impl Game {
                     p.character = physics::character::Character::new(p.position.as_dvec3());
                     p.trajectory.push(p.position.to_array());
                 } else {
-                    for step in 0..steps {
-                        p.character.step(
-                            &self.query_scene,
-                            self.actor_filter(p.admission.actor()),
-                            physics::character::Settings::default(),
-                            velocity.as_dvec3(),
-                            jump && step == 0,
-                            self.physics_clock.dt,
-                        )?;
-                        fell += p.character.landed.unwrap_or(0.);
-                        p.trajectory.push(p.character.feet.as_vec3().to_array());
-                    }
+                    let travel = crate::movement::advance(
+                        &mut p.character,
+                        &self.query_scene,
+                        self.actor_filter(p.admission.actor()),
+                        velocity.as_dvec3(),
+                        jump,
+                        steps,
+                        self.physics_clock.dt,
+                    )?;
+                    fell = travel.fallen;
+                    p.trajectory = travel.path;
                     p.position = p.character.feet.as_vec3();
                 }
                 let distance = p.position.distance(p.previous);

@@ -1624,16 +1624,9 @@ impl Game {
         };
         // A Telekinesis hand with path left takes the movement keys.
         let movement = crate::telekinesis::steer_input(self, movement, dt);
-        let forward = Vec3::new(-self.yaw.sin(), 0.0, -self.yaw.cos());
-        let right = Vec3::new(-forward.z, 0.0, forward.x);
-        let input = Vec3::new(
-            movement[0].clamp(-1.0, 1.0),
-            0.0,
-            movement[1].clamp(-1.0, 1.0),
-        );
-        let input = input / input.length().max(1.0);
-        let speed = if input.z < 0.0 { 4.1148 } else { 6.4008 };
-        let delta = (right * input.x + forward * input.z) * dt * speed;
+        let walk = crate::movement::walk(movement, self.yaw)?;
+        let speed = walk.speed;
+        let delta = walk.direction * dt * speed;
         self.moving = delta.length_squared() > 0.0;
         self.locomotion = movement;
         if self.moving && self.casting.take().is_some() {
@@ -1659,21 +1652,18 @@ impl Game {
                 glam::DVec3::ZERO
             };
             let velocity = self.levitated_walk(self.player_actor(), velocity);
-            player_path.push(self.character.feet.as_vec3().to_array());
             let filter = self.actor_filter(self.admission.actor());
-            let mut fell = 0.;
-            for step in 0..steps {
-                self.character.step(
-                    &self.query_scene,
-                    filter,
-                    physics::character::Settings::default(),
-                    velocity,
-                    jump && step == 0,
-                    self.physics_clock.dt,
-                )?;
-                fell += self.character.landed.unwrap_or(0.);
-                player_path.push(self.character.feet.as_vec3().to_array());
-            }
+            let travel = crate::movement::advance(
+                &mut self.character,
+                &self.query_scene,
+                filter,
+                velocity,
+                jump,
+                steps as u32,
+                self.physics_clock.dt,
+            )?;
+            let fell = travel.fallen;
+            player_path = travel.path;
             self.player = self.character.feet.as_vec3();
             if !dead {
                 self.fall_damage(None, fell)?;
