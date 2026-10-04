@@ -839,14 +839,48 @@ pub fn scenario() -> crate::playground::Scenario {
             ]
         },
         camera: || {
-            let hall = (Vec3::new(20., 7., 0.), Vec3::new(14., 3., -12.));
-            let caster = (Vec3::new(21., 4., -10.), Vec3::new(14.5, 1.5, 1.));
-            [(0., hall), (11.0, hall), (12.0, caster), (21.5, caster)]
-                .into_iter()
-                .map(|(at, (eye, target))| Shot { at, eye, target })
-                .collect()
+            // Follow Dummy A from about 11 m, from above the stone wall
+            // (which tops out at 4 m), keeping it right of center and below
+            // the overlay panel: its feet at each time, from the hold's rise
+            // and the push-off's drift.
+            let follow = [
+                (0., Vec3::new(7.35, 0., -12.)),
+                (2., Vec3::new(8., 2.25, -12.)),
+                (3., Vec3::new(11.1, 3.75, -12.)),
+                (4., Vec3::new(14.4, 5.2, -12.)),
+                (5., Vec3::new(17.4, 5.9, -12.)),
+                (6., Vec3::new(20.4, 6.06, -12.)),
+                (7.2, Vec3::new(23.3, 6.1, -12.)),
+                (9., Vec3::new(23.2, 6.1, -12.)),
+                (10.2, Vec3::new(23.2, 3., -12.)),
+                (11.2, Vec3::new(23.2, 0., -12.)),
+            ]
+            .map(|(at, feet)| Shot {
+                at,
+                eye: Vec3::new(feet.x - 1., feet.y + 4., -1.5),
+                target: Vec3::new(feet.x - 2.5, feet.y + 1.5, -12.),
+            });
+            let shot = |at, eye: [f32; 3], target: [f32; 3]| Shot {
+                at,
+                eye: Vec3::from(eye),
+                target: Vec3::from(target),
+            };
+            let mut shots = follow.to_vec();
+            shots.extend([
+                // The crate high above the caster, then lowered.
+                shot(12., [21., 5.5, -11.], [18.29, 3.47, -0.4]),
+                shot(13., [21., 5.5, -11.], [18.29, 3.47, -0.4]),
+                // Close on the anvil's refusal and Dummy B's save.
+                shot(13.4, [18.5, 2.2, -8.], [15.09, 1.79, 1.18]),
+                shot(16.5, [18.5, 2.2, -8.], [15.09, 1.79, 1.18]),
+                // The crate rising again and blown north by Thunderwave.
+                shot(17.3, [22., 4., -9.], [18.12, 2.56, 1.43]),
+                shot(19.2, [22., 4., -9.], [18.12, 2.56, 1.43]),
+                shot(21.5, [22., 5.5, -6.], [19.19, 4.25, 9.2]),
+            ]);
+            shots
         },
-        replay_camera: (Vec3::new(11., 3., -16.), Vec3::new(7.6, 1.6, -12.)),
+        replay_camera: (Vec3::new(10.5, 4.5, -18.5), Vec3::new(9.18, 3.54, -11.52)),
         check: |game| {
             let logged = |needle: &str| {
                 game.spells
