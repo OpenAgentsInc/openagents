@@ -22,7 +22,7 @@ use super::{
 };
 use crate::meteor_swarm::{
     self as mechanics, Creature, Host, Impact, METEOR_MASS, METEOR_RADIUS, METEORS, MeteorSwarm,
-    RADIUS, SPAWN_HEIGHT, Unattended,
+    RADIUS, Unattended,
 };
 use crate::play::Game;
 use glam::{DVec3, Vec3};
