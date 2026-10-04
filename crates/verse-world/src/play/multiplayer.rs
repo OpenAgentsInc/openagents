@@ -149,27 +149,33 @@ impl Game {
         } else {
             self.additional_players[&life.actor].held_move
         };
-        let primary = life.actor == self.player_actor();
-        let steering = primary
-            && self
+        let target = crate::spells::Target::Actor(life.actor);
+        let held_by_spell = self
+            .spells
+            .telekinesis
+            .iter()
+            .any(|effect| effect.target == target && effect.grip.grip.is_some())
+            || self
                 .spells
-                .telekinesis
-                .get(&life.actor)
-                .is_some_and(|hand| hand.steering());
-        let levitated = primary && self.spells.levitations.holds(life.actor);
+                .proxies
+                .iter()
+                .any(|proxy| proxy.actor == life.actor && proxy.held && !proxy.ended);
+        let levitated = self
+            .spells
+            .levitations
+            .iter()
+            .any(|effect| effect.target == target && effect.state.holding());
         let policy = crate::movement::Policy {
-            walking_scale: if steering || levitated {
+            walking_scale: if held_by_spell || levitated {
                 0.
-            } else if primary {
+            } else {
                 crate::spells::black_tentacles::speed_scale(
                     &self.spells,
                     life.actor,
                     character.feet,
                 ) as f32
-            } else {
-                1.
             },
-            jump_allowed: !(steering || levitated),
+            jump_allowed: !(held_by_spell || levitated),
         };
         let baseline = crate::movement::Baseline {
             life,
@@ -1081,6 +1087,74 @@ mod tests {
             .unwrap();
         (g, life)
     }
+    #[test]
+    fn movement_baselines_follow_the_spell_target_not_the_caster() {
+        let (mut game, extra) = world();
+        let primary = game.player_life();
+        crate::spells::levitate::cast_on(&mut game, crate::spells::Target::Actor(primary.actor))
+            .unwrap();
+        assert_eq!(
+            game.movement_baseline(primary)
+                .unwrap()
+                .unwrap()
+                .policy
+                .walking_scale,
+            0.
+        );
+        assert!(
+            !game
+                .movement_baseline(primary)
+                .unwrap()
+                .unwrap()
+                .policy
+                .jump_allowed
+        );
+        assert_eq!(
+            game.movement_baseline(extra)
+                .unwrap()
+                .unwrap()
+                .policy
+                .walking_scale,
+            1.
+        );
+        game.spells.levitations[0].target = crate::spells::Target::Actor(extra.actor);
+        assert_eq!(
+            game.movement_baseline(primary)
+                .unwrap()
+                .unwrap()
+                .policy
+                .walking_scale,
+            1.
+        );
+        assert_eq!(
+            game.movement_baseline(extra)
+                .unwrap()
+                .unwrap()
+                .policy
+                .walking_scale,
+            0.
+        );
+        assert!(
+            !game
+                .movement_baseline(extra)
+                .unwrap()
+                .unwrap()
+                .policy
+                .jump_allowed
+        );
+        game.spells.levitations[0]
+            .state
+            .end(crate::levitate::End::Concentration);
+        assert_eq!(
+            game.movement_baseline(extra)
+                .unwrap()
+                .unwrap()
+                .policy
+                .walking_scale,
+            1.
+        );
+    }
+
     #[test]
     fn held_remote_movement_survives_gaps_then_expires_and_replays_checkpoints() {
         let (mut game, extra) = world();
