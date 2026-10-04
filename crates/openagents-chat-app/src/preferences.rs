@@ -1,5 +1,5 @@
 //! The reading preferences a person sets in an OpenAgents app's Settings:
-//! text size, reduced motion, and notifications (#10021). Shared by the
+//! text size, reduced motion, notifications (#10021), and sounds (#10474). Shared by the
 //! desktop and the phones, so a size means the same drawn text on both.
 //!
 //! They live in the one settings file `openagents settings` and Coder read
@@ -9,7 +9,7 @@
 //! ```json
 //! {
 //!   "schema": "openagents.settings.v1",
-//!   "app": { "text_size": "larger", "reduce_motion": true, "notifications": false }
+//!   "app": { "text_size": "larger", "reduce_motion": true, "notifications": false, "sounds": true }
 //! }
 //! ```
 //!
@@ -114,6 +114,9 @@ pub struct Preferences {
     /// Show a notification when Coder asks for the person, finishes, or
     /// fails while the app is away.
     pub notifications: bool,
+    /// Play a short sound ([`crate::cues`]) when Coder finishes, asks for
+    /// the person, or fails. Off mutes every cue.
+    pub sounds: bool,
 }
 
 impl Default for Preferences {
@@ -122,6 +125,7 @@ impl Default for Preferences {
             text_size: TextSize::Default,
             reduce_motion: false,
             notifications: true,
+            sounds: true,
         }
     }
 }
@@ -132,6 +136,7 @@ pub enum Change {
     TextSize(TextSize),
     ReduceMotion(bool),
     Notifications(bool),
+    Sounds(bool),
 }
 
 impl Preferences {
@@ -142,6 +147,7 @@ impl Preferences {
             Change::TextSize(size) => self.text_size = size,
             Change::ReduceMotion(on) => self.reduce_motion = on,
             Change::Notifications(on) => self.notifications = on,
+            Change::Sounds(on) => self.sounds = on,
         }
         *self != before
     }
@@ -180,7 +186,7 @@ mod tests {
     #[test]
     fn a_missing_or_broken_section_is_the_defaults() {
         let defaults = Preferences::default();
-        assert!(defaults.notifications && !defaults.reduce_motion);
+        assert!(defaults.notifications && defaults.sounds && !defaults.reduce_motion);
         assert_eq!(defaults.text_size, TextSize::Default);
         for settings in [
             json!({}),
@@ -208,12 +214,19 @@ mod tests {
         assert!(preferences.apply(Change::Notifications(false)));
         assert!(preferences.apply(Change::ReduceMotion(true)));
         assert!(!preferences.apply(Change::ReduceMotion(true)));
+        assert!(preferences.apply(Change::Sounds(false)));
+        assert!(!preferences.apply(Change::Sounds(false)));
         let settings =
             json!({ "schema": "openagents.settings.v1", SECTION: preferences.section() });
         assert_eq!(Preferences::from_settings(&settings), preferences);
         assert_eq!(
             preferences.section(),
-            json!({"text_size": "largest", "reduce_motion": true, "notifications": false})
+            json!({
+                "text_size": "largest",
+                "reduce_motion": true,
+                "notifications": false,
+                "sounds": false
+            })
         );
     }
 

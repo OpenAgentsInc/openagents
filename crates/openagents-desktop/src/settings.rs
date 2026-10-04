@@ -118,6 +118,10 @@ pub enum Action {
     Notifications {
         on: bool,
     },
+    /// Play Coder's sounds, or mute them.
+    Sounds {
+        on: bool,
+    },
     /// Coder's `coder.start`: wait for **Run Coder**, or start at once.
     CoderStart {
         ask_first: bool,
@@ -167,6 +171,7 @@ impl Action {
             Action::TextSize { size } => Some(Change::TextSize(*size)),
             Action::ReduceMotion { on } => Some(Change::ReduceMotion(*on)),
             Action::Notifications { on } => Some(Change::Notifications(*on)),
+            Action::Sounds { on } => Some(Change::Sounds(*on)),
             Action::Pane { .. }
             | Action::Restore { .. }
             | Action::CoderStart { .. }
@@ -509,6 +514,7 @@ fn shortcuts() -> Vec<Node<Intent>> {
 
 fn notifications(settings: &Settings) -> Vec<Node<Intent>> {
     let on = settings.preferences.notifications;
+    let sounds = settings.preferences.sounds;
     vec![
         title("settings-notifications-title", "Notifications"),
         toggle(
@@ -520,6 +526,17 @@ fn notifications(settings: &Settings) -> Vec<Node<Intent>> {
         text(
             "settings-notifications-line",
             "When Coder asks you something, finishes, or fails while OpenAgents isn't in front. A notification names the chat, never a message.",
+            TextRole::Status,
+        ),
+        toggle(
+            "settings-sounds",
+            "Play sounds",
+            sounds,
+            Action::Sounds { on: !sounds },
+        ),
+        text(
+            "settings-sounds-line",
+            "A short sound when Coder finishes, asks you something, or fails, once each time.",
             TextRole::Status,
         ),
     ]

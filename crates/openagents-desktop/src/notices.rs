@@ -45,6 +45,19 @@ impl Status {
             Status::Failed => Some("Coder stopped with an error"),
         }
     }
+
+    /// The attention activity this status reports, for the sound a change
+    /// plays ([`openagents_chat_app::cues`]).
+    #[must_use]
+    pub fn activity(self) -> openagents_chat_app::attention::Activity {
+        use openagents_chat_app::attention::Activity;
+        match self {
+            Status::Working => Activity::Working,
+            Status::Question | Status::Approval => Activity::AwaitingInput,
+            Status::Finished => Activity::Completed,
+            Status::Failed => Activity::Failed,
+        }
+    }
 }
 
 /// The prefix of a Coder notice's [`Notice::id`]; the rest is the chat's ID.
@@ -614,6 +627,27 @@ mod tests {
             ps1.contains(r#"<ShortcutProperty Key="System.AppUserModel.ID" Value="$AppId" />"#)
         );
         assert!(ps1.contains(r"Software\Classes\AppUserModelId\$AppId"));
+    }
+
+    #[test]
+    fn a_status_change_plays_its_cue_once() {
+        use openagents_chat_app::cues::{Cue, Cues};
+        let mut cues = Cues::default();
+        let mut observe = |status: Status| {
+            cues.observe([("c1".to_owned(), status.activity())])
+                .into_iter()
+                .map(|(_, cue)| cue)
+                .collect::<Vec<_>>()
+        };
+        assert!(observe(Status::Working).is_empty());
+        assert_eq!(observe(Status::Question), [Cue::Request]);
+        // A question that becomes an approval still waits: no second cue.
+        assert!(observe(Status::Approval).is_empty());
+        assert!(observe(Status::Working).is_empty());
+        assert_eq!(observe(Status::Finished), [Cue::Done]);
+        assert!(observe(Status::Finished).is_empty());
+        assert!(observe(Status::Working).is_empty());
+        assert_eq!(observe(Status::Failed), [Cue::Attention]);
     }
 
     #[test]

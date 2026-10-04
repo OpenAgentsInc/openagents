@@ -48,6 +48,9 @@ pub struct DesktopApp {
     /// saw ([`openagents_desktop::notices`]).
     focused: bool,
     notices: openagents_desktop::notices::Notices,
+    /// The last Coder activity heard for each chat, for the sound a
+    /// change plays ([`openagents_chat_app::cues`]).
+    cues: openagents_chat_app::cues::Cues,
     /// How many capacity events Coder's runs had at the last look; more
     /// reads the engine again ([`openagents_desktop::chat::Panel::capacity_signals`]).
     capacity_seen: usize,
@@ -241,6 +244,7 @@ impl DesktopApp {
             focused: true,
             capacity_seen: 0,
             notices: openagents_desktop::notices::Notices::default(),
+            cues: openagents_chat_app::cues::Cues::default(),
             update_ready: None,
             #[cfg(not(windows))]
             grid: None,
@@ -387,9 +391,6 @@ impl DesktopApp {
         }
     }
 
-    /// Shows a desktop notification for each chat whose Coder now asks
-    /// for the person, finished, or failed while the window is away. Only
-    /// a real window notifies; captures and tests never do.
     fn strip_shows(&self) -> bool {
         self.model.nearby().is_none()
             && self.navigation.as_ref().is_some_and(|state| {
@@ -397,11 +398,21 @@ impl DesktopApp {
             })
     }
 
+    /// Shows a desktop notification for each chat whose Coder now asks
+    /// for the person, finished, or failed while the window is away, and
+    /// plays that change's sound. Only a real window notifies or plays;
+    /// captures and tests never do.
     fn notify(&mut self) {
         let Some(chat) = &self.chat else {
             return;
         };
-        let mut notices = self.notices.observe(chat.coder_statuses(), self.focused);
+        let statuses = chat.coder_statuses();
+        let cues = self.cues.observe(
+            statuses
+                .iter()
+                .map(|(id, _, status)| (id.clone(), status.activity())),
+        );
+        let mut notices = self.notices.observe(statuses, self.focused);
         let background = self
             .model
             .host
@@ -412,6 +423,17 @@ impl DesktopApp {
             for notice in notices {
                 crate::platform::notify(notice);
             }
+        }
+        // One sound a pass, the most urgent, whether or not the window is
+        // in front.
+        let cue = cues.into_iter().map(|(_, cue)| cue);
+        let cue = openagents_chat_app::cues::Cue::most_urgent(cue);
+        if let Some(cue) = cue
+            && self.live
+            && !self.fixture
+            && self.sounds_on()
+        {
+            crate::sound::play(cue);
         }
     }
 

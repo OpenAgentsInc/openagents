@@ -8,6 +8,7 @@ pub mod cli_run;
 pub mod coder_list;
 pub mod coder_tab;
 pub mod computer_chats;
+pub mod cues;
 pub mod conversation;
 pub mod engine;
 pub mod eval_cards;

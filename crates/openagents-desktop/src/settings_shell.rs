@@ -511,7 +511,8 @@ impl DesktopApp {
             }
             Action::TextSize { .. }
             | Action::ReduceMotion { .. }
-            | Action::Notifications { .. } => {}
+            | Action::Notifications { .. }
+            | Action::Sounds { .. } => {}
         }
         self.present();
     }
@@ -521,6 +522,13 @@ impl DesktopApp {
         self.navigation
             .as_ref()
             .is_none_or(|state| state.settings.preferences.notifications)
+    }
+
+    /// Whether Coder's sounds are wanted.
+    pub(super) fn sounds_on(&self) -> bool {
+        self.navigation
+            .as_ref()
+            .is_none_or(|state| state.settings.preferences.sounds)
     }
 }
 
@@ -619,12 +627,14 @@ mod tests {
         );
         setting(&mut app, Action::ReduceMotion { on: true }, now);
         setting(&mut app, Action::Notifications { on: false }, now);
+        setting(&mut app, Action::Sounds { on: false }, now);
         // Applied at once: the theme, the chat's text, the backdrop's
-        // flag, and notifications.
+        // flag, notifications, and sounds.
         assert_eq!(app.theme().body, 18.0);
         assert_eq!(app.theme().status, 16.0);
         assert!(motion.load(Ordering::Relaxed));
         assert!(!app.notifications_on());
+        assert!(!app.sounds_on());
         let larger = transcript_height(&mut app);
         assert!(larger > default_height * 1.15, "{larger} {default_height}");
         let Some(Node {
@@ -647,6 +657,7 @@ mod tests {
         assert!(!state.settings.preferences.notifications);
         assert!(again.reduce_motion().load(Ordering::Relaxed));
         assert!(!again.notifications_on());
+        assert!(!again.sounds_on());
         assert_eq!(again.theme().body, 18.0);
         assert!(transcript_height(&mut again) > default_height * 1.15);
 
@@ -657,6 +668,7 @@ mod tests {
             },
             Action::ReduceMotion { on: false },
             Action::Notifications { on: true },
+            Action::Sounds { on: true },
         ] {
             setting(&mut again, action, now);
         }

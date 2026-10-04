@@ -28,6 +28,7 @@ mod menubar;
 mod native;
 mod platform;
 mod shell;
+mod sound;
 mod strip;
 mod updates;
 #[cfg(windows)]
