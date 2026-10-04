@@ -470,23 +470,16 @@ fn status(ui: &mut UiBatch, atlas: &Atlas, rect: [f32; 4], fraction: f32, color:
         );
     }
 }
-pub fn action_bar(
+fn shared_action_row(
     ui: &mut UiBatch,
     atlas: &Atlas,
-    game: &super::play::Game,
+    slots: &[verse_world::hud::Slot],
     width: f32,
     height: f32,
-    hover: Option<super::play::Ability>,
 ) {
-    if !game.unlocked() {
-        return;
-    }
     use super::play::Ability;
-    let snapshot = game.snapshot();
     let (left, y, s) = bar_geometry(width, height);
-    let small = atlas.font("small").layout_at_scale(1.0 / s).unwrap();
     let hotkey = atlas.font("hotkey").layout_at_scale(1.0 / s).unwrap();
-    let numbers = atlas.font("numbers").layout_at_scale(1.0 / s).unwrap();
     let image =
         |ui: &mut UiBatch,
          name: &str,
@@ -515,27 +508,8 @@ pub fn action_bar(
     for index in 0..Ability::ALL.len() {
         let x = left + (8.0 + index as f32 * 42.0) * s;
         if let Some(ability) = Ability::ALL.get(index) {
-            let (ready, cd, total) = if let Some(spell) = ability.spell() {
-                let gate = snapshot.abilities.iter().find(|a| a.id == spell).unwrap();
-                (
-                    gate.ready,
-                    gate.cooldown_remaining,
-                    game.cooldown_duration(spell),
-                )
-            } else if let Some(spell) = ability.utility() {
-                let cd = game.controls.cooldown(spell, game.time);
-                (
-                    cd == 0.0 && snapshot.player.mana >= spell.cost(),
-                    cd,
-                    spell.cooldown(),
-                )
-            } else {
-                (
-                    game.time >= game.bow_ready,
-                    (game.bow_ready - game.time).max(0.0),
-                    1.0,
-                )
-            };
+            let slot = &slots[index];
+            let (ready, cd, total) = (slot.ready, slot.remaining, slot.duration);
             image(
                 ui,
                 ability.icon(),
@@ -576,6 +550,275 @@ pub fn action_bar(
             );
         }
     }
+}
+fn shared_resources(
+    ui: &mut UiBatch,
+    atlas: &Atlas,
+    resources: &verse_world::rules::Player,
+    height: f32,
+) {
+    let s = height / 768.;
+    let small = atlas.font("small").layout_at_scale(1.0 / s).unwrap();
+    let numbers = atlas.font("numbers").layout_at_scale(1.0 / s).unwrap();
+    let image =
+        |ui: &mut UiBatch,
+         name: &str,
+         x: f32,
+         y: f32,
+         w: f32,
+         h: f32,
+         uv: [f32; 4],
+         color: [f32; 4]| ui.image_region(atlas, name, [x, y, w * s, h * s], uv, color);
+    let health = resources.hp as f32 / resources.max_hp as f32;
+    ui.rect(
+        atlas,
+        87.0 * s,
+        26.0 * s,
+        119.0 * s,
+        41.0 * s,
+        [0.0, 0.0, 0.0, 0.5],
+    );
+    image(
+        ui,
+        "portrait-adventurer",
+        23.0 * s,
+        16.0 * s,
+        64.0,
+        64.0,
+        [0.0, 1.0, 0.0, 1.0],
+        [1.0; 4],
+    );
+    status(
+        ui,
+        atlas,
+        [87.0 * s, 45.0 * s, 119.0 * s, 12.0 * s],
+        health,
+        health_color(health),
+    );
+    status(
+        ui,
+        atlas,
+        [87.0 * s, 56.0 * s, 119.0 * s, 12.0 * s],
+        resources.mana as f32 / resources.max_mana as f32,
+        [0.0, 0.0, 1.0, 1.0],
+    );
+    image(
+        ui,
+        "unit-frame",
+        -19.0 * s,
+        4.0 * s,
+        232.0,
+        100.0,
+        [1.0, 0.09375, 0.0, 0.78125],
+        [1.0; 4],
+    );
+    outlined(
+        ui,
+        &small,
+        147.0 * s - small.measure("Adventurer") * 0.5,
+        30.0 * s,
+        "Adventurer",
+        [1.0, 0.82, 0.0, 1.0],
+    );
+    let mana = format!("{} / {}", resources.mana, resources.max_mana);
+    outlined(
+        ui,
+        &numbers,
+        147.0 * s - numbers.measure(&mana) * 0.5,
+        55.0 * s,
+        &mana,
+        [1.0; 4],
+    );
+    let hp = format!("{} / {}", resources.hp, resources.max_hp);
+    outlined(
+        ui,
+        &numbers,
+        147. * s - numbers.measure(&hp) * 0.5,
+        44. * s,
+        &hp,
+        [1.; 4],
+    );
+}
+fn shared_respawn(ui: &mut UiBatch, atlas: &Atlas, width: f32, height: f32) {
+    let [x, y, w, h] = respawn_rect(width, height);
+    ui.rect(
+        atlas,
+        x - 2.,
+        y - 2.,
+        w + 4.,
+        h + 4.,
+        [0.65, 0.48, 0.19, 1.],
+    );
+    ui.rect(atlas, x, y, w, h, [0.34, 0.035, 0.025, 0.98]);
+    ui.rect(atlas, x + 2., y + 2., w - 4., 2., [0.7, 0.19, 0.12, 1.]);
+    outlined(
+        ui,
+        atlas,
+        width * 0.5 - atlas.measure("Respawn") * 0.5,
+        y + (h - 18.0) * 0.5,
+        "Respawn",
+        [1., 0.82, 0.3, 1.],
+    );
+}
+fn shared_cast(
+    ui: &mut UiBatch,
+    atlas: &Atlas,
+    cast: &verse_world::play::Casting,
+    time: f32,
+    width: f32,
+    height: f32,
+) {
+    let (_, y, s) = bar_geometry(width, height);
+    let small = atlas.font("small").layout_at_scale(1.0 / s).unwrap();
+    let progress = ((time - cast.started) / (cast.ends - cast.started).max(0.001)).clamp(0.0, 1.0);
+    ui.rect(
+        atlas,
+        width * 0.5 - 152.0,
+        y - 48.0,
+        304.0,
+        22.0,
+        [0.06, 0.04, 0.01, 0.95],
+    );
+    ui.image(
+        atlas,
+        "status-bar",
+        width * 0.5 - 150.0,
+        y - 46.0,
+        300.0 * progress,
+        18.0,
+        [1.0, 0.65, 0.04, 1.0],
+    );
+    outlined(
+        ui,
+        &small,
+        width * 0.5 - atlas.measure(cast.ability.label()) * 0.4,
+        y - 45.0,
+        cast.ability.label(),
+        [1.0; 4],
+    );
+}
+/// Limits remote pointer actions to displayed shared-kit slots.
+pub fn owned_action_at(
+    hud: &verse_world::hud::Own,
+    unlocked: bool,
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+) -> Option<super::play::Ability> {
+    if !unlocked || hud.resources.hp == 0 {
+        return None;
+    }
+    let ability = action_at(x, y, width, height)?;
+    hud.slots
+        .iter()
+        .any(|s| s.ability == ability)
+        .then_some(ability)
+}
+pub fn owned_respawn_at(
+    hud: &verse_world::hud::Own,
+    unlocked: bool,
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+) -> bool {
+    unlocked && hud.resources.hp == 0 && respawn_at(x, y, width, height)
+}
+/// Draws authenticated owned HUD data through the same native primitives as local play.
+pub fn owned_hud(
+    ui: &mut UiBatch,
+    atlas: &Atlas,
+    hud: &verse_world::hud::Own,
+    frame: &Frame,
+    unlocked: bool,
+    width: f32,
+    height: f32,
+) -> Result<(), String> {
+    hud.validate(hud.life.instance)?;
+    if !width.is_finite()
+        || !height.is_finite()
+        || width < 1.
+        || height < 1.
+        || !frame
+            .actors
+            .iter()
+            .any(|p| p.life == Some(hud.life) && p.actor.model == "adventurer")
+    {
+        return Err("Owned HUD view or actor mismatch".into());
+    }
+    if !unlocked {
+        return Ok(());
+    }
+    shared_action_row(ui, atlas, &hud.slots, width, height);
+    shared_resources(ui, atlas, &hud.resources, height);
+    if hud.resources.hp == 0 {
+        shared_respawn(ui, atlas, width, height);
+    }
+    if let Some(cast) = &hud.casting {
+        shared_cast(ui, atlas, cast, hud.time, width, height);
+    }
+    Ok(())
+}
+pub fn action_bar(
+    ui: &mut UiBatch,
+    atlas: &Atlas,
+    game: &super::play::Game,
+    width: f32,
+    height: f32,
+    hover: Option<super::play::Ability>,
+) {
+    if !game.unlocked() {
+        return;
+    }
+    use super::play::Ability;
+    let snapshot = game.snapshot();
+    let (left, y, s) = bar_geometry(width, height);
+    let small = atlas.font("small").layout_at_scale(1.0 / s).unwrap();
+    let hotkey = atlas.font("hotkey").layout_at_scale(1.0 / s).unwrap();
+    let numbers = atlas.font("numbers").layout_at_scale(1.0 / s).unwrap();
+    let image =
+        |ui: &mut UiBatch,
+         name: &str,
+         x: f32,
+         y: f32,
+         w: f32,
+         h: f32,
+         uv: [f32; 4],
+         color: [f32; 4]| ui.image_region(atlas, name, [x, y, w * s, h * s], uv, color);
+    let slots: Vec<_> = Ability::ALL
+        .into_iter()
+        .map(|ability| {
+            let (ready, remaining, duration) = if let Some(spell) = ability.spell() {
+                let gate = snapshot.abilities.iter().find(|a| a.id == spell).unwrap();
+                (
+                    gate.ready,
+                    gate.cooldown_remaining,
+                    game.cooldown_duration(spell),
+                )
+            } else if let Some(spell) = ability.utility() {
+                let cd = game.controls.cooldown(spell, game.time);
+                (
+                    cd == 0. && snapshot.player.mana >= spell.cost(),
+                    cd,
+                    spell.cooldown(),
+                )
+            } else {
+                (
+                    game.time >= game.bow_ready,
+                    (game.bow_ready - game.time).max(0.),
+                    1.,
+                )
+            };
+            verse_world::hud::Slot {
+                ability,
+                ready: ready && snapshot.player.hp > 0 && game.casting.is_none(),
+                remaining,
+                duration,
+            }
+        })
+        .collect();
+    shared_action_row(ui, atlas, &slots, width, height);
     // Row two: spells from the spell catalog, hotkeys Shift+1 to Shift+0.
     let row = y - ROW_TWO_RISE * s;
     for (inset, color) in [
@@ -647,66 +890,7 @@ pub fn action_bar(
             [0.6, 0.6, 0.6, 1.0],
         );
     }
-    let health = snapshot.player.hp as f32 / snapshot.player.max_hp as f32;
-    ui.rect(
-        atlas,
-        87.0 * s,
-        26.0 * s,
-        119.0 * s,
-        41.0 * s,
-        [0.0, 0.0, 0.0, 0.5],
-    );
-    image(
-        ui,
-        "portrait-adventurer",
-        23.0 * s,
-        16.0 * s,
-        64.0,
-        64.0,
-        [0.0, 1.0, 0.0, 1.0],
-        [1.0; 4],
-    );
-    status(
-        ui,
-        atlas,
-        [87.0 * s, 45.0 * s, 119.0 * s, 12.0 * s],
-        health,
-        health_color(health),
-    );
-    status(
-        ui,
-        atlas,
-        [87.0 * s, 56.0 * s, 119.0 * s, 12.0 * s],
-        snapshot.player.mana as f32 / snapshot.player.max_mana as f32,
-        [0.0, 0.0, 1.0, 1.0],
-    );
-    image(
-        ui,
-        "unit-frame",
-        -19.0 * s,
-        4.0 * s,
-        232.0,
-        100.0,
-        [1.0, 0.09375, 0.0, 0.78125],
-        [1.0; 4],
-    );
-    outlined(
-        ui,
-        &small,
-        147.0 * s - small.measure("Adventurer") * 0.5,
-        30.0 * s,
-        "Adventurer",
-        [1.0, 0.82, 0.0, 1.0],
-    );
-    let mana = format!("{} / {}", snapshot.player.mana, snapshot.player.max_mana);
-    outlined(
-        ui,
-        &numbers,
-        147.0 * s - numbers.measure(&mana) * 0.5,
-        55.0 * s,
-        &mana,
-        [1.0; 4],
-    );
+    shared_resources(ui, atlas, &snapshot.player, height);
     if let Some(target) = game
         .frame()
         .actors
@@ -811,15 +995,6 @@ pub fn action_bar(
             label,
             [1.0, 0.82, 0.0, 1.0],
         );
-        let hp = format!("{} / {}", snapshot.player.hp, snapshot.player.max_hp);
-        outlined(
-            ui,
-            &numbers,
-            147.0 * s - numbers.measure(&hp) * 0.5,
-            44.0 * s,
-            &hp,
-            [1.0; 4],
-        );
         if game.controls.shield > 0 && game.time < game.controls.shield_until {
             image(
                 ui,
@@ -856,53 +1031,10 @@ pub fn action_bar(
         }
     }
     if snapshot.player.hp == 0 {
-        let [x, y, w, h] = respawn_rect(width, height);
-        ui.rect(
-            atlas,
-            x - 2.,
-            y - 2.,
-            w + 4.,
-            h + 4.,
-            [0.65, 0.48, 0.19, 1.],
-        );
-        ui.rect(atlas, x, y, w, h, [0.34, 0.035, 0.025, 0.98]);
-        ui.rect(atlas, x + 2., y + 2., w - 4., 2., [0.7, 0.19, 0.12, 1.]);
-        outlined(
-            ui,
-            atlas,
-            width * 0.5 - atlas.measure("Respawn") * 0.5,
-            y + (h - 18.0) * 0.5,
-            "Respawn",
-            [1., 0.82, 0.3, 1.],
-        );
+        shared_respawn(ui, atlas, width, height);
     }
     if let Some(cast) = &game.casting {
-        let progress = ((game.time - cast.started) / (cast.ends - cast.started)).clamp(0.0, 1.0);
-        ui.rect(
-            atlas,
-            width * 0.5 - 152.0,
-            y - 48.0,
-            304.0,
-            22.0,
-            [0.06, 0.04, 0.01, 0.95],
-        );
-        ui.image(
-            atlas,
-            "status-bar",
-            width * 0.5 - 150.0,
-            y - 46.0,
-            300.0 * progress,
-            18.0,
-            [1.0, 0.65, 0.04, 1.0],
-        );
-        outlined(
-            ui,
-            &small,
-            width * 0.5 - atlas.measure(cast.ability.label()) * 0.4,
-            y - 45.0,
-            cast.ability.label(),
-            [1.0; 4],
-        );
+        shared_cast(ui, atlas, cast, game.time, width, height);
     } else if let Some(ability) = hover {
         let cost = ability
             .spell()
@@ -947,6 +1079,128 @@ pub fn action_bar(
 #[cfg(test)]
 mod action_tests {
     use super::*;
+    #[test]
+    fn owned_hud_uses_shared_icons_resources_cast_and_respawn_geometry() {
+        let scene = verse_engine::director::Scene::from_json(include_bytes!(
+            "../../../../assets/verse/original/ritual.json"
+        ))
+        .unwrap();
+        let mut game = verse_world::play::Game::new(scene).unwrap();
+        game.time = game.scene.cut_at;
+        game.tick(0., [0.; 2]).unwrap();
+        let hud = game.player_hud(game.player_life()).unwrap();
+        let frame = game.frame();
+        let atlas = super::super::original::atlas().unwrap();
+        for (width, height) in [(1280., 720.), (1920., 1080.)] {
+            let mut row = UiBatch::default();
+            shared_action_row(&mut row, &atlas, &hud.slots, width, height);
+            let mut ui = UiBatch::default();
+            owned_hud(&mut ui, &atlas, &hud, &frame, true, width, height).unwrap();
+            assert_eq!(
+                format!("{:?}", row.vertices),
+                format!("{:?}", &ui.vertices[..row.vertices.len()])
+            );
+            assert!(ui.vertices.len() > row.vertices.len());
+            assert!(
+                ui.vertices
+                    .iter()
+                    .all(|v| v.pos.iter().all(|p| p.is_finite()))
+            );
+            let (left, top, scale) = bar_geometry(width, height);
+            assert_eq!(
+                owned_action_at(
+                    &hud,
+                    true,
+                    left + 20. * scale,
+                    top + 15. * scale,
+                    width,
+                    height
+                ),
+                Some(super::super::play::Ability::Bow)
+            );
+            assert!(
+                owned_action_at(
+                    &hud,
+                    true,
+                    left + 20. * scale,
+                    top - ROW_TWO_RISE * scale + 15. * scale,
+                    width,
+                    height
+                )
+                .is_none()
+            );
+            let mut hidden = UiBatch::default();
+            owned_hud(&mut hidden, &atlas, &hud, &frame, false, width, height).unwrap();
+            assert!(hidden.vertices.is_empty());
+            let mut dead = hud.clone();
+            dead.resources.hp = 0;
+            for s in &mut dead.slots {
+                s.ready = false;
+            }
+            let [x, y, w, h] = respawn_rect(width, height);
+            assert!(owned_respawn_at(
+                &dead,
+                true,
+                x + w * 0.5,
+                y + h * 0.5,
+                width,
+                height
+            ));
+            assert!(!owned_respawn_at(
+                &hud,
+                true,
+                x + w * 0.5,
+                y + h * 0.5,
+                width,
+                height
+            ));
+            assert!(
+                owned_action_at(
+                    &dead,
+                    true,
+                    left + 20. * scale,
+                    top + 15. * scale,
+                    width,
+                    height
+                )
+                .is_none()
+            );
+            let mut death = UiBatch::default();
+            owned_hud(&mut death, &atlas, &dead, &frame, true, width, height).unwrap();
+            assert!(
+                death
+                    .vertices
+                    .iter()
+                    .any(|v| v.color == [0.34, 0.035, 0.025, 0.98])
+            );
+            let mut casting = hud.clone();
+            for s in &mut casting.slots {
+                s.ready = false;
+            }
+            casting.casting = Some(verse_world::play::Casting {
+                target_life: hud.life,
+                aim: glam::Vec3::Z,
+                ability: super::super::play::Ability::Fireball,
+                started: hud.time - 1.,
+                ends: hud.time + 2.,
+                origin: glam::Vec3::ZERO,
+                direction: glam::Vec3::Z,
+            });
+            let mut cast = UiBatch::default();
+            owned_hud(&mut cast, &atlas, &casting, &frame, true, width, height).unwrap();
+            assert!(
+                cast.vertices
+                    .iter()
+                    .any(|v| v.color == [1., 0.65, 0.04, 1.])
+            );
+            let mut bad = hud.clone();
+            bad.life.generation += 1;
+            let mut output = UiBatch::default();
+            assert!(owned_hud(&mut output, &atlas, &bad, &frame, true, width, height).is_err());
+            assert!(output.vertices.is_empty());
+        }
+    }
+
     #[test]
     fn classic_hit_regions_keep_six_unit_gaps_at_every_ui_scale() {
         for (w, h) in [(1024.0, 768.0), (1280.0, 720.0), (1920.0, 1080.0)] {

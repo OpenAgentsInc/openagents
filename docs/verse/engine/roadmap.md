@@ -252,6 +252,8 @@ The [inventory window profile](../../../bench/verse/2026-10-03/inventory-window/
 
 [#10512](https://github.com/OpenAgentsInc/openagents/issues/10512) adds wire version five player-owned HUD state. Exact-life extraction supplies health/mana, ten shared-kit readiness/cooldown gates, and cast progress from primary or additional player state. Spectators receive no owned HUD. Client/replica admission matches acknowledged control, resource snapshots, clocks, slots, and cast-target lives. Tests cover independent player mana/shield gates, cast progress, spectator omission, stale lives, malformed resources/slots/timings, foreign control, and real TLS owned HUD reception. Native HUD rendering, catalog shared-caster adapters, mounting, prediction, durable gameplay, and full acceptance remain.
 
+[#10513](https://github.com/OpenAgentsInc/openagents/issues/10513) draws owned remote HUD values through shared native helpers. Local/remote play share the ten-slot icon row, portrait, health/mana bars and numbers, cast progress, and death/respawn button. Rendering validates the owned life against the frame; cinematic hiding and owned pointer tests exclude hidden catalog slots and gate death controls. Tests cover identical row vertices, original icons, finite geometry at two UI sizes, cast/respawn colors, hit regions, and atomic foreign-life refusal. Remote window/transport mounting, target HUD, catalog shared-caster adapters, audio/props/blockers, prediction, persistence, and full acceptance remain.
+
 ## Reuse inventory
 
 Review baseline: OpenAgents `843c92dd7e`. The entries below were checked against

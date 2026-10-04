@@ -161,7 +161,10 @@ Wire version five adds `hud::Own` for the authenticated controlled life. Health,
 mana, the ten shared-kit cooldown gates, and cast progress come from that
 player’s state; spectators receive no owned HUD. Client and replica admission
 match HUD life to acknowledged control and validate resources, clocks, slots,
-and cast targets. Native HUD rendering and catalog shared-caster adapters remain.
+and cast targets. Native `owned_hud` drawing shares the local ten-slot row,
+portrait/resources, cast bar, and respawn button. Owned hit tests exclude hidden
+catalog slots and gate death/respawn controls. Remote window mounting, target
+HUD, and catalog shared-caster adapters remain.
 
 Revocation leaves an uncontrolled actor in the world; actor retirement and capacity reclamation remain lifecycle work.
 Transactional saves, multiplayer
