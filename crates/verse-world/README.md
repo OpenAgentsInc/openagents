@@ -85,7 +85,18 @@ actor lives; event pages expose retained serials and explicit history gaps.
 Requests are limited to 16 KiB, replies to 2 MiB, and event pages to 64 entries.
 Unknown fields, bad versions, malformed proofs, and unauthorized operations are
 refused. The network adapter retains the connection handle and supplies time.
-Client prediction, subscribed replication, and secured listener integration remain. Revocation leaves an uncontrolled actor in the
+The optional `service-net` feature adds `service::net::serve`, a TLS-only listener
+over big-endian u32-length-prefixed JSON. The host supplies a bound Tokio listener,
+a Rustls certificate/key configuration, enrolled gateway, and shutdown future.
+One host loop owns commands and 30 Hz world stepping; socket workers never hold
+world authority during IO. Sockets and dispatch queues are bounded to 128, with
+5-second TLS handshakes, 30-second initial authentication reads, 60-second idle
+reads, 10-second writes, and 120 requests per second per socket. Catch-up is
+bounded to 100 ms; transport statistics retain skipped elapsed time. Shutdown
+drains workers, parks controllers, and returns authority plus failure diagnostics.
+Temporary loopback TLS tests use generated certificates and synthetic identity
+keys. Client prediction, subscribed replication, durable deployment configuration,
+and native service integration remain. Revocation leaves an uncontrolled actor in the
 world; actor retirement and capacity reclamation remain lifecycle work.
 Transactional saves, multiplayer
 replication, and authoring tools remain on the

@@ -205,6 +205,19 @@ impl Gateway {
         self.bindings.retain(|_, b| b.principal != principal);
         Ok(())
     }
+    /// Parks admitted controllers and clears challenges when the host stops.
+    pub fn close_all(&mut self) -> Result<(), String> {
+        let ids: Vec<_> = self.bindings.keys().copied().collect();
+        for id in ids {
+            self.close(id)?;
+        }
+        self.pending.clear();
+        Ok(())
+    }
+    #[cfg(feature = "service-net")]
+    pub(super) fn authenticated(&self, id: ConnectionId) -> bool {
+        self.bindings.contains_key(&id)
+    }
     pub fn tick(&mut self, dt: f32) -> Result<(), String> {
         self.chamber.tick(dt)
     }
