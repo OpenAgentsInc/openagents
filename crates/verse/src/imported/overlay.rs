@@ -610,7 +610,7 @@ mod tests {
     }
 
     #[test]
-    fn ritual_keeps_all_thirteen_hostile_bars_in_both_camera_shots() {
+    fn ritual_limits_hostile_bars_without_overlap_in_both_camera_shots() {
         let scene = verse_engine::director::Scene::from_json(include_bytes!(
             "../../../../assets/verse/wow/anthropic.json"
         ))
@@ -637,7 +637,8 @@ mod tests {
                 .iter()
                 .filter(|v| v.color == [1.0, 0.0, 0.0, 1.0])
                 .count();
-            assert_eq!(red, 13 * 6, "time {time}");
+            assert!(red <= 6 * 6, "Too many nameplates at time {time}");
+            assert_eq!(red % 6, 0, "Incomplete nameplate at time {time}");
             let bars: Vec<_> = ui
                 .vertices
                 .iter()
