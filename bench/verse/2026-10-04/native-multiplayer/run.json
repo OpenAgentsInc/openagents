@@ -1,0 +1,164 @@
+{
+  "schema": "verse.native.multiplayer.run.v1",
+  "host_code_revision": "c39f6fef9e",
+  "client_code_revision": "c39f6fef9e",
+  "transport": "loopback TLS with temporary synthetic identities",
+  "wire_version": 9,
+  "configured_content_identity_enforced": true,
+  "asset_pack": "verse-bestiary-ritual-v1",
+  "connected_clients": {
+    "primary": 1,
+    "additional_player": 1,
+    "spectator": 1
+  },
+  "host": {
+    "ticks": 3110,
+    "requests": 19275,
+    "completed_connections": 3,
+    "dropped_seconds": 0.0
+  },
+  "process_exits": {
+    "clients": {
+      "primary": 0,
+      "player": 0,
+      "spectator": 0
+    },
+    "host": 0
+  },
+  "shared_final_players": [
+    [
+      14,
+      1,
+      200
+    ],
+    [
+      15,
+      1,
+      200
+    ]
+  ],
+  "clients": {
+    "primary": {
+      "frames": 2700,
+      "sampled_frames": 2204,
+      "duplicated_frames": 496,
+      "dropped_capture_frames": 0,
+      "native_dimensions": [
+        2560,
+        1440
+      ],
+      "encoded_size": [
+        1280,
+        720
+      ],
+      "capture_wall_seconds": 90.109904625,
+      "world_start": 8.468612670898438,
+      "world_end": 103.46666717529297,
+      "damage_events": 87,
+      "dialogue_events": 4,
+      "minimum_owned_hp": 0,
+      "owned_life_changes": 1,
+      "respawn_attempts": [
+        {
+          "instance": 220,
+          "actor": 14,
+          "generation": 0
+        }
+      ],
+      "accepted_cast_commands": {
+        "Fire Bolt": 4,
+        "Fireball": 5,
+        "Grease": 4,
+        "Light": 4,
+        "Magic Missile": 4,
+        "Misty Step": 3,
+        "Shield": 5,
+        "Shoot Bow": 4,
+        "Thunderwave": 4,
+        "Web": 4
+      }
+    },
+    "player": {
+      "frames": 2700,
+      "sampled_frames": 2210,
+      "duplicated_frames": 490,
+      "dropped_capture_frames": 0,
+      "native_dimensions": [
+        2560,
+        1440
+      ],
+      "encoded_size": [
+        1280,
+        720
+      ],
+      "capture_wall_seconds": 90.11897075,
+      "world_start": 8.468612670898438,
+      "world_end": 103.46666717529297,
+      "damage_events": 87,
+      "dialogue_events": 4,
+      "minimum_owned_hp": 0,
+      "owned_life_changes": 1,
+      "respawn_attempts": [
+        {
+          "instance": 220,
+          "actor": 15,
+          "generation": 0
+        }
+      ],
+      "accepted_cast_commands": {
+        "Fire Bolt": 4,
+        "Fireball": 5,
+        "Grease": 4,
+        "Light": 4,
+        "Magic Missile": 4,
+        "Misty Step": 3,
+        "Shield": 5,
+        "Shoot Bow": 4,
+        "Thunderwave": 4,
+        "Web": 4
+      }
+    },
+    "spectator": {
+      "frames": 2700,
+      "sampled_frames": 2112,
+      "duplicated_frames": 588,
+      "dropped_capture_frames": 0,
+      "native_dimensions": [
+        2560,
+        1440
+      ],
+      "encoded_size": [
+        1280,
+        720
+      ],
+      "capture_wall_seconds": 90.08359125,
+      "world_start": 8.468612670898438,
+      "world_end": 103.4000015258789,
+      "damage_events": 87,
+      "dialogue_events": 4,
+      "minimum_owned_hp": null,
+      "owned_life_changes": 0,
+      "respawn_attempts": [],
+      "accepted_cast_commands": {}
+    }
+  },
+  "limits": [
+    "Silent recordings; remote audio remains unimplemented.",
+    "Timing duplicates preserve capture time; this is not a gameplay frame-budget or input-latency measurement.",
+    "Shared-kit acknowledgments do not prove every spell damaged a target.",
+    "Inventory, quests, progression, durable saves/rewards, prediction/reconciliation, and full VE-5 acceptance remain."
+  ],
+  "artifacts": {
+    "player-40.png": "2f07141feffd529f5248f33ebf7af79d24bc1e07028faf2d213bcc86fe9d7f2e",
+    "player-79.png": "0875d2188cd3196fd0c7b6fb58fb17577ba823b8332466d17274b5b20425f74f",
+    "player.json": "8fffa8040d73e404d6a9604667eacd67e964b4f80b89fb1c7ad543cf840e397e",
+    "player.mp4": "a97ca493cb5fcf7babb599d8ebf47779ffd9e5e59d38a7965788d4b5de203756",
+    "primary-40.png": "5b9cf0b8a0feb481b16af0bdff5ce14e251b292d88fb20a1da86dbe35a566b8d",
+    "primary-79.png": "c017ff906a9dde5c13837591a7aef63394a120a8cebf57baeab6eaeac514465f",
+    "primary.json": "443f9ed9fca198e11163f3fe8d4950e0cf502d799f1604d804b4c3f0e8cae222",
+    "primary.mp4": "de488bf932a9669eb4eb1a2246054c49ab4f535d42850d76a042a3002454d3b7",
+    "spectator-40.png": "d09f1b812a062b5a1dde2c85cccd1493ba4e0fa2e19ef551ad4aec5226e36770",
+    "spectator.json": "39394ff9d7f7cfccb599874f7014f35d40b2cfe303fdc22c7a78e8156a101695",
+    "spectator.mp4": "cbf7423b66fa8b96734a2270364b7f24d079be9a1e9230e03e6c064cdf4704b5"
+  }
+}

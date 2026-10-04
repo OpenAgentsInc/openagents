@@ -233,6 +233,10 @@ Set `record.respawn` to `true` with `record.controller` to attempt authenticated
 respawn once per dead owned life. Spectators issue no commands. The capture proof
 records attempted lives and admitted owned-life changes; neither counter alone
 proves a successful respawn. Uncertain attempts are not replayed.
+The [native multiplayer receipt](../../bench/verse/2026-10-04/native-multiplayer/run.json)
+links three live 90-second captures, shared damage outcomes, and both player
+respawns. Native polling uses 20 Hz replication with 30 Hz input; each encoder
+uses two codec threads and one filter thread. Timing duplicates remain explicit.
 
 Host JSON requires `listen` (socket address), nonzero `instance`, `scene`, `pack`,
 `certificate_der`, `private_key_der`, and `enrollments`. Paths resolve from the
