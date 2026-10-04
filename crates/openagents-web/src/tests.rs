@@ -329,7 +329,11 @@ async fn the_everglade_page_serves_the_web_build_and_its_pack() {
         "text/javascript; charset=utf-8"
     );
     assert!(script.contains("import(glue)"));
-    assert!(script.contains("module.default({ module_or_path: wasm })"));
+    // The loader downloads the module itself, with progress, and hands the
+    // bytes to the glue's init.
+    assert!(script.contains("fetch(wasm"));
+    assert!(script.contains("default({ module_or_path: loaded[1] })"));
+    assert!(script.contains("data-wasm-bytes"));
     assert!(!script.contains("http://") && !script.contains("https://"));
     assert!(!script.contains("innerHTML"));
 
