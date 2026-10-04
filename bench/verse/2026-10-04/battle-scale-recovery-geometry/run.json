@@ -1,0 +1,28 @@
+{
+  "schema": "verse.battle.scale.run.v1",
+  "acceptance": "failed",
+  "reason": "Actor 226 generation one fails recovery between actor capsules 231 and 238 after twelve corrections. Exact geometry reproduces the failure in the physics regression test.",
+  "workload": {
+    "players": 20,
+    "hostile_npcs": 40,
+    "cultist_health": 20000,
+    "native_clients": 1,
+    "headless_clients": 19,
+    "seconds": 60,
+    "compiled_revisions": {
+      "host": "f60d0dca9a",
+      "clients": "1822528c2b"
+    },
+    "fixture_revision": "5bf03c1a1dc9a9b9f8554758bd418baa77eb3d3c",
+    "limits": [
+      "NPC health is raised in the authored load scene to sustain spell and AI work.",
+      "Headless player connections do not establish rendering performance on their machines.",
+      "Native player and load generator share one host machine."
+    ]
+  },
+  "limits": [
+    "The native sixty-second capture completes but the load and host fail afterward.",
+    "Native frame p95 is 70.525 ms and render submission p95 is 65.920 ms; performance acceptance fails.",
+    "Zero dropped server time does not establish server CPU budget."
+  ]
+}

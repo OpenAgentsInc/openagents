@@ -4,6 +4,7 @@ use glam::DVec3;
 use serde::{Deserialize, Serialize};
 
 const SKIN: f64 = 1e-5;
+const RECOVERY_CORRECTIONS: usize = 64;
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct Settings {
@@ -401,7 +402,7 @@ fn recover(
     let start = feet;
     let mut last = None;
     let mut contacts = std::collections::BTreeSet::new();
-    for _ in 0..12 {
+    for correction in 0..=RECOVERY_CORRECTIONS {
         let result = scene.overlap(settings.capsule(feet), filter)?;
         if result.truncated {
             return Err("Character recovery query budget exceeded".into());
@@ -416,6 +417,9 @@ fn recover(
         };
         contacts.insert(hit.collider);
         last = Some((hit.collider, hit.penetration, hit.normal));
+        if correction == RECOVERY_CORRECTIONS {
+            break;
+        }
         feet += hit.normal * (hit.penetration + SKIN);
     }
     let capsules = scene.snapshot(filter.instance).ok().map(|snapshot| {
@@ -705,6 +709,89 @@ mod tests {
             c.feet.y >= 3.99 || c.feet.x.abs() >= 3.34 || c.feet.z.abs() >= 3.34,
             "{c:?}"
         );
+    }
+    #[test]
+    fn unresolvable_recovery_preserves_character_state() {
+        let mut scene = floor();
+        box_in(
+            &mut scene,
+            1,
+            DVec3::new(-2., 0., -10.),
+            DVec3::new(-0.2, 4., 10.),
+        );
+        box_in(
+            &mut scene,
+            2,
+            DVec3::new(0.2, 0., -10.),
+            DVec3::new(2., 4., 10.),
+        );
+        let mut character = Character::new(DVec3::ZERO);
+        let before = serde_json::to_value(character).unwrap();
+        let error = character
+            .step(
+                &scene,
+                Filter::blocking(1),
+                Settings::default(),
+                DVec3::ZERO,
+                false,
+                1. / 120.,
+            )
+            .unwrap_err();
+        assert!(error.contains("Character spawn recovery did not converge"));
+        assert_eq!(serde_json::to_value(character).unwrap(), before);
+    }
+    #[test]
+    fn crowded_capsules_finish_recovery_before_movement() {
+        use crate::queries::{CapsuleCollider, Pose};
+        let mut scene = floor();
+        for (entity, position) in [
+            (
+                231,
+                DVec3::new(1.2038122415542603, 1.1400007247924804, 8.91481876373291),
+            ),
+            (
+                238,
+                DVec3::new(2.1531760692596436, 0.9000099999997474, 9.679643630981445),
+            ),
+        ] {
+            let key = ColliderKey {
+                life: Life {
+                    instance: 1,
+                    entity,
+                    generation: 0,
+                },
+                shape: 0,
+            };
+            scene
+                .insert_capsule(CapsuleCollider {
+                    key,
+                    layers: 2,
+                    usage: Usage::Blocking,
+                    capsule: Capsule {
+                        a: -DVec3::Y * 0.55,
+                        b: DVec3::Y * 0.55,
+                        radius: 0.35,
+                    },
+                })
+                .unwrap();
+            scene
+                .set_pose(
+                    key,
+                    Pose {
+                        position,
+                        rotation: glam::DQuat::IDENTITY,
+                    },
+                )
+                .unwrap();
+        }
+        let settings = Settings::default();
+        let filter = Filter::blocking(1);
+        let start = DVec3::new(1.6808813704470373, 0., 9.030238365165646);
+        let feet = recover(&scene, filter, settings, start).unwrap();
+        let contacts = scene.overlap(settings.capsule(feet), filter).unwrap();
+        assert!(!contacts.truncated);
+        assert!(contacts.hits.iter().all(|hit| hit.penetration <= SKIN));
+        assert!(feet.distance(start) < 0.3);
     }
     #[test]
     fn endpoint_and_surface_recovery() {
