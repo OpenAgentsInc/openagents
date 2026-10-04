@@ -147,6 +147,13 @@ share that contract. Native spell instances and dynamic lighting consume it;
 the local app extracts it once per frame. Remote transport mounting, HUD,
 props/blockers, and full service acceptance remain.
 
+`service::view::View` projects interpolated remote poses and bow flights into
+native scene frames using a validated client-owned camera. Ordered events
+provide life-bound dialogue and camera handoff; duplicate delivery does not
+replay cues. Respawn and world reset fence old dialogue, and retention gaps
+remain visible. The view retains bounded read-only event history for HUD/audio
+adapters. Native window/transport mounting and remote HUD still remain.
+
 Revocation leaves an uncontrolled actor in the world; actor retirement and capacity reclamation remain lifecycle work.
 Transactional saves, multiplayer
 replication, and authoring tools remain on the

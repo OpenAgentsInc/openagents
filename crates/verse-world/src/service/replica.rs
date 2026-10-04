@@ -189,7 +189,7 @@ fn control_key(control: &Option<Control>) -> Option<(Life, u64)> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::*;
     use crate::{
         play::Game,
@@ -197,7 +197,7 @@ mod tests {
     };
     use glam::Vec3;
     use verse_engine::director::Scene;
-    fn response(tick: u64) -> Response {
+    pub(in crate::service) fn response(tick: u64) -> Response {
         let scene = Scene::from_json(include_bytes!(
             "../../../../assets/verse/original/ritual.json"
         ))

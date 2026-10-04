@@ -246,6 +246,8 @@ The [inventory window profile](../../../bench/verse/2026-10-03/inventory-window/
 
 [#10509](https://github.com/OpenAgentsInc/openagents/issues/10509) moves native spell instances and dynamic lighting onto shared read-only combat visuals. Local extraction and validated remote state produce the same shield/light/area, projectile, hostile, and impact values. The local app extracts once per frame for both consumers; nearest-light priorities and particle budgets remain. Remote projectile admission also validates caster bindings, unique IDs, finite values, and capacity. Tests cover local/remote equivalence, malformed projectiles, independent player effects, explosion fading, nearest lights, and deterministic particle bounds. Native transport mounting, remote HUD/props/blockers, prediction, persistence, and full service acceptance remain.
 
+[#10510](https://github.com/OpenAgentsInc/openagents/issues/10510) projects admitted remote replicas into native scene frames. Interpolated poses retain lives, animation phases, health, and visibility; bow flights retain positions and stable directions. A validated client-owned camera supplies the view. Ordered committed events drive life-bound dialogue and pending camera handoff, with atomic malformed-batch rejection, duplicate suppression, retention-gap reporting, and respawn/reset fences. Tests cover frame projection, camera admission, event continuity/tick regressions, gaps, stale lives, resets, and real TLS worker-to-frame delivery. Native window/transport mounting, remote HUD/audio/props/blockers, cinematic camera routing, prediction, persistence, and full acceptance remain.
+
 ## Reuse inventory
 
 Review baseline: OpenAgents `843c92dd7e`. The entries below were checked against

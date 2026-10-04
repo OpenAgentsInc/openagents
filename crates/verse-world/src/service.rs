@@ -15,6 +15,8 @@ pub mod presentation;
 #[cfg(feature = "service-auth")]
 pub mod replica;
 #[cfg(feature = "service-auth")]
+pub mod view;
+#[cfg(feature = "service-auth")]
 pub mod wire;
 #[cfg(feature = "service-net")]
 pub mod worker;
