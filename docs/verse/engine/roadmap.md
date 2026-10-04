@@ -196,6 +196,8 @@ The [native named-state battle](../../../bench/verse/2026-10-03/named-animation-
 The [inventory window profile](../../../bench/verse/2026-10-03/inventory-window/performance.json) passes a 100-second movement, fireball, and live reload run: 22 casts, no dropped simulation time, 9.7 ms p95 frame work, and 10.3 ms p95 / 19.7 ms maximum delivered frames on Apple M5 Max. These are CPU and window-delivery measurements, not GPU timestamp measurements.
 
 
+[#10448](https://github.com/OpenAgentsInc/openagents/issues/10448) moves instance presentation and catalog-bound frame extraction into the headless engine. Native drawing consumes the portable contract, preserving borrowed values, life identities, and animation selections. Extraction bounds instance counts and rejects missing models and nonfinite transforms, animation times, or emissions; submission rejects stale catalogs even for empty frames. Camera, lighting, UI extraction, complete render-world scheduling, and other VE-3 requirements remain.
+
 ## Reuse inventory
 
 Review baseline: OpenAgents `843c92dd7e`. The entries below were checked against

@@ -31,22 +31,7 @@ use verse_engine::{
 };
 use wgpu::util::DeviceExt;
 
-#[derive(Clone, Debug)]
-pub struct Instance {
-    pub actor: Option<verse_engine::core::LifeId>,
-    pub model: String,
-    pub transform: Mat4,
-    pub animation: verse_engine::motion::Selection,
-    pub time: f32,
-    pub emission: Vec3,
-}
-/// Extracted instances are immutable and bound to the admitting renderer catalog.
-#[derive(Clone, Debug)]
-pub struct ResolvedInstances<'a> {
-    catalog: verse_engine::residency::CatalogId,
-    instances: &'a [Instance],
-    models: Vec<verse_engine::residency::ModelHandle>,
-}
+pub use verse_engine::presentation::{Instance, ResolvedInstances};
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
 struct GpuVertex {
@@ -842,18 +827,7 @@ impl Renderer {
         &self,
         instances: &'a [Instance],
     ) -> Result<ResolvedInstances<'a>, String> {
-        if instances.len() > 256 {
-            return Err("Too many renderer instances".into());
-        }
-        let models = instances
-            .iter()
-            .map(|i| self.catalog.model(&i.model))
-            .collect::<Result<_, _>>()?;
-        Ok(ResolvedInstances {
-            catalog: self.catalog.id(),
-            instances,
-            models,
-        })
+        ResolvedInstances::extract(&self.catalog, instances)
     }
     pub fn draw_resolved(
         &mut self,
@@ -884,11 +858,8 @@ impl Renderer {
     ) -> Result<Vec<u8>, String> {
         let started = Instant::now();
         // Validate residency before writing any GPU buffer.
-        self.catalog.check(resolved.catalog)?;
-        for handle in &resolved.models {
-            self.catalog.model_name(*handle)?;
-        }
-        let instances = resolved.instances;
+        resolved.validate(&self.catalog)?;
+        let instances = resolved.instances();
         let mut grounded_vertices = 0;
         if instances.len() > 256
             || instances.iter().any(|i| !i.transform.is_finite())
@@ -1054,7 +1025,7 @@ impl Renderer {
                     continue;
                 }
                 pass.set_bind_group(2, &self.actors[i + 1].group, &[]);
-                for batch in self.models[&resolved.models[i]]
+                for batch in self.models[&resolved.models()[i]]
                     .iter()
                     .filter(|b| b.blend < 2 && !b.emissive)
                 {
@@ -1108,7 +1079,7 @@ impl Renderer {
                 }
                 for (i, _) in order {
                     pass.set_bind_group(2, &self.actors[i + 1].group, &[]);
-                    for batch in self.models[&resolved.models[i]]
+                    for batch in self.models[&resolved.models()[i]]
                         .iter()
                         .filter(|b| b.blend == blend as u8)
                     {
