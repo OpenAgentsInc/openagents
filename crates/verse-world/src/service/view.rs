@@ -1637,7 +1637,7 @@ mod tests {
                     view.push_events(&delivery).unwrap();
                     received_events = true;
                 }
-                Update::Outcome(_) | Update::Inventory(_) => {
+                Update::CommandBound { .. } | Update::Outcome(_) | Update::Inventory(_) => {
                     panic!("Spectator issued no private request")
                 }
             }

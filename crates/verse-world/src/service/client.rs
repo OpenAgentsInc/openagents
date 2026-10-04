@@ -223,9 +223,10 @@ impl Client {
         })
         .await
     }
-    pub async fn command(&mut self, intent: Intent<Ability>) -> Result<Response, String> {
+    /// Binds an input to the current acknowledged control without sending it.
+    pub fn prepare_command(&self, intent: Intent<Ability>) -> Result<Command<Ability>, String> {
         let control = self.control().ok_or("Client has no admitted adventurer")?;
-        let command = Command {
+        Ok(Command {
             actor: control.life.into(),
             epoch: control.epoch,
             sequence: control
@@ -234,7 +235,10 @@ impl Client {
                 .ok_or("Client command sequence exhausted")?,
             tick: self.tick,
             intent,
-        };
+        })
+    }
+    pub async fn command(&mut self, intent: Intent<Ability>) -> Result<Response, String> {
+        let command = self.prepare_command(intent)?;
         self.request(Body::Command {
             command: command.into(),
         })

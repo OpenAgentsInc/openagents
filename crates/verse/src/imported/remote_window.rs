@@ -286,6 +286,12 @@ impl App {
                     }
                 }
                 Ok(Update::Inventory(r)) => self.view.push_inventory(&r)?,
+                Ok(Update::CommandBound { binding, .. }) => {
+                    if let Err(message) = binding {
+                        self.pending.pop_front();
+                        self.status = message;
+                    }
+                }
                 Ok(Update::Outcome(r)) => {
                     let ability = self.pending.pop_front().flatten();
                     if matches!(r.body, verse_world::service::wire::Reply::Accepted) {

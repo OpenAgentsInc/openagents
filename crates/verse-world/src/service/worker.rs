@@ -4,7 +4,7 @@ use super::{
     event_cursor::{Cursor, Delivery},
     wire::{Body, Reply, Response},
 };
-use crate::{Intent, play::Ability};
+use crate::{Command, Intent, play::Ability};
 use std::time::Duration;
 use tokio::sync::{mpsc, oneshot};
 
@@ -16,6 +16,13 @@ pub const NATIVE_CADENCE: Duration = Duration::from_millis(50);
 /// Local input requests contain no principal, controller, or transport handle.
 pub enum Input {
     Command(Intent<Ability>),
+    /// Tokens increase for this connection; captured control must still be current.
+    TrackedCommand {
+        token: u64,
+        life: verse_engine::core::LifeId,
+        epoch: u64,
+        intent: Intent<Ability>,
+    },
     Respawn,
     ClaimQuest(u64),
     AcceptQuest(u64, verse_engine::core::LifeId),
@@ -30,6 +37,11 @@ pub enum Update {
     Events {
         delivery: Delivery,
         checkpoint: Vec<u8>,
+    },
+    /// Emitted before transmission. An error consumes the input without an outcome.
+    CommandBound {
+        token: u64,
+        binding: Result<Command<Ability>, String>,
     },
     Outcome(Response),
 }
@@ -59,6 +71,7 @@ pub async fn run(
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         let mut next_inventory = tokio::time::Instant::now();
         let mut inventory_life = None;
+        let mut last_token = 0;
         loop {
             let mut polling = false;
             let update = tokio::select! {
@@ -83,6 +96,22 @@ pub async fn run(
                     updates.send(Update::Snapshot(response)).await
                         .map_err(|_| "Chamber update consumer closed")?;
                     let response = match input {
+                        Input::TrackedCommand { token, life, epoch, intent } => {
+                            let binding = if token == 0 || token <= last_token {
+                                Err("Tracked input token must increase".into())
+                            } else {
+                                last_token = token;
+                                match client.control() {
+                                    Some(control) if control.life == life.into() && control.epoch == epoch => client.prepare_command(intent),
+                                    _ => Err("Tracked input control changed before transmission".into()),
+                                }
+                            };
+                            let command = binding.as_ref().ok().cloned();
+                            updates.send(Update::CommandBound { token, binding }).await
+                                .map_err(|_| "Chamber update consumer closed")?;
+                            let Some(command) = command else { continue; };
+                            client.request(Body::Command { command: command.into() }).await?
+                        }
                         Input::Command(intent) => client.command(intent).await?,
                         Input::Respawn => client.respawn().await?,
                         Input::EquipGear(slot,item) => {let mut operation=[0;16];getrandom::fill(&mut operation).map_err(|_|"Cannot generate equipment retry identity")?;next_inventory=tokio::time::Instant::now();client.equip_gear(slot,item,operation).await?}
@@ -145,6 +174,87 @@ mod tests {
     use tokio::time::timeout;
 
     #[tokio::test]
+    async fn tracked_inputs_bind_before_outcomes_and_reject_stale_control() {
+        let keys = [key(91), key(92), key(93)];
+        let (address, connector, server_stop, server) = start(&keys).await;
+        let mut client = Client::connect(
+            address,
+            ServerName::try_from("localhost").unwrap(),
+            connector.config().clone(),
+            120,
+            &keys[0],
+        )
+        .await
+        .unwrap();
+        client.snapshot().await.unwrap();
+        let control = client.control().unwrap().clone();
+        let (input, inputs, updates, mut output) = channels();
+        let (stop, stopped) = oneshot::channel();
+        let worker = tokio::spawn(run(
+            client,
+            Cursor::new(120),
+            NATIVE_CADENCE,
+            inputs,
+            updates,
+            stopped,
+        ));
+        let mut sequence = control.accepted_sequence;
+        for (token, epoch, valid) in [
+            (1, control.epoch, true),
+            (1, control.epoch, false),
+            (2, control.epoch + 1, false),
+            (3, control.epoch, true),
+        ] {
+            input
+                .send(Input::TrackedCommand {
+                    token,
+                    life: control.life.into(),
+                    epoch,
+                    intent: Intent::Move {
+                        axes: [0., 0.],
+                        yaw: 0.,
+                    },
+                })
+                .await
+                .unwrap();
+            timeout(Duration::from_secs(3), async {
+                let mut bound = false;
+                loop {
+                    match output.recv().await.unwrap() {
+                        Update::CommandBound {
+                            token: received,
+                            binding,
+                        } => {
+                            assert_eq!(received, token);
+                            assert_eq!(binding.is_ok(), valid);
+                            if let Ok(command) = binding {
+                                assert_eq!(command.epoch, control.epoch);
+                                assert_eq!(command.sequence, sequence + 1);
+                                bound = true;
+                            } else {
+                                break;
+                            }
+                        }
+                        Update::Outcome(response) => {
+                            assert!(valid && bound);
+                            assert!(matches!(response.body, Reply::Accepted));
+                            sequence += 1;
+                            break;
+                        }
+                        _ => {}
+                    }
+                }
+            })
+            .await
+            .unwrap();
+        }
+        stop.send(()).unwrap();
+        worker.await.unwrap().unwrap();
+        server_stop.send(()).unwrap();
+        assert!(server.await.unwrap().failure.is_none());
+    }
+
+    #[tokio::test]
     async fn native_inventory_polling_is_bounded_and_excludes_spectators() {
         for player in [true, false] {
             let keys = [key(81), key(82), key(83)];
@@ -178,7 +288,7 @@ mod tests {
                         Update::Snapshot(_)=>snapshots+=1,
                         Update::Inventory(response)=> {assert!(player);let Reply::Inventory{inventory}=response.body else {panic!("Missing inventory");};assert_eq!(inventory.experience,0);inventories+=1;},
                         Update::Events{..}=>{},
-                        Update::Outcome(_)=>panic!("No player commands submitted"),
+                        Update::CommandBound { .. } | Update::Outcome(_)=>panic!("No player commands submitted"),
                     }
                 }
             }
@@ -259,7 +369,7 @@ mod tests {
                             accepted += 1;
                         }
                     }
-                    Update::Events { .. } | Update::Inventory(_) => {}
+                    Update::CommandBound { .. } | Update::Events { .. } | Update::Inventory(_) => {}
                 }
             }
         })
@@ -329,6 +439,7 @@ mod tests {
                 Update::Inventory(r) => {
                     assert!(matches!(r.body, Reply::Inventory { .. }));
                 }
+                Update::CommandBound { .. } => panic!("No tracked commands submitted"),
                 Update::Outcome(r) => {
                     assert!(matches!(r.body, Reply::Accepted));
                     accepted = true;
