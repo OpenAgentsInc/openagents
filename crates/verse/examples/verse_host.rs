@@ -127,6 +127,11 @@ async fn serve(config: Config) -> Result<(), String> {
         exit.stats.dropped_seconds
     );
     println!(
+        "Motor recovery: {} blocked advances, last diagnostic {:?}",
+        exit.gateway.game().motor_recovery.blocks,
+        exit.gateway.game().motor_recovery.last_diagnostic
+    );
+    println!(
         "Checkpoint storage: {} commits, {} bytes, {:.6} seconds",
         exit.stats.checkpoint_commits, exit.stats.checkpoint_bytes, exit.stats.checkpoint_seconds
     );

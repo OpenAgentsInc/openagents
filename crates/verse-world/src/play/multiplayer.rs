@@ -624,7 +624,7 @@ impl Game {
                             spell_velocity,
                         );
                         let before_bounce = p.character.external;
-                        p.character.step(
+                        let outcome = p.character.step_contained(
                             &self.query_scene,
                             self.actor_filter(p.admission.actor()),
                             physics::character::Settings::default(),
@@ -632,6 +632,9 @@ impl Game {
                             jump && step == 0,
                             self.physics_clock.dt,
                         )?;
+                        if !self.motor_recovery.observe(outcome) {
+                            break;
+                        }
                         crate::spells::levitate::bounce(
                             &self.spells,
                             actor,

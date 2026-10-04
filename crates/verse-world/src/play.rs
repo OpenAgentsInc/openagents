@@ -193,6 +193,8 @@ pub struct Game {
     navigation_goals: BTreeMap<u64, NavigationGoal>,
     blockers: physics::walkable::Blockers,
     bodies: physics::lifetimes::Bodies,
+    #[serde(skip)]
+    pub motor_recovery: crate::movement::RecoveryObservations,
     pub navigation_plans: u64,
     pub navigation_budget_refusals: u64,
     #[serde(skip)]
@@ -1283,6 +1285,7 @@ impl Game {
             navigation_goals: BTreeMap::new(),
             blockers: physics::walkable::Blockers::new(instance),
             bodies: physics::lifetimes::Bodies::new(instance),
+            motor_recovery: Default::default(),
             navigation_plans: 0,
             navigation_budget_refusals: 0,
             navigation: crate::room::profile_navigation(
@@ -1845,14 +1848,16 @@ impl Game {
                 let velocity =
                     crate::spells::gust::movement(&self.spells, self.character.feet, velocity);
                 let before_bounce = self.character.external;
-                self.character.step(
+                if !self.motor_recovery.observe(self.character.step_contained(
                     &self.query_scene,
                     filter,
                     physics::character::Settings::default(),
                     velocity,
                     jump && step == 0,
                     self.physics_clock.dt,
-                )?;
+                )?) {
+                    break;
+                }
                 crate::spells::levitate::bounce(
                     &self.spells,
                     self.admission.actor().actor,
@@ -2012,14 +2017,16 @@ impl Game {
                         let velocity =
                             crate::spells::gust::movement(&self.spells, character.feet, velocity);
                         let before_bounce = character.external;
-                        character.step(
+                        if !self.motor_recovery.observe(character.step_contained(
                             &self.query_scene,
                             filter,
                             physics::character::Settings::default(),
                             velocity,
                             false,
                             self.physics_clock.dt,
-                        )?;
+                        )?) {
+                            break;
+                        }
                         crate::spells::levitate::bounce(
                             &self.spells,
                             a.actor.id,
@@ -2714,14 +2721,16 @@ impl Game {
             for _ in 0..steps {
                 c.vertical_speed = 0.;
                 c.add_velocity(glam::DVec3::Y * desired.y);
-                c.step(
+                if !self.motor_recovery.observe(c.step_contained(
                     &self.query_scene,
                     filter,
                     physics::character::Settings::default(),
                     glam::DVec3::new(desired.x, 0., desired.z).clamp_length_max(99.),
                     false,
                     self.physics_clock.dt,
-                )?;
+                )?) {
+                    break;
+                }
             }
             c.peak = Some(peak);
             if !held {
@@ -4851,5 +4860,55 @@ mod friendly_tests {
             serde_json::from_slice(&hostile.checkpoint().unwrap()).unwrap();
         old["rules_revision"] = "verse-chamber-owned-v16".into();
         Game::restore(&serde_json::to_vec(&old).unwrap()).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod motor_containment_tests {
+    use super::*;
+    #[test]
+    fn blocked_player_recovery_does_not_stop_the_world_clock() {
+        use physics::queries::{ColliderKey, Life, Mesh, MeshCollider, Usage};
+        let scene =
+            Scene::from_json(include_bytes!("../../../assets/verse/original/ritual.json")).unwrap();
+        let mut game = Game::combat(scene, false).unwrap();
+        game.time = game.scene.cut_at;
+        game.tick(1. / 30., [0.; 2]).unwrap();
+        let position = game.player;
+        let instance = game.player_life().instance;
+        for (entity, lo, hi) in [(90001, -2., 0.1), (90002, -0.1, 2.)] {
+            game.query_scene
+                .insert(MeshCollider {
+                    key: ColliderKey {
+                        life: Life {
+                            instance,
+                            entity,
+                            generation: 0,
+                        },
+                        shape: 0,
+                    },
+                    layers: 1,
+                    usage: Usage::Blocking,
+                    mesh: Mesh::from_box(
+                        position.as_dvec3() + glam::DVec3::new(lo, -1., -2.),
+                        position.as_dvec3() + glam::DVec3::new(hi, 4., 2.),
+                    )
+                    .unwrap(),
+                })
+                .unwrap();
+        }
+        let tick = game.authority_tick;
+        let time = game.time;
+        for _ in 0..3 {
+            game.tick(1. / 30., [1., 0.]).unwrap();
+            assert_eq!(game.player, position);
+        }
+        assert_eq!(game.authority_tick, tick + 3);
+        assert!(game.time > time);
+        assert_eq!(game.motor_recovery.blocks, 3);
+        assert!(game.motor_recovery.last_diagnostic.is_some());
+        let checkpoint: serde_json::Value =
+            serde_json::from_slice(&game.checkpoint().unwrap()).unwrap();
+        assert!(checkpoint["world"].get("motor_recovery").is_none());
     }
 }

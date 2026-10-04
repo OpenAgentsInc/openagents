@@ -23,6 +23,7 @@ pub struct Pose {
 /// Read-only timing evidence in 120 Hz physics steps; input count is bounded by history.
 #[derive(serde::Serialize)]
 pub struct Timing {
+    recovery_blocks: u64,
     steps_per_second: u16,
     step: u64,
     simulated: u64,
@@ -46,6 +47,7 @@ struct Input {
     intent: Intent<Ability>,
 }
 pub struct Local {
+    recovery: movement::RecoveryObservations,
     collision: SceneCache,
     baseline: Option<Baseline>,
     inputs: VecDeque<Input>,
@@ -64,6 +66,7 @@ pub struct Local {
 impl Local {
     pub fn new(instance: u64) -> Self {
         Self {
+            recovery: Default::default(),
             collision: SceneCache::new(instance),
             baseline: None,
             inputs: VecDeque::new(),
@@ -94,6 +97,7 @@ impl Local {
     /// Captures timing without advancing, correcting, or rebinding predicted input.
     pub fn timing(&self) -> Timing {
         Timing {
+            recovery_blocks: self.recovery.blocks,
             steps_per_second: 120,
             step: self.step,
             simulated: self.simulated,
@@ -381,7 +385,7 @@ impl Local {
             }
             let walk = movement::walk(held.axes(step), yaw)?;
             let velocity = baseline.policy.velocity(held.axes(step), yaw)?;
-            movement::advance(
+            let travel = movement::advance(
                 &mut character,
                 self.collision.scene(),
                 filter,
@@ -390,6 +394,12 @@ impl Local {
                 1,
                 1. / 120.,
             )?;
+            if travel.recovery.blocks > 0 {
+                self.recovery.blocks = self.recovery.blocks.saturating_add(travel.recovery.blocks);
+                self.recovery.last_diagnostic = travel.recovery.last_diagnostic;
+                self.moving = false;
+                break;
+            }
             let distance = character.feet.distance(previous) as f32;
             self.moving = distance > 0.00001;
             if step >= self.simulated {

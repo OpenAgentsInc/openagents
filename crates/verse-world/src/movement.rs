@@ -5,6 +5,25 @@ use physics::{
     queries::{Filter, Scene},
 };
 
+/// Bounded runtime evidence; it is separate from persisted gameplay state.
+#[derive(Clone, Debug, Default)]
+pub struct RecoveryObservations {
+    pub blocks: u64,
+    pub last_diagnostic: Option<String>,
+}
+impl RecoveryObservations {
+    pub fn observe(&mut self, step: physics::character::Step) -> bool {
+        match step {
+            physics::character::Step::Advanced => true,
+            physics::character::Step::BlockedRecovery { diagnostic } => {
+                self.blocks = self.blocks.saturating_add(1);
+                self.last_diagnostic = Some(diagnostic.chars().take(2048).collect());
+                false
+            }
+        }
+    }
+}
+
 /// Movement leases last half a simulated second, rounded to an authority interval.
 pub const HELD_STEPS: u64 = 60;
 #[derive(Clone, Copy, Debug, Default, serde::Serialize, serde::Deserialize)]
@@ -117,6 +136,7 @@ pub fn walk(axes: [f32; 2], yaw: f32) -> Result<Walk, String> {
 pub struct Travel {
     pub path: Vec<[f32; 3]>,
     pub fallen: f64,
+    pub recovery: RecoveryObservations,
 }
 /// Commits character state only after all bounded substeps succeed.
 pub fn advance(
@@ -141,20 +161,27 @@ pub fn advance(
     let mut path = Vec::with_capacity(steps as usize + 1);
     path.push(next.feet.as_vec3().to_array());
     let mut fallen = 0.;
+    let mut recovery = RecoveryObservations::default();
     for step in 0..steps {
-        next.step(
+        if !recovery.observe(next.step_contained(
             scene,
             filter,
             Settings::default(),
             velocity,
             jump && step == 0,
             dt,
-        )?;
+        )?) {
+            break;
+        }
         fallen += next.landed.unwrap_or(0.);
         path.push(next.feet.as_vec3().to_array());
     }
     *character = next;
-    Ok(Travel { path, fallen })
+    Ok(Travel {
+        path,
+        fallen,
+        recovery,
+    })
 }
 #[cfg(test)]
 mod tests {
@@ -187,6 +214,70 @@ mod tests {
         );
         scene
     }
+    #[test]
+    fn contained_recovery_records_a_bounded_diagnostic_without_suppressing_errors() {
+        let mut observations = RecoveryObservations::default();
+        assert!(observations.observe(physics::character::Step::Advanced));
+        assert!(
+            !observations.observe(physics::character::Step::BlockedRecovery {
+                diagnostic: "é".repeat(5000),
+            })
+        );
+        assert_eq!(observations.blocks, 1);
+        assert_eq!(
+            observations
+                .last_diagnostic
+                .as_ref()
+                .unwrap()
+                .chars()
+                .count(),
+            2048
+        );
+        let mut scene = Scene::default();
+        // Opposing walls leave no capsule-sized free endpoint.
+        box_in(
+            &mut scene,
+            1,
+            DVec3::new(-2., -1., -2.),
+            DVec3::new(0.1, 4., 2.),
+        );
+        box_in(
+            &mut scene,
+            2,
+            DVec3::new(-0.1, -1., -2.),
+            DVec3::new(2., 4., 2.),
+        );
+        let mut character = Character::new(DVec3::ZERO);
+        let before = serde_json::to_vec(&character).unwrap();
+        let travel = advance(
+            &mut character,
+            &scene,
+            Filter::blocking(1),
+            DVec3::X,
+            false,
+            4,
+            1. / 120.,
+        )
+        .unwrap();
+        assert_eq!(travel.recovery.blocks, 1);
+        assert_eq!(travel.path.len(), 1);
+        assert_eq!(travel.fallen, 0.);
+        assert_eq!(serde_json::to_vec(&character).unwrap(), before);
+        assert!(
+            advance(
+                &mut character,
+                &scene,
+                Filter::blocking(1),
+                DVec3::splat(f64::NAN),
+                false,
+                4,
+                1. / 120.
+            )
+            .is_err()
+        );
+        assert_eq!(serde_json::to_vec(&character).unwrap(), before);
+    }
+
     #[test]
     fn walking_matches_speed_diagonal_and_yaw_conventions() {
         let forward = walk([0., 1.], 0.).unwrap();
