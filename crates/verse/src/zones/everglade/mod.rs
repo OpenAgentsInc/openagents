@@ -7,13 +7,15 @@
 //! alpha-tested cells on a lit stage, with the Task Wall and the desk
 //! monitors drawn by Verse (`boards`). The pack loads on portal entry, as
 //! the Ruins pack does. The studio's stations have fixed standing points in
-//! [`STATIONS`], which the studio workspace (#10465) builds on. The player
-//! walks the shared plaza controller over the heightfield.
+//! [`STATIONS`]; the Agent Studio's seats walk between them and the
+//! stations open its panels ([`studio`]). The player walks the shared
+//! plaza controller over the heightfield.
 
 mod boards;
 mod draw;
 pub mod layout;
 mod scene;
+pub mod studio;
 #[cfg(test)]
 mod tests;
 
@@ -311,12 +313,29 @@ impl Everglade {
         &self.rendered
     }
 
-    /// The HUD caption for a player standing at `at`.
+    /// The HUD caption for a player standing at `at`: the station in
+    /// reach, and the panel the interact key opens there.
     pub fn caption(at: Vec3) -> String {
-        match station_near(at.x, at.z) {
+        let mut caption = match station_near(at.x, at.z) {
             Some(station) => format!("Everglade\n{} · {}", station.studio, station.place),
             None => "Everglade\nWalk up to a station".into(),
+        };
+        if let Some(panel) = studio::Studio::panel_at(at) {
+            caption.push_str("\nF opens ");
+            caption.push_str(panel_name(&panel));
         }
+        caption
+    }
+}
+
+/// What a panel is called in a caption or a control.
+#[must_use]
+pub fn panel_name(panel: &studio::PanelKind) -> &'static str {
+    match panel {
+        studio::PanelKind::Console => "the console",
+        studio::PanelKind::Desk(_) | studio::PanelKind::Seat(_) => "the seat's panel",
+        studio::PanelKind::Decisions => "the decisions",
+        studio::PanelKind::Review => "the diff review",
     }
 }
 

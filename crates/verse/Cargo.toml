@@ -29,6 +29,9 @@ coder = { path = "../coder", optional = true }
 coder-delegate = { path = "../coder-delegate", optional = true }
 # The shared activity classifier a replay and a live Agent Studio both call.
 atif = { path = "../atif" }
+# The Agent Studio's NIP-HOST snapshot, update, and review shapes Everglade
+# draws, without the host.
+coder-access = { path = "../coder-access", default-features = false }
 coder-ui = { path = "../coder-ui" }
 rust-native = { path = "../rust-native" }
 rust-native-desktop = { path = "../rust-native-desktop", default-features = false, optional = true }

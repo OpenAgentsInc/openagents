@@ -190,8 +190,11 @@ pub const SCRIPT: &[Step] = &[
     Step::Reconcile,
 ];
 
-/// The turns of the task with plan identity `key`.
-fn turns(key: &str) -> &'static [Turn] {
+/// The turns of the task with plan identity `key`, in the order the
+/// script takes them. A view that replays the script, such as Verse's
+/// Everglade fixture, reads what each turn does from here.
+#[must_use]
+pub fn turns(key: &str) -> &'static [Turn] {
     match key {
         "lead" => LEAD,
         "greet" => GREET,
@@ -708,6 +711,12 @@ impl Team {
     #[must_use]
     pub fn landed(&self) -> &BTreeMap<String, String> {
         &self.landed
+    }
+
+    /// Every review the person read of plan identity `key`, oldest first.
+    #[must_use]
+    pub fn reviews(&self, key: &str) -> &[TaskReview] {
+        self.reviews.get(key).map_or(&[], Vec::as_slice)
     }
 
     /// The task identity of plan identity `key`.

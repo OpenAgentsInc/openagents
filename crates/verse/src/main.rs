@@ -16,6 +16,10 @@
 //! The ruins portal loads its verified artwork only on explicit entry. Click
 //! the portal or press `F` nearby; inside, `1` through `4` activate the displayed
 //! spell hotbar and return controls. Plaza subscriptions pause until you return.
+//! `--studio-sim` plays Agent Studio's simulated team in Everglade: on first
+//! entry it records the scripted team against a scratch repository under the
+//! system's temporary directory, with no model or network. Inside, `F` at a
+//! station, or a click on a seat, a monitor, or a station, opens its panel.
 //!
 //! `verse --seed-rooms <relay-key-file>` creates the NIP-29 chat rooms as
 //! the relay; `scripts/verse-relay.sh` runs it.
@@ -153,6 +157,7 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<(Option<Shot>, Option
             "--board" => board = true,
             "--replay" => options.replay = Some(value()?),
             "--gym-connection" => options.gym_connection = Some(value()?.into()),
+            "--studio-sim" => options.studio_sim = true,
             "--at" => {
                 let v = value()?;
                 at = Some(

@@ -203,6 +203,10 @@ pub enum Intent {
     Pause,
     /// Physics Lab: pause and advance one fixed step.
     Step,
+    /// Everglade: open the panel of the station in reach. The runtime
+    /// changes nothing; the host opens the panel
+    /// ([`WorldRuntime::studio_panel_here`](crate::runtime::WorldRuntime::studio_panel_here)).
+    Interact,
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -278,6 +282,9 @@ pub(crate) struct State {
     lagrange: Option<Lagrange>,
     lab: Option<Lab>,
     everglade: Option<Everglade>,
+    /// The Agent Studio Everglade draws. It keeps its source across visits
+    /// and observes only while the player is in Everglade.
+    studio: everglade::studio::Studio,
     destination: ZoneId,
     plaza_pose: Option<(glam::Vec3, f32)>,
     elapsed: f32,
@@ -298,6 +305,7 @@ impl Default for State {
             lagrange: None,
             lab: None,
             everglade: None,
+            studio: everglade::studio::Studio::default(),
             destination: ZoneId::Ruins,
             plaza_pose: None,
             elapsed: 0.0,

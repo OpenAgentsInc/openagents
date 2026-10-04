@@ -33,6 +33,7 @@ use crate::session::{self, Session, Status};
 use crate::ui::Atlas;
 use crate::world;
 use crate::xp;
+use crate::zones::everglade::studio::PanelKind as StudioPanel;
 use crate::zones::{self, Intent as ZoneIntent};
 
 /// How the window joins the shared world.
@@ -52,6 +53,9 @@ pub struct Options {
     pub replay: Option<String>,
     /// Signed Gym connection JSON, read only after entering the Gym.
     pub gym_connection: Option<std::path::PathBuf>,
+    /// Play Agent Studio's simulated team in Everglade, in a scratch
+    /// repository under the system's temporary directory.
+    pub studio_sim: bool,
 }
 
 impl Default for Options {
@@ -64,6 +68,7 @@ impl Default for Options {
             xp_referees: Vec::new(),
             replay: None,
             gym_connection: None,
+            studio_sim: false,
         }
     }
 }
@@ -505,6 +510,12 @@ struct App {
     gym_notice: Option<String>,
     /// The Rust Native panel over the world, while it is open (C).
     panel: Option<crate::panels::Panel>,
+    /// The Agent Studio panel the panel shows, and the studio revision it
+    /// was filled from; `None` while it shows the replay's transcript.
+    studio_panel: Option<(StudioPanel, u64)>,
+    /// What a tap in progress in Everglade selects, while `zone_press`
+    /// tracks it.
+    studio_target: Option<StudioPanel>,
     /// Whether the panel took the left button's last press.
     panel_press: bool,
 }
@@ -651,6 +662,13 @@ impl App {
         runtime.agent = agent;
         runtime.doors = doors;
         runtime.configure_zone_cache(crate::identity::home().join("zones-cache"));
+        if options.studio_sim {
+            // Records the simulated team on first entry to Everglade, off the
+            // frame, and plays a frame every two seconds.
+            runtime.set_studio_source(Box::new(
+                crate::zones::everglade::studio::fixture::Background::new(2.0),
+            ));
+        }
         let zone_operators = zone_operators_for(session.as_ref());
         Ok(Self {
             window: None,
@@ -724,6 +742,8 @@ impl App {
             gym_notice: None,
             panel: None,
             panel_press: false,
+            studio_panel: None,
+            studio_target: None,
         })
     }
 
@@ -733,7 +753,93 @@ impl App {
             Some(_) => None,
             None => Some(crate::panels::Panel::new("Agent transcript")),
         };
+        self.studio_panel = None;
         self.panel_press = false;
+    }
+
+    /// Opens the Agent Studio panel `kind` over the world, in place of any
+    /// open panel.
+    fn open_studio_panel(&mut self, kind: StudioPanel) {
+        let review = self.studio_review(&kind);
+        let studio = self.runtime.studio();
+        let revision = studio.revision();
+        let panel = crate::panels::studio::open(&kind, studio.view(), review.as_ref());
+        self.panel = Some(panel);
+        self.studio_panel = Some((kind, revision));
+        self.panel_press = false;
+    }
+
+    /// The review the merge station shows: the newest done task whose
+    /// review the studio's source holds.
+    fn studio_review(&mut self, kind: &StudioPanel) -> Option<coder_access::review::TaskReview> {
+        if *kind != StudioPanel::Review {
+            return None;
+        }
+        let tasks: Vec<String> = self
+            .runtime
+            .studio()
+            .view()
+            .map(|view| {
+                crate::panels::studio::reviewable(view)
+                    .into_iter()
+                    .map(|task| task.task.clone())
+                    .collect()
+            })
+            .unwrap_or_default();
+        tasks
+            .iter()
+            .find_map(|task| self.runtime.studio_review(task))
+    }
+
+    /// Refills an open studio panel when the studio changed, and forgets it
+    /// once the panel closed.
+    fn refresh_studio_panel(&mut self) {
+        if self.panel.is_none() {
+            self.studio_panel = None;
+            return;
+        }
+        let Some((kind, shown)) = self.studio_panel.clone() else {
+            return;
+        };
+        let revision = self.runtime.studio().revision();
+        if revision == shown {
+            return;
+        }
+        let review = self.studio_review(&kind);
+        if let Some(panel) = &mut self.panel {
+            crate::panels::studio::fill(
+                panel,
+                &kind,
+                self.runtime.studio().view(),
+                review.as_ref(),
+            );
+        }
+        self.studio_panel = Some((kind, revision));
+    }
+
+    /// The studio target under the cursor in Everglade, when nothing else
+    /// on screen takes the click.
+    fn studio_at_cursor(&self) -> Option<StudioPanel> {
+        if self.runtime.zone_loading()
+            || self.map.expanded
+            || self.cursor_on_map()
+            || self.cursor_on_zone_hud()
+            || self.cursor_on_door_hud()
+            || self.layout.owns(self.cursor[0], self.cursor[1])
+            || !self
+                .mount
+                .as_ref()
+                .is_some_and(|m| m.active() && m.viewport().drawable())
+        {
+            return None;
+        }
+        let renderer = self.renderer.as_ref()?;
+        let size = renderer.size();
+        self.runtime.studio_pick(
+            renderer.aspect(),
+            self.cursor[0] / size[0],
+            self.cursor[1] / size[1],
+        )
     }
 
     /// Hands a key to the panel while it has focus. Every key is consumed
@@ -878,6 +984,12 @@ impl App {
     }
 
     fn zone_action(&mut self, action: ZoneIntent) {
+        if action == ZoneIntent::Interact {
+            if let Some(kind) = self.runtime.studio_panel_here() {
+                self.open_studio_panel(kind);
+            }
+            return;
+        }
         if self.runtime.zone_intent(action).is_ok() {
             // Only a transition resets input; a lab knob keeps held keys.
             if !matches!(
@@ -899,6 +1011,7 @@ impl App {
         self.sync_zone_services(false);
         self.stop_map();
         self.update_gym(false);
+        self.runtime.update_studio(false, 0.0);
         self.keys = Keys::default();
         self.capture(false);
     }
@@ -1596,6 +1709,13 @@ impl App {
                 });
                 return;
             }
+            // In Everglade the interact key opens the station in reach.
+            if code == KeyCode::KeyF
+                && let Some(kind) = self.runtime.studio_panel_here()
+            {
+                self.open_studio_panel(kind);
+                return;
+            }
             if !self.runtime.is_plaza() {
                 // Number keys press the zone's controls in order.
                 let index = match code {
@@ -1920,9 +2040,13 @@ impl App {
             && !pressed
             && let Some(tap) = self.zone_press.take()
         {
-            if tap.released(self.cursor.map(|v| v / self.scale), Instant::now())
-                && self.portal_at_cursor()
-            {
+            let studio = self.studio_target.take();
+            let tapped = tap.released(self.cursor.map(|v| v / self.scale), Instant::now());
+            if let Some(kind) = studio {
+                if tapped {
+                    self.open_studio_panel(kind);
+                }
+            } else if tapped && self.portal_at_cursor() {
                 self.zone_action(if self.runtime.is_plaza() {
                     ZoneIntent::Enter
                 } else {
@@ -1937,6 +2061,21 @@ impl App {
             && !self.keys.right_button
             && self.portal_at_cursor()
         {
+            self.studio_target = None;
+            self.zone_press = Some(CompanionPress::new(
+                self.cursor.map(|v| v / self.scale),
+                Instant::now(),
+            ));
+            return;
+        }
+        // A tap on a seat, a monitor, or a station in Everglade selects it.
+        if button == MouseButton::Left
+            && pressed
+            && !self.keys.left_button
+            && !self.keys.right_button
+            && let Some(kind) = self.studio_at_cursor()
+        {
+            self.studio_target = Some(kind);
             self.zone_press = Some(CompanionPress::new(
                 self.cursor.map(|v| v / self.scale),
                 Instant::now(),
@@ -2128,6 +2267,8 @@ impl App {
             self.runtime
                 .tick_with_mode(&input, dt, self.keys.left_button, self.replay.is_none());
         self.update_gym(true);
+        self.runtime.update_studio(true, dt);
+        self.refresh_studio_panel();
         self.step_agents(dt);
         if self.plaza_interactive() {
             self.plaza_presence = (self.runtime.player, self.runtime.agent);
@@ -2396,13 +2537,15 @@ impl App {
             None => crate::ui::UiBatch::default(),
         };
         dynamic.extend(&entities);
-        let rows = self.panel.is_some().then(|| self.panel_rows());
+        // A studio panel keeps the rows the studio filled it with.
+        let rows = (self.panel.is_some() && self.studio_panel.is_none()).then(|| self.panel_rows());
         let px = [size[0] as u32, size[1] as u32];
         let overlay = match (&mut self.panel, rows) {
             (Some(panel), Some(rows)) => {
                 panel.set_rows(rows);
                 panel.image(px, self.scale).map(Some)
             }
+            (Some(panel), None) => panel.image(px, self.scale).map(Some),
             _ => Ok(None),
         };
         if let Some(renderer) = &mut self.renderer {

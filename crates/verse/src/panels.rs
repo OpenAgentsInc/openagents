@@ -33,6 +33,8 @@ use serde::Serialize;
 
 use crate::overlay::OverlayImage;
 
+pub mod studio;
+
 /// The panel's view instance.
 const INSTANCE: &str = "verse-panel";
 /// Space between the panel and the window's edges, in points.
@@ -132,6 +134,8 @@ pub struct Panel {
     transcript: Transcript,
     rows: Vec<Node<()>>,
     diff: Option<changes::Document>,
+    /// The unified diff `diff` was parsed from.
+    diff_text: Option<String>,
     diff_scroll: f32,
     highlighter: Option<rust_native::syntax::Highlighter>,
     fonts: Fonts,
@@ -164,6 +168,7 @@ impl Panel {
             transcript,
             rows: Vec::new(),
             diff: None,
+            diff_text: None,
             diff_scroll: 0.0,
             highlighter: None,
             fonts: Fonts::new(),
@@ -212,8 +217,24 @@ impl Panel {
         }
     }
 
+    /// Renames the panel.
+    pub fn set_title(&mut self, title: &str) {
+        if self.title != title {
+            title.clone_into(&mut self.title);
+            self.rebuild();
+        }
+    }
+
+    /// The unified diff the changes tab shows, as given to
+    /// [`Panel::set_diff`].
+    #[must_use]
+    pub fn diff_source(&self) -> Option<&str> {
+        self.diff_text.as_deref()
+    }
+
     /// Shows `diff`, a unified diff, in the changes tab.
     pub fn set_diff(&mut self, diff: &str) {
+        self.diff_text = Some(diff.to_owned());
         self.diff = Some(changes::parse(diff)).filter(|doc| !doc.is_empty());
         self.diff_scroll = 0.0;
         self.rebuild();

@@ -8,7 +8,13 @@ implemented: `ZoneId::Everglade` with generated ground and the plaza arch in
 step 4 is implemented: the pack loads on entry, and the layout in
 [`zones/everglade/layout.rs`](../../crates/verse/src/zones/everglade/layout.rs)
 places the glade, the workshop, and each station's furniture with their
-blockers. The rest is not implemented yet.
+blockers. Delivery step 5 is implemented on desktop in
+[`zones/everglade/studio.rs`](../../crates/verse/src/zones/everglade/studio.rs)
+and [`panels/studio.rs`](../../crates/verse/src/panels/studio.rs): seats walk
+between stations from studio snapshots, stations open read-only panels, and
+`verse --studio-sim` or `everglade_capture` with a `studio-` view plays the
+simulated team. Sending intents from Verse and the phones are not
+implemented yet.
 
 Everglade is a loaded Verse zone: a forest glade with a small timber-and-plaster
 workshop where a person works with a team of coding agents. It is where the

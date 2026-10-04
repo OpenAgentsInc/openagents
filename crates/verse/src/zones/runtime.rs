@@ -3,7 +3,9 @@
 
 use super::{
     Control, Everglade, Intent, Lab, Lagrange, LoadState, PortalProjection, Ruins, Snapshot,
-    ZoneId, assets, everglade_pack,
+    ZoneId, assets,
+    everglade::studio::{PanelKind, Source, Studio},
+    everglade_pack,
 };
 use crate::{
     controller::{InputState, PlayerController},
@@ -286,6 +288,8 @@ impl WorldRuntime {
                     return Err("You are already in the plaza".into());
                 }
                 self.zone_cancel_loading();
+                // Leaving Everglade stops the studio's observation.
+                self.zone_state.studio.set_active(false);
                 // Dropping a zone releases its decoded frames and simulation.
                 self.zone_state.ruins = None;
                 self.zone_state.lagrange = None;
@@ -397,6 +401,12 @@ impl WorldRuntime {
                     Intent::Reset => lab.reset(),
                     Intent::Pause => lab.toggle_pause(),
                     _ => lab.single_step(),
+                }
+                self.zone_state.error = None;
+            }
+            Intent::Interact => {
+                if self.studio_panel_here().is_none() {
+                    return Err("Walk up to a station".into());
                 }
                 self.zone_state.error = None;
             }
@@ -666,6 +676,15 @@ impl WorldRuntime {
             Lab::caption(&lab.snapshot())
         } else if self.zone_state.everglade.is_some() {
             add("return", self.return_label(), Intent::Return, true);
+            if let Some(panel) = self.studio_panel_here() {
+                let label = match panel {
+                    PanelKind::Console => "Console",
+                    PanelKind::Desk(_) | PanelKind::Seat(_) => "Seat",
+                    PanelKind::Decisions => "Decisions",
+                    PanelKind::Review => "Review",
+                };
+                add("interact", label, Intent::Interact, true);
+            }
             Everglade::caption(self.player.pos)
         } else if portal.near && portal.visible {
             if self.nearest_portal().0 == ZoneId::Lagrange1 {
@@ -879,6 +898,103 @@ impl WorldRuntime {
         }
     }
 
+    /// Where Everglade's Agent Studio comes from. Nothing is read until the
+    /// player is in Everglade and [`Self::update_studio`] is called active.
+    pub fn set_studio_source(&mut self, source: Box<dyn Source>) {
+        self.zone_state.studio.set_source(source);
+    }
+
+    /// The host supplies whether its surface is active, once a frame, with
+    /// the frame's seconds. The studio observes only while that holds and
+    /// the player is in Everglade, as the Gym's boards load only inside;
+    /// otherwise it stops its source and drops what it drew.
+    pub fn update_studio(&mut self, surface_active: bool, dt: f32) {
+        let active = surface_active && self.zone_state.everglade.is_some();
+        let studio = &mut self.zone_state.studio;
+        studio.set_active(active);
+        studio.poll(dt, &self.world.blockers);
+    }
+
+    /// The Agent Studio as Everglade draws it.
+    #[must_use]
+    pub fn studio(&self) -> &Studio {
+        &self.zone_state.studio
+    }
+
+    /// The review the studio's source holds of `task`, while in Everglade.
+    pub fn studio_review(&mut self, task: &str) -> Option<coder_access::review::TaskReview> {
+        self.zone_state.studio.review(task)
+    }
+
+    /// The panel the interact key opens where the player stands, in
+    /// Everglade.
+    #[must_use]
+    pub fn studio_panel_here(&self) -> Option<PanelKind> {
+        if self.zone_state.everglade.is_none() || self.zone_loading() {
+            return None;
+        }
+        Studio::panel_at(self.player.pos)
+    }
+
+    /// The panel a click at `(x, y)`, as fractions of the viewport from its
+    /// top-left, selects in Everglade: a seat opens its panel, a desk's
+    /// monitor its seat's, and the Task Wall, the podium, and the merge
+    /// station theirs. The nearest target within a small screen radius
+    /// wins.
+    #[must_use]
+    pub fn studio_pick(&self, aspect: f32, x: f32, y: f32) -> Option<PanelKind> {
+        /// Screen radius a target takes clicks in, as a fraction of the
+        /// viewport's height.
+        const RADIUS: f32 = 0.06;
+        /// Targets farther from the camera than this are not selected, m.
+        const REACH: f32 = 40.0;
+        if self.zone_state.everglade.is_none()
+            || self.zone_loading()
+            || !aspect.is_finite()
+            || aspect <= 0.0
+        {
+            return None;
+        }
+        let view = self.view(aspect);
+        let mut targets: Vec<(Vec3, PanelKind)> = self
+            .zone_state
+            .studio
+            .seats()
+            .map(|(name, at)| (at + Vec3::Y * 1.2, PanelKind::Seat(name.to_owned())))
+            .collect();
+        for (i, desk) in super::everglade::layout::DESKS.iter().enumerate() {
+            targets.push((desk.monitor.center, PanelKind::Desk(i as u32)));
+        }
+        targets.push((
+            super::everglade::layout::TASK_WALL.center,
+            PanelKind::Console,
+        ));
+        for station in &super::everglade::STATIONS {
+            if let Some(panel) = PanelKind::at_station(station.id)
+                && panel != PanelKind::Console
+            {
+                targets.push((station.position() + Vec3::Y, panel));
+            }
+        }
+        targets
+            .into_iter()
+            .filter_map(|(at, panel)| {
+                if at.distance(view.eye) > REACH {
+                    return None;
+                }
+                let clip = view.view_proj * at.extend(1.0);
+                if clip.w <= 0.0 {
+                    return None;
+                }
+                let sx = (clip.x / clip.w + 1.0) / 2.0;
+                let sy = (1.0 - clip.y / clip.w) / 2.0;
+                let d = ((sx - x) * aspect).hypot(sy - y);
+                (d <= RADIUS).then_some((d, panel))
+            })
+            .min_by(|a, b| a.0.total_cmp(&b.0))
+            .map(|(_, panel)| panel)
+    }
+
     pub(crate) fn ruins_tick(&mut self, dt: f32, _previous: PlayerController) {
         self.zone_state.elapsed = (self.zone_state.elapsed + dt) % 1000.0;
         if let Some(ruins) = &mut self.zone_state.ruins
@@ -894,6 +1010,7 @@ impl WorldRuntime {
         }
         if let Some(everglade) = &mut self.zone_state.everglade {
             everglade.tick(dt);
+            self.zone_state.studio.tick(dt);
         }
     }
     pub(crate) fn zone_dynamic_mesh(&self) -> crate::mesh::Mesh {
@@ -917,8 +1034,9 @@ impl WorldRuntime {
         if let Some(everglade) = &self.zone_state.everglade {
             // Carries the lit stage the textured glade draws on.
             mesh.extend(everglade.dynamic());
-            // Until the studio's seats arrive, the plaza character walks it.
             mesh.extend(&crate::avatar::mesh(&self.player, &self.gait));
+            // The studio's seats, nameplates, lamps, and live boards.
+            mesh.extend(&self.zone_state.studio.mesh(self.view(1.0).eye));
         }
         mesh
     }

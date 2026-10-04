@@ -25,7 +25,7 @@ fn pack_path() -> PathBuf {
 }
 
 /// The pinned pack, decoded once for every test.
-fn pack() -> &'static ZonePack {
+pub(super) fn pack() -> &'static ZonePack {
     static PACK: OnceLock<ZonePack> = OnceLock::new();
     PACK.get_or_init(|| ZonePack::load_local(&pack_path()).expect("the committed pack loads"))
 }
@@ -49,7 +49,7 @@ fn at_everglade_portal() -> WorldRuntime {
     runtime
 }
 
-fn entered() -> WorldRuntime {
+pub(super) fn entered() -> WorldRuntime {
     let mut runtime = at_everglade_portal();
     runtime.install_everglade(pack());
     assert_eq!(runtime.zone, ZoneId::Everglade);
