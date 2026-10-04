@@ -305,6 +305,8 @@ The [inventory window profile](../../../bench/verse/2026-10-03/inventory-window/
 
 [#10555](https://github.com/OpenAgentsInc/openagents/issues/10555) fixes remote quest interaction updates at an unchanged reward revision. Only giver life and interaction availability bypass quest ledger equality; counter/claim mutations remain refused. Shared giver metadata must agree, and generation checks retain unavailable lives and observe newer snapshots. The [giver view receipt](../../../bench/verse/2026-10-04/giver-view/run.json) records real TLS movement and View admission at revision zero. Friendly giver scene integration, markers/dialogue, and full roadmap acceptance remain.
 
+[#10557](https://github.com/OpenAgentsInc/openagents/issues/10557) is in progress: authored friendly NPC roles now bind to saved simulation factions, exclude hostile AI and combat targeting, retain friendly health, and draw green native nameplates. World tests cover projectile/area damage, Web/Grease, acceleration fields, falling damage, restore/reset, and legacy checkpoint fences. Friendly giver scene integration, visual acceptance, and the remaining roadmap requirements are still open.
+
 ## Reuse inventory
 
 Review baseline: OpenAgents `843c92dd7e`. The entries below were checked against

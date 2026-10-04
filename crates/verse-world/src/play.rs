@@ -1414,11 +1414,13 @@ impl Game {
                             a.animation_time = self.time - e.released[&a.actor.id];
                         }
                         let direction = self.player - a.actor.position;
-                        a.actor.yaw = self
-                            .npc_yaw
-                            .get(&a.actor.id)
-                            .copied()
-                            .unwrap_or_else(|| (-direction.x).atan2(-direction.z));
+                        if !a.actor.friendly {
+                            a.actor.yaw = self
+                                .npc_yaw
+                                .get(&a.actor.id)
+                                .copied()
+                                .unwrap_or_else(|| (-direction.x).atan2(-direction.z));
+                        }
                     }
                     if self.encounter.is_none() && self.navigation_directed(a.actor.id) {
                         a.animation = if self
@@ -2151,6 +2153,9 @@ impl Game {
     /// Applies SRD falling damage for a landing `height` meters below the
     /// arc's peak: 1d6 Bludgeoning per 10 feet, at most 20d6.
     pub(crate) fn fall_damage(&mut self, actor: Option<u64>, height: f64) -> Result<(), String> {
+        if actor.is_some_and(|id| self.scene.actors.iter().any(|a| a.id == id && a.friendly)) {
+            return Ok(());
+        }
         let dice = crate::spells::fall_dice(height);
         if dice == 0 {
             return Ok(());
@@ -4024,6 +4029,66 @@ mod friendly_tests {
         let mana = restored.snapshot().player.mana;
         assert!(restored.activate(Ability::Bow).is_err());
         assert_eq!(restored.snapshot().player.mana, mana);
+    }
+
+    #[test]
+    fn friendly_bodies_ignore_fields_roots_prone_and_falling_damage() {
+        let mut game = Game::combat(scene(), false).unwrap();
+        game.tick(0., [0.; 2]).unwrap();
+        let position = game.actor_position(2).unwrap();
+        let yaw = game.scene.actors.iter().find(|a| a.id == 2).unwrap().yaw;
+        let source = game.ids[&2];
+        let before = serde_json::to_vec(&game.spells.dice).unwrap();
+        game.fall_damage(Some(2), 100.).unwrap();
+        assert_eq!(serde_json::to_vec(&game.spells.dice).unwrap(), before);
+        for spell in [Utility::Web, Utility::Grease] {
+            game.controls
+                .cast(
+                    &mut game.simulation,
+                    spell,
+                    game.time,
+                    game.player,
+                    Vec3::Z,
+                    Some(position),
+                )
+                .unwrap();
+        }
+        let cast = game.spells.begin_cast(game.player_actor(), false).unwrap();
+        game.spells
+            .add_field(crate::spells::SpellField {
+                cast,
+                spell: "Friendly field proof".into(),
+                owner: game.player_actor(),
+                area: crate::spells::Area::Sphere {
+                    center: position.as_dvec3(),
+                    radius: 10.,
+                },
+                acceleration: glam::DVec3::new(10., 10., 0.),
+                expires: game.time + 10.,
+                concentration: false,
+            })
+            .unwrap();
+        for _ in 0..30 {
+            game.tick(1. / 30., [0.; 2]).unwrap();
+        }
+        assert!(!game.controls.held(source));
+        let frame = game.frame();
+        let giver = frame.actors.iter().find(|a| a.actor.id == 2).unwrap();
+        assert_eq!(giver.health, 123);
+        assert_eq!(giver.animation, State::Idle.into());
+        assert_eq!(giver.actor.yaw, yaw);
+        assert!(giver.actor.position.distance(position) < 0.01);
+        let life = game.actor_life(2).unwrap();
+        let body = game
+            .bodies
+            .get(physics::queries::Life {
+                instance: life.instance,
+                entity: life.actor,
+                generation: life.generation,
+            })
+            .unwrap();
+        assert_eq!(body.phase, physics::lifetimes::Phase::Alive);
+        Game::restore(&game.checkpoint().unwrap()).unwrap();
     }
 
     #[test]
