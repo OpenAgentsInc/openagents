@@ -6,6 +6,28 @@ use serde::{Deserialize, Serialize};
 const SKIN: f64 = 1e-5;
 const RECOVERY_CORRECTIONS: usize = 64;
 
+/// A bounded motor step either advances or leaves an unresolved spawn unchanged.
+#[derive(Debug)]
+pub enum Step {
+    Advanced,
+    BlockedRecovery { diagnostic: String },
+}
+#[derive(Debug)]
+enum RecoveryError {
+    Query(String),
+    Blocked(String),
+}
+impl From<String> for RecoveryError {
+    fn from(error: String) -> Self {
+        Self::Query(error)
+    }
+}
+impl From<&str> for RecoveryError {
+    fn from(error: &str) -> Self {
+        Self::Query(error.into())
+    }
+}
+
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct Settings {
     pub radius: f64,
@@ -184,6 +206,22 @@ impl Character {
         jump: bool,
         dt: f64,
     ) -> Result<(), String> {
+        match self.step_contained(scene, filter, settings, horizontal_velocity, jump, dt)? {
+            Step::Advanced => Ok(()),
+            Step::BlockedRecovery { diagnostic } => Err(diagnostic),
+        }
+    }
+    /// Contains unresolved recovery without suppressing invalid inputs or query failures.
+    /// A blocked result preserves every field; the caller must record and handle it.
+    pub fn step_contained(
+        &mut self,
+        scene: &Scene,
+        filter: Filter,
+        settings: Settings,
+        horizontal_velocity: DVec3,
+        jump: bool,
+        dt: f64,
+    ) -> Result<Step, String> {
         settings.validate()?;
         self.validate()?;
         if self
@@ -203,7 +241,7 @@ impl Character {
             return Err("Invalid character movement step".into());
         }
         if dt == 0. {
-            return Ok(());
+            return Ok(Step::Advanced);
         }
         // Commit only after all queries succeed.
         let mut next = *self;
@@ -217,7 +255,13 @@ impl Character {
                 next.feet = slide(scene, carry_filter, settings, next.feet, carried, false)?;
             }
         }
-        next.feet = recover(scene, filter, settings, next.feet)?;
+        next.feet = match recover(scene, filter, settings, next.feet) {
+            Ok(feet) => feet,
+            Err(RecoveryError::Query(error)) => return Err(error),
+            Err(RecoveryError::Blocked(diagnostic)) => {
+                return Ok(Step::BlockedRecovery { diagnostic });
+            }
+        };
         let initial_ground = ground(scene, filter, settings, next.feet, settings.ground_snap)?;
         next.support = if next.vertical_speed <= 0. && gravity > 0. {
             initial_ground.map(|h| h.collider)
@@ -338,7 +382,7 @@ impl Character {
             next.landed = next.peak.take().map(|peak| (peak - next.feet.y).max(0.));
         }
         *self = next;
-        Ok(())
+        Ok(Step::Advanced)
     }
     /// Checks an endpoint without sweeping through intervening geometry.
     pub fn teleport(
@@ -398,7 +442,7 @@ fn recover(
     filter: Filter,
     settings: Settings,
     mut feet: DVec3,
-) -> Result<DVec3, String> {
+) -> Result<DVec3, RecoveryError> {
     let start = feet;
     let mut last = None;
     let mut previous: Option<(Hit, DVec3)> = None;
@@ -493,10 +537,10 @@ fn recover(
             }
         }
     }
-    Err(format!(
+    Err(RecoveryError::Blocked(format!(
         "Character spawn recovery did not converge: actor {:?}, start {start:?}, end {feet:?}, last contact {last:?}, contacted capsules {capsules:?}",
         filter.ignore
-    ))
+    )))
 }
 pub fn slide(
     scene: &Scene,
@@ -935,6 +979,24 @@ mod tests {
         assert!(
             character
                 .step(&scene, filter, settings, DVec3::ZERO, false, 1. / 120.)
+                .is_err()
+        );
+        assert_eq!(serde_json::to_value(character).unwrap(), before);
+        let outcome = character
+            .step_contained(&scene, filter, settings, DVec3::ZERO, false, 1. / 120.)
+            .unwrap();
+        assert!(matches!(outcome, Step::BlockedRecovery { .. }));
+        assert_eq!(serde_json::to_value(character).unwrap(), before);
+        assert!(
+            character
+                .step_contained(
+                    &scene,
+                    filter,
+                    settings,
+                    DVec3::splat(f64::NAN),
+                    false,
+                    1. / 120.
+                )
                 .is_err()
         );
         assert_eq!(serde_json::to_value(character).unwrap(), before);
