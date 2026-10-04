@@ -138,9 +138,12 @@ expired collision/navigation masks, and rebuilds those masks on checkpoint load.
 Props cannot overwrite actor collision IDs. The `verse-chamber-owned-v7` profile
 binds collision-only prop bodies to blocker geometry; movement, resize, removal,
 and generation reuse update both together. Checkpoints reject missing ownership
-or mismatched bounds. Live-body contact integration, unified clock ownership,
-bow flights, and hostile projectile
-integration remain VE-2 work. Renderer lighting and overlapping nameplates
+or mismatched bounds. The `verse-chamber-owned-v8` profile replaces scheduled bow damage with
+non-homing arrows in the shared continuous projectile path. Arrows collide with
+the first actor or cover, can miss moving targets, expire, and retain exact
+in-flight replay. Presentation uses the arrow mesh without spell emission.
+Live-body contacts, unified clock ownership, and hostile projectile integration
+remain VE-2 work. Renderer lighting and overlapping nameplates
 remain visual work.
 
 ## Reuse inventory

@@ -239,9 +239,16 @@ pub fn combat_lighting(game: &super::play::Game) -> super::lighting::Lighting {
         });
     }
     for p in game.snapshot().projectiles {
+        if p.kind == verse_world::rules::ProjectileKind::Bow {
+            continue;
+        }
         let (color, intensity, range) = match p.kind {
-            verse_world::rules::Spell::Fireball => (Vec3::new(1.0, 0.23, 0.025), 260.0, 13.0),
-            verse_world::rules::Spell::MagicMissile => (Vec3::new(0.2, 0.3, 1.0), 42.0, 6.0),
+            verse_world::rules::ProjectileKind::Fireball => {
+                (Vec3::new(1.0, 0.23, 0.025), 260.0, 13.0)
+            }
+            verse_world::rules::ProjectileKind::MagicMissile => {
+                (Vec3::new(0.2, 0.3, 1.0), 42.0, 6.0)
+            }
             _ => (Vec3::new(1.0, 0.3, 0.04), 95.0, 8.0),
         };
         effects.push(Light {
@@ -252,6 +259,9 @@ pub fn combat_lighting(game: &super::play::Game) -> super::lighting::Lighting {
         });
     }
     for (position, at, kind) in &game.impacts {
+        if *kind == 3 {
+            continue;
+        }
         let age = game.time - at;
         if !(0.0..0.6).contains(&age) {
             continue;
@@ -605,8 +615,11 @@ pub fn add_effect_models(pack: &mut Pack, dir: &std::path::Path) -> Result<(), S
 pub fn spell_instances(game: &super::play::Game) -> Vec<Instance> {
     let mut out = Vec::new();
     for p in game.snapshot().projectiles {
-        let force = p.kind == verse_world::rules::Spell::MagicMissile;
-        let scale = if p.kind == verse_world::rules::Spell::Fireball {
+        if p.kind == verse_world::rules::ProjectileKind::Bow {
+            continue;
+        }
+        let force = p.kind == verse_world::rules::ProjectileKind::MagicMissile;
+        let scale = if p.kind == verse_world::rules::ProjectileKind::Fireball {
             0.32
         } else {
             0.15
@@ -743,6 +756,9 @@ pub fn spell_instances(game: &super::play::Game) -> Vec<Instance> {
         }
     }
     for (position, at, kind) in &game.impacts {
+        if *kind == 3 {
+            continue;
+        }
         let elapsed = game.time - at;
         let scale = if *kind == 1 {
             0.6 + elapsed * 10.0
@@ -759,7 +775,11 @@ pub fn spell_instances(game: &super::play::Game) -> Vec<Instance> {
         });
     }
     for p in &game.snapshot().projectiles {
-        if p.kind == verse_world::rules::Spell::MagicMissile {
+        if matches!(
+            p.kind,
+            verse_world::rules::ProjectileKind::MagicMissile
+                | verse_world::rules::ProjectileKind::Bow
+        ) {
             continue;
         }
         let direction = Vec3::from(p.vel).normalize_or_zero();
@@ -787,6 +807,9 @@ pub fn spell_instances(game: &super::play::Game) -> Vec<Instance> {
         }
     }
     for (position, at, kind) in &game.impacts {
+        if *kind == 3 {
+            continue;
+        }
         let age = game.time - at;
         for n in 0..if *kind == 1 { 16 } else { 6 } {
             let seed = *at * 7.31 + position.dot(Vec3::new(0.17, 0.31, 0.73)) + n as f32 * 2.39996;

@@ -97,15 +97,6 @@ impl Ability {
     }
 }
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-pub struct Arrow {
-    pub start: Vec3,
-    pub end: Vec3,
-    pub fired: f32,
-    pub impact: f32,
-    pub target: u64,
-    pub life: verse_engine::core::LifeId,
-}
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Casting {
     pub target_life: verse_engine::core::LifeId,
     pub aim: Vec3,
@@ -181,7 +172,6 @@ pub struct Game {
     pub controls: Controls,
     ids: BTreeMap<u64, u32>,
     lives: BTreeMap<u64, verse_engine::core::LifeId>,
-    arrows: Vec<Arrow>,
     pub bow_ready: f32,
     pub last_cast: Option<(Ability, f32)>,
     pub casting: Option<Casting>,
@@ -270,7 +260,7 @@ impl Game {
         self.bodies.validate()?;
         self.validate_body_bindings()?;
         let bytes = serde_json::to_vec(&serde_json::json!({
-            "version": 1, "rules_revision": "verse-chamber-owned-v7", "world": self,
+            "version": 1, "rules_revision": "verse-chamber-owned-v8", "world": self,
         }))
         .map_err(|e| e.to_string())?;
         if bytes.len() > 2 * 1024 * 1024 {
@@ -290,7 +280,7 @@ impl Game {
             return Err("World checkpoint budget exceeded".into());
         }
         let saved: Saved = serde_json::from_slice(bytes).map_err(|e| e.to_string())?;
-        if saved.version != 1 || saved.rules_revision != "verse-chamber-owned-v7" {
+        if saved.version != 1 || saved.rules_revision != "verse-chamber-owned-v8" {
             return Err("Unsupported world checkpoint".into());
         }
         let mut world = saved.world;
@@ -346,7 +336,6 @@ impl Game {
                     .iter()
                     .any(|a| a.id == *id && a.nameplate)
             })
-            || world.arrows.len() > 128
             || world.damage_numbers.len() > 64
             || world.events.len() > 512
             || world
@@ -996,7 +985,6 @@ impl Game {
                 })
                 .collect(),
             ids,
-            arrows: vec![],
             bow_ready: 0.0,
             last_cast: None,
             casting: None,
@@ -1209,14 +1197,13 @@ impl Game {
             }
         }
         frame.projectiles = self
-            .arrows
+            .snapshot()
+            .projectiles
             .iter()
-            .map(|a| verse_engine::director::Projectile {
-                position: a.start.lerp(
-                    a.end,
-                    ((self.time - a.fired) / (a.impact - a.fired)).clamp(0.0, 1.0),
-                ),
-                direction: (a.end - a.start).normalize(),
+            .filter(|p| p.kind == crate::rules::ProjectileKind::Bow)
+            .map(|p| verse_engine::director::Projectile {
+                position: p.pos.into(),
+                direction: Vec3::from(p.vel).normalize_or_zero(),
             })
             .collect();
         frame
@@ -1407,28 +1394,6 @@ impl Game {
                 }
             }
         }
-        let mut remaining = Vec::new();
-        for arrow in std::mem::take(&mut self.arrows) {
-            if self.lives.get(&arrow.target) != Some(&arrow.life) {
-                continue;
-            }
-            if !self.attack_clear(arrow.start, arrow.end) {
-                continue;
-            }
-            if self.time >= arrow.impact {
-                if source_actors.iter().any(|a| {
-                    a.id == self.ids[&arrow.target]
-                        && a.alive
-                        && self.attack_clear(arrow.start, Vec3::from(a.pos) + Vec3::Y * 1.1)
-                }) {
-                    self.simulation.bow_impact(self.ids[&arrow.target], 6)?;
-                }
-                self.impacts.push((arrow.end, self.time, 0));
-            } else {
-                remaining.push(arrow);
-            }
-        }
-        self.arrows = remaining;
         if self.casting.as_ref().is_some_and(|c| self.time >= c.ends) {
             let cast = self.casting.take().unwrap();
             if self.actor_life(cast.target_life.actor) != Some(cast.target_life)
@@ -1582,7 +1547,6 @@ impl Game {
             self.npc_motion.remove(&actor.id);
             self.npc_motion_clock.remove(&actor.id);
             self.npc_yaw.remove(&actor.id);
-            self.arrows.retain(|a| a.target != actor.id);
             self.damage_numbers.retain(|n| n.actor != actor.id);
             if let Some(e) = &mut self.encounter {
                 e.positions.insert(actor.id, actor.position);
@@ -1924,15 +1888,9 @@ impl Game {
             if self.time < self.bow_ready {
                 return Err("Bow is cooling down".into());
             }
+            self.simulation
+                .launch_bow(start.to_array(), (end - start).normalize().to_array())?;
             self.bow_ready = self.time + 1.0;
-            self.arrows.push(Arrow {
-                start,
-                end,
-                fired: self.time,
-                impact: self.time + start.distance(end) / 24.0,
-                target: self.selected,
-                life: self.lives[&self.selected],
-            });
         }
         self.record_ability(ability);
         self.last_cast = Some((ability, self.time));
@@ -2023,14 +1981,6 @@ mod tests {
             g.tick(0.0, [0.0; 2]).unwrap();
             assert_ne!(g.ids[&cultist.id], old);
             assert_eq!(g.lives[&cultist.id], old_life.next().unwrap());
-            g.arrows.push(Arrow {
-                start: cultist.position + Vec3::Y,
-                end: cultist.position + Vec3::Y,
-                fired: died,
-                impact: g.time,
-                target: cultist.id,
-                life: old_life,
-            });
             g.tick(0.0, [0.0; 2]).unwrap();
             assert_eq!(
                 g.snapshot()
@@ -2425,7 +2375,7 @@ mod original_collision_tests {
         assert_eq!(g.snapshot().player.mana, 20);
         assert!(g.casting.is_none());
         assert_eq!(g.bow_ready, 0.);
-        assert!(g.arrows.is_empty());
+        assert!(g.snapshot().projectiles.is_empty());
     }
     fn intervening_wall() -> physics::kinematic::Aabb {
         physics::kinematic::Aabb {
@@ -2437,7 +2387,17 @@ mod original_collision_tests {
     fn delayed_bow_and_spell_recheck_obstruction() {
         let mut g = game();
         g.activate(Ability::Bow).unwrap();
-        g.colliders.push(intervening_wall());
+        let wall = intervening_wall();
+        g.set_navigation_blocker(
+            physics::queries::Life {
+                instance: 0,
+                entity: 9005,
+                generation: 0,
+            },
+            wall.min,
+            wall.max,
+        )
+        .unwrap();
         let hp = g
             .frame()
             .actors
@@ -2457,10 +2417,20 @@ mod original_collision_tests {
                 .health,
             hp
         );
-        assert!(g.arrows.is_empty());
+        assert!(g.snapshot().projectiles.is_empty());
         let mut g = game();
         g.activate(Ability::MagicMissile).unwrap();
-        g.colliders.push(intervening_wall());
+        let wall = intervening_wall();
+        g.set_navigation_blocker(
+            physics::queries::Life {
+                instance: 0,
+                entity: 9005,
+                generation: 0,
+            },
+            wall.min,
+            wall.max,
+        )
+        .unwrap();
         for _ in 0..12 {
             g.tick(0.1, [0.; 2]).unwrap();
         }

@@ -61,10 +61,27 @@ pub struct Actor {
     pub max_hp: i32,
     pub alive: bool,
 }
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectileKind {
+    Bow,
+    Firebolt,
+    MagicMissile,
+    Fireball,
+}
+impl From<Spell> for ProjectileKind {
+    fn from(spell: Spell) -> Self {
+        match spell {
+            Spell::Firebolt => Self::Firebolt,
+            Spell::MagicMissile => Self::MagicMissile,
+            Spell::Fireball => Self::Fireball,
+        }
+    }
+}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Projectile {
     pub id: u32,
-    pub kind: Spell,
+    pub kind: ProjectileKind,
     pub pos: [f32; 3],
     pub vel: [f32; 3],
 }
@@ -438,7 +455,7 @@ impl Simulation {
             self.flights.push(Flight {
                 view: Projectile {
                     id,
-                    kind: spell,
+                    kind: spell.into(),
                     pos: origin,
                     vel: (direction * speed).to_array(),
                 },
@@ -447,6 +464,33 @@ impl Simulation {
             });
             self.counters.projectiles += 1;
         }
+        Ok(())
+    }
+    /// Launches a non-homing arrow through the same continuous collision path as spells.
+    pub fn launch_bow(&mut self, origin: [f32; 3], direction: [f32; 3]) -> Result<(), String> {
+        valid_position(origin)?;
+        let direction = Vec3::from(direction);
+        if !direction.is_finite()
+            || !(0.99..=1.01).contains(&direction.length_squared())
+            || self.player.hp == 0
+        {
+            return Err("Invalid bow launch".into());
+        }
+        if self.flights.len() >= 128 {
+            return Err("Projectile budget exceeded".into());
+        }
+        let id = self.allocate()?;
+        self.flights.push(Flight {
+            view: Projectile {
+                id,
+                kind: ProjectileKind::Bow,
+                pos: origin,
+                vel: (direction * 24.).to_array(),
+            },
+            target: None,
+            until: self.elapsed + 6.,
+        });
+        self.counters.projectiles += 1;
         Ok(())
     }
     fn visible(&self, start: Vec3, end: Vec3) -> bool {
@@ -458,17 +502,23 @@ impl Simulation {
         )
         .is_ok_and(|hit| hit.is_none())
     }
-    fn impact(&mut self, kind: Spell, point: Vec3, target: Option<u32>) -> Result<(), String> {
+    fn impact(
+        &mut self,
+        kind: ProjectileKind,
+        point: Vec3,
+        target: Option<u32>,
+    ) -> Result<(), String> {
         self.effects.push(Effect {
             kind: match kind {
-                Spell::Firebolt => 0,
-                Spell::MagicMissile => 2,
-                Spell::Fireball => 1,
+                ProjectileKind::Bow => 3,
+                ProjectileKind::Firebolt => 0,
+                ProjectileKind::MagicMissile => 2,
+                ProjectileKind::Fireball => 1,
             },
             pos: point.to_array(),
         });
         self.counters.hits += 1;
-        if kind == Spell::Fireball {
+        if kind == ProjectileKind::Fireball {
             let ids: Vec<_> = self
                 .actors
                 .values()
@@ -489,13 +539,20 @@ impl Simulation {
                 });
             }
         } else if let Some(id) = target {
-            self.bow_impact(id, if kind == Spell::Firebolt { 8 } else { 4 })?;
+            self.bow_impact(
+                id,
+                match kind {
+                    ProjectileKind::Bow => 6,
+                    ProjectileKind::Firebolt => 8,
+                    _ => 4,
+                },
+            )?;
         }
         Ok(())
     }
     fn motion_impact(
         &mut self,
-        kind: Spell,
+        kind: ProjectileKind,
         point: Vec3,
         target: Option<u32>,
         starts: &BTreeMap<u32, [f32; 3]>,
@@ -532,7 +589,7 @@ impl Simulation {
                 continue;
             }
             let start = Vec3::from(flight.view.pos);
-            if flight.view.kind == Spell::MagicMissile {
+            if flight.view.kind == ProjectileKind::MagicMissile {
                 if let Some(actor) = flight
                     .target
                     .and_then(|id| self.actors.get(&id))
@@ -817,6 +874,56 @@ mod tests {
         assert_eq!(s.flights.len(), 1);
         assert!(s.record_motion_path(ids[0], vec![[0.; 3]; 14]).is_err());
         assert!(s.record_motion_path(ids[0], vec![[0.; 3]; 2]).is_err());
+    }
+
+    #[test]
+    fn bow_hits_first_actor_once_and_replays_in_flight() {
+        let (mut s, ids) =
+            Simulation::chamber([0.; 3], &[([0., 0., 2.], 20), ([0., 0., 4.], 20)]).unwrap();
+        s.launch_bow([0., 1.1, 0.], [0., 0., 1.]).unwrap();
+        assert_eq!(s.snapshot().projectiles[0].kind, ProjectileKind::Bow);
+        let mut restored: Simulation =
+            serde_json::from_slice(&serde_json::to_vec(&s).unwrap()).unwrap();
+        for _ in 0..10 {
+            s.tick(0.1, [0.; 3], 0.).unwrap();
+            restored.tick(0.1, [0.; 3], 0.).unwrap();
+        }
+        assert_eq!(s.actors[&ids[0]].hp, 14);
+        assert_eq!(s.actors[&ids[1]].hp, 20);
+        assert_eq!(s.counters.hits, 1);
+        assert!(s.flights.is_empty());
+        assert_eq!(
+            serde_json::to_vec(&s).unwrap(),
+            serde_json::to_vec(&restored).unwrap()
+        );
+    }
+
+    #[test]
+    fn bow_stops_at_cover_inserted_after_launch() {
+        let (mut s, ids) = Simulation::chamber([0.; 3], &[([0., 0., 2.], 20)]).unwrap();
+        s.launch_bow([0., 1.1, 0.], [0., 0., 1.]).unwrap();
+        s.set_colliders(vec![physics::kinematic::Aabb {
+            min: glam::DVec3::new(-1., 0., 0.9),
+            max: glam::DVec3::new(1., 3., 0.91),
+        }]);
+        s.tick(0.1, [0.; 3], 0.).unwrap();
+        assert_eq!(s.actors[&ids[0]].hp, 20);
+        assert!(s.flights.is_empty());
+        assert_eq!(s.effects[0].kind, 3);
+        assert!(s.effects[0].pos[2] < 0.9);
+    }
+
+    #[test]
+    fn bow_can_miss_a_moving_target_and_expires_without_scheduled_damage() {
+        let (mut s, ids) = Simulation::chamber([0.; 3], &[([0., 0., 2.], 20)]).unwrap();
+        s.launch_bow([0., 1.1, 0.], [0., 0., 1.]).unwrap();
+        s.place_chamber_actor(ids[0], [4., 0., 2.], 0.).unwrap();
+        for _ in 0..61 {
+            s.tick(0.1, [0.; 3], 0.).unwrap();
+        }
+        assert_eq!(s.actors[&ids[0]].hp, 20);
+        assert_eq!(s.counters.hits, 0);
+        assert!(s.flights.is_empty());
     }
 
     #[test]
