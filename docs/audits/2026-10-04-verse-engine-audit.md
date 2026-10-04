@@ -1,0 +1,845 @@
+# Verse Engine audit for a AAA MMORPG
+
+Date: October 4, 2026. Source baseline:
+[`e3d774841b39bca2a7a916ebe115e442bc7dffe2`](https://github.com/OpenAgentsInc/openagents/tree/e3d774841b39bca2a7a916ebe115e442bc7dffe2).
+Scope: engine systems, Verse worlds, authoritative gameplay, multiplayer,
+durability, content production, and desktop, mobile, and browser integration.
+
+## Assessment
+
+Verse has a credible foundation for a playable multiplayer vertical slice. It
+has independently implemented combat, intent-only command admission, life and
+control fencing, authenticated TLS transport, restart-safe character mutations,
+validated assets, layered animation, continuous character queries, and a custom
+GPU renderer. These are substantial implemented systems.
+
+The audited code does not yet establish a AAA MMORPG engine. The largest gaps
+are persistent service lifetime, movement quality under latency, replication
+scale, unified world authority, content authoring, and operating a persistent
+population. Rendering quality also needs measured budgets and a consistent
+platform contract. The first priority is to make a durable multiplayer slice
+reliable; adding visual features alone cannot establish MMORPG readiness.
+
+Four findings deserve immediate engineering attention:
+
+1. The reward ledger has a lifetime limit of 4,096 transactions. Exhausting it
+   during combat propagates a failure out of the host tick and stops the service.
+2. The durable host serializes, hashes, writes, and synchronizes a complete
+   checkpoint on the simulation loop. Durable latency is part of tick latency.
+3. The retained 20-player/40-hostile battle stops the host on character collision
+   recovery. A local movement failure propagates to service shutdown.
+4. The latest retained delayed-network measurement improves ordinary movement
+   correction p95 to 0.43 and 0.30 meters, but still reports failed acceptance,
+   a 6.5-meter outlier, and missed frame budgets.
+
+The [engine roadmap](../verse/engine/roadmap.md) already names a battle with
+about 20 authenticated players and 40 active NPCs. Treat that as the next
+measured milestone. Neither a 64-player admission limit nor a video with two
+players proves that workload. Realm population, concurrent nearby players,
+instance density, minimum devices, and operating cost still need explicit
+targets before planning broader MMORPG scale.
+
+## Method and limits
+
+This is a static architecture and code audit, supplemented by checked-in
+measurement receipts. It follows execution paths across admission, simulation,
+save, replication, presentation, and platform adapters, and inspects relevant
+tests. It is comprehensive by subsystem, not a claim that every source line or
+vendored upstream test received individual review.
+
+No Rust code changes, new benchmark runs, GPU captures, live host probes,
+penetration tests, or device runs are part of this audit. Existing tests and
+receipts are evidence of their recorded revision and scope, not fresh passes at
+the source baseline. In particular, the delayed-network runs disable durable
+storage, share one GPU between three clients, and delay TCP chunks rather than
+simulate packet loss. Their CPU submission timings are not GPU execution times.
+
+The review covers the following code surfaces. Counts include inline tests and
+count Rust files under each crate's `src/`; they exclude examples and vendored
+code. Counts describe scope, not coverage or quality.
+
+| Surface | Rust files / lines | Reviewed responsibilities |
+| --- | --- | --- |
+| [`verse`](../../crates/verse/src/lib.rs) | 126 / 84,379 | Shared runtime, controllers, zones, renderer, shaders, assets, presence, chat, native chamber, and Agent Studio integration. |
+| [`verse-engine`](../../crates/verse-engine/README.md) | 21 / 7,827 | Entity/life identities, clocks, packs, provenance, handles, presentation, animation graphs, sockets, lighting, render graph, audio, and quality tiers. |
+| [`verse-world`](../../crates/verse-world/README.md) | 71 / 46,570 | Commands, combat, encounters, spells, movement, prediction, grants, TLS, client workers, replicas, character mutations, and recovery. |
+| [`physics`](../../crates/physics/src/lib.rs) | 25 / 11,509 | Rigid bodies, contacts, warm starting, joints, CCD primitives, mesh queries, character movement, walkable navigation, lifetimes, and traces. |
+| [`verse-lagrange`](../../crates/verse-lagrange/README.md) | 5 / 4,504 | Orbital mechanics, construction, fixed stepping, restorable zone state, and conservation fixtures. |
+| [`verse-ruins`](../../crates/verse-ruins/README.md) | 3 / 1,354 | Adapter boundary and retained source/provenance; selected vendored collision, replication, and server schedule interfaces. |
+| [`verse-wow`](../../crates/verse-wow/src/lib.rs) | Compatibility adapter | Imported snapshots, numeric motion bindings, and separation from original content. |
+| [`everglade-web`](../../crates/everglade-web/README.md) | 3 / 809 | Pinned pack fetching, local world mounting, input, and WebGPU/WebGL2 rendering. |
+| [Mobile surface](../../crates/coder-mobile/src/verse_app.rs) and [OpenAgents wrapper](../../crates/openagents-mobile/src/verse.rs) | Integration review | Rust-owned state, injected identity, native surface lifecycle, and feature boundaries. |
+| [Host example](../../crates/verse/examples/verse_host.rs), [remote client](../../crates/verse/src/imported/remote_window.rs), and [battle harness](../../scripts/bench/verse-battle-capture.py) | Execution-path review | Startup, content identity, configured rights, persistence selection, network workers, authenticated load, capture, and profiling. |
+| [Assets](../../assets/verse) and [retained evidence](../../bench/verse) | Contract and receipt review | Original/retained content separation, manifests, character compilation, reloads, and measurement limitations. |
+
+Other OpenAgents account, payment, host, and agent systems are integration
+dependencies, not presumed implementations of MMO accounts, commerce, guilds,
+or world services. Private reference repositories and Unreal source were not
+read. Public primary documentation supports three specific recommendations:
+replication interest, GPU timing, and texture color semantics; it supplies no
+benchmark claim about Verse.
+
+## What to preserve
+
+- **Authority boundaries.** `verse-world` default builds are independent of
+  rendering and network devices. Clients submit intents; the authority derives
+  movement, resources, and damage. Spectators cannot submit player actions.
+- **Lifetime correctness.** Instance, actor, life generation, control epoch,
+  and command sequence distinguish ownership and respawn. Replicas, sockets,
+  mounts, projectiles, and effects reject stale identities.
+- **Durable acknowledgment.** The save path uses an exclusive writer, digested
+  snapshots, file synchronization, atomic replacement, directory
+  synchronization, and failure fencing. Character operations retain original
+  receipts for exact retries. Preserve these guarantees when changing storage.
+- **Content admission.** Pack loading bounds encoded and decoded data, verifies
+  texture digests, checks references, and validates dependency/provenance
+  closures before GPU allocation. Catalog generations fence reloads.
+- **Animation and presentation.** Named motion states, local-space crossfades,
+  graphs, markers, and mounts share final evaluated palettes. Rendering consumes
+  immutable admitted frames instead of applying damage.
+- **Physics evidence.** Mesh BVHs, capsule sweeps, moving supports, multilayer
+  walkable cells, relative-motion projectile hits, contact warm starting, and
+  conservation fixtures already exist. Do not replace these with a new solver
+  merely because scale work remains.
+- **Honest receipts.** Retained multiplayer runs report failed acceptance,
+  capture drops, omitted observations, and measurement limits. Keep that
+  distinction as the system improves.
+
+## Priorities
+
+P0 means a blocker before a persistent public world. P1 means required for a
+convincing measured multiplayer slice or a safe production foundation. P2 means
+required for broader AAA content, platforms, or MMO features after that slice.
+These priorities describe the requested destination, not an assertion that an
+existing production deployment is failing.
+
+Evidence labels:
+
+- **Code:** behavior follows from the inspected implementation.
+- **Recorded:** a retained run demonstrates the result at its own revision.
+- **Gap:** the reviewed execution paths do not implement the required capability.
+- **Risk:** the implementation suggests a scaling or quality problem that still
+  needs measurement.
+
+| ID | Priority | Finding | Evidence | Owning boundary |
+| --- | --- | --- | --- | --- |
+| V01 | P0 | Reward history exhaustion can stop a persistent host. | Code | Character storage and world service |
+| V02 | P0 | Full synchronous checkpoint commits occupy the tick loop. | Code, risk | World service persistence |
+| V03 | P0 | Content/rules changes lack a general durable migration path. | Code, gap | Content and save versions |
+| V04 | P1 | Prediction exists, but acceptable delayed movement is unproven. | Recorded, code | Movement and client replication |
+| V05 | P1 | Replication polls full snapshots without spatial relevance. | Code, gap | World service replication |
+| V06 | P1 | One chamber process does not provide realm/instance management. | Code, gap | World hosting |
+| V07 | P1 | Presence and local zones do not share authoritative world state. | Code, gap | World rules and zone adapters |
+| V08 | P1 | Admission needs production enrollment and overload policy. | Code, gap | World access and transport |
+| V09 | P1 | Character identity and rewards remain chamber-scoped. | Code, gap | Persistent character domain |
+| V10 | P1 | CPU submission measurements do not isolate GPU or input latency. | Code, recorded | Profiling and acceptance |
+| V11 | P1 | Renderer budgets and quality behavior differ by path. | Code, risk | Renderer and device capabilities |
+| V12 | P1 | Whole-pack preparation is not large-world asset streaming. | Code, gap | Content loading and residency |
+| V13 | P1 | Runtime mip generation ignores texture semantics. | Code | Content compiler and texture upload |
+| V14 | P1 | Spatial queries and rigid-body detection need scene-level scaling. | Code, risk | Shared physics |
+| V15 | P1 | Navigation needs tiled content and scheduled crowd work. | Code, gap | Navigation and AI |
+| V16 | P1 | Game rules and primary-player special cases limit reuse. | Code | World rules and ability adapters |
+| V17 | P1 | Engine boundaries remain intertwined with the Verse application. | Code | Engine extraction and host packaging |
+| V18 | P0 | The recorded 20-player battle stops on character collision recovery. | Recorded, code | Movement failure handling and scale acceptance |
+| V19 | P1 | Persistent operations lack complete live diagnostics and recovery tooling. | Code, gap | World operations |
+| V20 | P2 | Content production still requires Rust implementation work. | Code, gap | Rust authoring tools |
+| V21 | P2 | Animation needs production locomotion and authoring support. | Code, gap | Animation and character content |
+| V22 | P2 | Lighting paths need a common visual and performance contract. | Code, risk | Rendering and art direction |
+| V23 | P2 | Audio is a bounded mixer, not a complete game audio system. | Code, gap | Audio and platform adapters |
+| V24 | P1 | Mobile/browser rendering does not establish authoritative game parity. | Code, gap | Platform world clients |
+| V25 | P2 | MMO social and progression systems need dedicated domains. | Code, gap | Verse game services |
+| V26 | P1 | Player-generated content needs publication and disclosure boundaries. | Code, gap | Content admission and product access |
+| V27 | P1 | Replay evidence needs explicit revision/platform guarantees. | Code, gap | Simulation and replay |
+| V28 | P1 | Status documentation trails the implementation. | Code | Runtime documentation |
+
+## Persistence, authority, and multiplayer
+
+### V01: Reward history exhaustion can stop a persistent host
+
+[`rewards::Ledger`](../../crates/verse-world/src/service/rewards.rs) keeps every
+receipt in memory and refuses a new transaction after `MAX_TRANSACTIONS = 4096`.
+It scans receipts for duplicates and clones the ledger for batches. Recovery
+replays the retained transactions into the same bounded ledger; restarting does
+not reset capacity.
+
+[`Chamber::process_rewards`](../../crates/verse-world/src/service.rs) creates one
+transaction per enrolled player for each rewarded NPC death. Its error propagates
+through `Chamber::tick` to [`net::serve_with_store`](../../crates/verse-world/src/service/net.rs),
+which breaks the serving loop on a tick error. This applies even when the host
+does not use disk storage. Under a hypothetical workload of 20 enrolled players
+and 40 rewarded deaths, one wave uses 800 receipts; a sixth complete wave exceeds
+the cap. This is arithmetic from the code, not a measured encounter duration.
+
+**Improve:** Separate bounded active memory from durable transaction history.
+Index stable operation sources, archive or compact history with retained retry
+semantics, and preserve character balances and original receipt revisions.
+Increasing the constant only delays exhaustion and increases copying and save
+cost.
+
+**Acceptance:** More than 4,096 mixed reward, quest, item, and equipment operations
+survive restart and exact retries without duplicated grants, exhausted service
+lifetime, or memory growth proportional to all historical receipts.
+
+### V02: Full checkpoint commits occupy the simulation loop
+
+[`net::persist`](../../crates/verse-world/src/service/net.rs) calls
+[`Store::commit`](../../crates/verse-world/src/service/persistence.rs) directly
+inside the 30 Hz authority loop. The store serializes the entire gateway,
+hashes it, wraps checkpoint JSON in another JSON document, writes the full file,
+syncs it, renames it, and syncs the directory. Even an unchanged checkpoint must
+be serialized and hashed before comparison. Advancing clocks normally changes
+the checkpoint. Mutating replies wait for the next persisted tick.
+
+This gives useful acknowledgment semantics, but couples filesystem stalls,
+growing reward history, simulation, and command latency. The delayed-network
+receipts report zero checkpoint commits, so their tick results do not establish
+durable-host performance.
+
+**Improve:** Give durable mutations an ordered commit protocol and a bounded
+writer queue. Use a journal plus periodic snapshots, or another transactional
+store, with explicit committed revisions. Keep one authority owner and stop
+acknowledging uncommitted mutations. Moving `fsync` to a thread without defining
+commit ordering, backpressure, and failure handling is insufficient.
+
+**Acceptance:** Measure tick and commit p50/p95/p99 separately with growing state
+and injected slow writes. Kill the process at each commit boundary. Every
+acknowledged operation recovers exactly once, and overload causes a deliberate
+admission response instead of silently stretching the world clock.
+
+### V03: Ordinary content updates can make saves incompatible
+
+[`save::decode`](../../crates/verse-world/src/service/save.rs) accepts several
+save versions but requires the exact content digest. [`Game::restore`](../../crates/verse-world/src/play.rs)
+admits the current rules revision and a narrow legacy revision.
+[`Config::validate_recovered`](../../crates/verse-world/src/service/host.rs)
+requires saved enrollment, catalogs, policies, and scene context to match
+startup configuration. These checks correctly refuse accidental relabeling;
+they also mean a routine content, catalog, or enrollment change needs more than
+replacing files and restarting.
+
+**Improve:** Version rules, character schemas, and world content separately.
+Implement explicit offline migrations with source/target digests, backups,
+validation, and rollback. Distinguish an instance's content pin from persistent
+character data that must survive a patch. Add enrollment changes through an
+audited operation rather than silently weakening recovery validation.
+
+**Acceptance:** Upgrade a populated save across a real scene, item, quest, and
+rules revision. Preserve character ownership, XP, equipment, receipt identities,
+and completed objectives. A failed migration leaves the original save usable.
+
+### V04: Delayed movement acceptance remains open
+
+Prediction is implemented in [`prediction`](../../crates/verse-world/src/prediction.rs)
+and [`prediction::Local`](../../crates/verse-world/src/prediction/local.rs), with
+shared collision, life/epoch fencing, applied-input baselines, coalesced input
+history, and bounded replay. The [`worker`](../../crates/verse-world/src/service/worker.rs)
+uses the duplex client pipeline; describing the current client as wholly
+sequential or as having no prediction is incorrect.
+
+The [timed delayed run](../../bench/verse/2026-10-04/prediction-delayed-timed/run.json)
+at `93095163aee8e15031467c64ef41dc7e956aca4a` reports ordinary correction p95
+of 0.853 m and 0.941 m. The code now shifts retained local input timing when
+authority overtakes it. The newer
+[rebased delayed receipt](../../bench/verse/2026-10-04/prediction-delayed-rebased/run.json),
+compiled at `af701a4151c815b6e82d434616cb4cd1adfb9f69`, records improvement to
+0.427 m and 0.302 m, with capture drops of 5/7/5 across the three clients.
+It still reports failed acceptance: a 6.5 m correction outlier, frame-interval
+p95 around 28–30 ms on the shared GPU, and no life-change coverage. Those
+measurements demonstrate improvement, not accepted movement or isolated-client
+rendering performance.
+
+**Improve:** Specify exactly when a movement input becomes effective, which
+physics steps an acknowledgment covers, and how coalesced inputs retain their
+intervals. Separate camera smoothing from collision-correct predicted state.
+Measure corrections caused by rejection, clock alignment, supports, remote
+blockers, teleports, and life changes independently.
+
+**Acceptance:** Repeated delayed runs on current code cover starts/stops,
+diagonals, jumps, stairs, moving supports, collisions, cast interruptions,
+death/respawn, reconnect, and teleports. Publish ordinary correction distributions
+and input-to-display latency separately; intentional discontinuities never
+count as prediction failures or hide them.
+
+### V05: Replication broadcasts more state than a large world needs
+
+[`wire::Body::Snapshot`](../../crates/verse-world/src/service/wire.rs) requests
+full state; native cadence is 50 ms. [`worker::run`](../../crates/verse-world/src/service/worker.rs)
+also requests events and inventory. There is no subscribed per-viewer delta
+baseline or spatial relevance contract in this path. The client cache reuses
+compiled collision geometry, but wire snapshots still carry complete collision
+descriptions. That reuse does not make replication incremental.
+
+As population and world state grow, repeated extraction, JSON encoding,
+validation, and full transfer grow with viewers and state. TLS over TCP also
+puts obsolete poses behind earlier bytes during loss or a slow connection.
+The current safety limits of 16 KiB per request and 2 MiB per response bound
+messages; they do not establish a bandwidth budget.
+
+**Improve:** Add instance/cell relevance, owner-only state, dormant objects,
+frequency classes, acknowledged delta baselines, and a full resync path. Keep
+reliable ordered transactions/events separate from replaceable pose updates at
+the protocol scheduling layer. Measure before deciding whether the transport
+also needs different delivery semantics. Epic's public
+[replication graph documentation](https://dev.epicgames.com/documentation/en-us/unreal-engine/replication-graph-in-unreal-engine)
+supports reusable spatial relevance lists as a scaling technique; this audit
+recommends an independent Rust implementation, not adoption of Unreal code.
+
+**Acceptance:** Increasing distant entities does not linearly increase each
+client's steady traffic. Record bytes per client, encoding cost, snapshot age,
+delta hit rate, backlog, and resync correctness under impaired connections.
+
+### V06: A chamber is not a realm service
+
+[`Chamber`](../../crates/verse-world/src/service.rs) owns one `Game`;
+[`verse_host`](../../crates/verse/examples/verse_host.rs) starts one configured
+instance with one listener. Instance IDs fence commands but do not allocate
+instances, manage population, route joins, transfer characters, or recover
+authority on another machine. A 128-socket cap and a 64-player game cap are
+admission limits, not a scaling design.
+
+**Improve:** Add a host lifecycle for instance creation, draining, placement,
+admission, ownership leases, and restart. Start with independent instances and
+explicit character transfer. Defer seamless distributed simulation until a
+measured product requirement needs it.
+
+**Acceptance:** Run multiple instances, transfer one character with an exclusive
+ownership fence, crash during transfer, and recover without duplicate characters,
+inventory, or two authorities advancing the same instance.
+
+### V07: Local worlds and presence use different authority models
+
+[`WorldRuntime`](../../crates/verse/src/runtime.rs) and
+[`zones::runtime`](../../crates/verse/src/zones/runtime.rs) own local plaza,
+Everglade, Lagrange, Lab, and Ruins behavior. [`session`](../../crates/verse/src/session.rs)
+shares publisher-authored presence through NIP-MV. Signatures validate publishers,
+not legitimate movement. The presence budget is 54 events per minute despite a
+desktop moving interval of 100 ms; that interval does not guarantee 10 Hz
+delivery. Lagrange's restorable physics state is not a hosted zone service.
+
+Everglade uses its own height/footprint/roof collision representation in
+[`solids`](../../crates/verse/src/zones/everglade/solids.rs), while the chamber
+uses shared capsule/mesh queries. Agent Studio seat motion is client presentation.
+These paths cannot be assumed to agree across viewers or transitions.
+
+**Improve:** Introduce a social world profile without mandatory combat actors,
+with authority-owned movement, interaction, and seats. Adapt each hosted zone to
+one command/snapshot lifecycle. Keep relay presence as discovery and ambient
+presence, with hosted instance snapshots authoritative during play. Follow the
+existing [networking convergence plan](../verse/networking.md).
+
+**Acceptance:** Two viewers agree on actor positions, interactions, and zone
+entry/exit. Late presence events cannot overwrite authority poses. Transitions
+fence old commands and preserve character identity without transferring unrelated
+host or studio permissions.
+
+### V08: Production admission needs enrollment and overload controls
+
+[`auth::Gateway`](../../crates/verse-world/src/service/auth.rs) supplies signed,
+single-use, expiring challenges bound to host lifetime, instance, connection,
+key, and optional content identity. The configured example binds content.
+[`host::Config`](../../crates/verse-world/src/service/host.rs) enrolls a static
+key list; rights and revocation exist internally, but production world discovery
+and grant-based admission are not integrated.
+
+[`net`](../../crates/verse-world/src/service/net.rs) bounds sockets, queues,
+handshake/read/write deadlines, and requests per socket. It does not retain a
+principal/IP admission policy, aggregate work budget, or connection failure
+classification: worker results are discarded. Unauthenticated sockets can occupy
+the same finite capacity needed by enrolled players. This is an overload risk,
+not a demonstrated remote exploit.
+
+**Improve:** Implement the planned NIP-HOST/NIP-REACH integration with explicit
+world rights and revocation epochs. Add pre-auth capacity partitions, principal
+budgets, request cost classes, fair dispatch, and structured failure counters.
+Keep discovery, joining, viewing studio data, and executing agent work separate.
+
+**Acceptance:** Unauthorized joins, revoked grants, replayed challenges, slow
+handshakes, connection floods, and expensive snapshot requests cannot starve
+admitted players or grant studio execution rights. Public hosts identify their
+authority through the supported discovery flow.
+
+### V09: Persistent characters need identity outside an instance
+
+[`rewards::Character`](../../crates/verse-world/src/service/rewards.rs) is keyed
+by actor, and transactions include instance and actor. Enrollment binds a key
+to an adventurer in that chamber. There is no independent account/character
+identity with a transfer or recovery contract in the inspected world path.
+
+`process_rewards` awards every enrolled player, including disconnected players,
+for a configured NPC death. That can be intentional cooperative fixture behavior;
+it is not a defined MMORPG participation, loot, or contribution policy.
+
+**Improve:** Separate account, character, instance actor, life, controller, and
+render identities. Specify participation and loot ownership, logout behavior,
+offline rewards, and persistent inventory ownership. Retain generation fencing
+for transient actors rather than using it as the permanent character ID.
+
+**Acceptance:** A character retains inventory, progression, and ownership across
+instances, reconnects, and supported key recovery. Disconnected and nonparticipating
+players receive exactly the rewards the authored policy allows.
+
+## Rendering, assets, and simulation scale
+
+### V10: Profiling cannot yet attribute the frame budget
+
+[`FrameTimings`](../../crates/verse/src/imported/mod.rs) measures preparation,
+encoding, submission, CPU waiting, and readback. The render passes do not request
+GPU timestamp writes. `gpu_wait_ms` measures a CPU wait, and live draw timings
+stop after submission; neither is isolated GPU execution. The remote recorder
+also introduces readback, encoding, duplication, and capture drops.
+
+**Improve:** Add optional GPU timestamp queries with delayed readback and
+capability fallback. The [wgpu feature documentation](https://wgpu.rs/doc/wgpu/struct.Features.html#associatedconstant.TIMESTAMP_QUERY)
+describes pass timestamp writes and conversion through the queue timestamp
+period. Check the repository's pinned API when implementing it. Separately
+instrument presentation/acquire waits, simulation stages, encoding, queues,
+network age, and input-to-display latency. Exclude warm-up from steady-state
+percentiles and retain it as a separate startup metric.
+
+**Acceptance:** An isolated client and a multi-client workload report CPU, GPU,
+presentation, capture, and network metrics independently. Each regression names
+its device, resolution, quality settings, build, and active workload.
+
+### V11: Rendering paths need common budgets and graceful degradation
+
+[`pbr::gpu`](../../crates/verse/src/pbr/gpu.rs) consumes engine quality tiers.
+The original chamber's [`imported::Renderer`](../../crates/verse/src/imported/mod.rs)
+uses fixed four-sample pipelines and its own lighting/shadow setup instead.
+[`ResolvedInstances`](../../crates/verse-engine/src/presentation.rs) caps one
+extracted frame at 1,024 instances. The latest change raises that limit from 256
+and indexes attachment parents instead of scanning the full frame for each
+mount. Renderable instances include equipment and effects as well as actors,
+so player capacity alone does not determine fit.
+
+The chamber already has conservative frustum bounds, reusable world/shadow
+bundles, and exact frozen-caster caches. It evaluates actor palettes and bounds
+before visibility rejection, retains per-instance palette buffers, and submits
+actor/model surfaces independently. There is no authored mesh or animation LOD
+contract in the reviewed pack/frame path.
+
+**Improve:** Share capability admission and measurable quality budgets across
+both renderers. Count actors, mounts, effects, surfaces, shadow views, upload
+bytes, and target memory separately. Add animation/mesh LOD and batching where
+profiling supports them. Define prioritization for excess visual effects;
+valid gameplay should not fail because optional visuals exhaust a frame cap.
+
+**Acceptance:** A crowded battle stays within declared CPU/GPU/memory budgets,
+with a tested low-quality fallback and observable degradation. Device loss
+recreates admitted resources and presentation state; successful hot reload does
+not substitute for device-loss recovery evidence.
+
+### V12: Catalog handles do not implement streaming residency
+
+[`residency::Catalog`](../../crates/verse-engine/src/residency.rs) provides
+generation-safe lookup, not an eviction, streaming, or memory manager.
+[`loading::Prepared`](../../crates/verse-engine/src/loading.rs) prepares a whole
+pack, including decoded textures, before renderer construction. The renderer
+then uploads all textures and geometry. The loader's budgets do not account for
+all GPU mip levels, multisample targets, shadow maps, caches, and temporary
+copies. Zone entry is a useful coarse loading boundary, not a large-world
+streaming system.
+
+**Improve:** Add cooked chunks, dependency-aware residency, prioritized async
+read/decode/upload work, upload time budgets, eviction, and device-loss rebuild
+inputs. Track CPU and GPU high-water memory independently. Compile static
+lighting into content where practical; keep runtime bake caching explicit.
+
+**Acceptance:** Traverse content larger than the memory budget with bounded
+frame stalls and cache growth. Cancel a load, change zones, exhaust memory, and
+lose the device without admitting stale results or dropping authority state.
+
+### V13: Mipmap generation has a concrete color-space defect
+
+[`Renderer::build`](../../crates/verse/src/imported/mod.rs) averages texture RGBA
+bytes into each mip level, then offers sRGB and linear views of the same image.
+For base color and emissive RGB, averaging encoded sRGB values does not compute
+the correct linear-light average. The same universal filter does not normalize
+normal maps or preserve alpha-test coverage. The material contract already
+distinguishes these channel roles.
+
+**Improve:** Cook role-specific mip chains: decode/filter/re-encode sRGB color,
+retain linear scalar maps, renormalize normals, and preserve cutout coverage.
+Declare when one source image requires distinct cooked variants. The
+[glTF material specification](https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html#materials)
+defines the different color and data-texture semantics. This is a correctness
+fix before higher-resolution art, not a request for a new rendering dependency.
+
+**Acceptance:** Black/white color averaging matches linear-light reference
+values, normal mips remain normalized, and distant cutout silhouettes retain
+coverage. Tests exercise actual cooked/uploaded mip bytes and material roles.
+
+### V14: Physics acceleration is incomplete at the scene level
+
+[`physics::queries::Mesh`](../../crates/physics/src/queries.rs) has a triangle
+BVH, but scene ray, overlap, and sweep queries iterate admitted collider maps
+and dynamic capsule shapes. [`World::detect`](../../crates/physics/src/collision.rs)
+enumerates collider pairs before filters and bounding tests. Small scenes benefit
+from the existing code; large collider populations still incur broad enumeration.
+
+The shared rigid-body path implements capsule-versus-oriented-box contact and
+warm starting. The retained Ruins
+[`collision_static`](../../crates/verse-ruins/vendor/crates/collision_static/src/lib.rs)
+still has its separate unimplemented capsule/OBB function; the documented
+retained limitation does not describe the shared solver. Character sweeps and
+relative-motion sphere/capsule CCD exist; they do not establish general rotating
+rigid-body CCD.
+
+**Improve:** Measure scene candidate counts, then add a deterministic top-level
+broadphase and dynamic updates. Keep static per-mesh BVHs. Define generic rigid
+CCD, islands, and parallel solve only for required workloads, preserving stable
+ordering and replay/conservation checks.
+
+**Acceptance:** Increasing distant colliders has bounded query cost. Large
+crowds, fast props, rotated contacts, stacks, supports, and removal/reuse pass
+correctness fixtures. Publish candidates, narrow-phase work, solve time, and
+momentum/energy residuals rather than claiming scale from body count alone.
+
+### V15: Navigation needs a world-content lifecycle
+
+[`walkable::Navigation`](../../crates/physics/src/walkable.rs) compiles
+multilayer cells, supports bounded routing, and fences dynamic blockers. It caps
+cells and nodes at 65,536, allocates per-query search arrays, and compiles links
+through collision queries. [`room`](../../crates/verse-world/src/room.rs) caches
+navigation for named built-in profiles. The older horizontal box router is not
+the complete current chamber navigation implementation.
+
+**Improve:** Cook tiled navigation with content identities, reuse search
+scratch, schedule route work, and add hierarchical paths, off-mesh links, and
+crowd avoidance. Specify local invalidation when doors, construction, or spell
+geometry changes. Path goals must continue through collision admission.
+
+**Acceptance:** A multilevel zone routes crowds through stairs and doors,
+replans around construction, and reports no-path separately from exhausted work.
+Measure route p99 and total per-tick navigation cost during synchronized pursuit.
+
+### V16: The primary adventurer remains a special implementation path
+
+[`play::Game`](../../crates/verse-world/src/play.rs) and
+[`play::multiplayer`](../../crates/verse-world/src/play/multiplayer.rs) separate
+the primary player's fields from additional players. Additional-player admission
+explicitly refuses `Ability::Spell` and `Ability::SpellCommand`, while the
+[`spell catalog`](../../crates/verse-world/src/spells/mod.rs) callbacks mutate
+`Game` and derive facing from primary state. The original ten abilities have
+shared-caster implementations; the newer physics spells do not have equivalent
+multiplayer coverage.
+
+Named model/profile checks, built-in rooms, ability enums, hardcoded resource
+defaults, and encounter adapters also mix chamber content with reusable rules.
+
+**Improve:** Make every player an actor-scoped record and pass an explicit caster
+context to every ability. Preserve the original ten-ability behavior while
+moving definitions and encounter parameters into validated content. Keep AI,
+player, and agent controllers on the same command boundary.
+
+**Acceptance:** Every shipped ability works for two independent casters with
+separate resources, concentration, cooldowns, collisions, events, and saves.
+Adding a second encounter or character class does not require a new player branch
+or a renderer-specific combat rule.
+
+### V17: Engine extraction needs actual consumers
+
+The broad [`verse` dependency graph](../../crates/verse/Cargo.toml) contains
+GPU, glTF, fonts, Nostr, zones, retained compatibility, and optional agent/UI
+systems. Generic renderer and original content compilation remain under
+`imported`. The headless host example calls `verse::imported` for content and
+collision admission, so its executable does not have the same minimal boundary
+as the default `verse-world` crate.
+
+[`core::Entities`](../../crates/verse-engine/src/core.rs) provides generational
+slots, but the inspected world/runtime paths do not use that container.
+`FixedSchedule` is also not the production world's common scheduling owner.
+An extracted API with only tests does not establish migration of real consumers.
+
+**Improve:** Move portable content identity, collision cooking, and validation
+out of the renderer. Extract the renderer behind admitted frame contracts, then
+move original compilation into Rust tools. Adopt a common schedule/entity
+contract where it removes duplication; avoid a speculative ECS rewrite or crate
+proliferation without a real consumer.
+
+**Acceptance:** Build and run a dedicated world host without GPU/window/font,
+private-reader, or agent dependencies. A second original world uses the same
+engine contracts without copying the chamber application.
+
+### V18: The 20-player battle exposes a host-stopping movement failure
+
+The new [`verse_load`](../../crates/verse/examples/verse_load.rs) and
+[battle harness](../../scripts/bench/verse-battle-capture.py) exercise 20
+authenticated players, 40 hostile NPCs, delayed connections, one native client,
+and 19 headless clients. The
+[retained failure](../../bench/verse/2026-10-04/battle-scale-recovery-failure/run.json)
+records host exit after 2,743 ticks and 55,371 requests, with
+[`host.log`](../../bench/verse/2026-10-04/battle-scale-recovery-failure/host.log)
+ending in `Character spawn recovery did not converge`. Moving the initial NPC
+positions did not eliminate the failure. The compiled revision is `e87066b8c5`;
+the fixture revision is recorded separately. The receipt reports the earlier
+native presentation capacity failure resolved for this run.
+
+[`Character::step`](../../crates/physics/src/character.rs) calls overlap recovery
+during movement, not only at spawn. Recovery returns an error after 12
+unsuccessful displacement iterations. The network loop exits when
+[`Gateway::tick`](../../crates/verse-world/src/service/net.rs) returns an error.
+This establishes the failure propagation; the receipt alone does not identify
+the specific actor, contact configuration, or reason recovery fails to converge.
+
+The harness raises NPC health to sustain work and disables durable storage.
+It produces no completed native or load profile on this failure. Zero dropped
+server seconds is not a passing timing distribution. The headless generator
+writes its profile only after all player tasks succeed and caps timing samples
+without recording omitted observations, making failures harder to diagnose.
+
+**Improve:** Reproduce and retain the failing contact/input sequence. Define
+bounded per-character recovery or containment without hiding invariant or
+storage corruption; a recoverable blocked character should not stop unrelated
+players. Emit partial profiles, actor/contact diagnostics, and omission counts
+even when a participant fails. Extend the harness in stages: authority-only,
+network-only, one isolated renderer, and durable combined acceptance. Mix movement,
+targeting, casts, AoE, NPC pursuit, equipment, quests, disconnects, and respawns.
+Retain full workload parameters and source/content revisions. A capacity test
+that only spawns players is insufficient.
+
+**Acceptance:** A regression fixture covers the recorded recovery failure and
+crowded movement without host shutdown. The declared 20/40 battle passes its
+agreed budgets repeatedly, then a longer soak exposes ledger, event, memory,
+and content-cache lifetime.
+Larger realm targets follow measured bottlenecks and operating cost, not an
+extrapolation from a three-client video.
+
+### V19: Operators need visibility while the world is running
+
+[`net::Stats`](../../crates/verse-world/src/service/net.rs) retains aggregate
+connections, requests, ticks, dropped time, and checkpoint totals. The example
+prints these on exit. Socket worker errors are discarded. There are no live
+stage histograms, per-client bandwidth/age counters, durable queue watermarks,
+or world-specific backup/restore and drain workflow in the reviewed host path.
+
+**Improve:** Add structured live diagnostics, health/readiness distinctions,
+bounded audit records, backup verification, safe draining, version reporting,
+and a restore tool. Record refusals by stage and cause without keys or private
+chat. Define storage failure behavior and recovery objectives before public use.
+
+**Acceptance:** An operator can identify a slow client, expensive encounter,
+stalled writer, exhausted budget, and incompatible build while the service is
+running. A backup restores into a scratch host with verified receipt and
+character state; rollback never creates a second active writer.
+
+## Production content and player experience
+
+### V20: Artists need tools over the runtime's own contracts
+
+[`original`](../../crates/verse/src/imported/original.rs),
+[`characters`](../../crates/verse/src/imported/characters.rs), and the
+[`Everglade compiler`](../../crates/verse/src/zones/everglade_pack/compile.rs)
+are useful Rust content pipelines. Scenes and catalogs can be authored as data,
+and validated reload exists. Geometry, collision profiles, layout, clip mapping,
+icons, and many gameplay definitions still require Rust changes. No integrated
+scene/property/timeline editor with transactions and undo/redo exists in the
+reviewed path.
+
+**Improve:** Build a Rust pack inspector and content CLI first, then scene
+placement, collision/nav visualization, timeline editing, ability/quest
+validation, and undoable transactions. Use runtime validators and stable IDs.
+Add incremental builds and diagnostics that point to source assets/fields.
+
+**Acceptance:** An author creates a second playable zone, adds a quest giver,
+changes an encounter, and previews the result without editing renderer code.
+Bad content reports actionable errors and cannot replace the running generation.
+
+### V21: Animation foundations need a production character workflow
+
+[`animation_graph`](../../crates/verse-engine/src/animation_graph.rs) implements
+clips, one-dimensional blends, masks, additive layers, and transitions.
+[`sockets`](../../crates/verse-engine/src/sockets.rs) and native mounts share
+final palettes. These capabilities should remain the basis of character work.
+The reviewed contract does not supply a complete retargeting/editor workflow,
+foot IK, terrain-aware locomotion, general root-motion admission, facial
+performance, or crowd animation budgeting. Mesh-wide grounding of death poses
+does not establish foot placement on stairs or slopes.
+
+**Improve:** Prioritize locomotion blend parameters, turns, stop/start transitions,
+aim layers, foot placement, and author-visible graph debugging. Define how any
+root motion enters authority and prediction. Add broader skeleton retargeting
+only with fixtures for admitted rigs; do not assume one successful kit covers
+arbitrary skeletons.
+
+**Acceptance:** Different outfits and rigs move, cast, equip, die, and respawn
+on slopes and stairs without sliding, socket drift, or stale markers. Animation
+quality tiers reduce crowd cost without altering damage timing.
+
+### V22: Lighting needs one tested art and device contract
+
+The chamber has validated local metallic/roughness materials, fog, HDR output,
+32 lights, and up to four cube-shadow sources.
+[`pbr`](../../crates/verse/src/pbr/mod.rs) has a different environment pipeline
+with quality tiers, cascades, screen-space effects, and baked irradiance.
+[`textured_bake`](../../crates/verse/src/pbr/textured_bake.rs) now bakes Everglade
+vertex ambient and probes. The Everglade compiler intentionally retains only
+base-color maps from environment models. These are distinct supported profiles,
+not one common high-fidelity material path.
+
+**Improve:** Define common material semantics, light units/exposure, shadow
+priority, color grading, transparency, and sky/ambient behavior. Add clustered
+light selection, more shadow work, temporal effects, or improved reflections
+only where art requirements and GPU measurements justify them. Diagnose the
+current foreground/readability problems before adding a general GI system.
+
+**Acceptance:** Indoor torch/spell scenes and outdoor forest/station scenes
+retain readable characters, calibrated materials, and bounded shadow cost at
+every supported tier. Visual comparisons name exposure and content revisions.
+
+### V23: Audio needs a content and lifecycle layer
+
+[`audio::Mixer`](../../crates/verse-engine/src/audio.rs) provides bounded PCM
+voices, spatial gain/pan, pitch, looping, and life-scoped release. The
+[`native adapter`](../../crates/verse/src/audio_native.rs) supplies device output,
+bounded command work, and counters. It is a sound foundation, but does not supply
+streaming music/dialogue, mix buses, priorities/virtual voices, environmental
+occlusion, localization, or complete browser/mobile mounting.
+
+**Improve:** Add authored sound banks/cues, voice priorities, buses, music and
+dialogue streaming, listener/zone transitions, and platform focus/device recovery.
+Profile callback work and PCM destruction as well as allocation; bounded queues
+alone do not prove audio deadline safety.
+
+**Acceptance:** A crowded fight preserves critical cues without underruns,
+handles device/focus changes, and restores music correctly after zone changes.
+Captions/subtitles and volume controls remain usable when audio is unavailable.
+
+### V24: Shared rendering is narrower than multiplayer platform parity
+
+[`everglade-web`](../../crates/everglade-web/README.md) mounts an offline glade:
+no plaza, relay, or studio host. Native mobile uses shared Rust state and secure
+identity injection, but the inspected mobile surface mounts `WorldRuntime` and
+presence rather than the desktop remote chamber worker/view/prediction path.
+Raw TLS/TCP chamber connections also cannot be used directly by browser code.
+
+**Improve:** Adapt the authoritative client to the planned reachable channel and
+shared platform input/session lifecycle. Test touch/controller remapping, combat
+HUD, readable text, accessibility, network/focus interruptions, and device
+resource recovery. Preserve thin Swift/Kotlin glue and Rust-owned application
+state. Desktop feature success does not imply a phone has the same capabilities.
+
+**Acceptance:** A desktop, physical phone, and supported browser share one
+authoritative instance, see the same outcomes, reconnect, and handle suspend/
+resume within their device budgets. Publish an explicit supported-platform and
+feature matrix; simulator or offline rendering checks do not establish parity.
+
+### V25: MMO features require domains beyond the chamber
+
+The service has XP thresholds, prerequisite quests, giver enrollment/dialogue,
+consumables, outfits, and two equipment slots. Gear currently contributes health
+and mana. These should not be described as absent. They do not implement a full
+class/stat/progression model, inventory item instances, trading, crafting,
+auction/mail, parties, guilds, matchmaking, or persistent faction/reputation
+systems. NIP-XP work achievements and world character progression also have
+different authority and identity contracts.
+
+**Improve:** Define a coherent playable loop and then implement the required
+domains behind typed authority operations. Separate social presence/chat from
+party, guild, loot, and economy membership. Add item instance identity and
+atomic transfer before any trade. Build abandon/repeat/reset rules for quests,
+and deterministic stat derivation before expanding equipment catalogs.
+
+**Acceptance:** A party completes a progression loop across sessions and zones;
+loot, inventory, and quest changes survive retries and restart. Unauthorized
+membership changes and duplicate trades cannot create items or rewards. Defer
+commerce breadth until those guarantees are established.
+
+### V26: Creator content and studio data need explicit admission
+
+[`inventory`](../../crates/verse-engine/src/inventory.rs) distinguishes original,
+research, owner-supplied, capture, and redistribution provenance. It explicitly
+treats declarations as metadata rather than legal attestation. Some retained
+Ruins asset notices still identify unknown original authors/licenses. Their
+presence in an archive is not evidence of a completed shipping review.
+
+The zone API accepts closed supported rules, not arbitrary downloaded executable
+code. That is a useful boundary. A future creator world also needs publisher
+identity, distribution approval, content limits, compatibility, moderation, and
+revocation. Public world access must not disclose private Agent Studio panels
+or cause tool execution.
+
+**Improve:** Build a release artifact inventory that validates the dependency
+closure and excludes research-only assets. Define creator publication and
+revocation separately from loading a valid pack. Preserve archives and source
+notices. Keep studio projections scoped to the viewer's grant even in a shared
+world; add account block/report and bounded abuse handling to public social
+surfaces.
+
+**Acceptance:** A release builds with private game directories absent and proves
+every shipped dependency's admission. A valid but unapproved creator pack cannot
+publish itself. A world-only viewer cannot read private studio content or invoke
+host commands through scene interaction.
+
+### V27: Replay guarantees need a declared execution profile
+
+[`Game` checkpoint tests](../../crates/verse-world/src/play.rs) compare restored
+simulation across future ticks. Physics uses double precision and seeded dice;
+these are valuable local guarantees. The checkpoint pins rules, and saves pin
+content, but they are not a complete cross-build replay package with executable,
+toolchain, target, RNG algorithm, and ordered external input history. Wall-time
+catch-up drops are observable but not a general operational replay stream.
+
+**Improve:** Declare supported determinism profiles and retain ordered admitted
+commands, commit/tick boundaries, executable/rules/content identity, RNG state,
+and divergence hashes. Keep input replays distinct from presentation trajectories.
+Do not promise cross-architecture bit equality without tests.
+
+**Acceptance:** Replay retained multi-player commands through save/restore,
+shutdown, and supported builds. Report the first divergent tick and field.
+Rejected commands, controller handoffs, and dropped elapsed time have explicit
+recorded semantics.
+
+### V28: Documentation can misdirect implementation priorities
+
+[`verse-world/README.md`](../../crates/verse-world/README.md) retains earlier
+paragraphs saying persistence, native service mounting, duplex behavior, or
+prediction remain, alongside later implementation updates.
+[`networking.md`](../verse/networking.md) names wire version 14; current
+[`wire::VERSION`](../../crates/verse-world/src/service/wire.rs) is 21. Historical
+milestone entries are useful evidence, but readers need a current status distinct
+from that history.
+
+**Improve:** Add a compact capability/status table owned by current runtime
+guides. Link historical implementation receipts instead of accumulating
+contradictory status paragraphs. Generate version and feature references where
+practical; keep proposed networking convergence clearly labeled.
+
+**Acceptance:** Every advertised capability identifies the implemented path,
+supported platform, measured acceptance, and remaining limitation. An engineer
+can distinguish a current gap from a dated receipt without reconstructing issue
+history.
+
+## Delivery order and proposed acceptance
+
+The following budgets are proposed engineering targets for the next slice, not
+universal AAA standards or measured Verse results. Confirm hardware, resolution,
+quality, and network profiles when implementing the harness.
+
+| Stage | Work | Evidence required to advance |
+| --- | --- | --- |
+| 1. Persistent correctness | V01–V03, V09, V18: transaction lifetime, ordered durability, migration, character identity, and crowded movement recovery. | Long-lived rewarded play; forced commit-boundary termination; exact retries after recovery; populated save upgrade; recorded battle failure reproduced and fixed. |
+| 2. Playable movement and replication | V04–V08, V24: effective input timing, relevance/deltas, reachable sessions, and social authority. | Repeated impaired-network movement/lifecycle matrix; ordinary correction p95 initially below 0.10 m for the declared flat-ground profile, with separate collision/teleport results. |
+| 3. Measured battle | V10–V19: timing, quality, physics/query/nav scaling, caster parity, and operations. | About 20 authenticated players and 40 active NPCs, durable state enabled; server tick p99 below its 33.3 ms interval; separate storage backlog, bandwidth, correction, and isolated-client metrics. |
+| 4. Device and content production | V12–V14, V20–V24, V26: streaming, cooking, authoring, locomotion, lighting, audio, and platform clients. | One isolated reference desktop at a declared 60 FPS profile, initially targeting frame-time p95 ≤16.7 ms and no steady-state stalls over 50 ms; declared phone/browser targets; content authored through tools. |
+| 5. MMO persistence and population | V06, V09, V25–V27: transfers, social/economy domains, publication, and replay/operations. | Multiple instances and growing population with exclusive character ownership, atomic item transfer, bounded operating cost, and tested recovery. |
+
+Run short smoke workloads during individual implementation slices, then dedicated
+scale and soak jobs on contributor machines or non-GitHub infrastructure.
+Suggested progression is 2 players → 20 players/40 NPCs → longer persistent
+soak → measured multi-instance population. A soak should cross transaction,
+event-retention, respawn, reconnect, and cache lifetime boundaries; merely waiting
+without mutations does not exercise them.
+
+Each implementation should have its own claimed issue and relevant targeted
+checks. This audit does not create implementation issues, change gameplay, or
+claim completion of the engine roadmap. Avoid a wholesale renderer/ECS rewrite,
+new product languages, new engine dependencies, or broad release gates as a
+prerequisite for the first correctness fixes.
+
+## Verification of this audit
+
+Documentation-only change. Verification checks local Markdown targets, cited
+source paths, finding identifiers, retained JSON receipts, and `git diff
+--check`. Rust tests, Clippy, release gates, and live owner-host probes are not
+run. Existing transcripts, research artifacts, and measurement receipts remain
+in place.
