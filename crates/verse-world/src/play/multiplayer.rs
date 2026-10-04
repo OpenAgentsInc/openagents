@@ -3,7 +3,7 @@ use super::*;
 use crate::{Admission, Command, Controller, Intent};
 use verse_engine::core::LifeId;
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct Player {
     pub(super) admission: Admission,

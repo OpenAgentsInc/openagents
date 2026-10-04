@@ -345,13 +345,42 @@ content. It recovers existing adventurers, resources, pending combat, and timers
 simulation time resumes without offline catch-up. Without `state_dir`, the host
 uses temporary reward-history files and does not retain a recoverable world.
 
-Durable hosts group bounded pending replies into one atomic, synced checkpoint
-per world tick. Reads wait for that commit when mutations are pending. A storage
-failure stops the host without publishing those replies. Committed snapshots
-carry version, revision, and checksum; interrupted staging files are discarded
-under the writer lock. The host reports checkpoint commits, bytes, and elapsed
-storage work. The [durable host fixture](../../bench/verse/2026-10-04/durable-host/run.json)
-retains restart/refusal checks and shared TLS input measurements.
+Durable network hosts capture an owned persistence copy on each admitted tick.
+One storage thread encodes changes, publishes reward-history nodes, appends and
+synchronizes the journal, and periodically replaces the base snapshot. The
+queue holds one active and one waiting copy; at most 128 replies wait in each
+batch. Mutation replies and reads of new state wait for their ordered commit;
+reads can share an existing commit or use already committed state. A failed
+commit stops the host and withholds those replies. The copy contains no
+connection challenges or dispatch interface, and later world mutations cannot
+change it.
+
+When storage fills the queue or reward-history staging capacity, the host pauses
+simulation and returns `storage_busy` for new requests using the last committed
+control and tick. Retry with the same operation identity. Paused wall time is
+counted separately and is not simulated later. Sequential client helpers retry
+explicit storage refusals for up to ten seconds with the same operation fields;
+raw requests and pipelined clients expose each refusal. Neither path retries
+uncertain transport failures. Normal shutdown drains admitted
+copies and commits parked controls before releasing the writer lock.
+
+`chamber.json` retains the versioned, checksummed base snapshot;
+`journal.jsonl` retains ordered structural changes with revision and state digest
+chains. Compaction runs after 256 changes or 64 MiB of journal data. Recovery
+replays complete records, discards an unterminated final append, and refuses
+complete corruption or a broken chain. An interrupted compaction can leave a
+validated journal prefix already covered by the snapshot; recovery discards
+that prefix. Back up the snapshot, journal, and entire rewards directory together
+while the host is stopped.
+
+The host reports lifetime simulation, persistence capture, and commit latency
+histograms with p50/p95/p99 bucket upper bounds, plus backlog, refusals, paused
+time, committed bytes, and storage duration. `Store::commit` remains a synchronous
+API for callers that manage their own scheduling. The original
+[durable host fixture](../../bench/verse/2026-10-04/durable-host/run.json) records
+the earlier synchronous implementation; the
+[ordered durability fixture](../../bench/verse/2026-10-04/ordered-durability/run.json)
+records the background writer's local checks and measurements.
 
 Trusted hosts use `Gateway::grant_reward` for bounded character experience,
 item stacks, and quest counters. A stable source ID binds one exact transaction
@@ -361,7 +390,7 @@ acknowledging a host-created reward. Legacy chamber saves replay the retained
 transactions; version-one saves upgrade with an empty ledger. Version-eight
 saves retain bounded character state, up to 128 active receipts, and the root of
 an immutable indexed history under `state_dir/rewards`. Recover them through
-`Store::open` and back up that directory with `chamber.json`; a checkpoint that
+`Store::open` and back up that directory with `chamber.json` and `journal.jsonl`; a checkpoint that
 references archived receipts requires those files. Exact retries preserve the
 original revision even after archival. Instance reset retains rewards and retry
 identities. Lifetime transaction count has no 4,096-receipt limit. Standalone
@@ -373,8 +402,9 @@ disconnected or dead party members, once per defeated NPC life. Spectators recei
 none. Respawns and instance resets create new NPC life generations; saved source
 IDs and the event cursor prevent duplicate rewards after recovery. Changed reward
 policies are refused on recovery. With no configured rewards, combat grants none.
-An authority or storage failure stops the host and retains its previous durable
-checkpoint, including when an entire cooperative reward batch cannot fit.
+An authority or storage failure stops the host and withholds uncommitted replies,
+including when an entire cooperative reward batch cannot fit. Recovery can retain
+a synchronized operation whose reply was lost; reuse its original identity.
 
 Wire version thirteen provides an authenticated `inventory` read. The connection determines
 the character; request bodies contain no actor or grant amounts. Players can read

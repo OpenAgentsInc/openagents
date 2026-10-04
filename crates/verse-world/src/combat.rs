@@ -20,7 +20,7 @@ pub struct EnemyCast {
     pub radius: f32,
     pub boss: bool,
 }
-#[derive(Default, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct Encounter {
     pub positions: BTreeMap<u64, Vec3>,
     pub casts: Vec<EnemyCast>,

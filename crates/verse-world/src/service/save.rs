@@ -60,45 +60,88 @@ fn grants(saved: &[Grant], game: &Game) -> Result<BTreeMap<Principal, Rights>, S
     }
     Ok(result)
 }
-pub(super) fn encode(gateway: &Gateway) -> Result<Vec<u8>, String> {
-    let ledger = gateway.chamber.rewards.checkpoint();
-    let saved = Saved {
-        version: if ledger.is_some() { 8 } else { 7 },
-        content: gateway
-            .content()
-            .ok_or("Saved chamber requires bound content")?,
-        world: String::from_utf8(gateway.game().checkpoint()?)
-            .map_err(|_| "Cannot encode saved world")?,
-        rewards: ledger
-            .is_none()
-            .then(|| gateway.chamber.rewards.transactions()),
-        ledger,
-        reward_policy: gateway.chamber.reward_policy.clone(),
-        reward_cursor: gateway.chamber.reward_cursor,
-        progression: Some(gateway.chamber.progression.clone()),
-        items: Some(gateway.chamber.items.clone()),
-        outfits: Some(gateway.chamber.outfits.clone()),
-        equipment: Some(gateway.chamber.equipment.clone()),
-        grants: gateway
-            .chamber
-            .grants
-            .iter()
-            .map(|(principal, rights)| Grant {
-                key: principal.0,
-                actor: match rights {
-                    Rights::Player(actor) => Some(*actor),
-                    Rights::Spectator => None,
-                },
-            })
-            .collect(),
-    };
-    grants(&saved.grants, gateway.game())?;
-    let bytes = serde_json::to_vec(&saved).map_err(|_| "Cannot encode saved chamber")?;
-    if bytes.len() > MAX_BYTES {
-        return Err("Saved chamber byte budget exceeded".into());
-    }
-    Ok(bytes)
+/// An owned persistence copy has no connection challenges or dispatch interface.
+pub(super) struct Prepared {
+    pub(super) owner: [u8; 32],
+    pub(super) content: [u8; 32],
+    game: Game,
+    grants: Vec<Grant>,
+    rewards: super::rewards::Ledger,
+    reward_policy: Vec<super::rewards::Policy>,
+    reward_cursor: u64,
+    progression: super::progression::Config,
+    items: super::items::Catalog,
+    outfits: super::outfits::Catalog,
+    equipment: super::equipment::Catalog,
 }
+impl Prepared {
+    pub(super) fn capture(gateway: &Gateway) -> Result<Self, String> {
+        let chamber = &gateway.chamber;
+        Ok(Self {
+            owner: gateway.server_identity(),
+            content: gateway
+                .content()
+                .ok_or("Saved chamber requires bound content")?,
+            game: chamber.game.clone(),
+            grants: chamber
+                .grants
+                .iter()
+                .map(|(principal, rights)| Grant {
+                    key: principal.0,
+                    actor: match rights {
+                        Rights::Player(actor) => Some(*actor),
+                        Rights::Spectator => None,
+                    },
+                })
+                .collect(),
+            rewards: chamber.rewards.clone(),
+            reward_policy: chamber.reward_policy.clone(),
+            reward_cursor: chamber.reward_cursor,
+            progression: chamber.progression.clone(),
+            items: chamber.items.clone(),
+            outfits: chamber.outfits.clone(),
+            equipment: chamber.equipment.clone(),
+        })
+    }
+    pub(super) fn instance(&self) -> u64 {
+        self.game.player_life().instance
+    }
+    pub(super) fn encode(&self) -> Result<Vec<u8>, String> {
+        let ledger = self.rewards.checkpoint();
+        let saved = Saved {
+            version: if ledger.is_some() { 8 } else { 7 },
+            content: self.content,
+            world: String::from_utf8(self.game.checkpoint()?)
+                .map_err(|_| "Cannot encode saved world")?,
+            rewards: ledger.is_none().then(|| self.rewards.transactions()),
+            ledger,
+            reward_policy: self.reward_policy.clone(),
+            reward_cursor: self.reward_cursor,
+            progression: Some(self.progression.clone()),
+            items: Some(self.items.clone()),
+            outfits: Some(self.outfits.clone()),
+            equipment: Some(self.equipment.clone()),
+            grants: self
+                .grants
+                .iter()
+                .map(|g| Grant {
+                    key: g.key,
+                    actor: g.actor,
+                })
+                .collect(),
+        };
+        grants(&saved.grants, &self.game)?;
+        let bytes = serde_json::to_vec(&saved).map_err(|_| "Cannot encode saved chamber")?;
+        if bytes.len() > MAX_BYTES {
+            return Err("Saved chamber byte budget exceeded".into());
+        }
+        Ok(bytes)
+    }
+}
+pub(super) fn encode(gateway: &Gateway) -> Result<Vec<u8>, String> {
+    Prepared::capture(gateway)?.encode()
+}
+
 pub(super) fn decode(bytes: &[u8], content: [u8; 32], instance: u64) -> Result<Gateway, String> {
     decode_with_history(bytes, content, instance, None)
 }

@@ -1,4 +1,4 @@
-//! Sequential TLS chamber client with acknowledged control and no automatic replay.
+//! Sequential TLS client with committed control and no uncertain command replay.
 use std::{net::SocketAddr, sync::Arc, time::Duration};
 
 use rustls::{ClientConfig, pki_types::ServerName};
@@ -20,6 +20,8 @@ const DEADLINE: Duration = Duration::from_secs(10);
 ///
 /// Refresh snapshots at the replication cadence before generating input. This
 /// client does not predict ticks, retain secret keys, or retry uncertain commands.
+/// Convenience methods retry explicit storage refusals for up to ten seconds;
+/// `request` exposes each refusal directly.
 pub struct Client {
     stream: Option<TlsStream<TcpStream>>,
     instance: u64,
@@ -91,7 +93,7 @@ impl Client {
             inventory_revision: 0,
         };
         let response = client
-            .request(Body::Authenticate {
+            .request_ready(Body::Authenticate {
                 public_key,
                 signature,
             })
@@ -152,8 +154,22 @@ impl Client {
         }
         Ok(response)
     }
+    /// Retry only an explicit refusal before admission, keeping every operation field.
+    async fn request_ready(&mut self, body: Body) -> Result<Response, String> {
+        timeout(DEADLINE, async {
+            loop {
+                let response = self.request(body.clone()).await?;
+                if !matches!(&response.body, Reply::Refused {code, ..} if code == "storage_busy") {
+                    return Ok(response);
+                }
+                tokio::time::sleep(Duration::from_millis(33)).await;
+            }
+        })
+        .await
+        .map_err(|_| "Chamber storage admission timed out".to_string())?
+    }
     pub async fn inventory(&mut self) -> Result<super::wire::Inventory, String> {
-        match self.request(Body::Inventory {}).await?.body {
+        match self.request_ready(Body::Inventory {}).await?.body {
             Reply::Inventory { inventory } => Ok(inventory),
             Reply::Refused { message, .. } => Err(message),
             _ => Err("Unexpected inventory response".into()),
@@ -166,7 +182,7 @@ impl Client {
         operation: [u8; 16],
     ) -> Result<Response, String> {
         let control = self.control().ok_or("Client has no admitted adventurer")?;
-        self.request(Body::EquipGear {
+        self.request_ready(Body::EquipGear {
             life: control.life,
             epoch: control.epoch,
             slot,
@@ -181,7 +197,7 @@ impl Client {
         operation: [u8; 16],
     ) -> Result<Response, String> {
         let control = self.control().ok_or("Client has no admitted adventurer")?;
-        self.request(Body::EquipOutfit {
+        self.request_ready(Body::EquipOutfit {
             life: control.life,
             epoch: control.epoch,
             outfit,
@@ -192,7 +208,7 @@ impl Client {
     /// Callers retain the operation ID when an acknowledgment is uncertain.
     pub async fn use_item(&mut self, item: u64, operation: [u8; 16]) -> Result<Response, String> {
         let control = self.control().ok_or("Client has no admitted adventurer")?;
-        self.request(Body::UseItem {
+        self.request_ready(Body::UseItem {
             life: control.life,
             epoch: control.epoch,
             item,
@@ -206,7 +222,7 @@ impl Client {
         giver: verse_engine::core::LifeId,
     ) -> Result<Response, String> {
         let control = self.control().ok_or("Client has no admitted adventurer")?;
-        self.request(Body::AcceptQuest {
+        self.request_ready(Body::AcceptQuest {
             life: control.life,
             epoch: control.epoch,
             quest,
@@ -216,7 +232,7 @@ impl Client {
     }
     pub async fn claim_quest(&mut self, quest: u64) -> Result<Response, String> {
         let control = self.control().ok_or("Client has no admitted adventurer")?;
-        self.request(Body::ClaimQuest {
+        self.request_ready(Body::ClaimQuest {
             life: control.life,
             epoch: control.epoch,
             quest,
@@ -239,20 +255,24 @@ impl Client {
     }
     pub async fn command(&mut self, intent: Intent<Ability>) -> Result<Response, String> {
         let command = self.prepare_command(intent)?;
-        self.request(Body::Command {
+        self.request_ready(Body::Command {
             command: command.into(),
         })
         .await
     }
     pub async fn snapshot(&mut self) -> Result<State, String> {
-        match self.request(Body::Snapshot {}).await?.body {
+        match self.request_ready(Body::Snapshot {}).await?.body {
             Reply::Snapshot { state } => Ok(state),
             Reply::Refused { message, .. } => Err(message),
             _ => Err("Unexpected chamber snapshot outcome".into()),
         }
     }
     pub async fn events(&mut self, after: u64, limit: u16) -> Result<EventPage, String> {
-        match self.request(Body::Events { after, limit }).await?.body {
+        match self
+            .request_ready(Body::Events { after, limit })
+            .await?
+            .body
+        {
             Reply::Events { page } => Ok(page),
             Reply::Refused { message, .. } => Err(message),
             _ => Err("Unexpected chamber events outcome".into()),
@@ -268,7 +288,7 @@ impl Client {
             return Err("Event cursor belongs to another chamber".into());
         }
         let after = cursor.after();
-        let response = self.request(Body::Events { after, limit }).await?;
+        let response = self.request_ready(Body::Events { after, limit }).await?;
         if let Reply::Refused { message, .. } = &response.body {
             return Err(message.clone());
         }
@@ -279,7 +299,7 @@ impl Client {
             .control()
             .ok_or("Client has no admitted adventurer")?
             .life;
-        self.request(Body::Respawn { life }).await
+        self.request_ready(Body::Respawn { life }).await
     }
     pub async fn close(&mut self) -> Result<(), String> {
         let mut stream = self.stream.take().ok_or("Chamber client is disconnected")?;
@@ -1322,7 +1342,10 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(exit.failure.as_deref(), Some("Cannot stage chamber commit"));
+        assert_eq!(
+            exit.failure.as_deref(),
+            Some("Chamber storage entry must be a regular file")
+        );
         drop(exit);
         std::fs::remove_dir(root.join("next.json")).unwrap();
         let mut store = Store::open(&root, [7; 32], 120).unwrap();
@@ -1432,7 +1455,10 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(exit.failure.as_deref(), Some("Cannot stage chamber commit"));
+        assert_eq!(
+            exit.failure.as_deref(),
+            Some("Chamber storage entry must be a regular file")
+        );
         drop(exit);
         std::fs::remove_dir(root.join("next.json")).unwrap();
         let mut store = Store::open(&root, [7; 32], 120).unwrap();
@@ -1636,7 +1662,10 @@ mod tests {
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(exit.failure.as_deref(), Some("Cannot stage chamber commit"));
+        assert_eq!(
+            exit.failure.as_deref(),
+            Some("Chamber storage entry must be a regular file")
+        );
         drop(exit);
         std::fs::remove_dir(root.join("next.json")).unwrap();
         let mut store = Store::open(&root, [7; 32], 120).unwrap();

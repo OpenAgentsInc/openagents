@@ -43,7 +43,7 @@ pub struct Area {
     pub position: Vec3,
     pub until: f32,
 }
-#[derive(Default, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct Controls {
     pub areas: Vec<Area>,
     pub light: Option<Vec3>,

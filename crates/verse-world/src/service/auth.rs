@@ -115,6 +115,26 @@ impl Gateway {
     pub(super) fn server_identity(&self) -> [u8; 32] {
         self.server
     }
+    pub(super) fn committed_controls(&self) -> BTreeMap<ConnectionId, super::wire::Control> {
+        self.bindings
+            .keys()
+            .filter_map(|id| {
+                self.admission(*id).ok().map(|admission| {
+                    (
+                        *id,
+                        super::wire::Control {
+                            life: admission.actor().into(),
+                            epoch: admission.epoch(),
+                            accepted_sequence: admission.accepted_sequence(),
+                        },
+                    )
+                })
+            })
+            .collect()
+    }
+    pub(super) fn committed_connections(&self) -> std::collections::BTreeSet<ConnectionId> {
+        self.bindings.keys().copied().collect()
+    }
     /// Saves the world and grants without connection challenges or sessions.
     pub fn checkpoint(&self) -> Result<Vec<u8>, String> {
         super::save::encode(self)

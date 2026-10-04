@@ -1,4 +1,4 @@
-//! Exclusively owned atomic host snapshots with explicit durability failures.
+//! Exclusively owned journal and snapshots with explicit durability failures.
 use super::{auth::Gateway, save::MAX_BYTES};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -7,6 +7,11 @@ use std::{
     io::{Read, Write},
     path::{Path, PathBuf},
 };
+
+#[cfg(test)]
+mod checks;
+mod journal;
+pub(super) mod writer;
 
 const FILE_BYTES: usize = MAX_BYTES * 2 + 4096;
 #[derive(Serialize, Deserialize)]
@@ -41,6 +46,11 @@ pub struct Store {
     owner: Option<[u8; 32]>,
     poisoned: bool,
     history: super::rewards::history::History,
+    journal: File,
+    state: Option<serde_json::Value>,
+    records: usize,
+    #[cfg(test)]
+    hook: Option<std::sync::Arc<dyn Fn(&str) + Send + Sync>>,
 }
 impl Store {
     pub fn open(root: &Path, content: [u8; 32], instance: u64) -> Result<Self, String> {
@@ -107,9 +117,28 @@ impl Store {
         lock.try_lock()
             .map_err(|_| "Chamber storage already has a writer or cannot lock")?;
         let history = super::rewards::history::History::open(&root.join("rewards"))?;
+        history.defer_writes();
+        let log = root.join("journal.jsonl");
+        regular_or_absent(&log)?;
+        let mut options = OpenOptions::new();
+        options.read(true).append(true).create(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let mut journal = options
+            .open(log)
+            .map_err(|_| "Cannot open chamber journal")?;
+        journal
+            .sync_all()
+            .map_err(|_| "Cannot sync chamber journal")?;
+        File::open(root)
+            .and_then(|f| f.sync_all())
+            .map_err(|_| "Cannot sync chamber journal directory")?;
         let current = root.join("chamber.json");
         regular_or_absent(&current)?;
-        let (revision, last_hash, recovered) = if current.exists() {
+        let (revision, last_hash, recovered, state, records) = if current.exists() {
             let file = File::open(&current).map_err(|_| "Cannot open committed chamber")?;
             let mut bytes = vec![];
             file.take(FILE_BYTES as u64 + 1)
@@ -127,20 +156,42 @@ impl Store {
             {
                 return Err("Committed chamber checksum or version is invalid".into());
             }
+            let mut state = journal::expand(saved.checkpoint.as_bytes())?;
+            let records = journal::replay(&mut journal, saved.revision, &mut state)?;
+            let revision = saved
+                .revision
+                .checked_add(records as u64)
+                .ok_or("Chamber commit revisions exhausted")?;
             let gateway = super::save::decode_with_history(
-                saved.checkpoint.as_bytes(),
+                &journal::contract(&state)?,
                 content,
                 instance,
                 Some(history.clone()),
             )?;
             (
-                saved.revision,
-                Some(Sha256::digest(saved.checkpoint.as_bytes()).into()),
+                revision,
+                Some(journal::hash(&state)?),
                 Some(gateway),
+                Some(state),
+                records,
             )
         } else {
-            (0, None, None)
+            if journal
+                .metadata()
+                .map_err(|_| "Cannot inspect chamber journal")?
+                .len()
+                != 0
+            {
+                return Err("Chamber journal has no committed base snapshot".into());
+            }
+            (0, None, None, None, 0)
         };
+        if records == 0 {
+            journal
+                .set_len(0)
+                .and_then(|_| journal.sync_all())
+                .map_err(|_| "Cannot discard compacted chamber journal")?;
+        }
         let pending = root.join("next.json");
         regular_or_absent(&pending)?;
         if pending.exists() {
@@ -159,13 +210,21 @@ impl Store {
             owner,
             poisoned: false,
             history,
+            journal,
+            state,
+            records,
+            #[cfg(test)]
+            hook: None,
         })
     }
     /// Take the validated existing world before committing; never overwrite it with a fresh spawn.
     pub fn recover(&mut self) -> Option<Gateway> {
         self.recovered.take()
     }
-    pub fn commit(&mut self, gateway: &mut Gateway) -> Result<Commit, String> {
+    pub(super) fn prepare(
+        &mut self,
+        gateway: &mut Gateway,
+    ) -> Result<super::save::Prepared, String> {
         if self.poisoned || self.recovered.is_some() {
             return Err("Chamber storage is unavailable or recovery is still pending".into());
         }
@@ -184,10 +243,46 @@ impl Store {
             self.poisoned = true;
             return Err(error);
         }
-        let checkpoint = String::from_utf8(gateway.checkpoint()?)
-            .map_err(|_| "Cannot encode committed chamber")?;
-        let hash = Sha256::digest(checkpoint.as_bytes()).into();
+        super::save::Prepared::capture(gateway)
+    }
+    #[cfg(test)]
+    pub(in crate::service) fn boundary(&self, stage: &str) {
+        if let Some(hook) = &self.hook {
+            hook(stage);
+        }
+    }
+    #[cfg(test)]
+    pub(in crate::service) fn inject(&mut self, hook: std::sync::Arc<dyn Fn(&str) + Send + Sync>) {
+        self.hook = Some(hook);
+    }
+    pub fn commit(&mut self, gateway: &mut Gateway) -> Result<Commit, String> {
+        let prepared = self.prepare(gateway)?;
+        self.commit_prepared(prepared)
+    }
+    pub(super) fn commit_prepared(
+        &mut self,
+        prepared: super::save::Prepared,
+    ) -> Result<Commit, String> {
+        if self.poisoned || self.recovered.is_some() {
+            return Err("Chamber storage is unavailable or recovery is still pending".into());
+        }
+        if prepared.content != self.content
+            || prepared.instance() != self.instance
+            || self.owner.is_some_and(|owner| owner != prepared.owner)
+        {
+            return Err("Chamber persistence copy has a foreign authority or context".into());
+        }
+        #[cfg(test)]
+        self.boundary("before_encode");
+        let checkpoint =
+            String::from_utf8(prepared.encode()?).map_err(|_| "Cannot encode committed chamber")?;
+        let state = journal::expand(checkpoint.as_bytes())?;
+        let hash = journal::hash(&state)?;
         if self.last_hash == Some(hash) {
+            if let Err(error) = self.history.synchronize() {
+                self.poisoned = true;
+                return Err(error);
+            }
             return Ok(Commit {
                 revision: self.revision,
                 bytes: 0,
@@ -198,6 +293,60 @@ impl Store {
             .revision
             .checked_add(1)
             .ok_or("Chamber commit revisions exhausted")?;
+        let result = (|| {
+            regular_or_absent(&self.root.join("next.json"))?;
+            self.history.synchronize()?;
+            #[cfg(test)]
+            self.boundary("after_history");
+            let mut bytes = 0;
+            if let Some(old) = &self.state {
+                if self.records < journal::INTERVAL {
+                    bytes += journal::append(&mut self.journal, revision, old, &state)?;
+                    self.records += 1;
+                    #[cfg(test)]
+                    self.boundary("after_journal");
+                }
+            }
+            if self.state.is_none()
+                || self.records >= journal::INTERVAL
+                || self
+                    .journal
+                    .metadata()
+                    .map_err(|_| "Cannot inspect chamber journal")?
+                    .len()
+                    >= journal::LOG_BYTES
+            {
+                bytes += self.snapshot(revision, checkpoint)?;
+                #[cfg(test)]
+                self.boundary("before_journal_clear");
+                self.journal
+                    .set_len(0)
+                    .and_then(|_| self.journal.sync_all())
+                    .map_err(|_| "Cannot compact chamber journal")?;
+                self.records = 0;
+                #[cfg(test)]
+                self.boundary("after_journal_clear");
+            }
+            Ok(bytes)
+        })();
+        let bytes = match result {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                self.poisoned = true;
+                return Err(error);
+            }
+        };
+        self.revision = revision;
+        self.last_hash = Some(hash);
+        self.state = Some(state);
+        self.owner = Some(prepared.owner);
+        Ok(Commit {
+            revision,
+            bytes,
+            written: true,
+        })
+    }
+    fn snapshot(&self, revision: u64, checkpoint: String) -> Result<usize, String> {
         let saved = Committed {
             version: 1,
             revision,
@@ -208,40 +357,34 @@ impl Store {
         if bytes.len() > FILE_BYTES {
             return Err("Committed chamber byte budget exceeded".into());
         }
-        let result = (|| {
-            let mut options = OpenOptions::new();
-            options.create_new(true).write(true);
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::OpenOptionsExt;
-                options.mode(0o600);
-            }
-            let pending = self.root.join("next.json");
-            let mut file = options
-                .open(&pending)
-                .map_err(|_| "Cannot stage chamber commit")?;
-            file.write_all(&bytes)
-                .map_err(|_| "Cannot write chamber commit")?;
-            file.sync_all().map_err(|_| "Cannot sync chamber commit")?;
-            std::fs::rename(pending, self.root.join("chamber.json"))
-                .map_err(|_| "Cannot replace committed chamber")?;
-            File::open(&self.root)
-                .and_then(|directory| directory.sync_all())
-                .map_err(|_| "Cannot sync chamber commit directory")?;
-            Ok::<(), String>(())
-        })();
-        if let Err(error) = result {
-            self.poisoned = true;
-            return Err(error);
+        let mut options = OpenOptions::new();
+        options.create_new(true).write(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
         }
-        self.revision = revision;
-        self.last_hash = Some(hash);
-        self.owner = Some(gateway.server_identity());
-        Ok(Commit {
-            revision,
-            bytes: bytes.len(),
-            written: true,
-        })
+        let pending = self.root.join("next.json");
+        let mut file = options
+            .open(&pending)
+            .map_err(|_| "Cannot stage chamber commit")?;
+        file.write_all(&bytes)
+            .map_err(|_| "Cannot write chamber commit")?;
+        #[cfg(test)]
+        self.boundary("before_snapshot_sync");
+        file.sync_all().map_err(|_| "Cannot sync chamber commit")?;
+        #[cfg(test)]
+        self.boundary("after_snapshot_sync");
+        std::fs::rename(pending, self.root.join("chamber.json"))
+            .map_err(|_| "Cannot replace committed chamber")?;
+        #[cfg(test)]
+        self.boundary("after_snapshot_rename");
+        File::open(&self.root)
+            .and_then(|f| f.sync_all())
+            .map_err(|_| "Cannot sync chamber commit directory")?;
+        #[cfg(test)]
+        self.boundary("after_snapshot_directory");
+        Ok(bytes.len())
     }
 }
 fn regular_or_absent(path: &Path) -> Result<(), String> {
@@ -257,7 +400,7 @@ fn regular_or_absent(path: &Path) -> Result<(), String> {
 mod tests {
     use super::*;
     use crate::service::net::tests::{gateway, key};
-    fn prepared() -> Gateway {
+    pub(super) fn prepared() -> Gateway {
         gateway(&[key(101), key(102), key(103)])
             .with_content([8; 32])
             .unwrap()
@@ -404,12 +547,10 @@ mod tests {
         let mut store = Store::open(&root, [8; 32], 120).unwrap();
         let recovered = store.recover().unwrap();
         assert_eq!(recovered.character_rewards(actor).unwrap().experience, 4201);
+        let saved: serde_json::Value =
+            serde_json::from_slice(&recovered.checkpoint().unwrap()).unwrap();
         drop(recovered);
         drop(store);
-        let committed: serde_json::Value =
-            serde_json::from_slice(&std::fs::read(root.join("chamber.json")).unwrap()).unwrap();
-        let saved: serde_json::Value =
-            serde_json::from_str(committed["checkpoint"].as_str().unwrap()).unwrap();
         let digest: String = saved["ledger"]["root"]
             .as_array()
             .unwrap()

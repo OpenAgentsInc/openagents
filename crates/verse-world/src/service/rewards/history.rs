@@ -3,14 +3,19 @@ use super::Receipt;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::{
+    collections::BTreeMap,
     fs::{File, OpenOptions},
     io::{Read, Write},
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 
 const LEAF_RECEIPTS: usize = 16;
 const NODE_BYTES: usize = 256 * 1024;
+const PENDING_BYTES: usize = 128 * 1024 * 1024;
 pub(super) type Root = Option<[u8; 32]>;
 
 #[derive(Serialize, Deserialize)]
@@ -23,6 +28,13 @@ enum Node {
 struct Directory {
     path: PathBuf,
     temporary: bool,
+    deferred: AtomicBool,
+    pending: Mutex<Pending>,
+}
+#[derive(Default)]
+struct Pending {
+    nodes: BTreeMap<[u8; 32], Arc<Vec<u8>>>,
+    bytes: usize,
 }
 impl Drop for Directory {
     fn drop(&mut self) {
@@ -66,6 +78,8 @@ impl History {
         Ok(Self(Arc::new(Directory {
             path: path.to_path_buf(),
             temporary: false,
+            deferred: AtomicBool::new(false),
+            pending: Mutex::new(Pending::default()),
         })))
     }
     pub(in crate::service) fn temporary() -> Result<Self, String> {
@@ -87,7 +101,64 @@ impl History {
     pub(super) fn same_directory(&self, other: &Self) -> bool {
         self.0.path == other.0.path
     }
+    pub(in crate::service) fn defer_writes(&self) {
+        self.0.deferred.store(true, Ordering::Release);
+    }
+    pub(in crate::service) fn has_capacity(&self) -> Result<bool, String> {
+        let pending = self
+            .0
+            .pending
+            .lock()
+            .map_err(|_| "Reward history staging is unavailable")?;
+        Ok(pending.bytes < PENDING_BYTES / 2)
+    }
+    /// Publish staged immutable nodes before a commit can reference their roots.
+    pub(in crate::service) fn synchronize(&self) -> Result<(), String> {
+        let nodes: Vec<_> = self
+            .0
+            .pending
+            .lock()
+            .map_err(|_| "Reward history staging is unavailable")?
+            .nodes
+            .iter()
+            .map(|(digest, bytes)| (*digest, bytes.clone()))
+            .collect();
+        for (digest, bytes) in &nodes {
+            self.publish(*digest, bytes)?;
+        }
+        if !nodes.is_empty() {
+            File::open(&self.0.path)
+                .and_then(|f| f.sync_all())
+                .map_err(|_| "Cannot sync reward history directory")?;
+            let mut pending = self
+                .0
+                .pending
+                .lock()
+                .map_err(|_| "Reward history staging is unavailable")?;
+            for (digest, _) in nodes {
+                if let Some(bytes) = pending.nodes.remove(&digest) {
+                    pending.bytes -= bytes.len();
+                }
+            }
+        }
+        Ok(())
+    }
     fn read(&self, digest: [u8; 32]) -> Result<Node, String> {
+        let staged = self
+            .0
+            .pending
+            .lock()
+            .map_err(|_| "Reward history staging is unavailable")?
+            .nodes
+            .get(&digest)
+            .cloned();
+        if let Some(bytes) = staged {
+            return serde_json::from_slice(&bytes)
+                .map_err(|_| "Invalid staged reward history node".into());
+        }
+        self.read_disk(digest)
+    }
+    fn read_disk(&self, digest: [u8; 32]) -> Result<Node, String> {
         let path = self.0.path.join(hex(&digest));
         if !std::fs::symlink_metadata(&path)
             .map_err(|_| "Reward history node is missing")?
@@ -115,10 +186,29 @@ impl History {
             return Err("Reward history node byte budget exceeded".into());
         }
         let digest = hash(&bytes);
+        if self.0.deferred.load(Ordering::Acquire) {
+            let mut pending = self
+                .0
+                .pending
+                .lock()
+                .map_err(|_| "Reward history staging is unavailable")?;
+            if !pending.nodes.contains_key(&digest) {
+                if pending.bytes + bytes.len() > PENDING_BYTES {
+                    return Err("Reward history staging byte budget exceeded".into());
+                }
+                pending.bytes += bytes.len();
+                pending.nodes.insert(digest, Arc::new(bytes));
+            }
+            return Ok(digest);
+        }
+        self.publish(digest, &bytes)?;
+        Ok(digest)
+    }
+    fn publish(&self, digest: [u8; 32], bytes: &[u8]) -> Result<(), String> {
         let path = self.0.path.join(hex(&digest));
         if path.exists() {
-            self.read(digest)?;
-            return Ok(digest);
+            self.read_disk(digest)?;
+            return Ok(());
         }
         let mut nonce = [0; 16];
         getrandom::fill(&mut nonce).map_err(|_| "Cannot create reward history write identity")?;
@@ -138,7 +228,7 @@ impl History {
                 .and_then(|_| file.sync_all())
                 .map_err(|_| "Cannot write and sync reward history node")?;
             std::fs::rename(&pending, path).map_err(|_| "Cannot publish reward history node")?;
-            Ok(digest)
+            Ok(())
         })();
         if result.is_err() {
             let _ = std::fs::remove_file(pending);
@@ -174,9 +264,11 @@ impl History {
             return Err("Reward history batch budget exceeded".into());
         }
         let root = self.insert_at(root, receipts.to_vec(), 0)?;
-        File::open(&self.0.path)
-            .and_then(|f| f.sync_all())
-            .map_err(|_| "Cannot sync reward history directory")?;
+        if !self.0.deferred.load(Ordering::Acquire) {
+            File::open(&self.0.path)
+                .and_then(|f| f.sync_all())
+                .map_err(|_| "Cannot sync reward history directory")?;
+        }
         Ok(Some(root))
     }
     pub(super) fn validate(&self, root: Root, revision: u64) -> Result<(), String> {

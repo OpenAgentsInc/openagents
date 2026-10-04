@@ -15,11 +15,17 @@ use tokio::{
 };
 use tokio_rustls::TlsAcceptor;
 
+use super::persistence::writer::{Done, Work, Writer};
 use super::{
     auth::{ConnectionId, Gateway},
     persistence::Store,
-    wire::{Body, MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES, Request},
+    wire::{
+        Body, Control, MAX_REQUEST_BYTES, MAX_RESPONSE_BYTES, Reply, Request, Response, VERSION,
+    },
 };
+use std::collections::BTreeMap;
+mod timing;
+pub use timing::Timing;
 
 const CONNECTIONS: usize = 128;
 const QUEUE: usize = 128;
@@ -41,6 +47,13 @@ pub struct Stats {
     pub checkpoint_commits: u64,
     pub checkpoint_bytes: u64,
     pub checkpoint_seconds: f64,
+    pub simulation: Timing,
+    pub capture: Timing,
+    pub commits: Timing,
+    pub writer_queue_peak: usize,
+    pub storage_refusals: u64,
+    pub storage_paused_ticks: u64,
+    pub storage_paused_seconds: f64,
 }
 /// Retains the authority after shutdown, including runtime failure diagnostics.
 pub struct Exit {
@@ -58,6 +71,70 @@ struct PendingReply {
 enum PendingResponse {
     Outcome(DispatchReply),
     Read { id: ConnectionId, bytes: Vec<u8> },
+}
+struct CommitView {
+    tick: u64,
+    instance: u64,
+    controls: BTreeMap<ConnectionId, Control>,
+    authenticated: std::collections::BTreeSet<ConnectionId>,
+}
+impl CommitView {
+    fn capture(gateway: &Gateway) -> Self {
+        Self {
+            tick: gateway.game().authority_tick,
+            instance: gateway.game().player_life().instance,
+            controls: gateway.committed_controls(),
+            authenticated: gateway.committed_connections(),
+        }
+    }
+    fn busy(&self, id: ConnectionId, bytes: &[u8]) -> DispatchReply {
+        let request = Request::decode(bytes)?;
+        let control = self.controls.get(&id).cloned();
+        let admitted = self.authenticated.contains(&id);
+        Response {
+            version: VERSION,
+            request_id: request.request_id,
+            instance: self.instance,
+            tick: self.tick,
+            control,
+            body: Reply::Refused {
+                code: "storage_busy".into(),
+                message: "Chamber storage is busy; retry without changing operation identity"
+                    .into(),
+            },
+        }
+        .encode()
+        .map(|bytes| (bytes, admitted))
+    }
+}
+struct Fence {
+    view: CommitView,
+    replies: Vec<(oneshot::Sender<DispatchReply>, DispatchReply)>,
+}
+fn finish(
+    done: Done,
+    fences: &mut BTreeMap<u64, Fence>,
+    view: &mut CommitView,
+    stats: &mut Stats,
+) -> Result<(), String> {
+    stats.checkpoint_seconds += done.seconds;
+    stats.commits.record(done.seconds);
+    let committed = done.result?;
+    if committed.written {
+        stats.checkpoint_commits += 1;
+        stats.checkpoint_bytes += committed.bytes as u64;
+    }
+    if fences.keys().next().copied() != Some(done.token) {
+        return Err("Chamber storage completion order is incompatible".into());
+    }
+    let fence = fences
+        .remove(&done.token)
+        .ok_or("Chamber storage completion has no fence")?;
+    *view = fence.view;
+    for (reply, result) in fence.replies {
+        let _ = reply.send(result);
+    }
+    Ok(())
 }
 enum Event {
     Open(oneshot::Sender<OpenReply>),
@@ -133,30 +210,84 @@ pub async fn serve_durable<F: Future<Output = ()>>(
 ) -> Exit {
     serve_with_store(listener, tls, gateway, Some(store), shutdown).await
 }
-fn persist(
-    gateway: &mut Gateway,
-    store: &mut Option<Store>,
-    stats: &mut Stats,
-) -> Result<(), String> {
-    if let Some(store) = store {
-        let start = Instant::now();
-        let committed = store.commit(gateway);
-        stats.checkpoint_seconds += start.elapsed().as_secs_f64();
-        let committed = committed?;
-        if committed.written {
-            stats.checkpoint_commits += 1;
-            stats.checkpoint_bytes += committed.bytes as u64;
-        }
-    }
-    Ok(())
-}
 async fn serve_with_store<F: Future<Output = ()>>(
     listener: TcpListener,
     tls: Arc<ServerConfig>,
     mut gateway: Gateway,
-    mut store: Option<Store>,
+    store: Option<Store>,
     shutdown: F,
 ) -> Exit {
+    let mut stats = Stats::default();
+    let mut failure = None;
+    let mut writer = if let Some(mut store) = store {
+        let start = Instant::now();
+        let prepared = match store.prepare(&mut gateway) {
+            Ok(prepared) => prepared,
+            Err(error) => {
+                return Exit {
+                    gateway,
+                    stats,
+                    failure: Some(error),
+                };
+            }
+        };
+        stats.capture.record(start.elapsed().as_secs_f64());
+        let start = Instant::now();
+        let initial = tokio::task::spawn_blocking(move || {
+            let result = store.commit_prepared(prepared);
+            (store, result)
+        })
+        .await;
+        let (store, result) = match initial {
+            Ok(initial) => initial,
+            Err(_) => {
+                return Exit {
+                    gateway,
+                    stats,
+                    failure: Some("Chamber storage initialization failed".into()),
+                };
+            }
+        };
+        let seconds = start.elapsed().as_secs_f64();
+        stats.checkpoint_seconds += seconds;
+        stats.commits.record(seconds);
+        match result {
+            Ok(commit) => {
+                if commit.written {
+                    stats.checkpoint_commits += 1;
+                    stats.checkpoint_bytes += commit.bytes as u64;
+                }
+            }
+            Err(error) => {
+                return Exit {
+                    gateway,
+                    stats,
+                    failure: Some(error),
+                };
+            }
+        }
+        match Writer::start(store) {
+            Ok(writer) => Some(writer),
+            Err(error) => {
+                return Exit {
+                    gateway,
+                    stats,
+                    failure: Some(error),
+                };
+            }
+        }
+    } else {
+        if let Err(error) = super::rewards::history::History::temporary()
+            .and_then(|archive| gateway.chamber.rewards.attach(archive))
+        {
+            return Exit {
+                gateway,
+                stats,
+                failure: Some(error),
+            };
+        }
+        None
+    };
     let acceptor = TlsAcceptor::from(tls);
     let capacity = Arc::new(Semaphore::new(CONNECTIONS));
     let (send, mut receive) = mpsc::channel(QUEUE);
@@ -166,32 +297,20 @@ async fn serve_with_store<F: Future<Output = ()>>(
     let period = Duration::from_secs_f64(1. / 30.);
     let mut ticker = tokio::time::interval_at(tokio::time::Instant::now() + period, period);
     ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
-    let mut stats = Stats::default();
-    let mut failure = None;
     let mut pending: Vec<PendingReply> = Vec::with_capacity(QUEUE);
+    let mut fences = BTreeMap::new();
+    let mut committed = CommitView::capture(&gateway);
+    let mut token = 0u64;
     let mut dirty = false;
-    if store.is_none() {
-        let attached = super::rewards::history::History::temporary()
-            .and_then(|archive| gateway.chamber.rewards.attach(archive));
-        if let Err(error) = attached {
-            return Exit {
-                gateway,
-                stats,
-                failure: Some(error),
-            };
-        }
-    }
-    if let Err(error) = persist(&mut gateway, &mut store, &mut stats) {
-        return Exit {
-            gateway,
-            stats,
-            failure: Some(error),
-        };
-    }
     tokio::pin!(shutdown);
     loop {
         tokio::select! {
             _ = &mut shutdown => break,
+            completed = async { writer.as_mut().unwrap().done.recv().await }, if writer.is_some() && !fences.is_empty() => {
+                let result = completed.ok_or_else(|| "Chamber storage writer stopped".to_string())
+                    .and_then(|done| finish(done, &mut fences, &mut committed, &mut stats));
+                if let Err(error) = result {failure = Some(error); break;}
+            }
             accepted = listener.accept() => {
                 match accepted {
                     Ok((socket, _)) => {
@@ -206,77 +325,202 @@ async fn serve_with_store<F: Future<Output = ()>>(
                             let _ = connection(socket, acceptor, send).await;
                         });
                     }
-                    Err(_) => { failure = Some("Chamber listener failed".into()); break; }
+                    Err(_) => {failure = Some("Chamber listener failed".into()); break;}
                 }
             }
             _ = ticker.tick() => {
-                let now = Instant::now(); let elapsed = now.duration_since(last_tick).as_secs_f64(); last_tick = now;
-                let dt = elapsed.min(0.1);
-                stats.dropped_seconds += elapsed - dt;
-                if let Err(error) = gateway.tick(dt as f32) { failure = Some(error); break; }
-                if let Err(error) = persist(&mut gateway, &mut store, &mut stats) { failure = Some(error); break; }
-                let now = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
-                for response in pending.drain(..) {
-                    let result = match response.response {
-                        PendingResponse::Outcome(result) => result,
-                        PendingResponse::Read { id, bytes } => gateway.dispatch_json(id, now, &bytes)
-                            .map(|bytes| (bytes, gateway.authenticated(id))),
-                    };
-                    let _ = response.reply.send(result);
+                let now = Instant::now();
+                let elapsed = now.duration_since(last_tick).as_secs_f64();
+                last_tick = now;
+                let room = writer.as_ref().is_none_or(|writer| fences.len() < 2 && writer.send.as_ref().unwrap().capacity() > 0);
+                let history = match gateway.chamber.rewards.history_capacity() {
+                    Ok(available) => available,
+                    Err(error) => {failure = Some(error); break;}
+                };
+                if !room {
+                    stats.storage_paused_ticks += 1;
+                    stats.storage_paused_seconds += elapsed;
+                    continue;
                 }
-                dirty = false;
-                stats.ticks += 1;
+                if history {
+                    let dt = elapsed.min(0.1);
+                    stats.dropped_seconds += elapsed - dt;
+                    let tick = Instant::now();
+                    if let Err(error) = gateway.tick(dt as f32) {failure = Some(error); break;}
+                    stats.simulation.record(tick.elapsed().as_secs_f64());
+                    stats.ticks += 1;
+                } else {
+                    // Flush already admitted state without adding more simulation mutations.
+                    stats.storage_paused_ticks += 1;
+                    stats.storage_paused_seconds += elapsed;
+                }
+                if let Some(writer) = &mut writer {
+                    let permit = match writer.send.as_ref().unwrap().try_reserve() {
+                        Ok(permit) => permit,
+                        Err(_) => {
+                            failure = Some(match writer.done.recv().await {
+                                Some(done) => finish(done, &mut fences, &mut committed, &mut stats).err()
+                                    .unwrap_or_else(|| "Chamber storage writer stopped".into()),
+                                None => "Chamber storage writer stopped".into(),
+                            });
+                            break;
+                        }
+                    };
+                    let capture = Instant::now();
+                    let now = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
+                    let replies = pending.drain(..).map(|pending| {
+                        let result = match pending.response {
+                            PendingResponse::Outcome(result) => result,
+                            PendingResponse::Read {id, bytes} => gateway.dispatch_json(id, now, &bytes)
+                                .map(|bytes| (bytes, gateway.authenticated(id))),
+                        };
+                        (pending.reply, result)
+                    }).collect();
+                    let prepared = match super::save::Prepared::capture(&gateway) {
+                        Ok(prepared) => prepared,
+                        Err(error) => {failure = Some(error); break;}
+                    };
+                    token = match token.checked_add(1) {
+                        Some(token) => token,
+                        None => {failure = Some("Chamber storage tokens exhausted".into()); break;}
+                    };
+                    fences.insert(token, Fence {view:CommitView::capture(&gateway), replies});
+                    stats.capture.record(capture.elapsed().as_secs_f64());
+                    stats.writer_queue_peak = stats.writer_queue_peak.max(fences.len());
+                    permit.send(Work {token, prepared});
+                    dirty = false;
+                }
             }
             event = receive.recv() => {
                 let now = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
                 match event {
                     Some(Event::Open(reply)) => {
                         let result = gateway.open_json(now);
-                        if let Err(Ok((id, _))) = reply.send(result) { let _ = gateway.close(id); }
+                        if let Err(Ok((id, _))) = reply.send(result) {let _ = gateway.close(id);}
                     }
-                    Some(Event::Request { id, bytes, reply }) => {
+                    Some(Event::Request {id, bytes, reply}) => {
                         stats.requests += 1;
-                        if store.is_some() && pending.len() >= QUEUE {
-                            let error = "Chamber durable reply budget exceeded".to_string();
-                            let _ = reply.send(Err(error.clone()));
-                            failure = Some(error);
-                            break;
-                        }
-                        let mutating = store.is_some() && Request::decode(&bytes).is_ok_and(|request| matches!(request.body,
-                            Body::Authenticate { .. } | Body::Command { .. } | Body::Respawn { .. } | Body::ClaimQuest {..} | Body::AcceptQuest {..} | Body::UseItem {..} | Body::EquipOutfit {..} | Body::EquipGear {..}));
-                        if mutating {
-                            let result = gateway.dispatch_json(id, now, &bytes).map(|bytes| (bytes, gateway.authenticated(id)));
-                            dirty = true;
-                            pending.push(PendingReply { reply, response: PendingResponse::Outcome(result) });
-                        } else if store.is_some() && dirty {
-                            pending.push(PendingReply { reply, response: PendingResponse::Read { id, bytes } });
+                        if let Some(writer) = &writer {
+                            let room = pending.len() < QUEUE && fences.len() < 2 && writer.send.as_ref().unwrap().capacity() > 0;
+                            let history = gateway.chamber.rewards.history_capacity().unwrap_or(false);
+                            if !room || !history {
+                                stats.storage_refusals += 1;
+                                let _ = reply.send(committed.busy(id, &bytes));
+                                continue;
+                            }
+                            let mutating = Request::decode(&bytes).is_ok_and(|request| matches!(request.body,
+                                Body::Authenticate {..} | Body::Command {..} | Body::Respawn {..} | Body::ClaimQuest {..}
+                                | Body::AcceptQuest {..} | Body::UseItem {..} | Body::EquipOutfit {..} | Body::EquipGear {..}));
+                            if !mutating && !dirty {
+                                if let Some(mut entry) = fences.last_entry() {
+                                    let fence = entry.get_mut();
+                                    if fence.replies.len() >= QUEUE {
+                                        stats.storage_refusals += 1;
+                                        let _ = reply.send(committed.busy(id, &bytes));
+                                    } else {
+                                        let result = gateway.dispatch_json(id, now, &bytes)
+                                            .map(|bytes| (bytes, gateway.authenticated(id)));
+                                        fence.replies.push((reply, result));
+                                    }
+                                } else {
+                                    // The current authority state is already committed.
+                                    let result = gateway.dispatch_json(id, now, &bytes)
+                                        .map(|bytes| (bytes, gateway.authenticated(id)));
+                                    let _ = reply.send(result);
+                                }
+                                continue;
+                            }
+                            let response = if mutating {
+                                dirty = true;
+                                PendingResponse::Outcome(gateway.dispatch_json(id, now, &bytes)
+                                    .map(|bytes| (bytes, gateway.authenticated(id))))
+                            } else {PendingResponse::Read {id, bytes}};
+                            pending.push(PendingReply {reply, response});
                         } else {
                             let result = gateway.dispatch_json(id, now, &bytes).map(|bytes| (bytes, gateway.authenticated(id)));
                             let _ = reply.send(result);
                         }
                     }
-                    Some(Event::Close(id)) => {
-                        let _ = gateway.close(id);
-                        dirty |= store.is_some();
-                    }
-                    None => { failure = Some("Chamber dispatch queue closed".into()); break; }
+                    Some(Event::Close(id)) => {let _ = gateway.close(id); dirty = true;}
+                    None => {failure = Some("Chamber dispatch queue closed".into()); break;}
                 }
             }
-            _ = workers.join_next(), if !workers.is_empty() => { stats.completed_connections += 1; }
+            _ = workers.join_next(), if !workers.is_empty() => {stats.completed_connections += 1;}
         }
     }
     workers.abort_all();
     while workers.join_next().await.is_some() {
         stats.completed_connections += 1;
     }
+    if let Some(writer) = &mut writer {
+        while failure.is_none() && !fences.is_empty() {
+            let result = writer
+                .done
+                .recv()
+                .await
+                .ok_or_else(|| "Chamber storage writer stopped".to_string())
+                .and_then(|done| finish(done, &mut fences, &mut committed, &mut stats));
+            if let Err(error) = result {
+                failure = Some(error);
+            }
+        }
+    }
     if let Err(error) = gateway.close_all() {
         failure.get_or_insert(error);
     }
     if failure.is_none() {
-        if let Err(error) = persist(&mut gateway, &mut store, &mut stats) {
-            failure = Some(error);
+        if let Some(writer) = &mut writer {
+            let capture = Instant::now();
+            match super::save::Prepared::capture(&gateway) {
+                Ok(prepared) => {
+                    token = match token.checked_add(1) {
+                        Some(token) => token,
+                        None => {
+                            return Exit {
+                                gateway,
+                                stats,
+                                failure: Some("Chamber storage tokens exhausted".into()),
+                            };
+                        }
+                    };
+                    fences.insert(
+                        token,
+                        Fence {
+                            view: CommitView::capture(&gateway),
+                            replies: vec![],
+                        },
+                    );
+                    stats.capture.record(capture.elapsed().as_secs_f64());
+                    if writer
+                        .send
+                        .as_ref()
+                        .unwrap()
+                        .send(Work { token, prepared })
+                        .await
+                        .is_err()
+                    {
+                        failure = Some("Chamber storage writer stopped during drain".into());
+                    } else {
+                        let result = writer
+                            .done
+                            .recv()
+                            .await
+                            .ok_or_else(|| {
+                                "Chamber storage writer stopped during drain".to_string()
+                            })
+                            .and_then(|done| finish(done, &mut fences, &mut committed, &mut stats));
+                        if let Err(error) = result {
+                            failure = Some(error);
+                        }
+                    }
+                }
+                Err(error) => {
+                    failure = Some(error);
+                }
+            }
         }
     }
+    drop(writer);
     Exit {
         gateway,
         stats,
@@ -330,7 +574,9 @@ async fn connection(
                 .await
                 .map_err(|_| "Chamber write timed out")??;
             authenticated = admitted;
-            if !authenticated {
+            let retry_admission = serde_json::from_slice::<Response>(&bytes).is_ok_and(|response|
+                matches!(response.body, Reply::Refused {code, ..} if code == "storage_busy"));
+            if !authenticated && !retry_admission {
                 return Err("Chamber connection is not authenticated".into());
             }
         }
@@ -512,6 +758,138 @@ pub(super) mod tests {
     }
 
     #[tokio::test]
+    async fn slow_writer_fences_replies_bounds_backlog_and_refuses_new_work() {
+        use crate::{Intent, service::client::Client};
+        use std::sync::{
+            Condvar, Mutex,
+            atomic::{AtomicBool, Ordering},
+        };
+        struct Release(Arc<(Mutex<bool>, Condvar)>);
+        impl Drop for Release {
+            fn drop(&mut self) {
+                *self.0.0.lock().unwrap() = true;
+                self.0.1.notify_all();
+            }
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("state");
+        let keys = [key(121), key(122), key(123)];
+        let mut store = Store::open(&root, [8; 32], 120).unwrap();
+        let gate = Arc::new((Mutex::new(false), Condvar::new()));
+        let release = Release(gate.clone());
+        let armed = Arc::new(AtomicBool::new(false));
+        let trigger = armed.clone();
+        let (started, mut blocked) = mpsc::unbounded_channel();
+        store.inject(Arc::new(move |stage| {
+            if stage == "before_encode" && trigger.swap(false, Ordering::AcqRel) {
+                started.send(()).unwrap();
+                let mut open = gate.0.lock().unwrap();
+                while !*open {
+                    open = gate.1.wait(open).unwrap();
+                }
+            }
+        }));
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (tls, connector) = tls();
+        let (stop, stopped) = oneshot::channel();
+        let server = tokio::spawn(serve_durable(
+            listener,
+            tls,
+            gateway(&keys).with_content([8; 32]).unwrap(),
+            store,
+            async {
+                let _ = stopped.await;
+            },
+        ));
+        let name = || ServerName::try_from("localhost").unwrap();
+        let mut a = Client::connect_with_content(
+            address,
+            name(),
+            connector.config().clone(),
+            120,
+            Some([8; 32]),
+            &keys[0],
+        )
+        .await
+        .unwrap();
+        let mut b = Client::connect_with_content(
+            address,
+            name(),
+            connector.config().clone(),
+            120,
+            Some([8; 32]),
+            &keys[1],
+        )
+        .await
+        .unwrap();
+        b.snapshot().await.unwrap();
+        let committed_tick = b.tick();
+        let control = b.control().unwrap();
+        let committed_control = (control.life, control.epoch, control.accepted_sequence);
+        a.snapshot().await.unwrap();
+        armed.store(true, Ordering::Release);
+        timeout(Duration::from_secs(2), blocked.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        let movement = Intent::Move {
+            axes: [0., 0.],
+            yaw: 0.,
+        };
+        let command = a.command(movement.clone());
+        tokio::pin!(command);
+        assert!(
+            timeout(Duration::from_millis(120), &mut command)
+                .await
+                .is_err(),
+            "Uncommitted command was acknowledged"
+        );
+        let command_b = b.prepare_command(movement).unwrap();
+        let refused = timeout(
+            Duration::from_secs(1),
+            b.request(Body::Command {
+                command: command_b.into(),
+            }),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert!(matches!(refused.body, Reply::Refused {code, ..} if code == "storage_busy"));
+        assert!(refused.tick >= committed_tick);
+        let control = b.control().unwrap();
+        assert_eq!(
+            (control.life, control.epoch, control.accepted_sequence),
+            committed_control
+        );
+        drop(release);
+        let admitted = timeout(Duration::from_secs(2), &mut command)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(
+            matches!(admitted.body, Reply::Accepted),
+            "Unexpected admission after storage drain: {:?}",
+            admitted.body
+        );
+        stop.send(()).unwrap();
+        let exit = timeout(Duration::from_secs(2), server)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(exit.failure.is_none(), "{:?}", exit.failure);
+        assert_eq!(exit.stats.writer_queue_peak, 2);
+        assert!(exit.stats.storage_refusals > 0);
+        assert!(exit.stats.storage_paused_ticks > 0 && exit.stats.storage_paused_seconds > 0.);
+        assert!(exit.stats.commits.maximum_seconds >= 0.12);
+        assert_eq!(exit.stats.simulation.count, exit.stats.ticks);
+        assert!(exit.stats.capture.count >= exit.stats.ticks);
+        assert!(exit.stats.commits.percentile(0.99).unwrap().is_finite());
+        // Shutdown drains the writer and releases its exclusive storage lock.
+        assert!(Store::open(&root, [8; 32], 120).is_ok());
+    }
+
+    #[tokio::test]
     async fn durable_two_player_input_cadence_records_checkpoint_cost() {
         use crate::{Intent, service::client::Client};
         let dir = tempfile::tempdir().unwrap();
@@ -589,12 +967,24 @@ pub(super) mod tests {
         let exit = server.await.unwrap();
         assert!(exit.failure.is_none());
         assert!(exit.stats.checkpoint_commits >= 90);
+        let timings = |timing: &Timing| {
+            serde_json::json!({
+            "observations":timing.count,"total_seconds":timing.total_seconds,
+            "maximum_ms":timing.maximum_seconds*1000.,
+            "p50_upper_ms":timing.percentile(0.5).map(|s|s*1000.),
+            "p95_upper_ms":timing.percentile(0.95).map(|s|s*1000.),
+            "p99_upper_ms":timing.percentile(0.99).map(|s|s*1000.)})
+        };
         eprintln!(
             "{}",
-            serde_json::json!({"schema":"verse.durable.fixture.v1","players":2,"spectators":1,
+            serde_json::json!({"schema":"verse.durable.fixture.v2","players":2,"spectators":1,
             "accepted_movement_commands":180,"wall_seconds":elapsed,"world_ticks":exit.stats.ticks,
             "checkpoint_commits":exit.stats.checkpoint_commits,"checkpoint_bytes":exit.stats.checkpoint_bytes,
-            "checkpoint_seconds":exit.stats.checkpoint_seconds,"dropped_seconds":exit.stats.dropped_seconds})
+            "checkpoint_seconds":exit.stats.checkpoint_seconds,"dropped_seconds":exit.stats.dropped_seconds,
+            "simulation":timings(&exit.stats.simulation),"capture":timings(&exit.stats.capture),
+            "commits":timings(&exit.stats.commits),"writer_queue_peak":exit.stats.writer_queue_peak,
+            "storage_refusals":exit.stats.storage_refusals,"storage_paused_ticks":exit.stats.storage_paused_ticks,
+            "storage_paused_seconds":exit.stats.storage_paused_seconds})
         );
     }
     #[tokio::test]
@@ -670,16 +1060,14 @@ pub(super) mod tests {
         let before_b = b.snapshot().await.unwrap();
         assert_eq!(before_a.hud.as_ref().unwrap().resources.mana, 19);
         assert!(before_b.hud.as_ref().unwrap().casting.is_some());
-        let committed: serde_json::Value =
-            serde_json::from_slice(&std::fs::read(root.join("chamber.json")).unwrap()).unwrap();
-        let disk = Gateway::restore(
-            committed["checkpoint"].as_str().unwrap().as_bytes(),
-            [8; 32],
-            120,
-        )
-        .unwrap();
+        server.abort();
+        assert!(matches!(server.await, Err(error) if error.is_cancelled()));
+        assert!(a.snapshot().await.is_err());
+        let mut store = Store::open(&root, [8; 32], 120).unwrap();
+        let recovered = store.recover().unwrap();
         assert_eq!(
-            disk.game()
+            recovered
+                .game()
                 .player_hud(old_a.life.into())
                 .unwrap()
                 .resources
@@ -687,17 +1075,13 @@ pub(super) mod tests {
             19
         );
         assert!(
-            disk.game()
+            recovered
+                .game()
                 .player_hud(old_b.life.into())
                 .unwrap()
                 .casting
                 .is_some()
         );
-        server.abort();
-        assert!(matches!(server.await, Err(error) if error.is_cancelled()));
-        assert!(a.snapshot().await.is_err());
-        let mut store = Store::open(&root, [8; 32], 120).unwrap();
-        let recovered = store.recover().unwrap();
         let mut expected = Game::restore(&recovered.game().checkpoint().unwrap()).unwrap();
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
@@ -846,7 +1230,10 @@ pub(super) mod tests {
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(exit.failure.as_deref(), Some("Cannot stage chamber commit"));
+        assert_eq!(
+            exit.failure.as_deref(),
+            Some("Chamber storage entry must be a regular file")
+        );
         assert_eq!(std::fs::read(root.join("chamber.json")).unwrap(), committed);
     }
     #[tokio::test]
@@ -906,9 +1293,15 @@ pub(super) mod tests {
             },
         };
         assert!(matches!(
-            send(&mut b, 3, Body::Command { command: command_b })
-                .await
-                .body,
+            send(
+                &mut b,
+                3,
+                Body::Command {
+                    command: command_b.into()
+                }
+            )
+            .await
+            .body,
             Reply::Accepted
         ));
         tokio::time::sleep(Duration::from_millis(100)).await;

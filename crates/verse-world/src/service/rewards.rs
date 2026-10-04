@@ -186,6 +186,12 @@ impl Ledger {
         self.revision
     }
     #[cfg(feature = "service-auth")]
+    pub(super) fn history_capacity(&self) -> Result<bool, String> {
+        self.archive
+            .as_ref()
+            .map_or(Ok(true), history::History::has_capacity)
+    }
+    #[cfg(feature = "service-auth")]
     pub(super) fn attach(&mut self, archive: history::History) -> Result<(), String> {
         if let Some(current) = &self.archive {
             if !current.same_directory(&archive) {

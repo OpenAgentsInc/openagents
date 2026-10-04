@@ -157,7 +157,7 @@ pub struct DamageNumber {
     pub incoming: bool,
     pub serial: u64,
 }
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct NavigationGoal {
     life: verse_engine::core::LifeId,
     target: Vec3,
@@ -165,7 +165,7 @@ struct NavigationGoal {
     #[serde(default)]
     direct: bool,
 }
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct Route {
     life: verse_engine::core::LifeId,
     target: Vec3,
@@ -176,7 +176,7 @@ struct Route {
     stuck_steps: u32,
     refusal: Option<String>,
 }
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct Game {
     additional_players: BTreeMap<u64, multiplayer::Player>,
     next_player_actor: u64,

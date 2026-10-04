@@ -130,6 +130,28 @@ async fn serve(config: Config) -> Result<(), String> {
         "Checkpoint storage: {} commits, {} bytes, {:.6} seconds",
         exit.stats.checkpoint_commits, exit.stats.checkpoint_bytes, exit.stats.checkpoint_seconds
     );
+    println!(
+        "Storage backlog: {} peak copies, {} refused requests, {} paused ticks, {:.6} paused seconds",
+        exit.stats.writer_queue_peak,
+        exit.stats.storage_refusals,
+        exit.stats.storage_paused_ticks,
+        exit.stats.storage_paused_seconds
+    );
+    for (label, timing) in [
+        ("Simulation", &exit.stats.simulation),
+        ("Persistence capture", &exit.stats.capture),
+        ("Storage commit", &exit.stats.commits),
+    ] {
+        println!(
+            "{}: {} observations, p50/p95/p99 upper bounds {:.6}/{:.6}/{:.6} seconds, maximum {:.6} seconds",
+            label,
+            timing.count,
+            timing.percentile(0.5).unwrap_or(0.),
+            timing.percentile(0.95).unwrap_or(0.),
+            timing.percentile(0.99).unwrap_or(0.),
+            timing.maximum_seconds
+        );
+    }
     if let Some(error) = exit.failure {
         return Err(error);
     }

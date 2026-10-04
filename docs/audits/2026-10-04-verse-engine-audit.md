@@ -5,7 +5,7 @@ Date: October 4, 2026. Original source baseline:
 Scope: engine systems, Verse worlds, authoritative gameplay, multiplayer,
 durability, content production, and desktop, mobile, and browser integration.
 Upstream crowd-recovery evidence is refreshed through
-[`951e4b5776`](https://github.com/OpenAgentsInc/openagents/commit/951e4b5776);
+[`148d2b6bcd`](https://github.com/OpenAgentsInc/openagents/commit/148d2b6bcd);
 remediation status identifies subsequent issue work.
 
 ## Assessment
@@ -24,14 +24,16 @@ platform contract. The first priority is to make a durable multiplayer slice
 reliable; adding visual features alone cannot establish MMORPG readiness.
 
 The reward-history lifetime blocker (V01) is resolved in
-[#10573](https://github.com/OpenAgentsInc/openagents/issues/10573). Three findings
-still deserve immediate engineering attention:
+[#10573](https://github.com/OpenAgentsInc/openagents/issues/10573). V02 remediation
+in [#10574](https://github.com/OpenAgentsInc/openagents/issues/10574) adds ordered
+background storage and bounded backpressure. Three findings still deserve
+immediate engineering attention:
 
-1. The durable host serializes, hashes, writes, and synchronizes a complete
-   checkpoint on the simulation loop. Durable latency is part of tick latency.
-2. The newer 20-player battle completes after crowd-recovery fixes, but fails
-   sustained NPC occupancy and performance acceptance. A tick error still stops
-   the whole host; recoverable per-character failure lacks containment.
+1. Content and rules updates lack a general populated-save migration path.
+   An ordinary content update can make a persistent world incompatible.
+2. A sustained 20-player/40-NPC battle fails performance acceptance, and a
+   newer four-contact recovery failure again stops the whole host. Recoverable
+   per-character failure lacks containment.
 3. The latest retained delayed-network measurement improves ordinary movement
    correction p95 to 0.43 and 0.30 meters, but still reports failed acceptance,
    a 6.5-meter outlier, and missed frame budgets.
@@ -129,7 +131,7 @@ Evidence labels:
 | ID | Priority | Finding | Evidence | Owning boundary | Status |
 | --- | --- | --- | --- | --- | --- |
 | V01 | P0 | Reward history is archived without a transaction lifetime cap. | Code | Character storage and world service | Complete ([#10573](https://github.com/OpenAgentsInc/openagents/issues/10573)) |
-| V02 | P0 | Full synchronous checkpoint commits occupy the tick loop. | Code, risk | World service persistence | Open |
+| V02 | P0 | Full synchronous checkpoint commits occupy the tick loop. | Code, risk | World service persistence | Complete ([#10574](https://github.com/OpenAgentsInc/openagents/issues/10574)) |
 | V03 | P0 | Content/rules changes lack a general durable migration path. | Code, gap | Content and save versions | Open |
 | V04 | P1 | Prediction exists, but acceptable delayed movement is unproven. | Recorded, code | Movement and client replication | Open |
 | V05 | P1 | Replication polls full snapshots without spatial relevance. | Code, gap | World service replication | Open |
@@ -182,7 +184,8 @@ Version-eight saves store character summaries, recent receipts, and the root
 instead of copying every historical transaction into the checkpoint. Versions
 one through seven remain recoverable and are archived on their next store
 commit. Recovery validates referenced archive nodes and refuses missing or
-corrupt history. Backups must retain `state_dir/rewards` with `chamber.json`.
+corrupt history. Backups must retain `state_dir/rewards` with `chamber.json`
+and, after V02, `journal.jsonl`.
 Nondurable network hosts use an owned temporary history directory; standalone
 chambers retain in-memory history until attached to a store or network host.
 
@@ -194,36 +197,64 @@ writes; and persistent recovery above 4,096 operations that ignores later
 uncommitted index writes. Missing committed history prevents startup.
 
 **Remaining limits:** Disk history grows with mutations and can retain
-unreferenced nodes. Archive I/O remains synchronous. Writer scheduling and
-measured latency belong to V02; maintenance and verified backup/restore tooling
-belong to V19. These tests establish transaction lifetime and bounded hosted
+unreferenced nodes. V02 moves durable archive publication to the writer; cold
+indexed reads and nondurable temporary-history writes remain synchronous.
+Maintenance and verified backup/restore tooling belong to V19. These tests establish transaction lifetime and bounded hosted
 memory, not battle-scale performance.
 
-### V02: Full checkpoint commits occupy the simulation loop
+### V02: Ordered storage runs outside the simulation loop
 
-[`net::persist`](../../crates/verse-world/src/service/net.rs) calls
-[`Store::commit`](../../crates/verse-world/src/service/persistence.rs) directly
-inside the 30 Hz authority loop. The store serializes the entire gateway,
-hashes it, wraps checkpoint JSON in another JSON document, writes the full file,
-syncs it, renames it, and syncs the directory. Even an unchanged checkpoint must
-be serialized and hashed before comparison. Advancing clocks normally changes
-the checkpoint. Mutating replies wait for the next persisted tick.
+**Status:** Complete in [#10574](https://github.com/OpenAgentsInc/openagents/issues/10574).
 
-This gives useful acknowledgment semantics, but couples filesystem stalls,
-growing reward history, simulation, and command latency. The delayed-network
-receipts report zero checkpoint commits, so their tick results do not establish
-durable-host performance.
+The original host serialized, hashed, wrote, and synchronized a complete
+checkpoint inside each 30 Hz authority tick. Remediation replaces that path with
+an owned persistence copy and a dedicated
+[storage writer](../../crates/verse-world/src/service/persistence/writer.rs).
+The authority retains command dispatch; the copy contains no connection
+challenges or dispatch interface. Encoding, structural diffing, hashing,
+reward-history publication, and filesystem synchronization run on the writer.
+Later world mutations cannot change a submitted copy.
 
-**Improve:** Give durable mutations an ordered commit protocol and a bounded
-writer queue. Use a journal plus periodic snapshots, or another transactional
-store, with explicit committed revisions. Keep one authority owner and stop
-acknowledging uncommitted mutations. Moving `fsync` to a thread without defining
-commit ordering, backpressure, and failure handling is insufficient.
+The queue admits one active and one waiting copy, with up to 128 pending replies
+in a batch and a bounded reward-history staging cache. Mutation and read replies
+wait for ordered successful commits when state is new; reads share a pending
+commit or use already committed state when no newer mutation is pending.
+Sequential client helpers bound retries of explicit pre-admission storage
+refusals, preserving operation fields; raw and pipelined requests expose the
+refusal. Transport errors do not trigger uncertain command replay.
+A failure stops the host and withholds its
+uncommitted replies. When storage fills capacity, the host explicitly pauses
+simulation and returns `storage_busy` using the last committed tick and control.
+It records paused wall time separately and does not simulate it later. Shutdown
+drains admitted copies and commits parked controls before releasing the lock.
 
-**Acceptance:** Measure tick and commit p50/p95/p99 separately with growing state
-and injected slow writes. Kill the process at each commit boundary. Every
-acknowledged operation recovers exactly once, and overload causes a deliberate
-admission response instead of silently stretching the world clock.
+A [bounded journal](../../crates/verse-world/src/service/persistence/journal.rs)
+records revision, parent-state and resulting-state digests, structural changes,
+and its own checksum. Atomic snapshots compact it after 256 records or 64 MiB.
+Recovery validates and replays complete records, discards an unterminated final
+append, and refuses complete corruption, broken chains, or missing history.
+Compaction recovery accepts a validated prefix already covered by the snapshot.
+Backups require the snapshot, journal, and rewards directory together.
+
+**Acceptance evidence:** The
+[ordered durability receipt](../../bench/verse/2026-10-04/ordered-durability/run.json)
+retains local TLS cadence and growing-state simulation/capture/commit p50/p95/p99
+measurements, a controlled writer stall, and recovery checks. A subprocess exits
+without unwinding at nine storage boundaries, including journal synchronization,
+snapshot staging/synchronization/rename, and journal truncation. Previously
+acknowledged rewards retain their original receipt after each restart; uncertain
+operations either recover whole or apply once under their original identity.
+Other checks cover isolated persistence copies, compaction, incomplete appends,
+complete corruption, duplicate revisions, signed-zero representation, queue
+bounds, explicit refusals, withheld replies, and orderly writer drain.
+
+**Remaining limits:** This is local fixture evidence, not a durable 20/40 battle
+or a physical power-loss test. Full checkpoint encoding still runs on the writer,
+and bounded copies and read-response construction consume authority CPU. Runtime
+percentiles are fixed histogram upper bounds over all lifetime observations.
+Cold historical receipt reads still perform bounded synchronous filesystem work;
+nondurable hosts still write temporary history directly. Battle-scale CPU and
+storage budgets and live operational visibility remain V18 and V19 work.
 
 ### V03: Ordinary content updates can make saves incompatible
 
@@ -599,22 +630,32 @@ error after 12 unsuccessful displacement iterations. Upstream fixes now allow 64
 resolve opposing contact planes together, verify the final correction, and
 retain actor/contact diagnostics. The network loop exits when
 [`Gateway::tick`](../../crates/verse-world/src/service/net.rs) returns an error.
-This establishes the failure propagation; the receipt alone does not identify
+This establishes the failure propagation; the original receipt does not identify
 the specific actor, contact configuration, or reason recovery fails to converge.
 
-The newer
-[stable battle receipt](../../bench/verse/2026-10-04/battle-scale-stable/run.json)
-records successful exits for all twenty connections and the native/load/host
-processes after the opposing-plane fix. It still reports failed acceptance.
-The combat constructor replaces authored cultist health with 15 despite the
-harness requesting 20,000; live hostile occupancy averages 8.7 and falls to one.
-This does not establish sustained 40-NPC load. Native frame p95 is 87.127 ms,
-ordinary prediction correction p95 is 0.907 m, capture drops are 212, and six
-proxy errors need classification. The host completes 2,987 ticks and 62,401
-requests with zero checkpoint commits. Server CPU and isolated GPU execution
-remain unmeasured. A subsequent upstream change adds operator-selected
-`authored_combat_health` and enables it in the battle harness; a new sustained
-40-NPC measurement is still required.
+The [stable battle receipt](../../bench/verse/2026-10-04/battle-scale-stable/run.json)
+completes all processes, but its constructor overrides authored cultist health
+with 15; live hostile occupancy averages 8.7 and falls to one. A subsequent
+operator-selected `authored_combat_health` setting produces the
+[sustained battle receipt](../../bench/verse/2026-10-04/battle-scale-sustained/run.json),
+with forty live hostile NPCs in every measured headless occupancy sample. All
+processes complete, but acceptance still fails: native frame p95 is 107.393 ms,
+CPU command-buffer finalization p95 is 87.594 ms, and prediction correction p95
+is 0.456 m with a 1.961 m maximum. Two proxy errors need classification.
+
+A newer [four-contact failure](../../bench/verse/2026-10-04/battle-scale-four-contacts/run.json)
+again stops the host after 1,273 ticks and 18,694 requests. Its
+[host log](../../bench/verse/2026-10-04/battle-scale-four-contacts/host.log)
+identifies actor nine and retains the four overlapping capsule geometries and
+starting position needed for reproduction. A subsequent
+[bounded capsule-exit fix](https://github.com/OpenAgentsInc/openagents/commit/148d2b6bcd)
+reproduces those four contacts and searches a limited horizontal exit through
+already embedding capsules, while walls and newly encountered obstacles still
+block it. Its regression also refuses a wall enclosure without changing the
+character. No later retained battle establishes this fix under sustained load,
+and per-character failure containment remains open. These runs have zero checkpoint
+commits. The harness now samples host process CPU; no retained measurement here
+yet establishes an isolated server CPU or GPU budget.
 
 The harness disables durable storage. Its earlier failed run produces no
 completed native or load profile. Zero dropped server seconds is not a passing
@@ -645,8 +686,10 @@ extrapolation from a three-client video.
 [`net::Stats`](../../crates/verse-world/src/service/net.rs) retains aggregate
 connections, requests, ticks, dropped time, and checkpoint totals. The example
 prints these on exit. Socket worker errors are discarded. There are no live
-stage histograms, per-client bandwidth/age counters, durable queue watermarks,
-or world-specific backup/restore and drain workflow in the reviewed host path.
+per-client bandwidth/age counters or world-specific backup/restore tools in the
+original host path. V02 adds lifetime simulation/capture/commit histograms,
+writer queue watermarks, explicit storage pauses/refusals, and an ordered shutdown
+drain. These metrics still need a live operator surface and verified backups.
 
 **Improve:** Add structured live diagnostics, health/readiness distinctions,
 bounded audit records, backup verification, safe draining, version reporting,
@@ -881,5 +924,12 @@ targets, cited source paths, finding identifiers, retained JSON receipts, and
 `cargo test -p verse-world --features service-net` (375 tests) on the pinned
 toolchain. All pass. After the subsequent authored-health integration, the five
 affected `service::host::` tests and formatting also pass. Clippy, release gates,
-and live owner-host probes are not run. Existing transcripts, research
-artifacts, and measurement receipts remain in place.
+and live owner-host probes are not run. V02 runs formatting for `verse-world` and
+`verse`, `cargo test -p verse-world` (274 tests),
+`cargo test -p verse-world --features service-net -- --test-threads=2`
+(383 passing tests; one helper is launched as a subprocess by its parent test),
+and `cargo check -p verse --example verse_host --features remote-chamber`.
+The isolated cadence and growing-state measurements are retained in the V02
+receipt. All checks pass. After integrating the bounded capsule-exit change,
+the affected network tests and host example check also pass. Existing transcripts, research artifacts, and
+measurement receipts remain in place.
