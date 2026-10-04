@@ -125,7 +125,8 @@ capture shows a cultist detouring, replanning after blocker removal, and climbin
 the side stairs. This independently implemented grid uses public concepts from
 [Recast's navigation configuration](https://recastnav.com/structrcConfig.html);
 it does not import Recast or implement polygonization or funnel routing.
-[#10441](https://github.com/OpenAgentsInc/openagents/issues/10441) is in progress.
+[#10441](https://github.com/OpenAgentsInc/openagents/issues/10441) completes the
+chamber body and projectile integration.
 Spell flights now use relative-motion sphere/capsule contact in 120 Hz slices,
 including moving targets, earliest wall obstruction, impact-time area positions,
 and pending-motion checkpoint replay under `verse-chamber-owned-v4`. Teleports
@@ -156,8 +157,11 @@ live colliders from owned bodies. Defeat cancels pending player casts.
 The `verse-chamber-owned-v11` profile uses one world clock to consume movement,
 combat, and timer time. Combat elapsed time derives from the 120 Hz step count;
 scene time uses a retained origin. Fractional frames retain pending input until
-a step is available, and checkpoints reject divergent clocks. Final native
-combat evidence remains before closing #10441. Renderer lighting and overlapping nameplates
+a step is available, and checkpoints reject divergent clocks. The retained
+[native combat video](../../../bench/verse/2026-10-03/life-bound-combat.mp4) and
+[receipt](../../../bench/verse/2026-10-03/life-bound-combat.json) show all ten
+abilities, 12 defeated cultists, 54 absorbed damage, player defeat, surviving
+Claude, and no dropped physics time. Renderer lighting and overlapping nameplates
 remain visual work.
 
 ## Reuse inventory
