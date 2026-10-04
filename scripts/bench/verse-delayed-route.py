@@ -33,7 +33,7 @@ async def run(args):
             count += 1
 
     async def connect(reader, writer):
-        if len(tasks) >= 3:
+        if len(tasks) >= args.connections:
             stats["refused_connections"] += 1
             writer.close()
             return
@@ -82,6 +82,7 @@ async def run(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--connections", type=int, default=3)
     parser.add_argument("--destination-port", type=int, required=True)
     parser.add_argument("--listen-port", type=int, default=0)
     parser.add_argument("--delay-ms", type=int, default=40)
@@ -90,7 +91,7 @@ if __name__ == "__main__":
     parser.add_argument("--ready", required=True)
     parser.add_argument("--receipt", required=True)
     args = parser.parse_args()
-    if not (1 <= args.destination_port <= 65535 and 0 <= args.listen_port <= 65535
+    if not (1 <= args.connections <= 32 and 1 <= args.destination_port <= 65535 and 0 <= args.listen_port <= 65535
             and 0 <= args.delay_ms <= 250 and 0 <= args.jitter_ms <= 100
             and 1 <= args.seconds <= 300):
         parser.error("Ports, delay, jitter, or duration exceed fixture bounds")

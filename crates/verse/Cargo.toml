@@ -186,3 +186,7 @@ required-features = ["imported-desktop", "remote-chamber"]
 [[example]]
 name = "verse_host"
 required-features = ["remote-chamber"]
+
+[[example]]
+name = "verse_load"
+required-features = ["imported-desktop", "remote-chamber"]

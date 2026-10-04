@@ -1,0 +1,109 @@
+#!/usr/bin/env python3
+"""Record a temporary twenty-player battle with one native primary window through delayed loopback TLS."""
+import argparse, json, os, pathlib, socket, subprocess, tempfile, time
+parser=argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--asset-dir',type=pathlib.Path,required=True)
+parser.add_argument('--binaries',type=pathlib.Path,required=True)
+parser.add_argument('--seconds',type=int,default=60)
+parser.add_argument('--players',type=int,default=20)
+parser.add_argument('--delay-ms',type=int,default=40)
+parser.add_argument('--jitter-ms',type=int,default=20)
+args=parser.parse_args()
+if not (1<=args.seconds<=90 and 2<=args.players<=20 and 0<=args.delay_ms<=250 and 0<=args.jitter_ms<=100):
+    parser.error('Duration, delay, or jitter exceeds fixture bounds')
+root=pathlib.Path(tempfile.mkdtemp(prefix='verse-battle-scale-'))
+os.chmod(root,0o700)
+print('Scratch artifacts '+str(root),flush=True)
+repo=pathlib.Path(__file__).resolve().parents[2]
+assets=args.asset_dir.resolve()
+binaries=args.binaries.resolve()
+def openssl(*args):
+    return subprocess.check_output(['openssl',*map(str,args)],stderr=subprocess.DEVNULL)
+keys=[]
+roles=['primary']+[f'load{i:02}' for i in range(args.players-1)]
+for role in roles:
+    pem=root/(role+'.pem');pem.write_bytes(openssl('ecparam','-name','secp256k1','-genkey','-noout'))
+    der=openssl('ec','-in',pem,'-outform','DER')
+    assert der[5:7]==b'\x04\x20'
+    private=root/(role+'.key');private.write_text(der[7:39].hex());os.chmod(private,0o600)
+    pub=openssl('ec','-in',pem,'-pubout','-outform','DER')[-65:]
+    assert pub[0]==4
+    keys.append(pub[1:33].hex())
+cert=root/'cert.pem';private=root/'tls.pem'
+openssl('req','-x509','-newkey','rsa:2048','-nodes','-keyout',private,'-out',cert,'-days','1','-subj','/CN=localhost','-addext','subjectAltName=DNS:localhost','-addext','basicConstraints=critical,CA:FALSE','-addext','extendedKeyUsage=serverAuth')
+(root/'cert.der').write_bytes(openssl('x509','-in',cert,'-outform','DER'))
+(root/'tls.der').write_bytes(openssl('pkcs8','-topk8','-nocrypt','-in',private,'-outform','DER'));os.chmod(root/'tls.der',0o600)
+with socket.socket() as sock:
+    sock.bind(('127.0.0.1',0));port=sock.getsockname()[1]
+address=f'127.0.0.1:{port}'
+authored=json.loads((repo/'assets/verse/original/ritual.json').read_text())
+cultists=[a for a in authored['actors'] if a['model'].startswith('cultist')]
+import copy
+for i in range(40-1-len(cultists)):
+    actor=copy.deepcopy(cultists[0]);actor['id']=200+i
+    authored['actors'].append(actor);cultists.append(actor)
+for i,actor in enumerate(cultists):
+    actor['position']=[-4.5+3*(i%4),0,-9+2*(i//4)]
+    actor['health']=20000
+scene=str(root/'battle.json');(root/'battle.json').write_text(json.dumps(authored))
+pack=str(assets/'runtime-pack.json')
+host={'listen':address,'instance':220,'scene':scene,'pack':pack,'certificate_der':str(root/'cert.der'),'private_key_der':str(root/'tls.der'),'enrollments':[{'public_key':k,'role':({'type':'primary'} if role=='primary' else {'type':'player','spawn':[-6+3*((i-1)%5),0,-21+2*((i-1)//5)]})} for i,(role,k) in enumerate(zip(roles,keys))]}
+(root/'host.json').write_text(json.dumps(host))
+env=dict(os.environ)
+(root/'home').mkdir()
+env['HOME']=str(root/'home')
+logs=[];processes=[]
+try:
+    log=open(root/'host.log','w');logs.append(log)
+    hostp=subprocess.Popen([str(binaries/'verse_host'),str(root/'host.json')],stdout=log,stderr=log,env=env);processes.append(hostp)
+    for _ in range(100):
+        if hostp.poll() is not None:raise RuntimeError('Host failed')
+        if 'listening' in (root/'host.log').read_text():break
+        time.sleep(.1)
+    else:raise RuntimeError('Host readiness timed out')
+    proxylog=open(root/'proxy.log','w');logs.append(proxylog)
+    proxy=subprocess.Popen(['python3',str(repo/'scripts/bench/verse-delayed-route.py'),'--destination-port',str(port),'--connections',str(args.players),'--delay-ms',str(args.delay_ms),'--jitter-ms',str(args.jitter_ms),'--seconds',str(min(300,args.seconds+100)),'--ready',str(root/'proxy-ready.json'),'--receipt',str(root/'proxy-receipt.json')],stdout=proxylog,stderr=proxylog,env=env)
+    processes.append(proxy)
+    for _ in range(100):
+        if proxy.poll() is not None:raise RuntimeError('Proxy failed')
+        if (root/'proxy-ready.json').exists():break
+        time.sleep(.05)
+    else:raise RuntimeError('Proxy readiness timed out')
+    delayed_address=json.loads((root/'proxy-ready.json').read_text())['address']
+    loadcfg={'address':delayed_address,'server_name':'localhost','instance':220,'trust_der':str(root/'cert.der'),'keys':[str(root/(r+'.key')) for r in roles[1:]],'pack':pack,'scene':scene,'dir':str(assets),'seconds':args.seconds+30,'output':str(root/'load-receipt.json')}
+    (root/'load-config.json').write_text(json.dumps(loadcfg))
+    loadlog=open(root/'load.log','w');logs.append(loadlog)
+    loadp=subprocess.Popen([str(binaries/'verse_load'),str(root/'load-config.json')],stdout=loadlog,stderr=loadlog,env=env);processes.append(loadp)
+    for _ in range(400):
+        if loadp.poll() is not None:raise RuntimeError('Headless load failed before readiness')
+        if 'Load ready' in (root/'load.log').read_text():break
+        time.sleep(.1)
+    else:raise RuntimeError('Headless load readiness timed out')
+    print('Headless load ready; launching the native primary player',flush=True)
+    clients=[]
+    for role in ['primary']:
+        cfg={'address':delayed_address,'server_name':'localhost','instance':220,'trust_der':str(root/'cert.der'),'key_file':str(root/(role+'.key')),'pack':pack,'scene':scene,'dir':str(assets),'record':{'output':str(root/(role+'.mp4')),'seconds':args.seconds,'controller':role!='spectator','respawn':role!='spectator','movement':role!='spectator'}}
+        path=root/(role+'.json');path.write_text(json.dumps(cfg))
+        log=open(root/(role+'.log'),'w');logs.append(log)
+        p=subprocess.Popen([str(binaries/'verse_remote'),str(path)],stdout=log,stderr=log,env=env);processes.append(p);clients.append((role,p))
+    started=time.monotonic()
+    while any(p.poll() is None for _,p in clients):
+        if time.monotonic()-started>args.seconds+100:raise RuntimeError('Client deadline exceeded')
+        time.sleep(1)
+    loadp.wait(timeout=50)
+    codes={role:p.returncode for role,p in clients};codes['load']=loadp.returncode
+    print('Client exits '+json.dumps(codes),flush=True)
+    proxy.terminate();proxy.wait(timeout=10)
+    hostp.terminate();hostp.wait(timeout=10)
+    print('Host exit '+str(hostp.returncode),flush=True)
+    (root/'workload.json').write_text(json.dumps({'players':args.players,'hostile_npcs':40,'cultist_health':20000,'native_clients':1,'headless_clients':args.players-1,'seconds':args.seconds,'code_revision':subprocess.check_output(['git','rev-parse','HEAD'],cwd=repo,text=True).strip(),'limits':['NPC health is raised in the authored load scene to sustain spell and AI work.','Headless player connections do not establish rendering performance on their machines.','Native player and load generator share one host machine.']}))
+    (root/'exits.json').write_text(json.dumps({'clients':codes,'host':hostp.returncode,'proxy':proxy.returncode}))
+    if any(codes.values()) or hostp.returncode:raise RuntimeError('Acceptance process failed')
+finally:
+    for p in processes:
+        if p.poll() is None:
+            p.terminate()
+            try:p.wait(timeout=10)
+            except subprocess.TimeoutExpired:p.kill();p.wait()
+    for log in logs:log.close()
+print('Artifacts '+str(root),flush=True)
