@@ -57,10 +57,12 @@
 //! # Ok::<(), std::io::Error>(())
 //! ```
 
+pub mod activity;
 pub mod content;
 pub mod document;
 pub mod log;
 
+pub use activity::{Activity, Classified, Station, classify};
 pub use content::{
     AudioSource, ContentPart, ImageSource, SUPPORTED_SCHEMA_VERSIONS, supported, upgrade, validate,
 };

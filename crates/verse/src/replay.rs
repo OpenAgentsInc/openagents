@@ -19,6 +19,11 @@
 //! | Acceptance tests, or the task's verifier | the proving ground |
 //! | The finish | the plaza |
 //!
+//! Each event is classified as the ATIF step it is by
+//! [`atif::activity::classify`], the classifier a live Agent Studio shares,
+//! and [`Place::of`] draws the activity at the replay's landmarks: the
+//! world has no desk, so editing and thinking are the workbench.
+//!
 //! Fable's trajectory is mapped coarsely: a tool call is the workbench,
 //! and a step the Gym's rules place as a test or a check is the proving
 //! ground.
@@ -33,6 +38,7 @@ use std::collections::HashMap;
 #[cfg(feature = "replay-host")]
 use std::path::{Path, PathBuf};
 
+use atif::activity::{self, Activity, Classified, Station};
 use coder_ui::theme::Intensity;
 use glam::Vec3;
 #[cfg(feature = "replay-host")]
@@ -43,7 +49,7 @@ use gym::runs_microcoder::{self as mc, CostBasis, Knowledge, Manifest};
 use gym::runs_phases::{self, ActionKind, Phase, Step};
 #[cfg(feature = "replay-host")]
 use gym::runs_replay::{self as gr, Source};
-use serde_json::Value;
+use serde_json::{Map, Value};
 
 use crate::world;
 
@@ -71,6 +77,20 @@ pub enum Place {
 }
 
 impl Place {
+    /// Where the replay draws a classified step. The replay's world has
+    /// landmarks for the library, the oracle, and the proving ground; a
+    /// finish is the plaza, and every other station is the workbench.
+    #[must_use]
+    pub fn of(step: Classified) -> Place {
+        match (step.activity, step.station) {
+            (Activity::Done | Activity::Failed, _) => Place::Plaza,
+            (_, Station::Library) => Place::Library,
+            (_, Station::Oracle) => Place::Oracle,
+            (_, Station::ProvingGround) => Place::ProvingGround,
+            _ => Place::Workbench,
+        }
+    }
+
     /// The places with a landmark.
     pub const LANDMARKS: [Place; 4] = [
         Place::Workbench,
@@ -145,16 +165,64 @@ fn clip(text: &str, limit: usize) -> String {
     }
 }
 
+/// A step that made one completed call.
+fn called(name: &str, arguments: Value, extra: Map<String, Value>) -> atif::Step {
+    atif::Step::called(atif::Call {
+        id: String::new(),
+        name: name.to_owned(),
+        arguments,
+        output: String::new(),
+        outcome: atif::Outcome::Completed,
+        milliseconds: 0,
+        purpose: None,
+        extra,
+    })
+}
+
+/// A shell call whose command is a check exactly when `check` says so.
+fn command(text: &str, check: bool) -> atif::Step {
+    let mut extra = Map::new();
+    extra.insert(activity::CHECK.to_owned(), Value::Bool(check));
+    called("shell", serde_json::json!({ "command": text }), extra)
+}
+
+/// Where the shared classifier puts a Microcoder event, or `None` for an
+/// event that records no work.
+fn microcoder_place(event: &Value) -> Option<Place> {
+    let step = match event["event"].as_str()? {
+        "retrieved" => called("retrieve", Value::Null, Map::new()),
+        "judged" | "disputed" | "covered" | "conformed" => {
+            let mut extra = Map::new();
+            extra.insert("schema".to_owned(), Value::from(atif::DECISION_CALL_SCHEMA));
+            called("classify", Value::Null, extra)
+        }
+        // A model step: what it decided, with no call of its own.
+        "generated" => atif::Step::said(atif::Source::Agent, ""),
+        // Microcoder records its checks as `tested` events, so a command it
+        // ran is not one.
+        "ran" => command(
+            event["result"]["command"].as_str().unwrap_or_default(),
+            false,
+        ),
+        "tested" => called("acceptance_tests", Value::Null, Map::new()),
+        "verified" => called("verifier", Value::Null, Map::new()),
+        "ended" => called("finish", Value::Null, Map::new()),
+        _ => return None,
+    };
+    Some(Place::of(activity::classify(&step)))
+}
+
 /// One Microcoder event as a visit, or `None` for an event with no place
 /// or no time.
 #[must_use]
 pub fn microcoder_visit(event: &Value) -> Option<Visit> {
     let seconds = event["seconds"].as_f64()?;
     let at_ms = (seconds.max(0.0) * 1000.0).round() as u64;
+    let place = microcoder_place(event)?;
     let step = event["step"]
         .as_u64()
         .map_or_else(String::new, |n| format!("step {n}: "));
-    let visit = |place: Place, what: String, usd: Option<f64>| {
+    let visit = |what: String, usd: Option<f64>| {
         Some(Visit {
             at_ms,
             place,
@@ -168,7 +236,6 @@ pub fn microcoder_visit(event: &Value) -> Option<Visit> {
             let count = |key: &str| retrieval[key].as_array().map_or(0, Vec::len);
             let shown = count("expanded");
             visit(
-                Place::Library,
                 format!(
                     "{step}knowledge: kept {}{}",
                     count("kept"),
@@ -182,12 +249,10 @@ pub fn microcoder_visit(event: &Value) -> Option<Visit> {
             )
         }
         "judged" => visit(
-            Place::Oracle,
             format!("{step}Jev: done, progressing, or repeating?"),
             event["judgment"]["usd"].as_f64(),
         ),
         kind @ ("disputed" | "covered" | "conformed") => visit(
-            Place::Oracle,
             format!(
                 "{step}Jev: {}",
                 match kind {
@@ -203,14 +268,9 @@ pub fn microcoder_visit(event: &Value) -> Option<Visit> {
             let what = generated["action"]["Ok"]["rationale"]
                 .as_str()
                 .map_or_else(|| "a model step".to_owned(), |r| clip(r, 90));
-            visit(
-                Place::Workbench,
-                format!("{step}{what}"),
-                generated["usd"].as_f64(),
-            )
+            visit(format!("{step}{what}"), generated["usd"].as_f64())
         }
         "ran" => visit(
-            Place::Workbench,
             format!(
                 "{step}$ {}",
                 clip(event["result"]["command"].as_str().unwrap_or_default(), 90)
@@ -221,7 +281,6 @@ pub fn microcoder_visit(event: &Value) -> Option<Visit> {
             let results = event["results"].as_array().map_or(&[][..], Vec::as_slice);
             let passed = results.iter().filter(|r| r["exit"] == 0).count();
             visit(
-                Place::ProvingGround,
                 format!(
                     "{step}acceptance tests{}: {passed} of {} pass",
                     if event["froze"] == true {
@@ -235,7 +294,6 @@ pub fn microcoder_visit(event: &Value) -> Option<Visit> {
             )
         }
         "verified" => visit(
-            Place::ProvingGround,
             format!(
                 "the task's verifier: reward {}",
                 event["reward"]
@@ -245,7 +303,6 @@ pub fn microcoder_visit(event: &Value) -> Option<Visit> {
             None,
         ),
         "ended" => visit(
-            Place::Plaza,
             format!(
                 "finished: {}",
                 event["outcome"]["ending"]["reason"]
@@ -282,6 +339,21 @@ pub fn microcoder_visits(events: &[Value]) -> Vec<Visit> {
     visits
 }
 
+/// One of Fable's placed steps as the ATIF step the shared classifier
+/// reads, coarsely: its finish call, a check when the Gym's rules place the
+/// step as a test or a check, and otherwise a command that is not one.
+#[cfg(feature = "replay-host")]
+fn fable_step(step: &Step) -> atif::Step {
+    if step.kind == ActionKind::Finish {
+        called("finish", Value::Null, Map::new())
+    } else {
+        command(
+            &step.input,
+            matches!(step.phase, Some(Phase::Test | Phase::Verify)),
+        )
+    }
+}
+
 /// Fable's placed trajectory steps as visits: its finish call is the
 /// plaza, a step the rules place as a test or a check is the proving
 /// ground, and every other tool call is the workbench.
@@ -291,13 +363,7 @@ pub fn fable_visits(steps: &[Step]) -> Vec<Visit> {
     let mut visits: Vec<Visit> = steps
         .iter()
         .map(|step| {
-            let place = if step.kind == ActionKind::Finish {
-                Place::Plaza
-            } else if matches!(step.phase, Some(Phase::Test | Phase::Verify)) {
-                Place::ProvingGround
-            } else {
-                Place::Workbench
-            };
+            let place = Place::of(activity::classify(&fable_step(step)));
             let input = clip(&step.input, 90);
             let mut what = if input.is_empty() {
                 step.tool.clone()
@@ -1033,6 +1099,30 @@ mod tests {
             ]
         );
         assert_eq!(visits[0].what, "Bash: pytest -q");
+    }
+
+    #[test]
+    fn the_replay_draws_every_studio_station_at_a_landmark() {
+        let place =
+            |activity: Activity, station: Station| Place::of(Classified { activity, station });
+        assert_eq!(place(Activity::Reading, Station::Library), Place::Library);
+        assert_eq!(place(Activity::Judging, Station::Oracle), Place::Oracle);
+        assert_eq!(
+            place(Activity::Testing, Station::ProvingGround),
+            Place::ProvingGround
+        );
+        assert_eq!(place(Activity::Done, Station::TaskWall), Place::Plaza);
+        assert_eq!(place(Activity::Failed, Station::TaskWall), Place::Plaza);
+        for (activity, station) in [
+            (Activity::Editing, Station::Desk),
+            (Activity::Thinking, Station::Desk),
+            (Activity::Thinking, Station::TaskWall),
+            (Activity::Running, Station::Workbench),
+            (Activity::Waiting, Station::Podium),
+            (Activity::Blocked, Station::Lounge),
+        ] {
+            assert_eq!(place(activity, station), Place::Workbench, "{activity:?}");
+        }
     }
 
     #[test]

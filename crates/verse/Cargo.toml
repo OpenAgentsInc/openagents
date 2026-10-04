@@ -22,6 +22,8 @@ verse-world = { path = "../verse-world" }
 bytemuck = { version = "1.25", features = ["derive"] }
 coder = { path = "../coder", optional = true }
 coder-delegate = { path = "../coder-delegate", optional = true }
+# The shared activity classifier a replay and a live Agent Studio both call.
+atif = { path = "../atif" }
 coder-ui = { path = "../coder-ui" }
 rust-native = { path = "../rust-native" }
 physics = { path = "../physics" }
