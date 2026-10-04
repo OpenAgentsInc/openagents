@@ -73,6 +73,7 @@ fn run() -> Result<(), String> {
         .map_err(|_| "Invalid TLS server name")?;
     let pack = verse_engine::assets::Pack::read(&config.pack)?;
     let scene = verse_engine::director::Scene::from_json(&bounded(&config.scene, 1024 * 1024)?)?;
+    let content = verse::imported::remote_content::identity(&pack, &scene, &config.dir)?;
     let atlas = verse::imported::chamber::original_portrait_atlas(&config.dir, &pack)?;
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -86,11 +87,12 @@ fn run() -> Result<(), String> {
             .parse()
             .map_err(|_| "Invalid signing key file")?;
         let key = secp256k1::Keypair::from_secret_key(&secp256k1::Secp256k1::new(), &secret);
-        runtime.block_on(verse_world::service::client::Client::connect(
+        runtime.block_on(verse_world::service::client::Client::connect_with_content(
             config.address,
             server_name,
             tls,
             config.instance,
+            Some(content),
             &key,
         ))?
     };

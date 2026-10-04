@@ -205,7 +205,7 @@ name), `instance` (host instance), `trust_der` (DER trust certificate path),
 (local pack asset directory). Paths resolve from the working directory. The key
 is used during login and is not passed to the window or worker. Callers must
 supply matching original scene/assets and a configured host; automatic host
-setup, scene/pack identity matching, remote audio, prediction, and native live
+setup, durable state/grants, remote audio, prediction, and native live
 acceptance remain.
 
 Run the configured host with:
@@ -223,8 +223,16 @@ players, and 128 total enrollments are accepted. The private DER key requires
 owner-only permissions on Unix. The host loads combat authority and pack prop
 collision before serving TLS. Ctrl+C or Unix SIGTERM drains connections and
 prints final tick/request/timing statistics. Grants and world state are not yet
-saved across process restart; scene/pack identity matching and live native
-multiplayer acceptance remain.
+saved across process restart; live native multiplayer acceptance remains.
+
+Wire version eight binds content identity into the signed connection challenge.
+Configured host/client entry points hash the validated scene and compiled pack,
+then stream and verify every runtime texture against its manifest digest.
+Textures must be beside the host pack manifest; the client uses its configured
+`dir`. A different scene, pack, or texture digest is refused before the client
+sends an authentication signature. Texture reads are bounded to 64 MiB each and
+512 MiB total. The portable gateway/client APIs retain an explicit unconfigured
+mode for fixtures; configured entry points require exact identity matching.
 
 Revocation leaves an uncontrolled actor in the world; actor retirement and capacity reclamation remain lifecycle work.
 Transactional saves, multiplayer

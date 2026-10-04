@@ -56,9 +56,14 @@ async fn serve(config: Config) -> Result<(), String> {
     let scene =
         verse_engine::director::Scene::from_json(&bounded(&config.scene, 1024 * 1024, false)?)?;
     let pack = verse_engine::assets::Pack::read(&config.pack)?;
+    let content = verse::imported::remote_content::identity(
+        &pack,
+        &scene,
+        config.pack.parent().unwrap_or(Path::new(".")),
+    )?;
     let mut game = Game::combat_in(scene, false, config.instance)?;
     verse::imported::props::admit_collision(&pack, &mut game)?;
-    let gateway = config.gateway(game)?;
+    let gateway = config.gateway(game)?.with_content(content)?;
     let certificate = rustls::pki_types::CertificateDer::from(bounded(
         &config.certificate_der,
         1024 * 1024,

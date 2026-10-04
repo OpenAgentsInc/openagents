@@ -37,6 +37,17 @@ impl Client {
         instance: u64,
         key: &Keypair,
     ) -> Result<Self, String> {
+        Self::connect_with_content(address, server_name, tls, instance, None, key).await
+    }
+    /// Refuses differing configured content before producing an authentication signature.
+    pub async fn connect_with_content(
+        address: SocketAddr,
+        server_name: ServerName<'static>,
+        tls: Arc<ClientConfig>,
+        instance: u64,
+        content: Option<[u8; 32]>,
+        key: &Keypair,
+    ) -> Result<Self, String> {
         let (stream, hello) = timeout(DEADLINE, async {
             let socket = TcpStream::connect(address)
                 .await
@@ -53,6 +64,9 @@ impl Client {
                 .map_err(|_| "Malformed chamber opening challenge")?;
             if hello.version != VERSION || hello.challenge.instance() != instance {
                 return Err("Chamber opening version or instance mismatch".to_string());
+            }
+            if hello.challenge.content() != content {
+                return Err("Chamber scene or asset content mismatch".into());
             }
             Ok::<_, String>((stream, hello))
         })
@@ -266,6 +280,56 @@ mod tests {
         ServerName::try_from("localhost").unwrap()
     }
 
+    #[tokio::test]
+    async fn configured_content_mismatch_sends_no_authentication_request() {
+        let keys = [key(1), key(2), key(3)];
+        let (server_tls, connector) = tls();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let gateway = gateway(&keys).with_content([9; 32]).unwrap();
+        let (stop, stopping) = oneshot::channel();
+        let server = tokio::spawn(crate::service::net::serve(
+            listener,
+            server_tls,
+            gateway,
+            async {
+                let _ = stopping.await;
+            },
+        ));
+        assert!(
+            Client::connect_with_content(
+                address,
+                name(),
+                connector.config().clone(),
+                120,
+                Some([8; 32]),
+                &keys[0]
+            )
+            .await
+            .is_err()
+        );
+        assert!(
+            Client::connect(address, name(), connector.config().clone(), 120, &keys[0])
+                .await
+                .is_err()
+        );
+        let mut admitted = Client::connect_with_content(
+            address,
+            name(),
+            connector.config().clone(),
+            120,
+            Some([9; 32]),
+            &keys[0],
+        )
+        .await
+        .unwrap();
+        assert!(admitted.control().is_some());
+        admitted.close().await.unwrap();
+        stop.send(()).unwrap();
+        let exit = server.await.unwrap();
+        assert!(exit.failure.is_none());
+        assert_eq!(exit.stats.requests, 1);
+    }
     #[tokio::test]
     async fn verified_clients_keep_owned_sequences_and_gameplay_refusals() {
         let keys = [key(31), key(32), key(33)];

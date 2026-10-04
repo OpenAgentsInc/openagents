@@ -32,6 +32,7 @@ pub struct ConnectionId {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Challenge {
+    content: Option<[u8; 32]>,
     server: [u8; 32],
     instance: u64,
     connection: u64,
@@ -39,13 +40,20 @@ pub struct Challenge {
     expires_ms: u64,
 }
 impl Challenge {
+    pub fn content(&self) -> Option<[u8; 32]> {
+        self.content
+    }
     pub fn instance(&self) -> u64 {
         self.instance
     }
     /// SHA-256 over a versioned domain and fixed-width identity/context fields.
     pub fn signing_digest(&self, public_key: [u8; 32]) -> [u8; 32] {
         let mut h = Sha256::new();
-        h.update(b"verse.chamber.connection.v1\0");
+        h.update(b"verse.chamber.connection.v2\0");
+        h.update([self.content.is_some() as u8]);
+        if let Some(content) = self.content {
+            h.update(content);
+        }
         h.update(self.server);
         h.update(self.instance.to_be_bytes());
         h.update(self.connection.to_be_bytes());
@@ -65,6 +73,7 @@ struct Binding {
 /// Authenticates enrolled keys and derives dispatch authority from the transport.
 pub struct Gateway {
     pub(super) chamber: Chamber,
+    content: Option<[u8; 32]>,
     server: [u8; 32],
     next_connection: u64,
     last_now: u64,
@@ -78,12 +87,21 @@ impl Gateway {
             .map_err(|_| "Cannot generate chamber authentication entropy")?;
         Ok(Self {
             chamber,
+            content: None,
             server,
             next_connection: 1,
             last_now: 0,
             pending: BTreeMap::new(),
             bindings: BTreeMap::new(),
         })
+    }
+    /// Fixes content identity before any opening challenge has been issued.
+    pub fn with_content(mut self, content: [u8; 32]) -> Result<Self, String> {
+        if self.next_connection != 1 || self.content.is_some() {
+            return Err("Chamber content identity is already bound".into());
+        }
+        self.content = Some(content);
+        Ok(self)
     }
     /// Read-only host authority; clients use admitted snapshots instead.
     pub fn game(&self) -> &Game {
@@ -127,6 +145,7 @@ impl Gateway {
             serial: self.next_connection,
         };
         let challenge = Challenge {
+            content: self.content,
             server: self.server,
             instance: self.game().player_life().instance,
             connection: id.serial,
@@ -268,6 +287,28 @@ mod tests {
         g.authenticate(id, now, public(k), sign(&challenge, k))
             .unwrap();
         id
+    }
+    #[test]
+    fn challenge_signature_binds_immutable_content_identity() {
+        let key = key(1);
+        let mut g = gateway(180).with_content([9; 32]).unwrap();
+        g.enroll_primary(public(&key)).unwrap();
+        let (id, challenge) = g.open(0).unwrap();
+        assert_eq!(challenge.content(), Some([9; 32]));
+        let mut forged = challenge.clone();
+        forged.content = Some([8; 32]);
+        assert_ne!(
+            challenge.signing_digest(public(&key)),
+            forged.signing_digest(public(&key))
+        );
+        assert!(
+            g.authenticate(id, 0, public(&key), sign(&forged, &key))
+                .is_err()
+        );
+        let (id, challenge) = g.open(1).unwrap();
+        g.authenticate(id, 1, public(&key), sign(&challenge, &key))
+            .unwrap();
+        assert!(g.with_content([8; 32]).is_err());
     }
     #[test]
     fn signed_players_and_spectator_dispatch_without_request_principals() {
