@@ -92,6 +92,7 @@ struct App {
     dir: PathBuf,
     view: View,
     character_panel: super::character_panel::Panel,
+    giver_panel: super::giver_panel::Panel,
     input: mpsc::Sender<Input>,
     output: mpsc::Receiver<Update>,
     window: Option<Arc<Window>>,
@@ -141,6 +142,7 @@ impl App {
             dir,
             view,
             character_panel: Default::default(),
+            giver_panel: Default::default(),
             input,
             output,
             window: None,
@@ -478,6 +480,7 @@ impl App {
                 .latest()
                 .is_some_and(|s| s.hud.is_some())
         {
+            self.giver_panel.draw(&mut ui, &self.atlas, &self.view);
             self.character_panel
                 .draw(&mut ui, &self.atlas, self.view.inventory(), width, 720.);
         }
@@ -704,7 +707,9 @@ impl ApplicationHandler for App {
                         self.keys.insert(key);
                         match key {
                             KeyCode::Escape => {
-                                if !self.character_panel.close() {
+                                if self.view.interaction().is_some() {
+                                    self.view.close_giver();
+                                } else if !self.character_panel.close() {
                                     event_loop.exit();
                                 }
                             }
@@ -716,6 +721,7 @@ impl ApplicationHandler for App {
                                         .latest()
                                         .is_some_and(|s| s.hud.is_some()) =>
                             {
+                                self.view.close_giver();
                                 self.character_panel.toggle(if key == KeyCode::KeyL {
                                     super::character_panel::Kind::Quests
                                 } else {
@@ -737,6 +743,18 @@ impl ApplicationHandler for App {
                                     720. * size.width as f32 / size.height.max(1) as f32,
                                     720.,
                                 );
+                            }
+                            KeyCode::KeyF if self.unlocked() => {
+                                let givers: Vec<_> =
+                                    self.view.quest_markers().keys().copied().collect();
+                                for giver in givers {
+                                    if self.view.open_giver(giver).is_ok() {
+                                        self.giver_panel.reset();
+                                        self.character_panel.close();
+                                        self.release_pointer();
+                                        break;
+                                    }
+                                }
                             }
                             KeyCode::Tab => {
                                 self.view.cycle_target();
@@ -776,6 +794,21 @@ impl ApplicationHandler for App {
                 let down = state == ElementState::Pressed;
                 let size = self.window.as_ref().unwrap().inner_size();
                 let width = 720. * size.width as f32 / size.height.max(1) as f32;
+                if down && self.giver_panel.contains(&self.view, self.pointer) {
+                    if button == MouseButton::Left {
+                        match self.giver_panel.click(&self.view, self.pointer) {
+                            Some(super::giver_panel::Action::Accept(quest, giver)) => {
+                                self.send(Input::AcceptQuest(quest, giver))
+                            }
+                            Some(super::giver_panel::Action::Claim(quest)) => {
+                                self.send(Input::ClaimQuest(quest))
+                            }
+                            Some(super::giver_panel::Action::Close) => self.view.close_giver(),
+                            None => {}
+                        }
+                    }
+                    return;
+                }
                 if down && self.character_panel.contains(self.pointer, width, 720.) {
                     if button == MouseButton::Left {
                         self.character_panel.click(

@@ -97,4 +97,8 @@ prerequisite-linked giver quests. For an authenticated chamber host, select the
 variant in the host configuration's `scene` field and copy the progression JSON
 object into its `progression` field. Use a separate state directory because the
 variant has a different content identity. The local preview shows the NPC;
-quest enrollment and turn-in use the authenticated remote inventory panel.
+quest enrollment and turn-in use the authenticated remote client. Press F near
+a reachable giver to open authored dialogue, use Accept or Complete, and press
+Escape or Close to dismiss it. Quest and text buttons page through the giver
+quests and dialogue. The server checks acceptance and turn-in; the panel does
+not change inventory locally.
