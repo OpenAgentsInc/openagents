@@ -1,0 +1,32 @@
+{
+  "schema": "verse.battle.scale.run.v1",
+  "acceptance": "failed",
+  "workload": {
+    "players": 20,
+    "hostile_npcs": 40,
+    "cultist_health": 20000,
+    "native_clients": 1,
+    "headless_clients": 19,
+    "seconds": 60,
+    "compiled_revisions": {
+      "host": "f7e41c2141",
+      "clients": "f7e41c2141"
+    },
+    "fixture_revision": "d5b2e81bc001dc5a9e634a788d12d1ab4e86266d",
+    "limits": [
+      "NPC health is raised in the authored load scene to sustain spell and AI work.",
+      "Headless player connections do not establish rendering performance on their machines.",
+      "Native player and load generator share one host machine."
+    ]
+  },
+  "stability": "All twenty connections and all processes complete; every measured headless occupancy sample retains forty live hostile NPCs.",
+  "limits": [
+    "Native frame p95 is 82.048 ms, versus 107.393 ms in the earlier sustained run; differing trajectories and shadow refresh counts prevent isolated attribution.",
+    "CPU command-buffer finalization p95 is 63.689 ms and remains the largest measured frame phase.",
+    "Prediction correction p95 is 0.490 m, maximum 1.620 m.",
+    "External host CPU increases 45.59 seconds over 89.98 seconds of observation; this does not establish per-tick CPU budgets.",
+    "Four proxy connection resets occur near 99.95 seconds, around workload teardown; their cause is not isolated.",
+    "Nameplates are bounded and anchored, but crowd damage text remains visually overcrowded.",
+    "GPU execution is not isolated. Nineteen headless clients do not establish rendering performance on their own machines."
+  ]
+}
