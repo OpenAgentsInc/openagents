@@ -488,12 +488,10 @@ impl Game {
         {
             return Err("Invalid world movement checkpoint".into());
         }
-        world.navigation =
-            if world.scene.collision_profile.as_deref() != Some("original-chamber-v1") {
-                None
-            } else {
-                Some(crate::room::navigation(world.admission.actor().instance)?)
-            };
+        world.navigation = crate::room::profile_navigation(
+            world.scene.collision_profile.as_deref(),
+            world.admission.actor().instance,
+        )?;
         for collider in world.blockers.colliders()? {
             world.colliders.push(physics::kinematic::Aabb {
                 min: collider
@@ -1191,11 +1189,10 @@ impl Game {
             bodies: physics::lifetimes::Bodies::new(instance),
             navigation_plans: 0,
             navigation_budget_refusals: 0,
-            navigation: if scene.collision_profile.as_deref() != Some("original-chamber-v1") {
-                None
-            } else {
-                Some(crate::room::navigation(instance)?)
-            },
+            navigation: crate::room::profile_navigation(
+                scene.collision_profile.as_deref(),
+                instance,
+            )?,
             physics_clock: physics::FixedStep::new(1. / 120., 12),
             clock_origin: None,
             physics_steps: 0,

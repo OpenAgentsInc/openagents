@@ -124,6 +124,51 @@ pub fn profile_query_scene(
     Ok(scene)
 }
 
+/// Walkable navigation for a collision profile, or none for profiles without
+/// authored solids.
+pub fn profile_navigation(
+    profile: Option<&str>,
+    instance: u64,
+) -> Result<Option<std::sync::Arc<physics::walkable::Navigation>>, String> {
+    match profile {
+        Some("original-chamber-v1") => navigation(instance).map(Some),
+        Some(crate::playground::PROFILE) => playground_navigation(instance).map(Some),
+        _ => Ok(None),
+    }
+}
+
+/// The spell playground hall's floor, the ledge top, and the far side of the
+/// chasm, compiled once and bound per instance.
+fn playground_navigation(
+    instance: u64,
+) -> Result<std::sync::Arc<physics::walkable::Navigation>, String> {
+    use physics::walkable::{Config, Navigation};
+    static COMPILED: std::sync::OnceLock<Result<std::sync::Arc<Navigation>, String>> =
+        std::sync::OnceLock::new();
+    let template = COMPILED
+        .get_or_init(|| {
+            let scene = profile_query_scene(Some(crate::playground::PROFILE), 0)?;
+            Ok(std::sync::Arc::new(Navigation::compile(
+                &scene,
+                Config {
+                    instance: 0,
+                    layers: 1,
+                    min: glam::DVec3::new(-24., -0.01, -24.),
+                    max: glam::DVec3::new(24., 6.5, 24.),
+                    cell: 0.5,
+                    character: physics::character::Settings::default(),
+                    work_budget: 40_000_000,
+                },
+            )?))
+        })
+        .clone()?;
+    Ok(if instance == 0 {
+        template
+    } else {
+        std::sync::Arc::new(template.bind_instance(instance))
+    })
+}
+
 /// Caches immutable walkable geometry; each instance keeps its own blocker book.
 pub fn navigation(instance: u64) -> Result<std::sync::Arc<physics::walkable::Navigation>, String> {
     use physics::walkable::{Config, Navigation};
@@ -221,5 +266,31 @@ mod navigation_tests {
             .unwrap()
             .unwrap();
         assert!(stairs.points.iter().any(|p| p.y > 1.4));
+    }
+}
+
+#[cfg(test)]
+mod playground_navigation_tests {
+    #[test]
+    fn the_playground_hall_compiles_a_route_around_the_stone_wall() {
+        let profile = Some(crate::playground::PROFILE);
+        let scene = super::profile_query_scene(profile, 0).unwrap();
+        let nav = super::profile_navigation(profile, 0).unwrap().unwrap();
+        let route = nav
+            .path(
+                &scene,
+                &physics::walkable::Blockers::new(0),
+                0,
+                glam::DVec3::new(8., 0., -3.5),
+                glam::DVec3::new(12.5, 0., -3.5),
+                None,
+                physics::walkable::Budget {
+                    nodes: 16_384,
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let route = route.expect("a route exists around the wall");
+        assert!(route.points.len() > 2, "{route:?}");
     }
 }
