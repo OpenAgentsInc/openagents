@@ -240,3 +240,4 @@ pub mod room;
 pub mod rules;
 pub mod telekinesis;
 pub mod utilities;
+pub mod wind_wall;
