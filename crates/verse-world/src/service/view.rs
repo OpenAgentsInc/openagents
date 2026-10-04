@@ -15,6 +15,7 @@ use verse_engine::director::{Action, ActorFrame, Cue, Frame, Projectile};
 pub struct Camera {
     pub eye: Vec3,
     pub target: Vec3,
+    /// Vertical field of view in degrees.
     pub fov: f32,
 }
 impl Camera {
@@ -337,7 +338,7 @@ impl View {
             actors,
             eye: camera.eye,
             target: camera.target,
-            fov: camera.fov,
+            fov: camera.fov.to_radians(),
             yell,
             projectiles,
             shots: Vec::new(),
@@ -378,6 +379,14 @@ mod tests {
                 text: "Our master Claude has been ensouled!".into(),
             },
         }
+    }
+    #[test]
+    fn native_camera_degrees_project_into_a_radian_scene_frame() {
+        let mut view = View::new(130, 10., 0).unwrap();
+        view.push_snapshot(&response(1)).unwrap();
+        let frame = view.frame(1., camera()).unwrap().unwrap();
+        assert!((frame.fov - std::f32::consts::FRAC_PI_3).abs() < 0.00001);
+        assert!(frame.view_projection(16. / 9.).is_finite());
     }
     #[test]
     fn retired_combat_actor_keeps_a_corpse_frame_and_requires_new_life_to_return() {

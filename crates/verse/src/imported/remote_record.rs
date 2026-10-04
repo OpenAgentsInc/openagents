@@ -60,6 +60,8 @@ impl Recorder {
                 "-i",
                 "pipe:0",
                 "-an",
+                "-filter_threads",
+                "1",
                 "-vf",
                 "scale=1280:720",
                 "-c:v",
@@ -68,6 +70,8 @@ impl Recorder {
                 "veryfast",
                 "-crf",
                 "20",
+                "-threads",
+                "2",
                 "-pix_fmt",
                 "yuv420p",
             ])

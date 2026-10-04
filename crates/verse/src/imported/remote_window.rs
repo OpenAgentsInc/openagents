@@ -355,11 +355,7 @@ impl App {
         let sampled = self.view.replica().sample(alpha)?;
         let time = sampled.as_ref().map_or(time, |s| s.time);
         let cinematic = self.scene.frame(time);
-        let mut camera = Camera {
-            eye: cinematic.eye,
-            target: cinematic.target,
-            fov: cinematic.fov,
-        };
+        let mut camera = authored_camera(&cinematic);
         let focus = self
             .view
             .replica()
@@ -784,6 +780,13 @@ fn key_ability(key: KeyCode) -> Option<Ability> {
     };
     Some(Ability::ALL[index])
 }
+fn authored_camera(frame: &verse_engine::director::Frame) -> Camera {
+    Camera {
+        eye: frame.eye,
+        target: frame.target,
+        fov: frame.fov.to_degrees(),
+    }
+}
 fn respawn_ready(
     enabled: bool,
     hp: i32,
@@ -796,6 +799,20 @@ fn respawn_ready(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn cinematic_camera_converts_scene_radians_to_native_degrees() {
+        let scene = Scene::from_json(include_bytes!(
+            "../../../../assets/verse/original/ritual.json"
+        ))
+        .unwrap();
+        for time in [0., 40.] {
+            let frame = scene.frame(time);
+            let camera = authored_camera(&frame);
+            assert!((camera.fov - 57.29578).abs() < 0.001);
+            assert_eq!(camera.eye, frame.eye);
+            assert_eq!(camera.target, frame.target);
+        }
+    }
     #[test]
     fn automated_respawn_requires_dead_owned_life_and_never_retries_it() {
         let life = verse_engine::core::LifeId {
