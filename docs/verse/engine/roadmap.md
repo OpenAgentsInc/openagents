@@ -187,6 +187,8 @@ The [native named-state battle](../../../bench/verse/2026-10-03/named-animation-
 
 [#10444](https://github.com/OpenAgentsInc/openagents/issues/10444) moves texture preparation into the optional headless `verse-engine::loading` module. Full pack validation, exact digests, static eight-bit RGBA dimensions, explicit-root file checks, and manifest/encoded/decoded/workspace budgets pass before GPU allocation. The renderer uploads immutable prepared bytes and publishes the admission receipt. The [native receipt](../../../bench/verse/2026-10-03/prepared-pack/player-respawn.json) records 20 textures, 5.8 MB encoded, and 38.1 MB decoded; [pixel comparison evidence](../../../bench/verse/2026-10-03/prepared-pack/comparison.json) confirms unchanged death and respawn images. This is local pack preparation, not typed residency, provenance/distribution admission, asynchronous loading, or atomic GPU reload.
 
+[#10445](https://github.com/OpenAgentsInc/openagents/issues/10445) adds typed model and texture residency handles with nonreused process-local catalog identities. Native frame extraction retains immutable instance data and catalog-bound model references; both shadow and color passes use typed GPU residency. Submission rejects stale catalogs before buffer writes, including empty frames. `verse_play --residency-proof OUTPUT_DIR` checks old-frame rejection after an offscreen renderer rebuild and compares death images byte for byte before continuing the respawn proof. This is not atomic live-surface reload, asynchronous streaming, persistent asset identity, or semantic texture naming.
+
 ## Reuse inventory
 
 Review baseline: OpenAgents `843c92dd7e`. The entries below were checked against

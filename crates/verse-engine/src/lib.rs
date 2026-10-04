@@ -8,6 +8,7 @@ pub mod director;
 #[cfg(feature = "asset-io")]
 pub mod loading;
 pub mod motion;
+pub mod residency;
 
 /// Converts version-one pack source coordinates to Y-up meters.
 ///

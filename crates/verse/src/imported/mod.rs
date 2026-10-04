@@ -39,6 +39,13 @@ pub struct Instance {
     pub time: f32,
     pub emission: Vec3,
 }
+/// Extracted instances are immutable and bound to the admitting renderer catalog.
+#[derive(Clone, Debug)]
+pub struct ResolvedInstances<'a> {
+    catalog: verse_engine::residency::CatalogId,
+    instances: &'a [Instance],
+    models: Vec<verse_engine::residency::ModelHandle>,
+}
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
 struct GpuVertex {
@@ -72,7 +79,7 @@ struct Batch {
     vertices: wgpu::Buffer,
     indices: wgpu::Buffer,
     count: u32,
-    texture: usize,
+    texture: verse_engine::residency::TextureHandle,
     blend: u8,
     emissive: bool,
 }
@@ -150,7 +157,8 @@ pub struct Renderer {
     pose_layout: wgpu::BindGroupLayout,
     textures: Vec<wgpu::BindGroup>,
     pipelines: Vec<wgpu::RenderPipeline>,
-    models: HashMap<String, Vec<Batch>>,
+    catalog: verse_engine::residency::Catalog,
+    models: HashMap<verse_engine::residency::ModelHandle, Vec<Batch>>,
     static_batches: Vec<Batch>,
     actors: Vec<Actor>,
     playback: HashMap<(verse_engine::core::LifeId, String), animation::Playback>,
@@ -215,7 +223,11 @@ fn merge(pack: &Pack, instances: &[Instance]) -> Merged {
     }
     merged
 }
-fn upload(device: &wgpu::Device, merged: Merged) -> Vec<Batch> {
+fn upload(
+    device: &wgpu::Device,
+    catalog: &verse_engine::residency::Catalog,
+    merged: Merged,
+) -> Vec<Batch> {
     merged
         .into_iter()
         .filter(|(_, (_, i))| !i.is_empty())
@@ -233,7 +245,7 @@ fn upload(device: &wgpu::Device, merged: Merged) -> Vec<Batch> {
                 wgpu::BufferUsages::INDEX,
             ),
             count: i.len() as u32,
-            texture,
+            texture: catalog.texture(texture).expect("Validated surface texture"),
             blend,
             emissive,
         })
@@ -293,6 +305,7 @@ impl Renderer {
         static_instances: &[Instance],
     ) -> Result<Self, String> {
         let (pack, decoded, pack_receipt) = prepared.into_parts();
+        let catalog = verse_engine::residency::Catalog::new(&pack)?;
         if width == 0 || height == 0 || width > 4096 || height > 4096 {
             return Err("Invalid imported viewport".into());
         }
@@ -541,7 +554,7 @@ impl Renderer {
                 immediate_size: 0,
             });
         let shadow_pipeline=device.create_render_pipeline(&wgpu::RenderPipelineDescriptor{label:Some("Verse skinned local shadow"),layout:Some(&shadow_pipeline_layout),vertex:wgpu::VertexState{module:&shader,entry_point:Some("vs"),compilation_options:Default::default(),buffers:&[wgpu::VertexBufferLayout{array_stride:std::mem::size_of::<GpuVertex>() as u64,step_mode:wgpu::VertexStepMode::Vertex,attributes:&wgpu::vertex_attr_array![0=>Float32x3,1=>Float32x3,2=>Float32x2,3=>Uint32x4,4=>Float32x4,5=>Float32x3]}]},primitive:wgpu::PrimitiveState{cull_mode:None,..Default::default()},depth_stencil:Some(wgpu::DepthStencilState{format:wgpu::TextureFormat::Depth32Float,depth_write_enabled:Some(true),depth_compare:Some(wgpu::CompareFunction::LessEqual),stencil:Default::default(),bias:wgpu::DepthBiasState{constant:1,slope_scale:1.0,clamp:0.0}}),multisample:Default::default(),fragment:Some(wgpu::FragmentState{module:&shader,entry_point:Some("shadow_fs"),compilation_options:Default::default(),targets:&[]}),multiview_mask:None,cache:None});
-        let static_batches = upload(&device, merge(&pack, static_instances));
+        let static_batches = upload(&device, &catalog, merge(&pack, static_instances));
         let mut models = HashMap::new();
         for (name, model) in &pack.models {
             let mut merged = Merged::new();
@@ -555,7 +568,7 @@ impl Renderer {
                 }));
                 i.extend(s.indices.iter().map(|i| i + offset));
             }
-            models.insert(name.clone(), upload(&device, merged));
+            models.insert(catalog.model(name)?, upload(&device, &catalog, merged));
         }
         let target = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("Verse imported capture"),
@@ -632,6 +645,7 @@ impl Renderer {
             pose_layout,
             textures,
             pipelines,
+            catalog,
             models,
             static_batches,
             actors: vec![],
@@ -653,7 +667,8 @@ impl Renderer {
         ui: &UiBatch,
         lighting: &Lighting,
     ) -> Result<Vec<u8>, String> {
-        self.draw_frame(view, instances, ui, lighting, true)
+        let resolved = self.resolve_instances(instances)?;
+        self.draw_resolved(view, &resolved, ui, lighting)
     }
     /// Keeps interactive frames on the GPU; captures explicitly request readback.
     pub fn draw_live(
@@ -663,23 +678,63 @@ impl Renderer {
         ui: &UiBatch,
         lighting: &Lighting,
     ) -> Result<(), String> {
+        let resolved = self.resolve_instances(instances)?;
+        self.draw_live_resolved(view, &resolved, ui, lighting)
+    }
+    pub fn resolve_instances<'a>(
+        &self,
+        instances: &'a [Instance],
+    ) -> Result<ResolvedInstances<'a>, String> {
+        if instances.len() > 256 {
+            return Err("Too many renderer instances".into());
+        }
+        let models = instances
+            .iter()
+            .map(|i| self.catalog.model(&i.model))
+            .collect::<Result<_, _>>()?;
+        Ok(ResolvedInstances {
+            catalog: self.catalog.id(),
+            instances,
+            models,
+        })
+    }
+    pub fn draw_resolved(
+        &mut self,
+        view: View,
+        instances: &ResolvedInstances<'_>,
+        ui: &UiBatch,
+        lighting: &Lighting,
+    ) -> Result<Vec<u8>, String> {
+        self.draw_frame(view, instances, ui, lighting, true)
+    }
+    pub fn draw_live_resolved(
+        &mut self,
+        view: View,
+        instances: &ResolvedInstances<'_>,
+        ui: &UiBatch,
+        lighting: &Lighting,
+    ) -> Result<(), String> {
         self.draw_frame(view, instances, ui, lighting, false)
             .map(|_| ())
     }
     fn draw_frame(
         &mut self,
         view: View,
-        instances: &[Instance],
+        resolved: &ResolvedInstances<'_>,
         ui: &UiBatch,
         lighting: &Lighting,
         capture: bool,
     ) -> Result<Vec<u8>, String> {
         let started = Instant::now();
+        // Validate residency before writing any GPU buffer.
+        self.catalog.check(resolved.catalog)?;
+        for handle in &resolved.models {
+            self.catalog.model_name(*handle)?;
+        }
+        let instances = resolved.instances;
         let mut grounded_vertices = 0;
         if instances.len() > 256
-            || instances
-                .iter()
-                .any(|i| !self.models.contains_key(&i.model) || !i.transform.is_finite())
+            || instances.iter().any(|i| !i.transform.is_finite())
             || !view.view_proj.is_finite()
         {
             return Err("Invalid imported frame".into());
@@ -835,14 +890,14 @@ impl Renderer {
                 self.draw_batch(&mut pass, batch);
                 shadow_draws += 1;
             }
-            for (i, instance) in instances.iter().enumerate() {
+            for (i, _) in instances.iter().enumerate() {
                 if actor_bounds[i]
                     .is_some_and(|b| !b.visible(Mat4::from_cols_array_2d(&frame.shadow[layer])))
                 {
                     continue;
                 }
                 pass.set_bind_group(2, &self.actors[i + 1].group, &[]);
-                for batch in self.models[&instance.model]
+                for batch in self.models[&resolved.models[i]]
                     .iter()
                     .filter(|b| b.blend < 2 && !b.emissive)
                 {
@@ -894,9 +949,9 @@ impl Renderer {
                             .total_cmp(&a.transform.w_axis.truncate().distance_squared(view.eye))
                     });
                 }
-                for (i, instance) in order {
+                for (i, _) in order {
                     pass.set_bind_group(2, &self.actors[i + 1].group, &[]);
-                    for batch in self.models[&instance.model]
+                    for batch in self.models[&resolved.models[i]]
                         .iter()
                         .filter(|b| b.blend == blend as u8)
                     {
@@ -992,8 +1047,13 @@ impl Renderer {
     fn draw_batch<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, batch: &'a Batch) {
         pass.set_bind_group(
             1,
-            &self.textures
-                [batch.texture * 8 + usize::from(batch.emissive) * 4 + usize::from(batch.blend)],
+            &self.textures[self
+                .catalog
+                .texture_slot(batch.texture)
+                .expect("Resident texture handle")
+                * 8
+                + usize::from(batch.emissive) * 4
+                + usize::from(batch.blend)],
             &[],
         );
         pass.set_vertex_buffer(0, batch.vertices.slice(..));

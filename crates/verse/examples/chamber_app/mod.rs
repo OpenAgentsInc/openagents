@@ -717,7 +717,10 @@ pub fn run(original_default: bool) -> Result<(), String> {
     if original && mode.is_none() {
         app.game = Game::combat(app.game.scene.clone(), false)?;
     }
-    if mode.as_deref() == Some("--respawn-proof") {
+    if matches!(
+        mode.as_deref(),
+        Some("--respawn-proof" | "--residency-proof")
+    ) {
         let output = PathBuf::from(args.next().ok_or("Expected proof directory")?);
         std::fs::create_dir_all(&output).map_err(|e| e.to_string())?;
         app.game = Game::combat(app.game.scene.clone(), false)?;
@@ -737,6 +740,56 @@ pub fn run(original_default: bool) -> Result<(), String> {
         )?);
         app.interpolation = 1.;
         save_png(&output.join("player-dead.png"), &app.draw_frame()?)?;
+        if mode.as_deref() == Some("--residency-proof") {
+            let frame = app.game.frame();
+            let actors = chamber::instances(&app.pack, &frame)?;
+            let prior = app.renderer.as_ref().unwrap().resolve_instances(&actors)?;
+            let empty = app.renderer.as_ref().unwrap().resolve_instances(&[])?;
+            // This proof rebuilds offscreen residency; it does not exercise a live surface reload.
+            app.renderer = Some(Renderer::new(
+                app.pack.clone(),
+                &app.dir,
+                1280,
+                720,
+                &app.atlas,
+                &chamber::static_instances(&app.pack, position_from_wow(app.game.scene.origin_wow)),
+            )?);
+            let view = View {
+                view_proj: frame.view_projection(1280. / 720.),
+                eye: frame.eye,
+            };
+            let ui = verse::ui::UiBatch::default();
+            let lighting = chamber::combat_lighting(&app.game);
+            let renderer = app.renderer.as_mut().unwrap();
+            let stale = renderer
+                .draw_resolved(view, &prior, &ui, &lighting)
+                .unwrap_err();
+            let stale_empty = renderer
+                .draw_live_resolved(view, &empty, &ui, &lighting)
+                .unwrap_err();
+            if !stale.contains("foreign asset catalog")
+                || !stale_empty.contains("foreign asset catalog")
+            {
+                return Err("Residency proof did not reject stale frames".into());
+            }
+            save_png(&output.join("rebuilt-dead.png"), &app.draw_frame()?)?;
+            let identical = std::fs::read(output.join("player-dead.png"))
+                .map_err(|e| e.to_string())?
+                == std::fs::read(output.join("rebuilt-dead.png")).map_err(|e| e.to_string())?;
+            if !identical {
+                return Err("Rebuilt residency changed the captured scene".into());
+            }
+            std::fs::write(
+                output.join("residency.json"),
+                serde_json::to_vec_pretty(&serde_json::json!({
+                    "schema":"openagents.verse.residency-proof.v1", "stale_frame":stale,
+                    "stale_empty_frame":stale_empty, "rebuild_pixels_identical":identical,
+                    "live_surface_reload":false,
+                }))
+                .map_err(|e| e.to_string())?,
+            )
+            .map_err(|e| e.to_string())?;
+        }
         let old = app.game.player_life();
         if !overlay::respawn_at(640., 328., 1280., 720.) {
             return Err("Proof click missed Respawn".into());

@@ -1,0 +1,16 @@
+{
+  "schema": "openagents.verse.residency-proof.v1",
+  "stale_frame": "Stale or foreign asset catalog",
+  "stale_empty_frame": "Stale or foreign asset catalog",
+  "rebuild_pixels_identical": true,
+  "live_surface_reload": false,
+  "files": {
+    "rebuilt-dead.png": "d44bc31c5812dfae2e9495f1ee4ddc4f1e6a43e147247f402e9a04ca455c2360",
+    "player-respawned.png": "f14b5f2229bb35e099d62457f15023ecefc87d6999a45058339fc11c96a7e502",
+    "player-dead.png": "d44bc31c5812dfae2e9495f1ee4ddc4f1e6a43e147247f402e9a04ca455c2360"
+  },
+  "matches_prepared_pack": {
+    "player-dead.png": true,
+    "player-respawned.png": true
+  }
+}
