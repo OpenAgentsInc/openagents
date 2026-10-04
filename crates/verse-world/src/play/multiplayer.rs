@@ -14,6 +14,8 @@ pub(super) struct Player {
     spawn: Vec3,
     pub(super) yaw: f32,
     pending_move: Option<[f32; 2]>,
+    #[serde(default)]
+    held_move: crate::movement::Held,
     pending_jump: bool,
     pub(super) controls: Controls,
     pub(super) casting: Option<Casting>,
@@ -37,6 +39,7 @@ impl Player {
             spawn,
             yaw: std::f32::consts::PI,
             pending_move: None,
+            held_move: Default::default(),
             pending_jump: false,
             controls: Controls::default(),
             casting: None,
@@ -141,10 +144,17 @@ impl Game {
         if !self.unlocked() || pending || dead || self.colliders.is_empty() {
             return Ok(None);
         }
+        let held = if life.actor == self.player_actor() {
+            self.held_movement
+        } else {
+            self.additional_players[&life.actor].held_move
+        };
         let baseline = crate::movement::Baseline {
             life,
             epoch: admission.epoch(),
             applied_sequence: admission.accepted_sequence(),
+            physics_step: self.physics_steps,
+            held,
             character,
             yaw,
         };
@@ -294,6 +304,7 @@ impl Game {
                 .map_err(|e| format!("Control handoff refused: {e:?}"))?;
             self.agent_controlled = controller == Controller(2);
             self.pending_movement = None;
+            self.held_movement = Default::default();
             self.pending_jump = false;
         } else {
             let p = self.additional_players.get_mut(&life.actor).unwrap();
@@ -301,6 +312,7 @@ impl Game {
                 .handoff(controller)
                 .map_err(|e| format!("Control handoff refused: {e:?}"))?;
             p.pending_move = None;
+            p.held_move = Default::default();
             p.pending_jump = false;
         }
         Ok(())
@@ -513,9 +525,14 @@ impl Game {
                 let dead = self.simulation.snapshot_for(p.source)?.player.hp == 0;
                 let axes = if dead {
                     p.pending_move = None;
+                    p.held_move = Default::default();
                     [0.; 2]
                 } else {
-                    p.pending_move.take().unwrap_or([0.; 2])
+                    let start = self.physics_steps - steps as u64;
+                    if let Some(axes) = p.pending_move.take() {
+                        p.held_move.refresh(axes, start)?;
+                    }
+                    p.held_move.axes(start)
                 };
                 let walk = crate::movement::walk(axes, p.yaw)?;
                 let speed = walk.speed;
@@ -846,6 +863,7 @@ impl Game {
                 || p.bow_ready < 0.
                 || p.pending_move
                     .is_some_and(|a| a.iter().any(|v| !v.is_finite() || v.abs() > 1.))
+                || p.held_move.validate(self.physics_steps).is_err()
                 || p.locomotion.iter().any(|v| !v.is_finite() || v.abs() > 1.)
                 || p.died_at
                     .is_some_and(|at| !at.is_finite() || at < 0. || at > self.time)
@@ -975,6 +993,131 @@ mod tests {
             .unwrap();
         (g, life)
     }
+    #[test]
+    fn held_remote_movement_survives_gaps_then_expires_and_replays_checkpoints() {
+        let (mut game, extra) = world();
+        let primary = game.player_life();
+        game.handoff_player(primary, Controller(9)).unwrap();
+        let starts = [
+            game.actor_position(primary.actor).unwrap(),
+            game.actor_position(extra.actor).unwrap(),
+        ];
+        for (life, controller) in [(primary, Controller(9)), (extra, Controller(10))] {
+            let input = command(
+                &game,
+                life,
+                Intent::Move {
+                    axes: [1., 0.],
+                    yaw: 0.,
+                },
+            );
+            game.submit(controller, input).unwrap();
+        }
+        game.tick(1. / 30., [0.; 2]).unwrap();
+        let bytes = game.checkpoint().unwrap();
+        let mut restored = Game::restore(&bytes).unwrap();
+        for _ in 1..15 {
+            game.tick(1. / 30., [0.; 2]).unwrap();
+            restored.tick(1. / 30., [0.; 2]).unwrap();
+        }
+        assert_eq!(game.checkpoint().unwrap(), restored.checkpoint().unwrap());
+        for (life, start) in [(primary, starts[0]), (extra, starts[1])] {
+            let end = game.actor_position(life.actor).unwrap();
+            assert!((end.x - start.x - 6.4008 * 0.5).abs() < 0.001);
+            let baseline = game.movement_baseline(life).unwrap().unwrap();
+            assert_eq!(baseline.applied_sequence, 1);
+            assert_eq!(baseline.held.axes(baseline.physics_step), [0.; 2]);
+        }
+        let stopped = [
+            game.actor_position(primary.actor),
+            game.actor_position(extra.actor),
+        ];
+        game.tick(1. / 30., [0.; 2]).unwrap();
+        assert_eq!(
+            stopped,
+            [
+                game.actor_position(primary.actor),
+                game.actor_position(extra.actor)
+            ]
+        );
+        // A checkpoint from the previous profile has no held input to restore.
+        let mut old: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        old["rules_revision"] = "verse-chamber-owned-v17".into();
+        old["world"]
+            .as_object_mut()
+            .unwrap()
+            .remove("held_movement");
+        for player in old["world"]["additional_players"]
+            .as_object_mut()
+            .unwrap()
+            .values_mut()
+        {
+            player.as_object_mut().unwrap().remove("held_move");
+        }
+        let migrated = Game::restore(&serde_json::to_vec(&old).unwrap()).unwrap();
+        assert_eq!(migrated.held_movement.until, 0);
+        assert_eq!(migrated.additional_players[&extra.actor].held_move.until, 0);
+        let mut bad: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        bad["world"]["held_movement"]["until"] = u64::MAX.into();
+        assert!(Game::restore(&serde_json::to_vec(&bad).unwrap()).is_err());
+    }
+    #[test]
+    fn held_movement_stops_on_zero_input_handoff_death_and_respawn() {
+        let (mut game, extra) = world();
+        let primary = game.player_life();
+        game.handoff_player(primary, Controller(9)).unwrap();
+        for (life, controller) in [(primary, Controller(9)), (extra, Controller(10))] {
+            let input = command(
+                &game,
+                life,
+                Intent::Move {
+                    axes: [1., 0.],
+                    yaw: 0.,
+                },
+            );
+            game.submit(controller, input).unwrap();
+        }
+        game.tick(1. / 30., [0.; 2]).unwrap();
+        let input = command(
+            &game,
+            extra,
+            Intent::Move {
+                axes: [0.; 2],
+                yaw: 0.,
+            },
+        );
+        game.submit(Controller(10), input).unwrap();
+        game.handoff_player(primary, Controller(11)).unwrap();
+        let positions = [
+            game.actor_position(primary.actor),
+            game.actor_position(extra.actor),
+        ];
+        game.tick(1. / 30., [0.; 2]).unwrap();
+        assert_eq!(
+            positions,
+            [
+                game.actor_position(primary.actor),
+                game.actor_position(extra.actor)
+            ]
+        );
+        let input = command(
+            &game,
+            primary,
+            Intent::Move {
+                axes: [1., 0.],
+                yaw: 0.,
+            },
+        );
+        game.submit(Controller(11), input).unwrap();
+        game.tick(1. / 30., [0.; 2]).unwrap();
+        game.hostile_hit(10000).unwrap();
+        game.tick(1. / 30., [0.; 2]).unwrap();
+        assert_eq!(game.held_movement.until, 0);
+        game.respawn_player().unwrap();
+        assert_eq!(game.held_movement.until, 0);
+        assert_eq!(game.player_life().generation, primary.generation + 1);
+    }
+
     fn command(g: &Game, life: LifeId, intent: Intent<Ability>) -> Command<Ability> {
         g.player_admission(life.actor)
             .unwrap()

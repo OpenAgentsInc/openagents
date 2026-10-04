@@ -125,6 +125,8 @@ impl History {
             || baseline.life.actor != self.baseline.life.actor
             || baseline.life.generation < self.baseline.life.generation
             || baseline.epoch < self.baseline.epoch
+            || (baseline.physics_step < self.baseline.physics_step
+                && baseline.epoch == self.baseline.epoch)
             || tick < self.tick
             || observation < self.observation
         {
@@ -217,6 +219,8 @@ mod tests {
             },
             epoch: 3,
             applied_sequence: 0,
+            physics_step: 0,
+            held: Default::default(),
             character: Character::new(DVec3::ZERO),
             yaw: 0.,
         }
@@ -231,6 +235,23 @@ mod tests {
             jump: false,
             steps: 4,
         }
+    }
+    #[test]
+    fn physics_watermarks_cannot_regress_without_a_control_reset() {
+        let s = geometry();
+        let mut initial = baseline();
+        initial.physics_step = 10;
+        let mut h = History::new(initial, 3, 1).unwrap();
+        let mut stale = initial;
+        stale.physics_step = 9;
+        assert!(h.reconcile(stale, 4, 2, &s, Filter::blocking(1)).is_err());
+        let mut reset = initial;
+        reset.epoch += 1;
+        reset.physics_step = 0;
+        assert_eq!(
+            h.reconcile(reset, 4, 2, &s, Filter::blocking(1)).unwrap(),
+            Correction::Reset
+        );
     }
     #[test]
     fn delayed_ack_discards_only_applied_inputs_and_replays_exact_motor_state() {

@@ -8,7 +8,7 @@ use verse_engine::director::{Action, Frame, Scene};
 use verse_engine::motion::State;
 
 /// Checkpoint revision. v17 binds friendly scene roles to simulation factions.
-pub const RULES_REVISION: &str = "verse-chamber-owned-v17";
+pub const RULES_REVISION: &str = "verse-chamber-owned-v18";
 /// Seed of the chamber's spell dice; scenarios may reseed before acting.
 pub const SPELL_SEED: u64 = 0x5EED_0451;
 
@@ -173,6 +173,8 @@ pub struct Game {
     next_player_actor: u64,
     pub(crate) admission: crate::Admission,
     pending_movement: Option<[f32; 2]>,
+    #[serde(default)]
+    held_movement: crate::movement::Held,
     pending_jump: bool,
     pub(crate) character: physics::character::Character,
     pub(crate) npc_characters: BTreeMap<u64, physics::character::Character>,
@@ -366,6 +368,7 @@ impl Game {
         let saved: Saved = serde_json::from_slice(bytes).map_err(|e| e.to_string())?;
         if saved.version != 1
             || (saved.rules_revision != RULES_REVISION
+                && saved.rules_revision != "verse-chamber-owned-v17"
                 && !(saved.rules_revision == "verse-chamber-owned-v16"
                     && saved.world.scene.actors.iter().all(|a| !a.friendly)))
         {
@@ -373,6 +376,7 @@ impl Game {
         }
         let mut world = saved.world;
         world.validate_clock()?;
+        world.held_movement.validate(world.physics_steps)?;
         world.bodies.validate()?;
         world.validate_body_bindings()?;
         if let Some(encounter) = &world.encounter {
@@ -1183,6 +1187,7 @@ impl Game {
             additional_players: BTreeMap::new(),
             next_player_actor,
             pending_movement: None,
+            held_movement: Default::default(),
             pending_jump: false,
             character: physics::character::Character::new(player.as_dvec3()),
             npc_characters: BTreeMap::new(),
@@ -1621,9 +1626,14 @@ impl Game {
         }
         let movement = if dead {
             self.pending_movement = None;
+            self.held_movement = Default::default();
             [0.; 2]
         } else {
-            self.pending_movement.take().unwrap_or([0.; 2])
+            let start = self.physics_steps - physics_steps as u64;
+            if let Some(axes) = self.pending_movement.take() {
+                self.held_movement.refresh(axes, start)?;
+            }
+            self.held_movement.axes(start)
         };
         // A Telekinesis hand with path left takes the movement keys.
         let movement = crate::telekinesis::steer_input(self, movement, dt);
@@ -2476,6 +2486,7 @@ impl Game {
         self.yaw = yaw;
         self.camera = Default::default();
         self.pending_movement = None;
+        self.held_movement = Default::default();
         self.pending_jump = false;
         self.casting = None;
         self.last_cast = None;
@@ -2504,6 +2515,7 @@ impl Game {
             .map_err(|e| format!("Control handoff refused: {e:?}"))?;
         self.agent_controlled = agent;
         self.pending_movement = None;
+        self.held_movement = Default::default();
         self.pending_jump = false;
         Ok(())
     }

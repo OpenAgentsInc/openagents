@@ -5,6 +5,44 @@ use physics::{
     queries::{Filter, Scene},
 };
 
+/// Movement leases last half a simulated second, rounded to an authority interval.
+pub const HELD_STEPS: u64 = 60;
+#[derive(Clone, Copy, Debug, Default, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Held {
+    pub axes: [f32; 2],
+    pub until: u64,
+}
+impl Held {
+    pub fn refresh(&mut self, axes: [f32; 2], step: u64) -> Result<(), String> {
+        if axes.iter().any(|v| !v.is_finite() || v.abs() > 1.) {
+            return Err("Invalid held movement axes".into());
+        }
+        *self = Self {
+            axes,
+            until: step
+                .checked_add(HELD_STEPS)
+                .ok_or("Held movement clock exhausted")?,
+        };
+        Ok(())
+    }
+    pub fn axes(&self, step: u64) -> [f32; 2] {
+        if step < self.until {
+            self.axes
+        } else {
+            [0.; 2]
+        }
+    }
+    pub fn validate(&self, step: u64) -> Result<(), String> {
+        if self.axes.iter().any(|v| !v.is_finite() || v.abs() > 1.)
+            || self.until.saturating_sub(step) > HELD_STEPS
+        {
+            return Err("Invalid held movement checkpoint".into());
+        }
+        Ok(())
+    }
+}
+
 /// Authoritative movement state after all admitted movement and jump input is consumed.
 #[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -12,12 +50,15 @@ pub struct Baseline {
     pub life: verse_engine::core::LifeId,
     pub epoch: u64,
     pub applied_sequence: u64,
+    pub physics_step: u64,
+    pub held: Held,
     pub character: Character,
     pub yaw: f32,
 }
 impl Baseline {
     pub fn validate(&self) -> Result<(), String> {
         self.character.validate()?;
+        self.held.validate(self.physics_step)?;
         if self.life.actor == 0 || !self.yaw.is_finite() {
             return Err("Invalid authoritative movement baseline".into());
         }
