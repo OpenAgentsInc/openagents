@@ -131,6 +131,14 @@ The zone renderer gains textured static meshes:
   skeleton when the zone loads (`zones/everglade/pose.rs`), so the pack
   carries no new clips. Heads turn toward the monitor, the seat being
   spoken to, or the player.
+- Ambient light is baked when the zone loads (`pbr::textured_bake`, lighting
+  audit item B1): each static vertex stores how much of the sky it sees and
+  one bounce of sunlight in its light channel, with alpha-tested leaf cards
+  as partial occluders, so the workshop interior and the ground under the
+  tree ring darken. A coarse probe grid of the same light shades the
+  characters. The bake runs on a worker thread; in a browser it advances a
+  little each frame at lower quality. Sky-cube specular occlusion (item B2)
+  waits for the sky light of phase 2.
 
 ## The zone
 

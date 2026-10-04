@@ -19,7 +19,7 @@
 use super::{HALF_EXTENT, PATH_HALF_WIDTH, RETURN_PORTAL, YARD, height};
 use crate::pbr::textured::{
     AlphaMode, BaseColorImage, Primitive, TexturedMaterial, TexturedMesh, TexturedScene,
-    TexturedVertex,
+    TexturedVertex, UNBAKED,
 };
 use glam::{Mat4, Vec3};
 
@@ -175,6 +175,7 @@ fn grid(
                 normal: normal(x, z).to_array(),
                 uv,
                 color,
+                light: UNBAKED,
             });
         }
     }

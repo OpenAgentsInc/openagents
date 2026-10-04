@@ -321,8 +321,8 @@ fn lit_layout() -> wgpu::VertexBufferLayout<'static> {
 }
 
 fn textured_layout() -> wgpu::VertexBufferLayout<'static> {
-    const ATTRIBUTES: [wgpu::VertexAttribute; 4] = wgpu::vertex_attr_array![
-        0 => Float32x3, 1 => Float32x3, 2 => Float32x2, 3 => Unorm8x4
+    const ATTRIBUTES: [wgpu::VertexAttribute; 5] = wgpu::vertex_attr_array![
+        0 => Float32x3, 1 => Float32x3, 2 => Float32x2, 3 => Unorm8x4, 4 => Unorm8x4
     ];
     wgpu::VertexBufferLayout {
         array_stride: std::mem::size_of::<TexturedVertex>() as u64,
@@ -1021,7 +1021,14 @@ impl Photo {
         scene: &TexturedScene,
         merged: &textured::Merged,
     ) -> TexturedGpu {
-        self.upload_textured_with(device, queue, scene, merged, wgpu::BufferUsages::VERTEX)
+        // A light bake that finishes after the upload rewrites the vertices.
+        self.upload_textured_with(
+            device,
+            queue,
+            scene,
+            merged,
+            wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+        )
     }
 
     /// Uploads a [`textured::Figure`]'s images, materials, and indices, with

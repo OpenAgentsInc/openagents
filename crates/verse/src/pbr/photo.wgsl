@@ -575,11 +575,15 @@ struct Shading {
     color: vec3<f32>,
     params: vec4<f32>,
     pixel: vec2<f32>,
+    // Multiplies the probes' diffuse irradiance per channel: the lit
+    // vertex's occlusion, or a textured vertex's baked ambient light.
+    ambient: vec3<f32>,
 };
 
 @fragment
 fn fs_lit(i: LitOut) -> @location(0) vec4<f32> {
-    return vec4<f32>(shade(Shading(i.world, i.normal, i.tangent, i.local, i.color, i.params, i.clip.xy)), 1.0);
+    let ao = vec3<f32>(clamp(i.params.w, 0.0, 1.0));
+    return vec4<f32>(shade(Shading(i.world, i.normal, i.tangent, i.local, i.color, i.params, i.clip.xy, ao)), 1.0);
 }
 
 // The exposed, fogged color of one lit fragment.
@@ -725,7 +729,7 @@ fn shade(i: Shading) -> vec3<f32> {
     direct_part = radiance;
 
     // Bounce light from nearby surfaces through the probe grid.
-    let irr = probe_irradiance(i.world, n) * ao;
+    let irr = probe_irradiance(i.world, n) * i.ambient;
     radiance += diffuse_color / PI * irr;
     // Glossy bounce: the probes' radiance toward the reflection direction.
     let r = reflect(-v, n);
@@ -781,6 +785,10 @@ struct TexturedIn {
     @location(2) uv: vec2<f32>,
     // Linear vertex color, glTF's COLOR_0.
     @location(3) color: vec4<f32>,
+    // Baked ambient light (`pbr::textured_bake`): rgb encodes a diffuse
+    // multiplier as 4 × value², alpha the open sky fraction; zero alpha
+    // means no bake reached the vertex.
+    @location(4) light: vec4<f32>,
 };
 
 struct TexturedOut {
@@ -789,7 +797,17 @@ struct TexturedOut {
     @location(1) normal: vec3<f32>,
     @location(2) uv: vec2<f32>,
     @location(3) color: vec4<f32>,
+    // rgb the diffuse ambient multiplier; w the specular occlusion.
+    @location(4) ambient: vec4<f32>,
 };
+
+// Decodes a vertex's baked light; an unbaked vertex keeps the ambient as is.
+fn baked_ambient(light: vec4<f32>) -> vec4<f32> {
+    if light.a < 0.5 / 255.0 {
+        return vec4<f32>(1.0);
+    }
+    return vec4<f32>(light.rgb * light.rgb * 4.0, light.a);
+}
 
 @vertex
 fn vs_textured(v: TexturedIn) -> TexturedOut {
@@ -799,6 +817,7 @@ fn vs_textured(v: TexturedIn) -> TexturedOut {
     o.normal = v.normal;
     o.uv = v.uv;
     o.color = v.color;
+    o.ambient = baked_ambient(v.light);
     return o;
 }
 
@@ -807,19 +826,21 @@ fn textured_base(uv: vec2<f32>, color: vec4<f32>) -> vec4<f32> {
 }
 
 // Shades a textured fragment as a generic metallic-roughness surface
-// (material code 0) without baked occlusion.
-fn textured_shade(world: vec3<f32>, normal: vec3<f32>, pixel: vec2<f32>, base: vec3<f32>) -> vec3<f32> {
+// (material code 0) under its baked ambient light: the diffuse multiplier
+// scales the probes' irradiance, and the open sky fraction occludes ambient
+// reflections.
+fn textured_shade(world: vec3<f32>, normal: vec3<f32>, pixel: vec2<f32>, base: vec3<f32>, ambient: vec4<f32>) -> vec3<f32> {
     let n = normalize(normal);
     // Code 0 has no anisotropy; any tangent across the normal will do.
     let across = select(vec3<f32>(1.0, 0.0, 0.0), vec3<f32>(0.0, 0.0, 1.0), abs(n.x) > 0.9);
-    let params = vec4<f32>(material.params.x, material.params.y, 0.0, 1.0);
-    return shade(Shading(world, n, cross(n, across), world, base, params, pixel));
+    let params = vec4<f32>(material.params.x, material.params.y, 0.0, clamp(ambient.w, 0.0, 1.0));
+    return shade(Shading(world, n, cross(n, across), world, base, params, pixel, max(ambient.rgb, vec3<f32>(0.0))));
 }
 
 @fragment
 fn fs_textured(i: TexturedOut) -> @location(0) vec4<f32> {
     let base = textured_base(i.uv, i.color);
-    return vec4<f32>(textured_shade(i.world, i.normal, i.clip.xy, base.rgb), 1.0);
+    return vec4<f32>(textured_shade(i.world, i.normal, i.clip.xy, base.rgb, i.ambient), 1.0);
 }
 
 // glTF's MASK mode: a fragment is fully opaque when its alpha reaches the
@@ -830,7 +851,7 @@ fn fs_textured_masked(i: TexturedOut) -> @location(0) vec4<f32> {
     if base.a < material.params.z {
         discard;
     }
-    return vec4<f32>(textured_shade(i.world, i.normal, i.clip.xy, base.rgb), 1.0);
+    return vec4<f32>(textured_shade(i.world, i.normal, i.clip.xy, base.rgb, i.ambient), 1.0);
 }
 
 // glTF's BLEND mode, premultiplied, for glass and other thin transparency.
@@ -838,7 +859,7 @@ fn fs_textured_masked(i: TexturedOut) -> @location(0) vec4<f32> {
 fn fs_textured_blend(i: TexturedOut) -> @location(0) vec4<f32> {
     let base = textured_base(i.uv, i.color);
     let alpha = clamp(base.a, 0.0, 1.0);
-    return vec4<f32>(textured_shade(i.world, i.normal, i.clip.xy, base.rgb) * alpha, alpha);
+    return vec4<f32>(textured_shade(i.world, i.normal, i.clip.xy, base.rgb, i.ambient) * alpha, alpha);
 }
 
 struct TexturedShadowOut {

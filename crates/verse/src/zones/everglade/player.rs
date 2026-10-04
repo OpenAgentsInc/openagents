@@ -27,7 +27,9 @@ use super::pose::{self, Skeleton};
 use super::scene::{Copied, copy_material};
 use super::studio::{Posture, SeatFigure};
 use crate::controller::PlayerController;
-use crate::pbr::textured::{Figure, Primitive, TexturedMesh, TexturedScene, TexturedVertex};
+use crate::pbr::textured::{
+    Figure, Primitive, TexturedMesh, TexturedScene, TexturedVertex, UNBAKED,
+};
 use crate::zones::everglade_pack::{Character, ZonePack};
 
 /// What the player is doing, and so which clip plays.
@@ -306,6 +308,7 @@ impl Rig {
                     normal: v.vertex.normal,
                     uv: v.vertex.uv,
                     color: v.vertex.color,
+                    light: UNBAKED,
                 })
                 .collect();
             let start = template.len();

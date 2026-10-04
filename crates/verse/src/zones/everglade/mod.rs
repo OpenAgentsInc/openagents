@@ -33,7 +33,11 @@ mod tests;
 use crate::{
     controller::{Footprint, InputState, PlayerController},
     mesh::Mesh,
-    pbr::{Daylight, Key, Neon},
+    pbr::{
+        Daylight, Key, Neon,
+        textured::TexturedScene,
+        textured_bake::{self, AmbientProbes, BakeJob, BakeLight, BakeSettings},
+    },
     world::World,
 };
 use glam::Vec3;
@@ -77,6 +81,11 @@ pub const YARD: ([f32; 2], [f32; 2]) = ([0.0, -6.5], [13.0, 7.5]);
 /// Half the width of the approach path, m. The path runs along x = 0 from
 /// the return portal to the yard.
 pub const PATH_HALF_WIDTH: f32 = 1.6;
+/// Spacing of the baked light probes characters sample, m.
+const PROBE_CELL: f32 = 3.0;
+/// How far the probe grid reaches above the highest ground, m: a
+/// character's head on the ring.
+const PROBE_HEADROOM: f32 = 3.0;
 
 /// One Agent Studio station: where a seat or the player stands to use it.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -235,6 +244,10 @@ pub(crate) struct Everglade {
     spells: spells::Spells,
     rendered: Mesh,
     cast: Option<player::Cast>,
+    /// The static scene's light bake while it runs.
+    bake: Option<BakeJob>,
+    /// The bake's probes, which light the characters once it finishes.
+    probes: Option<Arc<AmbientProbes>>,
 }
 
 impl Everglade {
@@ -256,7 +269,53 @@ impl Everglade {
             spells: spells::Spells::default(),
             rendered: Self::stage(0.0),
             cast: player::Cast::new(pack, at)?,
+            bake: None,
+            probes: None,
         })
+    }
+
+    /// The afternoon light: a warm sun from behind the approach that casts
+    /// shadows over the clearing, a cool rim, and sky and ground fill.
+    fn key() -> Key {
+        Key {
+            dir: Vec3::new(-0.35, 0.8, -0.45).normalize(),
+            illuminance: 4_000.0,
+            angular_radius: 0.03,
+            rim_dir: Vec3::new(0.5, 0.35, 0.6).normalize(),
+            rim_illuminance: 900.0,
+            rim_angular_radius: 0.1,
+            sky: 1_200.0,
+            ground: 450.0,
+            ev100: 10.0,
+            shadow_center: Vec3::new(0.0, 0.0, -4.0),
+            shadow_half: 40.0,
+        }
+    }
+
+    /// Starts baking `scene`'s ambient light under the zone's sun: sky
+    /// visibility and one bounce for every static vertex, and the probes
+    /// the characters sample. The bake runs off the main thread where the
+    /// target has threads, keyed by the pinned pack's digest and the light.
+    pub fn bake_light(&mut self, scene: Arc<TexturedScene>) {
+        // Zone tests install the full pack many times over; the bake's own
+        // tests in `pbr::textured_bake` cover it without the pack.
+        if cfg!(test) {
+            return;
+        }
+        let light = BakeLight::from_key(&Self::key());
+        let settings = BakeSettings::new(
+            Vec3::new(-HALF_EXTENT, 0.0, -HALF_EXTENT),
+            Vec3::new(HALF_EXTENT, MAX_HEIGHT + PROBE_HEADROOM, HALF_EXTENT),
+            PROBE_CELL,
+        );
+        let key = textured_bake::bake_key(
+            super::everglade_pack::PACK_SHA256,
+            &scene,
+            &light,
+            &settings,
+        );
+        self.bake = Some(BakeJob::start(scene, light, settings, key));
+        self.probes = None;
     }
 
     /// The physical stage: a late-morning daylight sky whose horizon haze is
@@ -276,19 +335,7 @@ impl Everglade {
                 bloom: 0.04,
                 vignette: 0.15,
                 time,
-                key: Some(Key {
-                    dir: Vec3::new(-0.35, 0.8, -0.45).normalize(),
-                    illuminance: 4_000.0,
-                    angular_radius: 0.03,
-                    rim_dir: Vec3::new(0.5, 0.35, 0.6).normalize(),
-                    rim_illuminance: 900.0,
-                    rim_angular_radius: 0.1,
-                    sky: 1_200.0,
-                    ground: 450.0,
-                    ev100: 10.0,
-                    shadow_center: Vec3::new(0.0, 0.0, -4.0),
-                    shadow_half: 40.0,
-                }),
+                key: Some(Self::key()),
                 daylight: Some(Daylight {
                     zenith: [0.10, 0.30, 0.73],
                     horizon: air.color,
@@ -455,6 +502,14 @@ impl Everglade {
         if let Some(cast) = &mut self.cast {
             cast.advance(at, seats, dt);
         }
+        if let Some(job) = &mut self.bake {
+            if let Some(probes) = job.poll() {
+                self.probes = Some(Arc::new(probes));
+            }
+            if job.finished() {
+                self.bake = None;
+            }
+        }
     }
 
     /// Whether the pack's character draws the player and the seats, so the
@@ -472,10 +527,20 @@ impl Everglade {
     /// plaza's avatar when the pack has no character.
     pub fn player_mesh(&self, at: &PlayerController, gait: &crate::avatar::Gait) -> Mesh {
         match &self.cast {
-            Some(cast) => Mesh {
-                figure: Some(cast.figure()),
-                ..Mesh::default()
-            },
+            Some(cast) => {
+                let mut figure = cast.figure();
+                // Characters take the baked probes' light, so they darken
+                // under the roof and the canopy as the ground does.
+                if let Some(probes) = &self.probes {
+                    let mut vertices = figure.vertices.as_ref().clone();
+                    probes.shade(&mut vertices);
+                    figure.vertices = Arc::new(vertices);
+                }
+                Mesh {
+                    figure: Some(figure),
+                    ..Mesh::default()
+                }
+            }
             None => crate::avatar::mesh(at, gait),
         }
     }

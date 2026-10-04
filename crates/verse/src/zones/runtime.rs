@@ -201,13 +201,16 @@ impl WorldRuntime {
         let mut spawn = self.player;
         spawn.pos = Everglade::spawn();
         spawn.yaw = Everglade::spawn_yaw();
-        let everglade = match Everglade::new(pack, &spawn) {
+        let mut everglade = match Everglade::new(pack, &spawn) {
             Ok(everglade) => everglade,
             Err(error) => {
                 self.zone_load_failed(&error);
                 return;
             }
         };
+        if let Some(scene) = &world.mesh.textured {
+            everglade.bake_light(scene.clone());
+        }
         self.zone_state.plaza_pose = Some((self.player.pos, self.player.yaw));
         self.world = world;
         self.zone_state.everglade = Some(everglade);

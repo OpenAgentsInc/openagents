@@ -10,7 +10,7 @@ use super::layout::Placement;
 use crate::controller::Footprint;
 use crate::pbr::textured::{
     AlphaMode, BaseColorImage, Primitive, TexturedMaterial, TexturedMesh, TexturedScene,
-    TexturedVertex,
+    TexturedVertex, UNBAKED,
 };
 use crate::zones::everglade_pack::{self, ZonePack};
 use std::collections::BTreeMap;
@@ -80,6 +80,7 @@ fn copy_model(
                     normal: v.normal,
                     uv: v.uv,
                     color: v.color,
+                    light: UNBAKED,
                 })
                 .collect(),
             indices: primitive.indices.clone(),

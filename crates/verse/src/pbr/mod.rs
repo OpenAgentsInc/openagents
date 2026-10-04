@@ -28,6 +28,7 @@ pub(crate) mod gpu;
 pub(crate) mod output;
 pub mod sky;
 pub mod textured;
+pub mod textured_bake;
 
 use std::sync::Arc;
 

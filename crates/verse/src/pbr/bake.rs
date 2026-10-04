@@ -19,6 +19,57 @@ struct Triangle {
     ac: Vec3,
     normal: Vec3,
     albedo: Vec3,
+    /// Fraction of light the triangle stops: 1 for solid surfaces, less for
+    /// alpha-tested cards and glass, which the textured bake treats as
+    /// partial occluders.
+    opacity: f32,
+}
+
+/// A triangle for [`Bvh::from_occluders`].
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Occluder {
+    /// World-space corners, meters.
+    pub corners: [Vec3; 3],
+    /// The authored normal: it picks which side of the face is front, since
+    /// winding is not a reliable side.
+    pub normal: Vec3,
+    /// Diffuse albedo the bake bounces light with.
+    pub albedo: Vec3,
+    /// Fraction of light the triangle stops, 0 to 1.
+    pub opacity: f32,
+}
+
+/// Opacity at or above which an occluder counts as solid.
+pub const SOLID: f32 = 0.999;
+
+/// Everything one ray meets within its range.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Trace {
+    /// Fraction of light that passes every occluder along the ray.
+    pub transmittance: f32,
+    /// The nearest triangle crossed, with its opacity.
+    pub nearest: Option<(Hit, f32)>,
+}
+
+fn oriented(corners: [Vec3; 3], authored: Vec3, albedo: Vec3, opacity: f32) -> Option<Triangle> {
+    let a = corners[0];
+    let ab = corners[1] - a;
+    let ac = corners[2] - a;
+    let face = ab.cross(ac).try_normalize()?;
+    let authored = authored.try_normalize().unwrap_or(face);
+    let normal = if face.dot(authored) < 0.0 {
+        -face
+    } else {
+        face
+    };
+    Some(Triangle {
+        a,
+        ab,
+        ac,
+        normal,
+        albedo,
+        opacity: opacity.clamp(0.0, 1.0),
+    })
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -64,32 +115,36 @@ impl Bvh {
     /// Builds a hierarchy over a triangle list of lit vertices.
     #[must_use]
     pub fn new(vertices: &[LitVertex]) -> Self {
-        let mut triangles: Vec<Triangle> = vertices
+        let triangles = vertices
             .chunks_exact(3)
             .filter_map(|t| {
-                let a = Vec3::from(t[0].pos);
-                let ab = Vec3::from(t[1].pos) - a;
-                let ac = Vec3::from(t[2].pos) - a;
-                let face = ab.cross(ac).try_normalize()?;
                 // Winding is not a reliable side; the authored normal is.
                 let authored =
-                    (Vec3::from(t[0].normal) + Vec3::from(t[1].normal) + Vec3::from(t[2].normal))
-                        .try_normalize()
-                        .unwrap_or(face);
-                let normal = if face.dot(authored) < 0.0 {
-                    -face
-                } else {
-                    face
-                };
-                Some(Triangle {
-                    a,
-                    ab,
-                    ac,
-                    normal,
-                    albedo: bounce_albedo(&t[0]),
-                })
+                    Vec3::from(t[0].normal) + Vec3::from(t[1].normal) + Vec3::from(t[2].normal);
+                oriented(
+                    [t[0].pos, t[1].pos, t[2].pos].map(Vec3::from),
+                    authored,
+                    bounce_albedo(&t[0]),
+                    1.0,
+                )
             })
             .collect();
+        Self::from_triangles(triangles)
+    }
+
+    /// Builds a hierarchy over textured or other triangles that may be
+    /// partial occluders.
+    #[must_use]
+    pub fn from_occluders(occluders: impl IntoIterator<Item = Occluder>) -> Self {
+        let triangles = occluders
+            .into_iter()
+            .filter(|o| o.corners.iter().all(|c| c.is_finite()))
+            .filter_map(|o| oriented(o.corners, o.normal, o.albedo, o.opacity))
+            .collect();
+        Self::from_triangles(triangles)
+    }
+
+    fn from_triangles(mut triangles: Vec<Triangle>) -> Self {
         let mut nodes = Vec::with_capacity(triangles.len() / 2 + 1);
         if !triangles.is_empty() {
             let len = triangles.len();
@@ -138,6 +193,58 @@ impl Bvh {
             })
         });
         any
+    }
+
+    /// The light that passes within `max` meters along the ray, and the
+    /// nearest triangle it crosses. Partial occluders multiply the
+    /// transmittance by one minus their opacity; a solid one stops it.
+    #[must_use]
+    pub fn trace(&self, origin: Vec3, dir: Vec3, max: f32) -> Trace {
+        let mut transmittance = 1.0f32;
+        let mut nearest: Option<(f32, usize)> = None;
+        self.walk(origin, dir, max, |t, i| {
+            if nearest.is_none_or(|(d, _)| t < d) {
+                nearest = Some((t, i));
+            }
+            let opacity = self.triangles[i].opacity;
+            if opacity >= SOLID {
+                transmittance = 0.0;
+                // Nothing beyond a solid face matters, but a nearer one may.
+                Some(false)
+            } else {
+                transmittance *= 1.0 - opacity;
+                None
+            }
+        });
+        Trace {
+            transmittance,
+            nearest: nearest.map(|(distance, i)| {
+                let tri = &self.triangles[i];
+                (
+                    Hit {
+                        distance,
+                        normal: tri.normal,
+                        albedo: tri.albedo,
+                    },
+                    tri.opacity,
+                )
+            }),
+        }
+    }
+
+    /// The fraction of light that passes within `max` meters along the ray,
+    /// stopping early once almost nothing passes.
+    #[must_use]
+    pub fn transmittance(&self, origin: Vec3, dir: Vec3, max: f32) -> f32 {
+        let mut transmittance = 1.0f32;
+        self.walk(origin, dir, max, |_, i| {
+            transmittance *= 1.0 - self.triangles[i].opacity.min(1.0);
+            (transmittance < 1e-3).then(|| {
+                transmittance = 0.0;
+                true
+            })
+        });
+        transmittance
     }
 
     /// Whether anything lies within `max` meters along the ray.
@@ -412,7 +519,7 @@ pub fn bake_probes(bvh: &Bvh, s: &ProbeSettings) -> ProbeGrid {
 
 /// Replaces probes buried inside geometry with the mean of valid neighbors,
 /// so light does not leak from inside solid parts.
-fn dilate(data: &mut [[f32; 12]], valid: &[bool], dims: [u32; 3]) {
+pub(crate) fn dilate(data: &mut [[f32; 12]], valid: &[bool], dims: [u32; 3]) {
     let index =
         |x: i64, y: i64, z: i64| (x + y * dims[0] as i64 + z * (dims[0] * dims[1]) as i64) as usize;
     let mut ok = valid.to_vec();

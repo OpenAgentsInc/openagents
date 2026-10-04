@@ -23,7 +23,7 @@ use winit::window::Window;
 use crate::mesh::{Mesh, Vertex};
 use crate::pbr::LitVertex;
 use crate::pbr::gpu::{Batches, Capability, Photo, PhotoTargets, Stage, TexturedGpu};
-use crate::pbr::textured::{Merged, TexturedScene};
+use crate::pbr::textured::{BakedVertices, Merged, TexturedScene};
 use crate::ui::{Atlas, UiBatch, UiVertex};
 
 const DEPTH: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
@@ -104,6 +104,9 @@ struct Scene {
     textured_pending: Option<PreparedTextured>,
     /// The world's textured meshes on the GPU.
     textured: Option<TexturedGpu>,
+    /// Where a background light bake delivers the textured meshes' baked
+    /// vertices, written over the uploaded ones when they arrive.
+    textured_baked: Option<BakedVertices>,
     /// The dynamic mesh's figure on the GPU, with the scene it was uploaded
     /// from; a different scene uploads again.
     figure: Option<(std::sync::Arc<TexturedScene>, TexturedGpu)>,
@@ -695,6 +698,7 @@ impl Renderer {
         self.scene.world_lit = upload_lit(&self.device, &world.lit);
         self.scene.textured_pending = textured;
         self.scene.textured = None;
+        self.scene.textured_baked = None;
         self.scene.figure = None;
         // Animated models can be much larger than plaza avatars. A return
         // releases their buffer capacity instead of retaining the largest zone.
@@ -1543,6 +1547,7 @@ impl Scene {
                 None
             }),
             textured: None,
+            textured_baked: None,
             figure: None,
             photo: None,
             photo_failed: false,
@@ -1742,6 +1747,17 @@ impl Scene {
         };
         if let Some((scene, merged)) = self.textured_pending.take() {
             self.textured = Some(photo.upload_textured(device, queue, &scene, &merged));
+            self.textured_baked = Some(scene.baked.clone());
+        }
+        // A finished bake replaces the vertices once; the merge order is the
+        // bake's own, so only the light channel changes.
+        let baked = match (&self.textured, &self.textured_baked) {
+            (Some(_), Some(slot)) => slot.take(),
+            _ => None,
+        };
+        if let (Some(gpu), Some(vertices)) = (&self.textured, baked) {
+            gpu.write_vertices(queue, &vertices);
+            self.textured_baked = None;
         }
         if let Some(figure) = &dynamic.figure {
             if self

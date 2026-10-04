@@ -59,7 +59,15 @@ pub struct TexturedVertex {
     pub uv: [f32; 2],
     /// Linear RGBA multiplier (glTF `COLOR_0`); white is `[255; 4]`.
     pub color: [u8; 4],
+    /// Baked ambient light ([`crate::pbr::textured_bake`]): red, green, and
+    /// blue multiply the frame's ambient irradiance by `4 × (byte / 255)²`,
+    /// and alpha is the open sky fraction, which also occludes ambient
+    /// reflections. An alpha of zero, [`UNBAKED`], leaves the ambient as is.
+    pub light: [u8; 4],
 }
+
+/// The [`TexturedVertex::light`] of a vertex no bake has reached.
+pub const UNBAKED: [u8; 4] = [0; 4];
 
 impl TexturedVertex {
     /// A white vertex.
@@ -70,6 +78,7 @@ impl TexturedVertex {
             normal: normal.to_array(),
             uv,
             color: [255; 4],
+            light: UNBAKED,
         }
     }
 
@@ -282,6 +291,49 @@ pub struct TexturedScene {
     pub materials: Vec<TexturedMaterial>,
     pub meshes: Vec<TexturedMesh>,
     pub placements: Vec<Placement>,
+    /// Where a background light bake delivers this scene's merged vertices
+    /// with their light channel filled
+    /// ([`crate::pbr::textured_bake::SceneBaker`]); the renderer writes them
+    /// over the uploaded vertices once.
+    pub baked: BakedVertices,
+}
+
+/// A one-shot delivery of baked vertices, shared between a bake and the
+/// renderer. The vertices are in [`TexturedScene::merge`]'s order.
+///
+/// Slots always compare equal: they carry a delivery, not scene content.
+#[derive(Clone, Default)]
+pub struct BakedVertices(std::sync::Arc<std::sync::Mutex<Option<Vec<TexturedVertex>>>>);
+
+impl BakedVertices {
+    /// Hands over the merged vertices with their light channel filled.
+    pub fn deliver(&self, vertices: Vec<TexturedVertex>) {
+        *self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(vertices);
+    }
+
+    /// Takes the delivered vertices, if a bake has finished.
+    #[must_use]
+    pub fn take(&self) -> Option<Vec<TexturedVertex>> {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take()
+    }
+}
+
+impl PartialEq for BakedVertices {
+    fn eq(&self, _: &Self) -> bool {
+        true
+    }
+}
+
+impl std::fmt::Debug for BakedVertices {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("BakedVertices")
+    }
 }
 
 impl std::fmt::Debug for TexturedScene {
@@ -532,6 +584,7 @@ impl TexturedScene {
                             .to_array(),
                         uv: uvs[i],
                         color: colors[i],
+                        light: UNBAKED,
                     })
                     .collect();
                 mesh.primitives.push(Primitive {
@@ -849,7 +902,7 @@ pub(crate) fn uniform(material: &TexturedMaterial) -> [[f32; 4]; 2] {
 }
 
 /// The sRGB transfer function's decoding of each 8-bit value.
-fn srgb_to_linear() -> &'static [f32; 256] {
+pub(crate) fn srgb_to_linear() -> &'static [f32; 256] {
     static TABLE: std::sync::OnceLock<[f32; 256]> = std::sync::OnceLock::new();
     TABLE.get_or_init(|| {
         std::array::from_fn(|i| {
