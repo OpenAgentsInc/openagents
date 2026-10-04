@@ -224,6 +224,8 @@ The [inventory window profile](../../../bench/verse/2026-10-03/inventory-window/
 
 [#10498](https://github.com/OpenAgentsInc/openagents/issues/10498) adds explicit chamber instance constructors. Collision, navigation, blockers, bodies, and player/NPC lives use the host-selected instance. Checkpoints and shared combat resets preserve that identity. Tests reject commands and targets from another instance with identical actor IDs, replay nonzero-instance checkpoints, and retain controlled players through reset. Local constructors keep instance zero; authenticated service admission remains required.
 
+[#10499](https://github.com/OpenAgentsInc/openagents/issues/10499) adds the hosted chamber rights boundary. One owned game admits bounded principal grants and connection handles, derives command controllers from player rights, and provides read-only spectator snapshots. Reconnect, disconnect, revocation, respawn, and reset fence stale commands while the host alone advances one clock. Tests cover two players plus spectator, foreign principals/instances, independent shields and resources, lifecycle fences, and bounded enrollment. Authentication adapters must supply verified principals; handles are not bearer credentials. Network authentication/dispatch, durable grants, actor retirement, replication/reconciliation, and full service acceptance remain.
+
 ## Reuse inventory
 
 Review baseline: OpenAgents `843c92dd7e`. The entries below were checked against

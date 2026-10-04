@@ -61,6 +61,15 @@ catalog spells outside the original ten still need shared-caster adapters.
 the trusted host’s selected instance. Checkpoints and combat resets preserve it;
 the existing local constructors select instance zero. Instance identity fences
 commands and targets but does not authenticate a caller.
+`service::Chamber` owns one game behind explicitly enrolled principal rights.
+A trusted transport supplies verified identities and retains opaque connection
+handles. Player commands derive controller identity from the connection;
+spectators cannot act. Reconnect, disconnect, revocation, and instance reset
+fence queued input. Only the host advances the world clock. Grants and connections
+are bounded and remain in memory; handles are adapter bindings, not bearer tokens.
+Cryptographic authentication, network dispatch, durable grants, and replication
+still need service integration. Revocation leaves an uncontrolled actor in the
+world; actor retirement and capacity reclamation remain lifecycle work.
 Transactional saves, multiplayer
 replication, and authoring tools remain on the
 [engine roadmap](../../docs/verse/engine/roadmap.md).

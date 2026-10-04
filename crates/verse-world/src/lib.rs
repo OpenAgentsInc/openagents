@@ -242,6 +242,7 @@ pub mod playground;
 pub mod reverse_gravity;
 pub mod room;
 pub mod rules;
+pub mod service;
 pub mod spells;
 pub mod telekinesis;
 pub mod utilities;
