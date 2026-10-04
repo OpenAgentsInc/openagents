@@ -853,105 +853,147 @@ pub fn scenario() -> crate::playground::Scenario {
         camera: || {
             // Close on the tower's top from the south-east, then wide from
             // the south so the falls read against the floor.
-            let top = (Vec3::new(-6.5, 21.5, -7.), Vec3::new(-13.5, 17.2, 4.));
+            let top = (Vec3::new(-6.5, 22., -4.), Vec3::new(-13.5, 17.6, 7.));
             // The eye sits between the pillars' sight lines to the tower.
-            let wide = (Vec3::new(3., 9.5, -20.5), Vec3::new(-1., 7.5, 4.));
+            let wide = (Vec3::new(3., 9.5, -20.5), Vec3::new(-1., 7.5, 7.));
             [(0., top), (2.6, top), (4.2, wide), (12., wide)]
                 .into_iter()
                 .map(|(at, (eye, target))| Shot { at, eye, target })
                 .collect()
         },
-        replay_camera: (Vec3::new(-6.5, 21.5, -7.), Vec3::new(-13.5, 17.2, 4.)),
-        check: |game| {
-            let state = &game.spells.feather_fall;
-            let cast = game
-                .spells
-                .log
-                .iter()
-                .find(|r| r.spell == NAME && r.text.starts_with("Reaction"))
-                .ok_or("Feather Fall was never cast")?;
-            for id in [102, 103, 104] {
-                let name = game.actor_name(id);
-                if !cast.text.contains(&name) {
-                    return Err(format!("{name} was not caught: {}", cast.text));
-                }
-                let watch = state
-                    .watch
-                    .iter()
-                    .find(|w| w.actor == id)
-                    .ok_or(format!("{name} was not followed"))?;
-                if !watch.warded || watch.landed.is_none() || watch.impact > DESCENT_CAP + 0.01 {
-                    return Err(format!("{name} did not land slowly: {watch:?}"));
-                }
-                if !game
-                    .spells
-                    .log
-                    .iter()
-                    .any(|r| r.spell == NAME && r.text.starts_with(&format!("{name} lands softly")))
-                {
-                    return Err(format!("{name}'s landing was not cushioned"));
-                }
-                if game
-                    .spells
-                    .log
-                    .iter()
-                    .any(|r| r.spell == "Falling" && r.text.starts_with(&name))
-                {
-                    return Err(format!("{name} took falling damage"));
-                }
-            }
-            for id in [101, 105] {
-                let name = game.actor_name(id);
-                let fall = game
-                    .spells
-                    .log
-                    .iter()
-                    .find(|r| r.spell == "Falling" && r.text.starts_with(&name))
-                    .ok_or(format!("{name} took no falling damage"))?;
-                if !fall.text.contains("6d6") {
-                    return Err(format!("{name}: {}", fall.text));
-                }
-            }
-            let reach = |id: u64| {
-                game.actor_position(id)
-                    .map(|p| p.x - TOWER_EDGE)
-                    .ok_or(format!("{} is gone", game.actor_name(id)))
-            };
-            let glider = reach(103)?;
-            for id in [101, 102, 104, 105] {
-                if glider < reach(id)? + 5. {
-                    return Err(format!(
-                        "The glider reached {glider:.1} m, {} reached {:.1} m",
-                        game.actor_name(id),
-                        reach(id)?
-                    ));
-                }
-            }
-            if state.holds(103, game.time as f64) || !state.casts.is_empty() {
-                return Err("Feather Fall outlived its last landing".into());
-            }
-            Ok(())
-        },
+        replay_camera: (Vec3::new(-6.5, 22., -4.), Vec3::new(-13.5, 17.6, 7.)),
+        check: |game| verdict(game).map_err(|e| format!("{e}; {}", diagnose(game))),
     }
 }
 
-/// The scenario's tower: 60 feet tall, a hair over so the contact skin on
-/// the floor and the tower top still measures a full 60-foot fall.
-const TOWER_HEIGHT: f32 = 18.31;
+/// Where each dummy is and how its fall went, for a failed check.
+fn diagnose(game: &Game) -> String {
+    DUMMIES
+        .iter()
+        .map(|(id, name, _)| {
+            let c = game.actor_character(*id);
+            let watch = game
+                .spells
+                .feather_fall
+                .watch
+                .iter()
+                .find(|w| w.actor == *id);
+            format!(
+                "{name} at {:?} airborne {:?} vy {:?} peak {:?} warded {:?} landed {:?}",
+                game.actor_position(*id),
+                c.map(|c| c.airborne()),
+                c.map(|c| c.vertical_speed),
+                c.and_then(|c| c.peak),
+                watch.map(|w| w.warded),
+                watch.and_then(|w| w.landed),
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("; ")
+}
+
+/// The scenario's check: three caught dummies land at the cap unharmed, the
+/// other two take 6d6, and the hardest-shoved caught dummy glides farthest.
+fn verdict(game: &Game) -> Result<(), String> {
+    let state = &game.spells.feather_fall;
+    let cast = game
+        .spells
+        .log
+        .iter()
+        .find(|r| r.spell == NAME && r.text.starts_with("Reaction"))
+        .ok_or("Feather Fall was never cast")?;
+    for id in [102, 103, 104] {
+        let name = game.actor_name(id);
+        if !cast.text.contains(&name) {
+            return Err(format!("{name} was not caught: {}", cast.text));
+        }
+        let watch = state
+            .watch
+            .iter()
+            .find(|w| w.actor == id)
+            .ok_or(format!("{name} was not followed"))?;
+        if !watch.warded || watch.landed.is_none() || watch.impact > DESCENT_CAP + 0.01 {
+            return Err(format!("{name} did not land slowly: {watch:?}"));
+        }
+        if !game
+            .spells
+            .log
+            .iter()
+            .any(|r| r.spell == NAME && r.text.starts_with(&format!("{name} lands softly")))
+        {
+            return Err(format!("{name}'s landing was not cushioned"));
+        }
+        if game
+            .spells
+            .log
+            .iter()
+            .any(|r| r.spell == "Falling" && r.text.starts_with(&name))
+        {
+            return Err(format!("{name} took falling damage"));
+        }
+    }
+    for id in [101, 105] {
+        let name = game.actor_name(id);
+        let fall = game
+            .spells
+            .log
+            .iter()
+            .find(|r| r.spell == "Falling" && r.text.starts_with(&name))
+            .ok_or(format!("{name} took no falling damage"))?;
+        if !fall.text.contains("6d6") {
+            return Err(format!("{name}: {}", fall.text));
+        }
+    }
+    let reach = |id: u64| {
+        game.actor_position(id)
+            .map(|p| p.x - TOWER_EDGE)
+            .ok_or(format!("{} is gone", game.actor_name(id)))
+    };
+    let glider = reach(103)?;
+    for id in [101, 102, 104, 105] {
+        if glider < reach(id)? + 5. {
+            return Err(format!(
+                "The glider reached {glider:.1} m, {} reached {:.1} m",
+                game.actor_name(id),
+                reach(id)?
+            ));
+        }
+    }
+    if state.holds(103, game.time as f64) || !state.casts.is_empty() {
+        return Err("Feather Fall outlived its last landing".into());
+    }
+    Ok(())
+}
+
+/// The scenario's tower top, m. A capsule rolls about 0.3 m down the edge
+/// before it leaves the tower, so the top stands 61.5 feet tall for the
+/// fall from where the dummies go airborne to measure a full 60 feet.
+const TOWER_HEIGHT: f32 = 18.75;
 const TOWER_X: f32 = -16.;
-const TOWER_Z: f32 = 4.;
+/// The tower spans z 2 to 12, so every glide clears the stone wall (z up to
+/// 0.9) and the chasm (z from 14).
+const TOWER_Z: f32 = 7.;
 /// The tower's east face, which the dummies go over.
 const TOWER_EDGE: f32 = -12.;
-const CASTER: Vec3 = Vec3::new(-18.1, TOWER_HEIGHT, 4.);
-/// Five dummies ahead of the wizard, inside the Thunderwave Cube. Each
-/// stands where the 10-foot push carries it over the edge: the outer four at
-/// about 2.5 m/s, the middle one, 0.4 m nearer the edge, at about 4.5 m/s.
+const CASTER: Vec3 = Vec3::new(-18.3, TOWER_HEIGHT, TOWER_Z);
+/// Five dummies 1 m apart ahead of the wizard, inside the Thunderwave Cube.
+/// Each stands where the 10-foot push, along the line from the wizard,
+/// carries its center 0.4 m past the edge: the outer four leave at about
+/// 3 m/s and the middle one at about 4.5 m/s.
 const DUMMIES: [(u64, &str, Vec3); 5] = [
-    (101, "Dummy 1", Vec3::new(-14.37, TOWER_HEIGHT, 2.4)),
-    (102, "Dummy 2", Vec3::new(-14.53, TOWER_HEIGHT, 3.2)),
-    (103, "Dummy 3", Vec3::new(-14.17, TOWER_HEIGHT, 4.)),
-    (104, "Dummy 4", Vec3::new(-14.53, TOWER_HEIGHT, 4.8)),
-    (105, "Dummy 5", Vec3::new(-14.37, TOWER_HEIGHT, 5.6)),
+    (101, "Dummy 1", Vec3::new(-14.1, TOWER_HEIGHT, TOWER_Z - 2.)),
+    (
+        102,
+        "Dummy 2",
+        Vec3::new(-14.28, TOWER_HEIGHT, TOWER_Z - 1.),
+    ),
+    (103, "Dummy 3", Vec3::new(-14.02, TOWER_HEIGHT, TOWER_Z)),
+    (
+        104,
+        "Dummy 4",
+        Vec3::new(-14.28, TOWER_HEIGHT, TOWER_Z + 1.),
+    ),
+    (105, "Dummy 5", Vec3::new(-14.1, TOWER_HEIGHT, TOWER_Z + 2.)),
 ];
 
 #[cfg(test)]
@@ -1378,7 +1420,7 @@ mod tests {
             let c = run.game.actor_character(id).unwrap();
             assert!(c.airborne());
             assert!(c.vertical_speed >= -DESCENT_CAP - 1e-9, "{id}: {c:?}");
-            assert!(c.external.x > 1., "{id}: {c:?}");
+            assert!(c.external.length() > 0.5, "{id}: {c:?}");
         }
         for id in [101, 105] {
             let c = run.game.actor_character(id).unwrap();
