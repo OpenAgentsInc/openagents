@@ -177,6 +177,15 @@ pub struct Slot {
     /// The exact command bytes while [`SlotState::Releasing`].
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub command: Option<String>,
+    /// Which attempt at this slot [`Slot::task_id`] is: 1 for the first, or
+    /// 0 when recorded before attempts were counted, which also means the
+    /// first.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub attempt: u32,
+}
+
+fn is_zero(value: &u32) -> bool {
+    *value == 0
 }
 
 /// One task of an accepted plan.
@@ -1058,10 +1067,11 @@ impl Studio {
             text: text.to_owned(),
             repository,
             lead: Slot {
-                task_id: format!("studio-{goal_id}-lead"),
+                task_id: slot_task_id(&goal_id, "lead"),
                 seat: lead,
                 state: SlotState::Held,
                 command: None,
+                attempt: 1,
             },
             planned: false,
             plan: Vec::new(),
@@ -1155,10 +1165,11 @@ impl Studio {
             });
             entries.push(PlanEntry {
                 slot: Slot {
-                    task_id: format!("studio-{goal_id}-{}", task.id),
+                    task_id: slot_task_id(&goal_id, &task.id),
                     seat,
                     state: SlotState::Held,
                     command: None,
+                    attempt: 1,
                 },
                 id: task.id,
                 title: task.title,
@@ -1838,3 +1849,17 @@ mod intents;
 #[cfg(test)]
 #[path = "studio_tests.rs"]
 mod tests;
+
+/// The task id of a goal's slot: the lead's (`entry` is `lead`) or a plan
+/// entry's. Host access names tasks by lower-case 32-byte hex, so the id is
+/// a digest of the goal and entry, which keeps it the same across restarts.
+pub(crate) fn slot_task_id(goal_id: &str, entry: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::new()
+        .chain_update(b"openagents.studio.task.v1\0")
+        .chain_update(goal_id.as_bytes())
+        .chain_update(b"\0")
+        .chain_update(entry.as_bytes())
+        .finalize();
+    digest.iter().map(|byte| format!("{byte:02x}")).collect()
+}

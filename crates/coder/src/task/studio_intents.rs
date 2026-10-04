@@ -91,20 +91,26 @@ fn read<T: Default + for<'de> Deserialize<'de>>(dir: &Path, name: &str) -> T {
         .unwrap_or_default()
 }
 
-/// The identity a returned or retried task takes: `<task>.r2`, then
-/// `.r3`. A plan identity has no dot, so this never names another entry.
-fn next_id(task_id: &str) -> Result<String, Error> {
-    let (base, attempt) = match task_id.rsplit_once(".r") {
-        Some((base, number)) => match number.parse::<u32>() {
-            Ok(attempt) => (base, attempt),
-            Err(_) => (task_id, 1),
-        },
-        None => (task_id, 1),
-    };
+/// The identity and attempt number a returned or retried task takes after
+/// `slot`. Host access names tasks by lower-case 32-byte hex, so the next
+/// identity is a digest of the current one and the next attempt number,
+/// which keeps it the same across restarts and distinct from every other
+/// slot's.
+fn next_id(slot: &super::Slot) -> Result<(String, u32), Error> {
+    use sha2::{Digest, Sha256};
+    let attempt = slot.attempt.max(1);
     if attempt >= MAX_ATTEMPTS {
         return Err(Error::LimitExceeded("attempts at one task"));
     }
-    Ok(format!("{base}.r{}", attempt + 1))
+    let next = attempt + 1;
+    let digest = Sha256::new()
+        .chain_update(b"openagents.studio.retry.v1\0")
+        .chain_update(slot.task_id.as_bytes())
+        .chain_update(b"\0")
+        .chain_update(next.to_string().as_bytes())
+        .finalize();
+    let id = digest.iter().map(|byte| format!("{byte:02x}")).collect();
+    Ok((id, next))
 }
 
 /// Cancel `task_id` in the inbox at its current revision.
@@ -287,9 +293,10 @@ impl Studio {
             if matches!(now, Progress::Queued | Progress::Running) {
                 cancel(tasks, &task_id, "Stopped in the studio")?;
             }
-            let fresh = next_id(&task_id)?;
+            let (fresh, attempt) = next_id(self.slot(index, entry))?;
             let slot = self.slot_mut(index, entry);
             slot.task_id = fresh.clone();
+            slot.attempt = attempt;
             slot.state = SlotState::Held;
             slot.command = None;
             returned.push(fresh);
@@ -401,9 +408,10 @@ impl Studio {
                 "only a failed or cancelled task is retried; `{task_id}` is not"
             )));
         }
-        let fresh = next_id(&slot.task_id)?;
+        let (fresh, attempt) = next_id(&slot)?;
         let target = self.slot_mut(index, entry);
         target.task_id = fresh.clone();
+        target.attempt = attempt;
         target.state = SlotState::Held;
         target.command = None;
         let goal = &mut self.state.goals[index];

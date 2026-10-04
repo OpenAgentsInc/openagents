@@ -157,7 +157,12 @@ fn a_goal_queues_its_lead_with_a_briefing_and_notes_it_eligible() {
         )
         .unwrap();
     let (goal_id, lead) = studio.submit_goal(&mut tasks, goal(&scratch), 100).unwrap();
-    assert_eq!(lead.task_id, format!("studio-{goal_id}-lead"));
+    assert_eq!(lead.task_id.len(), 64, "host access names tasks by hex");
+    assert!(
+        lead.task_id
+            .bytes()
+            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+    );
     assert_eq!(lead.seat, "lead");
     assert_eq!(lead.provider, Provider::Codex);
     let task = tasks.show(&lead.task_id).unwrap();
@@ -204,7 +209,7 @@ fn plan_entries_release_only_when_their_dependencies_are_done() {
     let scratch = scratch();
     let (mut tasks, mut studio) = team(&scratch);
     let (goal_id, lead) = studio.submit_goal(&mut tasks, goal(&scratch), 100).unwrap();
-    let task = |id: &str| format!("studio-{goal_id}-{id}");
+    let task = |id: &str| slot_task_id(&goal_id, id);
 
     // The lead is still planning: nothing else is created.
     let lead_reply = |_: &str| Some(reply(&diamond()));
@@ -322,7 +327,7 @@ fn an_invalid_plan_becomes_a_decision_and_creates_nothing() {
         .unwrap()
     {
         PlanOutcome::Accepted { released } => {
-            assert_eq!(ids(&released), [format!("studio-{goal_id}-a")]);
+            assert_eq!(ids(&released), [slot_task_id(&goal_id, "a")]);
         }
         PlanOutcome::Decision(decision) => panic!("{decision:?}"),
     }
@@ -361,7 +366,7 @@ fn a_failed_dependency_blocks_its_dependents_and_opens_a_decision() {
     let lead_reply = |_: &str| Some(reply(&diamond()));
     studio.reconcile(&mut tasks, 101, &lead_reply).unwrap();
     tasks.force(
-        &format!("studio-{goal_id}-a"),
+        &slot_task_id(&goal_id, "a"),
         Status::Cancelled,
         Execution::Stopped,
     );
@@ -406,7 +411,7 @@ fn a_restart_finishes_an_interrupted_release_exactly_once() {
         assert!(goal.planned, "{fault:?}");
         assert_eq!(goal.plan[0].slot.state, SlotState::Releasing, "{fault:?}");
         assert!(goal.plan[0].slot.command.is_some());
-        let a = format!("studio-{goal_id}-a");
+        let a = slot_task_id(&goal_id, "a");
         assert_eq!(tasks.show(&a).is_some(), fault == Fault::AfterApply);
 
         let released = studio.reconcile(&mut tasks, 102, &no_reply).unwrap();
@@ -543,9 +548,9 @@ fn a_message_steers_a_running_task_or_waits_for_the_next_briefing() {
     finish(&mut tasks, &lead.task_id);
     let lead_reply = |_: &str| Some(reply(&diamond()));
     studio.reconcile(&mut tasks, 103, &lead_reply).unwrap();
-    finish(&mut tasks, &format!("studio-{goal_id}-a"));
+    finish(&mut tasks, &slot_task_id(&goal_id, "a"));
     studio.reconcile(&mut tasks, 104, &no_reply).unwrap();
-    let b = format!("studio-{goal_id}-b");
+    let b = slot_task_id(&goal_id, "b");
     let briefing = tasks.show(&b).unwrap().intent.prompt;
     assert!(briefing.contains("Messages for you:\n- From @lead: Use the existing logger."));
     let grace = studio

@@ -174,9 +174,11 @@ fn stopping_a_seat_cancels_its_task_and_returns_it_to_the_board() {
     studio
         .accept_plan(&mut tasks, &goal, plan().as_bytes(), 1)
         .unwrap();
-    let queued = slot(&studio, "a").task_id;
+    let before = slot(&studio, "a");
+    let queued = before.task_id.clone();
     let returned = studio.stop_seat(&mut tasks, "ada").unwrap();
-    assert_eq!(returned, vec![format!("{queued}.r2")]);
+    assert_eq!(returned, vec![next_id(&before).unwrap().0]);
+    assert_eq!(slot(&studio, "a").attempt, 2);
     assert_eq!(
         tasks.task(&queued).unwrap().status,
         Status::Cancelled,
@@ -245,10 +247,12 @@ fn a_cancelled_task_is_retried_under_a_new_identity() {
         Err(Error::State(_))
     ));
     // A queued one is cancelled there too, then retried.
-    let queued = slot(&studio, "a").task_id;
+    let before = slot(&studio, "a");
+    let queued = before.task_id.clone();
     studio.cancel_task(&mut tasks, &queued, 4).unwrap();
     let fresh = studio.retry_task(&mut tasks, &queued, 5).unwrap();
-    assert_eq!(fresh, format!("{queued}.r2"));
+    assert_eq!(fresh, next_id(&before).unwrap().0);
+    assert_eq!(slot(&studio, "a").attempt, 2);
     let now = slot(&studio, "a");
     assert_eq!(
         (now.task_id, now.state),
@@ -314,13 +318,36 @@ fn a_rejection_is_remembered_and_an_intent_answers_once() {
 }
 
 #[test]
-fn a_returned_task_counts_its_attempts() {
-    assert_eq!(next_id("studio-g1-ab-a").unwrap(), "studio-g1-ab-a.r2");
-    assert_eq!(next_id("studio-g1-ab-a.r2").unwrap(), "studio-g1-ab-a.r3");
-    assert!(matches!(
-        next_id("studio-g1-ab-a.r99"),
-        Err(Error::LimitExceeded(_))
-    ));
+fn a_returned_task_counts_its_attempts_under_hex_identities() {
+    let first = super::super::Slot {
+        task_id: "a".repeat(64),
+        seat: "ada".into(),
+        state: super::super::SlotState::Held,
+        command: None,
+        attempt: 1,
+    };
+    let (second, attempt) = next_id(&first).unwrap();
+    assert_eq!(attempt, 2);
+    assert_eq!(second.len(), 64);
+    assert!(
+        second
+            .bytes()
+            .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
+    );
+    assert_ne!(second, first.task_id);
+    // The same slot always returns to the same identity.
+    assert_eq!(next_id(&first).unwrap().0, second);
+    // A slot recorded before attempts were counted is its first attempt.
+    let legacy = super::super::Slot {
+        attempt: 0,
+        ..first.clone()
+    };
+    assert_eq!(next_id(&legacy).unwrap(), (second, 2));
+    let spent = super::super::Slot {
+        attempt: 99,
+        ..first
+    };
+    assert!(matches!(next_id(&spent), Err(Error::LimitExceeded(_))));
 }
 
 #[test]
