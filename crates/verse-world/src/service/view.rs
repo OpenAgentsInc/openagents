@@ -60,10 +60,17 @@ fn snapshot_generation(state: Option<&super::wire::State>, actor: u64) -> Option
         .map(|p| p.life.generation)
         .max()
 }
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct GiverInteraction {
+    pub character: verse_engine::core::LifeId,
+    pub giver: verse_engine::core::LifeId,
+}
+
 /// Owns presentation history only. Initialize progress from the worker's cursor.
 pub struct View {
     instance: u64,
     target: Option<verse_engine::core::LifeId>,
+    interaction: Option<GiverInteraction>,
     replica: Buffer,
     events: Vec<Event>,
     after: u64,
@@ -79,6 +86,7 @@ impl View {
         Ok(Self {
             instance,
             target: None,
+            interaction: None,
             replica: Buffer::new(instance, displacement)?,
             events: Vec::new(),
             after,
@@ -141,6 +149,80 @@ impl View {
                 .or_insert(marker);
         }
         markers
+    }
+
+    fn giver_reachable(&self, giver: verse_engine::core::LifeId) -> bool {
+        let Some(inventory) = self.inventory() else {
+            return false;
+        };
+        let Some(state) = self.replica.latest() else {
+            return false;
+        };
+        let Some(hud) = state.hud.as_ref() else {
+            return false;
+        };
+        if hud.resources.hp <= 0
+            || !self.quest_markers().contains_key(&giver)
+            || !inventory
+                .quest_log
+                .iter()
+                .any(|q| q.giver_life == Some(giver) && q.interactable && q.marker().is_some())
+        {
+            return false;
+        }
+        let character = state
+            .presentation
+            .actors
+            .iter()
+            .find(|p| verse_engine::core::LifeId::from(p.life) == hud.life);
+        let npc = state
+            .presentation
+            .actors
+            .iter()
+            .find(|p| verse_engine::core::LifeId::from(p.life) == giver);
+        character
+            .zip(npc)
+            .is_some_and(|(a, b)| a.actor.position.distance(b.actor.position) <= 4.)
+    }
+
+    pub fn open_giver(&mut self, giver: verse_engine::core::LifeId) -> Result<(), String> {
+        if !self.giver_reachable(giver) {
+            return Err("Quest giver is not currently reachable".into());
+        }
+        self.interaction = Some(GiverInteraction {
+            character: self.inventory().unwrap().life.into(),
+            giver,
+        });
+        Ok(())
+    }
+
+    pub fn interaction(&self) -> Option<GiverInteraction> {
+        let interaction = self.interaction?;
+        (self.inventory()?.life == interaction.character.into()
+            && self.giver_reachable(interaction.giver))
+        .then_some(interaction)
+    }
+
+    pub fn interaction_quests(&self) -> Vec<&super::progression::Progress> {
+        let Some(interaction) = self.interaction() else {
+            return vec![];
+        };
+        self.inventory()
+            .unwrap()
+            .quest_log
+            .iter()
+            .filter(|q| q.giver_life == Some(interaction.giver) && q.marker().is_some())
+            .collect()
+    }
+
+    pub fn close_giver(&mut self) {
+        self.interaction = None;
+    }
+
+    fn retire_interaction(&mut self) {
+        if self.interaction().is_none() {
+            self.interaction = None;
+        }
     }
 
     pub fn target(&self) -> Option<verse_engine::core::LifeId> {
@@ -263,6 +345,7 @@ impl View {
         }
         self.giver_generations = generations;
         self.inventory = Some((response.tick, inventory.clone()));
+        self.retire_interaction();
         Ok(())
     }
     pub fn camera_handoff(&self) -> bool {
@@ -329,7 +412,9 @@ impl View {
             self.events.clear();
             self.handoff = None;
             self.reset_tick = response.tick;
+            self.interaction = None;
         }
+        self.retire_interaction();
         Ok(())
     }
     /// Admits a bounded worker delivery atomically; duplicates never replay cues.
@@ -418,6 +503,7 @@ impl View {
         }
         self.after = after;
         self.event_tick = event_tick;
+        self.retire_interaction();
         Ok(())
     }
     pub fn frame(&self, alpha: f32, camera: Camera) -> Result<Option<Frame>, String> {
@@ -574,6 +660,19 @@ mod tests {
         let giver = quest.giver_life.unwrap();
         assert_eq!(giver.actor, 1_000_000);
         assert!(view.select_target(Some(giver)).is_err());
+        view.open_giver(giver).unwrap();
+        assert_eq!(view.interaction().unwrap().giver, giver);
+        assert_eq!(view.interaction_quests().len(), 1);
+        assert!(
+            view.interaction_quests()[0]
+                .dialogue_text()
+                .unwrap()
+                .contains("outer summoner")
+        );
+        let mut foreign = giver;
+        foreign.instance += 1;
+        assert!(view.open_giver(foreign).is_err());
+        assert_eq!(view.interaction().unwrap().giver, giver);
         assert_eq!(
             view.quest_markers().get(&giver),
             Some(&crate::service::progression::Marker::Available)
@@ -646,7 +745,16 @@ mod tests {
             .unwrap()
             .generation += 1;
         assert!(view.quest_markers().is_empty());
+        assert!(view.interaction().is_none());
         view.inventory.as_mut().unwrap().1.quest_log[0].giver_life = Some(giver);
+        view.close_giver();
+        assert!(view.interaction().is_none());
+        view.open_giver(giver).unwrap();
+        view.inventory.as_mut().unwrap().1.quest_log[0].interactable = false;
+        view.retire_interaction();
+        view.inventory.as_mut().unwrap().1.quest_log[0].interactable = true;
+        assert!(view.interaction().is_none());
+        view.open_giver(giver).unwrap();
         view.events.push(Event {
             instance: 120,
             serial: 999,
@@ -656,6 +764,7 @@ mod tests {
             kind: Kind::Death,
         });
         assert!(view.quest_markers().is_empty());
+        assert!(view.interaction().is_none());
         drop(observer);
         drop(client);
         stop.send(()).unwrap();
