@@ -479,6 +479,201 @@ impl Client {
     }
 }
 
+/// Maximum requests awaiting verified responses on one duplex connection.
+pub const PIPELINE_CAPACITY: usize = 8;
+
+struct Pending {
+    id: u64,
+    body: Body,
+    sent: tokio::time::Instant,
+}
+
+/// Bounded duplex transport. Dropping it closes uncertain IO without replay.
+/// Frame tasks own partial reads and writes independently of caller polling.
+pub struct Pipeline {
+    client: Client,
+    writes: tokio::sync::mpsc::Sender<Vec<u8>>,
+    responses: tokio::sync::mpsc::Receiver<Result<Response, String>>,
+    pending: std::collections::VecDeque<Pending>,
+    tasks: Vec<tokio::task::JoinHandle<()>>,
+    sequence: Option<(super::wire::Life, u64, u64)>,
+    failed: bool,
+}
+impl Drop for Pipeline {
+    fn drop(&mut self) {
+        for task in &self.tasks {
+            task.abort();
+        }
+    }
+}
+impl Client {
+    /// Transfers an authenticated connection to bounded duplex IO.
+    pub fn pipeline(mut self) -> Result<Pipeline, String> {
+        let stream = self.stream.take().ok_or("Chamber client is disconnected")?;
+        let (mut reader, mut writer) = tokio::io::split(stream);
+        let (writes, mut outgoing) = tokio::sync::mpsc::channel::<Vec<u8>>(PIPELINE_CAPACITY);
+        let (incoming, responses) = tokio::sync::mpsc::channel(PIPELINE_CAPACITY);
+        let errors = incoming.clone();
+        let write = tokio::spawn(async move {
+            while let Some(bytes) = outgoing.recv().await {
+                let result = timeout(
+                    DEADLINE,
+                    write_frame(&mut writer, &bytes, MAX_REQUEST_BYTES),
+                )
+                .await
+                .map_err(|_| "Chamber write timed out".to_string())
+                .and_then(|r| r);
+                if let Err(error) = result {
+                    let _ = errors.send(Err(error)).await;
+                    return;
+                }
+            }
+        });
+        let read = tokio::spawn(async move {
+            loop {
+                let result = match read_frame(&mut reader, MAX_RESPONSE_BYTES).await {
+                    Ok(bytes) => serde_json::from_slice::<Response>(&bytes)
+                        .map_err(|_| "Malformed chamber response".to_string()),
+                    Err(error) => Err(error),
+                };
+                let failed = result.is_err();
+                if incoming.send(result).await.is_err() || failed {
+                    return;
+                }
+            }
+        });
+        Ok(Pipeline {
+            client: self,
+            writes,
+            responses,
+            pending: Default::default(),
+            tasks: vec![read, write],
+            sequence: None,
+            failed: false,
+        })
+    }
+}
+impl Pipeline {
+    pub fn available(&self) -> bool {
+        !self.failed && self.pending.len() < PIPELINE_CAPACITY
+    }
+    pub fn pending(&self) -> usize {
+        self.pending.len()
+    }
+    pub fn control(&self) -> Option<&Control> {
+        if self.failed {
+            None
+        } else {
+            self.client.control.as_ref()
+        }
+    }
+    pub fn tick(&self) -> u64 {
+        self.client.tick
+    }
+    pub fn instance(&self) -> u64 {
+        self.client.instance
+    }
+
+    /// Allocates commands monotonically within the currently verified life and epoch.
+    pub fn prepare_command(&mut self, intent: Intent<Ability>) -> Result<Command<Ability>, String> {
+        let control = self
+            .control()
+            .ok_or("Client has no admitted adventurer")?
+            .clone();
+        let previous = match self.sequence {
+            Some((life, epoch, sequence)) if life == control.life && epoch == control.epoch => {
+                sequence.max(control.accepted_sequence)
+            }
+            _ => control.accepted_sequence,
+        };
+        let sequence = previous
+            .checked_add(1)
+            .ok_or("Client command sequence exhausted")?;
+        self.sequence = Some((control.life, control.epoch, sequence));
+        Ok(Command {
+            actor: control.life.into(),
+            epoch: control.epoch,
+            sequence,
+            tick: self.client.tick,
+            intent,
+        })
+    }
+    /// Enqueues once. A successful enqueue never implies authoritative acceptance.
+    pub fn send(&mut self, body: Body) -> Result<u64, String> {
+        if !self.available() {
+            return Err("Chamber pipeline is unavailable or full".into());
+        }
+        let id = self.client.next_request;
+        let next = id
+            .checked_add(1)
+            .ok_or("Client request identities exhausted")?;
+        let bytes = serde_json::to_vec(&Request {
+            version: VERSION,
+            request_id: id,
+            body: body.clone(),
+        })
+        .map_err(|_| "Cannot encode chamber request")?;
+        Request::decode(&bytes)?;
+        self.writes
+            .try_send(bytes)
+            .map_err(|_| "Chamber writer is unavailable")?;
+        self.client.next_request = next;
+        self.pending.push_back(Pending {
+            id,
+            body,
+            sent: tokio::time::Instant::now(),
+        });
+        Ok(id)
+    }
+    fn fail(&mut self) {
+        self.failed = true;
+        self.client.control = None;
+        self.pending.clear();
+        for task in &self.tasks {
+            task.abort();
+        }
+    }
+    /// Cancellation before delivery preserves the response and its pending request.
+    /// Invalid or overdue responses close both IO tasks without replaying commands.
+    pub async fn receive(&mut self) -> Result<(Body, Response), String> {
+        let deadline = self
+            .pending
+            .front()
+            .ok_or("Chamber pipeline has no pending request")?
+            .sent
+            + DEADLINE;
+        let received = tokio::time::timeout_at(deadline, self.responses.recv()).await;
+        let result = match received {
+            Ok(Some(result)) => result,
+            Ok(None) => Err("Chamber response reader closed".into()),
+            Err(_) => Err("Chamber request timed out".into()),
+        };
+        let response = match result {
+            Ok(response) => response,
+            Err(error) => {
+                self.fail();
+                return Err(error);
+            }
+        };
+        let pending = self.pending.front().expect("Pending response context");
+        if let Err(error) = self.client.validate(pending.id, &pending.body, &response) {
+            self.fail();
+            return Err(error);
+        }
+        let pending = self.pending.pop_front().expect("Verified response context");
+        self.client.tick = response.tick;
+        if let Reply::Inventory { inventory } = &response.body {
+            self.client.inventory_revision = inventory.revision;
+        }
+        let lost_control = self.client.player && response.control.is_none();
+        self.client.control = response.control.clone();
+        if lost_control {
+            self.fail();
+        }
+        Ok((pending.body, response))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -490,6 +685,121 @@ mod tests {
     use tokio_rustls::TlsAcceptor;
     fn name() -> ServerName<'static> {
         ServerName::try_from("localhost").unwrap()
+    }
+
+    #[tokio::test]
+    async fn pipeline_sends_bounded_inputs_before_any_reply_and_preserves_partial_reads() {
+        let keys = [key(201), key(202), key(203)];
+        let mut gateway = gateway(&keys);
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (server, connector) = tls();
+        let (partial, partial_received) = oneshot::channel();
+        let (release, released) = oneshot::channel();
+        let peer = tokio::spawn(async move {
+            let (socket, _) = listener.accept().await.unwrap();
+            let mut socket = TlsAcceptor::from(server).accept(socket).await.unwrap();
+            let (id, hello) = gateway.open_json(0).unwrap();
+            write_frame(&mut socket, &hello, MAX_RESPONSE_BYTES)
+                .await
+                .unwrap();
+            let auth = read_frame(&mut socket, MAX_REQUEST_BYTES).await.unwrap();
+            let response = gateway.dispatch_json(id, 0, &auth).unwrap();
+            write_frame(&mut socket, &response, MAX_RESPONSE_BYTES)
+                .await
+                .unwrap();
+            let mut responses = Vec::new();
+            // The peer withholds every response until all requests arrive.
+            for _ in 0..PIPELINE_CAPACITY {
+                let bytes = timeout(
+                    Duration::from_secs(3),
+                    read_frame(&mut socket, MAX_REQUEST_BYTES),
+                )
+                .await
+                .unwrap()
+                .unwrap();
+                responses.push(gateway.dispatch_json(id, 0, &bytes).unwrap());
+            }
+            use tokio::io::AsyncWriteExt;
+            let first = responses.remove(0);
+            socket
+                .write_all(&(first.len() as u32).to_be_bytes())
+                .await
+                .unwrap();
+            socket.write_all(&first[..first.len() / 2]).await.unwrap();
+            socket.flush().await.unwrap();
+            partial.send(()).unwrap();
+            released.await.unwrap();
+            socket.write_all(&first[first.len() / 2..]).await.unwrap();
+            socket.flush().await.unwrap();
+            for response in responses {
+                write_frame(&mut socket, &response, MAX_RESPONSE_BYTES)
+                    .await
+                    .unwrap();
+            }
+        });
+        let client = Client::connect(address, name(), connector.config().clone(), 120, &keys[0])
+            .await
+            .unwrap();
+        let mut pipeline = client.pipeline().unwrap();
+        for sequence in 1..=PIPELINE_CAPACITY as u64 {
+            let command = pipeline
+                .prepare_command(Intent::Move {
+                    axes: [0., 0.],
+                    yaw: 0.,
+                })
+                .unwrap();
+            assert_eq!(command.sequence, sequence);
+            pipeline
+                .send(Body::Command {
+                    command: command.into(),
+                })
+                .unwrap();
+        }
+        assert!(!pipeline.available());
+        assert!(pipeline.send(Body::Snapshot {}).is_err());
+        partial_received.await.unwrap();
+        assert!(
+            timeout(Duration::from_millis(20), pipeline.receive())
+                .await
+                .is_err()
+        );
+        assert_eq!(pipeline.pending(), PIPELINE_CAPACITY);
+        release.send(()).unwrap();
+        for sequence in 1..=PIPELINE_CAPACITY as u64 {
+            let (body, response) = timeout(Duration::from_secs(3), pipeline.receive())
+                .await
+                .unwrap()
+                .unwrap();
+            assert!(matches!(body, Body::Command { command } if command.sequence == sequence));
+            assert!(matches!(response.body, Reply::Accepted));
+            assert_eq!(pipeline.control().unwrap().accepted_sequence, sequence);
+        }
+        assert_eq!(pipeline.pending(), 0);
+        assert!(pipeline.available());
+        peer.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn pipeline_foreign_correlation_closes_io_without_replay() {
+        let (client, _, peer) = fake_peer(false).await;
+        let mut pipeline = client.pipeline().unwrap();
+        pipeline.send(Body::Snapshot {}).unwrap();
+        assert!(pipeline.receive().await.is_err());
+        assert!(!pipeline.available());
+        assert!(pipeline.control().is_none());
+        assert!(pipeline.send(Body::Snapshot {}).is_err());
+        peer.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn pipeline_drop_closes_an_uncertain_request() {
+        let (client, received, peer) = fake_peer(true).await;
+        let mut pipeline = client.pipeline().unwrap();
+        pipeline.send(Body::Snapshot {}).unwrap();
+        received.await.unwrap();
+        drop(pipeline);
+        peer.await.unwrap();
     }
 
     #[tokio::test]
