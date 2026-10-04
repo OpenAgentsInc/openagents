@@ -210,9 +210,13 @@ pack first.
   Everglade replaces the Grid.
 - **In Everglade.** The player arrives on the approach path facing the
   workshop and walks the glade with the Grid's sticks: move, look, and jump.
-  The OpenAgents app draws no zone panel inside a zone: no caption, hints,
-  or buttons, only the world and its sticks. It has no studio panel, so it
-  offers no **Interact** at a station; Coder's phones keep theirs.
+  A compact hotbar above the sticks offers **Jump**, **Sprint** (switches to
+  **Run**), **Levitate** (switches to **Land**), **Up**, and **Down**.
+  Levitation holds altitude while you move; Up and Down adjust it by 1.5 m,
+  up to 18 m above the ground. Land descends gently at 2 m/s. The bar works
+  while you hold a stick and disappears on returning to the Grid.
+  The OpenAgents app has no studio panel, so it offers no **Interact** at a
+  station; Coder's phones keep theirs.
 - **Returning.** The return arch, lettered **THE GRID**, stands 7 m behind
   Everglade's spawn. Walking through it comes back 3.5 m in front of the Grid's Everglade arch, facing away from
   it, and presence rejoins `verse-bare` there.

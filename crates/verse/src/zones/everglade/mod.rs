@@ -221,6 +221,11 @@ pub fn station_near(x: f32, z: f32) -> Option<&'static Station> {
 /// the characters: the player's and the studio's seats.
 pub(crate) struct Everglade {
     elapsed: f32,
+    pub levitating: bool,
+    pub sprinting: bool,
+    pub altitude: f32,
+    pub jump: bool,
+    landing: bool,
     rendered: Mesh,
     cast: Option<player::Cast>,
 }
@@ -235,6 +240,11 @@ impl Everglade {
     pub fn new(pack: &ZonePack, at: &PlayerController) -> Result<Self, String> {
         Ok(Self {
             elapsed: 0.0,
+            levitating: false,
+            sprinting: false,
+            altitude: 0.0,
+            jump: false,
+            landing: false,
             rendered: Self::stage(0.0),
             cast: player::Cast::new(pack, at)?,
         })
@@ -317,6 +327,41 @@ impl Everglade {
         let ground = height(player.pos.x, player.pos.z);
         player.pos.y += ground;
         player.set_surface_height(ground);
+    }
+
+    /// Apply movement controls while preserving the shared wall collision.
+    pub fn move_controlled(
+        &mut self,
+        player: &mut PlayerController,
+        input: &InputState,
+        blockers: &[Footprint],
+        dt: f32,
+    ) {
+        let mut input = *input;
+        input.sprint |= self.sprinting;
+        input.jump |= std::mem::take(&mut self.jump);
+        if self.levitating || self.landing {
+            input.jump = false;
+            let before = player.pos.y;
+            Self::move_player(player, &input, blockers, dt);
+            if self.landing {
+                self.altitude = (before - 2.0 * dt).max(height(player.pos.x, player.pos.z));
+                self.landing = self.altitude > height(player.pos.x, player.pos.z) + 0.001;
+            }
+            player.hold_altitude(before + (self.altitude - before).clamp(-2.0 * dt, 3.0 * dt));
+        } else {
+            Self::move_player(player, &input, blockers, dt);
+        }
+    }
+
+    pub fn toggle_levitate(&mut self, player: &PlayerController) {
+        self.levitating = !self.levitating;
+        self.landing = !self.levitating;
+        self.altitude = if self.levitating {
+            (player.pos.y + 1.5).min(height(player.pos.x, player.pos.z) + 18.0)
+        } else {
+            player.pos.y
+        };
     }
 
     /// Advances the clock, poses the player's character for `at`, and

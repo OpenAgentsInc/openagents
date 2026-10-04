@@ -303,13 +303,11 @@ impl Encounter {
                     break;
                 }
                 if let Some(at) = wall {
-                    // A bolt that stops on a Wall of Stone panel damages it.
                     crate::spells::wall_of_stone::struck(
                         game,
                         (position + delta * at as f32).as_dvec3(),
                         cast.damage,
                         crate::wall_of_stone::DamageType::Necrotic,
-                        "Cultist bolt",
                     )?;
                     self.dodged += 1;
                     resolved = true;
@@ -467,6 +465,16 @@ pub fn drive(game: &mut Game, dt: f32) -> Result<[f32; 2], String> {
     if encounter.ended.is_some() || game.snapshot().player.hp == 0 {
         return Ok([0.0; 2]);
     }
+    if game.character.vertical_speed < -3.
+        && game
+            .spells
+            .feather_falls
+            .iter()
+            .all(|e| !e.holds(game.player_actor() as u32, game.time as f64))
+    {
+        let _ = game.activate(Ability::Spell(3));
+    }
+    let encounter = game.encounter.as_ref().unwrap();
     let opening = encounter.opening;
     let threatened = encounter
         .casts
@@ -512,10 +520,6 @@ pub fn drive(game: &mut Game, dt: f32) -> Result<[f32; 2], String> {
     if game.casting.is_some() {
         return Ok([0.0; 2]);
     }
-    // A reaction comes before the next action.
-    if crate::spells::feather_fall::react(game)? {
-        return Ok([0.0; 2]);
-    }
     if ready {
         let mut candidates = Vec::new();
         if threatened && game.controls.shield <= 0 {
@@ -526,16 +530,25 @@ pub fn drive(game: &mut Game, dt: f32) -> Result<[f32; 2], String> {
                 candidates.push(OPENING[opening]);
             }
         } else {
+            let count = frame
+                .actors
+                .iter()
+                .filter(|a| {
+                    a.actor.nameplate && a.health > 0 && a.actor.position.distance(position) < 3.048
+                })
+                .count();
+            if game.encounter.as_ref().unwrap().actions % 12 == 0 && distance <= 18.288 {
+                candidates.push(if count >= 3 {
+                    Ability::Spell(6)
+                } else {
+                    Ability::Spell(0)
+                });
+            }
             if threatened && distance < 8.0 {
                 candidates.push(Ability::MistyStep);
             }
             if closest.is_some_and(|a| a.actor.position.distance(game.player) < 4.0) {
                 candidates.push(Ability::Thunderwave);
-            }
-            // Lock a group in place while fighting the others.
-            let tentacles = crate::spells::black_tentacles::agent_target(game);
-            if tentacles.is_some() {
-                candidates.push(Ability::Spell(crate::spells::black_tentacles::SLOT));
             }
             candidates.extend_from_slice(&[Ability::Fireball, Ability::MagicMissile]);
             candidates.push(if game.encounter.as_ref().unwrap().actions % 3 == 0 {
@@ -546,14 +559,6 @@ pub fn drive(game: &mut Game, dt: f32) -> Result<[f32; 2], String> {
         }
         for ability in candidates {
             let previous_aim = (game.selected, game.yaw);
-            if ability == Ability::Spell(crate::spells::black_tentacles::SLOT)
-                && let Some(id) = crate::spells::black_tentacles::agent_target(game)
-                && let Some(target) = frame.actors.iter().find(|a| a.actor.id == id)
-            {
-                game.selected = id;
-                let delta = target.actor.position - game.player;
-                game.yaw = (-delta.x).atan2(-delta.z);
-            }
             if ability == Ability::Fireball {
                 let cluster = frame
                     .actors
@@ -724,7 +729,7 @@ mod tests {
         assert_eq!(outgoing, lost);
         let e = game.encounter.as_ref().unwrap();
         assert!(e.ended.is_some());
-        assert!(e.used.len() == Ability::ALL.len());
+        assert!(Ability::ALL.iter().all(|a| e.used.contains_key(a.label())));
     }
     fn run() -> (Game, u32) {
         let scene =

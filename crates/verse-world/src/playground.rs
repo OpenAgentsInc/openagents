@@ -121,6 +121,43 @@ pub enum Step {
     /// Turn to a yaw, radians; facing is `(-sin yaw, 0, -cos yaw)`.
     Face(f32),
     Cast(Ability),
+    /// Show an expected refusal without aborting the recording.
+    Refused(Ability),
+    /// Select an admitted creature or prop before the next command.
+    Select(u64),
+    /// Select a panel from the latest admitted stone layout.
+    SelectPanel(usize),
+    /// Launch fixture ammunition through the normal swept-flight rules.
+    Flight {
+        origin: [f32; 3],
+        direction: [f32; 3],
+        siege: bool,
+    },
+    /// Direct a dummy through its normal swept movement controller.
+    Walk {
+        actor: u64,
+        target: [f32; 3],
+        speed: f32,
+    },
+    Stop(u64),
+    /// Require a physical result before the next demonstration begins.
+    ExpectActor {
+        actor: u64,
+        min: [f32; 3],
+        max: [f32; 3],
+    },
+    /// Fix the next identity-bound save in this seeded scene.
+    Save {
+        actor: u64,
+        roll: u32,
+    },
+    /// Direct an NPC to use its normal Athletics action.
+    Escape(u64),
+    /// A recorded physical launch by the playground fixture.
+    Impulse {
+        prop: usize,
+        impulse: [f64; 3],
+    },
     /// Walk or strafe input, held for one tick.
     Move([f32; 2]),
     Jump,
@@ -161,6 +198,8 @@ pub struct Scenario {
     pub seed: u64,
     /// Seconds of live action.
     pub live: f32,
+    /// Live playback multiplier; fixed steps still run at 120 Hz.
+    pub speed: u32,
     /// The key moment, scene seconds, replayed at [`REPLAY_SPEED`].
     pub replay: (f32, f32),
     /// Adds creatures to the hall's scene, usually at spawn points.
@@ -183,16 +222,16 @@ pub const OVERLAY_LOG_LINES: usize = 3;
 pub fn scenarios() -> Vec<Scenario> {
     vec![
         crate::spells::thunderwave::scenario(),
-        crate::telekinesis::scenario(),
-        crate::spells::wind_wall::scenario(),
-        crate::spells::levitate::scenario(),
+        crate::spells::scenarios::telekinesis(),
+        crate::spells::scenarios::area(1),
+        crate::spells::scenarios::levitate(),
         crate::spells::feather_fall::scenario(),
-        crate::spells::gust_of_wind::scenario(),
-        crate::spells::wall_of_stone::scenario(),
-        crate::spells::black_tentacles::scenario(),
+        crate::spells::scenarios::area(4),
+        crate::spells::scenarios::area(5),
+        crate::spells::scenarios::area(6),
+        crate::spells::scenarios::area(7),
+        crate::spells::scenarios::area(8),
         bow_stance(),
-        crate::reverse_gravity::game::scenario(),
-        crate::spells::meteor_swarm::scenario(),
     ]
 }
 
@@ -268,8 +307,10 @@ impl Run {
         (scenario.populate)(&mut game, hall)?;
         let mut script = (scenario.script)();
         script.sort_by(|a, b| a.at.total_cmp(&b.at));
-        let video = scenario.live + (scenario.replay.1 - scenario.replay.0) / REPLAY_SPEED;
-        if !(0. ..scenario.live).contains(&scenario.replay.0)
+        let video = scenario.live / scenario.speed as f32
+            + (scenario.replay.1 - scenario.replay.0) / REPLAY_SPEED;
+        if !(1..=3).contains(&scenario.speed)
+            || !(0. ..scenario.live).contains(&scenario.replay.0)
             || scenario.replay.1 <= scenario.replay.0
             || scenario.replay.1 > scenario.live
             || video > MAX_VIDEO_SECONDS
@@ -293,13 +334,15 @@ impl Run {
         })
     }
     pub fn live_frames(&self) -> u32 {
-        (self.scenario.live * FPS as f32).round() as u32
+        (self.scenario.live * FPS as f32 / self.scenario.speed as f32).round() as u32
     }
     pub fn replay_ticks(&self) -> u32 {
-        ((self.scenario.replay.1 - self.scenario.replay.0) * FPS as f32).round() as u32
+        ((self.scenario.replay.1 - self.scenario.replay.0) * FPS as f32
+            / self.scenario.speed as f32)
+            .round() as u32
     }
     pub fn frames(&self) -> u32 {
-        self.live_frames() + self.replay_ticks() * (1. / REPLAY_SPEED) as u32
+        self.live_frames() + self.replay_ticks() * self.scenario.speed * (1. / REPLAY_SPEED) as u32
     }
     pub fn frame(&self) -> u32 {
         self.frame
@@ -325,13 +368,132 @@ impl Run {
                     .game
                     .activate(ability)
                     .map_err(|e| format!("{} at {:.2} s: {e}", ability.label(), cue.at))?,
+                Step::Refused(ability) => {
+                    let error = self
+                        .game
+                        .activate(ability)
+                        .err()
+                        .ok_or("Expected spell refusal was admitted")?;
+                    self.game.spells.record(
+                        self.game.time,
+                        ability.label(),
+                        format!("Refused: {error}"),
+                        None,
+                    );
+                    self.game.message = error;
+                }
+                Step::Flight {
+                    origin,
+                    direction,
+                    siege,
+                } => {
+                    if siege {
+                        self.game.simulation.launch_siege(origin, direction)?;
+                    } else {
+                        self.game.simulation.launch_bow(origin, direction)?;
+                    }
+                }
+                Step::SelectPanel(index) => {
+                    let panel = self
+                        .game
+                        .spells
+                        .walls
+                        .last()
+                        .and_then(|e| e.wall.panels.get(index))
+                        .ok_or("Scenario panel is missing")?;
+                    self.game.selected = self
+                        .game
+                        .spells
+                        .props
+                        .iter()
+                        .find(|p| p.body == panel.body)
+                        .ok_or("Panel has no admitted prop")?
+                        .life
+                        .entity;
+                }
+                Step::Select(entity) => {
+                    if self.game.actor_position(entity).is_none()
+                        && !self
+                            .game
+                            .spells
+                            .props
+                            .iter()
+                            .any(|p| p.life.entity == entity && !p.removed)
+                    {
+                        return Err("Scenario selected an unknown entity".into());
+                    }
+                    self.game.selected = entity;
+                }
+                Step::Walk {
+                    actor,
+                    target,
+                    speed,
+                } => {
+                    let life = self
+                        .game
+                        .actor_life(actor)
+                        .ok_or("Scenario walk actor is missing")?;
+                    self.game
+                        .direct_npc_walk(life, Vec3::from_array(target), speed)?;
+                }
+                Step::ExpectActor { actor, min, max } => {
+                    let position = self
+                        .game
+                        .actor_position(actor)
+                        .ok_or("Expected actor is missing")?;
+                    if !position.cmpge(Vec3::from_array(min)).all()
+                        || !position.cmple(Vec3::from_array(max)).all()
+                    {
+                        return Err(format!(
+                            "Actor {actor} at {:?}, expected {:?} through {:?}",
+                            position, min, max
+                        ));
+                    }
+                    self.game.spells.record(
+                        self.game.time,
+                        "Playground",
+                        format!("Creature {actor} reached {:?}", position),
+                        None,
+                    );
+                }
+                Step::Stop(actor) => {
+                    let life = self
+                        .game
+                        .actor_life(actor)
+                        .ok_or("Scenario walk actor is missing")?;
+                    self.game.clear_npc_navigation(life);
+                }
+                Step::Save { actor, roll } => self.game.spells.dice.force_save(actor, roll)?,
+                Step::Escape(actor) => {
+                    if self.game.actor_life(actor).is_none() {
+                        return Err("Scenario escape actor is missing".into());
+                    }
+                    crate::spells::black_tentacles::escape(&mut self.game, actor)?;
+                }
+                Step::Impulse { prop, impulse } => {
+                    let body = self
+                        .game
+                        .spells
+                        .props
+                        .get(prop)
+                        .ok_or("Scenario impulse prop is missing")?
+                        .body;
+                    let at = self.game.spells.world[body].pos;
+                    self.game.spells.impulse_prop(
+                        prop,
+                        DVec3::from_array(impulse),
+                        at,
+                        "playground:launch",
+                    )?;
+                }
                 Step::Move(axes) => movement = axes,
                 Step::Jump => self.game.jump()?,
                 Step::Device(device) => (device.0)(&mut self.game)
                     .map_err(|e| format!("Device at {:.2} s: {e}", cue.at))?,
             }
         }
-        self.game.tick(1. / FPS as f32, movement)
+        self.game
+            .tick(self.scenario.speed as f32 / FPS as f32, movement)
     }
     /// Advances one video frame.
     pub fn advance(&mut self) -> Result<(), String> {
@@ -349,7 +511,7 @@ impl Run {
             }
             self.alpha = 1.;
         } else {
-            let sub = (self.frame - live) % (1. / REPLAY_SPEED) as u32;
+            let sub = (self.frame - live) % (self.scenario.speed as f32 / REPLAY_SPEED) as u32;
             if self.frame == live {
                 let (bytes, next) = self.start.clone().ok_or("The key moment never began")?;
                 (self.scenario.check)(&self.game)?;
@@ -364,7 +526,7 @@ impl Run {
                     self.replay_identical = Some(Some(self.game.checkpoint()?) == self.end);
                 }
             }
-            self.alpha = (sub + 1) as f32 * REPLAY_SPEED;
+            self.alpha = (sub + 1) as f32 * REPLAY_SPEED / self.scenario.speed as f32;
         }
         self.frame += 1;
         Ok(())
@@ -402,7 +564,11 @@ impl Run {
         let game = &self.game;
         let mut lines = vec![
             format!("{} - spell playground", self.scenario.title),
-            self.scenario.srd.to_string(),
+            if self.scenario.key == "reverse-gravity" {
+                "Level 7 Transmutation | Range 100 ft | Cylinder 50-ft radius, 100-ft high | DEX grab | Concentration 1 min".into()
+            } else {
+                self.scenario.srd.to_string()
+            },
         ];
         lines.push(if self.replaying() {
             format!(
@@ -410,7 +576,7 @@ impl Run {
                 REPLAY_SPEED, game.time
             )
         } else {
-            format!("t = {:.2} s", game.time)
+            format!("t = {:.2} s | live {:.0}x", game.time, self.scenario.speed)
         });
         lines.push(String::new());
         // Keep the panel small so the action stays visible: the latest log
@@ -426,7 +592,6 @@ impl Run {
         for record in recent.into_iter().rev() {
             lines.push(format!("[{:5.2}] {}", record.at, record.text));
         }
-        lines.extend(crate::spells::feather_fall::overlay(game));
         lines
     }
     /// The evidence JSON for `spell-<key>.json`.
@@ -489,6 +654,16 @@ impl Run {
             "saves": saves,
             "log": game.spells.log.iter().map(|r| format!("[{:.2}] {}", r.at, r.text)).collect::<Vec<_>>(),
             "tracks": tracks,
+            "feather_falls": game.spells.feather_falls,
+            "levitations": game.spells.levitations,
+            "telekinesis": game.spells.telekinesis,
+            "walls": game.spells.walls,
+            "gusts": game.spells.gusts,
+            "flames": game.spells.flames,
+            "wind_walls": game.spells.wind_walls,
+            "tentacles": game.spells.tentacles,
+            "meteors": game.spells.meteors,
+            "reverse_gravity": game.spells.reversed,
             "props": props,
             "actors": actors,
             "ledger": {
@@ -503,6 +678,7 @@ impl Run {
                 "identical_to_live": self.replay_identical,
             },
             "live_seconds": self.scenario.live,
+            "live_speed": self.scenario.speed,
             "video_seconds": self.frames() as f32 / FPS as f32,
             "authority_tick": game.authority_tick,
             "physics_steps": game.physics_steps,
@@ -519,7 +695,7 @@ mod tests {
             let key = scenario.key;
             let mut run = Run::new(scenario).unwrap();
             while !run.done() {
-                run.advance().unwrap();
+                run.advance().unwrap_or_else(|e| panic!("{key}: {e}"));
                 assert!(!run.overlay().is_empty());
             }
             (run.scenario.check)(run.result()).unwrap();
@@ -527,7 +703,14 @@ mod tests {
             let evidence = run.evidence().unwrap();
             assert!(evidence["video_seconds"].as_f64().unwrap() <= MAX_VIDEO_SECONDS as f64);
             let residual = &evidence["ledger"]["residual_relative"];
-            assert!(residual["linear"].as_f64().unwrap() < crate::spells::LEDGER_TOLERANCE);
+            assert!(
+                residual["angular"].as_f64().unwrap() < crate::spells::LEDGER_TOLERANCE,
+                "{key}: {residual}"
+            );
+            assert!(
+                residual["linear"].as_f64().unwrap() < crate::spells::LEDGER_TOLERANCE,
+                "{key}: {residual}"
+            );
         }
     }
     #[test]
@@ -562,6 +745,7 @@ fn bow_stance() -> Scenario {
         srd: "Stowed on the back; drawn in the left hand while shooting",
         seed: 1,
         live: 9.,
+        speed: 1,
         replay: (2.3, 3.6),
         setup: |scene, hall| {
             scene.actors.push(creature(

@@ -2,408 +2,272 @@
   "schema": "openagents.verse.spell-playground.v1",
   "spell": "wind-wall",
   "title": "Wind Wall",
-  "srd": "Level 3 Evocation | Range 120 ft | Wall 50 x 15 x 1 ft | STR save | 4d8 Bludgeoning, half on save",
+  "srd": "Level 3 Evocation | range 120 ft | STR save | 4d8 appearance damage",
   "srd_source": "SRD 5.2.1 (SRD_CC_v5.2.1.pdf)",
-  "rules_revision": "verse-chamber-owned-v17",
-  "seed": 457,
-  "dice_rolled": 10,
+  "rules_revision": "verse-chamber-owned-v18",
+  "seed": 456,
+  "dice_rolled": 5,
   "saves": [
     {
-      "at": 14.100000381469727,
+      "at": 24.0,
       "save": {
-        "target": 103,
+        "target": 102,
         "ability": "Strength",
-        "roll": 3,
+        "roll": 17,
         "modifier": 0,
-        "total": 3,
-        "dc": 15,
-        "success": false,
-        "forced": true
-      }
-    },
-    {
-      "at": 14.100000381469727,
-      "save": {
-        "target": 104,
-        "ability": "Strength",
-        "roll": 18,
-        "modifier": 0,
-        "total": 18,
+        "total": 17,
         "dc": 15,
         "success": true,
-        "forced": true
+        "forced": false
       }
     }
   ],
   "log": [
-    "[0.80] Straight wall 30 ft long, 15 ft high, 1 ft thick",
-    "[6.80] Catapult hurls a 150 kg boulder (siege): the wall does not touch it",
-    "[7.93] Siege boulder passed the wall unaffected and struck Siege dummy",
-    "[12.40] A 20 kg crate is thrown at the wall (airborne, Small)",
-    "[12.80] A 20 kg crate is shoved along the floor (grounded)",
-    "[14.10] Arc wall 49 ft long, 15 ft high, 1 ft thick",
-    "[14.10] Dummy D: STR save 3 +0 = 3 vs DC 15 fails; 4d8 [1, 7, 4, 7] -> 19 bludgeoning",
-    "[14.10] Dummy E: STR save 18 +0 = 18 vs DC 15 succeeds, half; 4d8 [3, 1, 2, 4] -> 5 bludgeoning",
-    "[16.03] Arrows deflected: 26 of 26; Target dummy unhurt (100/100 HP)"
+    "[24.00] Appearance: 8 bludgeoning; no later damage"
   ],
-  "tracks": [
+  "tracks": [],
+  "feather_falls": [],
+  "levitations": [],
+  "telekinesis": [],
+  "walls": [],
+  "gusts": [],
+  "flames": [],
+  "wind_walls": [
     {
-      "label": "Siege dummy",
-      "spell": "Wind Wall",
-      "at": 6.800000190734863,
-      "start": [
-        4.199999809265137,
-        0.0,
-        -1.0
-      ],
-      "final": [
-        6.127608299255371,
-        -1.3603685235577534e-12,
-        -1.0
-      ],
-      "requested_ft": 0.0,
-      "measured_ft": 6.324174835925965
+      "cast": 1,
+      "caster": 14,
+      "wall": {
+        "wall": {
+          "path": [
+            [
+              4.572000603983159,
+              -4.00000069035281
+            ],
+            [
+              -4.571999396016738,
+              -3.999999309647191
+            ]
+          ],
+          "base": 0.0
+        },
+        "bodies": [
+          20
+        ],
+        "until": 60.60000002384186,
+        "seed": 456,
+        "inside": [],
+        "ended": true
+      }
     },
     {
-      "label": "Thrown crate",
-      "spell": "Wind Wall",
-      "at": 12.399999618530273,
-      "start": [
-        0.20000000297683246,
-        0.2999999999981224,
-        -2.5999999045780324
-      ],
-      "final": [
-        -0.2031017316687733,
-        0.2999999998657302,
-        -2.6000033294083136
-      ],
-      "requested_ft": 0.0,
-      "measured_ft": 1.3225122528220299
-    },
-    {
-      "label": "Pushed crate",
-      "spell": "Wind Wall",
-      "at": 12.800000190734863,
-      "start": [
-        0.6000000238384582,
-        0.2999999999981224,
-        -3.7999999522617482
-      ],
-      "final": [
-        3.9013022994931235,
-        0.2999999245705255,
-        -3.8000002695909627
-      ],
-      "requested_ft": 10.0,
-      "measured_ft": 10.831044211465485
+      "cast": 2,
+      "caster": 14,
+      "wall": {
+        "wall": {
+          "path": [
+            [
+              -5.0,
+              -8.0
+            ],
+            [
+              -3.5,
+              -4.5
+            ],
+            [
+              0.0,
+              -3.0
+            ],
+            [
+              3.5,
+              -4.5
+            ],
+            [
+              5.0,
+              -8.0
+            ]
+          ],
+          "base": 0.0
+        },
+        "bodies": [
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27
+        ],
+        "until": 84.0,
+        "seed": 456,
+        "inside": [],
+        "ended": true
+      }
     }
   ],
+  "tentacles": [],
+  "meteors": [],
+  "reverse_gravity": [],
   "props": [
     {
-      "name": "Arrow turret",
+      "name": "Crate",
       "kind": "Crate",
       "mass_kg": 20.0,
-      "secured": true,
+      "secured": false,
       "removed": false,
       "center": [
-        -5.400000095367432,
-        0.30000001192092896,
-        0.0
+        1.9999999999910487,
+        0.29999999999730803,
+        -4.999999999889637
       ],
       "rotation": [
-        0.0,
-        0.0,
-        0.0,
+        -2.939174229484352e-13,
+        -7.952027397713747e-11,
+        -4.191536896307827e-12,
         1.0
       ]
     },
     {
-      "name": "Arrow turret top",
-      "kind": "Crate",
-      "mass_kg": 20.0,
-      "secured": true,
+      "name": "Barrel",
+      "kind": "Barrel",
+      "mass_kg": 60.0,
+      "secured": false,
       "removed": false,
       "center": [
-        -5.400000095367432,
-        0.8999999761581421,
-        0.0
+        -1.0000000000632379,
+        0.44999998781309,
+        -4.000000003910495
       ],
       "rotation": [
-        0.0,
-        0.0,
-        0.0,
+        -1.175329010181617e-9,
+        1.9914411716700912e-9,
+        7.320272270193679e-10,
         1.0
       ]
     },
     {
-      "name": "Catapult boulder",
-      "kind": "Boulder",
-      "mass_kg": 150.0,
+      "name": "Anvil",
+      "kind": "Anvil",
+      "mass_kg": 250.0,
       "secured": false,
       "removed": false,
       "center": [
-        4.706904240861217,
-        0.44999999397616625,
-        -0.9999289970305714
+        1.0000000000001563,
+        0.19999999998893106,
+        -1.9999999999699754
       ],
       "rotation": [
-        -8.643547975336606e-11,
-        -0.00006748307673407083,
-        -6.606265477284316e-9,
-        0.9999999977230173
+        3.5562114548699523e-17,
+        -4.128657998979972e-11,
+        -1.5812769785623922e-11,
+        1.0
       ]
     },
     {
-      "name": "Sheet 1",
-      "kind": "Sheet",
-      "mass_kg": 0.3,
+      "name": "Stone block",
+      "kind": "StoneBlock",
+      "mass_kg": 1000.0,
       "secured": false,
       "removed": false,
       "center": [
-        1.4667332055837812,
-        0.024999999997219118,
-        -5.494386550858424
+        -4.000000000711821,
+        0.3749999997953628,
+        -2.999999992322427
       ],
       "rotation": [
-        -0.983551937165138,
-        -1.1162327408943822e-12,
-        -0.18062554331739655,
-        6.078098249457682e-12
+        1.7467052187890517e-18,
+        -3.9030038487196285e-9,
+        -2.728495939136053e-10,
+        1.0
       ]
     },
     {
-      "name": "Sheet 2",
-      "kind": "Sheet",
-      "mass_kg": 0.44999999999999996,
-      "secured": false,
-      "removed": false,
-      "center": [
-        1.5372923586849756,
-        0.06684039796036054,
-        0.030352800398119863
-      ],
-      "rotation": [
-        0.03088519640026626,
-        0.7543591246283297,
-        0.06430093360939415,
-        -0.6525747510211054
-      ]
-    },
-    {
-      "name": "Sheet 3",
-      "kind": "Sheet",
-      "mass_kg": 0.6,
-      "secured": false,
-      "removed": false,
-      "center": [
-        4.5010783933677745,
-        2.288391666666627,
-        -2.671607495308326
-      ],
-      "rotation": [
-        5.636416253475052e-21,
-        0.5477401956393531,
-        -5.074560500008325e-20,
-        0.8366484793991817
-      ]
-    },
-    {
-      "name": "Sheet 4",
-      "kind": "Sheet",
-      "mass_kg": 0.75,
-      "secured": false,
-      "removed": false,
-      "center": [
-        1.3020745507635731,
-        0.024945407348137966,
-        4.849981873380945
-      ],
-      "rotation": [
-        0.9319171000748429,
-        -0.00004864846079030264,
-        -0.3626712623848667,
-        0.0002676968247935616
-      ]
-    },
-    {
-      "name": "Sheet 5",
-      "kind": "Sheet",
-      "mass_kg": 0.8999999999999999,
-      "secured": false,
-      "removed": false,
-      "center": [
-        1.4494820408018918,
-        0.0249999999999922,
-        3.882141619242745
-      ],
-      "rotation": [
-        -1.783239908584687e-15,
-        0.9947459086749805,
-        1.7234514450716903e-14,
-        0.10237469010642893
-      ]
-    },
-    {
-      "name": "Sheet 6",
-      "kind": "Sheet",
-      "mass_kg": 1.05,
-      "secured": false,
-      "removed": false,
-      "center": [
-        1.3829656372001604,
-        0.024998557445958802,
-        -0.3257908636768366
-      ],
-      "rotation": [
-        -1.42556124379847e-6,
-        0.8354319104210672,
-        -1.2686770015521439e-6,
-        -0.549593961981538
-      ]
-    },
-    {
-      "name": "Sheet 7",
-      "kind": "Sheet",
-      "mass_kg": 1.2,
-      "secured": false,
-      "removed": false,
-      "center": [
-        1.2081694135320362,
-        0.025000000000000012,
-        2.657660554327936
-      ],
-      "rotation": [
-        0.2964238362149356,
-        -1.0826628259880609e-19,
-        -0.9550564953570135,
-        -8.588223870329747e-20
-      ]
-    },
-    {
-      "name": "Sheet 8",
-      "kind": "Sheet",
-      "mass_kg": 1.35,
-      "secured": false,
-      "removed": false,
-      "center": [
-        2.1221111805004433,
-        0.024977629772225392,
-        5.707740741391575
-      ],
-      "rotation": [
-        -0.00002173732318891893,
-        0.583026446977426,
-        -0.000030291176877586574,
-        0.8124531744874977
-      ]
-    },
-    {
-      "name": "Sheet 9",
-      "kind": "Sheet",
-      "mass_kg": 1.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        2.3183902046320104,
-        0.024999628117567507,
-        -2.0419987349191477
-      ],
-      "rotation": [
-        1.744758089336676e-7,
-        -0.28150157581963037,
-        5.947396219890978e-7,
-        -0.9595607655644747
-      ]
-    },
-    {
-      "name": "Sheet 10",
-      "kind": "Sheet",
-      "mass_kg": 1.65,
-      "secured": false,
-      "removed": false,
-      "center": [
-        2.0202725439145266,
-        0.02486612716135404,
-        1.8814150260392986
-      ],
-      "rotation": [
-        0.0015953319778739324,
-        0.3491341172942567,
-        0.0002862543571498272,
-        0.9370713639395262
-      ]
-    },
-    {
-      "name": "Sheet 11",
-      "kind": "Sheet",
-      "mass_kg": 1.8,
-      "secured": false,
-      "removed": false,
-      "center": [
-        2.1558265178982867,
-        0.05035826547323455,
-        2.4532885009365377
-      ],
-      "rotation": [
-        0.5418254230628988,
-        0.023022265941219894,
-        -0.8394182455997076,
-        -0.035667844733759405
-      ]
-    },
-    {
-      "name": "Sheet 12",
-      "kind": "Sheet",
-      "mass_kg": 1.95,
-      "secured": false,
-      "removed": false,
-      "center": [
-        1.2033394445694827,
-        0.05614107374619444,
-        4.338910169887616
-      ],
-      "rotation": [
-        0.028790842301343548,
-        -0.9977669379582397,
-        0.030599017843929047,
-        -0.051922297946107386
-      ]
-    },
-    {
-      "name": "Thrown crate",
+      "name": "Wall crossing crate",
       "kind": "Crate",
       "mass_kg": 20.0,
       "secured": false,
       "removed": false,
       "center": [
-        -0.2031017316687733,
-        0.2999999998657302,
-        -2.6000033294083136
+        -2.998773748099201,
+        0.2999999999129106,
+        -8.583422094498736
       ],
       "rotation": [
-        -6.072688358721851e-11,
-        -2.7177079671694727e-6,
-        -1.6305569165374997e-10,
-        0.9999999999963071
+        -1.410519202324647e-10,
+        0.003496010616063452,
+        4.575079137000751e-12,
+        0.9999938889362138
       ]
     },
     {
-      "name": "Pushed crate",
+      "name": "Wall crossing crate",
       "kind": "Crate",
       "mass_kg": 20.0,
       "secured": false,
       "removed": false,
       "center": [
-        3.9013022994931235,
-        0.2999999245705255,
-        -3.8000002695909627
+        2.9999994967381602,
+        0.2999999727574131,
+        0.1908257141028152
       ],
       "rotation": [
-        -1.0080006701931925e-10,
-        -1.9975430706954027e-6,
-        -1.2561472422667299e-7,
-        0.999999999997997
+        -1.070486529781966e-8,
+        3.2150993326984117e-6,
+        -3.469952106722083e-8,
+        0.999999999994831
+      ]
+    },
+    {
+      "name": "Updraft paper",
+      "kind": "Crate",
+      "mass_kg": 0.01,
+      "secured": false,
+      "removed": false,
+      "center": [
+        6.490450490674295,
+        0.024999999923966898,
+        -4.127980089614174
+      ],
+      "rotation": [
+        0.2547367184310922,
+        -2.4500212976324246e-10,
+        -0.9670104468323798,
+        -6.460835489325132e-11
+      ]
+    },
+    {
+      "name": "Updraft paper",
+      "kind": "Crate",
+      "mass_kg": 0.01,
+      "secured": false,
+      "removed": false,
+      "center": [
+        2.522132349460025,
+        0.024999996039905152,
+        -4.5851406997353115
+      ],
+      "rotation": [
+        -1.2867637419556917e-8,
+        0.22228720959978687,
+        2.935784742274917e-9,
+        0.9749812287671699
+      ]
+    },
+    {
+      "name": "Updraft paper",
+      "kind": "Crate",
+      "mass_kg": 0.01,
+      "secured": false,
+      "removed": false,
+      "center": [
+        5.716924769014548,
+        0.02499998280107102,
+        -4.224431973229007
+      ],
+      "rotation": [
+        -5.7038796529974936e-8,
+        -0.1006223492087338,
+        -5.768655405579771e-9,
+        0.9949246920444342
       ]
     }
   ],
@@ -412,190 +276,169 @@
       "id": 14,
       "name": "Wizard",
       "position": [
-        5.75,
         0.0,
-        0.0
+        0.0,
+        -8.0
       ],
       "health": 200
     },
     {
       "id": 101,
-      "name": "Target dummy",
+      "name": "Dummy",
       "position": [
-        4.199999809265137,
+        -1.7999999523162842,
         0.0,
-        1.5
+        -3.0
       ],
-      "health": 100
+      "health": 388
     },
     {
       "id": 102,
-      "name": "Siege dummy",
+      "name": "Dummy",
       "position": [
-        6.127608299255371,
-        -1.3603685235577534e-12,
-        -1.0
+        0.0,
+        0.0,
+        -3.0
       ],
-      "health": 100
+      "health": 392
     },
     {
       "id": 103,
-      "name": "Dummy D",
+      "name": "Dummy",
       "position": [
-        6.78000020980835,
+        1.7999999523162842,
         0.0,
-        -2.819999933242798
+        -3.0
       ],
-      "health": 81
-    },
-    {
-      "id": 104,
-      "name": "Dummy E",
-      "position": [
-        4.25,
-        0.0,
-        2.5999999046325684
-      ],
-      "health": 95
+      "health": 400
     }
   ],
   "ledger": {
     "terms": {
-      "bellows": {
+      "creature:controller": {
         "linear": [
-          43.2,
+          0.0,
           0.0,
           0.0
         ],
         "angular": [
           0.0,
-          99.84002652284278,
-          -2.183181588932095
-        ]
-      },
-      "catapult": {
-        "linear": [
-          1399.9999523162842,
-          951.6500473022461,
-          0.0
-        ],
-        "angular": [
-          951.6500472437982,
-          -1399.9999522302999,
-          -7291.550292975832
-        ]
-      },
-      "character contact": {
-        "linear": [
-          -575.7399841070179,
           0.0,
-          -1.3399627339088132e-8
-        ],
-        "angular": [
-          -2.532906158434372e-8,
-          575.739984149583,
-          707.8574143299736
+          0.0
         ]
       },
       "gravity": {
         "linear": [
           0.0,
-          -5537.34033749986,
+          -26612.744579999053,
           0.0
         ],
         "angular": [
-          -4283.972067047023,
+          -97798.07531675741,
           0.0,
-          -1174.8630717206092
+          43325.82027624881
+        ]
+      },
+      "meteor:spawn/remove": {
+        "linear": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "angular": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "playground:launch": {
+        "linear": [
+          0.0,
+          180.0,
+          360.0
+        ],
+        "angular": [
+          1187.9999999895076,
+          120.00000000122378,
+          -540.0000000006119
         ]
       },
       "sleep": {
         "linear": [
-          -2.9998578536817543e-12,
-          1.0114703605929026e-11,
-          1.5698214131604555e-12
+          1.6317844089299394e-15,
+          1.2483327631145061e-16,
+          2.255958583190307e-16
         ],
         "angular": [
-          -4.2928967179420224e-11,
-          -1.4887705022428104e-11,
-          1.4648943272637347e-11
+          9.67365478804444e-16,
+          -3.985183407883359e-15,
+          -6.543900370099794e-16
         ]
       },
-      "spell:shove": {
+      "spell:removed": {
         "linear": [
-          114.46357137624204,
+          0.0,
           0.0,
           0.0
         ],
         "angular": [
           0.0,
-          -434.961565765429,
-          -34.339071412657695
+          0.0,
+          0.0
         ]
       },
       "static contact": {
         "linear": [
-          -1092.9076838789144,
-          3950.0528901977655,
-          -3.430849743024684
+          0.00018947961833980492,
+          21312.16541333429,
+          -359.99591750423775
         ],
         "angular": [
-          4167.975261556798,
-          1534.9665817250584,
-          6660.979396348039
-        ]
-      },
-      "throw": {
-        "linear": [
-          130.0,
-          70.0,
-          0.0
-        ],
-        "angular": [
-          181.99999332046227,
-          -337.9999875951442,
-          -24.999999791377633
+          76127.92383937846,
+          -120.01868105813244,
+          -37700.33824031762
         ]
       },
       "wind_wall": {
         "linear": [
-          -19.0540256515848,
-          560.625,
-          3.4615248638667198
+          -0.00018947961839148542,
+          5120.579166666666,
+          -0.004082495765066661
         ],
         "angular": [
-          -1030.9742037980243,
-          -37.62118275881117,
-          1136.624949256317
+          20482.151477403397,
+          0.01868105690802868,
+          -5085.4820359212135
         ]
       }
     },
     "residual_relative": {
-      "linear": 1.2184925803997657e-14,
-      "angular": 3.909496742999854e-15
+      "linear": 3.500400994226091e-14,
+      "angular": 7.130719365898591e-14
     },
     "tolerance": 1e-9
   },
   "replay": {
     "window_s": [
-      2.0,
-      3.0
+      1.0,
+      2.5
     ],
     "speed": 0.25,
     "source": "checkpoint at the window start, stepped again with the same admitted commands",
     "identical_to_live": true
   },
-  "live_seconds": 17.5,
-  "video_seconds": 21.5,
-  "authority_tick": 525,
-  "physics_steps": 2100,
+  "live_seconds": 32.0,
+  "live_speed": 2,
+  "video_seconds": 22.133333206176758,
+  "authority_tick": 480,
+  "physics_steps": 3840,
   "renderer": "owned native GPU pipeline; scripted admitted commands; no grading",
   "prepared_pack": {
     "inventory": {
       "schema": "openagents.verse.asset-admission.v1",
       "purpose": "original_local",
       "compiler": "verse:compiler:original-chamber",
-      "compiler_revision": "8cb4be8f0af241ce1f7370f59519e4ac1512acfd62dcc6e269b01843e5e3792c",
+      "compiler_revision": "506ab9e7462ac8a51fed16b58bd49af4af804604929a0a48d86f1393c7c32656",
       "assets": [
         "verse:model:adventurer",
         "verse:model:arrow",
@@ -615,6 +458,7 @@
         "verse:model:effect-mist",
         "verse:model:effect-ribbon",
         "verse:model:effect-rune",
+        "verse:model:effect-scorch",
         "verse:model:effect-shadow",
         "verse:model:effect-shield",
         "verse:model:effect-wave",
@@ -631,8 +475,10 @@
         "verse:model:prop-crate",
         "verse:model:prop-crate-secured",
         "verse:model:prop-dummy",
+        "verse:model:prop-meteor",
         "verse:model:prop-sheet",
         "verse:model:prop-stone",
+        "verse:model:prop-tentacle",
         "verse:model:prop/Banner_2",
         "verse:model:prop/Barrel",
         "verse:model:prop/Book_Stack_1",
@@ -756,7 +602,7 @@
           {
             "creator": "OpenAgents contributors",
             "license": "apache2",
-            "revision": "8cb4be8f0af241ce1f7370f59519e4ac1512acfd62dcc6e269b01843e5e3792c",
+            "revision": "506ab9e7462ac8a51fed16b58bd49af4af804604929a0a48d86f1393c7c32656",
             "format": "rust/wgsl/json"
           }
         ],
@@ -772,10 +618,10 @@
       ]
     },
     "schema": "openagents.verse.prepared-pack.v1",
-    "manifest_sha256": "29c4b1ac39dc928dba868a2a1b8e79fd0336eab160da0eeedf152fb2b4c8c1b1",
-    "manifest_bytes": 83344323,
-    "vertices": 271814,
-    "indices": 997743,
+    "manifest_sha256": "aea94bdec2f2decca804fb09629b53a13d93fc0c91be8363a7cc3317659d7ddb",
+    "manifest_bytes": 83421005,
+    "vertices": 272259,
+    "indices": 999651,
     "encoded_bytes": 34477502,
     "rgba_bytes": 164233224,
     "budget": {

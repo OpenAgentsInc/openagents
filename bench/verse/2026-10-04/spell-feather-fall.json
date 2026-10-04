@@ -2,72 +2,72 @@
   "schema": "openagents.verse.spell-playground.v1",
   "spell": "feather-fall",
   "title": "Feather Fall",
-  "srd": "Level 1 Transmutation | Reaction | Range 60 ft | up to 5 falling creatures | 1 minute",
+  "srd": "Level 1 Transmutation | Reaction | Range 60 ft | up to five falling creatures | 60 ft/round",
   "srd_source": "SRD 5.2.1 (SRD_CC_v5.2.1.pdf)",
-  "rules_revision": "verse-chamber-owned-v17",
+  "rules_revision": "verse-chamber-owned-v18",
   "seed": 455,
-  "dice_rolled": 22,
+  "dice_rolled": 20,
   "saves": [
     {
-      "at": 1.5,
+      "at": 0.5,
       "save": {
         "target": 101,
         "ability": "Constitution",
-        "roll": 1,
+        "roll": 2,
         "modifier": 0,
-        "total": 1,
+        "total": 2,
         "dc": 15,
         "success": false,
         "forced": true
       }
     },
     {
-      "at": 1.5,
+      "at": 0.5,
       "save": {
         "target": 102,
         "ability": "Constitution",
-        "roll": 1,
+        "roll": 2,
         "modifier": 0,
-        "total": 1,
+        "total": 2,
         "dc": 15,
         "success": false,
         "forced": true
       }
     },
     {
-      "at": 1.5,
+      "at": 0.5,
       "save": {
         "target": 103,
         "ability": "Constitution",
-        "roll": 1,
+        "roll": 2,
         "modifier": 0,
-        "total": 1,
+        "total": 2,
         "dc": 15,
         "success": false,
         "forced": true
       }
     },
     {
-      "at": 1.5,
+      "at": 0.5,
       "save": {
         "target": 104,
         "ability": "Constitution",
-        "roll": 1,
+        "roll": 2,
         "modifier": 0,
-        "total": 1,
+        "total": 2,
         "dc": 15,
         "success": false,
         "forced": true
       }
     },
     {
-      "at": 1.5,
+      "at": 0.5,
       "save": {
         "target": 105,
         "ability": "Constitution",
-        "roll": 1,
+        "roll": 2,
         "modifier": 0,
-        "total": 1,
+        "total": 2,
         "dc": 15,
         "success": false,
         "forced": true
@@ -75,116 +75,177 @@
     }
   ],
   "log": [
-    "[1.50] Dummy 1: CON save 1 +0 = 1 vs DC 15 fails; 13 thunder, pushed 10 ft",
-    "[1.50] Dummy 2: CON save 1 +0 = 1 vs DC 15 fails; 11 thunder, pushed 10 ft",
-    "[1.50] Dummy 3: CON save 1 +0 = 1 vs DC 15 fails; 11 thunder, pushed 10 ft",
-    "[1.50] Dummy 4: CON save 1 +0 = 1 vs DC 15 fails; 11 thunder, pushed 10 ft",
-    "[1.50] Dummy 5: CON save 1 +0 = 1 vs DC 15 fails; 10 thunder, pushed 10 ft",
-    "[2.30] Reaction: Dummy 2, Dummy 3, Dummy 4 descend at 60 ft/round (3 of 5 max)",
-    "[3.40] Dummy 1 fell 60 ft: 6d6 = 28 bludgeoning",
-    "[3.40] Dummy 5 fell 60 ft: 6d6 = 22 bludgeoning",
-    "[7.33] Dummy 3 lands softly after 61 ft: 0 damage (drag removed 29.3 kJ)",
-    "[7.70] Dummy 2 lands softly after 61 ft: 0 damage (drag removed 29.3 kJ)",
-    "[7.70] Dummy 4 lands softly after 61 ft: 0 damage (drag removed 29.3 kJ)"
+    "[0.50] Warded dummy: CON save 2 +0 = 2 vs DC 15 fails; 13 thunder, pushed 10 ft",
+    "[0.50] Warded dummy: CON save 2 +0 = 2 vs DC 15 fails; 11 thunder, pushed 10 ft",
+    "[0.50] Warded dummy: CON save 2 +0 = 2 vs DC 15 fails; 11 thunder, pushed 10 ft",
+    "[0.50] Normal fall: CON save 2 +0 = 2 vs DC 15 fails; 11 thunder, pushed 10 ft",
+    "[0.50] Normal fall: CON save 2 +0 = 2 vs DC 15 fails; 10 thunder, pushed 10 ft",
+    "[1.20] Warded 3 falling creatures for up to 60 s",
+    "[1.93] Normal fall fell 59 ft: 5d6 = 24 bludgeoning",
+    "[1.93] Normal fall fell 59 ft: 5d6 = 22 bludgeoning",
+    "[5.50] Warded dummy landed: 0 falling damage",
+    "[5.53] Warded dummy landed: 0 falling damage",
+    "[5.57] Warded dummy landed: 0 falling damage"
   ],
   "tracks": [
     {
-      "label": "Dummy 1",
+      "label": "Warded dummy",
       "spell": "Thunderwave",
-      "at": 1.5,
+      "at": 0.5,
       "start": [
-        13.670000076293945,
-        18.75,
-        4.0
+        -1.600000023841858,
+        18.288009643554688,
+        -1.100000023841858
       ],
       "final": [
-        11.434516906738281,
+        -23.64999008178711,
         9.999999747378752e-6,
-        2.180948495864868
+        23.649999618530273
       ],
       "requested_ft": 10.0,
-      "measured_ft": 9.455613589358826
+      "measured_ft": 108.75202581602602
     },
     {
-      "label": "Dummy 2",
+      "label": "Warded dummy",
       "spell": "Thunderwave",
-      "at": 1.5,
+      "at": 0.5,
       "start": [
-        14.1899995803833,
-        18.75,
-        5.0
+        -0.800000011920929,
+        18.288009643554688,
+        -1.100000023841858
       ],
       "final": [
-        -2.574995994567871,
+        -18.646146774291992,
         9.999999747378752e-6,
-        -5.341745376586914
+        23.64999771118164
       ],
       "requested_ft": 10.0,
-      "measured_ft": 64.62644811675153
+      "measured_ft": 100.108492070324
     },
     {
-      "label": "Dummy 3",
+      "label": "Warded dummy",
       "spell": "Thunderwave",
-      "at": 1.5,
+      "at": 0.5,
       "start": [
-        13.869999885559082,
-        18.75,
-        6.0
+        0.0,
+        18.288009643554688,
+        -1.100000023841858
       ],
       "final": [
-        -17.13845443725586,
+        0.0,
         9.999999747378752e-6,
-        6.0
+        23.649988174438477
       ],
       "requested_ft": 10.0,
-      "measured_ft": 101.7337740249834
+      "measured_ft": 81.2007486820221
     },
     {
-      "label": "Dummy 4",
+      "label": "Normal fall",
       "spell": "Thunderwave",
-      "at": 1.5,
+      "at": 0.5,
       "start": [
-        14.1899995803833,
-        18.75,
-        7.0
+        0.800000011920929,
+        18.288009643554688,
+        -1.100000023841858
       ],
       "final": [
-        -2.574995994567871,
+        6.667671203613281,
         9.999999747378752e-6,
-        17.34172248840332
+        12.835721015930176
       ],
       "requested_ft": 10.0,
-      "measured_ft": 64.6264086923955
+      "measured_ft": 49.60841328177628
     },
     {
-      "label": "Dummy 5",
+      "label": "Normal fall",
       "spell": "Thunderwave",
-      "at": 1.5,
+      "at": 0.5,
       "start": [
-        13.670000076293945,
-        18.75,
-        8.0
+        1.600000023841858,
+        18.288009643554688,
+        -1.100000023841858
       ],
       "final": [
-        11.434516906738281,
+        11.22380256652832,
         9.999999747378752e-6,
-        9.819051742553711
+        10.328266143798828
       ],
       "requested_ft": 10.0,
-      "measured_ft": 9.455614083061487
+      "measured_ft": 49.01786087529578
+    },
+    {
+      "label": "Warded dummy",
+      "spell": "Feather Fall",
+      "at": 1.2000000476837158,
+      "start": [
+        -5.595001697540283,
+        14.093461036682129,
+        3.64406418800354
+      ],
+      "final": [
+        -23.64999008178711,
+        9.999999747378752e-6,
+        23.649999618530273
+      ],
+      "requested_ft": 0.0,
+      "measured_ft": 88.41361686522622
+    },
+    {
+      "label": "Warded dummy",
+      "spell": "Feather Fall",
+      "at": 1.2000000476837158,
+      "start": [
+        -3.239757537841797,
+        13.942087173461914,
+        4.694423675537109
+      ],
+      "final": [
+        -18.646146774291992,
+        9.999999747378752e-6,
+        23.64999771118164
+      ],
+      "requested_ft": 0.0,
+      "measured_ft": 80.14055816135792
+    },
+    {
+      "label": "Warded dummy",
+      "spell": "Feather Fall",
+      "at": 1.2000000476837158,
+      "start": [
+        0.0,
+        13.92434024810791,
+        5.273221969604492
+      ],
+      "final": [
+        0.0,
+        9.999999747378752e-6,
+        23.649988174438477
+      ],
+      "requested_ft": 0.0,
+      "measured_ft": 60.29122770614824
     }
   ],
+  "feather_falls": [],
+  "levitations": [],
+  "telekinesis": [],
+  "walls": [],
+  "gusts": [],
+  "flames": [],
+  "wind_walls": [],
+  "tentacles": [],
+  "meteors": [],
+  "reverse_gravity": [],
   "props": [
     {
-      "name": "Tower",
+      "name": "60 ft tower",
       "kind": "StoneBlock",
-      "mass_kg": 1000.0,
+      "mass_kg": 100000.0,
       "secured": true,
       "removed": false,
       "center": [
-        16.0,
-        9.375,
-        6.0
+        0.0,
+        9.144000053405762,
+        -2.5
       ],
       "rotation": [
         0.0,
@@ -199,65 +260,78 @@
       "id": 14,
       "name": "Wizard",
       "position": [
-        18.149999618530273,
-        18.75,
-        6.0
+        0.0,
+        18.288009643554688,
+        -3.0
       ],
       "health": 200
     },
     {
       "id": 101,
-      "name": "Dummy 1",
+      "name": "Warded dummy",
       "position": [
-        11.434516906738281,
+        -23.64999008178711,
         9.999999747378752e-6,
-        2.180948495864868
+        23.649999618530273
       ],
-      "health": 59
+      "health": 187
     },
     {
       "id": 102,
-      "name": "Dummy 2",
+      "name": "Warded dummy",
       "position": [
-        -2.574995994567871,
+        -18.646146774291992,
         9.999999747378752e-6,
-        -5.341745376586914
+        23.64999771118164
       ],
-      "health": 89
+      "health": 189
     },
     {
       "id": 103,
-      "name": "Dummy 3",
+      "name": "Warded dummy",
       "position": [
-        -17.13845443725586,
+        0.0,
         9.999999747378752e-6,
-        6.0
+        23.649988174438477
       ],
-      "health": 89
+      "health": 189
     },
     {
       "id": 104,
-      "name": "Dummy 4",
+      "name": "Normal fall",
       "position": [
-        -2.574995994567871,
+        6.667671203613281,
         9.999999747378752e-6,
-        17.34172248840332
+        12.835721015930176
       ],
-      "health": 89
+      "health": 165
     },
     {
       "id": 105,
-      "name": "Dummy 5",
+      "name": "Normal fall",
       "position": [
-        11.434516906738281,
+        11.22380256652832,
         9.999999747378752e-6,
-        9.819051742553711
+        10.328266143798828
       ],
-      "health": 68
+      "health": 168
     }
   ],
   "ledger": {
-    "terms": {},
+    "terms": {
+      "creature:controller": {
+        "linear": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "angular": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
     "residual_relative": {
       "linear": 0.0,
       "angular": 0.0
@@ -266,24 +340,25 @@
   },
   "replay": {
     "window_s": [
-      1.7000000476837158,
-      3.200000047683716
+      0.8999999761581421,
+      2.9000000953674316
     ],
     "speed": 0.25,
     "source": "checkpoint at the window start, stepped again with the same admitted commands",
     "identical_to_live": true
   },
-  "live_seconds": 12.0,
-  "video_seconds": 18.0,
-  "authority_tick": 360,
-  "physics_steps": 1440,
+  "live_seconds": 13.0,
+  "live_speed": 1,
+  "video_seconds": 21.0,
+  "authority_tick": 390,
+  "physics_steps": 1560,
   "renderer": "owned native GPU pipeline; scripted admitted commands; no grading",
   "prepared_pack": {
     "inventory": {
       "schema": "openagents.verse.asset-admission.v1",
       "purpose": "original_local",
       "compiler": "verse:compiler:original-chamber",
-      "compiler_revision": "8cb4be8f0af241ce1f7370f59519e4ac1512acfd62dcc6e269b01843e5e3792c",
+      "compiler_revision": "506ab9e7462ac8a51fed16b58bd49af4af804604929a0a48d86f1393c7c32656",
       "assets": [
         "verse:model:adventurer",
         "verse:model:arrow",
@@ -303,6 +378,7 @@
         "verse:model:effect-mist",
         "verse:model:effect-ribbon",
         "verse:model:effect-rune",
+        "verse:model:effect-scorch",
         "verse:model:effect-shadow",
         "verse:model:effect-shield",
         "verse:model:effect-wave",
@@ -319,8 +395,10 @@
         "verse:model:prop-crate",
         "verse:model:prop-crate-secured",
         "verse:model:prop-dummy",
+        "verse:model:prop-meteor",
         "verse:model:prop-sheet",
         "verse:model:prop-stone",
+        "verse:model:prop-tentacle",
         "verse:model:prop/Banner_2",
         "verse:model:prop/Barrel",
         "verse:model:prop/Book_Stack_1",
@@ -444,7 +522,7 @@
           {
             "creator": "OpenAgents contributors",
             "license": "apache2",
-            "revision": "8cb4be8f0af241ce1f7370f59519e4ac1512acfd62dcc6e269b01843e5e3792c",
+            "revision": "506ab9e7462ac8a51fed16b58bd49af4af804604929a0a48d86f1393c7c32656",
             "format": "rust/wgsl/json"
           }
         ],
@@ -460,10 +538,10 @@
       ]
     },
     "schema": "openagents.verse.prepared-pack.v1",
-    "manifest_sha256": "29c4b1ac39dc928dba868a2a1b8e79fd0336eab160da0eeedf152fb2b4c8c1b1",
-    "manifest_bytes": 83344323,
-    "vertices": 271814,
-    "indices": 997743,
+    "manifest_sha256": "aea94bdec2f2decca804fb09629b53a13d93fc0c91be8363a7cc3317659d7ddb",
+    "manifest_bytes": 83421005,
+    "vertices": 272259,
+    "indices": 999651,
     "encoded_bytes": 34477502,
     "rgba_bytes": 164233224,
     "budget": {

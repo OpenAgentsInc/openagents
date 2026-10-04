@@ -25,11 +25,6 @@
 //! landing after the spell ends deals it for the downward span, by the same
 //! table. Everything serializes, so a checkpoint taken mid-rise continues
 //! exactly.
-//!
-//! [`game`] wires the spell into the chamber authority, its action-bar
-//! slot, and the spell playground.
-
-pub mod game;
 
 use glam::DVec3;
 use physics::{BodyId, BodyKind, Joint, JointId, World};
@@ -428,8 +423,13 @@ impl ReverseGravity {
     pub fn step(&mut self, world: &mut World) -> Vec<Impact> {
         let before: Vec<f64> = self.falls.iter().map(|(id, _)| world[*id].vel.y).collect();
         world.step(&self.gravity);
+        self.observe(world, &before)
+    }
+
+    /// Report impacts after a step performed by the shared chamber world.
+    pub fn observe(&mut self, world: &mut World, before: &[f64]) -> Vec<Impact> {
         let mut impacts = Vec::new();
-        for ((id, fall), v0) in self.falls.iter_mut().zip(before) {
+        for ((id, fall), &v0) in self.falls.iter_mut().zip(before) {
             let body = &world[*id];
             if body.removed {
                 continue;

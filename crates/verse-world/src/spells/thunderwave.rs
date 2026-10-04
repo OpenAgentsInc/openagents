@@ -147,6 +147,25 @@ pub(crate) fn resolve_for(
                 .place_chamber_actor(id, (feet + push).to_array(), 0.)?;
             continue;
         }
+        if let Some(proxy) = game
+            .spells
+            .proxies
+            .iter()
+            .find(|p| p.actor == actor && p.held && !p.ended)
+        {
+            let body = proxy.body;
+            let impulse = direction
+                * physics::character::Character::push_speed(PUSH)
+                * game.spells.world[body].mass;
+            let at = game.spells.world[body].pos;
+            game.spells.world.wake(body);
+            game.spells.world[body].apply_impulse_at(impulse, at);
+            game.spells
+                .ledger
+                .add_impulse("thunderwave:creature-proxy", impulse, at);
+            game.controls.displace(id, Vec3::ZERO);
+            continue;
+        }
         let character = game
             .npc_characters
             .entry(actor)
@@ -204,6 +223,7 @@ pub fn scenario() -> crate::playground::Scenario {
         srd: "Level 1 Evocation | Range Self (15-ft Cube) | CON save | 2d8 Thunder, push 10 ft",
         seed: 451,
         live: 14.,
+        speed: 1,
         replay: (1.4, 3.4),
         setup: |scene, hall| {
             let station = hall.spawn("wall_station")?;

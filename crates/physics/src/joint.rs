@@ -60,8 +60,10 @@ pub struct Joint {
     /// `None` for a hard joint.
     pub spring: Option<Spring>,
     /// Largest force the joint transmits, N.
+    #[serde(with = "limit")]
     pub max_force: f64,
     /// Largest torque a weld transmits, N m.
+    #[serde(with = "limit")]
     pub max_torque: f64,
     /// Impulse on `b` in the last step, N s; `a` received the opposite.
     #[serde(default)]
@@ -192,5 +194,22 @@ impl World {
             .iter()
             .enumerate()
             .filter_map(|(i, j)| j.as_ref().map(|j| (JointId(i as u32), j)))
+    }
+}
+
+/// JSON null denotes an unlimited positive force or torque bound.
+mod limit {
+    use serde::{Deserialize, Deserializer, Serializer};
+    pub fn serialize<S: Serializer>(value: &f64, serializer: S) -> Result<S::Ok, S::Error> {
+        if *value == f64::INFINITY {
+            serializer.serialize_none()
+        } else if value.is_finite() {
+            serializer.serialize_some(value)
+        } else {
+            Err(serde::ser::Error::custom("Invalid joint limit"))
+        }
+    }
+    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<f64, D::Error> {
+        Ok(Option::<f64>::deserialize(deserializer)?.unwrap_or(f64::INFINITY))
     }
 }

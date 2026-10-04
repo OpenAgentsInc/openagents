@@ -24,6 +24,7 @@ pub struct Hostile {
 #[derive(Clone, Debug)]
 pub struct Combat {
     pub time: f32,
+    pub flames: Vec<crate::gust::Flame>,
     pub projectiles: Vec<Projectile>,
     pub players: Vec<Player>,
     pub hostile: Vec<Hostile>,
@@ -33,6 +34,7 @@ impl Combat {
     pub fn extract(game: &Game) -> Self {
         Self {
             time: game.time,
+            flames: flame_states(game),
             projectiles: game.snapshot().projectiles,
             players: game
                 .controlled_effects()
@@ -75,8 +77,7 @@ pub struct Prop {
     pub dimensions: Vec3,
 }
 pub fn prop_poses(game: &Game, alpha: f32) -> Vec<Prop> {
-    let props = game
-        .spells
+    game.spells
         .props
         .iter()
         .enumerate()
@@ -91,39 +92,9 @@ pub fn prop_poses(game: &Game, alpha: f32) -> Vec<Prop> {
                 rotation: rotation.as_quat(),
                 dimensions: p.spec.dimensions.as_vec3(),
             }
-        });
-    props.chain(tentacle_segments(game)).collect()
-}
-/// Black Tentacles segments drawn as spell bodies: a box around each
-/// capsule, its long axis along the segment.
-fn tentacle_segments(game: &Game) -> impl Iterator<Item = Prop> + '_ {
-    use crate::black_tentacles::{BASE_RADIUS, SEGMENT_LENGTH, SEGMENTS, TIP_RADIUS};
-    let instance = game.player_life().instance;
-    game.spells.tentacles.iter().flat_map(move |active| {
-        active.spell.tentacles.iter().flat_map(move |t| {
-            t.segments.iter().enumerate().map(move |(i, &id)| {
-                let body = &game.spells.world[id];
-                let f = i as f64 / (SEGMENTS - 1) as f64;
-                let width = 2. * (BASE_RADIUS + (TIP_RADIUS - BASE_RADIUS) * f);
-                Prop {
-                    life: physics::queries::Life {
-                        instance,
-                        entity: crate::spells::PROP_ENTITY_BASE + TENTACLE_ENTITY + u64::from(id.0),
-                        generation: 0,
-                    },
-                    kind: crate::spells::PropKind::SpellBody,
-                    secured: false,
-                    center: body.pos.as_vec3(),
-                    rotation: body.orientation.as_quat().normalize(),
-                    dimensions: glam::DVec3::new(width, width, SEGMENT_LENGTH + width * 0.5)
-                        .as_vec3(),
-                }
-            })
         })
-    })
+        .collect()
 }
-/// Tentacle segment identities start this far above the props'.
-const TENTACLE_ENTITY: u64 = 1 << 24;
 pub fn validate_props(props: &[Prop], instance: u64) -> Result<(), String> {
     let mut entities = std::collections::BTreeSet::new();
     if props.len() > crate::spells::MAX_PROPS
@@ -168,9 +139,12 @@ mod prop_tests {
         game.spells.world[body].pos.x += 2.;
         let poses = prop_poses(&game, 0.5);
         validate_props(&poses, 160).unwrap();
-        assert_eq!(poses.len(), 1);
-        assert!((poses[0].center.x - 1.).abs() < 0.0001);
-        assert_eq!(poses[0].dimensions, Vec3::splat(0.6));
+        let pose = poses
+            .iter()
+            .find(|p| p.life == game.spells.props[index].life)
+            .unwrap();
+        assert!((pose.center.x - 1.).abs() < 0.0001);
+        assert_eq!(pose.dimensions, Vec3::splat(0.6));
         let saved = game.checkpoint().unwrap();
         let restored = Game::restore(&saved).unwrap();
         assert_eq!(
@@ -178,7 +152,11 @@ mod prop_tests {
             serde_json::to_vec(&prop_poses(&restored, 1.)).unwrap()
         );
         game.spells.remove_prop(index).unwrap();
-        assert!(prop_poses(&game, 1.).is_empty());
+        assert!(
+            !prop_poses(&game, 1.)
+                .iter()
+                .any(|p| p.life == game.spells.props[index].life)
+        );
     }
 }
 
@@ -267,4 +245,30 @@ mod blocker_tests {
         .unwrap();
         validate_blockers(&blocker_bounds(&game), 160).unwrap();
     }
+}
+
+/// Scene flames and burning unattended bodies share one bounded lighting snapshot.
+pub fn flame_states(game: &Game) -> Vec<crate::gust::Flame> {
+    let mut flames = game.spells.flames.clone();
+    let mut bodies = std::collections::BTreeSet::new();
+    for object in game
+        .spells
+        .meteors
+        .iter()
+        .flat_map(|e| &e.objects)
+        .filter(|o| o.burning(game.spells.world.tick) && !game.spells.world[o.body].removed)
+    {
+        if flames.len() >= 256 {
+            break;
+        }
+        if bodies.insert(object.body) {
+            flames.push(crate::gust::Flame {
+                id: 1_000_000 + object.body.0,
+                position: game.spells.world[object.body].pos + glam::DVec3::Y * 0.3,
+                protected: false,
+                lit: true,
+            });
+        }
+    }
+    flames
 }

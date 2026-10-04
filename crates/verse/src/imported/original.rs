@@ -514,6 +514,8 @@ pub fn generate(dir: &Path) -> Result<Pack, String> {
         ("prop-sheet", [0.95, 0.9, 0.72], [0.55, 0.75, 0.3]),
         ("prop-paper", [0.92, 0.9, 0.82], [0.62, 0.6, 0.52]),
         ("prop-basket", [0.62, 0.47, 0.25], [0.4, 0.28, 0.12]),
+        ("prop-tentacle", [0.075, 0.035, 0.1], [0.16, 0.055, 0.18]),
+        ("prop-meteor", [1., 0.14, 0.015], [1., 0.7, 0.08]),
     ] {
         let mut m = model(name, 1.);
         cuboid(&mut m, [0.; 3], [0.5; 3], body, 0, false);
@@ -529,6 +531,53 @@ pub fn generate(dir: &Path) -> Result<Pack, String> {
         }
         pack.models.insert(name.into(), m);
     }
+    let mut meteor = model("prop-meteor", 1.);
+    let mut surface = Surface {
+        material: Default::default(),
+        vertices: vec![],
+        indices: vec![],
+        texture: 0,
+        blend: 0,
+        emissive: true,
+        tint: [1., 0.2, 0.03],
+    };
+    for latitude in 0..=12 {
+        let theta = latitude as f32 * std::f32::consts::PI / 12.;
+        for longitude in 0..=24 {
+            let phi = longitude as f32 * std::f32::consts::TAU / 24.;
+            let normal = Vec3::new(
+                theta.sin() * phi.cos(),
+                theta.cos(),
+                theta.sin() * phi.sin(),
+            );
+            surface.vertices.push(Vertex {
+                position: (normal * 0.5).to_array(),
+                normal: normal.to_array(),
+                uv: [longitude as f32 / 24., latitude as f32 / 12.],
+                joints: [0; 4],
+                weights: [1., 0., 0., 0.],
+            });
+        }
+    }
+    for latitude in 0..12 {
+        for longitude in 0..24 {
+            let a = latitude * 25 + longitude;
+            let b = a + 25;
+            surface.indices.extend([a, a + 1, b, a + 1, b + 1, b]);
+        }
+    }
+    meteor.surfaces.push(surface);
+    pack.models.insert("prop-meteor".into(), meteor);
+    let mut scorch = model("effect-scorch", 0.01);
+    cuboid(
+        &mut scorch,
+        [0.; 3],
+        [0.5, 0.5, 0.005],
+        [0.055, 0.035, 0.02],
+        0,
+        false,
+    );
+    pack.models.insert("effect-scorch".into(), scorch);
     let mut blocker = model("navigation-blocker", 1.);
     cuboid(&mut blocker, [0.; 3], [0.5; 3], [0.65, 0.32, 0.1], 0, false);
     pack.models.insert("navigation-blocker".into(), blocker);
@@ -763,6 +812,8 @@ mod tests {
         assert!(encounter.boss_remaining > 0 && encounter.boss_remaining < encounter.boss_max);
         assert_eq!(game.snapshot().player.hp, 0);
         assert!(encounter.enemy_casts > 0 && encounter.absorbed > 0);
-        assert_eq!(encounter.used.len(), 10);
+        for ability in super::super::play::Ability::ALL {
+            assert!(encounter.used.contains_key(ability.label()));
+        }
     }
 }

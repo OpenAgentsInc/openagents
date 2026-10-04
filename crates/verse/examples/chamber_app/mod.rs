@@ -361,6 +361,7 @@ impl App {
         let combat_visuals = verse_world::visuals::Combat::extract(&self.game);
         actors.extend(chamber::spell_instances_from_visuals(&combat_visuals));
         actors.extend(chamber::blocker_instances(&self.pack, &self.game));
+        actors.extend(chamber::environment_instances(&self.pack, &self.game));
         actors.extend(chamber::prop_instances(
             &self.pack,
             &self.game,
@@ -448,6 +449,19 @@ impl App {
             let distance = dx * dx + dy * dy;
             if distance < 40.0 * 40.0 && closest.is_none_or(|(_, d)| distance < d) {
                 closest = Some((a.actor.id, distance));
+            }
+        }
+        for prop in verse_world::visuals::prop_poses(&self.game, 1.) {
+            let clip = vp * prop.center.extend(1.);
+            if clip.w <= 0. {
+                continue;
+            }
+            let ndc = clip.truncate() / clip.w;
+            let dx = (ndc.x + 1.) * width * 0.5 - self.cursor[0];
+            let dy = (1. - ndc.y) * height * 0.5 - self.cursor[1];
+            let distance = dx * dx + dy * dy;
+            if distance < 40. * 40. && closest.is_none_or(|(_, d)| distance < d) {
+                closest = Some((prop.life.entity, distance));
             }
         }
         if let Some((id, _)) = closest {
@@ -555,6 +569,41 @@ impl ApplicationHandler for App {
                                 // Shift+1 through Shift+0 cast the second row.
                                 key if shift && row_two_slot(key).is_some() => {
                                     self.activate(Ability::Spell(row_two_slot(key).unwrap()))
+                                }
+                                KeyCode::PageUp => self.activate(Ability::SpellCommand(
+                                    verse_world::spells::command::Command::Altitude(6096),
+                                )),
+                                KeyCode::PageDown => self.activate(Ability::SpellCommand(
+                                    verse_world::spells::command::Command::Altitude(-6096),
+                                )),
+                                KeyCode::KeyT => {
+                                    let frame = self.game.frame();
+                                    let point = frame.eye
+                                        + (frame.target - frame.eye).normalize_or_zero() * 12.;
+                                    self.activate(Ability::SpellCommand(
+                                        verse_world::spells::command::Command::Hand(
+                                            point.to_array().map(|v| (v * 1000.) as i32),
+                                        ),
+                                    ))
+                                }
+                                KeyCode::KeyR => self.activate(Ability::SpellCommand(
+                                    verse_world::spells::command::Command::Release,
+                                )),
+                                KeyCode::KeyC => self.activate(Ability::SpellCommand(
+                                    verse_world::spells::command::Command::EndConcentration,
+                                )),
+                                KeyCode::KeyX => self.activate(Ability::SpellCommand(
+                                    verse_world::spells::command::Command::Escape,
+                                )),
+                                KeyCode::KeyG => {
+                                    let yaw = self.game.yaw;
+                                    self.activate(Ability::SpellCommand(
+                                        verse_world::spells::command::Command::Wind([
+                                            (-yaw.sin() * 1000.) as i32,
+                                            0,
+                                            (-yaw.cos() * 1000.) as i32,
+                                        ]),
+                                    ))
                                 }
                                 KeyCode::Escape => event_loop.exit(),
                                 KeyCode::F1 | KeyCode::F2 => {
@@ -1698,8 +1747,6 @@ fn demo(app: &mut App, output: PathBuf, mode: Demo) -> Result<(), String> {
 
 fn combat_game(pack: &Pack, scene: Scene, agent: bool) -> Result<Game, String> {
     let mut game = Game::combat(scene, agent)?;
-    // The live agent locks groups of cultists in place with Black Tentacles.
-    game.spells.agent_tentacles = true;
     verse::imported::props::admit_collision(pack, &mut game)?;
     Ok(game)
 }
@@ -1750,13 +1797,25 @@ fn encoder_sized(output: &std::path::Path, size: [u32; 2]) -> Result<std::proces
 }
 
 /// `--spell-playground SPELL OUT.mp4` records one scenario;
-/// `--spell-playground all OUT_DIR` records every registered one as
+/// `--spell-playground all OUT_DIR` records every registered one; a comma-separated
+/// spell list selects a subset. Both write files as
 /// `OUT_DIR/spell-<name>.mp4`. Each writes its evidence beside the video.
 fn spell_playground(app: &mut App, spell: &str, output: PathBuf) -> Result<(), String> {
     use verse_world::playground::scenarios;
-    if spell == "all" {
+    if spell == "all" || spell.contains(',') {
+        let chosen: Vec<_> = spell.split(',').collect();
+        if spell != "all"
+            && chosen
+                .iter()
+                .any(|key| !scenarios().iter().any(|s| s.key == *key))
+        {
+            return Err("Unknown spell in capture list".into());
+        }
         std::fs::create_dir_all(&output).map_err(|e| e.to_string())?;
-        for scenario in scenarios() {
+        for scenario in scenarios()
+            .into_iter()
+            .filter(|s| spell == "all" || chosen.contains(&s.key))
+        {
             let path = output.join(format!("spell-{}.mp4", scenario.key));
             record_spell(app, scenario, &path)?;
         }
@@ -1806,7 +1865,11 @@ fn record_spell(
         let (eye, target) = run.camera();
         frame.eye = eye;
         frame.target = target;
-        frame.fov = 1.0;
+        frame.fov = if run.scenario.key == "reverse-gravity" {
+            1.4
+        } else {
+            1.0
+        };
         let view = View {
             view_proj: frame.view_projection(1280.0 / 720.0),
             eye: frame.eye,
@@ -1843,6 +1906,7 @@ fn record_spell(
         let mut actors = chamber::instances(&app.pack, &frame)?;
         actors.extend(chamber::spell_instances(game));
         actors.extend(chamber::prop_instances(&app.pack, game, run.alpha));
+        actors.extend(chamber::environment_instances(&app.pack, game));
         let lighting = chamber::combat_lighting(game);
         let pixels = app
             .renderer

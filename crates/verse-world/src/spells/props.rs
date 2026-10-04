@@ -68,6 +68,8 @@ pub enum PropKind {
     Paper,
     /// An empty wicker basket.
     Basket,
+    Tentacle,
+    Meteor,
 }
 impl PropKind {
     /// Pack model the renderer draws for this kind; `secured` props use a
@@ -84,6 +86,8 @@ impl PropKind {
             Self::Sheet => "prop-sheet",
             Self::Paper => "prop-paper",
             Self::Basket => "prop-basket",
+            Self::Tentacle => "prop-tentacle",
+            Self::Meteor => "prop-meteor",
         }
     }
 }
@@ -163,7 +167,7 @@ impl PropSpec {
                 true,
                 DVec3::ZERO,
             ),
-            PropKind::StoneBlock | PropKind::SpellBody => (
+            PropKind::StoneBlock | PropKind::SpellBody | PropKind::Tentacle | PropKind::Meteor => (
                 Size::Medium,
                 DVec3::splat(0.75),
                 1_000.,
@@ -209,7 +213,7 @@ impl PropSpec {
             || self.dimensions.min_element() < 0.05
             || self.dimensions.max_element() > 20.
             || !self.mass.is_finite()
-            || !(0.1..=1_000_000.).contains(&self.mass)
+            || !(0.001..=1_000_000.).contains(&self.mass)
             || !self.center_of_mass.is_finite()
             || (self.center_of_mass.abs() - self.dimensions * 0.5)
                 .max_element()
@@ -237,10 +241,6 @@ pub struct Prop {
     /// The cast that created it; the prop leaves when that spell ends.
     pub owner: Option<u64>,
     pub removed: bool,
-    /// Characters move through it, as through a falling meteor or small
-    /// debris; it still collides with other bodies.
-    #[serde(default)]
-    pub passable: bool,
 }
 impl Prop {
     pub fn query_key(&self) -> physics::queries::ColliderKey {

@@ -1114,6 +1114,15 @@ pub fn action_bar(
             color,
         );
     }
+    if verse_world::spells::feather_fall::reaction_available(game) {
+        ui.text(
+            atlas,
+            left,
+            row - 24. * s,
+            "Feather Fall reaction: Shift+4",
+            [0.7, 0.9, 1., 1.],
+        );
+    }
     for (index, ability) in Ability::ROW_TWO.iter().enumerate() {
         let x = left + (8.0 + index as f32 * 42.0) * s;
         let spell = ability.catalog();
@@ -1608,7 +1617,7 @@ pub fn spell_panel(
     }
     for (from, to, color) in verse_world::spells::wind_wall::guide_lines(game)
         .into_iter()
-        .chain(verse_world::reverse_gravity::game::guide_lines(game))
+        .chain(verse_world::spells::reverse_gravity::guide_lines(game))
     {
         if let (Some(a), Some(b)) = (
             project(view_proj, from, width, height),
@@ -1617,7 +1626,6 @@ pub fn spell_panel(
             ui.line(atlas, a, b, 2.0, color);
         }
     }
-    super::gust::outline(ui, atlas, game, view_proj, width, height);
     let font = atlas.font("numbers");
     let (x, mut y) = (16.0, 112.0);
     let panel_width = lines.iter().map(|l| font.measure(l)).fold(

@@ -2,111 +2,33 @@
   "schema": "openagents.verse.spell-playground.v1",
   "spell": "black-tentacles",
   "title": "Black Tentacles",
-  "srd": "Level 4 Conjuration | Range 90 ft (20-ft square) | STR save | 3d6 Bludgeoning, Restrained",
+  "srd": "Level 4 Conjuration | range 90 ft | STR save | 20-ft square | 3d6",
   "srd_source": "SRD 5.2.1 (SRD_CC_v5.2.1.pdf)",
-  "rules_revision": "verse-chamber-owned-v17",
-  "seed": 458,
-  "dice_rolled": 9,
+  "rules_revision": "verse-chamber-owned-v18",
+  "seed": 457,
+  "dice_rolled": 13,
   "saves": [
     {
-      "at": 2.566666603088379,
-      "save": {
-        "target": 101,
-        "ability": "Strength",
-        "roll": 3,
-        "modifier": 0,
-        "total": 3,
-        "dc": 15,
-        "success": false,
-        "forced": true
-      }
-    },
-    {
-      "at": 2.566666603088379,
+      "at": 5.0,
       "save": {
         "target": 103,
-        "ability": "Strength",
-        "roll": 18,
-        "modifier": 0,
-        "total": 18,
-        "dc": 15,
-        "success": true,
-        "forced": true
-      }
-    },
-    {
-      "at": 3.200000047683716,
-      "save": {
-        "target": 102,
-        "ability": "Strength",
-        "roll": 4,
-        "modifier": 0,
-        "total": 4,
-        "dc": 15,
-        "success": false,
-        "forced": true
-      }
-    },
-    {
-      "at": 8.199999809265137,
-      "save": {
-        "target": 102,
         "ability": "Constitution",
-        "roll": 3,
+        "roll": 7,
         "modifier": 0,
-        "total": 3,
+        "total": 7,
         "dc": 15,
         "success": false,
-        "forced": true
+        "forced": false
       }
     },
     {
-      "at": 8.566666603088379,
+      "at": 9.100000381469727,
       "save": {
         "target": 101,
-        "ability": "Strength (Athletics)",
-        "roll": 2,
+        "ability": "Athletics",
+        "roll": 20,
         "modifier": 0,
-        "total": 2,
-        "dc": 15,
-        "success": false,
-        "forced": true
-      }
-    },
-    {
-      "at": 8.566666603088379,
-      "save": {
-        "target": 103,
-        "ability": "Strength",
-        "roll": 18,
-        "modifier": 0,
-        "total": 18,
-        "dc": 15,
-        "success": true,
-        "forced": true
-      }
-    },
-    {
-      "at": 9.199999809265137,
-      "save": {
-        "target": 102,
-        "ability": "Strength (Athletics)",
-        "roll": 19,
-        "modifier": 0,
-        "total": 19,
-        "dc": 15,
-        "success": true,
-        "forced": true
-      }
-    },
-    {
-      "at": 11.899999618530273,
-      "save": {
-        "target": 102,
-        "ability": "Strength",
-        "roll": 18,
-        "modifier": 0,
-        "total": 18,
+        "total": 20,
         "dc": 15,
         "success": true,
         "forced": true
@@ -114,72 +36,2150 @@
     }
   ],
   "log": [
-    "[0.60] 20-ft square at (-4.2, -5.0): Difficult Terrain, STR saves",
-    "[2.57] Dummy A enters: STR save 3 +0 = 3 vs DC 15 fails; 3d6 = 9, Restrained",
-    "[2.57] Dummy C enters: STR save 18 +0 = 18 vs DC 15 succeeds",
-    "[3.20] Dummy B enters: STR save 4 +0 = 4 vs DC 15 fails; 3d6 = 12, Restrained",
-    "[3.93] Tentacle 6 grabs Barrel (no save)",
-    "[4.17] Tentacle 5 grabs Barrel (no save)",
-    "[8.20] Dummy B: CON save 3 +0 = 3 vs DC 15 fails; 14 thunder, pushed 10 ft",
-    "[8.57] Dummy A: Athletics 2 +0 = 2 vs DC 15 stays Restrained",
-    "[8.57] Dummy C ends its turn: STR save 18 +0 = 18 vs DC 15 succeeds",
-    "[9.20] Dummy B: Athletics 19 +0 = 19 vs DC 15 escapes",
-    "[11.90] Dummy B enters: STR save 18 +0 = 18 vs DC 15 succeeds",
-    "[13.00] The tentacles release everything"
+    "[2.63] Grabbed { body: BodyId(11), tentacle: 4 }",
+    "[2.67] Save { body: BodyId(13), trigger: Enter, save: Save { d20: 2, modifier: 0, dc: 15, success: false }, damage: Some(9) }",
+    "[2.67] Save { body: BodyId(14), trigger: Enter, save: Save { d20: 2, modifier: 0, dc: 15, success: false }, damage: Some(12) }",
+    "[2.67] Save { body: BodyId(15), trigger: Enter, save: Save { d20: 20, modifier: 0, dc: 15, success: true }, damage: None }",
+    "[2.67] Entering dummy: 9 damage",
+    "[2.67] Entering dummy: 12 damage",
+    "[2.80] Wrapped { body: BodyId(13), tentacle: 6 }",
+    "[2.97] Grabbed { body: BodyId(11), tentacle: 3 }",
+    "[3.03] Wrapped { body: BodyId(13), tentacle: 7 }",
+    "[3.40] Wrapped { body: BodyId(14), tentacle: 8 }",
+    "[5.00] Entering dummy: CON save 7 +0 = 7 vs DC 15 fails; 3 thunder, pushed 10 ft",
+    "[8.67] Save { body: BodyId(15), trigger: EndOfTurn, save: Save { d20: 4, modifier: 0, dc: 15, success: false }, damage: Some(12) }",
+    "[8.67] Wrapped { body: BodyId(15), tentacle: 1 }",
+    "[8.67] Wrapped { body: BodyId(15), tentacle: 2 }",
+    "[8.67] Entering dummy: 12 damage",
+    "[9.03] Wrapped { body: BodyId(15), tentacle: 5 }",
+    "[9.10] Athletics escape: Escape { body: BodyId(13), check: Save { d20: 20, modifier: 0, dc: 15, success: true } }",
+    "[13.00] Creature 101 reached Vec3(-8.0, 1.8617847e-7, -3.0)"
   ],
   "tracks": [
     {
-      "label": "Barrel",
+      "label": "Entering dummy",
       "spell": "Thunderwave",
-      "at": 3.5999999046325684,
+      "at": 5.0,
       "start": [
-        -0.20000004966176638,
-        0.44999998834243327,
-        -5.000000003429793
+        1.7999999523162842,
+        0.0,
+        -3.499997854232788
       ],
       "final": [
-        -2.912274154825698,
-        0.4499999999885696,
-        -5.043738845025563
+        1.7999999523162842,
+        9.999999747378752e-6,
+        -5.0
       ],
       "requested_ft": 10.0,
-      "measured_ft": 8.89969407558348
+      "measured_ft": 4.921266882438359
     },
     {
-      "label": "Dummy B",
+      "label": "Tentacle segment",
       "spell": "Thunderwave",
-      "at": 8.199999809265137,
+      "at": 5.0,
       "start": [
-        -1.4895693063735962,
-        0.0,
-        -8.032861709594727
+        -2.033952698322769,
+        0.26977265297448094,
+        -5.023813848042637
       ],
-      "final": [
-        -0.3858412802219391,
-        0.0,
-        -6.073764801025391
-      ],
+      "final": null,
       "requested_ft": 10.0,
-      "measured_ft": 7.377350786571122
+      "measured_ft": null
+    },
+    {
+      "label": "Tentacle segment",
+      "spell": "Thunderwave",
+      "at": 5.0,
+      "start": [
+        -2.096024103147995,
+        0.5336197089342856,
+        -4.938933585193269
+      ],
+      "final": null,
+      "requested_ft": 10.0,
+      "measured_ft": null
+    },
+    {
+      "label": "Tentacle segment",
+      "spell": "Thunderwave",
+      "at": 5.0,
+      "start": [
+        0.0549589610321804,
+        0.2241614268497283,
+        -4.93890812160586
+      ],
+      "final": null,
+      "requested_ft": 10.0,
+      "measured_ft": null
+    },
+    {
+      "label": "Tentacle segment",
+      "spell": "Thunderwave",
+      "at": 5.0,
+      "start": [
+        0.2001158975901935,
+        0.33487743326458647,
+        -4.726069405152401
+      ],
+      "final": null,
+      "requested_ft": 10.0,
+      "measured_ft": null
+    },
+    {
+      "label": "Tentacle segment",
+      "spell": "Thunderwave",
+      "at": 5.0,
+      "start": [
+        0.3887182917280003,
+        0.34820857202604916,
+        -4.493171575683682
+      ],
+      "final": null,
+      "requested_ft": 10.0,
+      "measured_ft": null
+    },
+    {
+      "label": "Tentacle segment",
+      "spell": "Thunderwave",
+      "at": 5.0,
+      "start": [
+        0.5912152230702231,
+        0.39163082238523983,
+        -4.27832655779595
+      ],
+      "final": null,
+      "requested_ft": 10.0,
+      "measured_ft": null
+    },
+    {
+      "label": "Tentacle segment",
+      "spell": "Thunderwave",
+      "at": 5.0,
+      "start": [
+        0.8033231964720488,
+        0.4927603391962334,
+        -4.094802251090751
+      ],
+      "final": null,
+      "requested_ft": 10.0,
+      "measured_ft": null
+    },
+    {
+      "label": "Tentacle segment",
+      "spell": "Thunderwave",
+      "at": 5.0,
+      "start": [
+        1.0181471191955334,
+        0.6383013398171324,
+        -3.9456854800253858
+      ],
+      "final": null,
+      "requested_ft": 10.0,
+      "measured_ft": null
+    },
+    {
+      "label": "Tentacle segment",
+      "spell": "Thunderwave",
+      "at": 5.0,
+      "start": [
+        1.2239944009092618,
+        0.8079864027678191,
+        -3.8086147448714494
+      ],
+      "final": null,
+      "requested_ft": 10.0,
+      "measured_ft": null
+    },
+    {
+      "label": "Tentacle segment",
+      "spell": "Thunderwave",
+      "at": 5.0,
+      "start": [
+        1.3640159462973063,
+        1.0088691042167452,
+        -3.648001428641877
+      ],
+      "final": null,
+      "requested_ft": 10.0,
+      "measured_ft": null
+    },
+    {
+      "label": "Tentacle segment",
+      "spell": "Thunderwave",
+      "at": 5.0,
+      "start": [
+        2.0385183112486063,
+        0.2585926321179246,
+        -4.974925260174573
+      ],
+      "final": null,
+      "requested_ft": 10.0,
+      "measured_ft": null
+    },
+    {
+      "label": "Tentacle segment",
+      "spell": "Thunderwave",
+      "at": 5.0,
+      "start": [
+        2.057496658657524,
+        0.4482425668679043,
+        -4.777331873186946
+      ],
+      "final": null,
+      "requested_ft": 10.0,
+      "measured_ft": null
+    },
+    {
+      "label": "Tentacle segment",
+      "spell": "Thunderwave",
+      "at": 5.0,
+      "start": [
+        2.0760687543882375,
+        0.4509107976980024,
+        -4.494959111123446
+      ],
+      "final": null,
+      "requested_ft": 10.0,
+      "measured_ft": null
+    },
+    {
+      "label": "Tentacle segment",
+      "spell": "Thunderwave",
+      "at": 5.0,
+      "start": [
+        2.102069527084614,
+        0.3678104727150008,
+        -4.208495408446383
+      ],
+      "final": null,
+      "requested_ft": 10.0,
+      "measured_ft": null
+    },
+    {
+      "label": "Tentacle segment",
+      "spell": "Thunderwave",
+      "at": 5.0,
+      "start": [
+        2.208988446966857,
+        0.8065754470411913,
+        -3.5890662567319147
+      ],
+      "final": null,
+      "requested_ft": 10.0,
+      "measured_ft": null
+    },
+    {
+      "label": "Tentacle segment",
+      "spell": "Thunderwave",
+      "at": 5.0,
+      "start": [
+        2.1989135387661554,
+        1.1052055440124455,
+        -3.56977565825755
+      ],
+      "final": null,
+      "requested_ft": 10.0,
+      "measured_ft": null
+    },
+    {
+      "label": "Tentacle segment",
+      "spell": "Thunderwave",
+      "at": 5.0,
+      "start": [
+        0.33988633547066693,
+        1.0648317400256555,
+        -3.578400063169331
+      ],
+      "final": null,
+      "requested_ft": 10.0,
+      "measured_ft": null
+    },
+    {
+      "label": "Tentacle segment",
+      "spell": "Thunderwave",
+      "at": 5.0,
+      "start": [
+        2.0745140352617573,
+        0.36508853535197283,
+        -3.871399708542637
+      ],
+      "final": null,
+      "requested_ft": 10.0,
+      "measured_ft": null
+    },
+    {
+      "label": "Tentacle segment",
+      "spell": "Thunderwave",
+      "at": 5.0,
+      "start": [
+        1.809769051414045,
+        0.4948127001402353,
+        -3.8639802448061693
+      ],
+      "final": null,
+      "requested_ft": 10.0,
+      "measured_ft": null
+    },
+    {
+      "label": "Tentacle segment",
+      "spell": "Thunderwave",
+      "at": 5.0,
+      "start": [
+        1.8808194680623405,
+        0.18175042939627578,
+        -3.865534973630891
+      ],
+      "final": null,
+      "requested_ft": 10.0,
+      "measured_ft": null
+    },
+    {
+      "label": "Tentacle segment",
+      "spell": "Thunderwave",
+      "at": 5.0,
+      "start": [
+        1.5308706580403098,
+        0.2599037206942396,
+        -3.855836237037404
+      ],
+      "final": null,
+      "requested_ft": 10.0,
+      "measured_ft": null
+    },
+    {
+      "label": "Tentacle segment",
+      "spell": "Thunderwave",
+      "at": 5.0,
+      "start": [
+        1.3176553792002013,
+        0.29361700640162713,
+        -3.696585056455999
+      ],
+      "final": null,
+      "requested_ft": 10.0,
+      "measured_ft": null
     }
   ],
+  "feather_falls": [],
+  "levitations": [],
+  "telekinesis": [],
+  "walls": [],
+  "gusts": [],
+  "flames": [],
+  "wind_walls": [],
+  "tentacles": [
+    {
+      "cast": 1,
+      "caster": 14,
+      "spell": {
+        "center": [
+          0.0,
+          0.0,
+          -3.0
+        ],
+        "gravity": [
+          0.0,
+          -9.81,
+          0.0
+        ],
+        "dc": 15,
+        "cast": 60,
+        "ends": 1920,
+        "ended": true,
+        "tentacles": [
+          {
+            "root": [
+              -2.032,
+              0.12000000000000001,
+              -5.032
+            ],
+            "anchor": 16,
+            "segments": [
+              17,
+              18,
+              19,
+              20,
+              21,
+              22,
+              23,
+              24
+            ],
+            "joints": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9,
+              10,
+              11,
+              12,
+              13,
+              14,
+              15
+            ],
+            "phase": [
+              1.7916940006832973,
+              1.9573418155660394,
+              0.15180789281928386
+            ],
+            "frequency": [
+              0.33503084367697367,
+              0.49650223847847463,
+              0.5083721230278162
+            ],
+            "mode": "Idle"
+          },
+          {
+            "root": [
+              0.0,
+              0.12000000000000001,
+              -5.032
+            ],
+            "anchor": 25,
+            "segments": [
+              26,
+              27,
+              28,
+              29,
+              30,
+              31,
+              32,
+              33
+            ],
+            "joints": [
+              16,
+              17,
+              18,
+              19,
+              20,
+              21,
+              22,
+              23,
+              24,
+              25,
+              26,
+              27,
+              28,
+              29,
+              30,
+              31
+            ],
+            "phase": [
+              5.218866779682151,
+              4.367619774555525,
+              0.2912652255680538
+            ],
+            "frequency": [
+              0.3224727393475947,
+              0.3670860968186157,
+              0.5038263102942038
+            ],
+            "mode": "Idle"
+          },
+          {
+            "root": [
+              2.032,
+              0.12000000000000001,
+              -5.032
+            ],
+            "anchor": 34,
+            "segments": [
+              35,
+              36,
+              37,
+              38,
+              39,
+              40,
+              41,
+              42
+            ],
+            "joints": [
+              32,
+              33,
+              34,
+              35,
+              36,
+              37,
+              38,
+              39,
+              40,
+              41,
+              42,
+              43,
+              44,
+              45,
+              46,
+              47
+            ],
+            "phase": [
+              0.0836717973626199,
+              5.837290212251377,
+              0.37712015016558725
+            ],
+            "frequency": [
+              0.33972948722237634,
+              0.4235066980386133,
+              0.4502248827888269
+            ],
+            "mode": "Idle"
+          },
+          {
+            "root": [
+              -2.032,
+              0.12000000000000001,
+              -3.0
+            ],
+            "anchor": 43,
+            "segments": [
+              44,
+              45,
+              46,
+              47,
+              48,
+              49,
+              50,
+              51
+            ],
+            "joints": [
+              48,
+              49,
+              50,
+              51,
+              52,
+              53,
+              54,
+              55,
+              56,
+              57,
+              58,
+              59,
+              60,
+              61,
+              62,
+              63
+            ],
+            "phase": [
+              1.3767501345648923,
+              1.4224158771343036,
+              3.176922626390781
+            ],
+            "frequency": [
+              0.463712901337936,
+              0.5866828620488653,
+              0.34119092507815124
+            ],
+            "mode": "Idle"
+          },
+          {
+            "root": [
+              0.0,
+              0.12000000000000001,
+              -3.0
+            ],
+            "anchor": 52,
+            "segments": [
+              53,
+              54,
+              55,
+              56,
+              57,
+              58,
+              59,
+              60
+            ],
+            "joints": [
+              64,
+              65,
+              66,
+              67,
+              68,
+              69,
+              70,
+              71,
+              72,
+              73,
+              74,
+              75,
+              76,
+              77,
+              78,
+              79
+            ],
+            "phase": [
+              3.1543397469890158,
+              5.560905919931256,
+              1.6098193842858735
+            ],
+            "frequency": [
+              0.45642253215393547,
+              0.43734058319413827,
+              0.5626402370078972
+            ],
+            "mode": "Idle"
+          },
+          {
+            "root": [
+              2.032,
+              0.12000000000000001,
+              -3.0
+            ],
+            "anchor": 61,
+            "segments": [
+              62,
+              63,
+              64,
+              65,
+              66,
+              67,
+              68,
+              69
+            ],
+            "joints": [
+              80,
+              81,
+              82,
+              83,
+              84,
+              85,
+              86,
+              87,
+              88,
+              89,
+              90,
+              91,
+              92,
+              93,
+              94,
+              95
+            ],
+            "phase": [
+              3.3485155258936583,
+              2.5748244084909797,
+              4.217088512357711
+            ],
+            "frequency": [
+              0.5736555260655898,
+              0.3073922630316949,
+              0.3064536328893907
+            ],
+            "mode": "Idle"
+          },
+          {
+            "root": [
+              -2.032,
+              0.12000000000000001,
+              -0.968
+            ],
+            "anchor": 70,
+            "segments": [
+              71,
+              72,
+              73,
+              74,
+              75,
+              76,
+              77,
+              78
+            ],
+            "joints": [
+              96,
+              97,
+              98,
+              99,
+              100,
+              101,
+              102,
+              103,
+              104,
+              105,
+              106,
+              107,
+              108,
+              109,
+              110,
+              111
+            ],
+            "phase": [
+              3.4822662261473587,
+              0.11602097935321293,
+              4.1811365263305635
+            ],
+            "frequency": [
+              0.3639146529859985,
+              0.2806461680645831,
+              0.3703759369602986
+            ],
+            "mode": "Idle"
+          },
+          {
+            "root": [
+              0.0,
+              0.12000000000000001,
+              -0.968
+            ],
+            "anchor": 79,
+            "segments": [
+              80,
+              81,
+              82,
+              83,
+              84,
+              85,
+              86,
+              87
+            ],
+            "joints": [
+              112,
+              113,
+              114,
+              115,
+              116,
+              117,
+              118,
+              119,
+              120,
+              121,
+              122,
+              123,
+              124,
+              125,
+              126,
+              127
+            ],
+            "phase": [
+              3.6720978523506385,
+              1.4509266864868162,
+              2.872052220609133
+            ],
+            "frequency": [
+              0.2843456716823348,
+              0.2798533145226966,
+              0.36463377535848523
+            ],
+            "mode": "Idle"
+          },
+          {
+            "root": [
+              2.032,
+              0.12000000000000001,
+              -0.968
+            ],
+            "anchor": 88,
+            "segments": [
+              89,
+              90,
+              91,
+              92,
+              93,
+              94,
+              95,
+              96
+            ],
+            "joints": [
+              128,
+              129,
+              130,
+              131,
+              132,
+              133,
+              134,
+              135,
+              136,
+              137,
+              138,
+              139,
+              140,
+              141,
+              142,
+              143
+            ],
+            "phase": [
+              3.9255321848174463,
+              6.172199768786161,
+              3.560779863691689
+            ],
+            "frequency": [
+              0.35307680100692135,
+              0.5110044083910775,
+              0.305319305497117
+            ],
+            "mode": "Idle"
+          }
+        ],
+        "creatures": [
+          {
+            "body": 12,
+            "inside": false,
+            "clock": 60,
+            "last_save": null,
+            "restrained": false,
+            "hold": [
+              0.0,
+              0.9,
+              -8.0
+            ]
+          },
+          {
+            "body": 13,
+            "inside": false,
+            "clock": 1036,
+            "last_save": 316,
+            "restrained": false,
+            "hold": [
+              -1.7999999523162842,
+              0.9,
+              -2.831220460020045e-7
+            ]
+          },
+          {
+            "body": 14,
+            "inside": true,
+            "clock": 1756,
+            "last_save": 316,
+            "restrained": false,
+            "hold": [
+              -0.48735201137225237,
+              0.9,
+              0.009894918381979801
+            ]
+          },
+          {
+            "body": 15,
+            "inside": true,
+            "clock": 1756,
+            "last_save": 1036,
+            "restrained": false,
+            "hold": [
+              1.8000000011514348,
+              0.9,
+              -4.999999895182938
+            ]
+          }
+        ],
+        "regrab": []
+      }
+    }
+  ],
+  "meteors": [],
+  "reverse_gravity": [],
   "props": [
     {
-      "name": "Barrel",
+      "name": "Rolling barrel",
       "kind": "Barrel",
       "mass_kg": 60.0,
       "secured": false,
       "removed": false,
       "center": [
-        -2.912274154825698,
-        0.4499999999885696,
-        -5.043738845025563
+        -1.0000858825615773,
+        0.44999999980601224,
+        -2.7796762879631607
       ],
       "rotation": [
-        -1.558849548771154e-11,
-        0.5748422966774888,
-        1.0951140584465331e-11,
-        0.8182642201334177
+        -1.2721455989912973e-10,
+        0.39347203443485956,
+        -2.972334062583141e-10,
+        0.9193365858692303
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -2.0356397435807834,
+        0.26994369689485553,
+        -5.031370610001455
+      ],
+      "rotation": [
+        -0.7056057643225754,
+        0.004781158942900466,
+        0.021994181488990263,
+        0.7082470627221453
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -2.0698122162026156,
+        0.5666208226729493,
+        -5.024588871685249
+      ],
+      "rotation": [
+        -0.6889005080527192,
+        0.07005983592094285,
+        0.21770544515706014,
+        0.6878314099722419
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -2.1124491059968404,
+        0.8618330601680898,
+        -5.000950995997079
+      ],
+      "rotation": [
+        -0.620459392968026,
+        0.23820307044291808,
+        0.3235562951887581,
+        0.6734988958810848
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -2.1079033790853106,
+        1.1500961357304624,
+        -4.93138211920291
+      ],
+      "rotation": [
+        -0.4286722786297867,
+        0.37782019409426904,
+        0.46604637033695595,
+        0.6754944553174841
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -2.043253284848559,
+        1.4094048791730378,
+        -4.802097295184059
+      ],
+      "rotation": [
+        -0.1625585210383407,
+        0.4653242077325598,
+        0.6552116869544957,
+        0.572490833301405
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -1.9096817611505519,
+        1.648355338233459,
+        -4.755521779445893
+      ],
+      "rotation": [
+        -0.12372793310689703,
+        0.7659851526107744,
+        0.44764543293081105,
+        0.4444903946376461
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -1.7746903912977119,
+        1.8122448320625824,
+        -4.920673328908454
+      ],
+      "rotation": [
+        -0.12511991787094015,
+        0.9657264411802351,
+        0.12915448500103938,
+        0.18718057046991712
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -1.746260832019083,
+        1.8123484039640982,
+        -5.197020537718754
+      ],
+      "rotation": [
+        -0.11679420802146473,
+        0.9792013569160816,
+        -0.1404716136558948,
+        -0.0882697079594843
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        0.1154519607480992,
+        0.2066217600455671,
+        -5.075052726726689
+      ],
+      "rotation": [
+        -0.5865146793538623,
+        0.5467825478702957,
+        -0.10517072940542478,
+        0.5881908652157349
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        0.3594124583625813,
+        0.3227796802692496,
+        -5.189867137062726
+      ],
+      "rotation": [
+        -0.27117532572150993,
+        0.8155972632262626,
+        -0.04765286859398733,
+        0.5089147777893933
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        0.6161668538658418,
+        0.3811680240227844,
+        -5.334958481064648
+      ],
+      "rotation": [
+        0.06995177061656106,
+        0.8596034419565288,
+        0.15007572279180262,
+        0.4833900596750151
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        0.8777534284278729,
+        0.46673016319306115,
+        -5.447208308359598
+      ],
+      "rotation": [
+        0.3186973539278206,
+        0.7259351747876974,
+        0.44466902742089476,
+        0.4167968026003995
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        1.133874100607924,
+        0.6102986140605767,
+        -5.476152917765122
+      ],
+      "rotation": [
+        0.15128791140412776,
+        0.6684158991025418,
+        0.5402022477692029,
+        0.488378628929459
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        1.3786404243178778,
+        0.7831784047228533,
+        -5.456469296822682
+      ],
+      "rotation": [
+        0.06665244670653242,
+        0.6785253017237037,
+        0.47944567791001785,
+        0.5525329928630446
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        1.6175686097102189,
+        0.9522980204018393,
+        -5.40046920903702
+      ],
+      "rotation": [
+        -0.03460550649335807,
+        0.5887195807129556,
+        0.42631901788769433,
+        0.6859036442480617
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        1.8422591081278479,
+        1.0941783376387724,
+        -5.269122108389758
+      ],
+      "rotation": [
+        0.1322290253085118,
+        0.4440999288404963,
+        0.6313788576254095,
+        0.6218130556794865
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        2.069564251629603,
+        0.2521464438954251,
+        -5.0917112263821735
+      ],
+      "rotation": [
+        -0.816057673671738,
+        0.17911394971702027,
+        -0.03284554052525837,
+        0.5485337152134261
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        2.1927199755375324,
+        0.4794986390221557,
+        -5.230123201824133
+      ],
+      "rotation": [
+        -0.8232976912539695,
+        0.29106318494334465,
+        -0.18732719275316387,
+        0.4498573738439098
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        2.3561963193708086,
+        0.6683719198733632,
+        -5.395872775311851
+      ],
+      "rotation": [
+        -0.839526845734631,
+        0.2918335076448088,
+        -0.1601625469079655,
+        0.42939007635778254
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        2.4454666636557194,
+        0.889519466482494,
+        -5.561828470520336
+      ],
+      "rotation": [
+        -0.8546067572097218,
+        0.18129380824043126,
+        0.05825028211816886,
+        0.4831011801458559
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        2.3756937445726765,
+        1.1384051078806574,
+        -5.673512622823393
+      ],
+      "rotation": [
+        -0.7803923419450906,
+        0.007159907713178097,
+        0.35121152815769097,
+        0.5172881120266878
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        2.159568796485196,
+        1.3184265492916487,
+        -5.676414406598167
+      ],
+      "rotation": [
+        -0.6095902705651361,
+        -0.17032007316530082,
+        0.6023798784183675,
+        0.4863427359239196
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        1.899968702386633,
+        1.343358595367356,
+        -5.569959421538168
+      ],
+      "rotation": [
+        -0.3695690038410767,
+        -0.3285770060809919,
+        0.7764563165424595,
+        0.3906040078853283
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        1.7127150082654352,
+        1.2037517814309036,
+        -5.408129010000839
+      ],
+      "rotation": [
+        -0.11894388027312759,
+        -0.4492782092256129,
+        0.8525108079501115,
+        0.23922116626428888
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -2.0485256103338374,
+        0.26858780340508037,
+        -2.987812148940465
+      ],
+      "rotation": [
+        -0.6764211329675591,
+        -0.042760770904260635,
+        0.03500795175950333,
+        0.7344388406532987
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -2.1683352838656367,
+        0.5156980238873679,
+        -2.929499256619835
+      ],
+      "rotation": [
+        -0.514607064939148,
+        -0.28537584439083885,
+        0.24097398142709212,
+        0.7717977302558664
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -2.359284735331017,
+        0.7355690243041435,
+        -2.893093351213221
+      ],
+      "rotation": [
+        -0.6656542631978793,
+        -0.29883199162669866,
+        0.13823935442804924,
+        0.6696967399907405
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -2.429384038405728,
+        1.0042738680077632,
+        -2.9246797275979506
+      ],
+      "rotation": [
+        -0.7532164009610941,
+        -0.07450608838560355,
+        -0.14084633669104238,
+        0.6381819533310285
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -2.2959543052364952,
+        1.246560295575255,
+        -2.937730119978143
+      ],
+      "rotation": [
+        -0.6613652095442291,
+        0.18227998597045802,
+        -0.42000948323491294,
+        0.5941061355615419
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -2.03776001029255,
+        1.3285729989059223,
+        -2.88321074383279
+      ],
+      "rotation": [
+        -0.43572874152379637,
+        0.39729585641894855,
+        -0.6435611628286995,
+        0.48798104059583647
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -1.8047588389364029,
+        1.2067909466539182,
+        -2.7882261227971314
+      ],
+      "rotation": [
+        -0.17132547154181801,
+        0.5535193845631089,
+        -0.7524823275615745,
+        0.31310416864258783
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -1.599705969946229,
+        1.00864487561135,
+        -2.7770183345647834
+      ],
+      "rotation": [
+        -0.2150717496274267,
+        0.762033251642431,
+        -0.49245236709091156,
+        0.3613033795164653
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        0.020424718274174036,
+        0.2630847901315702,
+        -3.0401341241986715
+      ],
+      "rotation": [
+        -0.7945382090131927,
+        0.049848744572295406,
+        -0.04784033509906754,
+        0.6032706187278503
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        0.10835265015594696,
+        0.47297115231299386,
+        -3.1963907289593605
+      ],
+      "rotation": [
+        -0.9246217384472187,
+        0.17919853605380254,
+        -0.18955501880878023,
+        0.2775453482071359
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        0.27611806436300584,
+        0.6354813141464699,
+        -3.3699745824576666
+      ],
+      "rotation": [
+        -0.8129381564305118,
+        0.1748754646030363,
+        -0.31204753826342563,
+        0.4595393993587153
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        0.4003915690677793,
+        0.8763537292770499,
+        -3.3981344030776586
+      ],
+      "rotation": [
+        -0.632137612898254,
+        -0.05307200166883215,
+        -0.18946476738865037,
+        0.7494588066842135
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        0.34237534402784164,
+        1.1179141389588527,
+        -3.288230241955145
+      ],
+      "rotation": [
+        -0.3682985376590139,
+        -0.3095362365564792,
+        0.005241326247675346,
+        0.8766504627933808
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        0.12403390225098143,
+        1.216287557541999,
+        -3.1449147933757176
+      ],
+      "rotation": [
+        -0.11978816920931967,
+        -0.5260177816515035,
+        0.17502398192260285,
+        0.8236034808424907
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -0.14206112821961664,
+        1.14303044852397,
+        -3.0845912169691023
+      ],
+      "rotation": [
+        0.11073472615051995,
+        -0.7040577363903573,
+        0.253232985655173,
+        0.6541510370162403
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -0.4021532427202633,
+        0.9965059367813381,
+        -3.065618320003863
+      ],
+      "rotation": [
+        0.30431067150080165,
+        -0.5798438681232502,
+        0.013070829883304028,
+        0.7556488981112589
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        2.0723868225625113,
+        0.223669071416062,
+        -3.1019711738969544
+      ],
+      "rotation": [
+        0.9100806311253926,
+        -0.09831197929020773,
+        0.1050738852344643,
+        -0.3886482705740289
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        2.1639026380316726,
+        0.3859381086583633,
+        -3.3323115531598386
+      ],
+      "rotation": [
+        0.9579040744571172,
+        -0.09845508334815944,
+        0.15497152380653392,
+        -0.22070389101790114
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        2.266477610663911,
+        0.5030901363809746,
+        -3.589775594474506
+      ],
+      "rotation": [
+        0.9622823523209206,
+        -0.049032586668272087,
+        0.16675254486295732,
+        -0.20928943747370884
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        2.3691993193836,
+        0.6193224551300779,
+        -3.8475277714991134
+      ],
+      "rotation": [
+        0.9634440340648946,
+        0.013895396594582303,
+        0.18006180041392272,
+        -0.1978895126325241
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        2.471670148693834,
+        0.7355417313214914,
+        -4.105305864103696
+      ],
+      "rotation": [
+        0.9590880103654325,
+        0.09392547024309039,
+        0.19511497676176978,
+        -0.1823686931908677
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        2.5612347734978624,
+        0.8524629265888447,
+        -4.367108207072062
+      ],
+      "rotation": [
+        0.9486475533485431,
+        0.20552185076573057,
+        0.17070238402445384,
+        -0.1693791146275717
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        2.633144225589883,
+        0.9692395069187233,
+        -4.633893825895422
+      ],
+      "rotation": [
+        0.9136811514234665,
+        0.3349633220334342,
+        0.1771842022464411,
+        -0.14694245438302259
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        2.6705216840521833,
+        1.0560213348234764,
+        -4.915127245506508
+      ],
+      "rotation": [
+        0.9944641965620112,
+        0.03949372953170386,
+        0.016477784630637586,
+        -0.09596712821386466
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -2.0315550608891857,
+        0.2699879835740799,
+        -0.9697663756229641
+      ],
+      "rotation": [
+        -0.7112576142553153,
+        -0.0007488672868450507,
+        -0.0028252054800478555,
+        0.7029253613120098
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -1.98358977767122,
+        0.5603604797759328,
+        -0.9946433609934905
+      ],
+      "rotation": [
+        -0.7542512864195998,
+        0.09022771195951784,
+        -0.133878993623409,
+        0.6364278215126303
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -1.824415902142087,
+        0.7989986287698411,
+        -1.037256850819153
+      ],
+      "rotation": [
+        -0.7121114201407791,
+        0.24063112420372265,
+        -0.32959898074944827,
+        0.5712779527151914
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -1.5649213768354453,
+        0.9225034627523871,
+        -1.0591280365378173
+      ],
+      "rotation": [
+        -0.5885739817603487,
+        0.40183910249797095,
+        -0.5044980162187325,
+        0.4874297439936937
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -1.2714985927023352,
+        0.9159325705744445,
+        -1.0787648879620004
+      ],
+      "rotation": [
+        -0.5072078119564649,
+        0.5479902976632398,
+        -0.5456137689587479,
+        0.3804635124159996
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -0.9961926511039348,
+        0.8623361619758833,
+        -1.1681804681698182
+      ],
+      "rotation": [
+        -0.5317499592552304,
+        0.6764949455068366,
+        -0.37677833741918315,
+        0.3429790868076351
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -0.7378054502080855,
+        0.8561882869986893,
+        -1.3161189498916697
+      ],
+      "rotation": [
+        -0.40945248711366056,
+        0.7647400534329866,
+        -0.18055759942325847,
+        0.4635949360834964
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -0.4691826857637444,
+        0.8535154180367746,
+        -1.443164344868183
+      ],
+      "rotation": [
+        -0.07465489852269692,
+        0.8156207497958172,
+        -0.12611647782315386,
+        0.5597178509307675
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        0.0035284920060058593,
+        0.26996636682637903,
+        -0.9704926345773981
+      ],
+      "rotation": [
+        -0.6930980719314193,
+        -0.16505625490289944,
+        -0.17815574204722337,
+        0.6786987748463832
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -0.02936941187319434,
+        0.5537830514929937,
+        -0.9159275278633446
+      ],
+      "rotation": [
+        -0.5251298170468891,
+        -0.18543692194971514,
+        -0.06157503617713913,
+        0.8282875938621201
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -0.1651759285818313,
+        0.793202787504294,
+        -0.8204552256749424
+      ],
+      "rotation": [
+        -0.5039480055655987,
+        -0.3430081275237998,
+        0.12484576618185463,
+        0.7828124723109219
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -0.4072461792353306,
+        0.9380113806643531,
+        -0.80662671428546
+      ],
+      "rotation": [
+        -0.5094432140407755,
+        -0.5681128338896296,
+        0.28815428665467124,
+        0.5785175249897244
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -0.6722947152687012,
+        0.9260275801517805,
+        -0.9012206861391403
+      ],
+      "rotation": [
+        -0.42243571562016563,
+        -0.7446962808387337,
+        0.40882471258218933,
+        0.3159713117603032
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -0.8394629372182056,
+        0.7564500962337194,
+        -1.0517816693825686
+      ],
+      "rotation": [
+        -0.27385725522705134,
+        -0.8329729139579867,
+        0.4803210183808527,
+        0.0212143270792891
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -0.8332618703004302,
+        0.5136633540746085,
+        -1.1988177814018384
+      ],
+      "rotation": [
+        -0.1281574050465344,
+        -0.8395419461069819,
+        0.4528327877201395,
+        -0.27145435458700423
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -0.7127118999254657,
+        0.26504972145594224,
+        -1.312688732802348
+      ],
+      "rotation": [
+        -0.16071462753355736,
+        -0.7952753936979773,
+        0.4431484889107474,
+        -0.38121814417915384
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        1.9248704182364562,
+        0.21714407010727066,
+        -0.9276477903315372
+      ],
+      "rotation": [
+        -0.5638459380983982,
+        -0.21836961547377629,
+        0.3570265433516577,
+        0.7119863176144182
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        1.6811258805272093,
+        0.3138678702845923,
+        -0.8251329577229419
+      ],
+      "rotation": [
+        0.4083242736051505,
+        0.355258845843461,
+        -0.6357716256504864,
+        -0.5503243407778146
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        1.4091856823513278,
+        0.2997569200854167,
+        -0.6994778285382894
+      ],
+      "rotation": [
+        0.48764534587936054,
+        0.2251653964749805,
+        -0.797642195394864,
+        -0.2743528549115634
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        1.130204110012837,
+        0.2769924676739362,
+        -0.5934883925823454
+      ],
+      "rotation": [
+        -0.5981850594667559,
+        -0.02948018914113567,
+        0.8007443553825886,
+        -0.010678501855572849
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        0.8364516117124301,
+        0.2697847389272258,
+        -0.554386651858666
+      ],
+      "rotation": [
+        0.6745018969579502,
+        0.23533529154559568,
+        -0.6578932083387123,
+        -0.23841354402607284
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        0.5364672180188669,
+        0.2732083701903174,
+        -0.5617489526801569
+      ],
+      "rotation": [
+        0.5534155137421098,
+        0.45599536643676286,
+        -0.5330770597218891,
+        -0.44903044811685583
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        0.23680721942280727,
+        0.2736477764883744,
+        -0.5755319057238434
+      ],
+      "rotation": [
+        0.36028614779382073,
+        0.6340056303400163,
+        -0.34279552398784185,
+        -0.592217849392391
+      ]
+    },
+    {
+      "name": "Tentacle segment",
+      "kind": "Tentacle",
+      "mass_kg": 4.0,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -0.023630309701401786,
+        0.2414261732860861,
+        -0.6813591344482465
+      ],
+      "rotation": [
+        0.26307834139662023,
+        0.8670549562566038,
+        -0.22753069682393917,
+        -0.3567005342323937
       ]
     }
   ],
@@ -188,144 +2188,217 @@
       "id": 14,
       "name": "Wizard",
       "position": [
-        2.2364840507507324,
         0.0,
-        -4.596582889556885
+        0.0,
+        -8.0
       ],
       "health": 200
     },
     {
       "id": 101,
-      "name": "Dummy A",
+      "name": "Entering dummy",
       "position": [
-        -4.199999809265137,
-        0.0,
-        -6.0686354637146
+        -8.0,
+        1.8617846819779515e-7,
+        -3.0
       ],
-      "health": 91
+      "health": 391
     },
     {
       "id": 102,
-      "name": "Dummy B",
+      "name": "Entering dummy",
       "position": [
-        -0.3858412802219391,
-        0.0,
-        -6.073764801025391
+        3.0044868036305018e-24,
+        9.999999747378752e-6,
+        -5.0
       ],
-      "health": 74
+      "health": 388
     },
     {
       "id": 103,
-      "name": "Dummy C",
+      "name": "Entering dummy",
       "position": [
-        -6.400000095367432,
-        0.0,
-        -0.8165828585624695
+        1.7999999523162842,
+        9.999999747378752e-6,
+        -5.0
       ],
-      "health": 100
+      "health": 385
     }
   ],
   "ledger": {
     "terms": {
       "black_tentacles": {
         "linear": [
-          -249438.86891740028,
-          492210.7388948266,
-          130937.72632050543
+          55487.15750229881,
+          39914.029672720775,
+          206806.4950208822
         ],
         "angular": [
-          2417072.0548436176,
-          1976042.1385230795,
-          -2977152.622688461
+          140140.3932800535,
+          -634056.3972790306,
+          -33165.11002390908
+        ]
+      },
+      "creature:controller": {
+        "linear": [
+          -0.0001308666304176587,
+          0.000011827267263048766,
+          -0.0004349762822356816
+        ],
+        "angular": [
+          -0.00047720043838195747,
+          -0.0007697814876302467,
+          0.00017795508174925758
         ]
       },
       "gravity": {
         "linear": [
           0.0,
-          -42047.6219999826,
+          -72785.29499993702,
           0.0
         ],
         "angular": [
-          -216378.3078752635,
+          -193514.2276552344,
           0.0,
-          164596.8121851777
+          4016.84676959829
         ]
       },
-      "removed": {
+      "meteor:spawn/remove": {
         "linear": [
-          30.953582297778272,
-          -12.852763911954206,
-          17.295605173174536
+          0.0,
+          0.0,
+          0.0
         ],
         "angular": [
-          -29.667914544605864,
-          -62.40493905460179,
-          61.630812527798945
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "playground:launch": {
+        "linear": [
+          0.0,
+          0.0,
+          -480.0
+        ],
+        "angular": [
+          -215.99999434116103,
+          -4.747321310925341e-7,
+          0.0
         ]
       },
       "sleep": {
         "linear": [
-          -1.9081958235744897e-17,
-          -7.632783294297951e-17,
-          -7.37257477290143e-17
+          -9.887923813067798e-17,
+          6.938893903907253e-18,
+          -1.6956921977673284e-16
         ],
         "angular": [
-          -4.2769607428147486e-16,
-          -2.435013749998409e-17,
-          2.814589160847286e-17
+          -2.6007217680001523e-16,
+          -1.0107111501229751e-16,
+          9.320680943633356e-17
+        ]
+      },
+      "spell:creature-proxy": {
+        "linear": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "angular": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "spell:removed": {
+        "linear": [
+          17.946321012838062,
+          0.4750931712223283,
+          -22.603773460980385
+        ],
+        "angular": [
+          -33.90264622133192,
+          -123.78123165202352,
+          -27.22907827438679
         ]
       },
       "spell:thunderwave": {
         "linear": [
-          -343.39071412872613,
+          124.71229007000761,
           0.0,
-          -5.888795912815588e-7
+          486.44097615790093
         ],
         "angular": [
-          -2.649958092117983e-7,
-          1716.953571703614,
-          154.5258173548266
+          247.71548397768007,
+          -997.6983205600609,
+          -66.97147033731862
         ]
       },
       "static contact": {
         "linear": [
-          249751.30604923138,
-          -450150.2641309182,
-          -130955.02192508937
+          -55632.07019343458,
+          32840.76710965684,
+          -206779.20701478544
         ],
         "angular": [
-          -2200664.0790535794,
-          -1977696.6871557187,
-          2812339.653873442
+          53258.61593771182,
+          635167.8429232556,
+          29200.281281102543
+        ]
+      },
+      "telekinesis:proxy": {
+        "linear": [
+          3.2642597340330552,
+          30.312445637663192,
+          -7.639908646361935
+        ],
+        "angular": [
+          122.24159985131645,
+          -1.5179612464243388,
+          41.849280266275365
+        ]
+      },
+      "tentacles:controller": {
+        "linear": [
+          -1.0100488151785068,
+          -0.289333014212793,
+          -3.4848651729937012
+        ],
+        "angular": [
+          -4.83561435522647,
+          11.552652330217121,
+          0.33314506526311927
         ]
       }
     },
     "residual_relative": {
-      "linear": 8.553987309783887e-15,
-      "angular": 4.462556977205593e-15
+      "linear": 5.1745432419268435e-14,
+      "angular": 4.129629130058945e-11
     },
     "tolerance": 1e-9
   },
   "replay": {
     "window_s": [
-      2.200000047683716,
-      4.199999809265137
+      3.0,
+      4.0
     ],
     "speed": 0.25,
     "source": "checkpoint at the window start, stepped again with the same admitted commands",
     "identical_to_live": true
   },
-  "live_seconds": 15.0,
-  "video_seconds": 23.0,
-  "authority_tick": 450,
-  "physics_steps": 1800,
+  "live_seconds": 18.0,
+  "live_speed": 1,
+  "video_seconds": 22.0,
+  "authority_tick": 540,
+  "physics_steps": 2160,
   "renderer": "owned native GPU pipeline; scripted admitted commands; no grading",
   "prepared_pack": {
     "inventory": {
       "schema": "openagents.verse.asset-admission.v1",
       "purpose": "original_local",
       "compiler": "verse:compiler:original-chamber",
-      "compiler_revision": "b089a8e0ac35bb522cd6771f8f35bdec534d3ce755f87377ddbd6ba5929b7593",
+      "compiler_revision": "bd24e73a3800b7063d3c2961446e55073ddd50f0566ce39845175c493128ff1d",
       "assets": [
         "verse:model:adventurer",
         "verse:model:arrow",
@@ -345,6 +2418,7 @@
         "verse:model:effect-mist",
         "verse:model:effect-ribbon",
         "verse:model:effect-rune",
+        "verse:model:effect-scorch",
         "verse:model:effect-shadow",
         "verse:model:effect-shield",
         "verse:model:effect-wave",
@@ -362,9 +2436,11 @@
         "verse:model:prop-crate",
         "verse:model:prop-crate-secured",
         "verse:model:prop-dummy",
+        "verse:model:prop-meteor",
         "verse:model:prop-paper",
         "verse:model:prop-sheet",
         "verse:model:prop-stone",
+        "verse:model:prop-tentacle",
         "verse:model:prop/Banner_2",
         "verse:model:prop/Barrel",
         "verse:model:prop/Book_Stack_1",
@@ -488,7 +2564,7 @@
           {
             "creator": "OpenAgents contributors",
             "license": "apache2",
-            "revision": "b089a8e0ac35bb522cd6771f8f35bdec534d3ce755f87377ddbd6ba5929b7593",
+            "revision": "bd24e73a3800b7063d3c2961446e55073ddd50f0566ce39845175c493128ff1d",
             "format": "rust/wgsl/json"
           }
         ],
@@ -504,10 +2580,10 @@
       ]
     },
     "schema": "openagents.verse.prepared-pack.v1",
-    "manifest_sha256": "b4c6fe54c439921f953484dd938954801b5908b9ac3c3c46179924edb1ced073",
-    "manifest_bytes": 83371404,
-    "vertices": 272006,
-    "indices": 998031,
+    "manifest_sha256": "cc7ec55ccd9018488dbd9d075504115b335dabdadc043a255335e46e8ef1e521",
+    "manifest_bytes": 83448086,
+    "vertices": 272451,
+    "indices": 999939,
     "encoded_bytes": 34477502,
     "rgba_bytes": 164233224,
     "budget": {

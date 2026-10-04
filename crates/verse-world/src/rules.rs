@@ -65,6 +65,7 @@ pub struct Actor {
 #[serde(rename_all = "snake_case")]
 pub enum ProjectileKind {
     Bow,
+    SiegeBoulder,
     Firebolt,
     MagicMissile,
     Fireball,
@@ -85,6 +86,7 @@ impl ProjectileKind {
     pub fn tag(self) -> FlightTag {
         match self {
             Self::Bow => FlightTag::Ordinary,
+            Self::SiegeBoulder => FlightTag::Siege,
             Self::Firebolt | Self::MagicMissile | Self::Fireball => FlightTag::Spell,
         }
     }
@@ -116,6 +118,8 @@ pub struct Counters {
     pub casts: u64,
     pub projectiles: u64,
     pub hits: u64,
+    #[serde(default)]
+    pub deflections: u64,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Snapshot {
@@ -129,13 +133,13 @@ pub struct Snapshot {
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct Flight {
+    #[serde(default)]
+    wind_dragged: bool,
+    #[serde(default)]
+    deflected: bool,
     view: Projectile,
     target: Option<u32>,
     until: f32,
-    /// Turned upward by a wind wall: it misses automatically and can no
-    /// longer damage a creature.
-    #[serde(default)]
-    deflected: bool,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct Burn {
@@ -177,6 +181,14 @@ pub struct Simulation {
     motion_starts: BTreeMap<u32, [f32; 3]>,
     motion_paths: BTreeMap<u32, Vec<[f32; 3]>>,
     flights: Vec<Flight>,
+    #[serde(default)]
+    wind_walls: Vec<crate::wind_wall::Wall>,
+    #[serde(default)]
+    wind_gusts: Vec<crate::gust::Gust>,
+    #[serde(skip)]
+    spell_cover: BTreeMap<usize, physics::BodyId>,
+    #[serde(default)]
+    spell_hits: Vec<(physics::BodyId, ProjectileKind)>,
     burns: Vec<Burn>,
     deaths: BTreeMap<u32, f32>,
     effects: Vec<Effect>,
@@ -184,13 +196,6 @@ pub struct Simulation {
     // Static solids come from the validated scene profile after checkpoint load.
     #[serde(skip)]
     colliders: Vec<physics::kinematic::Aabb>,
-    /// Standing wind walls, copied from the spell world before each tick.
-    #[serde(skip)]
-    pub(crate) wind_walls: Vec<crate::wind_wall::Wall>,
-    /// Flights the wind walls deflected during the last tick: projectile ID
-    /// and entry point. The owner drains them after each tick.
-    #[serde(skip)]
-    pub(crate) deflections: Vec<(u32, Vec3)>,
 }
 fn valid_position(pos: [f32; 3]) -> Result<(), String> {
     if pos.iter().any(|p| !p.is_finite() || p.abs() > 10_000.) {
@@ -223,6 +228,8 @@ impl Simulation {
             || !self.players.contains_key(&0)
             || self.actors.len() > 1024
             || self.flights.len() > 128
+            || self.wind_walls.len() > 64
+            || self.wind_gusts.len() > 64
             || self.burns.len() > 384
         {
             return Err("Invalid combat checkpoint".into());
@@ -291,15 +298,14 @@ impl Simulation {
                     .target
                     .is_some_and(|id| self.actors.get(&id).is_some_and(|a| a.faction != "undead"))
                 || !Vec3::from(flight.view.vel).is_finite()
-                // A wind wall keeps a flight's speed and adds its upward
-                // boost, and a deflected flight has no target.
+                || ((flight.deflected || flight.wind_dragged)
+                    && flight.view.kind.tag() != FlightTag::Ordinary)
                 || Vec3::from(flight.view.vel).length()
-                    > if flight.deflected {
-                        30. + crate::wind_wall::DEFLECT_BOOST as f32
+                    > if flight.deflected || flight.wind_dragged {
+                        80.
                     } else {
                         30.
                     }
-                || (flight.deflected && flight.target.is_some())
                 || !flight.until.is_finite()
                 || flight.until < 0.
             {
@@ -342,13 +348,15 @@ impl Simulation {
             motion_starts: BTreeMap::new(),
             motion_paths: BTreeMap::new(),
             flights: vec![],
+            wind_walls: vec![],
+            wind_gusts: vec![],
+            spell_cover: BTreeMap::new(),
+            spell_hits: vec![],
             burns: vec![],
             deaths: BTreeMap::new(),
             effects: vec![],
             counters: Counters::default(),
             colliders: vec![],
-            wind_walls: vec![],
-            deflections: vec![],
         };
         s.actors.insert(
             0,
@@ -371,6 +379,21 @@ impl Simulation {
     }
     pub fn set_colliders(&mut self, solids: Vec<physics::kinematic::Aabb>) {
         self.colliders = solids;
+    }
+    pub(crate) fn set_spell_cover(
+        &mut self,
+        solids: Vec<physics::kinematic::Aabb>,
+        panels: Vec<(physics::BodyId, physics::kinematic::Aabb)>,
+    ) {
+        self.colliders = solids;
+        self.spell_cover.clear();
+        for (body, bounds) in panels {
+            self.spell_cover.insert(self.colliders.len(), body);
+            self.colliders.push(bounds);
+        }
+    }
+    pub(crate) fn take_spell_hits(&mut self) -> Vec<(physics::BodyId, ProjectileKind)> {
+        std::mem::take(&mut self.spell_hits)
     }
     fn allocate(&mut self) -> Result<u32, String> {
         let id = self.next_id;
@@ -671,6 +694,8 @@ impl Simulation {
                 Spell::MagicMissile => 18.,
             };
             self.flights.push(Flight {
+                wind_dragged: false,
+                deflected: false,
                 view: Projectile {
                     id,
                     caster,
@@ -680,7 +705,6 @@ impl Simulation {
                 },
                 target,
                 until: self.elapsed + 6.,
-                deflected: false,
             });
             self.counters.projectiles += 1;
         }
@@ -716,6 +740,8 @@ impl Simulation {
         }
         let id = self.allocate()?;
         self.flights.push(Flight {
+            wind_dragged: false,
+            deflected: false,
             view: Projectile {
                 id,
                 caster,
@@ -725,21 +751,15 @@ impl Simulation {
             },
             target: None,
             until: self.elapsed + 6.,
-            deflected: false,
         });
         self.counters.projectiles += 1;
         Ok(())
     }
-    /// Adds `bend(tag, position, velocity)` to each flight's velocity, for
-    /// area spells such as Gust of Wind that act on flights in the air.
-    pub(crate) fn bend_flights(&mut self, mut bend: impl FnMut(FlightTag, Vec3, Vec3) -> Vec3) {
-        for flight in &mut self.flights {
-            let velocity = Vec3::from(flight.view.vel);
-            let change = bend(flight.view.kind.tag(), flight.view.pos.into(), velocity);
-            if change.is_finite() {
-                flight.view.vel = (velocity + change).to_array();
-            }
-        }
+    /// Launch siege ammunition through the same bounded swept-flight path as a bow.
+    pub fn launch_siege(&mut self, origin: [f32; 3], direction: [f32; 3]) -> Result<(), String> {
+        self.launch_bow_at(0, origin, direction)?;
+        self.flights.last_mut().unwrap().view.kind = ProjectileKind::SiegeBoulder;
+        Ok(())
     }
     fn visible(&self, start: Vec3, end: Vec3) -> bool {
         physics::kinematic::sweep_box(
@@ -759,7 +779,7 @@ impl Simulation {
     ) -> Result<(), String> {
         self.effects.push(Effect {
             kind: match kind {
-                ProjectileKind::Bow => 3,
+                ProjectileKind::Bow | ProjectileKind::SiegeBoulder => 3,
                 ProjectileKind::Firebolt => 0,
                 ProjectileKind::MagicMissile => 2,
                 ProjectileKind::Fireball => 1,
@@ -793,6 +813,7 @@ impl Simulation {
                 id,
                 match kind {
                     ProjectileKind::Bow => 6,
+                    ProjectileKind::SiegeBoulder => 12,
                     ProjectileKind::Firebolt => 8,
                     _ => 4,
                 },
@@ -827,6 +848,12 @@ impl Simulation {
         result
     }
 
+    pub(crate) fn set_spell_gusts(&mut self, gusts: Vec<crate::gust::Gust>) {
+        self.wind_gusts = gusts;
+    }
+    pub(crate) fn set_spell_wind_walls(&mut self, walls: Vec<crate::wind_wall::Wall>) {
+        self.wind_walls = walls;
+    }
     fn advance_flights(
         &mut self,
         dt: f32,
@@ -856,10 +883,32 @@ impl Simulation {
                     continue;
                 }
             }
+            if flight.view.kind.tag() == FlightTag::Ordinary {
+                for gust in &self.wind_gusts {
+                    let dv = gust.arrow_drag(
+                        self.elapsed as f64,
+                        start.as_dvec3(),
+                        Vec3::from(flight.view.vel).as_dvec3(),
+                        f64::from(dt),
+                    );
+                    if dv.length_squared() > 0. {
+                        flight.view.vel = (Vec3::from(flight.view.vel) + dv.as_vec3()).to_array();
+                        flight.wind_dragged = true;
+                    }
+                }
+            }
             let delta = Vec3::from(flight.view.vel) * dt;
+            if flight.deflected || flight.wind_dragged {
+                flight.view.vel[1] -= 9.81 * dt;
+            }
+            let radius = if flight.view.kind == ProjectileKind::SiegeBoulder {
+                0.6
+            } else {
+                0.06
+            };
             let wall = physics::kinematic::sweep_box(
                 start.as_dvec3(),
-                glam::DVec3::splat(0.06),
+                glam::DVec3::splat(radius),
                 delta.as_dvec3(),
                 &self.colliders,
             )?;
@@ -877,14 +926,14 @@ impl Simulation {
             for actor in self
                 .actors
                 .values()
-                .filter(|a| a.faction == "undead" && a.alive && !flight.deflected)
+                .filter(|a| !flight.deflected && a.faction == "undead" && a.alive)
             {
                 let feet_start = motion_position(actor.id, actor.pos, starts, paths, from);
                 let feet_end = motion_position(actor.id, actor.pos, starts, paths, to);
                 let fraction = physics::continuous::sphere_capsule(
                     start.as_dvec3(),
                     (start + delta).as_dvec3(),
-                    0.06,
+                    radius,
                     feet_start.as_dvec3(),
                     feet_end.as_dvec3(),
                     0.35,
@@ -908,7 +957,7 @@ impl Simulation {
                 flight.view.pos = point.to_array();
                 flight.deflected = true;
                 flight.target = None;
-                self.deflections.push((flight.view.id, point));
+                self.counters.deflections += 1;
                 self.flights.push(flight);
             } else if let Some((t, id)) =
                 hit.filter(|(t, _)| wall.is_none_or(|w| f64::from(*t) < w.fraction))
@@ -923,6 +972,9 @@ impl Simulation {
                     from + (to - from) * t,
                 )?;
             } else if let Some(wall) = wall {
+                if let Some(body) = self.spell_cover.get(&wall.obstacle) {
+                    self.spell_hits.push((*body, flight.view.kind));
+                }
                 self.motion_impact(
                     flight.view.caster,
                     flight.view.kind,

@@ -315,20 +315,18 @@ named `physics::Ledger` term.
 Reverse Gravity (`src/reverse_gravity.rs`, slot Shift+9) is a concentration
 cylinder field whose top band holds a hover spring; characters in it get a
 zero-gravity override and exact upward motion, and ceiling strikes and the
-final drop deal falling damage. Casting it again dismisses it.
+final drop deal falling damage. C ends concentration.
 Telekinesis (`src/telekinesis.rs`, row-two slot 0) grips an object with soft
 joints to a kinematic hand, or a creature by driving its character toward the
-hand with gravity suspended. While the hand has path left, the movement keys
-steer it; jumping lets go.
-Gust of Wind (`spells::gust_of_wind`, row-two slot 4) keeps its Line, save
-clocks, and scene flames in the spell world. Casting again while it holds
-concentration re-aims the Line. Creatures follow the SRD rule exactly, while
+hand with gravity suspended. T steers the hand along the camera ray; R releases it.
+Gust of Wind (`spells::gust`, row-two slot 4) keeps its Line, save
+clocks, and scene flames in the spell world. G re-aims the Line while concentration lasts. Creatures follow the SRD rule exactly, while
 props and ordinary arrows feel quadratic drag (`gust`).
 
 To add a spell: write `src/spells/<name>.rs` with its cast and a
 `playground::Scenario`, add one `SpellDef` line to `spells::CATALOG` (its
 reserved row-two slot), and one line to `playground::scenarios`. Record it with
-`cargo run -p verse --features imported-desktop --example verse_play --
+`cargo run -p verse --features imported-desktop,remote-chamber --example verse_play --
 --original --spell-playground <name> bench/verse/<date>/spell-<name>.mp4`.
 
 `service::auth::Gateway::checkpoint` saves the bounded world and validated

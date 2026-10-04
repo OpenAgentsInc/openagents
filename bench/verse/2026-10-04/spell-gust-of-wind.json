@@ -2,502 +2,264 @@
   "schema": "openagents.verse.spell-playground.v1",
   "spell": "gust-of-wind",
   "title": "Gust of Wind",
-  "srd": "Level 2 Evocation | Range Self (60 x 10 ft Line) | STR save | push 15 ft | Conc. 1 min",
+  "srd": "Level 2 Evocation | 60 by 10 ft Line | STR save | push 15 ft",
   "srd_source": "SRD 5.2.1 (SRD_CC_v5.2.1.pdf)",
-  "rules_revision": "verse-chamber-owned-v17",
-  "seed": 456,
-  "dice_rolled": 2,
-  "saves": [
-    {
-      "at": 1.0,
-      "save": {
-        "target": 101,
-        "ability": "Strength",
-        "roll": 3,
-        "modifier": 0,
-        "total": 3,
-        "dc": 15,
-        "success": false,
-        "forced": true
-      }
-    },
-    {
-      "at": 1.0,
-      "save": {
-        "target": 102,
-        "ability": "Strength",
-        "roll": 5,
-        "modifier": 0,
-        "total": 5,
-        "dc": 15,
-        "success": false,
-        "forced": true
-      }
-    },
-    {
-      "at": 1.0,
-      "save": {
-        "target": 103,
-        "ability": "Strength",
-        "roll": 18,
-        "modifier": 0,
-        "total": 18,
-        "dc": 15,
-        "success": true,
-        "forced": true
-      }
-    },
-    {
-      "at": 2.2666666507720947,
-      "save": {
-        "target": 104,
-        "ability": "Strength",
-        "roll": 20,
-        "modifier": 0,
-        "total": 20,
-        "dc": 15,
-        "success": true,
-        "forced": true
-      }
-    },
-    {
-      "at": 7.0,
-      "save": {
-        "target": 101,
-        "ability": "Strength",
-        "roll": 20,
-        "modifier": 0,
-        "total": 20,
-        "dc": 15,
-        "success": true,
-        "forced": true
-      }
-    },
-    {
-      "at": 7.0,
-      "save": {
-        "target": 102,
-        "ability": "Strength",
-        "roll": 20,
-        "modifier": 0,
-        "total": 20,
-        "dc": 15,
-        "success": true,
-        "forced": true
-      }
-    },
-    {
-      "at": 7.0,
-      "save": {
-        "target": 103,
-        "ability": "Strength",
-        "roll": 20,
-        "modifier": 0,
-        "total": 20,
-        "dc": 15,
-        "success": true,
-        "forced": true
-      }
-    }
-  ],
+  "rules_revision": "verse-chamber-owned-v18",
+  "seed": 455,
+  "dice_rolled": 7,
+  "saves": [],
   "log": [
-    "[1.00] A 60 x 10 ft Line of 20 m/s wind blasts from the caster",
-    "[1.00] Dummy A: STR save 3 +0 = 3 vs DC 15 fails, pushed 15 ft",
-    "[1.00] Dummy B: STR save 5 +0 = 5 vs DC 15 fails, pushed 15 ft",
-    "[1.00] Dummy C: STR save 18 +0 = 18 vs DC 15 succeeds",
-    "[2.27] Walker (entered): STR save 20 +0 = 20 vs DC 15 succeeds",
-    "[2.50] Walker enters the Line: approach costs double, speed halved",
-    "[4.00] Archer looses 2 arrows at 24 m/s",
-    "[5.00] After 1.0 s: Into the wind 19.0 m/s, 21.8 m; Calm air 24.0 m/s, 24.0 m",
-    "[7.00] Dummy A (turn end): STR save 20 +0 = 20 vs DC 15 succeeds",
-    "[7.00] Dummy B (turn end): STR save 20 +0 = 20 vs DC 15 succeeds",
-    "[7.00] Dummy C (turn end): STR save 20 +0 = 20 vs DC 15 succeeds",
-    "[7.60] Bonus Action: the Line turns to (-0, -1)",
-    "[7.60] Candle 1 goes out",
-    "[7.60] Candle 2 goes out",
-    "[7.60] Candle 3 goes out",
-    "[7.60] Candle 4 goes out",
-    "[7.60] Lantern 5: d100 17 <= 50, goes out",
-    "[7.60] Lantern 6: d100 46 <= 50, goes out",
-    "[8.00] Walker leaves the Line: approach at full speed"
+    "[0.53] 60 by 10 ft Line; Strength saves on entry and every 6 s",
+    "[0.60] Extinguished { flame: 500 }",
+    "[0.60] Extinguished { flame: 501 }",
+    "[0.60] Gutter { flame: 502, roll: 43, out: true }",
+    "[0.60] Gutter { flame: 503, roll: 38, out: true }",
+    "[0.60] Save { creature: 101, reason: Entry, roll: 2, modifier: 0, dc: 15, passed: false }",
+    "[0.60] Save { creature: 102, reason: Entry, roll: 2, modifier: 0, dc: 15, passed: false }",
+    "[0.60] Save { creature: 103, reason: Entry, roll: 20, modifier: 0, dc: 15, passed: true }",
+    "[6.67] Save { creature: 101, reason: Turn, roll: 14, modifier: 0, dc: 15, passed: false }",
+    "[6.67] Save { creature: 102, reason: Turn, roll: 9, modifier: 0, dc: 15, passed: false }",
+    "[6.67] Save { creature: 103, reason: Turn, roll: 2, modifier: 0, dc: 15, passed: false }",
+    "[12.73] Save { creature: 103, reason: Entry, roll: 9, modifier: 0, dc: 15, passed: false }",
+    "[18.73] Save { creature: 103, reason: Turn, roll: 8, modifier: 0, dc: 15, passed: false }"
   ],
   "tracks": [
     {
-      "label": "Dummy A",
+      "label": "Wind save dummy",
       "spell": "Gust of Wind",
-      "at": 1.0,
+      "at": 0.6000000238418579,
       "start": [
-        -1.0,
+        -0.800000011920929,
         0.0,
-        5.0
+        4.0
       ],
       "final": [
-        3.572000503540039,
+        -0.7999986410140991,
         0.0,
-        5.0
+        13.144000053405762
       ],
       "requested_ft": 15.0,
-      "measured_ft": 15.000001652034248
+      "measured_ft": 30.00000017521609
     },
     {
-      "label": "Dummy B",
+      "label": "Wind save dummy",
       "spell": "Gust of Wind",
-      "at": 1.0,
+      "at": 0.6000000238418579,
       "start": [
-        -1.0,
         0.0,
-        6.0
+        0.0,
+        4.0
       ],
       "final": [
-        3.572000503540039,
+        1.3807056120640482e-6,
         0.0,
-        6.0
+        13.144000053405762
       ],
       "requested_ft": 15.0,
-      "measured_ft": 15.000001652034248
+      "measured_ft": 30.000000175216098
     },
     {
-      "label": "Dummy C",
+      "label": "Wind save dummy",
       "spell": "Gust of Wind",
-      "at": 1.0,
+      "at": 6.666666507720947,
       "start": [
-        -1.0,
+        -0.7999992966651917,
         0.0,
-        7.0
+        8.571999549865723
       ],
       "final": [
-        -1.0,
+        -0.7999986410140991,
         0.0,
-        7.0
+        13.144000053405762
       ],
-      "requested_ft": 0.0,
-      "measured_ft": 0.0
+      "requested_ft": 15.0,
+      "measured_ft": 15.000001652034403
     },
     {
-      "label": "Crate (empty)",
+      "label": "Wind save dummy",
       "spell": "Gust of Wind",
-      "at": 1.0333333015441895,
+      "at": 6.666666507720947,
       "start": [
-        4.499999999999339,
-        0.34999999404414495,
-        6.0000000000614175
-      ],
-      "final": [
-        12.293323413414289,
-        0.3499999936931918,
-        6.000000340444401
-      ],
-      "requested_ft": 0.0,
-      "measured_ft": 25.56864636947164
-    },
-    {
-      "label": "Barrel (empty)",
-      "spell": "Gust of Wind",
-      "at": 1.0333333015441895,
-      "start": [
-        6.0000000599012715,
-        0.49999998054036554,
-        6.999999959096898
-      ],
-      "final": [
-        7.257230867031858,
-        0.22499999324270809,
-        6.999980306224459
-      ],
-      "requested_ft": 0.0,
-      "measured_ft": 4.124772989777532
-    },
-    {
-      "label": "Anvil",
-      "spell": "Gust of Wind",
-      "at": 1.0333333015441895,
-      "start": [
-        6.500000000000158,
-        0.19999999998893106,
-        5.000000000030024
-      ],
-      "final": [
-        6.4999999999991935,
-        0.19999999996026627,
-        5.000000000032617
-      ],
-      "requested_ft": 0.0,
-      "measured_ft": 9.075491589611722e-12
-    },
-    {
-      "label": "Basket",
-      "spell": "Gust of Wind",
-      "at": 1.0333333015441895,
-      "start": [
-        7.599999904629169,
-        0.199999999998122,
-        6.300000190789401
-      ],
-      "final": [
-        21.116577556297205,
-        0.19999923104868716,
-        6.299993436657638
-      ],
-      "requested_ft": 0.0,
-      "measured_ft": 44.34572720364083
-    },
-    {
-      "label": "Paper A",
-      "spell": "Gust of Wind",
-      "at": 1.0333333015441895,
-      "start": [
-        8.199999809265158,
-        0.024999999999998395,
-        6.69999980926512
-      ],
-      "final": [
-        21.422247067355354,
-        0.024999999999987955,
-        6.700000258477416
-      ],
-      "requested_ft": 0.0,
-      "measured_ft": 43.380076306070215
-    },
-    {
-      "label": "Paper B",
-      "spell": "Gust of Wind",
-      "at": 1.0333333015441895,
-      "start": [
-        8.600000381469748,
-        0.024999999999998395,
-        7.249999999999983
-      ],
-      "final": [
-        21.12829529348668,
-        0.024999999999989347,
-        7.2500004253271975
-      ],
-      "requested_ft": 0.0,
-      "measured_ft": 41.1033297638351
-    },
-    {
-      "label": "Dummy A",
-      "spell": "Gust of Wind",
-      "at": 7.0,
-      "start": [
-        3.572000476837131,
+        6.903528060320241e-7,
         0.0,
-        5.000000199848468
+        8.571999549865723
       ],
       "final": [
-        3.572000503540039,
+        1.3807056120640482e-6,
         0.0,
-        5.0
+        13.144000053405762
       ],
-      "requested_ft": 0.0,
-      "measured_ft": 6.61497838692365e-7
+      "requested_ft": 15.0,
+      "measured_ft": 15.00000165203442
     },
     {
-      "label": "Dummy B",
+      "label": "Wind save dummy",
       "spell": "Gust of Wind",
-      "at": 7.0,
+      "at": 6.666666507720947,
       "start": [
-        3.572000476837131,
+        1.1052991151809692,
         0.0,
-        6.000000199848468
+        -0.6392658948898315
       ],
       "final": [
-        3.572000503540039,
-        0.0,
-        6.0
+        0.800000011920929,
+        9.999999747378752e-6,
+        -8.0
       ],
-      "requested_ft": 0.0,
-      "measured_ft": 6.61497838692365e-7
+      "requested_ft": 15.0,
+      "measured_ft": 24.170153500875088
     },
     {
-      "label": "Dummy C",
+      "label": "Wind save dummy",
       "spell": "Gust of Wind",
-      "at": 7.0,
+      "at": 12.733333587646484,
       "start": [
-        -1.0,
-        0.0,
-        7.0
+        0.8613473176956177,
+        9.999999747378752e-6,
+        -6.551922798156738
       ],
       "final": [
-        -1.0,
-        0.0,
-        7.0
+        0.800000011920929,
+        9.999999747378752e-6,
+        -8.0
       ],
-      "requested_ft": 0.0,
-      "measured_ft": 0.0
+      "requested_ft": 15.0,
+      "measured_ft": 4.755170926295067
     },
     {
-      "label": "Paper C",
+      "label": "Wind save dummy",
       "spell": "Gust of Wind",
-      "at": 7.633333206176758,
+      "at": 18.733333587646484,
       "start": [
-        -6.800000190734846,
-        0.024999999999998395,
-        3.900000095367453
+        0.8007848858833313,
+        9.999999747378752e-6,
+        -8.0
       ],
       "final": [
-        -6.800001647891369,
-        0.024999146552878045,
-        1.710958415830803
+        0.800000011920929,
+        9.999999747378752e-6,
+        -8.0
       ],
-      "requested_ft": 0.0,
-      "measured_ft": 7.181895274071963
-    },
-    {
-      "label": "Paper D",
-      "spell": "Gust of Wind",
-      "at": 7.633333206176758,
-      "start": [
-        -5.19999980926512,
-        0.024999999999998395,
-        4.09999990463259
-      ],
-      "final": [
-        -5.185781253687592,
-        0.02499492377382731,
-        1.4781647934132103
-      ],
-      "requested_ft": 0.0,
-      "measured_ft": 8.601947721396028
-    },
-    {
-      "label": "Basket B",
-      "spell": "Gust of Wind",
-      "at": 7.633333206176758,
-      "start": [
-        -6.000000000003399,
-        0.199999999998122,
-        2.799999952370822
-      ],
-      "final": [
-        -5.829064455320446,
-        0.539708291150413,
-        -11.095592109726391
-      ],
-      "requested_ft": 0.0,
-      "measured_ft": 45.59266206521491
-    },
-    {
-      "label": "Crate (reference)",
-      "spell": "Gust of Wind",
-      "at": 7.633333206176758,
-      "start": [
-        -5.1999998092685376,
-        0.2999999999981224,
-        1.29999995237082
-      ],
-      "final": [
-        -5.200049549076552,
-        0.29999672698725877,
-        1.068165423668027
-      ],
-      "requested_ft": 0.0,
-      "measured_ft": 0.7606119883156165
-    },
-    {
-      "label": "Secured crate",
-      "spell": "Gust of Wind",
-      "at": 7.633333206176758,
-      "start": [
-        -6.800000190734863,
-        0.30000001192092896,
-        1.2999999523162842
-      ],
-      "final": [
-        -6.800000190734863,
-        0.30000001192092896,
-        1.2999999523162842
-      ],
-      "requested_ft": 0.0,
-      "measured_ft": 0.0
-    },
-    {
-      "label": "Training dummy",
-      "spell": "Gust of Wind",
-      "at": 7.633333206176758,
-      "start": [
-        -6.000000013825551,
-        0.8999999827011452,
-        -0.2999999927892869
-      ],
-      "final": [
-        -6.0000304942115665,
-        0.24999999748579138,
-        -1.4663145790413
-      ],
-      "requested_ft": 0.0,
-      "measured_ft": 3.8264914260180416
-    },
-    {
-      "label": "Walker 0.00 m/s",
-      "spell": "Gust of Wind",
-      "at": 0.0,
-      "start": [
-        15.0,
-        0.0,
-        5.0
-      ],
-      "final": [
-        9.0,
-        0.0,
-        5.0
-      ],
-      "requested_ft": 0.0,
-      "measured_ft": 19.68503937007874
-    },
-    {
-      "label": "Walker 0.00 m/s",
-      "spell": "Gust of Wind",
-      "at": 2.2666666507720947,
-      "start": [
-        12.28000273585306,
-        0.0,
-        5.0
-      ],
-      "final": [
-        9.0,
-        0.0,
-        5.0
-      ],
-      "requested_ft": 0.0,
-      "measured_ft": 10.76116383153891
+      "requested_ft": 15.0,
+      "measured_ft": 0.0025750458084066396
     }
   ],
+  "feather_falls": [],
+  "levitations": [],
+  "telekinesis": [],
+  "walls": [],
+  "gusts": [
+    {
+      "cast": 1,
+      "caster": 14,
+      "gust": {
+        "caster": 14,
+        "line": {
+          "origin": [
+            0.0,
+            0.0,
+            -8.0
+          ],
+          "direction": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        },
+        "cast_at": 0.5333333611488342,
+        "until": 60.533333361148834,
+        "reaim_ready": 13.0,
+        "clocks": {},
+        "pending": [],
+        "rolled": [
+          502,
+          503
+        ],
+        "ended": true
+      }
+    }
+  ],
+  "flames": [
+    {
+      "id": 500,
+      "position": [
+        0.5,
+        1.0,
+        -6.0
+      ],
+      "protected": false,
+      "lit": false
+    },
+    {
+      "id": 501,
+      "position": [
+        0.5,
+        1.0,
+        -5.0
+      ],
+      "protected": false,
+      "lit": false
+    },
+    {
+      "id": 502,
+      "position": [
+        0.5,
+        1.0,
+        -4.0
+      ],
+      "protected": true,
+      "lit": false
+    },
+    {
+      "id": 503,
+      "position": [
+        0.5,
+        1.0,
+        -3.0
+      ],
+      "protected": true,
+      "lit": false
+    }
+  ],
+  "wind_walls": [],
+  "tentacles": [],
+  "meteors": [],
+  "reverse_gravity": [],
   "props": [
     {
-      "name": "Crate (empty)",
+      "name": "Crate",
       "kind": "Crate",
       "mass_kg": 20.0,
       "secured": false,
       "removed": false,
       "center": [
-        12.293323413414289,
-        0.3499999936931918,
-        6.000000340444401
+        0.800001833707064,
+        0.29999984997263135,
+        -2.9999860631037754
       ],
       "rotation": [
-        1.2621033045718205e-10,
-        -6.481474487422271e-10,
-        -6.20986998921744e-10,
-        1.0
+        -2.500351457691952e-7,
+        2.725109323743208e-7,
+        -1.033789666497037e-11,
+        0.9999999999999316
       ]
     },
     {
-      "name": "Barrel (empty)",
+      "name": "Barrel",
       "kind": "Barrel",
-      "mass_kg": 15.0,
+      "mass_kg": 60.0,
       "secured": false,
       "removed": false,
       "center": [
-        7.257230867031858,
-        0.22499999324270809,
-        6.999980306224459
+        -0.7998112384543243,
+        0.44999988739377844,
+        -0.9789871500275286
       ],
       "rotation": [
-        -0.000014357634136569271,
-        0.000014357634330170515,
-        -0.7071067762626565,
-        0.7071067858189103
+        1.6121405470927192e-7,
+        -0.000567635663749026,
+        2.6539417554517988e-8,
+        0.9999998388948504
       ]
     },
     {
@@ -507,177 +269,69 @@
       "secured": false,
       "removed": false,
       "center": [
-        6.4999999999991935,
-        0.19999999996026627,
-        5.000000000032617
+        -7.37754719471387e-7,
+        0.1999976086901002,
+        0.9999980592450692
       ],
       "rotation": [
-        -6.857944599536015e-16,
-        -3.461276295810219e-11,
-        -5.6762148603507135e-11,
+        -6.192291916571624e-6,
+        2.6577711347845794e-6,
+        -8.858592480079191e-8,
+        0.9999999999772919
+      ]
+    },
+    {
+      "name": "Stone block",
+      "kind": "StoneBlock",
+      "mass_kg": 1000.0,
+      "secured": false,
+      "removed": false,
+      "center": [
+        -4.000000000711821,
+        0.3749999997953628,
+        -2.999999992322427
+      ],
+      "rotation": [
+        1.7467052187890517e-18,
+        -3.9030038487196285e-9,
+        -2.728495939136053e-10,
         1.0
+      ]
+    },
+    {
+      "name": "Paper",
+      "kind": "Crate",
+      "mass_kg": 0.01,
+      "secured": false,
+      "removed": false,
+      "center": [
+        -0.05248658409521308,
+        0.14868303416864803,
+        0.4880047367902794
+      ],
+      "rotation": [
+        -0.005046373252899462,
+        -0.025453488668055413,
+        -0.0008313717486657043,
+        0.9996629246164096
       ]
     },
     {
       "name": "Basket",
-      "kind": "Basket",
+      "kind": "Crate",
       "mass_kg": 1.0,
       "secured": false,
       "removed": false,
       "center": [
-        21.116577556297205,
-        0.19999923104868716,
-        6.299993436657638
+        -0.7988021846168983,
+        0.2999148372755543,
+        -1.5816274315363785
       ],
       "rotation": [
-        -2.631049294518094e-11,
-        -0.000060476968035060425,
-        -1.922232030019347e-6,
-        0.9999999981694208
-      ]
-    },
-    {
-      "name": "Paper A",
-      "kind": "Paper",
-      "mass_kg": 0.1,
-      "secured": false,
-      "removed": false,
-      "center": [
-        21.422247067355354,
-        0.024999999999987955,
-        6.700000258477416
-      ],
-      "rotation": [
-        -2.786142901414214e-14,
-        0.7071067966406275,
-        -2.8485777360431965e-14,
-        0.7071067657324672
-      ]
-    },
-    {
-      "name": "Paper B",
-      "kind": "Paper",
-      "mass_kg": 0.1,
-      "secured": false,
-      "removed": false,
-      "center": [
-        21.12829529348668,
-        0.024999999999989347,
-        7.2500004253271975
-      ],
-      "rotation": [
-        -2.457433344182691e-14,
-        0.7071067966406578,
-        -2.5208275294387323e-14,
-        0.7071067657324369
-      ]
-    },
-    {
-      "name": "Paper C",
-      "kind": "Paper",
-      "mass_kg": 0.1,
-      "secured": false,
-      "removed": false,
-      "center": [
-        -6.800001647891369,
-        0.024999146552878045,
-        1.710958415830803
-      ],
-      "rotation": [
-        2.36556662200992e-6,
-        -5.007395471348237e-7,
-        1.1901936053319432e-6,
-        0.9999999999963685
-      ]
-    },
-    {
-      "name": "Paper D",
-      "kind": "Paper",
-      "mass_kg": 0.1,
-      "secured": false,
-      "removed": false,
-      "center": [
-        -5.185781253687592,
-        0.02499492377382731,
-        1.4781647934132103
-      ],
-      "rotation": [
-        -3.268857457302235e-6,
-        0.005303217407284748,
-        0.000015268478189562065,
-        0.9999859377217859
-      ]
-    },
-    {
-      "name": "Basket B",
-      "kind": "Basket",
-      "mass_kg": 1.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        -5.829064455320446,
-        0.539708291150413,
-        -11.095592109726391
-      ],
-      "rotation": [
-        0.7021748534402319,
-        -0.08369603445312453,
-        -0.06940354204182386,
-        0.703653748206502
-      ]
-    },
-    {
-      "name": "Crate (reference)",
-      "kind": "Crate",
-      "mass_kg": 20.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        -5.200049549076552,
-        0.29999672698725877,
-        1.068165423668027
-      ],
-      "rotation": [
-        5.426662832636104e-6,
-        0.00010914124567560672,
-        -2.8955707473904284e-8,
-        0.9999999940293695
-      ]
-    },
-    {
-      "name": "Secured crate",
-      "kind": "Crate",
-      "mass_kg": 20.0,
-      "secured": true,
-      "removed": false,
-      "center": [
-        -6.800000190734863,
-        0.30000001192092896,
-        1.2999999523162842
-      ],
-      "rotation": [
-        0.0,
-        0.0,
-        0.0,
-        1.0
-      ]
-    },
-    {
-      "name": "Training dummy",
-      "kind": "TrainingDummy",
-      "mass_kg": 75.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        -6.0000304942115665,
-        0.24999999748579138,
-        -1.4663145790413
-      ],
-      "rotation": [
-        -0.7071067810671668,
-        0.000013016280829652668,
-        0.000013023388120197706,
-        0.7071067810661964
+        -0.0000464456575372703,
+        -0.0005493339719296602,
+        0.0000844604578892079,
+        0.9999998444706976
       ]
     }
   ],
@@ -686,140 +340,157 @@
       "id": 14,
       "name": "Wizard",
       "position": [
-        -6.0,
         0.0,
-        6.0
+        0.0,
+        -8.0
       ],
       "health": 200
     },
     {
       "id": 101,
-      "name": "Dummy A",
+      "name": "Wind save dummy",
       "position": [
-        3.572000503540039,
+        -0.7999986410140991,
         0.0,
-        5.0
+        13.144000053405762
       ],
-      "health": 100
+      "health": 400
     },
     {
       "id": 102,
-      "name": "Dummy B",
+      "name": "Wind save dummy",
       "position": [
-        3.572000503540039,
+        1.3807056120640482e-6,
         0.0,
-        6.0
+        13.144000053405762
       ],
-      "health": 100
+      "health": 400
     },
     {
       "id": 103,
-      "name": "Dummy C",
+      "name": "Wind save dummy",
       "position": [
-        -1.0,
-        0.0,
-        7.0
+        0.800000011920929,
+        9.999999747378752e-6,
+        -8.0
       ],
-      "health": 100
-    },
-    {
-      "id": 104,
-      "name": "Walker",
-      "position": [
-        9.0,
-        0.0,
-        5.0
-      ],
-      "health": 100
-    },
-    {
-      "id": 105,
-      "name": "Archer",
-      "position": [
-        17.5,
-        0.0,
-        8.600000381469727
-      ],
-      "health": 100
+      "health": 394
     }
   ],
   "ledger": {
     "terms": {
-      "gravity": {
+      "creature:controller": {
         "linear": [
           0.0,
-          -25877.93797499759,
+          0.0,
           0.0
         ],
         "angular": [
-          108362.3407083461,
           0.0,
-          -114312.4863139761
+          0.0,
+          0.0
+        ]
+      },
+      "gravity": {
+        "linear": [
+          0.0,
+          -31177.503532499457,
+          0.0
+        ],
+        "angular": [
+          -11412.937590079004,
+          0.0,
+          30202.154882059134
+        ]
+      },
+      "gust:drag": {
+        "linear": [
+          0.033985090468524194,
+          0.03149491378711915,
+          2950.7824416466246
+        ],
+        "angular": [
+          974.3210758981309,
+          779.6495206094444,
+          -0.004480002448902999
+        ]
+      },
+      "meteor:spawn/remove": {
+        "linear": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "angular": [
+          0.0,
+          0.0,
+          0.0
         ]
       },
       "sleep": {
         "linear": [
-          1.2227462694702065e-16,
-          -3.4802889736784687e-16,
-          4.2295743188196223e-16
+          1.7169412389766473e-15,
+          2.5323493302309423e-16,
+          9.027825890821871e-16
         ],
         "angular": [
-          1.8040067775828305e-15,
-          -2.319523298045807e-15,
-          -2.4286801222881643e-15
+          -5.062732238204395e-16,
+          -2.7361380060101158e-15,
+          -6.434177116568382e-16
         ]
       },
-      "spell:gust_of_wind": {
+      "spell:removed": {
         "linear": [
-          1306.4012052927042,
-          0.418525568705128,
-          -1052.705124502917
+          0.0,
+          0.0,
+          0.0
         ],
         "angular": [
-          -493.0371266189892,
-          1979.469758118886,
-          -391.44386886908245
+          0.0,
+          0.0,
+          0.0
         ]
       },
       "static contact": {
         "linear": [
-          -1306.5685986095164,
-          25877.42813454713,
-          1052.798931242142
+          -0.033985090468577554,
+          31177.4720375855,
+          -2950.782441646515
         ],
         "angular": [
-          -107870.26777067037,
-          -1977.0731751199032,
-          114704.54962164482
+          10438.616514179737,
+          -779.6495206094459,
+          -30202.150402055016
         ]
       }
     },
     "residual_relative": {
-      "linear": 3.822005734443036e-14,
-      "angular": 4.8675767260298965e-15
+      "linear": 3.045789797228132e-15,
+      "angular": 1.540192210253759e-14
     },
     "tolerance": 1e-9
   },
   "replay": {
     "window_s": [
-      0.800000011920929,
-      3.299999952316284
+      0.5,
+      2.0
     ],
     "speed": 0.25,
     "source": "checkpoint at the window start, stepped again with the same admitted commands",
     "identical_to_live": true
   },
-  "live_seconds": 12.0,
-  "video_seconds": 22.0,
-  "authority_tick": 360,
-  "physics_steps": 1440,
+  "live_seconds": 30.0,
+  "live_speed": 2,
+  "video_seconds": 21.133333206176758,
+  "authority_tick": 450,
+  "physics_steps": 3600,
   "renderer": "owned native GPU pipeline; scripted admitted commands; no grading",
   "prepared_pack": {
     "inventory": {
       "schema": "openagents.verse.asset-admission.v1",
       "purpose": "original_local",
       "compiler": "verse:compiler:original-chamber",
-      "compiler_revision": "b089a8e0ac35bb522cd6771f8f35bdec534d3ce755f87377ddbd6ba5929b7593",
+      "compiler_revision": "bd24e73a3800b7063d3c2961446e55073ddd50f0566ce39845175c493128ff1d",
       "assets": [
         "verse:model:adventurer",
         "verse:model:arrow",
@@ -839,6 +510,7 @@
         "verse:model:effect-mist",
         "verse:model:effect-ribbon",
         "verse:model:effect-rune",
+        "verse:model:effect-scorch",
         "verse:model:effect-shadow",
         "verse:model:effect-shield",
         "verse:model:effect-wave",
@@ -856,9 +528,11 @@
         "verse:model:prop-crate",
         "verse:model:prop-crate-secured",
         "verse:model:prop-dummy",
+        "verse:model:prop-meteor",
         "verse:model:prop-paper",
         "verse:model:prop-sheet",
         "verse:model:prop-stone",
+        "verse:model:prop-tentacle",
         "verse:model:prop/Banner_2",
         "verse:model:prop/Barrel",
         "verse:model:prop/Book_Stack_1",
@@ -982,7 +656,7 @@
           {
             "creator": "OpenAgents contributors",
             "license": "apache2",
-            "revision": "b089a8e0ac35bb522cd6771f8f35bdec534d3ce755f87377ddbd6ba5929b7593",
+            "revision": "bd24e73a3800b7063d3c2961446e55073ddd50f0566ce39845175c493128ff1d",
             "format": "rust/wgsl/json"
           }
         ],
@@ -998,10 +672,10 @@
       ]
     },
     "schema": "openagents.verse.prepared-pack.v1",
-    "manifest_sha256": "b4c6fe54c439921f953484dd938954801b5908b9ac3c3c46179924edb1ced073",
-    "manifest_bytes": 83371404,
-    "vertices": 272006,
-    "indices": 998031,
+    "manifest_sha256": "cc7ec55ccd9018488dbd9d075504115b335dabdadc043a255335e46e8ef1e521",
+    "manifest_bytes": 83448086,
+    "vertices": 272451,
+    "indices": 999939,
     "encoded_bytes": 34477502,
     "rgba_bytes": 164233224,
     "budget": {
