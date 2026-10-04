@@ -135,19 +135,19 @@ refusals.
 
 ## Slices and playable tests
 
-Each slice ships behind its own issue with a test a person can run; the epic is (#10590).
+Each slice ships behind its own issue with a test a person can run; the epic is #10590.
 
 | Slice | Issue | Playable test |
 | --- | --- | --- |
 | 1. Walkers and load measurement (G2) | #10581 | `openagents verse walkers 20 --relay wss://relay.openagents.com --world verse-bare` then open the Grid on a phone: 20 players walk loops in front of the spawn; `openagents verse load --players 20` prints the receipt |
-| 2. Smooth motion and the relay's pose lane (G1) | #10581 | Two phones, or a phone and the desktop, run beside each other: the remote avatar follows within half a second; the walkers at 5 Hz stay smooth |
-| 3. Name tags with display names (G3) | #10581 | Set a name under **Account**; a second device reads it over the head |
-| 4. Shared zones through the arches (G4) | #10581 | Two players walk through the Everglade arch and meet in the glade; the walkers can be started in `verse-everglade` |
-| 5. Public chamber instance with guest admission, and the RITUAL arch (G5.1, G5.2) | #10581 | Walk through **RITUAL** on the desktop Grid and fight the cultists with another desktop; `openagents chamber status --to ritual.openagents.com:…` shows the population |
-| 6. The phone in the chamber (G5.3) | #10581 | Same as slice 5 from a phone |
-| 7. The Grid in the browser (G6) | #10581 | Open `/grid`, walk, and see the phone's player |
-| 8. Admission and abuse controls (G7) | #10581 | Block a walker; it disappears for you and stays gone after relaunch; a 21st walker is refused by the cap |
-| 9. The 20-player soak (G1, G2) | #10581 | 20 walkers plus a phone, a desktop, and a browser for 30 minutes: frame-time p95 under the device budget on each, no refusals, receipt retained |
+| 2. Smooth motion and the relay's pose lane (G1) | #10582 | Two phones, or a phone and the desktop, run beside each other: the remote avatar follows within half a second; the walkers at 5 Hz stay smooth |
+| 3. Name tags with display names (G3) | #10583 | Set a name under **Account**; a second device reads it over the head |
+| 4. Shared zones through the arches (G4) | #10584 | Two players walk through the Everglade arch and meet in the glade; the walkers can be started in `verse-everglade` |
+| 5. Public chamber instance with guest admission, and the RITUAL arch (G5.1, G5.2) | #10585 | Walk through **RITUAL** on the desktop Grid and fight the cultists with another desktop; `openagents chamber status --to ritual.openagents.com:…` shows the population |
+| 6. The phone in the chamber (G5.3) | #10586 | Same as slice 5 from a phone |
+| 7. The Grid in the browser (G6) | #10587 | Open `/grid`, walk, and see the phone's player |
+| 8. Admission and abuse controls (G7) | #10588 | Block a walker; it disappears for you and stays gone after relaunch; a 21st walker is refused by the cap |
+| 9. The 20-player soak (G1, G2) | #10589 | 20 walkers plus a phone, a desktop, and a browser for 30 minutes: frame-time p95 under the device budget on each, no refusals, receipt retained |
 
 Slices 1 to 4 need no new authority and land first. Slice 5 waits on
 nothing but a machine to host the instance. The browser's chamber client
