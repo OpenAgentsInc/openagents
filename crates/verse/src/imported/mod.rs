@@ -435,6 +435,7 @@ pub struct PendingCapture {
     width: u32,
     height: u32,
     row: u32,
+    submission: wgpu::SubmissionIndex,
 }
 impl PendingCapture {
     pub fn finish(self) -> Result<Vec<u8>, String> {
@@ -445,7 +446,7 @@ impl PendingCapture {
         });
         self.device
             .poll(wgpu::PollType::Wait {
-                submission_index: None,
+                submission_index: Some(self.submission),
                 timeout: None,
             })
             .map_err(|e| e.to_string())?;
@@ -502,13 +503,14 @@ impl Renderer {
             },
             extent(self.width, self.height),
         );
-        self.queue.submit([encoder.finish()]);
+        let submission = self.queue.submit([encoder.finish()]);
         PendingCapture {
             device: self.device.clone(),
             buffer,
             width: self.width,
             height: self.height,
             row: self.row,
+            submission,
         }
     }
 
