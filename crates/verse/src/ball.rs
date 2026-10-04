@@ -159,7 +159,7 @@ impl Ball {
                 restitution: RESTITUTION,
             }),
         );
-        let layout = crate::blocks::Layout::new(crate::world::SPAWN.as_dvec3(), DVec3::Z);
+        let layout = crate::blocks::Layout::grid();
         let blocks = crate::blocks::Blocks::new(&mut world, &layout);
         Pillar::add(&mut world);
         let pose = |pos, orientation| Pose { pos, orientation };

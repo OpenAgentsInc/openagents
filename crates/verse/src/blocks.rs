@@ -96,6 +96,13 @@ impl Layout {
         }
     }
 
+    /// The Grid's fixed frame: the world spawn facing +Z. The ball, the
+    /// blocks, and the Grid's walk-in portals are laid out in it.
+    #[must_use]
+    pub fn grid() -> Self {
+        Self::new(crate::world::SPAWN.as_dvec3(), DVec3::Z)
+    }
+
     /// The world point `side` right and `ahead` forward of the origin, at
     /// height `y`.
     #[must_use]

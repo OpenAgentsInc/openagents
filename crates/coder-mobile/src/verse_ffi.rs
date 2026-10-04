@@ -61,6 +61,10 @@ pub struct BareGym {
     /// against local fixtures. Honored only in debug builds, and only with
     /// a world identity.
     pub check_relay: Option<String>,
+    /// The app's absolute cache directory for zone packs. With it the Grid
+    /// shows its walk-in portal to Everglade, whose pinned pack loads into
+    /// this directory; without it the Grid has no such portal.
+    pub zone_cache_directory: Option<String>,
 }
 
 #[cfg(test)]
@@ -105,7 +109,7 @@ pub(crate) fn bare_config_with_gym(
         world_relay,
         world_offline: world_offline || gym.preview || gym.xp_preview,
         door_preferences: None,
-        zone_cache_directory: None,
+        zone_cache_directory: gym.zone_cache_directory,
         results_base: gym.results_base,
         results_cache_directory: gym.results_cache_directory,
         computer_hud: false,
@@ -314,7 +318,9 @@ pub unsafe extern "C" fn coder_verse_call(
 impl VerseHandle {
     /// Mounts Verse's bare world on a Metal layer: the plaza's ground grid in
     /// the neutral palette, with Coder's player, touch, and motion controls,
-    /// the shared ball and blocks, and the Gym (its portal to Lagrange 1 is hidden for now; see `verse::zones::gate::GRID_PORTAL_OPEN`). With `presence`, it joins the bare world's own NIP-MV
+    /// the shared ball and blocks, the Gym, and, with a zone cache, the walk-in
+    /// portal to Everglade (its portal to Lagrange 1 is hidden for now; see
+    /// `verse::zones::gate::GRID_PORTAL_OPEN`). With `presence`, it joins the bare world's own NIP-MV
     /// world for avatar presence alone while active; without it, it joins no
     /// relay and uses a throwaway identity.
     ///

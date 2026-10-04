@@ -1002,9 +1002,9 @@ impl WorldRuntime {
         evals: bool,
     ) -> Mesh {
         if self.bare && self.is_plaza() {
-            // The player, the ball and blocks, and the portal to Lagrange 1
-            // (hidden for now; see `zones::gate::GRID_PORTAL_OPEN`), on the
-            // neutral stage; in first person the camera is inside the
+            // The player, the ball and blocks, and the walk-in portals (to
+            // Everglade, and to Lagrange 1, which is hidden for now; see
+            // `zones::gate`), on the neutral stage; in first person the camera is inside the
             // avatar, which is hidden, and an unoccupied world has none.
             let mut player = if self.first_person() || self.unoccupied {
                 Mesh::default()

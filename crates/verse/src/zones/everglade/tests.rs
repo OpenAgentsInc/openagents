@@ -630,3 +630,145 @@ fn other_zones_intents_are_refused_in_everglade() {
         assert_eq!(runtime.zone, ZoneId::Everglade);
     }
 }
+
+/// A zone cache that already holds the pinned pack, so an entry loads
+/// offline.
+fn cached_pack() -> tempfile::TempDir {
+    let cache = tempfile::tempdir().unwrap();
+    std::fs::copy(
+        pack_path(),
+        cache.path().join(format!(
+            "{}.{}",
+            everglade_pack::PACK_SHA256,
+            everglade_pack::PACK_EXTENSION
+        )),
+    )
+    .unwrap();
+    cache
+}
+
+/// Walks forward for up to `seconds`, stopping once `done` holds.
+fn walk_until(runtime: &mut WorldRuntime, seconds: f32, done: fn(&WorldRuntime) -> bool) -> bool {
+    let forward = InputState {
+        forward: true,
+        ..InputState::default()
+    };
+    for _ in 0..(seconds * 60.0) as usize {
+        runtime.tick(&forward, 1.0 / 60.0);
+        if done(runtime) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Polls the loader until the zone installs.
+fn finish_loading(runtime: &mut WorldRuntime) {
+    let deadline = Instant::now() + Duration::from_secs(180);
+    while !runtime.zone_tick() {
+        assert!(
+            runtime.zone_loading(),
+            "load stopped: {:?}",
+            runtime.zone_state.error
+        );
+        assert!(Instant::now() < deadline, "the cached pack did not load");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+/// Stands in front of `gate`, facing through it.
+fn facing(runtime: &mut WorldRuntime, gate: crate::zones::Gate) {
+    let (front, away) = gate.front();
+    runtime
+        .place_player(front, away + std::f32::consts::PI)
+        .unwrap();
+}
+
+#[test]
+fn walking_through_the_grids_everglade_arch_loads_the_pack_and_the_grid_arch_returns() {
+    let mut runtime = WorldRuntime::bare();
+    // Without zone storage the Grid has no arch to Everglade.
+    assert!(runtime.everglade_gate().is_none());
+    let cache = cached_pack();
+    runtime.configure_zone_cache(cache.path().to_owned());
+    let gate = runtime
+        .everglade_gate()
+        .expect("the Grid's arch to Everglade");
+    // The Lagrange 1 portal stays hidden: only Everglade's arch draws.
+    assert!(runtime.grid_gate().is_none());
+    let drawn = runtime.grid_portal_mesh();
+    let arch = gate.mesh(ZoneId::Plaza, "EVERGLADE", 0.0);
+    assert_eq!(drawn.lines.len(), arch.lines.len());
+    assert_eq!(drawn.faces.len(), arch.faces.len());
+    // No button: in front of the arch nothing offers to enter.
+    facing(&mut runtime, gate);
+    let snapshot = runtime.zone_snapshot(1.0);
+    assert!(!snapshot.portal.near && snapshot.controls.is_empty());
+    assert!(runtime.zone_intent(Intent::Enter).is_err());
+
+    // Walking into the opening starts the pack load, on the Grid, with the
+    // panel's progress and Cancel.
+    assert!(walk_until(&mut runtime, 3.0, WorldRuntime::zone_loading));
+    assert!(runtime.is_plaza());
+    let loading = runtime.zone_snapshot(1.0);
+    assert!(
+        loading.caption.starts_with("Loading Everglade"),
+        "{}",
+        loading.caption
+    );
+    assert!(loading.controls.iter().any(|c| c.action == Intent::Cancel));
+    finish_loading(&mut runtime);
+    assert_eq!(runtime.zone, ZoneId::Everglade);
+    assert!(runtime.is_bare());
+    assert_eq!(runtime.player.pos, Everglade::spawn());
+    // The panel's return reads The Grid, and the zone's arch is lettered
+    // for it.
+    let inside = runtime.zone_snapshot(1.0);
+    assert!(
+        inside
+            .controls
+            .iter()
+            .any(|c| c.action == Intent::Return && c.label == "The Grid")
+    );
+    let back = crate::zones::Gate::fixed(RETURN_PORTAL);
+    assert_eq!(
+        runtime.grid_portal_mesh().lines.len(),
+        back.mesh(ZoneId::Everglade, "THE GRID", 0.0).lines.len()
+    );
+
+    // Walking through the return arch, once the crossing's one-second
+    // cooldown has passed, comes back in front of the Grid's arch, facing
+    // away, so walking on does not enter again.
+    for _ in 0..70 {
+        runtime.tick(&InputState::default(), 1.0 / 60.0);
+    }
+    facing(&mut runtime, back);
+    assert!(walk_until(&mut runtime, 3.0, WorldRuntime::is_plaza));
+    let (front, away) = gate.front();
+    assert_eq!(runtime.player.pos, front);
+    assert!((runtime.player.yaw - crate::controller::wrap(away)).abs() < 1e-5);
+    assert!(runtime.world.mesh.textured.is_none());
+    assert!(!walk_until(&mut runtime, 1.0, |r| r.zone_loading() || !r.is_plaza()));
+
+    // A failed load offers Retry on the Grid, which loads again; inside,
+    // the panel's The Grid button comes back to the same place.
+    facing(&mut runtime, gate);
+    assert!(walk_until(&mut runtime, 3.0, WorldRuntime::zone_loading));
+    runtime.zone_intent(Intent::Cancel).unwrap();
+    runtime.zone_load_failed("offline");
+    let failed = runtime.zone_snapshot(1.0);
+    let retry = failed.controls.iter().find(|c| c.action == Intent::Retry);
+    assert!(retry.is_some_and(|c| c.enabled), "{:?}", failed.controls);
+    // The canceled worker may still be finishing; Retry until it starts.
+    let deadline = Instant::now() + Duration::from_secs(60);
+    while runtime.zone_intent(Intent::Retry).is_err() {
+        assert!(Instant::now() < deadline, "{:?}", runtime.zone_state.error);
+        runtime.zone_load_failed("offline");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    finish_loading(&mut runtime);
+    assert_eq!(runtime.zone, ZoneId::Everglade);
+    runtime.zone_intent(Intent::Return).unwrap();
+    assert!(runtime.is_plaza());
+    assert_eq!(runtime.player.pos, gate.front().0);
+}

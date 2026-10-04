@@ -409,16 +409,17 @@ fn walking_through_the_grid_portal_enters_a_neutral_lagrange_1_and_flying_back_r
 }
 
 #[test]
-#[ignore = "the Grid's ball and blocks are off for now (2026-10-01)"]
 fn the_grid_shows_no_portal_while_it_is_hidden() {
     const { assert!(!super::gate::GRID_PORTAL_OPEN) };
+    // Without zone storage the Grid has no Everglade arch either, so it
+    // draws no arch at all.
     let mut runtime = WorldRuntime::bare();
     assert!(runtime.grid_gate().is_none());
     assert!(runtime.grid_portal_mesh().lines.is_empty());
     assert!(runtime.grid_portal_mesh().faces.is_empty());
     // Walking where the arch would stand, facing through it, stays on the
     // Grid, and nothing offers to enter Lagrange 1.
-    let layout = runtime.ball().unwrap().layout();
+    let layout = crate::blocks::Layout::grid();
     let (front, away) = super::Gate::grid(&layout).front();
     runtime
         .place_player(front, away + std::f32::consts::PI)

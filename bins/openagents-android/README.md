@@ -71,7 +71,12 @@ The app has four tabs, shown as white icons on black:
   button, at the bottom center between them, switches touch and motion
   look, and the crosshair recenters the camera. The world draws with
   Verse's shared renderer on Vulkan or OpenGL ES; see
-  [Graphics backends](#graphics-backends). The Grid's portal to Lagrange 1 is hidden
+  [Graphics backends](#graphics-backends). Walking through the Grid's arch
+  lettered **EVERGLADE** loads [Everglade](../../docs/verse/everglade.md)
+  into the app's cache with a progress panel and enters it; the zone's
+  arch lettered **THE GRID**, or the panel's **The Grid** button, comes back
+  (see [the Grid's portal to Everglade](../../docs/verse/mobile.md#the-grids-portal-to-everglade)).
+  The Grid's portal to Lagrange 1 is hidden
   for now, in debug and release builds alike (see
   [the Grid's portal](../../docs/verse/mobile.md#the-grids-portal-to-lagrange-1)).
   The Grid's Gym has both native panels, as on iOS: a tap on the Gym board

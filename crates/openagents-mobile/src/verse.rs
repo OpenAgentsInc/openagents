@@ -25,6 +25,12 @@
 //! results with other trainers' agents in the Gym, signed by the world key
 //! (`verse::gym_notes`).
 //!
+//! A walk-in arch lettered **EVERGLADE** stands to the right of the spawn.
+//! Walking through it loads Everglade's pinned pack into the app's cache
+//! (`VerseZones` under `results_cache_directory`) with the zone panel's
+//! progress, **Cancel**, and **Retry**, then enters; the zone's arch lettered
+//! **THE GRID** and the panel's **The Grid** button come back.
+//!
 //! Players' name tags show their level when their key has XP under the
 //! OpenAgents referee (`650a2a22 · lv 3`): the world reads NIP-XP awards
 //! from the public relay while it is online, with Verse's read-only reader.
@@ -47,6 +53,16 @@ thread_local! { static CREATE_ERROR: RefCell<Option<String>> = const { RefCell::
 const MAX_REQUEST_BYTES: usize = 96 * 1024;
 /// The largest mount configuration, with a Gym connection code.
 const MAX_CONFIG_BYTES: usize = 96 * 1024;
+
+/// The zone pack cache under the app's cache directory, `VerseZones`, where
+/// Everglade's pinned pack is kept between visits. Without a cache directory
+/// the Grid has no walk-in portal to Everglade.
+pub(crate) fn zone_cache(cache_directory: Option<&str>) -> Option<String> {
+    let directory = std::path::Path::new(cache_directory?);
+    directory
+        .is_absolute()
+        .then(|| directory.join("VerseZones").to_string_lossy().into_owned())
+}
 
 /// The host's mount: the layer's drawable size in pixels, its scale, whether
 /// the layer is set up for extended dynamic range, and the world identity.
@@ -144,11 +160,12 @@ pub unsafe extern "C" fn openagents_verse_create(
             panel: true,
             results_panel: true,
             results_base: config.results_base.filter(|_| cfg!(debug_assertions)),
-            results_cache_directory: config.results_cache_directory,
+            results_cache_directory: config.results_cache_directory.clone(),
             xp_preview: config.xp_preview && cfg!(debug_assertions),
             evals_panel: true,
             notes: config.gym_notes,
             check_relay: config.check_relay.filter(|_| cfg!(debug_assertions)),
+            zone_cache_directory: zone_cache(config.results_cache_directory.as_deref()),
         };
         unsafe {
             VerseHandle::create_bare_with_gym(

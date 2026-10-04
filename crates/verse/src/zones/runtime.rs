@@ -107,7 +107,7 @@ impl WorldRuntime {
             (received as f32 / total as f32).clamp(0.0, 1.0)
         };
     }
-    fn zone_load_failed(&mut self, error: &str) {
+    pub(super) fn zone_load_failed(&mut self, error: &str) {
         self.zone_state.error = Some(error.chars().take(180).collect());
         self.zone_state.loading = LoadState::Failed;
     }
@@ -254,7 +254,11 @@ impl WorldRuntime {
     fn apply_zone_intent(&mut self, intent: Intent) -> Result<(), String> {
         match intent {
             Intent::Enter | Intent::Retry => {
-                if !self.is_plaza() || self.zone_loading() || !self.zone_portal(1.0).near {
+                let walked_in = intent == Intent::Retry && self.grid_retry_allowed();
+                if !self.is_plaza()
+                    || self.zone_loading()
+                    || !(walked_in || self.zone_portal(1.0).near)
+                {
                     return Err("Approach a portal".into());
                 }
                 let destination = if intent == Intent::Retry {
@@ -275,34 +279,14 @@ impl WorldRuntime {
                     self.install_lab();
                     return Ok(());
                 }
-                let requested = if destination == ZoneId::Everglade {
-                    self.zone_state
-                        .everglade_loader
-                        .as_mut()
-                        .ok_or("Zone storage is unavailable")?
-                        .request()
-                } else {
-                    super::Manifest::ruins()?;
-                    self.zone_state
-                        .loader
-                        .as_mut()
-                        .ok_or("Zone storage is unavailable")?
-                        .request()
-                };
-                if !requested {
-                    return Err("Finishing the previous load; try again".into());
-                }
-                self.cancel_navigation();
-                self.doors.cancel_transient();
-                self.zone_state.loading = LoadState::Loading;
-                self.zone_state.progress = 0.0;
-                self.zone_state.error = None;
+                self.start_zone_load(destination)?;
             }
             Intent::Cancel => self.zone_cancel_loading(),
             Intent::Return => {
                 if self.is_plaza() {
                     return Err("You are already in the plaza".into());
                 }
+                let left = self.zone;
                 self.zone_cancel_loading();
                 // Leaving Everglade stops the studio's observation.
                 self.zone_state.studio.set_active(false);
@@ -314,12 +298,18 @@ impl WorldRuntime {
                 self.zone = ZoneId::Plaza;
                 self.zone_revision = self.zone_revision.saturating_add(1);
                 if self.is_bare() {
-                    // Back on the Grid in front of its portal, facing away,
-                    // with the ball and blocks where they were left. With the
-                    // portal hidden, back where the player left the Grid.
+                    // Back on the Grid in front of the portal the player
+                    // left by, facing away, with the ball and blocks where
+                    // they were left. With that portal hidden, back where the
+                    // player left the Grid.
                     self.world = crate::world::bare();
                     let pose = self.zone_state.plaza_pose.take();
-                    let (pos, yaw) = self.grid_gate().map_or_else(
+                    let gate = if left == ZoneId::Everglade {
+                        self.everglade_gate()
+                    } else {
+                        self.grid_gate()
+                    };
+                    let (pos, yaw) = gate.map_or_else(
                         || pose.unwrap_or((crate::world::SPAWN, 0.0)),
                         |gate| gate.front(),
                     );
@@ -568,7 +558,12 @@ impl WorldRuntime {
                 (self.zone_state.progress * 100.0) as u32
             )
         } else if self.zone_state.loading == LoadState::Failed {
-            add("retry", "Retry", Intent::Retry, portal.near);
+            add(
+                "retry",
+                "Retry",
+                Intent::Retry,
+                portal.near || self.grid_retry_allowed(),
+            );
             add("cancel", "Dismiss", Intent::Cancel, true);
             format!("{} could not load", self.zone_state.destination.label())
         } else if self.zone == ZoneId::Ruins {
@@ -831,14 +826,80 @@ impl WorldRuntime {
             crate::runtime::mesh_occludes(&self.dynamic_mesh(), eye, direction, distance)
         }
     }
-    /// The Grid's walk-in portal while on the Grid; none elsewhere, and none
-    /// while the portal is hidden ([`super::gate::GRID_PORTAL_OPEN`]).
+    /// The Grid's walk-in portal to Lagrange 1 in the bare world; none
+    /// elsewhere, and none while the portal is hidden
+    /// ([`super::gate::GRID_PORTAL_OPEN`]).
     #[must_use]
     pub fn grid_gate(&self) -> Option<super::Gate> {
-        if !self.zone_state.grid_portal {
-            return None;
+        (self.is_bare() && self.zone_state.grid_portal)
+            .then(|| super::Gate::grid(&crate::blocks::Layout::grid()))
+    }
+
+    /// The Grid's walk-in portal to Everglade in the bare world
+    /// ([`super::gate::GRID_EVERGLADE_OPEN`]). A world without zone storage
+    /// cannot load Everglade's pack, so it has no such portal.
+    #[must_use]
+    pub fn everglade_gate(&self) -> Option<super::Gate> {
+        (self.is_bare()
+            && super::gate::GRID_EVERGLADE_OPEN
+            && self.zone_state.everglade_loader.is_some())
+        .then(|| super::Gate::everglade(&crate::blocks::Layout::grid()))
+    }
+
+    /// The Grid's shown walk-in portals with their destinations.
+    fn grid_gates(&self) -> Vec<(ZoneId, super::Gate)> {
+        [
+            (ZoneId::Lagrange1, self.grid_gate()),
+            (ZoneId::Everglade, self.everglade_gate()),
+        ]
+        .into_iter()
+        .filter_map(|(zone, gate)| gate.map(|gate| (zone, gate)))
+        .collect()
+    }
+
+    /// Whether the zone panel's Retry may restart a load the player started
+    /// by walking through a Grid portal, which has no button to approach.
+    fn grid_retry_allowed(&self) -> bool {
+        self.is_plaza()
+            && self.zone_state.loading == LoadState::Failed
+            && self
+                .grid_gates()
+                .iter()
+                .any(|&(zone, _)| zone == self.zone_state.destination)
+    }
+
+    /// Where the zone loader stands: idle, loading, or failed.
+    #[must_use]
+    pub fn zone_load_state(&self) -> LoadState {
+        self.zone_state.loading
+    }
+
+    /// Starts loading the pack of `destination` (Ruins or Everglade). The
+    /// world stays where it is until [`Self::zone_tick`] installs the zone.
+    fn start_zone_load(&mut self, destination: ZoneId) -> Result<(), String> {
+        let requested = if destination == ZoneId::Everglade {
+            self.zone_state
+                .everglade_loader
+                .as_mut()
+                .ok_or("Zone storage is unavailable")?
+                .request()
+        } else {
+            super::Manifest::ruins()?;
+            self.zone_state
+                .loader
+                .as_mut()
+                .ok_or("Zone storage is unavailable")?
+                .request()
+        };
+        if !requested {
+            return Err("Finishing the previous load; try again".into());
         }
-        self.ball().map(|ball| super::Gate::grid(&ball.layout()))
+        self.cancel_navigation();
+        self.doors.cancel_transient();
+        self.zone_state.loading = LoadState::Loading;
+        self.zone_state.progress = 0.0;
+        self.zone_state.error = None;
+        Ok(())
     }
 
     /// Show the Grid's portal on this world regardless of
@@ -865,28 +926,28 @@ impl WorldRuntime {
         }
     }
 
-    /// The walk-in arches in the neutral palette: the Grid's portal to
-    /// Lagrange 1, or a zone's return arch lettered for the Grid.
+    /// The walk-in arches in the neutral palette: the Grid's shown portals,
+    /// or a zone's return arch lettered for the Grid.
     pub(crate) fn grid_portal_mesh(&self) -> crate::mesh::Mesh {
         let elapsed = self.zone_state.elapsed;
-        if self.is_plaza() {
-            return self
-                .grid_gate()
-                .map_or_else(crate::mesh::Mesh::default, |gate| {
-                    gate.mesh(ZoneId::Plaza, ZoneId::Lagrange1.sign(), elapsed)
-                });
-        }
         let mut mesh = crate::mesh::Mesh::default();
+        if self.is_plaza() {
+            for (zone, gate) in self.grid_gates() {
+                mesh.extend(&gate.mesh(ZoneId::Plaza, zone.sign(), elapsed));
+            }
+            return mesh;
+        }
         for (_, at) in self.zone.portals() {
             mesh.extend(&super::Gate::fixed(at).mesh(self.zone, "THE GRID", elapsed));
         }
         mesh
     }
 
-    /// On the Grid, walking through its portal enters Lagrange 1, and in
-    /// Lagrange 1 flying through the return arch comes back. Feet moved
-    /// from `from` to the player's position this frame. Coder's plaza
-    /// keeps its tapped arches and buttons.
+    /// On the Grid, walking through a portal enters its zone: Lagrange 1 at
+    /// once, Everglade once its pack loads. In the zone, walking (or flying)
+    /// through the return arch comes back. Feet moved from `from` to the
+    /// player's position this frame. Coder's plaza keeps its tapped arches
+    /// and buttons.
     pub(crate) fn walk_through_portals(&mut self, from: Vec3, dt: f32) {
         if !self.is_bare() {
             return;
@@ -897,12 +958,22 @@ impl WorldRuntime {
         }
         let to = self.player.pos;
         if self.is_plaza() {
-            if self.grid_gate().is_some_and(|gate| gate.crossed(from, to)) {
-                self.cancel_navigation();
-                self.doors.cancel_transient();
-                self.zone_state.destination = ZoneId::Lagrange1;
+            let Some((zone, _)) = self
+                .grid_gates()
+                .into_iter()
+                .find(|(_, gate)| gate.crossed(from, to))
+            else {
+                return;
+            };
+            self.cancel_navigation();
+            self.doors.cancel_transient();
+            self.zone_state.destination = zone;
+            self.zone_state.gate_cooldown = super::gate::COOLDOWN;
+            if zone == ZoneId::Lagrange1 {
                 self.install_lagrange();
-                self.zone_state.gate_cooldown = super::gate::COOLDOWN;
+            } else if let Err(error) = self.start_zone_load(zone) {
+                // The zone panel offers Retry and Dismiss.
+                self.zone_load_failed(&error);
             }
         } else if self
             .zone

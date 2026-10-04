@@ -1,10 +1,12 @@
 //! Walk-in portals: arches the player enters by walking (or flying) through
 //! the opening, with no button. The OpenAgents app's bare world ("the Grid")
-//! has one, to Lagrange 1, and Lagrange 1 entered from it returns through
-//! its own arch the same way. Coder's plaza keeps its tap-and-button arches.
+//! has two, to Lagrange 1 and to Everglade, and a zone entered from it
+//! returns through its own arch the same way. Coder's plaza keeps its
+//! tap-and-button arches.
 //!
-//! The Grid's portal is hidden for now ([`GRID_PORTAL_OPEN`] is `false`):
-//! no arch, no lettering, and no crossing in any build of the phone apps.
+//! The portal to Lagrange 1 is hidden for now ([`GRID_PORTAL_OPEN`] is
+//! `false`): no arch, no lettering, and no crossing in any build of the phone
+//! apps. The portal to Everglade is shown ([`GRID_EVERGLADE_OPEN`]).
 //!
 //! A gate is an arch at `at`, turned `yaw` about the vertical. Its local +Z
 //! points through the opening, away from the side the player approaches:
@@ -27,6 +29,15 @@ pub const GRID_PORTAL_OPEN: bool = false;
 /// dominoes and short of the stack, so the ball, the stack, and the
 /// dominoes all stand clear of the arch and its approach. Side, forward, m.
 pub const GRID_PORTAL_AT: [f64; 2] = [-9.0, 11.0];
+/// Whether the Grid shows its walk-in portal to Everglade. On: a world with
+/// zone storage draws the arch, and walking through it loads Everglade's
+/// pinned pack and enters. A world without zone storage draws no arch.
+pub const GRID_EVERGLADE_OPEN: bool = true;
+/// The Grid's portal to Everglade in the same frame: the hidden Lagrange 1
+/// arch's mirror image, on the dominoes' side and short of them, so the ball,
+/// the stack, the dominoes, the pillar, and the Gym all stand clear of it.
+/// Side, forward, m.
+pub const GRID_EVERGLADE_AT: [f64; 2] = [9.0, 11.0];
 /// Half the arch's clear opening between its pillars, m.
 pub const OPENING_HALF: f32 = 1.5;
 /// How far either side of the arch's plane counts as inside it, m.
@@ -46,13 +57,25 @@ pub struct Gate {
 }
 
 impl Gate {
-    /// The Grid's portal, placed in the frame the ball and blocks were laid
-    /// out in and turned to face that frame's origin (the spawn), so it
-    /// reads face-on from where the player starts.
+    /// The Grid's portal to Lagrange 1, placed in the frame the ball and
+    /// blocks were laid out in and turned to face that frame's origin (the
+    /// spawn), so it reads face-on from where the player starts.
     #[must_use]
     pub fn grid(layout: &crate::blocks::Layout) -> Self {
+        Self::on_grid(layout, GRID_PORTAL_AT)
+    }
+
+    /// The Grid's portal to Everglade, placed and turned as [`Self::grid`].
+    #[must_use]
+    pub fn everglade(layout: &crate::blocks::Layout) -> Self {
+        Self::on_grid(layout, GRID_EVERGLADE_AT)
+    }
+
+    /// An arch at `site` (side, forward) in `layout`, inside the world's
+    /// walls, facing the layout's origin.
+    fn on_grid(layout: &crate::blocks::Layout, site: [f64; 2]) -> Self {
         let limit = f64::from(crate::world::HALF) - 6.0;
-        let point = layout.at(GRID_PORTAL_AT[0], GRID_PORTAL_AT[1], 0.0);
+        let point = layout.at(site[0], site[1], 0.0);
         let point = glam::DVec3::new(
             point.x.clamp(-limit, limit),
             0.0,
@@ -202,6 +225,52 @@ mod tests {
             DVec3::X,
         );
         let gate = Gate::grid(&edge);
+        assert!(gate.at.x.abs() < crate::world::HALF - 5.0);
+        assert!(gate.at.z.abs() < crate::world::HALF - 5.0);
+    }
+
+    #[test]
+    fn the_everglade_portal_faces_the_spawn_clear_of_everything_on_the_grid() {
+        let layout = crate::blocks::Layout::grid();
+        let gate = Gate::everglade(&layout);
+        // The spawn is on the lettered side, and the arch faces it.
+        let spawn = crate::world::SPAWN;
+        assert!(gate.local(spawn).z < -8.0);
+        assert!(gate.local(spawn).x.abs() < 0.01);
+        // The ball, every block, and the pools of light under them, though
+        // the Grid shows none of them for now.
+        let ball = crate::ball::Ball::new();
+        let world = ball.world();
+        let blocks = ball.blocks();
+        let ball_at = ball.body().pos.as_vec3();
+        assert!(ball_at.with_y(0.0).distance(gate.at) - crate::ball::RADIUS as f32 > 6.0);
+        for &id in blocks.cubes().iter().chain(blocks.dominoes()) {
+            let p = world[id].pos.as_vec3().with_y(0.0);
+            assert!(p.distance(gate.at) > 5.0, "{p} is near the arch");
+        }
+        for (center, radius) in [blocks.stack_pool(), blocks.domino_pool()] {
+            assert!(center.with_y(0.0).distance(gate.at) - radius > 1.0);
+        }
+        // The reset pillar, and the hidden Lagrange 1 arch and its approach.
+        let pillar = crate::pillar::AT.as_vec3().with_y(0.0);
+        assert!(pillar.distance(gate.at) > 6.0);
+        let lagrange = Gate::grid(&layout);
+        assert!(lagrange.at.distance(gate.at) > 12.0);
+        for arch in [gate, lagrange] {
+            let (front, _) = arch.front();
+            let other = if arch == gate { lagrange } else { gate };
+            assert!(front.distance(other.at) > 10.0);
+        }
+        // The Gym's walls, with room to walk around the arch.
+        for wall in crate::world::GymSite::GRID.walls() {
+            let nearest = Vec3::new(
+                gate.at.x.clamp(wall.min[0], wall.max[0]),
+                0.0,
+                gate.at.z.clamp(wall.min[1], wall.max[1]),
+            );
+            assert!(nearest.distance(gate.at) > 14.0, "{wall:?}");
+        }
+        // Inside the world's walls.
         assert!(gate.at.x.abs() < crate::world::HALF - 5.0);
         assert!(gate.at.z.abs() < crate::world::HALF - 5.0);
     }

@@ -15,8 +15,9 @@ controls); Coder's plaza keeps its own name. The Grid has only the plaza's groun
 palette (each amber step's lightness in white light), and the player with the
 controls below ([the Grid's sticks](#the-grids-sticks)), and other players' avatars, and the Gym
 ([below](#the-grids-gym)). It has no chat, map, doors, computer, or
-companion, and no zones for now: its walk-in portal to Lagrange 1 is hidden
-([below](#the-grids-portal-to-lagrange-1)). See
+companion. Its one zone is [Everglade](everglade.md), through a walk-in arch
+([below](#the-grids-portal-to-everglade)); its walk-in portal to Lagrange 1
+is hidden ([below](#the-grids-portal-to-lagrange-1)). See
 [presence in the OpenAgents app](#presence-in-the-openagents-app) and
 [OpenAgents for iOS](../../bins/openagents-ios/README.md).
 
@@ -142,8 +143,9 @@ Coder's plaza Gym is unchanged and amber.
   (`GRID_GYM_AHEAD`), facing it, and the hall runs 24 m farther along the
   spawn's heading. From the spawn, the **GYM** lettering stands above the
   doorway in the middle of the view, past the ball and between the stack and
-  the dominoes. Every block, the ball, the reset pillar, and the (hidden)
-  Lagrange 1 portal's site stand at least 14 m short of its walls. `GymSite::PLAZA` is the
+  the dominoes. Every block, the ball, the reset pillar, the Everglade arch,
+  and the (hidden) Lagrange 1 portal's site stand at least 14 m short of its
+  walls. `GymSite::PLAZA` is the
   identity, so every `GYM_*` constant stays in the Gym's own frame.
 - **Walls.** The walls block walking, and the same boxes stand in the ball's
   physics world, so the ball and blocks bounce off them.
@@ -175,6 +177,47 @@ Coder's plaza Gym is unchanged and amber.
   other `r=` steps choose in it. A host without the panel (Android, for
   now) shows the lettering but no tap cue, and loads nothing.
 
+### The Grid's portal to Everglade
+
+One arch on the Grid leads to [Everglade](everglade.md), lettered
+**EVERGLADE** and drawn in white and gray like the grid
+(`verse::zones::gate::GRID_EVERGLADE_OPEN`, on). It works as the Lagrange 1
+portal [below](#the-grids-portal-to-lagrange-1) does, with the same gate,
+cooldown, return, and presence rules, except that Everglade loads its pinned
+pack first.
+
+- **Placement.** The arch stands in the Grid's fixed layout frame
+  (`verse::blocks::Layout::grid`, the frame the ball and blocks use) at
+  `verse::zones::gate::GRID_EVERGLADE_AT`: 9 m to the dominoes' side of the
+  spawn's heading and 11 m ahead, the hidden Lagrange 1 arch's mirror image,
+  turned to face the spawn so its lettering reads head-on. It does not
+  depend on the ball, which is off for now. Tests keep it more than 6 m from
+  the ball, 5 m from every block, 6 m from the reset pillar, 12 m from the
+  Lagrange 1 arch, and 14 m from the Gym's walls.
+- **Zone storage.** The arch needs a zone cache. The OpenAgents app passes
+  its cache directory (`results_cache_directory`), and the shared crate keeps
+  zone packs in `VerseZones` under it (`BareGym::zone_cache_directory`). A
+  world without a zone cache, such as the desktop Grid for now, draws no
+  Everglade arch.
+- **Loading.** Walking through the opening, with no button, starts the
+  shared pack loader: a verified copy in the cache loads at once, and
+  otherwise the phone fetches the pinned pack from its URL. The player stays
+  on the Grid while it loads, the held stick is released, and presence
+  pauses. The zone panel, in the neutral palette above the sticks, shows
+  **Loading Everglade** with its percentage and **Cancel**; a failed load
+  shows the error with **Retry** and **Dismiss**. Retry needs no button
+  near: it restarts the load the arch started. When the pack arrives,
+  Everglade replaces the Grid.
+- **In Everglade.** The player arrives on the approach path facing the
+  workshop and walks the glade with the Grid's sticks: move, look, and jump.
+  The zone panel shows the caption and **The Grid**. The OpenAgents app has
+  no studio panel, so it offers no **Interact** at a station; Coder's phones
+  keep theirs.
+- **Returning.** The return arch, lettered **THE GRID**, stands 7 m behind
+  Everglade's spawn. Walking through it, or the panel's **The Grid** button,
+  comes back 3.5 m in front of the Grid's Everglade arch, facing away from
+  it, and presence rejoins `verse-bare` there.
+
 ### The Grid's portal to Lagrange 1
 
 **Hidden for now.** `verse::zones::gate::GRID_PORTAL_OPEN` is `false`, so no
@@ -195,8 +238,8 @@ opening and [Lagrange 1](lagrange-1.md) loads at once. Flying the pack back
 through the station's return arch, lettered **THE GRID**, returns; so does
 the zone panel's **The Grid** button, or a tap on that arch.
 
-- **Placement.** The arch stands in the ball's layout frame
-  (`verse::zones::gate::GRID_PORTAL_AT`): 9 m to the stack's side of the
+- **Placement.** The arch stands in the Grid's fixed layout frame, the
+  ball's (`verse::zones::gate::GRID_PORTAL_AT`): 9 m to the stack's side of the
   line from the spawn to the ball and 11 m ahead, short of the stack and
   opposite the dominoes, turned to face the spawn so its lettering reads
   head-on. A restored spawn lays it out with the ball and blocks, inside the

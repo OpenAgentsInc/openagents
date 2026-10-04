@@ -346,3 +346,132 @@ fn the_grid_portal_pauses_presence_in_lagrange_1_and_the_return_rejoins() {
     );
     assert!(seen_back, "the peer never saw the player back on the Grid");
 }
+
+/// Walking through the Grid's arch to Everglade loads the zone's pinned pack
+/// with the zone panel's progress and Cancel on the Grid, enters Everglade
+/// with presence paused, and the panel's **The Grid** button comes back in
+/// front of the arch, where presence rejoins `verse-bare`.
+#[test]
+fn the_everglade_arch_loads_its_pack_pauses_presence_and_the_grid_button_rejoins() {
+    use verse::zones::everglade_pack::{PACK_DIRECTORY, PACK_EXTENSION, PACK_SHA256};
+    use verse::zones::{Intent, ZoneId};
+    let relay = loopback_relay::LoopbackRelay::start();
+    // A cache that already holds the pinned pack, as after a first visit.
+    let cache = tempfile::tempdir().unwrap();
+    let name = format!("{PACK_SHA256}.{PACK_EXTENSION}");
+    std::fs::copy(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join(PACK_DIRECTORY)
+            .join(&name),
+        cache.path().join(&name),
+    )
+    .unwrap();
+    let mut scene = Scene::new(Config {
+        world_offline: true,
+        ..crate::verse_ffi::bare_config_with_gym(
+            800,
+            1200,
+            2.0,
+            false,
+            None,
+            crate::BareGym {
+                zone_cache_directory: Some(cache.path().to_string_lossy().into_owned()),
+                ..crate::BareGym::default()
+            },
+        )
+    })
+    .unwrap();
+    scene.relay = Some(relay.url.clone());
+    scene.activate(true).unwrap();
+    let clock = Instant::now();
+    let mut frame = |scene: &mut Scene, limit: Duration, done: fn(&Scene) -> bool| {
+        let start = Instant::now();
+        while start.elapsed() < limit {
+            scene.update(clock.elapsed().as_secs_f64()).unwrap();
+            if done(scene) {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(16));
+        }
+        false
+    };
+    assert!(frame(&mut scene, Duration::from_secs(8), |s| s
+        .session
+        .is_some()));
+
+    // The Lagrange 1 portal stays hidden; Everglade's arch stands.
+    assert!(scene.world.grid_gate().is_none());
+    let gate = scene.world.everglade_gate().expect("the Grid's arch");
+    let (front, away) = gate.front();
+    scene
+        .world
+        .place_player(front, away + std::f32::consts::PI)
+        .unwrap();
+    let [sx, sy] = scene.stick_center();
+    scene.pointer(1, PointerPhase::Down, sx, sy).unwrap();
+    scene.pointer(1, PointerPhase::Move, sx, sy - 80.0).unwrap();
+    assert!(
+        frame(&mut scene, Duration::from_secs(20), |s| s
+            .world
+            .zone_loading()
+            || !s.world.is_plaza()),
+        "walking through the arch did not start the load"
+    );
+    scene.pointer(1, PointerPhase::Up, sx, sy - 80.0).unwrap();
+    if scene.world.is_plaza() {
+        // Still on the Grid while the pack loads: presence pauses and the
+        // panel shows progress and Cancel in the neutral palette.
+        assert!(scene.session.is_none());
+        let hud = scene.zone_hud_snapshot();
+        assert!(hud.visible);
+        assert!(hud.buttons.iter().any(|b| b.action == Intent::Cancel));
+        let ui = scene.map_ui();
+        assert!(ui.vertices.len() > scene.stick_ui().vertices.len());
+    }
+    assert!(
+        frame(&mut scene, Duration::from_secs(180), |s| !s
+            .world
+            .is_plaza()),
+        "the cached pack did not load: {:?}",
+        scene.world.zone_snapshot(1.0).error
+    );
+    assert_eq!(scene.world.zone, ZoneId::Everglade);
+    assert!(scene.session.is_none());
+    assert_eq!(scene.packet().connection.state, "local_zone");
+
+    // At a station the app offers no studio panel, since it has none.
+    let podium = verse::zones::everglade::STATIONS
+        .iter()
+        .find(|s| s.id == "podium")
+        .unwrap()
+        .at;
+    scene
+        .world
+        .place_player([podium[0], 0.0, podium[1]].into(), 0.0)
+        .unwrap();
+    assert!(scene.world.studio_panel_here().is_some());
+    let hud = scene.zone_hud_snapshot();
+    assert!(hud.buttons.iter().all(|b| b.action != Intent::Interact));
+    assert!(scene.zone_intent(Intent::Interact).is_err());
+    assert!(scene.studio.is_none());
+
+    // The panel's button returns to the Grid in front of the arch, and
+    // presence rejoins.
+    let button = hud
+        .buttons
+        .iter()
+        .find(|b| b.action == Intent::Return)
+        .unwrap();
+    assert_eq!(button.label, "The Grid");
+    let [bx, by, bw, bh] = button.frame;
+    let at = [bx + bw / 2.0, by + bh / 2.0];
+    scene.pointer(2, PointerPhase::Down, at[0], at[1]).unwrap();
+    scene.pointer(2, PointerPhase::Up, at[0], at[1]).unwrap();
+    assert!(scene.world.is_plaza());
+    assert_eq!(scene.world.player.pos, front);
+    assert_eq!(
+        scene.session.as_ref().expect("presence rejoins").world(),
+        BARE_WORLD
+    );
+}

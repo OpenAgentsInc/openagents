@@ -119,9 +119,15 @@ The app has four tabs, shown as icons:
   and gray on a dark field, with your character in the center, the other
   players in the same world, and one large ball ahead of you. Walk into the
   ball to push it; it rolls with real physics under a studio light and comes
-  to rest (see [the ball](../../docs/verse/mobile.md#the-ball)). The arch
-  to [Lagrange 1](../../docs/verse/lagrange-1.md) is hidden for now, in
-  every build (see
+  to rest (see [the ball](../../docs/verse/mobile.md#the-ball)). Walking
+  through the arch lettered **EVERGLADE**, ahead and to the right of the
+  spawn, loads [Everglade](../../docs/verse/everglade.md) into the app's
+  cache with a progress panel (**Cancel**, and **Retry** after a failure)
+  and enters it; the zone's arch lettered **THE GRID**, or the panel's
+  **The Grid** button, comes back (see
+  [the Grid's portal to Everglade](../../docs/verse/mobile.md#the-grids-portal-to-everglade)).
+  The arch to [Lagrange 1](../../docs/verse/lagrange-1.md) is hidden for
+  now, in every build (see
   [the Grid's portal](../../docs/verse/mobile.md#the-grids-portal-to-lagrange-1)). Everyone in
   the world shares the ball and the blocks, and finds them where they were
   left; walking into the pillar to the right of the spawn puts them all back

@@ -151,6 +151,9 @@ Everglade is the Agent Studio's place in the world:
   while the player is inside.
 - On phones, stations open the same panels through the hosts' native mounting
   (#10476).
+- The OpenAgents app's Grid opens Everglade through a walk-in arch, with the
+  shared pack loader's progress, Cancel, and Retry; see
+  [the Grid's portal to Everglade](mobile.md#the-grids-portal-to-everglade).
 
 ## Delivery
 
@@ -167,5 +170,3 @@ Everglade is the Agent Studio's place in the world:
 
 - Whether Fantasy Props may join the two named kits for furniture, or whether
   stations use only village and nature pieces.
-- Whether Everglade later opens on the OpenAgents Grid, where portals are
-  closed today.

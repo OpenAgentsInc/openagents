@@ -884,12 +884,8 @@ impl Scene {
             viewport,
         )
         .map_err(|e| e.to_string())?;
-        if config.bare
-            && (config.door_preferences.is_some()
-                || config.zone_cache_directory.is_some()
-                || config.computer_hud)
-        {
-            return Err("The bare world has no doors, zone downloads, or computer".into());
+        if config.bare && (config.door_preferences.is_some() || config.computer_hud) {
+            return Err("The bare world has no doors or computer".into());
         }
         let selected_relay = if config.world_offline {
             None
@@ -1265,8 +1261,9 @@ impl Scene {
             return Ok(());
         }
         // The bare world draws no map or door controls to touch, and zone
-        // controls only inside the zone its portal leads to.
-        if matches!(phase, PointerPhase::Down) && self.world.is_bare() && !self.world.is_plaza() {
+        // controls only while a zone loads or inside the zone a portal leads
+        // to.
+        if matches!(phase, PointerPhase::Down) && self.bare_zone_panel() {
             let snapshot = self.zone_hud_snapshot();
             if self.zone_hud.down(id, point, &snapshot) {
                 self.cancel_taps();
@@ -1918,10 +1915,12 @@ impl Scene {
             input.unwrap_or_else(|| self.input())
         };
         let revision = self.world.zone_revision;
+        let loading = self.world.zone_loading();
         self.world.tick(&input, dt);
-        if self.world.zone_revision != revision {
-            // The player walked through a portal: drop held input, and pause
-            // or resume the world's presence as a button entry would.
+        if self.world.zone_revision != revision || self.world.zone_loading() != loading {
+            // The player walked through a portal, or into one whose zone
+            // now loads: drop held input, and pause or resume the world's
+            // presence as a button entry would.
             self.reset_zone_inputs();
             self.sync_zone_session()?;
         }
@@ -2544,11 +2543,11 @@ impl Scene {
     pub fn map_ui(&self) -> verse::ui::UiBatch {
         if self.world.is_bare() {
             // The sticks are the bare world's only controls; the
-            // players there carry their key's first letters overhead. In the
-            // zone its portal leads to, the zone's panel joins them, in the
-            // neutral palette.
+            // players there carry their key's first letters overhead. While
+            // a zone loads, and in the zone a portal leads to, the zone's
+            // panel joins them, in the neutral palette.
             let mut ui = self.player_tags();
-            if !self.world.is_plaza() {
+            if self.bare_zone_panel() {
                 let scale = self.lifecycle.viewport().scale();
                 if let Some(layout) = self.atlas.layout_at_scale(scale) {
                     let mut zone_ui = self
@@ -2614,12 +2613,27 @@ impl Scene {
         )
     }
 
+    /// Whether the bare world draws the zone panel: while a zone loads or
+    /// failed to load (with Cancel, or Retry and Dismiss), and inside a
+    /// zone.
+    fn bare_zone_panel(&self) -> bool {
+        self.world.is_bare()
+            && (!self.world.is_plaza()
+                || self.world.zone_load_state() != verse::zones::LoadState::Idle)
+    }
+
     fn plaza_online_allowed(&self) -> bool {
         self.world.is_plaza() && !self.world.zone_loading()
     }
 
     fn zone_snapshot(&self) -> verse::zones::Snapshot {
         let mut snapshot = self.world.zone_snapshot(self.aspect());
+        if self.world.is_bare() {
+            // The OpenAgents app has no studio panel to open at a station.
+            snapshot
+                .controls
+                .retain(|control| control.action != ZoneIntent::Interact);
+        }
         let size = self.lifecycle.viewport().logical_size();
         if snapshot.portal.visible
             && snapshot.portal.near
@@ -2693,6 +2707,9 @@ impl Scene {
             || self.map.expanded
         {
             return Err("Return to the world to use the portal".into());
+        }
+        if intent == ZoneIntent::Interact && self.world.is_bare() {
+            return Err("This app has no studio panel".into());
         }
         if intent == ZoneIntent::Enter {
             let portal = self.world.zone_snapshot(self.aspect()).portal;
