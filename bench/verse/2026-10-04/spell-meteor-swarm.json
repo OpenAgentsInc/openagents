@@ -2,24 +2,109 @@
   "schema": "openagents.verse.spell-playground.v1",
   "spell": "meteor-swarm",
   "title": "Meteor Swarm",
-  "srd": "Level 9 Evocation | range 1 mile | DEX save | four 40-ft spheres | 20d6 fire + 20d6 bludgeoning",
+  "srd": "Meteor Swarm - level 9 Evocation - range 1 mile - four 40-ft-radius Spheres - Dexterity save - 20d6 Fire + 20d6 Bludgeoning",
   "srd_source": "SRD 5.2.1 (SRD_CC_v5.2.1.pdf)",
   "rules_revision": "verse-chamber-owned-v18",
-  "seed": 458,
-  "dice_rolled": 47,
-  "saves": [],
+  "seed": 459,
+  "dice_rolled": 46,
+  "saves": [
+    {
+      "at": 2.799999952316284,
+      "save": {
+        "target": 101,
+        "ability": "DEX",
+        "roll": 5,
+        "modifier": 0,
+        "total": 5,
+        "dc": 15,
+        "success": false,
+        "forced": false
+      }
+    },
+    {
+      "at": 2.799999952316284,
+      "save": {
+        "target": 102,
+        "ability": "DEX",
+        "roll": 4,
+        "modifier": 0,
+        "total": 4,
+        "dc": 15,
+        "success": false,
+        "forced": false
+      }
+    },
+    {
+      "at": 3.2333333492279053,
+      "save": {
+        "target": 104,
+        "ability": "DEX",
+        "roll": 18,
+        "modifier": 0,
+        "total": 18,
+        "dc": 15,
+        "success": true,
+        "forced": false
+      }
+    },
+    {
+      "at": 3.2333333492279053,
+      "save": {
+        "target": 105,
+        "ability": "DEX",
+        "roll": 18,
+        "modifier": 0,
+        "total": 18,
+        "dc": 15,
+        "success": true,
+        "forced": false
+      }
+    },
+    {
+      "at": 3.8333332538604736,
+      "save": {
+        "target": 103,
+        "ability": "DEX",
+        "roll": 7,
+        "modifier": 0,
+        "total": 7,
+        "dc": 15,
+        "success": false,
+        "forced": false
+      }
+    },
+    {
+      "at": 4.199999809265137,
+      "save": {
+        "target": 106,
+        "ability": "DEX",
+        "roll": 18,
+        "modifier": 0,
+        "total": 18,
+        "dc": 15,
+        "success": true,
+        "forced": false
+      }
+    }
+  ],
   "log": [
-    "[2.23] Meteor 0 impacted at DVec3(-1.7999999523162842, 0.0, -3.0); obstructed: true",
-    "[2.23] Wizard: 124 damage",
-    "[2.23] Overlapping blast dummy: 62 damage",
-    "[2.23] Overlapping blast dummy: 124 damage",
-    "[2.23] Overlapping blast dummy: 62 damage",
-    "[2.23] Overlapping blast dummy: 124 damage",
-    "[2.23] Overlapping blast dummy: 124 damage",
-    "[2.23] Overlapping blast dummy: 124 damage",
-    "[2.50] Meteor 1 impacted at DVec3(2.200000047683716, 0.0, -3.0); obstructed: true",
-    "[2.87] Meteor 2 impacted at DVec3(-5.799999952316284, 0.0, -3.0); obstructed: false",
-    "[3.00] Meteor 3 impacted at DVec3(-1.7999999523162842, 0.0, 1.0); obstructed: true"
+    "[1.00] Four meteors: 30 m descent at 8 m/s; 59 fire + 72 bludgeoning",
+    "[2.80] Meteor 1: impact at (-4.4, 1.2, -18.9) m; intercepted above the target",
+    "[2.80] Creature 101: DEX 5 vs DC 15 fails; 59 fire + 72 bludgeoning",
+    "[2.80] Creature 102: DEX 4 vs DC 15 fails; 59 fire + 72 bludgeoning",
+    "[2.80] Dummy A1 (overlap): 131 damage",
+    "[2.80] Dummy A2: 131 damage",
+    "[3.23] Meteor 2: impact at (-10.3, 2.7, 8.9) m; intercepted above the target",
+    "[3.23] Creature 104: DEX 18 vs DC 15 succeeds; 29 fire + 36 bludgeoning",
+    "[3.23] Creature 105: DEX 18 vs DC 15 succeeds; 29 fire + 36 bludgeoning",
+    "[3.23] Dummy C1: 65 damage",
+    "[3.23] Dummy C2: 65 damage",
+    "[3.83] Meteor 3: impact at (4.0, 0.0, -21.1) m",
+    "[3.83] Creature 103: DEX 7 vs DC 15 fails; 59 fire + 72 bludgeoning",
+    "[3.83] Dummy B1 (overlap): 131 damage",
+    "[4.20] Meteor 4: impact at (16.2, 3.4, 11.2) m; intercepted above the target",
+    "[4.20] Creature 106: DEX 18 vs DC 15 succeeds; 29 fire + 36 bludgeoning",
+    "[4.20] Dummy D (overhang): 65 damage"
   ],
   "tracks": [],
   "feather_falls": [],
@@ -36,99 +121,98 @@
       "caster": 14,
       "swarm": {
         "caster": [
-          0.0,
+          5.75,
           1.4,
-          -8.0
+          0.0
         ],
         "dc": 15,
         "damage": {
-          "fire": 64,
-          "bludgeoning": 60
+          "fire": 59,
+          "bludgeoning": 72
         },
         "meteors": [
           {
             "point": [
-              -1.7999999523162842,
+              -4.0,
               0.0,
-              -3.0
+              -19.0
             ],
-            "spawn_tick": 60,
+            "spawn_tick": 120,
             "start": [
-              10.957167239946642,
-              120.6,
-              -38.436576472812376
+              -1.7229631004902863,
+              30.6,
+              -14.562697324032353
             ],
             "velocity": [
-              -6.950932702139587,
-              -56.381557247154504,
-              19.308146906323405
+              -1.249206126665163,
+              -7.517540966287267,
+              -2.4343504006808305
+            ],
+            "body": 28,
+            "done": true
+          },
+          {
+            "point": [
+              -10.5,
+              0.0,
+              9.0
+            ],
+            "spawn_tick": 180,
+            "start": [
+              -6.137031096587565,
+              30.6,
+              6.583586453494652
+            ],
+            "velocity": [
+              -2.3935701199071198,
+              -7.517540966287267,
+              1.3256696048716354
             ],
             "body": 29,
             "done": true
           },
           {
             "point": [
-              2.200000047683716,
+              4.0,
               0.0,
-              -3.0
+              -21.0
             ],
-            "spawn_tick": 90,
+            "spawn_tick": 240,
             "start": [
-              -12.968316308497322,
-              120.6,
-              -37.473445516856
+              4.414184300805384,
+              30.6,
+              -16.029788390335398
             ],
             "velocity": [
-              8.264683264519887,
-              -56.381557247154504,
-              18.78337064860842
+              -0.22722581537700062,
+              -7.517540966287267,
+              -2.7267097845240076
             ],
             "body": 30,
             "done": true
           },
           {
             "point": [
-              -5.799999952316284,
+              16.4,
               0.0,
-              -3.0
+              11.4
             ],
-            "spawn_tick": 120,
+            "spawn_tick": 300,
             "start": [
-              22.726278018148797,
-              120.6,
-              -27.59161914223193
+              12.995270854775594,
+              30.6,
+              7.7555011966612
             ],
             "velocity": [
-              -15.542967762896994,
-              -56.381557247154504,
-              13.399110250586956
+              1.8678698218573278,
+              -7.517540966287267,
+              1.9994099501571398
             ],
             "body": 31,
-            "done": true
-          },
-          {
-            "point": [
-              -1.7999999523162842,
-              0.0,
-              1.0
-            ],
-            "spawn_tick": 150,
-            "start": [
-              5.5863080528343385,
-              120.6,
-              -35.93154100410484
-            ],
-            "velocity": [
-              -4.024540016392907,
-              -56.381557247154504,
-              20.122700615034052
-            ],
-            "body": 32,
             "done": true
           }
         ],
         "affected": [
-          14,
           101,
           102,
           103,
@@ -153,189 +237,42 @@
           24,
           25,
           26,
-          27,
-          28,
-          33,
-          34,
-          35,
-          36,
-          37,
-          38,
-          39,
-          40,
-          41,
-          42,
-          43,
-          44,
-          45,
-          46,
-          47,
-          48,
-          49,
-          50,
-          51,
-          52,
-          53,
-          54,
-          55,
-          56,
-          57,
-          58,
-          59,
-          60,
-          61,
-          62,
-          63,
-          64,
-          65,
-          66,
-          67,
-          68,
-          69,
-          70,
-          71,
-          72,
-          73,
-          74,
-          75,
-          76,
-          77,
-          78,
-          79,
-          80,
-          81,
-          82,
-          83,
-          84,
-          85,
-          86,
-          87,
-          88,
-          89,
-          90,
-          91,
-          92,
-          93,
-          94,
-          95,
-          96,
-          97,
-          98,
-          99,
-          100,
-          101,
-          102,
-          103,
-          104,
-          105,
-          106,
-          107,
-          108,
-          109,
-          110,
-          111,
-          112,
-          113,
-          114,
-          115,
-          116,
-          117,
-          118,
-          119,
-          120,
-          121,
-          122,
-          123,
-          124,
-          125,
-          126,
-          127,
-          128,
-          129,
-          130,
-          131,
-          132,
-          133,
-          134,
-          135,
-          136
+          27
         ],
         "impacts": [
           {
             "meteor": 0,
-            "tick": 267,
+            "tick": 334,
             "point": [
-              -1.7999999523162842,
+              -4.0,
               0.0,
-              -3.0
+              -19.0
             ],
             "center": [
-              -1.0830559779519433,
-              8.15,
-              -4.991511092658058
+              -4.38677421404514,
+              1.1999996785753506,
+              -18.916239629058143
             ],
             "radius": 12.192,
             "obstructed": true,
-            "struck": 28,
+            "struck": 13,
             "creatures": [
-              {
-                "id": 14,
-                "meteor": 0,
-                "save": {
-                  "d20": 13,
-                  "modifier": 0,
-                  "dc": 15,
-                  "success": false
-                },
-                "damage": {
-                  "fire": 64,
-                  "bludgeoning": 60
-                }
-              },
               {
                 "id": 101,
                 "meteor": 0,
                 "save": {
-                  "d20": 17,
-                  "modifier": 0,
-                  "dc": 15,
-                  "success": true
-                },
-                "damage": {
-                  "fire": 32,
-                  "bludgeoning": 30
-                }
-              },
-              {
-                "id": 102,
-                "meteor": 0,
-                "save": {
-                  "d20": 2,
+                  "d20": 5,
                   "modifier": 0,
                   "dc": 15,
                   "success": false
                 },
                 "damage": {
-                  "fire": 64,
-                  "bludgeoning": 60
+                  "fire": 59,
+                  "bludgeoning": 72
                 }
               },
               {
-                "id": 103,
-                "meteor": 0,
-                "save": {
-                  "d20": 18,
-                  "modifier": 0,
-                  "dc": 15,
-                  "success": true
-                },
-                "damage": {
-                  "fire": 32,
-                  "bludgeoning": 30
-                }
-              },
-              {
-                "id": 104,
+                "id": 102,
                 "meteor": 0,
                 "save": {
                   "d20": 4,
@@ -344,36 +281,8 @@
                   "success": false
                 },
                 "damage": {
-                  "fire": 64,
-                  "bludgeoning": 60
-                }
-              },
-              {
-                "id": 105,
-                "meteor": 0,
-                "save": {
-                  "d20": 14,
-                  "modifier": 0,
-                  "dc": 15,
-                  "success": false
-                },
-                "damage": {
-                  "fire": 64,
-                  "bludgeoning": 60
-                }
-              },
-              {
-                "id": 106,
-                "meteor": 0,
-                "save": {
-                  "d20": 10,
-                  "modifier": 0,
-                  "dc": 15,
-                  "success": false
-                },
-                "damage": {
-                  "fire": 64,
-                  "bludgeoning": 60
+                  "fire": 59,
+                  "bludgeoning": 72
                 }
               }
             ],
@@ -382,13 +291,13 @@
                 "body": 11,
                 "meteor": 0,
                 "damage": {
-                  "fire": 64,
-                  "bludgeoning": 60
+                  "fire": 59,
+                  "bludgeoning": 72
                 },
                 "impulse": [
-                  92.36726336103482,
-                  53.32846651284464,
-                  -0.2543246508242015
+                  -266.9992521598894,
+                  159.4024854902205,
+                  -70.27699828137023
                 ],
                 "ignited": true,
                 "debris": []
@@ -397,13 +306,13 @@
                 "body": 12,
                 "meteor": 0,
                 "damage": {
-                  "fire": 64,
-                  "bludgeoning": 60
+                  "fire": 59,
+                  "bludgeoning": 72
                 },
                 "impulse": [
-                  9.084320434922004,
-                  62.83142176789203,
-                  108.44739649415226
+                  265.5745615826127,
+                  159.52248099076775,
+                  -76.2392160541585
                 ],
                 "ignited": true,
                 "debris": []
@@ -412,1683 +321,227 @@
                 "body": 13,
                 "meteor": 0,
                 "damage": {
-                  "fire": 64,
-                  "bludgeoning": 60
+                  "fire": 59,
+                  "bludgeoning": 72
                 },
                 "impulse": [
-                  48.39790517524012,
-                  48.89889757155626,
-                  69.50503093869622
+                  -45.54134385400866,
+                  168.57631947916568,
+                  -288.4092794405135
                 ],
-                "ignited": false,
+                "ignited": true,
                 "debris": []
               },
               {
                 "body": 14,
                 "meteor": 0,
                 "damage": {
-                  "fire": 64,
-                  "bludgeoning": 60
+                  "fire": 59,
+                  "bludgeoning": 72
                 },
                 "impulse": [
-                  -74.13440187149617,
-                  51.825768813252715,
-                  50.61443863572587
+                  34.47953391110314,
+                  20.073729421182506,
+                  -4.4749949606266295
                 ],
-                "ignited": false,
+                "ignited": true,
                 "debris": []
               },
               {
                 "body": 15,
                 "meteor": 0,
                 "damage": {
-                  "fire": 64,
-                  "bludgeoning": 60
+                  "fire": 59,
+                  "bludgeoning": 72
                 },
                 "impulse": [
-                  11.33839348508693,
-                  12.980767835091893,
-                  19.414989928995777
+                  18.814888139410368,
+                  10.943756496028524,
+                  -2.3016087926871003
                 ],
                 "ignited": true,
-                "debris": [
-                  33,
-                  34,
-                  35,
-                  36,
-                  37,
-                  38,
-                  39,
-                  40
-                ]
+                "debris": []
               },
               {
                 "body": 16,
                 "meteor": 0,
                 "damage": {
-                  "fire": 64,
-                  "bludgeoning": 60
+                  "fire": 59,
+                  "bludgeoning": 72
                 },
                 "impulse": [
-                  9.312986634280234,
-                  9.64748381846817,
-                  13.874080583322757
+                  27.247582995759664,
+                  15.855680788410618,
+                  -3.431772236193695
                 ],
                 "ignited": true,
-                "debris": [
-                  41,
-                  42,
-                  43,
-                  44,
-                  45,
-                  46,
-                  47,
-                  48
-                ]
+                "debris": []
               },
               {
                 "body": 17,
                 "meteor": 0,
                 "damage": {
-                  "fire": 64,
-                  "bludgeoning": 60
+                  "fire": 59,
+                  "bludgeoning": 72
                 },
                 "impulse": [
-                  16.40911456503708,
-                  18.78597194346569,
-                  28.09767223051633
+                  128.87419419392072,
+                  82.01788143125648,
+                  -59.768224787779744
                 ],
                 "ignited": true,
-                "debris": [
-                  49,
-                  50,
-                  51,
-                  52,
-                  53,
-                  54,
-                  55,
-                  56
-                ]
+                "debris": []
               },
               {
                 "body": 18,
                 "meteor": 0,
                 "damage": {
-                  "fire": 64,
-                  "bludgeoning": 60
+                  "fire": 59,
+                  "bludgeoning": 72
                 },
                 "impulse": [
-                  14.798401421137992,
-                  15.329910106213648,
-                  22.045991630512688
+                  147.19302282039658,
+                  87.73093672547627,
+                  -37.74077117896224
                 ],
                 "ignited": true,
-                "debris": [
-                  57,
-                  58,
-                  59,
-                  60,
-                  61,
-                  62,
-                  63,
-                  64
-                ]
-              },
-              {
-                "body": 19,
-                "meteor": 0,
-                "damage": {
-                  "fire": 64,
-                  "bludgeoning": 60
-                },
-                "impulse": [
-                  -22.3263355472812,
-                  27.18374199097125,
-                  41.453615366157024
-                ],
-                "ignited": true,
-                "debris": [
-                  65,
-                  66,
-                  67,
-                  68,
-                  69,
-                  70,
-                  71,
-                  72
-                ]
-              },
-              {
-                "body": 20,
-                "meteor": 0,
-                "damage": {
-                  "fire": 64,
-                  "bludgeoning": 60
-                },
-                "impulse": [
-                  -20.525946084330403,
-                  29.702714004683063,
-                  47.17456088905491
-                ],
-                "ignited": true,
-                "debris": [
-                  73,
-                  74,
-                  75,
-                  76,
-                  77,
-                  78,
-                  79,
-                  80
-                ]
-              },
-              {
-                "body": 21,
-                "meteor": 0,
-                "damage": {
-                  "fire": 64,
-                  "bludgeoning": 60
-                },
-                "impulse": [
-                  -28.736362906723325,
-                  37.9024875349594,
-                  59.02556336797097
-                ],
-                "ignited": true,
-                "debris": [
-                  81,
-                  82,
-                  83,
-                  84,
-                  85,
-                  86,
-                  87,
-                  88
-                ]
-              },
-              {
-                "body": 22,
-                "meteor": 0,
-                "damage": {
-                  "fire": 64,
-                  "bludgeoning": 60
-                },
-                "impulse": [
-                  0.30597600390820656,
-                  16.995473661692937,
-                  29.43543364112253
-                ],
-                "ignited": true,
-                "debris": [
-                  89,
-                  90,
-                  91,
-                  92,
-                  93,
-                  94,
-                  95,
-                  96
-                ]
-              },
-              {
-                "body": 23,
-                "meteor": 0,
-                "damage": {
-                  "fire": 64,
-                  "bludgeoning": 60
-                },
-                "impulse": [
-                  2.463255949262505,
-                  16.69911158703467,
-                  28.818628584947092
-                ],
-                "ignited": true,
-                "debris": [
-                  97,
-                  98,
-                  99,
-                  100,
-                  101,
-                  102,
-                  103,
-                  104
-                ]
-              },
-              {
-                "body": 24,
-                "meteor": 0,
-                "damage": {
-                  "fire": 64,
-                  "bludgeoning": 60
-                },
-                "impulse": [
-                  4.376975190140629,
-                  15.941119020496629,
-                  27.261693180391635
-                ],
-                "ignited": true,
-                "debris": [
-                  105,
-                  106,
-                  107,
-                  108,
-                  109,
-                  110,
-                  111,
-                  112
-                ]
-              },
-              {
-                "body": 25,
-                "meteor": 0,
-                "damage": {
-                  "fire": 64,
-                  "bludgeoning": 60
-                },
-                "impulse": [
-                  20.173864257928653,
-                  13.369520143061111,
-                  11.368702980983345
-                ],
-                "ignited": false,
-                "debris": [
-                  113,
-                  114,
-                  115,
-                  116,
-                  117,
-                  118,
-                  119,
-                  120
-                ]
-              },
-              {
-                "body": 26,
-                "meteor": 0,
-                "damage": {
-                  "fire": 64,
-                  "bludgeoning": 60
-                },
-                "impulse": [
-                  30.99427269782848,
-                  20.539355117352482,
-                  17.462828689613406
-                ],
-                "ignited": false,
-                "debris": [
-                  121,
-                  122,
-                  123,
-                  124,
-                  125,
-                  126,
-                  127,
-                  128
-                ]
-              },
-              {
-                "body": 27,
-                "meteor": 0,
-                "damage": {
-                  "fire": 64,
-                  "bludgeoning": 60
-                },
-                "impulse": [
-                  41.080829090430626,
-                  27.2256988288791,
-                  23.153434116893266
-                ],
-                "ignited": false,
-                "debris": [
-                  129,
-                  130,
-                  131,
-                  132,
-                  133,
-                  134,
-                  135,
-                  136
-                ]
-              },
-              {
-                "body": 28,
-                "meteor": 0,
-                "damage": {
-                  "fire": 64,
-                  "bludgeoning": 60
-                },
-                "impulse": [
-                  0.0,
-                  0.0,
-                  0.0
-                ],
-                "ignited": false,
                 "debris": []
               }
             ]
           },
           {
             "meteor": 1,
-            "tick": 297,
+            "tick": 386,
             "point": [
-              2.200000047683716,
+              -10.5,
               0.0,
-              -3.0
+              9.0
             ],
             "center": [
-              1.3475511576659127,
-              8.15,
-              -4.937383798957769
+              -10.292225057788782,
+              2.699480024676281,
+              8.8849246473908
             ],
             "radius": 12.192,
             "obstructed": true,
-            "struck": 28,
-            "creatures": [],
+            "struck": 24,
+            "creatures": [
+              {
+                "id": 104,
+                "meteor": 1,
+                "save": {
+                  "d20": 18,
+                  "modifier": 0,
+                  "dc": 15,
+                  "success": true
+                },
+                "damage": {
+                  "fire": 29,
+                  "bludgeoning": 36
+                }
+              },
+              {
+                "id": 105,
+                "meteor": 1,
+                "save": {
+                  "d20": 18,
+                  "modifier": 0,
+                  "dc": 15,
+                  "success": true
+                },
+                "damage": {
+                  "fire": 29,
+                  "bludgeoning": 36
+                }
+              }
+            ],
             "objects": [
               {
-                "body": 11,
+                "body": 19,
                 "meteor": 1,
-                "damage": null,
+                "damage": {
+                  "fire": 59,
+                  "bludgeoning": 72
+                },
                 "impulse": [
-                  109.95730701337254,
-                  63.525947988541176,
-                  -4.003603114128329
+                  -208.67766358323928,
+                  137.72485871516275,
+                  115.57699963995901
                 ],
                 "ignited": false,
                 "debris": []
               },
               {
-                "body": 12,
+                "body": 20,
                 "meteor": 1,
-                "damage": null,
+                "damage": {
+                  "fire": 59,
+                  "bludgeoning": 72
+                },
                 "impulse": [
-                  -85.55996519121459,
-                  57.3010934272566,
-                  50.296503659357136
+                  -218.379587770603,
+                  144.07197821626193,
+                  120.74999116597365
                 ],
                 "ignited": false,
                 "debris": []
               },
               {
-                "body": 13,
+                "body": 21,
                 "meteor": 1,
-                "damage": null,
+                "damage": {
+                  "fire": 59,
+                  "bludgeoning": 72
+                },
                 "impulse": [
-                  -10.369188345417372,
-                  52.56453195763872,
-                  90.45203144669628
+                  -228.08032388663622,
+                  150.39982246033668,
+                  125.85581291330773
                 ],
                 "ignited": false,
                 "debris": []
               },
               {
-                "body": 14,
+                "body": 22,
                 "meteor": 1,
-                "damage": null,
+                "damage": {
+                  "fire": 59,
+                  "bludgeoning": 72
+                },
                 "impulse": [
-                  -59.11386874046373,
-                  36.300679895996545,
-                  21.41888431431594
+                  -237.80569034438847,
+                  156.685662974216,
+                  130.76560933532053
                 ],
                 "ignited": false,
                 "debris": []
               },
               {
-                "body": 28,
+                "body": 23,
                 "meteor": 1,
-                "damage": null,
+                "damage": {
+                  "fire": 59,
+                  "bludgeoning": 72
+                },
                 "impulse": [
-                  0.0,
-                  0.0,
-                  0.0
+                  -247.40508489500644,
+                  162.8473932387598,
+                  135.45679909872567
                 ],
                 "ignited": false,
                 "debris": []
               },
               {
-                "body": 33,
+                "body": 24,
                 "meteor": 1,
-                "damage": null,
+                "damage": {
+                  "fire": 59,
+                  "bludgeoning": 72
+                },
                 "impulse": [
-                  8.085313808286848,
-                  21.14488409963273,
-                  35.720387335277174
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 34,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  9.236250044672786,
-                  20.477547756636945,
-                  34.24443854830041
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 35,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  9.1979722123215,
-                  24.094018941545226,
-                  40.705804910945844
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 36,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  10.621557401299931,
-                  23.558257845438014,
-                  39.39742449078768
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 37,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  6.74417104473777,
-                  18.298379464975294,
-                  30.96785801523912
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 38,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  7.689803366087353,
-                  17.663489644985503,
-                  29.611881458401836
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 39,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  7.622949688011649,
-                  20.818038691930713,
-                  35.242911953898144
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 40,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  8.812228855209833,
-                  20.249342699649194,
-                  33.94778729029208
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 41,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  10.481253971134873,
-                  20.110377124264588,
-                  33.217843389253964
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 42,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  11.338764998775266,
-                  19.313092594684505,
-                  31.47092380301415
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 43,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  12.093837805578916,
-                  23.133717611953877,
-                  38.200075376643255
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 44,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  13.11501720573418,
-                  22.067831273416832,
-                  35.90214276375825
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 45,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  8.676711630274266,
-                  17.281231849727195,
-                  28.646772907556976
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 46,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  9.360655203915915,
-                  16.52401575886499,
-                  27.04639392878574
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 47,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  9.963214554223136,
-                  19.843387531404648,
-                  32.89398792957511
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 48,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  10.837454604705796,
-                  19.010917647722923,
-                  31.093319975783388
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 49,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  10.247931991815268,
-                  26.609024749157804,
-                  44.93440201221118
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 50,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  11.718466305010052,
-                  25.7282118260552,
-                  42.9941879648569
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 51,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  11.055212186136934,
-                  28.796688625259,
-                  48.63671566686894
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 52,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  12.882703600014917,
-                  28.115630193743574,
-                  46.9627717615581
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 53,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  8.462128771831443,
-                  22.655735133340837,
-                  38.317611876854045
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 54,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  9.744347400085116,
-                  22.118811026423188,
-                  37.050952719387865
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 55,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  9.388961885332854,
-                  25.19296509599613,
-                  42.61342353883346
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 56,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  10.864124325166937,
-                  24.505964828953946,
-                  41.031667517188474
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 57,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  13.490103006548276,
-                  25.514854778569287,
-                  42.08373277154913
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 58,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  14.646617049588862,
-                  24.57603994474933,
-                  39.96775984591127
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 59,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  14.828013356476909,
-                  27.921984279181522,
-                  46.03304941192494
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 60,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  16.283167856147333,
-                  27.048921125511455,
-                  43.929384775238454
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 61,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  11.177078206215215,
-                  21.93063979121077,
-                  36.30333053216551
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 62,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  12.08163812157996,
-                  20.955218397060833,
-                  34.225685595831926
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 63,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  12.410189273418142,
-                  24.26227701959652,
-                  40.14923985239151
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 64,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  13.577279473744198,
-                  23.4354765862874,
-                  38.253394235951404
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 65,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  -12.778436563653127,
-                  10.454292968415755,
-                  12.82919652188298
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 66,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  -15.045748092112213,
-                  12.65078953366437,
-                  15.929623091081526
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 67,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  -17.845527285936967,
-                  14.623224428554515,
-                  17.97368170271467
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 68,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  -19.912403956088568,
-                  16.788748440031288,
-                  21.191564152688393
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 69,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  -9.76877179066581,
-                  8.201246213724986,
-                  10.312730776875116
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 70,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  -12.021014003029245,
-                  10.385488771173193,
-                  13.381717131499542
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 71,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  -14.431376934106046,
-                  12.13494699025547,
-                  15.280908845833842
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 72,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  -16.48460608361937,
-                  14.27169261877433,
-                  18.420135528335088
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 73,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  -16.900011773369794,
-                  14.698983312732187,
-                  19.04126921567731
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 74,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  -18.44962831925566,
-                  16.619953243157582,
-                  22.097053022870558
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 75,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  -21.61554344424487,
-                  18.859853067441442,
-                  24.49184465871046
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 76,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  -23.0709457680377,
-                  20.85566180044305,
-                  27.795815310431927
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 77,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  -13.845777284820484,
-                  12.391068365196787,
-                  16.398480937943347
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 78,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  -15.391949155904719,
-                  14.287791120559591,
-                  19.378101725821047
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 79,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  -18.231703914477382,
-                  16.352589704412424,
-                  21.675482520520642
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 80,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  -19.769409653632835,
-                  18.422601077172505,
-                  25.046898676138767
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 81,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  -24.417980815523624,
-                  20.633576236172832,
-                  26.095892737643382
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 82,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  -26.026919396128726,
-                  22.690561466222743,
-                  29.447991539402413
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 83,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  -28.870251358020372,
-                  24.38923325832999,
-                  30.838493531825005
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 84,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  -30.51318850238137,
-                  26.584905021742653,
-                  34.48502359667708
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 85,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  -20.422534699043148,
-                  17.774342736997188,
-                  23.036967154187483
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 86,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  -22.040723125397317,
-                  19.811910320033803,
-                  26.3009865916996
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 87,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  -24.260513684380058,
-                  21.184789572498808,
-                  27.52841084158639
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 88,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  -25.782393074633966,
-                  23.25514903230624,
-                  30.94630958433313
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 89,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  -2.3926065468062974,
-                  5.2484154679108705,
-                  8.77000733657606
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 90,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  -2.415238229984507,
-                  5.458997314182241,
-                  9.141585164574476
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 91,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  -4.840058287812613,
-                  10.617210714278897,
-                  17.741175998923307
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 92,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  -4.793619096661942,
-                  10.834764131909436,
-                  18.143802174253658
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 93,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  -0.9226376329260785,
-                  2.088873014723542,
-                  3.4984155289543906
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 94,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  -0.9839063163726554,
-                  2.29555718927568,
-                  3.852359898595636
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 95,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  -3.248721695288452,
-                  7.3552310799959555,
-                  12.318444709742282
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 96,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  -3.243934659337271,
-                  7.568494722123463,
-                  12.701308003602723
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 97,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  -2.3420900685914052,
-                  7.00956250862028,
-                  11.912871769534442
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 98,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  -2.291484262391941,
-                  7.161596766184974,
-                  12.190754882266456
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 99,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  -4.1579098765131945,
-                  12.444189046037879,
-                  21.149120750030754
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 100,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  -4.031999929891019,
-                  12.601374445894301,
-                  21.450568531912452
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 101,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  -1.2365700495669962,
-                  3.824007360083696,
-                  6.506918731814371
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 102,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  -1.230234895475525,
-                  3.9731762877181214,
-                  6.770887057233416
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 103,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  -2.959758848846211,
-                  9.152938451109785,
-                  15.5746163492424
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 104,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  -2.8817333204781552,
-                  9.306963413932564,
-                  15.860463960252986
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 105,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  -1.754540388471718,
-                  8.40977641998914,
-                  14.460103952871075
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 106,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  -1.648625383203953,
-                  8.502523815886912,
-                  14.634232746031758
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 107,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  -2.9020514595083426,
-                  13.910194658785331,
-                  23.917747462130826
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 108,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  -2.715722206601804,
-                  14.006150633647275,
-                  24.106879093192966
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 109,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  -1.0520299698428912,
-                  5.215150974325822,
-                  8.971434221883761
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 110,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  -0.9947318512109691,
-                  5.306131491359632,
-                  9.136498385868713
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 111,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  -2.1397359635195996,
-                  10.607327665451932,
-                  18.24740339372171
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 112,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  -2.0061260973962054,
-                  10.701330871812793,
-                  18.426364409871706
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 113,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  43.71083932096806,
-                  32.956871486550035,
-                  36.71278606152679
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 114,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  41.71930599435094,
-                  30.470332039576,
-                  32.32372056486922
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 115,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  49.35417740939785,
-                  37.21148619550969,
-                  41.45177061209222
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 116,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  47.44039239221201,
-                  34.648557792896824,
-                  36.75563686097804
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 117,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  39.24685276257117,
-                  30.84902254493514,
-                  36.25839384427847
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 118,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  37.43753232872448,
-                  28.399211323565954,
-                  31.905748455997415
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 119,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  44.57732319345608,
-                  35.038593256810714,
-                  41.18217222482113
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 120,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  42.86386853311556,
-                  32.515300866439034,
-                  36.52975698907591
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 121,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  54.90726302416249,
-                  41.396666120798024,
-                  46.11121734400342
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 122,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  53.06538139748929,
-                  38.75430739524175,
-                  41.10662139112954
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 123,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  60.33699732718221,
-                  45.48934103100833,
-                  50.66840431517202
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 124,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  58.55602039458711,
-                  42.76331883339724,
-                  45.35743366295171
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 125,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  49.81656863477658,
-                  39.15423896320219,
-                  46.01600564824395
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 126,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  48.193956912329334,
-                  36.555495834105706,
-                  41.0640395500066
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 127,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  54.93525017997196,
-                  43.1763747237169,
-                  50.74166227580992
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 128,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  53.3925706655326,
-                  40.49780009098537,
-                  45.49119512998481
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 129,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  65.5768276066479,
-                  49.44403550756762,
-                  55.08010187779983
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 130,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  63.851852485812806,
-                  46.63370834825134,
-                  49.46765809151778
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 131,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  70.74518673418427,
-                  53.339591528513886,
-                  59.41762892636774
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 132,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  69.0642477174106,
-                  50.439294082970974,
-                  53.50230695954559
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 133,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  59.86819304339303,
-                  47.05446010503372,
-                  55.30068814262314
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 134,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  58.398581759521676,
-                  44.2952037169155,
-                  49.75742020488601
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 135,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  64.7289669883217,
-                  50.87329480336247,
-                  59.78659720266946
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 136,
-                "meteor": 1,
-                "damage": null,
-                "impulse": [
-                  63.322812328504256,
-                  48.02907793088949,
-                  53.949962182409365
+                  -256.0793448730692,
+                  168.35917389178564,
+                  139.49123065609982
                 ],
                 "ignited": false,
                 "debris": []
@@ -2097,30 +550,45 @@
           },
           {
             "meteor": 2,
-            "tick": 341,
+            "tick": 459,
             "point": [
-              -5.799999952316284,
+              4.0,
               0.0,
-              -3.0
+              -21.0
             ],
             "center": [
-              -5.909590203215605,
+              3.995303426587675,
               0.0,
-              -2.9055256449997278
+              -21.056358880947137
             ],
             "radius": 12.192,
             "obstructed": false,
             "struck": 0,
-            "creatures": [],
+            "creatures": [
+              {
+                "id": 103,
+                "meteor": 2,
+                "save": {
+                  "d20": 7,
+                  "modifier": 0,
+                  "dc": 15,
+                  "success": false
+                },
+                "damage": {
+                  "fire": 59,
+                  "bludgeoning": 72
+                }
+              }
+            ],
             "objects": [
               {
                 "body": 12,
                 "meteor": 2,
                 "damage": null,
                 "impulse": [
-                  182.42272045211618,
-                  105.39694628209577,
-                  -6.892018544811903
+                  124.15803287145923,
+                  75.56227324720334,
+                  -41.39751548516793
                 ],
                 "ignited": false,
                 "debris": []
@@ -2130,9 +598,9 @@
                 "meteor": 2,
                 "damage": null,
                 "impulse": [
-                  126.84171730389194,
-                  73.90833426841783,
-                  17.277279137529852
+                  -70.14658048688418,
+                  41.11316282265869,
+                  -12.261065118676186
                 ],
                 "ignited": false,
                 "debris": []
@@ -2142,621 +610,57 @@
                 "meteor": 2,
                 "damage": null,
                 "impulse": [
-                  251.47847412085724,
-                  145.36687157049641,
-                  -12.375746620910414
+                  227.13451990276604,
+                  137.83837469153718,
+                  73.54020996267147
                 ],
                 "ignited": false,
                 "debris": []
               },
               {
-                "body": 28,
+                "body": 15,
                 "meteor": 2,
                 "damage": null,
                 "impulse": [
-                  0.0,
-                  0.0,
-                  0.0
+                  217.125850553393,
+                  129.41262824119318,
+                  55.67090861792608
                 ],
                 "ignited": false,
                 "debris": []
               },
               {
-                "body": 65,
+                "body": 16,
                 "meteor": 2,
                 "damage": null,
                 "impulse": [
-                  34.54814958581921,
-                  109.64672425662495,
-                  186.74484673163246
+                  215.79370272730404,
+                  129.48811139213282,
+                  61.11129878299238
                 ],
                 "ignited": false,
                 "debris": []
               },
               {
-                "body": 66,
+                "body": 17,
                 "meteor": 2,
                 "damage": null,
                 "impulse": [
-                  43.28916803927348,
-                  106.69435660748043,
-                  179.65830102202395
+                  169.47786702423764,
+                  105.65857892990994,
+                  -69.05402590275861
                 ],
                 "ignited": false,
                 "debris": []
               },
               {
-                "body": 67,
+                "body": 18,
                 "meteor": 2,
                 "damage": null,
                 "impulse": [
-                  20.829210151985784,
-                  105.26663889787086,
-                  181.13348613386938
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 68,
-                "meteor": 2,
-                "damage": null,
-                "impulse": [
-                  30.266270407812,
-                  102.50508375407443,
-                  174.94521845963857
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 69,
-                "meteor": 2,
-                "damage": null,
-                "impulse": [
-                  27.995314758146574,
-                  104.18188986614568,
-                  178.26345918285506
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 70,
-                "meteor": 2,
-                "damage": null,
-                "impulse": [
-                  36.49281960572702,
-                  101.74350547275571,
-                  172.40503715053657
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 71,
-                "meteor": 2,
-                "damage": null,
-                "impulse": [
-                  17.567978003338688,
-                  99.91615242812254,
-                  172.1658464881861
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 72,
-                "meteor": 2,
-                "damage": null,
-                "impulse": [
-                  25.938573994814504,
-                  97.33331686583547,
-                  166.57885248563497
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 73,
-                "meteor": 2,
-                "damage": null,
-                "impulse": [
-                  49.80791187980574,
-                  102.70804940369115,
-                  170.78056725256155
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 74,
-                "meteor": 2,
-                "damage": null,
-                "impulse": [
-                  56.739173163632586,
-                  100.25002454128024,
-                  164.1062719407433
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 75,
-                "meteor": 2,
-                "damage": null,
-                "impulse": [
-                  36.90529517259157,
-                  98.61926889578095,
-                  166.77913472865527
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 76,
-                "meteor": 2,
-                "damage": null,
-                "impulse": [
-                  43.870507288503894,
-                  96.12749808630443,
-                  160.61402882452927
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 77,
-                "meteor": 2,
-                "damage": null,
-                "impulse": [
-                  42.09567773085047,
-                  97.82939678002808,
-                  164.13325848045815
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 78,
-                "meteor": 2,
-                "damage": null,
-                "impulse": [
-                  49.07819970277231,
-                  95.56838125581321,
-                  158.08629542596103
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 79,
-                "meteor": 2,
-                "damage": null,
-                "impulse": [
-                  32.19303666463518,
-                  94.06721848269233,
-                  159.7170409490521
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 80,
-                "meteor": 2,
-                "damage": null,
-                "impulse": [
-                  38.13864819936404,
-                  91.0827662332443,
-                  153.08054882193434
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 81,
-                "meteor": 2,
-                "damage": null,
-                "impulse": [
-                  12.874269701346874,
-                  93.87329441073882,
-                  162.0828164557636
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 82,
-                "meteor": 2,
-                "damage": null,
-                "impulse": [
-                  24.277816653398865,
-                  91.71550783387354,
-                  156.98977912660402
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 83,
-                "meteor": 2,
-                "damage": null,
-                "impulse": [
-                  5.321124979587549,
-                  87.73315239224736,
-                  151.86508392318333
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 84,
-                "meteor": 2,
-                "damage": null,
-                "impulse": [
-                  13.221542775233939,
-                  85.17285328635005,
-                  146.9300364712981
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 85,
-                "meteor": 2,
-                "damage": null,
-                "impulse": [
-                  16.113589661436308,
-                  89.93360267013952,
-                  154.93389201822316
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 86,
-                "meteor": 2,
-                "damage": null,
-                "impulse": [
-                  24.02924160856535,
-                  87.75614423320239,
-                  150.08670194175457
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 87,
-                "meteor": 2,
-                "damage": null,
-                "impulse": [
-                  10.001647099710862,
-                  83.07893273718325,
-                  143.5489263266748
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 88,
-                "meteor": 2,
-                "damage": null,
-                "impulse": [
-                  16.52634793141189,
-                  80.42808445664645,
-                  138.32176304597297
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 89,
-                "meteor": 2,
-                "damage": null,
-                "impulse": [
-                  10.215200428985415,
-                  16.53832662031181,
-                  26.76188376022882
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 90,
-                "meteor": 2,
-                "damage": null,
-                "impulse": [
-                  9.237159752291346,
-                  14.168500916885439,
-                  22.73574574114515
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 93,
-                "meteor": 2,
-                "damage": null,
-                "impulse": [
-                  5.445233075857025,
-                  8.414733837019398,
-                  13.519344414328316
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 94,
-                "meteor": 2,
-                "damage": null,
-                "impulse": [
-                  4.140808665806762,
-                  6.0898500980566945,
-                  9.701161077086756
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 97,
-                "meteor": 2,
-                "damage": null,
-                "impulse": [
-                  0.0,
-                  0.0,
-                  0.0
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 113,
-                "meteor": 2,
-                "damage": null,
-                "impulse": [
-                  7.858844770910417,
-                  4.586494592552996,
-                  1.1603261650448309
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 114,
-                "meteor": 2,
-                "damage": null,
-                "impulse": [
-                  0.0,
-                  0.0,
-                  0.0
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 115,
-                "meteor": 2,
-                "damage": null,
-                "impulse": [
-                  7.539155260600926,
-                  4.400094632627906,
-                  1.1151844173929892
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 116,
-                "meteor": 2,
-                "damage": null,
-                "impulse": [
-                  0.0,
-                  0.0,
-                  0.0
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 117,
-                "meteor": 2,
-                "damage": null,
-                "impulse": [
-                  6.437273687455602,
-                  3.776103473228004,
-                  1.1568836563654818
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 118,
-                "meteor": 2,
-                "damage": null,
-                "impulse": [
-                  0.0,
-                  0.0,
-                  0.0
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 119,
-                "meteor": 2,
-                "damage": null,
-                "impulse": [
-                  6.018753103926708,
-                  3.5308826339221286,
-                  1.0844388399403788
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 120,
-                "meteor": 2,
-                "damage": null,
-                "impulse": [
-                  0.0,
-                  0.0,
-                  0.0
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 121,
-                "meteor": 2,
-                "damage": null,
-                "impulse": [
-                  6.682650385003453,
-                  3.9004152072917924,
-                  0.990908774626831
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 122,
-                "meteor": 2,
-                "damage": null,
-                "impulse": [
-                  0.0,
-                  0.0,
-                  0.0
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 123,
-                "meteor": 2,
-                "damage": null,
-                "impulse": [
-                  5.5020268218931845,
-                  3.211352780391422,
-                  0.8161255366370784
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 124,
-                "meteor": 2,
-                "damage": null,
-                "impulse": [
-                  0.0,
-                  0.0,
-                  0.0
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 125,
-                "meteor": 2,
-                "damage": null,
-                "impulse": [
-                  5.056537339691422,
-                  2.9664504614709353,
-                  0.911545475217651
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 126,
-                "meteor": 2,
-                "damage": null,
-                "impulse": [
-                  0.0,
-                  0.0,
-                  0.0
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 127,
-                "meteor": 2,
-                "damage": null,
-                "impulse": [
-                  4.06319672783877,
-                  2.38377954075275,
-                  0.7332441937134547
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 128,
-                "meteor": 2,
-                "damage": null,
-                "impulse": [
-                  0.0,
-                  0.0,
-                  0.0
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 129,
-                "meteor": 2,
-                "damage": null,
-                "impulse": [
-                  4.090477313919306,
-                  2.3875819994837264,
-                  0.6079792406716259
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 130,
-                "meteor": 2,
-                "damage": null,
-                "impulse": [
-                  0.0,
-                  0.0,
-                  0.0
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 131,
-                "meteor": 2,
-                "damage": null,
-                "impulse": [
-                  2.570834434080896,
-                  1.5005652114555241,
-                  0.3819661948859489
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 133,
-                "meteor": 2,
-                "damage": null,
-                "impulse": [
-                  2.6834318357271973,
-                  1.5744351505372118,
-                  0.48552210325294476
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 135,
-                "meteor": 2,
-                "damage": null,
-                "impulse": [
-                  1.1627200037923735,
-                  0.6822192608744285,
-                  0.21059808286216322
+                  117.10804766125783,
+                  69.82135120242938,
+                  -30.178940076939952
                 ],
                 "ignited": false,
                 "debris": []
@@ -2765,26 +669,44 @@
           },
           {
             "meteor": 3,
-            "tick": 357,
+            "tick": 502,
             "point": [
-              -1.7999999523162842,
+              16.4,
               0.0,
-              1.0
+              11.4
             ],
             "center": [
-              -1.3848945502091905,
-              8.15,
-              -1.0755270655184013
+              16.1844295714926,
+              3.400000047683716,
+              11.169248555400365
             ],
             "radius": 12.192,
             "obstructed": true,
-            "struck": 28,
-            "creatures": [],
+            "struck": 27,
+            "creatures": [
+              {
+                "id": 106,
+                "meteor": 3,
+                "save": {
+                  "d20": 18,
+                  "modifier": 0,
+                  "dc": 15,
+                  "success": true
+                },
+                "damage": {
+                  "fire": 29,
+                  "bludgeoning": 36
+                }
+              }
+            ],
             "objects": [
               {
-                "body": 11,
+                "body": 25,
                 "meteor": 3,
-                "damage": null,
+                "damage": {
+                  "fire": 59,
+                  "bludgeoning": 72
+                },
                 "impulse": [
                   0.0,
                   0.0,
@@ -2794,45 +716,12 @@
                 "debris": []
               },
               {
-                "body": 12,
+                "body": 26,
                 "meteor": 3,
-                "damage": null,
-                "impulse": [
-                  32.563719762543,
-                  61.77699885414101,
-                  -101.92544784056724
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 13,
-                "meteor": 3,
-                "damage": null,
-                "impulse": [
-                  88.53911167230528,
-                  54.36469146580919,
-                  -32.05284291286714
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 14,
-                "meteor": 3,
-                "damage": null,
-                "impulse": [
-                  -74.52597263430664,
-                  53.475026715587255,
-                  -54.99649852135037
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 28,
-                "meteor": 3,
-                "damage": null,
+                "damage": {
+                  "fire": 59,
+                  "bludgeoning": 72
+                },
                 "impulse": [
                   0.0,
                   0.0,
@@ -2842,589 +731,16 @@
                 "debris": []
               },
               {
-                "body": 33,
+                "body": 27,
                 "meteor": 3,
-                "damage": null,
+                "damage": {
+                  "fire": 59,
+                  "bludgeoning": 72
+                },
                 "impulse": [
                   0.0,
                   0.0,
                   0.0
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 65,
-                "meteor": 3,
-                "damage": null,
-                "impulse": [
-                  -36.29494930055254,
-                  44.03219401082841,
-                  67.07591955010399
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 66,
-                "meteor": 3,
-                "damage": null,
-                "impulse": [
-                  -32.341325021910656,
-                  44.696303081177724,
-                  70.33716814885733
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 67,
-                "meteor": 3,
-                "damage": null,
-                "impulse": [
-                  -35.53519632109938,
-                  38.95704694916556,
-                  57.360302853274725
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 68,
-                "meteor": 3,
-                "damage": null,
-                "impulse": [
-                  -34.051193482396755,
-                  41.50746129964316,
-                  63.31764566886948
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 69,
-                "meteor": 3,
-                "damage": null,
-                "impulse": [
-                  -32.11741817962415,
-                  38.605188182894814,
-                  58.64770339395495
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 70,
-                "meteor": 3,
-                "damage": null,
-                "impulse": [
-                  -29.549323528269916,
-                  39.816507784299404,
-                  62.31292286061665
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 71,
-                "meteor": 3,
-                "damage": null,
-                "impulse": [
-                  -29.37755925642743,
-                  32.860805045163325,
-                  48.74891318566796
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 72,
-                "meteor": 3,
-                "damage": null,
-                "impulse": [
-                  -28.20530605455392,
-                  35.03281877236385,
-                  53.72481627498425
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 73,
-                "meteor": 3,
-                "damage": null,
-                "impulse": [
-                  -27.85881215520075,
-                  44.7334119969937,
-                  72.29883147036045
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 74,
-                "meteor": 3,
-                "damage": null,
-                "impulse": [
-                  -23.709874247809598,
-                  45.2130815961435,
-                  74.63585000126716
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 75,
-                "meteor": 3,
-                "damage": null,
-                "impulse": [
-                  -30.74885449129568,
-                  41.86311417334156,
-                  65.66634550775474
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 76,
-                "meteor": 3,
-                "damage": null,
-                "impulse": [
-                  -29.12605469631438,
-                  44.65415182540444,
-                  71.6495133519141
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 77,
-                "meteor": 3,
-                "damage": null,
-                "impulse": [
-                  -25.46119947134542,
-                  39.10630785775632,
-                  62.76652980910448
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 78,
-                "meteor": 3,
-                "damage": null,
-                "impulse": [
-                  -21.376442400338775,
-                  38.73905925307993,
-                  63.601822660564636
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 79,
-                "meteor": 3,
-                "damage": null,
-                "impulse": [
-                  -26.840662200135185,
-                  36.52770386432417,
-                  57.29221850703222
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 80,
-                "meteor": 3,
-                "damage": null,
-                "impulse": [
-                  -24.90852894598789,
-                  38.1104118223607,
-                  61.129171870365425
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 81,
-                "meteor": 3,
-                "damage": null,
-                "impulse": [
-                  -33.51745972529592,
-                  36.367287939946905,
-                  53.33215530882088
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 82,
-                "meteor": 3,
-                "damage": null,
-                "impulse": [
-                  -33.15713532171721,
-                  40.87681361196179,
-                  62.55674264584539
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 83,
-                "meteor": 3,
-                "damage": null,
-                "impulse": [
-                  -34.672911952418076,
-                  35.81540953662736,
-                  51.43947761757382
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 84,
-                "meteor": 3,
-                "damage": null,
-                "impulse": [
-                  -34.18111631726823,
-                  38.38444682590108,
-                  57.024105093343316
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 85,
-                "meteor": 3,
-                "damage": null,
-                "impulse": [
-                  -28.966223276928506,
-                  33.75733624173978,
-                  50.79006949675064
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 86,
-                "meteor": 3,
-                "damage": null,
-                "impulse": [
-                  -28.252957477450035,
-                  36.548778303743035,
-                  56.64988949914973
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 87,
-                "meteor": 3,
-                "damage": null,
-                "impulse": [
-                  -29.204061262050903,
-                  32.992482849804176,
-                  49.11857672598268
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 88,
-                "meteor": 3,
-                "damage": null,
-                "impulse": [
-                  -28.363156819016954,
-                  35.00613884994171,
-                  53.58937027810692
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 113,
-                "meteor": 3,
-                "damage": null,
-                "impulse": [
-                  35.61120396967468,
-                  20.56206859914548,
-                  -0.4880031333100658
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 114,
-                "meteor": 3,
-                "damage": null,
-                "impulse": [
-                  29.306805487373335,
-                  16.921803052851253,
-                  -0.3916730827135037
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 115,
-                "meteor": 3,
-                "damage": null,
-                "impulse": [
-                  42.427917231015016,
-                  24.498129200860582,
-                  -0.5889333275621296
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 116,
-                "meteor": 3,
-                "damage": null,
-                "impulse": [
-                  35.79673584866339,
-                  20.66906808493435,
-                  -0.4741614492696311
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 117,
-                "meteor": 3,
-                "damage": null,
-                "impulse": [
-                  35.585592670693785,
-                  20.560625715479613,
-                  1.3724371430380211
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 118,
-                "meteor": 3,
-                "damage": null,
-                "impulse": [
-                  29.225240930555664,
-                  16.884381613731737,
-                  1.0641052510637186
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 119,
-                "meteor": 3,
-                "damage": null,
-                "impulse": [
-                  42.31836275208119,
-                  24.451137316864163,
-                  1.6524291959746917
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 120,
-                "meteor": 3,
-                "damage": null,
-                "impulse": [
-                  35.76675589771761,
-                  20.66374918304286,
-                  1.3079615637306086
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 121,
-                "meteor": 3,
-                "damage": null,
-                "impulse": [
-                  48.90236895683672,
-                  28.23639526992513,
-                  -0.6635992222453615
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 122,
-                "meteor": 3,
-                "damage": null,
-                "impulse": [
-                  42.165152386063376,
-                  24.346121386864663,
-                  -0.5484560254951542
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 123,
-                "meteor": 3,
-                "damage": null,
-                "impulse": [
-                  55.24065135061235,
-                  31.89623716780633,
-                  -0.7617576746840001
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 124,
-                "meteor": 3,
-                "damage": null,
-                "impulse": [
-                  48.37380807906189,
-                  27.931115347246955,
-                  -0.6452174468583707
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 125,
-                "meteor": 3,
-                "damage": null,
-                "impulse": [
-                  48.817466596941586,
-                  28.206172713037734,
-                  1.9024963625817823
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 126,
-                "meteor": 3,
-                "damage": null,
-                "impulse": [
-                  42.09559508211216,
-                  24.32046755738758,
-                  1.554445660896906
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 127,
-                "meteor": 3,
-                "damage": null,
-                "impulse": [
-                  55.29233589295489,
-                  31.94729673326368,
-                  2.1556662984457557
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 128,
-                "meteor": 3,
-                "damage": null,
-                "impulse": [
-                  48.329295754236234,
-                  27.92188968794591,
-                  1.781837011913522
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 129,
-                "meteor": 3,
-                "damage": null,
-                "impulse": [
-                  61.45246349849118,
-                  35.482828373307356,
-                  -0.8294926614306823
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 130,
-                "meteor": 3,
-                "damage": null,
-                "impulse": [
-                  54.34285478650369,
-                  31.37764050279454,
-                  -0.7232594422551748
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 131,
-                "meteor": 3,
-                "damage": null,
-                "impulse": [
-                  67.57949199345289,
-                  39.02082529010953,
-                  -0.9416373349614756
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 132,
-                "meteor": 3,
-                "damage": null,
-                "impulse": [
-                  60.19142818194877,
-                  34.754900485517126,
-                  -0.8374345896248266
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 133,
-                "meteor": 3,
-                "damage": null,
-                "impulse": [
-                  61.51672035142457,
-                  35.54440137098465,
-                  2.43033406543129
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 134,
-                "meteor": 3,
-                "damage": null,
-                "impulse": [
-                  54.30573218141824,
-                  31.375199941520005,
-                  2.0240964283223493
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 135,
-                "meteor": 3,
-                "damage": null,
-                "impulse": [
-                  67.6371910731952,
-                  39.08077595911219,
-                  2.6704929183674166
-                ],
-                "ignited": false,
-                "debris": []
-              },
-              {
-                "body": 136,
-                "meteor": 3,
-                "damage": null,
-                "impulse": [
-                  60.142980812169995,
-                  34.747635759316374,
-                  2.239739184217331
                 ],
                 "ignited": false,
                 "debris": []
@@ -3438,852 +754,117 @@
           "body": 11,
           "hp": null,
           "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
+          "burning_until": 3934,
+          "next_burn": 1294
         },
         {
           "body": 12,
           "hp": null,
           "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
+          "burning_until": 3934,
+          "next_burn": 1294
         },
         {
           "body": 13,
           "hp": null,
-          "flammable": false,
-          "burning_until": null,
-          "next_burn": 0
+          "flammable": true,
+          "burning_until": 3934,
+          "next_burn": 1294
         },
         {
           "body": 14,
           "hp": null,
+          "flammable": true,
+          "burning_until": 3934,
+          "next_burn": 1294
+        },
+        {
+          "body": 15,
+          "hp": null,
+          "flammable": true,
+          "burning_until": 3934,
+          "next_burn": 1294
+        },
+        {
+          "body": 16,
+          "hp": null,
+          "flammable": true,
+          "burning_until": 3934,
+          "next_burn": 1294
+        },
+        {
+          "body": 17,
+          "hp": null,
+          "flammable": true,
+          "burning_until": 3934,
+          "next_burn": 1294
+        },
+        {
+          "body": 18,
+          "hp": null,
+          "flammable": true,
+          "burning_until": 3934,
+          "next_burn": 1294
+        },
+        {
+          "body": 19,
+          "hp": 169,
           "flammable": false,
           "burning_until": null,
           "next_burn": 0
         },
         {
-          "body": 15,
-          "hp": 0,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 387
-        },
-        {
-          "body": 16,
-          "hp": 0,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 387
-        },
-        {
-          "body": 17,
-          "hp": 0,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 387
-        },
-        {
-          "body": 18,
-          "hp": 0,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 387
-        },
-        {
-          "body": 19,
-          "hp": 0,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 387
-        },
-        {
           "body": 20,
-          "hp": 0,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 387
+          "hp": 169,
+          "flammable": false,
+          "burning_until": null,
+          "next_burn": 0
         },
         {
           "body": 21,
-          "hp": 0,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 387
+          "hp": 169,
+          "flammable": false,
+          "burning_until": null,
+          "next_burn": 0
         },
         {
           "body": 22,
-          "hp": 0,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 387
+          "hp": 169,
+          "flammable": false,
+          "burning_until": null,
+          "next_burn": 0
         },
         {
           "body": 23,
-          "hp": 0,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 387
+          "hp": 169,
+          "flammable": false,
+          "burning_until": null,
+          "next_burn": 0
         },
         {
           "body": 24,
-          "hp": 0,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 387
+          "hp": 169,
+          "flammable": false,
+          "burning_until": null,
+          "next_burn": 0
         },
         {
           "body": 25,
-          "hp": 0,
+          "hp": 4869,
           "flammable": false,
           "burning_until": null,
           "next_burn": 0
         },
         {
           "body": 26,
-          "hp": 0,
+          "hp": 4869,
           "flammable": false,
           "burning_until": null,
           "next_burn": 0
         },
         {
           "body": 27,
-          "hp": 0,
-          "flammable": false,
-          "burning_until": null,
-          "next_burn": 0
-        },
-        {
-          "body": 28,
-          "hp": 376,
-          "flammable": false,
-          "burning_until": null,
-          "next_burn": 0
-        },
-        {
-          "body": 33,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 34,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 35,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 36,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 37,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 38,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 39,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 40,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 41,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 42,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 43,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 44,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 45,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 46,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 47,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 48,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 49,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 50,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 51,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 52,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 53,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 54,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 55,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 56,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 57,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 58,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 59,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 60,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 61,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 62,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 63,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 64,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 65,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 66,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 67,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 68,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 69,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 70,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 71,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 72,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 73,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 74,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 75,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 76,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 77,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 78,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 79,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 80,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 81,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 82,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 83,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 84,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 85,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 86,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 87,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 88,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 89,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 90,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 91,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 92,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 93,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 94,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 95,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 96,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 97,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 98,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 99,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 100,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 101,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 102,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 103,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 104,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 105,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 106,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 107,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 108,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 109,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 110,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 111,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 112,
-          "hp": null,
-          "flammable": true,
-          "burning_until": 3867,
-          "next_burn": 2187
-        },
-        {
-          "body": 113,
-          "hp": null,
-          "flammable": false,
-          "burning_until": null,
-          "next_burn": 0
-        },
-        {
-          "body": 114,
-          "hp": null,
-          "flammable": false,
-          "burning_until": null,
-          "next_burn": 0
-        },
-        {
-          "body": 115,
-          "hp": null,
-          "flammable": false,
-          "burning_until": null,
-          "next_burn": 0
-        },
-        {
-          "body": 116,
-          "hp": null,
-          "flammable": false,
-          "burning_until": null,
-          "next_burn": 0
-        },
-        {
-          "body": 117,
-          "hp": null,
-          "flammable": false,
-          "burning_until": null,
-          "next_burn": 0
-        },
-        {
-          "body": 118,
-          "hp": null,
-          "flammable": false,
-          "burning_until": null,
-          "next_burn": 0
-        },
-        {
-          "body": 119,
-          "hp": null,
-          "flammable": false,
-          "burning_until": null,
-          "next_burn": 0
-        },
-        {
-          "body": 120,
-          "hp": null,
-          "flammable": false,
-          "burning_until": null,
-          "next_burn": 0
-        },
-        {
-          "body": 121,
-          "hp": null,
-          "flammable": false,
-          "burning_until": null,
-          "next_burn": 0
-        },
-        {
-          "body": 122,
-          "hp": null,
-          "flammable": false,
-          "burning_until": null,
-          "next_burn": 0
-        },
-        {
-          "body": 123,
-          "hp": null,
-          "flammable": false,
-          "burning_until": null,
-          "next_burn": 0
-        },
-        {
-          "body": 124,
-          "hp": null,
-          "flammable": false,
-          "burning_until": null,
-          "next_burn": 0
-        },
-        {
-          "body": 125,
-          "hp": null,
-          "flammable": false,
-          "burning_until": null,
-          "next_burn": 0
-        },
-        {
-          "body": 126,
-          "hp": null,
-          "flammable": false,
-          "burning_until": null,
-          "next_burn": 0
-        },
-        {
-          "body": 127,
-          "hp": null,
-          "flammable": false,
-          "burning_until": null,
-          "next_burn": 0
-        },
-        {
-          "body": 128,
-          "hp": null,
-          "flammable": false,
-          "burning_until": null,
-          "next_burn": 0
-        },
-        {
-          "body": 129,
-          "hp": null,
-          "flammable": false,
-          "burning_until": null,
-          "next_burn": 0
-        },
-        {
-          "body": 130,
-          "hp": null,
-          "flammable": false,
-          "burning_until": null,
-          "next_burn": 0
-        },
-        {
-          "body": 131,
-          "hp": null,
-          "flammable": false,
-          "burning_until": null,
-          "next_burn": 0
-        },
-        {
-          "body": 132,
-          "hp": null,
-          "flammable": false,
-          "burning_until": null,
-          "next_burn": 0
-        },
-        {
-          "body": 133,
-          "hp": null,
-          "flammable": false,
-          "burning_until": null,
-          "next_burn": 0
-        },
-        {
-          "body": 134,
-          "hp": null,
-          "flammable": false,
-          "burning_until": null,
-          "next_burn": 0
-        },
-        {
-          "body": 135,
-          "hp": null,
-          "flammable": false,
-          "burning_until": null,
-          "next_burn": 0
-        },
-        {
-          "body": 136,
-          "hp": null,
+          "hp": 4869,
           "flammable": false,
           "burning_until": null,
           "next_burn": 0
@@ -4294,321 +875,303 @@
   "reverse_gravity": [],
   "props": [
     {
-      "name": "Crate",
+      "name": "Crate 1-1",
       "kind": "Crate",
       "mass_kg": 20.0,
       "secured": false,
       "removed": false,
       "center": [
-        9.325488293516921,
-        0.2999999999280497,
-        -5.139786593531269
+        -23.04533172192839,
+        0.29999999982066705,
+        -23.64993159558034
       ],
       "rotation": [
-        -4.625242521951668e-11,
-        -4.087088846422873e-7,
-        -7.366461722816825e-11,
-        0.9999999999999165
+        1.2569561639424646e-14,
+        -0.00004205547378975844,
+        -2.9888822819956443e-10,
+        0.9999999991156687
       ]
     },
     {
-      "name": "Barrel",
+      "name": "Crate 1-2",
+      "kind": "Crate",
+      "mass_kg": 20.0,
+      "secured": false,
+      "removed": false,
+      "center": [
+        23.16434081201541,
+        0.29999999984189407,
+        -23.43163802598499
+      ],
+      "rotation": [
+        -2.5858877496235745e-10,
+        0.19235785491284363,
+        5.068819186593224e-11,
+        0.9813248471598635
+      ]
+    },
+    {
+      "name": "Crate 2-1",
+      "kind": "Crate",
+      "mass_kg": 20.0,
+      "secured": false,
+      "removed": false,
+      "center": [
+        -5.381471602665554,
+        0.2999987731845103,
+        -22.597141551399243
+      ],
+      "rotation": [
+        -2.0446840910384177e-6,
+        -0.002029526107762196,
+        -4.149748242814088e-9,
+        0.9999979405076779
+      ]
+    },
+    {
+      "name": "Barrel 1-1",
       "kind": "Barrel",
       "mass_kg": 60.0,
       "secured": false,
       "removed": false,
       "center": [
-        -0.5649312759987527,
-        0.4499999768490981,
-        -3.7224041183658554
+        8.317968487507343,
+        0.4499991327454639,
+        -19.37519802530036
       ],
       "rotation": [
-        -5.297669380512722e-9,
-        -0.8484649048213119,
-        -2.850397923120998e-8,
-        0.5292516464656122
+        -9.032343873331248e-7,
+        0.34000624122720474,
+        -4.811569336705806e-7,
+        0.940423179172813
       ]
     },
     {
-      "name": "Anvil",
-      "kind": "Anvil",
-      "mass_kg": 250.0,
+      "name": "Barrel 1-2",
+      "kind": "Barrel",
+      "mass_kg": 60.0,
       "secured": false,
       "removed": false,
       "center": [
-        1.070775241062392,
-        0.19999999995404105,
-        -1.9650551472675724
+        9.660205631197828,
+        0.29999999998841514,
+        -19.763556632963997
       ],
       "rotation": [
-        -1.313113108459882e-10,
-        4.5988401623570204e-8,
-        6.050855067083597e-18,
-        0.999999999999999
+        0.04138167360255909,
+        -0.04138167357530023,
+        -0.7058948626317175,
+        0.7058948626333156
       ]
     },
     {
-      "name": "Stone block",
-      "kind": "StoneBlock",
-      "mass_kg": 1000.0,
+      "name": "Barrel 2-1",
+      "kind": "Barrel",
+      "mass_kg": 60.0,
       "secured": false,
       "removed": false,
       "center": [
-        -3.993259247892624,
-        0.37499999873893897,
-        -3.0003717897062634
+        11.0847236923192,
+        0.29999864316489927,
+        -19.256555628144223
       ],
       "rotation": [
-        -1.4712571545410858e-9,
-        -1.1027108164403503e-8,
-        -2.1015746903903737e-10,
-        1.0
+        0.08540351928514853,
+        -0.08540377679303969,
+        -0.7019292922372382,
+        0.7019314086878617
       ]
     },
     {
-      "name": "Crate stack",
+      "name": "Fence board 1",
       "kind": "Crate",
-      "mass_kg": 20.0,
+      "mass_kg": 16.0,
       "secured": false,
-      "removed": true,
+      "removed": false,
       "center": [
-        3.000000048126347,
-        0.29999778299189894,
-        1.9999989241799006
+        22.735226772097977,
+        0.059999999999870886,
+        -19.647733191747268
       ],
       "rotation": [
-        -2.9445616513358796e-7,
-        -3.2630383264483822e-6,
-        -3.0574558901281284e-6,
-        0.9999999999899589
+        0.16475692904645584,
+        0.16475692904632966,
+        -0.6876446424798236,
+        -0.6876446424798199
       ]
     },
     {
-      "name": "Crate stack",
+      "name": "Fence board 2",
       "kind": "Crate",
-      "mass_kg": 20.0,
+      "mass_kg": 16.0,
       "secured": false,
-      "removed": true,
+      "removed": false,
       "center": [
-        3.610000181640751,
-        0.29999778299189894,
-        1.9999989241799006
+        23.015166020777993,
+        0.05975827194721798,
+        -22.305463120089723
       ],
       "rotation": [
-        -2.944561651344272e-7,
-        -3.2630383264485643e-6,
-        -3.0574558901279717e-6,
-        0.9999999999899589
+        -0.16945220369625183,
+        0.16959852569474185,
+        0.686399521509897,
+        -0.6865697252396429
       ]
     },
     {
-      "name": "Crate stack",
-      "kind": "Crate",
-      "mass_kg": 20.0,
-      "secured": false,
-      "removed": true,
-      "center": [
-        3.00000378324944,
-        0.8999976575160897,
-        1.9999980721502806
-      ],
-      "rotation": [
-        -4.996091207143417e-7,
-        -3.2504612046835458e-6,
-        -3.06140982618305e-6,
-        0.9999999999899065
-      ]
-    },
-    {
-      "name": "Crate stack",
-      "kind": "Crate",
-      "mass_kg": 20.0,
-      "secured": false,
-      "removed": true,
-      "center": [
-        3.6100039167638442,
-        0.8999976575160897,
-        1.9999980721502806
-      ],
-      "rotation": [
-        -4.996091207144903e-7,
-        -3.2504612046837097e-6,
-        -3.06140982618281e-6,
-        0.9999999999899065
-      ]
-    },
-    {
-      "name": "Barrel pyramid",
-      "kind": "Barrel",
-      "mass_kg": 60.0,
-      "secured": false,
-      "removed": true,
-      "center": [
-        -4.30999996114962,
-        0.4499996897908764,
-        1.0000003403008026
-      ],
-      "rotation": [
-        3.6979014273970034e-7,
-        -3.2857253488130074e-7,
-        2.698862235730116e-8,
-        0.9999999999998774
-      ]
-    },
-    {
-      "name": "Barrel pyramid",
-      "kind": "Barrel",
-      "mass_kg": 60.0,
-      "secured": false,
-      "removed": true,
-      "center": [
-        -3.690000091176996,
-        0.44999969560936487,
-        1.0000004945999372
-      ],
-      "rotation": [
-        4.0684310865540647e-7,
-        -1.6167323343217338e-7,
-        2.5402411765668557e-8,
-        0.9999999999999039
-      ]
-    },
-    {
-      "name": "Barrel pyramid",
-      "kind": "Barrel",
-      "mass_kg": 60.0,
-      "secured": false,
-      "removed": true,
-      "center": [
-        -4.000000061894175,
-        1.3499996707169646,
-        1.0000010700477298
-      ],
-      "rotation": [
-        3.9131962138565864e-7,
-        -1.1514478466802568e-7,
-        1.683252848233862e-8,
-        0.9999999999999168
-      ]
-    },
-    {
-      "name": "Wooden fence",
-      "kind": "Crate",
-      "mass_kg": 8.0,
-      "secured": false,
-      "removed": true,
-      "center": [
-        -0.9999856042407878,
-        0.599997848707412,
-        3.000006025303708
-      ],
-      "rotation": [
-        -3.835401658974685e-9,
-        3.1909344125400035e-6,
-        -0.000014325150131951314,
-        0.999999999892304
-      ]
-    },
-    {
-      "name": "Wooden fence",
-      "kind": "Crate",
-      "mass_kg": 8.0,
-      "secured": false,
-      "removed": true,
-      "center": [
-        -0.39998558039892923,
-        0.599997848707412,
-        3.000006025303708
-      ],
-      "rotation": [
-        -3.835401658932917e-9,
-        3.1909344125399476e-6,
-        -0.000014325150131951544,
-        0.999999999892304
-      ]
-    },
-    {
-      "name": "Wooden fence",
-      "kind": "Crate",
-      "mass_kg": 8.0,
-      "secured": false,
-      "removed": true,
-      "center": [
-        0.20001444344292876,
-        0.599997848707412,
-        3.000006025303708
-      ],
-      "rotation": [
-        -3.8354016588934695e-9,
-        3.1909344125400078e-6,
-        -0.00001432515013195156,
-        0.999999999892304
-      ]
-    },
-    {
-      "name": "Stone-block tower",
+      "name": "Tower block 1",
       "kind": "StoneBlock",
-      "mass_kg": 1000.0,
+      "mass_kg": 182.0,
       "secured": false,
-      "removed": true,
+      "removed": false,
       "center": [
-        6.000150385316922,
-        0.37485401679628694,
-        -0.999867832474696
+        -10.755562850555432,
+        0.22496450842512905,
+        9.038666413203579
       ],
       "rotation": [
-        -0.00011867257439279485,
-        0.0002111718022216785,
-        -0.000013336000644007248,
-        0.9999999705727203
+        -0.0008942369707611073,
+        0.15883832256731095,
+        0.0011445143286937516,
+        0.9873035387919941
       ]
     },
     {
-      "name": "Stone-block tower",
+      "name": "Tower block 2",
       "kind": "StoneBlock",
-      "mass_kg": 1000.0,
+      "mass_kg": 182.0,
       "secured": false,
-      "removed": true,
+      "removed": false,
       "center": [
-        5.999756343947446,
-        1.124808142773507,
-        -1.0009048466635306
+        -11.44559059675831,
+        0.22499999995060332,
+        8.875942764746803
       ],
       "rotation": [
-        -0.00014526861859904175,
-        0.0005484856089833518,
-        -0.000031086227843015024,
-        0.999999838547093
+        -0.3749522446733528,
+        0.5995088107495785,
+        0.5995088108811951,
+        0.37495224459103543
       ]
     },
     {
-      "name": "Stone-block tower",
+      "name": "Tower block 3",
       "kind": "StoneBlock",
-      "mass_kg": 1000.0,
+      "mass_kg": 182.0,
       "secured": false,
-      "removed": true,
+      "removed": false,
       "center": [
-        6.003013387002638,
-        1.8747990562832022,
-        -0.9977543009425424
+        -11.979254011840004,
+        0.22499999996873793,
+        8.961273490844714
       ],
       "rotation": [
-        -0.00014748495558223527,
-        0.0010214750386894574,
-        -0.000042065460871134283,
-        0.999999466533573
+        -0.3216652770679139,
+        0.6297074316602143,
+        0.6297074317477073,
+        0.3216652770232209
       ]
     },
     {
-      "name": "Meteor overhang",
+      "name": "Tower block 4",
       "kind": "StoneBlock",
-      "mass_kg": 1000.0,
+      "mass_kg": 182.0,
+      "secured": false,
+      "removed": false,
+      "center": [
+        -12.54873078294772,
+        0.2249999998244637,
+        8.803649224141239
+      ],
+      "rotation": [
+        -0.7068316806773508,
+        0.7068316806927375,
+        -0.01972245397590357,
+        0.01972245342446089
+      ]
+    },
+    {
+      "name": "Tower block 5",
+      "kind": "StoneBlock",
+      "mass_kg": 182.0,
+      "secured": false,
+      "removed": false,
+      "center": [
+        -13.346071110507745,
+        0.22499998680475058,
+        8.836089504717876
+      ],
+      "rotation": [
+        -0.7051940715756583,
+        0.705194112932155,
+        0.05197395589879238,
+        -0.05197395894683371
+      ]
+    },
+    {
+      "name": "Tower block 6",
+      "kind": "StoneBlock",
+      "mass_kg": 182.0,
+      "secured": false,
+      "removed": false,
+      "center": [
+        -14.410168198305067,
+        0.22499999978857982,
+        9.377410082374555
+      ],
+      "rotation": [
+        0.10760460540473554,
+        -0.10760460474804424,
+        -0.6988714108444352,
+        0.6988714109455453
+      ]
+    },
+    {
+      "name": "Post 1",
+      "kind": "StoneBlock",
+      "mass_kg": 1500.0,
       "secured": true,
       "removed": false,
       "center": [
+        14.899999618530273,
+        1.5,
+        13.0
+      ],
+      "rotation": [
         0.0,
-        8.0,
-        -3.0
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "name": "Post 2",
+      "kind": "StoneBlock",
+      "mass_kg": 1500.0,
+      "secured": true,
+      "removed": false,
+      "center": [
+        17.899999618530273,
+        1.5,
+        9.800000190734863
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "name": "Overhang",
+      "kind": "StoneBlock",
+      "mass_kg": 6000.0,
+      "secured": true,
+      "removed": false,
+      "center": [
+        16.399999618530273,
+        3.200000047683716,
+        11.399999618530273
       ],
       "rotation": [
         0.0,
@@ -4624,9 +1187,9 @@
       "secured": false,
       "removed": true,
       "center": [
-        -1.033191671244158,
-        8.675863748658557,
-        -5.130023059404554
+        -3.950714026376516,
+        1.5215623601211192,
+        -18.903955538579623
       ],
       "rotation": [
         0.0,
@@ -4642,9 +1205,9 @@
       "secured": false,
       "removed": true,
       "center": [
-        1.2882623227994974,
-        8.675863748658557,
-        -5.072131148006324
+        -10.245993135761424,
+        3.1699567578735977,
+        8.859319275191032
       ],
       "rotation": [
         0.0,
@@ -4660,9 +1223,9 @@
       "secured": false,
       "removed": true,
       "center": [
-        -5.898687611853076,
-        0.05222165315721028,
-        -2.9149244307343505
+        3.9994971877423002,
+        0.46917523652582027,
+        -21.006033747091628
       ],
       "rotation": [
         0.0,
@@ -4678,1887 +1241,15 @@
       "secured": false,
       "removed": true,
       "center": [
-        -1.3560234754434402,
-        8.675863748658557,
-        -1.2198824431712645
+        16.139518388235498,
+        3.9778039567498373,
+        11.121174612758963
       ],
       "rotation": [
         0.0,
         0.0,
         0.0,
         1.0
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 2.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        9.50674118273931,
-        0.14999999192744873,
-        23.539824066682353
-      ],
-      "rotation": [
-        -0.6851544143839222,
-        0.1748239559032733,
-        0.17482399277623345,
-        0.6851544237924255
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 2.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        10.913772432405425,
-        0.14999959747019645,
-        23.367981057130294
-      ],
-      "rotation": [
-        0.49161781128846466,
-        -0.4916191305606046,
-        0.5082426446685954,
-        -0.5082440085540082
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 2.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        3.1779083332139737,
-        0.14999918542447038,
-        23.193879626618475
-      ],
-      "rotation": [
-        -0.4869247721218252,
-        0.5127392657759977,
-        -0.5127419100230723,
-        -0.48692755655383785
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 2.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        14.046113751856238,
-        0.14999395603494833,
-        21.895753989058846
-      ],
-      "rotation": [
-        -8.95655944901361e-6,
-        0.7291437580789945,
-        0.000014531289734018941,
-        0.6843605626883117
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 2.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        8.824363180163441,
-        0.1499867330231197,
-        23.461715206741733
-      ],
-      "rotation": [
-        0.448571848448254,
-        -0.5465710610642984,
-        -0.5466107360633492,
-        -0.44862019036936746
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 2.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        9.868294816690907,
-        0.14999999996632876,
-        23.77390350906933
-      ],
-      "rotation": [
-        -0.7069283863290402,
-        -0.015882590724269903,
-        -0.01588259076256127,
-        0.706928386206675
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 2.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        10.815636315623543,
-        0.14999999861424282,
-        22.67604880926147
-      ],
-      "rotation": [
-        -0.15004007871914068,
-        -0.6910050482403123,
-        -0.6910050468541846,
-        0.1500400723353729
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 2.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        9.047762903147953,
-        0.1499999986710096,
-        23.09382134243212
-      ],
-      "rotation": [
-        -0.6042039091944762,
-        0.6042039145476843,
-        0.3673385790849435,
-        -0.3673385823395395
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 2.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        11.615763828635227,
-        0.14999973863347144,
-        23.621989014068465
-      ],
-      "rotation": [
-        2.114190444100625e-8,
-        -0.43812577860288066,
-        -6.588909968720006e-7,
-        0.8989136789053692
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 2.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        12.534333176750579,
-        0.14999632658168602,
-        23.2023144964889
-      ],
-      "rotation": [
-        -0.6027253724844789,
-        -0.6027121599547168,
-        -0.3697716191674824,
-        -0.36976901880014845
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 2.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        21.687218604537783,
-        0.1499995691364252,
-        20.5444098979492
-      ],
-      "rotation": [
-        0.4127431545702769,
-        -0.4127443401435508,
-        -0.574144278161442,
-        0.5741459273471495
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 2.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        14.989472503720906,
-        0.14999663736922322,
-        22.18292842578809
-      ],
-      "rotation": [
-        -0.6754610336765027,
-        0.2091926568592933,
-        -0.20919739398415185,
-        -0.6754459820378386
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 2.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        10.360429611036542,
-        0.14998773166777504,
-        23.636181448786523
-      ],
-      "rotation": [
-        0.7051203188634796,
-        0.053142945888196964,
-        0.0531720225952207,
-        -0.7050914119753002
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 2.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        11.212348830484748,
-        0.1499990136860283,
-        23.505430372289496
-      ],
-      "rotation": [
-        -0.49456325727040923,
-        0.49456485638526737,
-        -0.5053759007389087,
-        0.5053790521371457
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 2.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        12.18071564391553,
-        0.14999713696025707,
-        23.78305353066917
-      ],
-      "rotation": [
-        0.6462413089060899,
-        7.282865409866343e-6,
-        0.7631331276862955,
-        -6.167322979691334e-6
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 2.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        17.379864967259206,
-        0.14999978112712092,
-        22.434107018069277
-      ],
-      "rotation": [
-        -0.0656002899207665,
-        4.016865926151878e-8,
-        -0.9978459810821457,
-        7.212614516337646e-7
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 2.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        15.806846634830794,
-        0.14999999998543762,
-        23.787832788112308
-      ],
-      "rotation": [
-        -0.47454863414077075,
-        -0.5242171247521688,
-        -0.5242171247060979,
-        0.4745486340898787
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 2.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        10.410446610224403,
-        0.1499999999371523,
-        20.505150705878986
-      ],
-      "rotation": [
-        -0.5126393692741014,
-        0.5126393694781604,
-        -0.48703272689856447,
-        0.48703272668377645
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 2.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        7.4561256744434425,
-        0.1499997336477302,
-        21.709331717201856
-      ],
-      "rotation": [
-        0.9532877187850186,
-        3.007045442443428e-7,
-        -0.3020637767309263,
-        7.836786436917462e-7
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 2.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        8.864463496713507,
-        0.1499999999936173,
-        21.35888017581304
-      ],
-      "rotation": [
-        -1.2012740879254901e-11,
-        0.05641158683870069,
-        -9.134183826297204e-12,
-        0.9984075985640032
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 2.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        8.29816665886745,
-        0.14998907403722725,
-        23.084934745919746
-      ],
-      "rotation": [
-        -0.7064527174359339,
-        0.03035508975098988,
-        -0.03040654579830462,
-        -0.7064549302865751
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 2.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        11.101976115061335,
-        0.14999402742942367,
-        22.98584344688191
-      ],
-      "rotation": [
-        0.6786079892110409,
-        -0.000012035956808358091,
-        0.7345006444168733,
-        0.000013611812046807447
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 2.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        7.231850592899229,
-        0.14999999978109993,
-        19.87012310413552
-      ],
-      "rotation": [
-        -0.7070760344890482,
-        0.0065941019637589205,
-        0.006594101973274632,
-        0.7070760334572938
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 2.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        22.495613431900225,
-        0.1499999314879593,
-        18.778918174188757
-      ],
-      "rotation": [
-        -0.3720461977492867,
-        -0.3720459230998929,
-        -0.6013165778028164,
-        -0.6013167477333029
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 2.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        12.275901345636854,
-        0.14999999999959446,
-        22.75875466754539
-      ],
-      "rotation": [
-        0.6495144920395595,
-        -0.27951909528961066,
-        0.2795190952903662,
-        0.6495144920378035
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 2.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        21.92194372061823,
-        0.14999999602080055,
-        19.622817795831875
-      ],
-      "rotation": [
-        -0.6223154055240571,
-        0.3357432426163854,
-        0.3357432591214225,
-        0.6223154144317725
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 2.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        12.957412468202014,
-        0.14999999993600907,
-        21.55018502649895
-      ],
-      "rotation": [
-        0.49891590482493814,
-        0.4989159050377786,
-        0.501081749517392,
-        0.5010817497311562
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 2.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        21.534599281968866,
-        0.14999973435482927,
-        17.785678229058757
-      ],
-      "rotation": [
-        -7.300509308129255e-7,
-        0.8245636328364955,
-        5.005157511908218e-7,
-        -0.5657692245100449
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 2.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        15.899899626174609,
-        0.14999999992033605,
-        22.40776118893588
-      ],
-      "rotation": [
-        0.4539715765295268,
-        -0.45397157667574206,
-        0.5421344920638955,
-        -0.5421344923434213
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 2.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        20.587458197877886,
-        -5.8500000006006365,
-        14.232660806056344
-      ],
-      "rotation": [
-        1.5148482508602298e-9,
-        -0.6538517406899995,
-        -1.309091780201533e-9,
-        -0.7566226940798549
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 2.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        15.71542138460409,
-        0.149992188004037,
-        22.723109287742826
-      ],
-      "rotation": [
-        -0.4812321389403816,
-        -0.5180688955239962,
-        -0.5180834980953689,
-        0.481258492852519
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 2.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        13.194817824778154,
-        0.14999959720350275,
-        23.72634075589531
-      ],
-      "rotation": [
-        -0.652581037186146,
-        0.6525818738493657,
-        -0.2722826678013686,
-        0.27228117203228347
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 7.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        23.503312042812777,
-        0.14999999421746008,
-        9.084926084406424
-      ],
-      "rotation": [
-        -0.7068349529782203,
-        0.01960479991906394,
-        0.019604827167738627,
-        0.7068349537339914
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 7.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        5.6218318651854755,
-        -5.850000000231052,
-        15.547915562316728
-      ],
-      "rotation": [
-        -0.6071683691113278,
-        0.36241767492457133,
-        -0.3624176751825095,
-        -0.6071683697033824
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 7.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        -8.003295636504983,
-        0.14999966470733608,
-        19.44901293257023
-      ],
-      "rotation": [
-        -0.69998623233338,
-        -0.1000998795033294,
-        -0.1001000339168522,
-        0.6999851940412621
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 7.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        -19.842283387264548,
-        0.1499999999770644,
-        21.07453919696076
-      ],
-      "rotation": [
-        -0.4291076190461079,
-        0.5620201519543847,
-        -0.5620201520199968,
-        -0.42910761913204304
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 7.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        -14.522566788831037,
-        0.1499995880859521,
-        17.0867042565815
-      ],
-      "rotation": [
-        -0.04670147048887927,
-        -0.7055640852434749,
-        0.7055616510391113,
-        -0.04670172214895538
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 7.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        -1.9118201762513678,
-        -5.850000000048294,
-        14.269212613891687
-      ],
-      "rotation": [
-        -0.04632917879277788,
-        -0.04632917892524907,
-        0.705587419917335,
-        0.7055874199749437
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 7.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        -19.98397783720897,
-        0.14999999749800774,
-        17.222777590881886
-      ],
-      "rotation": [
-        0.1377861742430905,
-        -0.13778616315851686,
-        -0.6935524277625794,
-        0.6935524301551681
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 7.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        -5.818244263850051,
-        0.14999742552729003,
-        17.694069336765175
-      ],
-      "rotation": [
-        -0.054931629602640246,
-        -0.05491988526242008,
-        -0.7049698086010934,
-        -0.7049708442431495
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 7.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        -5.055531696751737,
-        0.22499999961612432,
-        19.70234907301288
-      ],
-      "rotation": [
-        1.1731628124983526e-9,
-        -0.39927702635358076,
-        -5.109091665437479e-10,
-        -0.9168303312097841
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 7.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        -1.1794219256832088,
-        0.14999958496506813,
-        18.92134552752165
-      ],
-      "rotation": [
-        -0.4484009922159159,
-        0.5467505776621331,
-        -0.5467516208317501,
-        -0.4484005141876625
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 7.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        -3.820337064837834,
-        0.1499998737937349,
-        13.209024252606268
-      ],
-      "rotation": [
-        0.1604127115969034,
-        0.1604121323601211,
-        0.6886710114917746,
-        0.6886711462524795
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 7.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        -12.070531775847885,
-        0.14999998864180988,
-        20.55805620735724
-      ],
-      "rotation": [
-        0.04113049467606712,
-        -0.705909553929316,
-        -0.7059095326863181,
-        -0.04113047217818538
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 7.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        3.212537539300315,
-        0.1499999547090576,
-        19.840013554464093
-      ],
-      "rotation": [
-        -0.6839970246317639,
-        0.6839971622776437,
-        -0.17929854898547176,
-        0.17929858511078475
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 7.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        -3.7167050013804825,
-        0.1499961955904896,
-        19.387881969208618
-      ],
-      "rotation": [
-        -0.7044021413861798,
-        -0.7044005740945805,
-        -0.06178691779466208,
-        -0.0618047831096082
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 7.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        0.7788021975533213,
-        0.14998358639992007,
-        3.852221088137953
-      ],
-      "rotation": [
-        0.3752657611395151,
-        -0.3753313344892639,
-        0.5993126133466411,
-        -0.5992715489246159
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 7.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        4.1858368291931765,
-        0.1499999999815215,
-        23.275743466994697
-      ],
-      "rotation": [
-        -0.7036202730126024,
-        0.07013209955510374,
-        -0.07013209962366897,
-        -0.7036202730308725
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 7.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        -16.2513034350134,
-        0.1499968206625747,
-        21.92707841205559
-      ],
-      "rotation": [
-        -0.5604459968081017,
-        -0.5604369794685086,
-        -0.4311614953601271,
-        -0.43117333130054225
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 7.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        -8.49303396423352,
-        0.14999998127777647,
-        17.43735769122809
-      ],
-      "rotation": [
-        -0.14805255086210473,
-        0.14805256318154053,
-        0.6914335836349605,
-        -0.6914336411690684
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 7.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        -4.271596682892354,
-        -5.7750000217710244,
-        16.56068002534084
-      ],
-      "rotation": [
-        7.00919934159355e-8,
-        -0.9658526113852564,
-        1.8802338583761674e-8,
-        -0.25909213241678364
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 7.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        -11.17268516098965,
-        0.14999437013735026,
-        18.881740650055566
-      ],
-      "rotation": [
-        -0.6540608043946781,
-        0.6540518256101583,
-        0.2687256615454803,
-        -0.26871396018359334
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 7.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        -22.123362537647576,
-        0.1499999999954003,
-        22.308154713231854
-      ],
-      "rotation": [
-        -0.6115686625017023,
-        -0.35494192630759946,
-        0.35494192631485566,
-        -0.6115686624892002
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 7.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        -7.3325572632009095,
-        0.14999998592616295,
-        17.962460161693787
-      ],
-      "rotation": [
-        -0.3041827147020534,
-        0.3041827745942967,
-        -0.6383360212901111,
-        0.63833599274999
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 7.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        -23.317937324637608,
-        0.14998861517065787,
-        17.58003526847056
-      ],
-      "rotation": [
-        -0.5376807274289377,
-        0.5376483393726423,
-        0.4592383119834374,
-        -0.4592753763570735
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 7.5,
-      "secured": false,
-      "removed": false,
-      "center": [
-        -17.431692679047007,
-        0.22499979443452223,
-        23.039820316508916
-      ],
-      "rotation": [
-        0.11835056983468759,
-        -6.804017597414409e-7,
-        -0.9929718740323592,
-        -8.109588832895835e-8
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 1.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        23.4209113787612,
-        0.03749999999998873,
-        21.569474585504867
-      ],
-      "rotation": [
-        0.6861433560787984,
-        -0.6861433560788244,
-        -0.1709014186860498,
-        0.17090141868605613
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 1.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        -2.605357455862647,
-        0.037499956284908535,
-        21.02318094358086
-      ],
-      "rotation": [
-        -0.7040348435402054,
-        -0.7040348627278765,
-        0.06584025426399714,
-        0.06584004908496692
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 1.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        -7.723767411121113,
-        0.037499959376411936,
-        20.015933550132157
-      ],
-      "rotation": [
-        0.45969245623600596,
-        -0.45969259442032623,
-        -0.537292144059031,
-        0.5372920213880591
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 1.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        -4.7723103978644685,
-        0.1499985955494773,
-        22.45497462109338
-      ],
-      "rotation": [
-        -0.30912247894715966,
-        -0.6359656763451458,
-        -0.6359592082949016,
-        0.3091065138513681
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 1.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        -5.081836302063924,
-        0.0374997690731298,
-        21.9236152710311
-      ],
-      "rotation": [
-        -0.03843622330094349,
-        0.038435141883859034,
-        0.7060613693052303,
-        -0.7060614274845717
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 1.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        -0.34372183434798087,
-        0.09155650985540854,
-        23.567471624662833
-      ],
-      "rotation": [
-        -0.456748036600558,
-        0.37058849807759464,
-        -0.6126921387770121,
-        0.5278766325903985
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 1.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        -5.7458568172043085,
-        0.03749999828188978,
-        21.804397127774564
-      ],
-      "rotation": [
-        0.1665355218837083,
-        -0.16653551401754255,
-        -0.6872160649701778,
-        0.6872160668732492
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 1.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        -0.9406023616309415,
-        0.14881641372375431,
-        23.122065691733308
-      ],
-      "rotation": [
-        0.8152086316102627,
-        0.5769607450715325,
-        0.018170381238068387,
-        -0.04712772899566184
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 1.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        6.984209386779444,
-        0.036053550847164995,
-        21.17834896243823
-      ],
-      "rotation": [
-        0.1315885492474202,
-        0.13222412392091332,
-        0.693018401321217,
-        0.6963668072147687
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 1.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        -1.0125338007684161,
-        0.03720183296525067,
-        23.612101956294314
-      ],
-      "rotation": [
-        -0.48962184501088435,
-        -0.49012674149380064,
-        -0.5097057362007871,
-        -0.5101434000796446
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 1.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        -8.651018004379537,
-        0.03749999999282716,
-        21.350278315428334
-      ],
-      "rotation": [
-        -0.48843823052938706,
-        0.48843823055382235,
-        -0.51130039600739,
-        0.5113003959840622
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 1.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        -4.0296230566546125,
-        0.037499999998805406,
-        20.382541596862957
-      ],
-      "rotation": [
-        0.586627396406591,
-        0.5866273964042912,
-        0.39480159293903844,
-        0.3948015929374458
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 1.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        -0.4264692328117417,
-        0.03731849849933657,
-        23.80234768174616
-      ],
-      "rotation": [
-        -0.051927216706477944,
-        0.0522709446599558,
-        0.705068077611415,
-        -0.7053015797818818
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 1.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        0.7262345826558181,
-        0.037499877918040304,
-        23.295162004995145
-      ],
-      "rotation": [
-        -0.03229514080710802,
-        -0.032294681423915804,
-        -0.7063689300644431,
-        -0.7063688923442134
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 1.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        -3.192614606510508,
-        0.03749992729239259,
-        23.011483849927078
-      ],
-      "rotation": [
-        -0.5350515899893866,
-        0.5350517196638038,
-        0.4622982531553474,
-        -0.4622983651973585
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 1.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        -4.988455198883719,
-        0.037499849616210286,
-        20.69708347930644
-      ],
-      "rotation": [
-        0.676864114899008,
-        -0.6768644541970515,
-        -0.20458425971306013,
-        0.20458436226693685
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 1.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        -1.350829666756464,
-        0.03696163499043573,
-        23.087496983049967
-      ],
-      "rotation": [
-        0.5107884641546779,
-        0.5113271907255752,
-        -0.48827724679280654,
-        -0.4891063066201799
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 1.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        -1.2314168057410102,
-        0.11128222888086195,
-        23.211272790140885
-      ],
-      "rotation": [
-        0.5578706897933786,
-        0.5588497773666035,
-        -0.43508345537567134,
-        -0.4326310283198883
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 1.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        -3.364481940960566,
-        0.034996188920713094,
-        21.15991003071628
-      ],
-      "rotation": [
-        0.49987876449254065,
-        -0.49440171740478045,
-        0.5029585433157903,
-        -0.5027135032424265
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 1.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        -2.135209089590987,
-        0.03749999999999496,
-        21.61863480852136
-      ],
-      "rotation": [
-        -0.6102024613030017,
-        0.6102024613030118,
-        -0.3572855387778106,
-        0.3572855387778169
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 1.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        -0.7927041404250672,
-        0.2999945205006944,
-        23.96210481527885
-      ],
-      "rotation": [
-        -0.7071044026882627,
-        0.00004347004599211331,
-        -0.7071091567960588,
-        0.00004673753548819691
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 1.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        -0.5488956696086813,
-        0.10196317255437527,
-        23.380059333184228
-      ],
-      "rotation": [
-        0.6929311086785317,
-        -0.5514734447949808,
-        -0.14255410595010407,
-        0.4420428092258311
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 1.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        -2.298861377654638,
-        0.03749999999999984,
-        23.642295452203527
-      ],
-      "rotation": [
-        -0.6497779638214992,
-        -0.6497779638214995,
-        0.2789060733149895,
-        0.2789060733149897
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 1.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        -1.6191908045270367,
-        0.03749999999998987,
-        20.777026754652333
-      ],
-      "rotation": [
-        -0.24608910360305877,
-        0.24608910360306732,
-        0.662902823261318,
-        -0.6629028232613403
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 125.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        5.837160997005012,
-        0.18842564346775967,
-        -1.172962279519411
-      ],
-      "rotation": [
-        -0.0005105554569701049,
-        0.005564710654279083,
-        0.0033762179475940435,
-        0.9999786870132933
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 125.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        6.214398129701853,
-        0.18825686884710943,
-        -1.1748573148179529
-      ],
-      "rotation": [
-        -0.0007549769625404767,
-        0.005532647961979767,
-        -0.0026583699882298927,
-        0.9999808762598017
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 125.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        5.841184454760269,
-        0.5633230626596919,
-        -1.169630472681664
-      ],
-      "rotation": [
-        -0.000806772999788968,
-        0.006316924009594653,
-        0.0036171825060528997,
-        0.9999731804299062
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 125.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        6.22451202650728,
-        0.5631533170197781,
-        -1.1694751980258884
-      ],
-      "rotation": [
-        -0.0010035145720852555,
-        0.004941399564188653,
-        -0.0029513894751011737,
-        0.9999829322688548
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 125.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        5.83496864090111,
-        0.18761538864544383,
-        -0.7971869349795438
-      ],
-      "rotation": [
-        0.000364761822264114,
-        0.004321384077469983,
-        0.001221061158899318,
-        0.9999898507475534
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 125.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        6.212685731892448,
-        0.18741001773440374,
-        -0.7965757982333476
-      ],
-      "rotation": [
-        0.0006084891257000177,
-        0.006329474875822256,
-        -0.0007776686219191822,
-        0.9999794811496358
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 125.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        5.840959295109983,
-        0.5625564643673534,
-        -0.790653352697273
-      ],
-      "rotation": [
-        0.0006205159476048841,
-        0.004546764950655928,
-        0.001514572423984092,
-        0.9999883239112418
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 125.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        6.217746153124925,
-        0.5622813610884851,
-        -0.7932331291614296
-      ],
-      "rotation": [
-        0.001154900056645784,
-        0.006305803026239282,
-        -0.001245305813274674,
-        0.9999786759063841
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 125.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        5.854654767013434,
-        0.9382972034870354,
-        -1.163083973081729
-      ],
-      "rotation": [
-        -0.0008777933451556837,
-        0.004364408641420692,
-        0.003691631891845295,
-        0.9999832764951768
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 125.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        6.2332371540650096,
-        0.9379721338791841,
-        -1.1631580522957596
-      ],
-      "rotation": [
-        -0.0009041571711831019,
-        0.005289986578237315,
-        -0.0030987585434875667,
-        0.999980797934291
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 125.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        5.863915508172905,
-        1.3132852879966526,
-        -1.1604747633109913
-      ],
-      "rotation": [
-        -0.0009083248566315721,
-        0.005174984499546584,
-        0.0035862993197059165,
-        0.999979766264585
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 125.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        6.241299637925899,
-        1.3127791862018672,
-        -1.161084976464342
-      ],
-      "rotation": [
-        -0.0008847307178474098,
-        0.005181857973369182,
-        -0.002931294624137091,
-        0.9999818863916123
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 125.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        5.850029675746532,
-        0.9374682391188374,
-        -0.786700020005608
-      ],
-      "rotation": [
-        0.0008273988793829943,
-        0.006115969303747548,
-        0.0015177230592591108,
-        0.9999798032196877
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 125.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        6.226329392078529,
-        0.9371001532949024,
-        -0.7873478567638359
-      ],
-      "rotation": [
-        0.0012895271125381125,
-        0.005357301501119704,
-        -0.0012756640645552211,
-        0.9999840044328944
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 125.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        5.853672992120292,
-        1.3123579558345098,
-        -0.7844374537025173
-      ],
-      "rotation": [
-        0.0010324995016746136,
-        0.005728673451810469,
-        0.0014300134924131883,
-        0.9999820354919747
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 125.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        6.229671517753035,
-        1.3120076549451511,
-        -0.7849021604713995
-      ],
-      "rotation": [
-        0.0013530228458407643,
-        0.00575661808777171,
-        -0.0012674341528594094,
-        0.9999817119767934
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 125.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        5.871586491873061,
-        1.6882976650151862,
-        -1.1546165473475896
-      ],
-      "rotation": [
-        -0.0008618427180840749,
-        0.00240977121960645,
-        0.0035789578721980024,
-        0.9999903205983284
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 125.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        6.253188430066267,
-        1.6876619273479962,
-        -1.1574772744843735
-      ],
-      "rotation": [
-        -0.0008705959533389946,
-        0.0055842419246283454,
-        -0.0029562991083524927,
-        0.9999796590933214
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 125.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        5.871526747626755,
-        2.0633004698223854,
-        -1.1537378851124866
-      ],
-      "rotation": [
-        -0.0008653694760691739,
-        0.0021177554377636073,
-        0.0035759276365137046,
-        0.9999909894539621
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 125.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        6.257947752744928,
-        2.0626380173608005,
-        -1.1565092851363414
-      ],
-      "rotation": [
-        -0.0008816572319247789,
-        0.004767440460232621,
-        -0.0029516553249840714,
-        0.9999838908316605
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 125.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        5.860444240044662,
-        1.6873332230174416,
-        -0.7779974636179317
-      ],
-      "rotation": [
-        0.0010249033684058713,
-        0.004706114915155167,
-        0.0014226248347329053,
-        0.9999873890175167
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 125.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        6.236928653715719,
-        1.6869453436068633,
-        -0.7787196393857942
-      ],
-      "rotation": [
-        0.0014062328891779527,
-        0.0056291556783422195,
-        -0.0012672202529816331,
-        0.9999823644786147
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 125.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        5.861456571156656,
-        2.062331186525656,
-        -0.7773637312249715
-      ],
-      "rotation": [
-        0.0010244886231699872,
-        0.003830240728051146,
-        0.0014144577741678022,
-        0.9999911394548611
-      ]
-    },
-    {
-      "name": "Meteor or impact debris",
-      "kind": "SpellBody",
-      "mass_kg": 125.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        6.239219612433974,
-        2.061934338053756,
-        -0.7766342125606542
-      ],
-      "rotation": [
-        0.0014008823111101277,
-        0.004630029936982092,
-        -0.0012672839655167496,
-        0.9999874970932807
       ]
     }
   ],
@@ -6567,87 +1258,75 @@
       "id": 14,
       "name": "Wizard",
       "position": [
+        5.75,
         0.0,
-        0.0,
-        -8.0
+        0.0
       ],
-      "health": 76
+      "health": 200
     },
     {
       "id": 101,
-      "name": "Overlapping blast dummy",
+      "name": "Dummy A1 (overlap)",
       "position": [
-        -1.839510202407837,
-        3.2729269294762275e-10,
-        -2.987961530685425
+        -4.0,
+        0.0,
+        -16.0
       ],
-      "health": 338
+      "health": 169
     },
     {
       "id": 102,
-      "name": "Overlapping blast dummy",
+      "name": "Dummy A2",
       "position": [
-        0.12581008672714233,
-        1.1591493043194845e-10,
-        -2.980226993560791
+        -9.0,
+        0.0,
+        -19.0
       ],
-      "health": 276
+      "health": 169
     },
     {
       "id": 103,
-      "name": "Overlapping blast dummy",
+      "name": "Dummy B1 (overlap)",
       "position": [
-        1.7999999523162842,
+        8.0,
         0.0,
-        -3.0
+        -16.0
       ],
-      "health": 338
+      "health": 169
     },
     {
       "id": 104,
-      "name": "Overlapping blast dummy",
+      "name": "Dummy C1",
       "position": [
-        -1.7999999523162842,
+        -15.0,
         0.0,
-        -1.0
+        8.0
       ],
-      "health": 276
+      "health": 235
     },
     {
       "id": 105,
-      "name": "Overlapping blast dummy",
+      "name": "Dummy C2",
       "position": [
+        -7.0,
         0.0,
-        0.0,
-        -1.0
+        10.0
       ],
-      "health": 276
+      "health": 235
     },
     {
       "id": 106,
-      "name": "Overlapping blast dummy",
+      "name": "Dummy D (overhang)",
       "position": [
-        1.7999999523162842,
+        17.0,
         0.0,
-        -1.0
+        12.0
       ],
-      "health": 276
+      "health": 235
     }
   ],
   "ledger": {
     "terms": {
-      "character contact": {
-        "linear": [
-          -108.15267114794173,
-          0.0,
-          -42.43369451047868
-        ],
-        "angular": [
-          -25.818206184269627,
-          286.05973002284003,
-          91.64170706471256
-        ]
-      },
       "creature:controller": {
         "linear": [
           0.0,
@@ -6663,103 +1342,103 @@
       "gravity": {
         "linear": [
           0.0,
-          -198625.48162516495,
+          -119097.97800000764,
           0.0
         ],
         "angular": [
-          -1028390.8603207255,
+          58748.2505791919,
           0.0,
-          -670763.5518915375
+          464822.30786006065
         ]
       },
       "meteor:blast": {
         "linear": [
-          2994.1440533642644,
-          7214.680331549602,
-          8808.308347540455
+          -86.133067470104,
+          2313.1066408460956,
+          262.684447857142
         ],
         "angular": [
-          1230.930600745183,
-          11011.837779463269,
-          -7855.688237955565
+          20868.795438759815,
+          -33961.15183280489,
+          -5721.263810908062
         ]
       },
       "meteor:spawn": {
         "linear": [
-          -5560.74616171167,
-          -45105.245797723604,
-          15446.517525058724
+          -999.3649013321304,
+          -6014.032773029814,
+          -1947.4803205446644
         ],
         "angular": [
-          129158.78409287962,
-          44485.96929369337,
-          176400.26549786923
+          -147173.43677911087,
+          11198.011843131822,
+          40942.52253383284
         ]
       },
       "meteor:spawn/remove": {
         "linear": [
-          5640.411586468375,
-          100434.34915331563,
-          -15077.930329868235
+          999.3649013321306,
+          61015.43277302953,
+          1947.4803205446644
         ],
         "angular": [
-          929749.6902733187,
-          -44484.41957992196,
-          -36902.15977430274
+          417756.30890992587,
+          -11198.011843131015,
+          61812.67983176155
         ]
       },
       "sleep": {
         "linear": [
-          -2.967275969830619,
-          0.18841599699453768,
-          -2.8102819040196074
+          -0.3067860131177744,
+          0.030093098908821354,
+          -0.5652799137040231
         ],
         "angular": [
-          -4.298687063723263,
-          19.913527773839238,
-          5.819148272309873
+          -1.3690240395512752,
+          -8.693301843575078,
+          0.2836313135824581
         ]
       },
       "static contact": {
         "linear": [
-          -2962.689531003024,
-          136081.50952185135,
-          -9131.651566317361
+          86.43985348322455,
+          61783.441266055284,
+          -262.1191679434359
         ],
         "angular": [
-          -31718.427752970507,
-          -11319.360751032777,
-          539023.6735506225
+          -350198.5491247377,
+          33969.84513464848,
+          -561856.5300460635
         ]
       }
     },
     "residual_relative": {
-      "linear": 2.1771023205052186e-13,
-      "angular": 6.0123937241616586e-15
+      "linear": 2.5748963429437933e-14,
+      "angular": 2.161176099316352e-15
     },
     "tolerance": 1e-9
   },
   "replay": {
     "window_s": [
-      2.200000047683716,
-      3.200000047683716
+      3.0,
+      4.0
     ],
     "speed": 0.25,
     "source": "checkpoint at the window start, stepped again with the same admitted commands",
     "identical_to_live": true
   },
-  "live_seconds": 18.0,
+  "live_seconds": 10.0,
   "live_speed": 1,
-  "video_seconds": 22.0,
-  "authority_tick": 540,
-  "physics_steps": 2160,
+  "video_seconds": 14.0,
+  "authority_tick": 300,
+  "physics_steps": 1200,
   "renderer": "owned native GPU pipeline; scripted admitted commands; no grading",
   "prepared_pack": {
     "inventory": {
       "schema": "openagents.verse.asset-admission.v1",
       "purpose": "original_local",
       "compiler": "verse:compiler:original-chamber",
-      "compiler_revision": "506ab9e7462ac8a51fed16b58bd49af4af804604929a0a48d86f1393c7c32656",
+      "compiler_revision": "dba6c6a29e3889b0fbec9a12d1443fe83347a6a59d51eb7377395f11d96af230",
       "assets": [
         "verse:model:adventurer",
         "verse:model:arrow",
@@ -6792,11 +1471,13 @@
         "verse:model:playground-hall",
         "verse:model:prop-anvil",
         "verse:model:prop-barrel",
+        "verse:model:prop-basket",
         "verse:model:prop-boulder",
         "verse:model:prop-crate",
         "verse:model:prop-crate-secured",
         "verse:model:prop-dummy",
         "verse:model:prop-meteor",
+        "verse:model:prop-paper",
         "verse:model:prop-sheet",
         "verse:model:prop-stone",
         "verse:model:prop-tentacle",
@@ -6923,7 +1604,7 @@
           {
             "creator": "OpenAgents contributors",
             "license": "apache2",
-            "revision": "506ab9e7462ac8a51fed16b58bd49af4af804604929a0a48d86f1393c7c32656",
+            "revision": "dba6c6a29e3889b0fbec9a12d1443fe83347a6a59d51eb7377395f11d96af230",
             "format": "rust/wgsl/json"
           }
         ],
@@ -6939,10 +1620,10 @@
       ]
     },
     "schema": "openagents.verse.prepared-pack.v1",
-    "manifest_sha256": "aea94bdec2f2decca804fb09629b53a13d93fc0c91be8363a7cc3317659d7ddb",
-    "manifest_bytes": 83421005,
-    "vertices": 272259,
-    "indices": 999651,
+    "manifest_sha256": "f76d568f699646bd51068b856345f815a8c4b7db561d3a622802936b46f34989",
+    "manifest_bytes": 83448086,
+    "vertices": 272451,
+    "indices": 999939,
     "encoded_bytes": 34477502,
     "rgba_bytes": 164233224,
     "budget": {
