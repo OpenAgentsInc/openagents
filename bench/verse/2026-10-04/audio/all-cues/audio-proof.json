@@ -1,0 +1,33 @@
+{
+  "schema": "openagents.verse.audio-proof.v1",
+  "audio_update_p95_ms": 0.0051660000000000005,
+  "audio": {
+    "device": {
+      "rendered_frames": 5046784,
+      "device_errors": 0,
+      "refused_commands": 0,
+      "nonzero_samples": 10089143,
+      "peak": 0.37009289860725403,
+      "capture_dropped_blocks": 0
+    },
+    "queued_by_cue": [
+      430,
+      21,
+      98,
+      7,
+      1
+    ],
+    "sample_rate": 48000
+  },
+  "render_dimensions": [
+    3456,
+    2104
+  ],
+  "samples": 4,
+  "source_sha256": {
+    "crates/verse-engine/src/audio.rs": "41110784a9e7353efaee30d47ce96842499f5a10135eaf74034bc330dd4690f8",
+    "crates/verse-engine/src/audio_cues.rs": "4f8a49b2b2b609ba2bb704c318692408bca06def812d6890fd8ce7394f24c71e",
+    "crates/verse/src/audio_native.rs": "0f9956c3c9c8714d1fbf47bc174c33a1c8aef2058780a3d1855a7cb890443047",
+    "crates/verse/examples/chamber_app/audio.rs": "8d029684133af9a962530b497e15a8a1ae78365afd08e9207edafbc60e46c082"
+  }
+}
