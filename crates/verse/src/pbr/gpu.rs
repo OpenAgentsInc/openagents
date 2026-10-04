@@ -2,7 +2,8 @@
 //!
 //! One frame runs these passes: a sun shadow map; a floating-point scene pass
 //! that draws the sky at infinity, catalogue stars, the Sun, Earth, and Moon in
-//! distance order, lit surfaces, legacy geometry, guide lines, and glows; a
+//! distance order, lit surfaces, opaque and masked textured meshes, legacy
+//! geometry, blended textured meshes, guide lines, and glows; a
 //! bloom mip chain; exposure adaptation; the output transform into the
 //! surface; and the HUD on top. When the adapter cannot render a floating-point
 //! target, the scene pass tone-maps in place and post-processing is skipped.
@@ -11,6 +12,7 @@ use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3};
 use wgpu::util::DeviceExt;
 
+use super::textured::{self, Pass, TexturedMaterial, TexturedScene, TexturedVertex};
 use super::{GlowVertex, LitVertex, Neon, ProbeGrid, Sky, sky};
 
 const DEPTH: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
@@ -178,6 +180,22 @@ struct Pipelines {
     glow: wgpu::RenderPipeline,
     legacy: wgpu::RenderPipeline,
     wide: wgpu::RenderPipeline,
+    /// Textured meshes by [`Pass`], single-sided then double-sided.
+    textured: [[wgpu::RenderPipeline; 2]; 3],
+    /// Opaque textured meshes into the shadow map.
+    textured_shadow: wgpu::RenderPipeline,
+    /// Masked textured meshes into the shadow map, testing alpha.
+    textured_shadow_masked: wgpu::RenderPipeline,
+}
+
+/// Textured static meshes on the GPU: merged vertices and indices uploaded
+/// once, and one bind group per material.
+pub(crate) struct TexturedGpu {
+    vertices: wgpu::Buffer,
+    indices: wgpu::Buffer,
+    batches: Vec<textured::Batch>,
+    materials: Vec<TexturedMaterial>,
+    groups: Vec<wgpu::BindGroup>,
 }
 
 struct PostPipelines {
@@ -235,6 +253,12 @@ pub(crate) struct Photo {
     probe_version: Option<u64>,
     sky_textures: [wgpu::TextureView; 5],
     pipelines: Pipelines,
+    /// A textured material's image, sampler, and factors (group 2).
+    material_layout: wgpu::BindGroupLayout,
+    /// Fills group 1 for the masked shadow pipeline, which reads no guides.
+    empty_group: wgpu::BindGroup,
+    /// Repeating, trilinear sampling for base-color images.
+    textured_sampler: wgpu::Sampler,
     post: Option<PostPipelines>,
     stars: wgpu::Buffer,
     star_count: u32,
@@ -258,6 +282,17 @@ fn lit_layout() -> wgpu::VertexBufferLayout<'static> {
     ];
     wgpu::VertexBufferLayout {
         array_stride: std::mem::size_of::<LitVertex>() as u64,
+        step_mode: wgpu::VertexStepMode::Vertex,
+        attributes: &ATTRIBUTES,
+    }
+}
+
+fn textured_layout() -> wgpu::VertexBufferLayout<'static> {
+    const ATTRIBUTES: [wgpu::VertexAttribute; 4] = wgpu::vertex_attr_array![
+        0 => Float32x3, 1 => Float32x3, 2 => Float32x2, 3 => Unorm8x4
+    ];
+    wgpu::VertexBufferLayout {
+        array_stride: std::mem::size_of::<TexturedVertex>() as u64,
         step_mode: wgpu::VertexStepMode::Vertex,
         attributes: &ATTRIBUTES,
     }
@@ -552,7 +587,138 @@ impl Photo {
             wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3, 2 => Float32];
         const WIDE: [wgpu::VertexAttribute; 1] = wgpu::vertex_attr_array![0 => Float32x3];
         let legacy_size = std::mem::size_of::<crate::mesh::Vertex>() as u64;
+        let material_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("verse textured material"),
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: float,
+                        view_dimension: d2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+            ],
+        });
+        let empty_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("verse empty"),
+            entries: &[],
+        });
+        let empty_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("verse empty"),
+            layout: &empty_layout,
+            entries: &[],
+        });
+        // Group 1 holds the guides' adapted luminance, which the pass binds
+        // for the legacy faces anyway; textured shaders do not read it.
+        let textured_layout_groups =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("verse photo textured"),
+                bind_group_layouts: &[
+                    Some(&scene_layout),
+                    Some(&guide_layout),
+                    Some(&material_layout),
+                ],
+                immediate_size: 0,
+            });
+        let masked_shadow_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("verse textured shadow"),
+            bind_group_layouts: &[
+                Some(&frame_layout),
+                Some(&empty_layout),
+                Some(&material_layout),
+            ],
+            immediate_size: 0,
+        });
+        let textured_pipeline = |pass: Pass, double_sided: bool| {
+            let raster = textured::raster(pass, double_sided);
+            let targets = color(raster.blend.then_some(PREMULTIPLIED));
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("verse photo textured"),
+                layout: Some(&textured_layout_groups),
+                vertex: wgpu::VertexState {
+                    module: &module,
+                    entry_point: Some("vs_textured"),
+                    compilation_options: options.clone(),
+                    buffers: &[textured_layout()],
+                },
+                primitive: wgpu::PrimitiveState {
+                    topology: triangles,
+                    cull_mode: raster.cull,
+                    ..Default::default()
+                },
+                depth_stencil: Some(depth_state(
+                    raster.depth_write,
+                    wgpu::CompareFunction::GreaterEqual,
+                )),
+                multisample: wgpu::MultisampleState {
+                    count: samples,
+                    ..Default::default()
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &module,
+                    entry_point: Some(raster.entry),
+                    compilation_options: options.clone(),
+                    targets: &targets,
+                }),
+                multiview_mask: None,
+                cache: None,
+            })
+        };
+        // Both faces of every opaque or masked cell cast shadows.
+        let textured_shadow = |layout: &wgpu::PipelineLayout, fs: Option<&str>| {
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("verse textured shadow"),
+                layout: Some(layout),
+                vertex: wgpu::VertexState {
+                    module: &module,
+                    entry_point: Some("vs_shadow_textured"),
+                    compilation_options: options.clone(),
+                    buffers: &[textured_layout()],
+                },
+                primitive: wgpu::PrimitiveState {
+                    topology: triangles,
+                    ..Default::default()
+                },
+                depth_stencil: Some(shadow_depth.clone()),
+                multisample: wgpu::MultisampleState::default(),
+                fragment: fs.map(|fs| wgpu::FragmentState {
+                    module: &module,
+                    entry_point: Some(fs),
+                    compilation_options: options.clone(),
+                    targets: &[],
+                }),
+                multiview_mask: None,
+                cache: None,
+            })
+        };
+        let textured_pipelines = Pass::ALL
+            .map(|pass| [false, true].map(|double_sided| textured_pipeline(pass, double_sided)));
+        let textured_shadow_opaque = textured_shadow(&shadow_layout, None);
+        let textured_shadow_masked =
+            textured_shadow(&masked_shadow_layout, Some("fs_shadow_masked"));
         let pipelines = Pipelines {
+            textured: textured_pipelines,
+            textured_shadow: textured_shadow_opaque,
+            textured_shadow_masked,
             shadow: make(
                 &shadow_layout,
                 "verse photo shadow",
@@ -687,6 +853,16 @@ impl Photo {
             ),
         };
         let _ = LEGACY;
+        let textured_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            label: Some("verse textured base color"),
+            address_mode_u: wgpu::AddressMode::Repeat,
+            address_mode_v: wgpu::AddressMode::Repeat,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Linear,
+            mipmap_filter: wgpu::MipmapFilterMode::Linear,
+            ..Default::default()
+        });
         let post = capability
             .hdr
             .map(|hdr| post_pipelines(device, hdr, output_format));
@@ -713,6 +889,9 @@ impl Photo {
             probe_version: None,
             sky_textures,
             pipelines,
+            material_layout,
+            empty_group,
+            textured_sampler,
             post,
             stars: star_buffer,
             star_count: 0,
@@ -783,6 +962,137 @@ impl Photo {
             None => empty_probes(device, queue),
         };
         self.rebuild_groups(device);
+    }
+
+    /// Uploads a merged textured scene once: its vertices and indices, each
+    /// image with its mip chain (coverage-preserving for masked materials,
+    /// without levels above the device's texture limit), and each
+    /// material's factors.
+    pub fn upload_textured(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        scene: &TexturedScene,
+        merged: &textured::Merged,
+    ) -> TexturedGpu {
+        let max = device.limits().max_texture_dimension_2d;
+        let images: Vec<wgpu::TextureView> = scene
+            .images
+            .iter()
+            .enumerate()
+            .map(|(i, image)| {
+                let levels = textured::mip_chain(image, scene.mask_cutoff(i), max);
+                upload_levels(device, queue, &image.name, &levels)
+            })
+            .collect();
+        let white = upload_levels(
+            device,
+            queue,
+            "verse textured white",
+            &[(1, 1, vec![255; 4])],
+        );
+        let groups = scene
+            .materials
+            .iter()
+            .map(|material| {
+                let factors = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("verse textured material"),
+                    contents: bytemuck::bytes_of(&textured::uniform(material)),
+                    usage: wgpu::BufferUsages::UNIFORM,
+                });
+                let view = material.image.map_or(&white, |i| &images[i]);
+                device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("verse textured material"),
+                    layout: &self.material_layout,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: wgpu::BindingResource::TextureView(view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wgpu::BindingResource::Sampler(&self.textured_sampler),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 2,
+                            resource: factors.as_entire_binding(),
+                        },
+                    ],
+                })
+            })
+            .collect();
+        // Buffers cannot be empty; an empty scene draws no batches.
+        let vertex_bytes: &[u8] = if merged.vertices.is_empty() {
+            &[0; std::mem::size_of::<TexturedVertex>()]
+        } else {
+            bytemuck::cast_slice(&merged.vertices)
+        };
+        let index_bytes: &[u8] = if merged.indices.is_empty() {
+            &[0; 4]
+        } else {
+            bytemuck::cast_slice(&merged.indices)
+        };
+        TexturedGpu {
+            vertices: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("verse textured vertices"),
+                contents: vertex_bytes,
+                usage: wgpu::BufferUsages::VERTEX,
+            }),
+            indices: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("verse textured indices"),
+                contents: index_bytes,
+                usage: wgpu::BufferUsages::INDEX,
+            }),
+            batches: merged.batches.clone(),
+            materials: scene.materials.clone(),
+            groups,
+        }
+    }
+
+    /// The textured cells this frame draws, in drawing order.
+    fn textured_order(textured: Option<&TexturedGpu>, view: crate::render::View) -> Vec<usize> {
+        textured.map_or_else(Vec::new, |gpu| {
+            textured::draw_order(&gpu.batches, &gpu.materials, view.eye, |b| {
+                textured::in_frustum(b.min, b.max, view.view_proj)
+            })
+        })
+    }
+
+    /// Draws the cells of one textured pass, in `order`. Groups 0 and 1
+    /// must be bound.
+    fn draw_textured(
+        &self,
+        pass: &mut wgpu::RenderPass<'_>,
+        textured: Option<&TexturedGpu>,
+        order: &[usize],
+        which: Pass,
+    ) {
+        let Some(gpu) = textured else {
+            return;
+        };
+        let mut sides = None;
+        let mut bound = None;
+        for &i in order {
+            let batch = &gpu.batches[i];
+            let material = &gpu.materials[batch.material];
+            if material.alpha.pass() != which {
+                continue;
+            }
+            if sides.is_none() {
+                pass.set_vertex_buffer(0, gpu.vertices.slice(..));
+                pass.set_index_buffer(gpu.indices.slice(..), wgpu::IndexFormat::Uint32);
+            }
+            if sides != Some(material.double_sided) {
+                let pipeline = &self.pipelines.textured[which as usize];
+                pass.set_pipeline(&pipeline[usize::from(material.double_sided)]);
+                sides = Some(material.double_sided);
+            }
+            if bound != Some(batch.material) {
+                pass.set_bind_group(2, &gpu.groups[batch.material], &[]);
+                bound = Some(batch.material);
+            }
+            pass.draw_indexed(batch.first..batch.first + batch.count, 0, 0..1);
+        }
     }
 
     /// Size-dependent targets, rebuilt when the size changes.
@@ -1123,7 +1433,8 @@ impl Photo {
         };
         queue.write_buffer(&self.frame, 0, bytemuck::bytes_of(&frame));
 
-        self.encode_shadow(encoder, world.lit);
+        self.encode_shadow(encoder, world.lit, world.textured);
+        let order = Self::textured_order(world.textured, view);
 
         // Scene pass.
         let direct = self.post.is_none();
@@ -1186,6 +1497,8 @@ impl Photo {
             }
             // The texture written last frame holds the newest adaptation.
             pass.set_bind_group(1, &targets.guide_groups[targets.parity ^ 1], &[]);
+            self.draw_textured(&mut pass, world.textured, &order, Pass::Opaque);
+            self.draw_textured(&mut pass, world.textured, &order, Pass::Masked);
             pass.set_pipeline(&self.pipelines.legacy);
             for (buffer, count) in world.faces {
                 if count > 0 {
@@ -1193,6 +1506,7 @@ impl Photo {
                     pass.draw(0..count, 0..1);
                 }
             }
+            self.draw_textured(&mut pass, world.textured, &order, Pass::Blended);
             pass.set_pipeline(&self.pipelines.wide);
             for (buffer, count) in world.lines {
                 if count >= 2 {
@@ -1235,8 +1549,14 @@ impl Photo {
         );
     }
 
-    /// The sun or key light's shadow map, from every lit triangle.
-    fn encode_shadow(&self, encoder: &mut wgpu::CommandEncoder, world_lit: (&wgpu::Buffer, u32)) {
+    /// The sun or key light's shadow map, from every lit triangle and every
+    /// opaque or masked textured cell.
+    fn encode_shadow(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        world_lit: (&wgpu::Buffer, u32),
+        textured: Option<&TexturedGpu>,
+    ) {
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("verse sun shadow"),
             color_attachments: &[],
@@ -1261,6 +1581,29 @@ impl Photo {
             if count > 0 {
                 pass.set_vertex_buffer(0, buffer.slice(..));
                 pass.draw(0..count, 0..1);
+            }
+        }
+        let Some(gpu) = textured else {
+            return;
+        };
+        pass.set_vertex_buffer(0, gpu.vertices.slice(..));
+        pass.set_index_buffer(gpu.indices.slice(..), wgpu::IndexFormat::Uint32);
+        for masked in [false, true] {
+            if masked {
+                pass.set_pipeline(&self.pipelines.textured_shadow_masked);
+                pass.set_bind_group(1, &self.empty_group, &[]);
+            } else {
+                pass.set_pipeline(&self.pipelines.textured_shadow);
+            }
+            for batch in &gpu.batches {
+                let cell_pass = gpu.materials[batch.material].alpha.pass();
+                if textured::raster(cell_pass, false).shadow != Some(masked) {
+                    continue;
+                }
+                if masked {
+                    pass.set_bind_group(2, &gpu.groups[batch.material], &[]);
+                }
+                pass.draw_indexed(batch.first..batch.first + batch.count, 0, 0..1);
             }
         }
     }
@@ -1318,7 +1661,7 @@ impl Photo {
         let mut uniform = frame(reversed, neon.line_width, 1.0);
         let lit = neon
             .key
-            .filter(|_| world.lit.1 > 0 || self.dynamic_lit.count > 0);
+            .filter(|_| world.lit.1 > 0 || self.dynamic_lit.count > 0 || world.textured.is_some());
         if let Some(key) = &lit {
             // Pre-exposed lux: the stage's lines stay at unit exposure.
             let exposure = super::exposure(key.ev100);
@@ -1350,8 +1693,13 @@ impl Photo {
         }
         queue.write_buffer(&self.frame, 0, bytemuck::bytes_of(&uniform));
         if lit.is_some() {
-            self.encode_shadow(encoder, world.lit);
+            self.encode_shadow(encoder, world.lit, world.textured);
         }
+        let order = if lit.is_some() {
+            Self::textured_order(world.textured, view)
+        } else {
+            Vec::new()
+        };
         let direct = self.post.is_none();
         let (target, resolve) = match (&targets.msaa, direct) {
             (Some(msaa), false) => (msaa, Some(&targets.scene)),
@@ -1390,22 +1738,6 @@ impl Photo {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
-            let draw_world = |pass: &mut wgpu::RenderPass<'_>| {
-                pass.set_pipeline(&self.pipelines.legacy);
-                for (buffer, count) in world.faces {
-                    if count > 0 {
-                        pass.set_vertex_buffer(0, buffer.slice(..));
-                        pass.draw(0..count, 0..1);
-                    }
-                }
-                pass.set_pipeline(&self.pipelines.wide);
-                for (buffer, count) in world.lines {
-                    if count >= 2 {
-                        pass.set_vertex_buffer(0, buffer.slice(..));
-                        pass.draw(0..6, 0..count / 2);
-                    }
-                }
-            };
             pass.set_bind_group(1, &targets.guide_groups[0], &[]);
             pass.set_bind_group(0, &self.scene_group, &[]);
             if lit.is_some() {
@@ -1419,8 +1751,24 @@ impl Photo {
                         pass.draw(0..count, 0..1);
                     }
                 }
+                self.draw_textured(&mut pass, world.textured, &order, Pass::Opaque);
+                self.draw_textured(&mut pass, world.textured, &order, Pass::Masked);
             }
-            draw_world(&mut pass);
+            pass.set_pipeline(&self.pipelines.legacy);
+            for (buffer, count) in world.faces {
+                if count > 0 {
+                    pass.set_vertex_buffer(0, buffer.slice(..));
+                    pass.draw(0..count, 0..1);
+                }
+            }
+            self.draw_textured(&mut pass, world.textured, &order, Pass::Blended);
+            pass.set_pipeline(&self.pipelines.wide);
+            for (buffer, count) in world.lines {
+                if count >= 2 {
+                    pass.set_vertex_buffer(0, buffer.slice(..));
+                    pass.draw(0..6, 0..count / 2);
+                }
+            }
             if self.glow.count > 0 {
                 pass.set_pipeline(&self.pipelines.glow);
                 pass.set_vertex_buffer(0, self.glow.buffer.slice(..));
@@ -1634,6 +1982,7 @@ pub(crate) struct Batches<'a> {
     pub lit: (&'a wgpu::Buffer, u32),
     pub faces: [(&'a wgpu::Buffer, u32); 2],
     pub lines: [(&'a wgpu::Buffer, u32); 2],
+    pub textured: Option<&'a TexturedGpu>,
 }
 
 /// Illuminance at the station from the full Earth, lux per channel: a
@@ -1975,6 +2324,52 @@ fn upload_mipped(
         h = nh;
     }
     texture.create_view(&Default::default())
+}
+
+/// Uploads RGBA8 sRGB mip levels, largest first, as one texture.
+fn upload_levels(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    label: &str,
+    levels: &[(u32, u32, Vec<u8>)],
+) -> wgpu::TextureView {
+    let (width, height, _) = &levels[0];
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some(label),
+        size: wgpu::Extent3d {
+            width: *width,
+            height: *height,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: levels.len() as u32,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8UnormSrgb,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+    for (mip, (w, h, pixels)) in levels.iter().enumerate() {
+        queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &texture,
+                mip_level: mip as u32,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            pixels,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(w * 4),
+                rows_per_image: Some(*h),
+            },
+            wgpu::Extent3d {
+                width: *w,
+                height: *h,
+                depth_or_array_layers: 1,
+            },
+        );
+    }
+    texture.create_view(&wgpu::TextureViewDescriptor::default())
 }
 
 /// One-texel stand-ins until a space frame loads the real data.

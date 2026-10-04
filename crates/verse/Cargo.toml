@@ -126,6 +126,10 @@ name = "overlook_capture"
 required-features = ["capture"]
 
 [[example]]
+name = "textured_capture"
+required-features = ["capture"]
+
+[[example]]
 name = "panel_capture"
 required-features = ["capture", "panels"]
 

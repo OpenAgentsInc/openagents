@@ -22,7 +22,8 @@ use winit::window::Window;
 
 use crate::mesh::{Mesh, Vertex};
 use crate::pbr::LitVertex;
-use crate::pbr::gpu::{Batches, Capability, Photo, PhotoTargets, Stage};
+use crate::pbr::gpu::{Batches, Capability, Photo, PhotoTargets, Stage, TexturedGpu};
+use crate::pbr::textured::{Merged, TexturedScene};
 use crate::ui::{Atlas, UiBatch, UiVertex};
 
 const DEPTH: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
@@ -98,6 +99,11 @@ struct Scene {
     capability: Capability,
     /// Physically lit zone geometry, uploaded with the world.
     world_lit: (wgpu::Buffer, u32),
+    /// The world's textured meshes, merged and waiting for the physical
+    /// path's first frame, which uploads them.
+    textured_pending: Option<PreparedTextured>,
+    /// The world's textured meshes on the GPU.
+    textured: Option<TexturedGpu>,
     /// Created on the first frame that carries a sky.
     photo: Option<Photo>,
     photo_failed: bool,
@@ -613,6 +619,7 @@ impl Renderer {
         if lit_bytes(&world.lit).is_none_or(|n| n > LIMIT) || !lit_finite(&world.lit) {
             return Err("Zone geometry exceeds its GPU bounds".into());
         }
+        let textured = prepare_textured(world)?;
         let upload = |vertices: &[Vertex], label| {
             let bytes = bytemuck::cast_slice(vertices);
             let buffer = self
@@ -633,6 +640,8 @@ impl Renderer {
         self.scene.world_faces = faces;
         self.scene.world_lines = lines;
         self.scene.world_lit = upload_lit(&self.device, &world.lit);
+        self.scene.textured_pending = textured;
+        self.scene.textured = None;
         // Animated models can be much larger than plaza avatars. A return
         // releases their buffer capacity instead of retaining the largest zone.
         self.scene.dynamic_faces = dynamic_batch(&self.device, "verse dynamic faces");
@@ -925,6 +934,22 @@ fn lit_finite(vertices: &[LitVertex]) -> bool {
     })
 }
 
+/// A world's textured scene with its merged cells.
+type PreparedTextured = (std::sync::Arc<TexturedScene>, Merged);
+
+/// Merges the world's textured meshes into cells for upload.
+///
+/// # Errors
+///
+/// Returns a message when the textured scene is out of bounds.
+fn prepare_textured(world: &Mesh) -> Result<Option<PreparedTextured>, String> {
+    world
+        .textured
+        .as_ref()
+        .map(|scene| scene.merge().map(|merged| (scene.clone(), merged)))
+        .transpose()
+}
+
 fn upload_lit(device: &wgpu::Device, vertices: &[LitVertex]) -> (wgpu::Buffer, u32) {
     let bytes: &[u8] = if vertices.is_empty() {
         &[0; std::mem::size_of::<LitVertex>()]
@@ -1052,6 +1077,9 @@ fn offscreen(
     let atmosphere = atmosphere.validate()?;
     validate_extent(width, height, RenderOptions::default().max_extent)?;
     validate_frame(view, dynamic, ui)?;
+    if let Some(scene) = &world.textured {
+        scene.validate()?;
+    }
     let instance = instance();
     let (adapter, device, queue) = open(&instance, None)?;
     validate_extent(width, height, device.limits().max_texture_dimension_2d)?;
@@ -1421,6 +1449,11 @@ impl Scene {
             format,
             capability,
             world_lit: upload_lit(device, &world.lit),
+            textured_pending: prepare_textured(world).unwrap_or_else(|error| {
+                eprintln!("verse: textured meshes unavailable: {error}");
+                None
+            }),
+            textured: None,
             photo: None,
             photo_failed: false,
             headroom: 1.0,
@@ -1579,6 +1612,9 @@ impl Scene {
         let Some(photo) = &mut self.photo else {
             return false;
         };
+        if let Some((scene, merged)) = self.textured_pending.take() {
+            self.textured = Some(photo.upload_textured(device, queue, &scene, &merged));
+        }
         if matches!(stage, Stage::Space(_))
             && let Err(error) = photo.prepare_space(device, queue)
         {
@@ -1617,6 +1653,7 @@ impl Scene {
                 (&self.world_lines.buffer, self.world_lines.count),
                 (&self.dynamic_lines.buffer, self.dynamic_lines.count),
             ],
+            textured: self.textured.as_ref(),
         };
         photo.headroom = self.headroom;
         photo.encode(
@@ -2001,5 +2038,196 @@ mod tests {
             },
         );
         assert!(validate_frame(view, &mesh, &ui).is_err());
+    }
+
+    /// Textured meshes rendered through the physical path on this machine's
+    /// GPU. Each test skips when no adapter can run the scene.
+    #[cfg(feature = "capture")]
+    mod textured_frames {
+        use super::*;
+        use crate::pbr::textured::{
+            AlphaMode, BaseColorImage, Primitive, TexturedMaterial, TexturedMesh, TexturedScene,
+            TexturedVertex,
+        };
+
+        const SIZE: u32 = 64;
+        /// Half the visible height at the quads, 5 m from the eye.
+        const HALF_VIEW: f32 = 2.418;
+
+        /// A quad of half side `half` in the XY plane, facing the camera or,
+        /// with `away`, wound and lit to face away from it. Image coordinates
+        /// run left to right across the quad.
+        fn quad(material: usize, half: f32, away: bool) -> TexturedMesh {
+            let normal = if away { Vec3::NEG_Z } else { Vec3::Z };
+            let v = |x: f32, y: f32| {
+                TexturedVertex::new(
+                    Vec3::new(x * half, y * half, 0.0),
+                    normal,
+                    [(x + 1.0) * 0.5, (1.0 - y) * 0.5],
+                )
+            };
+            TexturedMesh {
+                primitives: vec![Primitive {
+                    vertices: vec![v(-1.0, -1.0), v(1.0, -1.0), v(1.0, 1.0), v(-1.0, 1.0)],
+                    indices: if away {
+                        vec![0, 2, 1, 0, 3, 2]
+                    } else {
+                        vec![0, 1, 2, 0, 2, 3]
+                    },
+                    material,
+                }],
+            }
+        }
+
+        /// Renders `scene` from 5 m in front of the origin on a neutral neon
+        /// stage under a studio key, or `None` without a usable GPU.
+        fn render(scene: TexturedScene) -> Option<Vec<u8>> {
+            let world = Mesh {
+                textured: Some(std::sync::Arc::new(scene)),
+                ..Mesh::default()
+            };
+            let eye = Vec3::new(0.0, 0.0, 5.0);
+            let view = View {
+                view_proj: Mat4::perspective_rh(0.9, 1.0, 0.1, 100.0)
+                    * Mat4::look_at_rh(eye, Vec3::ZERO, Vec3::Y),
+                eye,
+            };
+            let mut neon = crate::pbr::Neon::neutral(0.0);
+            neon.key = Some(crate::pbr::Key {
+                dir: Vec3::new(0.2, 0.4, 1.0).normalize(),
+                illuminance: 4_000.0,
+                angular_radius: 0.03,
+                rim_dir: Vec3::new(-0.3, 0.3, 1.0).normalize(),
+                rim_illuminance: 1_000.0,
+                rim_angular_radius: 0.1,
+                sky: 800.0,
+                ground: 400.0,
+                ev100: 10.0,
+                shadow_center: Vec3::ZERO,
+                shadow_half: 10.0,
+            });
+            let dynamic = Mesh {
+                neon: Some(neon),
+                ..Mesh::default()
+            };
+            match offscreen(
+                SIZE,
+                SIZE,
+                &world,
+                view,
+                &dynamic,
+                &UiBatch::default(),
+                &Atlas::new(16.0),
+                crate::zones::atmosphere(crate::zones::ZoneId::Plaza),
+                CAPTURE_FORMAT,
+                1.0,
+                None,
+            ) {
+                Ok(pixels) => Some(pixels),
+                Err(error) if error.contains("graphics") => {
+                    eprintln!("skipped without a GPU: {error}");
+                    None
+                }
+                Err(error) => panic!("{error}"),
+            }
+        }
+
+        /// The RGB at world point (`x`, `y`) on the plane through the origin.
+        fn at(pixels: &[u8], x: f32, y: f32) -> [u8; 3] {
+            let column = ((x / HALF_VIEW + 1.0) * 0.5 * SIZE as f32) as usize;
+            let row = ((1.0 - y / HALF_VIEW) * 0.5 * SIZE as f32) as usize;
+            let i = (row * SIZE as usize + column) * 4;
+            [pixels[i], pixels[i + 1], pixels[i + 2]]
+        }
+
+        fn brightness(rgb: [u8; 3]) -> u8 {
+            rgb.into_iter().max().unwrap_or(0)
+        }
+
+        /// White on the left half at alpha 0.2 and the right half at 0.9.
+        fn split_alpha() -> BaseColorImage {
+            BaseColorImage {
+                name: "split".into(),
+                width: 8,
+                height: 1,
+                rgba: (0..8)
+                    .flat_map(|x| [255, 255, 255, if x < 4 { 51 } else { 230 }])
+                    .collect(),
+            }
+        }
+
+        fn one_quad(alpha: AlphaMode) -> TexturedScene {
+            let mut scene = TexturedScene::default();
+            let image = scene.add_image(split_alpha());
+            let material = scene.add_material(TexturedMaterial {
+                image: Some(image),
+                alpha,
+                ..TexturedMaterial::default()
+            });
+            let mesh = scene.add_mesh(quad(material, 1.0, false));
+            scene.place(mesh, Mat4::IDENTITY);
+            scene
+        }
+
+        #[test]
+        fn masked_texels_below_the_cutoff_are_not_drawn() {
+            let Some(masked) = render(one_quad(AlphaMode::Mask { cutoff: 0.5 })) else {
+                return;
+            };
+            let Some(opaque) = render(one_quad(AlphaMode::Opaque)) else {
+                return;
+            };
+            let background = brightness(at(&masked, -2.0, 0.0));
+            // Alpha 0.2 is under the cutoff: the stage shows through.
+            assert!(
+                brightness(at(&masked, -0.5, 0.0)) <= background + 8,
+                "{:?} over {background}",
+                at(&masked, -0.5, 0.0)
+            );
+            // Alpha 0.9 passes, and an opaque material ignores alpha.
+            assert!(brightness(at(&masked, 0.5, 0.0)) > background + 60);
+            assert!(brightness(at(&opaque, -0.5, 0.0)) > background + 60);
+        }
+
+        #[test]
+        fn only_double_sided_materials_show_their_back_faces() {
+            let mut scene = TexturedScene::default();
+            for (x, double_sided) in [(-1.2, true), (1.2, false)] {
+                let material = scene.add_material(TexturedMaterial {
+                    double_sided,
+                    ..TexturedMaterial::default()
+                });
+                let mesh = scene.add_mesh(quad(material, 0.8, true));
+                scene.place(mesh, Mat4::from_translation(Vec3::new(x, 0.0, 0.0)));
+            }
+            let Some(pixels) = render(scene) else {
+                return;
+            };
+            let background = brightness(at(&pixels, 0.0, 2.0));
+            assert!(brightness(at(&pixels, -1.2, 0.0)) > background + 60);
+            assert!(brightness(at(&pixels, 1.2, 0.0)) <= background + 8);
+        }
+
+        #[test]
+        fn nearer_glass_composites_over_farther_glass() {
+            let mut scene = TexturedScene::default();
+            // Green glass is first in merge order but nearer the eye, so
+            // only distance sorting draws it last.
+            for (color, z) in [([0.0, 1.0, 0.0, 0.5], 0.5), ([1.0, 0.0, 0.0, 0.5], -0.5)] {
+                let material = scene.add_material(TexturedMaterial {
+                    base_color: color,
+                    alpha: AlphaMode::Blend,
+                    ..TexturedMaterial::default()
+                });
+                let mesh = scene.add_mesh(quad(material, 1.0, false));
+                scene.place(mesh, Mat4::from_translation(Vec3::new(0.0, 0.0, z)));
+            }
+            let Some(pixels) = render(scene) else {
+                return;
+            };
+            let [red, green, _] = at(&pixels, 0.0, 0.0);
+            assert!(green > red.saturating_add(20), "red {red}, green {green}");
+            assert!(red > 0, "the far glass shows through the near glass");
+        }
     }
 }

@@ -333,6 +333,31 @@ mod tests {
         }
     }
 
+    /// The textured mesh entries translate to GLSL ES, and only the masked
+    /// ones discard, so opaque and blended draws keep early depth rejection.
+    #[test]
+    fn textured_entries_translate_and_only_masked_entries_discard() {
+        let source = wgsl(include_str!("pbr/photo.wgsl"), true);
+        let (module, info) = parse("photo", &source);
+        let set = naga::back::PipelineConstants::default();
+        for (stage, entry) in [
+            (naga::ShaderStage::Vertex, "vs_textured"),
+            (naga::ShaderStage::Fragment, "fs_textured"),
+            (naga::ShaderStage::Fragment, "fs_textured_masked"),
+            (naga::ShaderStage::Fragment, "fs_textured_blend"),
+            (naga::ShaderStage::Vertex, "vs_shadow_textured"),
+            (naga::ShaderStage::Fragment, "fs_shadow_masked"),
+        ] {
+            let (glsl, _) = write_gles(&module, &info, stage, entry, &set)
+                .unwrap_or_else(|e| panic!("{entry}: {e}"));
+            assert_eq!(
+                glsl.contains("discard"),
+                entry.ends_with("masked"),
+                "{entry}"
+            );
+        }
+    }
+
     #[test]
     #[should_panic(expected = "unterminated")]
     fn an_unterminated_block_is_refused() {

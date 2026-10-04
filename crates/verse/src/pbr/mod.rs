@@ -17,10 +17,14 @@
 //! Kulla and Conty (2017) for multiple scattering; Fernando (2005) for
 //! percentage-closer soft shadows; Jimenez (2014) for bloom; and the Khronos
 //! PBR Neutral tone mapper. See `docs/research/unreal/2026-09-27-lagrange-realism-audit.md`.
+//!
+//! Authored props with base-color images, alpha-masked foliage, and glass
+//! draw through [`textured`] in the same frames.
 
 pub mod bake;
 pub(crate) mod gpu;
 pub mod sky;
+pub mod textured;
 
 use std::sync::Arc;
 

@@ -38,6 +38,10 @@ pub struct Mesh {
     pub sky: Option<crate::pbr::Sky>,
     /// Present when this frame renders the amber world as a neon stage.
     pub neon: Option<crate::pbr::Neon>,
+    /// Textured static meshes, read from a zone's world mesh only: the
+    /// renderer merges and uploads them once when the world is set, and
+    /// draws them in physical frames (see [`crate::pbr::textured`]).
+    pub textured: Option<std::sync::Arc<crate::pbr::textured::TexturedScene>>,
 }
 
 impl Mesh {
@@ -143,6 +147,9 @@ impl Mesh {
         }
         if other.neon.is_some() {
             self.neon = other.neon;
+        }
+        if other.textured.is_some() {
+            self.textured.clone_from(&other.textured);
         }
     }
 }

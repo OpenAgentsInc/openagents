@@ -431,8 +431,25 @@ struct Lobe {
     specular: vec3<f32>,
 };
 
+// One fragment of a lit surface: the lit vertex's channels and the pixel it
+// covers. Lit triangles and textured meshes shade through the same function.
+struct Shading {
+    world: vec3<f32>,
+    normal: vec3<f32>,
+    tangent: vec3<f32>,
+    local: vec3<f32>,
+    color: vec3<f32>,
+    params: vec4<f32>,
+    pixel: vec2<f32>,
+};
+
 @fragment
 fn fs_lit(i: LitOut) -> @location(0) vec4<f32> {
+    return vec4<f32>(shade(Shading(i.world, i.normal, i.tangent, i.local, i.color, i.params, i.clip.xy)), 1.0);
+}
+
+// The exposed, fogged color of one lit fragment.
+fn shade(i: Shading) -> vec3<f32> {
     // Surfaces are two-sided: thin panels show whichever face the eye sees.
     let facing = select(-1.0, 1.0, dot(i.normal, f.eye.xyz - i.world) >= 0.0);
     let geometric = normalize(i.normal) * facing;
@@ -496,7 +513,7 @@ fn fs_lit(i: LitOut) -> @location(0) vec4<f32> {
     var radiance = vec3<f32>(0.0);
     var direct_part = vec3<f32>(0.0);
     var shadow_seen = 1.0;
-    let pixel = i.clip.xy;
+    let pixel = i.pixel;
 
     // Direct light from the Sun and the Earth, each a small disc.
     for (var k = 0; k < 2; k++) {
@@ -580,12 +597,12 @@ fn fs_lit(i: LitOut) -> @location(0) vec4<f32> {
     } else if DEBUG == 3u {
         radiance = lr * e_spec * so;
     } else if DEBUG == 4u {
-        return vec4<f32>(vec3<f32>(ao), 1.0);
+        return vec3<f32>(ao);
     } else if DEBUG == 5u {
-        return vec4<f32>(vec3<f32>(shadow_seen), 1.0);
+        return vec3<f32>(shadow_seen);
     } else if DEBUG == 6u {
         let hs = normalize(f.sun.xyz + v);
-        return vec4<f32>(nov, max(dot(n, f.sun.xyz), 0.0), max(dot(n, hs), 0.0), 1.0);
+        return vec3<f32>(nov, max(dot(n, f.sun.xyz), 0.0), max(dot(n, hs), 0.0));
     }
     var shaded = expose(radiance);
     // A stage floor fades by its occlusion channel into the field behind it.
@@ -593,7 +610,116 @@ fn fs_lit(i: LitOut) -> @location(0) vec4<f32> {
         shaded = mix(f.field.rgb, shaded, ao);
     }
     // On a neon stage, lit geometry fades into the field like the lines.
-    return vec4<f32>(neon_fog(shaded, i.world, 1.0), 1.0);
+    return neon_fog(shaded, i.world, 1.0);
+}
+
+// ---------------------------------------------------------------------------
+// Textured static meshes: the base color is an image times the material's
+// factor, and shading is the lit surfaces' own. Opaque, alpha-masked, and
+// blended materials each have a fragment entry, so only masked draws discard
+// and opaque draws keep early depth rejection on tiled phone GPUs.
+
+struct TexturedMaterial {
+    // Linear base color factor; alpha multiplies the image's alpha.
+    base: vec4<f32>,
+    // x metallic; y perceptual roughness; z alpha cutoff; w unused.
+    params: vec4<f32>,
+};
+
+// Group 1 stays the guides' adapted luminance, so textured draws share the
+// pass's bindings with the legacy faces.
+@group(2) @binding(0) var base_color: texture_2d<f32>;
+@group(2) @binding(1) var base_sampler: sampler;
+@group(2) @binding(2) var<uniform> material: TexturedMaterial;
+
+struct TexturedIn {
+    @location(0) pos: vec3<f32>,
+    @location(1) normal: vec3<f32>,
+    @location(2) uv: vec2<f32>,
+    // Linear vertex color, glTF's COLOR_0.
+    @location(3) color: vec4<f32>,
+};
+
+struct TexturedOut {
+    @builtin(position) clip: vec4<f32>,
+    @location(0) world: vec3<f32>,
+    @location(1) normal: vec3<f32>,
+    @location(2) uv: vec2<f32>,
+    @location(3) color: vec4<f32>,
+};
+
+@vertex
+fn vs_textured(v: TexturedIn) -> TexturedOut {
+    var o: TexturedOut;
+    o.clip = f.view_proj * vec4<f32>(v.pos, 1.0);
+    o.world = v.pos;
+    o.normal = v.normal;
+    o.uv = v.uv;
+    o.color = v.color;
+    return o;
+}
+
+fn textured_base(uv: vec2<f32>, color: vec4<f32>) -> vec4<f32> {
+    return textureSample(base_color, base_sampler, uv) * material.base * color;
+}
+
+// Shades a textured fragment as a generic metallic-roughness surface
+// (material code 0) without baked occlusion.
+fn textured_shade(world: vec3<f32>, normal: vec3<f32>, pixel: vec2<f32>, base: vec3<f32>) -> vec3<f32> {
+    let n = normalize(normal);
+    // Code 0 has no anisotropy; any tangent across the normal will do.
+    let across = select(vec3<f32>(1.0, 0.0, 0.0), vec3<f32>(0.0, 0.0, 1.0), abs(n.x) > 0.9);
+    let params = vec4<f32>(material.params.x, material.params.y, 0.0, 1.0);
+    return shade(Shading(world, n, cross(n, across), world, base, params, pixel));
+}
+
+@fragment
+fn fs_textured(i: TexturedOut) -> @location(0) vec4<f32> {
+    let base = textured_base(i.uv, i.color);
+    return vec4<f32>(textured_shade(i.world, i.normal, i.clip.xy, base.rgb), 1.0);
+}
+
+// glTF's MASK mode: a fragment is fully opaque when its alpha reaches the
+// cutoff and absent otherwise.
+@fragment
+fn fs_textured_masked(i: TexturedOut) -> @location(0) vec4<f32> {
+    let base = textured_base(i.uv, i.color);
+    if base.a < material.params.z {
+        discard;
+    }
+    return vec4<f32>(textured_shade(i.world, i.normal, i.clip.xy, base.rgb), 1.0);
+}
+
+// glTF's BLEND mode, premultiplied, for glass and other thin transparency.
+@fragment
+fn fs_textured_blend(i: TexturedOut) -> @location(0) vec4<f32> {
+    let base = textured_base(i.uv, i.color);
+    let alpha = clamp(base.a, 0.0, 1.0);
+    return vec4<f32>(textured_shade(i.world, i.normal, i.clip.xy, base.rgb) * alpha, alpha);
+}
+
+struct TexturedShadowOut {
+    @builtin(position) clip: vec4<f32>,
+    @location(0) uv: vec2<f32>,
+    @location(1) alpha: f32,
+};
+
+@vertex
+fn vs_shadow_textured(v: TexturedIn) -> TexturedShadowOut {
+    var o: TexturedShadowOut;
+    o.clip = f.light * vec4<f32>(v.pos, 1.0);
+    o.uv = v.uv;
+    o.alpha = v.color.a;
+    return o;
+}
+
+// Masked surfaces cast the shadow of their visible texels only.
+@fragment
+fn fs_shadow_masked(i: TexturedShadowOut) {
+    let alpha = textureSample(base_color, base_sampler, i.uv).a * material.base.a * i.alpha;
+    if alpha < material.params.z {
+        discard;
+    }
 }
 
 // ---------------------------------------------------------------------------
