@@ -1,0 +1,20 @@
+{
+  "schema": "openagents.verse.animation-marker-proof.v1",
+  "events": 385,
+  "duplicate_events": 0,
+  "stale_generations_after_new_life": 0,
+  "per_frame_counts_match": true,
+  "by_generation": {
+    "0": 348,
+    "1": 37
+  },
+  "by_model": {
+    "adventurer": 215,
+    "cultist-female": 41,
+    "cultist": 53,
+    "cultist-peasant-female": 39,
+    "cultist-peasant": 37
+  },
+  "world_checkpoint_unchanged": true,
+  "replacement_catalog_presented": true
+}

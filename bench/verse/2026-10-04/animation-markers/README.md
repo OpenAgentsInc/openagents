@@ -1,0 +1,7 @@
+# Animation marker native acceptance
+
+Built from `7019a678ee`. The 100-second native sequence at 3456 × 2104 with 4× anti-aliasing completed 23 fireballs, cultist respawn, and live reload on Apple M5 Max. The frame-budget checker passes: work p95 16.345 ms, delivered p95 16.665 ms, zero dropped simulation time. The reload receipt confirms unchanged world state and replacement catalog presentation.
+
+The full profile contains 385 delivered presentation markers: 348 from generation zero and 37 from respawned generation-one NPCs. The event audit checks unique model/life/selection/marker/time identities, finite positions, matching per-frame counts, and absence of older generations after a newer life emits. These checks found no duplicates or generation regressions. `markers.json` retains the summary; individual events remain in the compressed profile. Headless tests separately cover seeks, held clips, selection interruptions, loop crossings, invalid tracks, and atomic event-budget refusals.
+
+The after-reload image was visually inspected and retains the scene, lighting, actors/corpses, and HUD. The markers are authored quarter/three-quarter cycle foot cues, not calibrated contact detection or audible playback. Audio mixing and device output remain separate roadmap work. No marker event grants movement, damage, or spell authority. The performance result covers this adapter/workload, not every future scene.
