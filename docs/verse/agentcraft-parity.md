@@ -47,11 +47,11 @@ limit; **Missing** does not exist.
 
 | AgentCraft | Studio today | Gap issue |
 | --- | --- | --- |
-| Distinct characters per agent that sit at desks, with postures and head look | Missing: tinted boxy figures | Characters and life |
-| Pathfinding around the studio | Partial: straight walks with skip-ahead | Characters and life |
-| Speech bubbles for messages; a "!" over the agent that owns a decision | Missing | Characters and life |
-| State particles (thinking, working, error, done) | Missing: one attention lamp | Characters and life |
-| Waiting agent walks to the podium or to you | Partial: walks to the podium | Characters and life |
+| Distinct characters per agent that sit at desks, with postures and head look | Done: the Ranger in each seat's outfit color, with postures authored on its skeleton at load | |
+| Pathfinding around the studio | Done: routes around the zone's blockers, run when long, with skip-ahead | |
+| Speech bubbles for messages; a "!" over the agent that owns a decision | Partial: bubbles for questions to you and the lead's task hand-outs; seats send each other no other messages | Characters and life |
+| State particles (thinking, working, error, done) | Done | |
+| Waiting agent walks to the podium or to you | Done | |
 | Goal atrium with a progress ring; HUD goal bar; "n waiting" badge | Done on desktop; the phone has no panels for the badge to open | Signals |
 | Bell for a new decision, chimes for task and goal done, toasts, desktop notifications | Partial: bell, chimes, mute (`V`), and notices on macOS and Linux; no in-world toasts, and Windows stays silent | Signals |
 | Live monitors and Task Wall | Done | |

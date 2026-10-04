@@ -111,6 +111,13 @@ The zone renderer gains textured static meshes:
   state picks the clip, and the character is skinned on the CPU into a
   textured figure each frame, so GLES and WebGL2 draw it too. Its triangles
   have their own budget (40,000) and are not counted as placed.
+- The studio's seats are the same character, its outfit in each seat's
+  color, drawn in the player's figure. Their postures (typing on a stool at
+  the desk, reading, leaning at the ring, waiting, thinking, working, and
+  gesturing while they speak) are clips authored from the idle clip on the
+  skeleton when the zone loads (`zones/everglade/pose.rs`), so the pack
+  carries no new clips. Heads turn toward the monitor, the seat being
+  spoken to, or the player.
 
 ## The zone
 

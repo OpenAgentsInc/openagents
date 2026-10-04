@@ -516,6 +516,15 @@ fn stations(out: &mut Vec<Placement>) {
             PI,
             Collision::Bounds,
         ));
+        // The stool the desk's seat sits on to type. Walking passes it, so
+        // the seat reaches its place at the bench.
+        let [x, z] = super::studio::at_desk(&desk);
+        out.push(Placement::new(
+            "props/Stool",
+            [x, z + super::pose::SEAT_FORWARD],
+            0.0,
+            Collision::None,
+        ));
     }
     // Library: the gallery's bookcases behind a timber arch, and a reading
     // table with books and a scroll.

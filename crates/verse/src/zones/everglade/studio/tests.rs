@@ -413,6 +413,314 @@ fn a_click_on_a_seat_selects_it() {
     assert_eq!(runtime.studio_pick(aspect, 0.02, 0.02), None);
 }
 
+#[test]
+fn each_activity_has_its_posture() {
+    use Activity as A;
+    // At its own desk a seat sits, typing while it works.
+    for activity in [A::Editing, A::Thinking, A::Reading, A::Judging] {
+        assert_eq!(Posture::of(activity, At::Desk, true, false), Posture::Type);
+    }
+    for activity in [A::Idle, A::Paused, A::Done] {
+        assert_eq!(Posture::of(activity, At::Desk, true, false), Posture::Sit);
+    }
+    // A seat with no desk of its own stands at the desks station.
+    assert_eq!(
+        Posture::of(A::Editing, At::Desk, false, false),
+        Posture::Stand
+    );
+    // Every other activity takes its station's posture.
+    for (activity, posture) in [
+        (A::Reading, Posture::Read),
+        (A::Running, Posture::Work),
+        (A::Testing, Posture::Lean),
+        (A::Judging, Posture::Think),
+        (A::Waiting, Posture::Wait),
+        (A::Blocked, Posture::Stand),
+        (A::Paused, Posture::Stand),
+        (A::Done, Posture::Stand),
+        (A::Failed, Posture::Stand),
+    ] {
+        assert_eq!(
+            Posture::of(activity, activity.station(), false, false),
+            posture,
+            "{activity:?}"
+        );
+    }
+    // A standing seat gestures while it speaks; a seated or busy one keeps
+    // its posture.
+    assert_eq!(
+        Posture::of(A::Waiting, At::Podium, false, true),
+        Posture::Talk
+    );
+    assert_eq!(
+        Posture::of(A::Done, At::TaskWall, false, true),
+        Posture::Talk
+    );
+    assert_eq!(Posture::of(A::Editing, At::Desk, true, true), Posture::Type);
+    assert_eq!(
+        Posture::of(A::Reading, At::Library, false, true),
+        Posture::Read
+    );
+    // Each state has its particles; a seat that only waits has none.
+    assert_eq!(Particles::of(A::Thinking), Some(Particles::Thinking));
+    assert_eq!(Particles::of(A::Editing), Some(Particles::Working));
+    assert_eq!(Particles::of(A::Failed), Some(Particles::Error));
+    assert_eq!(Particles::of(A::Done), Some(Particles::Done));
+    assert_eq!(Particles::of(A::Waiting), None);
+}
+
+#[test]
+fn seats_hold_their_posture_where_they_stand_and_walk_between() {
+    let mut studio = Studio::default();
+    studio.active = true;
+    let team = |ada: Activity| vec![seat("ada", 1, ada), seat("lead", 0, Activity::Testing)];
+    studio.apply(snapshot(1, team(Activity::Editing)), &[]);
+    let find = |studio: &Studio, name: &str| {
+        studio
+            .figures()
+            .into_iter()
+            .find(|f| f.name == name)
+            .unwrap()
+    };
+    let ada = find(&studio, "ada");
+    assert_eq!(ada.posture, Posture::Type);
+    assert_eq!(ada.speed, 0.0);
+    // At its desk it looks at its monitor.
+    assert_eq!(ada.look, Some(DESKS[1].monitor.center));
+    let lead = find(&studio, "lead");
+    assert_eq!(lead.posture, Posture::Lean);
+    assert_ne!(ada.tint, lead.tint);
+    // On its way to the library it stands and moves.
+    studio.apply(snapshot(2, team(Activity::Reading)), &[]);
+    studio.tick(0.1);
+    let ada = find(&studio, "ada");
+    assert_eq!(ada.posture, Posture::Stand);
+    assert!((ada.speed - WALK_SPEED).abs() < 1e-3, "{}", ada.speed);
+    walk(&mut studio, MAX_WALK);
+    let ada = find(&studio, "ada");
+    assert_eq!(ada.posture, Posture::Read);
+    assert_eq!(ada.speed, 0.0);
+    // A seat's look names its color.
+    let mut violet = seat("grace", 2, Activity::Idle);
+    violet.look = "violet".into();
+    studio.apply(snapshot(3, vec![violet]), &[]);
+    assert_eq!(find(&studio, "grace").tint, [0.8, 0.6, 1.0]);
+}
+
+#[test]
+fn a_waiting_seat_walks_over_to_a_player_near_the_podium_and_back() {
+    let mut studio = Studio::default();
+    studio.active = true;
+    studio.apply(snapshot(1, vec![seat("ada", 1, Activity::Waiting)]), &[]);
+    let podium = STATIONS.iter().find(|s| s.id == "podium").unwrap();
+    let home = ground(podium.at);
+    assert_eq!(studio.seat_position("ada"), Some(home));
+    // A player far away: the seat stays.
+    let away = Vec3::new(-3.0, 0.0, -20.0);
+    studio.set_player(Some(away));
+    walk(&mut studio, 2.0);
+    assert_eq!(studio.seat_position("ada"), Some(home));
+    // The player comes near: the seat walks over and stands facing them.
+    let player = Vec3::new(1.0, 0.0, -5.0);
+    studio.set_player(Some(player));
+    walk(&mut studio, MAX_WALK);
+    let at = studio.seat_position("ada").unwrap();
+    let gap = (at.x - player.x).hypot(at.z - player.z);
+    assert!((gap - APPROACH_GAP).abs() < 0.1, "{gap}");
+    let figure = &studio.figures()[0];
+    assert_eq!(figure.posture, Posture::Wait);
+    assert_eq!(figure.look, Some(player + Vec3::Y * 1.6));
+    let toward = (player.x - at.x).atan2(player.z - at.z);
+    assert!((figure.yaw - toward).abs() < 1e-3, "{}", figure.yaw);
+    // The player leaves: it goes back to the podium.
+    studio.set_player(Some(away));
+    walk(&mut studio, MAX_WALK);
+    assert_eq!(studio.seat_position("ada"), Some(home));
+    assert_eq!(studio.figures()[0].yaw, podium.facing);
+}
+
+fn goal(id: &str, submitted_at: u64) -> coder_access::studio::Goal {
+    coder_access::studio::Goal {
+        goal: id.into(),
+        text: "Greet the visitor".into(),
+        workspace: "site".into(),
+        lead: "lead".into(),
+        status: coder_access::studio::GoalStatus::Decision,
+        final_tasks: 0,
+        total_tasks: 1,
+        submitted_at,
+    }
+}
+
+fn decision(
+    id: &str,
+    goal: &str,
+    seat: Option<&str>,
+    text: &str,
+) -> coder_access::studio::Decision {
+    coder_access::studio::Decision {
+        decision: id.into(),
+        goal: goal.into(),
+        task: None,
+        seat: seat.map(str::to_owned),
+        kind: if seat.is_some() {
+            coder_access::studio::DecisionKind::Question
+        } else {
+            coder_access::studio::DecisionKind::NoPlan
+        },
+        text: text.into(),
+        based_on: 1,
+    }
+}
+
+#[test]
+fn the_mark_stands_over_the_seat_that_owns_the_oldest_decision() {
+    let mut view = View {
+        goals: vec![goal("g1", 10), goal("g2", 5)],
+        seats: vec![
+            seat("ada", 1, Activity::Waiting),
+            seat("grace", 2, Activity::Waiting),
+            seat("lead", 0, Activity::Idle),
+        ],
+        decisions: vec![
+            decision("d1", "g1", Some("ada"), "Which greeting?"),
+            decision("d2", "g2", Some("grace"), "May I run the tests?"),
+        ],
+        ..View::default()
+    };
+    view.canonicalize();
+    // The second goal is older, so its decision is the oldest.
+    assert_eq!(marked(&view), Some("grace"));
+    // A decision about the goal itself belongs to the goal's lead.
+    let mut goal_only = view.clone();
+    goal_only.decisions[1] = decision("d2", "g2", None, "Plan the greeting.");
+    assert_eq!(marked(&goal_only), Some("lead"));
+    // No open decision, no mark.
+    let mut none = view.clone();
+    none.decisions.clear();
+    assert_eq!(marked(&none), None);
+
+    // The studio marks that seat, and each asking seat says its question.
+    let mut studio = Studio::default();
+    studio.active = true;
+    studio.apply(
+        Snapshot {
+            stream: "ab".into(),
+            sequence: 1,
+            view,
+        },
+        &[],
+    );
+    assert_eq!(studio.marked_seat(), Some("grace"));
+    let asks = studio.speech("grace").unwrap();
+    assert_eq!(asks.to, Addressee::Person);
+    assert_eq!(asks.text, "May I run the tests?");
+    // The mark and the bubbles draw over the seats; the bubbles go once
+    // said.
+    let eye = Vec3::new(-3.0, 2.5, -14.0);
+    let speaking = studio.draw(eye, false).faces.len();
+    studio.tick(SPEECH_SECONDS + 0.1);
+    assert_eq!(studio.speech("grace"), None);
+    let said = studio.draw(eye, false).faces.len();
+    assert!(said < speaking, "{said} {speaking}");
+    assert_eq!(studio.marked_seat(), Some("grace"));
+    // Without boxes, no seat is drawn as a boxy figure.
+    assert!(studio.draw(eye, true).faces.len() > said);
+}
+
+#[test]
+fn the_lead_asks_the_person_then_hands_a_worker_its_task() {
+    let task = |id: &str, entry: &str, seat: &str, title: &str| Task {
+        task: id.into(),
+        goal: "g1".into(),
+        entry: entry.into(),
+        position: u32::from(entry != "lead"),
+        title: title.into(),
+        seat: seat.into(),
+        depends_on: Vec::new(),
+        status: TaskStatus::Running,
+    };
+    let mut before = View {
+        goals: vec![goal("g1", 1)],
+        seats: vec![seat("ada", 1, Activity::Editing), {
+            let mut lead = seat("lead", 0, Activity::Waiting);
+            lead.station = At::Podium;
+            lead
+        }],
+        tasks: vec![task("t1", "lead", "lead", "Plan the greeting")],
+        ..View::default()
+    };
+    before.canonicalize();
+    let mut after = before.clone();
+    after
+        .tasks
+        .push(task("t2", "e1", "ada", "Write the greeting"));
+    after
+        .decisions
+        .push(decision("d1", "g1", Some("lead"), "Which greeting?"));
+    after.canonicalize();
+    let said = speeches(Some(&before), &after);
+    assert_eq!(
+        said,
+        vec![
+            Speech {
+                speaker: "lead".into(),
+                to: Addressee::Person,
+                text: "Which greeting?".into(),
+            },
+            Speech {
+                speaker: "lead".into(),
+                to: Addressee::Seat("ada".into()),
+                text: "Write the greeting".into(),
+            },
+        ]
+    );
+    // Said once: the same view again says nothing, and a first view says
+    // only its open decisions.
+    assert!(speeches(Some(&after), &after).is_empty());
+    assert_eq!(speeches(None, &after).len(), 1);
+
+    // The studio says them in turn, the speaker gesturing toward whom it
+    // speaks to, and the addressee looking back.
+    let mut studio = Studio::default();
+    studio.active = true;
+    let mut first = snapshot(1, Vec::new());
+    first.view = before;
+    studio.apply(first, &[]);
+    let mut next = snapshot(2, Vec::new());
+    next.view = after;
+    studio.apply(next, &[]);
+    assert_eq!(studio.speech("lead").unwrap().to, Addressee::Person);
+    let lead = studio
+        .figures()
+        .into_iter()
+        .find(|f| f.name == "lead")
+        .unwrap();
+    assert_eq!(lead.posture, Posture::Talk);
+    studio.tick(SPEECH_SECONDS + 0.01);
+    let hands = studio.speech("lead").unwrap();
+    assert_eq!(hands.to, Addressee::Seat("ada".into()));
+    let figures = studio.figures();
+    let at = |name: &str| studio.seat_position(name).unwrap() + Vec3::Y * 1.6;
+    let lead = figures.iter().find(|f| f.name == "lead").unwrap();
+    assert_eq!(lead.look, Some(at("ada")));
+    let ada = figures.iter().find(|f| f.name == "ada").unwrap();
+    assert_eq!(ada.look, Some(at("lead")));
+    // Ada keeps typing while she listens.
+    assert_eq!(ada.posture, Posture::Type);
+}
+
+#[test]
+fn a_bubble_wraps_its_text_between_words() {
+    assert_eq!(
+        wrap("Which greeting should the page use?", 12, 3),
+        ["WHICH", "GREETING", "SHOULD TH..."]
+    );
+    assert_eq!(wrap("ok", 12, 3), ["OK"]);
+    assert_eq!(wrap("abcdefghijklmnop", 5, 2), ["AB..."]);
+    assert!(wrap("", 12, 3).is_empty());
+}
+
 #[cfg(feature = "model-host")]
 mod simulated {
     use super::*;

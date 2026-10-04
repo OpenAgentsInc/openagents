@@ -10,13 +10,15 @@
 //! The studio's stations have fixed standing points in [`STATIONS`]; the
 //! Agent Studio's seats walk between them and the stations open its panels
 //! ([`studio`]). The player walks the shared plaza controller over the
-//! heightfield as the ritual chamber's outfitted character from the pack
-//! ([`player`]), and no companion follows.
+//! heightfield as the ritual chamber's outfitted character from the pack,
+//! and the seats are the same character in their own colors and postures
+//! ([`player`], [`pose`]); no companion follows.
 
 mod boards;
 mod draw;
 pub mod layout;
 pub mod player;
+pub mod pose;
 mod scene;
 pub mod signals;
 pub mod studio;
@@ -216,11 +218,11 @@ pub fn station_near(x: f32, z: f32) -> Option<&'static Station> {
 }
 
 /// The zone's live state: its clock, the lit stage its frames draw on, and
-/// the player's character.
+/// the characters: the player's and the studio's seats.
 pub(crate) struct Everglade {
     elapsed: f32,
     rendered: Mesh,
-    player: Option<player::Player>,
+    cast: Option<player::Cast>,
 }
 
 impl Everglade {
@@ -234,7 +236,7 @@ impl Everglade {
         Ok(Self {
             elapsed: 0.0,
             rendered: Self::stage(0.0),
-            player: player::Player::new(pack, at)?,
+            cast: player::Cast::new(pack, at)?,
         })
     }
 
@@ -317,25 +319,33 @@ impl Everglade {
         player.set_surface_height(ground);
     }
 
-    /// Advances the clock and poses the player's character for `at`.
-    pub fn tick(&mut self, dt: f32, at: &PlayerController) {
+    /// Advances the clock, poses the player's character for `at`, and
+    /// poses each of the studio's `seats`.
+    pub fn tick(&mut self, dt: f32, at: &PlayerController, seats: &[studio::SeatFigure]) {
         self.elapsed = (self.elapsed + dt) % 1000.0;
         self.rendered = Self::stage(self.elapsed);
-        if let Some(player) = &mut self.player {
-            player.advance(at, dt);
+        if let Some(cast) = &mut self.cast {
+            cast.advance(at, seats, dt);
         }
+    }
+
+    /// Whether the pack's character draws the player and the seats, so the
+    /// studio draws no boxy figures.
+    #[must_use]
+    pub fn has_characters(&self) -> bool {
+        self.cast.is_some()
     }
 
     pub fn dynamic(&self) -> &Mesh {
         &self.rendered
     }
 
-    /// The player as drawn: the posed character, or the plaza's avatar when
-    /// the pack has no character.
+    /// The player and the seats as drawn: the posed characters, or the
+    /// plaza's avatar when the pack has no character.
     pub fn player_mesh(&self, at: &PlayerController, gait: &crate::avatar::Gait) -> Mesh {
-        match &self.player {
-            Some(player) => Mesh {
-                figure: Some(player.figure()),
+        match &self.cast {
+            Some(cast) => Mesh {
+                figure: Some(cast.figure()),
                 ..Mesh::default()
             },
             None => crate::avatar::mesh(at, gait),
@@ -345,7 +355,7 @@ impl Everglade {
     /// What the player's character is doing, when the pack has one.
     #[cfg(test)]
     pub fn player_motion(&self) -> Option<player::Motion> {
-        self.player.as_ref().map(player::Player::motion)
+        self.cast.as_ref().map(player::Cast::motion)
     }
 
     /// The HUD caption for a player standing at `at`: the station in

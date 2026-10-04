@@ -1134,9 +1134,12 @@ impl WorldRuntime {
         if let Some(lab) = &mut self.zone_state.lab {
             lab.tick(dt);
         }
-        if let Some(everglade) = &mut self.zone_state.everglade {
-            everglade.tick(dt, &self.player);
-            self.zone_state.studio.tick(dt);
+        let state = &mut self.zone_state;
+        if let Some(everglade) = &mut state.everglade {
+            // The seats move first, so the characters pose where they stand.
+            state.studio.set_player(Some(self.player.pos));
+            state.studio.tick(dt);
+            everglade.tick(dt, &self.player, &state.studio.figures());
         }
     }
     pub(crate) fn zone_dynamic_mesh(&self) -> crate::mesh::Mesh {
@@ -1160,9 +1163,17 @@ impl WorldRuntime {
         if let Some(everglade) = &self.zone_state.everglade {
             // Carries the lit stage the textured glade draws on.
             mesh.extend(everglade.dynamic());
+            // The player, and the seats when the pack's character draws them.
             mesh.extend(&everglade.player_mesh(&self.player, &self.gait));
-            // The studio's seats, nameplates, lamps, and live boards.
-            mesh.extend(&self.zone_state.studio.mesh(self.view(1.0).eye));
+            // The studio's nameplates, lamps, marks, bubbles, particles, and
+            // live boards, and boxy seats when there is no character.
+            let eye = self.view(1.0).eye;
+            mesh.extend(
+                &self
+                    .zone_state
+                    .studio
+                    .draw(eye, !everglade.has_characters()),
+            );
         }
         mesh
     }
