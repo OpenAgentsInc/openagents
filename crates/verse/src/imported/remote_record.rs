@@ -17,13 +17,31 @@ pub struct Options {
     pub controller: bool,
     #[serde(default)]
     pub respawn: bool,
+    #[serde(default)]
+    pub movement: bool,
 }
 impl Options {
     pub fn validate(&self) -> Result<(), String> {
         if !(1..=120).contains(&self.seconds) || self.output.as_os_str().is_empty() {
             return Err("Invalid remote recording duration or output".into());
         }
+        if self.movement && !self.controller {
+            return Err("Scripted movement requires the recording controller".into());
+        }
         Ok(())
+    }
+}
+/// Uses the recording's monotonic clock, independently of server snapshot arrival.
+pub(crate) fn movement_axes(seconds: f64) -> [f32; 2] {
+    if !seconds.is_finite() || seconds < 0. {
+        return [0., 0.];
+    }
+    match seconds.rem_euclid(8.).floor() as u32 {
+        0 => [0., 1.],
+        1 => [1., 0.],
+        2 => [0., -1.],
+        3 => [-1., 0.],
+        _ => [0., 0.],
     }
 }
 /// Bounded capture telemetry. Render timing measures CPU submission, not GPU completion.
@@ -216,6 +234,17 @@ impl Drop for Recorder {
 mod tests {
     use super::*;
     #[test]
+    fn scripted_movement_turns_and_stops_on_a_local_clock() {
+        assert_eq!(movement_axes(0.), [0., 1.]);
+        assert_eq!(movement_axes(1.5), [1., 0.]);
+        assert_eq!(movement_axes(2.), [0., -1.]);
+        assert_eq!(movement_axes(3.5), [-1., 0.]);
+        assert_eq!(movement_axes(7.9), [0., 0.]);
+        assert_eq!(movement_axes(8.), [0., 1.]);
+        assert_eq!(movement_axes(f64::NAN), [0., 0.]);
+        assert_eq!(movement_axes(-1.), [0., 0.]);
+    }
+    #[test]
     fn profile_samples_are_bounded_and_percentiles_preserve_units() {
         let mut samples = Samples::default();
         assert!(samples.summary()["median"].is_null());
@@ -238,7 +267,13 @@ mod tests {
             seconds: 30,
             controller: true,
             respawn: false,
+            movement: false,
         };
+        options.validate().unwrap();
+        options.movement = true;
+        options.controller = false;
+        assert!(options.validate().is_err());
+        options.controller = true;
         options.validate().unwrap();
         options.seconds = 0;
         assert!(options.validate().is_err());

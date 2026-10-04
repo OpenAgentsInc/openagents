@@ -1,0 +1,97 @@
+#!/usr/bin/env python3
+"""Forward an opaque loopback TLS stream with bounded directional delay."""
+import argparse
+import asyncio
+import json
+import pathlib
+import signal
+import time
+
+
+async def run(args):
+    stats = {"schema": "verse.delayed-route.v1", "delay_ms": args.delay_ms,
+             "jitter_ms": args.jitter_ms, "connections": 0,
+             "upstream_bytes": 0, "downstream_bytes": 0,
+             "forwarded_chunks": 0, "errors": 0, "refused_connections": 0,
+             "limits": ["Delay applies to each TCP read chunk, not decrypted game messages.",
+                        "TCP preserves byte order; this fixture does not simulate packet loss."]}
+    stopped = asyncio.Event()
+    tasks = set()
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, stopped.set)
+
+    async def copy(reader, writer, direction):
+        count = 0
+        while chunk := await reader.read(65536):
+            jitter = (count % 3) * args.jitter_ms / 2
+            await asyncio.sleep((args.delay_ms + jitter) / 1000)
+            writer.write(chunk)
+            await writer.drain()
+            stats[direction + "_bytes"] += len(chunk)
+            stats["forwarded_chunks"] += 1
+            count += 1
+
+    async def connect(reader, writer):
+        if len(tasks) >= 3:
+            stats["refused_connections"] += 1
+            writer.close()
+            return
+        task = asyncio.current_task()
+        tasks.add(task)
+        upstream = None
+        stats["connections"] += 1
+        try:
+            remote, upstream = await asyncio.wait_for(
+                asyncio.open_connection("127.0.0.1", args.destination_port), 5)
+            pipes = [asyncio.create_task(copy(reader, upstream, "upstream")),
+                     asyncio.create_task(copy(remote, writer, "downstream"))]
+            try:
+                done, pending = await asyncio.wait(pipes, return_when=asyncio.FIRST_COMPLETED)
+                for finished in done:
+                    finished.result()
+            finally:
+                for pipe in pipes:
+                    pipe.cancel()
+                await asyncio.gather(*pipes, return_exceptions=True)
+        except (OSError, asyncio.TimeoutError):
+            stats["errors"] += 1
+        finally:
+            writer.close()
+            if upstream:
+                upstream.close()
+            tasks.discard(task)
+
+    started = time.monotonic()
+    server = await asyncio.start_server(connect, "127.0.0.1", args.listen_port, limit=65536)
+    address = server.sockets[0].getsockname()
+    pathlib.Path(args.ready).write_text(json.dumps({"address": f"127.0.0.1:{address[1]}"}))
+    try:
+        await asyncio.wait_for(stopped.wait(), args.seconds)
+    except asyncio.TimeoutError:
+        pass
+    finally:
+        server.close()
+        await server.wait_closed()
+        for task in tuple(tasks):
+            task.cancel()
+        await asyncio.gather(*tuple(tasks), return_exceptions=True)
+        stats["wall_seconds"] = time.monotonic() - started
+        pathlib.Path(args.receipt).write_text(json.dumps(stats, indent=2) + "\n")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--destination-port", type=int, required=True)
+    parser.add_argument("--listen-port", type=int, default=0)
+    parser.add_argument("--delay-ms", type=int, default=40)
+    parser.add_argument("--jitter-ms", type=int, default=20)
+    parser.add_argument("--seconds", type=int, default=180)
+    parser.add_argument("--ready", required=True)
+    parser.add_argument("--receipt", required=True)
+    args = parser.parse_args()
+    if not (1 <= args.destination_port <= 65535 and 0 <= args.listen_port <= 65535
+            and 0 <= args.delay_ms <= 250 and 0 <= args.jitter_ms <= 100
+            and 1 <= args.seconds <= 300):
+        parser.error("Ports, delay, jitter, or duration exceed fixture bounds")
+    asyncio.run(run(args))

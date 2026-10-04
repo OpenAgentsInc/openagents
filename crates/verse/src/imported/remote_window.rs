@@ -479,6 +479,14 @@ impl App {
         let axes = self
             .controls
             .step(held, dt, &mut self.yaw, &mut self.camera);
+        let axes = if self.record.as_ref().is_some_and(|o| o.movement) {
+            super::remote_record::movement_axes(
+                self.record_started
+                    .map_or(0., |s| s.elapsed().as_secs_f64()),
+            )
+        } else {
+            axes
+        };
         if self.controlled()
             && now >= self.next_move
             && self.input.capacity() == worker::INPUT_CAPACITY
@@ -759,7 +767,7 @@ impl App {
             let dropped = recorder.dropped;
             let stats = recorder.finish()?;
             let options = self.record.as_ref().unwrap();
-            let proof = serde_json::json!({"schema":"verse.remote.capture.v1","profile":self.profile.summary(),"frames":stats.frames,"sampled_frames":stats.sampled,"duplicated_frames":stats.duplicated,"dropped_capture_frames":dropped,"encoded_size":[1280,720],"world_start":self.recorded_world_start,"world_end":self.view.replica().latest().map(|s|s.presentation.time),"accepted_cast_commands":self.accepted_casts,"demo_trace":self.demo_trace,"demo_slot":self.demo_slot,"pending_commands":self.pending.len(),"final_status":self.status,"window_failure":self.error,"damage_events":self.damage_events,"dialogue_events":self.dialogue_events,"minimum_owned_hp":(self.min_hp != i32::MAX).then_some(self.min_hp),"programmatic_controller":options.controller,"programmatic_respawn":options.respawn,"respawn_attempts":self.respawn_attempts,"owned_life_changes":self.owned_life_changes,"native_dimensions":self.renderer.as_ref().map(|r|r.dimensions()),"capture_wall_seconds":self.record_started.map(|s|s.elapsed().as_secs_f64()),"wire_version":verse_world::service::wire::VERSION,"final_inventory":self.view.inventory(),"final_state":self.view.replica().latest()});
+            let proof = serde_json::json!({"schema":"verse.remote.capture.v1","profile":self.profile.summary(),"frames":stats.frames,"sampled_frames":stats.sampled,"duplicated_frames":stats.duplicated,"dropped_capture_frames":dropped,"encoded_size":[1280,720],"world_start":self.recorded_world_start,"world_end":self.view.replica().latest().map(|s|s.presentation.time),"accepted_cast_commands":self.accepted_casts,"demo_trace":self.demo_trace,"demo_slot":self.demo_slot,"pending_commands":self.pending.len(),"final_status":self.status,"window_failure":self.error,"damage_events":self.damage_events,"dialogue_events":self.dialogue_events,"minimum_owned_hp":(self.min_hp != i32::MAX).then_some(self.min_hp),"programmatic_controller":options.controller,"programmatic_respawn":options.respawn,"programmatic_movement":options.movement,"respawn_attempts":self.respawn_attempts,"owned_life_changes":self.owned_life_changes,"native_dimensions":self.renderer.as_ref().map(|r|r.dimensions()),"capture_wall_seconds":self.record_started.map(|s|s.elapsed().as_secs_f64()),"wire_version":verse_world::service::wire::VERSION,"final_inventory":self.view.inventory(),"final_state":self.view.replica().latest()});
             std::fs::write(
                 options.output.with_extension("json"),
                 serde_json::to_vec_pretty(&proof)
@@ -1459,6 +1467,7 @@ mod tests {
             seconds: 30,
             controller: true,
             respawn: true,
+            movement: false,
         });
         app.demo();
         assert!(app.respawn_attempts.is_empty());
