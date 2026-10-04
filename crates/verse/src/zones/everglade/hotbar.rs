@@ -6,9 +6,7 @@ use super::super::Intent;
 use crate::ui::{Atlas, UiBatch};
 
 /// One slot: the intent it sends and its icon sprite.
-pub const SLOTS: [(Intent, &str); 5] = [
-    (Intent::Jump, "jump-icon"),
-    (Intent::Sprint, "sprint-icon"),
+pub const SLOTS: [(Intent, &str); 3] = [
     (Intent::Levitate, "levitate-icon"),
     (Intent::Rise, "rise-icon"),
     (Intent::Lower, "descend-icon"),
@@ -21,9 +19,19 @@ pub struct Slot {
     pub active: bool,
 }
 
-const ICON: f32 = 40.0;
-const STEP: f32 = 48.0;
+/// The chamber bar's units (`imported::overlay`): 36-unit icons 42 apart in
+/// a tray 52 tall whose bottom sits 8 above the screen's, all scaled by the
+/// screen's height over 768.
+const ICON: f32 = 36.0;
+const STEP: f32 = 42.0;
 const PAD: f32 = 8.0;
+const MARGIN: f32 = 8.0;
+
+/// Units to logical points: the chamber's height over 768, never smaller
+/// than one point a unit.
+fn unit(size: [f32; 2]) -> f32 {
+    (size[1] / 768.0).max(1.0)
+}
 
 /// Adds every slot's icon to `atlas`.
 pub fn add_sprites(atlas: &mut Atlas) -> Result<(), String> {
@@ -35,22 +43,32 @@ pub fn add_sprites(atlas: &mut Atlas) -> Result<(), String> {
     Ok(())
 }
 
-/// The tray's frame in logical units for a screen of `size`, `bottom` above
-/// the screen's bottom edge.
+/// The tray's frame in logical points for a screen of `size`: centered at
+/// the bottom as the chamber's bar is, raised `bottom` points more (to clear
+/// a phone's sticks).
 #[must_use]
 pub fn frame(size: [f32; 2], bottom: f32) -> [f32; 4] {
-    let width = 2.0 * PAD + STEP * (SLOTS.len() as f32 - 1.0) + ICON;
-    let height = ICON + 2.0 * PAD;
+    let u = unit(size);
+    let width = (2.0 * PAD + STEP * (SLOTS.len() as f32 - 1.0) + ICON) * u;
+    let height = (ICON + 2.0 * PAD) * u;
     [
         (size[0] - width) * 0.5,
-        size[1] - bottom - height,
+        size[1] - bottom - MARGIN * u - height,
         width,
         height,
     ]
 }
 
-fn slot_origin(frame: [f32; 4], index: usize) -> [f32; 2] {
-    [frame[0] + PAD + STEP * index as f32, frame[1] + PAD]
+/// A slot's top-left corner and the icon's edge length.
+fn slot_at(size: [f32; 2], frame: [f32; 4], index: usize) -> ([f32; 2], f32) {
+    let u = unit(size);
+    (
+        [
+            frame[0] + (PAD + STEP * index as f32) * u,
+            frame[1] + PAD * u,
+        ],
+        ICON * u,
+    )
 }
 
 /// The intent under `point`, if any.
@@ -58,16 +76,17 @@ fn slot_origin(frame: [f32; 4], index: usize) -> [f32; 2] {
 pub fn hit(point: [f32; 2], size: [f32; 2], bottom: f32) -> Option<Intent> {
     let frame = frame(size, bottom);
     SLOTS.iter().enumerate().find_map(|(index, (intent, _))| {
-        let [x, y] = slot_origin(frame, index);
-        (point[0] >= x && point[0] <= x + ICON && point[1] >= y && point[1] <= y + ICON)
+        let ([x, y], icon) = slot_at(size, frame, index);
+        (point[0] >= x && point[0] <= x + icon && point[1] >= y && point[1] <= y + icon)
             .then_some(*intent)
     })
 }
 
 /// Draws the tray with `slots` (in [`SLOTS`] order) into `ui`.
-pub fn draw(ui: &mut UiBatch, atlas: &Atlas, size: [f32; 2], bottom: f32, slots: &[Slot; 5]) {
+pub fn draw(ui: &mut UiBatch, atlas: &Atlas, size: [f32; 2], bottom: f32, slots: &[Slot; 3]) {
     let frame = frame(size, bottom);
     let [left, top, width, height] = frame;
+    let u = unit(size);
     for (inset, color) in [
         (0.0, [0.08, 0.07, 0.06, 0.96]),
         (1.0, [0.46, 0.39, 0.24, 1.0]),
@@ -76,31 +95,31 @@ pub fn draw(ui: &mut UiBatch, atlas: &Atlas, size: [f32; 2], bottom: f32, slots:
     ] {
         ui.rect(
             atlas,
-            left + inset,
-            top + inset,
-            width - inset * 2.0,
-            height - inset * 2.0,
+            left + inset * u,
+            top + inset * u,
+            width - inset * u * 2.0,
+            height - inset * u * 2.0,
             color,
         );
     }
     for (index, ((_, key), slot)) in SLOTS.iter().zip(slots).enumerate() {
-        let [x, y] = slot_origin(frame, index);
+        let ([x, y], icon) = slot_at(size, frame, index);
         let tint = if slot.enabled {
             [1.0; 4]
         } else {
             [0.32, 0.32, 0.32, 1.0]
         };
-        ui.image_region(atlas, key, [x, y, ICON, ICON], [0.0, 1.0, 0.0, 1.0], tint);
+        ui.image_region(atlas, key, [x, y, icon, icon], [0.0, 1.0, 0.0, 1.0], tint);
         let (edge, width) = if slot.active {
             ([0.98, 0.82, 0.38, 1.0], 2.0)
         } else {
             ([0.55, 0.45, 0.28, 1.0], 1.0)
         };
-        ui.frame(atlas, x - 1.0, y - 1.0, ICON + 2.0, ICON + 2.0, width, edge);
+        ui.frame(atlas, x - 1.0, y - 1.0, icon + 2.0, icon + 2.0, width, edge);
         let key = (index + 1).to_string();
         ui.text(
             atlas,
-            x + ICON - 3.0 - atlas.advance * key.len() as f32,
+            x + icon - 3.0 - atlas.advance * key.len() as f32,
             y + 1.0,
             &key,
             [0.75, 0.75, 0.75, 1.0],

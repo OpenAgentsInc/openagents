@@ -3,7 +3,7 @@
   "creator": "Quaternius",
   "license": "CC0-1.0",
   "files": {
-    "README.md": "4720d056621c00907e8c2908eb734ef4468a102919f232e7d6b48100a8e73742",
+    "README.md": "fd2d75b1cd2c6be669d01931dd6ed4c8419e0450256af166dd32eef3120b6f49",
     "animations-license.txt": "67e65a88def1ce573211f5cac3f514014abeface8fe48309c010491186b3a89a",
     "animations-readme.txt": "a7da55b934fe96d4e1b9205205289b9fc1dc0497189a9a703610f71ddf400710",
     "animations.glb": "8cee20ab1bc55130092447e810e26df22dd2803eccc54f52137a7d54d7ab88a8",
@@ -13,6 +13,7 @@
     "base/Superhero_Male_FullBody.bin": "459003f9745853ae562a85506a2b94dd56515c1f37728f9fa3d2ce1a3e4cd92f",
     "base/Superhero_Male_FullBody.gltf": "7a381b765b95551424cb5bb2c31e6f02e08b9552f91ec65e573257a199364b66",
     "base-license.txt": "c232257c8a2545520aa120cda96acb23d00a355d2e3339cba20b7ebf56f28a09",
+    "gaits.glb": "69591853d817488edaa8fd9bf8fc1d821eaeaf789f8627b3cd23b41c4ed67997",
     "hair/Eyebrows_Female.bin": "7a450832ca276c3d8299acaf78cd83c53b4290d79375c85266286ef617932e46",
     "hair/Eyebrows_Female.gltf": "dcb943d052146bd17ea786287395f320adb8dc15865d6b77d78905dd3786e7bb",
     "hair/Eyebrows_Regular.bin": "11b8092c27f17b329210d057eb69019d73130154b45a396b32801975099ffdf5",

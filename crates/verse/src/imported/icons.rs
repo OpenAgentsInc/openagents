@@ -119,13 +119,6 @@ pub const ICONS: &[Icon] = &[
     ),
     // Everglade's movement hotbar.
     icon!(
-        "jump-icon",
-        "delapouite/jump-across.svg",
-        "Delapouite",
-        PARCHMENT
-    ),
-    icon!("sprint-icon", "lorc/run.svg", "Lorc", PARCHMENT),
-    icon!(
         "rise-icon",
         "delapouite/plain-arrow.svg",
         "Delapouite",

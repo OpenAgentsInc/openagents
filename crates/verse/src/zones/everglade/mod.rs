@@ -367,6 +367,7 @@ impl Everglade {
     /// feet are not above, standing on the highest surface under them.
     fn move_on_solids(&self, player: &mut PlayerController, input: &InputState, dt: f32) {
         let feet = player.pos.y;
+        let grounded = !player.airborne();
         let floor = self.solids.floor(player.pos.x, player.pos.z, feet);
         let blockers = self.solids.blocking(feet);
         player.pos.y -= floor;
@@ -375,7 +376,12 @@ impl Everglade {
         player.pos.y += floor;
         let landed = self.solids.floor(player.pos.x, player.pos.z, player.pos.y);
         player.pos.y = player.pos.y.max(landed);
-        player.set_surface_height(landed);
+        if grounded && !self.levitating {
+            // A small step down keeps walking instead of falling.
+            player.settle_onto(landed, solids::STEP);
+        } else {
+            player.set_surface_height(landed);
+        }
     }
 
     /// Levitate, or stop: the character then falls under gravity, as from

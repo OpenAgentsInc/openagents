@@ -35,7 +35,9 @@ The chamber, spell effects, UI graphics, bow, and arrows remain original.
 `verse::imported::characters::import` imports another retained modular part or
 hair mesh. `compose` binds its named joints onto an existing rig. `retarget_clip`
 adds any named animation from `animations.glb` under a caller-selected state ID;
-`animations.json` lists all 43 available clips. The default scene uses authored walk, run, backpedal, strafe, guard, and spell
+`animations.json` lists all 43 available clips. `gaits.glb` is the original
+Universal Animation Library (Standard, CC0, without root motion); its
+`Walk_Loop` and `Jog_Fwd_Loop` replace the authored walk and run. The default scene uses authored walk, run, backpedal, strafe, guard, and spell
 poses on the actual rig, with two-bone limb solving, level feet, contact/swing
 phases, relaxed fingers, and local-space transition blending. Gait clocks follow
 collision-admitted travel distance. The Standard library has no dedicated run,

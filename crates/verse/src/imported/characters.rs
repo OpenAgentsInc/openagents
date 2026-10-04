@@ -616,6 +616,10 @@ const MOTIONS: [(u16, f32, f32); 10] = [
     (52, 1., 0.),
     (53, 1.1, 0.),
 ];
+/// Gait clips from the original Universal Animation Library (`gaits.glb`,
+/// no root motion): state ID, clip name, and meters its root-motion twin
+/// travels over one loop.
+const GAITS: [(u16, &str, f32); 2] = [(4, "Walk_Loop", 1.3), (5, "Jog_Fwd_Loop", 5.0)];
 /// The share of a gait cycle a foot spends on the ground.
 fn stance(id: u16) -> f32 {
     if matches!(id, 5 | 14 | 15) {
@@ -630,6 +634,9 @@ fn stance(id: u16) -> f32 {
 /// planted foot sweeps its full stride; zero for a clip without a stride.
 #[must_use]
 pub fn loop_distance(id: u16) -> f32 {
+    if let Some(&(_, _, distance)) = GAITS.iter().find(|g| g.0 == id) {
+        return distance;
+    }
     MOTIONS
         .iter()
         .find(|m| m.0 == id)
@@ -736,6 +743,17 @@ fn humanoid_motion(model: &mut Model) -> Result<(), String> {
                     .unwrap();
                 let shoulder = global[upper].transform_point3(Vec3::ZERO);
                 let sign = shoulder.x.signum();
+                // The arm's length at rest: shoulder to elbow to wrist.
+                let joint = |name: &str| {
+                    skin.names
+                        .iter()
+                        .position(|n| n == &format!("{name}_{side}"))
+                        .map(|i| global[i].transform_point3(Vec3::ZERO))
+                };
+                let reach = match (joint("lowerarm"), joint("hand")) {
+                    (Some(elbow), Some(wrist)) => shoulder.distance(elbow) + elbow.distance(wrist),
+                    _ => 0.55,
+                };
                 let pulse = (phase * std::f32::consts::PI).sin();
                 let target = match id {
                     25 => shoulder + Vec3::new(-sign * 0.1, -0.12, 0.3),
@@ -744,11 +762,31 @@ fn humanoid_motion(model: &mut Model) -> Result<(), String> {
                         shoulder + Vec3::new(sign * 0.10, -0.22 + pulse * 0.30, 0.3 + pulse * 0.12)
                     }
                     53 => shoulder + Vec3::new(sign * 0.07, -0.02, 0.52 - 0.15 * phase),
-                    5 | 14 | 15 => {
-                        shoulder + Vec3::new(sign * 0.07, -0.27, 0.16 - forward * stride * 0.55)
+                    // Gaits: the hand hangs near the arm's full reach
+                    // beside the thigh and swings against the leg on its
+                    // side; a run bends the elbow more and swings further.
+                    0 | 4 | 13 => {
+                        shoulder
+                            + Vec3::new(sign * 0.07, -1.0, 0.04 - forward * stride * 0.85)
+                                .normalize()
+                                * reach
+                                * 0.95
                     }
-                    13 => shoulder + Vec3::new(sign * 0.09, -0.37, 0.12 - forward * stride * 0.6),
+                    5 | 14 | 15 => {
+                        shoulder
+                            + Vec3::new(sign * 0.08, -1.0, 0.30 - forward * stride * 1.1)
+                                .normalize()
+                                * reach
+                                * 0.78
+                    }
                     _ => shoulder + Vec3::new(sign * 0.11, -0.48, 0.06 - forward * stride * 0.65),
+                };
+                // A gait's elbow bends back, behind the arm, never out to
+                // the side.
+                let pole = if matches!(id, 0 | 4 | 5 | 13 | 14 | 15) {
+                    Vec3::new(sign * 0.15, 0.0, -1.0)
+                } else {
+                    Vec3::new(sign, -0.25, -0.1)
                 };
                 let arms = chain(
                     model,
@@ -756,7 +794,7 @@ fn humanoid_motion(model: &mut Model) -> Result<(), String> {
                     ["upperarm", "lowerarm", "hand"],
                     side,
                     target,
-                    Vec3::new(sign, -0.25, -0.1),
+                    pole,
                     false,
                 )?;
                 for (bone, rotation) in legs.into_iter().chain(arms) {
@@ -792,6 +830,28 @@ fn animations(model: &mut Model, path: &Path) -> Result<(), String> {
     }
     retarget_clip(model, path, 250, "Idle_No_Loop")?;
     humanoid_motion(model)?;
+    // The original library's walk and jog replace the authored walk and run
+    // (owner, 2026-10-04): real arm swing on the same rig.
+    let gaits = path.with_file_name("gaits.glb");
+    for (id, name, _) in GAITS {
+        model.clips.retain(|c| c.id != id);
+        retarget_clip(model, &gaits, id, name)?;
+        // Close the loop exactly: the library's last key is a hair off its
+        // first, which shows as a hitch once a cycle.
+        if let Some(clip) = model.clips.iter_mut().find(|c| c.id == id) {
+            for bone in &mut clip.bones {
+                if let Some(first) = bone.translation.first().map(|k| k.1) {
+                    bone.translation.last_mut().unwrap().1 = first;
+                }
+                if let Some(first) = bone.rotation.first().map(|k| k.1) {
+                    bone.rotation.last_mut().unwrap().1 = first;
+                }
+                if let Some(first) = bone.scale.first().map(|k| k.1) {
+                    bone.scale.last_mut().unwrap().1 = first;
+                }
+            }
+        }
+    }
     // The Standard library has no death clip. Author a fall on its actual root rig.
     let skin = model.skin.as_ref().unwrap();
     if let Some(root) = skin.names.iter().position(|n| n == "root") {

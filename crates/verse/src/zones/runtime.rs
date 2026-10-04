@@ -18,6 +18,9 @@ use verse_lagrange::{Input, PartState};
 /// The display name of the OpenAgents app's bare world.
 pub const GRID_LABEL: &str = "The Grid";
 
+/// How fast a held Up or Down changes a levitating player's altitude, m/s.
+const CLIMB_RATE: f32 = 3.0;
+
 impl WorldRuntime {
     pub(crate) fn update_player(&mut self, input: &InputState, dt: f32) {
         if let Some(ruins) = &mut self.zone_state.ruins {
@@ -572,17 +575,29 @@ impl WorldRuntime {
     /// Everglade's movement hotbar, in [`super::everglade::hotbar::SLOTS`]
     /// order, or `None` outside Everglade.
     #[must_use]
-    pub fn everglade_hotbar(&self) -> Option<[super::everglade::hotbar::Slot; 5]> {
+    pub fn everglade_hotbar(&self) -> Option<[super::everglade::hotbar::Slot; 3]> {
         use super::everglade::hotbar::Slot;
         let glade = self.zone_state.everglade.as_ref()?;
         let on = |enabled, active| Slot { enabled, active };
         Some([
-            on(!self.player.airborne() && !glade.levitating, false),
-            on(true, glade.sprinting),
             on(true, glade.levitating),
             on(glade.levitating, false),
             on(glade.levitating, false),
         ])
+    }
+
+    /// While levitating in Everglade, climbs (`direction` 1) or descends
+    /// (-1) for `dt` seconds of a held Up or Down.
+    pub fn everglade_climb(&mut self, direction: f32, dt: f32) {
+        let (x, z) = (self.player.pos.x, self.player.pos.z);
+        if let Some(glade) = self.zone_state.everglade.as_mut()
+            && glade.levitating
+        {
+            let ground = super::everglade::height(x, z);
+            glade.altitude = (glade.altitude + direction.clamp(-1.0, 1.0) * CLIMB_RATE * dt)
+                .clamp(ground, ground + 18.0);
+            self.cancel_navigation();
+        }
     }
 
     /// Whether the player is levitating in Everglade.

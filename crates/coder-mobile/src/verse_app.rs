@@ -790,6 +790,8 @@ pub(crate) struct Scene {
     touches: BTreeMap<u64, Touch>,
     /// Safe-area insets in logical points: top, right, bottom, left.
     insets: [f32; 4],
+    /// The touch holding Everglade's Up (1) or Down (-1), while it is down.
+    climb: Option<(u64, f32)>,
     pointer_clock: Instant,
     last_world_tap: Option<WorldTap>,
     jump: bool,
@@ -988,6 +990,7 @@ impl Scene {
             frame_timestamp: None,
             touches: BTreeMap::new(),
             insets: [0.0; 4],
+            climb: None,
             pointer_clock: Instant::now(),
             last_world_tap: None,
             jump: false,
@@ -1221,6 +1224,15 @@ impl Scene {
             }
             return Ok(());
         }
+        // A held Up or Down climbs until that touch lifts.
+        if let Some((held, _)) = self.climb
+            && held == id
+        {
+            if matches!(phase, PointerPhase::Up | PointerPhase::Cancel) {
+                self.climb = None;
+            }
+            return Ok(());
+        }
         if self.zone_hud.captured(id) {
             match phase {
                 PointerPhase::Move => self.zone_hud.moved(id, point),
@@ -1278,7 +1290,15 @@ impl Scene {
             )
         {
             self.cancel_taps();
-            self.zone_intent(intent)?;
+            match intent {
+                ZoneIntent::Rise if self.world.everglade_levitating() => {
+                    self.climb = Some((id, 1.0))
+                }
+                ZoneIntent::Lower if self.world.everglade_levitating() => {
+                    self.climb = Some((id, -1.0));
+                }
+                intent => self.zone_intent(intent)?,
+            }
             return Ok(());
         }
         if matches!(phase, PointerPhase::Down) && self.bare_zone_panel() {
@@ -1935,6 +1955,13 @@ impl Scene {
         let revision = self.world.zone_revision;
         let loading = self.world.zone_loading();
         self.world.tick(&input, dt);
+        if let Some((_, direction)) = self.climb {
+            if self.everglade_hotbar_shown() && self.world.everglade_levitating() {
+                self.world.everglade_climb(direction, dt);
+            } else {
+                self.climb = None;
+            }
+        }
         if self.world.zone_revision != revision || self.world.zone_loading() != loading {
             // The player walked through a portal, or into one whose zone
             // now loads: drop held input, and pause or resume the world's
@@ -2575,13 +2602,19 @@ impl Scene {
                 if self.everglade_hotbar_shown()
                     && let Some(slots) = self.world.everglade_hotbar()
                 {
+                    // Laid out in logical points; this batch is in pixels.
+                    let mut bar = verse::ui::UiBatch::default();
                     verse::zones::everglade::hotbar::draw(
-                        &mut ui,
+                        &mut bar,
                         &layout,
                         self.lifecycle.viewport().logical_size(),
                         self.hotbar_bottom(),
                         &slots,
                     );
+                    for vertex in &mut bar.vertices {
+                        vertex.pos = vertex.pos.map(|v| v * scale);
+                    }
+                    ui.vertices.extend(bar.vertices);
                 }
             }
             ui.vertices.extend(self.stick_ui().vertices);
@@ -2656,7 +2689,7 @@ impl Scene {
 
     /// The hotbar's distance above the screen's bottom edge: above the sticks.
     fn hotbar_bottom(&self) -> f32 {
-        self.insets[2] + STICK_MARGIN_POINTS + 2.0 * STICK_RADIUS_POINTS + 8.0
+        self.insets[2] + STICK_MARGIN_POINTS + 2.0 * STICK_RADIUS_POINTS
     }
 
     fn plaza_online_allowed(&self) -> bool {

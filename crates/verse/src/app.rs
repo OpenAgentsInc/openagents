@@ -36,9 +36,9 @@ use crate::xp;
 use crate::zones::everglade::studio::PanelKind as StudioPanel;
 use crate::zones::{self, Intent as ZoneIntent};
 
-/// How far Everglade's hotbar sits above the window's bottom edge, logical
-/// units.
-const HOTBAR_BOTTOM: f32 = 14.0;
+/// How much higher than the chamber's bar Everglade's hotbar sits on
+/// desktop, logical points: none.
+const HOTBAR_BOTTOM: f32 = 0.0;
 
 /// How the window joins the shared world.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -556,6 +556,8 @@ struct App {
     /// request survives a load that losing focus cancels, so a window that
     /// starts behind another still enters once it comes to the front.
     everglade_pending: bool,
+    /// A held Up (1) or Down (-1) while levitating in Everglade, or 0.
+    climb: f32,
 }
 
 /// The replay list: the retained `beats-winner` runs and which is chosen.
@@ -802,6 +804,7 @@ impl App {
             studio_badge: None,
             window_focused: true,
             everglade_pending: false,
+            climb: 0.0,
         })
     }
 
@@ -1987,6 +1990,23 @@ impl App {
             }
             return;
         }
+        // While levitating in Everglade, holding 2 or Space climbs and
+        // holding 3 or X descends, until the key is let go.
+        let climb = match code {
+            KeyCode::Digit2 | KeyCode::Space => 1.0,
+            KeyCode::Digit3 | KeyCode::KeyX => -1.0,
+            _ => 0.0,
+        };
+        if climb != 0.0 && self.in_bare_everglade() && !self.chat.open {
+            if pressed && self.runtime.everglade_levitating() {
+                self.climb = climb;
+                return;
+            }
+            if !pressed && self.climb == climb {
+                self.climb = 0.0;
+                return;
+            }
+        }
         if pressed && !self.chat.open && !self.map.expanded {
             let snapshot = self
                 .runtime
@@ -1999,26 +2019,10 @@ impl App {
                 });
                 return;
             }
-            // Everglade's movement: 1 to 5 are the hotbar's slots, L
-            // levitates or lands, and while levitating Space rises and X
-            // descends.
-            if self.in_bare_everglade() {
-                let slot = |index: usize| Some(zones::everglade::hotbar::SLOTS[index].0);
-                let intent = match code {
-                    KeyCode::Digit1 => slot(0),
-                    KeyCode::Digit2 => slot(1),
-                    KeyCode::Digit3 => slot(2),
-                    KeyCode::Digit4 => slot(3),
-                    KeyCode::Digit5 => slot(4),
-                    KeyCode::KeyL => Some(ZoneIntent::Levitate),
-                    KeyCode::Space if self.runtime.everglade_levitating() => Some(ZoneIntent::Rise),
-                    KeyCode::KeyX if self.runtime.everglade_levitating() => Some(ZoneIntent::Lower),
-                    _ => None,
-                };
-                if let Some(intent) = intent {
-                    self.zone_action(intent);
-                    return;
-                }
+            // Everglade's hotbar: 1 or L levitates or lands.
+            if self.in_bare_everglade() && matches!(code, KeyCode::Digit1 | KeyCode::KeyL) {
+                self.zone_action(ZoneIntent::Levitate);
+                return;
             }
             // In Everglade the interact key opens the station in reach.
             if code == KeyCode::KeyF
@@ -2354,8 +2358,16 @@ impl App {
             && self.in_bare_everglade()
             && let Some(intent) = self.hotbar_at(self.cursor.map(|v| v / self.scale))
         {
-            self.zone_action(intent);
+            // Up and Down climb while held; Levitate toggles.
+            match intent {
+                ZoneIntent::Rise if self.runtime.everglade_levitating() => self.climb = 1.0,
+                ZoneIntent::Lower if self.runtime.everglade_levitating() => self.climb = -1.0,
+                intent => self.zone_action(intent),
+            }
             return;
+        }
+        if button == MouseButton::Left && !pressed && self.climb != 0.0 {
+            self.climb = 0.0;
         }
         if button == MouseButton::Left {
             let at = self.cursor.map(|v| v / self.scale);
@@ -2613,6 +2625,13 @@ impl App {
         let dt =
             self.runtime
                 .tick_with_mode(&input, dt, self.keys.left_button, self.replay.is_none());
+        if self.climb != 0.0 {
+            if self.in_bare_everglade() && self.runtime.everglade_levitating() {
+                self.runtime.everglade_climb(self.climb, dt);
+            } else {
+                self.climb = 0.0;
+            }
+        }
         self.update_gym(true);
         self.runtime.update_studio(true, dt);
         self.studio_signals();
@@ -2905,13 +2924,20 @@ impl App {
                     && let (Some(atlas), Some(slots)) =
                         (&self.map_atlas, self.runtime.everglade_hotbar())
                 {
+                    // The bar is laid out in logical points; this batch is
+                    // in pixels.
+                    let mut bar = crate::ui::UiBatch::default();
                     zones::everglade::hotbar::draw(
-                        &mut ui,
+                        &mut bar,
                         atlas,
                         size.map(|v| v / self.scale),
                         HOTBAR_BOTTOM,
                         &slots,
                     );
+                    for vertex in &mut bar.vertices {
+                        vertex.pos = vertex.pos.map(|v| v * self.scale);
+                    }
+                    ui.vertices.extend(bar.vertices);
                 }
                 self.layout = layout;
                 ui

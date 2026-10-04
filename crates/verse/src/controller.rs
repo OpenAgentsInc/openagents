@@ -117,6 +117,16 @@ impl PlayerController {
         self.ground_y = height;
     }
 
+    /// Keeps a walking character on a surface up to `step` below its feet:
+    /// stepping down a curb is not a fall. A rising character is left alone.
+    pub(crate) fn settle_onto(&mut self, floor: f32, step: f32) {
+        if self.vel_y <= 0.0 && self.pos.y > floor && self.pos.y - floor <= step {
+            self.pos.y = floor;
+            self.vel_y = 0.0;
+        }
+        self.ground_y = floor;
+    }
+
     /// Hold an externally controlled altitude without retaining jump velocity.
     pub(crate) fn hold_altitude(&mut self, altitude: f32) {
         self.pos.y = altitude.max(self.ground_y);
