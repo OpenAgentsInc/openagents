@@ -2025,7 +2025,6 @@ dependencies = [
 [[package]]
 name = "boltz-client"
 version = "0.1.0"
-source = "git+https://github.com/breez/boltz-client?rev=aea35af1628d1fb259ebf85266f96215cfdabcb5#aea35af1628d1fb259ebf85266f96215cfdabcb5"
 dependencies = [
  "alloy-primitives",
  "alloy-signer",
@@ -2040,8 +2039,8 @@ dependencies = [
  "hex",
  "k256",
  "lightning-invoice 0.34.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "macros 0.1.0 (git+https://github.com/breez/boltz-client?rev=aea35af1628d1fb259ebf85266f96215cfdabcb5)",
- "platform-utils 0.1.0 (git+https://github.com/breez/boltz-client?rev=aea35af1628d1fb259ebf85266f96215cfdabcb5)",
+ "macros 0.1.0",
+ "platform-utils 0.1.0",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -8086,7 +8085,6 @@ checksum = "fc04a4c58212d57930a24bf47d3fa87485264a3a054e9c10e042eb373573ad3c"
 [[package]]
 name = "macros"
 version = "0.1.0"
-source = "git+https://github.com/breez/spark-sdk?tag=0.26.0#2c140a5d721f04d21c5ac334fecc3efe7c069943"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -8096,7 +8094,7 @@ dependencies = [
 [[package]]
 name = "macros"
 version = "0.1.0"
-source = "git+https://github.com/breez/boltz-client?rev=aea35af1628d1fb259ebf85266f96215cfdabcb5#aea35af1628d1fb259ebf85266f96215cfdabcb5"
+source = "git+https://github.com/breez/spark-sdk?tag=0.26.0#2c140a5d721f04d21c5ac334fecc3efe7c069943"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -10503,6 +10501,26 @@ checksum = "b4596b6d070b27117e987119b4dac604f3c58cfb0b191112e24771b2faeac1a6"
 [[package]]
 name = "platform-utils"
 version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "base64 0.22.1",
+ "encoding_rs",
+ "futures",
+ "macros 0.1.0",
+ "mime",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+ "tokio_with_wasm",
+ "tracing",
+ "web-time",
+]
+
+[[package]]
+name = "platform-utils"
+version = "0.1.0"
 source = "git+https://github.com/breez/spark-sdk?tag=0.26.0#2c140a5d721f04d21c5ac334fecc3efe7c069943"
 dependencies = [
  "async-trait",
@@ -10523,27 +10541,6 @@ dependencies = [
  "tower-service",
  "tracing",
  "url",
- "web-time",
-]
-
-[[package]]
-name = "platform-utils"
-version = "0.1.0"
-source = "git+https://github.com/breez/boltz-client?rev=aea35af1628d1fb259ebf85266f96215cfdabcb5#aea35af1628d1fb259ebf85266f96215cfdabcb5"
-dependencies = [
- "async-trait",
- "base64 0.22.1",
- "encoding_rs",
- "futures",
- "macros 0.1.0 (git+https://github.com/breez/boltz-client?rev=aea35af1628d1fb259ebf85266f96215cfdabcb5)",
- "mime",
- "reqwest 0.12.28",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
- "tokio",
- "tokio_with_wasm",
- "tracing",
  "web-time",
 ]
 

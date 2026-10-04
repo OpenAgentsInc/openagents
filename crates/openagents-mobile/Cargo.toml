@@ -119,3 +119,11 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
 dbg_macro = "deny"
 todo = "deny"
 unimplemented = "deny"
+
+# breez/boltz-client, a git dependency of breez-sdk-spark, is no longer
+# published (404 on 2026-10-04); build its pinned revision from the vendored
+# copy. See vendor/boltz-client/VENDORED.md.
+[patch."https://github.com/breez/boltz-client"]
+boltz-client = { path = "../../vendor/boltz-client/crates/lib" }
+macros = { path = "../../vendor/boltz-client/crates/macros" }
+platform-utils = { path = "../../vendor/boltz-client/crates/platform-utils" }

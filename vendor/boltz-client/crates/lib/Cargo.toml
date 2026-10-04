@@ -1,0 +1,93 @@
+[package]
+name = "boltz-client"
+version.workspace = true
+edition = "2024"
+publish = false
+
+[lints]
+workspace = true
+
+[features]
+default = []
+browser-tests = [] # Enable browser wasm-pack tests
+regtest = []
+
+[dependencies]
+# Workspace
+platform-utils.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+hex.workspace = true
+macros.workspace = true
+
+# EVM ABI encoding (alloy-rs/core — full no_std/WASM support)
+alloy-sol-types = { version = "1.5", default-features = false }
+alloy-primitives = { version = "1.5", default-features = false, features = ["k256"] }
+
+# EVM signing — battle-tested EIP-712, EIP-191, and raw ECDSA signing.
+# Uses k256 RFC 6979 deterministic signing internally (no randomness needed for signing).
+# The `rand` transitive dep (used only for key generation, which we don't use) requires
+# `getrandom` with `js` feature on WASM — see WASM dependencies below.
+alloy-signer = { version = "1.5", default-features = false, features = ["eip712"] }
+alloy-signer-local = { version = "1.5", default-features = false, features = ["eip712"] }
+k256.workspace = true
+
+# Crypto
+sha2 = "0.10"
+tiny-keccak = { version = "2", features = ["keccak"] }
+
+# OS-backed CSPRNG for probe-invoice preimage hashes (`create_probe_invoice`).
+# Already a transitive dep via alloy-signer-local; declared here for direct use.
+# WASM target override below adds the `js` feature for browser entropy.
+getrandom = "0.2"
+
+# Base58 decoding for Solana / Tron destination addresses
+bs58 = { version = "0.5", default-features = false, features = ["alloc"] }
+
+# ed25519 point validation for Solana Program Derived Address derivation
+# (associated token account lookup). Only the curve primitive is used — no signing.
+curve25519-dalek = { version = "4", default-features = false, features = ["alloc"] }
+
+# Key derivation (BIP-32 over secp256k1, matching the `@scure/bip32` JS library)
+bip32 = "0.5"
+
+# Zeroize transient raw-private-key copies (the underlying SigningKey/XPrv
+# already self-zeroize; this covers the standalone byte copies we materialize).
+zeroize = "1"
+
+# BOLT11 invoice decoding (amount validation in swap response)
+lightning-invoice = { version = "0.34", default-features = false }
+
+# WebSocket (native: tokio-tungstenite; WASM: web-sys WebSocket)
+tokio-tungstenite-wasm = { version = "0.8", features = ["rustls-tls-webpki-roots"] }
+# Synchronous ws_url validation at construction (already in the tree via the WS lib).
+url = "2"
+
+# Async
+futures.workspace = true
+async-trait.workspace = true
+
+# Non-Wasm dependencies
+[target.'cfg(not(all(target_family = "wasm", target_os = "unknown")))'.dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "time"] }
+# SOCKS5 for the proxied WebSocket path. `tokio-tungstenite-wasm` owns its
+# socket and takes no proxy, so that path dials tungstenite directly.
+tokio-socks = "0.5.2"
+tokio-tungstenite = { version = "0.28", features = ["rustls-tls-webpki-roots"] }
+
+# WASM dependencies
+[target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dependencies]
+tokio = { workspace = true, features = ["macros", "sync"] }
+# Required by alloy-signer-local's transitive `rand` dep (used only for key generation,
+# which we don't call). On WASM, getrandom needs the `js` feature to use crypto.getRandomValues().
+getrandom = { version = "0.2", features = ["js"] }
+
+[dev-dependencies]
+bip39.workspace = true
+anyhow.workspace = true
+
+# WASM dev dependencies
+[target.'cfg(all(target_family = "wasm", target_os = "unknown"))'.dev-dependencies]
+wasm-bindgen-test.workspace = true

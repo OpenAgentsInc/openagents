@@ -1,0 +1,7 @@
+name: 'Setup build environment'
+description: 'Sets up Rust toolchain and caching'
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup rust cache
+      uses: Swatinem/rust-cache@v2

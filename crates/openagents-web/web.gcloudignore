@@ -8,6 +8,7 @@
 /*
 !/Cargo.toml
 !/Cargo.lock
+!/vendor/
 !/.cargo/
 !/crates/
 !/migrations/

@@ -1,0 +1,8 @@
+{
+  "dependencies": {
+    "@noble/hashes": "^2.0.1",
+    "@noble/secp256k1": "^3.0.0",
+    "@scure/bip32": "^2.0.1",
+    "ethers": "^6.16.0"
+  }
+}

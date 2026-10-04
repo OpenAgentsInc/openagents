@@ -5,6 +5,8 @@ members = [
 exclude = [
     # Its own workspace, for Breez's SQLite; see its Cargo.toml.
     "crates/openagents-mobile",
+    # Vendored third-party workspaces, patched in by path; see each one.
+    "vendor",
     "crates/verse-ruins/vendor/crates/client_core",
     "crates/verse-ruins/vendor/crates/collision_static",
     "crates/verse-ruins/vendor/crates/core_materials",
@@ -81,3 +83,11 @@ codegen-units = 1
 panic = "abort"
 strip = true
 debug = false
+
+# breez/boltz-client, a git dependency of breez-sdk-spark, is no longer
+# published (404 on 2026-10-04); build its pinned revision from the vendored
+# copy. See vendor/boltz-client/VENDORED.md.
+[patch."https://github.com/breez/boltz-client"]
+boltz-client = { path = "vendor/boltz-client/crates/lib" }
+macros = { path = "vendor/boltz-client/crates/macros" }
+platform-utils = { path = "vendor/boltz-client/crates/platform-utils" }

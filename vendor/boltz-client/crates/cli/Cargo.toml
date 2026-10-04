@@ -1,0 +1,25 @@
+[package]
+name = "boltz-cli"
+version.workspace = true
+edition = "2024"
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+boltz-client.workspace = true
+macros.workspace = true
+async-trait.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal", "sync"] }
+clap = { workspace = true, features = ["derive", "env"] }
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+hex.workspace = true
+bip39.workspace = true
+rand.workspace = true
+rustyline = { workspace = true, features = ["derive"] }
+shlex.workspace = true
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+rustls.workspace = true

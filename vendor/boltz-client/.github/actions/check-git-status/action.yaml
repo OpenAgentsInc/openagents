@@ -1,0 +1,19 @@
+name: 'Check git status'
+description: 'Checks whether there are any git changes in the repository'
+runs:
+  using: 'composite'
+  steps:
+    - name: Check git status
+      shell: bash
+      env:
+        GIT_PAGER: cat
+      run: |
+        status=$(git status --porcelain)
+        if [[ -n "$status" ]]; then
+          echo "Git status has changes"
+          echo "$status"
+          git diff
+          exit 1
+        else
+          echo "No changes in git status"
+        fi
