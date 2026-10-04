@@ -512,6 +512,8 @@ pub fn generate(dir: &Path) -> Result<Pack, String> {
         ("prop-stone", [0.5, 0.49, 0.46], [0.36, 0.35, 0.33]),
         ("prop-boulder", [0.16, 0.15, 0.14], [0.08, 0.075, 0.07]),
         ("prop-sheet", [0.95, 0.9, 0.72], [0.55, 0.75, 0.3]),
+        ("prop-paper", [0.92, 0.9, 0.82], [0.62, 0.6, 0.52]),
+        ("prop-basket", [0.62, 0.47, 0.25], [0.4, 0.28, 0.12]),
     ] {
         let mut m = model(name, 1.);
         cuboid(&mut m, [0.; 3], [0.5; 3], body, 0, false);

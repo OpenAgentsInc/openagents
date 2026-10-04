@@ -64,6 +64,10 @@ pub enum PropKind {
     Boulder,
     /// Loose, lightweight material: a sheet of paper or a mat of leaves.
     Sheet,
+    /// A sheaf of loose paper, the lightest prop a wind carries off.
+    Paper,
+    /// An empty wicker basket.
+    Basket,
 }
 impl PropKind {
     /// Pack model the renderer draws for this kind; `secured` props use a
@@ -78,6 +82,8 @@ impl PropKind {
             Self::StoneBlock | Self::SpellBody => "prop-stone",
             Self::Boulder => "prop-boulder",
             Self::Sheet => "prop-sheet",
+            Self::Paper => "prop-paper",
+            Self::Basket => "prop-basket",
         }
     }
 }
@@ -138,6 +144,23 @@ impl PropSpec {
                 250.,
                 Material::Iron,
                 false,
+                DVec3::ZERO,
+            ),
+            // The lightest and thinnest prop the specification admits.
+            PropKind::Paper => (
+                Size::Tiny,
+                DVec3::new(0.3, 0.05, 0.21),
+                0.1,
+                Material::Wood,
+                true,
+                DVec3::ZERO,
+            ),
+            PropKind::Basket => (
+                Size::Tiny,
+                DVec3::splat(0.4),
+                1.,
+                Material::Straw,
+                true,
                 DVec3::ZERO,
             ),
             PropKind::StoneBlock | PropKind::SpellBody => (

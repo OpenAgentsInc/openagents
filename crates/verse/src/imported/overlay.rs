@@ -1615,6 +1615,7 @@ pub fn spell_panel(
             ui.line(atlas, a, b, 2.0, color);
         }
     }
+    super::gust::outline(ui, atlas, game, view_proj, width, height);
     let font = atlas.font("numbers");
     let (x, mut y) = (16.0, 112.0);
     let panel_width = lines.iter().map(|l| font.measure(l)).fold(

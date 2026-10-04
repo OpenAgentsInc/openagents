@@ -13,6 +13,7 @@
 pub mod dice;
 pub mod feather_fall;
 pub mod fields;
+pub mod gust_of_wind;
 pub mod levitate;
 pub mod props;
 pub mod thunderwave;
@@ -70,6 +71,7 @@ pub struct SpellDef {
 /// 4 Gust of Wind (#10456), 5 Wind Wall (#10457), 6 Black Tentacles
 /// (#10458), 7 Meteor Swarm (#10459), 8 Reverse Gravity (#10460).
 pub const CATALOG: &[SpellDef] = &[
+    gust_of_wind::DEF,
     wind_wall::DEF,
     levitate::DEF,
     crate::reverse_gravity::game::SPELL,
@@ -182,6 +184,9 @@ pub struct SpellWorld {
     /// Feather Fall's wards, reaction picks, and followed falls.
     #[serde(default)]
     pub feather_fall: feather_fall::State,
+    /// Gust of Wind Lines, the scene flames they put out, and archers.
+    #[serde(default)]
+    pub gust: gust_of_wind::State,
 }
 
 impl Default for SpellWorld {
@@ -228,6 +233,7 @@ impl SpellWorld {
             reverse_gravity: Default::default(),
             telekinesis: BTreeMap::new(),
             feather_fall: feather_fall::State::default(),
+            gust: gust_of_wind::State::default(),
         }
     }
 
@@ -271,6 +277,7 @@ impl SpellWorld {
                 .values()
                 .any(|t| t.hand.0 as usize >= bodies || t.cast > self.casts)
             || self.feather_fall.validate().is_err()
+            || self.gust.validate(self.casts).is_err()
         {
             return Err("Invalid spell world checkpoint".into());
         }
@@ -325,6 +332,7 @@ impl SpellWorld {
     pub fn end_cast(&mut self, cast: u64) -> Result<(), String> {
         self.wind.end_cast(cast, &mut self.world, &self.props);
         self.fields.retain(|f| f.cast != cast);
+        self.gust.end(cast);
         self.concentration.retain(|_, held| *held != cast);
         self.levitations.end_cast(cast);
         let owned: Vec<_> = self

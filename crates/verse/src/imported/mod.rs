@@ -18,6 +18,7 @@ pub mod controls;
 mod culling;
 #[cfg(all(feature = "remote-chamber", feature = "imported-desktop"))]
 pub mod giver_panel;
+pub mod gust;
 pub mod icons;
 pub mod inventory;
 pub mod lighting;

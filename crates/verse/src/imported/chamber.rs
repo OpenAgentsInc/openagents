@@ -495,6 +495,7 @@ pub fn combat_lighting(game: &super::play::Game) -> super::lighting::Lighting {
         game.scene.collision_profile.as_deref() == Some(verse_world::playground::PROFILE),
         game.player,
     );
+    super::gust::lights(game, &mut lighting);
     // A Reverse Gravity column lifts bodies far above the scene's lights.
     let column = verse_world::reverse_gravity::game::column_lights(game);
     lighting
@@ -929,7 +930,9 @@ pub fn add_effect_models(pack: &mut Pack, dir: &std::path::Path) -> Result<(), S
     pack.validate()
 }
 pub fn spell_instances(game: &super::play::Game) -> Vec<Instance> {
-    spell_instances_from_visuals(&verse_world::visuals::Combat::extract(game))
+    let mut out = spell_instances_from_visuals(&verse_world::visuals::Combat::extract(game));
+    out.extend(super::gust::instances(game));
+    out
 }
 /// Draws admitted visual values without borrowing local world authority.
 pub fn spell_instances_from_visuals(visuals: &verse_world::visuals::Combat) -> Vec<Instance> {

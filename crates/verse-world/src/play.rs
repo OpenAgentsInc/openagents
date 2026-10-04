@@ -1751,6 +1751,12 @@ impl Game {
                     } else {
                         glam::DVec3::new(velocity.x, 0., velocity.z).clamp_length_max(100.)
                     };
+                    let velocity = crate::spells::gust_of_wind::approach(
+                        &self.spells,
+                        self.time,
+                        character.feet,
+                        velocity,
+                    );
                     npc_path.push(character.feet.as_vec3().to_array());
                     let mut fell = 0.;
                     for _ in 0..physics_steps {
@@ -2241,6 +2247,7 @@ impl Game {
             return Ok(());
         }
         let dt = steps as f64 * self.physics_clock.dt;
+        crate::spells::gust_of_wind::step(self, dt)?;
         let living = self.living_npcs();
         if !self.spells.fields.is_empty() {
             let fields = crate::spells::Fields {

@@ -730,6 +730,17 @@ impl Simulation {
         self.counters.projectiles += 1;
         Ok(())
     }
+    /// Adds `bend(tag, position, velocity)` to each flight's velocity, for
+    /// area spells such as Gust of Wind that act on flights in the air.
+    pub(crate) fn bend_flights(&mut self, mut bend: impl FnMut(FlightTag, Vec3, Vec3) -> Vec3) {
+        for flight in &mut self.flights {
+            let velocity = Vec3::from(flight.view.vel);
+            let change = bend(flight.view.kind.tag(), flight.view.pos.into(), velocity);
+            if change.is_finite() {
+                flight.view.vel = (velocity + change).to_array();
+            }
+        }
+    }
     fn visible(&self, start: Vec3, end: Vec3) -> bool {
         physics::kinematic::sweep_box(
             start.as_dvec3(),
