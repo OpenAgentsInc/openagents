@@ -266,7 +266,7 @@ impl Game {
     pub fn checkpoint(&self) -> Result<Vec<u8>, String> {
         self.simulation.validate()?;
         let bytes = serde_json::to_vec(&serde_json::json!({
-            "version": 1, "rules_revision": "verse-chamber-owned-v3", "world": self,
+            "version": 1, "rules_revision": "verse-chamber-owned-v4", "world": self,
         }))
         .map_err(|e| e.to_string())?;
         if bytes.len() > 2 * 1024 * 1024 {
@@ -286,7 +286,7 @@ impl Game {
             return Err("World checkpoint budget exceeded".into());
         }
         let saved: Saved = serde_json::from_slice(bytes).map_err(|e| e.to_string())?;
-        if saved.version != 1 || saved.rules_revision != "verse-chamber-owned-v3" {
+        if saved.version != 1 || saved.rules_revision != "verse-chamber-owned-v4" {
             return Err("Unsupported world checkpoint".into());
         }
         let mut world = saved.world;
@@ -1672,6 +1672,8 @@ impl Game {
             }
             self.player = destination;
             if spell == Utility::MistyStep {
+                self.simulation
+                    .teleport_chamber_actor(0, destination.to_array(), self.yaw)?;
                 self.character = physics::character::Character::new(destination.as_dvec3());
                 self.previous_player = destination;
             }

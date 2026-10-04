@@ -1,0 +1,44 @@
+{
+  "schema": "openagents.verse.agent-combat.v1",
+  "rules_revision": "verse-chamber-owned-v4",
+  "authority_tick": 1561,
+  "physics_steps": 3848,
+  "physics_dropped_seconds": 0.0,
+  "committed_event_count": 53,
+  "asset_pack": "verse-bestiary-ritual-v1",
+  "controller": "local observation-driven tactical controller",
+  "control_mode": "agent",
+  "time": 52.03288269042969,
+  "ended_at": 46.99962615966797,
+  "player": {
+    "hp": 0,
+    "max_hp": 100,
+    "mana": 5,
+    "max_mana": 20
+  },
+  "boss_remaining": 299893,
+  "boss_max": 300000,
+  "cultists_defeated": 12,
+  "damage_taken": 100,
+  "shield_absorbed": 54,
+  "dodged": 11,
+  "enemy_casts": 25,
+  "ability_uses": {
+    "Fire Bolt": 1,
+    "Fireball": 4,
+    "Grease": 1,
+    "Light": 1,
+    "Magic Missile": 4,
+    "Misty Step": 1,
+    "Shield": 3,
+    "Shoot Bow": 3,
+    "Thunderwave": 1,
+    "Web": 1
+  },
+  "boss_model": {
+    "source": "verse/licensed/quaternius/Puglin.glb",
+    "sha256": "8d0a87d7165e5da0761418491511d2187e46de359e2f65110538f8b91a48e6af",
+    "height_m": 6.0
+  },
+  "renderer": "owned native GPU pipeline; no grading; no chat-input automation"
+}

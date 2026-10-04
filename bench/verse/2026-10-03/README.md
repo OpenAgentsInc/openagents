@@ -155,3 +155,22 @@ Lagrange conservation tests, 16 Physics Lab tests, formatting, and both native
 example builds. The combat controller still uses all ten abilities, defeats
 12 cultists in its focused fixture, and loses to Claude. The capture proves
 navigation, not finished lighting or nameplate layout.
+
+## Relative-motion spell collision
+
+`relative-motion-combat.mp4` records the native battle under
+`verse-chamber-owned-v4`. The controller uses all ten abilities, defeats 12
+cultists, absorbs 54 damage, and loses at 47 simulated seconds. Claude survives
+at 299,893 of 300,000 HP. The receipt records 1,561 command ticks, 3,848 grounded
+physics steps after handoff, and no dropped physics time. The battle PNG retains
+a frame with visible corpses; the combat PNG is the final native frame.
+
+Spell flights sweep translated upright capsules against relative actor motion in
+120 Hz slices, and explosions sample actor positions at impact. Pending motion
+replays exactly; teleport commands skip intermediate space, and homing targets
+do not transfer to replacement actors. Actor motion currently interpolates
+admitted command endpoints. Exact shared character trajectories, life-bound
+bodies and corpse collision, bow flights, and hostile projectiles remain #10441
+work. Checks: 55 world tests, 12 focused renderer tests, formatting, both native
+example builds, and this capture. The generic contact primitive previously
+passed all 96 runnable physics tests.

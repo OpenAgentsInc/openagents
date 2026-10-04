@@ -125,8 +125,14 @@ capture shows a cultist detouring, replanning after blocker removal, and climbin
 the side stairs. This independently implemented grid uses public concepts from
 [Recast's navigation configuration](https://recastnav.com/structrcConfig.html);
 it does not import Recast or implement polygonization or funnel routing.
-General entity/body lifetime integration and relative-motion projectile CCD remain
-VE-2 work. Renderer lighting and overlapping nameplates remain visual work.
+[#10441](https://github.com/OpenAgentsInc/openagents/issues/10441) is in progress.
+Spell flights now use relative-motion sphere/capsule contact in 120 Hz slices,
+including moving targets, earliest wall obstruction, impact-time area positions,
+and pending-motion checkpoint replay under `verse-chamber-owned-v4`. Teleports
+explicitly skip intermediate space. Actor motion currently interpolates admitted
+command endpoints; true shared substep trajectories, general life-bound bodies,
+corpse collision, bow flights, and hostile projectile integration remain VE-2
+work. Renderer lighting and overlapping nameplates remain visual work.
 
 ## Reuse inventory
 

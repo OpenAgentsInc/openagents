@@ -8,13 +8,19 @@ chamber reads its snapshots and cinematic projection. Human and controller
 requests share admission. A trusted adapter supplies controller identity;
 this crate does not authenticate network connections.
 
-The `verse-chamber-owned-v1` rules profile independently implements retained
+The `verse-chamber-owned-v4` rules profile independently implements retained
 chamber behavior; it imports no vendor source. Firebolt deals 8 damage, each of
 three magic missiles deals 4, and fireball deals 15 in a visible 6.096-meter radius
-with three 6-damage burn ticks. Living characters regenerate one mana per second. Swept projectiles stop at static box cover.
+with three 6-damage burn ticks. Living characters regenerate one mana per second.
+Spell projectiles stop at static box cover and sweep against relative actor motion
+in 120 Hz slices. Pending motion survives checkpoint replay; admitted teleports
+skip intermediate space.
 Shared authority runs at 30 Hz in the native adapter; `tick` also retains bounded
-fixture steps. Checkpoints rebuild static collision from the scene profile.
+fixture steps. Checkpoints rebuild static collision and compiled walkable navigation from the
+scene profile. Grounded capsules admit slopes, stairs, jumps, and moving platform
+poses; NPC routes fence dynamic blocker generations.
 
-Transactional saves, multiplayer replication, the complete capsule/mesh movement
-controller, and authoring tools remain on the
+General body and corpse lifetimes, exact shared character/projectile substeps,
+bow and hostile projectile integration, transactional saves, multiplayer
+replication, and authoring tools remain on the
 [engine roadmap](../../docs/verse/engine/roadmap.md).

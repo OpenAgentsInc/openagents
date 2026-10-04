@@ -108,6 +108,7 @@ pub struct Simulation {
     mana_fraction: f32,
     actors: BTreeMap<u32, Actor>,
     next_id: u32,
+    motion_starts: BTreeMap<u32, [f32; 3]>,
     ready: BTreeMap<Spell, f32>,
     global_ready: f32,
     flights: Vec<Flight>,
@@ -148,6 +149,12 @@ impl Simulation {
         let player = self.actors.get(&0).ok_or("Missing checkpoint player")?;
         if player.hp != self.player.hp {
             return Err("Checkpoint player health disagrees".into());
+        }
+        for (id, pos) in &self.motion_starts {
+            valid_position(*pos)?;
+            if !self.actors.contains_key(id) {
+                return Err("Checkpoint motion refers to a removed actor".into());
+            }
         }
         let mut ids = std::collections::BTreeSet::new();
         for (id, actor) in &self.actors {
@@ -208,6 +215,7 @@ impl Simulation {
             mana_fraction: 0.,
             actors: BTreeMap::new(),
             next_id: 1,
+            motion_starts: BTreeMap::new(),
             ready: BTreeMap::new(),
             global_ready: 0.,
             flights: vec![],
@@ -271,8 +279,20 @@ impl Simulation {
             return Err("Invalid actor facing".into());
         }
         let actor = self.actors.get_mut(&id).ok_or("Unknown chamber actor")?;
+        self.motion_starts.entry(id).or_insert(actor.pos);
         actor.pos = pos;
         actor.yaw = yaw;
+        Ok(())
+    }
+    /// Places an admitted teleport without sweeping through the skipped space.
+    pub fn teleport_chamber_actor(
+        &mut self,
+        id: u32,
+        pos: [f32; 3],
+        yaw: f32,
+    ) -> Result<(), String> {
+        self.place_chamber_actor(id, pos, yaw)?;
+        self.motion_starts.insert(id, pos);
         Ok(())
     }
     pub fn bow_impact(&mut self, id: u32, damage: i32) -> Result<(), String> {
@@ -422,23 +442,42 @@ impl Simulation {
         }
         Ok(())
     }
-    pub fn tick(&mut self, dt: f32, position: [f32; 3], yaw: f32) -> Result<(), String> {
-        valid_position(position)?;
-        if !dt.is_finite() || !(0. ..=0.1).contains(&dt) || !yaw.is_finite() {
-            return Err("Invalid world step".into());
-        }
-        self.place_chamber_actor(0, position, yaw)?;
-        self.elapsed += dt;
-        if self.player.hp > 0 && self.player.mana < self.player.max_mana {
-            self.mana_fraction += dt;
-            if self.mana_fraction >= 1. {
-                self.player.mana += 1;
-                self.mana_fraction -= 1.;
+    fn motion_impact(
+        &mut self,
+        kind: Spell,
+        point: Vec3,
+        target: Option<u32>,
+        starts: &BTreeMap<u32, [f32; 3]>,
+        fraction: f32,
+    ) -> Result<(), String> {
+        let final_positions: BTreeMap<_, _> = self
+            .actors
+            .iter()
+            .map(|(id, actor)| (*id, actor.pos))
+            .collect();
+        for (id, actor) in &mut self.actors {
+            if let Some(initial) = starts.get(id) {
+                actor.pos = Vec3::from(*initial)
+                    .lerp(Vec3::from(actor.pos), fraction)
+                    .to_array();
             }
-        } else {
-            self.mana_fraction = 0.;
         }
-        self.effects.clear();
+        let result = self.impact(kind, point, target);
+        for (id, pos) in final_positions {
+            if let Some(actor) = self.actors.get_mut(&id) {
+                actor.pos = pos;
+            }
+        }
+        result
+    }
+
+    fn advance_flights(
+        &mut self,
+        dt: f32,
+        starts: &BTreeMap<u32, [f32; 3]>,
+        from: f32,
+        to: f32,
+    ) -> Result<(), String> {
         for mut flight in std::mem::take(&mut self.flights) {
             if self.elapsed >= flight.until {
                 continue;
@@ -450,9 +489,17 @@ impl Simulation {
                     .and_then(|id| self.actors.get(&id))
                     .filter(|a| a.alive)
                 {
-                    flight.view.vel =
-                        ((Vec3::from(actor.pos) + Vec3::Y * 1.1 - start).normalize_or_zero() * 18.)
-                            .to_array();
+                    flight.view.vel = ((starts
+                        .get(&actor.id)
+                        .copied()
+                        .map(Vec3::from)
+                        .unwrap_or(Vec3::from(actor.pos))
+                        .lerp(Vec3::from(actor.pos), from)
+                        + Vec3::Y * 1.1
+                        - start)
+                        .normalize_or_zero()
+                        * 18.)
+                        .to_array();
                 } else {
                     continue;
                 }
@@ -466,20 +513,24 @@ impl Simulation {
             )?;
             let mut hit: Option<(f32, u32)> = None;
             for actor in self.actors.values().filter(|a| a.id != 0 && a.alive) {
-                let center = Vec3::from(actor.pos) + Vec3::Y * 1.1;
-                let offset = start - center;
-                let aa = delta.length_squared();
-                let bb = offset.dot(delta);
-                let cc = offset.length_squared() - 0.65f32.powi(2);
-                let discriminant = bb * bb - aa * cc;
-                let fraction = if cc <= 0. {
-                    Some(0.)
-                } else if aa > 0. && discriminant >= 0. {
-                    let t = (-bb - discriminant.sqrt()) / aa;
-                    (0. ..=1.).contains(&t).then_some(t)
-                } else {
-                    None
-                };
+                let final_feet = Vec3::from(actor.pos);
+                let initial_feet = starts
+                    .get(&actor.id)
+                    .copied()
+                    .map(Vec3::from)
+                    .unwrap_or(final_feet);
+                let feet_start = initial_feet.lerp(final_feet, from);
+                let feet_end = initial_feet.lerp(final_feet, to);
+                let fraction = physics::continuous::sphere_capsule(
+                    start.as_dvec3(),
+                    (start + delta).as_dvec3(),
+                    0.06,
+                    feet_start.as_dvec3(),
+                    feet_end.as_dvec3(),
+                    0.35,
+                    1.8,
+                )?
+                .map(|t| t as f32);
                 if let Some(t) = fraction {
                     if hit.is_none_or(|(old, _)| t < old) {
                         hit = Some((t, actor.id));
@@ -489,13 +540,56 @@ impl Simulation {
             if let Some((t, id)) =
                 hit.filter(|(t, _)| wall.is_none_or(|w| f64::from(*t) < w.fraction))
             {
-                self.impact(flight.view.kind, start + delta * t, Some(id))?;
+                self.motion_impact(
+                    flight.view.kind,
+                    start + delta * t,
+                    Some(id),
+                    starts,
+                    from + (to - from) * t,
+                )?;
             } else if let Some(wall) = wall {
-                self.impact(flight.view.kind, start + delta * wall.fraction as f32, None)?;
+                self.motion_impact(
+                    flight.view.kind,
+                    start + delta * wall.fraction as f32,
+                    None,
+                    starts,
+                    from + (to - from) * wall.fraction as f32,
+                )?;
             } else {
                 flight.view.pos = (start + delta).to_array();
                 self.flights.push(flight);
             }
+        }
+        Ok(())
+    }
+
+    pub fn tick(&mut self, dt: f32, position: [f32; 3], yaw: f32) -> Result<(), String> {
+        valid_position(position)?;
+        if !dt.is_finite() || !(0. ..=0.1).contains(&dt) || !yaw.is_finite() {
+            return Err("Invalid world step".into());
+        }
+        self.place_chamber_actor(0, position, yaw)?;
+        let began = self.elapsed;
+        if self.player.hp > 0 && self.player.mana < self.player.max_mana {
+            self.mana_fraction += dt;
+            if self.mana_fraction >= 1. {
+                self.player.mana += 1;
+                self.mana_fraction -= 1.;
+            }
+        } else {
+            self.mana_fraction = 0.;
+        }
+        self.effects.clear();
+        let starts = std::mem::take(&mut self.motion_starts);
+        let steps = (dt * 120.).ceil().max(1.) as usize;
+        for step in 0..steps {
+            self.elapsed = began + dt * ((step + 1) as f32 / steps as f32);
+            self.advance_flights(
+                dt / steps as f32,
+                &starts,
+                step as f32 / steps as f32,
+                (step + 1) as f32 / steps as f32,
+            )?;
         }
         for mut burn in std::mem::take(&mut self.burns) {
             if !self.actors.get(&burn.actor).is_some_and(|a| a.alive) {
@@ -518,6 +612,7 @@ impl Simulation {
             .collect();
         for id in expired {
             self.actors.remove(&id);
+            self.motion_starts.remove(&id);
             self.deaths.remove(&id);
         }
         Ok(())
@@ -572,6 +667,67 @@ mod tests {
         assert!(s.snapshot().projectiles.is_empty());
         assert_eq!(s.actors[&ids[0]].hp, 100);
     }
+    #[test]
+    fn moving_actor_crossing_is_hit_and_replays_pending_motion() {
+        let (mut s, ids) = Simulation::chamber([0.; 3], &[([-2., 0., 0.5], 100)]).unwrap();
+        s.cast(Spell::Firebolt, [0., 1.1, 0.], [0., 0., 1.])
+            .unwrap();
+        s.place_chamber_actor(ids[0], [2., 0., 0.5], 0.).unwrap();
+        let mut restored: Simulation =
+            serde_json::from_slice(&serde_json::to_vec(&s).unwrap()).unwrap();
+        restored.validate().unwrap();
+        s.tick(1. / 30., [0.; 3], 0.).unwrap();
+        restored.tick(1. / 30., [0.; 3], 0.).unwrap();
+        assert_eq!(s.actors[&ids[0]].hp, 92);
+        assert!(s.flights.is_empty());
+        assert_eq!(s.actors[&ids[0]].pos, [2., 0., 0.5]);
+        assert!(s.motion_starts.is_empty());
+        assert_eq!(
+            serde_json::to_vec(&s).unwrap(),
+            serde_json::to_vec(&restored).unwrap()
+        );
+    }
+
+    #[test]
+    fn crossing_behind_thin_cover_does_not_receive_damage() {
+        let (mut s, ids) = Simulation::chamber([0.; 3], &[([-2., 0., 0.5], 100)]).unwrap();
+        s.set_colliders(vec![physics::kinematic::Aabb {
+            min: glam::DVec3::new(-1., 0., 0.15),
+            max: glam::DVec3::new(1., 3., 0.16),
+        }]);
+        s.cast(Spell::Firebolt, [0., 1.1, 0.], [0., 0., 1.])
+            .unwrap();
+        s.place_chamber_actor(ids[0], [2., 0., 0.5], 0.).unwrap();
+        s.tick(1. / 30., [0.; 3], 0.).unwrap();
+        assert_eq!(s.actors[&ids[0]].hp, 100);
+        assert_eq!(s.effects.len(), 1);
+        assert!(s.effects[0].pos[2] < 0.15);
+    }
+
+    #[test]
+    fn admitted_teleport_does_not_sweep_the_skipped_space() {
+        let (mut s, ids) = Simulation::chamber([0.; 3], &[([-2., 0., 0.5], 100)]).unwrap();
+        s.cast(Spell::Firebolt, [0., 1.1, 0.], [0., 0., 1.])
+            .unwrap();
+        s.teleport_chamber_actor(ids[0], [2., 0., 0.5], 0.).unwrap();
+        s.tick(1. / 30., [0.; 3], 0.).unwrap();
+        assert_eq!(s.actors[&ids[0]].hp, 100);
+        assert_eq!(s.flights.len(), 1);
+    }
+
+    #[test]
+    fn homing_flights_do_not_transfer_to_a_replacement_actor() {
+        let (mut s, ids) = Simulation::chamber([0.; 3], &[([0., 0., 8.], 10)]).unwrap();
+        s.cast(Spell::MagicMissile, [0., 1.1, 0.], [0., 0., 1.])
+            .unwrap();
+        s.bow_impact(ids[0], 10).unwrap();
+        let replacement = s.spawn_chamber_actor([0., 0., 8.], 10).unwrap();
+        assert_ne!(replacement, ids[0]);
+        s.tick(1. / 30., [0.; 3], 0.).unwrap();
+        assert!(s.flights.is_empty());
+        assert_eq!(s.actors[&replacement].hp, 10);
+    }
+
     #[test]
     fn checkpoint_replays_pending_projectiles_and_cooldowns() {
         let (mut s, _) = Simulation::chamber([0.; 3], &[([0., 0., 8.], 100)]).unwrap();
