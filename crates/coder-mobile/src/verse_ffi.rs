@@ -427,6 +427,14 @@ impl VerseHandle {
             &request,
             Request::EvalsView | Request::InteractEvals | Request::Evals { .. } | Request::GoEvals
         );
+        let include_studio = matches!(
+            &request,
+            Request::StudioView
+                | Request::StudioActivate { .. }
+                | Request::Zone {
+                    intent: verse::zones::Intent::Interact
+                }
+        );
         let clear_error = !matches!(
             &request,
             Request::Frame { .. }
@@ -435,6 +443,7 @@ impl VerseHandle {
                 | Request::GymView
                 | Request::ResultsView
                 | Request::EvalsView
+                | Request::StudioView
         );
         match self.call(request) {
             Err(error) => self.scene.error = Some(error),
@@ -456,10 +465,13 @@ impl VerseHandle {
         if include_evals {
             packet.evals_view = self.scene.evals_view();
         }
+        if include_studio {
+            packet.studio_view = self.scene.studio_view();
+        }
         let bytes = serde_json::to_vec(&packet)
             .map_err(|_| "Cannot encode native Verse state".to_owned())?;
         if bytes.len()
-            > if include_gym || include_results || include_evals {
+            > if include_gym || include_results || include_evals || include_studio {
                 1024 * 1024
             } else {
                 64 * 1024

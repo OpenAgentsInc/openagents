@@ -42,6 +42,8 @@ class MainActivity : ComponentActivity() {
     private lateinit var scanner: QRScanner
     private lateinit var renderer: NativeRenderer
     private lateinit var computersRenderer: NativeRenderer
+    // Everglade's Agent Studio panel: a Rust Native view the world returns.
+    private lateinit var studioRenderer: NativeRenderer
     private lateinit var gym: GymPanel
     private lateinit var doorError: TextView
     private lateinit var doorRetry: Button
@@ -90,6 +92,9 @@ class MainActivity : ComponentActivity() {
     private var gymBoard: JSONObject? = null
     private var requestedGymRevision = -1L
     private var mountedGymRevision = -1L
+    private var studioView: JSONObject? = null
+    private var requestedStudioRevision = -1L
+    private var mountedStudioRevision = -1L
     private var lastReading = false
     private val main = Handler(Looper.getMainLooper())
     private val refresh = object : Runnable {
@@ -143,6 +148,10 @@ class MainActivity : ComponentActivity() {
             reader.request(json("op" to "computers_activate", "instance" to view.getString("instance"),
                 "revision" to view.getLong("revision"), "node" to node))
         }, { _, _ -> }, "computers")
+        studioRenderer = NativeRenderer(this, { view, node ->
+            world.send(json("action" to "studio_activate", "instance" to view.getString("instance"),
+                "revision" to view.getLong("revision"), "node" to node))
+        }, { _, _ -> }, "studio_view")
         gym = GymPanel(this, world)
         reader = ReaderBridge(storage, synthetic, loopbackTest) { if (opened == "computer") renderComputer() }
         setContentView(root)
@@ -209,12 +218,20 @@ class MainActivity : ComponentActivity() {
         worldError.text = problem.orEmpty(); worldError.visibility = if (problem == null) View.GONE else View.VISIBLE
         retry.visibility = worldError.visibility
         if (packet == null) return
-        val newPanel = when { packet.optBoolean("computer_open") -> "computer"; packet.optBoolean("gym_open") -> "gym"; else -> "" }
+        val newPanel = when {
+            packet.optBoolean("computer_open") -> "computer"; packet.optBoolean("gym_open") -> "gym"
+            packet.optBoolean("studio_open") -> "studio"; else -> ""
+        }
         if (newPanel != opened) {
             clearComputersValue()
-            opened = newPanel; computerMode = ""; computers = false; settings = false; renderer.clear(); computersRenderer.clear(); stopCamera(); controls.visibility = if (opened.isEmpty()) View.VISIBLE else View.GONE
+            opened = newPanel; computerMode = ""; computers = false; settings = false; renderer.clear(); computersRenderer.clear(); studioRenderer.clear(); stopCamera(); controls.visibility = if (opened.isEmpty()) View.VISIBLE else View.GONE
             reader.foreground(foreground && opened == "computer")
-            if (opened.isEmpty()) panel.visibility = View.GONE else {
+            if (opened.isEmpty()) panel.visibility = View.GONE else if (opened == "studio") {
+                // The studio view carries its own title and close control.
+                panel.visibility = View.VISIBLE; panel.removeAllViews()
+                panelBody = column(); panel.addView(panelBody, LinearLayout.LayoutParams(-1, 0, 1f))
+                mountedStudioRevision = -1
+            } else {
                 panel.visibility = View.VISIBLE; panel.removeAllViews()
                 val header = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
                 headerTitle = label(if (opened == "computer") "Chats" else "Gym", size = 18f)
@@ -277,6 +294,26 @@ class MainActivity : ComponentActivity() {
             }
             gym.refreshError(panelBody, board)
         }
+        if (opened != "studio") { studioView = null; requestedStudioRevision = -1 }
+        packet.optJSONObject("studio_view")?.let { studioView = it }
+        if (opened == "studio") {
+            // Rust rebuilds the view as the studio changes; ask by revision.
+            val revision = packet.optLong("studio_revision")
+            if (studioView?.optLong("revision") != revision && requestedStudioRevision != revision) {
+                requestedStudioRevision = revision
+                main.post { if (opened == "studio" && foreground) world.send(json("action" to "studio_view")) }
+            }
+            val view = studioView
+            if (view != null && view.optLong("revision") != mountedStudioRevision) {
+                try {
+                    studioRenderer.mount(panelBody, json("studio_view" to view))
+                    mountedStudioRevision = view.optLong("revision")
+                } catch (_: Exception) {
+                    panelBody.removeAllViews(); studioRenderer.clear()
+                    panelBody.addView(label("The studio panel could not be displayed.", "studio-render-error"))
+                }
+            }
+        }
     }
 
     private fun layoutPanel() {
@@ -285,7 +322,8 @@ class MainActivity : ComponentActivity() {
         val availableHeight = (safe.height - safe.paddingTop - safe.paddingBottom).coerceAtLeast(dp(80))
         val width = minOf(availableWidth, dp(540))
         val height = availableHeight
-        val anchor = latestWorld?.optJSONObject(if (opened == "gym") "gym" else "computer")
+        // The studio panel has no anchor in view; it centers.
+        val anchor = if (opened == "studio") null else latestWorld?.optJSONObject(if (opened == "gym") "gym" else "computer")
         val anchorX = ((anchor?.optDouble("screen_x", 0.5) ?: 0.5) * root.width).toInt()
         val left = (anchorX - safe.paddingLeft - width / 2).coerceIn(0, availableWidth - width)
         val top = 0
@@ -552,7 +590,7 @@ class MainActivity : ComponentActivity() {
     private fun closePanel() {
         clearComputersValue()
         stopCamera(); pairing = false; computers = false; settings = false
-        world.send(json("action" to if (opened == "gym") "close_gym" else "close_computer"))
+        world.send(json("action" to when (opened) { "gym" -> "close_gym"; "studio" -> "close_studio"; else -> "close_computer" }))
     }
     override fun onResume() {
         super.onResume(); foreground = true

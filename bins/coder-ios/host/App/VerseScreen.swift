@@ -27,8 +27,10 @@ struct VerseScreen: View {
     private var hudOpen: Bool { computerOpen && bridge.packet?.computer_hud.visible == true }
     private var terminalOpen: Bool { hudOpen && bridge.packet?.computer_page == "terminal" }
     private var gymOpen: Bool { bridge.packet?.gym_open == true }
+    /// Everglade's Agent Studio panel, a Rust Native view, covers the world.
+    private var studioOpen: Bool { bridge.packet?.studio_open == true }
     /// A native control covers the world: the world surface takes no touches.
-    private var nativeOpen: Bool { chatsOpen || gymOpen || currentInput != nil }
+    private var nativeOpen: Bool { chatsOpen || gymOpen || studioOpen || currentInput != nil }
     private var motionLook: Bool { bridge.packet?.camera_mode == "motion" }
     /// The input request the keyboard or scanner is answering, while it is
     /// still the Computers surface's current one.
@@ -189,7 +191,7 @@ struct VerseScreen: View {
                     }
                 }
                 Spacer()
-                if !computerOpen && !gymOpen {
+                if !computerOpen && !gymOpen && !studioOpen {
                     HStack(spacing: 16) {
                         Spacer()
                         Button {
@@ -222,7 +224,7 @@ struct VerseScreen: View {
             .padding(.bottom, safe.bottom + 12)
             .padding(.leading, safe.leading + 16)
             .padding(.trailing, safe.trailing + 16)
-            .allowsHitTesting(!computerOpen && !gymOpen)
+            .allowsHitTesting(!computerOpen && !gymOpen && !studioOpen)
             if let computer = bridge.packet?.computer, !gymOpen, chatsOpen {
                 let anchor = CGPoint(x: clamped(computer.screen_x, 0, 1) * size.width,
                                      y: clamped(computer.screen_y, 0, 1) * size.height)
@@ -232,6 +234,9 @@ struct VerseScreen: View {
                 let anchor = CGPoint(x: clamped(gym.screen_x, 0, 1) * size.width,
                                      y: clamped(gym.screen_y, 0, 1) * size.height)
                 gymPanel(anchor: anchor, size: size, safe: safe)
+            }
+            if studioOpen, !computerOpen, !gymOpen {
+                studioPanel(size: size, safe: safe)
             }
         }
         .frame(width: size.width, height: size.height)
@@ -284,6 +289,29 @@ struct VerseScreen: View {
                 .frame(width: width, height: height)
                 .position(x: left + width / 2, y: top + height / 2)
         }
+    }
+
+    /// The Agent Studio panel: Rust's view mounted as is. Its close control
+    /// is part of the view, so this adds only the frame.
+    private func studioPanel(size: CGSize, safe: EdgeInsets) -> some View {
+        let bounds = panelBounds(size: size, safe: safe)
+        let width = min(bounds.width, 540)
+        return Group {
+            if let view = bridge.studioView {
+                NativeRenderer(node: view.root, revision: view.revision,
+                               followTarget: nil, followChanged: nil) { key in
+                    bridge.activateStudio(key)
+                }
+            } else {
+                ProgressView("Loading studio…").accessibilityIdentifier("studio-loading")
+            }
+        }
+        .frame(width: width, height: bounds.height, alignment: .top)
+        .background(Color(red: 0.025, green: 0.02, blue: 0).opacity(0.97), in: RoundedRectangle(cornerRadius: 16))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(.tint.opacity(0.7), lineWidth: 1))
+        .accessibilityIdentifier("studio-panel")
+        .position(x: bounds.midX, y: bounds.midY)
     }
 
     private func panelBounds(size: CGSize, safe: EdgeInsets) -> CGRect {

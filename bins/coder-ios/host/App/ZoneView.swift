@@ -47,7 +47,7 @@ struct VerseZoneControl: Codable {
     let enabled: Bool
 
     static let intents = ["enter", "return", "cancel", "retry", "firebolt", "magic_missile", "fireball", "grab", "release", "tether", "forces", "camera",
-                          "knob_prev", "knob_next", "decrease", "increase", "reset", "pause", "step"]
+                          "knob_prev", "knob_next", "decrease", "increase", "reset", "pause", "step", "interact"]
     var valid: Bool {
         !id.isEmpty && id.utf8.count <= 64 && label.utf8.count <= 256 && Self.intents.contains(action)
     }

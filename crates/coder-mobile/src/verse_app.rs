@@ -210,6 +210,18 @@ pub(crate) enum Request {
     /// Walk into the Grid's Gym, face the EVALS board, and open it: a
     /// chat card's **See the board**.
     GoEvals,
+    /// Read the open Agent Studio panel's view. Everglade's Interact
+    /// control (`Zone { intent: interact }`) opens the panel.
+    StudioView,
+    /// The host activated a control in the studio panel's view. The event
+    /// carries identity only; the current view supplies the intent.
+    StudioActivate {
+        instance: String,
+        revision: u64,
+        node: String,
+    },
+    /// Close the Agent Studio panel, as the host's back gesture does.
+    CloseStudio,
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize)]
@@ -299,6 +311,15 @@ pub(crate) struct Packet {
     pub evals_view: Option<verse::gym_hall::View>,
     /// **Compare notes** is on, for the host to remember.
     gym_notes: bool,
+    /// Everglade's Agent Studio panel is open over the world.
+    studio_open: bool,
+    /// The open studio panel's view revision, or zero. A host holding an
+    /// older revision asks for the view again (`studio_view`).
+    studio_revision: u64,
+    /// The studio panel as a Rust Native view the host mounts. It comes
+    /// only in answer to the studio requests and Everglade's Interact.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub studio_view: Option<View<crate::studio_panel::Intent>>,
     view: View<()>,
 }
 
@@ -587,6 +608,9 @@ fn packet(
         evals_active: false,
         evals_view: None,
         gym_notes: false,
+        studio_open: false,
+        studio_revision: 0,
+        studio_view: None,
         view,
     }
 }
@@ -807,6 +831,11 @@ pub(crate) struct Scene {
     playtest: Option<verse::xp::Board>,
     /// Its last ledger: playtest titles, drawn as shapes on name tags.
     pub(crate) playtest_snapshot: Option<verse::xp::Snapshot>,
+    /// Everglade's Agent Studio panel, while open.
+    pub(crate) studio: Option<crate::studio_panel::Open>,
+    /// The last studio view revision issued in this mount. Each rebuilt
+    /// view takes the next, so a revision never names two trees.
+    studio_revisions: u64,
     pub frames: u64,
     pub error: Option<String>,
 }
@@ -997,6 +1026,8 @@ impl Scene {
             } else {
                 None
             },
+            studio: None,
+            studio_revisions: 0,
             frames: 0,
             error: initial_error,
         })
@@ -1026,6 +1057,9 @@ impl Scene {
             self.session = None;
             self.xp = None;
             self.playtest = None;
+            // A paused surface stops the studio's source and drops its panel.
+            self.studio = None;
+            self.world.update_studio(false, 0.0);
         } else if self.session.is_none()
             && self.relay.is_some()
             && !self.synthetic
@@ -1902,6 +1936,10 @@ impl Scene {
             self.results_open = false;
             self.evals_open = false;
         }
+        // Everglade's studio observes only while the surface is active and
+        // the player is in Everglade; an open panel follows its changes.
+        self.world.update_studio(self.lifecycle.active(), dt);
+        self.sync_studio()?;
         if panel_was_open != self.panel_open() {
             self.reset_motion();
         }
@@ -2199,6 +2237,20 @@ impl Scene {
                 Ok(())
             }
             Request::GoEvals => self.go_evals(),
+            Request::StudioView => Ok(()),
+            Request::StudioActivate {
+                instance,
+                revision,
+                node,
+            } => self.studio_activate(&rust_native::Activation {
+                instance,
+                revision,
+                node,
+            }),
+            Request::CloseStudio => {
+                self.close_studio();
+                Ok(())
+            }
             Request::Snapshot | Request::ZoneCredits => Ok(()),
             Request::Frame { .. } | Request::Resize { .. } => {
                 Err("Request requires a native renderer".into())
@@ -2341,7 +2393,93 @@ impl Scene {
             .map_or(0, verse::gym_hall::Hall::revision);
         packet.evals_active = self.evals_panel && self.hall.is_some() && packet.gym_active;
         packet.gym_notes = self.gym_notes;
+        packet.studio_open = self.studio.is_some();
+        packet.studio_revision = self
+            .studio
+            .as_ref()
+            .map_or(0, |open| open.view.view().revision);
         packet
+    }
+
+    /// The open studio panel's view, for the host to mount.
+    pub fn studio_view(&self) -> Option<View<crate::studio_panel::Intent>> {
+        self.studio.as_ref().map(|open| open.view.view().clone())
+    }
+
+    /// Opens the panel of the Everglade station in reach. Called only after
+    /// the shared runtime admitted the Interact intent where the player
+    /// stands.
+    fn open_studio(&mut self) -> Result<(), String> {
+        let kind = self
+            .world
+            .studio_panel_here()
+            .ok_or("Walk up to a station")?;
+        let open = self.studio_panel(kind)?;
+        self.reset_motion();
+        self.world.cancel_navigation();
+        self.map.clear_contacts();
+        self.door_hud.clear_contacts();
+        self.zone_hud.clear_contacts();
+        self.touches.clear();
+        self.jump = false;
+        self.sprint = false;
+        self.studio = Some(open);
+        Ok(())
+    }
+
+    /// The panel of `kind` built from the studio as it is now, under the
+    /// next view revision.
+    fn studio_panel(
+        &mut self,
+        kind: verse::zones::everglade::studio::PanelKind,
+    ) -> Result<crate::studio_panel::Open, String> {
+        let review = crate::studio_panel::review(&mut self.world, &kind);
+        let shown = self.world.studio().revision();
+        let revision = self.studio_revisions + 1;
+        let view = crate::studio_panel::project(
+            &kind,
+            self.world.studio().view(),
+            review.as_ref(),
+            &format!("{}.studio", self.lifecycle.id()),
+            revision,
+        )
+        .map_err(|error| error.to_string())?;
+        self.studio_revisions = revision;
+        Ok(crate::studio_panel::Open { kind, shown, view })
+    }
+
+    /// Closes the studio panel outside Everglade, and rebuilds it when the
+    /// studio changed.
+    fn sync_studio(&mut self) -> Result<(), String> {
+        let Some(open) = &self.studio else {
+            return Ok(());
+        };
+        if self.world.zone != verse::zones::ZoneId::Everglade || self.world.zone_loading() {
+            self.close_studio();
+            return Ok(());
+        }
+        if open.shown == self.world.studio().revision() {
+            return Ok(());
+        }
+        let kind = open.kind.clone();
+        self.studio = Some(self.studio_panel(kind)?);
+        Ok(())
+    }
+
+    fn studio_activate(&mut self, event: &rust_native::Activation) -> Result<(), String> {
+        let open = self.studio.as_ref().ok_or("Open a studio station first")?;
+        match crate::studio_panel::activate(open, event)? {
+            crate::studio_panel::Intent::Close => {
+                self.close_studio();
+                Ok(())
+            }
+        }
+    }
+
+    fn close_studio(&mut self) {
+        if self.studio.take().is_some() {
+            self.reset_motion();
+        }
     }
 
     fn map_action(&mut self, action: verse::minimap::MapAction) -> Result<(), String> {
@@ -2471,6 +2609,7 @@ impl Scene {
                 && !self.gym_open
                 && !self.results_open
                 && !self.evals_open
+                && self.studio.is_none()
                 && !self.map.expanded,
         )
     }
@@ -2513,6 +2652,7 @@ impl Scene {
         self.gym_open = false;
         self.results_open = false;
         self.evals_open = false;
+        self.studio = None;
         self.reset_motion();
         self.restore_spawn = false;
         self.spawn_pending = false;
@@ -2549,6 +2689,7 @@ impl Scene {
             || self.gym_open
             || self.results_open
             || self.evals_open
+            || self.studio.is_some()
             || self.map.expanded
         {
             return Err("Return to the world to use the portal".into());
@@ -2562,6 +2703,10 @@ impl Scene {
             }
         }
         self.world.zone_intent(intent)?;
+        if intent == ZoneIntent::Interact {
+            // The runtime admitted a station in reach; the panel is ours.
+            return self.open_studio();
+        }
         if matches!(
             intent,
             ZoneIntent::Enter | ZoneIntent::Return | ZoneIntent::Cancel | ZoneIntent::Retry
@@ -2768,6 +2913,7 @@ impl Scene {
             || self.gym_open
             || self.results_open
             || self.evals_open
+            || self.studio.is_some()
             || self.world.zone_loading()
     }
 
@@ -2935,6 +3081,7 @@ impl Scene {
         self.reset_motion();
         self.computer_open = true;
         self.computer_hud.open();
+        self.studio = None;
         self.gym_open = false;
         self.results_open = false;
         self.evals_open = false;
@@ -2970,6 +3117,7 @@ impl Scene {
         self.results_open = false;
         self.evals_open = false;
         self.computer_open = false;
+        self.studio = None;
         self.touches.clear();
         self.jump = false;
         self.sprint = false;
@@ -3129,6 +3277,9 @@ pub(crate) mod bare_presence_tests;
 #[cfg(test)]
 #[path = "bare_results_tests.rs"]
 mod bare_results_tests;
+#[cfg(test)]
+#[path = "studio_tests.rs"]
+mod studio_tests;
 
 #[cfg(test)]
 mod tests {

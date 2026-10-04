@@ -422,6 +422,16 @@ Choose **Everglade portal** on the map, then tap the arch or **Enter
 Everglade**. The glade is generated on the device, so it opens immediately.
 Walk its ground with the joystick; the map lists the studio stations, and the
 caption names the station whose marker you stand at. Choose **Plaza** to leave.
+At a station, **Interact** (labeled with the station's panel) opens its Agent
+Studio panel over the world: the console at the notice board, a seat's panel
+at its desk, decisions at the podium, and the diff review at the merge
+station. The panel is a Rust Native view that `coder-mobile` builds
+(`studio_panel.rs`) from the studio snapshot and the app's shared attention
+and question models; the hosts mount it with their native renderers, ask for
+it again by `studio_revision` when the studio changes, and return only the
+activated node. Movement pauses while it is open, and the panel closes when
+the surface pauses or the player leaves Everglade. It observes; sending
+studio intents needs a host connection with the `operate` right.
 See [Everglade](everglade.md).
 
 The OpenAgents app's bare world reaches no zone for now; its

@@ -29,6 +29,11 @@ struct VersePacket: Decodable {
     let gym_active: Bool
     let gym_revision: UInt64
     let gym_board: GymBoardView?
+    /// Everglade's Agent Studio panel: open, the view revision Rust holds,
+    /// and the view itself in answer to the studio requests.
+    let studio_open: Bool?
+    let studio_revision: UInt64?
+    let studio_view: NativeView?
     let camera_mode: String
     let camera_yaw: Double
     let camera_pitch: Double
@@ -131,6 +136,9 @@ final class VerseBridge: ObservableObject {
     @Published private(set) var packet: VersePacket?
     @Published private(set) var nativeError: String?
     @Published private(set) var gymBoard: GymBoardView?
+    /// The Agent Studio panel's Rust Native view, while the panel is open.
+    @Published private(set) var studioView: NativeView?
+    private var studioRequestedRevision: UInt64?
     @Published private(set) var verseCredits: String?
     @Published private(set) var doorStorageError: String?
     @Published private(set) var canRetryDoorSave = false
@@ -186,6 +194,14 @@ final class VerseBridge: ObservableObject {
     }
 
     func retry() { canvas?.recreate() }
+
+    /// A studio panel control was activated. The event names the node only;
+    /// Rust resolves it against its current view.
+    func activateStudio(_ node: String) {
+        guard let view = studioView else { return }
+        send(["action": "studio_activate", "instance": view.instance,
+              "revision": view.revision, "node": node])
+    }
 
     func retryDoorPreferences() {
         guard canRetryDoorSave, let document = latestDoorDocument else { return }
@@ -312,6 +328,23 @@ final class VerseBridge: ObservableObject {
                     guard let self, let source, self.canvas === source,
                           self.packet?.gym_active == true, self.packet?.gym_open == true else { return }
                     source.send(["action": "gym_view"], forcePublish: true)
+                }
+            }
+            if packet.studio_open != true {
+                studioView = nil
+                studioRequestedRevision = nil
+            } else if let view = packet.studio_view, view.schema == "rust-native.view.v2" {
+                studioView = view
+                studioRequestedRevision = view.revision
+            }
+            // Rust rebuilds the view as the studio changes; ask by revision.
+            if packet.studio_open == true, let revision = packet.studio_revision,
+               studioView?.revision != revision, studioRequestedRevision != revision {
+                studioRequestedRevision = revision
+                DispatchQueue.main.async { [weak self, weak source] in
+                    guard let self, let source, self.canvas === source,
+                          self.packet?.studio_open == true else { return }
+                    source.send(["action": "studio_view"], forcePublish: true)
                 }
             }
         case let .failure(error): nativeError = error.localizedDescription

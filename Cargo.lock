@@ -2972,6 +2972,7 @@ name = "coder-mobile"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "coder-access",
  "coder-computers",
  "coder-connect",
  "coder-history",
@@ -2983,6 +2984,7 @@ dependencies = [
  "libc",
  "ndk-sys",
  "nostr",
+ "openagents-chat-app",
  "push-gateway",
  "rust-native",
  "secp256k1 0.31.1",

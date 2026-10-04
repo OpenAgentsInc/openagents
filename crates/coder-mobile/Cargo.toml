@@ -10,6 +10,7 @@ description = "Rust-owned read-only Coder mobile conversation state and native b
 crate-type = ["rlib", "staticlib", "cdylib"]
 
 [dependencies]
+coder-access = { path = "../coder-access", default-features = false }
 coder-computers = { path = "../coder-computers" }
 coder-connect = { path = "../coder-connect", default-features = false }
 coder-history = { path = "../coder-history", default-features = false }
@@ -20,6 +21,9 @@ rust-native = { path = "../rust-native", features = ["ffi", "shaping"] }
 # `xp-host` is Verse's read-only NIP-XP reader: levels over players' heads.
 verse = { path = "../verse", default-features = false, features = ["xp-host"] }
 nostr = { path = "../nostr" }
+# The Agent Studio panels read seats and decisions with the app's shared
+# attention and question models.
+openagents-chat-app = { path = "../openagents-chat-app" }
 # The device side of push wakes only; the gateway service is not linked.
 push-gateway = { path = "../push-gateway", default-features = false, features = ["client"] }
 serde ={ version = "1", features = ["derive"] }

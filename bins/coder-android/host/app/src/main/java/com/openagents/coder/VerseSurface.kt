@@ -395,7 +395,8 @@ class VerseSurface(context: Context, private val storage: DeviceStorage,
         return true
     }
     private val worldDescription get() = "Verse world. Drag left to move and right to look around. Double-tap to jump. Pinch with two fingers to zoom. Walk to the computer and tap its screen to open your chats."
-    private fun panelOpen() = snapshot?.optBoolean("computer_open") == true || snapshot?.optBoolean("gym_open") == true
+    private fun panelOpen() = snapshot?.optBoolean("computer_open") == true || snapshot?.optBoolean("gym_open") == true ||
+        snapshot?.optBoolean("studio_open") == true
     private fun computerAvailable(): Boolean {
         val state = snapshot ?: return false
         val computer = state.optJSONObject("computer") ?: return false
@@ -451,7 +452,7 @@ class VerseSurface(context: Context, private val storage: DeviceStorage,
         if (!hud.optBoolean("visible")) return emptyList()
         val buttons = hud.optJSONArray("buttons") ?: return emptyList()
         val allowed = listOf("enter", "return", "cancel", "retry", "firebolt", "magic_missile", "fireball", "grab", "release", "tether", "forces", "camera",
-            "knob_prev", "knob_next", "decrease", "increase", "reset", "pause", "step")
+            "knob_prev", "knob_next", "decrease", "increase", "reset", "pause", "step", "interact")
         return (0 until minOf(buttons.length(), 16)).map { buttons.getJSONObject(it) }
             .filter { it.optBoolean("enabled") && it.optString("action") in allowed }
             .map { it.getString("label") to json("action" to "zone", "intent" to it.getString("action")) }
