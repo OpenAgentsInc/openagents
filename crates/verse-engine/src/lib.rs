@@ -12,6 +12,7 @@ pub mod loading;
 pub mod motion;
 pub mod overlay;
 pub mod presentation;
+pub mod render_world;
 pub mod residency;
 
 /// Converts version-one pack source coordinates to Y-up meters.

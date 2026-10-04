@@ -209,6 +209,7 @@ pub fn compile(pack: &mut Pack, dir: &Path, bestiary_path: Option<&Path>) -> Res
         include_bytes!("scene.wgsl"),
         include_bytes!("../ui.rs"),
         include_bytes!("../../../verse-engine/src/overlay.rs"),
+        include_bytes!("../../../verse-engine/src/render_world.rs"),
         include_bytes!("../render.rs"),
         include_bytes!("../../../../assets/verse/original/ritual.json"),
     ]);

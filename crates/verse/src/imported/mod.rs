@@ -1090,7 +1090,14 @@ impl Renderer {
         ui: &UiBatch,
         lighting: &Lighting,
     ) -> Result<Vec<u8>, String> {
-        self.draw_frame(view, instances, ui, lighting, true)
+        let world = verse_engine::render_world::RenderWorld::from_resolved(
+            &self.catalog,
+            view,
+            instances,
+            &ui.vertices,
+            lighting,
+        )?;
+        self.draw_world(&world)
     }
     pub fn draw_live_resolved(
         &mut self,
@@ -1099,31 +1106,41 @@ impl Renderer {
         ui: &UiBatch,
         lighting: &Lighting,
     ) -> Result<(), String> {
-        self.draw_frame(view, instances, ui, lighting, false)
-            .map(|_| ())
+        let world = verse_engine::render_world::RenderWorld::from_resolved(
+            &self.catalog,
+            view,
+            instances,
+            &ui.vertices,
+            lighting,
+        )?;
+        self.draw_live_world(&world)
+    }
+    /// Captures the same admitted frame used by interactive rendering.
+    pub fn draw_world(
+        &mut self,
+        world: &verse_engine::render_world::RenderWorld<'_>,
+    ) -> Result<Vec<u8>, String> {
+        self.draw_frame(world, true)
+    }
+    pub fn draw_live_world(
+        &mut self,
+        world: &verse_engine::render_world::RenderWorld<'_>,
+    ) -> Result<(), String> {
+        self.draw_frame(world, false).map(|_| ())
     }
     fn draw_frame(
         &mut self,
-        view: View,
-        resolved: &ResolvedInstances<'_>,
-        ui: &UiBatch,
-        lighting: &Lighting,
+        world: &verse_engine::render_world::RenderWorld<'_>,
         capture: bool,
     ) -> Result<Vec<u8>, String> {
         let started = Instant::now();
-        // Validate residency before writing any GPU buffer.
-        resolved.validate(&self.catalog)?;
+        world.validate(&self.catalog)?;
+        let view = world.view();
+        let lighting = world.lighting();
+        let resolved = world.instances();
         let instances = resolved.instances();
         let mut grounded_vertices = 0;
-        if instances.len() > 256
-            || instances.iter().any(|i| !i.transform.is_finite())
-            || !view.view_proj.is_finite()
-        {
-            return Err("Invalid imported frame".into());
-        }
-        let overlay = verse_engine::overlay::ResolvedOverlay::extract(&self.catalog, &ui.vertices)?;
-        overlay.validate(&self.catalog)?;
-        let ui_bytes = bytemuck::cast_slice(overlay.vertices());
+        let ui_bytes = bytemuck::cast_slice(world.overlay().vertices());
         let frame = lighting::frame(view, lighting)?;
         self.queue
             .write_buffer(&self.frame, 0, bytemuck::bytes_of(&frame));
@@ -1508,7 +1525,7 @@ impl Renderer {
             pass.set_pipeline(&self.ui_pipeline);
             pass.set_bind_group(0, &self.ui_group, &[]);
             pass.set_vertex_buffer(0, self.ui_buffer.slice(..));
-            pass.draw(0..ui.vertices.len() as u32, 0..1);
+            pass.draw(0..world.overlay().vertices().len() as u32, 0..1);
         }
         if capture {
             encoder.copy_texture_to_buffer(

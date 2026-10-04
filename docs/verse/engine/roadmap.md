@@ -204,6 +204,8 @@ The [inventory window profile](../../../bench/verse/2026-10-03/inventory-window/
 
 [#10480](https://github.com/OpenAgentsInc/openagents/issues/10480) moves the HUD triangle vertex contract into the headless engine. Borrowed overlays retain catalog identity and reject incomplete triangles, nonfinite positions, invalid atlas coordinates or RGBA values, and uploads above 4 MiB before GPU writes. Native atlas rasterization and layout retain their existing behavior. Semantic UI extraction, atlas asset identity, generic render scheduling, and tool/platform acceptance remain.
 
+[#10481](https://github.com/OpenAgentsInc/openagents/issues/10481) combines camera, lighting, resolved instances, and HUD geometry into a read-only headless `RenderWorld`. Extraction admits all inputs together; submission fences the complete frame against catalog replacement, including empty frames. Native live drawing and capture consume this contract, while existing application entry points remain adapters. GPU resources, world authority, and atlas rasterization stay outside the frame. Material schemas, explicit render graphs, semantic atlas identity, animation graphs, audio, and platform acceptance remain.
+
 ## Reuse inventory
 
 Review baseline: OpenAgents `843c92dd7e`. The entries below were checked against
