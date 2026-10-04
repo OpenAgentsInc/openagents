@@ -53,6 +53,7 @@ pub struct Impact {
 pub struct Presentation {
     pub time: f32,
     pub actors: Vec<Pose>,
+    pub corpses: Vec<Pose>,
     pub effects: Vec<Effects>,
     pub hostile_casts: Vec<HostileCast>,
     pub impacts: Vec<Impact>,
@@ -70,6 +71,35 @@ impl Presentation {
             .map(|(life, _, c)| (life, c.teleport_stamp()))
             .collect();
         let frame = game.frame();
+        let corpses = frame
+            .actors
+            .iter()
+            .filter_map(|a| {
+                let life = a.life?;
+                let physical = physics::queries::Life {
+                    instance: life.instance,
+                    entity: life.actor,
+                    generation: life.generation,
+                };
+                if lives.contains(&life)
+                    || a.health != 0
+                    || !game.physics_bodies().get(physical).is_some_and(|b| {
+                        matches!(b.phase, physics::lifetimes::Phase::Corpse { .. })
+                    })
+                {
+                    return None;
+                }
+                Some(Pose {
+                    actor: a.actor.clone(),
+                    life: life.into(),
+                    teleport_stamp: None,
+                    animation: a.animation,
+                    animation_time: a.animation_time,
+                    visible: a.visible,
+                    health: 0,
+                })
+            })
+            .collect();
         let actors = frame
             .actors
             .into_iter()
@@ -103,6 +133,7 @@ impl Presentation {
             blockers: crate::visuals::blocker_bounds(game),
             time: frame.time,
             actors,
+            corpses,
             effects,
             hostile_casts: game
                 .encounter
@@ -141,10 +172,11 @@ impl Presentation {
             .map(|b| verse_engine::core::LifeId::from(b.life))
             .collect();
         let mut poses = BTreeSet::new();
+        let mut entities = BTreeSet::new();
         let mut players = BTreeSet::new();
         if !self.time.is_finite()
             || self.time < 0.
-            || self.actors.len() > 256
+            || self.actors.len() + self.corpses.len() > 256
             || self.effects.len() > 64
             || self.hostile_casts.len() > 256
             || self.impacts.len() > 512
@@ -157,6 +189,7 @@ impl Presentation {
                 || p.actor.id != p.life.actor
                 || !known.contains(&life)
                 || !poses.insert(life)
+                || !entities.insert(p.life.actor)
                 || !finite(p.actor.position.to_array())
                 || !p.actor.yaw.is_finite()
                 || !p.actor.scale.is_finite()
@@ -175,7 +208,38 @@ impl Presentation {
                 players.insert(life);
             }
         }
-        if poses != known {
+        for p in &self.corpses {
+            let life = verse_engine::core::LifeId::from(p.life);
+            if p.life.instance != instance
+                || p.actor.id != p.life.actor
+                || known.contains(&life)
+                || !poses.insert(life)
+                || !entities.insert(p.life.actor)
+                || p.health != 0
+                || p.actor.nameplate
+                || p.actor.model == "adventurer"
+                || p.animation != verse_engine::motion::State::Death.into()
+                || p.teleport_stamp.is_some()
+                || !finite(p.actor.position.to_array())
+                || !p.actor.yaw.is_finite()
+                || !p.actor.scale.is_finite()
+                || !(0.001..=100.).contains(&p.actor.scale)
+                || !p.animation_time.is_finite()
+                || p.animation_time < 0.
+                || p.actor.name.len() > 256
+                || p.actor.model.is_empty()
+                || p.actor.model.len() > 128
+            {
+                return Err("Invalid chamber corpse presentation".into());
+            }
+        }
+        if self
+            .actors
+            .iter()
+            .map(|p| verse_engine::core::LifeId::from(p.life))
+            .collect::<BTreeSet<_>>()
+            != known
+        {
             return Err("Chamber presentation is missing actor lives".into());
         }
         let mut effects = BTreeSet::new();
@@ -292,6 +356,83 @@ mod tests {
             })
             .collect::<Vec<_>>();
         (Presentation::extract(&game, &bindings), bindings)
+    }
+    #[test]
+    fn corpse_pose_survives_rules_retirement_until_new_life_respawn() {
+        let scene = verse_engine::director::Scene::from_json(include_bytes!(
+            "../../../../assets/verse/original/ritual.json"
+        ))
+        .unwrap();
+        let mut game = Game::combat_in(scene, false, 190).unwrap();
+        game.time = game.scene.cut_at;
+        game.encounter
+            .as_mut()
+            .unwrap()
+            .postpone_casts_until(600.)
+            .unwrap();
+        game.tick(0., [0.; 2]).unwrap();
+        let old = game.actor_life(2).unwrap();
+        game.simulation.bow_impact(game.ids[&2], 1000).unwrap();
+        game.tick(0., [0.; 2]).unwrap();
+        fn extract(game: &Game) -> (Presentation, Vec<ActorBinding>) {
+            let bindings = game
+                .snapshot()
+                .actors
+                .iter()
+                .filter_map(|a| {
+                    let life = game.projectile_caster_life(a.id).or_else(|| {
+                        game.ids
+                            .iter()
+                            .find(|(_, id)| **id == a.id)
+                            .and_then(|(id, _)| game.actor_life(*id))
+                    })?;
+                    Some(ActorBinding {
+                        source: a.id,
+                        life: life.into(),
+                    })
+                })
+                .collect::<Vec<_>>();
+            (Presentation::extract(game, &bindings), bindings)
+        }
+        let (first, b) = extract(&game);
+        first.validate(190, &b).unwrap();
+        assert!(first.corpses.is_empty());
+        for _ in 0..90 {
+            game.tick(1. / 30., [0.; 2]).unwrap();
+        }
+        let (corpse, b) = extract(&game);
+        corpse.validate(190, &b).unwrap();
+        let pose = corpse
+            .corpses
+            .iter()
+            .find(|p| verse_engine::core::LifeId::from(p.life) == old)
+            .unwrap();
+        assert_eq!(pose.health, 0);
+        assert!(!pose.actor.nameplate);
+        assert!(pose.visible);
+        assert_eq!(pose.animation, verse_engine::motion::State::Death.into());
+        for kind in 0..4 {
+            let mut malformed = corpse.clone();
+            let p = malformed
+                .corpses
+                .iter_mut()
+                .find(|p| p.life.actor == old.actor)
+                .unwrap();
+            match kind {
+                0 => p.health = 1,
+                1 => p.actor.nameplate = true,
+                2 => p.life.instance = 191,
+                _ => p.animation = verse_engine::motion::State::Walk.into(),
+            }
+            assert!(malformed.validate(190, &b).is_err());
+        }
+        for _ in 0..1830 {
+            game.tick(1. / 30., [0.; 2]).unwrap();
+        }
+        let (respawned, b) = extract(&game);
+        respawned.validate(190, &b).unwrap();
+        assert!(respawned.corpses.is_empty());
+        assert!(game.actor_life(2).unwrap().generation > old.generation);
     }
     #[test]
     fn extraction_retains_life_bound_hostile_visuals_and_transient_impacts() {

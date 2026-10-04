@@ -18,6 +18,7 @@ pub struct Buffer {
     previous: Option<Frame>,
     current: Option<Frame>,
     generations: BTreeMap<u64, u64>,
+    ended_generations: BTreeMap<u64, u64>,
     prop_generations: BTreeMap<u64, u64>,
     blocker_generations: BTreeMap<u64, u64>,
 }
@@ -32,6 +33,7 @@ impl Buffer {
             previous: None,
             current: None,
             generations: BTreeMap::new(),
+            ended_generations: BTreeMap::new(),
             prop_generations: BTreeMap::new(),
             blocker_generations: BTreeMap::new(),
         })
@@ -59,14 +61,19 @@ impl Buffer {
             return Err("Replica control life is missing".into());
         }
         let mut generations = self.generations.clone();
-        for actor in &state.actors {
+        for life in state
+            .actors
+            .iter()
+            .map(|a| a.life)
+            .chain(state.presentation.corpses.iter().map(|p| p.life))
+        {
             if generations
-                .get(&actor.life.actor)
-                .is_some_and(|g| actor.life.generation < *g)
+                .get(&life.actor)
+                .is_some_and(|g| life.generation < *g)
             {
                 return Err("Replica actor generation regressed".into());
             }
-            generations.insert(actor.life.actor, actor.life.generation);
+            generations.insert(life.actor, life.generation);
         }
         if generations.len() > 512 {
             return Err("Replica generation history budget exceeded".into());
@@ -108,6 +115,44 @@ impl Buffer {
                 }
                 reset = true;
             }
+        }
+        let mut ended_generations = self.ended_generations.clone();
+        for pose in state
+            .presentation
+            .actors
+            .iter()
+            .chain(&state.presentation.corpses)
+        {
+            if pose.health > 0
+                && ended_generations
+                    .get(&pose.life.actor)
+                    .is_some_and(|g| pose.life.generation <= *g)
+            {
+                return Err("Replica ended actor life became alive again".into());
+            }
+            if pose.health == 0 {
+                ended_generations
+                    .entry(pose.life.actor)
+                    .and_modify(|g| *g = (*g).max(pose.life.generation))
+                    .or_insert(pose.life.generation);
+            }
+        }
+        for corpse in &state.presentation.corpses {
+            if self.generations.get(&corpse.life.actor) == Some(&corpse.life.generation)
+                && self.current.as_ref().is_some_and(|c| {
+                    !c.state
+                        .presentation
+                        .actors
+                        .iter()
+                        .chain(&c.state.presentation.corpses)
+                        .any(|p| p.life == corpse.life)
+                })
+            {
+                return Err("Replica corpse life is retired".into());
+            }
+        }
+        if ended_generations.len() > 512 {
+            return Err("Replica ended-life history budget exceeded".into());
         }
         let mut prop_generations = if reset {
             BTreeMap::new()
@@ -179,6 +224,7 @@ impl Buffer {
         }
         self.current = Some(next);
         self.generations = generations;
+        self.ended_generations = ended_generations;
         self.prop_generations = prop_generations;
         self.blocker_generations = blocker_generations;
         Ok(())

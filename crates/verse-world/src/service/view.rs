@@ -288,6 +288,7 @@ impl View {
         let actors: Vec<_> = presentation
             .actors
             .iter()
+            .chain(&presentation.corpses)
             .cloned()
             .map(|p| ActorFrame {
                 actor: p.actor,
@@ -377,6 +378,71 @@ mod tests {
                 text: "Our master Claude has been ensouled!".into(),
             },
         }
+    }
+    #[test]
+    fn retired_combat_actor_keeps_a_corpse_frame_and_requires_new_life_to_return() {
+        let mut r = response(1);
+        let s = state(&mut r);
+        let index = s
+            .presentation
+            .actors
+            .iter()
+            .position(|p| p.actor.nameplate && p.actor.model != "adventurer")
+            .unwrap();
+        let mut corpse = s.presentation.actors.remove(index);
+        let life = corpse.life;
+        let source = s.actors.iter().find(|a| a.life == life).unwrap().source;
+        s.actors.retain(|a| a.life != life);
+        s.snapshot.actors.retain(|a| a.id != source);
+        corpse.health = 0;
+        corpse.actor.nameplate = false;
+        corpse.animation = verse_engine::motion::State::Death.into();
+        s.presentation.corpses.push(corpse.clone());
+        let mut view = View::new(130, 10., 0).unwrap();
+        view.push_snapshot(&r).unwrap();
+        let frame = view.frame(1., camera()).unwrap().unwrap();
+        let body = frame
+            .actors
+            .iter()
+            .find(|a| a.life == Some(life.into()))
+            .unwrap();
+        assert_eq!(body.health, 0);
+        assert!(!body.actor.nameplate);
+        assert!(view.select_target(Some(life.into())).is_err());
+        let mut expired = r.clone();
+        expired.tick = 2;
+        state(&mut expired).presentation.corpses.clear();
+        view.push_snapshot(&expired).unwrap();
+        let mut stale_corpse = r.clone();
+        stale_corpse.tick = 3;
+        assert!(view.push_snapshot(&stale_corpse).is_err());
+        let mut revived = response(4);
+        assert!(view.push_snapshot(&revived).is_err());
+        let s = state(&mut revived);
+        s.actors
+            .iter_mut()
+            .find(|a| a.life == life)
+            .unwrap()
+            .life
+            .generation += 1;
+        s.presentation
+            .actors
+            .iter_mut()
+            .find(|p| p.life == life)
+            .unwrap()
+            .life
+            .generation += 1;
+        view.push_snapshot(&revived).unwrap();
+        assert!(
+            !view
+                .frame(1., camera())
+                .unwrap()
+                .unwrap()
+                .actors
+                .iter()
+                .any(|a| a.life == Some(life.into()))
+        );
+        assert!(view.push_snapshot(&r).is_err());
     }
     #[test]
     fn scene_sample_keeps_interpolated_body_and_effect_anchors_together() {

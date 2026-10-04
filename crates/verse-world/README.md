@@ -141,6 +141,11 @@ impact flashes. Presentation validates caster/target lives, finite positions,
 timelines, radii, effect kinds, and budgets. These values describe visuals;
 clients never apply hostile damage. Older wire versions are refused.
 
+Wire version nine retains bounded NPC corpse poses after combat records retire.
+Corpses carry exact lives, death animations, zero health, and hidden nameplates;
+they expire or disappear when a new life respawns. Replica admission refuses
+retired corpse reappearance and resurrection of an ended life.
+
 `visuals::Combat` supplies read-only spell, shield, area, hostile, and impact
 values to rendering. Local extraction and validated `State::combat_visuals`
 share that contract. Native spell instances and dynamic lighting consume it;

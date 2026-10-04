@@ -1130,6 +1130,7 @@ mod tests {
         let presentation = verse_world::service::presentation::Presentation {
             time: frame.time,
             actors: vec![],
+            corpses: vec![],
             effects: vec![],
             hostile_casts: vec![],
             impacts: vec![],
