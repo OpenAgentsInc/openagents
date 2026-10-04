@@ -290,5 +290,21 @@ reserved row-two slot), and one line to `playground::scenarios`. Record it with
 identity-to-character grants with content identity. `Gateway::restore` requires
 matching content and instance, preserves lives/resources/pending combat, parks
 controls, and creates fresh authentication. It rejects duplicate or missing
-character ownership and retains no challenges or sessions. This recovery format
-does not yet establish disk durability or restart-safe rewards.
+character ownership and retains no challenges or sessions. Configured hosts use
+`service::persistence::Store` for durable writes.
+
+Set `state_dir` in the host JSON to a dedicated storage directory. The host creates
+new directories with owner-only permissions, holds one exclusive writer lock,
+and refuses corrupt, incompatible, or changed startup enrollments and authored
+content. It recovers existing adventurers, resources, pending combat, and timers;
+simulation time resumes without offline catch-up. Without `state_dir`, the host
+uses memory only.
+
+Durable hosts group bounded pending replies into one atomic, synced checkpoint
+per world tick. Reads wait for that commit when mutations are pending. A storage
+failure stops the host without publishing those replies. Committed snapshots
+carry version, revision, and checksum; interrupted staging files are discarded
+under the writer lock. The host reports checkpoint commits, bytes, and elapsed
+storage work. The [durable host fixture](../../bench/verse/2026-10-04/durable-host/run.json)
+retains restart/refusal checks and shared TLS input measurements. Deduplicated
+rewards, inventory, quests, and progression remain.

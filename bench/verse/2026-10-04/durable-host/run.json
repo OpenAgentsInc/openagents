@@ -1,0 +1,44 @@
+{
+  "schema": "verse.durable.host.acceptance.v1",
+  "code_revision": "03e9477cc56986c28e34eaa0d272903fff8467c5",
+  "environment": "macOS temporary local store and loopback TLS; synthetic enrolled identities",
+  "checks": {
+    "service_tests": 68,
+    "host_example_tests": 2,
+    "abrupt_restart_preserves_acknowledged_mana_and_pending_cast": true,
+    "old_controls_refused_after_reauthentication": true,
+    "storage_failure_withholds_acknowledgment_and_preserves_prior_commit": true,
+    "writer_lock_and_corruption_refusals": true
+  },
+  "fixture": {
+    "accepted_movement_commands": 180,
+    "checkpoint_bytes": 5439348,
+    "checkpoint_commits": 95,
+    "checkpoint_seconds": 0.8763541319999998,
+    "dropped_seconds": 0.0,
+    "players": 2,
+    "schema": "verse.durable.fixture.v1",
+    "spectators": 1,
+    "wall_seconds": 3.000776666,
+    "world_ticks": 93
+  },
+  "observed_comparison": {
+    "before_grouping_checkpoint_seconds": 2.575239796999999,
+    "before_grouping_wall_seconds": 2.976315458,
+    "before_grouping_checkpoint_commits": 274,
+    "after_grouping_checkpoint_seconds": 0.8763541319999998,
+    "after_grouping_wall_seconds": 3.000776666,
+    "after_grouping_checkpoint_commits": 95
+  },
+  "source_sha256": {
+    "crates/verse-world/src/service/persistence.rs": "56b585503b237fb445024f0e5678c33fc771e371a2c131c24ee75450afd6ff4b",
+    "crates/verse-world/src/service/net.rs": "883caf58dd0f567d6cbddbe9337818c3a34c7a6f9401ed11d5d025a8942cdf47",
+    "crates/verse-world/src/service/host.rs": "99541bc202152b422ad871dc7bb513e1cb2c0f65d053e71235581b7a82d74b9c",
+    "crates/verse/examples/verse_host.rs": "e8b83b5b5cd6d8a9cc4cda5f86758af6a2fe944fb9e6d132b3b12a21553850c2"
+  },
+  "limits": [
+    "Fixture input uses zero movement axes and authored synthetic world state; it measures checkpoint/request work, not rendered combat or input-to-photon latency.",
+    "Crash test aborts the host task without graceful shutdown; power-loss testing is not established.",
+    "Deduplicated reward/item/quest transactions, progression, prediction/reconciliation, and full VE-5 acceptance remain."
+  ]
+}
