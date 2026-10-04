@@ -1,0 +1,229 @@
+//! Meteor Swarm presentation: each falling meteor as a blazing orb (a fire
+//! shell around a hot core) trailing flame,
+//! each detonation as a fireball that swells to the 40-foot Sphere with a
+//! flash, a rising fire column, and smoke, scorch marks where they struck,
+//! and the light all of it casts. The instance counts come from
+//! `verse_world::spells::meteor_swarm`; the renderer test counts the full scene.
+use super::Instance;
+use super::lighting::{Light, Lighting, MAX_LIGHTS};
+use glam::DVec3;
+use glam::{Mat4, Vec3};
+use verse_world::meteor_swarm::{METEOR_RADIUS, RADIUS};
+use verse_world::play::Game;
+use verse_world::spells::meteor_swarm::{
+    BLAST_COLUMN_INSTANCES, BLAST_GROW, BLAST_SHOW, BLAST_SMOKE_INSTANCES, MAX_SCORCHES,
+    METEOR_TRAIL_INSTANCES, METEOR_TRAIL_SPACING,
+};
+
+/// Peak light of a detonation, and of a falling meteor. Brighter washes the
+/// frame out to white.
+const BLAST_LIGHT: f32 = 500.0;
+const METEOR_LIGHT: f32 = 150.0;
+
+fn particle(model: &str, center: Vec3, radius: f32, opacity: f32, time: f32) -> Instance {
+    Instance {
+        mount: None,
+        actor: None,
+        model: model.into(),
+        transform: Mat4::from_translation(center) * Mat4::from_scale(Vec3::splat(radius)),
+        animation: 0.into(),
+        time,
+        emission: Vec3::splat(opacity.clamp(0.0, 1.0)),
+    }
+}
+
+/// A flat decal of `radius` meters on the ground at `center`.
+fn decal(model: &str, center: Vec3, radius: f32, opacity: f32, time: f32) -> Instance {
+    Instance {
+        mount: None,
+        actor: None,
+        model: model.into(),
+        transform: Mat4::from_translation(center)
+            * Mat4::from_rotation_x(-std::f32::consts::FRAC_PI_2)
+            * Mat4::from_scale(Vec3::new(radius, radius, 1.0)),
+        animation: 0.into(),
+        time,
+        emission: Vec3::splat(opacity.clamp(0.0, 1.0)),
+    }
+}
+
+/// Meteors, fireballs, and scorch marks.
+pub fn instances(game: &Game) -> Vec<Instance> {
+    let time = game.time;
+    let mut out = Vec::new();
+    let r = METEOR_RADIUS as f32;
+    for (pos, vel) in falling(game) {
+        let (p, v) = (pos.as_vec3(), vel.as_vec3());
+        let flicker = 1.0 + 0.08 * (time * 41.0 + p.x).sin();
+        // Fire sprites add up and read orange only against lit geometry;
+        // each stays well below full strength so they never burn to white.
+        out.push(particle("effect-impact", p, r * 4.5 * flicker, 0.6, time));
+        out.push(particle("effect-impact", p, r * 2.4, 0.6, time));
+        for n in 1..=METEOR_TRAIL_INSTANCES {
+            let f = n as f32 / METEOR_TRAIL_INSTANCES as f32;
+            out.push(particle(
+                "effect-impact",
+                p - v * METEOR_TRAIL_SPACING * n as f32,
+                r * (3.6 - 2.4 * f),
+                0.6 * (1.0 - 0.8 * f),
+                time,
+            ));
+        }
+    }
+    let radius = RADIUS as f32;
+    for blast in blasts(game)
+        .into_iter()
+        .filter(|b| (0.0..BLAST_SHOW).contains(&(time - b.at)))
+    {
+        let age = time - blast.at;
+        let c = blast.center.as_vec3();
+        let swell = (age / BLAST_GROW).min(1.0);
+        let fade = 1.0 - age / BLAST_SHOW;
+        // The fireball fills the Sphere, then burns down.
+        out.push(particle(
+            "effect-impact",
+            c + Vec3::Y * radius * 0.3 * swell,
+            radius * (0.25 + 0.75 * swell.sqrt()),
+            0.5 * fade.powf(0.7),
+            time,
+        ));
+        // The flash at the moment of impact.
+        out.push(particle(
+            "effect-fire",
+            c + Vec3::Y,
+            5.0 * (1.0 - age / 0.35).max(0.0),
+            0.6,
+            time,
+        ));
+        for n in 0..BLAST_COLUMN_INSTANCES {
+            let k = n as f32 / BLAST_COLUMN_INSTANCES as f32;
+            out.push(particle(
+                "effect-fire",
+                c + Vec3::Y * (1.0 + age * (6.0 + 10.0 * k)),
+                3.5 - 1.5 * k,
+                0.5 * fade,
+                time,
+            ));
+        }
+        for n in 0..BLAST_SMOKE_INSTANCES {
+            let angle = n as f32 * 2.1 + blast.at;
+            out.push(particle(
+                "particle-smoke",
+                c + Vec3::new(angle.cos() * 3.0, 1.5 + age * 5.0, angle.sin() * 3.0),
+                2.5 + age * 4.0,
+                (age / 0.3).min(1.0) * fade * 0.8,
+                time,
+            ));
+        }
+    }
+    for blast in blasts(game).iter().rev().take(MAX_SCORCHES) {
+        let c = blast.center.as_vec3();
+        out.push(decal(
+            "effect-grease",
+            Vec3::new(c.x, c.y + 0.03, c.z),
+            3.0,
+            0.9,
+            time,
+        ));
+    }
+    out
+}
+
+/// Fire light from falling meteors and detonations.
+pub fn lights(game: &Game, lighting: &mut Lighting) {
+    let time = game.time;
+    let mut lights: Vec<Light> = blasts(game)
+        .into_iter()
+        .filter(|b| (0.0..BLAST_SHOW).contains(&(time - b.at)))
+        .map(|blast| {
+            let age = time - blast.at;
+            Light {
+                position: blast.center.as_vec3() + Vec3::Y * 2.0,
+                color: Vec3::new(1.0, 0.32, 0.04),
+                intensity: BLAST_LIGHT * (1.0 - age / BLAST_SHOW).powi(2),
+                range: 2.5 * RADIUS as f32,
+            }
+        })
+        .collect();
+    lights.extend(falling(game).into_iter().map(|(pos, _)| Light {
+        position: pos.as_vec3(),
+        color: Vec3::new(1.0, 0.4, 0.06),
+        intensity: METEOR_LIGHT,
+        range: 25.0,
+    }));
+    // Meteor Swarm's light outshines the small effects it replaces.
+    let room = MAX_LIGHTS.saturating_sub(lights.len());
+    lighting.lights.truncate(room);
+    lighting.lights.extend(lights.into_iter().take(MAX_LIGHTS));
+}
+
+struct Blast {
+    center: DVec3,
+    at: f32,
+}
+fn blasts(game: &Game) -> Vec<Blast> {
+    game.spells
+        .meteors
+        .iter()
+        .flat_map(|e| &e.swarm.impacts)
+        .map(|impact| Blast {
+            center: impact.center,
+            at: game.time
+                - (game.spells.world.tick.saturating_sub(impact.tick) as f64 * game.spells.world.dt)
+                    as f32,
+        })
+        .collect()
+}
+fn falling(game: &Game) -> Vec<(DVec3, DVec3)> {
+    game.spells
+        .meteors
+        .iter()
+        .flat_map(|e| e.swarm.falling())
+        .filter_map(|id| {
+            let body = &game.spells.world[id];
+            (!body.removed).then_some((body.pos, body.vel))
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn the_busiest_playground_frame_stays_within_the_instance_budget() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut pack = super::super::original::generate(dir.path()).unwrap();
+        super::super::chamber::add_effect_models(&mut pack, dir.path()).unwrap();
+        let mut run =
+            verse_world::playground::Run::new(verse_world::spells::meteor_swarm::scenario())
+                .unwrap();
+        let mut peak = 0;
+        while !run.done() {
+            run.advance()
+                .unwrap_or_else(|e| panic!("at {}: {e}", run.game.time));
+            let game = &run.game;
+            let mut drawn = super::super::chamber::instances(&pack, &game.frame()).unwrap();
+            drawn.extend(super::super::chamber::prop_instances(
+                &pack, game, run.alpha,
+            ));
+            drawn.extend(super::super::chamber::spell_instances(game));
+            drawn.extend(super::super::chamber::environment_instances(&pack, game));
+            peak = peak.max(drawn.len());
+            assert!(
+                drawn.len() < 200,
+                "{} instances at {} s",
+                drawn.len(),
+                game.time
+            );
+            assert!(
+                drawn
+                    .iter()
+                    .all(|i| i.transform.is_finite() && i.emission.is_finite())
+            );
+            let lights = super::super::chamber::combat_lighting(game);
+            assert!(lights.lights.len() <= MAX_LIGHTS);
+        }
+        assert!(peak > 40);
+        assert_eq!(run.replay_identical, Some(true));
+    }
+}

@@ -21,6 +21,11 @@ revision v18. Each JSON file comes from the same captured run.
 | Meteor Swarm | [Video](spell-meteor-swarm.mp4) | [JSON](spell-meteor-swarm.json) |
 | Reverse Gravity | [Video](spell-reverse-gravity.mp4) | [JSON](spell-reverse-gravity.json) |
 
+Meteor Swarm uses a 30 m, 8 m/s recording profile with 0.5 s between meteors,
+so each descent is visible against the lit hall. Standard casts retain 120 m,
+60 m/s, and 0.25 s. The 14-second recording follows each impact, the toppling
+sandstone tower, and the burning debris, with orange fire and readable saves.
+
 In the chamber, Shift+1 through Shift+9 cast these spells in table order.
 Click a creature or loose prop to select it. T steers the Telekinesis hand
 along the camera ray; R releases it. Page Up and Page Down change Levitate

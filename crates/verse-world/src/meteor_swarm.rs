@@ -59,6 +59,31 @@ pub const SPAWN_HEIGHT: f64 = 120.0;
 pub const STAGGER: f64 = 0.25;
 /// Initial meteor speed, m/s.
 pub const INITIAL_SPEED: f64 = 60.0;
+/// Flight timing; standard casts retain the issue's height, speed, and stagger.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Flight {
+    pub height: f64,
+    pub speed: f64,
+    pub stagger: f64,
+}
+impl Flight {
+    pub const STANDARD: Self = Self {
+        height: SPAWN_HEIGHT,
+        speed: INITIAL_SPEED,
+        stagger: STAGGER,
+    };
+    pub const PLAYGROUND: Self = Self {
+        height: 30.,
+        speed: 8.,
+        stagger: 0.5,
+    };
+    pub fn valid(self) -> bool {
+        (1.0..=1000.0).contains(&self.height)
+            && (0.1..=500.0).contains(&self.speed)
+            && (0.0..=10.0).contains(&self.stagger)
+    }
+}
+
 /// Slant of the initial velocity from vertical, degrees.
 pub const SLANT_DEGREES: f64 = 20.0;
 /// Upward bias of the blast impulse above horizontal, degrees.
@@ -318,20 +343,29 @@ pub fn validate(
 /// from `caster`'s side under `gravity` (m/s^2, positive down).
 #[must_use]
 pub fn trajectory(caster: DVec3, point: DVec3, gravity: f64) -> (DVec3, DVec3) {
+    trajectory_with_flight(caster, point, gravity, Flight::STANDARD)
+}
+
+pub fn trajectory_with_flight(
+    caster: DVec3,
+    point: DVec3,
+    gravity: f64,
+    flight: Flight,
+) -> (DVec3, DVec3) {
     let away = DVec3::new(point.x - caster.x, 0.0, point.z - caster.z)
         .try_normalize()
         .unwrap_or(DVec3::X);
     let slant = SLANT_DEGREES.to_radians();
-    let down = INITIAL_SPEED * slant.cos();
-    let across = INITIAL_SPEED * slant.sin();
-    // Time to fall SPAWN_HEIGHT from `down` m/s under gravity.
+    let down = flight.speed * slant.cos();
+    let across = flight.speed * slant.sin();
+    // Time to fall from the configured height under gravity.
     let time = if gravity > 0.0 {
-        (-down + (down * down + 2.0 * gravity * SPAWN_HEIGHT).sqrt()) / gravity
+        (-down + (down * down + 2.0 * gravity * flight.height).sqrt()) / gravity
     } else {
-        SPAWN_HEIGHT / down
+        flight.height / down
     };
     let target = point + DVec3::Y * METEOR_RADIUS;
-    let start = target + DVec3::Y * SPAWN_HEIGHT - away * across * time;
+    let start = target + DVec3::Y * flight.height - away * across * time;
     (start, away * across - DVec3::Y * down)
 }
 
@@ -366,14 +400,40 @@ impl MeteorSwarm {
         visible: impl Fn(DVec3) -> bool,
         roll: &mut dyn FnMut(u32) -> u32,
     ) -> Result<Self, Refusal> {
+        Self::cast_with_flight(
+            world,
+            caster,
+            points,
+            gravity,
+            Flight::STANDARD,
+            dc,
+            visible,
+            roll,
+        )
+    }
+
+    /// Cast with an explicit recording profile; stored trajectories replay without it.
+    pub fn cast_with_flight(
+        world: &mut World,
+        caster: DVec3,
+        points: [DVec3; METEORS],
+        gravity: f64,
+        flight: Flight,
+        dc: i32,
+        visible: impl Fn(DVec3) -> bool,
+        roll: &mut dyn FnMut(u32) -> u32,
+    ) -> Result<Self, Refusal> {
+        if !flight.valid() {
+            return Err(Refusal::Invalid);
+        }
         validate(caster, &points, visible)?;
         let damage = Damage::roll(roll);
-        let stagger = ticks(world, STAGGER);
+        let stagger = ticks(world, flight.stagger);
         let meteors = points
             .iter()
             .enumerate()
             .map(|(i, &point)| {
-                let (start, velocity) = trajectory(caster, point, gravity);
+                let (start, velocity) = trajectory_with_flight(caster, point, gravity, flight);
                 Meteor {
                     point,
                     spawn_tick: world.tick + stagger * i as u64,
@@ -873,6 +933,45 @@ mod tests {
         for pair in impacts.windows(2) {
             assert_eq!(pair[1].tick - pair[0].tick, 30);
         }
+    }
+
+    #[test]
+    fn slow_recording_flight_lands_on_all_four_points() {
+        let mut world = flat();
+        let mut dice = Dice::new(1);
+        let swarm = MeteorSwarm::cast_with_flight(
+            &mut world,
+            DVec3::ZERO,
+            points(),
+            G,
+            Flight::PLAYGROUND,
+            DC,
+            |_| true,
+            &mut |s| dice.roll(s),
+        )
+        .unwrap();
+        assert_eq!(
+            swarm
+                .meteors
+                .iter()
+                .map(|m| m.spawn_tick)
+                .collect::<Vec<_>>(),
+            [0, 60, 120, 180]
+        );
+        let mut scene = Scene {
+            world,
+            swarm,
+            creatures: vec![],
+            objects: vec![],
+            dice,
+        };
+        let impacts = scene.run(5.);
+        assert_eq!(impacts.len(), 4);
+        assert!(
+            impacts
+                .iter()
+                .all(|i| !i.obstructed && i.center.distance(i.point) < 0.6)
+        );
     }
 
     #[test]

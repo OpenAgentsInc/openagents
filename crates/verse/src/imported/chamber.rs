@@ -520,6 +520,7 @@ pub fn combat_lighting(game: &super::play::Game) -> super::lighting::Lighting {
             range: 50.,
         });
     }
+    super::meteor_swarm::lights(game, &mut lighting);
     lighting
 }
 /// Uses the same effect lighting for local authority and admitted remote data.
@@ -967,8 +968,7 @@ pub fn add_effect_models(pack: &mut Pack, dir: &std::path::Path) -> Result<(), S
     pack.validate()
 }
 pub fn spell_instances(game: &super::play::Game) -> Vec<Instance> {
-    let mut out = spell_instances_from_visuals(&verse_world::visuals::Combat::extract(game));
-    out
+    spell_instances_from_visuals(&verse_world::visuals::Combat::extract(game))
 }
 /// Draws admitted visual values without borrowing local world authority.
 pub fn spell_instances_from_visuals(visuals: &verse_world::visuals::Combat) -> Vec<Instance> {
@@ -2070,46 +2070,7 @@ pub fn environment_instances(pack: &Pack, game: &super::play::Game) -> Vec<Insta
         }
     }
     drop(ribbon);
-    for effect in &game.spells.meteors {
-        for impact in &effect.swarm.impacts {
-            if pack.models.contains_key("effect-scorch") {
-                out.push(Instance {
-                    mount: None,
-                    actor: None,
-                    model: "effect-scorch".into(),
-                    transform: Mat4::from_translation(impact.point.as_vec3() + Vec3::Y * 0.02)
-                        * Mat4::from_scale(Vec3::new(5., 0.5, 5.))
-                        * basis(),
-                    animation: 0.into(),
-                    time: game.time,
-                    emission: Vec3::ZERO,
-                });
-            }
-        }
-        if pack.models.contains_key("effect-fire") {
-            for meteor in &effect.swarm.meteors {
-                let Some(id) = meteor.body else { continue };
-                let body = &game.spells.world[id];
-                if body.removed {
-                    continue;
-                }
-                for trail in 1..=6 {
-                    out.push(Instance {
-                        mount: None,
-                        actor: None,
-                        model: "effect-fire".into(),
-                        transform: Mat4::from_translation(
-                            (body.pos - body.vel.normalize_or_zero() * f64::from(trail) * 1.2)
-                                .as_vec3(),
-                        ) * Mat4::from_scale(Vec3::splat(0.5)),
-                        animation: 0.into(),
-                        time: game.time,
-                        emission: Vec3::splat(3.),
-                    });
-                }
-            }
-        }
-    }
+    out.extend(super::meteor_swarm::instances(game));
     if pack.models.contains_key("prop/flame") {
         out.extend(
             verse_world::visuals::flame_states(game)

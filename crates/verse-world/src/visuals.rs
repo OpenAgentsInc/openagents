@@ -81,7 +81,7 @@ pub fn prop_poses(game: &Game, alpha: f32) -> Vec<Prop> {
         .props
         .iter()
         .enumerate()
-        .filter(|(_, p)| !p.removed)
+        .filter(|(_, p)| !p.removed && p.spec.kind != crate::spells::PropKind::Meteor)
         .map(|(i, p)| {
             let (center, rotation) = game.spells.prop_pose(i, alpha as f64);
             Prop {
@@ -258,7 +258,7 @@ pub fn flame_states(game: &Game) -> Vec<crate::gust::Flame> {
         .flat_map(|e| &e.objects)
         .filter(|o| o.burning(game.spells.world.tick) && !game.spells.world[o.body].removed)
     {
-        if flames.len() >= 256 {
+        if bodies.len() >= 4 {
             break;
         }
         if bodies.insert(object.body) {

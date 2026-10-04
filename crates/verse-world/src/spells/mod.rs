@@ -1195,11 +1195,44 @@ impl SpellWorld {
                     &mut effect.objects,
                     &mut |s| self.dice.roll(s),
                 ) {
-                    meteor_events.push(format!(
-                        "Meteor {} impacted at {:?}; obstructed: {}",
-                        impact.meteor, impact.point, impact.obstructed
+                    meteor_events.push((
+                        format!(
+                            "Meteor {}: impact at ({:.1}, {:.1}, {:.1}) m{}",
+                            impact.meteor + 1,
+                            impact.center.x,
+                            impact.center.y,
+                            impact.center.z,
+                            if impact.obstructed {
+                                "; intercepted above the target"
+                            } else {
+                                ""
+                            }
+                        ),
+                        None,
                     ));
                     for hit in impact.creatures {
+                        let save = Save {
+                            target: u64::from(hit.id),
+                            ability: "DEX".into(),
+                            roll: hit.save.d20 as u32,
+                            modifier: hit.save.modifier,
+                            total: hit.save.d20 + hit.save.modifier,
+                            dc: hit.save.dc,
+                            success: hit.save.success,
+                            forced: false,
+                        };
+                        meteor_events.push((
+                            format!(
+                                "Creature {}: DEX {} vs DC {} {}; {} fire + {} bludgeoning",
+                                hit.id,
+                                save.total,
+                                save.dc,
+                                if save.success { "succeeds" } else { "fails" },
+                                hit.damage.fire,
+                                hit.damage.bludgeoning,
+                            ),
+                            Some(save),
+                        ));
                         self.damage.push((
                             u64::from(hit.id),
                             hit.damage.total(),
@@ -1245,8 +1278,8 @@ impl SpellWorld {
                     )?;
                 }
             }
-            for event in meteor_events {
-                self.record(time, "Meteor Swarm", event, None);
+            for (event, save) in meteor_events {
+                self.record(time, "Meteor Swarm", event, save);
             }
             self.record_boundary(&before, "meteor:spawn/remove");
             for effect in &mut self.walls {

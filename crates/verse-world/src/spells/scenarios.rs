@@ -294,6 +294,9 @@ pub fn levitate() -> Scenario {
 }
 
 pub fn area(slot: u8) -> Scenario {
+    if slot == 7 {
+        return super::meteor_swarm::scenario();
+    }
     if slot == 1 {
         return stone();
     }
@@ -510,8 +513,6 @@ pub fn area(slot: u8) -> Scenario {
         },
         setup: if slot == 6 {
             tentacle_setup
-        } else if slot == 7 {
-            meteor_setup
         } else {
             |scene, _| {
                 caster(scene);
@@ -531,11 +532,10 @@ pub fn area(slot: u8) -> Scenario {
         populate: match slot {
             5 => wind_wall_props,
             6 => tentacle_props,
-            7 => meteor_props,
             _ => props,
         },
         script,
-        camera: if slot == 7 { meteor_camera } else { camera },
+        camera,
         replay_camera: (Vec3::new(11., 9., -12.), Vec3::new(0., 3., -3.)),
         check: |game| {
             let spells = &game.spells;
@@ -585,55 +585,6 @@ pub fn area(slot: u8) -> Scenario {
             Ok(())
         },
     }
-}
-
-fn meteor_props(
-    game: &mut crate::play::Game,
-    hall: &crate::playground::Hall,
-) -> Result<(), String> {
-    props(game, hall)?;
-    for i in 0..4 {
-        let mut spec = PropSpec::reference(PropKind::Crate);
-        spec.hit_points = Some(30);
-        game.spawn_prop(
-            "Crate stack",
-            spec,
-            Vec3::new(3. + (i % 2) as f32 * 0.61, 0.3 + (i / 2) as f32 * 0.6, 2.),
-            0.,
-        )?;
-    }
-    for (x, y) in [(-0.31, 0.45), (0.31, 0.45), (0., 1.35)] {
-        let mut spec = PropSpec::reference(PropKind::Barrel);
-        spec.hit_points = Some(40);
-        game.spawn_prop("Barrel pyramid", spec, Vec3::new(-4. + x, y, 1.), 0.)?;
-    }
-    for i in 0..3 {
-        let mut spec = PropSpec::reference(PropKind::Crate);
-        spec.dimensions = DVec3::new(0.15, 1.2, 0.6);
-        spec.mass = 8.;
-        spec.hit_points = Some(20);
-        game.spawn_prop(
-            "Wooden fence",
-            spec,
-            Vec3::new(-1. + i as f32 * 0.6, 0.6, 3.),
-            0.,
-        )?;
-    }
-    for level in 0..3 {
-        let mut spec = PropSpec::reference(PropKind::StoneBlock);
-        spec.hit_points = Some(100);
-        game.spawn_prop(
-            "Stone-block tower",
-            spec,
-            Vec3::new(6., 0.5 + level as f32, -1.),
-            0.,
-        )?;
-    }
-    let mut roof = PropSpec::reference(PropKind::StoneBlock).secured();
-    roof.dimensions = DVec3::new(4., 0.3, 4.);
-    roof.hit_points = Some(500);
-    game.spawn_prop("Meteor overhang", roof, Vec3::new(0., 8., -3.), 0.)?;
-    Ok(())
 }
 
 fn tentacle_setup(
@@ -961,23 +912,6 @@ fn wind() -> Scenario {
         },
     }
 }
-fn meteor_setup(
-    scene: &mut verse_engine::director::Scene,
-    _: &crate::playground::Hall,
-) -> Result<(), String> {
-    caster(scene);
-    for i in 0..6 {
-        scene.actors.push(creature(
-            101 + i,
-            "Overlapping blast dummy",
-            "dummy",
-            Vec3::new((i % 3) as f32 * 1.8 - 1.8, 0., (i / 3) as f32 * 2. - 3.),
-            0.,
-            400,
-        ));
-    }
-    Ok(())
-}
 fn gravity() -> Scenario {
     Scenario {
         key: "reverse-gravity",
@@ -1097,21 +1031,6 @@ fn gravity() -> Scenario {
             Ok(())
         },
     }
-}
-
-fn meteor_camera() -> Vec<Shot> {
-    vec![
-        Shot {
-            at: 0.,
-            eye: Vec3::new(75., 70., -70.),
-            target: Vec3::new(0., 45., -3.),
-        },
-        Shot {
-            at: 1.4,
-            eye: Vec3::new(25., 18., -25.),
-            target: Vec3::new(0., 4., -3.),
-        },
-    ]
 }
 
 fn wind_wall_props(
