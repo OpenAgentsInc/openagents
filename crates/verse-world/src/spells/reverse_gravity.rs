@@ -188,32 +188,41 @@ pub(super) fn break_props(
 
 /// Outlines the live cylinder so its extent is visible in the playground.
 pub fn guide_lines(game: &Game) -> Vec<(glam::Vec3, glam::Vec3, [f32; 4])> {
+    game.spells
+        .reversed
+        .iter()
+        .filter(|a| a.spell.active())
+        .flat_map(|active| cylinder_lines(&active.spell.gravity.cylinder))
+        .collect()
+}
+
+/// One cylinder's base and top rings, a faint middle ring, and four
+/// uprights, as colored segments. Zones without the chamber's game draw the
+/// spell's area with these too.
+pub fn cylinder_lines(c: &rules::Cylinder) -> Vec<(glam::Vec3, glam::Vec3, [f32; 4])> {
     const SEGMENTS: usize = 48;
     let outline = [0.72, 0.55, 1.0, 0.85];
     let faint = [0.72, 0.55, 1.0, 0.35];
     let mut out = vec![];
-    for active in game.spells.reversed.iter().filter(|a| a.spell.active()) {
-        let c = &active.spell.gravity.cylinder;
-        let (base, top) = (c.base.y as f32 + 0.03, c.top() as f32);
-        let at = |angle: f32, y: f32| {
-            glam::Vec3::new(
-                c.base.x as f32 + c.radius as f32 * angle.cos(),
-                y,
-                c.base.z as f32 + c.radius as f32 * angle.sin(),
-            )
-        };
-        let step = std::f32::consts::TAU / SEGMENTS as f32;
-        for i in 0..SEGMENTS {
-            let (a, b) = (i as f32 * step, (i + 1) as f32 * step);
-            out.push((at(a, base), at(b, base), outline));
-            out.push((at(a, top), at(b, top), outline));
-            let middle = (base + top) * 0.5;
-            out.push((at(a, middle), at(b, middle), faint));
-        }
-        for i in 0..4 {
-            let a = i as f32 * std::f32::consts::FRAC_PI_2;
-            out.push((at(a, base), at(a, top), outline));
-        }
+    let (base, top) = (c.base.y as f32 + 0.03, c.top() as f32);
+    let at = |angle: f32, y: f32| {
+        glam::Vec3::new(
+            c.base.x as f32 + c.radius as f32 * angle.cos(),
+            y,
+            c.base.z as f32 + c.radius as f32 * angle.sin(),
+        )
+    };
+    let step = std::f32::consts::TAU / SEGMENTS as f32;
+    for i in 0..SEGMENTS {
+        let (a, b) = (i as f32 * step, (i + 1) as f32 * step);
+        out.push((at(a, base), at(b, base), outline));
+        out.push((at(a, top), at(b, top), outline));
+        let middle = (base + top) * 0.5;
+        out.push((at(a, middle), at(b, middle), faint));
+    }
+    for i in 0..4 {
+        let a = i as f32 * std::f32::consts::FRAC_PI_2;
+        out.push((at(a, base), at(a, top), outline));
     }
     out
 }

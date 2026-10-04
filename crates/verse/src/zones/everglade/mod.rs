@@ -23,6 +23,9 @@ pub mod pose;
 mod scene;
 pub mod signals;
 pub mod solids;
+#[cfg(test)]
+mod spell_tests;
+pub mod spells;
 pub mod studio;
 #[cfg(test)]
 mod tests;
@@ -229,6 +232,7 @@ pub(crate) struct Everglade {
     pub jump: bool,
     landing: bool,
     solids: solids::Solids,
+    spells: spells::Spells,
     rendered: Mesh,
     cast: Option<player::Cast>,
 }
@@ -249,6 +253,7 @@ impl Everglade {
             jump: false,
             landing: false,
             solids: solids::Solids::build(pack, &layout::placements())?,
+            spells: spells::Spells::default(),
             rendered: Self::stage(0.0),
             cast: player::Cast::new(pack, at)?,
         })
@@ -359,8 +364,44 @@ impl Everglade {
             self.altitude = self.altitude.max(floor);
             player.hold_altitude(before + (self.altitude - before).clamp(-2.0 * dt, 3.0 * dt));
         } else {
+            let (feet, speed) = (player.pos.y, player.vertical_speed());
             self.move_on_solids(player, &input, dt);
+            self.spells
+                .after_step(player, feet, speed, &self.solids, dt);
         }
+    }
+
+    /// Casts `spell` for `player`, or ends it when it is the live
+    /// concentration spell. Reverse Gravity ends levitation: the player
+    /// falls upward instead.
+    ///
+    /// # Errors
+    ///
+    /// Returns why the spell's rules refused the cast.
+    pub fn cast_spell(
+        &mut self,
+        spell: spells::Spell,
+        player: &PlayerController,
+    ) -> Result<(), String> {
+        self.spells.cast(spell, player, &self.solids)?;
+        if spell == spells::Spell::ReverseGravity && self.spells.active(spell) {
+            self.levitating = false;
+            self.landing = false;
+        }
+        self.solids.set_spell_blocks(self.spells.blocks());
+        Ok(())
+    }
+
+    /// `spell`'s hotbar slot for `player`.
+    #[must_use]
+    pub fn spell_slot(&self, spell: spells::Spell, player: &PlayerController) -> hotbar::Slot {
+        self.spells.slot(spell, player, &self.solids)
+    }
+
+    /// The live spells as drawn around `player`.
+    #[must_use]
+    pub fn spell_mesh(&self, player: &PlayerController) -> Mesh {
+        self.spells.mesh(player)
     }
 
     /// One step of the shared controller over the solids: the blockers the
@@ -396,11 +437,14 @@ impl Everglade {
         };
     }
 
-    /// Advances the clock, poses the player's character for `at`, and
-    /// poses each of the studio's `seats`.
+    /// Advances the clock and the spells, poses the player's character for
+    /// `at`, and poses each of the studio's `seats`.
     pub fn tick(&mut self, dt: f32, at: &PlayerController, seats: &[studio::SeatFigure]) {
         self.elapsed = (self.elapsed + dt) % 1000.0;
         self.rendered = Self::stage(self.elapsed);
+        if self.spells.tick(dt) {
+            self.solids.set_spell_blocks(self.spells.blocks());
+        }
         if let Some(cast) = &mut self.cast {
             cast.advance(at, seats, dt);
         }

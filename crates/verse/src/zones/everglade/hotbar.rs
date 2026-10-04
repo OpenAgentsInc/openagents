@@ -1,22 +1,34 @@
-//! Everglade's movement hotbar, drawn as the chamber's action bar is: a
-//! beveled tray of game-icons.net art with a number key on each slot. The
-//! icons are sprites in the HUD's atlas, added by [`add_sprites`].
+//! Everglade's hotbar, drawn as the chamber's action bar is: a beveled tray
+//! of game-icons.net art with a number key on each slot and a cooldown
+//! sector over a spell that is not ready. Levitate, Up, and Down come first,
+//! then the spells that need no enemy ([`super::spells`]). The icons are
+//! sprites in the HUD's atlas, added by [`add_sprites`].
 
 use super::super::Intent;
 use crate::ui::{Atlas, UiBatch};
 
-/// One slot: the intent it sends and its icon sprite.
-pub const SLOTS: [(Intent, &str); 3] = [
+/// How many slots the bar has.
+pub const COUNT: usize = 7;
+
+/// One slot: the intent it sends and its icon sprite. Number keys 1 to 7
+/// press them in order.
+pub const SLOTS: [(Intent, &str); COUNT] = [
     (Intent::Levitate, "levitate-icon"),
     (Intent::Rise, "rise-icon"),
     (Intent::Lower, "descend-icon"),
+    (Intent::FeatherFall, "feather-fall-icon"),
+    (Intent::WallOfStone, "wall-of-stone-icon"),
+    (Intent::WindWall, "wind-wall-icon"),
+    (Intent::ReverseGravity, "reverse-gravity-icon"),
 ];
 
-/// Whether a slot can be used now, and whether its toggle is on.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+/// Whether a slot can be used now, whether its toggle or spell is on, and
+/// the fraction of its cooldown left.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Slot {
     pub enabled: bool,
     pub active: bool,
+    pub cooldown: f32,
 }
 
 /// The chamber bar's units (`imported::overlay`): 36-unit icons 42 apart in
@@ -83,7 +95,7 @@ pub fn hit(point: [f32; 2], size: [f32; 2], bottom: f32) -> Option<Intent> {
 }
 
 /// Draws the tray with `slots` (in [`SLOTS`] order) into `ui`.
-pub fn draw(ui: &mut UiBatch, atlas: &Atlas, size: [f32; 2], bottom: f32, slots: &[Slot; 3]) {
+pub fn draw(ui: &mut UiBatch, atlas: &Atlas, size: [f32; 2], bottom: f32, slots: &[Slot; COUNT]) {
     let frame = frame(size, bottom);
     let [left, top, width, height] = frame;
     let u = unit(size);
@@ -110,6 +122,7 @@ pub fn draw(ui: &mut UiBatch, atlas: &Atlas, size: [f32; 2], bottom: f32, slots:
             [0.32, 0.32, 0.32, 1.0]
         };
         ui.image_region(atlas, key, [x, y, icon, icon], [0.0, 1.0, 0.0, 1.0], tint);
+        ui.cooldown(atlas, [x, y, icon], slot.cooldown);
         let (edge, width) = if slot.active {
             ([0.98, 0.82, 0.38, 1.0], 2.0)
         } else {

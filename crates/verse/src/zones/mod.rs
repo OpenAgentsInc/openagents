@@ -212,6 +212,12 @@ pub enum Intent {
     Levitate,
     Rise,
     Lower,
+    /// Everglade's hotbar spells
+    /// ([`everglade::spells`](crate::zones::everglade::spells)).
+    FeatherFall,
+    WallOfStone,
+    WindWall,
+    ReverseGravity,
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]

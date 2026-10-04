@@ -444,6 +444,19 @@ impl WorldRuntime {
                 self.cancel_navigation();
                 self.zone_state.error = None;
             }
+            Intent::FeatherFall
+            | Intent::WallOfStone
+            | Intent::WindWall
+            | Intent::ReverseGravity => {
+                let spell =
+                    super::everglade::spells::Spell::of(intent).ok_or("Not an Everglade spell")?;
+                self.zone_state
+                    .everglade
+                    .as_mut()
+                    .ok_or("Enter Everglade first")?
+                    .cast_spell(spell, &self.player)?;
+                self.zone_state.error = None;
+            }
             Intent::Interact => {
                 if self.studio_panel_here().is_none() {
                     return Err("Walk up to a station".into());
@@ -572,17 +585,29 @@ impl WorldRuntime {
                 .map(|_| ()),
         )
     }
-    /// Everglade's movement hotbar, in [`super::everglade::hotbar::SLOTS`]
-    /// order, or `None` outside Everglade.
+    /// Everglade's hotbar of movement and spells, in
+    /// [`super::everglade::hotbar::SLOTS`] order, or `None` outside Everglade.
     #[must_use]
-    pub fn everglade_hotbar(&self) -> Option<[super::everglade::hotbar::Slot; 3]> {
-        use super::everglade::hotbar::Slot;
+    pub fn everglade_hotbar(
+        &self,
+    ) -> Option<[super::everglade::hotbar::Slot; super::everglade::hotbar::COUNT]> {
+        use super::everglade::{hotbar::Slot, spells::Spell};
         let glade = self.zone_state.everglade.as_ref()?;
-        let on = |enabled, active| Slot { enabled, active };
+        let on = |enabled, active| Slot {
+            enabled,
+            active,
+            cooldown: 0.0,
+        };
+        let [feather, stone, wind, reverse] =
+            Spell::ALL.map(|spell| glade.spell_slot(spell, &self.player));
         Some([
             on(true, glade.levitating),
             on(glade.levitating, false),
             on(glade.levitating, false),
+            feather,
+            stone,
+            wind,
+            reverse,
         ])
     }
 
@@ -1283,6 +1308,8 @@ impl WorldRuntime {
             mesh.extend(everglade.dynamic());
             // The player, and the seats when the pack's character draws them.
             mesh.extend(&everglade.player_mesh(&self.player, &self.gait));
+            // The live spells: stone panels, wind, the cylinder, feathers.
+            mesh.extend(&everglade.spell_mesh(&self.player));
             // The studio's nameplates, lamps, marks, bubbles, particles, and
             // live boards, and boxy seats when there is no character.
             let eye = self.view(1.0).eye;

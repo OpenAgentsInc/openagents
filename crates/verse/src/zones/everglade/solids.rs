@@ -46,6 +46,9 @@ impl Roof {
 pub struct Solids {
     blocks: Vec<Block>,
     roofs: Vec<Roof>,
+    /// Blocks a spell raised, such as Wall of Stone's panels; replaced
+    /// whole by [`Solids::set_spell_blocks`].
+    spell: Vec<Block>,
 }
 
 impl Solids {
@@ -90,12 +93,33 @@ impl Solids {
         Ok(solids)
     }
 
+    /// Replaces the spell-raised blocks with `blocks`, each a footprint and
+    /// its top, m.
+    pub fn set_spell_blocks(&mut self, blocks: impl IntoIterator<Item = (Footprint, f32)>) {
+        self.spell = blocks
+            .into_iter()
+            .map(|(footprint, top)| Block { footprint, top })
+            .collect();
+    }
+
+    /// The lowest roof at `(x, z)` at or above `head`, m: what a character
+    /// rising there strikes.
+    #[must_use]
+    pub fn ceiling(&self, x: f32, z: f32, head: f32) -> Option<f32> {
+        self.roofs
+            .iter()
+            .filter_map(|roof| roof.surface(x, z))
+            .filter(|&surface| surface >= head)
+            .min_by(f32::total_cmp)
+    }
+
     /// The footprints that block feet at `feet`: those whose top is more
     /// than a step above them.
     #[must_use]
     pub fn blocking(&self, feet: f32) -> Vec<Footprint> {
         self.blocks
             .iter()
+            .chain(&self.spell)
             .filter(|block| block.top > feet + STEP)
             .map(|block| block.footprint)
             .collect()
@@ -112,6 +136,7 @@ impl Solids {
         let blocks = self
             .blocks
             .iter()
+            .chain(&self.spell)
             .filter(|block| block.top <= reach && inside(&block.footprint))
             .map(|block| block.top);
         let roofs = self

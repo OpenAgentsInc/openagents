@@ -127,6 +127,17 @@ impl PlayerController {
         self.ground_y = floor;
     }
 
+    /// Vertical speed, m/s: positive while rising.
+    #[must_use]
+    pub(crate) fn vertical_speed(&self) -> f32 {
+        self.vel_y
+    }
+
+    /// Set the vertical speed when a zone's forces change it, m/s.
+    pub(crate) fn set_vertical_speed(&mut self, speed: f32) {
+        self.vel_y = speed;
+    }
+
     /// Hold an externally controlled altitude without retaining jump velocity.
     pub(crate) fn hold_altitude(&mut self, altitude: f32) {
         self.pos.y = altitude.max(self.ground_y);

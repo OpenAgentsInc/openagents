@@ -2024,6 +2024,21 @@ impl App {
                 self.zone_action(ZoneIntent::Levitate);
                 return;
             }
+            // 4 to 7 cast the hotbar's spells.
+            if self.in_bare_everglade() {
+                let slot = match code {
+                    KeyCode::Digit4 => Some(3),
+                    KeyCode::Digit5 => Some(4),
+                    KeyCode::Digit6 => Some(5),
+                    KeyCode::Digit7 => Some(6),
+                    _ => None,
+                };
+                if let Some((intent, _)) = slot.and_then(|i| zones::everglade::hotbar::SLOTS.get(i))
+                {
+                    self.zone_action(*intent);
+                    return;
+                }
+            }
             // In Everglade the interact key opens the station in reach.
             if code == KeyCode::KeyF
                 && let Some(kind) = self.runtime.studio_panel_here()
