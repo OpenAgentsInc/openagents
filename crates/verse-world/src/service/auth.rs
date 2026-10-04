@@ -61,7 +61,7 @@ struct Binding {
 
 /// Authenticates enrolled keys and derives dispatch authority from the transport.
 pub struct Gateway {
-    chamber: Chamber,
+    pub(super) chamber: Chamber,
     server: [u8; 32],
     next_connection: u64,
     last_now: u64,

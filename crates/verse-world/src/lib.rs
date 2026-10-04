@@ -63,6 +63,10 @@ impl Admission {
     pub fn controller(&self) -> Controller {
         self.controller
     }
+    /// Highest envelope admitted in the current control epoch.
+    pub fn accepted_sequence(&self) -> u64 {
+        self.last_sequence
+    }
     /// Fences queued input even when ownership returns to the same controller.
     pub fn handoff(&mut self, controller: Controller) -> Result<(), Refusal> {
         let epoch = self.epoch.checked_add(1).ok_or(Refusal::Exhausted)?;

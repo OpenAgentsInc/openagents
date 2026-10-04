@@ -75,7 +75,17 @@ accepts a transport-retained connection handle, with no request-supplied princip
 or controller. Pending and authenticated connections share a 128-entry budget.
 The host supplies monotonic time; expired, replayed, malformed, foreign, and
 unenrolled proofs are refused. TLS/listener integration, durable grants, and
-replication remain; this is not a Nostr authentication protocol. Revocation leaves an uncontrolled actor in the
+replication remain; this is not a Nostr authentication protocol.
+`service::wire` provides version-one JSON opening challenges and bounded request/
+response messages. Requests carry correlation IDs and command life/epoch/sequence
+fences, with no caller-selected principal, controller, or connection. Replies
+include the host tick and the player’s current control state, including consumed
+command sequences after gameplay refusals. Snapshots bind internal combat IDs to
+actor lives; event pages expose retained serials and explicit history gaps.
+Requests are limited to 16 KiB, replies to 2 MiB, and event pages to 64 entries.
+Unknown fields, bad versions, malformed proofs, and unauthorized operations are
+refused. The network adapter retains the connection handle and supplies time.
+Client prediction, subscribed replication, and secured listener integration remain. Revocation leaves an uncontrolled actor in the
 world; actor retirement and capacity reclamation remain lifecycle work.
 Transactional saves, multiplayer
 replication, and authoring tools remain on the

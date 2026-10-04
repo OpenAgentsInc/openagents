@@ -4,6 +4,8 @@
 //! Never deserialize a principal from an untrusted command and call it verified.
 #[cfg(feature = "service-auth")]
 pub mod auth;
+#[cfg(feature = "service-auth")]
+pub mod wire;
 
 use std::collections::BTreeMap;
 
