@@ -50,11 +50,11 @@ pub struct ResolvedInstances<'a> {
     parents: Vec<Option<usize>>,
 }
 impl<'a> ResolvedInstances<'a> {
-    pub const MAX_INSTANCES: usize = 256;
+    pub const MAX_INSTANCES: usize = 1024;
 
     pub fn extract(catalog: &Catalog, instances: &'a [Instance]) -> Result<Self, String> {
         if instances.len() > Self::MAX_INSTANCES {
-            return Err("Presentation frame exceeds 256 instances".into());
+            return Err("Presentation frame exceeds 1024 instances".into());
         }
         if instances.iter().any(|i| {
             !i.transform.is_finite()
@@ -72,6 +72,15 @@ impl<'a> ResolvedInstances<'a> {
                 Ok(model)
             })
             .collect::<Result<_, String>>()?;
+        let mut roots = std::collections::BTreeMap::new();
+        for (index, parent) in instances.iter().enumerate() {
+            if let Some(life) = parent.actor.filter(|_| parent.mount.is_none()) {
+                roots
+                    .entry((life, parent.model.as_str()))
+                    .and_modify(|entry: &mut (usize, bool)| entry.1 = true)
+                    .or_insert((index, false));
+            }
+        }
         let mut parents = Vec::with_capacity(instances.len());
         for (index, instance) in instances.iter().enumerate() {
             let Some(mount) = &instance.mount else {
@@ -83,15 +92,10 @@ impl<'a> ResolvedInstances<'a> {
                     "Mounted instances must be static leaves with affine local transforms".into(),
                 );
             }
-            let mut matches = instances.iter().enumerate().filter(|(_, parent)| {
-                parent.actor == Some(mount.parent)
-                    && parent.model == mount.parent_model
-                    && parent.mount.is_none()
-            });
-            let (parent, _) = matches
-                .next()
+            let &(parent, ambiguous) = roots
+                .get(&(mount.parent, mount.parent_model.as_str()))
                 .ok_or("Attachment parent life or model is missing")?;
-            if parent == index || matches.next().is_some() {
+            if parent == index || ambiguous {
                 return Err("Attachment parent is ambiguous".into());
             }
             if !crate::sockets::affine(instances[parent].transform) {
@@ -151,6 +155,16 @@ mod tests {
             time: 0.,
             emission: Vec3::ZERO,
         }
+    }
+    #[test]
+    fn modular_battle_frames_remain_bounded_above_the_previous_limit() {
+        let catalog = catalog();
+        let mut instances = vec![instance(); 600];
+        let resolved = ResolvedInstances::extract(&catalog, &instances).unwrap();
+        assert_eq!(resolved.models().len(), 600);
+        resolved.validate(&catalog).unwrap();
+        instances.resize(ResolvedInstances::MAX_INSTANCES + 1, instance());
+        assert!(ResolvedInstances::extract(&catalog, &instances).is_err());
     }
     #[test]
     fn mounts_bind_exact_lives_models_and_unique_parents_independent_of_order() {
@@ -258,7 +272,13 @@ mod tests {
         let mut i = instance();
         i.model = "absent".into();
         assert!(ResolvedInstances::extract(&catalog, &[i]).is_err());
-        assert!(ResolvedInstances::extract(&catalog, &vec![instance(); 257]).is_err());
+        assert!(
+            ResolvedInstances::extract(
+                &catalog,
+                &vec![instance(); ResolvedInstances::MAX_INSTANCES + 1]
+            )
+            .is_err()
+        );
         assert!(ResolvedInstances::extract(&catalog, &vec![instance(); 256]).is_ok());
     }
 }
