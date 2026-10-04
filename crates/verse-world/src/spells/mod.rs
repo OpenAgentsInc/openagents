@@ -10,6 +10,7 @@
 //! To add a spell, write `spells/<name>.rs` with its cast function and its
 //! playground scenario, then add one line to [`CATALOG`] (its action-bar
 //! slot) and one line to `crate::playground::scenarios`.
+pub mod black_tentacles;
 pub mod dice;
 pub mod feather_fall;
 pub mod fields;
@@ -79,6 +80,7 @@ pub const CATALOG: &[SpellDef] = &[
     crate::telekinesis::DEF,
     feather_fall::SPELL,
     wall_of_stone::DEF,
+    black_tentacles::DEF,
 ];
 
 pub fn spell_in_slot(slot: u8) -> Option<&'static SpellDef> {
@@ -192,6 +194,20 @@ pub struct SpellWorld {
     /// Raised Wall of Stone panels, their joints, and debris.
     #[serde(default)]
     pub wall_of_stone: wall_of_stone::State,
+    /// Active Black Tentacles casts.
+    #[serde(default)]
+    pub tentacles: Vec<black_tentacles::Active>,
+    /// Black Tentacles damage the game has yet to apply: actor and amount.
+    #[serde(default)]
+    pub tentacle_damage: Vec<(u64, i32)>,
+    /// Scene time of the last step, s, for log lines written between steps.
+    #[serde(default)]
+    pub time: f32,
+    /// Whether the agent controller may cast Black Tentacles. Off by
+    /// default, so encounters recorded before the spell replay unchanged;
+    /// the live chamber turns it on.
+    #[serde(default)]
+    pub agent_tentacles: bool,
 }
 
 impl Default for SpellWorld {
@@ -240,6 +256,10 @@ impl SpellWorld {
             feather_fall: feather_fall::State::default(),
             gust: gust_of_wind::State::default(),
             wall_of_stone: Default::default(),
+            tentacles: vec![],
+            tentacle_damage: vec![],
+            time: 0.,
+            agent_tentacles: false,
         }
     }
 
@@ -285,6 +305,18 @@ impl SpellWorld {
                 .any(|t| t.hand.0 as usize >= bodies || t.cast > self.casts)
             || self.feather_fall.validate().is_err()
             || self.gust.validate(self.casts).is_err()
+            || !self.time.is_finite()
+            || self.tentacles.len() > 8
+            || self.tentacle_damage.len() > 256
+            || self.tentacles.iter().any(|t| {
+                t.cast > self.casts
+                    || t.proxies.len() > 64
+                    || t.proxies
+                        .iter()
+                        .map(|p| p.body)
+                        .chain(t.spell.owned().0)
+                        .any(|b| b.0 as usize >= bodies)
+            })
         {
             return Err("Invalid spell world checkpoint".into());
         }
@@ -338,6 +370,7 @@ impl SpellWorld {
     /// Ends a cast: its fields, joints, and bodies leave the world.
     pub fn end_cast(&mut self, cast: u64) -> Result<(), String> {
         self.wind.end_cast(cast, &mut self.world, &self.props);
+        black_tentacles::end(self, cast, self.time);
         self.fields.retain(|f| f.cast != cast);
         self.gust.end(cast);
         self.concentration.retain(|_, held| *held != cast);
@@ -557,6 +590,7 @@ impl SpellWorld {
     /// Advances the rigid world `steps` fixed steps, recording every
     /// external impulse in the ledger, and expires fields that end by `time`.
     pub fn step(&mut self, steps: u32, time: f32) -> Result<(), String> {
+        self.time = time;
         let expired: Vec<u64> = self
             .fields
             .iter()
@@ -574,6 +608,10 @@ impl SpellWorld {
         }
         wall_of_stone::after_tick(self, time)?;
         if self.props.iter().all(|p| p.removed || p.spec.secured) && self.telekinesis.is_empty() {
+        if self.props.iter().all(|p| p.removed || p.spec.secured)
+            && self.telekinesis.is_empty()
+            && self.tentacles.is_empty()
+        {
             self.world.tick += u64::from(steps);
             return Ok(());
         }
@@ -584,6 +622,8 @@ impl SpellWorld {
                 .before_step(&mut self.world, &self.props, &mut self.ledger);
             self.levitations
                 .drive(&mut self.world, &mut self.ledger, &self.props);
+            // Tentacle forces wake their segments, so they come first.
+            black_tentacles::before_step(self, time);
             // What the field adds: only bodies that respond this step.
             for tk in self.telekinesis.values_mut() {
                 tk.substep_before(&mut self.world);
@@ -614,6 +654,7 @@ impl SpellWorld {
             for (term, impulse, at) in field_terms {
                 self.ledger.add_impulse(&term, impulse, at);
             }
+            black_tentacles::after_step(self, time);
             let slept: Vec<usize> = self
                 .world
                 .slept

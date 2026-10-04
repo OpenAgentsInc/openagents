@@ -1698,6 +1698,8 @@ fn demo(app: &mut App, output: PathBuf, mode: Demo) -> Result<(), String> {
 
 fn combat_game(pack: &Pack, scene: Scene, agent: bool) -> Result<Game, String> {
     let mut game = Game::combat(scene, agent)?;
+    // The live agent locks groups of cultists in place with Black Tentacles.
+    game.spells.agent_tentacles = true;
     verse::imported::props::admit_collision(pack, &mut game)?;
     Ok(game)
 }

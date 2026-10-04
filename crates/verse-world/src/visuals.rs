@@ -75,7 +75,8 @@ pub struct Prop {
     pub dimensions: Vec3,
 }
 pub fn prop_poses(game: &Game, alpha: f32) -> Vec<Prop> {
-    game.spells
+    let props = game
+        .spells
         .props
         .iter()
         .enumerate()
@@ -90,9 +91,39 @@ pub fn prop_poses(game: &Game, alpha: f32) -> Vec<Prop> {
                 rotation: rotation.as_quat(),
                 dimensions: p.spec.dimensions.as_vec3(),
             }
-        })
-        .collect()
+        });
+    props.chain(tentacle_segments(game)).collect()
 }
+/// Black Tentacles segments drawn as spell bodies: a box around each
+/// capsule, its long axis along the segment.
+fn tentacle_segments(game: &Game) -> impl Iterator<Item = Prop> + '_ {
+    use crate::black_tentacles::{BASE_RADIUS, SEGMENT_LENGTH, SEGMENTS, TIP_RADIUS};
+    let instance = game.player_life().instance;
+    game.spells.tentacles.iter().flat_map(move |active| {
+        active.spell.tentacles.iter().flat_map(move |t| {
+            t.segments.iter().enumerate().map(move |(i, &id)| {
+                let body = &game.spells.world[id];
+                let f = i as f64 / (SEGMENTS - 1) as f64;
+                let width = 2. * (BASE_RADIUS + (TIP_RADIUS - BASE_RADIUS) * f);
+                Prop {
+                    life: physics::queries::Life {
+                        instance,
+                        entity: crate::spells::PROP_ENTITY_BASE + TENTACLE_ENTITY + u64::from(id.0),
+                        generation: 0,
+                    },
+                    kind: crate::spells::PropKind::SpellBody,
+                    secured: false,
+                    center: body.pos.as_vec3(),
+                    rotation: body.orientation.as_quat().normalize(),
+                    dimensions: glam::DVec3::new(width, width, SEGMENT_LENGTH + width * 0.5)
+                        .as_vec3(),
+                }
+            })
+        })
+    })
+}
+/// Tentacle segment identities start this far above the props'.
+const TENTACLE_ENTITY: u64 = 1 << 24;
 pub fn validate_props(props: &[Prop], instance: u64) -> Result<(), String> {
     let mut entities = std::collections::BTreeSet::new();
     if props.len() > crate::spells::MAX_PROPS

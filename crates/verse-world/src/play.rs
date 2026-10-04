@@ -1629,7 +1629,13 @@ impl Game {
         let movement = crate::telekinesis::steer_input(self, movement, dt);
         let walk = crate::movement::walk(movement, self.yaw)?;
         let speed = walk.speed;
-        let delta = walk.direction * dt * speed;
+        // Black Tentacles' square is Difficult Terrain: half speed.
+        let terrain = crate::spells::black_tentacles::speed_scale(
+            &self.spells,
+            self.player_actor(),
+            self.player.as_dvec3(),
+        ) as f32;
+        let delta = walk.direction * dt * speed * terrain;
         self.moving = delta.length_squared() > 0.0;
         self.locomotion = movement;
         if self.moving && self.casting.take().is_some() {
@@ -1696,6 +1702,19 @@ impl Game {
                     .and_then(|e| e.positions.get(&a.actor.id))
                     .copied()
                     .unwrap_or(a.actor.position);
+                let terrain = crate::spells::black_tentacles::speed_scale(
+                    &self.spells,
+                    a.actor.id,
+                    Vec3::from(
+                        source_actors
+                            .iter()
+                            .find(|actor| actor.id == id)
+                            .unwrap()
+                            .pos,
+                    )
+                    .as_dvec3(),
+                ) as f32;
+                let navigated = self.navigation_goals.contains_key(&a.actor.id);
                 if let Some(goal) = self.navigation_goals.get(&a.actor.id) {
                     let (target, speed) = (goal.target, goal.speed);
                     let position = Vec3::from(
@@ -1705,7 +1724,8 @@ impl Game {
                             .unwrap()
                             .pos,
                     );
-                    authored = self.move_hostile(a.actor.id, position, target, speed * dt)?;
+                    authored =
+                        self.move_hostile(a.actor.id, position, target, speed * dt * terrain)?;
                     if let Some(encounter) = &mut self.encounter {
                         encounter.positions.insert(a.actor.id, authored);
                     }
@@ -1715,6 +1735,22 @@ impl Game {
                     desired = self.controls.position(id, authored, self.time);
                     for p in self.additional_players.values_mut() {
                         desired = p.controls.position(id, desired, self.time);
+                    }
+                    // Restrained creatures stand still and the tentacles'
+                    // square halves speed; the authored place follows.
+                    if terrain < 1. && !navigated {
+                        let previous = Vec3::from(
+                            source_actors
+                                .iter()
+                                .find(|actor| actor.id == id)
+                                .unwrap()
+                                .pos,
+                        );
+                        let slowed = previous + (desired - previous) * terrain;
+                        if slowed != desired {
+                            self.controls.displace(id, slowed - desired);
+                            desired = slowed;
+                        }
                     }
                 }
                 let mut npc_path = vec![];
@@ -2288,10 +2324,12 @@ impl Game {
             }
         }
         crate::telekinesis::before_step(self)?;
+        crate::spells::black_tentacles::sync(self, steps)?;
         self.spells.begin_tick();
         self.spells.step(steps as u32, self.time)?;
         crate::reverse_gravity::game::step(self, dt)?;
         crate::telekinesis::after_step(self, steps)?;
+        crate::spells::black_tentacles::apply(self, dt)?;
         let masses: BTreeMap<u64, f64> = std::iter::once(self.player_actor())
             .chain(self.additional_players.keys().copied())
             .chain(living.iter().copied())

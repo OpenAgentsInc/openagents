@@ -178,6 +178,33 @@ impl Save {
     }
 }
 
+/// Which d20 test a creature makes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Test {
+    /// The Strength saving throw against the tentacles.
+    Strength,
+    /// The Strength (Athletics) check a Restrained creature makes to escape.
+    Athletics,
+}
+
+/// The dice the spell rolls: d20 tests by a creature, and damage dice.
+/// Any `FnMut(sides) -> roll` is a roller that rolls every d20 itself.
+pub trait Roller {
+    /// A d20 test by `body` with `modifier` against `dc`.
+    fn test(&mut self, body: BodyId, test: Test, modifier: i32, dc: i32) -> Save;
+    /// One die of `sides`, 1 through `sides`.
+    fn roll(&mut self, sides: u32) -> u32;
+}
+
+impl<F: FnMut(u32) -> u32> Roller for F {
+    fn test(&mut self, _: BodyId, _: Test, modifier: i32, dc: i32) -> Save {
+        Save::new(self(20) as i32, modifier, dc)
+    }
+    fn roll(&mut self, sides: u32) -> u32 {
+        self(sides)
+    }
+}
+
 /// What made a creature save.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Trigger {
@@ -293,6 +320,9 @@ pub struct Creature {
     pub restrained: bool,
     /// Where it was when it was seized, m: the tentacles pull it back here.
     pub hold: DVec3,
+    /// Tick it was last Restrained; it tries to escape once a round after.
+    #[serde(default)]
+    pub restrained_at: u64,
 }
 
 /// One cast of Black Tentacles. Serializes with the world, so a checkpoint
@@ -362,8 +392,8 @@ fn unit(seed: u64, n: u64) -> f64 {
 }
 
 /// Roll `count` dice of `sides` with `roll`.
-fn dice(count: u32, sides: u32, roll: &mut dyn FnMut(u32) -> u32) -> i32 {
-    (0..count).map(|_| roll(sides) as i32).sum()
+fn dice(count: u32, sides: u32, roll: &mut dyn Roller) -> i32 {
+    (0..count).map(|_| roll.roll(sides) as i32).sum()
 }
 
 fn segment_radius(i: usize) -> f64 {
@@ -399,7 +429,7 @@ impl BlackTentacles {
         dc: i32,
         seed: u64,
         targets: &[Target],
-        roll: &mut dyn FnMut(u32) -> u32,
+        roll: &mut dyn Roller,
     ) -> (Self, Vec<Event>) {
         let spacing = SIDE / GRID as f64;
         let mut tentacles = Vec::with_capacity(GRID * GRID);
@@ -430,6 +460,7 @@ impl BlackTentacles {
                     last_save: None,
                     restrained: false,
                     hold: world[target.body].pos,
+                    restrained_at: 0,
                 });
                 if inside {
                     events.extend(spell.save(world, target.body, strength, Trigger::Cast, roll));
@@ -585,7 +616,7 @@ impl BlackTentacles {
         body: BodyId,
         strength: i32,
         trigger: Trigger,
-        roll: &mut dyn FnMut(u32) -> u32,
+        roll: &mut dyn Roller,
     ) -> Vec<Event> {
         let round = ticks(world, ROUND);
         let tick = world.tick;
@@ -597,11 +628,14 @@ impl BlackTentacles {
             return Vec::new();
         }
         creature.last_save = Some(tick);
-        let save = Save::new(roll(20) as i32, strength, dc);
-        let damage = (!save.success).then(|| dice(DAMAGE_DICE, DAMAGE_SIDES, roll));
+        let save = roll.test(body, Test::Strength, strength, dc);
         if !save.success {
             creature.restrained = true;
+            creature.restrained_at = tick;
             creature.hold = world[body].pos;
+        }
+        let damage = (!save.success).then(|| dice(DAMAGE_DICE, DAMAGE_SIDES, roll));
+        if !save.success {
             self.seize(world, body);
         }
         vec![Event::Save {
@@ -610,6 +644,37 @@ impl BlackTentacles {
             save,
             damage,
         }]
+    }
+
+    /// Track a creature present at the cast, for a caller that adds the
+    /// creature's body after [`BlackTentacles::cast`]: inside the square it
+    /// saves now; outside, it saves when it enters.
+    pub fn save_on_cast(
+        &mut self,
+        world: &World,
+        body: BodyId,
+        strength: i32,
+        roll: &mut dyn Roller,
+    ) -> Vec<Event> {
+        if self.creature_mut(body).is_some() {
+            return Vec::new();
+        }
+        let pos = world[body].pos;
+        let inside = self.contains(pos);
+        self.creatures.push(Creature {
+            body,
+            inside,
+            clock: world.tick,
+            last_save: None,
+            restrained: false,
+            hold: pos,
+            restrained_at: 0,
+        });
+        if inside {
+            self.save(world, body, strength, Trigger::Cast, roll)
+        } else {
+            Vec::new()
+        }
     }
 
     /// Send the nearest free tentacles in reach to wrap `body`.
@@ -640,12 +705,15 @@ impl BlackTentacles {
         d20: i32,
         athletics: i32,
     ) -> Option<Event> {
-        let dc = self.dc;
+        let check = Save::new(d20, athletics, self.dc);
+        self.resolve_escape(world, body, check)
+    }
+
+    fn resolve_escape(&mut self, world: &mut World, body: BodyId, check: Save) -> Option<Event> {
         let creature = self.creature_mut(body)?;
         if !creature.restrained {
             return None;
         }
-        let check = Save::new(d20, athletics, dc);
         if check.success {
             creature.restrained = false;
             for t in &mut self.tentacles {
@@ -660,6 +728,33 @@ impl BlackTentacles {
         Some(Event::Escape { body, check })
     }
 
+    /// Forget a creature that died or left the world: its captures and
+    /// seizing tentacles let go.
+    pub fn forget(&mut self, world: &mut World, body: BodyId) {
+        for t in &mut self.tentacles {
+            if t.mode.body() == Some(body) {
+                if let Mode::Hold { joint, .. } = t.mode {
+                    world.remove_joint(joint);
+                }
+                t.mode = Mode::Idle;
+            }
+        }
+        self.creatures.retain(|c| c.body != body);
+    }
+
+    /// The pull the tentacles holding `body` exert toward where it was
+    /// seized, N, for a creature the caller moves itself: `at` and `vel` are
+    /// its center and velocity. Zero unless it is held.
+    #[must_use]
+    pub fn pull(&self, body: BodyId, at: DVec3, vel: DVec3) -> DVec3 {
+        let Some(c) = self.creatures.iter().find(|c| c.body == body) else {
+            return DVec3::ZERO;
+        };
+        let holders = self.captures(body).len();
+        let one = ((c.hold - at) * HOLD_STIFFNESS - vel * HOLD_DAMPING).clamp_length_max(TIP_FORCE);
+        one * holders as f64
+    }
+
     /// Before a world step: track creatures in and out of the area and make
     /// the saves they owe, choose what each tentacle reaches for, and apply
     /// the spell's forces, counting them in `ledger` under
@@ -668,7 +763,7 @@ impl BlackTentacles {
         &mut self,
         world: &mut World,
         targets: &[Target],
-        roll: &mut dyn FnMut(u32) -> u32,
+        roll: &mut dyn Roller,
         mut ledger: Option<&mut Ledger>,
     ) -> Vec<Event> {
         let mut events = Vec::new();
@@ -677,6 +772,23 @@ impl BlackTentacles {
         }
         let round = ticks(world, ROUND);
         let tick = world.tick;
+        // A Restrained creature uses its action once a round to escape,
+        // before its turn ends.
+        for target in targets {
+            let Kind::Creature { athletics, .. } = target.kind else {
+                continue;
+            };
+            let due = self.creatures.iter().any(|c| {
+                c.body == target.body
+                    && c.restrained
+                    && tick > c.restrained_at
+                    && (tick - c.restrained_at) % round == 0
+            });
+            if due {
+                let check = roll.test(target.body, Test::Athletics, athletics, self.dc);
+                events.extend(self.resolve_escape(world, target.body, check));
+            }
+        }
         for target in targets {
             let Kind::Creature { strength, .. } = target.kind else {
                 continue;
@@ -691,6 +803,7 @@ impl BlackTentacles {
                     last_save: None,
                     restrained: false,
                     hold: pos,
+                    restrained_at: 0,
                 });
             }
             let creature = self.creature_mut(target.body).expect("tracked");
@@ -871,6 +984,11 @@ impl BlackTentacles {
                     pd(nearest(world, body, tip) + writhe * 0.15)
                 }
                 Mode::Hold { body, .. } => match self.creatures.iter().find(|c| c.body == body) {
+                    // The caller moves a kinematic creature and applies
+                    // [`BlackTentacles::pull`]; the tip only stays wrapped.
+                    Some(_) if world[body].kind != BodyKind::Dynamic => {
+                        pd(nearest(world, body, tip)) * 0.25
+                    }
                     Some(c) => {
                         let target = &world[body];
                         ((c.hold - target.pos) * HOLD_STIFFNESS - target.vel * HOLD_DAMPING)
@@ -922,13 +1040,15 @@ impl BlackTentacles {
     /// After a world step: count the impulses the roots took in `ledger`,
     /// let a prop go from a grip held at its limit for [`STEAL_TIME`], and
     /// end the spell when concentration runs out.
-    pub fn after_step(&mut self, world: &mut World, ledger: Option<&mut Ledger>) -> Vec<Event> {
+    pub fn after_step(&mut self, world: &mut World, mut ledger: Option<&mut Ledger>) -> Vec<Event> {
         let mut events = Vec::new();
         if self.ended {
             return events;
         }
-        if let Some(ledger) = ledger {
+        if let Some(ledger) = ledger.as_deref_mut() {
             for t in &self.tentacles {
+                // The roots hold the segments from static anchors: the
+                // impulse on `b`, a segment, comes from outside.
                 for &id in &t.joints[..2] {
                     if let Some(joint) = world.joint(id) {
                         ledger.add(
@@ -940,6 +1060,21 @@ impl BlackTentacles {
                                 },
                         );
                     }
+                }
+                // A capture on a creature the caller moves: the tip, `a`,
+                // takes the opposite of the impulse on `b`.
+                if let Mode::Hold { body, joint, .. } = t.mode
+                    && world[body].kind != BodyKind::Dynamic
+                    && let Some(joint) = world.joint(joint)
+                {
+                    ledger.add(
+                        LEDGER_TERM,
+                        Momentum::impulse(-joint.impulse, joint.point, ledger.origin)
+                            + Momentum {
+                                linear: DVec3::ZERO,
+                                angular: -joint.angular_impulse,
+                            },
+                    );
                 }
             }
         }
@@ -968,14 +1103,15 @@ impl BlackTentacles {
             }
         }
         if world.tick >= self.ends {
-            events.extend(self.end(world));
+            events.extend(self.end(world, ledger));
         }
         events
     }
 
     /// End the spell: remove every capture, joint, and tentacle body, and
-    /// free every creature.
-    pub fn end(&mut self, world: &mut World) -> Vec<Event> {
+    /// free every creature. The momentum the removed segments carried leaves
+    /// `ledger` under `removed`.
+    pub fn end(&mut self, world: &mut World, mut ledger: Option<&mut Ledger>) -> Vec<Event> {
         if self.ended {
             return Vec::new();
         }
@@ -984,6 +1120,19 @@ impl BlackTentacles {
             world.remove_joint(joint);
         }
         for body in bodies {
+            if let Some(ledger) = ledger.as_deref_mut()
+                && world[body].kind == BodyKind::Dynamic
+                && !world[body].removed
+            {
+                let lost = Momentum::of(&world[body], ledger.origin);
+                ledger.add(
+                    "removed",
+                    Momentum {
+                        linear: -lost.linear,
+                        angular: -lost.angular,
+                    },
+                );
+            }
             world.remove_body(body);
         }
         for t in &mut self.tentacles {
@@ -1106,7 +1255,7 @@ mod tests {
             c.and_then(|c| c.last_save).expect("saved")
         }
 
-        fn step(&mut self, roll: &mut dyn FnMut(u32) -> u32, walkers: &[(BodyId, DVec3)]) {
+        fn step(&mut self, roll: &mut dyn Roller, walkers: &[(BodyId, DVec3)]) {
             for &(body, goal) in walkers {
                 walk(&mut self.world, &self.spell, body, goal);
             }
@@ -1119,12 +1268,7 @@ mod tests {
             self.record(events);
         }
 
-        fn run(
-            &mut self,
-            seconds: f64,
-            roll: &mut dyn FnMut(u32) -> u32,
-            walkers: &[(BodyId, DVec3)],
-        ) {
+        fn run(&mut self, seconds: f64, roll: &mut dyn Roller, walkers: &[(BodyId, DVec3)]) {
             for _ in 0..ticks(&self.world, seconds) {
                 self.step(roll, walkers);
             }
@@ -1146,7 +1290,7 @@ mod tests {
         }
     }
 
-    fn scene(targets: Vec<Target>, world: World, roll: &mut dyn FnMut(u32) -> u32) -> Scene {
+    fn scene(targets: Vec<Target>, world: World, roll: &mut dyn Roller) -> Scene {
         let mut world = world;
         let (spell, events) =
             BlackTentacles::cast(&mut world, DVec3::ZERO, DOWN, DC, 7, &targets, roll);

@@ -532,6 +532,11 @@ pub fn drive(game: &mut Game, dt: f32) -> Result<[f32; 2], String> {
             if closest.is_some_and(|a| a.actor.position.distance(game.player) < 4.0) {
                 candidates.push(Ability::Thunderwave);
             }
+            // Lock a group in place while fighting the others.
+            let tentacles = crate::spells::black_tentacles::agent_target(game);
+            if tentacles.is_some() {
+                candidates.push(Ability::Spell(crate::spells::black_tentacles::SLOT));
+            }
             candidates.extend_from_slice(&[Ability::Fireball, Ability::MagicMissile]);
             candidates.push(if game.encounter.as_ref().unwrap().actions % 3 == 0 {
                 Ability::Bow
@@ -541,6 +546,14 @@ pub fn drive(game: &mut Game, dt: f32) -> Result<[f32; 2], String> {
         }
         for ability in candidates {
             let previous_aim = (game.selected, game.yaw);
+            if ability == Ability::Spell(crate::spells::black_tentacles::SLOT)
+                && let Some(id) = crate::spells::black_tentacles::agent_target(game)
+                && let Some(target) = frame.actors.iter().find(|a| a.actor.id == id)
+            {
+                game.selected = id;
+                let delta = target.actor.position - game.player;
+                game.yaw = (-delta.x).atan2(-delta.z);
+            }
             if ability == Ability::Fireball {
                 let cluster = frame
                     .actors
