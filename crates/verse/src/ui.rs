@@ -7,8 +7,8 @@
 //! blending. Every color is a step of the amber ladder or the near-black
 //! field by default. Imported scenes can supply a proportional font and color sprites.
 
-use bytemuck::{Pod, Zeroable};
 use coder_ui::theme::Intensity;
+pub use verse_engine::overlay::Vertex as UiVertex;
 
 use crate::palette;
 
@@ -26,18 +26,6 @@ const ATLAS_WIDTH: u32 = 1024;
 pub fn drawable(c: char) -> bool {
     let n = c as u32;
     (FIRST..=LAST).contains(&n) || LATIN1.contains(&n) || EXTRA.contains(&c)
-}
-
-/// One UI vertex: pixel position, atlas coordinate, linear RGBA.
-#[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq, Pod, Zeroable)]
-pub struct UiVertex {
-    /// Position in physical pixels, origin top-left.
-    pub pos: [f32; 2],
-    /// Atlas texture coordinate.
-    pub uv: [f32; 2],
-    /// Linear color and opacity.
-    pub color: [f32; 4],
 }
 
 /// A rasterized glyph's size and placement against the pen and baseline.
@@ -643,6 +631,29 @@ impl UiBatch {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_geometry_uses_the_portable_overlay_contract() {
+        let atlas = Atlas::new(18.0);
+        let mut batch = UiBatch::default();
+        batch.text(&atlas, -10.0, 20.0, "Adventurer", [1.0; 4]);
+        batch.rect(&atlas, 10.0, 50.0, 128.0, 12.0, [1.0, 0.0, 0.0, 1.0]);
+        batch.disc(&atlas, 200.0, 200.0, 20.0, [0.5; 4]);
+        batch.ring(&atlas, 250.0, 200.0, 20.0, 2.0, [1.0; 4]);
+        let pack = serde_json::from_value(serde_json::json!({
+            "version":1,"source_revision":"test","textures":[],"models":{
+                "room":{"source":"authored","source_sha256":"","surfaces":[],"bones":[],"clips":[],"height":1,"attachments":[]}
+            }
+        })).unwrap();
+        let catalog = verse_engine::residency::Catalog::new(&pack).unwrap();
+        let overlay =
+            verse_engine::overlay::ResolvedOverlay::extract(&catalog, &batch.vertices).unwrap();
+        assert_eq!(std::mem::size_of::<UiVertex>(), 32);
+        assert_eq!(
+            bytemuck::cast_slice::<_, u8>(overlay.vertices()),
+            bytemuck::cast_slice::<_, u8>(&batch.vertices)
+        );
+    }
 
     #[test]
     fn color_sprites_preserve_glyph_texels_and_layout() {

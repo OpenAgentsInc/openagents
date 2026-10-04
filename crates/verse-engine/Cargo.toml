@@ -11,6 +11,7 @@ default = []
 asset-io = ["dep:png", "dep:sha2", "dep:libc"]
 
 [dependencies]
+bytemuck = { version = "1.25", features = ["derive"] }
 glam = { version = "0.30.10", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

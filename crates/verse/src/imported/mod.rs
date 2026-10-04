@@ -1121,10 +1121,9 @@ impl Renderer {
         {
             return Err("Invalid imported frame".into());
         }
-        let ui_bytes = bytemuck::cast_slice(&ui.vertices);
-        if ui_bytes.len() > 4 * 1024 * 1024 {
-            return Err("Imported overlay exceeds 4 MiB".into());
-        }
+        let overlay = verse_engine::overlay::ResolvedOverlay::extract(&self.catalog, &ui.vertices)?;
+        overlay.validate(&self.catalog)?;
+        let ui_bytes = bytemuck::cast_slice(overlay.vertices());
         let frame = lighting::frame(view, lighting)?;
         self.queue
             .write_buffer(&self.frame, 0, bytemuck::bytes_of(&frame));
