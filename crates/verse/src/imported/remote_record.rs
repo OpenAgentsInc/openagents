@@ -78,16 +78,43 @@ pub(crate) struct Profile {
     pub render_submission_ms: Samples,
     pub frame_interval_ms: Samples,
     pub correction_meters: Samples,
+    pub discontinuity_meters: Samples,
+    pub correction_trace: Vec<serde_json::Value>,
+    pub omitted_corrections: u64,
+    pub reset_observations: u64,
     pub bound_to_outcome_ms: Samples,
     pub bindings: std::collections::BTreeMap<u64, std::time::Instant>,
 }
 impl Profile {
+    pub fn correction(&mut self, distance: f64, reset: bool, context: serde_json::Value) {
+        if !distance.is_finite() || distance < 0. {
+            return;
+        }
+        if reset {
+            self.discontinuity_meters.add(distance);
+        } else {
+            self.correction_meters.add(distance);
+        }
+        if distance > 0.01 {
+            if self.correction_trace.len() < 256 {
+                self.correction_trace
+                    .push(serde_json::json!({"distance_meters":distance,
+                    "discontinuity":reset,"context":context}));
+            } else {
+                self.omitted_corrections += 1;
+            }
+        }
+    }
     pub fn summary(&self) -> serde_json::Value {
-        serde_json::json!({"schema":"verse.remote.profile.v1",
+        serde_json::json!({"schema":"verse.remote.profile.v2",
             "client_preparation_ms":self.preparation_ms.summary(),
             "render_submission_cpu_ms":self.render_submission_ms.summary(),
             "frame_interval_ms":self.frame_interval_ms.summary(),
             "prediction_correction_meters":self.correction_meters.summary(),
+            "intentional_discontinuity_meters":self.discontinuity_meters.summary(),
+            "reset_observations":self.reset_observations,
+            "correction_trace":self.correction_trace,
+            "omitted_corrections":self.omitted_corrections,
             "binding_to_outcome_ms":self.bound_to_outcome_ms.summary(),
             "limits":["Render submission includes presentation waits; GPU execution is not measured.",
             "Binding-to-outcome includes transport, server processing, and client update delivery; it is not isolated network RTT.",
@@ -233,6 +260,19 @@ impl Drop for Recorder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn discontinuities_do_not_pollute_reconciliation_and_traces_are_bounded() {
+        let mut profile = Profile::default();
+        profile.correction(9., true, serde_json::json!({"teleport":true}));
+        for _ in 0..300 {
+            profile.correction(0.2, false, serde_json::json!({"tick":1}));
+        }
+        let summary = profile.summary();
+        assert_eq!(summary["prediction_correction_meters"]["max"], 0.2);
+        assert_eq!(summary["intentional_discontinuity_meters"]["max"], 9.);
+        assert_eq!(summary["correction_trace"].as_array().unwrap().len(), 256);
+        assert_eq!(summary["omitted_corrections"], 45);
+    }
     #[test]
     fn scripted_movement_turns_and_stops_on_a_local_clock() {
         assert_eq!(movement_axes(0.), [0., 1.]);

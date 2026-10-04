@@ -308,6 +308,12 @@ impl App {
                             .find(|p| verse_engine::core::LifeId::from(p.life) == life)
                             .and_then(|p| p.teleport_stamp)
                     });
+                    let discontinuity = teleport != self.owned_teleport
+                        || context != self.prediction.context()
+                        || !self.controlled();
+                    if discontinuity && previous_pose.is_some() && self.record.is_some() {
+                        self.profile.reset_observations += 1;
+                    }
                     if teleport != self.owned_teleport {
                         self.prediction.clear();
                     }
@@ -333,9 +339,14 @@ impl App {
                         if let (Some(before), Some(after)) = (previous_pose, self.prediction.pose())
                         {
                             if before.life == after.life && before.epoch == after.epoch {
-                                self.profile
-                                    .correction_meters
-                                    .add(f64::from(before.position.distance(after.position)));
+                                self.profile.correction(
+                                    f64::from(before.position.distance(after.position)),
+                                    discontinuity,
+                                    serde_json::json!({"tick":r.tick,"request_id":r.request_id,
+                                        "life":after.life,"epoch":after.epoch,
+                                        "before":before.position,"after":after.position,
+                                        "pending":self.prediction.pending(),"baseline":state.movement}),
+                                );
                             }
                         }
                     }
@@ -1202,6 +1213,13 @@ mod tests {
             input,
             output,
         );
+        app.record = Some(super::super::remote_record::Options {
+            output: dir.path().join("unused.mp4"),
+            seconds: 30,
+            controller: false,
+            respawn: false,
+            movement: false,
+        });
         updates
             .try_send(Update::Snapshot(request(
                 &mut gateway,
@@ -1425,6 +1443,8 @@ mod tests {
         app.consume().unwrap();
         assert!(app.prediction.pose().is_none());
         assert_eq!(app.prediction.pending(), 0);
+        assert_eq!(app.profile.reset_observations, 1);
+        assert!(app.profile.bindings.is_empty());
         gateway.tick(1. / 30.).unwrap();
         updates
             .try_send(Update::Snapshot(request(
