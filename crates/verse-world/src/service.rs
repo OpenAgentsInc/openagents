@@ -185,7 +185,7 @@ impl Chamber {
         }
         let tx = equipment::transaction(life.instance, life.actor, slot, item, operation)?;
         self.equipment.validate_change(&tx)?;
-        if self.rewards.contains(life.actor, tx.source) {
+        if self.rewards.contains(life.actor, tx.source)? {
             return self.rewards.apply(tx);
         }
         if self.game.player_snapshot(life)?.player.hp == 0 {
@@ -232,7 +232,7 @@ impl Chamber {
         }
         let definition = self.items.item(item)?;
         let tx = items::transaction(life.instance, life.actor, item, operation)?;
-        if self.rewards.contains(life.actor, tx.source) {
+        if self.rewards.contains(life.actor, tx.source)? {
             return self.rewards.apply(tx);
         }
         let mut next = self.rewards.clone();
@@ -369,7 +369,7 @@ impl Chamber {
         let transaction = quest.transaction(life.instance, life.actor);
         self.progression
             .validate_claim(&transaction, &self.rewards)?;
-        if !self.rewards.contains(life.actor, transaction.source) {
+        if !self.rewards.contains(life.actor, transaction.source)? {
             if let Some(giver) = quest.giver {
                 self.quest_interaction(
                     life,

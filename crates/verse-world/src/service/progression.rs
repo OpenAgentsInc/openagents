@@ -190,7 +190,7 @@ impl Config {
             next: self.levels.get(index + 1).copied(),
         })
     }
-    pub(super) fn progress(&self, actor: u64, instance: u64, ledger: &Ledger) -> Vec<Progress> {
+    pub(super) fn progress(&self, actor: u64, _instance: u64, ledger: &Ledger) -> Vec<Progress> {
         self.quests
             .iter()
             .map(|quest| Progress {
@@ -202,25 +202,24 @@ impl Config {
                 giver: quest.giver,
                 giver_life: None,
                 interactable: quest.giver.is_none(),
-                available: self.available(quest, instance, actor, ledger),
+                available: self.available(quest, actor, ledger),
                 id: quest.id,
                 name: quest.name.clone(),
                 progress: quest.progress(ledger.character(actor)).min(quest.goal),
                 goal: quest.goal,
-                claimed: ledger.contains(actor, quest.transaction(instance, actor).source),
+                claimed: ledger
+                    .character(actor)
+                    .is_some_and(|c| c.claimed_quests.contains(&quest.id)),
                 experience: quest.experience,
                 items: quest.items.clone(),
             })
             .collect()
     }
-    fn available(&self, quest: &Quest, instance: u64, actor: u64, ledger: &Ledger) -> bool {
+    fn available(&self, quest: &Quest, actor: u64, ledger: &Ledger) -> bool {
         quest.prerequisites.iter().all(|id| {
-            self.quests
-                .iter()
-                .find(|prior| prior.id == *id)
-                .is_some_and(|prior| {
-                    ledger.contains(actor, prior.transaction(instance, actor).source)
-                })
+            ledger
+                .character(actor)
+                .is_some_and(|c| c.claimed_quests.contains(id))
         })
     }
     pub(super) fn validate_acceptance(
@@ -237,7 +236,7 @@ impl Config {
         if quest.giver.is_none()
             || tx != &quest.acceptance(tx.instance, tx.actor, acceptance.baseline)
             || acceptance.baseline != quest.count(ledger.character(tx.actor))
-            || !self.available(quest, tx.instance, tx.actor, ledger)
+            || !self.available(quest, tx.actor, ledger)
         {
             return Err(
                 "Quest acceptance does not match its definition or objective baseline".into(),
@@ -258,7 +257,7 @@ impl Config {
             .ok_or("Claimed campaign quest is not defined")?;
         if transaction != &quest.transaction(transaction.instance, transaction.actor)
             || quest.progress(ledger.character(transaction.actor)) < quest.goal
-            || !self.available(quest, transaction.instance, transaction.actor, ledger)
+            || !self.available(quest, transaction.actor, ledger)
         {
             return Err(
                 "Campaign claim does not match its definition or completed objective".into(),

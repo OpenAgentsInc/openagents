@@ -133,7 +133,11 @@ pub async fn serve_durable<F: Future<Output = ()>>(
 ) -> Exit {
     serve_with_store(listener, tls, gateway, Some(store), shutdown).await
 }
-fn persist(gateway: &Gateway, store: &mut Option<Store>, stats: &mut Stats) -> Result<(), String> {
+fn persist(
+    gateway: &mut Gateway,
+    store: &mut Option<Store>,
+    stats: &mut Stats,
+) -> Result<(), String> {
     if let Some(store) = store {
         let start = Instant::now();
         let committed = store.commit(gateway);
@@ -166,7 +170,18 @@ async fn serve_with_store<F: Future<Output = ()>>(
     let mut failure = None;
     let mut pending: Vec<PendingReply> = Vec::with_capacity(QUEUE);
     let mut dirty = false;
-    if let Err(error) = persist(&gateway, &mut store, &mut stats) {
+    if store.is_none() {
+        let attached = super::rewards::history::History::temporary()
+            .and_then(|archive| gateway.chamber.rewards.attach(archive));
+        if let Err(error) = attached {
+            return Exit {
+                gateway,
+                stats,
+                failure: Some(error),
+            };
+        }
+    }
+    if let Err(error) = persist(&mut gateway, &mut store, &mut stats) {
         return Exit {
             gateway,
             stats,
@@ -199,7 +214,7 @@ async fn serve_with_store<F: Future<Output = ()>>(
                 let dt = elapsed.min(0.1);
                 stats.dropped_seconds += elapsed - dt;
                 if let Err(error) = gateway.tick(dt as f32) { failure = Some(error); break; }
-                if let Err(error) = persist(&gateway, &mut store, &mut stats) { failure = Some(error); break; }
+                if let Err(error) = persist(&mut gateway, &mut store, &mut stats) { failure = Some(error); break; }
                 let now = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
                 for response in pending.drain(..) {
                     let result = match response.response {
@@ -258,7 +273,7 @@ async fn serve_with_store<F: Future<Output = ()>>(
         failure.get_or_insert(error);
     }
     if failure.is_none() {
-        if let Err(error) = persist(&gateway, &mut store, &mut stats) {
+        if let Err(error) = persist(&mut gateway, &mut store, &mut stats) {
             failure = Some(error);
         }
     }

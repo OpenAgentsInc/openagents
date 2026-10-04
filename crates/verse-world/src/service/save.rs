@@ -21,6 +21,8 @@ struct Saved {
     grants: Vec<Grant>,
     #[serde(default)]
     rewards: Option<Vec<super::rewards::Transaction>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    ledger: Option<super::rewards::Checkpoint>,
     #[serde(default)]
     reward_policy: Vec<super::rewards::Policy>,
     #[serde(default)]
@@ -59,14 +61,18 @@ fn grants(saved: &[Grant], game: &Game) -> Result<BTreeMap<Principal, Rights>, S
     Ok(result)
 }
 pub(super) fn encode(gateway: &Gateway) -> Result<Vec<u8>, String> {
+    let ledger = gateway.chamber.rewards.checkpoint();
     let saved = Saved {
-        version: 7,
+        version: if ledger.is_some() { 8 } else { 7 },
         content: gateway
             .content()
             .ok_or("Saved chamber requires bound content")?,
         world: String::from_utf8(gateway.game().checkpoint()?)
             .map_err(|_| "Cannot encode saved world")?,
-        rewards: Some(gateway.chamber.rewards.transactions()),
+        rewards: ledger
+            .is_none()
+            .then(|| gateway.chamber.rewards.transactions()),
+        ledger,
         reward_policy: gateway.chamber.reward_policy.clone(),
         reward_cursor: gateway.chamber.reward_cursor,
         progression: Some(gateway.chamber.progression.clone()),
@@ -94,13 +100,23 @@ pub(super) fn encode(gateway: &Gateway) -> Result<Vec<u8>, String> {
     Ok(bytes)
 }
 pub(super) fn decode(bytes: &[u8], content: [u8; 32], instance: u64) -> Result<Gateway, String> {
+    decode_with_history(bytes, content, instance, None)
+}
+pub(super) fn decode_with_history(
+    bytes: &[u8],
+    content: [u8; 32],
+    instance: u64,
+    archive: Option<super::rewards::history::History>,
+) -> Result<Gateway, String> {
     if bytes.is_empty() || bytes.len() > MAX_BYTES {
         return Err("Saved chamber byte budget exceeded".into());
     }
     let saved: Saved = serde_json::from_slice(bytes).map_err(|_| "Invalid saved chamber")?;
-    if !matches!(saved.version, 1 | 2 | 3 | 4 | 5 | 6 | 7)
+    if !matches!(saved.version, 1..=8)
         || (saved.version == 1 && saved.rewards.is_some())
-        || (saved.version >= 2 && saved.rewards.is_none())
+        || ((2..=7).contains(&saved.version) && saved.rewards.is_none())
+        || (saved.version < 8 && saved.ledger.is_some())
+        || (saved.version == 8 && (saved.ledger.is_none() || saved.rewards.is_some()))
         || (saved.version < 3 && saved.progression.is_some())
         || (saved.version >= 3 && saved.progression.is_none())
         || (saved.version < 4 && saved.items.is_some())
@@ -146,12 +162,32 @@ pub(super) fn decode(bytes: &[u8], content: [u8; 32], instance: u64) -> Result<G
             return Err("Saved reward transaction is duplicated".into());
         }
     }
+    if let Some(ledger) = saved.ledger {
+        chamber.rewards = super::rewards::Ledger::restore(ledger, archive)?;
+        for actor in chamber.rewards.actors() {
+            if chamber.game.player_admission(actor).is_none() {
+                return Err("Saved reward character is foreign".into());
+            }
+        }
+    }
     for (life, _, _) in chamber.game.controlled_effects() {
         let character = chamber
             .rewards
             .character(life.actor)
             .cloned()
             .unwrap_or_default();
+        if character.outfit != 0 {
+            chamber.outfits.outfit(character.outfit)?;
+        }
+        for id in character
+            .accepted_quests
+            .keys()
+            .chain(&character.claimed_quests)
+        {
+            if !chamber.progression.quests.iter().any(|q| q.id == *id) {
+                return Err("Saved character references an undefined quest".into());
+            }
+        }
         let (hp, mana) = chamber.equipment.limits(&character)?;
         let resources = chamber.game.player_snapshot(life)?.player;
         if resources.max_hp != hp || resources.max_mana != mana {

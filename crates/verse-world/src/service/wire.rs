@@ -413,9 +413,6 @@ impl Inventory {
         }) {
             return Err("Quest giver belongs to a foreign instance".into());
         }
-        if self.revision > super::rewards::MAX_TRANSACTIONS as u64 {
-            return Err("Inventory transaction budget exceeded".into());
-        }
         if self.revision == 0
             && (self.experience != 0 || !self.items.is_empty() || !self.quests.is_empty())
         {
@@ -1453,18 +1450,20 @@ mod tests {
             equipped: Default::default(),
         };
         inventory.validate(&control).unwrap();
-        for case in 0..6 {
+        for case in 0..5 {
             let mut bad = inventory.clone();
             match case {
                 0 => bad.life.actor += 1,
                 1 => bad.revision = 0,
-                2 => bad.revision = 4097,
-                3 => bad.items[0].count = 1_000_001,
-                4 => bad.items[0].count = 0,
+                2 => bad.items[0].count = 1_000_001,
+                3 => bad.items[0].count = 0,
                 _ => bad.items.push(bad.items[0].clone()),
             }
             assert!(bad.validate(&control).is_err());
         }
+        let mut long_lived = inventory.clone();
+        long_lived.revision = 4097;
+        long_lived.validate(&control).unwrap();
         assert!(inventory.validate(&None).is_err());
         let mut request = serde_json::to_value(Request {
             version: VERSION,

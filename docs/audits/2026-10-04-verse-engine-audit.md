@@ -1,9 +1,12 @@
 # Verse Engine audit for a AAA MMORPG
 
-Date: October 4, 2026. Source baseline:
+Date: October 4, 2026. Original source baseline:
 [`e3d774841b39bca2a7a916ebe115e442bc7dffe2`](https://github.com/OpenAgentsInc/openagents/tree/e3d774841b39bca2a7a916ebe115e442bc7dffe2).
 Scope: engine systems, Verse worlds, authoritative gameplay, multiplayer,
 durability, content production, and desktop, mobile, and browser integration.
+Upstream crowd-recovery evidence is refreshed through
+[`951e4b5776`](https://github.com/OpenAgentsInc/openagents/commit/951e4b5776);
+remediation status identifies subsequent issue work.
 
 ## Assessment
 
@@ -20,15 +23,16 @@ population. Rendering quality also needs measured budgets and a consistent
 platform contract. The first priority is to make a durable multiplayer slice
 reliable; adding visual features alone cannot establish MMORPG readiness.
 
-Four findings deserve immediate engineering attention:
+The reward-history lifetime blocker (V01) is resolved in
+[#10573](https://github.com/OpenAgentsInc/openagents/issues/10573). Three findings
+still deserve immediate engineering attention:
 
-1. The reward ledger has a lifetime limit of 4,096 transactions. Exhausting it
-   during combat propagates a failure out of the host tick and stops the service.
-2. The durable host serializes, hashes, writes, and synchronizes a complete
+1. The durable host serializes, hashes, writes, and synchronizes a complete
    checkpoint on the simulation loop. Durable latency is part of tick latency.
-3. The retained 20-player/40-hostile battle stops the host on character collision
-   recovery. A local movement failure propagates to service shutdown.
-4. The latest retained delayed-network measurement improves ordinary movement
+2. The newer 20-player battle completes after crowd-recovery fixes, but fails
+   sustained NPC occupancy and performance acceptance. A tick error still stops
+   the whole host; recoverable per-character failure lacks containment.
+3. The latest retained delayed-network measurement improves ordinary movement
    correction p95 to 0.43 and 0.30 meters, but still reports failed acceptance,
    a 6.5-meter outlier, and missed frame budgets.
 
@@ -47,8 +51,9 @@ save, replication, presentation, and platform adapters, and inspects relevant
 tests. It is comprehensive by subsystem, not a claim that every source line or
 vendored upstream test received individual review.
 
-No Rust code changes, new benchmark runs, GPU captures, live host probes,
-penetration tests, or device runs are part of this audit. Existing tests and
+The original audit includes no Rust code changes, new benchmark runs, GPU
+captures, live host probes, penetration tests, or device runs. Remediation
+updates below identify subsequent code changes and their targeted verification. Existing tests and
 receipts are evidence of their recorded revision and scope, not fresh passes at
 the source baseline. In particular, the delayed-network runs disable durable
 storage, share one GPU between three clients, and delay TCP chunks rather than
@@ -121,64 +126,78 @@ Evidence labels:
 - **Risk:** the implementation suggests a scaling or quality problem that still
   needs measurement.
 
-| ID | Priority | Finding | Evidence | Owning boundary |
-| --- | --- | --- | --- | --- |
-| V01 | P0 | Reward history exhaustion can stop a persistent host. | Code | Character storage and world service |
-| V02 | P0 | Full synchronous checkpoint commits occupy the tick loop. | Code, risk | World service persistence |
-| V03 | P0 | Content/rules changes lack a general durable migration path. | Code, gap | Content and save versions |
-| V04 | P1 | Prediction exists, but acceptable delayed movement is unproven. | Recorded, code | Movement and client replication |
-| V05 | P1 | Replication polls full snapshots without spatial relevance. | Code, gap | World service replication |
-| V06 | P1 | One chamber process does not provide realm/instance management. | Code, gap | World hosting |
-| V07 | P1 | Presence and local zones do not share authoritative world state. | Code, gap | World rules and zone adapters |
-| V08 | P1 | Admission needs production enrollment and overload policy. | Code, gap | World access and transport |
-| V09 | P1 | Character identity and rewards remain chamber-scoped. | Code, gap | Persistent character domain |
-| V10 | P1 | CPU submission measurements do not isolate GPU or input latency. | Code, recorded | Profiling and acceptance |
-| V11 | P1 | Renderer budgets and quality behavior differ by path. | Code, risk | Renderer and device capabilities |
-| V12 | P1 | Whole-pack preparation is not large-world asset streaming. | Code, gap | Content loading and residency |
-| V13 | P1 | Runtime mip generation ignores texture semantics. | Code | Content compiler and texture upload |
-| V14 | P1 | Spatial queries and rigid-body detection need scene-level scaling. | Code, risk | Shared physics |
-| V15 | P1 | Navigation needs tiled content and scheduled crowd work. | Code, gap | Navigation and AI |
-| V16 | P1 | Game rules and primary-player special cases limit reuse. | Code | World rules and ability adapters |
-| V17 | P1 | Engine boundaries remain intertwined with the Verse application. | Code | Engine extraction and host packaging |
-| V18 | P0 | The recorded 20-player battle stops on character collision recovery. | Recorded, code | Movement failure handling and scale acceptance |
-| V19 | P1 | Persistent operations lack complete live diagnostics and recovery tooling. | Code, gap | World operations |
-| V20 | P2 | Content production still requires Rust implementation work. | Code, gap | Rust authoring tools |
-| V21 | P2 | Animation needs production locomotion and authoring support. | Code, gap | Animation and character content |
-| V22 | P2 | Lighting paths need a common visual and performance contract. | Code, risk | Rendering and art direction |
-| V23 | P2 | Audio is a bounded mixer, not a complete game audio system. | Code, gap | Audio and platform adapters |
-| V24 | P1 | Mobile/browser rendering does not establish authoritative game parity. | Code, gap | Platform world clients |
-| V25 | P2 | MMO social and progression systems need dedicated domains. | Code, gap | Verse game services |
-| V26 | P1 | Player-generated content needs publication and disclosure boundaries. | Code, gap | Content admission and product access |
-| V27 | P1 | Replay evidence needs explicit revision/platform guarantees. | Code, gap | Simulation and replay |
-| V28 | P1 | Status documentation trails the implementation. | Code | Runtime documentation |
+| ID | Priority | Finding | Evidence | Owning boundary | Status |
+| --- | --- | --- | --- | --- | --- |
+| V01 | P0 | Reward history is archived without a transaction lifetime cap. | Code | Character storage and world service | Complete ([#10573](https://github.com/OpenAgentsInc/openagents/issues/10573)) |
+| V02 | P0 | Full synchronous checkpoint commits occupy the tick loop. | Code, risk | World service persistence | Open |
+| V03 | P0 | Content/rules changes lack a general durable migration path. | Code, gap | Content and save versions | Open |
+| V04 | P1 | Prediction exists, but acceptable delayed movement is unproven. | Recorded, code | Movement and client replication | Open |
+| V05 | P1 | Replication polls full snapshots without spatial relevance. | Code, gap | World service replication | Open |
+| V06 | P1 | One chamber process does not provide realm/instance management. | Code, gap | World hosting | Open |
+| V07 | P1 | Presence and local zones do not share authoritative world state. | Code, gap | World rules and zone adapters | Open |
+| V08 | P1 | Admission needs production enrollment and overload policy. | Code, gap | World access and transport | Open |
+| V09 | P1 | Character identity and rewards remain chamber-scoped. | Code, gap | Persistent character domain | Open |
+| V10 | P1 | CPU submission measurements do not isolate GPU or input latency. | Code, recorded | Profiling and acceptance | Open |
+| V11 | P1 | Renderer budgets and quality behavior differ by path. | Code, risk | Renderer and device capabilities | Open |
+| V12 | P1 | Whole-pack preparation is not large-world asset streaming. | Code, gap | Content loading and residency | Open |
+| V13 | P1 | Runtime mip generation ignores texture semantics. | Code | Content compiler and texture upload | Open |
+| V14 | P1 | Spatial queries and rigid-body detection need scene-level scaling. | Code, risk | Shared physics | Open |
+| V15 | P1 | Navigation needs tiled content and scheduled crowd work. | Code, gap | Navigation and AI | Open |
+| V16 | P1 | Game rules and primary-player special cases limit reuse. | Code | World rules and ability adapters | Open |
+| V17 | P1 | Engine boundaries remain intertwined with the Verse application. | Code | Engine extraction and host packaging | Open |
+| V18 | P0 | Crowd recovery improves, but failure containment and scale acceptance remain. | Recorded, code | Movement failure handling and scale acceptance | Open |
+| V19 | P1 | Persistent operations lack complete live diagnostics and recovery tooling. | Code, gap | World operations | Open |
+| V20 | P2 | Content production still requires Rust implementation work. | Code, gap | Rust authoring tools | Open |
+| V21 | P2 | Animation needs production locomotion and authoring support. | Code, gap | Animation and character content | Open |
+| V22 | P2 | Lighting paths need a common visual and performance contract. | Code, risk | Rendering and art direction | Open |
+| V23 | P2 | Audio is a bounded mixer, not a complete game audio system. | Code, gap | Audio and platform adapters | Open |
+| V24 | P1 | Mobile/browser rendering does not establish authoritative game parity. | Code, gap | Platform world clients | Open |
+| V25 | P2 | MMO social and progression systems need dedicated domains. | Code, gap | Verse game services | Open |
+| V26 | P1 | Player-generated content needs publication and disclosure boundaries. | Code, gap | Content admission and product access | Open |
+| V27 | P1 | Replay evidence needs explicit revision/platform guarantees. | Code, gap | Simulation and replay | Open |
+| V28 | P1 | Status documentation trails the implementation. | Code | Runtime documentation | Open |
 
 ## Persistence, authority, and multiplayer
 
-### V01: Reward history exhaustion can stop a persistent host
+### V01: Reward history exhaustion is resolved
 
-[`rewards::Ledger`](../../crates/verse-world/src/service/rewards.rs) keeps every
-receipt in memory and refuses a new transaction after `MAX_TRANSACTIONS = 4096`.
-It scans receipts for duplicates and clones the ledger for batches. Recovery
-replays the retained transactions into the same bounded ledger; restarting does
-not reset capacity.
+**Status:** Complete in
+[#10573](https://github.com/OpenAgentsInc/openagents/issues/10573).
+The original ledger refused new transactions after 4,096 receipts, and combat
+reward failure could stop the serving loop. Hosted ledgers now retain at most
+128 active receipts and bounded character state. Older receipts move into an
+immutable, content-addressed
+[`history` index](../../crates/verse-world/src/service/rewards/history.rs), with
+bounded leaves and indexed lookup by actor and stable source. A batch clones
+active state and its index root instead of lifetime history.
 
-[`Chamber::process_rewards`](../../crates/verse-world/src/service.rs) creates one
-transaction per enrolled player for each rewarded NPC death. Its error propagates
-through `Chamber::tick` to [`net::serve_with_store`](../../crates/verse-world/src/service/net.rs),
-which breaks the serving loop on a tick error. This applies even when the host
-does not use disk storage. Under a hypothetical workload of 20 enrolled players
-and 40 rewarded deaths, one wave uses 800 receipts; a sixth complete wave exceeds
-the cap. This is arithmetic from the code, not a measured encounter duration.
+[`Store`](../../crates/verse-world/src/service/persistence.rs) commits that root
+with the world and character state. Archive files are published and synchronized
+before a checkpoint can reference them; abandoned batch or uncommitted writes
+remain outside the committed root. Exact retries return original transactions
+and revisions, and conflicting reuse cannot change balances. Network clients
+accept revisions beyond 4,096 without weakening ownership or count validation.
 
-**Improve:** Separate bounded active memory from durable transaction history.
-Index stable operation sources, archive or compact history with retained retry
-semantics, and preserve character balances and original receipt revisions.
-Increasing the constant only delays exhaustion and increases copying and save
-cost.
+Version-eight saves store character summaries, recent receipts, and the root
+instead of copying every historical transaction into the checkpoint. Versions
+one through seven remain recoverable and are archived on their next store
+commit. Recovery validates referenced archive nodes and refuses missing or
+corrupt history. Backups must retain `state_dir/rewards` with `chamber.json`.
+Nondurable network hosts use an owned temporary history directory; standalone
+chambers retain in-memory history until attached to a store or network host.
 
-**Acceptance:** More than 4,096 mixed reward, quest, item, and equipment operations
-survive restart and exact retries without duplicated grants, exhausted service
-lifetime, or memory growth proportional to all historical receipts.
+**Acceptance evidence:** Targeted `verse-world` tests cover 5,002 mixed reward,
+quest acceptance/claim, inventory debit, equipment, and outfit operations;
+bounded active receipts and a checkpoint under 64 KiB; old retries after
+recovery; conflicting sources; failed cooperative batches; failed archive
+writes; and persistent recovery above 4,096 operations that ignores later
+uncommitted index writes. Missing committed history prevents startup.
+
+**Remaining limits:** Disk history grows with mutations and can retain
+unreferenced nodes. Archive I/O remains synchronous. Writer scheduling and
+measured latency belong to V02; maintenance and verified backup/restore tooling
+belong to V19. These tests establish transaction lifetime and bounded hosted
+memory, not battle-scale performance.
 
 ### V02: Full checkpoint commits occupy the simulation loop
 
@@ -560,7 +579,7 @@ proliferation without a real consumer.
 private-reader, or agent dependencies. A second original world uses the same
 engine contracts without copying the chamber application.
 
-### V18: The 20-player battle exposes a host-stopping movement failure
+### V18: Crowd recovery improves without passing scale acceptance
 
 The new [`verse_load`](../../crates/verse/examples/verse_load.rs) and
 [battle harness](../../scripts/bench/verse-battle-capture.py) exercise 20
@@ -575,21 +594,39 @@ the fixture revision is recorded separately. The receipt reports the earlier
 native presentation capacity failure resolved for this run.
 
 [`Character::step`](../../crates/physics/src/character.rs) calls overlap recovery
-during movement, not only at spawn. Recovery returns an error after 12
-unsuccessful displacement iterations. The network loop exits when
+during movement, not only at spawn. The original implementation returned an
+error after 12 unsuccessful displacement iterations. Upstream fixes now allow 64 corrections,
+resolve opposing contact planes together, verify the final correction, and
+retain actor/contact diagnostics. The network loop exits when
 [`Gateway::tick`](../../crates/verse-world/src/service/net.rs) returns an error.
 This establishes the failure propagation; the receipt alone does not identify
 the specific actor, contact configuration, or reason recovery fails to converge.
 
-The harness raises NPC health to sustain work and disables durable storage.
-It produces no completed native or load profile on this failure. Zero dropped
-server seconds is not a passing timing distribution. The headless generator
+The newer
+[stable battle receipt](../../bench/verse/2026-10-04/battle-scale-stable/run.json)
+records successful exits for all twenty connections and the native/load/host
+processes after the opposing-plane fix. It still reports failed acceptance.
+The combat constructor replaces authored cultist health with 15 despite the
+harness requesting 20,000; live hostile occupancy averages 8.7 and falls to one.
+This does not establish sustained 40-NPC load. Native frame p95 is 87.127 ms,
+ordinary prediction correction p95 is 0.907 m, capture drops are 212, and six
+proxy errors need classification. The host completes 2,987 ticks and 62,401
+requests with zero checkpoint commits. Server CPU and isolated GPU execution
+remain unmeasured. A subsequent upstream change adds operator-selected
+`authored_combat_health` and enables it in the battle harness; a new sustained
+40-NPC measurement is still required.
+
+The harness disables durable storage. Its earlier failed run produces no
+completed native or load profile. Zero dropped server seconds is not a passing
+timing distribution. The headless generator
 writes its profile only after all player tasks succeed and caps timing samples
 without recording omitted observations, making failures harder to diagnose.
 
-**Improve:** Reproduce and retain the failing contact/input sequence. Define
-bounded per-character recovery or containment without hiding invariant or
-storage corruption; a recoverable blocked character should not stop unrelated
+**Improve:** Preserve the upstream crowd-recovery regressions and historical
+contact sequences. Measure combined scale with the corrected authored-health
+configuration so the stated NPC workload remains active. Define bounded
+per-character recovery or containment without hiding invariant or storage
+corruption; a recoverable blocked character should not stop unrelated
 players. Emit partial profiles, actor/contact diagnostics, and omission counts
 even when a participant fails. Extend the harness in stages: authority-only,
 network-only, one isolated renderer, and durable combined acceptance. Mix movement,
@@ -600,8 +637,7 @@ that only spawns players is insufficient.
 **Acceptance:** A regression fixture covers the recorded recovery failure and
 crowded movement without host shutdown. The declared 20/40 battle passes its
 agreed budgets repeatedly, then a longer soak exposes ledger, event, memory,
-and content-cache lifetime.
-Larger realm targets follow measured bottlenecks and operating cost, not an
+and content-cache lifetime. Larger realm targets follow measured bottlenecks and operating cost, not an
 extrapolation from a three-client video.
 
 ### V19: Operators need visibility while the world is running
@@ -830,16 +866,20 @@ soak → measured multi-instance population. A soak should cross transaction,
 event-retention, respawn, reconnect, and cache lifetime boundaries; merely waiting
 without mutations does not exercise them.
 
-Each implementation should have its own claimed issue and relevant targeted
-checks. This audit does not create implementation issues, change gameplay, or
-claim completion of the engine roadmap. Avoid a wholesale renderer/ECS rewrite,
+Each implementation has its own claimed issue and relevant targeted checks.
+Complete one issue, update this audit, and push to `main` before starting the
+next. Remediation status does not claim completion of the engine roadmap. Avoid a wholesale renderer/ECS rewrite,
 new product languages, new engine dependencies, or broad release gates as a
 prerequisite for the first correctness fixes.
 
 ## Verification of this audit
 
-Documentation-only change. Verification checks local Markdown targets, cited
-source paths, finding identifiers, retained JSON receipts, and `git diff
---check`. Rust tests, Clippy, release gates, and live owner-host probes are not
-run. Existing transcripts, research artifacts, and measurement receipts remain
-in place.
+The original audit is documentation-only: verification checks local Markdown
+targets, cited source paths, finding identifiers, retained JSON receipts, and
+`git diff --check`. V01 remediation runs `cargo fmt -p verse-world`,
+`cargo test -p verse-world` (274 tests), and
+`cargo test -p verse-world --features service-net` (375 tests) on the pinned
+toolchain. All pass. After the subsequent authored-health integration, the five
+affected `service::host::` tests and formatting also pass. Clippy, release gates,
+and live owner-host probes are not run. Existing transcripts, research
+artifacts, and measurement receipts remain in place.

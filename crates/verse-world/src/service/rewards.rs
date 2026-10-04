@@ -1,8 +1,11 @@
 //! Host-created character transactions with retained retry receipts.
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
-pub(super) const MAX_TRANSACTIONS: usize = 4096;
+#[cfg(feature = "service-auth")]
+pub(super) mod history;
+#[cfg(feature = "service-auth")]
+pub(super) const ACTIVE_RECEIPTS: usize = 128;
 const MAX_CHARACTERS: usize = 64;
 const MAX_ENTRIES: usize = 64;
 const MAX_COUNT: u32 = 1_000_000;
@@ -35,8 +38,10 @@ pub struct Transaction {
     pub equipment: Option<super::equipment::Change>,
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Character {
+    pub claimed_quests: BTreeSet<u64>,
     pub accepted_quests: BTreeMap<u64, u32>,
     pub experience: u64,
     pub items: BTreeMap<u64, u32>,
@@ -100,7 +105,8 @@ impl Policy {
 }
 
 /// Exact original outcome, including the original ledger revision on retries.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Receipt {
     pub revision: u64,
     pub transaction: Transaction,
@@ -109,6 +115,21 @@ pub struct Receipt {
 #[derive(Clone, Default)]
 pub(super) struct Ledger {
     characters: BTreeMap<u64, Character>,
+    receipts: Vec<Receipt>,
+    revision: u64,
+    #[cfg(feature = "service-auth")]
+    archive: Option<history::History>,
+    #[cfg(feature = "service-auth")]
+    root: history::Root,
+}
+
+#[cfg(feature = "service-auth")]
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct Checkpoint {
+    characters: BTreeMap<u64, Character>,
+    revision: u64,
+    root: history::Root,
     receipts: Vec<Receipt>,
 }
 
@@ -144,13 +165,123 @@ fn add(target: &mut BTreeMap<u64, u32>, additions: &[Entry]) -> Result<(), Strin
     Ok(())
 }
 impl Ledger {
-    pub(super) fn contains(&self, actor: u64, source: [u8; 32]) -> bool {
-        self.receipts
+    fn receipt(&self, actor: u64, source: [u8; 32]) -> Result<Option<Receipt>, String> {
+        if let Some(receipt) = self
+            .receipts
             .iter()
-            .any(|r| r.transaction.actor == actor && r.transaction.source == source)
+            .find(|r| r.transaction.actor == actor && r.transaction.source == source)
+        {
+            return Ok(Some(receipt.clone()));
+        }
+        #[cfg(feature = "service-auth")]
+        if let Some(archive) = &self.archive {
+            return archive.get(self.root, actor, source);
+        }
+        Ok(None)
+    }
+    pub(super) fn contains(&self, actor: u64, source: [u8; 32]) -> Result<bool, String> {
+        self.receipt(actor, source).map(|r| r.is_some())
     }
     pub(super) fn revision(&self) -> u64 {
-        self.receipts.len() as u64
+        self.revision
+    }
+    #[cfg(feature = "service-auth")]
+    pub(super) fn attach(&mut self, archive: history::History) -> Result<(), String> {
+        if let Some(current) = &self.archive {
+            if !current.same_directory(&archive) {
+                return Err("Reward ledger belongs to another history directory".into());
+            }
+            return Ok(());
+        }
+        let mut root = None;
+        for receipts in self.receipts.chunks(ACTIVE_RECEIPTS) {
+            root = archive.insert(root, receipts)?;
+        }
+        self.archive = Some(archive);
+        self.root = root;
+        self.receipts.clear();
+        Ok(())
+    }
+    #[cfg(feature = "service-auth")]
+    pub(super) fn checkpoint(&self) -> Option<Checkpoint> {
+        self.archive.as_ref().map(|_| Checkpoint {
+            characters: self.characters.clone(),
+            revision: self.revision,
+            root: self.root,
+            receipts: self.receipts.clone(),
+        })
+    }
+    #[cfg(feature = "service-auth")]
+    pub(super) fn restore(
+        saved: Checkpoint,
+        archive: Option<history::History>,
+    ) -> Result<Self, String> {
+        if saved.characters.len() > MAX_CHARACTERS || saved.receipts.len() > ACTIVE_RECEIPTS {
+            return Err("Saved reward ledger budget exceeded".into());
+        }
+        let archived = saved
+            .revision
+            .checked_sub(saved.receipts.len() as u64)
+            .ok_or("Saved reward revisions are incompatible")?;
+        if let Some(archive) = &archive {
+            archive.validate(saved.root, archived)?;
+        } else if archived != 0 || saved.root.is_some() {
+            return Err("Saved chamber requires its reward history directory".into());
+        }
+        for (actor, character) in &saved.characters {
+            if *actor == 0
+                || character.items.len() > MAX_ENTRIES
+                || character.quests.len() > MAX_ENTRIES
+                || character.accepted_quests.len() > MAX_ENTRIES
+                || character.claimed_quests.len() > MAX_ENTRIES
+                || character.claimed_quests.contains(&0)
+                || character
+                    .items
+                    .iter()
+                    .chain(&character.quests)
+                    .any(|(id, count)| *id == 0 || *count == 0 || *count > MAX_COUNT)
+                || character
+                    .accepted_quests
+                    .iter()
+                    .any(|(id, count)| *id == 0 || *count > MAX_COUNT)
+                || (character.outfit != 0 && !character.items.contains_key(&character.outfit))
+                || character
+                    .equipment
+                    .values()
+                    .any(|id| !character.items.contains_key(id))
+            {
+                return Err("Saved reward character is invalid".into());
+            }
+        }
+        let mut sources = BTreeSet::new();
+        for (index, receipt) in saved.receipts.iter().enumerate() {
+            if receipt.revision != archived + index as u64 + 1
+                || !saved.characters.contains_key(&receipt.transaction.actor)
+                || !sources.insert((receipt.transaction.actor, receipt.transaction.source))
+                || archive
+                    .as_ref()
+                    .map(|a| {
+                        a.get(
+                            saved.root,
+                            receipt.transaction.actor,
+                            receipt.transaction.source,
+                        )
+                    })
+                    .transpose()?
+                    .flatten()
+                    .is_some()
+            {
+                return Err("Saved reward receipt identity is invalid".into());
+            }
+            validate_transaction(&receipt.transaction)?;
+        }
+        Ok(Self {
+            characters: saved.characters,
+            receipts: saved.receipts,
+            revision: saved.revision,
+            archive,
+            root: saved.root,
+        })
     }
     pub(super) fn batch(&mut self, transactions: Vec<Transaction>) -> Result<(), String> {
         if transactions.is_empty() {
@@ -166,6 +297,10 @@ impl Ledger {
     pub(super) fn character(&self, actor: u64) -> Option<&Character> {
         self.characters.get(&actor)
     }
+    #[cfg(feature = "service-auth")]
+    pub(super) fn actors(&self) -> impl Iterator<Item = u64> + '_ {
+        self.characters.keys().copied()
+    }
     pub(super) fn transactions(&self) -> Vec<Transaction> {
         self.receipts
             .iter()
@@ -173,34 +308,13 @@ impl Ledger {
             .collect()
     }
     pub(super) fn apply(&mut self, transaction: Transaction) -> Result<Receipt, String> {
-        if transaction.instance == 0
-            || transaction.actor == 0
-            || transaction.source == [0; 32]
-            || (transaction.experience == 0
-                && transaction.items.is_empty()
-                && transaction.quests.is_empty()
-                && transaction.spent.is_empty()
-                && transaction.outfit.is_none()
-                && transaction.equipment.is_none()
-                && transaction.acceptance.is_none())
-        {
-            return Err("Reward identity or grant is empty".into());
-        }
-        entries(&transaction.items)?;
-        entries(&transaction.quests)?;
-        entries(&transaction.spent)?;
-        if let Some(receipt) = self.receipts.iter().find(|receipt| {
-            receipt.transaction.actor == transaction.actor
-                && receipt.transaction.source == transaction.source
-        }) {
+        validate_transaction(&transaction)?;
+        if let Some(receipt) = self.receipt(transaction.actor, transaction.source)? {
             return if receipt.transaction == transaction {
-                Ok(receipt.clone())
+                Ok(receipt)
             } else {
                 Err("Reward source already binds a different transaction".into())
             };
-        }
-        if self.receipts.len() >= MAX_TRANSACTIONS {
-            return Err("Reward transaction budget exceeded".into());
         }
         if !self.characters.contains_key(&transaction.actor)
             && self.characters.len() >= MAX_CHARACTERS
@@ -211,14 +325,7 @@ impl Ledger {
             .characters
             .get(&transaction.actor)
             .cloned()
-            .unwrap_or(Character {
-                accepted_quests: BTreeMap::new(),
-                experience: 0,
-                items: BTreeMap::new(),
-                quests: BTreeMap::new(),
-                outfit: 0,
-                equipment: BTreeMap::new(),
-            });
+            .unwrap_or_default();
         if let Some(acceptance) = transaction.acceptance {
             if acceptance.quest == 0
                 || acceptance.baseline > MAX_COUNT
@@ -276,14 +383,51 @@ impl Ledger {
         if next.outfit != 0 && next.items.get(&next.outfit).copied().unwrap_or(0) == 0 {
             return Err("Cannot spend the equipped outfit".into());
         }
+        if transaction.source[..8] == *b"VQUEST01" {
+            let quest = u64::from_be_bytes(transaction.source[16..24].try_into().unwrap());
+            if quest == 0 || next.claimed_quests.len() >= MAX_ENTRIES {
+                return Err("Claimed quest budget exceeded".into());
+            }
+            next.claimed_quests.insert(quest);
+        }
         let receipt = Receipt {
-            revision: self.receipts.len() as u64 + 1,
+            revision: self
+                .revision
+                .checked_add(1)
+                .ok_or("Reward revisions exhausted")?,
             transaction,
         };
+        #[cfg(feature = "service-auth")]
+        if let Some(archive) = &self.archive {
+            if self.receipts.len() >= ACTIVE_RECEIPTS {
+                self.root = archive.insert(self.root, &self.receipts)?;
+                self.receipts.clear();
+            }
+        }
         self.characters.insert(receipt.transaction.actor, next);
+        self.revision = receipt.revision;
         self.receipts.push(receipt.clone());
         Ok(receipt)
     }
+}
+
+fn validate_transaction(transaction: &Transaction) -> Result<(), String> {
+    if transaction.instance == 0
+        || transaction.actor == 0
+        || transaction.source == [0; 32]
+        || (transaction.experience == 0
+            && transaction.items.is_empty()
+            && transaction.quests.is_empty()
+            && transaction.spent.is_empty()
+            && transaction.outfit.is_none()
+            && transaction.equipment.is_none()
+            && transaction.acceptance.is_none())
+    {
+        return Err("Reward identity or grant is empty".into());
+    }
+    entries(&transaction.items)?;
+    entries(&transaction.quests)?;
+    entries(&transaction.spent)
 }
 
 #[cfg(test)]
@@ -374,20 +518,167 @@ mod tests {
         assert!(ledger.character(10).is_none());
     }
     #[test]
-    fn exhausted_receipts_refuse_new_sources_but_retain_exact_retries() {
+    fn lifetime_transaction_count_does_not_exhaust_the_ledger() {
         let mut ledger = Ledger::default();
-        for n in 1..=MAX_TRANSACTIONS {
+        for n in 1..=4096 {
             let mut tx = transaction(1);
             tx.source[..8].copy_from_slice(&(n as u64).to_be_bytes());
             ledger.apply(tx).unwrap();
         }
         let mut next = transaction(2);
-        next.source[..8].copy_from_slice(&((MAX_TRANSACTIONS + 1) as u64).to_be_bytes());
-        assert!(ledger.apply(next).is_err());
+        next.source[..8].copy_from_slice(&4097u64.to_be_bytes());
+        assert_eq!(ledger.apply(next).unwrap().revision, 4097);
         let original = ledger.receipts[0].clone();
         assert_eq!(
             ledger.apply(original.transaction.clone()).unwrap(),
             original
+        );
+    }
+    #[cfg(feature = "service-auth")]
+    #[test]
+    fn archived_mixed_operations_retain_retries_and_bounded_checkpoints() {
+        let dir = tempfile::tempdir().unwrap();
+        let archive = history::History::open(&dir.path().join("history")).unwrap();
+        let mut ledger = Ledger::default();
+        ledger.attach(archive.clone()).unwrap();
+        let quest = super::super::progression::Quest {
+            dialogue: None,
+            giver: Some(2),
+            prerequisites: vec![],
+            id: 1,
+            name: "First quest".into(),
+            objective: 3,
+            goal: 1,
+            experience: 1,
+            items: vec![],
+        };
+        let acceptance = ledger.apply(quest.acceptance(4, 10, 0)).unwrap();
+        let mut original = None;
+        for n in 1u64..=5000 {
+            let mut tx = transaction(1);
+            tx.source[..8].copy_from_slice(&n.to_be_bytes());
+            tx.experience = 1;
+            tx.items = vec![Entry { id: 1, count: 1 }, Entry { id: 2, count: 1 }];
+            match n % 5 {
+                1 => {}
+                2 => {
+                    tx.items.clear();
+                    tx.spent = vec![Entry { id: 1, count: 1 }];
+                }
+                3 => {
+                    tx.items.clear();
+                    tx.equipment = Some(super::super::equipment::Change {
+                        slot: super::super::equipment::Slot::MainHand,
+                        item: 2,
+                    });
+                }
+                4 => {
+                    tx.items.clear();
+                    tx.outfit = Some(2);
+                }
+                _ => {
+                    tx.items.clear();
+                    tx.equipment = Some(super::super::equipment::Change {
+                        slot: super::super::equipment::Slot::MainHand,
+                        item: 0,
+                    });
+                }
+            }
+            let receipt = ledger.apply(tx).unwrap();
+            original.get_or_insert(receipt);
+            assert!(ledger.receipts.len() <= ACTIVE_RECEIPTS);
+        }
+        let claim = ledger.apply(quest.transaction(4, 10)).unwrap();
+        let original = original.unwrap();
+        let character = ledger.character(10).unwrap().clone();
+        assert_eq!(character.experience, 5001);
+        assert_eq!(character.quests[&3], 5000);
+        assert_eq!(character.items.get(&1), None);
+        assert_eq!(character.items[&2], 1000);
+        assert_eq!(character.outfit, 2);
+        assert_eq!(character.accepted_quests[&1], 0);
+        assert!(character.claimed_quests.contains(&1));
+        let bytes = serde_json::to_vec(&ledger.checkpoint().unwrap()).unwrap();
+        assert!(bytes.len() < 64 * 1024);
+        let mut recovered =
+            Ledger::restore(serde_json::from_slice(&bytes).unwrap(), Some(archive)).unwrap();
+        assert_eq!(recovered.character(10), Some(&character));
+        assert_eq!(
+            recovered.apply(acceptance.transaction.clone()).unwrap(),
+            acceptance
+        );
+        assert_eq!(recovered.apply(claim.transaction.clone()).unwrap(), claim);
+        assert_eq!(
+            recovered.apply(original.transaction.clone()).unwrap(),
+            original
+        );
+        let mut conflict = original.transaction;
+        conflict.experience += 1;
+        assert!(recovered.apply(conflict).is_err());
+        assert_eq!(recovered.character(10), Some(&character));
+        assert_eq!(recovered.revision(), 5002);
+    }
+    #[cfg(feature = "service-auth")]
+    #[test]
+    fn abandoned_archive_nodes_cannot_apply_a_failed_batch() {
+        let dir = tempfile::tempdir().unwrap();
+        let archive = history::History::open(&dir.path().join("history")).unwrap();
+        let mut ledger = Ledger::default();
+        ledger.attach(archive.clone()).unwrap();
+        let mut maximum = transaction(1);
+        maximum.actor = 11;
+        maximum.experience = u64::MAX;
+        ledger.apply(maximum).unwrap();
+        for n in 1u64..ACTIVE_RECEIPTS as u64 {
+            let mut tx = transaction(1);
+            tx.source[..8].copy_from_slice(&n.to_be_bytes());
+            ledger.apply(tx).unwrap();
+        }
+        let bytes = serde_json::to_vec(&ledger.checkpoint().unwrap()).unwrap();
+        let first = transaction(2);
+        let mut overflow = first.clone();
+        overflow.actor = 11;
+        assert!(ledger.batch(vec![first.clone(), overflow]).is_err());
+        assert_eq!(
+            serde_json::to_vec(&ledger.checkpoint().unwrap()).unwrap(),
+            bytes
+        );
+        let mut recovered =
+            Ledger::restore(serde_json::from_slice(&bytes).unwrap(), Some(archive)).unwrap();
+        assert!(!recovered.contains(first.actor, first.source).unwrap());
+        assert_eq!(
+            recovered.apply(first).unwrap().revision,
+            ACTIVE_RECEIPTS as u64 + 1
+        );
+    }
+    #[cfg(feature = "service-auth")]
+    #[test]
+    fn failed_archive_write_preserves_balances_revisions_and_retry_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("history");
+        let mut ledger = Ledger::default();
+        ledger
+            .attach(history::History::open(&path).unwrap())
+            .unwrap();
+        for n in 1..=ACTIVE_RECEIPTS {
+            let mut tx = transaction(1);
+            tx.source[..8].copy_from_slice(&(n as u64).to_be_bytes());
+            ledger.apply(tx).unwrap();
+        }
+        let before = serde_json::to_vec(&ledger.checkpoint().unwrap()).unwrap();
+        std::fs::rename(&path, dir.path().join("original")).unwrap();
+        std::fs::write(&path, b"injected storage failure").unwrap();
+        let next = transaction(2);
+        assert!(ledger.apply(next.clone()).is_err());
+        assert_eq!(
+            serde_json::to_vec(&ledger.checkpoint().unwrap()).unwrap(),
+            before
+        );
+        std::fs::remove_file(&path).unwrap();
+        std::fs::rename(dir.path().join("original"), path).unwrap();
+        assert_eq!(
+            ledger.apply(next).unwrap().revision,
+            ACTIVE_RECEIPTS as u64 + 1
         );
     }
 }

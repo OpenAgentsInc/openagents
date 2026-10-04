@@ -40,6 +40,7 @@ pub struct Store {
     recovered: Option<Gateway>,
     owner: Option<[u8; 32]>,
     poisoned: bool,
+    history: super::rewards::history::History,
 }
 impl Store {
     pub fn open(root: &Path, content: [u8; 32], instance: u64) -> Result<Self, String> {
@@ -105,6 +106,7 @@ impl Store {
             .map_err(|_| "Cannot open chamber writer lock")?;
         lock.try_lock()
             .map_err(|_| "Chamber storage already has a writer or cannot lock")?;
+        let history = super::rewards::history::History::open(&root.join("rewards"))?;
         let current = root.join("chamber.json");
         regular_or_absent(&current)?;
         let (revision, last_hash, recovered) = if current.exists() {
@@ -125,7 +127,12 @@ impl Store {
             {
                 return Err("Committed chamber checksum or version is invalid".into());
             }
-            let gateway = Gateway::restore(saved.checkpoint.as_bytes(), content, instance)?;
+            let gateway = super::save::decode_with_history(
+                saved.checkpoint.as_bytes(),
+                content,
+                instance,
+                Some(history.clone()),
+            )?;
             (
                 saved.revision,
                 Some(Sha256::digest(saved.checkpoint.as_bytes()).into()),
@@ -151,13 +158,14 @@ impl Store {
             recovered,
             owner,
             poisoned: false,
+            history,
         })
     }
     /// Take the validated existing world before committing; never overwrite it with a fresh spawn.
     pub fn recover(&mut self) -> Option<Gateway> {
         self.recovered.take()
     }
-    pub fn commit(&mut self, gateway: &Gateway) -> Result<Commit, String> {
+    pub fn commit(&mut self, gateway: &mut Gateway) -> Result<Commit, String> {
         if self.poisoned || self.recovered.is_some() {
             return Err("Chamber storage is unavailable or recovery is still pending".into());
         }
@@ -171,6 +179,10 @@ impl Store {
             .is_some_and(|owner| owner != gateway.server_identity())
         {
             return Err("Chamber storage belongs to another host authority".into());
+        }
+        if let Err(error) = gateway.chamber.rewards.attach(self.history.clone()) {
+            self.poisoned = true;
+            return Err(error);
         }
         let checkpoint = String::from_utf8(gateway.checkpoint()?)
             .map_err(|_| "Cannot encode committed chamber")?;
@@ -257,20 +269,20 @@ mod tests {
         let mut store = Store::open(&root, [8; 32], 120).unwrap();
         assert!(store.recover().is_none());
         assert!(Store::open(&root, [8; 32], 120).is_err());
-        let g = prepared();
-        assert_eq!(store.commit(&g).unwrap().revision, 1);
-        assert!(store.commit(&prepared()).is_err());
-        assert!(!store.commit(&g).unwrap().written);
+        let mut g = prepared();
+        assert_eq!(store.commit(&mut g).unwrap().revision, 1);
+        assert!(store.commit(&mut prepared()).is_err());
+        assert!(!store.commit(&mut g).unwrap().written);
         drop(store);
         std::fs::write(root.join("next.json"), b"interrupted").unwrap();
         let mut store = Store::open(&root, [8; 32], 120).unwrap();
         assert!(!root.join("next.json").exists());
-        assert!(store.commit(&g).is_err());
-        let restored = store.recover().unwrap();
-        assert!(store.commit(&g).is_err());
+        assert!(store.commit(&mut g).is_err());
+        let mut restored = store.recover().unwrap();
+        assert!(store.commit(&mut g).is_err());
         assert_eq!(restored.game().controlled_effects().count(), 2);
-        assert_eq!(store.commit(&restored).unwrap().revision, 2);
-        assert!(!store.commit(&restored).unwrap().written);
+        assert_eq!(store.commit(&mut restored).unwrap().revision, 2);
+        assert!(!store.commit(&mut restored).unwrap().written);
         drop(store);
         assert!(Store::open(&root, [9; 32], 120).is_err());
         assert!(Store::open(&root, [8; 32], 121).is_err());
@@ -296,21 +308,21 @@ mod tests {
             quests: vec![Entry { id: 3, count: 1 }],
         };
         let receipt = g.grant_reward(tx.clone()).unwrap();
-        store.commit(&g).unwrap();
+        store.commit(&mut g).unwrap();
         drop(store);
         let mut store = Store::open(&root, [8; 32], 120).unwrap();
         let mut recovered = store.recover().unwrap();
         assert_eq!(recovered.grant_reward(tx.clone()).unwrap(), receipt);
         assert_eq!(recovered.character_rewards(actor).unwrap().experience, 45);
-        store.commit(&recovered).unwrap();
+        store.commit(&mut recovered).unwrap();
         let before = std::fs::read(root.join("chamber.json")).unwrap();
         assert_eq!(recovered.grant_reward(tx.clone()).unwrap(), receipt);
-        assert!(!store.commit(&recovered).unwrap().written);
+        assert!(!store.commit(&mut recovered).unwrap().written);
         std::fs::create_dir(root.join("next.json")).unwrap();
         let mut next = tx.clone();
         next.source = [10; 32];
         recovered.grant_reward(next).unwrap();
-        assert!(store.commit(&recovered).is_err());
+        assert!(store.commit(&mut recovered).is_err());
         assert_eq!(std::fs::read(root.join("chamber.json")).unwrap(), before);
         drop(store);
         std::fs::remove_dir(root.join("next.json")).unwrap();
@@ -325,20 +337,86 @@ mod tests {
         let root = dir.path().join("state");
         let mut store = Store::open(&root, [8; 32], 120).unwrap();
         let mut g = prepared();
-        store.commit(&g).unwrap();
+        store.commit(&mut g).unwrap();
         let before = std::fs::read(root.join("chamber.json")).unwrap();
         std::fs::create_dir(root.join("next.json")).unwrap();
         g.tick(1. / 30.).unwrap();
-        assert!(store.commit(&g).is_err());
+        assert!(store.commit(&mut g).is_err());
         assert_eq!(std::fs::read(root.join("chamber.json")).unwrap(), before);
         std::fs::remove_dir(root.join("next.json")).unwrap();
-        assert!(store.commit(&g).is_err());
+        assert!(store.commit(&mut g).is_err());
         drop(store);
         let mut bad: serde_json::Value = serde_json::from_slice(&before).unwrap();
         bad["revision"] = 99.into();
         std::fs::write(root.join("chamber.json"), serde_json::to_vec(&bad).unwrap()).unwrap();
         assert!(Store::open(&root, [8; 32], 120).is_err());
         std::fs::write(root.join("chamber.json"), b"truncated").unwrap();
+        assert!(Store::open(&root, [8; 32], 120).is_err());
+    }
+    #[test]
+    fn archived_rewards_recover_after_the_old_lifetime_limit_and_ignore_uncommitted_writes() {
+        use crate::service::rewards::Transaction;
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("state");
+        let mut store = Store::open(&root, [8; 32], 120).unwrap();
+        let mut g = prepared();
+        store.commit(&mut g).unwrap();
+        let actor = g.game().player_life().actor;
+        let tx = |n: u64| {
+            let mut source = [3; 32];
+            source[..8].copy_from_slice(&n.to_be_bytes());
+            Transaction {
+                acceptance: None,
+                outfit: None,
+                equipment: None,
+                spent: vec![],
+                instance: 120,
+                actor,
+                source,
+                experience: 1,
+                items: vec![],
+                quests: vec![],
+            }
+        };
+        let original = g.grant_reward(tx(1)).unwrap();
+        for n in 2..=4200 {
+            g.grant_reward(tx(n)).unwrap();
+        }
+        store.commit(&mut g).unwrap();
+        let committed = std::fs::read(root.join("chamber.json")).unwrap();
+        assert!(committed.len() < 128 * 1024);
+        for n in 4201..=4400 {
+            g.grant_reward(tx(n)).unwrap();
+        }
+        drop(g);
+        drop(store);
+        let mut store = Store::open(&root, [8; 32], 120).unwrap();
+        let mut recovered = store.recover().unwrap();
+        assert_eq!(recovered.character_rewards(actor).unwrap().experience, 4200);
+        assert_eq!(recovered.grant_reward(tx(1)).unwrap(), original);
+        assert_eq!(recovered.grant_reward(tx(4201)).unwrap().revision, 4201);
+        let mut conflict = tx(1);
+        conflict.experience = 2;
+        assert!(recovered.grant_reward(conflict).is_err());
+        store.commit(&mut recovered).unwrap();
+        drop(recovered);
+        drop(store);
+        let mut store = Store::open(&root, [8; 32], 120).unwrap();
+        let recovered = store.recover().unwrap();
+        assert_eq!(recovered.character_rewards(actor).unwrap().experience, 4201);
+        drop(recovered);
+        drop(store);
+        let committed: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(root.join("chamber.json")).unwrap()).unwrap();
+        let saved: serde_json::Value =
+            serde_json::from_str(committed["checkpoint"].as_str().unwrap()).unwrap();
+        let digest: String = saved["ledger"]["root"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|b| format!("{:02x}", b.as_u64().unwrap()))
+            .collect();
+        std::fs::remove_file(root.join("rewards").join(digest)).unwrap();
         assert!(Store::open(&root, [8; 32], 120).is_err());
     }
 }

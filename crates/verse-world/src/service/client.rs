@@ -351,7 +351,6 @@ impl Client {
                 if quest != requested
                     || *quest == 0
                     || *revision == 0
-                    || *revision > super::rewards::MAX_TRANSACTIONS as u64
                     || giver.actor == 0
                     || giver.instance != self.instance
                     || r.control
@@ -373,7 +372,6 @@ impl Client {
                 if quest != requested
                     || *quest == 0
                     || *revision == 0
-                    || *revision > super::rewards::MAX_TRANSACTIONS as u64
                     || r.control
                         .as_ref()
                         .is_none_or(|c| c.life != *life || c.epoch != *epoch)
@@ -400,7 +398,6 @@ impl Client {
                     || *item == 0
                     || *operation == [0; 16]
                     || *revision == 0
-                    || *revision > super::rewards::MAX_TRANSACTIONS as u64
                     || r.control
                         .as_ref()
                         .is_none_or(|c| c.life != *life || c.epoch != *epoch)
@@ -429,7 +426,6 @@ impl Client {
                     || operation != identity
                     || *operation == [0; 16]
                     || *revision == 0
-                    || *revision > super::rewards::MAX_TRANSACTIONS as u64
                     || r.control
                         .as_ref()
                         .is_none_or(|c| c.life != *life || c.epoch != *epoch)
@@ -455,7 +451,6 @@ impl Client {
                     || operation != identity
                     || *operation == [0; 16]
                     || *revision == 0
-                    || *revision > super::rewards::MAX_TRANSACTIONS as u64
                     || r.control
                         .as_ref()
                         .is_none_or(|c| c.life != *life || c.epoch != *epoch)

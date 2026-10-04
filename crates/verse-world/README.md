@@ -343,7 +343,7 @@ new directories with owner-only permissions, holds one exclusive writer lock,
 and refuses corrupt, incompatible, or changed startup enrollments and authored
 content. It recovers existing adventurers, resources, pending combat, and timers;
 simulation time resumes without offline catch-up. Without `state_dir`, the host
-uses memory only.
+uses temporary reward-history files and does not retain a recoverable world.
 
 Durable hosts group bounded pending replies into one atomic, synced checkpoint
 per world tick. Reads wait for that commit when mutations are pending. A storage
@@ -357,10 +357,16 @@ Trusted hosts use `Gateway::grant_reward` for bounded character experience,
 item stacks, and quest counters. A stable source ID binds one exact transaction
 per character; retries return its original receipt, and conflicting reuse or
 limit failures leave every field unchanged. Call `Store::commit` before
-acknowledging a host-created reward. Version-five chamber saves replay the retained
-transactions; version-one saves upgrade with an empty ledger. Instance reset
-retains rewards and retry identities. Receipts are never evicted: after 4,096
-transactions, new grants are refused. Host JSON accepts an optional sorted `rewards` array of NPC targets and grants,
+acknowledging a host-created reward. Legacy chamber saves replay the retained
+transactions; version-one saves upgrade with an empty ledger. Version-eight
+saves retain bounded character state, up to 128 active receipts, and the root of
+an immutable indexed history under `state_dir/rewards`. Recover them through
+`Store::open` and back up that directory with `chamber.json`; a checkpoint that
+references archived receipts requires those files. Exact retries preserve the
+original revision even after archival. Instance reset retains rewards and retry
+identities. Lifetime transaction count has no 4,096-receipt limit. Standalone
+chambers retain in-memory history until attached to a store or network host.
+Host JSON accepts an optional sorted `rewards` array of NPC targets and grants,
 for example `[{"target":2,"experience":45,"items":[{"id":1,"count":1}],"quests":[{"id":1,"count":1}]}]`.
 The cooperative version-one policy grants every enrolled adventurer, including
 disconnected or dead party members, once per defeated NPC life. Spectators receive
