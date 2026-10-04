@@ -401,9 +401,14 @@ impl Studio {
     ) -> Result<String, Error> {
         let (index, entry) = self.locate(task_id)?;
         let slot = self.slot(index, entry).clone();
+        // A plan entry whose change the person rejected counts as cancelled.
+        let now_at = match entry {
+            Some(entry) => super::flow::entry_progress(&self.state.goals[index].plan[entry], tasks),
+            None => progress(tasks, &slot.task_id),
+        };
         let over = slot.state == SlotState::Submitted
             && matches!(
-                progress(tasks, &slot.task_id),
+                now_at,
                 Progress::Failed | Progress::Cancelled | Progress::Missing
             );
         if !over {
@@ -464,8 +469,10 @@ impl Studio {
 
     /// Record that the person rejected the studio task `task_id`'s change
     /// at content tree `head`, with an optional `reason`, and cancel the
-    /// task if it still runs. Its worktree stays until it is archived.
-    /// Returns the memory entry's sequence.
+    /// task if it still runs. A plan entry's change the coordinator
+    /// follows ends there, and its dependents see it cancelled. Its
+    /// worktree stays until it is archived. Returns the memory entry's
+    /// sequence.
     ///
     /// # Errors
     /// No such task, or the inbox or the studio cannot be written.
@@ -476,12 +483,20 @@ impl Studio {
         head: &str,
         reason: &str,
     ) -> Result<u64, Error> {
-        let (index, _) = self.locate(task_id)?;
+        let (index, entry) = self.locate(task_id)?;
         if matches!(
             progress(tasks, task_id),
             Progress::Queued | Progress::Running
         ) {
             cancel(tasks, task_id, "Rejected in the studio")?;
+        }
+        if let Some(entry) = entry
+            && let Some(flow) = self.state.goals[index].plan[entry].flow.as_mut()
+            && flow.task_id == task_id
+        {
+            flow.stage = super::Stage::Rejected;
+            flow.review = None;
+            flow.command = None;
         }
         let goal_id = self.state.goals[index].goal_id.clone();
         let mut text = format!(
@@ -844,7 +859,11 @@ fn status(progress: Progress) -> wire::TaskStatus {
         Progress::Queued => wire::TaskStatus::Queued,
         Progress::Running => wire::TaskStatus::Running,
         Progress::Waiting => wire::TaskStatus::Waiting,
-        Progress::Done => wire::TaskStatus::Done,
+        // Checks and the lead's review are still work; a change that waits
+        // on the person's merge decision is done work the merge station
+        // lists.
+        Progress::Review => wire::TaskStatus::Running,
+        Progress::Merge | Progress::Done => wire::TaskStatus::Done,
         Progress::Failed => wire::TaskStatus::Failed,
         Progress::Cancelled => wire::TaskStatus::Cancelled,
         Progress::Missing => wire::TaskStatus::Missing,

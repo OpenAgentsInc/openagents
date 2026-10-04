@@ -494,7 +494,8 @@ impl SimInbox {
         self.tasks.values().cloned().collect()
     }
 
-    fn start(&mut self, task_id: &str) -> Result<(), Error> {
+    /// Start the queued task `task_id`'s turn, as an owner would.
+    pub(crate) fn start(&mut self, task_id: &str) -> Result<(), Error> {
         let task = self
             .tasks
             .get_mut(task_id)
@@ -507,11 +508,32 @@ impl SimInbox {
         Ok(())
     }
 
-    fn end(&mut self, task_id: &str, ending: &str) {
+    /// End the running turn of `task_id` with `ending`, as an owner would.
+    pub(crate) fn end(&mut self, task_id: &str, ending: &str) {
         if let Some(task) = self.tasks.get_mut(task_id) {
             task.status = Status::Finished;
             task.execution = Execution::Finished;
             task.run = Some(run(task, ending));
+        }
+    }
+
+    /// Record `verdict` as the independent check of `task_id`'s ended
+    /// turn, with `reason`, as its owner would.
+    #[cfg(test)]
+    pub(crate) fn checked(&mut self, task_id: &str, verdict: super::Checks, reason: &str) {
+        if let Some(task) = self.tasks.get_mut(task_id) {
+            task.checks = verdict;
+            if let Some(run) = task.run.as_mut() {
+                run.check_report = Some(checks::Report {
+                    schema: "openagents.coder.task-checks.v1".into(),
+                    requirements_digest: String::new(),
+                    context_digest: String::new(),
+                    candidate_snapshot: None,
+                    verdict,
+                    evidence: None,
+                    reason: (!reason.is_empty()).then(|| reason.to_owned()),
+                });
+            }
         }
     }
 }

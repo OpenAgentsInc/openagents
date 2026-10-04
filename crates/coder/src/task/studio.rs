@@ -38,7 +38,10 @@
 //! policy and never runs an engine. With a worktree directory
 //! ([`Studio::with_worktrees`]) each released task works in a Git
 //! worktree and branch of its own, never in the person's checkout, and
-//! lands only through a person's approved local merge ([`git`]).
+//! lands only through a person's approved local merge ([`git`]). Such a
+//! task's finished change goes through its checks, one automatic fix
+//! round, and the lead's review before the person's merge decision, and a
+//! merge that conflicts goes back to its worker ([`flow`]).
 //!
 //! State is one private document, `<store>/studio/state.json`, replaced
 //! atomically with the task store's own file helpers, under the stable
@@ -125,6 +128,13 @@ pub trait Inbox {
     fn spend(&self, task_id: &str) -> Option<Spend> {
         self.task(task_id).map(|task| spend_of(&task))
     }
+
+    /// Whether the ended turn of `task_id` still has an independent check
+    /// to come that its checks state does not show yet: its owner is
+    /// listing it ([`super::local_checks::pending`]).
+    fn checks_pending(&self, _task_id: &str) -> bool {
+        false
+    }
 }
 
 impl Inbox for Store {
@@ -134,6 +144,10 @@ impl Inbox for Store {
 
     fn task(&self, task_id: &str) -> Option<Task> {
         self.show(task_id).ok()
+    }
+
+    fn checks_pending(&self, task_id: &str) -> bool {
+        super::local_checks::pending(&self.dir, task_id)
     }
 }
 
@@ -204,6 +218,14 @@ fn is_zero(value: &u32) -> bool {
     *value == 0
 }
 
+fn on() -> bool {
+    true
+}
+
+fn is_on(value: &bool) -> bool {
+    *value
+}
+
 /// One task of an accepted plan.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -214,6 +236,10 @@ pub struct PlanEntry {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub depends_on: Vec<String>,
     pub slot: Slot,
+    /// Where its finished change is on the way to the person's merge
+    /// decision; present when it was released with a worktree.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub flow: Option<Flow>,
 }
 
 /// Why a goal waits on the person.
@@ -394,6 +420,10 @@ pub struct State {
     /// tasks the inbox no longer holds included.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub spend: BTreeMap<String, TaskSpend>,
+    /// Whether a goal's lead reviews each finished change before the
+    /// person's merge decision ([`Studio::set_lead_review`]).
+    #[serde(default = "on", skip_serializing_if = "is_on")]
+    pub lead_review: bool,
 }
 
 impl Default for State {
@@ -406,6 +436,7 @@ impl Default for State {
             memory: Vec::new(),
             messages: Vec::new(),
             spend: BTreeMap::new(),
+            lead_review: true,
         }
     }
 }
@@ -490,6 +521,11 @@ pub enum Progress {
     Running,
     /// Its turn ended with a question or an approval for the person.
     Waiting,
+    /// Its turn ended, and its change goes through its checks and the
+    /// lead's review ([`flow`]).
+    Review,
+    /// Its change waits on the person's merge decision ([`flow`]).
+    Merge,
     Done,
     Failed,
     Cancelled,
@@ -569,6 +605,17 @@ pub struct EntryView {
     /// What its current task spent.
     #[serde(default)]
     pub spend: Spend,
+    /// Where its finished change is on the way to the person's merge
+    /// decision, when the coordinator follows it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stage: Option<Stage>,
+    /// What its last checked turn's independent check found.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verification: Option<Verification>,
+    /// What the person reads with the merge decision: a check that still
+    /// failed, and the lead's review.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub notes: Vec<String>,
 }
 
 /// A goal with its progress.
@@ -835,6 +882,12 @@ fn cycle(tasks: &[PlannedTask]) -> Option<Vec<String>> {
 /// [`PLAN_SCHEMA`], else the whole reply when it is a JSON object.
 #[must_use]
 pub fn plan_in_reply(reply: &str) -> Option<String> {
+    fenced_block(reply, PLAN_SCHEMA)
+}
+
+/// The last fenced code block in `reply` that holds `schema`, else the
+/// whole reply when it is a JSON object that holds it.
+pub(crate) fn fenced_block(reply: &str, schema: &str) -> Option<String> {
     let mut found = None;
     let mut rest = reply;
     while let Some(start) = rest.find("```") {
@@ -845,14 +898,14 @@ pub fn plan_in_reply(reply: &str) -> Option<String> {
             break;
         };
         let block = body[..end].trim();
-        if block.contains(PLAN_SCHEMA) {
+        if block.contains(schema) {
             found = Some(block.to_owned());
         }
         rest = &body[end + 3..];
     }
     found.or_else(|| {
         let whole = reply.trim();
-        (whole.starts_with('{') && whole.contains(PLAN_SCHEMA)).then(|| whole.to_owned())
+        (whole.starts_with('{') && whole.contains(schema)).then(|| whole.to_owned())
     })
 }
 
@@ -1269,6 +1322,7 @@ impl Studio {
                 title: task.title,
                 description: task.description,
                 depends_on: task.depends_on,
+                flow: None,
             });
         }
         let summary = entries
@@ -1360,6 +1414,7 @@ impl Studio {
                 }
                 continue;
             }
+            released.extend(self.advance(tasks, index, now, lead_reply)?);
             released.extend(self.release_ready(tasks, index, now)?);
         }
         self.record_spend(tasks)?;
@@ -1393,7 +1448,13 @@ impl Studio {
     fn live_spend(&self, tasks: &dyn Inbox) -> BTreeMap<String, TaskSpend> {
         let mut fresh = BTreeMap::new();
         for goal in &self.state.goals {
-            let slots = std::iter::once(&goal.lead).chain(goal.plan.iter().map(|e| &e.slot));
+            let reviews = goal
+                .plan
+                .iter()
+                .filter_map(|entry| entry.flow.as_ref()?.review.as_ref());
+            let slots = std::iter::once(&goal.lead)
+                .chain(goal.plan.iter().map(|e| &e.slot))
+                .chain(reviews);
             for slot in slots.filter(|slot| slot.state == SlotState::Submitted) {
                 let Some(spend) = tasks.spend(&slot.task_id) else {
                     continue;
@@ -1450,11 +1511,8 @@ impl Studio {
                 let Some(other) = goal.plan.iter().find(|other| &other.id == dependency) else {
                     continue;
                 };
-                let state = if other.slot.state == SlotState::Submitted {
-                    progress(tasks, &other.slot.task_id)
-                } else {
-                    Progress::Held
-                };
+                // A change the coordinator follows counts once it merged.
+                let state = flow::entry_progress(other, tasks);
                 if state != Progress::Done {
                     ready = false;
                 }
@@ -1521,6 +1579,20 @@ impl Studio {
                     .into_owned(),
                     None => goal.repository.path.clone(),
                 };
+                // A plan entry in a worktree of its own has a change the
+                // coordinator follows to the merge decision.
+                if let Some(entry) = entry
+                    && self.worktrees.is_some()
+                {
+                    let item = &mut self.state.goals[index].plan[entry];
+                    if item
+                        .flow
+                        .as_ref()
+                        .is_none_or(|flow| flow.task_id != slot.task_id)
+                    {
+                        item.flow = Some(Flow::new(&slot.task_id));
+                    }
+                }
                 let command = Command {
                     schema: COMMAND_SCHEMA.into(),
                     command_id: format!("studio-{}", slot.task_id),
@@ -1844,7 +1916,16 @@ impl Studio {
                 goal.plan
                     .iter()
                     .rev()
-                    .map(|entry| &entry.slot)
+                    .flat_map(|entry| {
+                        // The lead's review of the entry's change is the
+                        // lead's task while it runs.
+                        entry
+                            .flow
+                            .as_ref()
+                            .and_then(|flow| flow.review.as_ref())
+                            .into_iter()
+                            .chain(std::iter::once(&entry.slot))
+                    })
                     .chain(std::iter::once(&goal.lead))
             })
             .filter(|slot| slot.seat == seat && slot.state == SlotState::Submitted)
@@ -1914,7 +1995,7 @@ fn goal_view(goal: &Goal, tasks: &dyn Inbox) -> GoalView {
     let states: BTreeMap<&str, Progress> = goal
         .plan
         .iter()
-        .map(|entry| (entry.id.as_str(), slot_progress(&entry.slot, tasks)))
+        .map(|entry| (entry.id.as_str(), flow::entry_progress(entry, tasks)))
         .collect();
     let entries: Vec<EntryView> = goal
         .plan
@@ -1939,6 +2020,13 @@ fn goal_view(goal: &Goal, tasks: &dyn Inbox) -> GoalView {
                 task_id: entry.slot.task_id.clone(),
                 progress,
                 spend: Spend::default(),
+                stage: entry.flow.as_ref().map(|flow| flow.stage),
+                verification: entry.flow.as_ref().and_then(|flow| flow.verification),
+                notes: entry
+                    .flow
+                    .as_ref()
+                    .map(|flow| flow.notes.clone())
+                    .unwrap_or_default(),
             }
         })
         .collect();
@@ -2042,6 +2130,11 @@ mod intents;
 // Each task's worktree, its local merge, and the push block.
 #[path = "studio_git.rs"]
 pub mod git;
+
+// The path from a finished task to the person's merge decision.
+#[path = "studio_flow.rs"]
+pub mod flow;
+pub use flow::{Flow, Stage, Verification};
 
 #[cfg(test)]
 #[path = "studio_tests.rs"]

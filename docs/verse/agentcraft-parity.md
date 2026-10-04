@@ -28,9 +28,9 @@ limit; **Missing** does not exist.
 | --- | --- | --- |
 | Lead plans read-only and creates tasks with dependencies | Partial: the plan is read from the lead's reply automatically; read-only is prompt text | Lead review and CI loop |
 | Task graph, statuses, progress | Done | |
-| CI after each task; one automatic fix round; then review with the failure noted | Missing: a red check fails the task and waits for a manual retry | Lead review and CI loop |
-| Lead reviews the diff before the merge decision | Missing | Lead review and CI loop |
-| Merge conflicts go back to the worker to resolve | Partial: the simulated team only | Lead review and CI loop |
+| CI after each task; one automatic fix round; then review with the failure noted | Done: a red independent check goes back to the same task once, then on with the failure noted | #10543 |
+| Lead reviews the diff before the merge decision | Done: a lead task reads the diff, the check, and the history, then approves or sends changes back; it can be turned off | #10543 |
+| Merge conflicts go back to the worker to resolve | Done: the worker merges the branch in, then the change goes through checks and review again | #10543 |
 | Pause, resume, stop, spawn; hand-off of committed work on reassign | Partial: Verse sends every intent; reassign moves only a task that has not started | Studio panels |
 | Spend per agent, task, and goal, shown in status | Done: kept per task across restarts; in the snapshot, `studio goal list`, and the Verse console and seat panel | |
 | Session resume and restart recovery | Done | |

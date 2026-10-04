@@ -19,6 +19,9 @@
 //!   checked-out branch to it. A checkout with uncommitted changes, a
 //!   detached checkout, and a merge that would conflict are refused with
 //!   the reason, which reopens the decision; the checkout is untouched.
+//!   A conflict is also noted for the coordinator, which sends the task
+//!   back to its worker to merge the branch in ([`super::flow`]), and a
+//!   change the lead still reviews is refused until the review ends.
 //!   Nothing is pushed and no pull request is opened.
 //! - **Push block.** A studio task's processes run with [`confine`]'s
 //!   variables: no Git transport at all (`GIT_ALLOW_PROTOCOL` and
@@ -373,7 +376,23 @@ pub fn merge(store: &Path, task: &str, reviewed: &Reviewed) -> Result<Publicatio
         note: String::new(),
     };
     let checkout = PathBuf::from(&record.checkout);
-    match land(&checkout, &worktree, task, &seat, &record.base, reviewed) {
+    if super::flow::stage_of(store, task) == Some(super::Stage::Review) {
+        publication.note = "The lead is still reviewing this change; merge it once the review \
+                            asks for your decision."
+            .into();
+        publish::remember(store, task, &publication)?;
+        return Ok(publication);
+    }
+    let mut conflict = None;
+    match land(
+        &checkout,
+        &worktree,
+        task,
+        &seat,
+        &record.base,
+        reviewed,
+        &mut conflict,
+    ) {
         Ok(landed) => {
             publication.state = PublishState::Published;
             publication.note = clip(
@@ -398,6 +417,11 @@ pub fn merge(store: &Path, task: &str, reviewed: &Reviewed) -> Result<Publicatio
         Err(why) => publication.note = clip(&why, MAX_NOTE),
     }
     publish::remember(store, task, &publication)?;
+    if let Some(conflict) = conflict
+        && let Err(why) = super::flow::note_conflict(store, task, &conflict)
+    {
+        eprintln!("openagents host: studio: cannot note the conflict of task {task}: {why}");
+    }
     // The merge holds the worktree's whole content: an ended task's
     // worktree then goes, as after a publication.
     if publication.state == PublishState::Published {
@@ -415,7 +439,8 @@ struct Landed {
 }
 
 /// Build the merge off-tree and fast-forward the checkout's branch to it.
-/// The reason is a sentence the person reads.
+/// The reason is a sentence the person reads; a merge that would conflict
+/// also fills `conflict`.
 fn land(
     checkout: &Path,
     worktree: &Path,
@@ -423,6 +448,7 @@ fn land(
     seat: &str,
     base: &str,
     reviewed: &Reviewed,
+    conflict: &mut Option<super::flow::Conflict>,
 ) -> Result<Landed, String> {
     let now = review::head(worktree)?;
     if now.commit != reviewed.head_commit || now.tree != reviewed.head {
@@ -523,6 +549,15 @@ fn land(
         Some(0) => {}
         Some(1) => {
             let files: Vec<&str> = lines.take_while(|line| !line.is_empty()).collect();
+            *conflict = Some(super::flow::Conflict {
+                target: target.clone(),
+                files: files
+                    .iter()
+                    .take(super::flow::MAX_CONFLICT_FILES)
+                    .map(|file| (*file).to_owned())
+                    .collect(),
+                head_commit: reviewed.head_commit.clone(),
+            });
             return Err(format!(
                 "Merging would conflict in {}. Nothing changed; resolve it in the task, then merge again.",
                 if files.is_empty() {
