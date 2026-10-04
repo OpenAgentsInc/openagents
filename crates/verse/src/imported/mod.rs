@@ -13,6 +13,7 @@ pub mod chamber;
 pub mod characters;
 pub mod combat;
 pub mod controls;
+mod culling;
 pub mod lighting;
 pub mod original;
 pub mod overlay;
@@ -21,6 +22,7 @@ use lighting::{Frame, Lighting};
 use std::{
     collections::{BTreeMap, HashMap},
     path::Path,
+    time::Instant,
 };
 use verse_engine::{
     animation,
@@ -78,6 +80,50 @@ struct Actor {
     buffer: wgpu::Buffer,
     group: wgpu::BindGroup,
 }
+struct Grounding {
+    basis: [[f32; 4]; 3],
+    bones: Box<[[[f32; 4]; 4]; 256]>,
+    lift: f32,
+}
+impl Grounding {
+    fn matches(&self, palette: &Pose) -> bool {
+        self.basis == [palette.model[0], palette.model[1], palette.model[2]]
+            && *self.bones == palette.bones
+    }
+}
+fn ground_lift(model: &verse_engine::assets::Model, palette: &Pose) -> f32 {
+    let mut transform = Mat4::from_cols_array_2d(&palette.model);
+    transform.w_axis = glam::Vec4::W;
+    let bones: Vec<_> = palette.bones.iter().map(Mat4::from_cols_array_2d).collect();
+    let mut lowest = f32::INFINITY;
+    for vertex in model.surfaces.iter().flat_map(|s| &s.vertices) {
+        let point =
+            vertex
+                .joints
+                .iter()
+                .zip(vertex.weights)
+                .fold(Vec3::ZERO, |p, (joint, weight)| {
+                    p + bones[*joint as usize].transform_point3(vertex.position.into()) * weight
+                });
+        lowest = lowest.min(transform.transform_point3(point).y);
+    }
+    (0.05 - lowest).clamp(
+        0.,
+        model.height.max(0.6) * transform.y_axis.truncate().length(),
+    )
+}
+#[derive(Clone, Copy, Debug, Default, serde::Serialize)]
+pub struct FrameTimings {
+    pub prepare_ms: f64,
+    pub encode_ms: f64,
+    pub gpu_wait_ms: f64,
+    pub readback_copy_ms: f64,
+    pub total_ms: f64,
+    pub instances: usize,
+    pub grounded_vertices: usize,
+    pub readback: bool,
+    pub shadow_draws: usize,
+}
 /// Persistent offscreen renderer; frames come directly from owned GPU passes.
 pub struct Renderer {
     #[cfg(feature = "imported-desktop")]
@@ -107,11 +153,14 @@ pub struct Renderer {
     static_batches: Vec<Batch>,
     actors: Vec<Actor>,
     playback: HashMap<(u64, String), animation::Playback>,
+    grounding: HashMap<(u64, String), Grounding>,
+    bounds: HashMap<String, Option<culling::BoneBounds>>,
     ui_pipeline: wgpu::RenderPipeline,
     ui_group: wgpu::BindGroup,
     _ui_screen: wgpu::Buffer,
     ui_buffer: wgpu::Buffer,
     pub adapter_name: String,
+    pub last_timings: FrameTimings,
 }
 fn buffer(
     device: &wgpu::Device,
@@ -212,11 +261,11 @@ fn make_pose(pack: &Pack, instance: Option<&Instance>) -> Pose {
         if pack.models[&i.model].source.starts_with("verse/ribbon/") {
             pose.params = [4.0, i.emission.x.clamp(0.0, 1.0), i.time, 0.0];
         }
-        for (dst, m) in
-            pose.bones
-                .iter_mut()
-                .zip(animation::pose(&pack.models[&i.model], i.animation, i.time))
-        {
+        for (dst, m) in pose.bones.iter_mut().zip(if i.actor.is_none() {
+            animation::pose(&pack.models[&i.model], i.animation, i.time)
+        } else {
+            vec![]
+        }) {
             *dst = m.to_cols_array_2d();
         }
     }
@@ -556,6 +605,11 @@ impl Renderer {
             mapped_at_creation: false,
         });
         use sha2::Digest;
+        let bounds = pack
+            .models
+            .iter()
+            .map(|(key, model)| (key.clone(), culling::BoneBounds::compile(model)))
+            .collect();
         Ok(Self {
             #[cfg(feature = "imported-desktop")]
             instance,
@@ -588,7 +642,10 @@ impl Renderer {
             _ui_screen: ui_screen,
             ui_buffer,
             playback: HashMap::new(),
+            grounding: HashMap::new(),
+            bounds,
             adapter_name,
+            last_timings: FrameTimings::default(),
         })
     }
     pub fn draw(
@@ -598,6 +655,29 @@ impl Renderer {
         ui: &UiBatch,
         lighting: &Lighting,
     ) -> Result<Vec<u8>, String> {
+        self.draw_frame(view, instances, ui, lighting, true)
+    }
+    /// Keeps interactive frames on the GPU; captures explicitly request readback.
+    pub fn draw_live(
+        &mut self,
+        view: View,
+        instances: &[Instance],
+        ui: &UiBatch,
+        lighting: &Lighting,
+    ) -> Result<(), String> {
+        self.draw_frame(view, instances, ui, lighting, false)
+            .map(|_| ())
+    }
+    fn draw_frame(
+        &mut self,
+        view: View,
+        instances: &[Instance],
+        ui: &UiBatch,
+        lighting: &Lighting,
+        capture: bool,
+    ) -> Result<Vec<u8>, String> {
+        let started = Instant::now();
+        let mut grounded_vertices = 0;
         if instances.len() > 256
             || instances
                 .iter()
@@ -650,7 +730,15 @@ impl Renderer {
                 .iter()
                 .any(|i| i.actor == Some(*id) && i.model == *model)
         });
+        self.grounding.retain(|(id, model), _| {
+            instances.iter().any(|i| {
+                i.actor.unwrap_or(u64::MAX) == *id
+                    && i.model == *model
+                    && matches!(i.animation, 1 | 100)
+            })
+        });
         let mut adventurer_pose: Option<Pose> = None;
+        let mut actor_bounds = Vec::with_capacity(instances.len());
         for (i, instance) in instances.iter().enumerate() {
             let mut palette = make_pose(&self.pack, Some(instance));
             if let Some(id) = instance.actor {
@@ -671,23 +759,28 @@ impl Renderer {
             if matches!(instance.animation, 1 | 100) {
                 // Ground fallen and prone bodies using their posed geometry.
                 let model = &self.pack.models[&instance.model];
-                let transform = Mat4::from_cols_array_2d(&palette.model);
-                let bones: Vec<_> = palette.bones.iter().map(Mat4::from_cols_array_2d).collect();
-                let mut lowest = f32::INFINITY;
-                for vertex in model.surfaces.iter().flat_map(|s| &s.vertices) {
-                    let point = vertex.joints.iter().zip(vertex.weights).fold(
-                        Vec3::ZERO,
-                        |p, (joint, weight)| {
-                            p + bones[*joint as usize].transform_point3(vertex.position.into())
-                                * weight
+                let key = (instance.actor.unwrap_or(u64::MAX), instance.model.clone());
+                let basis = [palette.model[0], palette.model[1], palette.model[2]];
+                if self
+                    .grounding
+                    .get(&key)
+                    .is_none_or(|g| !g.matches(&palette))
+                {
+                    grounded_vertices += model
+                        .surfaces
+                        .iter()
+                        .map(|s| s.vertices.len())
+                        .sum::<usize>();
+                    self.grounding.insert(
+                        key.clone(),
+                        Grounding {
+                            basis,
+                            bones: Box::new(palette.bones),
+                            lift: ground_lift(model, &palette),
                         },
                     );
-                    lowest = lowest.min(transform.transform_point3(point).y);
                 }
-                let lift = (instance.transform.w_axis.y + 0.05 - lowest).clamp(
-                    0.0,
-                    model.height.max(0.6) * instance.transform.y_axis.truncate().length(),
-                );
+                let lift = self.grounding[&key].lift;
                 palette.model[3][1] += lift;
             }
             if instance.model == "adventurer" {
@@ -709,9 +802,16 @@ impl Renderer {
                     palette.model = transform.to_cols_array_2d();
                 }
             }
+            actor_bounds.push(
+                self.bounds[&instance.model]
+                    .as_ref()
+                    .and_then(|b| b.posed(&palette)),
+            );
             self.queue
                 .write_buffer(&self.actors[i + 1].buffer, 0, bytemuck::bytes_of(&palette));
         }
+        let prepared = Instant::now();
+        let mut shadow_draws = 0;
         let mut encoder = self.device.create_command_encoder(&Default::default());
         for layer in 0..lighting.lights.len().min(lighting.shadowed).min(4) * 6 {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -736,14 +836,21 @@ impl Renderer {
                 .filter(|b| b.blend < 2 && !b.emissive)
             {
                 self.draw_batch(&mut pass, batch);
+                shadow_draws += 1;
             }
             for (i, instance) in instances.iter().enumerate() {
+                if actor_bounds[i]
+                    .is_some_and(|b| !b.visible(Mat4::from_cols_array_2d(&frame.shadow[layer])))
+                {
+                    continue;
+                }
                 pass.set_bind_group(2, &self.actors[i + 1].group, &[]);
                 for batch in self.models[&instance.model]
                     .iter()
                     .filter(|b| b.blend < 2 && !b.emissive)
                 {
                     self.draw_batch(&mut pass, batch);
+                    shadow_draws += 1;
                 }
             }
         }
@@ -820,24 +927,40 @@ impl Renderer {
             pass.set_vertex_buffer(0, self.ui_buffer.slice(..));
             pass.draw(0..ui.vertices.len() as u32, 0..1);
         }
-        encoder.copy_texture_to_buffer(
-            wgpu::TexelCopyTextureInfo {
-                texture: &self.target,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            wgpu::TexelCopyBufferInfo {
-                buffer: &self.readback,
-                layout: wgpu::TexelCopyBufferLayout {
-                    offset: 0,
-                    bytes_per_row: Some(self.row),
-                    rows_per_image: Some(self.height),
+        if capture {
+            encoder.copy_texture_to_buffer(
+                wgpu::TexelCopyTextureInfo {
+                    texture: &self.target,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
                 },
-            },
-            extent(self.width, self.height),
-        );
+                wgpu::TexelCopyBufferInfo {
+                    buffer: &self.readback,
+                    layout: wgpu::TexelCopyBufferLayout {
+                        offset: 0,
+                        bytes_per_row: Some(self.row),
+                        rows_per_image: Some(self.height),
+                    },
+                },
+                extent(self.width, self.height),
+            );
+        }
         self.queue.submit([encoder.finish()]);
+        let submitted = Instant::now();
+        if !capture {
+            self.last_timings = FrameTimings {
+                prepare_ms: prepared.duration_since(started).as_secs_f64() * 1000.,
+                encode_ms: submitted.duration_since(prepared).as_secs_f64() * 1000.,
+                total_ms: started.elapsed().as_secs_f64() * 1000.,
+                instances: instances.len(),
+                grounded_vertices,
+                readback: false,
+                shadow_draws,
+                ..Default::default()
+            };
+            return Ok(vec![]);
+        }
         let slice = self.readback.slice(..);
         slice.map_async(wgpu::MapMode::Read, |_| {});
         self.device
@@ -846,6 +969,7 @@ impl Renderer {
                 timeout: None,
             })
             .map_err(|e| e.to_string())?;
+        let waited = Instant::now();
         let mapped = slice.get_mapped_range();
         let mut out = Vec::with_capacity((self.width * self.height * 4) as usize);
         for y in 0..self.height as usize {
@@ -855,6 +979,17 @@ impl Renderer {
         }
         drop(mapped);
         self.readback.unmap();
+        self.last_timings = FrameTimings {
+            prepare_ms: prepared.duration_since(started).as_secs_f64() * 1000.,
+            encode_ms: submitted.duration_since(prepared).as_secs_f64() * 1000.,
+            gpu_wait_ms: waited.duration_since(submitted).as_secs_f64() * 1000.,
+            readback_copy_ms: waited.elapsed().as_secs_f64() * 1000.,
+            total_ms: started.elapsed().as_secs_f64() * 1000.,
+            instances: instances.len(),
+            grounded_vertices,
+            readback: true,
+            shadow_draws,
+        };
         Ok(out)
     }
     fn draw_batch<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, batch: &'a Batch) {
@@ -872,6 +1007,57 @@ impl Renderer {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn corpse_grounding_ignores_world_translation_but_tracks_skin_and_basis_changes() {
+        use super::*;
+        use verse_engine::assets::{Model, Surface, Vertex};
+        let model = Model {
+            skin: None,
+            source: "fixture".into(),
+            source_sha256: String::new(),
+            height: 2.,
+            bones: vec![],
+            clips: vec![],
+            attachments: vec![],
+            surfaces: vec![Surface {
+                vertices: [[-0.2, -1., 0.], [0.3, 0., 0.], [0.2, 2., 0.]]
+                    .into_iter()
+                    .map(|position| Vertex {
+                        position,
+                        normal: [0., 1., 0.],
+                        uv: [0.; 2],
+                        joints: [1; 4],
+                        weights: [1., 0., 0., 0.],
+                    })
+                    .collect(),
+                indices: vec![0, 1, 2],
+                texture: 0,
+                blend: 0,
+                emissive: false,
+                tint: [1.; 3],
+            }],
+        };
+        let mut pose = Pose {
+            model: Mat4::IDENTITY.to_cols_array_2d(),
+            params: [0.; 4],
+            bones: [Mat4::IDENTITY.to_cols_array_2d(); 256],
+        };
+        let cached = Grounding {
+            basis: [pose.model[0], pose.model[1], pose.model[2]],
+            bones: Box::new(pose.bones),
+            lift: ground_lift(&model, &pose),
+        };
+        assert!((cached.lift - 1.05).abs() < 1e-6);
+        pose.model[3] = [50., 80., -30., 1.];
+        assert!(cached.matches(&pose));
+        assert_eq!(cached.lift, ground_lift(&model, &pose));
+        pose.bones[1] = Mat4::from_translation(-Vec3::Y * 0.25).to_cols_array_2d();
+        assert!(!cached.matches(&pose));
+        assert!((ground_lift(&model, &pose) - 1.3).abs() < 1e-6);
+        pose.model = Mat4::from_scale(Vec3::splat(2.)).to_cols_array_2d();
+        assert!(!cached.matches(&pose));
+        assert!((ground_lift(&model, &pose) - 2.55).abs() < 1e-6);
+    }
     #[test]
     fn textured_skin_shader_validates() {
         let module = naga::front::wgsl::parse_str(include_str!("scene.wgsl")).unwrap();

@@ -1,0 +1,235 @@
+{
+  "schema": "openagents.verse.lag-audit.v1",
+  "baseline_commit": "50f8669c45",
+  "warmup": "Exclude the first second of scene time.",
+  "gpu_wait_definition": "CPU wait for submitted GPU work and capture readback.",
+  "changes": [
+    "Cache unchanged posed corpse grounding and evict inactive entries.",
+    "Skip duplicate animation sampling before playback.",
+    "Keep interactive frames on the GPU; read pixels only for captures.",
+    "Cull shadow cube faces with conservative posed bone bounds.",
+    "Optimize the real-time and graphics crates in development builds."
+  ],
+  "cases": {
+    "lag-baseline": {
+      "profile": "lag-baseline.ndjson",
+      "adapter": "Apple M5 Max",
+      "frames": 1555,
+      "measured_frames": 1525,
+      "scene_duration_seconds": 51.799998726695776,
+      "frame_work_ms": {
+        "p50": 83.20154199999999,
+        "p95": 143.539083,
+        "max": 152.96362399999998
+      },
+      "stages_ms": {
+        "prepare_ms": {
+          "p50": 37.877,
+          "p95": 102.150042,
+          "max": 110.212667
+        },
+        "encode_ms": {
+          "p50": 36.381,
+          "p95": 38.446625,
+          "max": 51.016
+        },
+        "gpu_wait_ms": {
+          "p50": 2.706708,
+          "p95": 2.7875840000000003,
+          "max": 4.103624999999999
+        },
+        "readback_copy_ms": {
+          "p50": 0.108,
+          "p95": 0.115542,
+          "max": 0.237958
+        }
+      }
+    },
+    "lag-first-fix": {
+      "profile": "lag-first-fix.ndjson",
+      "adapter": "Apple M5 Max",
+      "frames": 1555,
+      "measured_frames": 1525,
+      "scene_duration_seconds": 51.799998726695776,
+      "frame_work_ms": {
+        "p50": 34.370917,
+        "p95": 39.006875,
+        "max": 83.252416
+      },
+      "stages_ms": {
+        "prepare_ms": {
+          "p50": 0.9292499999999999,
+          "p95": 1.5445840000000002,
+          "max": 7.065875
+        },
+        "encode_ms": {
+          "p50": 30.168875,
+          "p95": 34.096834,
+          "max": 75.07650000000001
+        },
+        "gpu_wait_ms": {
+          "p50": 2.670333,
+          "p95": 2.786792,
+          "max": 12.027708
+        },
+        "readback_copy_ms": {
+          "p50": 0.053583,
+          "p95": 0.062167,
+          "max": 0.10162500000000001
+        }
+      }
+    },
+    "lag-after": {
+      "profile": "lag-after.ndjson",
+      "adapter": "Apple M5 Max",
+      "frames": 1555,
+      "measured_frames": 1525,
+      "scene_duration_seconds": 51.799998726695776,
+      "frame_work_ms": {
+        "p50": 9.383583,
+        "p95": 12.490749000000001,
+        "max": 14.143708
+      },
+      "stages_ms": {
+        "prepare_ms": {
+          "p50": 0.899541,
+          "p95": 1.441708,
+          "max": 1.9258330000000001
+        },
+        "encode_ms": {
+          "p50": 5.927291,
+          "p95": 8.108541,
+          "max": 9.550125
+        },
+        "gpu_wait_ms": {
+          "p50": 1.417583,
+          "p95": 2.70375,
+          "max": 2.8806249999999998
+        },
+        "readback_copy_ms": {
+          "p50": 0.052500000000000005,
+          "p95": 0.057083999999999996,
+          "max": 0.133709
+        }
+      }
+    },
+    "lag-sustained": {
+      "profile": "lag-sustained.ndjson",
+      "adapter": "Apple M5 Max",
+      "frames": 3000,
+      "measured_frames": 2970,
+      "scene_duration_seconds": 99.96666717529297,
+      "frame_work_ms": {
+        "p50": 10.629542,
+        "p95": 12.725249999999999,
+        "max": 15.767958
+      },
+      "stages_ms": {
+        "prepare_ms": {
+          "p50": 0.8896245,
+          "p95": 1.2934999999999999,
+          "max": 2.1470000000000002
+        },
+        "encode_ms": {
+          "p50": 6.971792000000001,
+          "p95": 8.285542,
+          "max": 11.678916
+        },
+        "gpu_wait_ms": {
+          "p50": 1.6594579999999999,
+          "p95": 3.174291,
+          "max": 6.047417
+        },
+        "readback_copy_ms": {
+          "p50": 0.053333,
+          "p95": 0.060042,
+          "max": 0.470458
+        }
+      },
+      "stress_casts_started": 23,
+      "spell_casts": 23,
+      "respawn_generation_max": 1,
+      "schedule_dropped_seconds": 0.0,
+      "player_bounds": {
+        "min": [
+          -21.149999618530273,
+          0.0,
+          -23.828683853149414
+        ],
+        "max": [
+          -0.14847993850708008,
+          0.24000999331474304,
+          6.988838195800781
+        ]
+      }
+    },
+    "lag-window-stress": {
+      "profile": "lag-window-stress.ndjson",
+      "adapter": "Apple M5 Max",
+      "frames": 10003,
+      "measured_frames": 9893,
+      "scene_duration_seconds": 86.73332977294922,
+      "frame_work_ms": {
+        "p50": 7.889916,
+        "p95": 9.634833,
+        "max": 11.36325
+      },
+      "stages_ms": {
+        "prepare_ms": {
+          "p50": 0.793166,
+          "p95": 1.179083,
+          "max": 1.669708
+        },
+        "encode_ms": {
+          "p50": 6.9309590000000005,
+          "p95": 8.207834,
+          "max": 9.919459
+        },
+        "gpu_wait_ms": {
+          "p50": 0.0,
+          "p95": 0.0,
+          "max": 0.0
+        },
+        "readback_copy_ms": {
+          "p50": 0.0,
+          "p95": 0.0,
+          "max": 0.0
+        }
+      },
+      "delivered_frame_interval_ms": {
+        "p50": 8.433958,
+        "p95": 9.912083,
+        "max": 13.770208
+      },
+      "stress_casts_started": 19,
+      "schedule_dropped_seconds": 0.0,
+      "completed_requested_100_seconds": false
+    }
+  },
+  "unchanged_final_frame": {
+    "baseline_sha256": "ae2ba37d14ef57f432d2216b9dc9cc6adf1bf391036cbfe6cd8ccfe965389faa",
+    "after_sha256": "ae2ba37d14ef57f432d2216b9dc9cc6adf1bf391036cbfe6cd8ccfe965389faa",
+    "pixel_identical": true
+  },
+  "acceptance": {
+    "work_p95_ms": 16.666666666666668,
+    "maximum_stall_ms": 50,
+    "delivered_p95_ms": 20,
+    "sustained_stress_minimum_seconds": 90,
+    "sustained_completed_fireballs_minimum": 20,
+    "requires_movement_and_respawn": true,
+    "baseline_passed": false,
+    "matched_after_passed": true,
+    "sustained_passed": true
+  },
+  "validation": {
+    "imported_renderer_tests_passed": 15,
+    "world_tests_passed": 68,
+    "physics_tests_passed": 100,
+    "physics_tests_ignored": 1,
+    "native_examples_built": [
+      "verse_play",
+      "wow_play"
+    ]
+  }
+}

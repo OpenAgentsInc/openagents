@@ -164,6 +164,21 @@ abilities, 12 defeated cultists, 54 absorbed damage, player defeat, surviving
 Claude, and no dropped physics time. Renderer lighting and overlapping nameplates
 remain visual work.
 
+Movement and spell lag measurements on the Apple M5 Max are retained in
+[the performance report](../../../bench/verse/2026-10-03/lag-report.json).
+Matched frame work falls from 83.2 ms median / 143.5 ms p95 to 9.4 ms / 12.5 ms.
+Live frames stay on the GPU, unchanged corpse poses reuse exact grounding, and
+posed bounds cull irrelevant shadow cube faces. Development builds optimize the
+real-time crates. A 100-second movement/fireball capture completes 23 spells and
+respawns cultists at 12.7 ms p95 with no dropped time. Initial hostile casts are
+deferred in that isolated stress fixture; the matched battle retains attacks.
+Set `VERSE_FRAME_PROFILE` to an NDJSON path when running `verse_play
+--combat-demo OUTPUT.mp4` or `--stress-capture OUTPUT.mp4`. Run `verse_play
+--check-profile PATH.ndjson` to check retained evidence against the frame budget;
+`--stress-demo PATH.ndjson 100` measures the real window with scripted controls.
+The retained window run ended early at 86.7 seconds and supports live latency
+measurements. The offscreen stress capture provides the full 100-second run.
+
 ## Reuse inventory
 
 Review baseline: OpenAgents `843c92dd7e`. The entries below were checked against

@@ -51,6 +51,25 @@ unimplemented = "deny"
 [profile.dev.package.sha2]
 opt-level = 3
 
+# Real-time movement and GPU command submission must meet the frame budget in
+# development builds, including the binary used by the local verse-play alias.
+[profile.dev.package.verse]
+opt-level = 3
+[profile.dev.package.verse-engine]
+opt-level = 3
+[profile.dev.package.verse-world]
+opt-level = 3
+[profile.dev.package.physics]
+opt-level = 3
+[profile.dev.package.wgpu]
+opt-level = 3
+[profile.dev.package.wgpu-core]
+opt-level = 3
+[profile.dev.package.wgpu-hal]
+opt-level = 3
+[profile.dev.package.naga]
+opt-level = 3
+
 # The profile `scripts/build-plugin-guests.sh` builds Wasm guests with. The
 # guests are checked in and inlined into `programs/evidence-guests.json`,
 # so size is a review cost. No native build uses it.

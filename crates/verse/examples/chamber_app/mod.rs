@@ -1,6 +1,7 @@
 // Native interactive chamber; the action bar unlocks at the cinematic handoff.
+mod profile;
 use glam::Vec3;
-use std::{collections::HashSet, path::PathBuf, sync::Arc, time::Instant};
+use std::{collections::HashSet, io::Write, path::PathBuf, sync::Arc, time::Instant};
 use verse::{
     imported::{
         Renderer, WindowPresenter, chamber,
@@ -41,6 +42,16 @@ struct App {
     heights: std::collections::BTreeMap<String, f32>,
     dir: PathBuf,
     proof: Option<PathBuf>,
+    profile: Option<std::io::BufWriter<std::fs::File>>,
+    world_ms: f64,
+    frame_interval_ms: f64,
+    stress: Option<Stress>,
+}
+struct Stress {
+    duration: f64,
+    started: Option<Instant>,
+    next_cast: f32,
+    casts: u64,
 }
 impl App {
     fn activate(&mut self, ability: Ability) {
@@ -52,8 +63,41 @@ impl App {
         }
     }
     fn render(&mut self) -> Result<Vec<u8>, String> {
+        let started = Instant::now();
         let elapsed = self.last.elapsed().as_secs_f64();
         self.last = Instant::now();
+        self.frame_interval_ms = if self.presenter.is_some() {
+            elapsed * 1000.
+        } else {
+            0.
+        };
+        if let Some(stress) = &mut self.stress {
+            self.keys.clear();
+            if self.game.casting.is_none() && self.game.time >= stress.next_cast {
+                if self.game.activate(Ability::Fireball).is_ok() {
+                    stress.casts += 1;
+                }
+                stress.next_cast = self.game.time + 3.;
+            }
+            if self.game.casting.is_none() {
+                self.keys.extend([KeyCode::KeyW, KeyCode::KeyD]);
+            }
+            let age = stress
+                .started
+                .map_or((self.game.time - self.game.scene.cut_at) as f64, |at| {
+                    at.elapsed().as_secs_f64()
+                });
+            let look = age % 15. < 1. && self.game.casting.is_none();
+            self.controls
+                .button(true, look, &mut self.game.yaw, &self.game.camera);
+            if look {
+                self.controls.motion(
+                    [-elapsed * 120., elapsed * 10. * age.sin()],
+                    &mut self.game.yaw,
+                    &mut self.game.camera,
+                );
+            }
+        }
         let key = |k| self.keys.contains(&k);
         let held = Held {
             forward: key(KeyCode::KeyW) || key(KeyCode::ArrowUp),
@@ -78,6 +122,7 @@ impl App {
             };
             self.game.tick(batch.seconds, movement)?;
         }
+        self.world_ms = started.elapsed().as_secs_f64() * 1000.;
         self.draw_frame()
     }
     fn capture_pointer(&mut self) {
@@ -120,6 +165,7 @@ impl App {
             .motion(delta, &mut self.game.yaw, &mut self.game.camera);
     }
     fn draw_frame(&mut self) -> Result<Vec<u8>, String> {
+        let started = Instant::now();
         let mut frame = self.game.interpolated_frame(self.interpolation)?;
         if let Some((eye, target, fov)) = self.capture_view {
             frame.eye = eye;
@@ -154,10 +200,41 @@ impl App {
         actors.extend(chamber::spell_instances(&self.game));
         actors.extend(chamber::blocker_instances(&self.pack, &self.game));
         let lighting = chamber::combat_lighting(&self.game);
-        self.renderer
-            .as_mut()
-            .unwrap()
-            .draw(view, &actors, &ui, &lighting)
+        let renderer = self.renderer.as_mut().unwrap();
+        let pixels = if self.presenter.is_none() || self.proof.is_some() {
+            renderer.draw(view, &actors, &ui, &lighting)?
+        } else {
+            renderer.draw_live(view, &actors, &ui, &lighting)?;
+            vec![]
+        };
+        if let Some(profile) = &mut self.profile {
+            let renderer = self.renderer.as_ref().unwrap();
+            let timing = renderer.last_timings;
+            let projection_ms = (started.elapsed().as_secs_f64() * 1000. - timing.total_ms).max(0.);
+            let snapshot = self.game.snapshot();
+            let row = serde_json::json!({
+                "schema":"openagents.verse.frame-profile.v1",
+                "adapter":renderer.adapter_name,
+                "scene_time":self.game.time,
+                "player_hp":snapshot.player.hp,
+                "player_position":self.game.player.to_array(),
+                "spell_casts":snapshot.counters.casts,
+                "living_actors":snapshot.actors.iter().filter(|a| a.alive).count(),
+                "respawn_generation_max":self.game.scene.actors.iter().filter_map(|a| self.game.actor_life(a.id)).map(|life| life.generation).max().unwrap_or(0),
+                "world_ms":self.world_ms,
+                "projection_ms":projection_ms,
+                "render":timing,
+                "frame_work_ms":self.world_ms + projection_ms + timing.total_ms,
+                "navigation_plans":self.game.navigation_plans,
+                "physics_steps":self.game.physics_steps,
+                "frame_interval_ms":self.frame_interval_ms,
+                "schedule_dropped_seconds":self.schedule.dropped_seconds,
+                "stress_casts":self.stress.as_ref().map(|s| s.casts),
+            });
+            serde_json::to_writer(&mut *profile, &row).map_err(|e| e.to_string())?;
+            profile.write_all(b"\n").map_err(|e| e.to_string())?;
+        }
+        Ok(pixels)
     }
     fn select(&mut self) {
         let frame = self.game.frame();
@@ -220,6 +297,9 @@ impl ApplicationHandler for App {
             self.renderer = Some(renderer);
             self.presenter = Some(presenter);
             self.last = Instant::now();
+            if let Some(stress) = &mut self.stress {
+                stress.started = Some(Instant::now());
+            }
             Ok(())
         })();
         if let Err(e) = result {
@@ -387,6 +467,21 @@ impl ApplicationHandler for App {
                             }
                             event_loop.exit();
                         }
+                        if self.stress.as_ref().is_some_and(|s| {
+                            s.started
+                                .is_some_and(|at| at.elapsed().as_secs_f64() >= s.duration)
+                        }) {
+                            if let Some(profile) = &mut self.profile {
+                                if let Err(e) = profile.flush() {
+                                    eprintln!("{e}");
+                                }
+                            }
+                            eprintln!(
+                                "Stress check completed: {} fireball casts",
+                                self.stress.as_ref().unwrap().casts
+                            );
+                            event_loop.exit();
+                        }
                     }
                     Err(e) => {
                         eprintln!("{e}");
@@ -419,6 +514,11 @@ fn save_png(path: &std::path::Path, pixels: &[u8]) -> Result<(), String> {
 }
 pub fn run(original_default: bool) -> Result<(), String> {
     let mut inputs: Vec<String> = std::env::args().skip(1).collect();
+    if inputs.first().is_some_and(|a| a == "--check-profile") {
+        return profile::check(std::path::Path::new(
+            inputs.get(1).ok_or("Expected frame profile path")?,
+        ));
+    }
     if original_default {
         inputs.insert(0, "--original".into());
     }
@@ -541,6 +641,15 @@ pub fn run(original_default: bool) -> Result<(), String> {
         controls: ClassicControls::default(),
         pointer: [0.0; 2],
         captured: false,
+        profile: match std::env::var_os("VERSE_FRAME_PROFILE") {
+            Some(path) => Some(std::io::BufWriter::new(
+                std::fs::File::create(path).map_err(|e| e.to_string())?,
+            )),
+            None => None,
+        },
+        world_ms: 0.,
+        frame_interval_ms: 0.,
+        stress: None,
         raw_pointer: false,
         pending_select: false,
         dragged: 0.0,
@@ -549,6 +658,33 @@ pub fn run(original_default: bool) -> Result<(), String> {
         proof: None,
     };
     let mode = args.next();
+    if mode.as_deref() == Some("--stress-demo") {
+        let profile = args.next().ok_or("Expected frame profile path")?;
+        let duration: f64 = args
+            .next()
+            .ok_or("Expected stress duration in seconds")?
+            .parse()
+            .map_err(|_| "Invalid stress duration")?;
+        if !duration.is_finite() || !(10. ..=600.).contains(&duration) {
+            return Err("Stress duration must be between 10 and 600 seconds".into());
+        }
+        app.profile = Some(std::io::BufWriter::new(
+            std::fs::File::create(profile).map_err(|e| e.to_string())?,
+        ));
+        app.game = Game::combat(app.game.scene.clone(), false)?;
+        app.game.time = app.game.scene.cut_at;
+        app.game
+            .encounter
+            .as_mut()
+            .unwrap()
+            .postpone_casts_until(600.)?;
+        app.stress = Some(Stress {
+            duration,
+            started: None,
+            next_cast: app.game.time + 1.,
+            casts: 0,
+        });
+    }
     if original && mode.is_none() {
         app.game = Game::combat(app.game.scene.clone(), false)?;
     }
@@ -556,6 +692,7 @@ pub fn run(original_default: bool) -> Result<(), String> {
         Some("--demo") => Some(Demo::Spells),
         Some("--utility-demo") => Some(Demo::Utilities),
         Some("--combat-demo") => Some(Demo::Combat),
+        Some("--stress-capture") => Some(Demo::Stress),
         Some("--navigation-demo") => Some(Demo::Navigation),
         Some("--movement-demo") => Some(Demo::Movement),
         Some("--stair-navigation-demo") => Some(Demo::StairNavigation),
@@ -610,6 +747,7 @@ enum Demo {
     Spells,
     Utilities,
     Combat,
+    Stress,
     Navigation,
     Movement,
     StairNavigation,
@@ -617,12 +755,28 @@ enum Demo {
 fn demo(app: &mut App, output: PathBuf, mode: Demo) -> Result<(), String> {
     let utility = mode == Demo::Utilities;
     let combat = mode == Demo::Combat;
+    let stress = mode == Demo::Stress;
     let navigation = mode == Demo::Navigation;
     let movement_demo = mode == Demo::Movement;
     let stair_navigation = mode == Demo::StairNavigation;
     use std::io::Write;
     if combat {
         app.game = Game::combat(app.game.scene.clone(), true)?;
+    }
+    if stress {
+        app.game = Game::combat(app.game.scene.clone(), false)?;
+        app.game.time = app.game.scene.cut_at;
+        app.game
+            .encounter
+            .as_mut()
+            .unwrap()
+            .postpone_casts_until(600.)?;
+        app.stress = Some(Stress {
+            duration: 100.,
+            started: None,
+            next_cast: app.game.time + 1.,
+            casts: 0,
+        });
     }
     if movement_demo {
         let mut scene = app.game.scene.clone();
@@ -759,7 +913,9 @@ fn demo(app: &mut App, output: PathBuf, mode: Demo) -> Result<(), String> {
     let mut pipe = encoder.stdin.take().ok_or("Missing encoder input")?;
     let mut movement_max_height: f32 = 0.;
     app.interpolation = 1.;
-    for frame in 0..if combat {
+    for frame in 0..if stress {
+        3000
+    } else if combat {
         3600
     } else if stair_navigation {
         360
@@ -768,6 +924,22 @@ fn demo(app: &mut App, output: PathBuf, mode: Demo) -> Result<(), String> {
     } else {
         480
     } {
+        if stress {
+            app.last = Instant::now() - std::time::Duration::from_secs_f64(1. / 30.);
+            let pixels = app.render()?;
+            pipe.write_all(&pixels).map_err(|e| e.to_string())?;
+            if frame % 300 == 0 {
+                eprintln!(
+                    "Stress capture: {} seconds, {} completed spells",
+                    frame / 30,
+                    app.game.snapshot().counters.casts
+                );
+            }
+            if frame == 2999 {
+                save_png(&output.with_extension("png"), &pixels)?;
+            }
+            continue;
+        }
         if stair_navigation && frame == 120 {
             app.game.remove_navigation_blocker(physics::queries::Life {
                 instance: 0,
@@ -778,6 +950,7 @@ fn demo(app: &mut App, output: PathBuf, mode: Demo) -> Result<(), String> {
         if movement_demo && frame == 110 {
             app.game.jump()?;
         }
+        let world_started = Instant::now();
         app.game.tick(
             1.0 / 30.0,
             if movement_demo && frame < 180 {
@@ -786,6 +959,7 @@ fn demo(app: &mut App, output: PathBuf, mode: Demo) -> Result<(), String> {
                 [0.; 2]
             },
         )?;
+        app.world_ms = world_started.elapsed().as_secs_f64() * 1000.;
         movement_max_height = movement_max_height.max(app.game.player.y);
         let sequence = if utility {
             [
