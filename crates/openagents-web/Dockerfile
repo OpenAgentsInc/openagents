@@ -21,8 +21,10 @@ FROM rust:1.97.1-slim-trixie AS everglade
 
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y \
-        --no-install-recommends build-essential pkg-config \
+        --no-install-recommends build-essential pkg-config clang llvm binaryen \
     && rm -rf /var/lib/apt/lists/*
+# secp256k1's C needs a clang with the WebAssembly target, which Debian's
+# has; `llvm` supplies `llvm-ar` beside it and `binaryen` supplies `wasm-opt`.
 WORKDIR /build
 COPY Cargo.lock /build/Cargo.lock
 RUN rustup target add wasm32-unknown-unknown \

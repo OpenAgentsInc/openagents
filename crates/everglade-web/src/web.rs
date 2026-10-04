@@ -31,12 +31,41 @@ const MAX_STEP: f32 = 0.1;
 #[wasm_bindgen(start)]
 pub fn start() {
     console_error_panic_hook::set_once();
+    if log::set_logger(&CONSOLE).is_ok() {
+        log::set_max_level(log::LevelFilter::Warn);
+    }
     wasm_bindgen_futures::spawn_local(async {
         if let Err(error) = run().await {
             web_sys::console::error_1(&JsValue::from_str(&error));
             status(&format!("Everglade could not start: {error}"));
         }
     });
+}
+
+/// Forwards warnings and errors, such as wgpu's validation errors, to the
+/// browser console.
+struct Console;
+
+static CONSOLE: Console = Console;
+
+impl log::Log for Console {
+    fn enabled(&self, metadata: &log::Metadata<'_>) -> bool {
+        metadata.level() <= log::Level::Warn
+    }
+
+    fn log(&self, record: &log::Record<'_>) {
+        if !self.enabled(record.metadata()) {
+            return;
+        }
+        let text = JsValue::from_str(&format!("{}: {}", record.target(), record.args()));
+        if record.level() == log::Level::Error {
+            web_sys::console::error_1(&text);
+        } else {
+            web_sys::console::warn_1(&text);
+        }
+    }
+
+    fn flush(&self) {}
 }
 
 /// Everything the frame loop owns.
@@ -97,6 +126,11 @@ async fn run() -> Result<(), String> {
         },
     )
     .await?;
+    if let Some(error) = renderer.physical_error() {
+        web_sys::console::warn_1(&JsValue::from_str(&format!(
+            "Everglade: the physical renderer is unavailable, drawing amber: {error}"
+        )));
+    }
     renderer.set_atmosphere(zones::atmosphere(runtime.zone))?;
     hide_status(&document);
 

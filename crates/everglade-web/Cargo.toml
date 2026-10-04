@@ -19,6 +19,9 @@ wasm-bindgen = "0.2.128"
 wasm-bindgen-futures = "0.4"
 js-sys = "0.3"
 console_error_panic_hook = "0.1.7"
+# wgpu reports GPU validation errors through `log`; the page forwards
+# warnings and errors to the browser console.
+log = "0.4"
 web-sys = { version = "0.3", features = [
     "AddEventListenerOptions",
     "CssStyleDeclaration",

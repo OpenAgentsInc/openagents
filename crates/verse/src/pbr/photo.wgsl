@@ -461,13 +461,16 @@ fn shade(i: Shading) -> vec3<f32> {
     var roughness = clamp(i.params.y, 0.03, 1.0);
     let ao = clamp(i.params.w, 0.0, 1.0);
     var base = i.color;
+    // Derivatives need uniform control flow, which WGSL requires and a
+    // browser's WebGPU enforces, so take the footprint before branching on
+    // the per-fragment material code.
+    let footprint = length(fwidth(i.local));
 
     // Aluminized Kapton: tilted facets a few centimeters across.
     if code == 2 {
         // Facets smaller than about two pixels would sparkle; fold their
         // tilt into roughness instead (LEAN mapping, Olano and Baker 2010).
         let cell = 0.09;
-        let footprint = length(fwidth(i.local));
         let resolved = clamp(cell / max(footprint, 1e-5) * 0.5 - 0.5, 0.0, 1.0);
         let tilt = crinkle(i.local, cell);
         n = normalize(n + (t * tilt.x + b * tilt.y) * resolved);

@@ -175,6 +175,8 @@ pub struct Renderer {
     hdr: bool,
     /// A panel drawn over the finished frame, created when first shown.
     overlay: Option<crate::overlay::Overlay>,
+    /// Why the physical renderer is unavailable, when known at creation.
+    physical_error: Option<String>,
 }
 
 /// OpenGL ES presentation. wgpu's GLES backend offers an sRGB surface only
@@ -484,7 +486,19 @@ impl Renderer {
         let options = options.validate()?;
         validate_extent(width, height, options.max_extent)?;
         let opened = open_async(&instance, Some(&surface)).await?;
-        Self::assemble(surface, opened, width, height, world, atlas, options)
+        let mut renderer = Self::assemble(surface, opened, width, height, world, atlas, options)?;
+        renderer.physical_error = renderer
+            .scene
+            .prepare_photo_async(&renderer.device, &renderer.queue)
+            .await;
+        Ok(renderer)
+    }
+
+    /// Why the physical renderer is unavailable, when
+    /// [`Self::from_surface_async`] found it so; the amber renderer draws.
+    #[must_use]
+    pub fn physical_error(&self) -> Option<&str> {
+        self.physical_error.as_deref()
     }
 
     /// Configures `surface` on an opened device and uploads the world.
@@ -505,11 +519,15 @@ impl Renderer {
         let extended = wgpu::TextureFormat::Rgba16Float;
         let hdr = options.hdr && caps.formats.contains(&extended);
         let gles = crate::gles::is_gles(adapter.get_info().backend);
+        // A browser's WebGPU canvas offers no sRGB format; draw as OpenGL ES
+        // does, into an sRGB texture encoded into the linear surface.
+        let linear_only = !caps.formats.iter().any(wgpu::TextureFormat::is_srgb);
+        let encode = gles || linear_only;
         let format = if hdr {
             extended
-        } else if gles {
-            // OpenGL ES draws into an sRGB texture and encodes it into a
-            // linear surface itself; see `Present`.
+        } else if encode {
+            // OpenGL ES and WebGPU canvases draw into an sRGB texture and
+            // encode it into a linear surface; see `Present`.
             caps.formats
                 .iter()
                 .copied()
@@ -543,7 +561,7 @@ impl Renderer {
             view_formats: vec![],
         };
         surface.configure(&device, &config);
-        let present = (gles && !hdr).then(|| Present::new(&device, format, width, height));
+        let present = (encode && !hdr).then(|| Present::new(&device, format, width, height));
         let drawn = present.as_ref().map_or(format, |_| Present::FORMAT);
         let scene = Scene::new(
             &device,
@@ -567,6 +585,7 @@ impl Renderer {
             drawable: true,
             hdr,
             overlay: None,
+            physical_error: None,
         })
     }
 
@@ -1628,6 +1647,44 @@ impl Scene {
             pass.set_pipeline(&self.ui_pipeline);
             pass.set_bind_group(0, &self.ui_bind_group, &[]);
             draw_batch(&mut pass, &self.ui);
+        }
+    }
+}
+
+impl Scene {
+    /// Creates the physical renderer now, awaiting its error scopes. A
+    /// browser resolves an error scope only after the current task yields, so
+    /// [`Scene::encode_photo`]'s synchronous check would miss a pipeline the
+    /// browser rejects; the page calls this during its asynchronous start
+    /// instead. Returns the error when the physical path is unavailable and
+    /// the amber renderer draws.
+    async fn prepare_photo_async(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+    ) -> Option<String> {
+        if self.photo.is_some() || self.photo_failed {
+            return None;
+        }
+        let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
+        let internal = device.push_error_scope(wgpu::ErrorFilter::Internal);
+        let created = Photo::new(device, queue, self.capability, self.format);
+        let internal = internal.pop().await;
+        let validation = validation.pop().await;
+        match (created, internal.or(validation)) {
+            (Ok(photo), None) => {
+                self.photo = Some(photo);
+                None
+            }
+            (Err(error), _) => {
+                self.capability.hdr = None;
+                self.photo_failed = true;
+                Some(error)
+            }
+            (Ok(_), Some(error)) => {
+                self.photo_failed = true;
+                Some(error.to_string())
+            }
         }
     }
 }
