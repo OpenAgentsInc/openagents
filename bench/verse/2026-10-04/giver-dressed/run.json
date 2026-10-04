@@ -1,0 +1,45 @@
+{
+  "schema": "verse.giver-dressed.acceptance.v1",
+  "source_parent": "0206f889f24db9ba13b8d15eccd69573be4734de",
+  "source_sha256": {
+    "crates/verse/src/imported/giver_panel.rs": "17b277f297ea63c40d1e9d5c96446ee788b683c3c1bf13962cf19330c2fecbb7",
+    "crates/verse-world/src/service/view.rs": "fa834ec7657b4e9a1f20c014b49af330e5957ead7126a9d0a39120767118d933"
+  },
+  "render_dimensions": [
+    1920,
+    1080
+  ],
+  "native_checks": {
+    "passed": 3,
+    "capture": "explicit ignored GPU test with dressed assets",
+    "adapter": "production remote_scene from authoritative replicated View",
+    "assets": [
+      "CC0 Universal characters",
+      "CC0 Fantasy props",
+      "locally licensed Bestiary Puglin"
+    ],
+    "inspected": [
+      "offer.png",
+      "active.png",
+      "turn-in.png"
+    ],
+    "observed": "Readable opaque authored panel; gold !, gray ?, gold turn-in ?; green friendly bar; room, props, and Claude visible. Foreground character lighting remains dark."
+  },
+  "tls_checks": {
+    "passed": 1,
+    "receipt": "../giver-dialogue/tls.json",
+    "quests": [
+      101,
+      102
+    ],
+    "actual_combat_objectives": true,
+    "retry_xp": 175,
+    "ability_readiness": "server reported readiness before each cast"
+  },
+  "scope": "Native offscreen dressed entrance capture and separate real authenticated loopback TLS quest chain; not OS input, durable restart, device budget, animation polish, or full roadmap acceptance. Restricted Bestiary source assets are not retained.",
+  "artifacts": {
+    "offer.png": "4880696cd26862599228e4db0d6cba98ec7d3a4b89793395dddfdd6f7082fa74",
+    "turn-in.png": "218a36481bf9c32110b647b4ee6972e63f65dcb7d77e7363aea675ca7cd02bb5",
+    "active.png": "cf4509737e604420cc53e8f38a0c5f03df4d1bf61d737581ad1a118f8b6e9ce7"
+  }
+}

@@ -307,6 +307,8 @@ The [inventory window profile](../../../bench/verse/2026-10-03/inventory-window/
 
 [#10557](https://github.com/OpenAgentsInc/openagents/issues/10557) adds authored friendly NPC roles bound to saved simulation factions, hostile AI/target exclusions, protected health, and green native nameplates. The optional entrance variant supplies Warden Liora and two linked giver quests. The [acceptance receipt](../../../bench/verse/2026-10-04/friendly-giver-revised/run.json) records inspected native captures and real TLS enrollment/retry, prerequisite, and spectator checks. Quest markers/dialogue, foreground lighting polish, and the remaining roadmap requirements are still open.
 
+[#10558](https://github.com/OpenAgentsInc/openagents/issues/10558) adds life-bound quest markers, authored giver dialogue, and authenticated native accept/turn-in actions; the [dressed capture receipt](../../../bench/verse/2026-10-04/giver-dressed/run.json) and [TLS quest-chain receipt](../../../bench/verse/2026-10-04/giver-dialogue/tls.json) cover both summoner objectives and retry-safe 175 XP, while foreground lighting, prediction/reconciliation, and broader roadmap acceptance remain.
+
 ## Reuse inventory
 
 Review baseline: OpenAgents `843c92dd7e`. The entries below were checked against

@@ -626,6 +626,13 @@ mod tests {
         let mut gateway = Gateway::new(Chamber::new(game).unwrap())
             .unwrap()
             .with_progression(config)
+            .unwrap()
+            .with_rewards(
+                serde_json::from_slice(include_bytes!(
+                    "../../../../assets/verse/original/ritual-rewards.json"
+                ))
+                .unwrap(),
+            )
             .unwrap();
         gateway
             .enroll_primary(keys[0].x_only_public_key().0.serialize())
@@ -765,6 +772,108 @@ mod tests {
         });
         assert!(view.quest_markers().is_empty());
         assert!(view.interaction().is_none());
+        // Use a fresh replica after the deliberately forged local projection checks.
+        let mut view = View::new(120, 12., 0).unwrap();
+        for (quest, target_actor, expected_xp) in [(101, 2, 75), (102, 3, 175)] {
+            view.push_snapshot(&client.request(Body::Snapshot {}).await.unwrap())
+                .unwrap();
+            view.push_inventory(&client.request(Body::Inventory {}).await.unwrap())
+                .unwrap();
+            view.open_giver(giver).unwrap();
+            if quest == 102 {
+                assert!(matches!(
+                    client.accept_quest(quest, giver).await.unwrap().body,
+                    Reply::QuestAccepted { quest: 102, .. }
+                ));
+            }
+            let target = view
+                .replica()
+                .latest()
+                .unwrap()
+                .presentation
+                .actors
+                .iter()
+                .find(|a| a.life.actor == target_actor)
+                .unwrap()
+                .life
+                .into();
+            tokio::time::timeout(std::time::Duration::from_secs(15), async {
+                for _ in 0..3 {
+                    loop {
+                        let state = client.snapshot().await.unwrap();
+                        if state
+                            .snapshot
+                            .abilities
+                            .iter()
+                            .any(|a| a.id == crate::rules::Spell::MagicMissile && a.ready)
+                        {
+                            break;
+                        }
+                        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                    }
+                    let cast = client
+                        .command(crate::Intent::Cast {
+                            ability: crate::play::Ability::MagicMissile,
+                            target: Some(target),
+                            aim: [0., 0., 1.],
+                        })
+                        .await
+                        .unwrap();
+                    assert!(
+                        matches!(cast.body, Reply::Accepted),
+                        "Cast refused: {:?}",
+                        cast
+                    );
+                    let until = tokio::time::Instant::now() + std::time::Duration::from_secs(3);
+                    loop {
+                        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                        view.push_snapshot(&client.request(Body::Snapshot {}).await.unwrap())
+                            .unwrap();
+                        view.push_inventory(&client.request(Body::Inventory {}).await.unwrap())
+                            .unwrap();
+                        if view.inventory().unwrap().quest_log.iter().any(|q| {
+                            q.id == quest
+                                && q.marker() == Some(crate::service::progression::Marker::TurnIn)
+                        }) {
+                            return;
+                        }
+                        if tokio::time::Instant::now() >= until {
+                            break;
+                        }
+                    }
+                }
+                panic!("Authored quest objective was not defeated");
+            })
+            .await
+            .unwrap();
+            assert_eq!(
+                view.quest_markers().get(&giver),
+                Some(&crate::service::progression::Marker::TurnIn)
+            );
+            assert!(matches!(
+                client.claim_quest(quest).await.unwrap().body,
+                Reply::QuestClaimed { .. }
+            ));
+            assert!(matches!(
+                client.claim_quest(quest).await.unwrap().body,
+                Reply::QuestClaimed { .. }
+            ));
+            view.push_inventory(&client.request(Body::Inventory {}).await.unwrap())
+                .unwrap();
+            assert_eq!(view.inventory().unwrap().experience, expected_xp);
+        }
+        assert!(view.interaction().is_none());
+        assert!(view.quest_markers().is_empty());
+        if let Some(path) = std::env::var_os("VERSE_AUTHORED_QUEST_TLS_EVIDENCE") {
+            std::fs::write(path, serde_json::to_vec_pretty(&serde_json::json!({
+                "schema":"verse.authored-quest-tls.fixture.v1", "wire_version":crate::service::wire::VERSION,
+                "transport":"authenticated loopback TLS", "scene":"ritual-quests.json",
+                "quests":[101,102], "objectives":"actual admitted Magic Missile kills",
+                "inventory":view.inventory().unwrap(), "duplicate_turn_in_xp":175,
+                "spectator_acceptance_refused":true,
+                "scope":"Authored network quest flow; not OS input, native scene capture, durable restart, or performance acceptance"
+            })).unwrap()).unwrap();
+        }
         drop(observer);
         drop(client);
         stop.send(()).unwrap();

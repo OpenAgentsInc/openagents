@@ -1,0 +1,101 @@
+{
+  "duplicate_turn_in_xp": 175,
+  "inventory": {
+    "catalog": {
+      "items": [],
+      "version": 1
+    },
+    "equipment": {
+      "gear": [],
+      "version": 1
+    },
+    "equipped": {},
+    "experience": 175,
+    "items": [],
+    "level": {
+      "level": 2,
+      "next": 300,
+      "start": 100
+    },
+    "life": {
+      "actor": 14,
+      "generation": 0,
+      "instance": 120
+    },
+    "outfit": 0,
+    "outfits": {
+      "outfits": [],
+      "version": 1
+    },
+    "quest_log": [
+      {
+        "accepted": true,
+        "available": true,
+        "claimed": true,
+        "dialogue": {
+          "active": "The outer summoner still anchors the ritual. Break that link, then return to me.",
+          "offer": "The outer summoner feeds the circle. Defeat that cultist before the ritual draws more power.",
+          "turn_in": "One anchor is broken. The circle is weaker, but another summoner is taking its place."
+        },
+        "experience": 75,
+        "giver": 1000000,
+        "giver_life": {
+          "actor": 1000000,
+          "generation": 0,
+          "instance": 120
+        },
+        "goal": 1,
+        "id": 101,
+        "interactable": true,
+        "items": [],
+        "name": "Break the outer ritual",
+        "progress": 1
+      },
+      {
+        "accepted": true,
+        "available": true,
+        "claimed": true,
+        "dialogue": {
+          "active": "The next summoner must fall. Keep clear of the circle and return when the link is broken.",
+          "offer": "Silence the next summoner before the broken link can be restored.",
+          "turn_in": "Both links are broken. You have bought us time to face what remains in the chamber."
+        },
+        "experience": 100,
+        "giver": 1000000,
+        "giver_life": {
+          "actor": 1000000,
+          "generation": 0,
+          "instance": 120
+        },
+        "goal": 1,
+        "id": 102,
+        "interactable": true,
+        "items": [],
+        "name": "Silence the next summoner",
+        "progress": 1
+      }
+    ],
+    "quests": [
+      {
+        "count": 1,
+        "id": 2
+      },
+      {
+        "count": 1,
+        "id": 3
+      }
+    ],
+    "revision": 6
+  },
+  "objectives": "actual admitted Magic Missile kills",
+  "quests": [
+    101,
+    102
+  ],
+  "scene": "ritual-quests.json",
+  "schema": "verse.authored-quest-tls.fixture.v1",
+  "scope": "Authored network quest flow; not OS input, native scene capture, durable restart, or performance acceptance",
+  "spectator_acceptance_refused": true,
+  "transport": "authenticated loopback TLS",
+  "wire_version": 17
+}

@@ -181,12 +181,26 @@ mod tests {
     }
     impl Fixture {
         fn new() -> Self {
+            Self::with_pack(None)
+        }
+        fn with_pack(pack: Option<&verse_engine::assets::Pack>) -> Self {
             use verse_world::service::{Chamber, auth::Gateway};
             let scene = verse_engine::director::Scene::from_json(include_bytes!(
                 "../../../../assets/verse/original/ritual-quests.json"
             ))
             .unwrap();
             let mut game = verse_world::play::Game::combat_in(scene, false, 120).unwrap();
+            if let Some(pack) = pack {
+                if pack.source_revision == "verse-bestiary-ritual-v1" {
+                    game.scene
+                        .actors
+                        .iter_mut()
+                        .find(|a| a.id == 1)
+                        .unwrap()
+                        .scale = 6. / (pack.models["claude"].height * 0.9144);
+                }
+                super::super::props::admit_collision(pack, &mut game).unwrap();
+            }
             game.time = game.scene.cut_at;
             game.tick(0., [0.; 2]).unwrap();
             game.encounter
@@ -414,10 +428,50 @@ mod tests {
         );
         std::fs::create_dir_all(&output).unwrap();
         let dir = tempfile::tempdir().unwrap();
-        let pack = super::super::original::generate(dir.path()).unwrap();
+        let mut pack = super::super::original::generate(dir.path()).unwrap();
+        let dressed = std::env::var_os("VERSE_GIVER_DRESSED").is_some();
+        if dressed {
+            let root =
+                std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../assets/verse");
+            let characters = dir.path().join("source-characters");
+            super::super::inventory::snapshot_characters(
+                &root.join("characters/quaternius"),
+                &characters,
+            )
+            .unwrap();
+            super::super::characters::install(&mut pack, dir.path(), &characters, "male-ranger")
+                .unwrap();
+            pack.source_revision = "verse-universal-ritual-v1".into();
+            let props = dir.path().join("source-props");
+            super::super::inventory::snapshot_props(&root.join("props/quaternius"), &props)
+                .unwrap();
+            super::super::props::install(&mut pack, dir.path(), &props).unwrap();
+            if let Some(source) = std::env::var_os("VERSE_GIVER_BESTIARY") {
+                let frozen = dir.path().join("Puglin.glb");
+                super::super::inventory::snapshot_bestiary(std::path::Path::new(&source), &frozen)
+                    .unwrap();
+                super::super::characters::install_bestiary(
+                    &mut pack,
+                    dir.path(),
+                    &frozen,
+                    &characters.join("animations.glb"),
+                )
+                .unwrap();
+                super::super::inventory::compile(&mut pack, dir.path(), Some(&frozen)).unwrap();
+            } else {
+                super::super::inventory::compile(&mut pack, dir.path(), None).unwrap();
+            }
+        }
         let atlas = super::super::original::atlas().unwrap();
-        let mut renderer =
-            super::super::Renderer::new(pack.clone(), dir.path(), 1920, 1080, &atlas, &[]).unwrap();
+        let mut renderer = super::super::Renderer::new(
+            pack.clone(),
+            dir.path(),
+            1920,
+            1080,
+            &atlas,
+            &super::super::chamber::static_instances(&pack, glam::Vec3::ZERO),
+        )
+        .unwrap();
         renderer.set_overlay_size(1280., 720.);
         let eye = glam::Vec3::new(0., 4., -28.);
         let camera = crate::render::View {
@@ -425,7 +479,7 @@ mod tests {
                 * glam::Mat4::look_at_rh(eye, glam::Vec3::new(0., 1., -20.), glam::Vec3::Y),
             eye,
         };
-        let mut f = Fixture::new();
+        let mut f = Fixture::with_pack(if dressed { Some(&pack) } else { None });
         for stage in ["offer", "active", "turn-in"] {
             if stage == "active" {
                 f.action();
@@ -460,13 +514,23 @@ mod tests {
                 &f.view.quest_markers(),
             );
             f.panel.draw(&mut ui, &atlas, &f.view);
+            let rendered = super::super::chamber::remote_scene(
+                &pack,
+                &f.view,
+                1.,
+                verse_world::service::view::Camera {
+                    eye,
+                    target: glam::Vec3::new(0., 1., -20.),
+                    fov: 60.,
+                },
+                glam::Vec3::ZERO,
+                false,
+                f.gateway.game().player,
+            )
+            .unwrap()
+            .unwrap();
             let pixels = renderer
-                .draw(
-                    camera,
-                    &super::super::chamber::instances(&pack, &frame).unwrap(),
-                    &ui,
-                    &super::super::chamber::lighting(glam::Vec3::ZERO),
-                )
+                .draw(camera, &rendered.instances, &ui, &rendered.lighting)
                 .unwrap();
             let mut encoder = png::Encoder::new(
                 std::fs::File::create(output.join(format!("{stage}.png"))).unwrap(),
