@@ -10,7 +10,8 @@ near-term migration to original assets.
 [Agent Studio](agent-studio.md) is the proposed specification for a team of
 coding agents, on any engine the Coder host routes, doing real repository work
 inside Verse while people watch, answer, and approve merges, with panels
-harvested from Zeron.
+harvested from Zeron. [Everglade](everglade.md) is the proposed forest-glade zone
+where that studio lives, built from CC0 Quaternius kits.
 
 For cross-project priorities and dependencies, see the [master roadmap](../roadmap.md).
 

@@ -216,10 +216,10 @@ AgentCraft's rules carry over, enforced by the host rather than the view:
 
 ## The studio in Verse
 
-The studio is a building on the plaza, reached like the Gym building, with its
-interior as a separately loaded [zone](zones.md) under the
-[zone rules](zone-rules.md). It reuses the replay landmarks where they already
-exist and adds the rest:
+The studio lives in [Everglade](everglade.md), a separately loaded
+[zone](zones.md) under the [zone rules](zone-rules.md): a forest glade and
+workshop built from CC0 Quaternius kits. Everglade's layout maps each station
+below to a place in the glade:
 
 | Station | Shows | Interaction |
 | --- | --- | --- |
@@ -316,9 +316,8 @@ views from the modules above, composited over the world surface on desktop
 and mounted by the phone hosts as the chat screens already are. Shell-only
 pieces in `openagents-desktop` that the studio needs moved into a shared
 crate instead of being copied into `verse`: the palette and menus are in
-`openagents-chat-app` (#10466). The
-amber ladder stays the palette of the world geometry: desks, monitors, the
-Task Wall, and lamps. The panels use the chat palette, as they do in the
+`openagents-chat-app` (#10466). The world geometry uses Everglade's own
+textured palette, and the panels use the chat palette, as they do in the
 desktop app.
 
 ### What to harvest next
