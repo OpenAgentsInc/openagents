@@ -505,6 +505,7 @@ mod tests {
                 version: 1,
                 levels: vec![0, 100],
                 quests: vec![Quest {
+                    dialogue: None,
                     giver: Some(2),
                     prerequisites: vec![],
                     id: 1,
@@ -715,6 +716,7 @@ mod tests {
                 levels: vec![0, 100, 300],
                 quests: vec![
                     super::super::progression::Quest {
+                        dialogue: None,
                         giver: None,
                         prerequisites: vec![],
                         id: 1,
@@ -725,6 +727,7 @@ mod tests {
                         items: vec![Entry { id: 1, count: 2 }],
                     },
                     super::super::progression::Quest {
+                        dialogue: None,
                         giver: None,
                         prerequisites: vec![1],
                         id: 2,
@@ -953,6 +956,7 @@ mod tests {
                 version: 1,
                 levels: vec![0, 100, 300],
                 quests: vec![Quest {
+                    dialogue: None,
                     giver: None,
                     prerequisites: vec![],
                     id: 1,

@@ -7,6 +7,8 @@ const CLAIM_DOMAIN: &[u8; 8] = b"VQUEST01";
 #[serde(deny_unknown_fields)]
 pub struct Quest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dialogue: Option<Dialogue>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub giver: Option<u64>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub prerequisites: Vec<u64>,
@@ -63,6 +65,8 @@ impl Level {
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Progress {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dialogue: Option<Dialogue>,
     pub accepted: bool,
     pub giver: Option<u64>,
     pub giver_life: Option<verse_engine::core::LifeId>,
@@ -76,6 +80,30 @@ pub struct Progress {
     pub experience: u64,
     pub items: Vec<Entry>,
 }
+/// Authored offer, objective reminder, and turn-in text.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Dialogue {
+    pub offer: String,
+    pub active: String,
+    pub turn_in: String,
+}
+impl Dialogue {
+    pub fn validate(&self) -> Result<(), String> {
+        if [&self.offer, &self.active, &self.turn_in]
+            .iter()
+            .any(|text| {
+                text.trim().is_empty()
+                    || text.len() > 2048
+                    || !text.bytes().all(|c| (32..=126).contains(&c) || c == b'\n')
+            })
+        {
+            return Err("Invalid authored quest dialogue".into());
+        }
+        Ok(())
+    }
+}
+
 /// Quest state shown above a giver, ordered by display priority.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum Marker {
@@ -84,6 +112,15 @@ pub enum Marker {
     TurnIn,
 }
 impl Progress {
+    pub fn dialogue_text(&self) -> Option<&str> {
+        let marker = self.marker()?;
+        let dialogue = self.dialogue.as_ref()?;
+        Some(match marker {
+            Marker::Available => &dialogue.offer,
+            Marker::Active => &dialogue.active,
+            Marker::TurnIn => &dialogue.turn_in,
+        })
+    }
     pub fn marker(&self) -> Option<Marker> {
         if self.claimed || self.giver_life.is_none() {
             None
@@ -115,6 +152,9 @@ impl Config {
         }
         let mut previous = 0;
         for quest in &self.quests {
+            if let Some(dialogue) = &quest.dialogue {
+                dialogue.validate()?;
+            }
             if quest.giver == Some(0)
                 || quest.id <= previous
                 || !name(&quest.name)
@@ -154,6 +194,7 @@ impl Config {
         self.quests
             .iter()
             .map(|quest| Progress {
+                dialogue: quest.dialogue.clone(),
                 accepted: quest.giver.is_none()
                     || ledger
                         .character(actor)
@@ -285,6 +326,9 @@ pub fn validate_progress(values: &[Progress]) -> Result<(), String> {
     }
     let mut previous = 0;
     for quest in values {
+        if let Some(dialogue) = &quest.dialogue {
+            dialogue.validate()?;
+        }
         if quest.giver == Some(0)
             || quest
                 .giver_life
@@ -316,6 +360,7 @@ mod tests {
             levels: vec![0],
             quests: vec![
                 Quest {
+                    dialogue: None,
                     giver: None,
                     prerequisites: vec![],
                     id: 1,
@@ -326,6 +371,7 @@ mod tests {
                     items: vec![],
                 },
                 Quest {
+                    dialogue: None,
                     giver: None,
                     prerequisites: vec![1],
                     id: 3,
@@ -358,6 +404,7 @@ mod tests {
             version: 1,
             levels: vec![0, 100, 300],
             quests: vec![Quest {
+                dialogue: None,
                 giver: None,
                 prerequisites: vec![],
                 id: 1,
@@ -401,8 +448,43 @@ mod tests {
 mod marker_tests {
     use super::*;
     #[test]
+    fn authored_dialogue_is_bounded_and_follows_quest_state() {
+        let config: Config = serde_json::from_slice(include_bytes!(
+            "../../../../assets/verse/original/ritual-progression.json"
+        ))
+        .unwrap();
+        config.validate().unwrap();
+        let mut progress = config.progress(14, 120, &Ledger::default()).remove(0);
+        assert_eq!(progress.dialogue, config.quests[0].dialogue);
+        let dialogue = progress.dialogue.clone().unwrap();
+        progress.giver_life = Some(verse_engine::core::LifeId {
+            instance: 120,
+            actor: 1_000_000,
+            generation: 0,
+        });
+        assert_eq!(progress.dialogue_text(), Some(dialogue.offer.as_str()));
+        progress.accepted = true;
+        assert_eq!(progress.dialogue_text(), Some(dialogue.active.as_str()));
+        progress.progress = progress.goal;
+        assert_eq!(progress.dialogue_text(), Some(dialogue.turn_in.as_str()));
+        progress.claimed = true;
+        assert!(progress.dialogue_text().is_none());
+        for text in [String::new(), "x".repeat(2049), "bad\u{1b}text".into()] {
+            let mut bad = dialogue.clone();
+            bad.offer = text;
+            assert!(bad.validate().is_err());
+        }
+        let mut bad = config.clone();
+        bad.quests[0].dialogue.as_mut().unwrap().active.clear();
+        assert!(bad.validate().is_err());
+        progress.dialogue.as_mut().unwrap().turn_in.clear();
+        assert!(validate_progress(&[progress]).is_err());
+    }
+
+    #[test]
     fn markers_follow_enrollment_objectives_claims_and_prerequisites() {
         let mut progress = Progress {
+            dialogue: None,
             accepted: false,
             giver: Some(42),
             giver_life: Some(verse_engine::core::LifeId {

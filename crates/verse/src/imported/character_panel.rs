@@ -896,6 +896,7 @@ mod tests {
             generation: 3,
         };
         data.quest_log = vec![verse_world::service::progression::Progress {
+            dialogue: None,
             available: true,
             accepted: false,
             giver: Some(2),
@@ -933,6 +934,7 @@ mod tests {
     fn quest_buttons_emit_only_ready_unclaimed_intents_without_changing_counters() {
         let mut data = inventory();
         data.quest_log = vec![verse_world::service::progression::Progress {
+            dialogue: None,
             accepted: true,
             giver: None,
             giver_life: None,
@@ -1047,6 +1049,7 @@ mod tests {
                 next: Some(if completed { 300 } else { 100 }),
             };
             data.quest_log = vec![verse_world::service::progression::Progress {
+                dialogue: None,
                 accepted: true,
                 giver: None,
                 giver_life: None,

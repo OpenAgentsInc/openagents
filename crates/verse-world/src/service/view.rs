@@ -570,6 +570,7 @@ mod tests {
             .unwrap();
         let quest = &view.inventory().unwrap().quest_log[0];
         assert!(quest.interactable && quest.available && !quest.accepted);
+        assert!(quest.dialogue_text().unwrap().contains("outer summoner"));
         let giver = quest.giver_life.unwrap();
         assert_eq!(giver.actor, 1_000_000);
         assert!(view.select_target(Some(giver)).is_err());
@@ -602,6 +603,12 @@ mod tests {
         view.push_inventory(&client.request(Body::Inventory {}).await.unwrap())
             .unwrap();
         assert!(view.inventory().unwrap().quest_log[0].accepted);
+        assert!(
+            view.inventory().unwrap().quest_log[0]
+                .dialogue_text()
+                .unwrap()
+                .contains("still anchors")
+        );
         assert_eq!(
             view.quest_markers().get(&giver),
             Some(&crate::service::progression::Marker::Active)
@@ -673,6 +680,7 @@ mod tests {
                 version: 1,
                 levels: vec![0],
                 quests: vec![Quest {
+                    dialogue: None,
                     giver: Some(2),
                     prerequisites: vec![],
                     id: 1,
@@ -793,6 +801,7 @@ mod tests {
                 next: None,
             },
             quest_log: vec![Progress {
+                dialogue: None,
                 accepted: true,
                 giver: Some(2),
                 giver_life: Some(giver),

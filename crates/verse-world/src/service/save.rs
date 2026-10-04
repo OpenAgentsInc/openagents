@@ -354,6 +354,7 @@ mod tests {
             version: 1,
             levels: vec![0, 100],
             quests: vec![Quest {
+                dialogue: None,
                 giver: Some(2),
                 prerequisites: vec![],
                 id: 1,
@@ -535,6 +536,7 @@ mod tests {
             levels: vec![0, 100],
             quests: vec![
                 Quest {
+                    dialogue: None,
                     giver: None,
                     prerequisites: vec![],
                     id: 1,
@@ -545,6 +547,7 @@ mod tests {
                     items: vec![],
                 },
                 Quest {
+                    dialogue: None,
                     giver: None,
                     prerequisites: vec![1],
                     id: 2,
@@ -629,6 +632,7 @@ mod tests {
             version: 1,
             levels: vec![0, 100, 300],
             quests: vec![Quest {
+                dialogue: None,
                 giver: None,
                 prerequisites: vec![],
                 id: 1,

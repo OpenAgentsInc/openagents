@@ -14,7 +14,12 @@
       "objective": 2,
       "goal": 1,
       "experience": 75,
-      "items": []
+      "items": [],
+      "dialogue": {
+        "offer": "The outer summoner feeds the circle. Defeat that cultist before the ritual draws more power.",
+        "active": "The outer summoner still anchors the ritual. Break that link, then return to me.",
+        "turn_in": "One anchor is broken. The circle is weaker, but another summoner is taking its place."
+      }
     },
     {
       "id": 102,
@@ -26,7 +31,12 @@
       "objective": 3,
       "goal": 1,
       "experience": 100,
-      "items": []
+      "items": [],
+      "dialogue": {
+        "offer": "Silence the next summoner before the broken link can be restored.",
+        "active": "The next summoner must fall. Keep clear of the circle and return when the link is broken.",
+        "turn_in": "Both links are broken. You have bought us time to face what remains in the chamber."
+      }
     }
   ]
 }
