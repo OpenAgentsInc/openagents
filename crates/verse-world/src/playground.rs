@@ -124,6 +124,25 @@ pub enum Step {
     /// Walk or strafe input, held for one tick.
     Move([f32; 2]),
     Jump,
+    /// A scripted hall device, such as an arrow turret or a catapult, acting
+    /// through the game's own launch and impulse paths, never on the wizard.
+    Device(Device),
+}
+
+/// A hall device's action.
+#[derive(Clone, Copy)]
+pub struct Device(pub fn(&mut Game) -> Result<(), String>);
+
+impl std::fmt::Debug for Device {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Device")
+    }
+}
+
+impl PartialEq for Device {
+    fn eq(&self, other: &Self) -> bool {
+        std::ptr::fn_addr_eq(self.0, other.0)
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -159,7 +178,11 @@ pub struct Scenario {
 
 /// Every registered scenario, one line per spell.
 pub fn scenarios() -> Vec<Scenario> {
-    vec![crate::spells::thunderwave::scenario(), bow_stance()]
+    vec![
+        crate::spells::thunderwave::scenario(),
+        crate::spells::wind_wall::scenario(),
+        bow_stance(),
+    ]
 }
 
 pub fn scenario(key: &str) -> Option<Scenario> {
@@ -293,6 +316,8 @@ impl Run {
                     .map_err(|e| format!("{} at {:.2} s: {e}", ability.label(), cue.at))?,
                 Step::Move(axes) => movement = axes,
                 Step::Jump => self.game.jump()?,
+                Step::Device(device) => (device.0)(&mut self.game)
+                    .map_err(|e| format!("Device at {:.2} s: {e}", cue.at))?,
             }
         }
         self.game.tick(1. / FPS as f32, movement)

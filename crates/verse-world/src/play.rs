@@ -1816,12 +1816,14 @@ impl Game {
                 self.message = "Cast blocked by chamber geometry".into();
             }
         }
+        crate::spells::wind_wall::before_flights(self);
         self.simulation.tick_at(
             dt,
             (self.physics_steps as f64 * self.physics_clock.dt) as f32,
             self.player.to_array(),
             self.yaw,
         )?;
+        crate::spells::wind_wall::after_flights(self)?;
         for effect in self.snapshot().effects {
             self.impacts
                 .push((effect.pos.into(), self.time, effect.kind));

@@ -132,6 +132,10 @@ struct Flight {
     view: Projectile,
     target: Option<u32>,
     until: f32,
+    /// Turned upward by a wind wall: it misses automatically and can no
+    /// longer damage a creature.
+    #[serde(default)]
+    deflected: bool,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 struct Burn {
@@ -180,6 +184,13 @@ pub struct Simulation {
     // Static solids come from the validated scene profile after checkpoint load.
     #[serde(skip)]
     colliders: Vec<physics::kinematic::Aabb>,
+    /// Standing wind walls, copied from the spell world before each tick.
+    #[serde(skip)]
+    pub(crate) wind_walls: Vec<crate::wind_wall::Wall>,
+    /// Flights the wind walls deflected during the last tick: projectile ID
+    /// and entry point. The owner drains them after each tick.
+    #[serde(skip)]
+    pub(crate) deflections: Vec<(u32, Vec3)>,
 }
 fn valid_position(pos: [f32; 3]) -> Result<(), String> {
     if pos.iter().any(|p| !p.is_finite() || p.abs() > 10_000.) {
@@ -328,6 +339,8 @@ impl Simulation {
             effects: vec![],
             counters: Counters::default(),
             colliders: vec![],
+            wind_walls: vec![],
+            deflections: vec![],
         };
         s.actors.insert(
             0,
@@ -659,6 +672,7 @@ impl Simulation {
                 },
                 target,
                 until: self.elapsed + 6.,
+                deflected: false,
             });
             self.counters.projectiles += 1;
         }
@@ -703,6 +717,7 @@ impl Simulation {
             },
             target: None,
             until: self.elapsed + 6.,
+            deflected: false,
         });
         self.counters.projectiles += 1;
         Ok(())
@@ -829,11 +844,21 @@ impl Simulation {
                 delta.as_dvec3(),
                 &self.colliders,
             )?;
+            // An ordinary flight whose swept segment enters a wind wall is
+            // turned upward at the exact entry point.
+            let wind = if flight.view.kind.tag() == FlightTag::Ordinary && !flight.deflected {
+                self.wind_walls
+                    .iter()
+                    .filter_map(|w| w.entry(start.as_dvec3(), (start + delta).as_dvec3(), 0.))
+                    .reduce(f64::min)
+            } else {
+                None
+            };
             let mut hit: Option<(f32, u32)> = None;
             for actor in self
                 .actors
                 .values()
-                .filter(|a| a.faction == "undead" && a.alive)
+                .filter(|a| a.faction == "undead" && a.alive && !flight.deflected)
             {
                 let feet_start = motion_position(actor.id, actor.pos, starts, paths, from);
                 let feet_end = motion_position(actor.id, actor.pos, starts, paths, to);
@@ -853,7 +878,20 @@ impl Simulation {
                     }
                 }
             }
-            if let Some((t, id)) =
+            if let Some(t) = wind.filter(|t| {
+                wall.is_none_or(|w| *t < w.fraction) && hit.is_none_or(|(h, _)| *t <= f64::from(h))
+            }) {
+                // The rest of this substep is spent at the entry point.
+                let point = start + delta * t as f32;
+                flight.view.vel = crate::wind_wall::deflect(Vec3::from(flight.view.vel).as_dvec3())
+                    .as_vec3()
+                    .to_array();
+                flight.view.pos = point.to_array();
+                flight.deflected = true;
+                flight.target = None;
+                self.deflections.push((flight.view.id, point));
+                self.flights.push(flight);
+            } else if let Some((t, id)) =
                 hit.filter(|(t, _)| wall.is_none_or(|w| f64::from(*t) < w.fraction))
             {
                 self.motion_impact(

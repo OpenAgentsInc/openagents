@@ -1499,6 +1499,14 @@ pub fn spell_panel(
             ui.line(atlas, a, b, 1.5, color);
         }
     }
+    for (from, to, color) in verse_world::spells::wind_wall::guide_lines(game) {
+        if let (Some(a), Some(b)) = (
+            project(view_proj, from, width, height),
+            project(view_proj, to, width, height),
+        ) {
+            ui.line(atlas, a, b, 2.0, color);
+        }
+    }
     let font = atlas.font("numbers");
     let (x, mut y) = (16.0, 112.0);
     let panel_width = lines.iter().map(|l| font.measure(l)).fold(

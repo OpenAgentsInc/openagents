@@ -14,6 +14,7 @@ pub mod dice;
 pub mod fields;
 pub mod props;
 pub mod thunderwave;
+pub mod wind_wall;
 
 use glam::{DQuat, DVec3};
 use physics::{BodyId, Ledger, Momentum};
@@ -66,7 +67,7 @@ pub struct SpellDef {
 /// 1 Wall of Stone (#10453), 2 Levitate (#10454), 3 Feather Fall (#10455),
 /// 4 Gust of Wind (#10456), 5 Wind Wall (#10457), 6 Black Tentacles
 /// (#10458), 7 Meteor Swarm (#10459), 8 Reverse Gravity (#10460).
-pub const CATALOG: &[SpellDef] = &[];
+pub const CATALOG: &[SpellDef] = &[wind_wall::DEF];
 
 pub fn spell_in_slot(slot: u8) -> Option<&'static SpellDef> {
     CATALOG.iter().find(|s| s.slot == slot)
@@ -159,6 +160,9 @@ pub struct SpellWorld {
     /// Momentum lost as dynamic bodies are removed.
     #[serde(default)]
     pub removed: u64,
+    /// Standing wind walls and what they track.
+    #[serde(default)]
+    pub wind: wind_wall::Wind,
 }
 
 impl Default for SpellWorld {
@@ -200,6 +204,7 @@ impl SpellWorld {
             ready: BTreeMap::new(),
             previous: vec![],
             removed: 0,
+            wind: wind_wall::Wind::default(),
         }
     }
 
@@ -234,6 +239,7 @@ impl SpellWorld {
                 .iter()
                 .any(|b| !b.pos.is_finite() || !b.vel.is_finite() || !b.omega.is_finite())
             || self.concentration.values().any(|cast| *cast > self.casts)
+            || self.wind.validate(self.casts).is_err()
         {
             return Err("Invalid spell world checkpoint".into());
         }
@@ -286,6 +292,7 @@ impl SpellWorld {
 
     /// Ends a cast: its fields, joints, and bodies leave the world.
     pub fn end_cast(&mut self, cast: u64) -> Result<(), String> {
+        self.wind.end_cast(cast, &mut self.world, &self.props);
         self.fields.retain(|f| f.cast != cast);
         self.concentration.retain(|_, held| *held != cast);
         let owned: Vec<_> = self
@@ -525,6 +532,8 @@ impl SpellWorld {
         let gravity = DVec3::new(0., -GRAVITY, 0.);
         for _ in 0..steps {
             let dt = self.world.dt;
+            self.wind
+                .before_step(&mut self.world, &self.props, &mut self.ledger);
             // What the field adds: only bodies that respond this step.
             let mut field_terms: Vec<(String, DVec3, DVec3)> = vec![];
             for body in self.world.bodies() {
