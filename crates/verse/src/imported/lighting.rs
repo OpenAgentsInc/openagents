@@ -148,7 +148,7 @@ mod tests {
             eye: Vec3::ZERO,
         };
         let mut lighting = Lighting::default();
-        let f = frame(view, &lighting).unwrap();
+        let f = frame(view, &lighting, &listed(&lighting)).unwrap();
         assert_eq!(f.fog[3], lighting.density);
         assert_eq!(f.fog_shape, [0.0, 0.0, 0.0, 1.0]);
         lighting.height_fog = Some(verse_engine::lighting::HeightFog {
@@ -160,7 +160,7 @@ mod tests {
             sun_strength: 0.0,
             sun_exponent: 1.0,
         });
-        let f = frame(view, &lighting).unwrap();
+        let f = frame(view, &lighting, &listed(&lighting)).unwrap();
         assert_eq!(f.fog[3], 0.02);
         assert_eq!(f.fog_shape, [1.0, 0.3, 5.0, 0.8]);
     }

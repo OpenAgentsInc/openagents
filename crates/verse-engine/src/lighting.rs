@@ -377,29 +377,38 @@ impl Frustum {
     /// `None` for a matrix that is not such a projection.
     #[must_use]
     pub fn from_view_proj(view_proj: Mat4, eye: Vec3) -> Option<Self> {
-        let inverse = view_proj.inverse();
+        // In double precision: single-precision noise from inverting a moving
+        // camera's matrix is about the size of the lens grid below, and would
+        // sometimes cross a grid line and resize a cascade for a frame.
+        let inverse = view_proj.as_dmat4().inverse();
         if !inverse.is_finite() || !eye.is_finite() {
             return None;
         }
-        let corners = |z: f32| {
+        let eye64 = eye.as_dvec3();
+        let corners = |z: f64| {
             [(-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)]
-                .map(|(x, y)| inverse.project_point3(Vec3::new(x, y, z)))
+                .map(|(x, y)| inverse.project_point3(glam::DVec3::new(x, y, z)))
         };
         let (near, far) = (corners(0.0), corners(1.0));
-        let center = |c: &[Vec3; 4]| (c[0] + c[1] + c[2] + c[3]) * 0.25;
-        let forward = (center(&far) - center(&near)).try_normalize()?;
-        let depth = |p: &Vec3| (*p - eye).dot(forward);
-        let near_depth = near.iter().map(depth).fold(f32::INFINITY, f32::min);
-        let far_depth = far.iter().map(depth).fold(f32::INFINITY, f32::min);
-        let mut spread = 0.0f32;
-        for corner in far {
-            let offset = corner - eye;
+        let center = |c: &[glam::DVec3; 4]| (c[0] + c[1] + c[2] + c[3]) * 0.25;
+        // The view axis and the lens come from the near plane, whose corners
+        // invert well; the far plane, 2 km out from a near plane a tenth of a
+        // meter away, only sets the far depth.
+        let forward = (center(&near) - eye64).try_normalize()?;
+        let depth = |p: &glam::DVec3| (*p - eye64).dot(forward);
+        let near_depth = near.iter().map(depth).fold(f64::INFINITY, f64::min);
+        let far_depth = far.iter().map(depth).fold(f64::INFINITY, f64::min);
+        let mut spread = 0.0f64;
+        for corner in near {
+            let offset = corner - eye64;
             let along = offset.dot(forward);
             if !(along > 0.0) {
                 return None;
             }
             spread = spread.max((offset - forward * along).length() / along);
         }
+        let forward = forward.as_vec3();
+        let (near_depth, far_depth, spread) = (near_depth as f32, far_depth as f32, spread as f32);
         // The lens is rounded to a fine grid. Float noise from inverting a
         // moving camera's matrix then cannot change a cascade's size between
         // frames, which would make every shadow edge crawl.

@@ -107,6 +107,7 @@ impl Ruins {
             time,
             key: Some(Self::key()),
             daylight: None,
+            height_fog: air.height_fog,
         }
     }
 
