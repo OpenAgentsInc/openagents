@@ -104,6 +104,9 @@ case "$command" in
     mkdir "$base/follow.lock" 2>/dev/null || exit 0
     trap 'rmdir "$base/follow.lock"' EXIT
     export CARGO_TARGET_DIR="${OA_DEV_HOST_TARGET:-$HOME/work/openagents-target-devhost}"
+    # rustup's cargo first, so the checkout's pinned toolchain builds it
+    # rather than another cargo earlier on the login PATH.
+    [ -d "$HOME/.cargo/bin" ] && export PATH="$HOME/.cargo/bin:$PATH"
     git -C "$root" fetch -q origin main || { note "fetch failed"; exit 1; }
     target="$(git -C "$root" rev-parse --short=10 origin/main)"
     installed="$(basename "$(readlink "$base/current" 2>/dev/null || echo none)")"
