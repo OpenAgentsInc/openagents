@@ -76,6 +76,12 @@ pub fn blocker_instances(pack: &Pack, game: &super::play::Game) -> Vec<Instance>
     }
     game.navigation_blockers()
         .active_bounds()
+        .filter(|(life, _, _)| {
+            !game
+                .physics_bodies()
+                .get(*life)
+                .is_some_and(|body| matches!(body.phase, physics::lifetimes::Phase::Corpse { .. }))
+        })
         .map(|(_, min, max)| Instance {
             actor: None,
             model: "navigation-blocker".into(),

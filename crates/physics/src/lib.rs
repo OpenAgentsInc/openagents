@@ -44,6 +44,7 @@ pub mod continuous;
 pub mod joint;
 pub mod kinematic;
 pub mod ledger;
+pub mod lifetimes;
 pub mod modal;
 pub mod navigation;
 pub mod oracle;

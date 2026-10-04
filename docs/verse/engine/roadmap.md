@@ -131,9 +131,14 @@ including moving targets, earliest wall obstruction, impact-time area positions,
 and pending-motion checkpoint replay under `verse-chamber-owned-v4`. Teleports
 explicitly skip intermediate space. The trajectory integration records actual
 character controller substep positions under `verse-chamber-owned-v5`; projectile
-intervals split at every trajectory corner, and checkpoints validate retained path endpoints. General
-life-bound bodies, corpse collision, bow flights, and hostile projectile
-integration remain VE-2 work. Renderer lighting and overlapping nameplates remain visual work.
+intervals split at every trajectory corner, and checkpoints validate retained
+path endpoints. The `verse-chamber-owned-v6` body registry binds player and NPC
+kinematic bodies to exact life generations, retains corpse collision for 60 seconds, removes
+expired collision/navigation masks, and rebuilds those masks on checkpoint load.
+Props cannot overwrite actor collision IDs. Live-body contact integration,
+prop body ownership, unified clock ownership, bow flights, and hostile projectile
+integration remain VE-2 work. Renderer lighting and overlapping nameplates
+remain visual work.
 
 ## Reuse inventory
 

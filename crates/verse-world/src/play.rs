@@ -151,6 +151,7 @@ pub struct Game {
     routes: BTreeMap<u64, Route>,
     navigation_goals: BTreeMap<u64, NavigationGoal>,
     blockers: physics::walkable::Blockers,
+    bodies: physics::lifetimes::Bodies,
     pub navigation_plans: u64,
     pub navigation_budget_refusals: u64,
     #[serde(skip)]
@@ -211,6 +212,7 @@ impl Game {
         self.authority_tick = previous.authority_tick;
         self.event_serial = previous.event_serial;
         self.events = previous.events.clone();
+        self.sync_bodies(0.)?;
         Ok(())
     }
     fn event(
@@ -265,8 +267,10 @@ impl Game {
     /// Saves pending combat, controller fences, timers, and presentation clocks.
     pub fn checkpoint(&self) -> Result<Vec<u8>, String> {
         self.simulation.validate()?;
+        self.bodies.validate()?;
+        self.validate_body_bindings()?;
         let bytes = serde_json::to_vec(&serde_json::json!({
-            "version": 1, "rules_revision": "verse-chamber-owned-v5", "world": self,
+            "version": 1, "rules_revision": "verse-chamber-owned-v6", "world": self,
         }))
         .map_err(|e| e.to_string())?;
         if bytes.len() > 2 * 1024 * 1024 {
@@ -286,11 +290,12 @@ impl Game {
             return Err("World checkpoint budget exceeded".into());
         }
         let saved: Saved = serde_json::from_slice(bytes).map_err(|e| e.to_string())?;
-        if saved.version != 1 || saved.rules_revision != "verse-chamber-owned-v5" {
+        if saved.version != 1 || saved.rules_revision != "verse-chamber-owned-v6" {
             return Err("Unsupported world checkpoint".into());
         }
         let mut world = saved.world;
-        world.scene.validate()?;
+        world.bodies.validate()?;
+        world.validate_body_bindings()?;
         world.simulation.validate()?;
         world.controls.validate()?;
         world.blockers.validate()?;
@@ -501,6 +506,127 @@ impl Game {
     pub(super) fn navigation_directed(&self, actor: u64) -> bool {
         self.navigation_goals.contains_key(&actor)
     }
+    fn validate_body_bindings(&self) -> Result<(), String> {
+        if self.bodies.records().count() != self.ids.len() + 1
+            || self.bodies.instance != self.admission.actor().instance
+        {
+            return Err("Checkpoint physics body ownership disagrees".into());
+        }
+        let snapshot = self.snapshot();
+        for r in self.bodies.records() {
+            let (expected, source) = if r.life.entity == self.admission.actor().actor {
+                (Some(self.admission.actor()), Some(0))
+            } else {
+                (
+                    self.actor_life(r.life.entity),
+                    self.ids.get(&r.life.entity).copied(),
+                )
+            };
+            let alive =
+                source.is_some_and(|id| snapshot.actors.iter().any(|a| a.id == id && a.alive));
+            if expected.is_none_or(|life| {
+                life.instance != r.life.instance || life.generation != r.life.generation
+            }) || r.damage_enabled() != alive
+            {
+                return Err("Checkpoint physics body life disagrees".into());
+            }
+            let active = self
+                .blockers
+                .active_bounds()
+                .find(|(life, _, _)| *life == r.life);
+            match r.phase {
+                physics::lifetimes::Phase::Corpse { .. }
+                    if self.scene.collision_profile.as_deref() == Some("original-chamber-v1") =>
+                {
+                    let physics::lifetimes::Hull::Box { half } = r.hull else {
+                        return Err("Invalid corpse collision hull".into());
+                    };
+                    if active.is_none_or(|(_, min, max)| {
+                        (min - (r.body.pos - half)).abs().max_element() > 1e-8
+                            || (max - (r.body.pos + half)).abs().max_element() > 1e-8
+                    }) {
+                        return Err("Checkpoint corpse collision mask disagrees".into());
+                    }
+                }
+                _ if active.is_some() => {
+                    return Err("Checkpoint actor collision mask disagrees".into());
+                }
+                _ => {}
+            }
+        }
+        Ok(())
+    }
+    pub fn physics_bodies(&self) -> &physics::lifetimes::Bodies {
+        &self.bodies
+    }
+    fn sync_bodies(&mut self, dt: f32) -> Result<(), String> {
+        use physics::lifetimes::{Hull, Phase};
+        let snapshot = self.snapshot();
+        let mut actors = vec![(self.admission.actor(), 0, self.player)];
+        actors.extend(self.ids.iter().map(|(actor, source)| {
+            let position = snapshot
+                .actors
+                .iter()
+                .find(|a| a.id == *source)
+                .map(|a| Vec3::from(a.pos))
+                .or_else(|| self.npc_deaths.get(actor).map(|(_, p)| *p))
+                .unwrap_or(Vec3::ZERO);
+            (self.lives[actor], *source, position)
+        }));
+        let mut next = self.blockers.clone();
+        let mut changed = false;
+        for expired in self.bodies.expire(self.time as f64)? {
+            changed |= next.remove(expired)?;
+        }
+        for (life, source, feet) in actors {
+            let physical = physics::queries::Life {
+                instance: life.instance,
+                entity: life.actor,
+                generation: life.generation,
+            };
+            let alive = snapshot.actors.iter().any(|a| a.id == source && a.alive);
+            if self.bodies.get(physical).is_none() {
+                if !alive {
+                    continue;
+                }
+                self.bodies.spawn(
+                    physical,
+                    feet.as_dvec3() + glam::DVec3::Y * 0.9,
+                    Hull::UprightCapsule {
+                        radius: 0.35,
+                        height: 1.8,
+                    },
+                )?;
+            }
+            let phase = self.bodies.get(physical).unwrap().phase;
+            if alive && phase == Phase::Alive {
+                self.bodies.place(
+                    physical,
+                    feet.as_dvec3() + glam::DVec3::Y * 0.9,
+                    (dt as f64).min(0.1),
+                )?;
+            } else if !alive && phase == Phase::Alive {
+                let died = self
+                    .npc_deaths
+                    .get(&life.actor)
+                    .map_or(self.time, |(at, _)| *at);
+                let min = feet.as_dvec3() + glam::DVec3::new(-0.35, 0., -0.8);
+                let max = feet.as_dvec3() + glam::DVec3::new(0.35, 0.24, 0.8);
+                self.bodies
+                    .corpse(physical, min, max, (died + 60.) as f64)?;
+                if self.navigation.is_some() {
+                    next.upsert(physical, min, max)?;
+                    changed = true;
+                }
+                self.routes.remove(&life.actor);
+                self.navigation_goals.remove(&life.actor);
+            }
+        }
+        if changed {
+            self.replace_blockers(next)?;
+        }
+        Ok(())
+    }
     pub fn navigation_blockers(&self) -> &physics::walkable::Blockers {
         &self.blockers
     }
@@ -511,6 +637,9 @@ impl Game {
         min: glam::DVec3,
         max: glam::DVec3,
     ) -> Result<(), String> {
+        if self.lives.contains_key(&life.entity) || life.entity == self.admission.actor().actor {
+            return Err("World prop cannot replace an actor collision body".into());
+        }
         let mut next = self.blockers.clone();
         next.upsert(life, min, max)?;
         self.replace_blockers(next)
@@ -760,7 +889,7 @@ impl Game {
         } else {
             crate::room::query_scene(0)?
         };
-        Ok(Self {
+        let mut world = Self {
             pending_movement: None,
             pending_jump: false,
             character: physics::character::Character::new(player.as_dvec3()),
@@ -768,6 +897,7 @@ impl Game {
             routes: BTreeMap::new(),
             navigation_goals: BTreeMap::new(),
             blockers: physics::walkable::Blockers::new(0),
+            bodies: physics::lifetimes::Bodies::new(0),
             navigation_plans: 0,
             navigation_budget_refusals: 0,
             navigation: if colliders.is_empty() {
@@ -838,7 +968,9 @@ impl Game {
             npc_motion: BTreeMap::new(),
             npc_yaw: BTreeMap::new(),
             npc_deaths: BTreeMap::new(),
-        })
+        };
+        world.sync_bodies(0.)?;
+        Ok(world)
     }
     pub fn unlocked(&self) -> bool {
         self.time >= self.scene.cut_at
@@ -1074,6 +1206,7 @@ impl Game {
             return Ok(());
         }
         self.respawn_cultists()?;
+        self.sync_bodies(0.)?;
         let dead = self.snapshot().player.hp == 0;
         if !dead && (self.agent_controlled || self.pending_movement.is_none()) {
             let movement = if self.agent_controlled {
@@ -1369,6 +1502,7 @@ impl Game {
         }
         self.damage_numbers.retain(|n| self.time - n.at < 1.35);
         self.impacts.retain(|(_, at, _)| self.time - at < 0.6);
+        self.sync_bodies(dt)?;
         Ok(())
     }
     fn respawn_cultists(&mut self) -> Result<(), String> {
@@ -2624,5 +2758,124 @@ mod compiled_navigation_tests {
         .unwrap();
         assert!(!game.remove_navigation_blocker(life).unwrap());
         assert!(game.move_player(start, Vec3::X * 5.).unwrap().x < -0.94);
+    }
+}
+
+#[cfg(test)]
+mod body_lifetime_tests {
+    use super::*;
+    fn game() -> Game {
+        Game::combat(
+            Scene::from_json(include_bytes!("../../../assets/verse/original/ritual.json")).unwrap(),
+            false,
+        )
+        .unwrap()
+    }
+    #[test]
+    fn corpse_collision_navigation_and_respawn_share_exact_life() {
+        let mut g = game();
+        g.time = 30.;
+        let life = g.actor_life(2).unwrap();
+        let physical = physics::queries::Life {
+            instance: life.instance,
+            entity: life.actor,
+            generation: life.generation,
+        };
+        g.simulation.bow_impact(g.ids[&2], 1000).unwrap();
+        g.tick(0., [0.; 2]).unwrap();
+        assert!(matches!(
+            g.bodies.get(physical).unwrap().phase,
+            physics::lifetimes::Phase::Corpse { .. }
+        ));
+        assert!(!g.bodies.get(physical).unwrap().damage_enabled());
+        assert!(
+            g.blockers
+                .active_bounds()
+                .any(|(key, _, _)| key == physical)
+        );
+        assert!(
+            g.query_scene
+                .pose(physics::queries::ColliderKey {
+                    life: physical,
+                    shape: 0
+                })
+                .is_some()
+        );
+        assert!(
+            !g.frame()
+                .actors
+                .iter()
+                .find(|a| a.actor.id == 2)
+                .unwrap()
+                .actor
+                .nameplate
+        );
+        let center = g.bodies.get(physical).unwrap().body.pos;
+        let hits = g
+            .query_scene
+            .ray(
+                center + glam::DVec3::Y,
+                -glam::DVec3::Y,
+                2.,
+                physics::queries::Filter::blocking(physical.instance),
+            )
+            .unwrap();
+        assert_eq!(hits.hits[0].collider.life, physical);
+        let bytes = g.checkpoint().unwrap();
+        let mut forged: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        forged["world"]["bodies"]["entries"]["2"]["phase"] = serde_json::json!("Alive");
+        assert!(Game::restore(&serde_json::to_vec(&forged).unwrap()).is_err());
+        let mut restored = Game::restore(&bytes).unwrap();
+        assert_eq!(bytes, restored.checkpoint().unwrap());
+        let until = g.npc_deaths[&2].0 + 60.;
+        g.time = until;
+        restored.time = until;
+        g.tick(0., [0.; 2]).unwrap();
+        restored.tick(0., [0.; 2]).unwrap();
+        assert_eq!(g.checkpoint().unwrap(), restored.checkpoint().unwrap());
+        let next = g.actor_life(2).unwrap();
+        assert_eq!(next, life.next().unwrap());
+        assert!(g.bodies.get(physical).is_none());
+        assert!(
+            !g.blockers
+                .active_bounds()
+                .any(|(key, _, _)| key == physical)
+        );
+        assert!(
+            g.query_scene
+                .pose(physics::queries::ColliderKey {
+                    life: physical,
+                    shape: 0
+                })
+                .is_none()
+        );
+        assert!(!g.bodies.remove(physical));
+        let current = physics::queries::Life {
+            generation: next.generation,
+            ..physical
+        };
+        assert!(g.bodies.get(current).unwrap().selection_enabled());
+    }
+    #[test]
+    fn restart_and_checkpoint_reject_stale_body_ownership() {
+        let mut g = game();
+        let old = g.admission.actor();
+        g.restart_combat(false).unwrap();
+        let current = g.admission.actor();
+        assert_eq!(current.generation, old.generation + 1);
+        let key = physics::queries::Life {
+            instance: old.instance,
+            entity: old.actor,
+            generation: old.generation,
+        };
+        assert!(g.bodies.get(key).is_none());
+        let mut saved: serde_json::Value =
+            serde_json::from_slice(&g.checkpoint().unwrap()).unwrap();
+        saved["world"]["bodies"]["instance"] = serde_json::json!(9);
+        assert!(Game::restore(&serde_json::to_vec(&saved).unwrap()).is_err());
+        assert!(
+            g.set_navigation_blocker(key, glam::DVec3::ZERO, glam::DVec3::ONE)
+                .is_err()
+        );
     }
 }
