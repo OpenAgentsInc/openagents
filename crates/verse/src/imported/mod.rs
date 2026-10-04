@@ -23,6 +23,7 @@ pub mod icons;
 pub mod inventory;
 pub mod lighting;
 mod material_gpu;
+pub mod meteor_swarm;
 pub mod original;
 pub mod overlay;
 pub mod play;

@@ -80,7 +80,8 @@ pub fn prop_poses(game: &Game, alpha: f32) -> Vec<Prop> {
         .props
         .iter()
         .enumerate()
-        .filter(|(_, p)| !p.removed)
+        // A falling meteor is drawn as fire, not as a prop.
+        .filter(|(_, p)| !p.removed && !game.spells.meteor_swarm.is_falling_meteor(p.body))
         .map(|(i, p)| {
             let (center, rotation) = game.spells.prop_pose(i, alpha as f64);
             Prop {

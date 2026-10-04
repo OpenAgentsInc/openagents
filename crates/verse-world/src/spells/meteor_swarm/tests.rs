@@ -215,22 +215,27 @@ fn a_checkpoint_mid_fall_replays_identically() {
 
 /// Render instances a frame of `game` needs, counted the way the native
 /// chamber presentation draws them: one per character plus the bow, one
-/// per live prop, an impact and six sparks per small cue, an impact and
-/// sixteen sparks per blast, and four per spell projectile.
+/// per drawn prop, an impact and six sparks per small cue, an impact and
+/// sixteen sparks per blast cue, four per spell projectile, and Meteor
+/// Swarm's own meteors, fireballs, and scorch marks.
 fn presentation_instances(game: &Game) -> usize {
     let actors = game.frame().actors.len() + 1;
-    let props = game.spells.props.iter().filter(|p| !p.removed).count();
+    let props = crate::visuals::prop_poses(game, 1.).len();
     let cues: usize = game
         .impacts
         .iter()
         .filter(|(_, at, _)| game.time - at < CUE_LIFETIME)
         .map(|(_, _, kind)| match *kind {
             3 => 0,
-            BLAST_CUE => 17,
+            1 => 17,
             _ => 7,
         })
         .sum();
-    actors + props + cues + 4 * game.snapshot().projectiles.len()
+    actors
+        + props
+        + cues
+        + 4 * game.snapshot().projectiles.len()
+        + game.spells.meteor_swarm.instances(game.time)
 }
 
 #[test]
@@ -253,6 +258,8 @@ fn the_busiest_playground_frame_stays_within_the_instance_budget() {
         busiest.1
     );
     assert!(live_flame_cues(run.result()) <= MAX_FLAME_CUES);
+    // Every detonation drew a fireball.
+    assert_eq!(run.result().spells.meteor_swarm.blasts.len(), METEORS);
 }
 
 #[test]

@@ -49,26 +49,48 @@ pub const SAFE_DISTANCE: f64 = RADIUS + 1.;
 pub const SPACING: f64 = 2.;
 /// Dexterity modifier of the player wizard: chamber tuning.
 pub const PLAYER_DEXTERITY: i32 = 2;
-/// Game ticks between flame cues on a falling meteor.
-pub const TRAIL_EVERY: u64 = 9;
 /// Game ticks between flame cues on burning objects.
 pub const FLAMES_EVERY: u64 = 12;
 /// Burning objects that get a flame cue each time.
 pub const MAX_FLAMES: usize = 4;
-/// Small flame cues alive at once, trails and fires together. Each draws
-/// as about seven render instances for 0.6 s, and a frame holds at most
-/// 256 instances, shared with characters and props.
-pub const MAX_FLAME_CUES: usize = 8;
+/// Small flame cues on burning objects alive at once. Each draws as about
+/// seven render instances for 0.6 s, and a frame holds at most 256
+/// instances, shared with characters, props, meteors, and blasts.
+pub const MAX_FLAME_CUES: usize = 6;
+/// Render instances the presentation draws for one falling meteor: a dark
+/// core, a fire shell, a hot center, a flame trail, and smoke.
+pub const METEOR_CORE_INSTANCES: usize = 3;
+pub const METEOR_TRAIL_INSTANCES: usize = 7;
+pub const METEOR_SMOKE_INSTANCES: usize = 2;
+/// Spacing of trail flames behind a meteor, as seconds of its flight.
+pub const METEOR_TRAIL_SPACING: f32 = 0.022;
+/// How long a detonation's fireball shows, s.
+pub const BLAST_SHOW: f32 = 1.2;
+/// How long the fireball takes to swell to the Sphere's radius, s.
+pub const BLAST_GROW: f32 = 0.3;
+/// Render instances for one showing blast: the fireball, its flash, a
+/// rising fire column, and smoke.
+pub const BLAST_COLUMN_INSTANCES: usize = 5;
+pub const BLAST_SMOKE_INSTANCES: usize = 3;
+pub const BLAST_INSTANCES: usize = 2 + BLAST_COLUMN_INSTANCES + BLAST_SMOKE_INSTANCES;
+/// Scorch decals drawn, most recent first, one instance each.
+pub const MAX_SCORCHES: usize = 8;
 /// How long the renderer draws an impact cue, s.
 pub const CUE_LIFETIME: f32 = 0.6;
 /// Detonations kept for presentation and evidence.
 pub const MAX_IMPACTS: usize = 32;
 /// Live casts at once.
 pub const MAX_CASTS: usize = 8;
-/// Presentation impact kinds the renderer draws: a fireball blast and a
-/// small flame.
-const BLAST_CUE: u8 = 1;
+/// Presentation impact kind the renderer draws as a small flame.
 const FLAME_CUE: u8 = 0;
+
+/// One detonation as presentation draws it.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Blast {
+    pub center: DVec3,
+    /// Scene time it detonated, s.
+    pub at: f32,
+}
 
 /// The action-bar entry in [`super::CATALOG`].
 pub const DEF: super::SpellDef = super::SpellDef {
@@ -125,6 +147,9 @@ pub struct State {
     pub impacts: Vec<Impact>,
     /// Game ticks the hook has run, which paces flame cues.
     pub frames: u64,
+    /// Recent detonations with their scene times, for fireballs and scorch.
+    #[serde(default)]
+    pub blasts: Vec<Blast>,
 }
 
 impl State {
@@ -138,6 +163,11 @@ impl State {
         if self.casts.len() > MAX_CASTS
             || self.objects.len() > MAX_PROPS * 2
             || self.impacts.len() > MAX_IMPACTS
+            || self.blasts.len() > MAX_IMPACTS
+            || self
+                .blasts
+                .iter()
+                .any(|b| !b.center.is_finite() || !b.at.is_finite())
             || self.objects.iter().any(|o| !body(o.body))
             || self.casts.iter().any(|c| {
                 c.swarm.meteors.len() != METEORS
@@ -151,6 +181,42 @@ impl State {
             return Err("Invalid Meteor Swarm checkpoint".into());
         }
         Ok(())
+    }
+
+    /// Falling meteors: center and velocity, m and m/s.
+    pub fn falling(&self, world: &physics::World) -> Vec<(DVec3, DVec3)> {
+        self.casts
+            .iter()
+            .flat_map(|c| c.swarm.falling())
+            .map(|b| (world[b].pos, world[b].vel))
+            .collect()
+    }
+
+    /// Whether `body` is a meteor still falling, which presentation draws
+    /// as fire rather than as a prop.
+    pub fn is_falling_meteor(&self, body: BodyId) -> bool {
+        self.casts
+            .iter()
+            .any(|c| c.swarm.falling().any(|b| b == body))
+    }
+
+    /// Detonations whose fireball shows at `time`.
+    pub fn showing(&self, time: f32) -> impl Iterator<Item = &Blast> + '_ {
+        self.blasts
+            .iter()
+            .filter(move |b| (0. ..BLAST_SHOW).contains(&(time - b.at)))
+    }
+
+    /// Render instances Meteor Swarm's own presentation draws at `time`.
+    pub fn instances(&self, time: f32) -> usize {
+        let meteors = self
+            .casts
+            .iter()
+            .map(|c| c.swarm.falling().count())
+            .sum::<usize>();
+        meteors * (METEOR_CORE_INSTANCES + METEOR_TRAIL_INSTANCES + METEOR_SMOKE_INSTANCES)
+            + self.showing(time).count() * BLAST_INSTANCES
+            + self.blasts.len().min(MAX_SCORCHES)
     }
 
     /// Centers of recent detonations, for scorch marks.
@@ -542,9 +608,13 @@ fn advance(game: &mut Game, state: &mut State) -> Result<(), String> {
     state.casts.retain(|c| !c.swarm.finished());
     for impact in &impacts {
         resolve(game, impact, &saves)?;
-        game.impacts
-            .push((impact.center.as_vec3(), game.time, BLAST_CUE));
+        state.blasts.push(Blast {
+            center: impact.center,
+            at: game.time,
+        });
     }
+    let excess = state.blasts.len().saturating_sub(MAX_IMPACTS);
+    state.blasts.drain(..excess);
     state.impacts.extend(impacts);
     let excess = state.impacts.len().saturating_sub(MAX_IMPACTS);
     state.impacts.drain(..excess);
@@ -652,22 +722,10 @@ pub fn live_flame_cues(game: &Game) -> usize {
         .count()
 }
 
-/// Flame cues along falling meteors and on a rotating handful of burning
-/// objects, within [`MAX_FLAME_CUES`].
+/// Flame cues on a rotating handful of burning objects, within
+/// [`MAX_FLAME_CUES`].
 fn cues(game: &mut Game, state: &State) {
-    let mut room = MAX_FLAME_CUES.saturating_sub(live_flame_cues(game));
-    if state.frames % TRAIL_EVERY == 0 {
-        for cast in &state.casts {
-            for body in cast.swarm.falling() {
-                if room == 0 {
-                    return;
-                }
-                let at = game.spells.world[body].pos.as_vec3();
-                game.impacts.push((at, game.time, FLAME_CUE));
-                room -= 1;
-            }
-        }
-    }
+    let room = MAX_FLAME_CUES.saturating_sub(live_flame_cues(game));
     if state.frames % FLAMES_EVERY != 0 || room == 0 {
         return;
     }
@@ -757,13 +815,19 @@ pub fn scenario() -> crate::playground::Scenario {
                     0.,
                 )?;
             }
-            // A four-block stone tower beyond the second point.
-            let block = PropSpec::reference(PropKind::StoneBlock);
-            for n in 0..4 {
+            // A tower of six 40 cm stone bricks (154 kg, Small) beside the
+            // second point, light enough for the blast to topple.
+            let brick = PropSpec {
+                size: super::Size::Small,
+                dimensions: glam::DVec3::splat(0.4),
+                mass: 154.,
+                ..PropSpec::reference(PropKind::StoneBlock)
+            };
+            for n in 0..6 {
                 game.spawn_prop(
-                    &format!("Tower block {}", n + 1),
-                    block.clone(),
-                    Vec3::new(-12.8, 0.375 + 0.752 * n as f32, 10.3),
+                    &format!("Tower brick {}", n + 1),
+                    brick.clone(),
+                    Vec3::new(-11.5, 0.2 + 0.402 * n as f32, 10.8),
                     0.,
                 )?;
             }
@@ -807,31 +871,37 @@ pub fn scenario() -> crate::playground::Scenario {
                 },
             ]
         },
+        // Meteors detonate about 1.84 s after their spawn: A at 2.84 s,
+        // C at 3.09 s, B at 3.34 s, and D, early on the overhang, at 3.55 s.
         camera: || {
-            let overview = (Vec3::new(2., 11., 19.), Vec3::new(-1., 1., -8.));
-            let sky = (Vec3::new(2., 3., 19.), Vec3::new(0., 45., -14.));
-            let south = (Vec3::new(16., 7., -10.), Vec3::new(-1., 2.5, -18.5));
+            let shoulder = (Vec3::new(9., 3., 5.), Vec3::new(-1., 1.5, -14.));
+            let sky = (Vec3::new(2., 1.8, -8.), Vec3::new(12., 50., 8.));
+            let falling = (Vec3::new(1., 6., -4.), Vec3::new(2., 22., -6.));
+            let south = (Vec3::new(-1., 7.5, -5.5), Vec3::new(-1.5, 1., -18.5));
             let overhang = (Vec3::new(9., 4.5, 4.), Vec3::new(16.3, 2.4, 11.4));
-            let tower = (Vec3::new(-1., 6., 0.), Vec3::new(-12., 2., 9.5));
+            let tower = (Vec3::new(-3., 4.5, 2.), Vec3::new(-11.2, 1., 10.));
+            let wide = (Vec3::new(16., 7., -10.), Vec3::new(-1., 1.5, -18.5));
             [
-                (0., overview),
-                (0.9, overview),
-                (1.4, sky),
-                (2.45, sky),
+                (0., shoulder),
+                (0.9, shoulder),
+                (1.15, sky),
+                (2.0, sky),
+                (2.45, falling),
                 (2.6, south),
-                (3.42, south),
-                (3.47, overhang),
-                (5.0, overhang),
-                (5.6, tower),
-                (7.4, tower),
-                (8.0, south),
-                (10., south),
+                (3.44, south),
+                (3.46, overhang),
+                (4.9, overhang),
+                (5.0, tower),
+                (7.0, tower),
+                (7.1, wide),
+                (10., wide),
             ]
             .into_iter()
             .map(|(at, (eye, target))| Shot { at, eye, target })
             .collect()
         },
-        replay_camera: (Vec3::new(-1., 6., 0.), Vec3::new(-12., 2., 9.5)),
+        // The second impact (C) and the tower falling, at 0.25x.
+        replay_camera: (Vec3::new(-3., 4.5, 2.), Vec3::new(-11.2, 1., 10.)),
         check: |game| {
             let state = &game.spells.meteor_swarm;
             if state.impacts.len() != METEORS {

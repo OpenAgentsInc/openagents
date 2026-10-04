@@ -496,6 +496,7 @@ pub fn combat_lighting(game: &super::play::Game) -> super::lighting::Lighting {
         game.player,
     );
     super::gust::lights(game, &mut lighting);
+    super::meteor_swarm::lights(game, &mut lighting);
     // A Reverse Gravity column lifts bodies far above the scene's lights.
     let column = verse_world::reverse_gravity::game::column_lights(game);
     lighting
@@ -932,6 +933,7 @@ pub fn add_effect_models(pack: &mut Pack, dir: &std::path::Path) -> Result<(), S
 pub fn spell_instances(game: &super::play::Game) -> Vec<Instance> {
     let mut out = spell_instances_from_visuals(&verse_world::visuals::Combat::extract(game));
     out.extend(super::gust::instances(game));
+    out.extend(super::meteor_swarm::instances(game));
     out
 }
 /// Draws admitted visual values without borrowing local world authority.
