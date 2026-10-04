@@ -8,7 +8,7 @@ chamber reads its snapshots and cinematic projection. Human and controller
 requests share admission. A trusted adapter supplies controller identity;
 this crate does not authenticate network connections.
 
-The `verse-chamber-owned-v6` rules profile independently implements retained
+The `verse-chamber-owned-v7` rules profile independently implements retained
 chamber behavior; it imports no vendor source. Firebolt deals 8 damage, each of
 three magic missiles deals 4, and fireball deals 15 in a visible 6.096-meter radius
 with three 6-damage burn ticks. Living characters regenerate one mana per second.
@@ -22,7 +22,10 @@ poses; NPC routes fence dynamic blocker generations.
 
 Life-bound kinematic player and NPC bodies retain 60-second corpse collision and
 navigation masks across checkpoints. Removal and respawn fence exact generations.
-Live-body contact integration, prop body ownership, unified clock ownership,
+Collision-only prop bodies share the blocker life, bounds, and removal fences;
+checkpoints reject missing or mismatched prop ownership. Props cannot gain actor
+damage or selection masks.
+Live-body contact integration, unified clock ownership,
 bow and hostile projectile integration, transactional saves, multiplayer
 replication, and authoring tools remain on the
 [engine roadmap](../../docs/verse/engine/roadmap.md).

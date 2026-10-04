@@ -135,8 +135,11 @@ intervals split at every trajectory corner, and checkpoints validate retained
 path endpoints. The `verse-chamber-owned-v6` body registry binds player and NPC
 kinematic bodies to exact life generations, retains corpse collision for 60 seconds, removes
 expired collision/navigation masks, and rebuilds those masks on checkpoint load.
-Props cannot overwrite actor collision IDs. Live-body contact integration,
-prop body ownership, unified clock ownership, bow flights, and hostile projectile
+Props cannot overwrite actor collision IDs. The `verse-chamber-owned-v7` profile
+binds collision-only prop bodies to blocker geometry; movement, resize, removal,
+and generation reuse update both together. Checkpoints reject missing ownership
+or mismatched bounds. Live-body contact integration, unified clock ownership,
+bow flights, and hostile projectile
 integration remain VE-2 work. Renderer lighting and overlapping nameplates
 remain visual work.
 

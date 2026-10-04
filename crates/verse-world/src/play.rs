@@ -270,7 +270,7 @@ impl Game {
         self.bodies.validate()?;
         self.validate_body_bindings()?;
         let bytes = serde_json::to_vec(&serde_json::json!({
-            "version": 1, "rules_revision": "verse-chamber-owned-v6", "world": self,
+            "version": 1, "rules_revision": "verse-chamber-owned-v7", "world": self,
         }))
         .map_err(|e| e.to_string())?;
         if bytes.len() > 2 * 1024 * 1024 {
@@ -290,7 +290,7 @@ impl Game {
             return Err("World checkpoint budget exceeded".into());
         }
         let saved: Saved = serde_json::from_slice(bytes).map_err(|e| e.to_string())?;
-        if saved.version != 1 || saved.rules_revision != "verse-chamber-owned-v6" {
+        if saved.version != 1 || saved.rules_revision != "verse-chamber-owned-v7" {
             return Err("Unsupported world checkpoint".into());
         }
         let mut world = saved.world;
@@ -507,13 +507,48 @@ impl Game {
         self.navigation_goals.contains_key(&actor)
     }
     fn validate_body_bindings(&self) -> Result<(), String> {
-        if self.bodies.records().count() != self.ids.len() + 1
+        if self.bodies.records().filter(|r| r.actor).count() != self.ids.len() + 1
             || self.bodies.instance != self.admission.actor().instance
         {
             return Err("Checkpoint physics body ownership disagrees".into());
         }
+        if self
+            .blockers
+            .active_bounds()
+            .any(|(life, _, _)| self.bodies.get(life).is_none())
+        {
+            return Err("Checkpoint blocker has no owned body".into());
+        }
         let snapshot = self.snapshot();
         for r in self.bodies.records() {
+            if !r.actor {
+                if self.lives.contains_key(&r.life.entity)
+                    || r.life.entity == self.admission.actor().actor
+                {
+                    return Err("Checkpoint prop uses an actor ID".into());
+                }
+                let active = self
+                    .blockers
+                    .active_bounds()
+                    .find(|(life, _, _)| *life == r.life);
+                match r.phase {
+                    physics::lifetimes::Phase::Alive => {
+                        let physics::lifetimes::Hull::Box { half } = r.hull else {
+                            return Err("Invalid prop collision hull".into());
+                        };
+                        if active.is_none_or(|(_, min, max)| {
+                            (min - (r.body.pos - half)).abs().max_element() > 1e-8
+                                || (max - (r.body.pos + half)).abs().max_element() > 1e-8
+                        }) {
+                            return Err("Checkpoint prop collision mask disagrees".into());
+                        }
+                    }
+                    physics::lifetimes::Phase::Removed if active.is_none() => {}
+                    _ => return Err("Invalid prop body phase".into()),
+                }
+                continue;
+            }
+
             let (expected, source) = if r.life.entity == self.admission.actor().actor {
                 (Some(self.admission.actor()), Some(0))
             } else {
@@ -642,17 +677,25 @@ impl Game {
         }
         let mut next = self.blockers.clone();
         next.upsert(life, min, max)?;
-        self.replace_blockers(next)
+        let mut bodies = self.bodies.clone();
+        bodies.upsert_prop(life, min, max)?;
+        self.replace_blockers(next)?;
+        self.bodies = bodies;
+        Ok(())
     }
     pub fn remove_navigation_blocker(
         &mut self,
         life: physics::queries::Life,
     ) -> Result<bool, String> {
+        if self.lives.contains_key(&life.entity) || life.entity == self.admission.actor().actor {
+            return Err("World prop cannot remove an actor collision body".into());
+        }
         let mut next = self.blockers.clone();
         if !next.remove(life)? {
             return Ok(false);
         }
         self.replace_blockers(next)?;
+        self.bodies.remove(life);
         Ok(true)
     }
     fn replace_blockers(&mut self, next: physics::walkable::Blockers) -> Result<(), String> {
@@ -2877,5 +2920,75 @@ mod body_lifetime_tests {
             g.set_navigation_blocker(key, glam::DVec3::ZERO, glam::DVec3::ONE)
                 .is_err()
         );
+    }
+}
+
+#[cfg(test)]
+mod prop_body_tests {
+    use super::*;
+    #[test]
+    fn prop_geometry_body_and_reused_life_replay_together() {
+        let mut g = Game::new(
+            Scene::from_json(include_bytes!("../../../assets/verse/original/ritual.json")).unwrap(),
+        )
+        .unwrap();
+        let life = physics::queries::Life {
+            instance: 0,
+            entity: 9001,
+            generation: 0,
+        };
+        let min = glam::DVec3::new(2., 0., -10.);
+        let max = min + glam::DVec3::new(1., 2., 1.);
+        g.set_navigation_blocker(life, min, max).unwrap();
+        let body = g.physics_bodies().get(life).unwrap();
+        assert!(!body.actor);
+        assert!(!body.damage_enabled());
+        assert!(!body.selection_enabled());
+        assert_eq!(body.body.pos, (min + max) * 0.5);
+        let moved_min = min + glam::DVec3::X;
+        let moved_max = max + glam::DVec3::X * 2.;
+        g.set_navigation_blocker(life, moved_min, moved_max)
+            .unwrap();
+        let body = g.physics_bodies().get(life).unwrap();
+        assert_eq!(body.body.pos, (moved_min + moved_max) * 0.5);
+        assert_eq!(
+            body.hull,
+            physics::lifetimes::Hull::Box {
+                half: (moved_max - moved_min) * 0.5
+            }
+        );
+        let before = g.checkpoint().unwrap();
+        assert!(
+            g.set_navigation_blocker(
+                physics::queries::Life {
+                    instance: 8,
+                    ..life
+                },
+                min,
+                max
+            )
+            .is_err()
+        );
+        assert_eq!(before, g.checkpoint().unwrap());
+        let mut restored = Game::restore(&before).unwrap();
+        assert_eq!(before, restored.checkpoint().unwrap());
+        assert!(g.remove_navigation_blocker(life).unwrap());
+        assert!(restored.remove_navigation_blocker(life).unwrap());
+        assert!(g.set_navigation_blocker(life, min, max).is_err());
+        let next = physics::queries::Life {
+            generation: 1,
+            ..life
+        };
+        g.set_navigation_blocker(next, min, max).unwrap();
+        restored.set_navigation_blocker(next, min, max).unwrap();
+        assert!(!g.remove_navigation_blocker(life).unwrap());
+        assert_eq!(g.checkpoint().unwrap(), restored.checkpoint().unwrap());
+        let mut forged: serde_json::Value =
+            serde_json::from_slice(&g.checkpoint().unwrap()).unwrap();
+        forged["world"]["bodies"]["entries"]
+            .as_object_mut()
+            .unwrap()
+            .remove("9001");
+        assert!(Game::restore(&serde_json::to_vec(&forged).unwrap()).is_err());
     }
 }

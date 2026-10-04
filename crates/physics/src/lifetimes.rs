@@ -26,7 +26,7 @@ impl Hull {
             }
             Self::Box { half }
                 if half.is_finite()
-                    && half.min_element() >= 0.01
+                    && half.min_element() >= 1e-6
                     && half.max_element() <= 1000. =>
             {
                 Ok(())
@@ -47,6 +47,7 @@ pub struct Record {
     pub body: Body,
     pub hull: Hull,
     pub phase: Phase,
+    pub actor: bool,
 }
 impl Record {
     pub fn key(&self) -> ColliderKey {
@@ -56,10 +57,10 @@ impl Record {
         }
     }
     pub fn damage_enabled(&self) -> bool {
-        self.phase == Phase::Alive
+        self.actor && self.phase == Phase::Alive
     }
     pub fn selection_enabled(&self) -> bool {
-        self.phase == Phase::Alive
+        self.actor && self.phase == Phase::Alive
     }
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -146,8 +147,32 @@ impl Bodies {
                 body,
                 hull,
                 phase: Phase::Alive,
+                actor: true,
             },
         );
+        Ok(())
+    }
+    /// Updates a collision-only prop without granting actor damage or selection.
+    pub fn upsert_prop(&mut self, life: Life, min: DVec3, max: DVec3) -> Result<(), String> {
+        point(min)?;
+        point(max)?;
+        let hull = Hull::Box {
+            half: (max - min) * 0.5,
+        };
+        hull.validate()?;
+        if self.entries.get(&life.entity).is_some_and(|r| r.actor) {
+            return Err("Prop cannot replace an actor body".into());
+        }
+        if let Some(r) = self.get(life) {
+            if r.actor || r.phase != Phase::Alive {
+                return Err("Prop cannot replace an actor or removed life".into());
+            }
+            self.place(life, (min + max) * 0.5, 0.)?;
+            self.entries.get_mut(&life.entity).unwrap().hull = hull;
+        } else {
+            self.spawn(life, (min + max) * 0.5, hull)?;
+            self.entries.get_mut(&life.entity).unwrap().actor = false;
+        }
         Ok(())
     }
     pub fn place(&mut self, life: Life, center: DVec3, dt: f64) -> Result<(), String> {
