@@ -69,7 +69,13 @@ pub struct SpellDef {
 /// 1 Wall of Stone (#10453), 2 Levitate (#10454), 3 Feather Fall (#10455),
 /// 4 Gust of Wind (#10456), 5 Wind Wall (#10457), 6 Black Tentacles
 /// (#10458), 7 Meteor Swarm (#10459), 8 Reverse Gravity (#10460).
-pub const CATALOG: &[SpellDef] = &[wind_wall::DEF, levitate::DEF, crate::reverse_gravity::game::SPELL, crate::telekinesis::DEF, feather_fall::SPELL];
+pub const CATALOG: &[SpellDef] = &[
+    wind_wall::DEF,
+    levitate::DEF,
+    crate::reverse_gravity::game::SPELL,
+    crate::telekinesis::DEF,
+    feather_fall::SPELL,
+];
 
 pub fn spell_in_slot(slot: u8) -> Option<&'static SpellDef> {
     CATALOG.iter().find(|s| s.slot == slot)

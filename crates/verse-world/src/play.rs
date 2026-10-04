@@ -1752,12 +1752,11 @@ impl Game {
                     };
                     // A knocked character does not walk; its authored place
                     // follows wherever the shove leaves it.
-                    let knocked = character.knocked();
+                    // A creature held by Telekinesis is moved by the grip.
+                    let knocked = character.knocked() || self.spells.holds_creature(a.actor.id);
                     // A levitated character moves only by pushing off.
                     let levitated = self.spells.levitations.holds(a.actor.id);
                     let velocity = if knocked || levitated {
-                    let knocked = character.knocked() || self.spells.holds_creature(a.actor.id);
-                    let velocity = if knocked {
                         glam::DVec3::ZERO
                     } else {
                         glam::DVec3::new(velocity.x, 0., velocity.z).clamp_length_max(100.)
