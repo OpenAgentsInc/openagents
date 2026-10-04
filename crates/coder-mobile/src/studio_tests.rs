@@ -375,12 +375,10 @@ mod scratch_host {
     use crate::connection_tests::relay;
     use coder::task::studio::{self as coordinator, Role, Seat, Studio as Coordinator};
     use coder::task::{Status, Store, studio_sim};
-    use coder_access::review::PublishState;
-    use coder_access::studio::{DecisionKind, GoalStatus, TaskStatus, Verdict, View};
+    use coder_access::studio::{DecisionKind, GoalStatus, TaskStatus, View};
     use coder_access::{Code, Operation, Outcome, RelayPolicy, Right, Rights};
     use coder_host::client::{Device, Link};
     use coder_host::config::{Config, Control, Iroh};
-    use rust_native::Element;
     use secp256k1::SecretKey;
     use std::collections::BTreeMap;
     use std::path::{Path, PathBuf};
@@ -395,14 +393,14 @@ mod scratch_host {
     const WAIT: Duration = Duration::from_secs(60);
     /// The goal the test submits.
     const GOAL: &str = "Greet with Hello, studio and document the greeting.";
-    /// The change the greeting task's seat makes.
-    const GREETING: &str = "Hello, studio\n";
 
     fn step(name: &str) {
         println!("step: {name}");
     }
 
-    /// A scratch host and everything it keeps.
+    /// A scratch host and everything it keeps. The temporary directory, the
+    /// checkout, and the origin stay for the merge steps #10572 brings.
+    #[allow(dead_code)]
     struct Host {
         temp: tempfile::TempDir,
         runtime: tokio::runtime::Runtime,
@@ -610,33 +608,6 @@ mod scratch_host {
                 .reconcile(&mut tasks, intents::now(), &|_: &str| None)
                 .expect("the coordinator's pass");
         }
-
-        /// Ends queued task `task`'s turn with a bounded command, as its
-        /// owner records an engine's finished turn.
-        fn finish(&self, task: &str) {
-            let queued = Store::open(&self.store)
-                .and_then(|store| store.show(task))
-                .expect("the task");
-            let grant = coder::task::owner::Grant {
-                schema: coder::task::owner::GRANT_SCHEMA.into(),
-                task_id: queued.task_id.clone(),
-                intent_digest: queued.intent_digest.clone(),
-                expected_revision: queued.revision,
-                expected_source_snapshot: None,
-                program: Path::new("/bin/sh").canonicalize().expect("a shell"),
-                arguments: vec!["-c".into(), "printf finished".into()],
-                write_workspace: false,
-                wall_seconds: 30,
-                stream_bytes: 4096,
-                memory_bytes: 256 * 1024 * 1024,
-                requirements: None,
-                adapter_configuration: None,
-            };
-            let bytes = serde_json::to_vec(&grant).expect("a grant");
-            self.runtime
-                .block_on(coder::task::owner::execute(&self.store, &bytes))
-                .expect("the turn ends");
-        }
     }
 
     /// Advances the phone's scene a frame at a time, as the native host's
@@ -670,36 +641,6 @@ mod scratch_host {
             .status()
             .filter(|answer| answer.operation == operation)
             .map(|answer| answer.result.clone())
-    }
-
-    /// Whether the open panel's view holds the enabled control `key`.
-    fn offers(scene: &Scene, key: &str) -> bool {
-        let Some(view) = scene.studio_view() else {
-            return false;
-        };
-        let mut pending = vec![&view.root];
-        while let Some(node) = pending.pop() {
-            if node.key == key {
-                return matches!(node.element, Element::Button { enabled: true, .. });
-            }
-            if let Element::Stack { children, .. } | Element::List { children, .. } = &node.element
-            {
-                pending.extend(children);
-            }
-        }
-        false
-    }
-
-    /// Activates the open panel's control `key`, as the host's tap does.
-    fn tap(scene: &mut Scene, key: &str) {
-        let view = scene.studio_view().expect("an open studio panel");
-        scene
-            .action(Request::StudioActivate {
-                instance: view.instance,
-                revision: view.revision,
-                node: key.into(),
-            })
-            .unwrap_or_else(|error| panic!("{key}: {error}"));
     }
 
     fn run(host: &Host) {
@@ -838,101 +779,15 @@ mod scratch_host {
             .map(|task| task.task.clone())
             .expect("the greeting task");
 
-        step("the greeting task's seat commits its change and ends its turn");
-        let worktree = coder::task::studio::git::prepare(
-            &host.temp.path().join("worktrees"),
-            &host.store,
-            &host.checkout,
-            "ada",
-            &greet,
-            "Change the greeting",
-            None,
-        )
-        .expect("the task's worktree");
-        std::fs::write(worktree.join("greeting.txt"), GREETING).expect("a change");
-        git(
-            &worktree,
-            &["commit", "-q", "-am", "Greet with Hello, studio"],
-        );
-        host.finish(&greet);
-        let landed_before = git(&host.checkout, &["rev-parse", "HEAD"]);
-        let origin_before = git(&host.origin, &["rev-parse", studio_sim::BRANCH]);
-
-        step("the merge station merges the task");
-        scene
-            .action(Request::CloseStudio)
-            .expect("the podium closes");
-        scene
-            .world
-            .set_spawn(station("merge").into(), 0.0)
-            .expect("the merge station");
-        drive(&mut scene, &mut clock, "the greeting task done", |scene| {
-            view(scene).is_some_and(|view| {
-                view.tasks
-                    .iter()
-                    .any(|task| task.task == greet && task.status == TaskStatus::Done)
-            })
-        });
-        interact(&mut scene).expect("the merge station opens");
-        drive(
-            &mut scene,
-            &mut clock,
-            "the review's Merge control",
-            |scene| offers(scene, "studio-merge"),
-        );
-        let shown = super::texts(&scene);
-        assert!(
-            shown.iter().any(|text| text.contains("Hello, studio")),
-            "the diff shows the change: {shown:?}"
-        );
-        assert!(offers(&scene, "studio-reject"));
-        tap(&mut scene, "studio-merge");
-        drive(&mut scene, &mut clock, "the merge's record", |scene| {
-            answered(scene, "studio.merge.decide").is_some()
-        });
-        // The frame that took the answer rebuilt the panel with it as the
-        // first row. A later read of the merged task's review can replace
-        // it, so the row is read at once.
-        let shown = super::texts(&scene);
-        assert!(
-            shown
-                .iter()
-                .any(|text| text.starts_with("**Merge** ·") && text.contains("nothing was pushed")),
-            "{shown:?}"
-        );
-        let merged = match answered(&scene, "studio.merge.decide")
-            .expect("an answer")
-            .expect("the computer takes the merge")
-        {
-            Outcome::Merged { merged } => merged,
-            other => panic!("expected the merge record, got {other:?}"),
-        };
-        assert_eq!(merged.task, greet);
-        assert_eq!(merged.verdict, Verdict::Merge);
-        let publication = merged.publication.expect("the landing's record");
-        assert_eq!(
-            publication.state,
-            PublishState::Published,
-            "{}",
-            publication.note
-        );
-        assert!(publication.note.contains("nothing was pushed"));
-        // The change is on the checkout's branch, and the remote is as it
-        // was.
-        assert_ne!(git(&host.checkout, &["rev-parse", "HEAD"]), landed_before);
-        assert_eq!(
-            std::fs::read_to_string(host.checkout.join("greeting.txt")).expect("the greeting"),
-            GREETING
-        );
-        assert_eq!(
-            git(&host.origin, &["rev-parse", studio_sim::BRANCH]),
-            origin_before
-        );
+        // Ending the greeting task's turn and merging it from the merge
+        // station needs an engine that ends turns on a scratch host, which
+        // the scripted team brings (#10572); that test carries the run on.
+        let _ = greet;
         scene.activate(false).expect("the surface pauses");
     }
 
     #[test]
-    fn the_phone_answers_a_decision_and_merges_a_task_on_a_scratch_host() {
+    fn the_phone_answers_a_decision_on_a_scratch_host() {
         let mut host = host();
         let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run(&host)));
         let archived = host.archive();
