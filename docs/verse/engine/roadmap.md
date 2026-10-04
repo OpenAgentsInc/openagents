@@ -303,6 +303,8 @@ The [inventory window profile](../../../bench/verse/2026-10-03/inventory-window/
 
 [#10554](https://github.com/OpenAgentsInc/openagents/issues/10554) adds NPC giver quests with explicit per-character enrollment. Current lives/control, living actors, four-meter range, and collision sight checks gate acceptance and first turn-in; durable baselines exclude earlier objective progress. Version-seven saves replay acceptance before claims, and wire version sixteen supplies the native Accept/Claim flow. The [enrollment receipt](../../../bench/verse/2026-10-04/quest-enrollment/run.json) retains TLS storage-failure/restart checks and synthetic GPU panel states. Exact retries preserve original receipts under current control. Quest abandonment/repeatability, friendly NPC behavior and dialogue, progression combat scaling, prediction/reconciliation, and full VE-5 acceptance remain.
 
+[#10555](https://github.com/OpenAgentsInc/openagents/issues/10555) fixes remote quest interaction updates at an unchanged reward revision. Only giver life and interaction availability bypass quest ledger equality; counter/claim mutations remain refused. Shared giver metadata must agree, and generation checks retain unavailable lives and observe newer snapshots. The [giver view receipt](../../../bench/verse/2026-10-04/giver-view/run.json) records real TLS movement and View admission at revision zero. Friendly giver scene integration, markers/dialogue, and full roadmap acceptance remain.
+
 ## Reuse inventory
 
 Review baseline: OpenAgents `843c92dd7e`. The entries below were checked against

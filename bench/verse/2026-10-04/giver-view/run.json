@@ -1,0 +1,32 @@
+{
+  "schema": "verse.giver-view.receipt.v1",
+  "issue": 10555,
+  "base_commit": "d3f312e7e5cd9a28335ac862c3207d96e700e83c",
+  "wire_version": 16,
+  "checks": {
+    "remote_view": 12,
+    "formatting": "passed",
+    "diff_whitespace": "passed"
+  },
+  "reproduction": "TLS movement changed giver interaction at revision zero and the old View refused the update",
+  "fixture": "tls.json",
+  "source_sha256": {
+    "crates/verse-world/src/service/view.rs": "25820604bb3ad72ea77a02ac9cfe812bc8f1e8a02de16ae1a79cfdc3e17c5232"
+  },
+  "assets": {
+    "tls.json": "b51c94e059907755c57036577763f5d5400ccda7507c92f33b9a691dce844016"
+  },
+  "covered": [
+    "Real admitted Misty Step changes proximity without a reward transaction",
+    "Only giver life and interaction state vary under an unchanged ledger revision",
+    "Quest counters, acceptance, claims and authored rewards retain unchanged-revision admission",
+    "Repeated giver references require consistent life and interaction metadata",
+    "Giver generations retain high-water marks across unavailability and snapshot updates",
+    "Refused updates preserve prior inventory and generation fences"
+  ],
+  "limits": [
+    "Scratch TLS authority and read-only View evidence; no native window or OS interaction capture",
+    "Polling can retain interaction status until the next inventory update; all mutations still pass host admission",
+    "Friendly NPC scene, quest markers, dialogue and the full Verse roadmap remain incomplete"
+  ]
+}

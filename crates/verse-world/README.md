@@ -381,6 +381,12 @@ an available giver and **Claim** for a completed accepted quest; outside range i
 asks the player to return. The network worker refreshes inventory after actions.
 Quest enrollment is permanent for the first campaign; abandonment, repeatability,
 dialogue authoring, and friendly NPC behavior remain.
+Remote view admission allows giver life and interaction availability to change
+without a reward transaction. Other quest fields remain bound to the ledger
+revision. Giver generation checks survive unavailable intervals and observe
+newer replicated lives; conflicting giver metadata or stale generations refuse
+the whole update. The [giver view receipt](../../bench/verse/2026-10-04/giver-view/run.json)
+retains a TLS movement check at unchanged ledger revision zero.
 The [enrollment receipt](../../bench/verse/2026-10-04/quest-enrollment/run.json)
 retains TLS storage-failure/restart evidence and synthetic GPU panel captures.
 

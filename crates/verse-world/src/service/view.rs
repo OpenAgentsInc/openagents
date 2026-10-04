@@ -39,6 +39,27 @@ pub struct SceneSample {
     pub presentation: super::presentation::Presentation,
     pub combat: crate::visuals::Combat,
 }
+fn same_quest_rewards(
+    current: &[super::progression::Progress],
+    previous: &[super::progression::Progress],
+) -> bool {
+    current.len() == previous.len()
+        && current.iter().zip(previous).all(|(current, previous)| {
+            // Only giver life and interaction availability belong to the world tick.
+            let mut compared = current.clone();
+            compared.giver_life = previous.giver_life;
+            compared.interactable = previous.interactable;
+            compared == *previous
+        })
+}
+fn snapshot_generation(state: Option<&super::wire::State>, actor: u64) -> Option<u64> {
+    state
+        .into_iter()
+        .flat_map(|s| s.presentation.actors.iter().chain(&s.presentation.corpses))
+        .filter(|p| p.life.actor == actor)
+        .map(|p| p.life.generation)
+        .max()
+}
 /// Owns presentation history only. Initialize progress from the worker's cursor.
 pub struct View {
     instance: u64,
@@ -51,6 +72,7 @@ pub struct View {
     handoff: Option<f32>,
     gap: Option<Gap>,
     inventory: Option<(u64, super::wire::Inventory)>,
+    giver_generations: std::collections::BTreeMap<u64, u64>,
 }
 impl View {
     pub fn new(instance: u64, displacement: f32, after: u64) -> Result<Self, String> {
@@ -65,6 +87,7 @@ impl View {
             handoff: None,
             gap: None,
             inventory: None,
+            giver_generations: Default::default(),
         })
     }
     fn targetable(&self, life: verse_engine::core::LifeId) -> bool {
@@ -160,7 +183,7 @@ impl View {
                         || inventory.items != previous.items
                         || inventory.quests != previous.quests
                         || inventory.level != previous.level
-                        || inventory.quest_log != previous.quest_log
+                        || !same_quest_rewards(&inventory.quest_log, &previous.quest_log)
                         || inventory.catalog != previous.catalog
                         || inventory.outfits != previous.outfits
                         || inventory.outfit != previous.outfit
@@ -170,6 +193,37 @@ impl View {
                 return Err("Remote inventory revision or counters regressed".into());
             }
         }
+        let mut generations = self.giver_generations.clone();
+        let mut givers = std::collections::BTreeMap::new();
+        for quest in &inventory.quest_log {
+            if let Some(actor) = quest.giver {
+                let state = (quest.giver_life, quest.interactable);
+                if givers
+                    .insert(actor, state)
+                    .is_some_and(|previous| previous != state)
+                {
+                    return Err("Remote quests disagree on the current giver state".into());
+                }
+            }
+        }
+        for (_, (life, _)) in givers {
+            if let Some(life) = life {
+                let known = generations
+                    .get(&life.actor)
+                    .copied()
+                    .into_iter()
+                    .chain(snapshot_generation(self.replica.latest(), life.actor))
+                    .max();
+                if known.is_some_and(|generation| life.generation < generation) {
+                    return Err("Remote quest giver generation regressed".into());
+                }
+                generations.insert(life.actor, life.generation);
+            }
+        }
+        if generations.len() > 64 {
+            return Err("Remote quest giver generation budget exceeded".into());
+        }
+        self.giver_generations = generations;
         self.inventory = Some((response.tick, inventory.clone()));
         Ok(())
     }
@@ -225,6 +279,11 @@ impl View {
             _ => false,
         };
         self.replica.push(response)?;
+        for (actor, generation) in &mut self.giver_generations {
+            if let Some(observed) = snapshot_generation(self.replica.latest(), *actor) {
+                *generation = (*generation).max(observed);
+            }
+        }
         if self.target.is_some_and(|life| !self.targetable(life)) {
             self.target = None;
         }
@@ -409,6 +468,298 @@ impl View {
 mod tests {
     use super::*;
     use crate::service::{replica::tests::response, wire::State};
+    #[cfg(feature = "service-net")]
+    #[tokio::test]
+    async fn tls_movement_updates_giver_availability_at_unchanged_reward_revision() {
+        use crate::service::{
+            client::Client,
+            net,
+            net::tests::{gateway_at, key, tls},
+            progression::{Config, Quest},
+            wire::Body,
+        };
+        use rustls::pki_types::ServerName;
+        use tokio::{net::TcpListener, sync::oneshot};
+        let keys = [key(121), key(122), key(123)];
+        let g = gateway_at(&keys, Some(Vec3::new(-1., 0., -22.)))
+            .with_progression(Config {
+                version: 1,
+                levels: vec![0],
+                quests: vec![Quest {
+                    giver: Some(2),
+                    prerequisites: vec![],
+                    id: 1,
+                    name: "Disrupt the ritual".into(),
+                    objective: 1,
+                    goal: 2,
+                    experience: 75,
+                    items: vec![],
+                }],
+            })
+            .unwrap();
+        let start = g
+            .game()
+            .actor_position(g.game().player_life().actor)
+            .unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let (tls, connector) = tls();
+        let (stop, stopping) = oneshot::channel();
+        let server = tokio::spawn(net::serve(listener, tls, g, async {
+            let _ = stopping.await;
+        }));
+        let mut client = Client::connect(
+            address,
+            ServerName::try_from("localhost").unwrap(),
+            connector.config().clone(),
+            120,
+            &keys[0],
+        )
+        .await
+        .unwrap();
+        let mut view = View::new(120, 12., 0).unwrap();
+        let snapshot = client.request(Body::Snapshot {}).await.unwrap();
+        view.push_snapshot(&snapshot).unwrap();
+        let before = client.request(Body::Inventory {}).await.unwrap();
+        view.push_inventory(&before).unwrap();
+        assert!(view.inventory().unwrap().quest_log[0].interactable);
+        let revision = view.inventory().unwrap().revision;
+        let outcome = client
+            .command(crate::Intent::Cast {
+                ability: crate::play::Ability::MistyStep,
+                target: None,
+                aim: [0., 0., 1.],
+            })
+            .await
+            .unwrap();
+        assert!(
+            matches!(outcome.body, Reply::Accepted),
+            "{:?}",
+            outcome.body
+        );
+        let snapshot = client.request(Body::Snapshot {}).await.unwrap();
+        view.push_snapshot(&snapshot).unwrap();
+        let after = client.request(Body::Inventory {}).await.unwrap();
+        let Reply::Inventory { inventory } = &after.body else {
+            panic!("Expected inventory")
+        };
+        assert_eq!(inventory.revision, revision);
+        assert!(!inventory.quest_log[0].interactable);
+        view.push_inventory(&after).unwrap();
+        assert!(!view.inventory().unwrap().quest_log[0].interactable);
+        let end = view
+            .replica()
+            .latest()
+            .unwrap()
+            .presentation
+            .actors
+            .iter()
+            .find(|p| p.life.actor == inventory.life.actor)
+            .unwrap()
+            .actor
+            .position;
+        assert!(start.distance(end) > 4.);
+        stop.send(()).unwrap();
+        let exit = server.await.unwrap();
+        assert!(exit.failure.is_none());
+        println!(
+            "VERSE_GIVER_VIEW {}",
+            serde_json::json!({"schema":"verse.giver-view.fixture.v1",
+            "before":before,"after":after,"start":start.to_array(),"end":end.to_array(),
+            "same_ledger_revision":revision,"typed_movement":"Misty Step","view_admitted":true})
+        );
+    }
+    #[test]
+    fn quest_world_updates_keep_ledger_fields_and_generation_fences_atomic() {
+        use super::super::{
+            progression::{Level, Progress},
+            wire::{Control, Inventory, Life},
+        };
+        let life = Life {
+            instance: 130,
+            actor: 14,
+            generation: 0,
+        };
+        let mut snapshot = response(1);
+        snapshot.control = Some(Control {
+            life,
+            epoch: 1,
+            accepted_sequence: 0,
+        });
+        super::super::replica::tests::attach_hud(&mut snapshot);
+        let mut view = View::new(130, 10., 0).unwrap();
+        view.push_snapshot(&snapshot).unwrap();
+        let giver = verse_engine::core::LifeId {
+            instance: 130,
+            actor: 2,
+            generation: 0,
+        };
+        let data = Inventory {
+            life,
+            revision: 1,
+            experience: 45,
+            items: vec![],
+            quests: vec![],
+            level: Level {
+                level: 1,
+                start: 0,
+                next: None,
+            },
+            quest_log: vec![Progress {
+                accepted: true,
+                giver: Some(2),
+                giver_life: Some(giver),
+                interactable: false,
+                available: true,
+                id: 1,
+                name: "Disrupt the ritual".into(),
+                progress: 1,
+                goal: 2,
+                claimed: false,
+                experience: 75,
+                items: vec![],
+            }],
+            catalog: Default::default(),
+            outfits: Default::default(),
+            outfit: 0,
+            equipment: Default::default(),
+            equipped: Default::default(),
+        };
+        let mut reply = snapshot.clone();
+        reply.request_id = 2;
+        reply.body = Reply::Inventory { inventory: data };
+        view.push_inventory(&reply).unwrap();
+        reply.tick = 2;
+        let Reply::Inventory { inventory } = &mut reply.body else {
+            unreachable!()
+        };
+        inventory.quest_log[0].interactable = true;
+        view.push_inventory(&reply).unwrap();
+        assert!(view.inventory().unwrap().quest_log[0].interactable);
+        for case in 0..10 {
+            let mut bad = reply.clone();
+            bad.tick = 3;
+            let Reply::Inventory { inventory } = &mut bad.body else {
+                unreachable!()
+            };
+            let quest = &mut inventory.quest_log[0];
+            quest.giver_life = Some(verse_engine::core::LifeId {
+                generation: 7,
+                ..giver
+            });
+            match case {
+                0 => quest.name = "Altered definition".into(),
+                1 => quest.progress = 2,
+                2 => {
+                    quest.accepted = false;
+                    quest.progress = 0;
+                }
+                3 => quest.available = false,
+                4 => {
+                    quest.claimed = true;
+                    quest.progress = 2;
+                }
+                5 => quest.experience += 1,
+                6 => quest.items = vec![super::super::rewards::Entry { id: 1, count: 1 }],
+                7 => {
+                    quest.giver = Some(3);
+                    quest.giver_life.as_mut().unwrap().actor = 3;
+                }
+                8 => quest.id = 2,
+                _ => quest.goal = 3,
+            }
+            assert!(view.push_inventory(&bad).is_err(), "case {case}");
+            let Reply::Inventory { inventory } = &reply.body else {
+                unreachable!()
+            };
+            assert_eq!(view.inventory(), Some(inventory));
+        }
+        for change_life in [true, false] {
+            let mut mixed = reply.clone();
+            mixed.tick = 3;
+            let Reply::Inventory { inventory } = &mut mixed.body else {
+                unreachable!()
+            };
+            inventory.revision = 2;
+            let mut second = inventory.quest_log[0].clone();
+            second.id = 2;
+            if change_life {
+                second.giver_life.as_mut().unwrap().generation = 7;
+            } else {
+                second.interactable = false;
+            }
+            inventory.quest_log.push(second);
+            assert!(view.push_inventory(&mixed).is_err());
+        }
+        reply.tick = 3;
+        let Reply::Inventory { inventory } = &mut reply.body else {
+            unreachable!()
+        };
+        inventory.quest_log[0]
+            .giver_life
+            .as_mut()
+            .unwrap()
+            .generation = 1;
+        view.push_inventory(&reply).unwrap();
+        reply.tick = 4;
+        let Reply::Inventory { inventory } = &mut reply.body else {
+            unreachable!()
+        };
+        inventory.quest_log[0].giver_life = None;
+        inventory.quest_log[0].interactable = false;
+        view.push_inventory(&reply).unwrap();
+        let retained = view.inventory().unwrap().clone();
+        let mut stale = reply.clone();
+        stale.tick = 5;
+        let Reply::Inventory { inventory } = &mut stale.body else {
+            unreachable!()
+        };
+        inventory.quest_log[0].giver_life = Some(giver);
+        assert!(view.push_inventory(&stale).is_err());
+        assert_eq!(view.inventory(), Some(&retained));
+        let Reply::Inventory { inventory } = &mut stale.body else {
+            unreachable!()
+        };
+        inventory.quest_log[0].giver_life = Some(verse_engine::core::LifeId {
+            generation: 1,
+            ..giver
+        });
+        view.push_inventory(&stale).unwrap();
+        let mut next_snapshot = response(2);
+        next_snapshot.control = snapshot.control;
+        super::super::replica::tests::attach_hud(&mut next_snapshot);
+        let mut value = serde_json::to_value(&next_snapshot).unwrap();
+        fn advance_giver(value: &mut serde_json::Value) {
+            if let Some(object) = value.as_object_mut() {
+                if object.get("actor").and_then(|v| v.as_u64()) == Some(2)
+                    && object.contains_key("generation")
+                {
+                    object.insert("generation".into(), 2.into());
+                }
+                for value in object.values_mut() {
+                    advance_giver(value);
+                }
+            } else if let Some(array) = value.as_array_mut() {
+                for value in array {
+                    advance_giver(value);
+                }
+            }
+        }
+        advance_giver(&mut value);
+        view.push_snapshot(&serde_json::from_value(value).unwrap())
+            .unwrap();
+        stale.tick = 6;
+        assert!(view.push_inventory(&stale).is_err());
+        let Reply::Inventory { inventory } = &mut stale.body else {
+            unreachable!()
+        };
+        inventory.quest_log[0]
+            .giver_life
+            .as_mut()
+            .unwrap()
+            .generation = 2;
+        view.push_inventory(&stale).unwrap();
+    }
     #[test]
     fn inventory_admission_is_atomic_and_future_lives_wait_for_their_snapshot() {
         use super::super::{
