@@ -53,6 +53,7 @@ host={'listen':address,'instance':220,'scene':scene,'pack':pack,'certificate_der
 env=dict(os.environ)
 (root/'home').mkdir()
 env['HOME']=str(root/'home')
+(root/'workload.json').write_text(json.dumps({'players':args.players,'hostile_npcs':40,'cultist_health':20000,'native_clients':1,'headless_clients':args.players-1,'seconds':args.seconds,'compiled_revision':args.compiled_revision,'fixture_revision':subprocess.check_output(['git','rev-parse','HEAD'],cwd=repo,text=True).strip(),'limits':['NPC health is raised in the authored load scene to sustain spell and AI work.','Headless player connections do not establish rendering performance on their machines.','Native player and load generator share one host machine.']}))
 logs=[];processes=[]
 try:
     log=open(root/'host.log','w');logs.append(log)
@@ -97,7 +98,6 @@ try:
     proxy.terminate();proxy.wait(timeout=10)
     hostp.terminate();hostp.wait(timeout=10)
     print('Host exit '+str(hostp.returncode),flush=True)
-    (root/'workload.json').write_text(json.dumps({'players':args.players,'hostile_npcs':40,'cultist_health':20000,'native_clients':1,'headless_clients':args.players-1,'seconds':args.seconds,'compiled_revision':args.compiled_revision,'fixture_revision':subprocess.check_output(['git','rev-parse','HEAD'],cwd=repo,text=True).strip(),'limits':['NPC health is raised in the authored load scene to sustain spell and AI work.','Headless player connections do not establish rendering performance on their machines.','Native player and load generator share one host machine.']}))
     (root/'exits.json').write_text(json.dumps({'clients':codes,'host':hostp.returncode,'proxy':proxy.returncode}))
     if any(codes.values()) or hostp.returncode:raise RuntimeError('Acceptance process failed')
 finally:
