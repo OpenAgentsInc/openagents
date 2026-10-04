@@ -15,7 +15,9 @@
 //! has focus, the window gives it every key and keeps them from the
 //! character controller; a press outside the panel returns focus to the
 //! world. The panel owns no task, network, or authority: its intents only
-//! change what it shows.
+//! change what it shows, except an action button ([`Panel::set_actions`])
+//! and the composer's Enter ([`Panel::set_composer`]), which go to the
+//! panel's owner to carry out.
 
 use openagents_chat_app::{changes, visual};
 use rust_native::layout::display::{Font, FontFamily, Weight};
@@ -61,6 +63,11 @@ pub enum Tab {
 pub enum Intent {
     Show(Tab),
     Close,
+    /// The action at this index of [`Panel::set_actions`]: its owner
+    /// carries it out.
+    Action(usize),
+    /// Enter in the composer: its owner takes the draft.
+    Submit,
 }
 
 /// A key the window hands a focused panel. Every other key is still
@@ -75,8 +82,16 @@ pub enum Key {
     PageDown,
     Home,
     End,
+    /// A typed character, for the composer.
+    Char(char),
+    Backspace,
+    Enter,
     Other,
 }
+
+/// The longest draft the composer holds, in bytes: the longest text a
+/// studio intent carries.
+pub const MAX_DRAFT: usize = 16 * 1024;
 
 /// A rectangle in points, origin at the window's top-left.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -120,6 +135,7 @@ struct Painted {
     revision: u64,
     transcript: u64,
     diff_scroll: u32,
+    selected: Option<usize>,
     hover: Option<String>,
     pressed: Option<String>,
 }
@@ -147,6 +163,15 @@ pub struct Panel {
     image: Option<(Painted, OverlayImage)>,
     /// Counts paints, so each painted image has its own revision.
     paints: u64,
+    /// Labels of the action buttons under the tabs, and whether each
+    /// takes presses.
+    actions: Vec<(String, bool)>,
+    /// The composer's placeholder, while the panel has one.
+    composer: Option<String>,
+    /// What the person typed in the composer.
+    draft: String,
+    /// The diff line the person picked, by index in the diff document.
+    selected: Option<usize>,
 }
 
 impl Panel {
@@ -178,9 +203,62 @@ impl Panel {
             hover: None,
             image: None,
             paints: 0,
+            actions: Vec::new(),
+            composer: None,
+            draft: String::new(),
+            selected: None,
         };
         panel.rebuild();
         panel
+    }
+
+    /// Shows a button under the tabs for each of `actions`, a label and
+    /// whether it takes presses. Pressing the one at index `i` resolves to
+    /// [`Intent::Action`]`(i)`.
+    pub fn set_actions(&mut self, actions: Vec<(String, bool)>) {
+        if self.actions != actions {
+            self.actions = actions;
+            self.rebuild();
+        }
+    }
+
+    /// Gives the panel a composer showing `placeholder` while empty, or
+    /// takes it away. Typed characters go to its draft while the panel has
+    /// focus, and Enter resolves to [`Intent::Submit`].
+    pub fn set_composer(&mut self, placeholder: Option<&str>) {
+        if self.composer.as_deref() != placeholder {
+            self.composer = placeholder.map(str::to_owned);
+            if self.composer.is_none() {
+                self.draft.clear();
+            }
+            self.rebuild();
+        }
+    }
+
+    /// What the person typed in the composer.
+    #[must_use]
+    pub fn draft(&self) -> &str {
+        &self.draft
+    }
+
+    /// Takes the composer's draft, leaving it empty.
+    pub fn take_draft(&mut self) -> String {
+        let draft = std::mem::take(&mut self.draft);
+        self.rebuild();
+        draft
+    }
+
+    /// The diff line the person picked in the changes tab, by its index in
+    /// [`Panel::diff_document`].
+    #[must_use]
+    pub fn selected_line(&self) -> Option<usize> {
+        self.selected
+    }
+
+    /// The diff the changes tab shows, parsed.
+    #[must_use]
+    pub fn diff_document(&self) -> Option<&changes::Document> {
+        self.diff.as_ref()
     }
 
     /// The tab the body shows.
@@ -237,6 +315,7 @@ impl Panel {
         self.diff_text = Some(diff.to_owned());
         self.diff = Some(changes::parse(diff)).filter(|doc| !doc.is_empty());
         self.diff_scroll = 0.0;
+        self.selected = None;
         self.rebuild();
     }
 
@@ -257,6 +336,8 @@ impl Panel {
                 true
             }
             Intent::Close => false,
+            // The panel's owner carries these out.
+            Intent::Action(_) | Intent::Submit => true,
         }
     }
 
@@ -274,11 +355,25 @@ impl Panel {
         self.pressed = self.hit(local);
         if self.pressed.is_none()
             && let Some((x, y)) = self.in_body(local)
-            && self.tab == Tab::Transcript
         {
-            let _ = self
-                .transcript
-                .pointer(SurfaceInput::Down { x, y, shift: false }, &mut self.fonts);
+            match self.tab {
+                Tab::Transcript => {
+                    let _ = self
+                        .transcript
+                        .pointer(SurfaceInput::Down { x, y, shift: false }, &mut self.fonts);
+                }
+                Tab::Changes => {
+                    // Picks the diff line under the press, for a comment.
+                    let index = ((y + self.diff_scroll) / DIFF_LINE).floor();
+                    let lines = self.diff.as_ref().map_or(0, |doc| doc.lines().len());
+                    let picked =
+                        (index >= 0.0 && (index as usize) < lines).then_some(index as usize);
+                    if picked != self.selected {
+                        self.selected = picked;
+                        self.rebuild();
+                    }
+                }
+            }
         }
         true
     }
@@ -339,9 +434,32 @@ impl Panel {
     }
 
     /// A key pressed while the panel has focus. Escape returns focus to the
-    /// world, Tab switches tabs, and the arrows and page keys scroll.
+    /// world, Tab switches tabs, and the arrows and page keys scroll. With
+    /// a composer, characters and Backspace edit its draft, and Enter
+    /// submits a draft that is not blank.
     pub fn key(&mut self, key: Key) -> Option<Intent> {
         let page = (self.body().h - DIFF_LINE).max(DIFF_LINE);
+        if self.composer.is_some() {
+            match key {
+                Key::Char(ch) => {
+                    if !ch.is_control() && self.draft.len() + ch.len_utf8() <= MAX_DRAFT {
+                        self.draft.push(ch);
+                        self.rebuild();
+                    }
+                    return None;
+                }
+                Key::Backspace => {
+                    if self.draft.pop().is_some() {
+                        self.rebuild();
+                    }
+                    return None;
+                }
+                Key::Enter => {
+                    return (!self.draft.trim().is_empty()).then_some(Intent::Submit);
+                }
+                _ => {}
+            }
+        }
         match key {
             Key::Escape => self.set_focus(false),
             Key::Tab => {
@@ -356,7 +474,7 @@ impl Panel {
             Key::PageDown => self.scroll(-page),
             Key::Home => self.scroll(f32::MAX / 4.0),
             Key::End => self.scroll(-f32::MAX / 4.0),
-            Key::Other => {}
+            Key::Char(_) | Key::Backspace | Key::Enter | Key::Other => {}
         }
         None
     }
@@ -386,6 +504,7 @@ impl Panel {
             revision: self.revision,
             transcript: self.transcript.version(),
             diff_scroll: self.diff_scroll.to_bits(),
+            selected: self.selected,
             hover: self.hover.clone(),
             pressed: self.pressed.clone(),
         };
@@ -482,6 +601,12 @@ impl Panel {
                 changes::Kind::Remove => (Some(Color::rgb(58, 32, 36)), Color::rgb(191, 120, 120)),
                 changes::Kind::File | changes::Kind::Context => (None, visual::TEXT),
                 changes::Kind::Hunk | changes::Kind::Meta => (None, visual::MUTED),
+            };
+            // The line picked for a comment.
+            let gutter = if self.selected == Some(first + index) {
+                Some(Color::rgb(44, 52, 72))
+            } else {
+                gutter
             };
             if let Some(gutter) = gutter {
                 frame.fill(
@@ -632,39 +757,75 @@ impl Panel {
                 n => format!("{n} entries"),
             },
         };
-        let hint = if self.focused {
-            "Esc returns to the world · Tab switches"
-        } else {
-            "Click the panel to read it"
+        let hint = match (self.focused, self.composer.is_some()) {
+            (true, true) => "Type, then Enter sends · Esc returns to the world · Tab switches",
+            (true, false) => "Esc returns to the world · Tab switches",
+            (false, true) => "Click the panel to read it or type",
+            (false, false) => "Click the panel to read it",
         };
-        let mut header = stack(
-            "panel",
-            Axis::Vertical,
-            vec![
-                text("panel-title", &self.title, TextRole::Heading),
-                text("panel-summary", &summary, TextRole::Status),
-                stack(
-                    "panel-tabs",
-                    Axis::Horizontal,
-                    vec![
-                        tab(
-                            "panel-transcript",
-                            "Transcript",
-                            Tab::Transcript,
-                            self.tab == Tab::Transcript,
-                        ),
-                        tab(
-                            "panel-changes",
-                            "What changed",
-                            Tab::Changes,
-                            self.tab == Tab::Changes,
-                        ),
-                        button("panel-close", "Close", Intent::Close),
-                    ],
-                ),
-                text("panel-hint", hint, TextRole::Status),
-            ],
-        );
+        let mut children = vec![
+            text("panel-title", &self.title, TextRole::Heading),
+            text("panel-summary", &summary, TextRole::Status),
+            stack(
+                "panel-tabs",
+                Axis::Horizontal,
+                vec![
+                    tab(
+                        "panel-transcript",
+                        "Transcript",
+                        Tab::Transcript,
+                        self.tab == Tab::Transcript,
+                    ),
+                    tab(
+                        "panel-changes",
+                        "What changed",
+                        Tab::Changes,
+                        self.tab == Tab::Changes,
+                    ),
+                    button("panel-close", "Close", Intent::Close),
+                ],
+            ),
+        ];
+        // The actions, three to a row so a row fits the panel.
+        let buttons: Vec<Node<Intent>> = self
+            .actions
+            .iter()
+            .enumerate()
+            .map(|(index, (label, enabled))| {
+                let mut node = button(
+                    &format!("panel-action-{index}"),
+                    label,
+                    Intent::Action(index),
+                );
+                if let Element::Button { enabled: on, .. } = &mut node.element {
+                    *on = *enabled;
+                }
+                node
+            })
+            .collect();
+        for (row, chunk) in buttons.chunks(3).enumerate() {
+            children.push(stack(
+                &format!("panel-actions-{row}"),
+                Axis::Horizontal,
+                chunk.to_vec(),
+            ));
+        }
+        if let Some(placeholder) = &self.composer {
+            let (value, color) = if self.draft.is_empty() {
+                (placeholder.clone(), visual::MUTED)
+            } else {
+                // The draft's end, so a long draft keeps the header short.
+                let skip = self.draft.chars().count().saturating_sub(240);
+                let end: String = self.draft.chars().skip(skip).collect();
+                let more = if skip > 0 { "…" } else { "" };
+                (format!("› {more}{end}"), visual::TEXT)
+            };
+            let mut composer = text("panel-composer", &value, TextRole::Body);
+            composer.style.foreground = Some(color);
+            children.push(composer);
+        }
+        children.push(text("panel-hint", hint, TextRole::Status));
+        let mut header = stack("panel", Axis::Vertical, children);
         header.style.padding_top = Some(Space::Sm);
         self.view = View::new(INSTANCE, self.revision, header)
             .validate()
@@ -949,6 +1110,50 @@ mod tests {
         assert!(!panel.focused());
         assert!(!panel.wheel([10.0, 10.0], 1.0));
         assert!(panel.wheel(inside, 1.0));
+    }
+
+    #[test]
+    fn the_composer_takes_typed_text_and_its_owner_takes_the_actions() {
+        let mut panel = sample();
+        panel.set_composer(Some("Type a goal"));
+        panel.set_actions(vec![("Pause".into(), true), ("Stop".into(), true)]);
+        let _ = panel.image(WINDOW, 1.0).unwrap();
+        assert_eq!(panel.key(Key::Enter), None, "a blank draft sends nothing");
+        for ch in "Ship it".chars() {
+            assert!(panel.key(Key::Char(ch)).is_none());
+        }
+        assert!(panel.key(Key::Backspace).is_none());
+        assert_eq!(panel.draft(), "Ship i");
+        assert_eq!(panel.key(Key::Enter), Some(Intent::Submit));
+        assert!(panel.apply(Intent::Submit), "the panel stays open");
+        assert_eq!(panel.take_draft(), "Ship i");
+        assert!(panel.draft().is_empty());
+        let _ = panel.image(WINDOW, 1.0).unwrap();
+        let stop = at(&panel, "panel-action-1");
+        assert!(panel.press(stop));
+        assert_eq!(panel.release(stop), Some(Intent::Action(1)));
+        // Without a composer, typing does nothing.
+        panel.set_composer(None);
+        assert!(panel.key(Key::Char('x')).is_none());
+        assert!(panel.draft().is_empty());
+    }
+
+    #[test]
+    fn a_press_on_the_diff_picks_a_line() {
+        let mut panel = sample();
+        panel.apply(Intent::Show(Tab::Changes));
+        let _ = panel.image(WINDOW, 1.0).unwrap();
+        let bounds = panel.bounds();
+        let body = panel.body();
+        // The middle of the diff's third line.
+        let at = [
+            bounds.x + body.x + 20.0,
+            bounds.y + body.y + DIFF_LINE * 2.5,
+        ];
+        assert!(panel.press(at));
+        let _ = panel.release(at);
+        assert_eq!(panel.selected_line(), Some(2));
+        assert!(panel.diff_document().is_some());
     }
 
     #[test]

@@ -926,6 +926,18 @@ impl WorldRuntime {
         self.zone_state.studio.review(task)
     }
 
+    /// Sends a studio intent through the studio's source, while in
+    /// Everglade ([`Studio::send`]).
+    ///
+    /// # Errors
+    /// The studio's refusal before anything is sent.
+    pub fn studio_send(
+        &mut self,
+        operation: coder_access::Operation,
+    ) -> Result<u64, coder_access::Error> {
+        self.zone_state.studio.send(operation)
+    }
+
     /// The panel the interact key opens where the player stands, in
     /// Everglade.
     #[must_use]

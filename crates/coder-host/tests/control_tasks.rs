@@ -76,6 +76,21 @@ impl Tasks for Recorder {
             None,
         ))
     }
+    fn studio(&self) -> Result<coder_host::access::studio::View, Code> {
+        Ok(coder_host::access::studio::View::default())
+    }
+    fn studio_intent(
+        &self,
+        _: &str,
+        _: &Principal,
+        op: &Operation,
+        _: Standing<'_>,
+    ) -> Result<String, Code> {
+        match op {
+            Operation::PauseSeat { seat } => Ok(seat.clone()),
+            _ => Err(Code::Unsupported),
+        }
+    }
 }
 
 struct Fixture {
@@ -306,5 +321,39 @@ async fn only_task_operations_are_taken() {
     let host = host.restart().await;
     let (code, _) = refused(task(&host.socket, request('2'), Operation::ListDevices {}).await);
     assert_eq!(code, "forbidden");
+    host.running.shutdown().await;
+}
+
+/// Everglade's Agent Studio reaches the studio through the socket: its
+/// reads leave no request record, and an intent dispatches.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn the_studio_is_taken_from_the_socket_and_its_reads_leave_no_record() {
+    let host = keyed().await;
+    host.source.delete(KeyName::Owner).unwrap();
+    let host = host.restart().await;
+    // Reads are never retained, so the same identity reads again.
+    for byte in ['5', '6', '5'] {
+        match task(&host.socket, request(byte), Operation::StudioSnapshot {}).await {
+            Reply::Task {
+                outcome: Outcome::Studio { snapshot },
+            } => assert!(snapshot.view.is_empty()),
+            other => panic!("expected a studio snapshot, got {other:?}"),
+        }
+    }
+    assert!(!host.temp.path().join("host/local-task-calls").exists());
+    for _ in 0..2 {
+        let pause = Operation::PauseSeat {
+            seat: "builder".into(),
+        };
+        match task(&host.socket, request('7'), pause).await {
+            Reply::Task {
+                outcome: Outcome::Dispatched { receipt },
+            } => {
+                assert_eq!(receipt.operation, "studio.seat.pause");
+                assert_eq!(receipt.reference, "builder");
+            }
+            other => panic!("expected a dispatched intent, got {other:?}"),
+        }
+    }
     host.running.shutdown().await;
 }

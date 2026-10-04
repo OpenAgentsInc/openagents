@@ -56,6 +56,9 @@ pub struct Options {
     /// Play Agent Studio's simulated team in Everglade, in a scratch
     /// repository under the system's temporary directory.
     pub studio_sim: bool,
+    /// The control socket of the host whose Agent Studio Everglade shows,
+    /// in place of this computer's own host (`openagents_connect::control::socket_path`).
+    pub studio_socket: Option<std::path::PathBuf>,
 }
 
 impl Default for Options {
@@ -69,6 +72,7 @@ impl Default for Options {
             replay: None,
             gym_connection: None,
             studio_sim: false,
+            studio_socket: None,
         }
     }
 }
@@ -510,9 +514,10 @@ struct App {
     gym_notice: Option<String>,
     /// The Rust Native panel over the world, while it is open (C).
     panel: Option<crate::panels::Panel>,
-    /// The Agent Studio panel the panel shows, and the studio revision it
-    /// was filled from; `None` while it shows the replay's transcript.
-    studio_panel: Option<(StudioPanel, u64)>,
+    /// The Agent Studio panel the panel shows, its controls, and the
+    /// studio revision it was filled from; `None` while it shows the
+    /// replay's transcript.
+    studio_panel: Option<crate::panels::studio::Controller>,
     /// What a tap in progress in Everglade selects, while `zone_press`
     /// tracks it.
     studio_target: Option<StudioPanel>,
@@ -668,6 +673,19 @@ impl App {
             runtime.set_studio_source(Box::new(
                 crate::zones::everglade::studio::fixture::Background::new(2.0),
             ));
+        } else if let Some(path) = options
+            .studio_socket
+            .clone()
+            .or_else(openagents_connect::control::socket_path)
+            // A test never reaches the person's own host.
+            .filter(|_| !cfg!(test) || options.studio_socket.is_some())
+        {
+            // The host on this computer, the one the desktop app pairs,
+            // through its control socket. Nothing connects until the player
+            // enters Everglade.
+            runtime.set_studio_source(Box::new(
+                crate::zones::everglade::studio::live::Live::control(path),
+            ));
         }
         let zone_operators = zone_operators_for(session.as_ref());
         Ok(Self {
@@ -762,11 +780,95 @@ impl App {
     fn open_studio_panel(&mut self, kind: StudioPanel) {
         let review = self.studio_review(&kind);
         let studio = self.runtime.studio();
-        let revision = studio.revision();
-        let panel = crate::panels::studio::open(&kind, studio.view(), review.as_ref());
+        let mut panel =
+            crate::panels::Panel::new(&crate::panels::studio::title(&kind, studio.view()));
+        let mut controller = crate::panels::studio::Controller::new(kind.clone());
+        controller.fill(
+            &mut panel,
+            studio.revision(),
+            studio.view(),
+            review.as_ref(),
+            &studio.rights(),
+            studio.status(),
+        );
+        if kind == StudioPanel::Review && review.is_some() {
+            panel.apply(crate::panels::Intent::Show(crate::panels::Tab::Changes));
+        }
         self.panel = Some(panel);
-        self.studio_panel = Some((kind, revision));
+        self.studio_panel = Some(controller);
         self.panel_press = false;
+    }
+
+    /// Fills the open studio panel from the studio now.
+    fn fill_studio_panel(&mut self) {
+        let Some(kind) = self.studio_panel.as_ref().map(|c| c.kind().clone()) else {
+            return;
+        };
+        let review = self.studio_review(&kind);
+        let studio = self.runtime.studio();
+        if let (Some(controller), Some(panel)) = (&mut self.studio_panel, &mut self.panel) {
+            controller.fill(
+                panel,
+                studio.revision(),
+                studio.view(),
+                review.as_ref(),
+                &studio.rights(),
+                studio.status(),
+            );
+        }
+    }
+
+    /// Carries out an intent a studio panel's control resolved: sends its
+    /// studio intent, or opens another panel, then fills the panel again.
+    fn studio_panel_intent(&mut self, intent: crate::panels::Intent) {
+        let Some(kind) = self.studio_panel.as_ref().map(|c| c.kind().clone()) else {
+            return;
+        };
+        let review = self.studio_review(&kind);
+        let effects = match (&mut self.studio_panel, &mut self.panel) {
+            (Some(controller), Some(panel)) => {
+                controller.intent(intent, panel, self.runtime.studio().view(), review.as_ref())
+            }
+            _ => return,
+        };
+        for effect in effects {
+            match effect {
+                crate::panels::studio::Effect::Send(action) => {
+                    let operation =
+                        action.operation(crate::zones::everglade::studio::intents::now());
+                    if let Err(error) = self.runtime.studio_send(operation)
+                        && let Some(controller) = &mut self.studio_panel
+                    {
+                        controller.say(format!(
+                            "Not sent (`{}`): {}",
+                            crate::panels::studio::code_word(error.code),
+                            error.message
+                        ));
+                    }
+                }
+                crate::panels::studio::Effect::Open(kind) => {
+                    self.open_studio_panel(kind);
+                    return;
+                }
+            }
+        }
+        self.fill_studio_panel();
+    }
+
+    /// Runs `intent`, which the open panel resolved: a studio control's
+    /// goes to its controller, and any other to the panel, which closes on
+    /// **Close**.
+    fn panel_intent(&mut self, intent: crate::panels::Intent) {
+        use crate::panels::Intent;
+        if matches!(intent, Intent::Action(_) | Intent::Submit) {
+            self.studio_panel_intent(intent);
+            return;
+        }
+        if let Some(panel) = &mut self.panel
+            && !panel.apply(intent)
+        {
+            self.panel = None;
+        }
     }
 
     /// The review the merge station shows: the newest done task whose
@@ -798,23 +900,18 @@ impl App {
             self.studio_panel = None;
             return;
         }
-        let Some((kind, shown)) = self.studio_panel.clone() else {
+        let Some(kind) = self.studio_panel.as_ref().map(|c| c.kind().clone()) else {
             return;
         };
         let revision = self.runtime.studio().revision();
-        if revision == shown {
-            return;
-        }
         let review = self.studio_review(&kind);
-        if let Some(panel) = &mut self.panel {
-            crate::panels::studio::fill(
-                panel,
-                &kind,
-                self.runtime.studio().view(),
-                review.as_ref(),
-            );
+        if self
+            .studio_panel
+            .as_ref()
+            .is_some_and(|controller| controller.stale(revision, review.as_ref()))
+        {
+            self.fill_studio_panel();
         }
-        self.studio_panel = Some((kind, revision));
     }
 
     /// The studio target under the cursor in Everglade, when nothing else
@@ -845,7 +942,8 @@ impl App {
     /// Hands a key to the panel while it has focus. Every key is consumed
     /// then, so none reaches the character controller. Returns false when
     /// the world should handle the key.
-    fn panel_key(&mut self, code: KeyCode, pressed: bool) -> bool {
+    /// `text` is what the key typed, for a panel's composer.
+    fn panel_key(&mut self, code: KeyCode, pressed: bool, text: Option<&str>) -> bool {
         use crate::panels::Key;
         let Some(panel) = self.panel.as_mut().filter(|p| p.focused()) else {
             return false;
@@ -853,21 +951,25 @@ impl App {
         if !pressed {
             return true;
         }
-        let key = match code {
-            KeyCode::Escape => Key::Escape,
-            KeyCode::Tab => Key::Tab,
-            KeyCode::ArrowUp => Key::Up,
-            KeyCode::ArrowDown => Key::Down,
-            KeyCode::PageUp => Key::PageUp,
-            KeyCode::PageDown => Key::PageDown,
-            KeyCode::Home => Key::Home,
-            KeyCode::End => Key::End,
-            _ => Key::Other,
+        let keys = match code {
+            KeyCode::Escape => vec![Key::Escape],
+            KeyCode::Tab => vec![Key::Tab],
+            KeyCode::ArrowUp => vec![Key::Up],
+            KeyCode::ArrowDown => vec![Key::Down],
+            KeyCode::PageUp => vec![Key::PageUp],
+            KeyCode::PageDown => vec![Key::PageDown],
+            KeyCode::Home => vec![Key::Home],
+            KeyCode::End => vec![Key::End],
+            KeyCode::Enter | KeyCode::NumpadEnter => vec![Key::Enter],
+            KeyCode::Backspace => vec![Key::Backspace],
+            _ => match text.filter(|text| !text.chars().any(char::is_control)) {
+                Some(text) if !text.is_empty() => text.chars().map(Key::Char).collect(),
+                _ => vec![Key::Other],
+            },
         };
-        if let Some(intent) = panel.key(key)
-            && !panel.apply(intent)
-        {
-            self.panel = None;
+        let intents: Vec<_> = keys.into_iter().filter_map(|key| panel.key(key)).collect();
+        for intent in intents {
+            self.panel_intent(intent);
         }
         true
     }
@@ -892,10 +994,8 @@ impl App {
         if !std::mem::take(&mut self.panel_press) {
             return false;
         }
-        if let Some(intent) = panel.release(at)
-            && !panel.apply(intent)
-        {
-            self.panel = None;
+        if let Some(intent) = panel.release(at) {
+            self.panel_intent(intent);
         }
         true
     }
@@ -2777,7 +2877,11 @@ impl ApplicationHandler for App {
             }
             WindowEvent::KeyboardInput { event, .. } => {
                 if let PhysicalKey::Code(code) = event.physical_key
-                    && self.panel_key(code, event.state == ElementState::Pressed)
+                    && self.panel_key(
+                        code,
+                        event.state == ElementState::Pressed,
+                        event.text.as_deref(),
+                    )
                 {
                     return;
                 }
@@ -2988,7 +3092,7 @@ mod tests {
         let _ = panel.image([1280, 800], 1.0).unwrap();
         let bounds = panel.bounds();
         // Unfocused, keys still move the character.
-        assert!(!app.panel_key(KeyCode::KeyW, true));
+        assert!(!app.panel_key(KeyCode::KeyW, true, None));
         // A press inside focuses the panel and stops the character.
         app.keys.w = true;
         app.cursor = [bounds.x + bounds.w / 2.0, bounds.y + bounds.h / 2.0];
@@ -2996,15 +3100,15 @@ mod tests {
         assert!(app.panel_button(false));
         assert!(!app.keys.w && !app.keys.input().forward);
         for code in [KeyCode::KeyW, KeyCode::KeyA, KeyCode::Space, KeyCode::KeyT] {
-            assert!(app.panel_key(code, true));
-            assert!(app.panel_key(code, false));
+            assert!(app.panel_key(code, true, None));
+            assert!(app.panel_key(code, false, None));
         }
         assert!(!app.keys.input().forward && !app.keys.input().left);
         assert!(!app.chat.open);
         // Escape gives focus back; the world handles keys again.
-        assert!(app.panel_key(KeyCode::Escape, true));
+        assert!(app.panel_key(KeyCode::Escape, true, None));
         assert!(app.panel.as_ref().is_some_and(|p| !p.focused()));
-        assert!(!app.panel_key(KeyCode::KeyW, true));
+        assert!(!app.panel_key(KeyCode::KeyW, true, None));
         // A press outside the panel is the world's.
         app.cursor = [4.0, 4.0];
         assert!(!app.panel_button(true));

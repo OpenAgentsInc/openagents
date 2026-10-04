@@ -20,6 +20,11 @@
 //! entry it records the scripted team against a scratch repository under the
 //! system's temporary directory, with no model or network. Inside, `F` at a
 //! station, or a click on a seat, a monitor, or a station, opens its panel.
+//! Without it, Everglade shows the live studio of the host on this computer,
+//! through the control socket the desktop app uses; `--studio-socket <path>`
+//! names another host's socket, such as a scratch host's. The panels send
+//! the studio's intents: goals and messages from the console, answers from
+//! the podium, and merge decisions from the merge station.
 //!
 //! `verse --seed-rooms <relay-key-file>` creates the NIP-29 chat rooms as
 //! the relay; `scripts/verse-relay.sh` runs it.
@@ -158,6 +163,7 @@ fn parse(mut args: impl Iterator<Item = String>) -> Result<(Option<Shot>, Option
             "--replay" => options.replay = Some(value()?),
             "--gym-connection" => options.gym_connection = Some(value()?.into()),
             "--studio-sim" => options.studio_sim = true,
+            "--studio-socket" => options.studio_socket = Some(value()?.into()),
             "--at" => {
                 let v = value()?;
                 at = Some(

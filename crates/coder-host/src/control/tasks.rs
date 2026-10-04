@@ -457,16 +457,7 @@ fn task(
         .local_tasks
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
-    if !matches!(
-        operation,
-        Operation::CreateTask { .. }
-            | Operation::SteerTask { .. }
-            | Operation::CancelTask { .. }
-            | Operation::ArchiveTask { .. }
-            | Operation::CommandTask { .. }
-            | Operation::QueueTask { .. }
-            | Operation::ListWorkspaces {}
-    ) {
+    if !operation.local_task() {
         return Err(coder_access::Error::new(
             Code::Forbidden,
             "the task broker admits task operations only",
@@ -479,7 +470,11 @@ fn task(
         // account's own, so its request carries the owner's authority.
         None => {
             operation.validate()?;
-            local_identity(shared, &request, &operation)?;
+            // A read changes nothing and is never retained, so a view
+            // that polls the studio leaves no request record behind.
+            if !operation.reads_only() {
+                local_identity(shared, &request, &operation)?;
+            }
             shared
                 .authority
                 .local(|host, now| host.handle_local_owner(&request, &operation, now, dispatcher))?
@@ -571,6 +566,14 @@ fn signed(
     let now = coder_access::unix_time()?;
     operation.validate()?;
     let prepared = client.prepare_with_id(operation.clone(), now, request.clone())?;
+    if operation.reads_only() {
+        // A read is never retained: an exact retry reads again, so it
+        // needs no record to replay.
+        let reply = shared
+            .authority
+            .handle(&prepared.event, relay, dispatcher)?;
+        return client.verify_reply(&prepared, &reply, coder_access::unix_time()?);
+    }
     let root = control_root(shared)?.join("task-calls");
     let cache = openagents_chat::cache::Cache::open(&root, &shared.secret)
         .map_err(|_| unavailable("the host's task request record could not be opened"))?;

@@ -80,8 +80,9 @@ pub enum Op {
         chat: String,
         task: coder_access::protocol::TaskCreate,
     },
-    /// Same-user broker for a typed NIP-HOST task operation. The host signs;
-    /// the caller supplies a stable 64-character hexadecimal identity.
+    /// Same-user broker for a typed NIP-HOST task or Agent Studio operation
+    /// (`Operation::local_task`). The host signs; the caller supplies a
+    /// stable 64-character hexadecimal identity.
     Task {
         request: String,
         operation: coder_access::protocol::Operation,

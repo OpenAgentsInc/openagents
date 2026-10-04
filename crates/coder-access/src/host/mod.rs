@@ -813,8 +813,9 @@ impl Host {
         Ok(reply)
     }
 
-    /// Run one task operation for this host's owner, asked over the host's
-    /// same-user control socket rather than signed with the owner key.
+    /// Run one task or Agent Studio operation ([`Operation::local_task`])
+    /// for this host's owner, asked over the host's same-user control
+    /// socket rather than signed with the owner key.
     ///
     /// The control socket is reachable only by the account the host runs
     /// as, which already holds the host's store and can make any key its
@@ -836,16 +837,7 @@ impl Host {
         now: u64,
         dispatch: &mut dyn Dispatch,
     ) -> Result<std::result::Result<Outcome, Error>> {
-        if !matches!(
-            op,
-            Operation::CreateTask { .. }
-                | Operation::SteerTask { .. }
-                | Operation::CancelTask { .. }
-                | Operation::ArchiveTask { .. }
-                | Operation::CommandTask { .. }
-                | Operation::QueueTask { .. }
-                | Operation::ListWorkspaces {}
-        ) {
+        if !op.local_task() {
             return fail(Code::Forbidden, "only task operations are taken locally");
         }
         identity(request).map_err(Error::from)?;

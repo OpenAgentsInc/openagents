@@ -826,6 +826,28 @@ impl Operation {
                 | Self::AnswerDecision { .. }
         )
     }
+    /// An operation the host's same-user control socket takes for its
+    /// owner: the task operations, and the Agent Studio's reads, intents,
+    /// reviews, and merge decisions, so a view on the host's own computer
+    /// reaches the studio without a device grant.
+    #[must_use]
+    pub fn local_task(&self) -> bool {
+        matches!(
+            self,
+            Self::CreateTask { .. }
+                | Self::SteerTask { .. }
+                | Self::CancelTask { .. }
+                | Self::ArchiveTask { .. }
+                | Self::CommandTask { .. }
+                | Self::QueueTask { .. }
+                | Self::ListWorkspaces {}
+                | Self::StudioSnapshot {}
+                | Self::StudioUpdate { .. }
+                | Self::OpenReview { .. }
+                | Self::DecideMerge { .. }
+        ) || self.studio_intent()
+    }
+
     /// Whether the host retains this operation's reply for an exact retry.
     /// A read is not retained, and neither is an image chunk: a chunk is
     /// idempotent where the host keeps it, and an image's many chunks would

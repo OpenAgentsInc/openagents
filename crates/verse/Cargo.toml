@@ -8,7 +8,7 @@ publish.workspace = true
 
 [features]
 default = ["desktop"]
-desktop = ["dep:winit", "model-host", "xp-host", "replay-host", "capture", "panels"]
+desktop = ["dep:winit", "model-host", "xp-host", "replay-host", "capture", "panels", "studio-host"]
 model-host = ["dep:coder", "dep:coder-delegate"]
 xp-host = ["dep:xp-ledger"]
 replay-host = ["dep:gym", "dep:knowledge"]
@@ -16,6 +16,8 @@ capture = []
 # Rust Native panels (the chat transcript and the diff pane) painted by
 # `rust-native-desktop` and composited over the world.
 panels = ["dep:rust-native-desktop", "dep:openagents-chat-app"]
+# The Agent Studio from a live host, over its same-user control socket.
+studio-host = ["dep:openagents-connect"]
 imported-desktop = ["dep:winit", "capture", "native-audio"]
 native-audio = ["dep:cpal"]
 
@@ -38,6 +40,8 @@ rust-native-desktop = { path = "../rust-native-desktop", default-features = fals
 # The chat palette, transcript metrics, and unified diff document the
 # desktop app's panels use.
 openagents-chat-app = { path = "../openagents-chat-app", optional = true }
+# The control protocol the studio reaches a host on this computer with.
+openagents-connect = { path = "../openagents-connect", optional = true }
 physics = { path = "../physics" }
 verse-lagrange = { path = "../verse-lagrange" }
 verse-wow = { path = "../verse-wow" }
@@ -75,6 +79,9 @@ winit = { version = "0.30.13", default-features = false, features = ["rwh_06", "
 
 [dev-dependencies]
 tempfile = "3"
+# A scratch host the live studio source is tested against.
+coder-host = { path = "../coder-host" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time", "io-util"] }
 # The GLES test translates every shader with the naga release wgpu uses.
 naga = { version = "29.0.4", features = ["wgsl-in", "glsl-out", "msl-out"] }
 
@@ -101,6 +108,10 @@ required-features = ["xp-host"]
 [[test]]
 name = "xp_relay"
 required-features = ["xp-host"]
+
+[[test]]
+name = "studio_host"
+required-features = ["model-host", "studio-host", "panels"]
 
 [[example]]
 name = "ruins_capture"

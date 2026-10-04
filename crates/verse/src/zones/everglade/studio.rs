@@ -3,8 +3,12 @@
 //!
 //! The host's studio coordinator is the source of truth, and this module is
 //! a view of it. A [`Source`] hands the view NIP-HOST studio snapshots
-//! (`coder_access::studio`); the view never sends state back. From each
-//! snapshot it draws:
+//! (`coder_access::studio`): `fixture` plays the simulated team, and
+//! `live` reads a host over its same-user control socket. The view never
+//! sends state back; a panel sends intents ([`intents`]) through
+//! [`Studio::send`], each one NIP-HOST operation the host checks against
+//! its right, and the host's answer comes back as [`Studio::status`]. From
+//! each snapshot it draws:
 //!
 //! - Every seat as a walking figure at the station its activity names. The
 //!   host already classified the seat's newest ATIF step with
@@ -38,11 +42,15 @@ use crate::{
 };
 use coder_access::review::TaskReview;
 use coder_access::studio::{self as wire, Activity, Snapshot, View};
+use coder_access::{Code, Error as AccessError, Operation, Outcome, Right};
 use coder_ui::theme::Intensity;
 use glam::{Mat4, Quat, Vec3};
 
 #[cfg(feature = "model-host")]
 pub mod fixture;
+pub mod intents;
+#[cfg(feature = "studio-host")]
+pub mod live;
 #[cfg(test)]
 mod tests;
 
@@ -103,8 +111,44 @@ pub trait Source: Send {
     /// poll, for a source that plays a recording.
     fn poll(&mut self, dt: f32) -> Option<Snapshot>;
     /// The review the source last read of `task` (`studio.review.open`),
-    /// when it holds one.
+    /// when it holds one. A host source asks for one it does not hold, and
+    /// it arrives in a later call.
     fn review(&mut self, task: &str) -> Option<TaskReview>;
+    /// The rights the source's host connection holds. A view offers only
+    /// the intents they allow, and the host checks them again. A fixture
+    /// holds none.
+    fn rights(&self) -> &[Right] {
+        &[]
+    }
+    /// Sends `operation`, a studio intent, to the host off the frame. What
+    /// the host answers comes back from [`Source::answers`] under the
+    /// returned ticket.
+    ///
+    /// # Errors
+    /// `unsupported` from a source that only observes, and `unavailable`
+    /// from one that is not observing now.
+    fn send(&mut self, operation: Operation) -> Result<u64, AccessError> {
+        let _ = operation;
+        Err(AccessError::new(
+            Code::Unsupported,
+            "this studio source only observes",
+        ))
+    }
+    /// What the host answered since the last call, oldest first: each sent
+    /// intent's outcome or refusal, and a refused read.
+    fn answers(&mut self) -> Vec<Answer> {
+        Vec::new()
+    }
+}
+
+/// What the host answered to one operation a view sent or read.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Answer {
+    /// The ticket [`Source::send`] returned, or 0 for a read.
+    pub ticket: u64,
+    /// The operation's NIP-HOST name, such as `studio.merge.decide`.
+    pub operation: &'static str,
+    pub result: Result<Outcome, AccessError>,
 }
 
 /// How much a seat needs the person, most urgent first: the same order as
@@ -388,6 +432,8 @@ pub struct Studio {
     /// Counts changes to what the studio shows, so a panel refreshes only
     /// when it changed.
     revision: u64,
+    /// The host's newest answer to something a panel sent or read.
+    status: Option<Answer>,
 }
 
 impl Default for Studio {
@@ -399,6 +445,7 @@ impl Default for Studio {
             seats: Vec::new(),
             boards: boards::live(None),
             revision: 0,
+            status: None,
         }
     }
 }
@@ -443,20 +490,75 @@ impl Studio {
             self.snapshot = None;
             self.seats.clear();
             self.boards = boards::live(None);
+            self.status = None;
             self.revision += 1;
         }
     }
 
-    /// Polls the source, when active, and takes a changed studio. Seats
-    /// route around `blockers`.
+    /// Polls the source, when active, and takes a changed studio and the
+    /// host's newest answer. Seats route around `blockers`.
     pub fn poll(&mut self, dt: f32, blockers: &[Footprint]) {
         if !self.active {
             return;
         }
-        let Some(snapshot) = self.source.as_mut().and_then(|source| source.poll(dt)) else {
+        let Some(source) = self.source.as_mut() else {
             return;
         };
-        self.apply(snapshot, blockers);
+        let snapshot = source.poll(dt);
+        if let Some(answer) = source.answers().pop() {
+            self.status = Some(answer);
+            self.revision += 1;
+        }
+        if let Some(snapshot) = snapshot {
+            self.apply(snapshot, blockers);
+        }
+    }
+
+    /// The rights the source's host connection holds, while active.
+    #[must_use]
+    pub fn rights(&self) -> Vec<Right> {
+        match &self.source {
+            Some(source) if self.active => source.rights().to_vec(),
+            _ => Vec::new(),
+        }
+    }
+
+    /// Sends `operation`, a studio intent, through the source. The host's
+    /// answer becomes [`Studio::status`] at a later poll.
+    ///
+    /// # Errors
+    /// `unavailable` while the studio is not observing, `missing_right`
+    /// when the source's rights do not hold the operation's right, and
+    /// the source's own refusal.
+    pub fn send(&mut self, operation: Operation) -> Result<u64, AccessError> {
+        let rights = self.rights();
+        let source = match self.source.as_mut() {
+            Some(source) if self.active => source,
+            _ => {
+                return Err(AccessError::new(
+                    Code::Unavailable,
+                    "the studio is not loaded; it loads while you are in Everglade",
+                ));
+            }
+        };
+        if let Some(right) = operation.required()
+            && !rights.contains(&right)
+        {
+            let mut refused = AccessError::new(
+                Code::MissingRight,
+                format!("this connection lacks the `{}` right", right.as_str()),
+            );
+            refused.missing = Some(right);
+            return Err(refused);
+        }
+        source.send(operation)
+    }
+
+    /// The host's newest answer to something a panel sent or read, while
+    /// active.
+    #[must_use]
+    pub fn status(&self) -> Option<&Answer> {
+        self.status.as_ref()
     }
 
     /// Takes `snapshot` as the studio now: seats walk to their stations,

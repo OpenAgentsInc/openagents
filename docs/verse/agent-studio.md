@@ -279,6 +279,12 @@ already uses, not new Verse HUD drawing:
   seat's summary, the lead's review notes, and line comments for **Request
   changes**.
 
+On desktop, Everglade reads the studio of the host on the same computer
+through the control socket the desktop app uses, only while the player is in
+the glade (`verse::zones::everglade::studio::live`). That socket's peer is the
+host's owner; a panel still offers only the intents the source's rights
+allow, and every studio panel shows the host's last answer or refusal code.
+
 When a decision opens and the client is not in the studio, the phone gets a
 push through the existing [push gateway](../deployment/push-gateway.md) wake
 constants, and the desktop app raises a notification.
