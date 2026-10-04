@@ -88,6 +88,42 @@ fn texture(
     });
     Ok(index)
 }
+fn material_image(
+    pack: &mut Pack,
+    dir: &Path,
+    path: &Path,
+    buffers: &[gltf::buffer::Data],
+    cache: &mut BTreeMap<usize, usize>,
+    source: gltf::image::Image<'_>,
+) -> Result<usize, String> {
+    if let Some(index) = cache.get(&source.index()) {
+        return Ok(*index);
+    }
+    let bytes = match source.source() {
+        gltf::image::Source::Uri { uri, .. } => {
+            std::fs::read(path.parent().unwrap().join(uri)).map_err(|e| e.to_string())?
+        }
+        gltf::image::Source::View { view, .. } => {
+            buffers[view.buffer().index()].0[view.offset()..view.offset() + view.length()].to_vec()
+        }
+    };
+    let file = format!("universal-source-{:x}.png", Sha256::digest(&bytes));
+    let index = if let Some(i) = pack.textures.iter().position(|t| t.file == file) {
+        i
+    } else {
+        let data = gltf::image::Data::from_source(source.source(), path.parent(), buffers)
+            .map_err(|e| e.to_string())?;
+        texture(pack, dir, &data, file)?
+    };
+    cache.insert(source.index(), index);
+    Ok(index)
+}
+fn material_uv(set: u32) -> Result<(), String> {
+    if set != 0 {
+        return Err("Material requires an unsupported texture coordinate set".into());
+    }
+    Ok(())
+}
 /// Imports skinned triangle meshes using their full rest hierarchy and inverse binds.
 pub fn import(pack: &mut Pack, dir: &Path, path: &Path) -> Result<Model, String> {
     let gltf = gltf::Gltf::open(path).map_err(|e| format!("{}: {e}", path.display()))?;
@@ -237,38 +273,42 @@ pub fn import(pack: &mut Pack, dir: &Path, path: &Path) -> Result<Model, String>
             let normal_basis = vertex_basis.inverse().transpose();
             let material = primitive.material();
             let color = material.pbr_metallic_roughness().base_color_factor();
-            let texture = if let Some(t) = material.pbr_metallic_roughness().base_color_texture() {
-                let source = t.texture().source();
-                if let Some(index) = image_textures.get(&source.index()) {
-                    *index
-                } else {
-                    let bytes = match source.source() {
-                        gltf::image::Source::Uri { uri, .. } => {
-                            std::fs::read(path.parent().unwrap().join(uri))
-                                .map_err(|e| e.to_string())?
-                        }
-                        gltf::image::Source::View { view, .. } => buffers[view.buffer().index()].0
-                            [view.offset()..view.offset() + view.length()]
-                            .to_vec(),
-                    };
-                    let file = format!("universal-source-{:x}.png", Sha256::digest(&bytes));
-                    let index = if let Some(i) = pack.textures.iter().position(|t| t.file == file) {
-                        i
-                    } else {
-                        let data = gltf::image::Data::from_source(
-                            source.source(),
-                            path.parent(),
-                            &buffers,
-                        )
-                        .map_err(|e| e.to_string())?;
-                        texture(pack, dir, &data, file)?
-                    };
-                    image_textures.insert(source.index(), index);
-                    index
-                }
+            let pbr = material.pbr_metallic_roughness();
+            let mut load =
+                |image| material_image(pack, dir, path, &buffers, &mut image_textures, image);
+            let texture = if let Some(t) = pbr.base_color_texture() {
+                material_uv(t.tex_coord())?;
+                load(t.texture().source())?
             } else {
                 0
             };
+            let mut authored = verse_engine::material::Material {
+                roughness: pbr.roughness_factor(),
+                metallic: pbr.metallic_factor(),
+                opacity: color[3],
+                alpha_cutoff: material.alpha_cutoff().unwrap_or(0.5),
+                emissive_factor: material.emissive_factor(),
+                ..Default::default()
+            };
+            if let Some(t) = material.normal_texture() {
+                material_uv(t.tex_coord())?;
+                authored.normal_scale = t.scale();
+                authored.normal_texture = Some(load(t.texture().source())?);
+            }
+            if let Some(t) = pbr.metallic_roughness_texture() {
+                material_uv(t.tex_coord())?;
+                authored.metallic_roughness_texture = Some(load(t.texture().source())?);
+            }
+            if let Some(t) = material.occlusion_texture() {
+                material_uv(t.tex_coord())?;
+                authored.occlusion_strength = t.strength();
+                authored.occlusion_texture = Some(load(t.texture().source())?);
+            }
+            if let Some(t) = material.emissive_texture() {
+                material_uv(t.tex_coord())?;
+                authored.emissive_texture = Some(load(t.texture().source())?);
+            }
+            authored.validate(pack.textures.len())?;
             let vertices = positions
                 .into_iter()
                 .enumerate()
@@ -284,7 +324,7 @@ pub fn import(pack: &mut Pack, dir: &Path, path: &Path) -> Result<Model, String>
                 })
                 .collect();
             model.surfaces.push(Surface {
-                material: Default::default(),
+                material: authored,
                 vertices,
                 indices: reader
                     .read_indices()
@@ -952,6 +992,12 @@ pub fn install(pack: &mut Pack, dir: &Path, root: &Path, appearance: &str) -> Re
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn material_coordinates_are_explicit() {
+        assert!(material_uv(0).is_ok());
+        assert!(material_uv(1).is_err());
+        assert!(material_uv(u32::MAX).is_err());
+    }
     #[test]
     fn standard_outfits_retarget_and_expose_runtime_states() {
         let dir = std::env::temp_dir().join(format!("verse-universal-test-{}", std::process::id()));

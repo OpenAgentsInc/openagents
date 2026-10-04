@@ -331,6 +331,36 @@ mod tests {
                 .is_ok()
         );
         assert!(pack.models["prop/Torch_Metal"].skin.is_none());
+        let torch = &pack.models["prop/Torch_Metal"].surfaces[0];
+        assert!(torch.material.normal_texture.is_some());
+        assert!(torch.material.metallic_roughness_texture.is_some());
+        assert_eq!(torch.material.roughness, 1.0);
+        assert_eq!(torch.material.metallic, 1.0);
+        assert_ne!(torch.texture, torch.material.normal_texture.unwrap());
+        assert_ne!(
+            torch.texture,
+            torch.material.metallic_roughness_texture.unwrap()
+        );
+        assert!(torch.material.validate(pack.textures.len()).is_ok());
+        let model_asset = inventory
+            .assets
+            .iter()
+            .find(|asset| {
+                asset.binding
+                    == verse_engine::inventory::Binding::Model {
+                        key: "prop/Torch_Metal".into(),
+                    }
+            })
+            .unwrap();
+        for slot in torch.texture_slots() {
+            let image = inventory
+                .assets
+                .iter()
+                .find(|asset| asset.binding == verse_engine::inventory::Binding::Texture { slot })
+                .unwrap();
+            assert!(model_asset.dependencies.contains(&image.id));
+        }
+
         let mut game = super::super::play::Game::new(
             verse_engine::director::Scene::from_json(include_bytes!(
                 "../../../../assets/verse/original/ritual.json"
