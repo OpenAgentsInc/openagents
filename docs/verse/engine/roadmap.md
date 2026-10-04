@@ -154,7 +154,9 @@ life; admitted movement updates body poses for subsequent actors. Navigation
 plans retain static geometry while controllers resolve living obstructions.
 Death replaces the live capsule with corpse collision, and loading rebuilds
 live colliders from owned bodies. Defeat cancels pending player casts.
-The `verse-chamber-owned-v11` profile uses one world clock to consume movement,
+The adventurer now has 200 HP. After defeat, **Respawn** returns human control at the authored spawn with full health and mana, a new player life, and a new command epoch. NPC health and cultist respawn deadlines survive. Native [death](../../../bench/verse/2026-10-03/player-dead.png), [respawn](../../../bench/verse/2026-10-03/player-respawned.png), and [receipt](../../../bench/verse/2026-10-03/player-respawn.json) artifacts record the transition.
+
+The `verse-chamber-owned-v12` profile uses one world clock to consume movement,
 combat, and timer time. Combat elapsed time derives from the 120 Hz step count;
 scene time uses a retained origin. Fractional frames retain pending input until
 a step is available, and checkpoints reject divergent clocks. The retained

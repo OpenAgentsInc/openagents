@@ -336,7 +336,7 @@ mod tests {
                 .hp,
             91
         );
-        assert_eq!(s.snapshot().player.hp, 100);
+        assert_eq!(s.snapshot().player.hp, 200);
         assert!(
             (s.snapshot()
                 .actors
@@ -428,7 +428,7 @@ mod shield_tests {
         assert_eq!(controls.absorb(12, 1.0), 12);
         assert_eq!(controls.absorb(12, 2.0), 6);
         simulation.chamber_player_damage(6).unwrap();
-        assert_eq!(simulation.snapshot().player.hp, 94);
+        assert_eq!(simulation.snapshot().player.hp, 194);
         assert!(
             controls
                 .cast(

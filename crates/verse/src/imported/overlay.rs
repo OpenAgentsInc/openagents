@@ -319,6 +319,15 @@ pub fn chrome_at(x: f32, y: f32, width: f32, height: f32) -> bool {
     (x >= left && x <= left + 430.0 * s && (height - 60.0 * s..height - 8.0 * s).contains(&y))
         || (y <= 104.0 * s && (x <= 213.0 * s || (250.0 * s..482.0 * s).contains(&x)))
 }
+fn respawn_rect(width: f32, height: f32) -> [f32; 4] {
+    let s = height / 768.;
+    [width * 0.5 - 90. * s, height * 0.43, 180. * s, 40. * s]
+}
+/// Shares the visible death button's bounds with pointer admission.
+pub fn respawn_at(x: f32, y: f32, width: f32, height: f32) -> bool {
+    let [left, top, w, h] = respawn_rect(width, height);
+    x >= left && x < left + w && y >= top && y < top + h
+}
 fn health_color(fraction: f32) -> [f32; 4] {
     let f = fraction.clamp(0.0, 1.0);
     [(2.0 * (1.0 - f)).min(1.0), (2.0 * f).min(1.0), 0.0, 1.0]
@@ -657,6 +666,27 @@ pub fn action_bar(
             );
         }
     }
+    if snapshot.player.hp == 0 {
+        let [x, y, w, h] = respawn_rect(width, height);
+        ui.rect(
+            atlas,
+            x - 2.,
+            y - 2.,
+            w + 4.,
+            h + 4.,
+            [0.65, 0.48, 0.19, 1.],
+        );
+        ui.rect(atlas, x, y, w, h, [0.34, 0.035, 0.025, 0.98]);
+        ui.rect(atlas, x + 2., y + 2., w - 4., 2., [0.7, 0.19, 0.12, 1.]);
+        outlined(
+            ui,
+            atlas,
+            width * 0.5 - atlas.measure("Respawn") * 0.5,
+            y + (h - 18.0) * 0.5,
+            "Respawn",
+            [1., 0.82, 0.3, 1.],
+        );
+    }
     if let Some(cast) = &game.casting {
         let progress = ((game.time - cast.started) / (cast.ends - cast.started)).clamp(0.0, 1.0);
         ui.rect(
@@ -764,5 +794,20 @@ mod action_tests {
             None
         );
         assert_eq!(action_at(left, 600.0, 1280.0, 720.0), None);
+    }
+}
+
+#[cfg(test)]
+mod respawn_tests {
+    use super::*;
+    #[test]
+    fn respawn_hit_bounds_scale_with_the_visible_button() {
+        for (w, h) in [(1280., 720.), (1920., 1080.), (800., 600.)] {
+            let [x, y, width, height] = respawn_rect(w, h);
+            assert!(respawn_at(x + width * 0.5, y + height * 0.5, w, h));
+            assert!(!respawn_at(x - 1., y, w, h));
+            assert!(!respawn_at(x + width, y, w, h));
+            assert!(!respawn_at(x, y + height, w, h));
+        }
     }
 }

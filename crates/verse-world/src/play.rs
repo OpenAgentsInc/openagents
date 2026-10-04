@@ -298,7 +298,7 @@ impl Game {
             encounter.validate(self)?;
         }
         let bytes = serde_json::to_vec(&serde_json::json!({
-            "version": 1, "rules_revision": "verse-chamber-owned-v11", "world": self,
+            "version": 1, "rules_revision": "verse-chamber-owned-v12", "world": self,
         }))
         .map_err(|e| e.to_string())?;
         if bytes.len() > 2 * 1024 * 1024 {
@@ -318,7 +318,7 @@ impl Game {
             return Err("World checkpoint budget exceeded".into());
         }
         let saved: Saved = serde_json::from_slice(bytes).map_err(|e| e.to_string())?;
-        if saved.version != 1 || saved.rules_revision != "verse-chamber-owned-v11" {
+        if saved.version != 1 || saved.rules_revision != "verse-chamber-owned-v12" {
             return Err("Unsupported world checkpoint".into());
         }
         let mut world = saved.world;
@@ -1866,6 +1866,75 @@ impl Game {
         }
         Ok(frame)
     }
+    /// Revives the adventurer at an authored spawn without resetting the encounter.
+    pub fn respawn_player(&mut self) -> Result<(), String> {
+        if self.snapshot().player.hp != 0 {
+            return Err("The adventurer is still alive".into());
+        }
+        let authored = self
+            .scene
+            .actors
+            .iter()
+            .find(|a| a.model == "adventurer")
+            .ok_or("Missing adventurer spawn")?;
+        let spawn = authored.position;
+        let yaw = authored.yaw;
+        let mut character = physics::character::Character::new(spawn.as_dvec3());
+        character.teleport(
+            &self.query_scene,
+            self.actor_filter(self.player_life()),
+            physics::character::Settings::default(),
+            spawn.as_dvec3(),
+        )?;
+        let old = self.player_life();
+        let physical = physics::queries::Life {
+            instance: old.instance,
+            entity: old.actor,
+            generation: old.generation,
+        };
+        let mut admission = self.admission.clone();
+        admission
+            .respawn()
+            .map_err(|e| format!("Respawn refused: {e:?}"))?;
+        admission
+            .handoff(crate::Controller(1))
+            .map_err(|e| format!("Respawn handoff refused: {e:?}"))?;
+        let mut blockers = self.blockers.clone();
+        if blockers.remove(physical)? && self.navigation.is_some() {
+            self.replace_blockers(blockers)?;
+        }
+        self.simulation.respawn_player(spawn.to_array(), yaw)?;
+        self.bodies.remove(physical);
+        self.admission = admission;
+        self.agent_controlled = false;
+        self.player = spawn;
+        self.previous_player = spawn;
+        self.player_trajectory.clear();
+        self.character = character;
+        self.yaw = yaw;
+        self.camera = Default::default();
+        self.pending_movement = None;
+        self.pending_jump = false;
+        self.casting = None;
+        self.last_cast = None;
+        self.bow_ready = self.time;
+        self.controls = Default::default();
+        self.impacts.clear();
+        self.damage_numbers.clear();
+        self.observed_health.insert(0, 200);
+        self.moving = false;
+        self.locomotion = [0.; 2];
+        self.motion_clock = 0.;
+        if let Some(encounter) = &mut self.encounter {
+            encounter.casts.clear();
+            encounter.ended = None;
+            encounter.next_action = self.time;
+        }
+        self.sync_bodies(0.)?;
+        self.message = "The adventurer returns".into();
+        self.event(Some(self.player_life()), crate::events::Kind::Respawn)?;
+        Ok(())
+    }
     /// Fences queued commands when switching between human and agent control.
     pub fn control_handoff(&mut self, agent: bool) -> Result<(), String> {
         self.admission
@@ -2216,8 +2285,8 @@ mod tests {
         assert_eq!(g.damage_numbers.len(), 1);
         assert_eq!(g.damage_numbers[0].amount, 27);
         assert!(g.damage_numbers[0].incoming);
-        assert_eq!(g.hostile_hit(1000).unwrap(), (73, 0));
-        assert_eq!(g.damage_numbers[1].amount, 73);
+        assert_eq!(g.hostile_hit(1000).unwrap(), (173, 0));
+        assert_eq!(g.damage_numbers[1].amount, 173);
         assert_eq!(g.hostile_hit(45).unwrap(), (0, 0));
         assert_eq!(g.damage_numbers.len(), 2);
         for _ in 0..14 {
@@ -2315,7 +2384,7 @@ mod tests {
                 .health,
             hp - 9
         );
-        assert_eq!(g.snapshot().player.hp, 100);
+        assert_eq!(g.snapshot().player.hp, 200);
         g.tick(0.1, [0.0; 2]).unwrap();
         assert!(
             g.frame()
@@ -2691,7 +2760,7 @@ mod checkpoint_tests {
                 _ => None,
             })
             .sum();
-        assert_eq!(incoming, 100);
+        assert_eq!(incoming, 200);
     }
     #[test]
     fn checkpoint_refuses_wrong_revision_and_invalid_health() {
@@ -3196,5 +3265,141 @@ mod prop_body_tests {
             .unwrap()
             .remove("9001");
         assert!(Game::restore(&serde_json::to_vec(&forged).unwrap()).is_err());
+    }
+}
+
+#[cfg(test)]
+mod player_respawn_tests {
+    use super::*;
+    fn game() -> Game {
+        let scene =
+            Scene::from_json(include_bytes!("../../../assets/verse/original/ritual.json")).unwrap();
+        let mut game = Game::combat(scene, false).unwrap();
+        game.time = game.scene.cut_at;
+        game.tick(1. / 30., [0.; 2]).unwrap();
+        game
+    }
+    #[test]
+    fn respawn_preserves_hostiles_and_fences_old_commands_through_repeated_deaths() {
+        let mut g = game();
+        assert_eq!(g.snapshot().player.hp, 200);
+        let before = g.checkpoint().unwrap();
+        assert!(g.respawn_player().is_err());
+        assert_eq!(before, g.checkpoint().unwrap());
+        g.simulation.bow_impact(g.ids[&2], 1000).unwrap();
+        g.simulation.bow_impact(g.ids[&1], 45).unwrap();
+        g.tick(1. / 30., [0.; 2]).unwrap();
+        for _ in 0..2 {
+            let command = g
+                .admission
+                .command(
+                    g.authority_tick,
+                    crate::Intent::Move {
+                        axes: [0., 1.],
+                        yaw: 0.,
+                    },
+                )
+                .unwrap();
+            let old = g.player_life();
+            g.pending_movement = Some([0., 1.]);
+            g.pending_jump = true;
+            g.hostile_hit(10000).unwrap();
+            g.tick(1. / 30., [0.; 2]).unwrap();
+            let npc_health: Vec<_> = g
+                .snapshot()
+                .actors
+                .into_iter()
+                .filter(|a| a.id != 0)
+                .map(|a| (a.id, a.hp))
+                .collect();
+            let deadlines = g.npc_deaths.clone();
+            let lives = g.lives.clone();
+            g.respawn_player().unwrap();
+            assert_eq!(g.player_life(), old.next().unwrap());
+            assert_eq!(g.snapshot().player.hp, 200);
+            assert_eq!(g.snapshot().player.mana, 20);
+            assert!(!g.agent_controlled);
+            assert!(g.pending_movement.is_none() && !g.pending_jump && g.casting.is_none());
+            assert!(g.submit(crate::Controller(1), command).is_err());
+            assert_eq!(g.lives, lives);
+            assert_eq!(g.npc_deaths, deadlines);
+            assert_eq!(
+                g.snapshot()
+                    .actors
+                    .into_iter()
+                    .filter(|a| a.id != 0)
+                    .map(|a| (a.id, a.hp))
+                    .collect::<Vec<_>>(),
+                npc_health
+            );
+            assert!(
+                !g.navigation_blockers()
+                    .colliders()
+                    .unwrap()
+                    .iter()
+                    .any(|c| c.key.life.entity == old.actor)
+            );
+            let physical = physics::queries::Life {
+                instance: old.instance,
+                entity: old.actor,
+                generation: old.generation + 1,
+            };
+            assert_eq!(
+                g.bodies.get(physical).unwrap().phase,
+                physics::lifetimes::Phase::Alive
+            );
+            let mut restored = Game::restore(&g.checkpoint().unwrap()).unwrap();
+            g.activate(Ability::Shield).unwrap();
+            restored.activate(Ability::Shield).unwrap();
+            for _ in 0..30 {
+                g.tick(1. / 30., [0., 1.]).unwrap();
+                restored.tick(1. / 30., [0., 1.]).unwrap();
+                assert_eq!(g.checkpoint().unwrap(), restored.checkpoint().unwrap());
+            }
+        }
+    }
+    #[test]
+    fn obstructed_spawn_is_refused_without_mutation_and_expired_corpses_can_respawn() {
+        let mut g = game();
+        g.hostile_hit(10000).unwrap();
+        g.tick(1. / 30., [0.; 2]).unwrap();
+        let spawn = g
+            .scene
+            .actors
+            .iter()
+            .find(|a| a.model == "adventurer")
+            .unwrap()
+            .position
+            .as_dvec3();
+        let prop = physics::queries::Life {
+            instance: 0,
+            entity: 999,
+            generation: 0,
+        };
+        g.set_navigation_blocker(
+            prop,
+            spawn - glam::DVec3::splat(1.),
+            spawn + glam::DVec3::splat(2.),
+        )
+        .unwrap();
+        let before = g.checkpoint().unwrap();
+        assert!(g.respawn_player().is_err());
+        assert_eq!(before, g.checkpoint().unwrap());
+        g.remove_navigation_blocker(prop).unwrap();
+        for _ in 0..2000 {
+            g.tick(1. / 30., [0.; 2]).unwrap();
+        }
+        assert_eq!(g.snapshot().player.hp, 0);
+        g.respawn_player().unwrap();
+        assert_eq!(g.snapshot().player.hp, 200);
+        Game::restore(&g.checkpoint().unwrap()).unwrap();
+    }
+    #[test]
+    fn restored_health_requires_the_current_player_maximum() {
+        let g = game();
+        let mut saved: serde_json::Value =
+            serde_json::from_slice(&g.checkpoint().unwrap()).unwrap();
+        saved["world"]["simulation"]["player"]["max_hp"] = 100.into();
+        assert!(Game::restore(&serde_json::to_vec(&saved).unwrap()).is_err());
     }
 }

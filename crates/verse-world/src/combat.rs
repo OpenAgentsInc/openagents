@@ -612,20 +612,19 @@ mod tests {
         let scene =
             Scene::from_json(include_bytes!("../../../assets/verse/original/ritual.json")).unwrap();
         let mut game = Game::combat(scene, true).unwrap();
-        let initial_enemy_hp: u32 = game
-            .scene
-            .actors
-            .iter()
-            .filter(|a| a.nameplate)
-            .map(|a| a.health)
-            .sum();
+        let mut health = BTreeMap::new();
+        let mut lost = 0;
         let mut serial = 0;
         let (mut incoming, mut outgoing) = (0, 0);
         for _ in 0..180 {
             game.tick(0.1, [0.0; 2]).unwrap();
         }
-        for _ in 0..1800 {
+        for _ in 0..3600 {
             game.tick(1.0 / 30.0, [0.0; 2]).unwrap();
+            for actor in game.snapshot().actors.iter().filter(|a| a.id != 0) {
+                let previous = health.insert(actor.id, actor.hp).unwrap_or(actor.max_hp);
+                lost += (previous - actor.hp).max(0);
+            }
             for number in game.damage_numbers.iter().filter(|n| n.serial > serial) {
                 if number.incoming {
                     incoming += number.amount;
@@ -649,28 +648,26 @@ mod tests {
                 break;
             }
         }
-        let remaining: u32 = game
-            .frame()
-            .actors
-            .iter()
-            .filter(|a| a.actor.model != "adventurer")
-            .map(|a| a.health)
-            .sum();
-        assert_eq!(incoming, 100 - game.snapshot().player.hp);
-        assert_eq!(outgoing, (initial_enemy_hp - remaining) as i32);
+        assert_eq!(
+            incoming,
+            game.snapshot().player.max_hp - game.snapshot().player.hp
+        );
+        assert_eq!(outgoing, lost);
         let e = game.encounter.as_ref().unwrap();
         assert!(e.ended.is_some());
         assert!(e.used.len() == Ability::ALL.len());
     }
-    fn run() -> Game {
+    fn run() -> (Game, u32) {
         let scene =
             Scene::from_json(include_bytes!("../../../assets/verse/original/ritual.json")).unwrap();
         let mut game = Game::combat(scene, true).unwrap();
         for _ in 0..180 {
             game.tick(0.1, [0.0; 2]).unwrap();
         }
+        let mut peak_kills = 0;
         for _ in 0..6000 {
             game.tick(1.0 / 30.0, [0.0; 2]).unwrap();
+            peak_kills = peak_kills.max(game.encounter.as_ref().unwrap().kills);
             if game.encounter.as_ref().unwrap().ended.is_some() {
                 break;
             }
@@ -678,11 +675,11 @@ mod tests {
         for _ in 0..150 {
             game.tick(1.0 / 30.0, [0.0; 2]).unwrap();
         }
-        game
+        (game, peak_kills)
     }
     #[test]
     fn agent_fights_with_the_full_kit_against_high_health_claude() {
-        let game = run();
+        let (game, peak_kills) = run();
         let e = game.encounter.as_ref().unwrap();
         eprintln!(
             "COMBAT time={} hp={} boss={}/{} kills={} damage={} absorbed={} dodged={} abilities={:?}",
@@ -698,7 +695,7 @@ mod tests {
         );
         assert!(e.enemy_casts > 10);
         assert!(
-            e.kills >= 9,
+            peak_kills >= 9,
             "The controller should nearly clear the cultists before defeat"
         );
         assert!(e.damage > 0 && e.absorbed > 0 && e.dodged > 0);
@@ -742,7 +739,7 @@ mod tests {
             game.tick(1.0 / 30.0, [0.0; 2]).unwrap();
         }
         assert!(game.encounter.as_ref().unwrap().used.is_empty());
-        assert!(game.snapshot().player.hp < 100);
+        assert!(game.snapshot().player.hp < 200);
     }
     #[test]
     fn original_character_variants_fight_after_the_cinematic_handoff() {
@@ -763,7 +760,7 @@ mod tests {
         while game.time < game.scene.cut_at {
             assert!(!game.unlocked());
             game.tick(1.0 / 30.0, [0.0; 2]).unwrap();
-            assert_eq!(game.snapshot().player.hp, 100);
+            assert_eq!(game.snapshot().player.hp, 200);
         }
         assert!(game.unlocked());
         game.activate(Ability::Shield).unwrap();
@@ -811,7 +808,7 @@ mod obstruction_tests {
             boss: false,
         });
         encounter.step(&mut game, 0.1).unwrap();
-        assert_eq!(game.snapshot().player.hp, 100);
+        assert_eq!(game.snapshot().player.hp, 200);
         assert_eq!(encounter.damage, 0);
         assert_eq!(encounter.dodged, 1);
     }
@@ -891,16 +888,16 @@ mod hostile_flight_tests {
         e.postpone_casts_until(100.).unwrap();
         e.casts.push(shot(&g));
         e.step(&mut g, 0.1).unwrap();
-        assert_eq!(g.snapshot().player.hp, 100);
+        assert_eq!(g.snapshot().player.hp, 200);
         for at in [21.1, 21.2, 21.3, 21.4] {
             g.time = at;
             e.step(&mut g, 0.1).unwrap();
         }
-        assert_eq!(g.snapshot().player.hp, 92);
+        assert_eq!(g.snapshot().player.hp, 192);
         assert!(e.casts.is_empty());
         g.time = 21.5;
         e.step(&mut g, 0.1).unwrap();
-        assert_eq!(g.snapshot().player.hp, 92);
+        assert_eq!(g.snapshot().player.hp, 192);
     }
     #[test]
     fn hostile_flight_shield_and_target_life_fences_precede_damage() {
@@ -912,7 +909,7 @@ mod hostile_flight_tests {
         e.casts.push(stale);
         e.step(&mut g, 0.1).unwrap();
         assert!(e.casts.is_empty());
-        assert_eq!(g.snapshot().player.hp, 100);
+        assert_eq!(g.snapshot().player.hp, 200);
         g.activate(Ability::Shield).unwrap();
         e.casts.push(shot(&g));
         e.step(&mut g, 0.1).unwrap();
@@ -920,7 +917,7 @@ mod hostile_flight_tests {
             g.time = at;
             e.step(&mut g, 0.1).unwrap();
         }
-        assert_eq!(g.snapshot().player.hp, 100);
+        assert_eq!(g.snapshot().player.hp, 200);
         assert_eq!(e.absorbed, 8);
         assert!(e.casts.is_empty());
     }

@@ -122,11 +122,15 @@ impl App {
             };
             self.game.tick(batch.seconds, movement)?;
         }
+        if self.game.snapshot().player.hp == 0 {
+            self.controls = Default::default();
+            self.capture_pointer();
+        }
         self.world_ms = started.elapsed().as_secs_f64() * 1000.;
         self.draw_frame()
     }
     fn capture_pointer(&mut self) {
-        let wanted = self.controls.looking();
+        let wanted = self.game.snapshot().player.hp > 0 && self.controls.looking();
         if wanted == self.captured {
             return;
         }
@@ -420,6 +424,22 @@ impl ApplicationHandler for App {
                             .button(true, down, &mut self.game.yaw, &self.game.camera);
                     }
                     MouseButton::Left => {
+                        if down
+                            && self.game.snapshot().player.hp == 0
+                            && overlay::respawn_at(self.cursor[0], self.cursor[1], 1280., 720.)
+                        {
+                            match self.game.respawn_player() {
+                                Ok(()) => {
+                                    self.controls = Default::default();
+                                    self.keys.clear();
+                                    self.pointer = [0.; 2];
+                                    self.pending_select = false;
+                                    self.dragged = 0.;
+                                }
+                                Err(error) => self.game.message = error,
+                            }
+                            return;
+                        }
                         if self.game.agent_controlled {
                             return;
                         }
@@ -687,6 +707,49 @@ pub fn run(original_default: bool) -> Result<(), String> {
     }
     if original && mode.is_none() {
         app.game = Game::combat(app.game.scene.clone(), false)?;
+    }
+    if mode.as_deref() == Some("--respawn-proof") {
+        let output = PathBuf::from(args.next().ok_or("Expected proof directory")?);
+        std::fs::create_dir_all(&output).map_err(|e| e.to_string())?;
+        app.game = Game::combat(app.game.scene.clone(), false)?;
+        while app.game.time < 150. && app.game.snapshot().player.hp > 0 {
+            app.game.tick(1. / 30., [0.; 2])?;
+        }
+        if app.game.snapshot().player.hp != 0 {
+            return Err("Proof player did not die".into());
+        }
+        app.renderer = Some(Renderer::new(
+            app.pack.clone(),
+            &app.dir,
+            1280,
+            720,
+            &app.atlas,
+            &chamber::static_instances(&app.pack, position_from_wow(app.game.scene.origin_wow)),
+        )?);
+        app.interpolation = 1.;
+        save_png(&output.join("player-dead.png"), &app.draw_frame()?)?;
+        let old = app.game.player_life();
+        if !overlay::respawn_at(640., 328., 1280., 720.) {
+            return Err("Proof click missed Respawn".into());
+        }
+        app.game.respawn_player()?;
+        save_png(&output.join("player-respawned.png"), &app.draw_frame()?)?;
+        app.game.activate(Ability::Shield)?;
+        for _ in 0..30 {
+            app.game.tick(1. / 30., [0., 1.])?;
+        }
+        let evidence = serde_json::json!({"schema":"openagents.verse.player-respawn.v1",
+            "rules_revision":"verse-chamber-owned-v12", "old_life":old,
+            "new_life":app.game.player_life(), "player":app.game.snapshot().player,
+            "player_position":app.game.player, "control_mode":"human", "shield_cast":true,
+            "world_time":app.game.time, "npc_lives":app.game.frame().actors.iter()
+                .filter(|a| a.actor.nameplate).map(|a| (a.actor.id, a.health)).collect::<Vec<_>>()});
+        std::fs::write(
+            output.join("player-respawn.json"),
+            serde_json::to_vec_pretty(&evidence).map_err(|e| e.to_string())?,
+        )
+        .map_err(|e| e.to_string())?;
+        return Ok(());
     }
     let demonstration = match mode.as_deref() {
         Some("--demo") => Some(Demo::Spells),
@@ -1013,7 +1076,7 @@ fn demo(app: &mut App, output: PathBuf, mode: Demo) -> Result<(), String> {
                 return Err("Movement capture did not climb, jump, and land".into());
             }
             std::fs::write(output.with_extension("json"),serde_json::to_vec_pretty(&serde_json::json!({
-                "schema":"openagents.verse.grounded-movement.v1", "rules_revision":"verse-chamber-owned-v11",
+                "schema":"openagents.verse.grounded-movement.v1", "rules_revision":"verse-chamber-owned-v12",
                 "authority_tick":app.game.authority_tick, "physics_steps":app.game.physics_steps,
                 "physics_dropped_seconds":app.game.physics_clock.dropped,"max_height_m":movement_max_height,
                 "final_feet":app.game.player.to_array(),"jump_command_frame":110,
@@ -1040,7 +1103,7 @@ fn demo(app: &mut App, output: PathBuf, mode: Demo) -> Result<(), String> {
                 ));
             }
             std::fs::write(output.with_extension("json"),serde_json::to_vec_pretty(&serde_json::json!({
-                "schema":"openagents.verse.navigation.v2","rules_revision":"verse-chamber-owned-v11",
+                "schema":"openagents.verse.navigation.v2","rules_revision":"verse-chamber-owned-v12",
                 "start":[18.,0.,-32.],"target":target.to_array(),"cultist_final":position.to_array(),
                 "authority_tick":app.game.authority_tick,"physics_steps":app.game.physics_steps,
                 "navigation_plans":app.game.navigation_plans,"navigation_budget_refusals":app.game.navigation_budget_refusals,
@@ -1075,7 +1138,7 @@ fn demo(app: &mut App, output: PathBuf, mode: Demo) -> Result<(), String> {
             }
             if encounter.ended.is_some_and(|at| app.game.time - at >= 5.0) {
                 save_png(&output.with_extension("png"), &pixels)?;
-                let evidence = serde_json::json!({"schema":"openagents.verse.agent-combat.v1","rules_revision":"verse-chamber-owned-v11","authority_tick":app.game.authority_tick,"physics_steps":app.game.physics_steps,"physics_dropped_seconds":app.game.physics_clock.dropped,"committed_event_count":app.game.events.len(),"asset_pack":app.pack.source_revision,"controller":"local observation-driven tactical controller","control_mode":"agent","time":app.game.time,"ended_at":encounter.ended,"player":app.game.snapshot().player,"boss_remaining":encounter.boss_remaining,"boss_max":encounter.boss_max,"cultists_defeated":encounter.kills,"damage_taken":encounter.damage,"shield_absorbed":encounter.absorbed,"dodged":encounter.dodged,"enemy_casts":encounter.enemy_casts,"ability_uses":encounter.used,"boss_model":{"source":app.pack.models["claude"].source,"sha256":app.pack.models["claude"].source_sha256,"height_m":app.game.scene.actors.iter().find(|a|a.model=="claude").unwrap().scale * app.pack.models["claude"].height * 0.9144},"renderer":"owned native GPU pipeline; no grading; no chat-input automation"});
+                let evidence = serde_json::json!({"schema":"openagents.verse.agent-combat.v1","rules_revision":"verse-chamber-owned-v12","authority_tick":app.game.authority_tick,"physics_steps":app.game.physics_steps,"physics_dropped_seconds":app.game.physics_clock.dropped,"committed_event_count":app.game.events.len(),"asset_pack":app.pack.source_revision,"controller":"local observation-driven tactical controller","control_mode":"agent","time":app.game.time,"ended_at":encounter.ended,"player":app.game.snapshot().player,"boss_remaining":encounter.boss_remaining,"boss_max":encounter.boss_max,"cultists_defeated":encounter.kills,"damage_taken":encounter.damage,"shield_absorbed":encounter.absorbed,"dodged":encounter.dodged,"enemy_casts":encounter.enemy_casts,"ability_uses":encounter.used,"boss_model":{"source":app.pack.models["claude"].source,"sha256":app.pack.models["claude"].source_sha256,"height_m":app.game.scene.actors.iter().find(|a|a.model=="claude").unwrap().scale * app.pack.models["claude"].height * 0.9144},"renderer":"owned native GPU pipeline; no grading; no chat-input automation"});
                 std::fs::write(
                     output.with_extension("json"),
                     serde_json::to_vec_pretty(&evidence).map_err(|e| e.to_string())?,

@@ -433,8 +433,11 @@ mod tests {
         .unwrap();
         assert_eq!(scene.origin_wow, [0.; 3]);
         let mut game = super::super::play::Game::combat(scene, true).unwrap();
-        for _ in 0..2400 {
+        for _ in 0..4500 {
             game.tick(1. / 30., [0.; 2]).unwrap();
+            if game.encounter.as_ref().unwrap().ended.is_some() {
+                break;
+            }
         }
         let encounter = game.encounter.as_ref().unwrap();
         assert_eq!(encounter.boss_max, 300_000);

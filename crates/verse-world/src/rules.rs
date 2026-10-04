@@ -164,9 +164,9 @@ impl Simulation {
     pub fn validate(&self) -> Result<(), String> {
         if !self.elapsed.is_finite()
             || self.elapsed < 0.
-            || self.player.max_hp != 100
+            || self.player.max_hp != 200
             || self.player.max_mana != 20
-            || !(0..=100).contains(&self.player.hp)
+            || !(0..=200).contains(&self.player.hp)
             || !(0..=20).contains(&self.player.mana)
             || !self.mana_fraction.is_finite()
             || !(0. ..1.).contains(&self.mana_fraction)
@@ -180,7 +180,7 @@ impl Simulation {
             return Err("Invalid combat checkpoint".into());
         }
         let player = self.actors.get(&0).ok_or("Missing checkpoint player")?;
-        if player.hp != self.player.hp {
+        if player.hp != self.player.hp || player.max_hp != self.player.max_hp {
             return Err("Checkpoint player health disagrees".into());
         }
         for (id, pos) in &self.motion_starts {
@@ -254,8 +254,8 @@ impl Simulation {
         let mut s = Self {
             elapsed: 0.,
             player: Player {
-                hp: 100,
-                max_hp: 100,
+                hp: 200,
+                max_hp: 200,
                 mana: 20,
                 max_mana: 20,
             },
@@ -281,8 +281,8 @@ impl Simulation {
                 faction: "player".into(),
                 pos: position,
                 yaw: 0.,
-                hp: 100,
-                max_hp: 100,
+                hp: 200,
+                max_hp: 200,
                 alive: true,
             },
         );
@@ -389,6 +389,25 @@ impl Simulation {
         }
         self.player.mana -= cost;
         self.counters.casts += 1;
+        Ok(())
+    }
+    /// Revives only the player; hostile actors and their death deadlines remain intact.
+    pub(super) fn respawn_player(&mut self, position: [f32; 3], yaw: f32) -> Result<(), String> {
+        if self.player.hp != 0 {
+            return Err("The adventurer is still alive".into());
+        }
+        self.teleport_chamber_actor(0, position, yaw)?;
+        self.player.hp = self.player.max_hp;
+        self.player.mana = self.player.max_mana;
+        let actor = self.actors.get_mut(&0).ok_or("Missing adventurer")?;
+        actor.hp = self.player.hp;
+        actor.alive = true;
+        self.deaths.remove(&0);
+        self.flights.clear();
+        self.burns.clear();
+        self.ready.clear();
+        self.global_ready = self.elapsed;
+        self.mana_fraction = 0.;
         Ok(())
     }
     pub fn chamber_player_damage(&mut self, damage: i32) -> Result<(), String> {
