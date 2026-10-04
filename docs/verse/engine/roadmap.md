@@ -250,6 +250,8 @@ The [inventory window profile](../../../bench/verse/2026-10-03/inventory-window/
 
 [#10511](https://github.com/OpenAgentsInc/openagents/issues/10511) connects committed remote damage to shared native floating text. Projection preserves actual amounts, incoming/outgoing colors, serial lanes, sampled head positions, and lethal hits, with 1.35-second expiry and exact life fences. Duplicate deliveries produce no extra numbers; respawned lives cannot inherit old text. Local and remote values use the same renderer. Tests cover amounts/colors, duplicate suppression, lethal damage, respawn, expiry, and native vertex output. Remote action/resource HUD, native mounting, audio/props/blockers, prediction, persistence, and full acceptance remain.
 
+[#10512](https://github.com/OpenAgentsInc/openagents/issues/10512) adds wire version five player-owned HUD state. Exact-life extraction supplies health/mana, ten shared-kit readiness/cooldown gates, and cast progress from primary or additional player state. Spectators receive no owned HUD. Client/replica admission matches acknowledged control, resource snapshots, clocks, slots, and cast-target lives. Tests cover independent player mana/shield gates, cast progress, spectator omission, stale lives, malformed resources/slots/timings, foreign control, and real TLS owned HUD reception. Native HUD rendering, catalog shared-caster adapters, mounting, prediction, durable gameplay, and full acceptance remain.
+
 ## Reuse inventory
 
 Review baseline: OpenAgents `843c92dd7e`. The entries below were checked against

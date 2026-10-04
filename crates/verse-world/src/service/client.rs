@@ -242,7 +242,9 @@ impl Client {
                 }
                 Ok(())
             }
-            (Reply::Snapshot { state }, Body::Snapshot {}) => state.validate(self.instance),
+            (Reply::Snapshot { state }, Body::Snapshot {}) => {
+                state.validate_control(self.instance, &r.control)
+            }
             (Reply::Events { page }, Body::Events { after, limit }) => {
                 page.validate(self.instance, r.tick, *after, *limit)
             }
@@ -320,6 +322,20 @@ mod tests {
         assert!(a.connected());
         let state_a = a.snapshot().await.unwrap();
         assert_eq!(
+            state_a.hud.as_ref().unwrap().life,
+            a.control().unwrap().life.into()
+        );
+        assert_eq!(state_a.hud.as_ref().unwrap().resources.mana, 19);
+        let state_b = b.snapshot().await.unwrap();
+        assert_eq!(
+            state_b.hud.as_ref().unwrap().life,
+            b.control().unwrap().life.into()
+        );
+        assert_ne!(
+            state_a.hud.as_ref().unwrap().life,
+            state_b.hud.as_ref().unwrap().life
+        );
+        assert_eq!(
             state_a
                 .presentation
                 .effects
@@ -329,6 +345,7 @@ mod tests {
             2
         );
         let observed = spectator.snapshot().await.unwrap();
+        assert!(observed.hud.is_none());
         assert_eq!(
             serde_json::to_vec(&state_a.actors).unwrap(),
             serde_json::to_vec(&observed.actors).unwrap()

@@ -5,7 +5,7 @@ use verse_engine::core::LifeId;
 use super::auth::{Challenge, ConnectionId, Gateway};
 use crate::{Command, Intent, events::Event, play::Ability, rules::Snapshot};
 
-pub const VERSION: u16 = 4;
+pub const VERSION: u16 = 5;
 pub const MAX_REQUEST_BYTES: usize = 16 * 1024;
 pub const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 
@@ -140,6 +140,17 @@ pub struct Request {
     pub body: Body,
 }
 impl State {
+    pub fn validate_control(&self, instance: u64, control: &Option<Control>) -> Result<(), String> {
+        self.validate(instance)?;
+        if self.hud.as_ref().map(|h| h.life)
+            != control
+                .as_ref()
+                .map(|c| verse_engine::core::LifeId::from(c.life))
+        {
+            return Err("Owned HUD does not match admitted control".into());
+        }
+        Ok(())
+    }
     /// Produces renderer values only after complete remote state admission.
     pub fn combat_visuals(&self, instance: u64) -> Result<crate::visuals::Combat, String> {
         self.validate(instance)?;
@@ -219,6 +230,31 @@ impl State {
         {
             return Err("Invalid chamber projectile presentation".into());
         }
+        if let Some(hud) = &self.hud {
+            hud.validate(instance)?;
+            let p = &self.snapshot.player;
+            if (
+                hud.resources.hp,
+                hud.resources.max_hp,
+                hud.resources.mana,
+                hud.resources.max_mana,
+            ) != (p.hp, p.max_hp, p.mana, p.max_mana)
+                || hud
+                    .casting
+                    .as_ref()
+                    .is_some_and(|c| !lives.contains(&c.target_life))
+            {
+                return Err("Owned HUD resources or cast target mismatch".into());
+            }
+            if hud.time != self.presentation.time
+                || !self.presentation.actors.iter().any(|p| {
+                    verse_engine::core::LifeId::from(p.life) == hud.life
+                        && p.actor.model == "adventurer"
+                })
+            {
+                return Err("Owned HUD life or clock mismatch".into());
+            }
+        }
         self.presentation.validate(instance, &self.actors)
     }
 }
@@ -252,6 +288,7 @@ pub struct ActorBinding {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct State {
+    pub hud: Option<crate::hud::Own>,
     pub snapshot: Snapshot,
     pub presentation: super::presentation::Presentation,
     pub actors: Vec<ActorBinding>,
@@ -391,6 +428,12 @@ impl Gateway {
                             self.game(),
                             &actors,
                         ),
+                        hud: self
+                            .admission(id)
+                            .ok()
+                            .map(|a| self.game().player_hud(a.actor()))
+                            .transpose()
+                            .map_err(|e| ("presentation", e))?,
                         snapshot,
                         actors,
                     },
@@ -867,15 +910,116 @@ mod tests {
         }
     }
     #[test]
+    fn owned_hud_is_scoped_to_each_authenticated_life_and_spectators_have_none() {
+        let mut g = gateway();
+        let ka = key(25);
+        let kb = key(26);
+        let ks = key(27);
+        g.enroll_primary(public(&ka)).unwrap();
+        g.enroll_player(public(&kb), Vec3::new(3., 0., -22.))
+            .unwrap();
+        g.enroll_spectator(public(&ks)).unwrap();
+        let a = join(&mut g, &ka);
+        let b = join(&mut g, &kb);
+        let spectator = join(&mut g, &ks);
+        let command = g
+            .admission(a)
+            .unwrap()
+            .command(
+                g.game().authority_tick,
+                Intent::Cast {
+                    ability: Ability::Shield,
+                    target: None,
+                    aim: [0., 0., 1.],
+                },
+            )
+            .unwrap();
+        g.submit(a, command).unwrap();
+        let ra = send(&mut g, a, 2, Body::Snapshot {});
+        let rb = send(&mut g, b, 2, Body::Snapshot {});
+        let rs = send(&mut g, spectator, 2, Body::Snapshot {});
+        let Reply::Snapshot { state: sa } = &ra.body else {
+            panic!("Expected snapshot")
+        };
+        let Reply::Snapshot { state: sb } = &rb.body else {
+            panic!("Expected snapshot")
+        };
+        let Reply::Snapshot { state: ss } = &rs.body else {
+            panic!("Expected snapshot")
+        };
+        sa.validate_control(110, &ra.control).unwrap();
+        sb.validate_control(110, &rb.control).unwrap();
+        ss.validate_control(110, &rs.control).unwrap();
+        let ha = sa.hud.as_ref().unwrap();
+        let hb = sb.hud.as_ref().unwrap();
+        assert_ne!(ha.life, hb.life);
+        assert!(ss.hud.is_none());
+        assert_eq!(ha.resources.mana, 19);
+        assert_eq!(hb.resources.mana, 20);
+        assert!(
+            !ha.slots
+                .iter()
+                .find(|s| s.ability == Ability::Shield)
+                .unwrap()
+                .ready
+        );
+        assert!(
+            hb.slots
+                .iter()
+                .find(|s| s.ability == Ability::Shield)
+                .unwrap()
+                .ready
+        );
+        assert!(sa.validate_control(110, &rb.control).is_err());
+        for case in 0..6 {
+            let mut bad = sa.clone();
+            let h = bad.hud.as_mut().unwrap();
+            match case {
+                0 => h.life.generation += 1,
+                1 => h.resources.hp = h.resources.max_hp + 1,
+                2 => h.slots[0].remaining = f32::NAN,
+                3 => h.slots.swap(0, 1),
+                4 => h.resources.mana = 18,
+                _ => h.time += 1.,
+            }
+            assert!(bad.validate_control(110, &ra.control).is_err());
+        }
+        assert!(
+            g.game()
+                .player_hud(verse_engine::core::LifeId {
+                    generation: ha.life.generation + 1,
+                    ..ha.life
+                })
+                .is_err()
+        );
+        let cast = g
+            .admission(b)
+            .unwrap()
+            .command(
+                g.game().authority_tick,
+                Intent::Cast {
+                    ability: Ability::Fireball,
+                    target: Some(g.game().actor_life(1).unwrap()),
+                    aim: [0., 0., 1.],
+                },
+            )
+            .unwrap();
+        g.submit(b, cast).unwrap();
+        let hud = g.game().player_hud(hb.life).unwrap();
+        hud.validate(110).unwrap();
+        assert!(hud.casting.is_some());
+        assert!(hud.slots.iter().all(|s| !s.ready));
+    }
+    #[test]
     fn strict_request_budget_versions_and_nested_fields_are_enforced() {
         let mut g = gateway();
         let (id, _) = g.open(0).unwrap();
         let reply = send(&mut g, id, 1, Body::Snapshot {});
         assert!(matches!(reply.body, Reply::Refused { .. }));
         for bytes in [
-            br#"{"version":5,"request_id":1,"body":{"type":"snapshot"}}"#.to_vec(),
-            br#"{"version":4,"request_id":1,"controller":1,"body":{"type":"snapshot"}}"#.to_vec(),
-            br#"{"version":4,"request_id":1,"body":{"type":"snapshot","principal":"fake"}}"#
+            br#"{"version":6,"request_id":1,"body":{"type":"snapshot"}}"#.to_vec(),
+            br#"{"version":5,"request_id":1,"controller":1,"body":{"type":"snapshot"}}"#.to_vec(),
+            br#"{"version":5,"request_id":1,"body":{"type":"snapshot","principal":"fake"}}"#
                 .to_vec(),
             vec![b' '; MAX_REQUEST_BYTES + 1],
         ] {

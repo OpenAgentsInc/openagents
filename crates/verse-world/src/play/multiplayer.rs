@@ -183,6 +183,19 @@ impl Game {
         self.simulation
             .snapshot_for(self.player_source(life.actor).unwrap())
     }
+    /// Extracts HUD values for this exact controlled life without exposing authority.
+    pub fn player_hud(&self, life: LifeId) -> Result<crate::hud::Own, String> {
+        let snapshot = self.player_snapshot(life)?;
+        let (controls, bow_ready, casting) = if life == self.player_life() {
+            (&self.controls, self.bow_ready, self.casting.as_ref())
+        } else {
+            let p = &self.additional_players[&life.actor];
+            (&p.controls, p.bow_ready, p.casting.as_ref())
+        };
+        Ok(crate::hud::Own::extract(
+            self, life, snapshot, controls, bow_ready, casting,
+        ))
+    }
     pub(super) fn player_source(&self, actor: u64) -> Option<u32> {
         if actor == self.player_actor() {
             Some(0)

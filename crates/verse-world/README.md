@@ -157,6 +157,12 @@ sampled lives, including lethal damage, and expires them after 1.35 seconds.
 Local and remote values share native floating-text rendering and colors. Native
 window/transport mounting and remote action/resource HUD still remain.
 
+Wire version five adds `hud::Own` for the authenticated controlled life. Health,
+mana, the ten shared-kit cooldown gates, and cast progress come from that
+player’s state; spectators receive no owned HUD. Client and replica admission
+match HUD life to acknowledged control and validate resources, clocks, slots,
+and cast targets. Native HUD rendering and catalog shared-caster adapters remain.
+
 Revocation leaves an uncontrolled actor in the world; actor retirement and capacity reclamation remain lifecycle work.
 Transactional saves, multiplayer
 replication, and authoring tools remain on the

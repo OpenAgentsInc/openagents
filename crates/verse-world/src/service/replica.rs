@@ -43,7 +43,7 @@ impl Buffer {
         let Reply::Snapshot { state } = &response.body else {
             return Err("Replica requires an authoritative snapshot".into());
         };
-        state.validate(self.instance)?;
+        state.validate_control(self.instance, &response.control)?;
         if response.control.as_ref().is_some_and(|c| {
             c.life.instance != self.instance
                 || !state
@@ -237,12 +237,32 @@ pub(super) mod tests {
             control: None,
             body: Reply::Snapshot {
                 state: State {
+                    hud: None,
                     snapshot,
                     actors,
                     presentation,
                 },
             },
         }
+    }
+    fn attach_hud(r: &mut Response) {
+        let life = r.control.as_ref().unwrap().life.into();
+        let s = state(r);
+        s.hud = Some(crate::hud::Own {
+            life,
+            time: s.presentation.time,
+            resources: s.snapshot.player.clone(),
+            casting: None,
+            slots: crate::play::Ability::ALL
+                .into_iter()
+                .map(|ability| crate::hud::Slot {
+                    ability,
+                    ready: false,
+                    remaining: 0.,
+                    duration: 1.,
+                })
+                .collect(),
+        });
     }
     fn state(r: &mut Response) -> &mut State {
         let Reply::Snapshot { state } = &mut r.body else {
@@ -326,6 +346,7 @@ pub(super) mod tests {
                     epoch: 1,
                     accepted_sequence: 0,
                 });
+                attach_hud(&mut next);
             }
             let target = state(&mut next).presentation.actors[0].actor.position;
             let mut b = Buffer::new(130, 2.).unwrap();
@@ -401,6 +422,7 @@ pub(super) mod tests {
             epoch: 2,
             accepted_sequence: 4,
         });
+        attach_hud(&mut first);
         let mut b = Buffer::new(130, 2.).unwrap();
         b.push(&first).unwrap();
         let saved = serde_json::to_vec(b.latest().unwrap()).unwrap();
