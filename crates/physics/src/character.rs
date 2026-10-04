@@ -401,6 +401,7 @@ fn recover(
 ) -> Result<DVec3, String> {
     let start = feet;
     let mut last = None;
+    let mut previous: Option<(Hit, DVec3)> = None;
     let mut contacts = std::collections::BTreeSet::new();
     for correction in 0..=RECOVERY_CORRECTIONS {
         let result = scene.overlap(settings.capsule(feet), filter)?;
@@ -420,7 +421,26 @@ fn recover(
         if correction == RECOVERY_CORRECTIONS {
             break;
         }
-        feet += hit.normal * (hit.penetration + SKIN);
+        let depth = hit.penetration + SKIN;
+        let mut displacement = hit.normal * depth;
+        if let Some((old, origin)) = previous {
+            let dot = hit.normal.dot(old.normal);
+            let determinant = 1. - dot * dot;
+            let remaining = old.penetration + SKIN - old.normal.dot(feet - origin);
+            if dot < -0.25 && determinant > 1e-8 && old.normal.dot(displacement) < remaining {
+                // Preserve the preceding contact plane while resolving its opposing contact.
+                let a = (depth - dot * remaining) / determinant;
+                let b = (remaining - dot * depth) / determinant;
+                if a >= 0. && b >= 0. {
+                    let joint = hit.normal * a + old.normal * b;
+                    if joint.is_finite() {
+                        displacement = joint.clamp_length_max(depth.max(settings.radius));
+                    }
+                }
+            }
+        }
+        previous = Some((hit, feet));
+        feet += displacement;
     }
     let capsules = scene.snapshot(filter.instance).ok().map(|snapshot| {
         snapshot
@@ -743,55 +763,62 @@ mod tests {
     #[test]
     fn crowded_capsules_finish_recovery_before_movement() {
         use crate::queries::{CapsuleCollider, Pose};
-        let mut scene = floor();
-        for (entity, position) in [
+        for (start, positions) in [
             (
-                231,
-                DVec3::new(1.2038122415542603, 1.1400007247924804, 8.91481876373291),
+                DVec3::new(1.6808813704470373, 0., 9.030238365165646),
+                [
+                    DVec3::new(1.2038122415542603, 1.1400007247924804, 8.91481876373291),
+                    DVec3::new(2.1531760692596436, 0.9000099999997474, 9.679643630981445),
+                ],
             ),
             (
-                238,
-                DVec3::new(2.1531760692596436, 0.9000099999997474, 9.679643630981445),
+                DVec3::new(3.6894473888929173, 0., -10.496250386948253),
+                [
+                    DVec3::new(2.9981443881988525, 1.0394337862730025, -10.172544479370117),
+                    DVec3::new(4.293120384216309, 0.9, -10.599199295043945),
+                ],
             ),
         ] {
-            let key = ColliderKey {
-                life: Life {
-                    instance: 1,
-                    entity,
-                    generation: 0,
-                },
-                shape: 0,
-            };
-            scene
-                .insert_capsule(CapsuleCollider {
-                    key,
-                    layers: 2,
-                    usage: Usage::Blocking,
-                    capsule: Capsule {
-                        a: -DVec3::Y * 0.55,
-                        b: DVec3::Y * 0.55,
-                        radius: 0.35,
+            let mut scene = floor();
+            for (index, position) in positions.into_iter().enumerate() {
+                let key = ColliderKey {
+                    life: Life {
+                        instance: 1,
+                        entity: 100 + index as u64,
+                        generation: 0,
                     },
-                })
-                .unwrap();
-            scene
-                .set_pose(
-                    key,
-                    Pose {
-                        position,
-                        rotation: glam::DQuat::IDENTITY,
-                    },
-                )
-                .unwrap();
+                    shape: 0,
+                };
+                scene
+                    .insert_capsule(CapsuleCollider {
+                        key,
+                        layers: 2,
+                        usage: Usage::Blocking,
+                        capsule: Capsule {
+                            a: -DVec3::Y * 0.55,
+                            b: DVec3::Y * 0.55,
+                            radius: 0.35,
+                        },
+                    })
+                    .unwrap();
+                scene
+                    .set_pose(
+                        key,
+                        Pose {
+                            position,
+                            rotation: glam::DQuat::IDENTITY,
+                        },
+                    )
+                    .unwrap();
+            }
+            let settings = Settings::default();
+            let filter = Filter::blocking(1);
+            let feet = recover(&scene, filter, settings, start).unwrap();
+            let contacts = scene.overlap(settings.capsule(feet), filter).unwrap();
+            assert!(!contacts.truncated);
+            assert!(contacts.hits.iter().all(|hit| hit.penetration <= SKIN));
+            assert!(feet.distance(start) < 0.3);
         }
-        let settings = Settings::default();
-        let filter = Filter::blocking(1);
-        let start = DVec3::new(1.6808813704470373, 0., 9.030238365165646);
-        let feet = recover(&scene, filter, settings, start).unwrap();
-        let contacts = scene.overlap(settings.capsule(feet), filter).unwrap();
-        assert!(!contacts.truncated);
-        assert!(contacts.hits.iter().all(|hit| hit.penetration <= SKIN));
-        assert!(feet.distance(start) < 0.3);
     }
     #[test]
     fn endpoint_and_surface_recovery() {

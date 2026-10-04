@@ -1,0 +1,27 @@
+{
+  "schema": "verse.battle.scale.run.v1",
+  "acceptance": "failed",
+  "reason": "Sixty-four deepest-contact corrections still leave actor 9 penetrating actor 241 by 0.041 mm; geometry reproduces this in the crowd regression. Opposing-plane correction replaces the alternating correction.",
+  "workload": {
+    "players": 20,
+    "hostile_npcs": 40,
+    "cultist_health": 20000,
+    "native_clients": 1,
+    "headless_clients": 19,
+    "seconds": 60,
+    "compiled_revisions": {
+      "host": "01c379b194",
+      "clients": "01c379b194"
+    },
+    "fixture_revision": "01c379b194725567c3d7134671794fe0387bcb23",
+    "limits": [
+      "NPC health is raised in the authored load scene to sustain spell and AI work.",
+      "Headless player connections do not establish rendering performance on their machines.",
+      "Native player and load generator share one host machine."
+    ]
+  },
+  "limits": [
+    "Twenty connections complete, but the host and both clients fail before capture completion.",
+    "This run supplies collision evidence, not performance acceptance."
+  ]
+}
