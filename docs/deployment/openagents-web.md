@@ -285,3 +285,11 @@ Everglade's player is the ritual chamber's ranger with no companion
 (#10534, 4b966fdc06), from the re-pinned pack `3680adf2…7297`. The `new`
 tag served every page and the pack at 200 and rendered the ranger before
 traffic moved. Rollback: `--to-revisions coder-web-10535d62b5=100`.
+
+## 2026-10-04: coder-web-570fe0ba18
+
+`/everglade` draws no zone panel over the glade (570fe0ba18), and its
+station captions offer no key the page cannot use (cc345ccb7a). Checked on
+the `new` tag before traffic moved. Rollback:
+`--to-revisions coder-web-8fb2a97218=100`, or `coder-web-4b966fdc06` for the
+last revision that served traffic before it.
