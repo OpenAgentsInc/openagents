@@ -2,81 +2,29 @@
   "schema": "openagents.verse.spell-playground.v1",
   "spell": "reverse-gravity",
   "title": "Reverse Gravity",
-  "srd": "Level 7 Transmutation | Range 100 ft | 50-ft-radius, 100-ft-high Cylinder | DEX save to grab a fixed object | Concentration, 1 minute",
+  "srd": "Reverse Gravity - level 7 Transmutation - range 100 ft - 50-ft-radius, 100-ft-high Cylinder - Concentration, up to 1 minute - Dexterity save to grab a fixed object",
   "srd_source": "SRD 5.2.1 (SRD_CC_v5.2.1.pdf)",
-  "rules_revision": "verse-chamber-owned-v17",
-  "seed": 460,
-  "dice_rolled": 171,
+  "rules_revision": "verse-chamber-owned-v18",
+  "seed": 459,
+  "dice_rolled": 115,
   "saves": [
     {
-      "at": 1.0333333015441895,
+      "at": 0.5333333611488342,
       "save": {
-        "target": 101,
-        "ability": "Dexterity",
-        "roll": 3,
-        "modifier": 0,
-        "total": 3,
-        "dc": 15,
-        "success": false,
-        "forced": true
-      }
-    },
-    {
-      "at": 1.0333333015441895,
-      "save": {
-        "target": 102,
-        "ability": "Dexterity",
-        "roll": 5,
-        "modifier": 0,
-        "total": 5,
-        "dc": 15,
-        "success": false,
-        "forced": true
-      }
-    },
-    {
-      "at": 1.0333333015441895,
-      "save": {
-        "target": 103,
+        "target": 14,
         "ability": "Dexterity",
         "roll": 7,
         "modifier": 0,
         "total": 7,
         "dc": 15,
         "success": false,
-        "forced": true
+        "forced": false
       }
     },
     {
-      "at": 1.0333333015441895,
+      "at": 0.5333333611488342,
       "save": {
-        "target": 104,
-        "ability": "Dexterity",
-        "roll": 19,
-        "modifier": 0,
-        "total": 19,
-        "dc": 15,
-        "success": true,
-        "forced": true
-      }
-    },
-    {
-      "at": 1.0333333015441895,
-      "save": {
-        "target": 105,
-        "ability": "Dexterity",
-        "roll": 17,
-        "modifier": 0,
-        "total": 17,
-        "dc": 15,
-        "success": true,
-        "forced": true
-      }
-    },
-    {
-      "at": 1.0333333015441895,
-      "save": {
-        "target": 106,
+        "target": 101,
         "ability": "Dexterity",
         "roll": 2,
         "modifier": 0,
@@ -87,236 +35,401 @@
       }
     },
     {
-      "at": 1.0333333015441895,
+      "at": 0.5333333611488342,
       "save": {
-        "target": 107,
+        "target": 102,
         "ability": "Dexterity",
-        "roll": 4,
+        "roll": 2,
         "modifier": 0,
-        "total": 4,
+        "total": 2,
         "dc": 15,
         "success": false,
+        "forced": true
+      }
+    },
+    {
+      "at": 0.5333333611488342,
+      "save": {
+        "target": 103,
+        "ability": "Dexterity",
+        "roll": 2,
+        "modifier": 0,
+        "total": 2,
+        "dc": 15,
+        "success": false,
+        "forced": true
+      }
+    },
+    {
+      "at": 0.5333333611488342,
+      "save": {
+        "target": 104,
+        "ability": "Dexterity",
+        "roll": 20,
+        "modifier": 0,
+        "total": 20,
+        "dc": 15,
+        "success": true,
         "forced": true
       }
     }
   ],
   "log": [
-    "[1.00] Cast at (-11.3, -6.5): 50-ft-radius, 100-ft-high cylinder",
-    "[1.03] Dummy A: DEX save 3 +0 = 3 vs DC 15 fails; falls upward",
-    "[1.03] Dummy B: DEX save 5 +0 = 5 vs DC 15 fails; falls upward",
-    "[1.03] Dummy C: DEX save 7 +0 = 7 vs DC 15 fails; falls upward",
-    "[1.03] Dummy D (saves, no grip): DEX save 19 +0 = 19 vs DC 15 succeeds, but nothing is in reach; falls upward",
-    "[1.03] Dummy E (clings): DEX save 17 +0 = 17 vs DC 15 succeeds; grabs a fixed object and stays down",
-    "[1.03] Dummy F (indoor): DEX save 2 +0 = 2 vs DC 15 fails; falls upward",
-    "[1.03] Dummy G (indoor): DEX save 4 +0 = 4 vs DC 15 fails; falls upward",
-    "[2.63] Dummy F (indoor) slams into the ceiling after 40 ft up",
-    "[2.63] Dummy F (indoor) fell 40 ft: 4d6 = 18 bludgeoning",
-    "[2.63] Dummy G (indoor) slams into the ceiling after 40 ft up",
-    "[2.63] Dummy G (indoor) fell 40 ft: 4d6 = 16 bludgeoning",
-    "[2.63] Barrel (indoor) cracks against the ceiling after 43 ft: 4d6 = 12 bludgeoning",
-    "[2.67] Crate (indoor) cracks against the ceiling after 44 ft: 4d6 = 18 bludgeoning",
-    "[3.70] Dummy A hovers at the top, 100 ft up",
-    "[3.70] Dummy B hovers at the top, 100 ft up",
-    "[3.70] Dummy C hovers at the top, 100 ft up",
-    "[3.70] Dummy D (saves, no grip) hovers at the top, 100 ft up",
-    "[5.00] Edge crate 1 shoved sideways at 3.5 m/s",
-    "[5.00] Edge crate 2 shoved sideways at 3.5 m/s",
-    "[7.97] Edge crate 2 crashes down after 99 ft: 9d6 = 36 bludgeoning",
-    "[8.07] Edge crate 1 crashes down after 99 ft: 9d6 = 29 bludgeoning",
-    "[10.00] Dismissed: everything falls",
-    "[10.03] The spell ends: everything falls",
-    "[11.17] Dummy F (indoor) fell 40 ft: 4d6 = 15 bludgeoning",
-    "[11.17] Dummy G (indoor) fell 40 ft: 4d6 = 13 bludgeoning",
-    "[11.67] Barrel (indoor) crashes down after 43 ft: 4d6 = 12 bludgeoning",
-    "[11.70] Crate (indoor) crashes down after 44 ft: 4d6 = 19 bludgeoning",
-    "[11.80] Dummy A fell 100 ft: 10d6 = 34 bludgeoning",
-    "[11.80] Dummy B fell 100 ft: 10d6 = 34 bludgeoning",
-    "[11.80] Dummy C fell 100 ft: 10d6 = 29 bludgeoning",
-    "[11.80] Dummy D (saves, no grip) fell 100 ft: 10d6 = 34 bludgeoning",
-    "[12.47] Plank 2 crashes down after 99 ft: 9d6 = 30 bludgeoning",
-    "[12.47] Plank 3 crashes down after 99 ft: 9d6 = 22 bludgeoning",
-    "[12.50] Crate 1 crashes down after 99 ft: 9d6 = 34 bludgeoning",
-    "[12.50] Crate 2 crashes down after 99 ft: 9d6 = 24 bludgeoning",
-    "[12.50] Barrel 1 crashes down after 99 ft: 9d6 = 37 bludgeoning",
-    "[12.50] Barrel 2 crashes down after 99 ft: 9d6 = 23 bludgeoning",
-    "[12.50] Plank 1 crashes down after 100 ft: 9d6 = 25 bludgeoning",
-    "[12.50] Plank 5 crashes down after 99 ft: 9d6 = 26 bludgeoning",
-    "[12.53] Plank 4 crashes down after 99 ft: 9d6 = 34 bludgeoning"
+    "[0.53] Wizard: Failed",
+    "[0.53] Gravity dummy: Failed",
+    "[0.53] Gravity dummy: Failed",
+    "[0.53] Gravity dummy: Failed",
+    "[0.53] Gravity dummy: Held { anchor: DVec3(8.599999618530273, 0.9, -3.0) }",
+    "[2.00] Gravity dummy: 9 damage",
+    "[2.07] Stone block strikes a surface: 3d6 = 9; HP None",
+    "[2.07] Ceiling-strike crate strikes a surface: 3d6 = 12; HP Some(0)",
+    "[17.07] Gravity dummy fell 34 ft: 3d6 = 9 bludgeoning",
+    "[17.53] Stone block strikes a surface: 3d6 = 9; HP None",
+    "[17.53] Gravity impact debris strikes a surface: 3d6 = 7; HP None",
+    "[17.53] Gravity impact debris strikes a surface: 3d6 = 7; HP None",
+    "[17.53] Gravity impact debris strikes a surface: 3d6 = 15; HP None",
+    "[17.53] Gravity impact debris strikes a surface: 3d6 = 7; HP None",
+    "[17.53] Gravity impact debris strikes a surface: 3d6 = 15; HP None",
+    "[17.53] Gravity impact debris strikes a surface: 3d6 = 11; HP None",
+    "[17.53] Gravity impact debris strikes a surface: 3d6 = 9; HP None",
+    "[17.53] Gravity impact debris strikes a surface: 3d6 = 9; HP None",
+    "[17.80] Adventurer fell 100 ft: 10d6 = 31 bludgeoning",
+    "[17.80] Gravity dummy fell 100 ft: 10d6 = 36 bludgeoning",
+    "[17.80] Gravity dummy fell 100 ft: 10d6 = 37 bludgeoning",
+    "[18.53] Barrel strikes a surface: 9d6 = 34; HP None",
+    "[18.53] Anvil strikes a surface: 9d6 = 19; HP None",
+    "[18.53] Loose plank pile strikes a surface: 9d6 = 31; HP None",
+    "[18.53] Loose plank pile strikes a surface: 9d6 = 26; HP None",
+    "[18.53] Loose plank pile strikes a surface: 9d6 = 30; HP None"
   ],
   "tracks": [],
+  "feather_falls": [],
+  "levitations": [],
+  "telekinesis": [],
+  "walls": [],
+  "gusts": [],
+  "flames": [],
+  "wind_walls": [],
+  "tentacles": [],
+  "meteors": [],
+  "reverse_gravity": [
+    {
+      "cast": 1,
+      "caster": 14,
+      "spell": {
+        "gravity": {
+          "cylinder": {
+            "base": [
+              0.0,
+              0.0,
+              -3.0
+            ],
+            "radius": 15.24,
+            "height": 30.48
+          },
+          "active": false
+        },
+        "ends": 1920,
+        "falls": [
+          [
+            11,
+            {
+              "high": 30.47999999999999,
+              "low": -4845.523274999972
+            }
+          ],
+          [
+            12,
+            {
+              "high": 0.461743782035068,
+              "low": 0.44999999791701717
+            }
+          ],
+          [
+            13,
+            {
+              "high": 0.21701719926529392,
+              "low": 0.19999999981031247
+            }
+          ],
+          [
+            14,
+            {
+              "high": 0.3770026474457509,
+              "low": 0.3749999999846055
+            }
+          ],
+          [
+            17,
+            {
+              "high": 11.756989974294257,
+              "low": 11.756989974294257
+            }
+          ],
+          [
+            18,
+            {
+              "high": 0.07537862775902142,
+              "low": 0.04990818007112858
+            }
+          ],
+          [
+            19,
+            {
+              "high": 0.14376624905752688,
+              "low": 0.049982588478445444
+            }
+          ],
+          [
+            20,
+            {
+              "high": 0.21208181418082636,
+              "low": 0.04999958396772897
+            }
+          ],
+          [
+            21,
+            {
+              "high": 31.37999999999999,
+              "low": 0.9
+            }
+          ],
+          [
+            22,
+            {
+              "high": 11.292000287710623,
+              "low": 11.243022772366384
+            }
+          ],
+          [
+            23,
+            {
+              "high": 31.37999999999999,
+              "low": 0.9
+            }
+          ],
+          [
+            24,
+            {
+              "high": 31.37999999999999,
+              "low": 0.9
+            }
+          ],
+          [
+            25,
+            {
+              "high": 0.9,
+              "low": 0.8999999275607173
+            }
+          ],
+          [
+            26,
+            {
+              "high": 0.16487511191479443,
+              "low": 0.1499849239352332
+            }
+          ],
+          [
+            27,
+            {
+              "high": 0.1700808778766867,
+              "low": 0.14997436289996835
+            }
+          ],
+          [
+            28,
+            {
+              "high": 0.6973743438447445,
+              "low": 0.44988254710109715
+            }
+          ],
+          [
+            29,
+            {
+              "high": 0.4774706082741555,
+              "low": 0.44994546305419897
+            }
+          ],
+          [
+            30,
+            {
+              "high": 0.17403315426345817,
+              "low": 0.14998906305014717
+            }
+          ],
+          [
+            31,
+            {
+              "high": 0.18756227644520246,
+              "low": 0.14999246403544156
+            }
+          ],
+          [
+            32,
+            {
+              "high": 0.4718999484805663,
+              "low": 0.44985931783112443
+            }
+          ],
+          [
+            33,
+            {
+              "high": 0.48377368880559546,
+              "low": 0.44996866700504917
+            }
+          ]
+        ],
+        "holds": [
+          {
+            "body": 21,
+            "save": {
+              "d20": 7,
+              "modifier": 0,
+              "dc": 15,
+              "success": false
+            },
+            "grab": "Failed",
+            "joint": null
+          },
+          {
+            "body": 22,
+            "save": {
+              "d20": 2,
+              "modifier": 0,
+              "dc": 15,
+              "success": false
+            },
+            "grab": "Failed",
+            "joint": null
+          },
+          {
+            "body": 23,
+            "save": {
+              "d20": 2,
+              "modifier": 0,
+              "dc": 15,
+              "success": false
+            },
+            "grab": "Failed",
+            "joint": null
+          },
+          {
+            "body": 24,
+            "save": {
+              "d20": 2,
+              "modifier": 0,
+              "dc": 15,
+              "success": false
+            },
+            "grab": "Failed",
+            "joint": null
+          },
+          {
+            "body": 25,
+            "save": {
+              "d20": 20,
+              "modifier": 0,
+              "dc": 15,
+              "success": true
+            },
+            "grab": {
+              "Held": {
+                "anchor": [
+                  8.599999618530273,
+                  0.9,
+                  -3.0
+                ]
+              }
+            },
+            "joint": null
+          }
+        ]
+      }
+    }
+  ],
   "props": [
     {
-      "name": "Crate 1",
+      "name": "Crate",
       "kind": "Crate",
       "mass_kg": 20.0,
       "secured": false,
       "removed": false,
       "center": [
-        -8.000000492377481,
-        0.29999999985788295,
-        -3.9999944855849905
+        835.2597846549182,
+        -4845.523274999972,
+        -4.999999999945464
       ],
       "rotation": [
-        -3.539562057938709e-11,
-        0.1494360133340459,
-        -2.3420206786784317e-10,
-        0.988771398210338
+        1.8431522612465694e-18,
+        -3.946894683652234e-11,
+        -3.1293465855184095e-12,
+        1.0
       ]
     },
     {
-      "name": "Crate 2",
-      "kind": "Crate",
-      "mass_kg": 20.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        -11.500000492377483,
-        0.29999999985788295,
-        -7.4999944855849945
-      ],
-      "rotation": [
-        -3.539562003577493e-11,
-        0.1494360133340459,
-        -2.342020682849469e-10,
-        0.988771398210338
-      ]
-    },
-    {
-      "name": "Barrel 1",
+      "name": "Barrel",
       "kind": "Barrel",
       "mass_kg": 60.0,
       "secured": false,
       "removed": false,
       "center": [
-        -8.99997378910071,
+        -0.9999737891007552,
         0.4499999999997677,
-        -8.00009428432291
+        -4.000094284322904
       ],
       "rotation": [
-        -3.5157889662470473e-13,
-        0.00005382902022596411,
-        -3.5593188582988634e-14,
+        -3.5157866952259264e-13,
+        0.00005382902022578486,
+        -3.559323559564224e-14,
         0.9999999985512183
       ]
     },
     {
-      "name": "Barrel 2",
-      "kind": "Barrel",
-      "mass_kg": 60.0,
+      "name": "Anvil",
+      "kind": "Anvil",
+      "mass_kg": 250.0,
       "secured": false,
       "removed": false,
       "center": [
-        -11.99997378910071,
-        0.4499999999997677,
-        -5.000094284322904
+        0.9999890210686576,
+        0.19999999981031288,
+        -1.999880322068026
       ],
       "rotation": [
-        -3.5157870899942377e-13,
-        0.00005382902022591048,
-        -3.559327631032202e-14,
-        0.9999999985512183
+        -7.063489550000274e-11,
+        -0.00010531976659150828,
+        -2.3565918313038987e-10,
+        0.9999999944538733
       ]
     },
     {
-      "name": "Plank 1",
-      "kind": "Crate",
-      "mass_kg": 6.0,
+      "name": "Stone block",
+      "kind": "StoneBlock",
+      "mass_kg": 1000.0,
       "secured": false,
       "removed": false,
       "center": [
-        -7.762177924677897,
-        0.04999997782856263,
-        -3.305718557152154
+        -4.000001263436569,
+        0.3749999999846055,
+        -2.99999801695811
       ],
       "rotation": [
-        6.724797023110574e-8,
-        0.0909504671740097,
-        -6.930444271665284e-9,
-        0.9958554174782728
+        -2.0526025228562794e-11,
+        7.886656384360683e-7,
+        1.617268391545862e-17,
+        0.999999999999689
       ]
     },
     {
-      "name": "Plank 2",
-      "kind": "Crate",
-      "mass_kg": 6.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        -7.59298350986203,
-        0.049999999999999614,
-        -1.9187044030363891
-      ],
-      "rotation": [
-        1.1174058868117034e-16,
-        -0.9962700220246457,
-        -1.290359381946958e-15,
-        -0.08629045842393177
-      ]
-    },
-    {
-      "name": "Plank 3",
-      "kind": "Crate",
-      "mass_kg": 6.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        -4.699705374200397,
-        0.04999999987348276,
-        1.1920846681668429
-      ],
-      "rotation": [
-        -2.4137867452878115e-11,
-        0.4578889983181969,
-        4.686458046198745e-11,
-        -0.889009372964739
-      ]
-    },
-    {
-      "name": "Plank 4",
-      "kind": "Crate",
-      "mass_kg": 6.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        -6.097859252825773,
-        0.0499995026057824,
-        -0.18855067746720805
-      ],
-      "rotation": [
-        2.3592322972182448e-7,
-        0.9898224721090115,
-        1.6409279736199622e-6,
-        -0.1423076726858293
-      ]
-    },
-    {
-      "name": "Plank 5",
-      "kind": "Crate",
-      "mass_kg": 6.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        -7.586169996910326,
-        0.04999999999999894,
-        1.0018047837364226
-      ],
-      "rotation": [
-        6.9038360834425145e-18,
-        -0.020286248128728583,
-        4.420655025275728e-16,
-        -0.9997942128942634
-      ]
-    },
-    {
-      "name": "Secured crate",
+      "name": "Fixed grab post",
       "kind": "Crate",
       "mass_kg": 20.0,
       "secured": true,
       "removed": false,
       "center": [
-        -5.599999904632568,
-        0.30000001192092896,
-        -10.800000190734863
+        8.899999618530273,
+        1.0,
+        -3.0
       ],
       "rotation": [
         0.0,
@@ -326,15 +439,15 @@
       ]
     },
     {
-      "name": "Ceiling slab",
+      "name": "40-foot ceiling",
       "kind": "StoneBlock",
       "mass_kg": 1000.0,
       "secured": true,
       "removed": false,
       "center": [
-        -10.0,
-        14.342000007629395,
-        3.0
+        -5.0,
+        12.392000198364258,
+        -3.0
       ],
       "rotation": [
         0.0,
@@ -344,75 +457,219 @@
       ]
     },
     {
-      "name": "Crate (indoor)",
+      "name": "Ceiling-strike crate",
       "kind": "Crate",
       "mass_kg": 20.0,
       "secured": false,
-      "removed": false,
+      "removed": true,
       "center": [
-        -10.500000341160412,
-        0.29999999982910086,
-        1.2000017211748844
+        -6.1000000291049,
+        11.756989974294257,
+        -3.0000000441442243
       ],
       "rotation": [
-        1.8896146951999002e-16,
-        -6.640916364461457e-7,
-        -2.8483188003516075e-10,
-        0.9999999999997796
+        8.784634676767348e-8,
+        8.450279000910959e-8,
+        -1.3068926553317187e-7,
+        0.999999999999984
       ]
     },
     {
-      "name": "Barrel (indoor)",
-      "kind": "Barrel",
-      "mass_kg": 60.0,
-      "secured": false,
-      "removed": false,
-      "center": [
-        -7.999909765184646,
-        0.4499999181169823,
-        1.500658440372379
-      ],
-      "rotation": [
-        -1.676976320405726e-9,
-        0.0013179390617876754,
-        -6.364280408118132e-8,
-        0.9999991315179355
-      ]
-    },
-    {
-      "name": "Edge crate 1",
+      "name": "Loose plank pile",
       "kind": "Crate",
-      "mass_kg": 20.0,
+      "mass_kg": 8.0,
       "secured": false,
       "removed": false,
       "center": [
-        2.677942031416005,
-        0.2999999999745729,
-        11.155304816116672
+        3.035017142608031,
+        0.049908180244160744,
+        1.6560075628968474
       ],
       "rotation": [
-        -3.6639786238743164e-11,
-        -2.07689353945324e-7,
-        -5.73862586597351e-12,
-        0.9999999999999786
+        0.9929564419600828,
+        0.0000285236498068484,
+        -0.11847990733441402,
+        0.0001229406469757191
       ]
     },
     {
-      "name": "Edge crate 2",
+      "name": "Loose plank pile",
       "kind": "Crate",
-      "mass_kg": 20.0,
+      "mass_kg": 8.0,
       "secured": false,
       "removed": false,
       "center": [
-        5.017948685401205,
-        0.2999999999745161,
-        9.299367228380046
+        2.980896156928034,
+        0.049982588478445444,
+        0.1400858798339815
       ],
       "rotation": [
-        -3.6734657199079386e-11,
-        -7.229092167941194e-7,
-        -5.7384880912885036e-12,
-        0.9999999999997387
+        -0.9999870213388573,
+        -1.5251247605991266e-6,
+        0.005094748626688306,
+        -0.000026228705218698024
+      ]
+    },
+    {
+      "name": "Loose plank pile",
+      "kind": "Crate",
+      "mass_kg": 8.0,
+      "secured": false,
+      "removed": false,
+      "center": [
+        1.715944404396829,
+        0.049999584555254425,
+        1.6550371320729345
+      ],
+      "rotation": [
+        -0.83010088526452,
+        2.8697145093658995e-7,
+        0.5576132353907509,
+        -1.9266717853319943e-7
+      ]
+    },
+    {
+      "name": "Gravity impact debris",
+      "kind": "Crate",
+      "mass_kg": 2.5,
+      "secured": false,
+      "removed": false,
+      "center": [
+        -6.244245878088712,
+        0.14998496326273164,
+        -3.161642048359638
+      ],
+      "rotation": [
+        -4.695470081728283e-6,
+        0.022286965541452514,
+        -0.000040328650420429664,
+        0.999751613911429
+      ]
+    },
+    {
+      "name": "Gravity impact debris",
+      "kind": "Crate",
+      "mass_kg": 2.5,
+      "secured": false,
+      "removed": false,
+      "center": [
+        -5.939154321317872,
+        0.14997436289996835,
+        -3.1571304858143545
+      ],
+      "rotation": [
+        0.000018727747590558546,
+        0.01894037333776035,
+        -0.00005980133442441475,
+        0.9998206130756149
+      ]
+    },
+    {
+      "name": "Gravity impact debris",
+      "kind": "Crate",
+      "mass_kg": 2.5,
+      "secured": false,
+      "removed": false,
+      "center": [
+        -6.262826834206557,
+        0.4498826642787822,
+        -3.200998830408343
+      ],
+      "rotation": [
+        -0.000028080611559237664,
+        0.012680749081821716,
+        -0.000026965260677422424,
+        0.9999195953110819
+      ]
+    },
+    {
+      "name": "Gravity impact debris",
+      "kind": "Crate",
+      "mass_kg": 2.5,
+      "secured": false,
+      "removed": false,
+      "center": [
+        -5.9429763071351775,
+        0.44994546305419897,
+        -3.192271820830051
+      ],
+      "rotation": [
+        -0.000040987152171067094,
+        0.014631877346277397,
+        -0.00009122707840311993,
+        0.9998929433509356
+      ]
+    },
+    {
+      "name": "Gravity impact debris",
+      "kind": "Crate",
+      "mass_kg": 2.5,
+      "secured": false,
+      "removed": false,
+      "center": [
+        -6.257196206527714,
+        0.14998907040707118,
+        -2.8563522466561047
+      ],
+      "rotation": [
+        -3.073014448612984e-6,
+        0.016034085704965936,
+        -0.000023484834092863396,
+        0.9998714455041833
+      ]
+    },
+    {
+      "name": "Gravity impact debris",
+      "kind": "Crate",
+      "mass_kg": 2.5,
+      "secured": false,
+      "removed": false,
+      "center": [
+        -5.951853369950903,
+        0.14999246403544156,
+        -2.851929878514689
+      ],
+      "rotation": [
+        8.310412256019823e-7,
+        0.024600782607501454,
+        -0.00002373686045704862,
+        0.9996973546683864
+      ]
+    },
+    {
+      "name": "Gravity impact debris",
+      "kind": "Crate",
+      "mass_kg": 2.5,
+      "secured": false,
+      "removed": false,
+      "center": [
+        -6.26250283193115,
+        0.44985938848005236,
+        -2.846581544809101
+      ],
+      "rotation": [
+        -2.5837851748716633e-6,
+        0.020079249699253426,
+        -0.00034918073842633797,
+        0.9997983305635447
+      ]
+    },
+    {
+      "name": "Gravity impact debris",
+      "kind": "Crate",
+      "mass_kg": 2.5,
+      "secured": false,
+      "removed": false,
+      "center": [
+        -5.9354185337375,
+        0.44996866700504917,
+        -2.857517688971266
+      ],
+      "rotation": [
+        -0.00005565433814134373,
+        0.030280799233361563,
+        5.883021046241945e-8,
+        0.9995414299069248
       ]
     }
   ],
@@ -421,172 +678,227 @@
       "id": 14,
       "name": "Wizard",
       "position": [
-        5.75,
         0.0,
-        0.0
+        9.999999747378752e-6,
+        -8.0
       ],
-      "health": 200
+      "health": 169
     },
     {
       "id": 101,
-      "name": "Dummy A",
+      "name": "Gravity dummy",
       "position": [
-        -11.34000015258789,
-        9.999999747378752e-6,
-        -6.510000228881836
-      ],
-      "health": 66
-    },
-    {
-      "id": 102,
-      "name": "Dummy B",
-      "position": [
-        -13.0,
+        -5.0,
         9.999999747378752e-6,
         -3.0
       ],
-      "health": 66
+      "health": 382
+    },
+    {
+      "id": 102,
+      "name": "Gravity dummy",
+      "position": [
+        0.0,
+        9.999999747378752e-6,
+        -3.0
+      ],
+      "health": 364
     },
     {
       "id": 103,
-      "name": "Dummy C",
+      "name": "Gravity dummy",
       "position": [
-        -7.0,
+        5.0,
         9.999999747378752e-6,
-        -9.0
+        -3.0
       ],
-      "health": 71
+      "health": 363
     },
     {
       "id": 104,
-      "name": "Dummy D (saves, no grip)",
+      "name": "Gravity dummy",
       "position": [
-        -13.0,
-        9.999999747378752e-6,
-        -9.0
-      ],
-      "health": 66
-    },
-    {
-      "id": 105,
-      "name": "Dummy E (clings)",
-      "position": [
-        -4.599999904632568,
+        8.0,
         0.0,
-        -12.0
+        -3.0
       ],
-      "health": 100
-    },
-    {
-      "id": 106,
-      "name": "Dummy F (indoor)",
-      "position": [
-        -11.0,
-        9.999999747378752e-6,
-        3.0
-      ],
-      "health": 67
-    },
-    {
-      "id": 107,
-      "name": "Dummy G (indoor)",
-      "position": [
-        -9.0,
-        9.999999747378752e-6,
-        4.0
-      ],
-      "health": 71
+      "health": 400
     }
   ],
   "ledger": {
     "terms": {
-      "gravity": {
+      "creature:controller": {
         "linear": [
           0.0,
-          -32910.424499993656,
+          0.0,
           0.0
         ],
         "angular": [
-          -106689.93889502888,
           0.0,
-          283195.1678718429
+          0.0,
+          0.0
         ]
       },
-      "scripted shove": {
+      "gravity": {
         "linear": [
-          93.84628365917129,
           0.0,
-          103.4797069598882
+          -312705.84899999655,
+          0.0
         ],
         "angular": [
-          3154.0614681107672,
-          562.520570309397,
-          -2860.4347259073947
+          -961020.0804036551,
+          0.0,
+          -2036257.0798261787
+        ]
+      },
+      "gravity:fracture": {
+        "linear": [
+          1.0164395367051604e-20,
+          4.440892098500626e-16,
+          -3.3881317890172014e-21
+        ],
+        "angular": [
+          -3.552713678800501e-15,
+          -1.5585406229479126e-19,
+          1.4210854715202004e-14
+        ]
+      },
+      "meteor:spawn/remove": {
+        "linear": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "angular": [
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "playground:launch": {
+        "linear": [
+          600.0,
+          0.0,
+          0.0
+        ],
+        "angular": [
+          0.0,
+          -2999.9999999672787,
+          -18287.999999999993
+        ]
+      },
+      "reverse-gravity": {
+        "linear": [
+          -79.78024461013406,
+          441810.0270000067,
+          -0.005423486428322599
+        ],
+        "angular": [
+          1346543.0840390036,
+          398.9039940726556,
+          -1078957.8816001124
+        ]
+      },
+      "reverse-gravity:fixed-grab": {
+        "linear": [
+          0.0,
+          -11379.60000000039,
+          0.0
+        ],
+        "angular": [
+          -34138.799999999304,
+          0.0,
+          -91036.80000000312
         ]
       },
       "sleep": {
         "linear": [
-          3.306816626080788e-16,
-          -2.255140518769859e-17,
-          2.3180242447740075e-16
+          -2.509644664328251e-9,
+          2.663611377426077e-7,
+          8.453000263238089e-7
         ],
         "angular": [
-          2.289826434108445e-15,
-          2.4244770915305815e-15,
-          -1.2643940785030917e-15
+          1.1800779912138274e-6,
+          4.908146412163647e-6,
+          -1.524294928910277e-6
         ]
       },
-      "spell:Reverse Gravity": {
+      "spell:creature-proxy": {
         "linear": [
-          -13.763935062604698,
-          22666.044757181422,
-          -15.355210270702248
+          0.0,
+          0.0,
+          0.0
         ],
         "angular": [
-          79712.09712575037,
-          -84.82200267990211,
-          -204354.49846647074
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "spell:removed": {
+        "linear": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "angular": [
+          0.0,
+          0.0,
+          0.0
         ]
       },
       "static contact": {
         "linear": [
-          -80.08234859656699,
-          10244.379742816294,
-          -88.12449668918654
+          -0.00005020053882309663,
+          -124105.98300034471,
+          0.005422418374305691
         ],
         "angular": [
-          23823.780301169918,
-          -477.6985676294964,
-          -75980.2346794792
+          -383144.08849821566,
+          -0.0025236283978381964,
+          579023.4465266946
+        ]
+      },
+      "telekinesis:proxy": {
+        "linear": [
+          2.4214953777161244e-7,
+          196.2000000489004,
+          2.227539236330765e-7
+        ],
+        "angular": [
+          833.8598619979441,
+          -2.5015842979644576e-6,
+          0.0093247549434681
         ]
       }
     },
     "residual_relative": {
-      "linear": 5.0822715278671263e-14,
-      "angular": 1.7477246604439856e-14
+      "linear": 1.953453219535192e-14,
+      "angular": 5.72597759280253e-14
     },
     "tolerance": 1e-9
   },
   "replay": {
     "window_s": [
-      0.8999999761581421,
-      3.4000000953674316
+      6.0,
+      7.0
     ],
     "speed": 0.25,
     "source": "checkpoint at the window start, stepped again with the same admitted commands",
     "identical_to_live": true
   },
-  "live_seconds": 14.0,
-  "video_seconds": 24.0,
-  "authority_tick": 420,
-  "physics_steps": 1680,
+  "live_seconds": 42.0,
+  "live_speed": 2,
+  "video_seconds": 25.0,
+  "authority_tick": 630,
+  "physics_steps": 5040,
   "renderer": "owned native GPU pipeline; scripted admitted commands; no grading",
   "prepared_pack": {
     "inventory": {
       "schema": "openagents.verse.asset-admission.v1",
       "purpose": "original_local",
       "compiler": "verse:compiler:original-chamber",
-      "compiler_revision": "8cb4be8f0af241ce1f7370f59519e4ac1512acfd62dcc6e269b01843e5e3792c",
+      "compiler_revision": "506ab9e7462ac8a51fed16b58bd49af4af804604929a0a48d86f1393c7c32656",
       "assets": [
         "verse:model:adventurer",
         "verse:model:arrow",
@@ -606,6 +918,7 @@
         "verse:model:effect-mist",
         "verse:model:effect-ribbon",
         "verse:model:effect-rune",
+        "verse:model:effect-scorch",
         "verse:model:effect-shadow",
         "verse:model:effect-shield",
         "verse:model:effect-wave",
@@ -622,8 +935,10 @@
         "verse:model:prop-crate",
         "verse:model:prop-crate-secured",
         "verse:model:prop-dummy",
+        "verse:model:prop-meteor",
         "verse:model:prop-sheet",
         "verse:model:prop-stone",
+        "verse:model:prop-tentacle",
         "verse:model:prop/Banner_2",
         "verse:model:prop/Barrel",
         "verse:model:prop/Book_Stack_1",
@@ -747,7 +1062,7 @@
           {
             "creator": "OpenAgents contributors",
             "license": "apache2",
-            "revision": "8cb4be8f0af241ce1f7370f59519e4ac1512acfd62dcc6e269b01843e5e3792c",
+            "revision": "506ab9e7462ac8a51fed16b58bd49af4af804604929a0a48d86f1393c7c32656",
             "format": "rust/wgsl/json"
           }
         ],
@@ -763,10 +1078,10 @@
       ]
     },
     "schema": "openagents.verse.prepared-pack.v1",
-    "manifest_sha256": "29c4b1ac39dc928dba868a2a1b8e79fd0336eab160da0eeedf152fb2b4c8c1b1",
-    "manifest_bytes": 83344323,
-    "vertices": 271814,
-    "indices": 997743,
+    "manifest_sha256": "aea94bdec2f2decca804fb09629b53a13d93fc0c91be8363a7cc3317659d7ddb",
+    "manifest_bytes": 83421005,
+    "vertices": 272259,
+    "indices": 999651,
     "encoded_bytes": 34477502,
     "rgba_bytes": 164233224,
     "budget": {

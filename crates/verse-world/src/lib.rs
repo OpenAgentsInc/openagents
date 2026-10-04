@@ -237,6 +237,7 @@ pub mod black_tentacles;
 pub mod combat;
 pub mod controls;
 pub mod events;
+pub mod feather_fall;
 pub mod gust;
 pub mod hud;
 pub mod levitate;

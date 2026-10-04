@@ -16,12 +16,13 @@
 //!
 //! This module holds the rule and field math against [`physics::World`]
 //! and owns no actor, light, or projectile state of its own.
-pub use crate::spells::{FEET, SPELL_SAVE_DC};
 use glam::{DQuat, DVec3};
 use physics::{Body, BodyId, Collider, Material, Shape, World};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
+/// One foot, m.
+pub const FEET: f64 = 0.3048;
 /// Length of the Line, m (60 ft).
 pub const LENGTH: f64 = 60.0 * FEET;
 /// Width of the Line, m (10 ft).
@@ -40,6 +41,8 @@ pub const TURN: f64 = 6.0;
 pub const REAIM_COOLDOWN: f64 = 6.0;
 /// Concentration, up to one minute, s.
 pub const DURATION: f64 = 60.0;
+/// Player wizard spell save DC.
+pub const SPELL_SAVE_DC: i32 = 15;
 /// Feet of movement spent for each foot moved closer to the caster.
 pub const APPROACH_COST: f64 = 2.0;
 /// Chance in percent that a protected flame goes out.
@@ -323,7 +326,7 @@ pub enum SaveReason {
 /// A creature the Line can hold.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Creature {
-    pub id: u64,
+    pub id: u32,
     pub feet: DVec3,
     /// Strength save modifier from the creature's SRD stat block.
     pub strength: i32,
@@ -332,7 +335,7 @@ pub struct Creature {
 /// A lit scene light.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Flame {
-    pub id: u64,
+    pub id: u32,
     pub position: DVec3,
     /// A lantern rather than a candle or torch.
     pub protected: bool,
@@ -344,7 +347,7 @@ pub struct Flame {
 #[serde(tag = "event", rename_all = "snake_case")]
 pub enum Event {
     Save {
-        creature: u64,
+        creature: u32,
         reason: SaveReason,
         roll: i32,
         modifier: i32,
@@ -353,20 +356,20 @@ pub enum Event {
     },
     /// Push the creature `distance` along `direction` (a failed save).
     Push {
-        creature: u64,
+        creature: u32,
         direction: DVec3,
         distance: f64,
     },
     /// An unprotected flame went out.
-    Extinguished { flame: u64 },
+    Extinguished { flame: u32 },
     /// A protected flame rolled percentile dice; under 50 it went out.
-    Gutter { flame: u64, roll: u32, out: bool },
+    Gutter { flame: u32, roll: u32, out: bool },
 }
 
 /// An active Gust of Wind.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Gust {
-    pub caster: u64,
+    pub caster: u32,
     pub line: Line,
     pub cast_at: f64,
     /// Concentration ends here at the latest, s.
@@ -375,11 +378,11 @@ pub struct Gust {
     pub reaim_ready: f64,
     /// When each creature inside next saves, s. A creature that leaves is
     /// forgotten, so coming back is an entry.
-    clocks: BTreeMap<u64, f64>,
+    clocks: BTreeMap<u32, f64>,
     /// Creatures that must save at their next update (inside at the cast).
-    pending: BTreeSet<u64>,
+    pending: BTreeSet<u32>,
     /// Protected flames that already rolled.
-    rolled: BTreeSet<u64>,
+    rolled: BTreeSet<u32>,
     ended: bool,
 }
 
@@ -390,7 +393,7 @@ impl Gust {
     ///
     /// Returns a message when `aim` has no horizontal part or the inputs
     /// are not finite.
-    pub fn cast(caster: u64, origin: DVec3, aim: DVec3, time: f64) -> Result<Self, String> {
+    pub fn cast(caster: u32, origin: DVec3, aim: DVec3, time: f64) -> Result<Self, String> {
         if !time.is_finite() || time < 0.0 {
             return Err("Invalid Gust of Wind cast time".into());
         }
@@ -456,37 +459,22 @@ impl Gust {
         creatures: &[Creature],
         d20: &mut impl FnMut() -> i32,
     ) -> Vec<Event> {
-        let mut events = Vec::new();
-        for (id, reason) in self.due(time, creatures) {
-            let Some(creature) = creatures.iter().find(|c| c.id == id) else {
-                continue;
-            };
-            let roll = d20();
-            let passed = roll + creature.strength >= SPELL_SAVE_DC;
-            events.push(Event::Save {
-                creature: id,
-                reason,
-                roll,
-                modifier: creature.strength,
-                dc: SPELL_SAVE_DC,
-                passed,
-            });
-            if !passed {
-                events.push(self.push(id));
-            }
-        }
-        events
+        self.creatures_with(time, creatures, &mut |_| d20())
     }
 
-    /// The creatures that must make a Strength save at `time`, and why,
-    /// advancing each one's six-second clock. The caller rolls.
-    pub fn due(&mut self, time: f64, creatures: &[Creature]) -> Vec<(u64, SaveReason)> {
-        let mut due = Vec::new();
+    /// Resolve saves using a die source bound to each creature's identity.
+    pub fn creatures_with(
+        &mut self,
+        time: f64,
+        creatures: &[Creature],
+        d20: &mut impl FnMut(u32) -> i32,
+    ) -> Vec<Event> {
+        let mut events = Vec::new();
         if !self.active(time) {
-            return due;
+            return events;
         }
         let first = time <= self.cast_at;
-        let inside: BTreeSet<u64> = creatures
+        let inside: BTreeSet<u32> = creatures
             .iter()
             .filter(|c| c.id != self.caster && self.line.contains(c.feet))
             .map(|c| c.id)
@@ -496,65 +484,31 @@ impl Gust {
             let reason = match self.clocks.get(&creature.id) {
                 None if first || self.pending.remove(&creature.id) => SaveReason::Cast,
                 None => SaveReason::Entry,
-                Some(&at) if time >= at => SaveReason::Turn,
+                Some(&due) if time >= due => SaveReason::Turn,
                 Some(_) => continue,
             };
-            let at = self.clocks.get(&creature.id).copied();
+            let due = self.clocks.get(&creature.id).copied();
             self.clocks
-                .insert(creature.id, at.map_or(time, |d| d) + TURN);
-            due.push((creature.id, reason));
+                .insert(creature.id, due.map_or(time, |d| d) + TURN);
+            let roll = d20(creature.id);
+            let passed = roll + creature.strength >= SPELL_SAVE_DC;
+            events.push(Event::Save {
+                creature: creature.id,
+                reason,
+                roll,
+                modifier: creature.strength,
+                dc: SPELL_SAVE_DC,
+                passed,
+            });
+            if !passed {
+                events.push(Event::Push {
+                    creature: creature.id,
+                    direction: self.line.direction,
+                    distance: PUSH_DISTANCE,
+                });
+            }
         }
-        due
-    }
-
-    /// The push a failed save earns: 15 feet along the Line.
-    #[must_use]
-    pub fn push(&self, creature: u64) -> Event {
-        Event::Push {
-            creature,
-            direction: self.line.direction,
-            distance: PUSH_DISTANCE,
-        }
-    }
-
-    /// The wind's impulse over `dt` on a box (half extents `half`, centered
-    /// at `center`, turned by `rotation`, moving at `velocity`), and where
-    /// it acts: the middle of the part inside the Line's height. `None`
-    /// outside the Line or after the spell ends.
-    #[allow(clippy::too_many_arguments)]
-    #[must_use]
-    pub fn wind_on(
-        &self,
-        time: f64,
-        center: DVec3,
-        rotation: DQuat,
-        half: DVec3,
-        velocity: DVec3,
-        mass: f64,
-        drag_coefficient: f64,
-        dt: f64,
-    ) -> Option<(DVec3, DVec3)> {
-        if !self.active(time) || !self.line.contains(center.with_y(self.line.origin.y)) {
-            return None;
-        }
-        let extent = (rotation * DVec3::X).y.abs() * half.x
-            + (rotation * DVec3::Y).y.abs() * half.y
-            + (rotation * DVec3::Z).y.abs() * half.z;
-        let floor = self.line.origin.y;
-        let (bottom, top) = (center.y - extent, center.y + extent);
-        let (low, high) = (bottom.max(floor), top.min(floor + HEIGHT));
-        if high <= low {
-            return None;
-        }
-        let fraction = (high - low) / (top - bottom).max(1e-9);
-        let wind = self.line.wind();
-        let relative = wind - velocity;
-        if relative.length() < 1e-9 {
-            return None;
-        }
-        let area = projected_area(half, rotation, relative) * fraction;
-        let dv = drag_velocity_change(drag_coefficient * area, mass, wind, velocity, dt);
-        Some((dv * mass, center.with_y((low + high) / 2.0)))
+        events
     }
 
     /// A creature's velocity with its part toward the caster halved while
@@ -634,23 +588,36 @@ impl Gust {
             return blows;
         }
         let dt = world.dt;
+        let wind = self.line.wind();
         for &(id, profile) in props {
             let body = world[id];
-            if body.removed {
+            if body.removed || !self.line.contains(body.pos.with_y(self.line.origin.y)) {
                 continue;
             }
-            let Some((impulse, at)) = self.wind_on(
-                time,
-                body.pos,
-                body.orientation,
-                profile.half,
-                body.vel,
-                profile.mass,
-                profile.drag_coefficient,
-                dt,
-            ) else {
+            let extent = (body.orientation * DVec3::X).y.abs() * profile.half.x
+                + (body.orientation * DVec3::Y).y.abs() * profile.half.y
+                + (body.orientation * DVec3::Z).y.abs() * profile.half.z;
+            let floor = self.line.origin.y;
+            let (bottom, top) = (body.pos.y - extent, body.pos.y + extent);
+            let (low, high) = (bottom.max(floor), top.min(floor + HEIGHT));
+            if high <= low {
                 continue;
-            };
+            }
+            let fraction = (high - low) / (top - bottom).max(1e-9);
+            let relative = wind - body.vel;
+            if relative.length() < 1e-9 {
+                continue;
+            }
+            let area = projected_area(profile.half, body.orientation, relative) * fraction;
+            let dv = drag_velocity_change(
+                profile.drag_coefficient * area,
+                profile.mass,
+                wind,
+                body.vel,
+                dt,
+            );
+            let impulse = dv * profile.mass;
+            let at = body.pos.with_y((low + high) / 2.0);
             if body.kind == physics::BodyKind::Dynamic {
                 world[id].apply_force_at(impulse / dt, at);
             }
@@ -996,10 +963,10 @@ mod tests {
     #[test]
     fn candles_go_out_and_lanterns_gutter_half_the_time() {
         let mut g = gust();
-        let mut flames: Vec<Flame> = (0..400u64)
+        let mut flames: Vec<Flame> = (0..400)
             .map(|i| Flame {
                 id: i,
-                position: DVec3::new(2.0 + (i % 40) as f64 * 0.4, 1.0, 0.0),
+                position: DVec3::new(2.0 + f64::from(i % 40) * 0.4, 1.0, 0.0),
                 protected: i >= 200,
                 lit: true,
             })

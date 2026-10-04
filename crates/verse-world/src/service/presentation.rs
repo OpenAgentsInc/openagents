@@ -54,6 +54,8 @@ pub struct Impact {
 #[serde(deny_unknown_fields)]
 pub struct Presentation {
     pub time: f32,
+    #[serde(default)]
+    pub flames: Vec<crate::gust::Flame>,
     pub actors: Vec<Pose>,
     pub corpses: Vec<Pose>,
     pub effects: Vec<Effects>,
@@ -138,6 +140,7 @@ impl Presentation {
             props: crate::visuals::prop_poses(game, 1.),
             blockers: crate::visuals::blocker_bounds(game),
             time: frame.time,
+            flames: crate::visuals::flame_states(game),
             actors,
             corpses,
             effects,
@@ -319,6 +322,14 @@ impl Presentation {
             {
                 return Err("Invalid chamber impact presentation".into());
             }
+        }
+        if self.flames.len() > 256
+            || self
+                .flames
+                .iter()
+                .any(|f| !f.position.is_finite() || f.position.abs().max_element() > 1_000_000.)
+        {
+            return Err("Invalid replicated flame positions or budget".into());
         }
         crate::visuals::validate_props(&self.props, instance)?;
         crate::visuals::validate_blockers(&self.blockers, instance)?;
@@ -549,9 +560,13 @@ mod tests {
         let state = client.snapshot().await.unwrap();
         assert_eq!(state.presentation.hostile_casts.len(), 1);
         assert_eq!(state.presentation.impacts.len(), 1);
-        assert_eq!(state.presentation.props.len(), 1);
-        assert_eq!(state.presentation.props[0].life.instance, 120);
-        assert_eq!(state.presentation.props[0].center, Vec3::new(0., 1., -8.));
+        let prop = state
+            .presentation
+            .props
+            .iter()
+            .find(|p| p.center == Vec3::new(0., 1., -8.))
+            .unwrap();
+        assert_eq!(prop.life.instance, 120);
         assert!(
             state
                 .presentation

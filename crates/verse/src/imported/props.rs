@@ -257,6 +257,7 @@ pub fn install(pack: &mut Pack, dir: &Path, root: &Path) -> Result<(), String> {
             if x < 0. { 1.57 } else { -1.57 },
             1.5,
         );
+        place(pack, "flame", Vec3::new(x, 2.8, -18.), 0., 0.35);
     }
     pack.validate()
 }
@@ -265,6 +266,20 @@ pub fn install(pack: &mut Pack, dir: &Path, root: &Path) -> Result<(), String> {
 pub fn admit_collision(pack: &Pack, game: &mut super::play::Game) -> Result<(), String> {
     let life = game.player_life();
     for (index, placement) in pack.placements.iter().enumerate() {
+        if placement.model == "prop/flame" {
+            let position = super::chamber::basis()
+                .transform_point3(placement.position.into())
+                .as_dvec3();
+            let id = index as u32;
+            if !game.spells.flames.iter().any(|f| f.id == id) {
+                game.spells.flames.push(verse_world::gust::Flame {
+                    id,
+                    position,
+                    protected: position.x.abs() > 20. && (position.z + 18.).abs() < 1.,
+                    lit: true,
+                });
+            }
+        }
         if ![
             "Table_Large",
             "Cauldron",

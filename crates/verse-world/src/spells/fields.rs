@@ -111,20 +111,6 @@ pub struct SpellField {
     pub concentration: bool,
 }
 
-impl SpellField {
-    /// What this field adds, on top of `gravity`, to a body at `pos` moving
-    /// at `vel`: its constant acceleration, except in a Reverse Gravity
-    /// cylinder's top band, where a hover spring replaces both.
-    pub fn accel_at(&self, pos: DVec3, vel: DVec3, gravity: DVec3) -> DVec3 {
-        match crate::reverse_gravity::game::hover_top(self) {
-            Some(top) => {
-                crate::reverse_gravity::game::field_accel(top, pos, vel, gravity, self.acceleration)
-            }
-            None => self.acceleration,
-        }
-    }
-}
-
 /// Gravity plus the acceleration of every field containing a point: the
 /// `physics::world::Field` the spell world steps its bodies under.
 pub struct Fields<'a> {
@@ -133,26 +119,19 @@ pub struct Fields<'a> {
 }
 
 impl Fields<'_> {
-    /// The spell fields' share on a character, without gravity. Reverse
-    /// Gravity moves characters itself (`crate::reverse_gravity::game`).
+    /// The spell fields' share alone, without gravity.
     pub fn spell_accel(&self, p: DVec3) -> DVec3 {
         self.fields
             .iter()
-            .filter(|f| f.area.contains(p) && crate::reverse_gravity::game::hover_top(f).is_none())
+            .filter(|f| f.area.contains(p))
             .map(|f| f.acceleration)
             .sum()
     }
 }
 
 impl physics::Field for Fields<'_> {
-    fn accel(&self, pos: DVec3, vel: DVec3) -> DVec3 {
-        self.gravity
-            + self
-                .fields
-                .iter()
-                .filter(|f| f.area.contains(pos))
-                .map(|f| f.accel_at(pos, vel, self.gravity))
-                .sum::<DVec3>()
+    fn accel(&self, pos: DVec3, _vel: DVec3) -> DVec3 {
+        self.gravity + self.spell_accel(pos)
     }
 }
 

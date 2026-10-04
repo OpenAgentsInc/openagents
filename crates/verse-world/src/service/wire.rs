@@ -213,6 +213,7 @@ impl State {
         self.validate(instance)?;
         Ok(crate::visuals::Combat {
             time: self.presentation.time,
+            flames: self.presentation.flames.clone(),
             projectiles: self.snapshot.projectiles.clone(),
             players: self
                 .presentation

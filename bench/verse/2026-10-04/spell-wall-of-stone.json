@@ -2,20 +2,33 @@
   "schema": "openagents.verse.spell-playground.v1",
   "spell": "wall-of-stone",
   "title": "Wall of Stone",
-  "srd": "Level 5 Evocation | Range 120 ft | ten 10x10 ft panels, 6 in, AC 15, 180 HP | DEX save if enclosed | Concentration, 10 min",
+  "srd": "Wall of Stone · level 5 Evocation · range 120 ft · ten 10×10 ft panels, 6 in thick · Dex save if enclosed · concentration, 10 min",
   "srd_source": "SRD 5.2.1 (SRD_CC_v5.2.1.pdf)",
-  "rules_revision": "verse-chamber-owned-v17",
+  "rules_revision": "verse-chamber-owned-v18",
   "seed": 453,
-  "dice_rolled": 3,
+  "dice_rolled": 4,
   "saves": [
     {
-      "at": 12.600000381469727,
+      "at": 52.0,
       "save": {
-        "target": 106,
+        "target": 105,
         "ability": "Dexterity",
-        "roll": 15,
+        "roll": 19,
         "modifier": 0,
-        "total": 15,
+        "total": 19,
+        "dc": 15,
+        "success": true,
+        "forced": false
+      }
+    },
+    {
+      "at": 58.099998474121094,
+      "save": {
+        "target": 104,
+        "ability": "Dexterity",
+        "roll": 20,
+        "modifier": 0,
+        "total": 20,
         "dc": 15,
         "success": true,
         "forced": true
@@ -23,85 +36,1257 @@
     }
   ],
   "log": [
-    "[0.30] bridge raised: 2 panels, 1 welds, span 11 ft",
-    "[1.60] ramp raised: 28 panels, 46 welds, span 9 ft, half-size supports",
-    "[1.63] Concentration ends: the wall vanishes",
-    "[5.50] bridge raised: 5 panels, 4 welds, span 20 ft",
-    "[5.53] Concentration ends: the wall vanishes",
-    "[6.53] Fire Bolt hits panel 3: 8 fire, 82/90 HP",
-    "[6.87] Fire Bolt hits panel 3: 8 fire, 74/90 HP",
-    "[7.20] Fire Bolt hits panel 3: 8 fire, 66/90 HP",
-    "[7.53] Fire Bolt hits panel 3: 8 fire, 58/90 HP",
-    "[7.87] Fire Bolt hits panel 3: 8 fire, 50/90 HP",
-    "[8.20] Fire Bolt hits panel 3: 8 fire, 42/90 HP",
-    "[8.53] Fire Bolt hits panel 3: 8 fire, 34/90 HP",
-    "[8.87] Fire Bolt hits panel 3: 8 fire, 26/90 HP",
-    "[9.20] Fire Bolt hits panel 3: 8 fire, 18/90 HP",
-    "[9.53] Fire Bolt hits panel 3: 8 fire, 10/90 HP",
-    "[9.87] Fire Bolt hits panel 3: 8 fire, 2/90 HP",
-    "[10.20] Fire Bolt hits panel 3: 8 fire, 0/90 HP",
-    "[10.20] Panel 3 destroyed: 6 chunks of debris",
-    "[10.43] footing of panel 1 broke under load",
-    "[10.43] footing of panel 5 broke under load",
-    "[11.60] Dummy (wall) is in the wall's space: pushed 2.4 ft aside",
-    "[11.60] wall raised: 2 panels, 1 welds, span 0 ft",
-    "[11.63] Concentration ends: the wall vanishes",
-    "[12.60] Dummy (enclosed) enclosed: DEX save 15 +0 = 15 vs DC 15 succeeds; escapes 6.5 ft",
-    "[12.60] enclosure raised: 5 panels, 8 welds, span 9 ft",
-    "[12.63] Concentration ends: the wall vanishes",
-    "[13.60] tower raised: 9 panels, 16 welds, span 9 ft",
-    "[13.63] Concentration ends: the wall vanishes",
-    "[14.90] wall raised: 1 panels, 0 welds, span 0 ft",
-    "[14.93] Concentration ends: the wall vanishes",
-    "[15.70] Adventurer fell 20 ft: 2d6 = 10 bludgeoning"
+    "[0.00] Raised 5 supported panels; AC 15; 180 HP each",
+    "[6.70] Tower rider fell 11 ft: 1d6 = 2 bludgeoning",
+    "[10.00] Raised 1 supported panels; AC 15; 180 HP each",
+    "[16.00] Creature 101 reached Vec3(-1.1880677e-29, 4.00001, -2.0)",
+    "[20.00] Raised 28 supported panels; AC 15; 180 HP each",
+    "[28.50] Creature 102 reached Vec3(7.0, 6.00001, 6.0)",
+    "[29.90] Ramp walker fell 20 ft: 2d6 = 10 bludgeoning",
+    "[30.00] Raised 3 supported panels; AC 15; 180 HP each",
+    "[52.00] Enclosure: Escaped { roll: 19, total: 19, to: DVec3(-4.0, 0.0, 3.4462), distance: 0.4462 }",
+    "[52.00] Creature 105 displaced to DVec3(-4.0, 0.0, 3.4462)",
+    "[52.00] Raised 1 supported panels; AC 15; 180 HP each",
+    "[58.10] Enclosure: Escaped { roll: 20, total: 20, to: DVec3(-8.029800000000002, 0.0, 5.0), distance: 1.9701999999999993 }",
+    "[58.10] Creature 104 displaced to DVec3(-8.029800000000002, 0.0, 5.0)",
+    "[58.10] Raised 5 supported panels; AC 15; 180 HP each"
   ],
-  "tracks": [
+  "tracks": [],
+  "feather_falls": [],
+  "levitations": [],
+  "telekinesis": [],
+  "walls": [
     {
-      "label": "Dummy (wall)",
-      "spell": "Wall of Stone",
-      "at": 11.600000381469727,
-      "start": [
-        1.0,
-        0.0,
-        6.75
-      ],
-      "final": [
-        1.0,
-        0.0,
-        7.496200084686279
-      ],
-      "requested_ft": 2.4481627296587924,
-      "measured_ft": 2.4481630075009164
+      "cast": 1,
+      "caster": 14,
+      "wall": {
+        "cast_at": 0.0,
+        "permanent": false,
+        "vanished": true,
+        "panels": [
+          {
+            "form": "thick",
+            "body": 17,
+            "hit_points": 180,
+            "destroyed": false
+          },
+          {
+            "form": "thick",
+            "body": 18,
+            "hit_points": 180,
+            "destroyed": false
+          },
+          {
+            "form": "thick",
+            "body": 19,
+            "hit_points": 180,
+            "destroyed": false
+          },
+          {
+            "form": "thick",
+            "body": 20,
+            "hit_points": 180,
+            "destroyed": false
+          },
+          {
+            "form": "thick",
+            "body": 21,
+            "hit_points": 180,
+            "destroyed": false
+          }
+        ],
+        "bonds": [
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 0,
+              "b": 1
+            },
+            "joint": 0,
+            "strained": 0,
+            "broken": 6.0
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 0,
+              "b": 3
+            },
+            "joint": 1,
+            "strained": 0,
+            "broken": 6.0
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 0,
+              "b": 4
+            },
+            "joint": 2,
+            "strained": 0,
+            "broken": 6.0
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 1,
+              "b": 2
+            },
+            "joint": 3,
+            "strained": 0,
+            "broken": 6.0
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 1,
+              "b": 4
+            },
+            "joint": 4,
+            "strained": 0,
+            "broken": 6.0
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 2,
+              "b": 3
+            },
+            "joint": 5,
+            "strained": 0,
+            "broken": 6.0
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 2,
+              "b": 4
+            },
+            "joint": 6,
+            "strained": 0,
+            "broken": 6.0
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 3,
+              "b": 4
+            },
+            "joint": 7,
+            "strained": 0,
+            "broken": 6.0
+          },
+          {
+            "kind": {
+              "bond": "footing",
+              "panel": 0,
+              "stone": 0
+            },
+            "joint": 8,
+            "strained": 0,
+            "broken": 6.0
+          },
+          {
+            "kind": {
+              "bond": "footing",
+              "panel": 1,
+              "stone": 0
+            },
+            "joint": 9,
+            "strained": 0,
+            "broken": 6.0
+          },
+          {
+            "kind": {
+              "bond": "footing",
+              "panel": 2,
+              "stone": 0
+            },
+            "joint": 10,
+            "strained": 0,
+            "broken": 6.0
+          },
+          {
+            "kind": {
+              "bond": "footing",
+              "panel": 3,
+              "stone": 0
+            },
+            "joint": 11,
+            "strained": 0,
+            "broken": 6.0
+          }
+        ],
+        "debris": []
+      }
     },
     {
-      "label": "Dummy (enclosed)",
-      "spell": "Wall of Stone",
-      "at": 12.600000381469727,
-      "start": [
-        4.0,
-        0.0,
-        11.0
-      ],
-      "final": [
-        5.970200061798096,
-        0.0,
-        11.0
-      ],
-      "requested_ft": 6.463910761154854,
-      "measured_ft": 6.463910963904513
+      "cast": 2,
+      "caster": 14,
+      "wall": {
+        "cast_at": 10.0,
+        "permanent": false,
+        "vanished": true,
+        "panels": [
+          {
+            "form": "thick",
+            "body": 22,
+            "hit_points": 180,
+            "destroyed": false
+          }
+        ],
+        "bonds": [
+          {
+            "kind": {
+              "bond": "footing",
+              "panel": 0,
+              "stone": 11
+            },
+            "joint": 12,
+            "strained": 0,
+            "broken": 20.0
+          },
+          {
+            "kind": {
+              "bond": "footing",
+              "panel": 0,
+              "stone": 12
+            },
+            "joint": 13,
+            "strained": 0,
+            "broken": 20.0
+          }
+        ],
+        "debris": []
+      }
+    },
+    {
+      "cast": 3,
+      "caster": 14,
+      "wall": {
+        "cast_at": 20.0,
+        "permanent": false,
+        "vanished": true,
+        "panels": [
+          {
+            "form": "half",
+            "body": 23,
+            "hit_points": 180,
+            "destroyed": false
+          },
+          {
+            "form": "half",
+            "body": 24,
+            "hit_points": 180,
+            "destroyed": false
+          },
+          {
+            "form": "half",
+            "body": 25,
+            "hit_points": 180,
+            "destroyed": false
+          },
+          {
+            "form": "half",
+            "body": 26,
+            "hit_points": 180,
+            "destroyed": false
+          },
+          {
+            "form": "half",
+            "body": 27,
+            "hit_points": 180,
+            "destroyed": false
+          },
+          {
+            "form": "half",
+            "body": 28,
+            "hit_points": 180,
+            "destroyed": false
+          },
+          {
+            "form": "half",
+            "body": 29,
+            "hit_points": 180,
+            "destroyed": false
+          },
+          {
+            "form": "half",
+            "body": 30,
+            "hit_points": 180,
+            "destroyed": false
+          },
+          {
+            "form": "half",
+            "body": 31,
+            "hit_points": 180,
+            "destroyed": false
+          },
+          {
+            "form": "half",
+            "body": 32,
+            "hit_points": 180,
+            "destroyed": false
+          },
+          {
+            "form": "half",
+            "body": 33,
+            "hit_points": 180,
+            "destroyed": false
+          },
+          {
+            "form": "half",
+            "body": 34,
+            "hit_points": 180,
+            "destroyed": false
+          },
+          {
+            "form": "half",
+            "body": 35,
+            "hit_points": 180,
+            "destroyed": false
+          },
+          {
+            "form": "half",
+            "body": 36,
+            "hit_points": 180,
+            "destroyed": false
+          },
+          {
+            "form": "half",
+            "body": 37,
+            "hit_points": 180,
+            "destroyed": false
+          },
+          {
+            "form": "half",
+            "body": 38,
+            "hit_points": 180,
+            "destroyed": false
+          },
+          {
+            "form": "half",
+            "body": 39,
+            "hit_points": 180,
+            "destroyed": false
+          },
+          {
+            "form": "half",
+            "body": 40,
+            "hit_points": 180,
+            "destroyed": false
+          },
+          {
+            "form": "half",
+            "body": 41,
+            "hit_points": 180,
+            "destroyed": false
+          },
+          {
+            "form": "half",
+            "body": 42,
+            "hit_points": 180,
+            "destroyed": false
+          },
+          {
+            "form": "half",
+            "body": 43,
+            "hit_points": 180,
+            "destroyed": false
+          },
+          {
+            "form": "half",
+            "body": 44,
+            "hit_points": 180,
+            "destroyed": false
+          },
+          {
+            "form": "half",
+            "body": 45,
+            "hit_points": 180,
+            "destroyed": false
+          },
+          {
+            "form": "half",
+            "body": 46,
+            "hit_points": 180,
+            "destroyed": false
+          },
+          {
+            "form": "half",
+            "body": 47,
+            "hit_points": 180,
+            "destroyed": false
+          },
+          {
+            "form": "half",
+            "body": 48,
+            "hit_points": 180,
+            "destroyed": false
+          },
+          {
+            "form": "half",
+            "body": 49,
+            "hit_points": 180,
+            "destroyed": false
+          },
+          {
+            "form": "half",
+            "body": 50,
+            "hit_points": 180,
+            "destroyed": false
+          }
+        ],
+        "bonds": [
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 0,
+              "b": 1
+            },
+            "joint": 14,
+            "strained": 0,
+            "broken": 30.0
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 0,
+              "b": 8
+            },
+            "joint": 15,
+            "strained": 0,
+            "broken": 30.0
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 1,
+              "b": 2
+            },
+            "joint": 16,
+            "strained": 0,
+            "broken": 30.0
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 1,
+              "b": 9
+            },
+            "joint": 17,
+            "strained": 0,
+            "broken": 30.0
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 1,
+              "b": 16
+            },
+            "joint": 18,
+            "strained": 0,
+            "broken": 30.0
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 2,
+              "b": 3
+            },
+            "joint": 19,
+            "strained": 0,
+            "broken": 30.0
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 2,
+              "b": 10
+            },
+            "joint": 20,
+            "strained": 0,
+            "broken": 30.0
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 2,
+              "b": 16
+            },
+            "joint": 21,
+            "strained": 0,
+            "broken": 30.0
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 3,
+              "b": 4
+            },
+            "joint": 22,
+            "strained": 0,
+            "broken": 30.0
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 3,
+              "b": 11
+            },
+            "joint": 23,
+            "strained": 0,
+            "broken": 30.0
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 4,
+              "b": 5
+            },
+            "joint": 24,
+            "strained": 0,
+            "broken": 30.0
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 4,
+              "b": 12
+            },
+            "joint": 25,
+            "strained": 0,
+            "broken": 30.0
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 4,
+              "b": 19
+            },
+            "joint": 26,
+            "strained": 0,
+            "broken": 30.0
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 5,
+              "b": 6
+            },
+            "joint": 27,
+            "strained": 0,
+            "broken": 30.0
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 5,
+              "b": 13
+            },
+            "joint": 28,
+            "strained": 0,
+            "broken": 30.0
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 6,
+              "b": 7
+            },
+            "joint": 29,
+            "strained": 0,
+            "broken": 30.0
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 6,
+              "b": 14
+            },
+            "joint": 30,
+            "strained": 0,
+            "broken": 30.0
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 6,
+              "b": 24
+            },
+            "joint": 31,
+            "strained": 0,
+            "broken": 30.0
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 7,
+              "b": 15
+            },
+            "joint": 32,
+            "strained": 0,
+            "broken": 30.0
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 8,
+              "b": 9
+            },
+            "joint": 33,
+            "strained": 0,
+            "broken": 30.0
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 9,
+              "b": 10
+            },
+            "joint": 34,
+            "strained": 0,
+            "broken": 30.0
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 9,
+              "b": 17
+            },
+            "joint": 35,
+            "strained": 0,
+            "broken": 30.0
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 10,
+              "b": 11
+            },
+            "joint": 36,
+            "strained": 0,
+            "broken": 30.0
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 10,
+              "b": 17
+            },
+            "joint": 37,
+            "strained": 0,
+            "broken": 30.0
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 11,
+              "b": 12
+            },
+            "joint": 38,
+            "strained": 0,
+            "broken": 30.0
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 12,
+              "b": 13
+            },
+            "joint": 39,
+            "strained": 0,
+            "broken": 30.0
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 12,
+              "b": 21
+            },
+            "joint": 40,
+            "strained": 0,
+            "broken": 30.0
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 13,
+              "b": 14
+            },
+            "joint": 41,
+            "strained": 0,
+            "broken": 30.0
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 14,
+              "b": 15
+            },
+            "joint": 42,
+            "strained": 0,
+            "broken": 30.0
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 14,
+              "b": 27
+            },
+            "joint": 43,
+            "strained": 0,
+            "broken": 30.0
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 16,
+              "b": 17
+            },
+            "joint": 44,
+            "strained": 0,
+            "broken": 30.0
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 18,
+              "b": 19
+            },
+            "joint": 45,
+            "strained": 0,
+            "broken": 30.0
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 18,
+              "b": 20
+            },
+            "joint": 46,
+            "strained": 0,
+            "broken": 30.0
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 19,
+              "b": 21
+            },
+            "joint": 47,
+            "strained": 0,
+            "broken": 30.0
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 20,
+              "b": 21
+            },
+            "joint": 48,
+            "strained": 0,
+            "broken": 30.0
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 22,
+              "b": 23
+            },
+            "joint": 49,
+            "strained": 0,
+            "broken": 30.0
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 22,
+              "b": 25
+            },
+            "joint": 50,
+            "strained": 0,
+            "broken": 30.0
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 23,
+              "b": 24
+            },
+            "joint": 51,
+            "strained": 0,
+            "broken": 30.0
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 23,
+              "b": 26
+            },
+            "joint": 52,
+            "strained": 0,
+            "broken": 30.0
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 24,
+              "b": 27
+            },
+            "joint": 53,
+            "strained": 0,
+            "broken": 30.0
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 25,
+              "b": 26
+            },
+            "joint": 54,
+            "strained": 0,
+            "broken": 30.0
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 26,
+              "b": 27
+            },
+            "joint": 55,
+            "strained": 0,
+            "broken": 30.0
+          },
+          {
+            "kind": {
+              "bond": "footing",
+              "panel": 0,
+              "stone": 0
+            },
+            "joint": 56,
+            "strained": 0,
+            "broken": 30.0
+          },
+          {
+            "kind": {
+              "bond": "footing",
+              "panel": 7,
+              "stone": 13
+            },
+            "joint": 57,
+            "strained": 0,
+            "broken": 30.0
+          },
+          {
+            "kind": {
+              "bond": "footing",
+              "panel": 8,
+              "stone": 0
+            },
+            "joint": 58,
+            "strained": 0,
+            "broken": 30.0
+          },
+          {
+            "kind": {
+              "bond": "footing",
+              "panel": 15,
+              "stone": 13
+            },
+            "joint": 59,
+            "strained": 0,
+            "broken": 30.0
+          },
+          {
+            "kind": {
+              "bond": "footing",
+              "panel": 16,
+              "stone": 0
+            },
+            "joint": 60,
+            "strained": 0,
+            "broken": 30.0
+          },
+          {
+            "kind": {
+              "bond": "footing",
+              "panel": 17,
+              "stone": 0
+            },
+            "joint": 61,
+            "strained": 0,
+            "broken": 30.0
+          },
+          {
+            "kind": {
+              "bond": "footing",
+              "panel": 18,
+              "stone": 0
+            },
+            "joint": 62,
+            "strained": 0,
+            "broken": 30.0
+          },
+          {
+            "kind": {
+              "bond": "footing",
+              "panel": 20,
+              "stone": 0
+            },
+            "joint": 63,
+            "strained": 0,
+            "broken": 30.0
+          },
+          {
+            "kind": {
+              "bond": "footing",
+              "panel": 22,
+              "stone": 0
+            },
+            "joint": 64,
+            "strained": 0,
+            "broken": 30.0
+          },
+          {
+            "kind": {
+              "bond": "footing",
+              "panel": 25,
+              "stone": 0
+            },
+            "joint": 65,
+            "strained": 0,
+            "broken": 30.0
+          }
+        ],
+        "debris": []
+      }
+    },
+    {
+      "cast": 4,
+      "caster": 14,
+      "wall": {
+        "cast_at": 30.0,
+        "permanent": false,
+        "vanished": true,
+        "panels": [
+          {
+            "form": "thick",
+            "body": 51,
+            "hit_points": 180,
+            "destroyed": false
+          },
+          {
+            "form": "thick",
+            "body": 52,
+            "hit_points": 0,
+            "destroyed": true
+          },
+          {
+            "form": "thick",
+            "body": 53,
+            "hit_points": 180,
+            "destroyed": false
+          }
+        ],
+        "bonds": [
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 0,
+              "b": 1
+            },
+            "joint": 66,
+            "strained": 0,
+            "broken": 47.29999923706055
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 1,
+              "b": 2
+            },
+            "joint": 67,
+            "strained": 0,
+            "broken": 47.29999923706055
+          },
+          {
+            "kind": {
+              "bond": "footing",
+              "panel": 0,
+              "stone": 14
+            },
+            "joint": 68,
+            "strained": 0,
+            "broken": 52.0
+          },
+          {
+            "kind": {
+              "bond": "footing",
+              "panel": 1,
+              "stone": 14
+            },
+            "joint": 69,
+            "strained": 0,
+            "broken": 47.29999923706055
+          },
+          {
+            "kind": {
+              "bond": "footing",
+              "panel": 1,
+              "stone": 15
+            },
+            "joint": 70,
+            "strained": 0,
+            "broken": 47.29999923706055
+          },
+          {
+            "kind": {
+              "bond": "footing",
+              "panel": 2,
+              "stone": 15
+            },
+            "joint": 71,
+            "strained": 0,
+            "broken": 52.0
+          }
+        ],
+        "debris": [
+          {
+            "body": 54,
+            "until": 67.29999923706055,
+            "removed": true
+          },
+          {
+            "body": 55,
+            "until": 67.29999923706055,
+            "removed": true
+          },
+          {
+            "body": 56,
+            "until": 67.29999923706055,
+            "removed": true
+          },
+          {
+            "body": 57,
+            "until": 67.29999923706055,
+            "removed": true
+          }
+        ]
+      }
+    },
+    {
+      "cast": 5,
+      "caster": 14,
+      "wall": {
+        "cast_at": 52.0,
+        "permanent": false,
+        "vanished": true,
+        "panels": [
+          {
+            "form": "thick",
+            "body": 58,
+            "hit_points": 180,
+            "destroyed": false
+          }
+        ],
+        "bonds": [
+          {
+            "kind": {
+              "bond": "footing",
+              "panel": 0,
+              "stone": 0
+            },
+            "joint": 72,
+            "strained": 0,
+            "broken": 58.099998474121094
+          }
+        ],
+        "debris": []
+      }
+    },
+    {
+      "cast": 6,
+      "caster": 14,
+      "wall": {
+        "cast_at": 58.099998474121094,
+        "permanent": false,
+        "vanished": true,
+        "panels": [
+          {
+            "form": "thick",
+            "body": 59,
+            "hit_points": 180,
+            "destroyed": false
+          },
+          {
+            "form": "thick",
+            "body": 60,
+            "hit_points": 180,
+            "destroyed": false
+          },
+          {
+            "form": "thick",
+            "body": 61,
+            "hit_points": 180,
+            "destroyed": false
+          },
+          {
+            "form": "thick",
+            "body": 62,
+            "hit_points": 180,
+            "destroyed": false
+          },
+          {
+            "form": "thick",
+            "body": 63,
+            "hit_points": 180,
+            "destroyed": false
+          }
+        ],
+        "bonds": [
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 0,
+              "b": 1
+            },
+            "joint": 73,
+            "strained": 0,
+            "broken": 64.5
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 0,
+              "b": 3
+            },
+            "joint": 74,
+            "strained": 0,
+            "broken": 64.5
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 0,
+              "b": 4
+            },
+            "joint": 75,
+            "strained": 0,
+            "broken": 64.5
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 1,
+              "b": 2
+            },
+            "joint": 76,
+            "strained": 0,
+            "broken": 64.5
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 1,
+              "b": 4
+            },
+            "joint": 77,
+            "strained": 0,
+            "broken": 64.5
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 2,
+              "b": 3
+            },
+            "joint": 78,
+            "strained": 0,
+            "broken": 64.5
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 2,
+              "b": 4
+            },
+            "joint": 79,
+            "strained": 0,
+            "broken": 64.5
+          },
+          {
+            "kind": {
+              "bond": "seam",
+              "a": 3,
+              "b": 4
+            },
+            "joint": 80,
+            "strained": 0,
+            "broken": 64.5
+          },
+          {
+            "kind": {
+              "bond": "footing",
+              "panel": 0,
+              "stone": 0
+            },
+            "joint": 81,
+            "strained": 0,
+            "broken": 64.5
+          },
+          {
+            "kind": {
+              "bond": "footing",
+              "panel": 1,
+              "stone": 0
+            },
+            "joint": 82,
+            "strained": 0,
+            "broken": 64.5
+          },
+          {
+            "kind": {
+              "bond": "footing",
+              "panel": 2,
+              "stone": 0
+            },
+            "joint": 83,
+            "strained": 0,
+            "broken": 64.5
+          },
+          {
+            "kind": {
+              "bond": "footing",
+              "panel": 3,
+              "stone": 0
+            },
+            "joint": 84,
+            "strained": 0,
+            "broken": 64.5
+          }
+        ],
+        "debris": []
+      }
     }
   ],
+  "gusts": [],
+  "flames": [],
+  "wind_walls": [],
+  "tentacles": [],
+  "meteors": [],
+  "reverse_gravity": [],
   "props": [
     {
-      "name": "West abutment",
+      "name": "West bridge bank",
       "kind": "StoneBlock",
-      "mass_kg": 40171.67495727539,
+      "mass_kg": 1000.0,
       "secured": true,
       "removed": false,
       "center": [
-        -12.906000137329102,
-        1.0,
-        -2.5999999046325684
+        -6.0,
+        2.0,
+        -2.0
       ],
       "rotation": [
         0.0,
@@ -111,15 +1296,15 @@
       ]
     },
     {
-      "name": "East abutment",
+      "name": "East bridge bank",
       "kind": "StoneBlock",
-      "mass_kg": 40685.76147079468,
+      "mass_kg": 1000.0,
       "secured": true,
       "removed": false,
       "center": [
-        -4.607999801635742,
-        1.0,
-        -2.5999999046325684
+        0.0,
+        2.0,
+        -2.0
       ],
       "rotation": [
         0.0,
@@ -129,1047 +1314,921 @@
       ]
     },
     {
-      "name": "Stone panel 1",
-      "kind": "SpellBody",
-      "mass_kg": 3822.7742899200007,
-      "secured": false,
-      "removed": true,
-      "center": [
-        -4.499999999973565,
-        0.07619999963111672,
-        17.02400000003129
-      ],
-      "rotation": [
-        0.5000000000559308,
-        -0.49999999994539945,
-        -0.5000000000651144,
-        -0.49999999993355543
-      ]
-    },
-    {
-      "name": "Stone panel 2",
-      "kind": "SpellBody",
-      "mass_kg": 3822.7742899200007,
-      "secured": false,
-      "removed": true,
-      "center": [
-        -4.499999999936948,
-        0.07619999958975,
-        13.97600000001733
-      ],
-      "rotation": [
-        0.5000000000680077,
-        -0.49999999993260236,
-        -0.5000000000671964,
-        -0.49999999993219385
-      ]
-    },
-    {
-      "name": "Stone panel 1",
-      "kind": "SpellBody",
-      "mass_kg": 955.6935724800002,
-      "secured": false,
-      "removed": true,
-      "center": [
-        -6.222101000935398,
-        0.4468083542407884,
-        1.7381697366149529
-      ],
-      "rotation": [
-        0.1829288995271884,
-        0.6830346435425836,
-        0.6830409720754207,
-        0.18290905911051053
-      ]
-    },
-    {
-      "name": "Stone panel 2",
-      "kind": "SpellBody",
-      "mass_kg": 955.6935724800002,
-      "secured": false,
-      "removed": true,
-      "center": [
-        -7.542112470605751,
-        1.2084564233889057,
-        1.738211236730851
-      ],
-      "rotation": [
-        0.18287997909202328,
-        0.683001341717865,
-        0.683092596308258,
-        0.1828895440634611
-      ]
-    },
-    {
-      "name": "Stone panel 3",
-      "kind": "SpellBody",
-      "mass_kg": 955.6935724800002,
-      "secured": false,
-      "removed": true,
-      "center": [
-        -8.862195569619354,
-        1.9699818531164717,
-        1.7382587634669378
-      ],
-      "rotation": [
-        0.18288141280665735,
-        0.6829926399383018,
-        0.6830979397116658,
-        0.18290064899181732
-      ]
-    },
-    {
-      "name": "Stone panel 4",
-      "kind": "SpellBody",
-      "mass_kg": 955.6935724800002,
-      "secured": false,
-      "removed": true,
-      "center": [
-        -10.182260766662804,
-        2.7315037280676435,
-        1.7382817264919685
-      ],
-      "rotation": [
-        0.18284182122753115,
-        0.6829803502168716,
-        0.6831161264504773,
-        0.18291819868764994
-      ]
-    },
-    {
-      "name": "Stone panel 5",
-      "kind": "SpellBody",
-      "mass_kg": 955.6935724800002,
-      "secured": false,
-      "removed": true,
-      "center": [
-        -11.5023672917889,
-        3.4929618211937785,
-        1.738194781564159
-      ],
-      "rotation": [
-        0.18283028028269405,
-        0.6829753597350844,
-        0.6831215093222874,
-        0.1829282649229573
-      ]
-    },
-    {
-      "name": "Stone panel 6",
-      "kind": "SpellBody",
-      "mass_kg": 955.6935724800002,
-      "secured": false,
-      "removed": true,
-      "center": [
-        -12.82240560403073,
-        4.254412474159324,
-        1.7380157538801286
-      ],
-      "rotation": [
-        0.18284303405782987,
-        0.6829613869155573,
-        0.6831118940061894,
-        0.18300357686718208
-      ]
-    },
-    {
-      "name": "Stone panel 7",
-      "kind": "SpellBody",
-      "mass_kg": 955.6935724800002,
-      "secured": false,
-      "removed": true,
-      "center": [
-        -14.142398541890497,
-        5.016037950838745,
-        1.7377293620225636
-      ],
-      "rotation": [
-        0.18284240556873868,
-        0.6829673836256276,
-        0.6831033722915182,
-        0.18301363444660979
-      ]
-    },
-    {
-      "name": "Stone panel 8",
-      "kind": "SpellBody",
-      "mass_kg": 955.6935724800002,
-      "secured": false,
-      "removed": true,
-      "center": [
-        -15.462302583761856,
-        5.77772054237182,
-        1.737375770900715
-      ],
-      "rotation": [
-        0.18288734868789877,
-        0.6829966047120464,
-        0.6830517485798024,
-        0.1830523542700346
-      ]
-    },
-    {
-      "name": "Stone panel 9",
-      "kind": "SpellBody",
-      "mass_kg": 955.6935724800002,
-      "secured": false,
-      "removed": true,
-      "center": [
-        -6.222087168172166,
-        0.44676358583065423,
-        3.2621698425956804
-      ],
-      "rotation": [
-        0.18290443069142637,
-        0.6830457240580419,
-        0.6830447536831882,
-        0.1828780264147208
-      ]
-    },
-    {
-      "name": "Stone panel 10",
-      "kind": "SpellBody",
-      "mass_kg": 955.6935724800002,
-      "secured": false,
-      "removed": true,
-      "center": [
-        -7.5421873146792855,
-        1.208317378217331,
-        3.2622075191921542
-      ],
-      "rotation": [
-        0.18287174282769497,
-        0.6829971599843694,
-        0.6830979769436885,
-        0.18289329955984543
-      ]
-    },
-    {
-      "name": "Stone panel 11",
-      "kind": "SpellBody",
-      "mass_kg": 955.6935724800002,
-      "secured": false,
-      "removed": true,
-      "center": [
-        -8.862333355871614,
-        1.9698015644405202,
-        3.2622560540575223
-      ],
-      "rotation": [
-        0.18286615470020848,
-        0.6829923398605847,
-        0.6831072376603419,
-        0.1828822982493946
-      ]
-    },
-    {
-      "name": "Stone panel 12",
-      "kind": "SpellBody",
-      "mass_kg": 955.6935724800002,
-      "secured": false,
-      "removed": true,
-      "center": [
-        -10.182498449424301,
-        2.7312820353092473,
-        3.262271489798792
-      ],
-      "rotation": [
-        0.18284569416240049,
-        0.6829805597245909,
-        0.6831161575559554,
-        0.1829134288414644
-      ]
-    },
-    {
-      "name": "Stone panel 13",
-      "kind": "SpellBody",
-      "mass_kg": 955.6935724800002,
-      "secured": false,
-      "removed": true,
-      "center": [
-        -11.502673747207387,
-        3.4927231382798296,
-        3.2621886101707775
-      ],
-      "rotation": [
-        0.18281634395857219,
-        0.682980469335192,
-        0.6831240727694055,
-        0.18291354266768226
-      ]
-    },
-    {
-      "name": "Stone panel 14",
-      "kind": "SpellBody",
-      "mass_kg": 955.6935724800002,
-      "secured": false,
-      "removed": true,
-      "center": [
-        -12.82281022228409,
-        4.254196975325545,
-        3.2620079714935972
-      ],
-      "rotation": [
-        0.1828460372021266,
-        0.6829681434891962,
-        0.6831033573912751,
-        0.1830072260299229
-      ]
-    },
-    {
-      "name": "Stone panel 15",
-      "kind": "SpellBody",
-      "mass_kg": 955.6935724800002,
-      "secured": false,
-      "removed": true,
-      "center": [
-        -14.142793246561167,
-        5.01586599679906,
-        3.2617199981025005
-      ],
-      "rotation": [
-        0.18284851793058862,
-        0.6829707535317762,
-        0.683095588855444,
-        0.18302400333579058
-      ]
-    },
-    {
-      "name": "Stone panel 16",
-      "kind": "SpellBody",
-      "mass_kg": 955.6935724800002,
-      "secured": false,
-      "removed": true,
-      "center": [
-        -15.462643099105135,
-        5.777647166474291,
-        3.261349266746034
-      ],
-      "rotation": [
-        0.18280853330366376,
-        0.6830013794817067,
-        0.6830406995070354,
-        0.1831544664876861
-      ]
-    },
-    {
-      "name": "Stone panel 17",
-      "kind": "SpellBody",
-      "mass_kg": 955.6935724800002,
-      "secured": false,
-      "removed": true,
-      "center": [
-        -8.317857897206341,
-        0.7620521438107115,
-        1.738117617539861
-      ],
-      "rotation": [
-        -0.00007663726519146526,
-        0.7071195710403392,
-        0.00001924888179347067,
-        -0.7070939866863081
-      ]
-    },
-    {
-      "name": "Stone panel 18",
-      "kind": "SpellBody",
-      "mass_kg": 955.6935724800002,
-      "secured": false,
-      "removed": true,
-      "center": [
-        -8.317935757784362,
-        0.7619127861361699,
-        3.262086205929516
-      ],
-      "rotation": [
-        -0.00007468128713917807,
-        0.7071319966099697,
-        0.00001246120848674219,
-        -0.7070815608102233
-      ]
-    },
-    {
-      "name": "Stone panel 19",
-      "kind": "SpellBody",
-      "mass_kg": 955.6935724800002,
-      "secured": false,
-      "removed": true,
-      "center": [
-        -10.959456184047747,
-        0.7619905221201558,
-        1.7378483587620248
-      ],
-      "rotation": [
-        -3.3853301028367484e-6,
-        0.7071278543064504,
-        5.225716889581941e-6,
-        -0.7070857074111927
-      ]
-    },
-    {
-      "name": "Stone panel 20",
-      "kind": "SpellBody",
-      "mass_kg": 955.6935724800002,
-      "secured": false,
-      "removed": true,
-      "center": [
-        -10.959468139848418,
-        2.285937350661649,
-        1.7380856539680998
-      ],
-      "rotation": [
-        -0.00007896783561413945,
-        0.7071639116863194,
-        0.000035166473230118925,
-        -0.7070496407862064
-      ]
-    },
-    {
-      "name": "Stone panel 21",
-      "kind": "SpellBody",
-      "mass_kg": 955.6935724800002,
-      "secured": false,
-      "removed": true,
-      "center": [
-        -10.959600480361871,
-        0.7617877972225587,
-        3.2617770104349306
-      ],
-      "rotation": [
-        -0.00012542067077461928,
-        0.707130305035845,
-        0.00007636786181353577,
-        -0.7070832413072154
-      ]
-    },
-    {
-      "name": "Stone panel 22",
-      "kind": "SpellBody",
-      "mass_kg": 955.6935724800002,
-      "secured": false,
-      "removed": true,
-      "center": [
-        -10.959709751266091,
-        2.2857226747434276,
-        3.262080442497427
-      ],
-      "rotation": [
-        -0.0000825222325912542,
-        0.7071527581133809,
-        0.00003350520691134434,
-        -0.7070607956605435
-      ]
-    },
-    {
-      "name": "Stone panel 23",
-      "kind": "SpellBody",
-      "mass_kg": 955.6935724800002,
-      "secured": false,
-      "removed": true,
-      "center": [
-        -13.601177642241993,
-        0.7619399132672771,
-        1.7373447925915875
-      ],
-      "rotation": [
-        -0.00003802656224687353,
-        0.707183261870744,
-        0.000019571839306716188,
-        -0.7070302909358117
-      ]
-    },
-    {
-      "name": "Stone panel 24",
-      "kind": "SpellBody",
-      "mass_kg": 955.6935724800002,
-      "secured": false,
-      "removed": true,
-      "center": [
-        -13.601191806104474,
-        2.285800344068042,
-        1.7375331955985478
-      ],
-      "rotation": [
-        -0.00003949986182380167,
-        0.7072021256992939,
-        0.00006147600854431267,
-        -0.7070114200399182
-      ]
-    },
-    {
-      "name": "Stone panel 25",
-      "kind": "SpellBody",
-      "mass_kg": 955.6935724800002,
-      "secured": false,
-      "removed": true,
-      "center": [
-        -13.601132491111807,
-        3.809792076100744,
-        1.7377376741371116
-      ],
-      "rotation": [
-        -0.000026902235754858958,
-        0.707204433726085,
-        0.00007476163885317986,
-        -0.7070091106945756
-      ]
-    },
-    {
-      "name": "Stone panel 26",
-      "kind": "SpellBody",
-      "mass_kg": 955.6935724800002,
-      "secured": false,
-      "removed": true,
-      "center": [
-        -13.601549949960637,
-        0.7617024888021366,
-        3.2612882531075473
-      ],
-      "rotation": [
-        -0.00016776516085624386,
-        0.707205770667547,
-        0.00011365522062761874,
-        -0.7070077488060953
-      ]
-    },
-    {
-      "name": "Stone panel 27",
-      "kind": "SpellBody",
-      "mass_kg": 955.6935724800002,
-      "secured": false,
-      "removed": true,
-      "center": [
-        -13.6015964511362,
-        2.2855939993465806,
-        3.26153507070455
-      ],
-      "rotation": [
-        -0.000038336093577431835,
-        0.70720134524806,
-        0.00005769831441561296,
-        -0.7070122010832507
-      ]
-    },
-    {
-      "name": "Stone panel 28",
-      "kind": "SpellBody",
-      "mass_kg": 955.6935724800002,
-      "secured": false,
-      "removed": true,
-      "center": [
-        -13.60155474816994,
-        3.80959398474027,
-        3.2617420554874936
-      ],
-      "rotation": [
-        -0.000038336093577431747,
-        0.70720134524806,
-        0.00005769831441561308,
-        -0.7070122010832507
-      ]
-    },
-    {
-      "name": "Stone panel 1",
-      "kind": "SpellBody",
-      "mass_kg": 955.6935724800002,
-      "secured": false,
-      "removed": true,
-      "center": [
-        -11.631804809772184,
-        1.828898623387744,
-        -2.601314732678589
-      ],
-      "rotation": [
-        0.6346363507105719,
-        -0.3118332773169963,
-        0.31182567005564993,
-        -0.6346349037114603
-      ]
-    },
-    {
-      "name": "Stone panel 2",
-      "kind": "SpellBody",
-      "mass_kg": 955.6935724800002,
-      "secured": false,
-      "removed": true,
-      "center": [
-        -10.700565334372188,
-        0.622511834101113,
-        -2.6013282448591823
-      ],
-      "rotation": [
-        0.6346363336729757,
-        -0.31183332618729687,
-        0.3118256192842719,
-        -0.6346349216825928
-      ]
-    },
-    {
-      "name": "Stone panel 3",
-      "kind": "SpellBody",
-      "mass_kg": 955.6935724800002,
-      "secured": false,
-      "removed": true,
-      "center": [
-        -8.763997971719556,
-        2.0301090872332925,
-        -2.5999981499808906
-      ],
-      "rotation": [
-        0.7071066621616471,
-        0.00038196816598477356,
-        -0.00036462522059852836,
-        -0.7071067030338372
-      ]
-    },
-    {
-      "name": "Stone panel 4",
-      "kind": "SpellBody",
-      "mass_kg": 955.6935724800002,
-      "secured": false,
-      "removed": true,
-      "center": [
-        -6.828278741223079,
-        0.6258029435876146,
-        -2.6011419197743924
-      ],
-      "rotation": [
-        0.6348688341098648,
-        0.31135177098857275,
-        -0.3113477740870794,
-        -0.634873374578964
-      ]
-    },
-    {
-      "name": "Stone panel 5",
-      "kind": "SpellBody",
-      "mass_kg": 955.6935724800002,
-      "secured": false,
-      "removed": true,
-      "center": [
-        -5.895217109067572,
-        1.8307805135690522,
-        -2.6011308600321597
-      ],
-      "rotation": [
-        0.6348705615737633,
-        0.3113521937765472,
-        -0.3113473084051659,
-        -0.6348716681553874
-      ]
-    },
-    {
-      "name": "Panel 3 debris",
-      "kind": "SpellBody",
-      "mass_kg": 159.28226208000004,
-      "secured": false,
-      "removed": true,
-      "center": [
-        -9.27197584763299,
-        0.038099999999999835,
-        -1.838010582110745
-      ],
-      "rotation": [
-        0.7071067811326177,
-        8.733173872738243e-6,
-        8.733173872738321e-6,
-        -0.7071067811326176
-      ]
-    },
-    {
-      "name": "Panel 3 debris",
-      "kind": "SpellBody",
-      "mass_kg": 159.28226208000004,
-      "secured": false,
-      "removed": true,
-      "center": [
-        -8.763975847801493,
-        0.038099999999999946,
-        -1.837998122613697
-      ],
-      "rotation": [
-        0.7071067811326178,
-        8.733158676188296e-6,
-        8.733158676188379e-6,
-        -0.707106781132618
-      ]
-    },
-    {
-      "name": "Panel 3 debris",
-      "kind": "SpellBody",
-      "mass_kg": 159.28226208000004,
-      "secured": false,
-      "removed": true,
-      "center": [
-        -8.25597609745158,
-        0.038100000000000016,
-        -1.8379856874723672
-      ],
-      "rotation": [
-        0.7071067811332492,
-        8.681891044482844e-6,
-        8.681891044482899e-6,
-        -0.7071067811332493
-      ]
-    },
-    {
-      "name": "Panel 3 debris",
-      "kind": "SpellBody",
-      "mass_kg": 159.28226208000004,
-      "secured": false,
-      "removed": true,
-      "center": [
-        -9.271938469045837,
-        0.038099999999999835,
-        -3.3620105816523664
-      ],
-      "rotation": [
-        0.7071067811326177,
-        8.733173869680556e-6,
-        8.733173869680492e-6,
-        -0.7071067811326176
-      ]
-    },
-    {
-      "name": "Panel 3 debris",
-      "kind": "SpellBody",
-      "mass_kg": 159.28226208000004,
-      "secured": false,
-      "removed": true,
-      "center": [
-        -8.763938469214342,
-        0.038099999999999946,
-        -3.361998122155319
-      ],
-      "rotation": [
-        0.7071067811326178,
-        8.733158673121457e-6,
-        8.733158673121448e-6,
-        -0.707106781132618
-      ]
-    },
-    {
-      "name": "Panel 3 debris",
-      "kind": "SpellBody",
-      "mass_kg": 159.28226208000004,
-      "secured": false,
-      "removed": true,
-      "center": [
-        -8.255938719151596,
-        0.03809999999999994,
-        -3.3619856870068667
-      ],
-      "rotation": [
-        0.707106781133249,
-        8.68190599486081e-6,
-        8.681905994860779e-6,
-        -0.7071067811332491
-      ]
-    },
-    {
-      "name": "Stone panel 1",
-      "kind": "SpellBody",
-      "mass_kg": 3822.7742899200007,
-      "secured": false,
-      "removed": true,
-      "center": [
-        0.4759687854795189,
-        1.5239930251178786,
-        7.049678113014434
-      ],
-      "rotation": [
-        -0.00010451849453693113,
-        7.454683682493987e-8,
-        2.948514912983047e-6,
-        0.9999999945335926
-      ]
-    },
-    {
-      "name": "Stone panel 2",
-      "kind": "SpellBody",
-      "mass_kg": 3822.7742899200007,
-      "secured": false,
-      "removed": true,
-      "center": [
-        3.523978272378139,
-        1.5240004887367522,
-        7.049680693940534
-      ],
-      "rotation": [
-        -0.0001057525845640076,
-        -9.550118948618746e-8,
-        5.459176401419831e-6,
-        0.9999999943932896
-      ]
-    },
-    {
-      "name": "Stone panel 1",
-      "kind": "SpellBody",
-      "mass_kg": 3822.7742899200007,
-      "secured": false,
-      "removed": true,
-      "center": [
-        3.9237713064982893,
-        1.52400155145233,
-        9.47600775147105
-      ],
-      "rotation": [
-        6.322143769220862e-6,
-        3.2717210553093274e-7,
-        1.9293737880316627e-7,
-        0.9999999999799432
-      ]
-    },
-    {
-      "name": "Stone panel 2",
-      "kind": "SpellBody",
-      "mass_kg": 3822.7742899200007,
-      "secured": false,
-      "removed": true,
-      "center": [
-        5.523975664662299,
-        1.5240090145536849,
-        10.923808144014798
-      ],
-      "rotation": [
-        5.17929558585912e-6,
-        -0.7071042851301801,
-        1.3083345321222063e-6,
-        0.7071092772139255
-      ]
-    },
-    {
-      "name": "Stone panel 3",
-      "kind": "SpellBody",
-      "mass_kg": 3822.7742899200007,
-      "secured": false,
-      "removed": true,
-      "center": [
-        4.076174253095773,
-        1.5240008762174557,
-        12.524010817571163
-      ],
-      "rotation": [
-        2.0378866128181248e-7,
-        -0.9999999999974025,
-        -2.2652760868273136e-6,
-        1.4899825883948515e-7
-      ]
-    },
-    {
-      "name": "Stone panel 4",
-      "kind": "SpellBody",
-      "mass_kg": 3822.7742899200007,
-      "secured": false,
-      "removed": true,
-      "center": [
-        2.4759738478988247,
-        1.524000625515799,
-        11.07621538250932
-      ],
-      "rotation": [
-        1.3242749491264754e-6,
-        -0.7071076865849669,
-        -1.4745692044117943e-6,
-        -0.7071058757841913
-      ]
-    },
-    {
-      "name": "Stone panel 5",
-      "kind": "SpellBody",
-      "mass_kg": 3822.7742899200007,
-      "secured": false,
-      "removed": true,
-      "center": [
-        3.9999683495360263,
-        3.1242039110763384,
-        11.000016485956202
-      ],
-      "rotation": [
-        0.7071057790756071,
-        5.300681278987957e-7,
-        -1.6023447567909416e-6,
-        -0.7071077832940537
-      ]
-    },
-    {
-      "name": "Stone panel 1",
-      "kind": "SpellBody",
-      "mass_kg": 3822.7742899200007,
-      "secured": false,
-      "removed": true,
-      "center": [
-        -14.476172595271336,
-        1.5239994451822012,
-        0.9760010500064609
-      ],
-      "rotation": [
-        -5.977151497345823e-7,
-        -1.166202663488741e-6,
-        1.160572681434374e-7,
-        0.9999999999991346
-      ]
-    },
-    {
-      "name": "Stone panel 2",
-      "kind": "SpellBody",
-      "mass_kg": 3822.7742899200007,
-      "secured": false,
-      "removed": true,
-      "center": [
-        -12.87598163635865,
-        1.523994549399308,
-        2.42380128837112
-      ],
-      "rotation": [
-        -5.689470624902148e-6,
-        -0.7071083146914477,
-        -7.762246410708167e-6,
-        0.7071052476128276
-      ]
-    },
-    {
-      "name": "Stone panel 3",
-      "kind": "SpellBody",
-      "mass_kg": 3822.7742899200007,
-      "secured": false,
-      "removed": true,
-      "center": [
-        -14.323765659839435,
-        1.5239950784813336,
-        4.024004750828402
-      ],
-      "rotation": [
-        1.6009107482007695e-6,
-        -0.9999999999986806,
-        -2.7516182341454865e-7,
-        1.854662860917999e-8
-      ]
-    },
-    {
-      "name": "Stone panel 4",
-      "kind": "SpellBody",
-      "mass_kg": 3822.7742899200007,
-      "secured": false,
-      "removed": true,
-      "center": [
-        -15.923972310454879,
-        1.5239988435748635,
-        2.576203164842807
-      ],
-      "rotation": [
-        -1.3746665348517656e-6,
-        -0.7071130344200562,
-        9.201152924082485e-7,
-        -0.7071005278958036
-      ]
-    },
-    {
-      "name": "Stone panel 5",
-      "kind": "SpellBody",
-      "mass_kg": 3822.7742899200007,
-      "secured": false,
-      "removed": true,
-      "center": [
-        -14.476162999332479,
-        4.571999686109246,
-        0.976009965429459
-      ],
-      "rotation": [
-        1.198896474326247e-6,
-        -2.0664022823304662e-8,
-        -1.7204706320455366e-6,
-        0.9999999999978011
-      ]
-    },
-    {
-      "name": "Stone panel 6",
-      "kind": "SpellBody",
-      "mass_kg": 3822.7742899200007,
-      "secured": false,
-      "removed": true,
-      "center": [
-        -12.875963731845346,
-        4.571992309519769,
-        2.423808276526681
-      ],
-      "rotation": [
-        -1.707830335677066e-8,
-        -0.7071063265832429,
-        -1.567134210788777e-6,
-        0.7071072357878232
-      ]
-    },
-    {
-      "name": "Stone panel 7",
-      "kind": "SpellBody",
-      "mass_kg": 3822.7742899200007,
-      "secured": false,
-      "removed": true,
-      "center": [
-        -14.323761806116197,
-        4.57199213846796,
-        4.024009926699711
-      ],
-      "rotation": [
-        -1.0379986411400708e-6,
-        -0.9999999999986745,
-        -1.1116386353901276e-6,
-        5.814632278496534e-7
-      ]
-    },
-    {
-      "name": "Stone panel 8",
-      "kind": "SpellBody",
-      "mass_kg": 3822.7742899200007,
-      "secured": false,
-      "removed": true,
-      "center": [
-        -15.923964848105777,
-        4.571992356399535,
-        2.5762123842169475
-      ],
-      "rotation": [
-        -4.100043058639709e-6,
-        -0.7071043994863574,
-        -1.40850937127778e-6,
-        -0.7071091628654261
-      ]
-    },
-    {
-      "name": "Stone panel 9",
-      "kind": "SpellBody",
-      "mass_kg": 3822.7742899200007,
-      "secured": false,
-      "removed": true,
-      "center": [
-        -14.39996051186307,
-        6.172195507532911,
-        2.50001355738633
-      ],
-      "rotation": [
-        0.7071060057062324,
-        -1.1359053479056072e-6,
-        2.923295815439043e-7,
-        -0.7071075566650395
-      ]
-    },
-    {
-      "name": "Stone panel 1",
-      "kind": "SpellBody",
-      "mass_kg": 955.6935724800002,
-      "secured": false,
+      "name": "Ramp ledge",
+      "kind": "StoneBlock",
+      "mass_kg": 1000.0,
+      "secured": true,
       "removed": false,
       "center": [
-        6.761999858583663,
-        0.7619997810384823,
-        -6.0000007840674625
+        7.0,
+        3.0,
+        8.5
       ],
       "rotation": [
-        -5.401617635907557e-7,
-        -1.2274429004426279e-8,
-        -8.965906686410692e-8,
-        0.99999999999985
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "name": "Collapse bridge bank",
+      "kind": "StoneBlock",
+      "mass_kg": 1000.0,
+      "secured": true,
+      "removed": false,
+      "center": [
+        -9.0,
+        2.0,
+        10.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "name": "Collapse bridge bank",
+      "kind": "StoneBlock",
+      "mass_kg": 1000.0,
+      "secured": true,
+      "removed": false,
+      "center": [
+        0.0,
+        2.0,
+        10.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "name": "Caster shooting platform",
+      "kind": "StoneBlock",
+      "mass_kg": 1000.0,
+      "secured": true,
+      "removed": false,
+      "center": [
+        0.0,
+        1.0,
+        -8.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "name": "Stone panel",
+      "kind": "SpellBody",
+      "mass_kg": 3822.7742899200007,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -8.076226853882517,
+        1.5240015962133393,
+        -8.523993547111251
+      ],
+      "rotation": [
+        6.894723567998723e-6,
+        1.5218500992288722e-7,
+        1.7900238625201591e-7,
+        0.9999999999762039
+      ]
+    },
+    {
+      "name": "Stone panel",
+      "kind": "SpellBody",
+      "mass_kg": 3822.7742899200007,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -6.476023643402625,
+        1.524008891785327,
+        -7.076191864833133
+      ],
+      "rotation": [
+        5.1117349792479245e-6,
+        -0.7071044588289294,
+        1.2938085765943198e-6,
+        0.7071091035168784
+      ]
+    },
+    {
+      "name": "Stone panel",
+      "kind": "SpellBody",
+      "mass_kg": 3822.7742899200007,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -7.923826032616512,
+        1.524000483489621,
+        -5.475989929084408
+      ],
+      "rotation": [
+        7.58825331721948e-8,
+        -0.999999999997399,
+        -2.2792288311633425e-6,
+        -4.167107340877105e-8
+      ]
+    },
+    {
+      "name": "Stone panel",
+      "kind": "SpellBody",
+      "mass_kg": 3822.7742899200007,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -9.524025485328542,
+        1.5240005723604377,
+        -6.92378604019927
+      ],
+      "rotation": [
+        1.300805366682406e-6,
+        -0.7071075095351601,
+        -1.429845190661629e-6,
+        -0.7071060528345425
+      ]
+    },
+    {
+      "name": "Stone panel",
+      "kind": "SpellBody",
+      "mass_kg": 3822.7742899200007,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -8.000030805112823,
+        3.124203779196138,
+        -6.999984128100716
+      ],
+      "rotation": [
+        0.7071057288090516,
+        6.842485190598379e-7,
+        -1.3908311732721277e-6,
+        -0.7071078335607784
+      ]
+    },
+    {
+      "name": "Stone panel",
+      "kind": "SpellBody",
+      "mass_kg": 3822.7742899200007,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -2.9999999999979208,
+        4.076199999887189,
+        -1.9999999999998936
+      ],
+      "rotation": [
+        0.7071067811868996,
+        2.5276438290006522e-11,
+        -2.654246520317839e-11,
+        -0.7071067811861955
+      ]
+    },
+    {
+      "name": "Stone panel",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        6.238358659629375,
+        0.44189994452361586,
+        -5.474117126475003
+      ],
+      "rotation": [
+        0.6108885231829991,
+        0.6108360443618203,
+        0.35622169286195926,
+        -0.3560907815238396
+      ]
+    },
+    {
+      "name": "Stone panel",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        6.238273334750386,
+        1.1926699771180822,
+        -4.147856360510545
+      ],
+      "rotation": [
+        0.610859238547262,
+        0.6107877314003345,
+        0.3563024157846703,
+        -0.3561431262263814
+      ]
+    },
+    {
+      "name": "Stone panel",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        6.238249540347786,
+        1.9431300695232903,
+        -2.821425846031804
+      ],
+      "rotation": [
+        0.6108631032067049,
+        0.6107838342946139,
+        0.35630777325917734,
+        -0.35613782110319475
+      ]
+    },
+    {
+      "name": "Stone panel",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        6.238202844669426,
+        2.6936607871238896,
+        -1.4950121350993433
+      ],
+      "rotation": [
+        0.6108740968002131,
+        0.6107993598641185,
+        0.3562921790167987,
+        -0.3561079373161578
+      ]
+    },
+    {
+      "name": "Stone panel",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        6.238108713285775,
+        3.4442500827162847,
+        -0.16864010597260032
+      ],
+      "rotation": [
+        0.6108576152045725,
+        0.6107713001487372,
+        0.35632491884519496,
+        -0.3561515759773768
+      ]
+    },
+    {
+      "name": "Stone panel",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        6.238017688276773,
+        4.194797408019735,
+        1.1576337839784354
+      ],
+      "rotation": [
+        0.610888593106008,
+        0.6108632636335599,
+        0.3562284497517702,
+        -0.35603720527968546
+      ]
+    },
+    {
+      "name": "Stone panel",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        6.237828163522804,
+        4.945648106247813,
+        2.483813782531599
+      ],
+      "rotation": [
+        0.6108567494341551,
+        0.6108517490142973,
+        0.3562651479527617,
+        -0.3560748752033886
+      ]
+    },
+    {
+      "name": "Stone panel",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        6.237624987276929,
+        5.6965879351524835,
+        3.809861892855712
+      ],
+      "rotation": [
+        0.6108876248740102,
+        0.6109655410826217,
+        0.3560706875453064,
+        -0.3560211831568776
+      ]
+    },
+    {
+      "name": "Stone panel",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        7.762371721267894,
+        0.44164682457992943,
+        -5.4739290147421995
+      ],
+      "rotation": [
+        0.6108606063498379,
+        0.6108622136066391,
+        0.3561891993087602,
+        -0.35612628363164905
+      ]
+    },
+    {
+      "name": "Stone panel",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        7.762296739075012,
+        1.1923134124904535,
+        -4.147611538877289
+      ],
+      "rotation": [
+        0.6108741264105441,
+        0.610764405580114,
+        0.356350312978569,
+        -0.3561096699032487
+      ]
+    },
+    {
+      "name": "Stone panel",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        7.762243851904924,
+        1.9427621270980147,
+        -2.821174956805327
+      ],
+      "rotation": [
+        0.6108778897959338,
+        0.6107670151426632,
+        0.3563326955865635,
+        -0.3561163672568312
+      ]
+    },
+    {
+      "name": "Stone panel",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        7.762201107039168,
+        2.693331192598344,
+        -1.4947598461124771
+      ],
+      "rotation": [
+        0.6108696323253231,
+        0.6108113427293802,
+        0.35627874344547383,
+        -0.3561084846851735
+      ]
+    },
+    {
+      "name": "Stone panel",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        7.762108334954222,
+        3.4439725438924707,
+        -0.16839988216433904
+      ],
+      "rotation": [
+        0.6108575309927772,
+        0.6107634996983095,
+        0.3563313117059504,
+        -0.3561587013728548
+      ]
+    },
+    {
+      "name": "Stone panel",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        7.762011116099256,
+        4.194569794893105,
+        1.1579401510173928
+      ],
+      "rotation": [
+        0.6108820812487623,
+        0.6108775220289935,
+        0.3562110402648217,
+        -0.35604133282857914
+      ]
+    },
+    {
+      "name": "Stone panel",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        7.761826197087205,
+        4.945492451289,
+        2.484121334117149
+      ],
+      "rotation": [
+        0.6108669397924034,
+        0.6108637405444091,
+        0.35624114579112487,
+        -0.3560608352545722
+      ]
+    },
+    {
+      "name": "Stone panel",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        7.761573997031857,
+        5.6966215305183505,
+        3.810165674347165
+      ],
+      "rotation": [
+        0.610868880470716,
+        0.6110051267904888,
+        0.3560784264446599,
+        -0.35597766801990244
+      ]
+    },
+    {
+      "name": "Stone panel",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        6.238048339212979,
+        0.7621431806934647,
+        -3.3312343676785687
+      ],
+      "rotation": [
+        0.00014637078208466246,
+        -0.00003213292052724469,
+        -0.00008771238254151983,
+        0.9999999849248038
+      ]
+    },
+    {
+      "name": "Stone panel",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        7.761989011689708,
+        0.7617594180019114,
+        -3.3309940192211087
+      ],
+      "rotation": [
+        0.00016196405264213326,
+        -0.00014706045389303594,
+        -0.0001739757521477572,
+        0.9999999609366524
+      ]
+    },
+    {
+      "name": "Stone panel",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        6.237549643058601,
+        0.7619681406928673,
+        -0.6388389488916711
+      ],
+      "rotation": [
+        0.00005628278334430776,
+        4.399127764432214e-6,
+        -0.000026529725132217177,
+        0.9999999980545349
+      ]
+    },
+    {
+      "name": "Stone panel",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        6.2378925553398705,
+        2.285890074629255,
+        -0.6386073094121871
+      ],
+      "rotation": [
+        0.00010857275148094834,
+        -0.0000642742431039948,
+        -0.0001110390020337471,
+        0.9999999858755597
+      ]
+    },
+    {
+      "name": "Stone panel",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        7.761465947754641,
+        0.7617507336191655,
+        -0.6387469777607433
+      ],
+      "rotation": [
+        0.00007573375006056124,
+        0.00003198541245131749,
+        -0.00017110196997677753,
+        0.9999999819827241
+      ]
+    },
+    {
+      "name": "Stone panel",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        7.761876800904724,
+        2.285624806627148,
+        -0.6384204909324777
+      ],
+      "rotation": [
+        0.00011038524798741016,
+        -0.000044498554168892503,
+        -0.00011168119535114672,
+        0.9999999866811432
+      ]
+    },
+    {
+      "name": "Stone panel",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        6.237308285229782,
+        0.7619403222234835,
+        2.0536495582574683
+      ],
+      "rotation": [
+        0.00003983026946707038,
+        -0.00007145907381318651,
+        -0.00004313508438670386,
+        0.9999999957232575
+      ]
+    },
+    {
+      "name": "Stone panel",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        6.237518433683093,
+        2.2857555341892546,
+        2.0537952700230284
+      ],
+      "rotation": [
+        0.00005394278872751857,
+        -0.00011162986257903226,
+        -0.0000792367072038359,
+        0.9999999891752468
+      ]
+    },
+    {
+      "name": "Stone panel",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        6.237762781606899,
+        3.8097455794649457,
+        2.0539496125204084
+      ],
+      "rotation": [
+        0.00001629233780164727,
+        -0.00012181363375005579,
+        -0.0000815128563715262,
+        0.9999999891258263
+      ]
+    },
+    {
+      "name": "Stone panel",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        7.761235962171717,
+        0.7616653359116344,
+        2.0539357759359844
+      ],
+      "rotation": [
+        0.00006319662840103734,
+        -0.00008244207939902266,
+        -0.00022585345800773662,
+        0.9999999690998521
+      ]
+    },
+    {
+      "name": "Stone panel",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        7.7615204533781235,
+        2.285529149718009,
+        2.0541390290056545
+      ],
+      "rotation": [
+        0.00005683111084215386,
+        -0.00011201586706290524,
+        -0.00008013408881252567,
+        0.9999999889005992
+      ]
+    },
+    {
+      "name": "Stone panel",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        7.761764682681558,
+        3.8095291203316477,
+        2.054312277588374
+      ],
+      "rotation": [
+        0.00005683111084215382,
+        -0.00011201586706290523,
+        -0.00008013408881252564,
+        0.9999999889005992
+      ]
+    },
+    {
+      "name": "Stone panel",
+      "kind": "SpellBody",
+      "mass_kg": 3822.7742899200007,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -7.547999999966083,
+        4.076199997540519,
+        10.000000000130218
+      ],
+      "rotation": [
+        0.7071067817571233,
+        -2.965311375870946e-11,
+        -2.9652845791679736e-11,
+        -0.7071067806159719
+      ]
+    },
+    {
+      "name": "Stone panel",
+      "kind": "SpellBody",
+      "mass_kg": 3822.7742899200007,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -4.499999999992723,
+        4.0761999988933795,
+        10.000000000027894
+      ],
+      "rotation": [
+        0.7071067811817774,
+        2.517004880422458e-10,
+        -2.5389911582602154e-10,
+        -0.7071067811913178
+      ]
+    },
+    {
+      "name": "Stone panel",
+      "kind": "SpellBody",
+      "mass_kg": 3822.7742899200007,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -1.451999999956159,
+        4.076199998994283,
+        10.000000000046965
+      ],
+      "rotation": [
+        0.7071067814198642,
+        -1.7967170614004855e-11,
+        -1.7966951535040497e-11,
+        -0.707106780953231
+      ]
+    },
+    {
+      "name": "Stone fracture debris",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -5.261999999995042,
+        0.07315199999999837,
+        10.762000000024209
+      ],
+      "rotation": [
+        0.7071067811865482,
+        8.905238004297713e-13,
+        8.905386581515298e-13,
+        -0.7071067811865469
+      ]
+    },
+    {
+      "name": "Stone fracture debris",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -3.7379999999950413,
+        0.07315199999999837,
+        10.76200000001947
+      ],
+      "rotation": [
+        0.7071067811865482,
+        8.905203413176478e-13,
+        8.905352452195906e-13,
+        -0.7071067811865469
+      ]
+    },
+    {
+      "name": "Stone fracture debris",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -5.26199999999978,
+        0.07315199999999837,
+        9.238000000024208
+      ],
+      "rotation": [
+        0.7071067811865482,
+        8.905204970954249e-13,
+        8.905351958089856e-13,
+        -0.7071067811865469
+      ]
+    },
+    {
+      "name": "Stone fracture debris",
+      "kind": "SpellBody",
+      "mass_kg": 955.6935724800002,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -3.7379999999997793,
+        0.07315199999999837,
+        9.238000000019468
+      ],
+      "rotation": [
+        0.7071067811865482,
+        8.905207715059991e-13,
+        8.905357198925428e-13,
+        -0.7071067811865469
+      ]
+    },
+    {
+      "name": "Stone panel",
+      "kind": "SpellBody",
+      "mass_kg": 3822.7742899200007,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -3.976000134086044,
+        1.5239998645054305,
+        2.9999981992076625
+      ],
+      "rotation": [
+        -5.934081370775885e-7,
+        -2.8431057697215394e-10,
+        -1.4782840413756835e-8,
+        0.9999999999998239
+      ]
+    },
+    {
+      "name": "Stone panel",
+      "kind": "SpellBody",
+      "mass_kg": 3822.7742899200007,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -10.076226853882517,
+        1.5240015962133393,
+        3.476006452888745
+      ],
+      "rotation": [
+        6.894723567910158e-6,
+        1.5218501044805787e-7,
+        1.790023862290813e-7,
+        0.9999999999762039
+      ]
+    },
+    {
+      "name": "Stone panel",
+      "kind": "SpellBody",
+      "mass_kg": 3822.7742899200007,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -8.476023643402627,
+        1.5240088917853272,
+        4.9238081351668646
+      ],
+      "rotation": [
+        5.111734979112703e-6,
+        -0.7071044588289298,
+        1.293808576349224e-6,
+        0.707109103516878
+      ]
+    },
+    {
+      "name": "Stone panel",
+      "kind": "SpellBody",
+      "mass_kg": 3822.7742899200007,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -9.923826032616516,
+        1.5240004834896215,
+        6.52401007091559
+      ],
+      "rotation": [
+        7.588253305890385e-8,
+        -0.999999999997399,
+        -2.2792288306647624e-6,
+        -4.167107331365707e-8
+      ]
+    },
+    {
+      "name": "Stone panel",
+      "kind": "SpellBody",
+      "mass_kg": 3822.7742899200007,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -11.524025485328542,
+        1.5240005723604377,
+        5.076213959800724
+      ],
+      "rotation": [
+        1.3008053668573575e-6,
+        -0.7071075095351599,
+        -1.4298451907577818e-6,
+        -0.7071060528345429
+      ]
+    },
+    {
+      "name": "Stone panel",
+      "kind": "SpellBody",
+      "mass_kg": 3822.7742899200007,
+      "secured": false,
+      "removed": true,
+      "center": [
+        -10.000030805112823,
+        3.124203779196138,
+        5.00001587189928
+      ],
+      "rotation": [
+        0.7071057288090516,
+        6.84248519354902e-7,
+        -1.3908311730524527e-6,
+        -0.7071078335607783
       ]
     }
   ],
@@ -1178,58 +2237,90 @@
       "id": 14,
       "name": "Wizard",
       "position": [
-        -14.52791976928711,
-        9.999999747378752e-6,
-        2.5044798851013184
+        0.0,
+        2.0,
+        -8.0
       ],
-      "health": 190
+      "health": 200
+    },
+    {
+      "id": 101,
+      "name": "Bridge walker",
+      "position": [
+        -6.0,
+        4.000010013580322,
+        -2.0
+      ],
+      "health": 400
+    },
+    {
+      "id": 102,
+      "name": "Ramp walker",
+      "position": [
+        7.0,
+        9.999999747378752e-6,
+        -8.0
+      ],
+      "health": 390
+    },
+    {
+      "id": 103,
+      "name": "Tower rider",
+      "position": [
+        -8.0,
+        9.999999747378752e-6,
+        -7.0
+      ],
+      "health": 398
     },
     {
       "id": 104,
-      "name": "Dummy (target)",
+      "name": "Enclosure escape",
       "position": [
-        -7.159999847412109,
+        -10.0,
         0.0,
-        -5.0
+        5.0
       ],
-      "health": 84
+      "health": 400
     },
     {
       "id": 105,
-      "name": "Dummy (wall)",
+      "name": "Wall footprint dummy",
       "position": [
-        1.0,
+        -4.0,
         0.0,
-        7.496200084686279
+        3.0
       ],
-      "health": 100
-    },
-    {
-      "id": 106,
-      "name": "Dummy (enclosed)",
-      "position": [
-        5.970200061798096,
-        0.0,
-        11.0
-      ],
-      "health": 100
+      "health": 400
     }
   ],
   "ledger": {
     "terms": {
-      "gravity": {
+      "creature:controller": {
         "linear": [
           0.0,
-          -577860.3575234511,
+          0.0,
           0.0
         ],
         "angular": [
-          2349681.0791605953,
           0.0,
-          4521953.59822779
+          0.0,
+          0.0
         ]
       },
-      "removed": {
+      "gravity": {
+        "linear": [
+          0.0,
+          -516582.0024261898,
+          0.0
+        ],
+        "angular": [
+          1318559.802869746,
+          0.0,
+          1545554.8156727154
+        ]
+      },
+      "meteor:spawn/remove": {
         "linear": [
           0.0,
           0.0,
@@ -1243,17 +2334,17 @@
       },
       "sleep": {
         "linear": [
-          -4.402636294124145,
-          4.466260636809909,
-          0.02916725716405188
+          11.01836513158464,
+          1.8673510370077129,
+          -23.4041343999407
         ],
         "angular": [
-          22.9651439566891,
-          138.32385041744737,
-          -27.696760185823972
+          -71.88586155061422,
+          188.11531658216902,
+          -7.159710642947702
         ]
       },
-      "spell:wall of stone": {
+      "spell:removed": {
         "linear": [
           0.0,
           0.0,
@@ -1267,55 +2358,68 @@
       },
       "static contact": {
         "linear": [
-          -89.28386955673159,
-          581467.3136730007,
-          -343.4369985045379
+          -479.73243750656576,
+          516228.476894183,
+          643.0579846030154
         ],
         "angular": [
-          -2339273.046086217,
-          -7101.2766923761155,
-          -4551304.837829344
+          -1316157.422151295,
+          -5030.740896524316,
+          -1548618.8397433036
         ]
       },
-      "static joint": {
+      "stone:fracture": {
         "linear": [
-          93.68650585085204,
-          -3611.4224102092585,
-          343.4078312473741
+          0.0,
+          0.0,
+          0.0
         ],
         "angular": [
-          -10430.998218316288,
-          6962.952841958644,
-          29378.936361682063
+          0.0,
+          0.0,
+          0.0
+        ]
+      },
+      "wall-of-stone:weld": {
+        "linear": [
+          468.7140723749814,
+          351.6581809681544,
+          -619.6538502030868
+        ],
+        "angular": [
+          -2330.494856906893,
+          4842.625579942123,
+          3071.1837812299755
         ]
       }
     },
     "residual_relative": {
-      "linear": 1.837478016033242e-14,
-      "angular": 4.218896804506731e-15
+      "linear": 1.4990228751100652e-15,
+      "angular": 6.560452728904881e-16
     },
     "tolerance": 1e-9
   },
   "replay": {
     "window_s": [
-      10.0,
-      11.300000190734863
+      47.29999923706055,
+      47.79999923706055
     ],
     "speed": 0.25,
     "source": "checkpoint at the window start, stepped again with the same admitted commands",
     "identical_to_live": true
   },
-  "live_seconds": 16.5,
-  "video_seconds": 21.700000762939453,
-  "authority_tick": 495,
-  "physics_steps": 1980,
+  "live_seconds": 66.0,
+  "live_speed": 3,
+  "video_seconds": 24.0,
+  "authority_tick": 660,
+  "physics_steps": 7920,
   "renderer": "owned native GPU pipeline; scripted admitted commands; no grading",
   "prepared_pack": {
     "inventory": {
       "schema": "openagents.verse.asset-admission.v1",
       "purpose": "original_local",
       "compiler": "verse:compiler:original-chamber",
-      "compiler_revision": "b089a8e0ac35bb522cd6771f8f35bdec534d3ce755f87377ddbd6ba5929b7593",
+      "compiler_revision": "506ab9e7462ac8a51fed16b58bd49af4af804604929a0a48d86f1393c7c32656",
       "assets": [
         "verse:model:adventurer",
         "verse:model:arrow",
@@ -1335,6 +2439,7 @@
         "verse:model:effect-mist",
         "verse:model:effect-ribbon",
         "verse:model:effect-rune",
+        "verse:model:effect-scorch",
         "verse:model:effect-shadow",
         "verse:model:effect-shield",
         "verse:model:effect-wave",
@@ -1347,14 +2452,14 @@
         "verse:model:playground-hall",
         "verse:model:prop-anvil",
         "verse:model:prop-barrel",
-        "verse:model:prop-basket",
         "verse:model:prop-boulder",
         "verse:model:prop-crate",
         "verse:model:prop-crate-secured",
         "verse:model:prop-dummy",
-        "verse:model:prop-paper",
+        "verse:model:prop-meteor",
         "verse:model:prop-sheet",
         "verse:model:prop-stone",
+        "verse:model:prop-tentacle",
         "verse:model:prop/Banner_2",
         "verse:model:prop/Barrel",
         "verse:model:prop/Book_Stack_1",
@@ -1478,7 +2583,7 @@
           {
             "creator": "OpenAgents contributors",
             "license": "apache2",
-            "revision": "b089a8e0ac35bb522cd6771f8f35bdec534d3ce755f87377ddbd6ba5929b7593",
+            "revision": "506ab9e7462ac8a51fed16b58bd49af4af804604929a0a48d86f1393c7c32656",
             "format": "rust/wgsl/json"
           }
         ],
@@ -1494,10 +2599,10 @@
       ]
     },
     "schema": "openagents.verse.prepared-pack.v1",
-    "manifest_sha256": "b4c6fe54c439921f953484dd938954801b5908b9ac3c3c46179924edb1ced073",
-    "manifest_bytes": 83371404,
-    "vertices": 272006,
-    "indices": 998031,
+    "manifest_sha256": "aea94bdec2f2decca804fb09629b53a13d93fc0c91be8363a7cc3317659d7ddb",
+    "manifest_bytes": 83421005,
+    "vertices": 272259,
+    "indices": 999651,
     "encoded_bytes": 34477502,
     "rgba_bytes": 164233224,
     "budget": {

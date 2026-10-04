@@ -343,7 +343,7 @@ impl Game {
             {
                 return Err("Invalid spell target or horizontal aim".into());
             }
-            if matches!(ability, Ability::Spell(_)) {
+            if matches!(ability, Ability::Spell(_) | Ability::SpellCommand(_)) {
                 return Err("This catalog spell needs a shared-caster adapter".into());
             }
         }
@@ -536,7 +536,12 @@ impl Game {
                 };
                 let walk = crate::movement::walk(axes, p.yaw)?;
                 let speed = walk.speed;
-                let velocity = walk.direction * speed;
+                let terrain = crate::spells::black_tentacles::speed_scale(
+                    &self.spells,
+                    actor,
+                    p.position.as_dvec3(),
+                ) as f32;
+                let velocity = walk.direction * speed * terrain;
                 if dead || velocity.length_squared() > 0. {
                     p.casting = None;
                 }
@@ -554,17 +559,59 @@ impl Game {
                     p.character = physics::character::Character::new(p.position.as_dvec3());
                     p.trajectory.push(p.position.to_array());
                 } else {
-                    let travel = crate::movement::advance(
-                        &mut p.character,
-                        &self.query_scene,
-                        self.actor_filter(p.admission.actor()),
-                        velocity.as_dvec3(),
-                        jump,
-                        steps,
-                        self.physics_clock.dt,
-                    )?;
-                    fell = travel.fallen;
-                    p.trajectory = travel.path;
+                    for step in 0..steps {
+                        let spell_time =
+                            self.time as f64 - (steps - step) as f64 * self.physics_clock.dt;
+                        crate::spells::feather_fall::prepare(
+                            &mut self.spells,
+                            actor,
+                            &mut p.character,
+                            spell_time,
+                            self.physics_clock.dt,
+                        );
+                        let spell_velocity = crate::spells::levitate::prepare(
+                            &mut self.spells,
+                            actor,
+                            &mut p.character,
+                            velocity.as_dvec3(),
+                            spell_time,
+                            self.physics_clock.dt,
+                        );
+                        let spell_velocity = crate::spells::telekinesis::prepare(
+                            &self.spells,
+                            actor,
+                            &mut p.character,
+                            spell_velocity,
+                        );
+                        let spell_velocity = crate::spells::proxies::prepare(
+                            &self.spells,
+                            actor,
+                            &mut p.character,
+                            spell_velocity,
+                        );
+                        let spell_velocity = crate::spells::gust::movement(
+                            &self.spells,
+                            p.character.feet,
+                            spell_velocity,
+                        );
+                        let before_bounce = p.character.external;
+                        p.character.step(
+                            &self.query_scene,
+                            self.actor_filter(p.admission.actor()),
+                            physics::character::Settings::default(),
+                            spell_velocity,
+                            jump && step == 0,
+                            self.physics_clock.dt,
+                        )?;
+                        crate::spells::levitate::bounce(
+                            &self.spells,
+                            actor,
+                            &mut p.character,
+                            before_bounce,
+                        );
+                        fell += p.character.landed.unwrap_or(0.);
+                        p.trajectory.push(p.character.feet.as_vec3().to_array());
+                    }
                     p.position = p.character.feet.as_vec3();
                 }
                 let distance = p.position.distance(p.previous);
@@ -577,7 +624,22 @@ impl Game {
                         .record_motion_path(p.source, p.trajectory.clone())?;
                 }
                 self.place_actor_body(p.admission.actor(), p.position, dt as f64)?;
-                if !dead && fell > 0. {
+                let warded = fell > 0.
+                    && self
+                        .spells
+                        .feather_falls
+                        .iter_mut()
+                        .any(|effect| effect.land(actor as u32, self.time as f64).is_some());
+                let gentle = fell > 0.
+                    && self.spells.levitations.iter_mut().any(|e| {
+                        if e.target == crate::spells::Target::Actor(actor) && e.state.gentle() {
+                            e.state.land();
+                            true
+                        } else {
+                            false
+                        }
+                    });
+                if !dead && fell > 0. && !warded && !gentle {
                     let dice = crate::spells::fall_dice(fell);
                     if dice > 0 {
                         let amount = self.spells.dice.sum(dice, 6) as i32;
@@ -868,7 +930,10 @@ impl Game {
                 || p.died_at
                     .is_some_and(|at| !at.is_finite() || at < 0. || at > self.time)
                 || p.last_cast.is_some_and(|(a, at)| {
-                    matches!(a, Ability::Spell(_)) || !at.is_finite() || at < 0. || at > self.time
+                    matches!(a, Ability::Spell(_) | Ability::SpellCommand(_))
+                        || !at.is_finite()
+                        || at < 0.
+                        || at > self.time
                 })
                 || self
                     .scene
@@ -1040,7 +1105,7 @@ mod tests {
                 game.actor_position(extra.actor)
             ]
         );
-        // A checkpoint from the previous profile has no held input to restore.
+        // Prior spell profiles are refused; omitted optional held input starts stopped.
         let mut old: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         old["rules_revision"] = "verse-chamber-owned-v17".into();
         old["world"]
@@ -1054,6 +1119,8 @@ mod tests {
         {
             player.as_object_mut().unwrap().remove("held_move");
         }
+        assert!(Game::restore(&serde_json::to_vec(&old).unwrap()).is_err());
+        old["rules_revision"] = crate::play::RULES_REVISION.into();
         let migrated = Game::restore(&serde_json::to_vec(&old).unwrap()).unwrap();
         assert_eq!(migrated.held_movement.until, 0);
         assert_eq!(migrated.additional_players[&extra.actor].held_move.until, 0);

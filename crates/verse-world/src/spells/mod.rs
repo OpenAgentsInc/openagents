@@ -11,14 +11,22 @@
 //! playground scenario, then add one line to [`CATALOG`] (its action-bar
 //! slot) and one line to `crate::playground::scenarios`.
 pub mod black_tentacles;
+pub mod command;
 pub mod dice;
 pub mod feather_fall;
 pub mod fields;
-pub mod gust_of_wind;
+pub mod gust;
+#[cfg(test)]
+mod integration_tests;
 pub mod levitate;
 pub mod meteor_swarm;
 pub mod props;
+pub mod proxies;
+pub mod reverse_gravity;
+pub mod scenarios;
+pub mod telekinesis;
 pub mod thunderwave;
+mod validation;
 pub mod wall_of_stone;
 pub mod wind_wall;
 
@@ -74,15 +82,96 @@ pub struct SpellDef {
 /// 4 Gust of Wind (#10456), 5 Wind Wall (#10457), 6 Black Tentacles
 /// (#10458), 7 Meteor Swarm (#10459), 8 Reverse Gravity (#10460).
 pub const CATALOG: &[SpellDef] = &[
-    gust_of_wind::DEF,
-    wind_wall::DEF,
-    levitate::DEF,
-    crate::reverse_gravity::game::SPELL,
-    crate::telekinesis::DEF,
-    feather_fall::SPELL,
-    wall_of_stone::DEF,
-    black_tentacles::DEF,
-    meteor_swarm::DEF,
+    SpellDef {
+        slot: 6,
+        key: "black-tentacles",
+        label: "Black Tentacles",
+        icon: "black-tentacles-icon",
+        description: "Articulated tentacles restrain creatures and grab props",
+        cost: 5,
+        cooldown: ROUND,
+        cast: black_tentacles::cast,
+    },
+    SpellDef {
+        slot: 8,
+        key: "reverse-gravity",
+        label: "Reverse Gravity",
+        icon: "reverse-gravity-icon",
+        description: "Invert gravity in a 100-foot-high cylinder",
+        cost: 5,
+        cooldown: ROUND,
+        cast: reverse_gravity::cast,
+    },
+    SpellDef {
+        slot: 7,
+        key: "meteor-swarm",
+        label: "Meteor Swarm",
+        icon: "meteor-swarm-icon",
+        description: "Four swept impacts with blast, fire, and object damage",
+        cost: 10,
+        cooldown: ROUND,
+        cast: meteor_swarm::cast,
+    },
+    SpellDef {
+        slot: 5,
+        key: "wind-wall",
+        label: "Wind Wall",
+        icon: "wind-wall-icon",
+        description: "Raise an updraft wall that deflects ordinary ammunition",
+        cost: 5,
+        cooldown: ROUND,
+        cast: wind_wall::cast,
+    },
+    SpellDef {
+        slot: 1,
+        key: "wall-of-stone",
+        label: "Wall of Stone",
+        icon: "wall-of-stone-icon",
+        description: "Raise supported breakable granite panels",
+        cost: 5,
+        cooldown: ROUND,
+        cast: wall_of_stone::cast,
+    },
+    SpellDef {
+        slot: 4,
+        key: "gust-of-wind",
+        label: "Gust of Wind",
+        icon: "gust-of-wind-icon",
+        description: "Blow a steerable Line of wind",
+        cost: 5,
+        cooldown: ROUND,
+        cast: gust::cast,
+    },
+    SpellDef {
+        slot: 0,
+        key: "telekinesis",
+        label: "Telekinesis",
+        icon: "telekinesis-icon",
+        description: "Grip a creature or prop; steer and release with momentum",
+        cost: 5,
+        cooldown: ROUND,
+        cast: telekinesis::cast,
+    },
+    SpellDef {
+        slot: 2,
+        key: "levitate",
+        label: "Levitate",
+        icon: "levitate-icon",
+        description: "Lift a creature or loose object; push off surfaces to move",
+        cost: 5,
+        cooldown: ROUND,
+        cast: levitate::cast,
+    },
+    SpellDef {
+        slot: 3,
+        key: "feather-fall",
+        label: "Feather Fall",
+        icon: "feather-fall-icon",
+        description: "Protect up to five visible falling creatures",
+        cost: 5,
+        cooldown: ROUND,
+        cast: feather_fall::cast,
+    },
 ];
 
 pub fn spell_in_slot(slot: u8) -> Option<&'static SpellDef> {
@@ -167,52 +256,45 @@ pub struct SpellWorld {
     /// Caster actor to the cast that holds their concentration.
     pub concentration: BTreeMap<u64, u64>,
     pub casts: u64,
+    #[serde(default)]
+    pub time: f64,
     pub log: Vec<Record>,
     pub tracks: Vec<Track>,
     /// Row-two cooldowns: slot to the scene time it is ready.
     pub ready: BTreeMap<u8, f32>,
+    #[serde(default)]
+    pub feather_falls: Vec<crate::feather_fall::FeatherFall>,
+    #[serde(default)]
+    pub levitations: Vec<levitate::Effect>,
+    #[serde(default)]
+    pub telekinesis: Vec<telekinesis::Effect>,
+    #[serde(default)]
+    pub gusts: Vec<gust::Effect>,
+    #[serde(default)]
+    pub flames: Vec<crate::gust::Flame>,
+    #[serde(default)]
+    pub escape_ready: BTreeMap<u64, f64>,
+    #[serde(default)]
+    pub walls: Vec<wall_of_stone::Effect>,
+    #[serde(default)]
+    pub wind_walls: Vec<wind_wall::Effect>,
+    #[serde(default)]
+    pub meteors: Vec<meteor_swarm::Effect>,
+    #[serde(default)]
+    pub creatures: Vec<crate::meteor_swarm::Creature>,
+    #[serde(default)]
+    pub damage: Vec<(u64, i32, String)>,
+    #[serde(default)]
+    pub proxies: Vec<proxies::Proxy>,
+    #[serde(default)]
+    pub tentacles: Vec<black_tentacles::Effect>,
+    #[serde(default)]
+    pub reversed: Vec<reverse_gravity::Effect>,
     /// Prop poses at the start of the last tick, for presentation.
     previous: Vec<(DVec3, DQuat)>,
     /// Momentum lost as dynamic bodies are removed.
     #[serde(default)]
     pub removed: u64,
-    /// Standing wind walls and what they track.
-    #[serde(default)]
-    pub wind: wind_wall::Wind,
-    #[serde(default)]
-    pub levitations: levitate::Levitations,
-    /// Reverse Gravity's casts, creatures, and falls.
-    #[serde(default)]
-    pub reverse_gravity: crate::reverse_gravity::game::State,
-    /// Each caster's Telekinesis hand and grip.
-    #[serde(default)]
-    pub telekinesis: BTreeMap<u64, crate::telekinesis::Telekinesis>,
-    /// Feather Fall's wards, reaction picks, and followed falls.
-    #[serde(default)]
-    pub feather_fall: feather_fall::State,
-    /// Gust of Wind Lines, the scene flames they put out, and archers.
-    #[serde(default)]
-    pub gust: gust_of_wind::State,
-    /// Raised Wall of Stone panels, their joints, and debris.
-    #[serde(default)]
-    pub wall_of_stone: wall_of_stone::State,
-    /// Active Black Tentacles casts.
-    #[serde(default)]
-    pub tentacles: Vec<black_tentacles::Active>,
-    /// Black Tentacles damage the game has yet to apply: actor and amount.
-    #[serde(default)]
-    pub tentacle_damage: Vec<(u64, i32)>,
-    /// Scene time of the last step, s, for log lines written between steps.
-    #[serde(default)]
-    pub time: f32,
-    /// Whether the agent controller may cast Black Tentacles. Off by
-    /// default, so encounters recorded before the spell replay unchanged;
-    /// the live chamber turns it on.
-    #[serde(default)]
-    pub agent_tentacles: bool,
-    /// Meteors in flight and the objects their Spheres reached.
-    #[serde(default)]
-    pub meteor_swarm: meteor_swarm::State,
 }
 
 impl Default for SpellWorld {
@@ -249,31 +331,39 @@ impl SpellWorld {
             owned: vec![],
             concentration: BTreeMap::new(),
             casts: 0,
+            time: 0.,
             log: vec![],
             tracks: vec![],
             ready: BTreeMap::new(),
+            feather_falls: vec![],
+            levitations: vec![],
+            telekinesis: vec![],
+            gusts: vec![],
+            flames: vec![],
+            escape_ready: BTreeMap::new(),
+            walls: vec![],
+            wind_walls: vec![],
+            meteors: vec![],
+            creatures: vec![],
+            damage: vec![],
+            proxies: vec![],
+            tentacles: vec![],
+            reversed: vec![],
             previous: vec![],
             removed: 0,
-            wind: wind_wall::Wind::default(),
-            levitations: Default::default(),
-            reverse_gravity: Default::default(),
-            telekinesis: BTreeMap::new(),
-            feather_fall: feather_fall::State::default(),
-            gust: gust_of_wind::State::default(),
-            wall_of_stone: Default::default(),
-            tentacles: vec![],
-            tentacle_damage: vec![],
-            time: 0.,
-            agent_tentacles: false,
-            meteor_swarm: meteor_swarm::State::default(),
         }
     }
 
     pub fn validate(&self, instance: u64) -> Result<(), String> {
         self.world.check_version()?;
         self.dice.validate()?;
-        self.levitations.validate(self.props.len(), self.casts)?;
-        self.wall_of_stone.validate(self)?;
+        self.validate_effects()?;
+        if self.feather_falls.len() > 64 {
+            return Err("Too many Feather Fall effects".into());
+        }
+        for effect in &self.feather_falls {
+            effect.validate()?;
+        }
         let bodies = self.world.bodies().len();
         let mut lives = std::collections::BTreeSet::new();
         if self.props.len() > MAX_PROPS
@@ -302,31 +392,9 @@ impl SpellWorld {
                 .iter()
                 .any(|b| !b.pos.is_finite() || !b.vel.is_finite() || !b.omega.is_finite())
             || self.concentration.values().any(|cast| *cast > self.casts)
-            || self.wind.validate(self.casts).is_err()
-            || self.reverse_gravity.validate(self.props.len()).is_err()
-            || self.telekinesis.len() > 16
-            || self
-                .telekinesis
-                .values()
-                .any(|t| t.hand.0 as usize >= bodies || t.cast > self.casts)
-            || self.feather_fall.validate().is_err()
-            || self.gust.validate(self.casts).is_err()
-            || !self.time.is_finite()
-            || self.tentacles.len() > 8
-            || self.tentacle_damage.len() > 256
-            || self.tentacles.iter().any(|t| {
-                t.cast > self.casts
-                    || t.proxies.len() > 64
-                    || t.proxies
-                        .iter()
-                        .map(|p| p.body)
-                        .chain(t.spell.owned().0)
-                        .any(|b| b.0 as usize >= bodies)
-            })
         {
             return Err("Invalid spell world checkpoint".into());
         }
-        self.meteor_swarm.validate(&self.world)?;
         Ok(())
     }
 
@@ -376,12 +444,62 @@ impl SpellWorld {
 
     /// Ends a cast: its fields, joints, and bodies leave the world.
     pub fn end_cast(&mut self, cast: u64) -> Result<(), String> {
-        self.wind.end_cast(cast, &mut self.world, &self.props);
-        black_tentacles::end(self, cast, self.time);
+        let before = self.boundary_snapshot();
+        for effect in &mut self.levitations {
+            if effect.cast == cast {
+                effect.state.end(crate::levitate::End::Concentration);
+            }
+        }
+        for effect in &mut self.telekinesis {
+            if effect.cast == cast {
+                effect.grip.end(&mut self.world);
+            }
+        }
+        for effect in &mut self.walls {
+            if effect.cast == cast {
+                effect.wall.end(&mut self.world, self.time);
+            }
+        }
+        for effect in &mut self.wind_walls {
+            if effect.cast == cast {
+                effect.wall.end(&mut self.world, &[]);
+            }
+        }
+        for effect in &mut self.tentacles {
+            if effect.cast == cast {
+                effect.spell.end(&mut self.world);
+            }
+        }
+        for effect in &mut self.reversed {
+            if effect.cast == cast {
+                effect.spell.end(&mut self.world);
+            }
+        }
+        for proxy in &mut self.proxies {
+            if proxy.cast == cast {
+                proxy.ended = true;
+            }
+        }
+        self.record_boundary(&before, "spell:removed");
+        for effect in &self.walls {
+            if effect.wall.permanent {
+                for prop in &mut self.props {
+                    if prop.owner == Some(effect.cast) {
+                        prop.owner = None;
+                    }
+                }
+            }
+        }
+        for prop in &mut self.props {
+            prop.removed = self.world[prop.body].removed;
+        }
+        for effect in &mut self.gusts {
+            if effect.cast == cast {
+                effect.gust.end();
+            }
+        }
         self.fields.retain(|f| f.cast != cast);
-        self.gust.end(cast);
         self.concentration.retain(|_, held| *held != cast);
-        self.levitations.end_cast(cast);
         let owned: Vec<_> = self
             .owned
             .iter()
@@ -461,7 +579,6 @@ impl SpellWorld {
             collider,
             owner,
             removed: false,
-            passable: false,
         });
         self.previous.clear();
         Ok(self.props.len() - 1)
@@ -489,6 +606,91 @@ impl SpellWorld {
         self.world.remove_body(body);
         self.removed += 1;
         Ok(())
+    }
+
+    /// Momentum at the creation/removal boundary, separate from forces and contacts.
+    pub fn boundary_snapshot(&self) -> Vec<Option<Momentum>> {
+        self.world
+            .bodies()
+            .iter()
+            .map(|b| {
+                (b.kind == physics::BodyKind::Dynamic && !b.removed)
+                    .then(|| Momentum::of(b, self.ledger.origin))
+            })
+            .collect()
+    }
+    pub fn record_boundary(&mut self, before: &[Option<Momentum>], term: &str) {
+        let mut delta = Momentum::ZERO;
+        for (i, b) in self.world.bodies().iter().enumerate() {
+            let active = b.kind == physics::BodyKind::Dynamic && !b.removed;
+            match (before.get(i).copied().flatten(), active) {
+                (Some(old), false) => {
+                    delta.linear -= old.linear;
+                    delta.angular -= old.angular;
+                }
+                (None, true) => {
+                    delta = delta + Momentum::of(b, self.ledger.origin);
+                }
+                _ => {}
+            }
+        }
+        self.ledger.add(term, delta);
+    }
+
+    /// Registers a spell-created cuboid for collision queries and native presentation.
+    pub fn adopt_body(
+        &mut self,
+        body: physics::BodyId,
+        name: &str,
+        kind: PropKind,
+        owner: Option<u64>,
+        instance: u64,
+    ) -> Result<usize, String> {
+        if let Some(index) = self.props.iter().position(|p| p.body == body) {
+            return Ok(index);
+        }
+        let (index, collider) = self
+            .world
+            .colliders()
+            .iter()
+            .enumerate()
+            .find(|(_, c)| c.body == body)
+            .ok_or("Spell body has no collider")?;
+        let dimensions = match collider.shape {
+            physics::Shape::Cuboid { half } => half * 2.,
+            physics::Shape::Sphere { radius } => DVec3::splat(radius * 2.),
+            physics::Shape::Capsule {
+                radius,
+                half_length,
+            } => DVec3::new(radius * 2., radius * 2., (radius + half_length) * 2.),
+        };
+        let mut spec = PropSpec::reference(kind);
+        spec.dimensions = dimensions;
+        spec.mass = self.world[body].mass.max(0.1);
+        spec.center_of_mass = DVec3::ZERO;
+        spec.material = Material::Stone;
+        spec.secured = self.world[body].kind == physics::BodyKind::Static;
+        spec.hit_points = Some(180);
+        spec.validate()?;
+        if self.props.len() >= MAX_PROPS {
+            return Err("Spell prop budget exceeded".into());
+        }
+        self.props.push(Prop {
+            life: physics::queries::Life {
+                instance,
+                entity: PROP_ENTITY_BASE + self.props.len() as u64,
+                generation: 0,
+            },
+            name: name.into(),
+            spec,
+            body,
+            collider: physics::ColliderId(index as u32),
+            hit_points: Some(180),
+            owner,
+            removed: self.world[body].removed,
+        });
+        self.previous.clear();
+        Ok(self.props.len() - 1)
     }
 
     /// Center of a prop's collision box, m.
@@ -598,7 +800,43 @@ impl SpellWorld {
     /// Advances the rigid world `steps` fixed steps, recording every
     /// external impulse in the ledger, and expires fields that end by `time`.
     pub fn step(&mut self, steps: u32, time: f32) -> Result<(), String> {
-        self.time = time;
+        self.time = f64::from(time);
+        let expired_effects: Vec<_> = self
+            .concentration
+            .values()
+            .copied()
+            .filter(|cast| {
+                self.levitations.iter().any(|e| {
+                    e.cast == *cast
+                        && (self.time - e.state.cast_at >= crate::levitate::DURATION
+                            || !e.state.holding())
+                }) || self
+                    .telekinesis
+                    .iter()
+                    .any(|e| e.cast == *cast && self.world.tick >= e.grip.ends)
+                    || self.walls.iter().any(|e| {
+                        e.cast == *cast
+                            && self.time - e.wall.cast_at >= crate::wall_of_stone::DURATION
+                    })
+                    || self
+                        .gusts
+                        .iter()
+                        .any(|e| e.cast == *cast && !e.gust.active(self.time))
+                    || self
+                        .wind_walls
+                        .iter()
+                        .any(|e| e.cast == *cast && !e.wall.active(self.time))
+                    || self.tentacles.iter().any(|e| {
+                        e.cast == *cast && (e.spell.ended || self.world.tick >= e.spell.ends)
+                    })
+                    || self.reversed.iter().any(|e| {
+                        e.cast == *cast && (self.world.tick >= e.spell.ends || !e.spell.active())
+                    })
+            })
+            .collect();
+        for cast in expired_effects {
+            self.end_cast(cast)?;
+        }
         let expired: Vec<u64> = self
             .fields
             .iter()
@@ -614,10 +852,11 @@ impl SpellWorld {
         for cast in expired {
             self.end_cast(cast)?;
         }
-        wall_of_stone::after_tick(self, time)?;
-        if self.props.iter().all(|p| p.removed || p.spec.secured)
-            && self.telekinesis.is_empty()
-            && self.tentacles.is_empty()
+        if !self
+            .world
+            .bodies()
+            .iter()
+            .any(|b| b.kind == physics::BodyKind::Dynamic && !b.removed)
         {
             self.world.tick += u64::from(steps);
             return Ok(());
@@ -625,16 +864,110 @@ impl SpellWorld {
         let gravity = DVec3::new(0., -GRAVITY, 0.);
         for _ in 0..steps {
             let dt = self.world.dt;
-            self.wind
-                .before_step(&mut self.world, &self.props, &mut self.ledger);
-            self.levitations
-                .drive(&mut self.world, &mut self.ledger, &self.props);
-            // Tentacle forces wake their segments, so they come first.
-            black_tentacles::before_step(self, time);
-            // What the field adds: only bodies that respond this step.
-            for tk in self.telekinesis.values_mut() {
-                tk.substep_before(&mut self.world);
+            let targets: Vec<_> = self
+                .proxies
+                .iter()
+                .filter(|p| !p.ended)
+                .map(|p| crate::black_tentacles::Target {
+                    body: p.body,
+                    kind: crate::black_tentacles::Kind::Creature {
+                        strength: 0,
+                        athletics: 0,
+                    },
+                })
+                .chain(
+                    self.props
+                        .iter()
+                        .filter(|p| !p.removed && p.spec.kind != PropKind::Tentacle)
+                        .map(|p| crate::black_tentacles::Target {
+                            body: p.body,
+                            kind: crate::black_tentacles::Kind::Prop {
+                                secured: p.spec.secured,
+                            },
+                        }),
+                )
+                .collect();
+            let identities: BTreeMap<_, _> =
+                self.proxies.iter().map(|p| (p.body, p.actor)).collect();
+            let mut tentacle_events = vec![];
+            for effect in &mut self.tentacles {
+                tentacle_events.extend(effect.spell.before_step_with(
+                    &mut self.world,
+                    &targets,
+                    &mut |body, sides| {
+                        if let Some(actor) = body.and_then(|b| identities.get(&b)) {
+                            self.dice.save(*actor, "Strength", 0, SPELL_SAVE_DC).roll
+                        } else {
+                            self.dice.roll(sides)
+                        }
+                    },
+                    Some(&mut self.ledger),
+                ));
             }
+            for event in tentacle_events {
+                black_tentacles::record(self, event);
+            }
+            for effect in &mut self.wind_walls {
+                let props: Vec<_> = self
+                    .props
+                    .iter()
+                    .filter(|p| !p.removed)
+                    .map(|p| crate::wind_wall::Prop {
+                        body: p.body,
+                        size: match p.spec.size {
+                            Size::Tiny => crate::wind_wall::Size::Tiny,
+                            Size::Small => crate::wind_wall::Size::Small,
+                            _ => crate::wind_wall::Size::Medium,
+                        },
+                        radius: p.spec.dimensions.max_element() * 0.5,
+                    })
+                    .collect();
+                effect
+                    .wall
+                    .before_step(&mut self.world, &props, &mut self.ledger);
+            }
+            for effect in &self.gusts {
+                let profiles: Vec<_> = self
+                    .props
+                    .iter()
+                    .filter(|p| !p.removed && !p.spec.secured)
+                    .map(|p| {
+                        (
+                            p.body,
+                            crate::gust::Profile {
+                                mass: p.spec.mass,
+                                half: p.spec.dimensions * 0.5,
+                                drag_coefficient: 1.2,
+                                friction: p.spec.material.physics().friction,
+                            },
+                        )
+                    })
+                    .collect();
+                for blow in effect.gust.blow(time as f64, &mut self.world, &profiles) {
+                    self.ledger.add_impulse("gust:drag", blow.impulse, blow.at);
+                }
+            }
+            for effect in &mut self.telekinesis {
+                if let Some(grip) = effect.grip.grip {
+                    self.world.wake(grip.body);
+                }
+                effect
+                    .grip
+                    .steer(&mut self.world, effect.caster_position, effect.aim);
+            }
+            for effect in &mut self.levitations {
+                if let Target::Prop(index) = effect.target {
+                    let body = self.props[index].body;
+                    effect.state.update(
+                        time as f64,
+                        self.world[body].pos.distance(effect.caster_position),
+                    );
+                    effect
+                        .state
+                        .drive(&mut self.world, body, GRAVITY, &mut self.ledger);
+                }
+            }
+            // What the field adds: only bodies that respond this step.
             let mut field_terms: Vec<(String, DVec3, DVec3)> = vec![];
             for body in self.world.bodies() {
                 let responds = body.kind == physics::BodyKind::Dynamic
@@ -647,7 +980,7 @@ impl SpellWorld {
                 for field in self.fields.iter().filter(|f| f.area.contains(body.pos)) {
                     field_terms.push((
                         format!("spell:{}", field.spell),
-                        field.accel_at(body.pos, body.vel, gravity) * body.mass * dt,
+                        field.acceleration * body.mass * dt,
                         body.pos,
                     ));
                 }
@@ -656,12 +989,282 @@ impl SpellWorld {
                 gravity,
                 fields: &self.fields,
             };
+            for effect in &self.reversed {
+                if !effect.spell.active() {
+                    continue;
+                }
+                for i in 0..self.world.bodies().len() {
+                    let id = physics::BodyId(i as u32);
+                    let body = self.world[id];
+                    if body.kind != physics::BodyKind::Dynamic || body.removed {
+                        continue;
+                    }
+                    let reference = if self
+                        .proxies
+                        .iter()
+                        .any(|p| p.body == id && p.cast == effect.cast)
+                    {
+                        body.pos - DVec3::Y * 0.9
+                    } else {
+                        body.pos
+                    };
+                    let acceleration = effect.spell.gravity.at(reference, body.vel) - gravity;
+                    self.world.wake(id);
+                    self.world[id].apply_force(acceleration * body.mass);
+                    self.ledger.add_impulse(
+                        "reverse-gravity",
+                        acceleration * body.mass * dt,
+                        body.pos,
+                    );
+                }
+            }
+            let reversed_velocities: Vec<Vec<f64>> = self
+                .reversed
+                .iter()
+                .map(|e| {
+                    e.spell
+                        .falls
+                        .iter()
+                        .map(|(id, _)| self.world[*id].vel.y)
+                        .collect()
+                })
+                .collect();
             self.world.step(&fields);
-            wall_of_stone::after_world_step(self);
+            let mut gravity_broken = Vec::new();
+            for (effect, before) in self.reversed.iter_mut().zip(&reversed_velocities) {
+                for impact in effect.spell.observe(&mut self.world, before) {
+                    if impact.strike.dice == 0 {
+                        continue;
+                    }
+                    let damage = (0..impact.strike.dice)
+                        .map(|_| self.dice.roll(6) as i32)
+                        .sum::<i32>();
+                    if let Some(proxy) = self.proxies.iter().find(|p| p.body == impact.body) {
+                        self.damage
+                            .push((proxy.actor, damage, "Reverse Gravity impact".into()));
+                    } else if let Some(prop) = self
+                        .props
+                        .iter_mut()
+                        .find(|p| p.body == impact.body && !p.removed)
+                    {
+                        if let Some(hp) = &mut prop.hit_points {
+                            *hp = (*hp - damage).max(0);
+                            if *hp == 0 {
+                                gravity_broken.push(prop.body);
+                            }
+                        }
+                        self.log.push(Record {
+                            at: time,
+                            spell: "Reverse Gravity impact".into(),
+                            text: format!(
+                                "{} strikes a surface: {}d6 = {damage}; HP {:?}",
+                                prop.name, impact.strike.dice, prop.hit_points
+                            ),
+                            save: None,
+                        });
+                    }
+                }
+            }
+            for effect in &mut self.levitations {
+                if let Target::Prop(index) = effect.target {
+                    let id = self.props[index].body;
+                    if effect.state.gentle()
+                        && self.world.contacts.iter().any(|c| {
+                            (c.body_b == id && c.impulse.y > 0.)
+                                || (c.body_a == id && c.impulse.y < 0.)
+                        })
+                    {
+                        effect.state.land();
+                    }
+                }
+            }
+            for effect in &self.walls {
+                for bond in &effect.wall.bonds {
+                    if let Some(joint) = self.world.joint(bond.joint) {
+                        let a = self.world[joint.a].responds()
+                            || self.world.slept.iter().any(|(id, _)| *id == joint.a);
+                        let b = self.world[joint.b].responds()
+                            || self.world.slept.iter().any(|(id, _)| *id == joint.b);
+                        let sign = match (a, b) {
+                            (false, true) => 1.,
+                            (true, false) => -1.,
+                            _ => 0.,
+                        };
+                        self.ledger.add(
+                            "wall-of-stone:weld",
+                            Momentum::impulse(
+                                joint.impulse * sign,
+                                joint.point,
+                                self.ledger.origin,
+                            ) + Momentum {
+                                linear: DVec3::ZERO,
+                                angular: joint.angular_impulse * sign,
+                            },
+                        );
+                    }
+                }
+            }
+            for effect in &self.reversed {
+                for hold in &effect.spell.holds {
+                    if let Some(joint) = hold.joint.and_then(|id| self.world.joint(id)) {
+                        let sign = if self.world[joint.b].responds()
+                            || self.world.slept.iter().any(|(body, _)| *body == joint.b)
+                        {
+                            1.
+                        } else {
+                            0.
+                        };
+                        self.ledger.add(
+                            "reverse-gravity:fixed-grab",
+                            Momentum::impulse(
+                                joint.impulse * sign,
+                                joint.point,
+                                self.ledger.origin,
+                            ) + Momentum {
+                                linear: DVec3::ZERO,
+                                angular: joint.angular_impulse * sign,
+                            },
+                        );
+                    }
+                }
+            }
+            for effect in &self.tentacles {
+                for tentacle in &effect.spell.tentacles {
+                    if let crate::black_tentacles::Mode::Hold { joint, .. } = tentacle.mode {
+                        if let Some(joint) = self.world.joint(joint) {
+                            let awake = |id| {
+                                self.world[id].responds()
+                                    || self.world.slept.iter().any(|(body, _)| *body == id)
+                            };
+                            let sign = match (awake(joint.a), awake(joint.b)) {
+                                (true, false) => -1.,
+                                (false, true) => 1.,
+                                _ => 0.,
+                            };
+                            self.ledger.add(
+                                "tentacles:controller",
+                                Momentum::impulse(
+                                    joint.impulse * sign,
+                                    joint.point,
+                                    self.ledger.origin,
+                                ),
+                            );
+                        }
+                    }
+                }
+            }
+            let before = self.boundary_snapshot();
+            let mut tentacle_events = vec![];
+            for effect in &mut self.tentacles {
+                tentacle_events.extend(
+                    effect
+                        .spell
+                        .after_step(&mut self.world, Some(&mut self.ledger)),
+                );
+            }
+            for event in tentacle_events {
+                black_tentacles::record(self, event);
+            }
+            for effect in &mut self.reversed {
+                if self.world.tick >= effect.spell.ends {
+                    effect.spell.end(&mut self.world);
+                }
+            }
+            for proxy in &mut self.proxies {
+                proxy.held = self.tentacles.iter().any(|e| {
+                    e.cast == proxy.cast && !e.spell.ended && e.spell.restrained(proxy.body)
+                }) || self
+                    .reversed
+                    .iter()
+                    .any(|e| e.cast == proxy.cast && e.spell.active());
+                if !proxy.held
+                    && !self
+                        .tentacles
+                        .iter()
+                        .any(|e| e.cast == proxy.cast && !e.spell.ended)
+                {
+                    proxy.ended = true;
+                }
+            }
+            let mut meteor_bodies = vec![];
+            let mut meteor_events = vec![];
+            for effect in &mut self.meteors {
+                for impact in effect.swarm.after_step(
+                    &mut self.world,
+                    &self.creatures,
+                    &mut effect.objects,
+                    &mut |s| self.dice.roll(s),
+                ) {
+                    meteor_events.push(format!(
+                        "Meteor {} impacted at {:?}; obstructed: {}",
+                        impact.meteor, impact.point, impact.obstructed
+                    ));
+                    for hit in impact.creatures {
+                        self.damage.push((
+                            u64::from(hit.id),
+                            hit.damage.total(),
+                            "Meteor Swarm".into(),
+                        ));
+                    }
+                    for hit in impact.objects {
+                        meteor_bodies.extend(hit.debris.iter().copied());
+                        if !self.world[hit.body].removed {
+                            self.ledger.add_impulse(
+                                "meteor:blast",
+                                hit.impulse,
+                                self.world[hit.body].pos,
+                            );
+                        }
+                    }
+                }
+                meteor_bodies.extend(effect.swarm.meteors.iter().filter_map(|m| m.body));
+                crate::meteor_swarm::burn(&mut self.world, &mut effect.objects);
+                for prop in &mut self.props {
+                    if let Some(object) = effect.objects.iter().find(|o| o.body == prop.body) {
+                        prop.hit_points = object.hp;
+                    }
+                }
+            }
+            for body in meteor_bodies {
+                if !self.world[body].removed {
+                    let instance = self.props.first().map_or(1, |p| p.life.instance);
+                    let meteor = self
+                        .meteors
+                        .iter()
+                        .any(|e| e.swarm.meteors.iter().any(|m| m.body == Some(body)));
+                    self.adopt_body(
+                        body,
+                        "Meteor or impact debris",
+                        if meteor {
+                            PropKind::Meteor
+                        } else {
+                            PropKind::SpellBody
+                        },
+                        None,
+                        instance,
+                    )?;
+                }
+            }
+            for event in meteor_events {
+                self.record(time, "Meteor Swarm", event, None);
+            }
+            self.record_boundary(&before, "meteor:spawn/remove");
+            for effect in &mut self.walls {
+                effect.wall.after_step(&mut self.world, time as f64);
+            }
+            for prop in &mut self.props {
+                prop.removed = self.world[prop.body].removed;
+            }
+            for effect in &mut self.telekinesis {
+                effect.grip.after_step(
+                    &mut self.world,
+                    effect.caster_position,
+                    Some(&mut self.ledger),
+                );
+            }
             for (term, impulse, at) in field_terms {
                 self.ledger.add_impulse(&term, impulse, at);
             }
-            black_tentacles::after_step(self, time);
             let slept: Vec<usize> = self
                 .world
                 .slept
@@ -691,9 +1294,6 @@ impl SpellWorld {
                     },
                 );
             }
-            for tk in self.telekinesis.values_mut() {
-                tk.substep_after(&mut self.world, &mut self.ledger);
-            }
             for (_, removed) in std::mem::take(&mut self.world.slept) {
                 self.ledger.add(
                     "sleep",
@@ -703,6 +1303,7 @@ impl SpellWorld {
                     },
                 );
             }
+            reverse_gravity::break_props(self, &gravity_broken)?;
         }
         Ok(())
     }
@@ -719,6 +1320,17 @@ impl SpellWorld {
     /// reference mass. Walking alone does not shove; the sweep stops it.
     pub fn couple(&mut self, movers: &mut [Mover<'_>]) -> Result<(), String> {
         for mover in movers.iter_mut() {
+            if self
+                .proxies
+                .iter()
+                .any(|p| p.actor == mover.actor && p.held && !p.ended)
+                || self
+                    .telekinesis
+                    .iter()
+                    .any(|e| e.target == Target::Actor(mover.actor) && e.proxy.is_some())
+            {
+                continue;
+            }
             let c = &mut *mover.character;
             let (a, b) = (
                 c.feet + DVec3::Y * CHARACTER_RADIUS,
@@ -726,7 +1338,12 @@ impl SpellWorld {
             );
             for index in 0..self.props.len() {
                 let prop = &self.props[index];
-                if prop.removed || prop.spec.secured {
+                if prop.removed
+                    || prop.spec.secured
+                    || prop.spec.kind == PropKind::Tentacle
+                    || self.world.colliders()[prop.collider.0 as usize].filter
+                        == physics::Filter::NONE
+                {
                     continue;
                 }
                 let body = self.world[prop.body];
@@ -791,13 +1408,19 @@ impl SpellWorld {
     ) -> Result<(), String> {
         use physics::queries::{Mesh, MeshCollider, Usage};
         for prop in self.props.iter().filter(|p| !p.removed) {
+            if scene.pose(prop.query_key()).is_some() {
+                continue;
+            }
             let half = prop.spec.dimensions * 0.5;
             let offset = -prop.spec.center_of_mass;
             scene.insert(MeshCollider {
                 key: prop.query_key(),
                 layers: 1,
-                usage: if prop.passable {
-                    Usage::Trigger
+                usage: if prop.spec.kind == PropKind::Tentacle
+                    || self.world.colliders()[prop.collider.0 as usize].filter
+                        == physics::Filter::NONE
+                {
+                    Usage::Selection
                 } else {
                     Usage::Blocking
                 },

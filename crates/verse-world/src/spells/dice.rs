@@ -115,7 +115,7 @@ pub fn fall_dice(height: f64) -> u32 {
         return 0;
     }
     // A hair of tolerance keeps an exact 10-foot fall at 1d6.
-    ((height / (10. * super::FEET) + 1e-9).floor() as u32).min(FALL_DICE_MAX)
+    ((height / (10. * super::FEET) + 1e-4).floor() as u32).min(FALL_DICE_MAX)
 }
 
 #[cfg(test)]
@@ -126,6 +126,8 @@ mod tests {
     fn falling_damage_counts_one_die_per_ten_feet_up_to_twenty() {
         assert_eq!(fall_dice(9.9 * FEET), 0);
         assert_eq!(fall_dice(10. * FEET), 1);
+        assert_eq!(fall_dice(100. * FEET - 0.00002), 10);
+        assert_eq!(fall_dice(100. * FEET - 0.001), 9);
         assert_eq!(fall_dice(25. * FEET), 2);
         assert_eq!(fall_dice(250. * FEET), 20);
         let mut dice = Dice::new(7);

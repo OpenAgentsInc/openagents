@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 use verse_engine::director::{Action, Frame, Scene};
 use verse_engine::motion::State;
 
-/// Checkpoint revision. v17 binds friendly scene roles to simulation factions.
+/// Checkpoint revision. v18 retains physical spell controls alongside friendly scene roles.
 pub const RULES_REVISION: &str = "verse-chamber-owned-v18";
 /// Seed of the chamber's spell dice; scenarios may reseed before acting.
 pub const SPELL_SEED: u64 = 0x5EED_0451;
@@ -28,6 +28,7 @@ pub enum Ability {
     Shield,
     /// A second-row spell from [`crate::spells::CATALOG`], by slot.
     Spell(u8),
+    SpellCommand(crate::spells::command::Command),
 }
 impl Ability {
     /// The second action-bar row, hotkeys Shift+1 through Shift+0.
@@ -47,6 +48,7 @@ impl Ability {
     pub fn catalog(self) -> Option<&'static crate::spells::SpellDef> {
         match self {
             Self::Spell(slot) => crate::spells::spell_in_slot(slot),
+            Self::SpellCommand(command) => crate::spells::spell_in_slot(command.slot()),
             _ => None,
         }
     }
@@ -74,7 +76,9 @@ impl Ability {
             Self::Grease => "Grease",
             Self::Light => "Light",
             Self::Shield => "Shield",
-            Self::Spell(_) => self.catalog().map_or("Empty slot", |s| s.label),
+            Self::Spell(_) | Self::SpellCommand(_) => {
+                self.catalog().map_or("Empty slot", |s| s.label)
+            }
         }
     }
     pub fn icon(self) -> &'static str {
@@ -89,7 +93,9 @@ impl Ability {
             Self::Grease => "grease-icon",
             Self::Light => "light-icon",
             Self::Shield => "shield-icon",
-            Self::Spell(_) => self.catalog().map_or("spell-slot-empty", |s| s.icon),
+            Self::Spell(_) | Self::SpellCommand(_) => {
+                self.catalog().map_or("spell-slot-empty", |s| s.icon)
+            }
         }
     }
     pub fn utility(self) -> Option<Utility> {
@@ -111,7 +117,7 @@ impl Ability {
             Self::Grease => "Target area: knock down for 10 seconds",
             Self::Light => "Place a light on the chamber floor",
             Self::Shield => "Absorb 18 damage for four seconds",
-            Self::Spell(_) => self.catalog().map_or("", |s| s.description),
+            Self::Spell(_) | Self::SpellCommand(_) => self.catalog().map_or("", |s| s.description),
             _ => "Attack the selected target",
         }
     }
@@ -124,7 +130,8 @@ impl Ability {
             | Self::Grease
             | Self::Light
             | Self::Shield
-            | Self::Spell(_) => None,
+            | Self::Spell(_)
+            | Self::SpellCommand(_) => None,
             Self::FireBolt => Some(Spell::Firebolt),
             Self::MagicMissile => Some(Spell::MagicMissile),
             Self::Fireball => Some(Spell::Fireball),
@@ -155,6 +162,8 @@ struct NavigationGoal {
     life: verse_engine::core::LifeId,
     target: Vec3,
     speed: f32,
+    #[serde(default)]
+    direct: bool,
 }
 #[derive(serde::Serialize, serde::Deserialize)]
 struct Route {
@@ -320,7 +329,11 @@ impl Game {
     ) -> Result<Option<f64>, String> {
         // Standing Wall of Stone panels are cover too.
         let mut cover = self.colliders.clone();
-        cover.extend(crate::spells::wall_of_stone::cover(&self.spells));
+        cover.extend(
+            crate::spells::wall_of_stone::cover(&self.spells)
+                .into_iter()
+                .map(|(_, bounds)| bounds),
+        );
         Ok(physics::kinematic::sweep_box(
             start.as_dvec3(),
             glam::DVec3::splat(radius),
@@ -368,7 +381,6 @@ impl Game {
         let saved: Saved = serde_json::from_slice(bytes).map_err(|e| e.to_string())?;
         if saved.version != 1
             || (saved.rules_revision != RULES_REVISION
-                && saved.rules_revision != "verse-chamber-owned-v17"
                 && !(saved.rules_revision == "verse-chamber-owned-v16"
                     && saved.world.scene.actors.iter().all(|a| !a.friendly)))
         {
@@ -420,7 +432,12 @@ impl Game {
             || !world.yaw.is_finite()
             || world.ids.len() > 256
             || world.ids.len() != world.lives.len()
-            || !world.ids.contains_key(&world.selected)
+            || (!world.ids.contains_key(&world.selected)
+                && !world
+                    .spells
+                    .props
+                    .iter()
+                    .any(|p| p.life.entity == world.selected))
             || world
                 .scene
                 .actors
@@ -518,7 +535,10 @@ impl Game {
             });
             world.query_scene.insert(collider)?;
         }
-        world.simulation.set_colliders(world.colliders.clone());
+        world.simulation.set_spell_cover(
+            world.colliders.clone(),
+            crate::spells::wall_of_stone::cover(&world.spells),
+        );
         world
             .spells
             .insert_query_colliders(&mut world.query_scene)?;
@@ -591,8 +611,20 @@ impl Game {
                 life,
                 target,
                 speed,
+                direct: false,
             },
         );
+        Ok(())
+    }
+    /// Walk through the swept controller over authored or spell-built surfaces.
+    pub(crate) fn direct_npc_walk(
+        &mut self,
+        life: verse_engine::core::LifeId,
+        target: Vec3,
+        speed: f32,
+    ) -> Result<(), String> {
+        self.direct_npc_navigation(life, target, speed)?;
+        self.navigation_goals.get_mut(&life.actor).unwrap().direct = true;
         Ok(())
     }
     pub fn clear_npc_navigation(&mut self, life: verse_engine::core::LifeId) -> bool {
@@ -698,7 +730,10 @@ impl Game {
     pub fn physics_bodies(&self) -> &physics::lifetimes::Bodies {
         &self.bodies
     }
-    fn actor_filter(&self, life: verse_engine::core::LifeId) -> physics::queries::Filter {
+    pub(crate) fn actor_filter(
+        &self,
+        life: verse_engine::core::LifeId,
+    ) -> physics::queries::Filter {
         let mut filter = physics::queries::Filter::blocking(life.instance);
         filter.ignore = Some(physics::queries::Life {
             instance: life.instance,
@@ -942,6 +977,16 @@ impl Game {
             p.z = p.z.clamp(-24., 10.);
             return Ok(p);
         }
+        if self
+            .navigation_goals
+            .get(&actor)
+            .is_some_and(|goal| goal.direct)
+            || (self.navigation.is_none()
+                && self.scene.collision_profile.as_deref() == Some(crate::playground::PROFILE))
+        {
+            let delta = Vec3::new(target.x - position.x, 0., target.z - position.z);
+            return Ok(position + delta.normalize_or_zero() * delta.length().min(distance));
+        }
         let life = self
             .actor_life(actor)
             .ok_or("Hostile movement life is missing")?;
@@ -1057,7 +1102,16 @@ impl Game {
             start.as_dvec3(),
             glam::DVec3::splat(0.12),
             (end - start).as_dvec3(),
-            &self.colliders,
+            &self
+                .colliders
+                .iter()
+                .copied()
+                .chain(
+                    crate::spells::wall_of_stone::cover(&self.spells)
+                        .into_iter()
+                        .map(|(_, b)| b),
+                )
+                .collect::<Vec<_>>(),
         )
         .is_ok_and(|hit| hit.is_none())
     }
@@ -1268,6 +1322,22 @@ impl Game {
             npc_deaths: BTreeMap::new(),
         };
         world.sync_bodies(0.)?;
+        if world.scene.collision_profile.as_deref() == Some("original-chamber-v1") {
+            for (name, kind, position) in [
+                (
+                    "Loose ritual crate",
+                    crate::spells::PropKind::Crate,
+                    Vec3::new(-6., 0.3, -4.),
+                ),
+                (
+                    "Loose ritual barrel",
+                    crate::spells::PropKind::Barrel,
+                    Vec3::new(6., 0.45, -4.),
+                ),
+            ] {
+                world.spawn_prop(name, crate::spells::PropSpec::reference(kind), position, 0.)?;
+            }
+        }
         Ok(world)
     }
     pub fn unlocked(&self) -> bool {
@@ -1294,6 +1364,11 @@ impl Game {
         }
         let snapshot = self.snapshot();
         for a in &mut frame.actors {
+            if self.scene.collision_profile.as_deref() == Some(crate::playground::PROFILE)
+                && matches!(a.animation, verse_engine::motion::Selection::Legacy(_))
+            {
+                a.animation = verse_engine::motion::State::Idle.into();
+            }
             if self.time > self.scene.duration {
                 a.animation_time = self.time + a.actor.id as f32 * 0.19;
             }
@@ -1593,6 +1668,40 @@ impl Game {
         self.time =
             (self.clock_origin.unwrap() + self.physics_steps as f64 * self.physics_clock.dt) as f32;
         self.timeline_events()?;
+        let caster_positions: BTreeMap<_, _> = self
+            .player_actors()
+            .into_iter()
+            .filter_map(|actor| self.actor_position(actor).map(|p| (actor, p.as_dvec3())))
+            .collect();
+        for effect in &mut self.spells.telekinesis {
+            if let Some(position) = caster_positions.get(&effect.caster) {
+                effect.caster_position = *position + glam::DVec3::Y * 0.9;
+            }
+        }
+        for effect in &mut self.spells.levitations {
+            if let Some(position) = caster_positions.get(&effect.caster) {
+                effect.caster_position = *position;
+            }
+        }
+        self.spells.creatures = crate::spells::feather_fall::candidates(self)
+            .iter()
+            .map(|c| crate::meteor_swarm::Creature {
+                id: c.id,
+                feet: c.position - glam::DVec3::Y * 0.9,
+                radius: 0.35,
+                height: 1.8,
+                dexterity: 0,
+            })
+            .collect();
+        crate::spells::gust::update(self)?;
+        self.simulation.set_spell_wind_walls(
+            self.spells
+                .wind_walls
+                .iter()
+                .filter(|e| !e.wall.ended && f64::from(self.time) < e.wall.until)
+                .map(|e| e.wall.wall.clone())
+                .collect(),
+        );
         if requested > 0. && physics_steps == 0 {
             return Ok(());
         }
@@ -1635,8 +1744,6 @@ impl Game {
             }
             self.held_movement.axes(start)
         };
-        // A Telekinesis hand with path left takes the movement keys.
-        let movement = crate::telekinesis::steer_input(self, movement, dt);
         let walk = crate::movement::walk(movement, self.yaw)?;
         let speed = walk.speed;
         // Black Tentacles' square is Difficult Terrain: half speed.
@@ -1655,7 +1762,6 @@ impl Game {
         self.previous_player = self.player;
         let jump = std::mem::take(&mut self.pending_jump) && !dead;
         // Jumping while Telekinesis holds something lets go instead.
-        let jump = jump && !crate::telekinesis::let_go(self);
         let mut player_path = vec![];
         if self.colliders.is_empty() {
             self.player = self.move_player(self.player, delta)?;
@@ -1670,19 +1776,58 @@ impl Game {
             } else {
                 glam::DVec3::ZERO
             };
-            let velocity = self.levitated_walk(self.player_actor(), velocity);
+            player_path.push(self.character.feet.as_vec3().to_array());
             let filter = self.actor_filter(self.admission.actor());
-            let travel = crate::movement::advance(
-                &mut self.character,
-                &self.query_scene,
-                filter,
-                velocity,
-                jump,
-                steps as u32,
-                self.physics_clock.dt,
-            )?;
-            let fell = travel.fallen;
-            player_path = travel.path;
+            let mut fell = 0.;
+            for step in 0..steps {
+                let spell_time = self.time as f64 - (steps - step) as f64 * self.physics_clock.dt;
+                crate::spells::feather_fall::prepare(
+                    &mut self.spells,
+                    self.admission.actor().actor,
+                    &mut self.character,
+                    spell_time,
+                    self.physics_clock.dt,
+                );
+                let velocity = crate::spells::levitate::prepare(
+                    &mut self.spells,
+                    self.admission.actor().actor,
+                    &mut self.character,
+                    velocity,
+                    spell_time,
+                    self.physics_clock.dt,
+                );
+                let velocity = crate::spells::telekinesis::prepare(
+                    &self.spells,
+                    self.admission.actor().actor,
+                    &mut self.character,
+                    velocity,
+                );
+                let velocity = crate::spells::proxies::prepare(
+                    &self.spells,
+                    self.admission.actor().actor,
+                    &mut self.character,
+                    velocity,
+                );
+                let velocity =
+                    crate::spells::gust::movement(&self.spells, self.character.feet, velocity);
+                let before_bounce = self.character.external;
+                self.character.step(
+                    &self.query_scene,
+                    filter,
+                    physics::character::Settings::default(),
+                    velocity,
+                    jump && step == 0,
+                    self.physics_clock.dt,
+                )?;
+                crate::spells::levitate::bounce(
+                    &self.spells,
+                    self.admission.actor().actor,
+                    &mut self.character,
+                    before_bounce,
+                );
+                fell += self.character.landed.unwrap_or(0.);
+                player_path.push(self.character.feet.as_vec3().to_array());
+            }
             self.player = self.character.feet.as_vec3();
             if !dead {
                 self.fall_damage(None, fell)?;
@@ -1792,26 +1937,47 @@ impl Game {
                     // A knocked character does not walk; its authored place
                     // follows wherever the shove leaves it.
                     // A creature held by Telekinesis is moved by the grip.
-                    // So is one Restrained by Black Tentacles, through their pull.
-                    let knocked = character.knocked()
-                        || self.spells.holds_creature(a.actor.id)
-                        || crate::spells::black_tentacles::restrained(&self.spells, a.actor.id);
-                    // A levitated character moves only by pushing off.
-                    let levitated = self.spells.levitations.holds(a.actor.id);
-                    let velocity = if knocked || levitated {
+                    let knocked = character.knocked();
+                    let velocity = if knocked {
                         glam::DVec3::ZERO
                     } else {
-                        glam::DVec3::new(velocity.x, 0., velocity.z).clamp_length_max(100.)
+                        glam::DVec3::new(velocity.x, 0., velocity.z).clamp_length_max(99.)
                     };
-                    let velocity = crate::spells::gust_of_wind::approach(
-                        &self.spells,
-                        self.time,
-                        character.feet,
-                        velocity,
-                    );
                     npc_path.push(character.feet.as_vec3().to_array());
                     let mut fell = 0.;
-                    for _ in 0..physics_steps {
+                    for step in 0..physics_steps {
+                        let spell_time = self.time as f64
+                            - (physics_steps - step) as f64 * self.physics_clock.dt;
+                        crate::spells::feather_fall::prepare(
+                            &mut self.spells,
+                            a.actor.id,
+                            character,
+                            spell_time,
+                            self.physics_clock.dt,
+                        );
+                        let velocity = crate::spells::levitate::prepare(
+                            &mut self.spells,
+                            a.actor.id,
+                            character,
+                            velocity,
+                            spell_time,
+                            self.physics_clock.dt,
+                        );
+                        let velocity = crate::spells::telekinesis::prepare(
+                            &self.spells,
+                            a.actor.id,
+                            character,
+                            velocity,
+                        );
+                        let velocity = crate::spells::proxies::prepare(
+                            &self.spells,
+                            a.actor.id,
+                            character,
+                            velocity,
+                        );
+                        let velocity =
+                            crate::spells::gust::movement(&self.spells, character.feet, velocity);
+                        let before_bounce = character.external;
                         character.step(
                             &self.query_scene,
                             filter,
@@ -1820,13 +1986,17 @@ impl Game {
                             false,
                             self.physics_clock.dt,
                         )?;
+                        crate::spells::levitate::bounce(
+                            &self.spells,
+                            a.actor.id,
+                            character,
+                            before_bounce,
+                        );
                         fell += character.landed.unwrap_or(0.);
                         npc_path.push(character.feet.as_vec3().to_array());
                     }
                     let feet = character.feet.as_vec3();
-                    // A navigated route starts from where the character is,
-                    // so only authored places carry the shove as an offset.
-                    if (knocked || levitated || character.knocked()) && !navigated {
+                    if (knocked || character.knocked()) && !navigated {
                         self.controls.displace(id, feet - previous);
                     }
                     if fell > 0. {
@@ -1871,20 +2041,16 @@ impl Game {
                 self.message = "Cast blocked by chamber geometry".into();
             }
         }
-        crate::spells::wind_wall::before_flights(self);
-        crate::spells::wall_of_stone::before_projectiles(self);
         self.simulation.tick_at(
             dt,
             (self.physics_steps as f64 * self.physics_clock.dt) as f32,
             self.player.to_array(),
             self.yaw,
         )?;
-        crate::spells::wind_wall::after_flights(self)?;
         for effect in self.snapshot().effects {
             self.impacts
                 .push((effect.pos.into(), self.time, effect.kind));
         }
-        crate::spells::wall_of_stone::after_projectiles(self)?;
         if let Some(mut encounter) = self.encounter.take() {
             encounter.step(self, dt)?;
             self.encounter = Some(encounter);
@@ -2082,7 +2248,6 @@ impl Game {
     pub fn hostile_held(&self, id: u64) -> bool {
         self.ids.get(&id).is_some_and(|source| {
             self.controls.held(*source)
-                || self.spells.levitations.holds(id)
                 || self
                     .additional_players
                     .values()
@@ -2149,6 +2314,11 @@ impl Game {
         self.submit(self.admission.controller(), command)
     }
     /// Scene actor ID of the adventurer.
+    pub(crate) fn player_actors(&self) -> Vec<u64> {
+        std::iter::once(self.player_actor())
+            .chain(self.additional_players.keys().copied())
+            .collect()
+    }
     pub fn player_actor(&self) -> u64 {
         self.admission.actor().actor
     }
@@ -2183,6 +2353,54 @@ impl Game {
             .collect()
     }
     /// The movement controller of a scene actor, the adventurer included.
+    pub(crate) fn spell_velocity(&mut self, actor: u64, velocity: glam::DVec3) {
+        if actor == self.player_actor() {
+            self.character.add_velocity(velocity);
+        } else if let Some(player) = self.additional_players.get_mut(&actor) {
+            player.character.add_velocity(velocity);
+        } else if let Some(character) = self.npc_characters.get_mut(&actor) {
+            character.add_velocity(velocity);
+        }
+    }
+    pub(crate) fn stone_displacement(
+        &mut self,
+        actor: u64,
+        feet: glam::DVec3,
+    ) -> Result<(), String> {
+        let life = self
+            .actor_life(actor)
+            .ok_or("Stone displacement target is missing")?;
+        let filter = self.actor_filter(life);
+        let controller = if actor == self.player_actor() {
+            &mut self.character
+        } else if let Some(player) = self.additional_players.get_mut(&actor) {
+            &mut player.character
+        } else {
+            self.npc_characters
+                .get_mut(&actor)
+                .ok_or("Stone displacement controller is missing")?
+        };
+        controller.teleport(
+            &self.query_scene,
+            filter,
+            physics::character::Settings::default(),
+            feet,
+        )?;
+        if actor == self.player_actor() {
+            self.player = feet.as_vec3();
+        } else if let Some(player) = self.additional_players.get_mut(&actor) {
+            player.position = feet.as_vec3();
+            self.simulation.place_chamber_actor(
+                player.source,
+                player.position.to_array(),
+                player.yaw,
+            )?;
+        } else if let Some(source) = self.ids.get(&actor).copied() {
+            self.simulation
+                .place_chamber_actor(source, feet.as_vec3().to_array(), 0.)?;
+        }
+        Ok(())
+    }
     pub fn actor_character(&self, actor: u64) -> Option<&physics::character::Character> {
         if actor == self.player_actor() {
             Some(&self.character)
@@ -2231,8 +2449,32 @@ impl Game {
         if actor.is_some_and(|id| self.scene.actors.iter().any(|a| a.id == id && a.friendly)) {
             return Ok(());
         }
-        if crate::spells::feather_fall::cushion(self, actor, height)? {
-            return Ok(());
+        if height > 0. {
+            let target = actor.unwrap_or(self.player_actor());
+            let protected = self
+                .spells
+                .feather_falls
+                .iter_mut()
+                .any(|effect| effect.land(target as u32, self.time as f64).is_some());
+            let gentle = self.spells.levitations.iter_mut().any(|effect| {
+                if effect.target == crate::spells::Target::Actor(target)
+                    && matches!(effect.state.phase, crate::levitate::Phase::Descending(_))
+                {
+                    effect.state.land();
+                    true
+                } else {
+                    false
+                }
+            });
+            if protected || gentle {
+                self.spells.record(
+                    self.time,
+                    "Feather Fall",
+                    format!("{} landed: 0 falling damage", self.actor_name(target)),
+                    None,
+                );
+                return Ok(());
+            }
         }
         let dice = crate::spells::fall_dice(height);
         if dice == 0 {
@@ -2276,7 +2518,7 @@ impl Game {
             .find(|a| a.id == actor)
             .map_or_else(|| format!("Actor {actor}"), |a| a.name.clone())
     }
-    fn actor_model(&self, actor: u64) -> &str {
+    pub(crate) fn actor_model(&self, actor: u64) -> &str {
         self.scene
             .actors
             .iter()
@@ -2303,7 +2545,6 @@ impl Game {
             return Ok(());
         }
         let dt = steps as f64 * self.physics_clock.dt;
-        crate::spells::gust_of_wind::step(self, dt)?;
         let living = self.living_npcs();
         if !self.spells.fields.is_empty() {
             let fields = crate::spells::Fields {
@@ -2338,14 +2579,154 @@ impl Game {
                 }
             }
         }
-        crate::telekinesis::before_step(self)?;
-        crate::spells::black_tentacles::sync(self, steps)?;
+        for (body, kind) in self.simulation.take_spell_hits() {
+            crate::spells::wall_of_stone::hit(&mut self.spells, body, kind, self.time as f64)?;
+        }
+        self.simulation.set_spell_gusts(
+            self.spells
+                .gusts
+                .iter()
+                .filter(|e| e.gust.active(self.time as f64))
+                .map(|e| e.gust.clone())
+                .collect(),
+        );
+        crate::spells::reverse_gravity::entries(self)?;
         self.spells.begin_tick();
+        let controller_boundary = self.spells.boundary_snapshot();
+        for proxy in &self.spells.proxies {
+            if proxy.held && !proxy.ended {
+                self.spells.world[proxy.body].kind = physics::BodyKind::Dynamic;
+                self.spells.world.wake(proxy.body);
+            } else if !proxy.held && !proxy.ended {
+                if let Some(c) = self.actor_character(proxy.actor).copied() {
+                    let body = &mut self.spells.world[proxy.body];
+                    body.pos = c.feet + glam::DVec3::Y * 0.9;
+                    body.vel = glam::DVec3::ZERO;
+                    body.kind = physics::BodyKind::Kinematic;
+                }
+            }
+        }
+        self.spells
+            .record_boundary(&controller_boundary, "creature:controller");
         self.spells.step(steps as u32, self.time)?;
-        crate::reverse_gravity::game::step(self, dt)?;
-        crate::telekinesis::after_step(self, steps)?;
-        crate::spells::black_tentacles::apply(self, dt)?;
-        crate::spells::meteor_swarm::after_step(self)?;
+        for (actor, damage, spell) in std::mem::take(&mut self.spells.damage) {
+            if let Some(source) = self.player_source(actor) {
+                self.simulation.player_damage_for(source, damage)?;
+            } else if let Some(source) = self.ids.get(&actor).copied() {
+                self.simulation.bow_impact(source, damage)?;
+            }
+            self.spells.record(
+                self.time,
+                &spell,
+                format!("{}: {damage} damage", self.actor_name(actor)),
+                None,
+            );
+        }
+        let proxies: Vec<_> = self
+            .spells
+            .telekinesis
+            .iter()
+            .filter_map(|effect| {
+                let crate::spells::Target::Actor(actor) = effect.target else {
+                    return None;
+                };
+                let body = effect.proxy?;
+                Some((
+                    actor,
+                    body,
+                    self.spells.world[body].pos - glam::DVec3::Y * 0.9,
+                    self.spells.world[body].vel,
+                    effect.grip.grip.is_some(),
+                ))
+            })
+            .chain(
+                self.spells
+                    .proxies
+                    .iter()
+                    .filter(|p| p.held || p.ended)
+                    .map(|p| {
+                        (
+                            p.actor,
+                            p.body,
+                            self.spells.world[p.body].pos - glam::DVec3::Y * 0.9,
+                            self.spells.world[p.body].vel,
+                            !p.ended,
+                        )
+                    }),
+            )
+            .collect();
+        for (actor, body, feet, velocity, held) in proxies {
+            let life = self
+                .actor_life(actor)
+                .ok_or("Telekinesis creature life is missing")?;
+            let filter = self.actor_filter(life);
+            let c = if actor == self.admission.actor().actor {
+                &mut self.character
+            } else if let Some(player) = self.additional_players.get_mut(&actor) {
+                &mut player.character
+            } else {
+                self.npc_characters
+                    .get_mut(&actor)
+                    .ok_or("Telekinesis controller is missing")?
+            };
+            let peak = c.peak.unwrap_or(c.feet.y).max(feet.y);
+            c.gravity = Some(physics::character::GravityOverride {
+                scale: 0.,
+                terminal: 55.,
+            });
+            c.external = glam::DVec3::ZERO;
+            c.vertical_speed = 0.;
+            let desired = (feet - c.feet) / dt;
+            for _ in 0..steps {
+                c.vertical_speed = 0.;
+                c.add_velocity(glam::DVec3::Y * desired.y);
+                c.step(
+                    &self.query_scene,
+                    filter,
+                    physics::character::Settings::default(),
+                    glam::DVec3::new(desired.x, 0., desired.z).clamp_length_max(99.),
+                    false,
+                    self.physics_clock.dt,
+                )?;
+            }
+            c.peak = Some(peak);
+            if !held {
+                c.gravity = None;
+                c.add_velocity(velocity);
+            }
+            let position = c.feet.as_vec3();
+            if actor == self.player_actor() {
+                self.player = position;
+            } else if let Some(player) = self.additional_players.get_mut(&actor) {
+                player.position = position;
+                self.simulation.place_chamber_actor(
+                    player.source,
+                    position.to_array(),
+                    player.yaw,
+                )?;
+            } else if let Some(id) = self.ids.get(&actor).copied() {
+                self.simulation
+                    .place_chamber_actor(id, position.to_array(), 0.)?;
+            }
+            if !held {
+                let lost =
+                    physics::Momentum::of(&self.spells.world[body], self.spells.ledger.origin);
+                self.spells.ledger.add(
+                    "telekinesis:proxy",
+                    physics::Momentum {
+                        linear: -lost.linear,
+                        angular: -lost.angular,
+                    },
+                );
+                self.spells.world.remove_body(body);
+                for effect in &mut self.spells.telekinesis {
+                    if effect.proxy == Some(body) {
+                        effect.proxy = None;
+                    }
+                }
+                self.spells.proxies.retain(|p| p.body != body);
+            }
+        }
         let masses: BTreeMap<u64, f64> = std::iter::once(self.player_actor())
             .chain(self.additional_players.keys().copied())
             .chain(living.iter().copied())
@@ -2393,8 +2774,11 @@ impl Game {
         }
         self.spells.couple(&mut movers)?;
         couple_characters(&mut movers);
-        self.spells.sync_query_poses(&mut self.query_scene)?;
-        crate::spells::feather_fall::step(self, dt)?;
+        self.spells.insert_query_colliders(&mut self.query_scene)?;
+        self.simulation.set_spell_cover(
+            self.colliders.clone(),
+            crate::spells::wall_of_stone::cover(&self.spells),
+        );
         if self.snapshot().player.hp == 0 {
             self.spells.end_concentration(player)?;
         }
@@ -2403,7 +2787,6 @@ impl Game {
                 self.spells.end_concentration(*actor)?;
             }
         }
-        self.levitate_tick(steps)?;
         Ok(())
     }
     pub fn jump(&mut self) -> Result<(), String> {
@@ -2580,10 +2963,80 @@ impl Game {
         if self.snapshot().player.hp <= 0 {
             return Err("The adventurer is dead".into());
         }
-        if self.casting.is_some() {
+        if self.casting.is_some()
+            && !matches!(
+                ability,
+                Ability::Spell(3)
+                    | Ability::SpellCommand(crate::spells::command::Command::Targets {
+                        slot: 3,
+                        ..
+                    })
+            )
+        {
             return Err("A spell is already being cast".into());
         }
-        if let Ability::Spell(slot) = ability {
+        if let Ability::SpellCommand(crate::spells::command::Command::EndConcentration) = ability {
+            return self.spells.end_concentration(self.player_actor());
+        }
+        if let Ability::SpellCommand(crate::spells::command::Command::Hand(point)) = ability {
+            let caster = self.player_actor();
+            let effect = self
+                .spells
+                .telekinesis
+                .iter_mut()
+                .find(|e| e.caster == caster && e.grip.grip.is_some())
+                .ok_or("No Telekinesis grip")?;
+            effect.aim = glam::DVec3::from_array(point.map(|mm| f64::from(mm) / 1000.));
+            return Ok(());
+        }
+        if let Ability::SpellCommand(crate::spells::command::Command::Release) = ability {
+            let caster = self.player_actor();
+            let effect = self
+                .spells
+                .telekinesis
+                .iter_mut()
+                .find(|e| e.caster == caster && e.grip.grip.is_some())
+                .ok_or("No Telekinesis grip")?;
+            effect
+                .grip
+                .release(&mut self.spells.world, crate::telekinesis::Reason::Let);
+            return Ok(());
+        }
+        if let Ability::SpellCommand(crate::spells::command::Command::Altitude(mm)) = ability {
+            let caster = self.player_actor();
+            let effect = self
+                .spells
+                .levitations
+                .iter_mut()
+                .find(|e| e.caster == caster && e.state.holding())
+                .ok_or("No held Levitate target")?;
+            effect
+                .state
+                .command(f64::from(mm) / 1000., self.time as f64)
+                .map_err(|e| format!("Altitude command refused: {e:?}"))?;
+            return Ok(());
+        }
+        if let Ability::SpellCommand(crate::spells::command::Command::Wind(aim)) = ability {
+            let caster = self.player_actor();
+            let effect = self
+                .spells
+                .gusts
+                .iter_mut()
+                .find(|e| e.caster == caster && e.gust.active(self.time as f64))
+                .ok_or("No active Gust of Wind")?;
+            return effect.gust.reaim(
+                glam::DVec3::from_array(aim.map(|v| f64::from(v) / 1000.)),
+                self.time as f64,
+            );
+        }
+        if let Ability::SpellCommand(crate::spells::command::Command::Escape) = ability {
+            return crate::spells::black_tentacles::escape(self, self.player_actor());
+        }
+        if let Some(slot) = match ability {
+            Ability::Spell(slot) => Some(slot),
+            Ability::SpellCommand(command) => Some(command.slot()),
+            _ => None,
+        } {
             let spell = ability.catalog().ok_or("No spell in this slot")?;
             if self
                 .spells
@@ -2596,7 +3049,103 @@ impl Game {
             if self.snapshot().player.mana < spell.cost {
                 return Err("Not enough mana".into());
             }
-            (spell.cast)(self)?;
+            let retained = match slot {
+                0 => self.spells.telekinesis.len(),
+                1 => self.spells.walls.len(),
+                2 => self.spells.levitations.len(),
+                3 => self.spells.feather_falls.len(),
+                4 => self.spells.gusts.len(),
+                5 => self.spells.wind_walls.len(),
+                6 => self.spells.tentacles.len(),
+                7 => self.spells.meteors.len(),
+                8 => self.spells.reversed.len(),
+                _ => 0,
+            };
+            if retained >= 64 {
+                return Err("Retained spell effect budget exceeded".into());
+            }
+            match ability {
+                Ability::SpellCommand(crate::spells::command::Command::Targets {
+                    slot,
+                    targets,
+                    count,
+                }) => {
+                    if count == 0 || usize::from(count) > targets.len() {
+                        return Err("Invalid spell target count".into());
+                    }
+                    match slot {
+                        3 => {
+                            let chosen = targets[..usize::from(count)]
+                                .iter()
+                                .map(|id| {
+                                    u32::try_from(*id).map_err(|_| {
+                                        "Feather Fall target ID is too large".to_string()
+                                    })
+                                })
+                                .collect::<Result<Vec<_>, _>>()?;
+                            crate::spells::feather_fall::cast_on(self, &chosen)?;
+                        }
+                        0 | 2 if count == 1 => {
+                            let target = if targets[0] >= crate::spells::PROP_ENTITY_BASE {
+                                crate::spells::Target::Prop(
+                                    self.spells
+                                        .props
+                                        .iter()
+                                        .position(|p| p.life.entity == targets[0] && !p.removed)
+                                        .ok_or("Unknown spell prop")?,
+                                )
+                            } else {
+                                crate::spells::Target::Actor(targets[0])
+                            };
+                            if slot == 0 {
+                                crate::spells::telekinesis::cast_on(self, target)?;
+                            } else {
+                                crate::spells::levitate::cast_on(self, target)?;
+                            }
+                        }
+                        _ => return Err("This spell does not accept these targets".into()),
+                    }
+                }
+                Ability::SpellCommand(crate::spells::command::Command::Point { slot, point }) => {
+                    let point = glam::DVec3::from_array(point.map(|v| f64::from(v) / 1000.));
+                    match slot {
+                        6 => crate::spells::black_tentacles::cast_at(self, point)?,
+                        8 => crate::spells::reverse_gravity::cast_at(self, point)?,
+                        _ => return Err("This spell does not accept a ground point".into()),
+                    }
+                }
+                Ability::SpellCommand(crate::spells::command::Command::WindWall {
+                    points,
+                    count,
+                }) => {
+                    if !(2..=8).contains(&count) {
+                        return Err("Wind Wall needs 2 to 8 path points".into());
+                    }
+                    crate::spells::wind_wall::cast_path(
+                        self,
+                        points[..usize::from(count)]
+                            .iter()
+                            .map(|p| glam::DVec2::from_array(p.map(|v| f64::from(v) / 1000.)))
+                            .collect(),
+                    )?;
+                }
+                Ability::SpellCommand(crate::spells::command::Command::Meteors(points)) => {
+                    crate::spells::meteor_swarm::cast_at(
+                        self,
+                        points.map(|p| glam::DVec3::from_array(p.map(|v| f64::from(v) / 1000.))),
+                    )?;
+                }
+                Ability::SpellCommand(crate::spells::command::Command::Stone {
+                    shape,
+                    from,
+                    to,
+                    count,
+                    thin,
+                }) => {
+                    crate::spells::wall_of_stone::authored(self, shape, from, to, count, thin)?;
+                }
+                _ => (spell.cast)(self)?,
+            }
             self.simulation.spend_chamber_mana(spell.cost)?;
             self.spells.ready.insert(slot, self.time + spell.cooldown);
             self.record_ability(ability);
@@ -2667,6 +3216,37 @@ impl Game {
             self.last_cast = Some((ability, self.time));
             self.message = format!("{}: {}", ability.label(), ability.description());
             return Ok(());
+        }
+        if matches!(ability, Ability::FireBolt | Ability::Bow) {
+            if let Some(prop) = self
+                .spells
+                .props
+                .iter()
+                .find(|p| p.life.entity == self.selected && !p.removed)
+            {
+                let start = self.player + Vec3::Y * 1.4;
+                let end = self.spells.world[prop.body].pos.as_vec3();
+                if start.distance(end) > 36.576 {
+                    return Err("Target is out of range".into());
+                }
+                let direction = (end - start).normalize_or_zero();
+                if ability == Ability::FireBolt {
+                    self.simulation.cast(
+                        crate::rules::Spell::Firebolt,
+                        start.to_array(),
+                        direction.to_array(),
+                    )?;
+                } else {
+                    if self.time < self.bow_ready {
+                        return Err("Bow is cooling down".into());
+                    }
+                    self.simulation
+                        .launch_bow(start.to_array(), direction.to_array())?;
+                    self.bow_ready = self.time + 1.;
+                }
+                self.record_ability(ability);
+                return Ok(());
+            }
         }
         let target = self
             .frame()
@@ -3384,10 +3964,13 @@ mod checkpoint_tests {
             assert_eq!(game.checkpoint().unwrap(), restored.checkpoint().unwrap());
         }
         assert_eq!(game.snapshot().player.hp, 0);
-        assert_eq!(
-            game.encounter.as_ref().unwrap().used.len(),
-            Ability::ALL.len()
-        );
+        assert!(Ability::ALL.iter().all(|ability| {
+            game.encounter
+                .as_ref()
+                .unwrap()
+                .used
+                .contains_key(ability.label())
+        }));
         assert!(game.lives.values().any(|life| life.generation > 0));
         assert!(
             game.events

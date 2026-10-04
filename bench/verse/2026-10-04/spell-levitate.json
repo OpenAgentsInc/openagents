@@ -2,20 +2,33 @@
   "schema": "openagents.verse.spell-playground.v1",
   "spell": "levitate",
   "title": "Levitate",
-  "srd": "Level 2 Transmutation | Range 60 ft | Concentration, 10 min | CON save if unwilling | rise 20 ft, 500 lb max",
+  "srd": "Level 2 Transmutation | Range 60 ft | CON save | 20-ft rise | concentration 10 min",
   "srd_source": "SRD 5.2.1 (SRD_CC_v5.2.1.pdf)",
-  "rules_revision": "verse-chamber-owned-v17",
+  "rules_revision": "verse-chamber-owned-v18",
   "seed": 454,
   "dice_rolled": 0,
   "saves": [
     {
-      "at": 15.399999618530273,
+      "at": 0.5,
+      "save": {
+        "target": 101,
+        "ability": "Constitution",
+        "roll": 2,
+        "modifier": 0,
+        "total": 2,
+        "dc": 15,
+        "success": false,
+        "forced": true
+      }
+    },
+    {
+      "at": 47.0,
       "save": {
         "target": 102,
         "ability": "Constitution",
-        "roll": 18,
+        "roll": 20,
         "modifier": 0,
-        "total": 18,
+        "total": 20,
         "dc": 15,
         "success": true,
         "forced": true
@@ -23,70 +36,137 @@
     }
   ],
   "log": [
-    "[0.50] Dummy A (willing): rises up to 20 ft",
-    "[1.80] Dummy A (willing): pushes off at 10.5 ft/s (climbing cap 10.5 ft/s)",
-    "[7.63] Dummy A (willing): bounces, 7.9 -> 0.8 ft/s (restitution 0.10)",
-    "[9.00] Crate: rises up to 20 ft",
-    "[9.03] Dummy A (willing): concentration ends; floats down at 10 ft/s or less",
-    "[11.07] Dummy A (willing): lands gently, no falling damage",
-    "[12.00] Crate: altitude -20 ft, now 0 ft above the ground",
-    "[13.70] Anvil + load: refused, too heavy: 661 lb (300 kg) > 500 lb",
-    "[15.40] Dummy B (unwilling): CON save 18 +0 = 18 vs DC 15 succeeds; unaffected",
-    "[18.10] Crate: altitude +20 ft, now 20 ft above the ground"
+    "[0.50] Altitude hold: rise at most 20 ft; push off surfaces to move",
+    "[28.10] Floating dummy landed: 0 falling damage",
+    "[32.00] Altitude hold: rise at most 20 ft; push off surfaces to move",
+    "[46.00] Refused: too heavy: 661 lb (300 kg) > 500 lb",
+    "[47.00] Constitution save succeeds; no movement"
   ],
   "tracks": [
     {
-      "label": "Dummy A (willing)",
+      "label": "Floating dummy",
       "spell": "Levitate",
       "at": 0.5,
       "start": [
-        7.349999904632568,
+        -4.800000190734863,
         0.0,
         -12.0
       ],
       "final": [
-        22.866456985473633,
+        4.949990272521973,
         9.999999747378752e-6,
         -12.0
       ],
-      "requested_ft": 0.0,
-      "measured_ft": 50.90701142008223
+      "requested_ft": 20.0,
+      "measured_ft": 31.98815768785051
     },
     {
       "label": "Crate",
       "spell": "Levitate",
-      "at": 9.0,
+      "at": 32.0,
       "start": [
-        15.999999999996602,
+        1.4999999999966003,
         0.2999999999981224,
-        -1.499999999945464
+        -4.999999999945464
       ],
       "final": [
-        15.999999999977653,
-        5.072236116931856,
-        12.45054005965288
+        8.823266794467756,
+        0.29999998867428096,
+        9.646534427427166
       ],
-      "requested_ft": 0.0,
-      "measured_ft": 45.769488384509
+      "requested_ft": 20.0,
+      "measured_ft": 53.72481338490605
     },
     {
       "label": "Crate",
       "spell": "Thunderwave",
-      "at": 18.899999618530273,
+      "at": 38.0,
       "start": [
-        15.999999999996602,
-        1.175007922554619,
-        -1.499999999945464
+        1.4999999999966003,
+        2.3959955903343646,
+        -4.999999999945464
       ],
       "final": [
-        15.999999999977653,
-        5.072236116931856,
-        12.45054005965288
+        8.823266794467756,
+        0.29999998867428096,
+        9.646534427427166
       ],
       "requested_ft": 10.0,
-      "measured_ft": 45.769488384509
+      "measured_ft": 53.72481338490605
+    },
+    {
+      "label": "Barrel",
+      "spell": "Thunderwave",
+      "at": 38.0,
+      "start": [
+        -1.000000000989025,
+        0.44999998821075216,
+        -4.000000001714897
+      ],
+      "final": [
+        -1.7334761879005263,
+        0.4499996877442069,
+        -1.066150227756108
+      ],
+      "requested_ft": 10.0,
+      "measured_ft": 9.92174035508673
     }
   ],
+  "feather_falls": [],
+  "levitations": [
+    {
+      "cast": 1,
+      "caster": 14,
+      "caster_position": [
+        0.0,
+        0.0,
+        -8.0
+      ],
+      "target": {
+        "Actor": 101
+      },
+      "state": {
+        "base": 0.0,
+        "rise": 6.096,
+        "self_target": false,
+        "cast_at": 0.5,
+        "commanded_at": 20.100000381469727,
+        "phase": {
+          "Done": "Concentration"
+        }
+      }
+    },
+    {
+      "cast": 2,
+      "caster": 14,
+      "caster_position": [
+        0.0,
+        0.0,
+        -8.0
+      ],
+      "target": {
+        "Prop": 0
+      },
+      "state": {
+        "base": 0.2999999999981224,
+        "rise": 2.096,
+        "self_target": false,
+        "cast_at": 32.0,
+        "commanded_at": 32.099998474121094,
+        "phase": {
+          "Done": "Concentration"
+        }
+      }
+    }
+  ],
+  "telekinesis": [],
+  "walls": [],
+  "gusts": [],
+  "flames": [],
+  "wind_walls": [],
+  "tentacles": [],
+  "meteors": [],
+  "reverse_gravity": [],
   "props": [
     {
       "name": "Crate",
@@ -95,32 +175,104 @@
       "secured": false,
       "removed": false,
       "center": [
-        15.999999999977653,
-        5.072236116931856,
-        12.45054005965288
+        8.823266794467756,
+        0.29999998867428096,
+        9.646534427427166
       ],
       "rotation": [
-        1.5513914853686711e-18,
-        -3.9468946699069296e-11,
-        -3.1293465015282414e-12,
+        -4.830390863442115e-9,
+        1.0328865322898453e-6,
+        -1.4045816789179796e-8,
+        0.9999999999994665
+      ]
+    },
+    {
+      "name": "Barrel",
+      "kind": "Barrel",
+      "mass_kg": 60.0,
+      "secured": false,
+      "removed": false,
+      "center": [
+        -1.7334761879005263,
+        0.4499996877442069,
+        -1.066150227756108
+      ],
+      "rotation": [
+        9.907879810983987e-9,
+        0.00005168059603405708,
+        -5.104921812574659e-7,
+        0.9999999986644278
+      ]
+    },
+    {
+      "name": "Anvil",
+      "kind": "Anvil",
+      "mass_kg": 250.0,
+      "secured": false,
+      "removed": false,
+      "center": [
+        1.0000000000001563,
+        0.19999999998893106,
+        -1.9999999999699754
+      ],
+      "rotation": [
+        3.5562114548699523e-17,
+        -4.128657998979972e-11,
+        -1.5812769785623922e-11,
         1.0
       ]
     },
     {
-      "name": "Anvil + load",
+      "name": "Stone block",
+      "kind": "StoneBlock",
+      "mass_kg": 1000.0,
+      "secured": false,
+      "removed": false,
+      "center": [
+        -4.000000000711821,
+        0.3749999997953628,
+        -2.999999992322427
+      ],
+      "rotation": [
+        1.7467052187890517e-18,
+        -3.9030038487196285e-9,
+        -2.728495939136053e-10,
+        1.0
+      ]
+    },
+    {
+      "name": "Anvil plus load (300 kg)",
       "kind": "Anvil",
       "mass_kg": 300.0,
       "secured": false,
       "removed": false,
       "center": [
-        12.500000000000155,
-        0.19999999998893106,
-        -1.9999999999699754
+        3.999999999768103,
+        0.19999999994931103,
+        -5.999999994803736
       ],
       "rotation": [
-        3.467905617533778e-17,
-        -4.128658012895071e-11,
-        -1.581276948211405e-11,
+        -7.751848707926787e-11,
+        -7.487776688579378e-9,
+        -3.36535813644253e-11,
+        1.0
+      ]
+    },
+    {
+      "name": "Drift bounce wall",
+      "kind": "StoneBlock",
+      "mass_kg": 1000.0,
+      "secured": true,
+      "removed": false,
+      "center": [
+        8.0,
+        3.0,
+        -12.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
         1.0
       ]
     }
@@ -130,134 +282,183 @@
       "id": 14,
       "name": "Wizard",
       "position": [
-        16.0,
         0.0,
-        -4.0
+        0.0,
+        -8.0
+      ],
+      "health": 200
+    },
+    {
+      "id": 102,
+      "name": "Successful-save dummy",
+      "position": [
+        2.0,
+        0.0,
+        -3.0
       ],
       "health": 200
     },
     {
       "id": 101,
-      "name": "Dummy A (willing)",
+      "name": "Floating dummy",
       "position": [
-        22.866456985473633,
+        4.949990272521973,
         9.999999747378752e-6,
         -12.0
       ],
-      "health": 100
-    },
-    {
-      "id": 102,
-      "name": "Dummy B (unwilling)",
-      "position": [
-        13.0,
-        0.0,
-        1.5
-      ],
-      "health": 100
+      "health": 200
     }
   ],
   "ledger": {
     "terms": {
-      "gravity": {
+      "creature:controller": {
         "linear": [
           0.0,
-          -4022.100000000262,
+          0.0,
           0.0
         ],
         "angular": [
-          -3144.991395328555,
           0.0,
-          -59203.34999998916
+          0.0,
+          0.0
+        ]
+      },
+      "gravity": {
+        "linear": [
+          0.0,
+          -13505.100000000371,
+          0.0
+        ],
+        "angular": [
+          -41601.762839026596,
+          0.0,
+          13409.00073686497
         ]
       },
       "levitate damping": {
         "linear": [
-          1.8970430567974895e-11,
+          -4.8723059437616625,
           0.0,
-          -13.956355207601511
+          -9.744611887722563
         ],
         "angular": [
-          -42.900825517464376,
-          223.30168332154827,
-          -5.83137301739491e-11
+          -23.348081471753414,
+          38.97844755009331,
+          11.674040735638037
+        ]
+      },
+      "levitate descent": {
+        "linear": [
+          0.0,
+          104.17499869524947,
+          0.0
+        ],
+        "angular": [
+          -769.8457341216592,
+          0.0,
+          801.622861825436
         ]
       },
       "levitate hold": {
         "linear": [
           0.0,
-          2482.4999999607385,
+          1569.6000013047474,
           0.0
         ],
         "angular": [
-          99.5267482461196,
+          5913.014727193442,
           0.0,
-          39719.99999935842
+          3321.892641554362
+        ]
+      },
+      "meteor:spawn/remove": {
+        "linear": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "angular": [
+          0.0,
+          0.0,
+          0.0
         ]
       },
       "sleep": {
         "linear": [
-          2.393918396847994e-16,
-          -2.914335439641033e-16,
-          4.681584980792408e-16
+          5.559788740505669e-16,
+          -6.245004513516513e-17,
+          -1.4909338412298636e-15
         ],
         "angular": [
-          -4.308185752448726e-16,
-          -6.5065357615153326e-15,
-          -3.716124630276259e-15
+          -6.114634495084669e-16,
+          7.96988089630982e-15,
+          -6.562316282326835e-17
+        ]
+      },
+      "spell:removed": {
+        "linear": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "angular": [
+          0.0,
+          0.0,
+          0.0
         ]
       },
       "spell:thunderwave": {
         "linear": [
-          -1.5558669875160148e-10,
+          -32.09481628591615,
           0.0,
-          114.46357137624204
+          435.5172565220398
         ],
         "angular": [
-          134.49560321098053,
-          -1831.4171420192504,
-          1.828156036772506e-10
+          395.21248743204706,
+          256.7585302873292,
+          -85.17219661344987
         ]
       },
       "static contact": {
         "linear": [
-          1.2212453270876722e-15,
-          1569.5999999999965,
-          -1.717376241217039e-16
+          36.967122229677635,
+          11831.324999999984,
+          -425.7726446343169
         ],
         "angular": [
-          3090.1499999508005,
-          1.509903313490213e-14,
-          19963.350000000264
+          36086.729439995885,
+          -295.7369778374243,
+          -17459.018084367846
         ]
       }
     },
     "residual_relative": {
-      "linear": 3.2011028552172283e-14,
-      "angular": 1.7638262647170416e-14
+      "linear": 1.394876148864189e-14,
+      "angular": 1.1497166141401754e-14
     },
     "tolerance": 1e-9
   },
   "replay": {
     "window_s": [
-      1.600000023841858,
-      2.4000000953674316
+      3.0,
+      4.5
     ],
     "speed": 0.25,
     "source": "checkpoint at the window start, stepped again with the same admitted commands",
     "identical_to_live": true
   },
-  "live_seconds": 21.5,
-  "video_seconds": 24.700000762939453,
-  "authority_tick": 645,
-  "physics_steps": 2580,
+  "live_seconds": 57.0,
+  "live_speed": 3,
+  "video_seconds": 25.0,
+  "authority_tick": 570,
+  "physics_steps": 6840,
   "renderer": "owned native GPU pipeline; scripted admitted commands; no grading",
   "prepared_pack": {
     "inventory": {
       "schema": "openagents.verse.asset-admission.v1",
       "purpose": "original_local",
       "compiler": "verse:compiler:original-chamber",
-      "compiler_revision": "8cb4be8f0af241ce1f7370f59519e4ac1512acfd62dcc6e269b01843e5e3792c",
+      "compiler_revision": "506ab9e7462ac8a51fed16b58bd49af4af804604929a0a48d86f1393c7c32656",
       "assets": [
         "verse:model:adventurer",
         "verse:model:arrow",
@@ -277,6 +478,7 @@
         "verse:model:effect-mist",
         "verse:model:effect-ribbon",
         "verse:model:effect-rune",
+        "verse:model:effect-scorch",
         "verse:model:effect-shadow",
         "verse:model:effect-shield",
         "verse:model:effect-wave",
@@ -293,8 +495,10 @@
         "verse:model:prop-crate",
         "verse:model:prop-crate-secured",
         "verse:model:prop-dummy",
+        "verse:model:prop-meteor",
         "verse:model:prop-sheet",
         "verse:model:prop-stone",
+        "verse:model:prop-tentacle",
         "verse:model:prop/Banner_2",
         "verse:model:prop/Barrel",
         "verse:model:prop/Book_Stack_1",
@@ -418,7 +622,7 @@
           {
             "creator": "OpenAgents contributors",
             "license": "apache2",
-            "revision": "8cb4be8f0af241ce1f7370f59519e4ac1512acfd62dcc6e269b01843e5e3792c",
+            "revision": "506ab9e7462ac8a51fed16b58bd49af4af804604929a0a48d86f1393c7c32656",
             "format": "rust/wgsl/json"
           }
         ],
@@ -434,10 +638,10 @@
       ]
     },
     "schema": "openagents.verse.prepared-pack.v1",
-    "manifest_sha256": "29c4b1ac39dc928dba868a2a1b8e79fd0336eab160da0eeedf152fb2b4c8c1b1",
-    "manifest_bytes": 83344323,
-    "vertices": 271814,
-    "indices": 997743,
+    "manifest_sha256": "aea94bdec2f2decca804fb09629b53a13d93fc0c91be8363a7cc3317659d7ddb",
+    "manifest_bytes": 83421005,
+    "vertices": 272259,
+    "indices": 999651,
     "encoded_bytes": 34477502,
     "rgba_bytes": 164233224,
     "budget": {

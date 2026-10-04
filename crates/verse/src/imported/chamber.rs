@@ -321,6 +321,7 @@ pub fn static_instances(pack: &Pack, origin: Vec3) -> Vec<Instance> {
     let conversion = Mat4::from_translation(-origin) * basis();
     pack.placements
         .iter()
+        .filter(|p| p.model != "prop/flame")
         .map(|p| Instance {
             mount: None,
             actor: None,
@@ -495,22 +496,17 @@ pub fn combat_lighting(game: &super::play::Game) -> super::lighting::Lighting {
         game.scene.collision_profile.as_deref() == Some(verse_world::playground::PROFILE),
         game.player,
     );
-    super::gust::lights(game, &mut lighting);
-    // A Reverse Gravity column lifts bodies far above the scene's lights.
-    let column = verse_world::reverse_gravity::game::column_lights(game);
-    lighting
-        .lights
-        .truncate(super::lighting::MAX_LIGHTS.saturating_sub(column.len()));
-    lighting.lights.extend(
-        column.into_iter().map(
-            |(position, color, intensity, range)| super::lighting::Light {
-                position,
-                color,
-                intensity,
-                range,
-            },
-        ),
-    );
+    if game.scene.collision_profile.as_deref() == Some(verse_world::playground::PROFILE)
+        && !game.spells.reversed.is_empty()
+    {
+        lighting.lights.truncate(super::lighting::MAX_LIGHTS - 1);
+        lighting.lights.push(super::lighting::Light {
+            position: Vec3::new(0., 28., -3.),
+            color: Vec3::new(0.8, 0.85, 1.),
+            intensity: 260.,
+            range: 50.,
+        });
+    }
     lighting
 }
 /// Uses the same effect lighting for local authority and admitted remote data.
@@ -528,7 +524,31 @@ pub fn lighting_from_visuals(
         lighting(origin)
     };
     lighting.time = visuals.time;
-    let mut effects = Vec::new();
+    let mut fire_lights = Vec::new();
+    for flame in &visuals.flames {
+        let position = flame.position.as_vec3();
+        if flame.id >= 1_000_000 && flame.lit {
+            fire_lights.push(Light {
+                position,
+                color: Vec3::new(1., 0.35, 0.03),
+                intensity: 45.,
+                range: 4.,
+            });
+        }
+        for light in &mut lighting.lights {
+            if light.position.distance(position) < 0.8 {
+                light.intensity = if !flame.lit {
+                    0.
+                } else if flame.protected {
+                    light.intensity
+                        * (0.6 + 0.4 * (visuals.time * 31. + flame.id as f32).sin().abs())
+                } else {
+                    light.intensity
+                };
+            }
+        }
+    }
+    let mut effects = fire_lights;
     for controls in &visuals.players {
         if let Some(position) = controls.light {
             effects.push(Light {
@@ -540,7 +560,11 @@ pub fn lighting_from_visuals(
         }
     }
     for p in &visuals.projectiles {
-        if p.kind == verse_world::rules::ProjectileKind::Bow {
+        if matches!(
+            p.kind,
+            verse_world::rules::ProjectileKind::Bow
+                | verse_world::rules::ProjectileKind::SiegeBoulder
+        ) {
             continue;
         }
         let (color, intensity, range) = match p.kind {
@@ -931,13 +955,25 @@ pub fn add_effect_models(pack: &mut Pack, dir: &std::path::Path) -> Result<(), S
 }
 pub fn spell_instances(game: &super::play::Game) -> Vec<Instance> {
     let mut out = spell_instances_from_visuals(&verse_world::visuals::Combat::extract(game));
-    out.extend(super::gust::instances(game));
     out
 }
 /// Draws admitted visual values without borrowing local world authority.
 pub fn spell_instances_from_visuals(visuals: &verse_world::visuals::Combat) -> Vec<Instance> {
     let mut out = Vec::new();
     for p in &visuals.projectiles {
+        if p.kind == verse_world::rules::ProjectileKind::SiegeBoulder {
+            out.push(Instance {
+                mount: None,
+                actor: None,
+                model: "prop-stone".into(),
+                transform: Mat4::from_translation(p.pos.into())
+                    * Mat4::from_scale(Vec3::splat(1.2)),
+                animation: 0.into(),
+                time: visuals.time,
+                emission: Vec3::ZERO,
+            });
+            continue;
+        }
         if p.kind == verse_world::rules::ProjectileKind::Bow {
             continue;
         }
@@ -1116,6 +1152,7 @@ pub fn spell_instances_from_visuals(visuals: &verse_world::visuals::Combat) -> V
             p.kind,
             verse_world::rules::ProjectileKind::MagicMissile
                 | verse_world::rules::ProjectileKind::Bow
+                | verse_world::rules::ProjectileKind::SiegeBoulder
         ) {
             continue;
         }
@@ -1259,6 +1296,7 @@ mod tests {
         let frame = game.frame();
         let combat = verse_world::visuals::Combat::extract(&game);
         let presentation = verse_world::service::presentation::Presentation {
+            flames: game.spells.flames.clone(),
             time: frame.time,
             actors: vec![],
             corpses: vec![],
@@ -1733,8 +1771,7 @@ mod tests {
         verse_world::visuals::validate_props(&poses, 160).unwrap();
         let local = prop_instances(&pack, &game, 0.5);
         let remote = prop_instances_from_poses(&pack, &poses, game.time);
-        assert_eq!(local.len(), 1);
-        assert_eq!(local[0].model, "prop-crate-secured");
+        assert!(local.iter().any(|p| p.model == "prop-crate-secured"));
         assert_eq!(format!("{:?}", local), format!("{:?}", remote));
         assert!(remote[0].transform.is_finite());
         assert!(
@@ -1958,3 +1995,132 @@ fn flat(v: Vec3) -> Option<Vec3> {
 const BOW_BACK_DEPTH: f32 = 0.14;
 /// How far the stowed bow leans from vertical across the back, in radians.
 const BOW_BACK_TILT: f32 = 0.6;
+
+/// Draw spell volumes and registered flames from their admitted state.
+pub fn environment_instances(pack: &Pack, game: &super::play::Game) -> Vec<Instance> {
+    let mut out = Vec::new();
+    let mut ribbon = |position: Vec3, direction: Vec3, width: f32, length: f32| {
+        if out.len() >= 512 || !pack.models.contains_key("effect-ribbon") {
+            return;
+        }
+        out.push(Instance {
+            mount: None,
+            actor: None,
+            model: "effect-ribbon".into(),
+            transform: Mat4::from_translation(position)
+                * Mat4::from_quat(Quat::from_rotation_arc(
+                    Vec3::Y,
+                    direction.normalize_or_zero(),
+                ))
+                * Mat4::from_scale(Vec3::new(width, length, 1.)),
+            animation: 0.into(),
+            time: game.time,
+            emission: Vec3::splat(0.5),
+        });
+    };
+    for effect in game
+        .spells
+        .wind_walls
+        .iter()
+        .filter(|e| e.wall.active(game.time as f64))
+    {
+        let wall = &effect.wall.wall;
+        for segment in wall.path.windows(2) {
+            for i in 0..12 {
+                let p = segment[0].lerp(segment[1], i as f64 / 12.);
+                let height = ((game.time * 1.7 + i as f32 * 0.27)
+                    % verse_world::wind_wall::HEIGHT as f32)
+                    + wall.base as f32;
+                ribbon(
+                    Vec3::new(p.x as f32, height, p.y as f32),
+                    Vec3::Y,
+                    0.12,
+                    0.8,
+                );
+            }
+        }
+    }
+    for effect in game
+        .spells
+        .gusts
+        .iter()
+        .filter(|e| e.gust.active(game.time as f64))
+    {
+        for i in 0..32 {
+            let along = (game.time * 12. + i as f32 * 0.57) % verse_world::gust::LENGTH as f32;
+            let side = (i as f32 % 5. - 2.) * 0.6;
+            let point = effect.gust.line.origin.as_vec3()
+                + effect.gust.line.direction.as_vec3() * along
+                + effect.gust.line.side().as_vec3() * side
+                + Vec3::Y * (0.6 + (i % 3) as f32 * 0.6);
+            ribbon(point, effect.gust.line.direction.as_vec3(), 0.08, 0.9);
+        }
+    }
+    drop(ribbon);
+    for effect in &game.spells.meteors {
+        for impact in &effect.swarm.impacts {
+            if pack.models.contains_key("effect-scorch") {
+                out.push(Instance {
+                    mount: None,
+                    actor: None,
+                    model: "effect-scorch".into(),
+                    transform: Mat4::from_translation(impact.point.as_vec3() + Vec3::Y * 0.02)
+                        * Mat4::from_scale(Vec3::new(5., 0.5, 5.))
+                        * basis(),
+                    animation: 0.into(),
+                    time: game.time,
+                    emission: Vec3::ZERO,
+                });
+            }
+        }
+        if pack.models.contains_key("effect-fire") {
+            for meteor in &effect.swarm.meteors {
+                let Some(id) = meteor.body else { continue };
+                let body = &game.spells.world[id];
+                if body.removed {
+                    continue;
+                }
+                for trail in 1..=6 {
+                    out.push(Instance {
+                        mount: None,
+                        actor: None,
+                        model: "effect-fire".into(),
+                        transform: Mat4::from_translation(
+                            (body.pos - body.vel.normalize_or_zero() * f64::from(trail) * 1.2)
+                                .as_vec3(),
+                        ) * Mat4::from_scale(Vec3::splat(0.5)),
+                        animation: 0.into(),
+                        time: game.time,
+                        emission: Vec3::splat(3.),
+                    });
+                }
+            }
+        }
+    }
+    if pack.models.contains_key("prop/flame") {
+        out.extend(
+            verse_world::visuals::flame_states(game)
+                .iter()
+                .filter(|f| f.lit)
+                .map(|f| {
+                    let scale = pack
+                        .placements
+                        .get(f.id as usize)
+                        .filter(|p| p.model == "prop/flame")
+                        .map_or(0.6, |p| p.scale);
+                    Instance {
+                        mount: None,
+                        actor: None,
+                        model: "prop/flame".into(),
+                        transform: Mat4::from_translation(f.position.as_vec3())
+                            * Mat4::from_scale(Vec3::splat(scale))
+                            * basis(),
+                        animation: 0.into(),
+                        time: game.time,
+                        emission: Vec3::splat(4.),
+                    }
+                }),
+        );
+    }
+    out
+}
