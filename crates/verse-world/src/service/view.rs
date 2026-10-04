@@ -101,6 +101,7 @@ impl View {
                         && p.visible
                         && p.health > 0
                         && p.actor.nameplate
+                        && !p.actor.friendly
                         && p.actor.model != "adventurer"
                 })
             })
@@ -1305,6 +1306,47 @@ mod tests {
         view.push_snapshot(&r).unwrap();
         assert!(view.damage_numbers(1.).unwrap().is_empty());
     }
+    #[test]
+    fn friendly_givers_remain_visible_but_cannot_be_combat_targets() {
+        let mut reply = response(10);
+        let snapshot = state(&mut reply);
+        let giver = snapshot
+            .presentation
+            .actors
+            .iter_mut()
+            .find(|p| p.actor.id == 2)
+            .unwrap();
+        giver.actor.friendly = true;
+        let life: verse_engine::core::LifeId = giver.life.into();
+        let source = snapshot
+            .actors
+            .iter()
+            .find(|a| a.life == giver.life)
+            .unwrap()
+            .source;
+        snapshot
+            .snapshot
+            .actors
+            .iter_mut()
+            .find(|a| a.id == source)
+            .unwrap()
+            .faction = "friendly".into();
+        let mut view = View::new(130, 5., 0).unwrap();
+        view.push_snapshot(&reply).unwrap();
+        assert!(view.select_target(Some(life)).is_err());
+        assert!(view.target().is_none());
+        for _ in 0..32 {
+            assert_ne!(view.cycle_target(), Some(life));
+        }
+        let frame = view.frame(1., camera()).unwrap().unwrap();
+        assert!(
+            frame
+                .actors
+                .iter()
+                .any(|a| a.actor.id == life.actor && a.visible && a.health > 0 && a.actor.friendly)
+        );
+    }
+
     #[test]
     fn exact_life_selection_cycles_stably_and_clears_on_committed_death_or_respawn() {
         let mut r = response(10);
