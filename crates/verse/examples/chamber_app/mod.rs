@@ -876,6 +876,11 @@ pub fn run(original_default: bool) -> Result<(), String> {
     if original_default && inputs.first().is_none_or(|a| a != "--original") {
         inputs.insert(0, "--original".into());
     }
+    let quest_giver = inputs
+        .iter()
+        .position(|a| a == "--quest-giver")
+        .map(|i| inputs.remove(i))
+        .is_some();
     let greybox = inputs
         .iter()
         .position(|a| a == "--greybox")
@@ -950,7 +955,9 @@ pub fn run(original_default: bool) -> Result<(), String> {
         verse_wow::motion::bind(&mut pack)?;
         chamber::add_effect_models(&mut pack, &dir)?;
     }
-    let mut scene = Scene::from_json(if original {
+    let mut scene = Scene::from_json(if original && quest_giver {
+        include_bytes!("../../../../assets/verse/original/ritual-quests.json").as_slice()
+    } else if original {
         include_bytes!("../../../../assets/verse/original/ritual.json").as_slice()
     } else {
         include_bytes!("../../../../assets/verse/wow/anthropic.json").as_slice()

@@ -84,3 +84,17 @@ The desktop renderer uses the window’s physical pixel dimensions, including Re
 Action-bar icons are from [game-icons.net](https://game-icons.net) under CC BY 3.0.
 Icons made by Lorc and Delapouite; [`assets/verse/icons/game-icons/CREDITS.md`](../icons/game-icons/CREDITS.md)
 lists each file and the ability it marks.
+
+Use `--quest-giver` to preview the authored entrance variant with Warden Liora,
+a friendly NPC beside the adventurer spawn:
+
+```sh
+cargo run -p verse --features imported-desktop --example verse_play -- --quest-giver
+```
+
+The variant is `ritual-quests.json`; `ritual-progression.json` supplies its two
+prerequisite-linked giver quests. For an authenticated chamber host, select the
+variant in the host configuration's `scene` field and copy the progression JSON
+object into its `progression` field. Use a separate state directory because the
+variant has a different content identity. The local preview shows the NPC;
+quest enrollment and turn-in use the authenticated remote inventory panel.

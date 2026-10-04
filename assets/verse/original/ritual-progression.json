@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "levels": [
+    0,
+    100,
+    300,
+    600
+  ],
+  "quests": [
+    {
+      "id": 101,
+      "name": "Break the outer ritual",
+      "giver": 1000000,
+      "objective": 2,
+      "goal": 1,
+      "experience": 75,
+      "items": []
+    },
+    {
+      "id": 102,
+      "name": "Silence the next summoner",
+      "giver": 1000000,
+      "prerequisites": [
+        101
+      ],
+      "objective": 3,
+      "goal": 1,
+      "experience": 100,
+      "items": []
+    }
+  ]
+}

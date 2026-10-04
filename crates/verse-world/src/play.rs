@@ -4092,6 +4092,41 @@ mod friendly_tests {
     }
 
     #[test]
+    fn authored_entrance_giver_is_reachable_without_changing_player_ids() {
+        let scene = Scene::from_json(include_bytes!(
+            "../../../assets/verse/original/ritual-quests.json"
+        ))
+        .unwrap();
+        let progression: crate::service::progression::Config = serde_json::from_slice(
+            include_bytes!("../../../assets/verse/original/ritual-progression.json"),
+        )
+        .unwrap();
+        progression.validate().unwrap();
+        assert!(
+            progression
+                .quests
+                .iter()
+                .all(|q| q.giver == Some(1_000_000))
+        );
+        let mut game = Game::combat(scene, false).unwrap();
+        assert_eq!(game.next_player_actor, 15);
+        game.tick(0., [0.; 2]).unwrap();
+        let giver = game.actor_position(1_000_000).unwrap();
+        assert!(giver.distance(game.player) < 4.);
+        assert!(game.attack_clear(game.player + Vec3::Y * 1.4, giver + Vec3::Y * 1.1));
+        assert_eq!(
+            game.frame()
+                .actors
+                .iter()
+                .find(|a| a.actor.id == 1_000_000)
+                .unwrap()
+                .health,
+            200
+        );
+        Game::restore(&game.checkpoint().unwrap()).unwrap();
+    }
+
+    #[test]
     fn checkpoint_fences_scene_factions_and_legacy_friendly_roles() {
         let game = Game::new(scene()).unwrap();
         let value: serde_json::Value = serde_json::from_slice(&game.checkpoint().unwrap()).unwrap();
