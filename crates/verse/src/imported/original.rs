@@ -267,6 +267,7 @@ pub fn generate(dir: &Path) -> Result<Pack, String> {
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     png_file(dir, "original-white", 1, &[255; 4])?;
     let mut pack = Pack {
+        inventory: None,
         version: 1,
         source_revision: "verse-original-ritual-v1".into(),
         models: BTreeMap::new(),

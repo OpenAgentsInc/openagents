@@ -1,0 +1,13 @@
+{
+  "schema": "openagents.verse.inventory-comparison.v1",
+  "images": {
+    "player-dead.png": {
+      "sha256": "d44bc31c5812dfae2e9495f1ee4ddc4f1e6a43e147247f402e9a04ca455c2360",
+      "matches_prepared_pack": true
+    },
+    "player-respawned.png": {
+      "sha256": "f14b5f2229bb35e099d62457f15023ecefc87d6999a45058339fc11c96a7e502",
+      "matches_prepared_pack": true
+    }
+  }
+}

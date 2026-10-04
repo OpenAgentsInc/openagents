@@ -136,7 +136,7 @@ pub fn import(pack: &mut Pack, dir: &Path, path: &Path) -> Result<Model, String>
     let mut model = Model {
         states: Default::default(),
         source: format!(
-            "verse/licensed/quaternius/{}",
+            "verse/interchange/{}",
             path.file_name().unwrap().to_string_lossy()
         ),
         source_sha256: format!(

@@ -14,6 +14,7 @@ pub mod characters;
 pub mod combat;
 pub mod controls;
 mod culling;
+pub mod inventory;
 pub mod lighting;
 pub mod original;
 pub mod overlay;

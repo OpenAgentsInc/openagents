@@ -22,6 +22,8 @@ struct ModelContract {
 pub struct Contract {
     models: BTreeMap<String, ModelContract>,
     static_geometry: BTreeMap<String, [u8; 32]>,
+    sources: Option<BTreeMap<verse_engine::inventory::AssetId, String>>,
+    compiler: Option<(verse_engine::inventory::AssetId, String)>,
 }
 fn geometry(model: &Model) -> Result<[u8; 32], String> {
     let surfaces: Vec<_> = model
@@ -61,13 +63,56 @@ impl Contract {
                 Ok((i.model.clone(), geometry(model)?))
             })
             .collect::<Result<_, String>>()?;
+        let sources = pack
+            .inventory
+            .as_ref()
+            .map(|i| {
+                i.assets
+                    .iter()
+                    .filter(|a| {
+                        matches!(a.binding, verse_engine::inventory::Binding::Source { .. })
+                    })
+                    .map(|a| Ok((a.id.clone(), verse_engine::inventory::fingerprint(a)?.0)))
+                    .collect::<Result<_, String>>()
+            })
+            .transpose()?;
         Ok(Self {
             models,
             static_geometry,
+            sources,
+            compiler: pack
+                .inventory
+                .as_ref()
+                .map(|i| (i.compiler.clone(), i.compiler_revision.clone())),
         })
     }
     pub fn validate(&self, pack: &Pack) -> Result<(), String> {
         pack.validate()?;
+        let sources = pack
+            .inventory
+            .as_ref()
+            .map(|i| {
+                i.assets
+                    .iter()
+                    .filter(|a| {
+                        matches!(a.binding, verse_engine::inventory::Binding::Source { .. })
+                    })
+                    .map(|a| Ok((a.id.clone(), verse_engine::inventory::fingerprint(a)?.0)))
+                    .collect::<Result<_, String>>()
+            })
+            .transpose()?;
+        if sources != self.sources
+            || pack
+                .inventory
+                .as_ref()
+                .map(|i| (i.compiler.clone(), i.compiler_revision.clone()))
+                != self.compiler
+        {
+            return Err("Reload changes admitted source provenance".into());
+        }
+        if pack.inventory.is_some() {
+            verse::imported::inventory::validate_model_sources(pack)?;
+        }
         for (name, contract) in &self.models {
             let model = pack
                 .models
@@ -148,7 +193,33 @@ pub fn write_manifest(path: &Path, pack: &Pack) -> Result<(), String> {
     let temporary = path.with_extension("json.pending");
     let mut writer =
         std::io::BufWriter::new(std::fs::File::create(&temporary).map_err(|e| e.to_string())?);
-    serde_json::to_writer(&mut writer, pack).map_err(|e| e.to_string())?;
+    #[derive(serde::Serialize)]
+    struct View<'a> {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        inventory: Option<verse_engine::inventory::Inventory>,
+        version: u32,
+        source_revision: &'a str,
+        models: &'a BTreeMap<String, Model>,
+        textures: &'a [verse_engine::assets::Texture],
+        placements: &'a [verse_engine::assets::Placement],
+    }
+    let mut inventory = pack.inventory.clone();
+    if let Some(inventory) = &mut inventory {
+        verse::imported::inventory::refresh(
+            inventory,
+            pack,
+            path.parent().ok_or("Missing manifest directory")?,
+        )?;
+    }
+    let view = View {
+        inventory,
+        version: pack.version,
+        source_revision: &pack.source_revision,
+        models: &pack.models,
+        textures: &pack.textures,
+        placements: &pack.placements,
+    };
+    serde_json::to_writer(&mut writer, &view).map_err(|e| e.to_string())?;
     writer.flush().map_err(|e| e.to_string())?;
     std::fs::rename(&temporary, path).map_err(|e| e.to_string())
 }
@@ -328,6 +399,20 @@ mod tests {
         let contract = Contract::new(&pack, &instances).unwrap();
         pack.models.get_mut("claude").unwrap().surfaces[0].tint = [0.7, 0.12, 0.08];
         contract.validate(&pack).unwrap();
+        verse::imported::inventory::compile(&mut pack, &dir, None).unwrap();
+        let pinned = Contract::new(&pack, &instances).unwrap();
+        if let verse_engine::inventory::Binding::Source { origin } =
+            &mut pack.inventory.as_mut().unwrap().assets[0].binding
+        {
+            origin.license = verse_engine::inventory::License::Research;
+        }
+        assert!(
+            pinned
+                .validate(&pack)
+                .unwrap_err()
+                .contains("source provenance")
+        );
+        pack.inventory = None;
         let state = pack
             .models
             .get_mut("adventurer")
@@ -399,4 +484,50 @@ impl WindowProof {
         )
         .map_err(|e| e.to_string())
     }
+}
+
+pub fn prove_inventory(app: &mut super::App, output: &Path) -> Result<(), String> {
+    use verse_engine::inventory::{Binding, License, Purpose};
+    let inventory = app
+        .pack
+        .inventory
+        .as_ref()
+        .ok_or("Original pack has no inventory")?;
+    inventory.verify(&app.pack)?;
+    let capture = inventory.admit(&app.pack, Purpose::Capture, &inventory.roots())?;
+    let local_only = inventory.assets.iter().any(|a| matches!(&a.binding, Binding::Source { origin } if origin.license == License::OwnerSuppliedLocal));
+    let redistribution = inventory.admit(&app.pack, Purpose::Redistribute, &inventory.roots());
+    if local_only == redistribution.is_ok() {
+        return Err("Inventory distribution policy disagrees with its sources".into());
+    }
+    let mut altered = (*app.pack).clone();
+    altered.models.get_mut("claude").unwrap().surfaces[0].tint[0] = 0.01;
+    let refusal = verse_engine::loading::Prepared::load(altered, &app.dir, Default::default())
+        .err()
+        .ok_or("Inventory admitted an unrecorded model edit")?;
+    if !refusal.contains("model content") {
+        return Err("Inventory did not reject a stale model fingerprint".into());
+    }
+    let mut relocated = (*app.pack).clone();
+    let old = app.dir.join(&relocated.textures[0].file);
+    let new = app.dir.join("inventory-relocated.png");
+    std::fs::rename(&old, &new).map_err(|e| e.to_string())?;
+    relocated.textures[0].file = "inventory-relocated.png".into();
+    let loaded = verse_engine::loading::Prepared::load(relocated, &app.dir, Default::default());
+    std::fs::rename(new, old).map_err(|e| e.to_string())?;
+    let loaded = loaded?;
+    let relocation = loaded.receipt().inventory.as_ref().unwrap();
+    if relocation.assets != capture.assets {
+        return Err("File relocation changed persistent identities".into());
+    }
+    let evidence = serde_json::json!({"schema":"openagents.verse.inventory-proof.v1", "capture":capture,
+        "redistribution_allowed":redistribution.is_ok(), "redistribution_refusal":redistribution.err(),
+        "unrecorded_model_edit_refusal":refusal, "relocation_preserves_ids":true,
+        "prepared_pack":app.renderer.as_ref().unwrap().pack_receipt,
+        "declarations_are_not_legal_attestation":true});
+    std::fs::write(
+        output.join("inventory.json"),
+        serde_json::to_vec_pretty(&evidence).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())
 }

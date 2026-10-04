@@ -21,18 +21,39 @@ pub struct TextureHandle {
 }
 
 /// Model keys are logical identities; source paths and content digests are separate.
-/// Texture identities remain pack-local slots until the next asset schema.
+/// Inventories provide persistent IDs; legacy packs retain name and slot lookup.
 #[derive(Debug)]
 pub struct Catalog {
     id: u64,
     models: BTreeMap<String, usize>,
     names: Vec<String>,
     textures: usize,
+    persistent_models: BTreeMap<crate::inventory::AssetId, usize>,
+    model_ids: BTreeMap<String, crate::inventory::AssetId>,
+    persistent_textures: BTreeMap<crate::inventory::AssetId, usize>,
 }
 impl Catalog {
     pub fn new(pack: &crate::assets::Pack) -> Result<Self, String> {
         pack.validate()?;
-        Self::allocate(pack.models.keys().cloned().collect(), pack.textures.len())
+        let mut catalog =
+            Self::allocate(pack.models.keys().cloned().collect(), pack.textures.len())?;
+        if let Some(inventory) = &pack.inventory {
+            for asset in &inventory.assets {
+                match &asset.binding {
+                    crate::inventory::Binding::Model { key } => {
+                        catalog.model_ids.insert(key.clone(), asset.id.clone());
+                        catalog
+                            .persistent_models
+                            .insert(asset.id.clone(), catalog.models[key]);
+                    }
+                    crate::inventory::Binding::Texture { slot } => {
+                        catalog.persistent_textures.insert(asset.id.clone(), *slot);
+                    }
+                    crate::inventory::Binding::Source { .. } => {}
+                }
+            }
+        }
+        Ok(catalog)
     }
     fn allocate(names: Vec<String>, textures: usize) -> Result<Self, String> {
         let id = NEXT_CATALOG
@@ -48,7 +69,28 @@ impl Catalog {
             models,
             names,
             textures,
+            persistent_models: BTreeMap::new(),
+            model_ids: BTreeMap::new(),
+            persistent_textures: BTreeMap::new(),
         })
+    }
+    pub fn model_asset(&self, id: &crate::inventory::AssetId) -> Result<ModelHandle, String> {
+        let slot = *self
+            .persistent_models
+            .get(id)
+            .ok_or("Missing persistent model identity")?;
+        Ok(ModelHandle {
+            catalog: self.id,
+            slot,
+        })
+    }
+    pub fn texture_asset(&self, id: &crate::inventory::AssetId) -> Result<TextureHandle, String> {
+        self.texture(
+            *self
+                .persistent_textures
+                .get(id)
+                .ok_or("Missing persistent texture identity")?,
+        )
     }
     pub fn id(&self) -> CatalogId {
         CatalogId(self.id)
@@ -60,6 +102,9 @@ impl Catalog {
         Ok(())
     }
     pub fn model(&self, name: &str) -> Result<ModelHandle, String> {
+        if let Some(id) = self.model_ids.get(name) {
+            return self.model_asset(id);
+        }
         let slot = *self
             .models
             .get(name)

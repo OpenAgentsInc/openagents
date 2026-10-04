@@ -69,6 +69,7 @@ mod tests {
     fn retained_pack_admission_declares_numeric_fallbacks_without_changing_owned_bindings() {
         use verse_engine::assets::{Bone, Model};
         let mut pack = Pack {
+            inventory: None,
             version: 1,
             source_revision: "test/compatibility".into(),
             textures: vec![],

@@ -138,6 +138,8 @@ pub struct Placement {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Pack {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inventory: Option<crate::inventory::Inventory>,
     pub version: u32,
     pub source_revision: String,
     pub models: BTreeMap<String, Model>,
@@ -167,6 +169,9 @@ impl Pack {
     }
 
     pub fn validate(&self) -> Result<(), String> {
+        if let Some(inventory) = &self.inventory {
+            inventory.validate(self)?;
+        }
         if self.version != 1
             || self.models.is_empty()
             || self.models.len() > 256
@@ -321,6 +326,7 @@ mod tests {
     #[test]
     fn rejects_path_traversal_and_cyclic_skeletons() {
         let mut pack = Pack {
+            inventory: None,
             version: 1,
             source_revision: String::new(),
             models: BTreeMap::from([(

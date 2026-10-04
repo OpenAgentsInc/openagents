@@ -692,6 +692,15 @@ pub fn run(original_default: bool) -> Result<(), String> {
             inputs.get(1).ok_or("Expected frame profile path")?,
         ));
     }
+    if inputs.first().is_some_and(|a| a == "--refresh-inventory") {
+        let path = PathBuf::from(inputs.get(1).ok_or("Expected runtime pack path")?);
+        let pack = Pack::read(&path)?;
+        if pack.inventory.is_none() {
+            return Err("Pack has no original inventory to refresh".into());
+        }
+        reload::write_manifest(&path, &pack)?;
+        return Ok(());
+    }
     if original_default {
         inputs.insert(0, "--original".into());
     }
@@ -738,25 +747,24 @@ pub fn run(original_default: bool) -> Result<(), String> {
     } else {
         Pack::read(&path)?
     };
+    let character_root =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../assets/verse/characters/quaternius");
+    let mut admitted_bestiary = None;
     if original && !greybox {
-        verse::imported::characters::install(
-            &mut pack,
-            &dir,
-            &PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join("../../assets/verse/characters/quaternius"),
-            &appearance,
-        )?;
+        let snapshot = dir.join("source-quaternius");
+        verse::imported::inventory::snapshot_characters(&character_root, &snapshot)?;
+        verse::imported::characters::install(&mut pack, &dir, &snapshot, &appearance)?;
         pack.source_revision = "verse-universal-ritual-v1".into();
-    }
-    if original && !greybox {
         if let Some(path) = &bestiary {
+            let frozen = dir.join("source-bestiary/Puglin.glb");
+            verse::imported::inventory::snapshot_bestiary(path, &frozen)?;
             verse::imported::characters::install_bestiary(
                 &mut pack,
                 &dir,
-                path,
-                &PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                    .join("../../assets/verse/characters/quaternius/animations.glb"),
+                &frozen,
+                &snapshot.join("animations.glb"),
             )?;
+            admitted_bestiary = Some(frozen);
         }
     }
     if !original {
@@ -794,6 +802,9 @@ pub fn run(original_default: bool) -> Result<(), String> {
         .iter()
         .map(|(id, m)| (id.clone(), m.height))
         .collect();
+    if original {
+        verse::imported::inventory::compile(&mut pack, &dir, admitted_bestiary.as_deref())?;
+    }
     let atlas = if original {
         chamber::original_portrait_atlas(&dir, &pack)?
     } else {
@@ -930,7 +941,7 @@ pub fn run(original_default: bool) -> Result<(), String> {
     }
     if matches!(
         mode.as_deref(),
-        Some("--respawn-proof" | "--residency-proof" | "--reload-proof")
+        Some("--respawn-proof" | "--residency-proof" | "--reload-proof" | "--inventory-proof")
     ) {
         let output = PathBuf::from(args.next().ok_or("Expected proof directory")?);
         std::fs::create_dir_all(&output).map_err(|e| e.to_string())?;
@@ -1003,6 +1014,9 @@ pub fn run(original_default: bool) -> Result<(), String> {
         }
         if mode.as_deref() == Some("--reload-proof") {
             reload::prove(&mut app, &output)?;
+        }
+        if mode.as_deref() == Some("--inventory-proof") {
+            reload::prove_inventory(&mut app, &output)?;
         }
         let old = app.game.player_life();
         if !overlay::respawn_at(640., 328., 1280., 720.) {

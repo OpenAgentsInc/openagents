@@ -47,6 +47,8 @@ impl Budget {
 }
 #[derive(Clone, Debug, Serialize)]
 pub struct TextureReceipt {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub asset: Option<crate::inventory::AssetId>,
     pub file: String,
     pub sha256: String,
     pub encoded_bytes: u64,
@@ -56,6 +58,8 @@ pub struct TextureReceipt {
 }
 #[derive(Clone, Debug, Serialize)]
 pub struct Receipt {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub inventory: Option<crate::inventory::Admission>,
     pub schema: &'static str,
     pub manifest_sha256: String,
     pub manifest_bytes: u64,
@@ -132,6 +136,16 @@ impl Prepared {
     pub fn load(pack: Pack, root: &Path, budget: Budget) -> Result<Self, String> {
         budget.validate()?;
         pack.validate()?;
+        let admission = if let Some(inventory) = &pack.inventory {
+            inventory.verify(&pack)?;
+            Some(inventory.admit(
+                &pack,
+                crate::inventory::Purpose::OriginalLocal,
+                &inventory.roots(),
+            )?)
+        } else {
+            None
+        };
         let mut digest = ManifestDigest {
             hash: Sha256::new(),
             bytes: 0,
@@ -139,6 +153,7 @@ impl Prepared {
         };
         serde_json::to_writer(&mut digest, &pack).map_err(|e| e.to_string())?;
         let mut receipt = Receipt {
+            inventory: admission,
             schema: "openagents.verse.prepared-pack.v1",
             manifest_sha256: format!("{:x}", digest.hash.finalize()),
             manifest_bytes: digest.bytes,
@@ -186,7 +201,7 @@ impl Prepared {
             return Err("Asset root is not a directory".into());
         }
         let mut textures = Vec::with_capacity(pack.textures.len());
-        for texture in &pack.textures {
+        for (slot, texture) in pack.textures.iter().enumerate() {
             let path = root.join(&texture.file);
             let metadata = std::fs::symlink_metadata(&path).map_err(|e| e.to_string())?;
             if !metadata.file_type().is_file()
@@ -220,6 +235,16 @@ impl Prepared {
             if bytes.len() as u64 > available {
                 return Err("Encoded texture exceeds its byte budget".into());
             }
+            if let Some(inventory) = &pack.inventory {
+                let asset = inventory
+                    .assets
+                    .iter()
+                    .find(|a| a.binding == crate::inventory::Binding::Texture { slot })
+                    .ok_or("Missing inventory texture")?;
+                if asset.bytes != bytes.len() as u64 {
+                    return Err("Inventory encoded texture length mismatch".into());
+                }
+            }
             let actual_digest = format!("{:x}", Sha256::digest(&bytes));
             if actual_digest != texture.sha256 {
                 return Err("Texture digest mismatch".into());
@@ -252,6 +277,15 @@ impl Prepared {
             reader.finish().map_err(|e| e.to_string())?;
             receipt.encoded_bytes += bytes.len() as u64;
             receipt.textures.push(TextureReceipt {
+                asset: pack
+                    .inventory
+                    .as_ref()
+                    .and_then(|i| {
+                        i.assets
+                            .iter()
+                            .find(|a| a.binding == crate::inventory::Binding::Texture { slot })
+                    })
+                    .map(|a| a.id.clone()),
                 file: texture.file.clone(),
                 sha256: actual_digest,
                 encoded_bytes: bytes.len() as u64,
@@ -332,6 +366,7 @@ mod tests {
                 });
             }
             let pack = Pack {
+                inventory: None,
                 version: 1,
                 source_revision: "test/assets".into(),
                 textures,
