@@ -291,7 +291,15 @@ impl Simulation {
                     .target
                     .is_some_and(|id| self.actors.get(&id).is_some_and(|a| a.faction != "undead"))
                 || !Vec3::from(flight.view.vel).is_finite()
-                || Vec3::from(flight.view.vel).length() > 30.
+                // A wind wall keeps a flight's speed and adds its upward
+                // boost, and a deflected flight has no target.
+                || Vec3::from(flight.view.vel).length()
+                    > if flight.deflected {
+                        30. + crate::wind_wall::DEFLECT_BOOST as f32
+                    } else {
+                        30.
+                    }
+                || (flight.deflected && flight.target.is_some())
                 || !flight.until.is_finite()
                 || flight.until < 0.
             {
