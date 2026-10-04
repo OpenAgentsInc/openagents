@@ -2,7 +2,7 @@
 //!
 //! The network adapter retains `ConnectionId` on its authenticated transport.
 //! Client payloads must never select this ID. This adapter does not provide TLS,
-//! a network listener, durable enrollment, or a Nostr authentication protocol.
+//! a network listener, durable storage, or a Nostr authentication protocol.
 use std::collections::BTreeMap;
 
 use glam::Vec3;
@@ -106,6 +106,17 @@ impl Gateway {
     /// Read-only host authority; clients use admitted snapshots instead.
     pub fn game(&self) -> &Game {
         self.chamber.game()
+    }
+    pub fn content(&self) -> Option<[u8; 32]> {
+        self.content
+    }
+    /// Saves the world and grants without connection challenges or sessions.
+    pub fn checkpoint(&self) -> Result<Vec<u8>, String> {
+        super::save::encode(self)
+    }
+    /// Restores enrolled characters with parked controls and fresh authentication.
+    pub fn restore(bytes: &[u8], content: [u8; 32], instance: u64) -> Result<Self, String> {
+        super::save::decode(bytes, content, instance)
     }
     pub fn enroll_primary(&mut self, key: [u8; 32]) -> Result<(), String> {
         self.chamber.enroll_primary(valid_principal(key)?)

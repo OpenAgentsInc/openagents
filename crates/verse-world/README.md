@@ -285,3 +285,10 @@ To add a spell: write `src/spells/<name>.rs` with its cast and a
 reserved row-two slot), and one line to `playground::scenarios`. Record it with
 `cargo run -p verse --features imported-desktop --example verse_play --
 --original --spell-playground <name> bench/verse/<date>/spell-<name>.mp4`.
+
+`service::auth::Gateway::checkpoint` saves the bounded world and validated
+identity-to-character grants with content identity. `Gateway::restore` requires
+matching content and instance, preserves lives/resources/pending combat, parks
+controls, and creates fresh authentication. It rejects duplicate or missing
+character ownership and retains no challenges or sessions. This recovery format
+does not yet establish disk durability or restart-safe rewards.

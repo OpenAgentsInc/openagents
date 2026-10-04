@@ -1,0 +1,295 @@
+//! Content-bound world and enrolled-character recovery without saved sessions.
+use super::{Chamber, Principal, Rights, auth::Gateway};
+use crate::play::Game;
+use secp256k1::XOnlyPublicKey;
+use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, BTreeSet};
+
+pub const MAX_BYTES: usize = 8 * 1024 * 1024;
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Grant {
+    key: [u8; 32],
+    actor: Option<u64>,
+}
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Saved {
+    version: u32,
+    content: [u8; 32],
+    world: String,
+    grants: Vec<Grant>,
+}
+fn grants(saved: &[Grant], game: &Game) -> Result<BTreeMap<Principal, Rights>, String> {
+    if saved.len() > 128 {
+        return Err("Saved chamber grant budget exceeded".into());
+    }
+    let mut result = BTreeMap::new();
+    let mut owned = BTreeSet::new();
+    for grant in saved {
+        XOnlyPublicKey::from_byte_array(grant.key)
+            .map_err(|_| "Saved chamber public key is invalid")?;
+        let right = match grant.actor {
+            Some(actor) => {
+                if game.player_admission(actor).is_none() || !owned.insert(actor) {
+                    return Err("Saved adventurer ownership is missing or duplicated".into());
+                }
+                Rights::Player(actor)
+            }
+            None => Rights::Spectator,
+        };
+        if result.insert(Principal(grant.key), right).is_some() {
+            return Err("Saved chamber principal is duplicated".into());
+        }
+    }
+    Ok(result)
+}
+pub(super) fn encode(gateway: &Gateway) -> Result<Vec<u8>, String> {
+    let saved = Saved {
+        version: 1,
+        content: gateway
+            .content()
+            .ok_or("Saved chamber requires bound content")?,
+        world: String::from_utf8(gateway.game().checkpoint()?)
+            .map_err(|_| "Cannot encode saved world")?,
+        grants: gateway
+            .chamber
+            .grants
+            .iter()
+            .map(|(principal, rights)| Grant {
+                key: principal.0,
+                actor: match rights {
+                    Rights::Player(actor) => Some(*actor),
+                    Rights::Spectator => None,
+                },
+            })
+            .collect(),
+    };
+    grants(&saved.grants, gateway.game())?;
+    let bytes = serde_json::to_vec(&saved).map_err(|_| "Cannot encode saved chamber")?;
+    if bytes.len() > MAX_BYTES {
+        return Err("Saved chamber byte budget exceeded".into());
+    }
+    Ok(bytes)
+}
+pub(super) fn decode(bytes: &[u8], content: [u8; 32], instance: u64) -> Result<Gateway, String> {
+    if bytes.is_empty() || bytes.len() > MAX_BYTES {
+        return Err("Saved chamber byte budget exceeded".into());
+    }
+    let saved: Saved = serde_json::from_slice(bytes).map_err(|_| "Invalid saved chamber")?;
+    if saved.version != 1 || saved.content != content || instance == 0 {
+        return Err("Saved chamber version or content is incompatible".into());
+    }
+    let game = Game::restore(saved.world.as_bytes())?;
+    if game.player_life().instance != instance {
+        return Err("Saved chamber instance is incompatible".into());
+    }
+    let grants = grants(&saved.grants, &game)?;
+    let mut chamber = Chamber::new(game)?;
+    chamber.grants = grants;
+    Gateway::new(chamber)?.with_content(content)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Controller, Intent, play::Ability};
+    use glam::Vec3;
+    use secp256k1::{Keypair, Secp256k1, SecretKey};
+    use verse_engine::director::Scene;
+    fn key(n: u8) -> Keypair {
+        Keypair::from_secret_key(
+            &Secp256k1::new(),
+            &SecretKey::from_byte_array([n; 32]).unwrap(),
+        )
+    }
+    fn public(k: &Keypair) -> [u8; 32] {
+        k.x_only_public_key().0.serialize()
+    }
+    fn join(g: &mut Gateway, k: &Keypair) -> super::super::auth::ConnectionId {
+        let (id, challenge) = g.open(0).unwrap();
+        let sig =
+            Secp256k1::new().sign_schnorr_no_aux_rand(&challenge.signing_digest(public(k)), k);
+        g.authenticate(id, 0, public(k), sig.to_byte_array())
+            .unwrap();
+        id
+    }
+    fn fixture() -> (Gateway, [Keypair; 3]) {
+        let scene = Scene::from_json(include_bytes!(
+            "../../../../assets/verse/original/ritual.json"
+        ))
+        .unwrap();
+        let mut game = Game::combat_in(scene, false, 240).unwrap();
+        game.time = game.scene.cut_at;
+        game.tick(0., [0.; 2]).unwrap();
+        game.encounter
+            .as_mut()
+            .unwrap()
+            .postpone_casts_until(600.)
+            .unwrap();
+        let mut g = Gateway::new(Chamber::new(game).unwrap())
+            .unwrap()
+            .with_content([6; 32])
+            .unwrap();
+        let keys = [key(91), key(92), key(93)];
+        g.enroll_primary(public(&keys[0])).unwrap();
+        g.enroll_player(public(&keys[1]), Vec3::new(3., 0., -22.))
+            .unwrap();
+        g.enroll_spectator(public(&keys[2])).unwrap();
+        (g, keys)
+    }
+    #[test]
+    fn recovery_preserves_characters_combat_and_grants_but_fences_connections() {
+        let (mut original, keys) = fixture();
+        let a = join(&mut original, &keys[0]);
+        let b = join(&mut original, &keys[1]);
+        let spectator = join(&mut original, &keys[2]);
+        let old_a = original.admission(a).unwrap();
+        let old_b = original.admission(b).unwrap();
+        original
+            .submit(
+                a,
+                old_a
+                    .command(
+                        original.game().authority_tick,
+                        Intent::Cast {
+                            ability: Ability::Shield,
+                            target: None,
+                            aim: [0., 0., 1.],
+                        },
+                    )
+                    .unwrap(),
+            )
+            .unwrap();
+        let corpse = original.game().actor_life(2).unwrap();
+        let source = original.chamber.game.ids[&2];
+        original
+            .chamber
+            .game
+            .simulation
+            .bow_impact(source, 1000)
+            .unwrap();
+        for _ in 0..90 {
+            original.tick(1. / 30.).unwrap();
+        }
+        let cast = original
+            .admission(b)
+            .unwrap()
+            .command(
+                original.game().authority_tick,
+                Intent::Cast {
+                    ability: Ability::Fireball,
+                    target: original.game().actor_life(1),
+                    aim: [0., 0., 1.],
+                },
+            )
+            .unwrap();
+        original.submit(b, cast.clone()).unwrap();
+        let before_a = serde_json::to_value(original.snapshot(a).unwrap()).unwrap();
+        let before_b = serde_json::to_value(original.snapshot(b).unwrap()).unwrap();
+        let (pending, challenge) = original.open(0).unwrap();
+        let signature = Secp256k1::new()
+            .sign_schnorr_no_aux_rand(&challenge.signing_digest(public(&keys[0])), &keys[0]);
+        let bytes = original.checkpoint().unwrap();
+        let mut recovered = Gateway::restore(&bytes, [6; 32], 240).unwrap();
+        assert_eq!(recovered.game().controlled_effects().count(), 2);
+        assert!(
+            recovered
+                .authenticate(pending, 0, public(&keys[0]), signature.to_byte_array())
+                .is_err()
+        );
+        assert!(recovered.snapshot(a).is_err());
+        assert!(recovered.snapshot(b).is_err());
+        assert!(recovered.snapshot(spectator).is_err());
+        for (_, rights) in &recovered.chamber.grants {
+            if let Rights::Player(actor) = rights {
+                let admission = recovered.game().player_admission(*actor).unwrap();
+                assert_eq!(admission.controller(), Controller(0));
+            }
+        }
+        let new_a = join(&mut recovered, &keys[0]);
+        let new_b = join(&mut recovered, &keys[1]);
+        let new_s = join(&mut recovered, &keys[2]);
+        assert_eq!(recovered.admission(new_a).unwrap().actor(), old_a.actor());
+        assert_eq!(recovered.admission(new_b).unwrap().actor(), old_b.actor());
+        assert!(recovered.admission(new_a).unwrap().epoch() > old_a.epoch());
+        assert!(recovered.admission(new_b).unwrap().epoch() > old_b.epoch());
+        assert_eq!(
+            serde_json::to_value(recovered.snapshot(new_a).unwrap()).unwrap(),
+            before_a
+        );
+        assert_eq!(
+            serde_json::to_value(recovered.snapshot(new_b).unwrap()).unwrap(),
+            before_b
+        );
+        assert!(recovered.admission(new_s).is_err());
+        assert!(recovered.submit(new_b, cast).is_err());
+        assert!(
+            recovered
+                .game()
+                .physics_bodies()
+                .get(physics::queries::Life {
+                    instance: corpse.instance,
+                    entity: corpse.actor,
+                    generation: corpse.generation,
+                })
+                .is_some()
+        );
+        let left = original.game().player_hud(old_b.actor()).unwrap();
+        let right = recovered.game().player_hud(old_b.actor()).unwrap();
+        assert_eq!(
+            serde_json::to_value(left.casting).unwrap(),
+            serde_json::to_value(right.casting).unwrap()
+        );
+        for _ in 0..60 {
+            original.tick(1. / 30.).unwrap();
+            recovered.tick(1. / 30.).unwrap();
+        }
+        assert_eq!(
+            serde_json::to_value(original.snapshot(a).unwrap()).unwrap(),
+            serde_json::to_value(recovered.snapshot(new_a).unwrap()).unwrap()
+        );
+    }
+    #[test]
+    fn malformed_or_incompatible_saves_never_admit_ownership() {
+        let (g, _) = fixture();
+        let bytes = g.checkpoint().unwrap();
+        assert!(Gateway::restore(&bytes, [7; 32], 240).is_err());
+        assert!(Gateway::restore(&bytes, [6; 32], 241).is_err());
+        assert!(Gateway::restore(&[], [6; 32], 240).is_err());
+        assert!(Gateway::restore(&vec![0; MAX_BYTES + 1], [6; 32], 240).is_err());
+        for case in 0..8 {
+            let mut saved: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+            match case {
+                0 => saved["version"] = 2.into(),
+                1 => saved["grants"][0]["key"] = serde_json::to_value([0u8; 32]).unwrap(),
+                2 => {
+                    let grant = saved["grants"][0].clone();
+                    saved["grants"].as_array_mut().unwrap().push(grant);
+                }
+                3 => {
+                    let players: Vec<_> = saved["grants"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(i, grant)| grant["actor"].is_number().then_some(i))
+                        .collect();
+                    saved["grants"][players[1]]["actor"] =
+                        saved["grants"][players[0]]["actor"].clone();
+                }
+                4 => saved["grants"][0]["actor"] = 99999.into(),
+                5 => saved["world"] = "{}".into(),
+                6 => saved["unexpected"] = true.into(),
+                _ => {
+                    let grant = saved["grants"][0].clone();
+                    saved["grants"] = serde_json::to_value(vec![grant; 129]).unwrap();
+                }
+            }
+            assert!(
+                Gateway::restore(&serde_json::to_vec(&saved).unwrap(), [6; 32], 240).is_err(),
+                "case {case}"
+            );
+        }
+    }
+}
