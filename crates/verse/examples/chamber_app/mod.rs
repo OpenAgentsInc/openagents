@@ -730,7 +730,8 @@ pub fn run(original_default: bool) -> Result<(), String> {
         reload::write_manifest(&path, &pack)?;
         return Ok(());
     }
-    if original_default {
+    // `verse_play` implies `--original`; accept it when also given.
+    if original_default && inputs.first().is_none_or(|a| a != "--original") {
         inputs.insert(0, "--original".into());
     }
     let greybox = inputs
