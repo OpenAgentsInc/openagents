@@ -157,6 +157,32 @@ fn panel_body(world: &mut World, form: Form, center: DVec3, orientation: glam::D
     id
 }
 
+/// Wake every body whose colliders come near `body`'s, so whatever slept
+/// resting on a panel falls when the panel goes.
+fn wake_near(world: &mut World, body: BodyId) {
+    let reach = world.solver.margin + 0.05;
+    let near: Vec<BodyId> = {
+        let colliders = world.colliders();
+        let own: Vec<(DVec3, f64)> = colliders
+            .iter()
+            .filter(|c| c.body == body)
+            .map(|c| (c.pose(world).0, c.shape.bound()))
+            .collect();
+        colliders
+            .iter()
+            .filter(|c| c.body != body && world[c.body].sleeping)
+            .filter(|c| {
+                let (at, bound) = (c.pose(world).0, c.shape.bound());
+                own.iter().any(|(p, r)| p.distance(at) <= r + bound + reach)
+            })
+            .map(|c| c.body)
+            .collect()
+    };
+    for id in near {
+        world.wake(id);
+    }
+}
+
 impl Wall {
     /// Raise an admitted wall at `time`. `stone` maps each stone index in
     /// the plan to the static body that carries its collider.
@@ -291,6 +317,7 @@ impl Wall {
             }
         }
         let body = world[id];
+        wake_near(world, id);
         world.remove_body(id);
         let (nx, ny) = DEBRIS_GRIDS[(seed % DEBRIS_GRIDS.len() as u64) as usize];
         let size = form.size();
@@ -352,6 +379,7 @@ impl Wall {
         }
         for panel in &mut self.panels {
             if !panel.destroyed {
+                wake_near(world, panel.body);
                 world.remove_body(panel.body);
             }
         }
