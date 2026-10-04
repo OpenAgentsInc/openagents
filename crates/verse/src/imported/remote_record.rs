@@ -26,6 +26,56 @@ impl Options {
         Ok(())
     }
 }
+/// Bounded capture telemetry. Render timing measures CPU submission, not GPU completion.
+#[derive(Default)]
+pub(crate) struct Samples {
+    values: Vec<f64>,
+    omitted: u64,
+}
+impl Samples {
+    pub fn add(&mut self, value: f64) {
+        if !value.is_finite() || value < 0. {
+            return;
+        }
+        if self.values.len() < 8192 {
+            self.values.push(value);
+        } else {
+            self.omitted += 1;
+        }
+    }
+    pub fn summary(&self) -> serde_json::Value {
+        let mut sorted = self.values.clone();
+        sorted.sort_by(f64::total_cmp);
+        let percentile = |fraction: f64| {
+            (!sorted.is_empty())
+                .then(|| sorted[((sorted.len() - 1) as f64 * fraction).ceil() as usize])
+        };
+        serde_json::json!({"samples":sorted.len(),"omitted":self.omitted,
+            "median":percentile(0.5),"p95":percentile(0.95),"max":sorted.last()})
+    }
+}
+#[derive(Default)]
+pub(crate) struct Profile {
+    pub preparation_ms: Samples,
+    pub render_submission_ms: Samples,
+    pub frame_interval_ms: Samples,
+    pub correction_meters: Samples,
+    pub bound_to_outcome_ms: Samples,
+    pub bindings: std::collections::BTreeMap<u64, std::time::Instant>,
+}
+impl Profile {
+    pub fn summary(&self) -> serde_json::Value {
+        serde_json::json!({"schema":"verse.remote.profile.v1",
+            "client_preparation_ms":self.preparation_ms.summary(),
+            "render_submission_cpu_ms":self.render_submission_ms.summary(),
+            "frame_interval_ms":self.frame_interval_ms.summary(),
+            "prediction_correction_meters":self.correction_meters.summary(),
+            "binding_to_outcome_ms":self.bound_to_outcome_ms.summary(),
+            "limits":["Render submission includes presentation waits; GPU execution is not measured.",
+            "Binding-to-outcome includes transport, server processing, and client update delivery; it is not isolated network RTT.",
+            "Samples retain the first 8192 observations per series; omitted observations are counted."]})
+    }
+}
 pub struct Stats {
     pub frames: u64,
     pub sampled: u64,
@@ -165,6 +215,22 @@ impl Drop for Recorder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn profile_samples_are_bounded_and_percentiles_preserve_units() {
+        let mut samples = Samples::default();
+        assert!(samples.summary()["median"].is_null());
+        samples.add(f64::NAN);
+        samples.add(-1.);
+        for value in 0..8200 {
+            samples.add(value as f64);
+        }
+        let summary = samples.summary();
+        assert_eq!(summary["samples"], 8192);
+        assert_eq!(summary["omitted"], 8);
+        assert_eq!(summary["median"], 4096.);
+        assert_eq!(summary["p95"], 7782.);
+        assert_eq!(summary["max"], 8191.);
+    }
     #[test]
     fn recording_duration_and_output_are_explicitly_bounded() {
         let mut options = Options {

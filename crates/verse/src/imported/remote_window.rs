@@ -119,6 +119,7 @@ struct App {
     pending: std::collections::VecDeque<(Option<Ability>, Option<u64>)>,
     prediction: verse_world::prediction::Local,
     input_token: u64,
+    profile: super::remote_record::Profile,
     accepted_casts: std::collections::BTreeMap<String, u64>,
     respawn_attempts: Vec<verse_engine::core::LifeId>,
     owned_life_changes: u64,
@@ -173,6 +174,7 @@ impl App {
             pending: std::collections::VecDeque::new(),
             prediction: verse_world::prediction::Local::new(instance),
             input_token: 0,
+            profile: Default::default(),
             accepted_casts: Default::default(),
             respawn_attempts: vec![],
             owned_life_changes: 0,
@@ -289,6 +291,7 @@ impl App {
         for _ in 0..worker::UPDATE_CAPACITY {
             match self.output.try_recv() {
                 Ok(Update::Snapshot(r)) => {
+                    let previous_pose = self.prediction.pose();
                     self.view.push_snapshot(&r)?;
                     self.received_at = Instant::now();
                     let state = self.view.replica().latest().unwrap();
@@ -322,6 +325,17 @@ impl App {
                             if let Some(geometry) = state.collision.as_ref() {
                                 self.prediction
                                     .update_geometry(geometry, r.tick, r.request_id)?;
+                            }
+                        }
+                    }
+                    if self.record.is_some() {
+                        self.prediction.advance(0.)?;
+                        if let (Some(before), Some(after)) = (previous_pose, self.prediction.pose())
+                        {
+                            if before.life == after.life && before.epoch == after.epoch {
+                                self.profile
+                                    .correction_meters
+                                    .add(f64::from(before.position.distance(after.position)));
                             }
                         }
                     }
@@ -361,6 +375,9 @@ impl App {
                 Ok(Update::Inventory(r)) => self.view.push_inventory(&r)?,
                 Ok(Update::CommandBound { token, binding }) => match binding {
                     Ok(command) => {
+                        if self.record.is_some() && self.profile.bindings.len() < 64 {
+                            self.profile.bindings.insert(token, Instant::now());
+                        }
                         if self.prediction.context() == Some((command.actor, command.epoch))
                             && self.prediction.contains(token)
                         {
@@ -373,11 +390,17 @@ impl App {
                     Err(message) => {
                         self.pending.pop_front();
                         self.prediction.reject(token);
+                        self.profile.bindings.remove(&token);
                         self.status = message;
                     }
                 },
                 Ok(Update::Outcome(r)) => {
                     let (ability, token) = self.pending.pop_front().unwrap_or_default();
+                    if let Some(started) = token.and_then(|t| self.profile.bindings.remove(&t)) {
+                        self.profile
+                            .bound_to_outcome_ms
+                            .add(started.elapsed().as_secs_f64() * 1000.);
+                    }
                     if matches!(r.body, verse_world::service::wire::Reply::Refused { .. }) {
                         if let Some(token) = token {
                             self.prediction.reject(token);
@@ -426,6 +449,7 @@ impl App {
         Ok(())
     }
     fn redraw(&mut self) -> Result<(), String> {
+        let started = Instant::now();
         self.consume()?;
         if !self.controlled()
             && (self.controls.looking() || self.controls.autorun || !self.keys.is_empty())
@@ -438,6 +462,11 @@ impl App {
         }
         self.demo();
         let dt = now.duration_since(self.last).as_secs_f32().min(0.1);
+        if self.record.is_some() {
+            self.profile
+                .frame_interval_ms
+                .add(now.duration_since(self.last).as_secs_f64() * 1000.);
+        }
         self.last = now;
         let held = controls::Held {
             forward: self.keys.contains(&KeyCode::KeyW),
@@ -592,6 +621,12 @@ impl App {
             self.character_panel
                 .draw(&mut ui, &self.atlas, self.view.inventory(), width, 720.);
         }
+        let render_started = Instant::now();
+        if self.record.is_some() {
+            self.profile
+                .preparation_ms
+                .add(started.elapsed().as_secs_f64() * 1000.);
+        }
         let renderer = self.renderer.as_mut().unwrap();
         renderer.resize(size.width, size.height)?;
         renderer.set_overlay_size(width, 720.);
@@ -605,6 +640,11 @@ impl App {
             &lighting,
         )?;
         renderer.present_window(self.presenter.as_mut().unwrap(), [size.width, size.height])?;
+        if self.record.is_some() {
+            self.profile
+                .render_submission_ms
+                .add(render_started.elapsed().as_secs_f64() * 1000.);
+        }
         if self.view.replica().latest().is_some() && self.record.is_some() {
             if self.record_started.is_none() {
                 self.record_started = Some(now);
@@ -719,7 +759,7 @@ impl App {
             let dropped = recorder.dropped;
             let stats = recorder.finish()?;
             let options = self.record.as_ref().unwrap();
-            let proof = serde_json::json!({"schema":"verse.remote.capture.v1","frames":stats.frames,"sampled_frames":stats.sampled,"duplicated_frames":stats.duplicated,"dropped_capture_frames":dropped,"encoded_size":[1280,720],"world_start":self.recorded_world_start,"world_end":self.view.replica().latest().map(|s|s.presentation.time),"accepted_cast_commands":self.accepted_casts,"demo_trace":self.demo_trace,"demo_slot":self.demo_slot,"pending_commands":self.pending.len(),"final_status":self.status,"window_failure":self.error,"damage_events":self.damage_events,"dialogue_events":self.dialogue_events,"minimum_owned_hp":(self.min_hp != i32::MAX).then_some(self.min_hp),"programmatic_controller":options.controller,"programmatic_respawn":options.respawn,"respawn_attempts":self.respawn_attempts,"owned_life_changes":self.owned_life_changes,"native_dimensions":self.renderer.as_ref().map(|r|r.dimensions()),"capture_wall_seconds":self.record_started.map(|s|s.elapsed().as_secs_f64()),"wire_version":verse_world::service::wire::VERSION,"final_inventory":self.view.inventory(),"final_state":self.view.replica().latest()});
+            let proof = serde_json::json!({"schema":"verse.remote.capture.v1","profile":self.profile.summary(),"frames":stats.frames,"sampled_frames":stats.sampled,"duplicated_frames":stats.duplicated,"dropped_capture_frames":dropped,"encoded_size":[1280,720],"world_start":self.recorded_world_start,"world_end":self.view.replica().latest().map(|s|s.presentation.time),"accepted_cast_commands":self.accepted_casts,"demo_trace":self.demo_trace,"demo_slot":self.demo_slot,"pending_commands":self.pending.len(),"final_status":self.status,"window_failure":self.error,"damage_events":self.damage_events,"dialogue_events":self.dialogue_events,"minimum_owned_hp":(self.min_hp != i32::MAX).then_some(self.min_hp),"programmatic_controller":options.controller,"programmatic_respawn":options.respawn,"respawn_attempts":self.respawn_attempts,"owned_life_changes":self.owned_life_changes,"native_dimensions":self.renderer.as_ref().map(|r|r.dimensions()),"capture_wall_seconds":self.record_started.map(|s|s.elapsed().as_secs_f64()),"wire_version":verse_world::service::wire::VERSION,"final_inventory":self.view.inventory(),"final_state":self.view.replica().latest()});
             std::fs::write(
                 options.output.with_extension("json"),
                 serde_json::to_vec_pretty(&proof)
