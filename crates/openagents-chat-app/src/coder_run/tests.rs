@@ -337,6 +337,58 @@ fn stop_steer_queue_and_answers_go_to_the_runner() {
     assert_eq!(run.queued(), 0);
 }
 
+/// The decision panel pages a question's numbered options, and the run
+/// answers with every page, in order (#10469).
+#[test]
+fn a_paged_question_is_answered_through_the_decision_panel() {
+    use crate::decision::Control;
+    let whole = &tasks(QUESTION_THEN_RESULT)[0];
+    let asked = whole
+        .iter()
+        .position(|line| line.event.name() == "question")
+        .unwrap();
+    let mut lines = whole[..=asked].to_vec();
+    let CoderEvent::Question(question) = &mut lines[asked].event else {
+        panic!("question")
+    };
+    question.text =
+        "Which test first?\n1. empty input\n2. spaces\n\nShould I use pytest?\n1. Yes\n2. No"
+            .into();
+    let task = lines[0].task.clone();
+    let mut run = fed(&lines, State::Waiting);
+    let text = text_of(&run.rows());
+    assert!(
+        text.contains("Coder asks · 1 of 2\nWhich test first?\nempty input\nspaces"),
+        "{text}"
+    );
+    assert_eq!(text.matches("Which test first?").count(), 1, "{text}");
+    assert_eq!(
+        run.actions.get("coder-option-2"),
+        Some(&Action::Decide(Control::Pick(1)))
+    );
+    // A pick moves to the next page and sends nothing yet.
+    assert!(run.action(Action::Decide(Control::Pick(1)), "").is_none());
+    assert_eq!(run.decision().map(crate::decision::Flow::page), Some(1));
+    let text = text_of(&run.rows());
+    assert!(
+        text.contains("Coder asks · 2 of 2\nShould I use pytest?"),
+        "{text}"
+    );
+    assert_eq!(
+        run.actions.get("coder-decision-back"),
+        Some(&Action::Decide(Control::Back))
+    );
+    // Typed text answers the last page, and the whole answer goes.
+    let (_, request) = run.action(Action::Send, "Yes, with fixtures").unwrap();
+    assert_eq!(
+        request,
+        Request::Continue {
+            task,
+            text: "1. spaces\n2. Yes, with fixtures".into()
+        }
+    );
+}
+
 /// A start carries the engine the person asked for, on its first try and
 /// on the retry after a folder is picked (#10076).
 #[test]

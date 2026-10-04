@@ -12,7 +12,7 @@ status "Worked for 0s · thought once"
 vertical stack [card]
   body "Coder asks to go ahead"
   markdown "May I delete slugs.py?"
-  status "Approve or deny below, or answer in your own words."
-horizontal stack
-  button "Approve"
-  button "Deny"
+  horizontal stack
+    button "Allow once"
+    button "Deny"
+  status "Allow once never widens the task's grant. You can also answer in your own words below."

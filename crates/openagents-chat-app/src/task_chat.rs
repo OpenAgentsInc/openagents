@@ -45,6 +45,8 @@ pub enum Action {
     Steer,
     Approve,
     Deny,
+    /// A decision panel control ([`crate::decision`]).
+    Decide(crate::decision::Control),
     Retry,
     Earlier,
     Latest,
@@ -69,6 +71,7 @@ impl Action {
             Self::Stop
                 | Self::Approve
                 | Self::Deny
+                | Self::Decide(_)
                 | Self::SendQueuedNow(_)
                 | Self::RemoveQueued(_)
         )
@@ -81,7 +84,7 @@ impl Action {
 pub struct Target {
     pub action: Action,
     pub task: String,
-    /// The approval answered, as its summary says it.
+    /// The question or approval answered, as its summary says it.
     pub about: Option<String>,
 }
 
@@ -112,6 +115,10 @@ pub struct Session {
     reviewer: crate::changes::Reviewer,
     /// The completed summary's sequence the reviewer follows.
     reviewed: Option<u64>,
+    /// The question or approval the task waits on, as its summary's
+    /// attention and headline say it, and the decision panel's state. A
+    /// summary that only bumps its sequence keeps the panel's page.
+    decision: Option<((Attention, String), crate::decision::Flow)>,
 }
 impl Session {
     pub fn new(binding: Spawned, now: Instant) -> Self {
@@ -140,6 +147,7 @@ impl Session {
             next_ticket: 1,
             reviewer: crate::changes::Reviewer::new(),
             reviewed: None,
+            decision: None,
         }
     }
     pub fn busy(&self) -> bool {
@@ -174,6 +182,60 @@ impl Session {
             Mode::Send => "Message Coder…",
             Mode::Queue => "Queue a message for Coder's next turn…",
             Mode::Answer => "Answer Coder…",
+        }
+    }
+    /// The question or approval the task waits on: its summary's
+    /// attention and headline.
+    fn asking(&self) -> Option<(Attention, &str)> {
+        let summary = self.summary.as_ref()?;
+        (summary.phase == Phase::Waiting
+            && matches!(summary.attention, Attention::Input | Attention::Approval))
+        .then_some((summary.attention, summary.headline.as_str()))
+    }
+    /// Follow the summary with a decision panel: a new one for a new
+    /// question or approval, none once the task stops waiting.
+    fn sync_decision(&mut self) {
+        use crate::decision::Flow;
+        let Some((attention, headline)) = self.asking() else {
+            self.decision = None;
+            return;
+        };
+        if self
+            .decision
+            .as_ref()
+            .is_some_and(|((at, text), _)| *at == attention && text == headline)
+        {
+            return;
+        }
+        let flow = if attention == Attention::Approval {
+            Flow::approval(headline)
+        } else {
+            Flow::question(headline)
+        };
+        self.decision = Some(((attention, headline.to_owned()), flow));
+    }
+    /// The decision panel's state while the task waits on a question or
+    /// an approval.
+    #[must_use]
+    pub fn decision(&self) -> Option<&crate::decision::Flow> {
+        let (attention, headline) = self.asking()?;
+        self.decision
+            .as_ref()
+            .filter(|((at, text), _)| *at == attention && text == headline)
+            .map(|(_, flow)| flow)
+    }
+    /// Carry a decision step out: send the answer once every page is
+    /// answered, or redraw the moved panel.
+    fn decided(&mut self, step: crate::decision::Step, now: u64) -> Option<(u64, Request)> {
+        match step {
+            crate::decision::Step::Stay => None,
+            crate::decision::Step::Moved => {
+                self.revision += 1;
+                None
+            }
+            crate::decision::Step::Done(text) => {
+                self.submit(&text, Some(CommandAction::Answer), now)
+            }
         }
     }
     pub fn steer_choice(&self) -> Option<Choice> {
@@ -424,8 +486,30 @@ impl Session {
         })
     }
     pub fn action(&mut self, action: Action, text: &str, now: u64) -> Option<(u64, Request)> {
+        self.sync_decision();
         match action {
             Action::Retry => self.retry(),
+            // A question's panel takes the typed answer for its page; an
+            // approval's answer in the person's own words goes as it is.
+            Action::Send
+                if self.editing.is_none()
+                    && self
+                        .decision()
+                        .is_some_and(|flow| flow.kind() == crate::decision::Kind::Question) =>
+            {
+                if self.busy() {
+                    return None;
+                }
+                let step = self.decision.as_mut()?.1.answer_typed(text);
+                self.decided(step, now)
+            }
+            Action::Decide(control) => {
+                if self.busy() {
+                    return None;
+                }
+                let step = self.decision.as_mut()?.1.control(control);
+                self.decided(step, now)
+            }
             Action::Send => self.submit(text, None, now),
             Action::Queue => self.submit(text, Some(CommandAction::Queue), now),
             Action::Steer => self.submit(text, Some(CommandAction::Steer), now),
@@ -835,14 +919,19 @@ impl Session {
     #[must_use]
     pub fn target(&self, key: &str) -> Option<Target> {
         let action = self.actions.get(key)?.clone();
-        let about = matches!(action, Action::Approve | Action::Deny)
-            .then(|| {
-                self.summary
-                    .as_ref()
-                    .filter(|s| s.attention == Attention::Approval)
-                    .map(|s| s.headline.clone())
-            })
-            .flatten();
+        let about = match action {
+            Action::Approve | Action::Deny => self
+                .summary
+                .as_ref()
+                .filter(|s| s.attention == Attention::Approval)
+                .map(|s| s.headline.clone()),
+            // The question and the page a decision control was drawn for.
+            Action::Decide(_) => self
+                .decision()
+                .zip(self.asking())
+                .map(|(flow, (_, headline))| format!("{}:{headline}", flow.page())),
+            _ => None,
+        };
         Some(Target {
             action,
             task: self.binding.task.clone(),
@@ -853,12 +942,36 @@ impl Session {
         self.actions.clear();
         self.actions.insert("task-steer".into(), Action::Steer);
         let mut rows = conversation::project_rows(&self.rows);
-        rows.push(status(
-            "task-state",
-            self.summary
-                .as_ref()
-                .map_or("Loading Coder task…", |s| &s.headline),
-        ));
+        // The question or approval the task waits on is the decision panel,
+        // in place of its state line.
+        self.sync_decision();
+        if let Some((_, flow)) = &self.decision {
+            let panel = flow.view("task", !self.busy());
+            for (key, control) in panel.controls {
+                let action = match control {
+                    crate::decision::Control::Pick(0)
+                        if flow.kind() == crate::decision::Kind::Approval =>
+                    {
+                        Action::Approve
+                    }
+                    crate::decision::Control::Pick(_)
+                        if flow.kind() == crate::decision::Kind::Approval =>
+                    {
+                        Action::Deny
+                    }
+                    control => Action::Decide(control),
+                };
+                self.actions.insert(key, action);
+            }
+            rows.push(panel.node);
+        } else {
+            rows.push(status(
+                "task-state",
+                self.summary
+                    .as_ref()
+                    .map_or("Loading Coder task…", |s| &s.headline),
+            ));
+        }
         if let Some(error) = &self.error {
             rows.push(status("task-error", error));
         }
@@ -877,14 +990,6 @@ impl Session {
             .is_some_and(|s| matches!(s.phase, Phase::Running | Phase::Waiting | Phase::Queued))
         {
             rows.push(self.button("task-stop", "Stop Coder", Action::Stop));
-        }
-        if self
-            .summary
-            .as_ref()
-            .is_some_and(|s| s.attention == Attention::Approval && s.phase == Phase::Waiting)
-        {
-            rows.push(self.button("task-approve", "Approve", Action::Approve));
-            rows.push(self.button("task-deny", "Deny", Action::Deny));
         }
         if self
             .queue
@@ -1141,6 +1246,45 @@ mod tests {
         assert!(session.outcome(ticket, Ok(dispatched(&approved))));
         let (_, denied) = session.action(Action::Deny, "", unix_now()).unwrap();
         assert_eq!(command(&denied).text, "Denied.");
+    }
+    /// A waiting task's question or approval is the decision panel in
+    /// place of its state line, and its controls answer it (#10469).
+    #[test]
+    fn the_decision_panel_answers_a_waiting_task() {
+        use crate::decision::{Control, Kind};
+        let mut session = session();
+        let mut waiting = summary(8, Phase::Waiting, Attention::Approval);
+        waiting.headline = "May I delete slugs.py?".into();
+        session.summary = Some(waiting.clone());
+        let rows = session.rows();
+        assert!(rows.iter().any(|row| row.key == "task-decision"));
+        assert!(rows.iter().all(|row| row.key != "task-state"));
+        assert_eq!(
+            session.decision().map(|flow| flow.kind()),
+            Some(Kind::Approval)
+        );
+        assert_eq!(session.actions.get("task-approve"), Some(&Action::Approve));
+        assert_eq!(session.actions.get("task-deny"), Some(&Action::Deny));
+        // A number key's pick: 2 is Deny, and nothing wider than once.
+        assert!(!session.decision().unwrap().takes_number(3));
+        let (ticket, denied) = session
+            .action(Action::Decide(Control::Pick(1)), "", unix_now())
+            .unwrap();
+        assert_eq!(command(&denied).action, CommandAction::Answer);
+        assert_eq!(command(&denied).text, "Denied.");
+        assert!(session.outcome(ticket, Ok(dispatched(&denied))));
+        // A summary that only bumps its sequence keeps the panel and the
+        // controls' target.
+        waiting.sequence = 9;
+        session.summary = Some(waiting);
+        session.rows();
+        let target = session.target("task-approve").unwrap();
+        assert_eq!(target.about.as_deref(), Some("May I delete slugs.py?"));
+        // Once the task runs again the state line returns.
+        session.summary = Some(summary(10, Phase::Running, Attention::None));
+        let rows = session.rows();
+        assert!(rows.iter().any(|row| row.key == "task-state"));
+        assert!(session.decision().is_none());
     }
     #[test]
     fn stop_and_steer_keep_the_observed_revision_and_emulated_steering_choice() {

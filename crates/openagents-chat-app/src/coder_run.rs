@@ -22,8 +22,8 @@
 //! zeronsh/zeron, `crates/ui/src/transcript.rs`): one tool row a command
 //! with its output inside, thoughts as their own row, the reply as the
 //! assistant's message, and a "Worked for" line with the turn's summary
-//! ("ran 3 commands") when the turn ends. Zeron's composer question is a
-//! card with one answer control, as the port audit adapts it.
+//! ("ran 3 commands") when the turn ends. The question or approval the run
+//! waits on is the paged decision panel ([`crate::decision`]).
 
 use crate::attention::Activity;
 use crate::coder_tab::{Choice, Mode};
@@ -132,6 +132,8 @@ pub enum Action {
     Steer,
     Approve,
     Deny,
+    /// A decision panel control ([`crate::decision`]).
+    Decide(crate::decision::Control),
     Retry,
     ChooseFolder,
     RemoveQueued(usize),
@@ -151,6 +153,7 @@ impl Action {
             Self::Stop
                 | Self::Approve
                 | Self::Deny
+                | Self::Decide(_)
                 | Self::ChooseFolder
                 | Self::SendQueuedNow(_)
                 | Self::RemoveQueued(_)
@@ -165,7 +168,7 @@ impl Action {
 pub struct Target {
     pub action: Action,
     pub task: Option<String>,
-    /// The approval answered (its event's `seq`), the queued message sent
+    /// The question or approval answered (its event's `seq`), the queued message sent
     /// or removed, or why a folder is needed.
     pub about: Option<String>,
 }
@@ -226,6 +229,9 @@ pub struct Run {
     reviewed_seq: Option<u64>,
     /// The plan panel's state for this run's task (#10471).
     plan: crate::plan_panel::Panel,
+    /// The question or approval the run waits on: the asking event's
+    /// `seq`, and the decision panel's state.
+    decision: Option<(u64, crate::decision::Flow)>,
 }
 
 impl Run {
@@ -295,6 +301,7 @@ impl Run {
             reviewer: crate::changes::Reviewer::new(),
             reviewed_seq: None,
             plan: crate::plan_panel::Panel::default(),
+            decision: None,
         }
     }
 
@@ -334,6 +341,11 @@ impl Run {
                 .asking_approval()
                 .then(|| self.lines.back().map(|line| line.seq.to_string()))
                 .flatten(),
+            // The question and the page a decision control was drawn for.
+            Action::Decide(_) => self
+                .decision()
+                .zip(self.asking())
+                .map(|(flow, (seq, ..))| format!("{seq}:{}", flow.page())),
             Action::SendQueuedNow(index) | Action::RemoveQueued(index) => {
                 self.queue.get(*index).cloned()
             }
@@ -460,6 +472,67 @@ impl Run {
                 .lines
                 .back()
                 .is_some_and(|line| matches!(line.event, CoderEvent::Approval(_)))
+    }
+
+    /// The question or approval the run waits on: the asking event's
+    /// `seq`, its kind, and its text.
+    fn asking(&self) -> Option<(u64, crate::decision::Kind, &str)> {
+        use crate::decision::Kind;
+        if self.state != State::Waiting {
+            return None;
+        }
+        let line = self.lines.back()?;
+        match &line.event {
+            CoderEvent::Question(asked) => Some((line.seq, Kind::Question, &asked.text)),
+            CoderEvent::Approval(asked) => Some((line.seq, Kind::Approval, &asked.text)),
+            _ => None,
+        }
+    }
+
+    /// Follow the asking event with a decision panel: a new one for a new
+    /// question or approval, none once the run stops waiting.
+    fn sync_decision(&mut self) {
+        use crate::decision::{Flow, Kind};
+        let Some((seq, kind, text)) = self.asking() else {
+            self.decision = None;
+            return;
+        };
+        if self.decision.as_ref().is_some_and(|(at, _)| *at == seq) {
+            return;
+        }
+        let flow = match kind {
+            Kind::Question => Flow::question(text),
+            Kind::Approval => Flow::approval(text),
+        };
+        self.decision = Some((seq, flow));
+    }
+
+    /// The decision panel's state while the run waits on a question or an
+    /// approval.
+    #[must_use]
+    pub fn decision(&self) -> Option<&crate::decision::Flow> {
+        let (seq, ..) = self.asking()?;
+        self.decision
+            .as_ref()
+            .filter(|(at, _)| *at == seq)
+            .map(|(_, flow)| flow)
+    }
+
+    /// Carry a decision step out: send the answer once every page is
+    /// answered, or redraw the moved panel.
+    fn decided(&mut self, step: crate::decision::Step) -> Option<(u64, Request)> {
+        match step {
+            crate::decision::Step::Stay => None,
+            crate::decision::Step::Moved => {
+                self.revision += 1;
+                None
+            }
+            crate::decision::Step::Done(text) => {
+                let task = self.task.clone()?;
+                self.revision += 1;
+                self.request(Request::Continue { task, text })
+            }
+        }
     }
 
     fn request(&mut self, request: Request) -> Option<(u64, Request)> {
@@ -744,6 +817,7 @@ impl Run {
                 self.error = Some("Coder answered another request.".into());
             }
         }
+        self.sync_decision();
         if mutation(&request) || matches!(request, Request::Choose) {
             if self.failed.as_ref() == Some(&request) {
                 self.failed = None;
@@ -791,6 +865,14 @@ impl Run {
                     text: text.into(),
                 })
             }
+            Action::Decide(control) => {
+                self.sync_decision();
+                if self.busy() {
+                    return None;
+                }
+                let step = self.decision.as_mut()?.1.control(control);
+                self.decided(step)
+            }
             Action::Send | Action::Queue | Action::Steer => {
                 if text.is_empty() || text.len() > MAX_MESSAGE {
                     return None;
@@ -820,6 +902,21 @@ impl Run {
                         }
                         self.revision += 1;
                         None
+                    }
+                    // A question's panel takes the typed answer for its
+                    // page; an approval's answer in the person's own words
+                    // goes as it is.
+                    Mode::Answer
+                        if action == Action::Send
+                            && self.decision().is_some_and(|flow| {
+                                flow.kind() == crate::decision::Kind::Question
+                            }) =>
+                    {
+                        if self.busy() {
+                            return None;
+                        }
+                        let step = self.decision.as_mut()?.1.answer_typed(text);
+                        self.decided(step)
                     }
                     Mode::Answer | Mode::Send => {
                         let task = self.task.clone()?;
@@ -985,14 +1082,32 @@ impl Run {
             }
             Phase::Following | Phase::Failed => {}
         }
-        if self.asking_approval() {
-            rows.push(self.buttons(
-                "coder-approval",
-                &[
-                    ("coder-approve", "Approve", Action::Approve),
-                    ("coder-deny", "Deny", Action::Deny),
-                ],
-            ));
+        // The question or approval the run waits on is the decision panel,
+        // in place of its card.
+        self.sync_decision();
+        if let Some((seq, flow)) = &self.decision {
+            let panel = flow.view("coder", !self.busy());
+            let card = format!("coder-{seq}");
+            for (key, control) in panel.controls {
+                let action = match control {
+                    crate::decision::Control::Pick(0)
+                        if flow.kind() == crate::decision::Kind::Approval =>
+                    {
+                        Action::Approve
+                    }
+                    crate::decision::Control::Pick(_)
+                        if flow.kind() == crate::decision::Kind::Approval =>
+                    {
+                        Action::Deny
+                    }
+                    control => Action::Decide(control),
+                };
+                self.actions.insert(key, action);
+            }
+            match anchored.iter_mut().find(|(_, row)| row.key == card) {
+                Some((_, row)) => *row = panel.node,
+                None => rows.push(panel.node),
+            }
         }
         if self.active() && self.task.is_some() {
             rows.push(self.buttons(

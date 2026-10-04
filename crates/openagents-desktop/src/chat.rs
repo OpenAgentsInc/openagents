@@ -1167,8 +1167,19 @@ impl Panel {
                 text.chars().take(80).collect::<String>()
             ));
         }
-        if revision != task.revision {
+        let moved = revision != task.revision;
+        if moved {
             self.rows_dirty = true;
+        }
+        // A question's typed answer that moved its decision panel to the
+        // next page is taken, though nothing is sent yet.
+        if request.is_none()
+            && moved
+            && let Some(submission) = &submission
+            && let Some(field) = self.fields.get_mut(&chat)
+        {
+            let _ = field.draft.accepted(submission);
+            field.focused = true;
         }
         let (ticket, request) = request?;
         if let Some(submission) = submission
@@ -2305,6 +2316,13 @@ impl Panel {
         } else {
             Scope::Window
         };
+        if !*command
+            && !*control
+            && matches!(scope, Scope::Editor | Scope::Window)
+            && self.decision_number(key, view, now)
+        {
+            return true;
+        }
         let Some(action) =
             openagents_chat_app::commands::shortcut(key, *command, *control, *shift, scope)
         else {
@@ -2323,6 +2341,40 @@ impl Panel {
             return false;
         }
         self.run_command(action, view, now);
+        true
+    }
+    /// Number key `key`, 1 to 9, picks that option of the selected chat's
+    /// decision panel while Coder waits on a question or an approval and
+    /// the draft is empty (#10469). Any other key, or a number the page
+    /// does not list, types as usual.
+    fn decision_number(&mut self, key: &str, view: &ValidatedView<Intent>, now: Instant) -> bool {
+        use openagents_chat_app::decision::Control;
+        let number = match key.as_bytes() {
+            [digit @ b'1'..=b'9'] => usize::from(*digit - b'0'),
+            _ => return false,
+        };
+        if self.modal() || !self.draft().is_empty() {
+            return false;
+        }
+        let request = if self
+            .task()
+            .and_then(task_chat::Session::decision)
+            .is_some_and(|flow| flow.takes_number(number))
+        {
+            self.task_action(TaskAction::Decide(Control::Pick(number - 1)), view, now)
+        } else if self
+            .run()
+            .and_then(Run::decision)
+            .is_some_and(|flow| flow.takes_number(number))
+        {
+            self.run_action(RunAction::Decide(Control::Pick(number - 1)), view)
+        } else {
+            return false;
+        };
+        self.rows_dirty = true;
+        if let Some(request) = request {
+            self.queued.push(request);
+        }
         true
     }
     fn run_command(

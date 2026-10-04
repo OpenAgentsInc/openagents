@@ -471,3 +471,74 @@ fn a_remote_task_s_approve_answers_across_a_summary_update_for_the_same_approval
         }
     }
 }
+
+/// The desktop chat answers a waiting run's question and approval through
+/// the decision panel (#10469): a click on a listed option answers the
+/// question, and number key 2 denies the approval.
+#[test]
+fn the_decision_panel_answers_a_waiting_question_and_approval() {
+    use openagents_chat::coder_events::CoderEvent;
+    use rust_native_desktop::input::TextInput;
+    let whole = tasks(QUESTION_THEN_RESULT).remove(0);
+    let asked = whole
+        .iter()
+        .position(|line| line.event.name() == "question")
+        .unwrap();
+    let mut lines = whole[..=asked].to_vec();
+    let CoderEvent::Question(question) = &mut lines[asked].event else {
+        panic!("question")
+    };
+    question.text = "Should the test cover empty input too?\n1. Yes\n2. No".into();
+    let task = lines[0].task.clone();
+    let mut app = window(&lines, RunState::Waiting);
+    let request = click_across(&mut app, "coder-option-1", &mut []);
+    assert_eq!(
+        run_request(request),
+        RunRequest::Continue {
+            task,
+            text: "Yes".into()
+        }
+    );
+
+    let (mut app, _) = approval();
+    let task = tasks(OTHER_ENDINGS)[0][0].task.clone();
+    app.present();
+    let view = app.view().clone();
+    let panel = app.chat.as_mut().unwrap();
+    assert!(panel.shortcut(
+        &TextInput::Key {
+            key: "2",
+            text: Some("2"),
+            control: false,
+            command: false,
+            alt: false,
+            shift: false,
+        },
+        &view,
+        Instant::now(),
+    ));
+    let requests = panel.take_requests();
+    assert!(
+        matches!(
+            requests.as_slice(),
+            [Request::CoderRun {
+                request: RunRequest::Continue { task: asked, text },
+                ..
+            }] if *asked == task && text == "Denied."
+        ),
+        "{requests:?}"
+    );
+    // A number the panel does not list types as usual.
+    assert!(!panel.shortcut(
+        &TextInput::Key {
+            key: "3",
+            text: Some("3"),
+            control: false,
+            command: false,
+            alt: false,
+            shift: false,
+        },
+        &view,
+        Instant::now(),
+    ));
+}
