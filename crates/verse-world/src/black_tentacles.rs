@@ -1160,6 +1160,24 @@ mod tests {
         }
     }
 
+    /// Assert two worlds carry the same saved state, naming the first
+    /// body or joint that differs.
+    fn same_world(a: &World, b: &World) {
+        assert_eq!(a.tick, b.tick, "tick");
+        assert_eq!(a.bodies().len(), b.bodies().len(), "body count");
+        for (i, (x, y)) in a.bodies().iter().zip(b.bodies()).enumerate() {
+            assert_eq!(x, y, "body {i}");
+        }
+        assert_eq!(a.colliders(), b.colliders(), "colliders");
+        let (ja, jb): (Vec<_>, Vec<_>) = (a.joints().collect(), b.joints().collect());
+        assert_eq!(ja.len(), jb.len(), "joint count");
+        for (x, y) in ja.iter().zip(&jb) {
+            assert_eq!(x, y, "joint {:?}", x.0);
+        }
+        let text = |w: &World| serde_json::to_string(w).unwrap();
+        assert!(text(a) == text(b), "serialized worlds differ");
+    }
+
     fn floored() -> World {
         let mut world = World::new(DT);
         floor(&mut world);
@@ -1571,7 +1589,9 @@ mod tests {
         );
         let saved = serde_json::to_string(&(&s.world, &s.spell)).unwrap();
         let (world2, spell2): (World, BlackTentacles) = serde_json::from_str(&saved).unwrap();
-        assert_eq!(world2, s.world);
+        // The last step's contact reports are output only and not saved, so
+        // compare what a checkpoint carries.
+        same_world(&world2, &s.world);
         assert_eq!(spell2, s.spell);
         let mut s2 = Scene {
             world: world2,
