@@ -70,8 +70,8 @@ mod sov;
 mod sov_host;
 #[cfg(unix)]
 mod ssh;
-mod study;
 mod studio;
+mod study;
 mod terminal;
 #[cfg(test)]
 mod tree;

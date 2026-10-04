@@ -45,8 +45,8 @@ pub mod task_chat;
 
 pub mod coder_run;
 
-pub mod plan_panel;
 pub mod decision;
+pub mod plan_panel;
 
 pub mod retained;
 

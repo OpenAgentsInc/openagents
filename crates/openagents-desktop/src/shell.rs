@@ -6260,10 +6260,12 @@ mod coder_events {
             // Every event the case read shows: its row names it.
             for line in &lines {
                 let key = format!("coder-{}", line.seq);
-                let shown = text.contains(&key) || {
-                    let rows = app.chat.as_ref().unwrap().transcript_rows();
-                    rows.iter().any(|row| row.key == key)
-                };
+                let rows = app.chat.as_ref().unwrap().transcript_rows();
+                // A waiting question or approval is the decision panel,
+                // drawn in place of its card (#10469).
+                let asking = matches!(line.event.name(), "question" | "approval")
+                    && rows.iter().any(|row| row.key == "coder-decision");
+                let shown = text.contains(&key) || rows.iter().any(|row| row.key == key) || asking;
                 if shown {
                     drawn.insert(line.event.name());
                 }
@@ -6275,7 +6277,8 @@ mod coder_events {
             }
         }
         // Progress shows as the working line; a reply as the message; an
-        // output inside its command's row. The rest are rows of their own.
+        // output inside its command's row; a waiting question or approval
+        // as the decision panel. The rest are rows of their own.
         for name in [
             "coder_started",
             "step",

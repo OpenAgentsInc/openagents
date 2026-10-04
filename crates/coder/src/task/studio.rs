@@ -907,10 +907,10 @@ impl Studio {
         match self
             .state
             .seats
-            .iter_mut()
-            .find(|other| other.name == seat.name)
+            .iter()
+            .position(|other| other.name == seat.name)
         {
-            Some(existing) => *existing = seat,
+            Some(index) => self.state.seats[index] = seat,
             None if self.state.seats.len() >= MAX_SEATS => {
                 return Err(Error::LimitExceeded("seats"));
             }

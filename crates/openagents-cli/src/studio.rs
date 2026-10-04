@@ -21,8 +21,8 @@ use coder::cli_route::tree::{Declared, Effect};
 pub(crate) const USAGE: &str = "usage: openagents studio COMMAND [OPTIONS]
   seat set NAME --route ROUTE [--role ROLE] [--look LOOK] [--desk N]
                   Add a seat or change one: a lead plans goals, a worker
-                  (the default ROLE) works plan entries. ROUTE is PROVIDER:MODEL, as
-                  `coder host autostart on --route` takes it.
+                  (the default ROLE) works plan entries. ROUTE is PROVIDER:MODEL, the
+                  form the host's auto-start routes use.
   seat list       Every seat with its route, desk, and current task.
   seat remove NAME
                   Remove a seat that holds no task waiting to start.

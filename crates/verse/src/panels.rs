@@ -515,10 +515,11 @@ impl Panel {
         match self.tab {
             Tab::Transcript => self.transcript.scroll(dy),
             Tab::Changes => {
+                let height = self.body().h;
                 let limit = self
                     .diff
                     .as_ref()
-                    .map_or(0.0, |doc| doc.scroll_limit(self.body().h, DIFF_LINE));
+                    .map_or(0.0, |doc| doc.scroll_limit(height, DIFF_LINE));
                 self.diff_scroll = (self.diff_scroll - dy).clamp(0.0, limit);
             }
         }
