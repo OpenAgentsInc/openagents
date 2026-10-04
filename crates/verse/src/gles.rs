@@ -383,6 +383,29 @@ mod tests {
         assert!(matches!(wgsl(plain, true), Cow::Borrowed(s) if s == plain));
     }
 
+    /// The sun's shadow cascades are layers of one depth array. GLSL ES 3.00
+    /// has no `textureLod` for `sampler2DArrayShadow`, so its comparison
+    /// samples must come out as `textureGrad` with zero gradients, which it
+    /// has, with or without the blocker search constant, and the lit and
+    /// textured entries that read the cascades need no extension.
+    #[test]
+    fn sun_cascades_sample_a_depth_array_on_glsl_es() {
+        let source = wgsl(include_str!("pbr/photo.wgsl"), true);
+        let (module, info) = parse("photo", &source);
+        for pcss in [0.0, 1.0] {
+            let mut set = naga::back::PipelineConstants::default();
+            set.insert("PCSS".to_owned(), pcss);
+            for entry in ["fs_lit", "fs_textured", "fs_textured_masked"] {
+                let (glsl, _) =
+                    write_gles(&module, &info, naga::ShaderStage::Fragment, entry, &set)
+                        .unwrap_or_else(|e| panic!("{entry}: {e}"));
+                assert!(glsl.contains("sampler2DArrayShadow"), "{entry}");
+                assert!(glsl.contains("textureGrad("), "{entry}");
+                assert!(!glsl.contains("#extension"), "{entry}");
+            }
+        }
+    }
+
     /// The GLES variants exist because the default side does not translate:
     /// this keeps the test above honest about what it detects.
     #[test]

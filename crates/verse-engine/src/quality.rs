@@ -107,7 +107,8 @@ pub struct Materials {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Quality {
     pub tier: Tier,
-    /// Sun shadow cascades across the view.
+    /// Sun shadow cascades across the view: two on phones and WebGL2, three
+    /// on desktops, at most [`crate::lighting::MAX_CASCADES`].
     pub cascades: u32,
     pub shadow_filter: ShadowFilter,
     /// Screen-space ambient occlusion and contact shadows, which need a
@@ -142,7 +143,7 @@ impl Tier {
         match self {
             Self::Low => Quality {
                 tier: self,
-                cascades: 1,
+                cascades: 2,
                 shadow_filter: ShadowFilter::Fixed,
                 screen_space: false,
                 probe_cells: 8,
@@ -164,7 +165,7 @@ impl Tier {
             },
             Self::High => Quality {
                 tier: self,
-                cascades: 4,
+                cascades: 3,
                 shadow_filter: ShadowFilter::Soft,
                 screen_space: true,
                 probe_cells: 32,
@@ -274,8 +275,13 @@ mod tests {
         }
         for tier in Tier::ALL {
             assert_eq!(tier.quality().tier, tier);
-            assert!(tier.quality().cascades >= 1);
+            let cascades = tier.quality().cascades as usize;
+            assert!((1..=crate::lighting::MAX_CASCADES).contains(&cascades));
         }
+        // Two cascades on phones and WebGL2, three on desktops.
+        assert_eq!(Tier::Low.quality().cascades, 2);
+        assert_eq!(Tier::Medium.quality().cascades, 2);
+        assert_eq!(Tier::High.quality().cascades, 3);
         // The floor runs on WebGL2: no blocker search, which reads depth
         // values GLSL ES cannot read from a comparison-sampled texture, and
         // no screen-space pass, which needs a readable depth buffer.

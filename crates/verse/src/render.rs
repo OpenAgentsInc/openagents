@@ -2268,6 +2268,8 @@ mod tests {
                 ev100: 10.0,
                 shadow_center: Vec3::ZERO,
                 shadow_half: 10.0,
+                shadow_distance: None,
+                cache_far_shadows: false,
             });
             let dynamic = Mesh {
                 neon: Some(neon),

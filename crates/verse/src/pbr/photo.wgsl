@@ -12,12 +12,13 @@
 struct Frame {
     view_proj: mat4x4<f32>,
     inv_view_proj: mat4x4<f32>,
+    // The cascade a shadow pass draws: world to map clip space.
     light: mat4x4<f32>,
     // xyz eye; w exposure.
     eye: vec4<f32>,
     // xyz toward the Sun; w illuminance in lux.
     sun: vec4<f32>,
-    // x angular radius; y mean disc luminance; z visible fraction; w shadow texel (m).
+    // x angular radius; y mean disc luminance; z visible fraction; w unused.
     sun_disc: vec4<f32>,
     // xyz direction; w angular radius.
     earth: vec4<f32>,
@@ -33,7 +34,7 @@ struct Frame {
     celestial_x: vec4<f32>,
     celestial_y: vec4<f32>,
     celestial_z: vec4<f32>,
-    // rgb illuminance from the Earth at the station, lux; w shadow depth range (m).
+    // rgb illuminance from the Earth at the station, lux; w unused.
     earth_light: vec4<f32>,
     // width, height, 1 / width, 1 / height.
     viewport: vec4<f32>,
@@ -67,10 +68,24 @@ struct Frame {
     fog_shape: vec4<f32>,
     // x opacity cap; y Sun lobe strength; z its exponent; w 1 when present.
     fog_lobe: vec4<f32>,
+    // The sun's shadow cascades (`verse_engine::lighting::Cascades`), near to
+    // far, one layer of `shadow_map` each: world to map clip space.
+    cascades: array<mat4x4<f32>, 4>,
+    // Per cascade: the texel edge (m).
+    cascade_texel: vec4<f32>,
+    // Per cascade: the depth range its map spans along the light (m).
+    cascade_depth: vec4<f32>,
+    // Per cascade: the view depth where it hands over to the next (m).
+    cascade_end: vec4<f32>,
+    // x cascade count; y blend band as a fraction of each slice; z view depth
+    // where the shadow starts to fade; w view depth where it ends (m).
+    cascade_params: vec4<f32>,
+    // xyz the camera's view axis, along which view depth is measured.
+    view_forward: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> f: Frame;
-@group(0) @binding(1) var shadow_map: texture_depth_2d;
+@group(0) @binding(1) var shadow_map: texture_depth_2d_array;
 @group(0) @binding(2) var shadow_compare: sampler_comparison;
 @group(0) @binding(3) var probe_r: texture_3d<f32>;
 @group(0) @binding(4) var probe_g: texture_3d<f32>;
@@ -565,23 +580,24 @@ const POISSON: array<vec2<f32>, 16> = array<vec2<f32>, 16>(
 // GLSL ES cannot read the values of a depth texture that is also sampled with
 // comparison, so this variant has no blocker search: every penumbra assumes
 // an occluder 1 m from the receiver. Returns the filter radius in texels.
-fn penumbra(uv: vec2<f32>, depth: f32, size: vec2<f32>, rot: mat2x2<f32>, tan_r: f32, texel: f32) -> f32 {
+fn penumbra(uv: vec2<f32>, layer: i32, depth: f32, size: vec2<f32>, rot: mat2x2<f32>, tan_r: f32, texel: f32, depth_range: f32) -> f32 {
     return clamp(tan_r / texel, 0.8, 12.0);
 }
 //#else
-// The blocker search of a percentage-closer soft shadow: the filter radius in
-// texels, or 0 when nothing occludes the point.
-fn penumbra(uv: vec2<f32>, depth: f32, size: vec2<f32>, rot: mat2x2<f32>, tan_r: f32, texel: f32) -> f32 {
-    let depth_range = f.earth_light.w;
+// The blocker search of a percentage-closer soft shadow in one cascade's map:
+// the filter radius in texels, or 0 when nothing occludes the point.
+fn penumbra(uv: vec2<f32>, layer: i32, depth: f32, size: vec2<f32>, rot: mat2x2<f32>, tan_r: f32, texel: f32, depth_range: f32) -> f32 {
     // Search as far as a 60 m occluder distance could blur, in texels.
     let search = clamp(60.0 * tan_r / texel, 1.5, 12.0);
+    // A blocker stands at least 8 cm above the receiver.
+    let gap_min = 0.08 / max(depth_range, 1.0);
     var blockers = 0.0;
     var sum = 0.0;
     for (var i = 0; i < 16; i++) {
         let o = rot * POISSON[i] * search / size;
         let t = vec2<i32>(clamp((uv + o) * size, vec2<f32>(0.0), size - 1.0));
-        let d = textureLoad(shadow_map, t, 0);
-        if d < depth - 0.0005 {
+        let d = textureLoad(shadow_map, t, layer, 0);
+        if d < depth - gap_min {
             blockers += 1.0;
             sum += d;
         }
@@ -595,33 +611,81 @@ fn penumbra(uv: vec2<f32>, depth: f32, size: vec2<f32>, rot: mat2x2<f32>, tan_r:
 }
 //#endif
 
-// Percentage-closer soft shadow whose penumbra follows the Sun's disc.
-fn sun_shadow(world: vec3<f32>, n: vec3<f32>, pixel: vec2<f32>) -> f32 {
-    let texel = f.sun_disc.w;
+// The sun's visibility in one cascade, from 1 (lit) to 0 (shadowed): a
+// percentage-closer filter whose penumbra follows the Sun's disc. The width
+// is in meters, divided by each cascade's own texel, so penumbrae match
+// across cascades. Only the nearest cascade searches for blockers; the
+// others keep the fixed penumbra. Comparison samples take an explicit level,
+// so they are valid in the non-uniform control flow they run in.
+fn cascade_shadow(layer: i32, world: vec3<f32>, n: vec3<f32>, rot: mat2x2<f32>, tan_r: f32) -> f32 {
+    let texel = f.cascade_texel[layer];
+    let depth_range = f.cascade_depth[layer];
     let p = world + n * texel * 1.5;
-    let c = f.light * vec4<f32>(p, 1.0);
+    let c = f.cascades[layer] * vec4<f32>(p, 1.0);
     let uv = vec2<f32>(c.x * 0.5 + 0.5, 0.5 - c.y * 0.5);
     if any(uv < vec2<f32>(0.0)) || any(uv > vec2<f32>(1.0)) || c.z > 1.0 {
         return 1.0;
     }
     let size = vec2<f32>(textureDimensions(shadow_map));
-    let tan_r = tan(f.sun_disc.x);
-    let angle = noise_ign(pixel) * 2.0 * PI;
-    let rot = mat2x2<f32>(cos(angle), sin(angle), -sin(angle), cos(angle));
     // A fixed penumbra, as if every occluder stood 1 m from the receiver.
     var radius = clamp(tan_r / texel, 0.8, 12.0);
-    if PCSS {
-        radius = penumbra(uv, c.z, size, rot, tan_r, texel);
+    if PCSS && layer == 0 {
+        radius = penumbra(uv, layer, c.z, size, rot, tan_r, texel, depth_range);
     }
     if radius <= 0.0 {
         return 1.0;
     }
+    // A 5 cm bias along the light, in the map's depth units.
+    let reference = c.z - 0.05 / max(depth_range, 1.0);
     var lit = 0.0;
     for (var i = 0; i < 16; i++) {
         let o = rot * POISSON[i] * radius / size;
-        lit += textureSampleCompareLevel(shadow_map, shadow_compare, uv + o, c.z - 0.0003);
+        lit += textureSampleCompareLevel(shadow_map, shadow_compare, uv + o, layer, reference);
     }
     return lit / 16.0;
+}
+
+// The Sun's visibility at a world point. The cascade is the first whose
+// slice reaches the point's view depth; across the band at the end of each
+// cascade the next one blends in, and the last fades out at the shadow
+// distance. `verse_engine::lighting::Cascades::select` makes the same choice.
+fn sun_shadow(world: vec3<f32>, n: vec3<f32>, pixel: vec2<f32>) -> f32 {
+    let count = i32(f.cascade_params.x + 0.5);
+    if count < 1 {
+        return 1.0;
+    }
+    let depth = dot(world - f.eye.xyz, f.view_forward.xyz);
+    if depth >= f.cascade_params.w {
+        return 1.0;
+    }
+    var layer = 0;
+    for (var k = 0; k < count - 1; k++) {
+        if depth > f.cascade_end[k] {
+            layer = k + 1;
+        }
+    }
+    let tan_r = tan(f.sun_disc.x);
+    let angle = noise_ign(pixel) * 2.0 * PI;
+    let rot = mat2x2<f32>(cos(angle), sin(angle), -sin(angle), cos(angle));
+    var lit = cascade_shadow(layer, world, n, rot, tan_r);
+    if layer + 1 < count {
+        let end = f.cascade_end[layer];
+        var start = 0.0;
+        if layer > 0 {
+            start = f.cascade_end[layer - 1];
+        }
+        let band = (end - start) * f.cascade_params.y;
+        let weight = clamp((depth - (end - band)) / max(band, 1e-4), 0.0, 1.0);
+        if weight > 0.0 {
+            lit = mix(lit, cascade_shadow(layer + 1, world, n, rot, tan_r), weight);
+        }
+    }
+    let fade = clamp(
+        (depth - f.cascade_params.z) / max(f.cascade_params.w - f.cascade_params.z, 1e-4),
+        0.0,
+        1.0
+    );
+    return mix(lit, 1.0, fade);
 }
 
 struct Lobe {

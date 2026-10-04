@@ -572,6 +572,8 @@ pub fn key(center: Vec3) -> Key {
         ev100: 10.0,
         shadow_center: center,
         shadow_half: POOL + 1.0,
+        shadow_distance: None,
+        cache_far_shadows: false,
     }
 }
 

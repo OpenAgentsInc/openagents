@@ -1,12 +1,31 @@
 //! Wizard Woods rendering over the retained Atlantis simulation.
+//!
+//! The zone draws on the physical path: the terrain, the ruins, and the
+//! characters are lit triangles under a key light from the direction the
+//! original renderer baked its shading from, on a neon stage whose field and
+//! fog are the zone's dark green air. They take the sun's shadow cascades,
+//! the ambient probes, and the shared output pass. Health bars, spell orbs,
+//! and sparks stay display-colored faces, as the original drew them. The
+//! simulation and combat do not read any of this.
 
 use super::assets::LoadedAssets;
 use crate::{
     mesh::{Mesh, Vertex},
+    pbr::{Key, LitVertex, Material, Neon},
     world::World,
 };
 use glam::{Mat4, Vec3};
 use verse_ruins::{Simulation, Snapshot, Spell, scene::Terrain};
+
+/// Toward the light the original renderer baked into the terrain's colors.
+const SUN: Vec3 = Vec3::new(-0.3, 0.8, 0.4);
+/// The terrain's albedo: the original's moss green.
+const GROUND: [f32; 3] = [0.12, 0.23, 0.065];
+/// The ruins' albedo: the original's weathered stone.
+const STONE: [f32; 3] = [0.28, 0.3, 0.24];
+/// Character colors are display colors from the pack; as albedo they stay
+/// below this, so no surface returns more light than it receives.
+const MAX_ALBEDO: f32 = 0.9;
 
 pub(crate) struct Ruins {
     pub assets: LoadedAssets,
@@ -45,28 +64,73 @@ impl Ruins {
     pub fn spawn() -> Vec3 {
         Vec3::new(0.0, Terrain::bundled().height(0.0, 0.0), 0.0)
     }
+    /// The terrain as lit triangles with the heightfield's smooth normals.
+    /// The key light and the ambient probes shade it, where the original
+    /// baked a Lambert term from [`SUN`] into its colors.
     pub fn world(&self) -> World {
         let mut world = World::default();
         let terrain = Terrain::bundled();
+        let corner = |x: usize, z: usize| {
+            lit_vertex(
+                Vec3::from(terrain.vertex(x, z)),
+                Vec3::from(terrain.normal(x, z)),
+                GROUND,
+            )
+        };
         for z in 0..terrain.size() - 1 {
             for x in 0..terrain.size() - 1 {
-                let normal = Vec3::from(terrain.normal(x, z));
-                let light =
-                    0.45 + normal.dot(Vec3::new(-0.3, 0.8, 0.4).normalize()).max(0.0) * 0.55;
-                quad(
-                    &mut world.mesh,
-                    [
-                        terrain.vertex(x, z),
-                        terrain.vertex(x + 1, z),
-                        terrain.vertex(x + 1, z + 1),
-                        terrain.vertex(x, z + 1),
-                    ]
-                    .map(Vec3::from),
-                    [0.12 * light, 0.23 * light, 0.065 * light],
-                );
+                let [a, b, c, d] = [
+                    corner(x, z),
+                    corner(x + 1, z),
+                    corner(x + 1, z + 1),
+                    corner(x, z + 1),
+                ];
+                world.mesh.lit.extend([a, b, c, a, c, d]);
             }
         }
         world
+    }
+
+    /// The zone's physical stage: the dark green field and fog of the
+    /// original, and a key light from the original's baked light direction,
+    /// whose shadow follows the camera to the fog.
+    pub fn stage(time: f32) -> Neon {
+        let air = super::atmosphere(super::ZoneId::Ruins);
+        Neon {
+            field: air.color,
+            fog_start: air.fog_start,
+            fog_end: air.fog_end,
+            line_gain: 1.0,
+            line_width: 1.4,
+            bloom: 0.04,
+            vignette: 0.15,
+            time,
+            key: Some(Self::key()),
+            daylight: None,
+        }
+    }
+
+    /// Light levels that keep the original's brightness: a moss-green slope
+    /// facing the sun reads as it did under the baked Lambert term, and a
+    /// slope facing away keeps about the original's ambient share.
+    fn key() -> Key {
+        Key {
+            dir: SUN.normalize(),
+            illuminance: 3_000.0,
+            angular_radius: 0.03,
+            rim_dir: Vec3::new(0.4, 0.35, -0.6).normalize(),
+            rim_illuminance: 600.0,
+            rim_angular_radius: 0.1,
+            sky: 1_300.0,
+            ground: 300.0,
+            ev100: 10.0,
+            shadow_center: Vec3::ZERO,
+            shadow_half: 150.0,
+            // The fog closes at 82 m.
+            shadow_distance: Some(80.0),
+            // Destructible ruins and roaming undead are frame geometry.
+            cache_far_shadows: false,
+        }
     }
     pub fn move_player(
         &mut self,
@@ -172,28 +236,31 @@ impl Ruins {
     }
 
     fn build_dynamic(&self, player: &crate::controller::PlayerController) -> Mesh {
-        let mut mesh = Mesh::default();
+        let mut mesh = Mesh {
+            neon: Some(Self::stage(self.snapshot.elapsed)),
+            ..Mesh::default()
+        };
         for chunk in self.simulation.ruins() {
-            for &index in &chunk.indices {
-                let i = index as usize;
-                if let Some(&pos) = chunk.positions.get(i) {
-                    let normal = chunk.normals.get(i).copied().unwrap_or([0.0, 1.0, 0.0]);
-                    let light = 0.4
-                        + Vec3::from(normal)
-                            .dot(Vec3::new(-0.3, 0.8, 0.4).normalize())
-                            .max(0.0)
-                            * 0.6;
-                    mesh.faces.push(Vertex {
-                        pos,
-                        color: [0.28 * light, 0.3 * light, 0.24 * light],
-                        fog: 1.0,
-                    });
+            // Whole triangles only, so a short index list cannot shift every
+            // later triangle's corners.
+            for triangle in chunk.indices.chunks_exact(3) {
+                let corners: Vec<_> = triangle
+                    .iter()
+                    .filter_map(|&index| {
+                        let i = index as usize;
+                        let pos = *chunk.positions.get(i)?;
+                        let normal = chunk.normals.get(i).copied().unwrap_or([0.0, 1.0, 0.0]);
+                        Some(lit_vertex(Vec3::from(pos), Vec3::from(normal), STONE))
+                    })
+                    .collect();
+                if corners.len() == 3 {
+                    mesh.lit.extend(corners);
                 }
             }
         }
         let elapsed = self.snapshot.elapsed;
         if self.snapshot.player.hp > 0 {
-            transformed(
+            lit_model(
                 &mut mesh,
                 if player.speed > 0.1 {
                     self.assets.wizard.sample(elapsed)
@@ -221,7 +288,7 @@ impl Ruins {
                 self.assets.wizard.sample(elapsed + actor.id as f32 * 0.17)
             };
             let scale = if actor.kind == "boss" { 1.3 } else { 1.0 };
-            transformed(
+            lit_model(
                 &mut mesh,
                 model,
                 Mat4::from_translation(pos)
@@ -284,16 +351,46 @@ fn orb(mesh: &mut Mesh, pos: Vec3, radius: f32, color: [f32; 3]) {
         }
     }
 }
-pub(crate) fn transformed(target: &mut Mesh, source: &Mesh, transform: Mat4) {
-    target.faces.extend(source.faces.iter().map(|v| Vertex {
-        pos: transform.transform_point3(Vec3::from(v.pos)).to_array(),
-        ..*v
-    }));
+/// One lit vertex of a rough, non-metallic surface.
+fn lit_vertex(pos: Vec3, normal: Vec3, color: [f32; 3]) -> LitVertex {
+    let normal = normal.normalize_or(Vec3::Y);
+    // Any unit vector across the normal: these surfaces are not brushed.
+    let across = if normal.x.abs() < 0.9 {
+        Vec3::X
+    } else {
+        Vec3::Z
+    };
+    let tangent = (across - normal * across.dot(normal)).normalize_or(Vec3::X);
+    LitVertex {
+        pos: pos.to_array(),
+        normal: normal.to_array(),
+        tangent: tangent.to_array(),
+        local: pos.to_array(),
+        color: color.map(|c| c.clamp(0.0, MAX_ALBEDO)),
+        params: [0.0, 0.85, Material::WhitePaint.code(), 1.0],
+    }
+}
+
+/// A character model's faces as lit triangles with flat normals, its vertex
+/// colors as albedo; its lines stay display-colored.
+fn lit_model(target: &mut Mesh, source: &Mesh, transform: Mat4) {
+    for triangle in source.faces.chunks_exact(3) {
+        let corners = [0, 1, 2].map(|k| transform.transform_point3(Vec3::from(triangle[k].pos)));
+        let normal = (corners[1] - corners[0])
+            .cross(corners[2] - corners[0])
+            .normalize_or(Vec3::Y);
+        for (k, corner) in corners.into_iter().enumerate() {
+            target
+                .lit
+                .push(lit_vertex(corner, normal, triangle[k].color));
+        }
+    }
     target.lines.extend(source.lines.iter().map(|v| Vertex {
         pos: transform.transform_point3(Vec3::from(v.pos)).to_array(),
         ..*v
     }));
 }
+
 fn quad(mesh: &mut Mesh, points: [Vec3; 4], color: [f32; 3]) {
     let [a, b, c, d] = points.map(|p| Vertex {
         pos: p.to_array(),

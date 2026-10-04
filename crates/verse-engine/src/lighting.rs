@@ -1,11 +1,13 @@
 //! Portable local illumination, atmosphere, cube-shadow camera construction,
-//! and the color grade every zone's output pass applies.
+//! the sun's shadow cascades, and the color grade every zone's output pass
+//! applies.
 use crate::presentation::View;
-use glam::{Mat4, Vec3};
+use glam::{Mat4, Vec3, Vec4};
 
 pub const MAX_LIGHTS: usize = 32;
 
-/// A point source in meters. The first four sources receive cube shadow maps.
+/// A point source in meters. Up to four sources receive cube shadow maps;
+/// [`select_shadowed`] picks them.
 #[derive(Clone, Copy, Debug)]
 pub struct Light {
     pub position: Vec3,
@@ -258,6 +260,475 @@ impl Light {
         }
         Ok(views)
     }
+}
+
+/// How strongly a light that already holds a shadow map is favored when the
+/// maps are handed out again. Two lights of nearly equal contribution then do
+/// not trade maps every frame and refill the static shadow cache.
+pub const SHADOW_HYSTERESIS: f32 = 1.25;
+
+impl Light {
+    /// An estimate of how much this light adds to the view: its intensity
+    /// weighted by luminance, times the share of the view its sphere of
+    /// influence covers. A light whose sphere lies outside the view frustum
+    /// lights nothing visible and contributes zero.
+    #[must_use]
+    pub fn contribution(&self, view: View) -> f32 {
+        let power = self.intensity * self.color.dot(LUMA);
+        if !(power > 0.0) || !sphere_in_frustum(view.view_proj, self.position, self.range) {
+            return 0.0;
+        }
+        let distance = (self.position - view.eye).length();
+        let coverage = if distance <= self.range {
+            1.0
+        } else {
+            (self.range / distance).powi(2)
+        };
+        power * coverage
+    }
+}
+
+/// Whether a sphere reaches into the frustum of `view_proj`, whose clip depth
+/// runs from 0 to 1. The planes come from the matrix's rows (Gribb and
+/// Hartmann, "Fast Extraction of Viewing Frustum Planes", 2001).
+fn sphere_in_frustum(view_proj: Mat4, center: Vec3, radius: f32) -> bool {
+    let [x, y, z, w] = [0, 1, 2, 3].map(|row| view_proj.row(row));
+    let planes: [Vec4; 6] = [w + x, w - x, w + y, w - y, z, w - z];
+    let point = center.extend(1.0);
+    planes.iter().all(|plane| {
+        let length = plane.truncate().length();
+        length <= f32::EPSILON || plane.dot(point) >= -radius * length
+    })
+}
+
+/// The lights that receive the cube shadow maps, in map order: the `slots`
+/// lights with the largest [`Light::contribution`] to `view`, ties going to
+/// the earlier light.
+///
+/// `previous` is the last frame's result. A light in it is favored by
+/// [`SHADOW_HYSTERESIS`] and keeps its map, so a light that stays chosen
+/// keeps its cached faces; a newly chosen light takes a map that was freed.
+#[must_use]
+pub fn select_shadowed(
+    lights: &[Light],
+    view: View,
+    slots: usize,
+    previous: &[usize],
+) -> Vec<usize> {
+    let slots = slots.min(lights.len());
+    let mut ranked: Vec<(f32, usize)> = lights
+        .iter()
+        .enumerate()
+        .map(|(index, light)| {
+            let mut score = light.contribution(view);
+            if previous.contains(&index) {
+                score *= SHADOW_HYSTERESIS;
+            }
+            (score, index)
+        })
+        .collect();
+    ranked.sort_by(|a, b| b.0.total_cmp(&a.0).then(a.1.cmp(&b.1)));
+    let chosen: Vec<usize> = ranked.iter().take(slots).map(|&(_, index)| index).collect();
+    let mut order: Vec<Option<usize>> = vec![None; slots];
+    for &index in &chosen {
+        if let Some(slot) = previous.iter().position(|&p| p == index)
+            && slot < slots
+        {
+            order[slot] = Some(index);
+        }
+    }
+    let placed: Vec<usize> = order.iter().flatten().copied().collect();
+    let mut rest = chosen
+        .iter()
+        .copied()
+        .filter(|index| !placed.contains(index));
+    for slot in &mut order {
+        if slot.is_none() {
+            *slot = rest.next();
+        }
+    }
+    order.into_iter().flatten().collect()
+}
+
+/// The most sun shadow cascades any quality tier draws.
+pub const MAX_CASCADES: usize = 4;
+
+/// A view depth that no scene reaches, m: the end of a shadow that does not
+/// follow the camera.
+pub const UNBOUNDED: f32 = 1.0e30;
+
+/// What shadow cascades need to know about a perspective camera.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Frustum {
+    pub eye: Vec3,
+    /// Unit view axis. A point's view depth is its distance along it.
+    pub forward: Vec3,
+    /// View depths of the near and far planes, m.
+    pub near: f32,
+    pub far: f32,
+    /// The largest ratio of a frustum corner's distance from the view axis
+    /// to its view depth: the tangent of the half-diagonal field of view.
+    pub spread: f32,
+}
+
+impl Frustum {
+    /// The frustum of a perspective `view_proj` whose clip depth runs from 0
+    /// at the near plane to 1 at the far plane, seen from `eye`. Returns
+    /// `None` for a matrix that is not such a projection.
+    #[must_use]
+    pub fn from_view_proj(view_proj: Mat4, eye: Vec3) -> Option<Self> {
+        let inverse = view_proj.inverse();
+        if !inverse.is_finite() || !eye.is_finite() {
+            return None;
+        }
+        let corners = |z: f32| {
+            [(-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)]
+                .map(|(x, y)| inverse.project_point3(Vec3::new(x, y, z)))
+        };
+        let (near, far) = (corners(0.0), corners(1.0));
+        let center = |c: &[Vec3; 4]| (c[0] + c[1] + c[2] + c[3]) * 0.25;
+        let forward = (center(&far) - center(&near)).try_normalize()?;
+        let depth = |p: &Vec3| (*p - eye).dot(forward);
+        let near_depth = near.iter().map(depth).fold(f32::INFINITY, f32::min);
+        let far_depth = far.iter().map(depth).fold(f32::INFINITY, f32::min);
+        let mut spread = 0.0f32;
+        for corner in far {
+            let offset = corner - eye;
+            let along = offset.dot(forward);
+            if !(along > 0.0) {
+                return None;
+            }
+            spread = spread.max((offset - forward * along).length() / along);
+        }
+        // The lens is rounded to a fine grid. Float noise from inverting a
+        // moving camera's matrix then cannot change a cascade's size between
+        // frames, which would make every shadow edge crawl.
+        let lens = |value: f32| (value * 4096.0).round() / 4096.0;
+        let frustum = Self {
+            eye,
+            forward,
+            near: lens(near_depth),
+            far: lens(far_depth),
+            spread: lens(spread),
+        };
+        let valid = frustum.near.is_finite()
+            && frustum.far.is_finite()
+            && frustum.spread.is_finite()
+            && frustum.near > 0.0
+            && frustum.far > frustum.near
+            && frustum.spread > 0.0;
+        valid.then_some(frustum)
+    }
+
+    /// The view depth of a world point, m.
+    #[must_use]
+    pub fn depth(&self, point: Vec3) -> f32 {
+        (point - self.eye).dot(self.forward)
+    }
+}
+
+/// How the sun's shadow follows the camera.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CascadeSettings {
+    /// Cascades across the view, from 1 to [`MAX_CASCADES`]; the quality
+    /// tier sets it.
+    pub count: usize,
+    /// View depth where the shadow ends, m.
+    pub distance: f32,
+    /// Where the splits sit between uniform (0) and logarithmic (1) spacing
+    /// (Zhang et al., "Parallel-Split Shadow Maps", 2006).
+    pub split_lambda: f32,
+    /// Texels along each side of a cascade's map.
+    pub resolution: u32,
+    /// The band at the end of each cascade where shading blends into the
+    /// next, as a fraction of the cascade's slice.
+    pub blend: f32,
+    /// The stretch at the end of the shadow distance where the shadow fades
+    /// out, as a fraction of the distance.
+    pub fade: f32,
+    /// How far beyond a cascade's slice, toward the light, its map still
+    /// takes casters, m.
+    pub caster_reach: f32,
+    /// The cell, in texels, to which every cascade after the first snaps
+    /// its center, so its map changes only when the camera crosses a cell
+    /// and its static casters can be cached. Zero snaps to single texels
+    /// and caches nothing.
+    pub cache_cell: u32,
+}
+
+impl CascadeSettings {
+    /// `count` cascades out to `distance` meters, with 2048² maps.
+    #[must_use]
+    pub fn new(count: u32, distance: f32) -> Self {
+        Self {
+            count: count as usize,
+            distance,
+            split_lambda: 0.8,
+            resolution: 2048,
+            blend: 0.1,
+            fade: 0.1,
+            caster_reach: 60.0,
+            cache_cell: 64,
+        }
+    }
+
+    /// Refuses values that cannot fit a cascade.
+    pub fn validate(&self) -> Result<(), String> {
+        let finite = self.distance.is_finite()
+            && self.split_lambda.is_finite()
+            && self.blend.is_finite()
+            && self.fade.is_finite()
+            && self.caster_reach.is_finite();
+        if !finite
+            || !(1..=MAX_CASCADES).contains(&self.count)
+            || self.distance <= 0.0
+            || !(0.0..=1.0).contains(&self.split_lambda)
+            || self.resolution < 64
+            || u64::from(self.cache_cell) * 4 >= u64::from(self.resolution)
+            || !(0.0..=0.5).contains(&self.blend)
+            || !(0.0..=1.0).contains(&self.fade)
+            || self.caster_reach < 0.0
+        {
+            return Err("Invalid shadow cascade settings".into());
+        }
+        Ok(())
+    }
+}
+
+/// One shadow map of the sun.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Cascade {
+    /// World to the map's clip space; depth 0 is nearest the light.
+    pub matrix: Mat4,
+    /// Edge of one map texel, m.
+    pub texel: f32,
+    /// Distance along the light that the map's depth spans, m.
+    pub depth_range: f32,
+    /// View depth where shading hands over to the next cascade, m.
+    pub end: f32,
+    /// Whether the map holds static casters only, so it can be kept until
+    /// its matrix or the static scene changes.
+    pub cached: bool,
+}
+
+/// The sun's shadow maps for one frame.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Cascades {
+    /// Near to far, at least one.
+    pub cascades: Vec<Cascade>,
+    /// The camera's view axis, which view depth is measured along; zero for
+    /// a shadow that does not follow the camera.
+    pub forward: Vec3,
+    /// The blend band, as in [`CascadeSettings::blend`].
+    pub blend: f32,
+    /// View depth where the shadow starts to fade out, m.
+    pub fade_start: f32,
+    /// View depth where the shadow ends, m.
+    pub distance: f32,
+}
+
+impl Cascades {
+    /// The cascade a point at view depth `depth` reads, and how far it has
+    /// blended into the next, from 0 to 1. `sun_shadow` in the physical
+    /// path's `photo.wgsl` makes the same choice on the GPU.
+    #[must_use]
+    pub fn select(&self, depth: f32) -> (usize, f32) {
+        let last = self.cascades.len().saturating_sub(1);
+        let index = self
+            .cascades
+            .iter()
+            .position(|cascade| depth <= cascade.end)
+            .unwrap_or(last);
+        if index >= last {
+            return (index, 0.0);
+        }
+        let previous = if index == 0 {
+            0.0
+        } else {
+            self.cascades[index - 1].end
+        };
+        let end = self.cascades[index].end;
+        let band = (end - previous) * self.blend;
+        let weight = ((depth - (end - band)) / band.max(1e-4)).clamp(0.0, 1.0);
+        (index, weight)
+    }
+
+    /// How much of the shadow remains at view depth `depth`: 1 before the
+    /// fade, falling to 0 at the shadow distance.
+    #[must_use]
+    pub fn presence(&self, depth: f32) -> f32 {
+        1.0 - ((depth - self.fade_start) / (self.distance - self.fade_start).max(1e-4))
+            .clamp(0.0, 1.0)
+    }
+}
+
+/// View depths that split `near`..`far` into `count` slices: `count + 1`
+/// values from `near` to `far`, spaced `lambda` of the way from uniform to
+/// logarithmic. The logarithmic part starts at 1 m, so a near plane a few
+/// centimeters out does not crowd the first cascade.
+#[must_use]
+pub fn cascade_splits(near: f32, far: f32, count: usize, lambda: f32) -> Vec<f32> {
+    let count = count.clamp(1, MAX_CASCADES);
+    let base = near.max(1.0).min(far);
+    (0..=count)
+        .map(|i| {
+            if i == 0 {
+                return near;
+            }
+            if i == count {
+                return far;
+            }
+            let t = i as f32 / count as f32;
+            let logarithmic = base * (far / base).powf(t);
+            let uniform = near + (far - near) * t;
+            lambda * logarithmic + (1.0 - lambda) * uniform
+        })
+        .collect()
+}
+
+/// The light's view: from the origin, looking along `-toward`.
+fn light_view(toward: Vec3) -> Mat4 {
+    let up = if toward.y.abs() > 0.9 {
+        Vec3::X
+    } else {
+        Vec3::Y
+    };
+    Mat4::look_to_rh(Vec3::ZERO, -toward, up)
+}
+
+/// An orthographic map `half` meters each side of `center` in the light's
+/// view `look`, reaching `toward_light` meters toward the light and `away`
+/// meters away from it. The center snaps to whole multiples of `cell`, so a
+/// world point keeps its place within its texel as the center moves.
+fn snapped_map(
+    look: Mat4,
+    center: Vec3,
+    half: f32,
+    cell: f32,
+    toward_light: f32,
+    away: f32,
+) -> Mat4 {
+    let c = look.transform_point3(center);
+    let s = (c / cell).round() * cell;
+    Mat4::orthographic_rh(
+        s.x - half,
+        s.x + half,
+        s.y - half,
+        s.y + half,
+        -s.z - toward_light,
+        -s.z + away,
+    ) * look
+}
+
+/// The smallest sphere centered on the view axis that holds the frustum
+/// slice from view depth `a` to `b`, whose corners stand `spread` times their
+/// depth off the axis: its center's view depth and its radius. It depends on
+/// the slice and the lens only, never on where the camera stands or looks, so
+/// a cascade's texel size does not change as the camera turns.
+fn slice_sphere(a: f32, b: f32, spread: f32) -> (f32, f32) {
+    let k2 = spread * spread;
+    let z = (a + b) * (1.0 + k2) * 0.5;
+    if z >= b {
+        (b, b * spread)
+    } else {
+        (z, ((z - a) * (z - a) + a * a * k2).sqrt())
+    }
+}
+
+/// One map along `toward` (unit, toward the light) over the fixed cube of
+/// half extent `half` about `center`, for a shadow that does not follow the
+/// camera. It reaches a cube's width beyond the cube on both sides.
+#[must_use]
+pub fn fit_box(toward: Vec3, center: Vec3, half: f32, resolution: u32) -> Cascades {
+    let half = half.max(1.0);
+    let reach = half * 2.0;
+    let texel = 2.0 * half / resolution.max(1) as f32;
+    let matrix = snapped_map(light_view(toward), center, half, texel, reach, reach);
+    Cascades {
+        cascades: vec![Cascade {
+            matrix,
+            texel,
+            depth_range: reach * 2.0,
+            end: UNBOUNDED,
+            cached: false,
+        }],
+        forward: Vec3::ZERO,
+        blend: 0.0,
+        fade_start: UNBOUNDED,
+        distance: UNBOUNDED,
+    }
+}
+
+/// The sun's cascades for one frame: the view from the near plane to the
+/// shadow distance, split by [`cascade_splits`], each slice in a map fitted
+/// to its bounding sphere and snapped to whole texels (Valient, "Stable
+/// Cascaded Shadow Maps", ShaderX6, 2008).
+///
+/// Each slice after the first starts inside the previous cascade's blend
+/// band, so both maps cover the band. Each map is padded by its snapping
+/// cell, so the slice stays inside it wherever the snapped center lands.
+/// With [`CascadeSettings::cache_cell`] set, every cascade after the first
+/// snaps to that coarser cell and is marked cached.
+///
+/// # Errors
+///
+/// Refuses invalid settings, a zero light direction, and a shadow distance
+/// that ends before the near plane.
+pub fn fit_cascades(
+    frustum: &Frustum,
+    toward: Vec3,
+    settings: &CascadeSettings,
+) -> Result<Cascades, String> {
+    settings.validate()?;
+    let toward = toward
+        .try_normalize()
+        .ok_or("The sun has no direction for its shadow")?;
+    let distance = settings.distance.min(frustum.far);
+    if !(distance > frustum.near) {
+        return Err("The shadow ends before the camera's near plane".into());
+    }
+    let count = settings.count;
+    let splits = cascade_splits(frustum.near, distance, count, settings.split_lambda);
+    let look = light_view(toward);
+    let resolution = settings.resolution as f32;
+    let mut cascades = Vec::with_capacity(count);
+    for i in 0..count {
+        let end = splits[i + 1];
+        let start = if i == 0 {
+            frustum.near
+        } else {
+            let before = if i >= 2 { splits[i - 1] } else { 0.0 };
+            (splits[i] - settings.blend * (splits[i] - before)).max(frustum.near)
+        };
+        let (center_depth, radius) = slice_sphere(start, end, frustum.spread);
+        // Rounding up to 1/64 m keeps float noise in the camera matrix from
+        // changing the texel size between frames.
+        let radius = (radius * 64.0).ceil() / 64.0;
+        let center = frustum.eye + frustum.forward * center_depth;
+        let cached = settings.cache_cell > 0 && i > 0;
+        let cell_texels = (if cached { settings.cache_cell } else { 1 }) as f32;
+        let half = radius / (1.0 - 2.0 * cell_texels / resolution);
+        let texel = 2.0 * half / resolution;
+        let reach = half + settings.caster_reach;
+        let matrix = snapped_map(look, center, half, texel * cell_texels, reach, half);
+        if !matrix.is_finite() {
+            return Err("Shadow cascade projection overflow".into());
+        }
+        cascades.push(Cascade {
+            matrix,
+            texel,
+            depth_range: reach + half,
+            end,
+            cached,
+        });
+    }
+    Ok(Cascades {
+        cascades,
+        forward: frustum.forward,
+        blend: settings.blend,
+        fade_start: distance * (1.0 - settings.fade),
+        distance,
+    })
 }
 
 /// Edge length of the color-grading lookup table, in texels.
@@ -589,6 +1060,250 @@ mod tests {
         bad = light();
         bad.position = Vec3::splat(f32::MAX);
         assert!(bad.shadow_views().is_err());
+    }
+
+    /// A camera at `eye` looking along `dir` through a 16:9 lens.
+    fn camera(eye: Vec3, dir: Vec3) -> (Mat4, Frustum) {
+        let view_proj = Mat4::perspective_rh(1.0, 16.0 / 9.0, 0.1, 2000.0)
+            * Mat4::look_to_rh(eye, dir.normalize(), Vec3::Y);
+        (view_proj, Frustum::from_view_proj(view_proj, eye).unwrap())
+    }
+
+    /// Everglade's afternoon sun.
+    fn sun() -> Vec3 {
+        Vec3::new(-0.35, 0.8, -0.45).normalize()
+    }
+
+    #[test]
+    fn a_frustum_reads_the_lens_from_the_camera_matrix() {
+        let dir = Vec3::new(1.0, -0.2, 0.3);
+        let (_, frustum) = camera(Vec3::new(3.0, 2.0, -1.0), dir);
+        assert!((frustum.near - 0.1).abs() < 1e-3);
+        assert!((frustum.far - 2000.0).abs() < 20.0);
+        let tan = 0.5f32.tan();
+        let diagonal = (tan * tan * (1.0 + (16.0f32 / 9.0).powi(2))).sqrt();
+        assert!((frustum.spread - diagonal).abs() < 1e-3);
+        assert!((frustum.forward - dir.normalize()).length() < 1e-4);
+        assert!(Frustum::from_view_proj(Mat4::IDENTITY, Vec3::ZERO).is_none());
+    }
+
+    #[test]
+    fn splits_run_from_near_to_far_and_lean_logarithmic() {
+        for count in 1..=MAX_CASCADES {
+            let splits = cascade_splits(0.1, 150.0, count, 0.8);
+            assert_eq!(splits.len(), count + 1);
+            assert_eq!(splits[0], 0.1);
+            assert_eq!(splits[count], 150.0);
+            assert!(
+                splits.windows(2).all(|pair| pair[1] > pair[0]),
+                "{splits:?}"
+            );
+        }
+        let uniform = cascade_splits(0.0, 90.0, 3, 0.0);
+        assert!((uniform[1] - 30.0).abs() < 1e-4 && (uniform[2] - 60.0).abs() < 1e-4);
+        assert!(cascade_splits(0.1, 150.0, 2, 0.8)[1] < cascade_splits(0.1, 150.0, 2, 0.0)[1]);
+    }
+
+    #[test]
+    fn cascades_cover_the_view_their_blend_bands_and_their_casters() {
+        let views = [
+            (Vec3::new(0.0, 1.7, -20.0), Vec3::new(0.0, -0.1, 1.0)),
+            (Vec3::new(30.0, 6.0, 12.0), Vec3::new(-1.0, -0.3, -0.4)),
+            (Vec3::new(-5.0, 2.0, 5.0), Vec3::new(0.2, 0.9, 0.1)),
+        ];
+        for count in 1..=MAX_CASCADES {
+            let settings = CascadeSettings::new(count as u32, 150.0);
+            for (eye, dir) in views {
+                let (view_proj, frustum) = camera(eye, dir);
+                let cascades = fit_cascades(&frustum, sun(), &settings).unwrap();
+                assert_eq!(cascades.cascades.len(), count);
+                for (index, cascade) in cascades.cascades.iter().enumerate() {
+                    assert_eq!(cascade.cached, index > 0);
+                }
+                let inverse = view_proj.inverse();
+                for step in 0..=60 {
+                    let depth =
+                        frustum.near + (cascades.distance - frustum.near) * step as f32 / 60.0;
+                    for (x, y) in [
+                        (-1.0, -1.0),
+                        (1.0, -1.0),
+                        (-1.0, 1.0),
+                        (1.0, 1.0),
+                        (0.0, 0.0),
+                        (0.3, -0.7),
+                    ] {
+                        let ray = inverse.project_point3(Vec3::new(x, y, 0.0)) - eye;
+                        let point = eye + ray * (depth / ray.dot(frustum.forward));
+                        let (index, weight) = cascades.select(frustum.depth(point));
+                        let mut readers = vec![index];
+                        if weight > 0.0 {
+                            readers.push(index + 1);
+                        }
+                        for reader in readers {
+                            let matrix = cascades.cascades[reader].matrix;
+                            // The receiver, and a caster above it toward the sun.
+                            let caster = point + sun() * settings.caster_reach * 0.9;
+                            for p in [point, caster] {
+                                let clip = matrix.project_point3(p);
+                                assert!(
+                                    clip.x.abs() <= 1.0
+                                        && clip.y.abs() <= 1.0
+                                        && (0.0..=1.0).contains(&clip.z),
+                                    "{count} cascades: {p} at depth {depth} falls outside \
+                                     cascade {reader} at {clip}"
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn texel_snapping_holds_shadow_texels_still_under_sub_texel_motion() {
+        let settings = CascadeSettings::new(3, 150.0);
+        let dir = Vec3::new(0.3, -0.15, 1.0);
+        let fit = |eye: Vec3| fit_cascades(&camera(eye, dir).1, sun(), &settings).unwrap();
+        let start = Vec3::new(2.0, 1.7, -20.0);
+        let first = fit(start);
+        let probe = Vec3::new(4.0, 0.0, -10.0);
+        let resolution = settings.resolution as f32;
+        let texel_of = |matrix: Mat4| {
+            let clip = matrix.project_point3(probe);
+            glam::Vec2::new(clip.x, clip.y) * 0.5 * resolution
+        };
+        let mut changes = [0; 3];
+        let mut previous = first.clone();
+        for step in 1..=200 {
+            // A walk of a fifth of a near texel per frame.
+            let walk = Vec3::new(0.7, 0.05, 0.4).normalize() * first.cascades[0].texel * 0.2;
+            let now = fit(start + walk * step as f32);
+            for (i, (before, after)) in previous.cascades.iter().zip(&now.cascades).enumerate() {
+                assert_eq!(before.texel, after.texel, "cascade {i} changed its texel");
+                if before.matrix != after.matrix {
+                    changes[i] += 1;
+                }
+                // A world point keeps its place within its texel: the map
+                // moves only by whole texels.
+                let shift = texel_of(after.matrix) - texel_of(before.matrix);
+                assert!(
+                    (shift - shift.round()).abs().max_element() < 0.02,
+                    "cascade {i} moved by {shift} texels at step {step}"
+                );
+            }
+            previous = now;
+        }
+        assert!(changes[0] > 0, "the near cascade never followed the camera");
+        // The cached cascades move only when the camera crosses a cache cell.
+        for (i, &count) in changes.iter().enumerate().skip(1) {
+            assert!(count <= 6, "cascade {i} changed {count} times");
+        }
+        // Turning the camera keeps every cascade's texel.
+        let turned = fit_cascades(
+            &camera(start, Vec3::new(-1.0, -0.1, 0.2)).1,
+            sun(),
+            &settings,
+        )
+        .unwrap();
+        for (a, b) in first.cascades.iter().zip(&turned.cascades) {
+            assert_eq!(a.texel, b.texel);
+        }
+    }
+
+    #[test]
+    fn cascades_blend_at_their_ends_and_fade_at_the_distance() {
+        let (_, frustum) = camera(Vec3::ZERO, Vec3::Z);
+        let cascades = fit_cascades(&frustum, sun(), &CascadeSettings::new(2, 100.0)).unwrap();
+        let end = cascades.cascades[0].end;
+        assert_eq!(cascades.select(end * 0.5), (0, 0.0));
+        let (index, weight) = cascades.select(end - 1e-3);
+        assert_eq!(index, 0);
+        assert!(weight > 0.99);
+        assert_eq!(cascades.select(end + 1.0), (1, 0.0));
+        assert_eq!(cascades.select(1_000.0).0, 1);
+        assert_eq!(cascades.presence(10.0), 1.0);
+        assert_eq!(cascades.presence(100.0), 0.0);
+        assert!((cascades.presence(95.0) - 0.5).abs() < 1e-4);
+        // A fixed box never fades and has one map.
+        let fixed = fit_box(sun(), Vec3::ZERO, 40.0, 2048);
+        assert_eq!(fixed.cascades.len(), 1);
+        assert_eq!(fixed.select(500.0), (0, 0.0));
+        assert_eq!(fixed.presence(500.0), 1.0);
+        assert!((fixed.cascades[0].texel - 80.0 / 2048.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn cascade_settings_refuse_what_cannot_be_fitted() {
+        let (_, frustum) = camera(Vec3::ZERO, Vec3::Z);
+        let good = CascadeSettings::new(3, 150.0);
+        assert!(good.validate().is_ok());
+        for bad in [
+            CascadeSettings { count: 0, ..good },
+            CascadeSettings {
+                count: MAX_CASCADES + 1,
+                ..good
+            },
+            CascadeSettings {
+                distance: f32::NAN,
+                ..good
+            },
+            CascadeSettings { blend: 0.9, ..good },
+            CascadeSettings {
+                cache_cell: 1024,
+                ..good
+            },
+        ] {
+            assert!(fit_cascades(&frustum, sun(), &bad).is_err(), "{bad:?}");
+        }
+        assert!(fit_cascades(&frustum, Vec3::ZERO, &good).is_err());
+        let short = CascadeSettings {
+            distance: 0.05,
+            ..good
+        };
+        assert!(fit_cascades(&frustum, sun(), &short).is_err());
+    }
+
+    #[test]
+    fn shadow_maps_go_to_the_lights_that_matter_most() {
+        let (view_proj, _) = camera(Vec3::ZERO, Vec3::Z);
+        let view = View {
+            view_proj,
+            eye: Vec3::ZERO,
+        };
+        let at = |z: f32, x: f32, intensity: f32| Light {
+            position: Vec3::new(x, 1.0, z),
+            color: Vec3::ONE,
+            intensity,
+            range: 4.0,
+        };
+        let lights = vec![
+            at(-20.0, 0.0, 50.0), // behind the camera
+            at(6.0, 0.0, 10.0),
+            at(30.0, 0.0, 10.0),
+            at(8.0, 3.0, 40.0),
+            at(5.0, 200.0, 40.0), // far off to the side
+            at(12.0, -2.0, 12.0),
+        ];
+        assert_eq!(lights[0].contribution(view), 0.0);
+        assert_eq!(lights[4].contribution(view), 0.0);
+        let chosen = select_shadowed(&lights, view, 4, &[]);
+        assert_eq!(chosen, vec![3, 1, 5, 2]);
+        // Held lights keep their maps whatever order they were ranked in.
+        let held = [2, 5, 1, 3];
+        assert_eq!(select_shadowed(&lights, view, 4, &held), held);
+        // A slightly brighter newcomer does not take a held map ...
+        let mut more = lights.clone();
+        more.push(at(30.0, 0.5, 11.0));
+        assert!(select_shadowed(&more, view, 4, &[]).contains(&6));
+        assert_eq!(select_shadowed(&more, view, 4, &chosen), chosen);
+        // ... a much brighter one takes the weakest light's map, and the
+        // other lights keep theirs.
+        more[6].intensity = 30.0;
+        let replaced = select_shadowed(&more, view, 4, &chosen);
+        assert_eq!(replaced, vec![3, 1, 5, 6]);
+        // With fewer lights than maps, every light gets one.
+        assert_eq!(select_shadowed(&lights[..2], view, 4, &[]), vec![1, 0]);
     }
 
     /// A mild grade with every table term away from identity.

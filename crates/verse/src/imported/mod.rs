@@ -320,6 +320,8 @@ pub struct Renderer {
     ui_buffer: wgpu::Buffer,
     pub adapter_name: String,
     pub last_timings: FrameTimings,
+    /// The lights that held the cube shadow maps last frame, in map order.
+    shadowed_lights: Vec<usize>,
 }
 /// The world pass's floating-point scene format. Every backend the chamber
 /// runs on renders, blends, filters, and multisamples it.
@@ -1101,6 +1103,7 @@ impl Renderer {
             bounds,
             adapter_name,
             last_timings: FrameTimings::default(),
+            shadowed_lights: Vec::new(),
         })
     }
     /// Reallocate viewport attachments without reloading scene assets or shadow caches.
@@ -1313,7 +1316,16 @@ impl Renderer {
         let instances = resolved.instances();
         let mut grounded_vertices = 0;
         let ui_bytes = bytemuck::cast_slice(world.overlay().vertices());
-        let frame = lighting::frame(view, lighting)?;
+        // The four cube shadow maps go to the lights that add the most to
+        // this view, not the first four in the list.
+        let shadowed = lighting::select_shadowed(
+            &lighting.lights,
+            view,
+            lighting.shadow_count(),
+            &self.shadowed_lights,
+        );
+        let frame = lighting::frame(view, lighting, &shadowed)?;
+        self.shadowed_lights = shadowed;
         while self.actors.len() <= instances.len() {
             let buffer = buffer(
                 &self.device,

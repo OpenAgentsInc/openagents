@@ -527,7 +527,7 @@ original side, so their output is unchanged:
 
 | Technique | Other backends | OpenGL ES |
 | --- | --- | --- |
-| Soft shadows | Percentage-closer soft shadows: a blocker search reads the shadow map's depths and sets the penumbra from the occluder's distance. | The same 16-tap comparison filter with the penumbra of an occluder 1 m away. GLSL ES can't read a depth texture that is also sampled with comparison. |
+| Soft shadows | Percentage-closer soft shadows in the nearest sun cascade: a blocker search reads the shadow map's depths and sets the penumbra from the occluder's distance. Farther cascades use the fixed penumbra. | The same 16-tap comparison filter with the penumbra of an occluder 1 m away. GLSL ES can't read a depth texture that is also sampled with comparison. |
 | Screen-space varyings (line coverage, the Sun, Earth, and Moon discs) | `@interpolate(linear)` | GLSL ES has no `noperspective`, so the value travels multiplied by clip w and the fragment multiplies it by 1 / w. The result is the same. |
 | Bloom level count in the output pass | Read from the post uniform | The same; `textureNumLevels` isn't in GLSL ES, so no backend uses it. |
 

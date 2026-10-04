@@ -365,9 +365,21 @@ pub struct Key {
     pub ground: f32,
     /// Exposure value at ISO 100 that carries these lux onto the stage.
     pub ev100: f32,
-    /// Center and half extent of the region that casts and receives shadows.
+    /// Center and half extent of the region that casts and receives shadows,
+    /// when the shadow does not follow the camera.
     pub shadow_center: Vec3,
     pub shadow_half: f32,
+    /// How far from the camera the key's shadow reaches, m. When set, the
+    /// shadow follows the camera in cascades, as many as the quality tier
+    /// draws, and `shadow_center` and `shadow_half` only center the ambient
+    /// probes. Without it, one map covers the fixed region.
+    pub shadow_distance: Option<f32>,
+    /// Whether every caster the cascades after the first need is in the
+    /// zone's world mesh, so those cascades can hold static casters only and
+    /// be redrawn only when the camera crosses a cell. A zone that draws
+    /// destructible or far-moving casters in its frame mesh turns it off,
+    /// and every cascade then draws every caster each frame.
+    pub cache_far_shadows: bool,
 }
 
 impl Key {

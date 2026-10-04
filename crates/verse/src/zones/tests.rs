@@ -48,17 +48,23 @@ fn entering_and_returning_replace_only_the_zone_and_preserve_plaza_choices() {
     assert!(!runtime.gym(1.0).inside);
     assert!(!runtime.door(crate::doors::DoorId::Spark, 1.0).near);
     assert!(
-        runtime.world.mesh.faces.len() * std::mem::size_of::<crate::mesh::Vertex>()
+        runtime.world.mesh.lit.len() * std::mem::size_of::<crate::pbr::LitVertex>()
             < 96 * 1024 * 1024
     );
+    // The moss-green terrain is lit geometry on the physical path.
     assert!(
         runtime
             .world
             .mesh
-            .faces
+            .lit
             .iter()
             .any(|v| v.color[1] > v.color[0])
     );
+    let frame = runtime.zone_dynamic_mesh();
+    let key = frame.neon.and_then(|neon| neon.key).expect("a lit stage");
+    assert_eq!(key.shadow_distance, Some(80.0));
+    assert!(!key.cache_far_shadows);
+    assert!(!frame.lit.is_empty(), "the ruins and characters are lit");
     runtime.zone_intent(Intent::Fireball).unwrap();
     runtime.tick(
         &InputState {

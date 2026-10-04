@@ -289,6 +289,12 @@ impl Everglade {
             ev100: 10.0,
             shadow_center: Vec3::new(0.0, 0.0, -4.0),
             shadow_half: 40.0,
+            // Past the tree ring: a tree 120 m off still casts, and the
+            // last cascade fades out before the fog closes at 170 m.
+            shadow_distance: Some(150.0),
+            // The glade and the workshop are the world mesh; the seats and
+            // the player stay near the camera.
+            cache_far_shadows: true,
         }
     }
 

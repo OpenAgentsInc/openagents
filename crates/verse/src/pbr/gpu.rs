@@ -1,6 +1,6 @@
 //! GPU resources and frame encoding for the physical path.
 //!
-//! One frame runs these passes: a sun shadow map; a floating-point scene pass
+//! One frame runs these passes: the sun's shadow maps; a floating-point scene pass
 //! that draws the sky at infinity, catalogue stars, the Sun, Earth, and Moon in
 //! distance order, lit surfaces, opaque and masked textured meshes, legacy
 //! geometry, blended textured meshes, guide lines, and glows; a
@@ -13,7 +13,14 @@
 //! [`Capability`] also fixes the quality tier
 //! ([`verse_engine::quality::Tier`]) from the adapter and the platform; the
 //! tier selects the sun shadow filter and material detail through pipeline
-//! constants.
+//! constants, and the number of sun shadow cascades.
+//!
+//! The sun's shadow is a 2D depth array, one layer per cascade, which WebGL2
+//! supports. A stage key with a shadow distance gets cascades that follow the
+//! camera ([`verse_engine::lighting::fit_cascades`]); every other shadow is
+//! one map over a fixed region. Cascades after the first hold static casters
+//! only and are redrawn only when their snapped matrix or the static scene
+//! changes.
 
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3};
@@ -23,7 +30,9 @@ use super::environment::{SkyInputs, SkyLightGpu};
 use super::output::{self, Look, Output, OutputTargets};
 use super::textured::{self, Pass, TexturedMaterial, TexturedScene, TexturedVertex};
 use super::{GlowVertex, LitVertex, Neon, ProbeGrid, Sky, sky};
-use verse_engine::lighting::Grade;
+use verse_engine::lighting::{
+    CascadeSettings, Cascades, Frustum, Grade, MAX_CASCADES, fit_box, fit_cascades,
+};
 use verse_engine::quality::{Platform, Probe, Quality, ShadowFilter, Tier};
 
 const DEPTH: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
@@ -70,7 +79,51 @@ struct Frame {
     /// Height fog ([`super::HeightFog::uniform`]); `fog_lobe` w 1 when present.
     fog_shape: [f32; 4],
     fog_lobe: [f32; 4],
+    /// The sun's shadow cascades, near to far: world to map clip space.
+    cascades: [[[f32; 4]; 4]; MAX_CASCADES],
+    /// Per cascade: texel edge, depth range along the light, and the view
+    /// depth where it hands over to the next, m.
+    cascade_texel: [f32; 4],
+    cascade_depth: [f32; 4],
+    cascade_end: [f32; 4],
+    /// Count, blend band, fade start, and shadow distance.
+    cascade_params: [f32; 4],
+    /// The camera's view axis, along which view depth is measured.
+    view_forward: [f32; 4],
 }
+
+impl Frame {
+    /// Writes the sun's shadow maps into the uniform. The `light` matrix
+    /// stays the first cascade's; each shadow pass gets its own copy.
+    fn set_cascades(&mut self, cascades: &Cascades) {
+        let mut texel = [0.0; 4];
+        let mut depth = [0.0; 4];
+        let mut end = [0.0; 4];
+        for (i, cascade) in cascades.cascades.iter().take(MAX_CASCADES).enumerate() {
+            self.cascades[i] = cascade.matrix.to_cols_array_2d();
+            texel[i] = cascade.texel;
+            depth[i] = cascade.depth_range;
+            end[i] = cascade.end;
+        }
+        if let Some(first) = cascades.cascades.first() {
+            self.light = first.matrix.to_cols_array_2d();
+        }
+        self.cascade_texel = texel;
+        self.cascade_depth = depth;
+        self.cascade_end = end;
+        self.cascade_params = [
+            cascades.cascades.len().min(MAX_CASCADES) as f32,
+            cascades.blend,
+            cascades.fade_start,
+            cascades.distance,
+        ];
+        self.view_forward = cascades.forward.extend(0.0).to_array();
+    }
+}
+
+/// What a cached cascade's map was drawn from: its matrix and the static
+/// geometry's identity.
+type CascadeKey = ([f32; 16], u64);
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
@@ -286,9 +339,19 @@ pub(crate) struct Photo {
     guide_layout: wgpu::BindGroupLayout,
     scene_layout: wgpu::BindGroupLayout,
     scene_group: wgpu::BindGroup,
-    /// The frame uniform alone, for the shadow pass that writes the map.
+    /// One copy of the frame uniform per cascade, at a dynamic offset, for
+    /// the shadow passes that write the maps: each copy's `light` is its
+    /// cascade's matrix.
     frame_group: wgpu::BindGroup,
+    shadow_frames: wgpu::Buffer,
+    /// Bytes between the copies in `shadow_frames`.
+    shadow_stride: u64,
+    /// Every cascade's layer, for sampling.
     shadow: wgpu::TextureView,
+    /// One layer each, for the passes that draw them.
+    shadow_layers: Vec<wgpu::TextureView>,
+    /// What each cached layer holds; `None` when it holds no cached map.
+    shadow_keys: Vec<Option<CascadeKey>>,
     shadow_compare: wgpu::Sampler,
     linear_clamp: wgpu::Sampler,
     linear_repeat: wgpu::Sampler,
@@ -414,7 +477,11 @@ impl Photo {
                     },
                     count: None,
                 },
-                texture_entry(1, d2, wgpu::TextureSampleType::Depth),
+                texture_entry(
+                    1,
+                    wgpu::TextureViewDimension::D2Array,
+                    wgpu::TextureSampleType::Depth,
+                ),
                 wgpu::BindGroupLayoutEntry {
                     binding: 2,
                     visibility: wgpu::ShaderStages::FRAGMENT,
@@ -450,23 +517,40 @@ impl Photo {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        let shadow = device
-            .create_texture(&wgpu::TextureDescriptor {
-                label: Some("verse sun shadow"),
-                size: wgpu::Extent3d {
-                    width: SHADOW_SIZE,
-                    height: SHADOW_SIZE,
-                    depth_or_array_layers: 1,
-                },
-                mip_level_count: 1,
-                sample_count: 1,
-                dimension: wgpu::TextureDimension::D2,
-                format: DEPTH,
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                    | wgpu::TextureUsages::TEXTURE_BINDING,
-                view_formats: &[],
+        // At least two layers: the GL backend treats a one-layer texture as
+        // a plain 2D texture, which cannot be viewed as an array.
+        let layers = (capability.quality.cascades as usize).clamp(2, MAX_CASCADES) as u32;
+        let shadow_texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("verse sun shadow cascades"),
+            size: wgpu::Extent3d {
+                width: SHADOW_SIZE,
+                height: SHADOW_SIZE,
+                depth_or_array_layers: layers,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: DEPTH,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+        let shadow = shadow_texture.create_view(&wgpu::TextureViewDescriptor {
+            label: Some("verse sun shadow cascades"),
+            dimension: Some(wgpu::TextureViewDimension::D2Array),
+            array_layer_count: Some(layers),
+            ..Default::default()
+        });
+        let shadow_layers: Vec<wgpu::TextureView> = (0..layers)
+            .map(|layer| {
+                shadow_texture.create_view(&wgpu::TextureViewDescriptor {
+                    label: Some("verse sun shadow cascade"),
+                    dimension: Some(wgpu::TextureViewDimension::D2),
+                    base_array_layer: layer,
+                    array_layer_count: Some(1),
+                    ..Default::default()
+                })
             })
-            .create_view(&wgpu::TextureViewDescriptor::default());
+            .collect();
         let shadow_compare = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("verse shadow compare"),
             mag_filter: wgpu::FilterMode::Linear,
@@ -506,25 +590,38 @@ impl Photo {
             &sky_light.view,
         );
 
+        let frame_size = std::mem::size_of::<Frame>() as u64;
+        let alignment = u64::from(device.limits().min_uniform_buffer_offset_alignment).max(1);
+        let shadow_stride = frame_size.div_ceil(alignment) * alignment;
+        let shadow_frames = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("verse shadow frames"),
+            size: shadow_stride * MAX_CASCADES as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
         let frame_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("verse photo frame"),
+            label: Some("verse photo shadow frame"),
             entries: &[wgpu::BindGroupLayoutEntry {
                 binding: 0,
                 visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
                 ty: wgpu::BindingType::Buffer {
                     ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
+                    has_dynamic_offset: true,
+                    min_binding_size: std::num::NonZeroU64::new(frame_size),
                 },
                 count: None,
             }],
         });
         let frame_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("verse photo frame"),
+            label: Some("verse photo shadow frame"),
             layout: &frame_layout,
             entries: &[wgpu::BindGroupEntry {
                 binding: 0,
-                resource: frame.as_entire_binding(),
+                resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                    buffer: &shadow_frames,
+                    offset: 0,
+                    size: std::num::NonZeroU64::new(frame_size),
+                }),
             }],
         });
         let shadow_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -943,7 +1040,11 @@ impl Photo {
             scene_layout,
             scene_group,
             frame_group,
+            shadow_frames,
+            shadow_stride,
             shadow,
+            shadow_keys: vec![None; shadow_layers.len()],
+            shadow_layers,
             shadow_compare,
             linear_clamp,
             linear_repeat,
@@ -1344,7 +1445,7 @@ impl Photo {
         let camera = &sky.camera;
         let exposure = camera.exposure();
         let sun = sky.sun_dir.normalize();
-        let (light, texel, reach) = shadow_fit(sun, sky.shadow_center, sky.shadow_half);
+        let shadow = fit_box(sun, sky.shadow_center, sky.shadow_half, SHADOW_SIZE);
         // The projection's vertical scale is 1 / tan(fov / 2); read it from the
         // combined matrix, whose rotation part is orthonormal.
         let m = view.view_proj;
@@ -1369,17 +1470,17 @@ impl Photo {
         let [mx, my, mz] = axes(sky.moon.axes, sky.moon.distance as f32);
         let [cx, cy, cz] = axes(sky.celestial, 0.0);
         let solid = std::f32::consts::PI * sky.sun_angular_radius.tan().powi(2);
-        let frame = Frame {
+        let mut frame = Frame {
             view_proj: reversed.to_cols_array_2d(),
             inv_view_proj: reversed.inverse().to_cols_array_2d(),
-            light: light.to_cols_array_2d(),
+            light: Mat4::IDENTITY.to_cols_array_2d(),
             eye: view.eye.extend(exposure).to_array(),
             sun: sun.extend(sky.sun_illuminance).to_array(),
             sun_disc: [
                 sky.sun_angular_radius,
                 sky.sun_illuminance / solid,
                 sky.sun_visible,
-                texel,
+                0.0,
             ],
             earth: sky.earth.dir.extend(sky.earth.angular_radius).to_array(),
             earth_x: ex,
@@ -1392,7 +1493,7 @@ impl Photo {
             celestial_x: cx,
             celestial_y: cy,
             celestial_z: cz,
-            earth_light: [earth_light[0], earth_light[1], earth_light[2], reach * 2.0],
+            earth_light: [earth_light[0], earth_light[1], earth_light[2], 0.0],
             viewport: [
                 width as f32,
                 height as f32,
@@ -1416,14 +1517,12 @@ impl Photo {
             sky_zenith: [0.0; 4],
             sky_horizon: [0.0; 4],
             sky_sun: [0.0; 4],
-            sky_light: [0.0; 4],
-            sky_sh: [[0.0; 4]; 9],
-            fog_shape: [0.0; 4],
-            fog_lobe: [0.0; 4],
+            ..Frame::zeroed()
         };
+        frame.set_cascades(&shadow);
         queue.write_buffer(&self.frame, 0, bytemuck::bytes_of(&frame));
 
-        self.encode_shadow(encoder, world.lit, [world.textured, world.figure]);
+        self.encode_shadow(queue, encoder, &frame, &shadow, &world);
         let order = Self::textured_order(world.textured, view);
         let figure_order = Self::figure_order(world.figure, view);
 
@@ -1545,35 +1644,93 @@ impl Photo {
         );
     }
 
-    /// The sun or key light's shadow map, from every lit triangle and every
-    /// opaque or masked textured cell.
+    /// The shadow of a stage's key light: cascades that follow the camera
+    /// when the key sets a shadow distance and the camera is a perspective
+    /// one, else one map over the key's fixed region.
+    fn key_shadow(&self, key: &super::Key, view: crate::render::View) -> Cascades {
+        let toward = key.dir.normalize_or(Vec3::Y);
+        let fixed = || fit_box(toward, key.shadow_center, key.shadow_half, SHADOW_SIZE);
+        let Some(distance) = key.shadow_distance else {
+            return fixed();
+        };
+        let count = (self.capability.quality.cascades as usize).min(self.shadow_layers.len());
+        let mut settings = CascadeSettings::new(count as u32, distance);
+        settings.resolution = SHADOW_SIZE;
+        if !key.cache_far_shadows {
+            settings.cache_cell = 0;
+        }
+        Frustum::from_view_proj(view.view_proj, view.eye)
+            .and_then(|frustum| fit_cascades(&frustum, toward, &settings).ok())
+            .unwrap_or_else(fixed)
+    }
+
+    /// The sun or key light's shadow maps, one layer per cascade. A cascade
+    /// draws every lit triangle and every opaque or masked textured cell. A
+    /// cached cascade draws the static ones only, the world's lit triangles
+    /// and textured scene, and only when its matrix or the static scene has
+    /// changed since it was drawn; otherwise its layer keeps last frame's
+    /// depth.
     fn encode_shadow(
-        &self,
+        &mut self,
+        queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
-        world_lit: (&wgpu::Buffer, u32),
+        frame: &Frame,
+        cascades: &Cascades,
+        world: &Batches<'_>,
+    ) {
+        let identity = static_identity(world);
+        let count = cascades.cascades.len().min(self.shadow_layers.len());
+        for (layer, cascade) in cascades.cascades.iter().take(count).enumerate() {
+            let key = (cascade.matrix.to_cols_array(), identity);
+            if cascade.cached {
+                if self.shadow_keys[layer] == Some(key) {
+                    continue;
+                }
+                self.shadow_keys[layer] = Some(key);
+            } else {
+                self.shadow_keys[layer] = None;
+            }
+            let mut copy = *frame;
+            copy.light = cascade.matrix.to_cols_array_2d();
+            let offset = self.shadow_stride * layer as u64;
+            queue.write_buffer(&self.shadow_frames, offset, bytemuck::bytes_of(&copy));
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("verse sun shadow"),
+                color_attachments: &[],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &self.shadow_layers[layer],
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            pass.set_bind_group(0, &self.frame_group, &[offset as u32]);
+            let dynamic = (&self.dynamic_lit.buffer, self.dynamic_lit.count);
+            let lit = if cascade.cached {
+                [world.lit, (dynamic.0, 0)]
+            } else {
+                [world.lit, dynamic]
+            };
+            let figure = world.figure.filter(|_| !cascade.cached);
+            self.draw_casters(&mut pass, lit, [world.textured, figure]);
+        }
+    }
+
+    /// Draws casters into a bound shadow pass: lit triangles, then the
+    /// opaque and the masked cells of textured meshes.
+    fn draw_casters(
+        &self,
+        pass: &mut wgpu::RenderPass<'_>,
+        lit: [(&wgpu::Buffer, u32); 2],
         textured: [Option<&TexturedGpu>; 2],
     ) {
-        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("verse sun shadow"),
-            color_attachments: &[],
-            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                view: &self.shadow,
-                depth_ops: Some(wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(1.0),
-                    store: wgpu::StoreOp::Store,
-                }),
-                stencil_ops: None,
-            }),
-            timestamp_writes: None,
-            occlusion_query_set: None,
-            multiview_mask: None,
-        });
-        pass.set_bind_group(0, &self.frame_group, &[]);
         pass.set_pipeline(&self.pipelines.shadow);
-        for (buffer, count) in [
-            world_lit,
-            (&self.dynamic_lit.buffer, self.dynamic_lit.count),
-        ] {
+        for (buffer, count) in lit {
             if count > 0 {
                 pass.set_vertex_buffer(0, buffer.slice(..));
                 pass.draw(0..count, 0..1);
@@ -1655,10 +1812,7 @@ impl Photo {
             sky_zenith: [0.0; 4],
             sky_horizon: [0.0; 4],
             sky_sun: [0.0; 4],
-            sky_light: [0.0; 4],
-            sky_sh: [[0.0; 4]; 9],
-            fog_shape: [0.0; 4],
-            fog_lobe: [0.0; 4],
+            ..Frame::zeroed()
         };
         let mut uniform = frame(reversed, neon.line_width, 1.0);
         let daylight = neon.daylight.filter(super::Daylight::valid);
@@ -1677,27 +1831,28 @@ impl Photo {
                 || world.textured.is_some()
                 || world.figure.is_some()
         });
+        let mut shadow = None;
         if let Some(key) = &lit {
             // Pre-exposed lux: the stage's lines stay at unit exposure.
             let exposure = super::exposure(key.ev100);
             let probes = key.probes();
             self.update_probes(device, queue, Some(&probes));
-            let (light, texel, reach) =
-                shadow_fit(key.dir.normalize(), key.shadow_center, key.shadow_half);
+            let cascades = self.key_shadow(key, view);
+            uniform.set_cascades(&cascades);
+            shadow = Some(cascades);
             let rim = key.rim_illuminance * exposure;
-            uniform.light = light.to_cols_array_2d();
             uniform.sun = key
                 .dir
                 .normalize()
                 .extend(key.illuminance * exposure)
                 .to_array();
-            uniform.sun_disc = [key.angular_radius, 0.0, 0.0, texel];
+            uniform.sun_disc = [key.angular_radius, 0.0, 0.0, 0.0];
             uniform.earth = key
                 .rim_dir
                 .normalize()
                 .extend(key.rim_angular_radius)
                 .to_array();
-            uniform.earth_light = [rim, rim, rim, reach * 2.0];
+            uniform.earth_light = [rim, rim, rim, 0.0];
             uniform.probe_origin = probes.origin.extend(probes.cell).to_array();
             uniform.probe_dims = [
                 probes.dims[0] as f32,
@@ -1727,8 +1882,8 @@ impl Photo {
             [uniform.fog_shape, uniform.fog_lobe] = fog.uniform();
         }
         queue.write_buffer(&self.frame, 0, bytemuck::bytes_of(&uniform));
-        if lit.is_some() {
-            self.encode_shadow(encoder, world.lit, [world.textured, world.figure]);
+        if let Some(shadow) = &shadow {
+            self.encode_shadow(queue, encoder, &uniform, shadow, &world);
         }
         let figure_order = if lit.is_some() {
             Self::figure_order(world.figure, view)
@@ -1868,35 +2023,20 @@ pub(crate) enum Stage<'a> {
     Neon(&'a Neon),
 }
 
-/// An orthographic shadow map along `toward` (unit, toward the light) fitted
-/// to a cube of half extent `half` about `center`, snapped to whole texels so
-/// edges do not shimmer as the camera moves. Returns the light matrix, the
-/// texel size, and the depth reach, in meters.
-fn shadow_fit(toward: Vec3, center: Vec3, half: f32) -> (Mat4, f32, f32) {
-    let half = half.max(1.0);
-    let reach = half * 2.0;
-    let up = if toward.y.abs() > 0.9 {
-        Vec3::X
-    } else {
-        Vec3::Y
-    };
-    let look = Mat4::look_to_rh(Vec3::ZERO, -toward, up);
-    let texel = 2.0 * half / SHADOW_SIZE as f32;
-    let center = look.transform_point3(center);
-    let snapped = Vec3::new(
-        (center.x / texel).round() * texel,
-        (center.y / texel).round() * texel,
-        center.z,
-    );
-    let proj = Mat4::orthographic_rh(
-        snapped.x - half,
-        snapped.x + half,
-        snapped.y - half,
-        snapped.y + half,
-        -snapped.z - reach,
-        -snapped.z + reach,
-    );
-    (proj * look, texel, reach)
+/// Identifies the static casters a cached shadow cascade holds: the world's
+/// lit triangles and its textured scene. A new upload is a new buffer, so a
+/// changed scene changes the identity.
+fn static_identity(world: &Batches<'_>) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    world.lit.0.hash(&mut hasher);
+    world.lit.1.hash(&mut hasher);
+    if let Some(gpu) = world.textured {
+        gpu.vertices.hash(&mut hasher);
+        gpu.indices.hash(&mut hasher);
+        gpu.batches.len().hash(&mut hasher);
+    }
+    hasher.finish()
 }
 
 /// Reversed depth (Reed 2015): map depth d to 1 − d so a float buffer keeps
@@ -2318,6 +2458,44 @@ mod tests {
                 capability(tier).tier_constants(),
                 [("PCSS", 1.0), ("DETAIL", 1.0)]
             );
+        }
+    }
+
+    /// The Rust frame uniform has the WGSL `Frame`'s size, so the cascade
+    /// fields land where the shader reads them, and each shadow pass's copy
+    /// sits at an offset the device accepts.
+    #[test]
+    fn the_frame_uniform_matches_the_shader() {
+        for gles in [false, true] {
+            let source = crate::gles::wgsl(include_str!("photo.wgsl"), gles);
+            let module = naga::front::wgsl::parse_str(&source).unwrap();
+            let mut layouter = naga::proc::Layouter::default();
+            layouter.update(module.to_ctx()).unwrap();
+            let (frame, _) = module
+                .types
+                .iter()
+                .find(|(_, ty)| ty.name.as_deref() == Some("Frame"))
+                .expect("photo.wgsl declares Frame");
+            assert_eq!(layouter[frame].size as usize, std::mem::size_of::<Frame>());
+        }
+        assert_eq!(std::mem::size_of::<Frame>() % 16, 0);
+    }
+
+    /// The fixed region's single map keeps the old fit: a cube's width of
+    /// reach on both sides and a texel of the cube over the map.
+    #[test]
+    fn a_fixed_key_shadow_is_one_map_and_a_cascaded_one_follows_the_tier() {
+        let cascades = fit_box(Vec3::Y, Vec3::ZERO, 40.0, SHADOW_SIZE);
+        let mut frame = Frame::zeroed();
+        frame.set_cascades(&cascades);
+        assert_eq!(frame.cascade_params[0], 1.0);
+        assert_eq!(frame.cascade_texel[0], 80.0 / SHADOW_SIZE as f32);
+        assert_eq!(frame.cascade_depth[0], 160.0);
+        assert_eq!(frame.light, frame.cascades[0]);
+        assert_eq!(frame.view_forward, [0.0; 4]);
+        for tier in Tier::ALL {
+            let count = tier.quality().cascades as usize;
+            assert!((2..=MAX_CASCADES).contains(&count), "{tier:?}");
         }
     }
 
