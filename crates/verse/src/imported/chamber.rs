@@ -234,11 +234,72 @@ pub fn lighting(origin: Vec3) -> super::lighting::Lighting {
     }
     lights
 }
+/// The spell playground hall's even, warm light.
+pub fn playground_lighting() -> super::lighting::Lighting {
+    let mut lights = super::lighting::Lighting::default();
+    let Ok(hall) = verse_world::playground::hall() else {
+        return lights;
+    };
+    lights.ambient = hall.ambient;
+    lights.exposure = 1.2;
+    lights.fog = Vec3::new(0.004, 0.004, 0.005);
+    lights.density = 0.004;
+    for light in &hall.lights {
+        lights.lights.push(super::lighting::Light {
+            position: light.position,
+            color: light.color,
+            intensity: light.intensity,
+            range: light.range,
+        });
+    }
+    lights
+}
+/// The playground hall as a static instance, in place of the chamber.
+pub fn playground_static_instances() -> Vec<Instance> {
+    vec![Instance {
+        actor: None,
+        model: "playground-hall".into(),
+        transform: basis(),
+        animation: 0.into(),
+        time: 0.0,
+        emission: Vec3::ONE,
+    }]
+}
+/// Dynamic props at their interpolated poses, scaled to their collision boxes.
+pub fn prop_instances(pack: &Pack, game: &super::play::Game, alpha: f32) -> Vec<Instance> {
+    let spells = &game.spells;
+    (0..spells.props.len())
+        .filter(|i| !spells.props[*i].removed)
+        .filter_map(|i| {
+            let prop = &spells.props[i];
+            let model = prop.spec.kind.model(prop.spec.secured);
+            pack.models.contains_key(model).then(|| {
+                let (center, rotation) = spells.prop_pose(i, alpha as f64);
+                Instance {
+                    actor: None,
+                    model: model.into(),
+                    transform: Mat4::from_translation(center.as_vec3())
+                        * Mat4::from_quat(rotation.as_quat())
+                        * Mat4::from_scale(prop.spec.dimensions.as_vec3() / 0.9144)
+                        * basis(),
+                    animation: 0.into(),
+                    time: game.time,
+                    emission: Vec3::ONE,
+                }
+            })
+        })
+        .collect()
+}
 /// Bind transient illumination to the same combat events that draw the effects.
 pub fn combat_lighting(game: &super::play::Game) -> super::lighting::Lighting {
     use super::lighting::{Light, MAX_LIGHTS};
     use verse_world::utilities::Utility;
-    let mut lighting = lighting(position_from_wow(game.scene.origin_wow));
+    let mut lighting =
+        if game.scene.collision_profile.as_deref() == Some(verse_world::playground::PROFILE) {
+            playground_lighting()
+        } else {
+            lighting(position_from_wow(game.scene.origin_wow))
+        };
     lighting.time = game.time;
     let mut effects = Vec::new();
     if let Some(position) = game.controls.light {

@@ -63,12 +63,41 @@ impl Settings {
     }
 }
 
+/// Deceleration of external motion while a character stands on the ground,
+/// m/s². A shove of speed `v` slides `v² / (2 a)` on flat ground.
+pub const FRICTION_DECELERATION: f64 = 16.0;
+/// Default terminal descent speed, m/s.
+pub const TERMINAL_SPEED: f64 = 55.;
+
+/// A per-character change to gravity: `scale` multiplies the movement
+/// setting's gravity (a negative scale pulls upward) and `terminal` bounds the
+/// speed it can reach.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct GravityOverride {
+    pub scale: f64,
+    pub terminal: f64,
+}
+
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub struct Character {
     pub feet: DVec3,
     pub vertical_speed: f64,
     pub support: Option<ColliderKey>,
     support_pose: Option<Pose>,
+    /// Horizontal velocity from outside the character's own walking, m/s:
+    /// a shove, a gust, or a collision. It decays on the ground through
+    /// [`FRICTION_DECELERATION`], carries on unchanged while airborne, and
+    /// is removed against whatever stops the sweep.
+    #[serde(default)]
+    pub external: DVec3,
+    #[serde(default)]
+    pub gravity: Option<GravityOverride>,
+    /// Highest feet height of the current airborne arc, m.
+    #[serde(default)]
+    pub peak: Option<f64>,
+    /// Height fallen, from the arc's peak, when the last step landed, m.
+    #[serde(default)]
+    pub landed: Option<f64>,
 }
 impl Character {
     pub fn new(feet: DVec3) -> Self {
@@ -77,9 +106,58 @@ impl Character {
             vertical_speed: 0.,
             support: None,
             support_pose: None,
+            external: DVec3::ZERO,
+            gravity: None,
+            peak: None,
+            landed: None,
+        }
+    }
+    /// Initial speed that slides exactly `distance` on flat ground.
+    pub fn push_speed(distance: f64) -> f64 {
+        (2. * FRICTION_DECELERATION * distance.max(0.)).sqrt()
+    }
+    /// Adds a velocity change: horizontal to the external motion, vertical to
+    /// the vertical speed. An upward change lifts the character off its support.
+    pub fn add_velocity(&mut self, change: DVec3) {
+        self.external += DVec3::new(change.x, 0., change.z);
+        self.external = self.external.clamp_length_max(100.);
+        if change.y != 0. {
+            self.vertical_speed = (self.vertical_speed + change.y).clamp(-55., 100.);
+            if self.vertical_speed > 0. {
+                self.support = None;
+                self.support_pose = None;
+            }
+        }
+    }
+    /// Off the ground: jumping, falling, or knocked into the air.
+    pub fn airborne(&self) -> bool {
+        self.support.is_none()
+    }
+    /// Moving under external motion, on the ground or in the air.
+    pub fn knocked(&self) -> bool {
+        self.external.length_squared() > 1e-6
+    }
+    fn gravity_terms(&self, settings: Settings) -> (f64, f64) {
+        match self.gravity {
+            Some(g) => (settings.gravity * g.scale, g.terminal),
+            None => (settings.gravity, TERMINAL_SPEED),
         }
     }
     pub fn validate(self) -> Result<(), String> {
+        if !self.external.is_finite()
+            || self.external.y != 0.
+            || self.external.length() > 100.
+            || self.gravity.is_some_and(|g| {
+                !g.scale.is_finite()
+                    || !g.terminal.is_finite()
+                    || g.scale.abs() > 10.
+                    || !(0. ..=55.).contains(&g.terminal)
+            })
+            || self.peak.is_some_and(|p| !p.is_finite())
+            || self.landed.is_some_and(|p| !p.is_finite() || p < 0.)
+        {
+            return Err("Invalid character external motion".into());
+        }
         if !self.feet.is_finite()
             || self.feet.abs().max_element() > 1_000_000.
             || !self.vertical_speed.is_finite()
@@ -128,6 +206,8 @@ impl Character {
         }
         // Commit only after all queries succeed.
         let mut next = *self;
+        let start_height = next.feet.y;
+        let (gravity, terminal) = next.gravity_terms(settings);
         if let (Some(key), Some(old)) = (next.support, next.support_pose) {
             if let Some(pose) = scene.pose(key) {
                 let carried = pose.point(old.inverse_point(next.feet)) - next.feet;
@@ -138,7 +218,7 @@ impl Character {
         }
         next.feet = recover(scene, filter, settings, next.feet)?;
         let initial_ground = ground(scene, filter, settings, next.feet, settings.ground_snap)?;
-        next.support = if next.vertical_speed <= 0. {
+        next.support = if next.vertical_speed <= 0. && gravity > 0. {
             initial_ground.map(|h| h.collider)
         } else {
             None
@@ -150,11 +230,47 @@ impl Character {
             next.vertical_speed = 0.;
         }
         let start = next.feet;
-        let horizontal = horizontal_velocity * dt;
+        // External motion decays at the friction deceleration on the ground
+        // (integrated exactly, so a shove of `push_speed(d)` slides `d`) and
+        // carries unchanged in the air.
+        let speed = next.external.length();
+        let (shove, external) = if speed == 0. {
+            (DVec3::ZERO, DVec3::ZERO)
+        } else if next.support.is_some() {
+            let loss = FRICTION_DECELERATION * dt;
+            let direction = next.external / speed;
+            if speed > loss {
+                (
+                    direction * (speed - loss * 0.5) * dt,
+                    direction * (speed - loss),
+                )
+            } else {
+                (
+                    direction * speed * speed / (2. * FRICTION_DECELERATION),
+                    DVec3::ZERO,
+                )
+            }
+        } else {
+            (next.external * dt, next.external)
+        };
+        next.external = external;
+        let horizontal = horizontal_velocity * dt + shove;
         let walked = slide(scene, filter, settings, start, horizontal, true)?;
         let requested = horizontal.length_squared();
         let progress = (walked - start).dot(horizontal);
         next.feet = walked;
+        if shove != DVec3::ZERO && progress < requested * 0.99 {
+            // Whatever stopped the sweep takes the external motion along the
+            // blocked direction; the rest slides along the obstacle.
+            let moved = walked - start;
+            let moved = DVec3::new(moved.x, 0., moved.z);
+            next.external = if moved.length_squared() < 1e-12 {
+                DVec3::ZERO
+            } else {
+                let along = moved.normalize();
+                along * next.external.dot(along).max(0.)
+            };
+        }
         if next.support.is_some()
             && requested > 1e-12
             && progress < requested * 0.99
@@ -184,7 +300,11 @@ impl Character {
             }
         }
         if next.support.is_none() {
-            next.vertical_speed = (next.vertical_speed - settings.gravity * dt).max(-55.);
+            next.vertical_speed = if gravity >= 0. {
+                (next.vertical_speed - gravity * dt).max(-terminal)
+            } else {
+                (next.vertical_speed - gravity * dt).min(terminal)
+            };
         }
         let vertical = DVec3::Y * next.vertical_speed * dt;
         if let Some(hit) = first(scene, filter, settings.capsule(next.feet), vertical)? {
@@ -200,7 +320,7 @@ impl Character {
         } else {
             next.feet += vertical;
         }
-        if next.vertical_speed <= 0. {
+        if next.vertical_speed <= 0. && gravity > 0. {
             if let Some(hit) = ground(scene, filter, settings, next.feet, settings.ground_snap)? {
                 next.feet -= DVec3::Y * (hit.distance - SKIN).max(0.);
                 next.support = Some(hit.collider);
@@ -210,6 +330,12 @@ impl Character {
             }
         }
         next.support_pose = next.support.and_then(|key| scene.pose(key));
+        if next.support.is_none() {
+            next.peak = Some(next.peak.unwrap_or(start_height).max(next.feet.y));
+            next.landed = None;
+        } else {
+            next.landed = next.peak.take().map(|peak| (peak - next.feet.y).max(0.));
+        }
         *self = next;
         Ok(())
     }
@@ -229,10 +355,9 @@ impl Character {
         if overlaps.truncated || overlaps.hits.iter().any(|h| h.penetration > SKIN) {
             return Err("Character teleport endpoint is obstructed".into());
         }
-        self.feet = feet;
-        self.vertical_speed = 0.;
-        self.support = None;
-        self.support_pose = None;
+        let gravity = self.gravity;
+        *self = Self::new(feet);
+        self.gravity = gravity;
         Ok(())
     }
 }
@@ -487,6 +612,63 @@ mod tests {
         s.remove(key);
         advance(&mut c, &s, DVec3::ZERO, false, 1);
         assert!(c.support.is_none() && c.vertical_speed < 0.);
+    }
+    #[test]
+    fn a_calibrated_shove_slides_its_distance_and_a_wall_stops_it() {
+        let s = floor();
+        let mut c = Character::new(DVec3::ZERO);
+        advance(&mut c, &s, DVec3::ZERO, false, 1);
+        c.add_velocity(DVec3::X * Character::push_speed(3.048));
+        assert!(c.knocked() && !c.airborne());
+        advance(&mut c, &s, DVec3::ZERO, false, 240);
+        assert!((c.feet.x - 3.048).abs() < 1e-6, "{c:?}");
+        assert!(!c.knocked());
+        let mut s = floor();
+        box_in(&mut s, 1, DVec3::new(2., 0., -5.), DVec3::new(2.5, 4., 5.));
+        let mut c = Character::new(DVec3::ZERO);
+        advance(&mut c, &s, DVec3::ZERO, false, 1);
+        c.add_velocity(DVec3::X * Character::push_speed(3.048));
+        advance(&mut c, &s, DVec3::ZERO, false, 240);
+        assert!((c.feet.x - 1.65).abs() < 0.01, "{c:?}");
+        assert!(!c.knocked());
+    }
+    #[test]
+    fn airborne_motion_is_ballistic_and_landing_reports_the_fall() {
+        let mut s = floor();
+        box_in(&mut s, 1, DVec3::new(-3., 0., -3.), DVec3::new(1., 6., 3.));
+        let mut c = Character::new(DVec3::new(0., 6., 0.));
+        advance(&mut c, &s, DVec3::ZERO, false, 1);
+        assert!(c.support.is_some());
+        c.add_velocity(DVec3::new(6., 3., 0.));
+        advance(&mut c, &s, DVec3::ZERO, false, 10);
+        assert!(c.airborne() && (c.external.x - 6.).abs() < 1e-12);
+        let mut landed = None;
+        for _ in 0..240 {
+            advance(&mut c, &s, DVec3::ZERO, false, 1);
+            landed = landed.or(c.landed);
+        }
+        let rise = 3. * 3. / (2. * Settings::default().gravity);
+        assert!((landed.unwrap() - (6. + rise)).abs() < 0.05, "{landed:?}");
+        assert!(c.feet.y.abs() < 1e-3 && !c.knocked());
+    }
+    #[test]
+    fn gravity_override_scales_descent_and_bounds_its_speed() {
+        let s = floor();
+        let mut c = Character::new(DVec3::Y * 20.);
+        c.gravity = Some(GravityOverride {
+            scale: 0.5,
+            terminal: 2.,
+        });
+        advance(&mut c, &s, DVec3::ZERO, false, 120);
+        assert!((c.vertical_speed + 2.).abs() < 1e-12);
+        c.gravity = Some(GravityOverride {
+            scale: 0.,
+            terminal: 2.,
+        });
+        c.vertical_speed = 0.;
+        let height = c.feet.y;
+        advance(&mut c, &s, DVec3::ZERO, false, 120);
+        assert_eq!(c.feet.y, height);
     }
     #[test]
     fn filled_box_spawn_and_teleport() {

@@ -1,0 +1,380 @@
+{
+ "schema": "openagents.verse.spell-playground.v1",
+ "scene": {
+  "collision_profile": "spell-playground-v1",
+  "version": 1,
+  "duration": 120,
+  "origin_wow": [
+   0,
+   0,
+   0
+  ],
+  "cut_at": 0,
+  "actors": [
+   {
+    "id": 14,
+    "name": "Wizard",
+    "model": "adventurer",
+    "position": [
+     5.75,
+     0,
+     0
+    ],
+    "yaw": 3.141592653589793,
+    "scale": 1,
+    "health": 100,
+    "nameplate": false
+   }
+  ],
+  "cues": []
+ },
+ "solids": [
+  {
+   "name": "floor",
+   "center": [
+    0,
+    -3.3,
+    -5
+   ],
+   "half": [
+    24,
+    3.3,
+    19
+   ],
+   "color": [
+    0.33,
+    0.32,
+    0.3
+   ],
+   "emissive": false
+  },
+  {
+   "name": "far floor",
+   "center": [
+    0,
+    -3.3,
+    20.5
+   ],
+   "half": [
+    24,
+    3.3,
+    3.5
+   ],
+   "color": [
+    0.33,
+    0.32,
+    0.3
+   ],
+   "emissive": false
+  },
+  {
+   "name": "chasm bottom",
+   "center": [
+    0,
+    -6.3,
+    15.5
+   ],
+   "half": [
+    24,
+    0.3,
+    1.5
+   ],
+   "color": [
+    0.2,
+    0.19,
+    0.18
+   ],
+   "emissive": false
+  },
+  {
+   "name": "west wall",
+   "center": [
+    -24.5,
+    5,
+    0
+   ],
+   "half": [
+    0.5,
+    11,
+    25
+   ],
+   "color": [
+    0.27,
+    0.27,
+    0.29
+   ],
+   "emissive": false
+  },
+  {
+   "name": "east wall",
+   "center": [
+    24.5,
+    5,
+    0
+   ],
+   "half": [
+    0.5,
+    11,
+    25
+   ],
+   "color": [
+    0.27,
+    0.27,
+    0.29
+   ],
+   "emissive": false
+  },
+  {
+   "name": "south wall",
+   "center": [
+    0,
+    5,
+    -24.5
+   ],
+   "half": [
+    24,
+    11,
+    0.5
+   ],
+   "color": [
+    0.27,
+    0.27,
+    0.29
+   ],
+   "emissive": false
+  },
+  {
+   "name": "north wall",
+   "center": [
+    0,
+    5,
+    24.5
+   ],
+   "half": [
+    24,
+    11,
+    0.5
+   ],
+   "color": [
+    0.27,
+    0.27,
+    0.29
+   ],
+   "emissive": false
+  },
+  {
+   "name": "ledge",
+   "center": [
+    -20,
+    3,
+    -2
+   ],
+   "half": [
+    4,
+    3,
+    6
+   ],
+   "color": [
+    0.42,
+    0.4,
+    0.37
+   ],
+   "emissive": false
+  },
+  {
+   "name": "stone wall",
+   "center": [
+    10.3,
+    2,
+    -3.55
+   ],
+   "half": [
+    0.3,
+    2,
+    4.45
+   ],
+   "color": [
+    0.42,
+    0.4,
+    0.37
+   ],
+   "emissive": false
+  },
+  {
+   "name": "west pillar",
+   "center": [
+    -6,
+    5,
+    -12
+   ],
+   "half": [
+    0.7,
+    5,
+    0.7
+   ],
+   "color": [
+    0.42,
+    0.4,
+    0.37
+   ],
+   "emissive": false
+  },
+  {
+   "name": "east pillar",
+   "center": [
+    6,
+    5,
+    -12
+   ],
+   "half": [
+    0.7,
+    5,
+    0.7
+   ],
+   "color": [
+    0.42,
+    0.4,
+    0.37
+   ],
+   "emissive": false
+  }
+ ],
+ "spawns": {
+  "caster": [
+   5.75,
+   0,
+   0
+  ],
+  "wall_station": [
+   8.15,
+   0,
+   0
+  ],
+  "ledge_top": [
+   -20,
+   6,
+   -2
+  ],
+  "ledge_edge": [
+   -16.6,
+   6,
+   -2
+  ],
+  "chasm_edge": [
+   0,
+   0,
+   13.4
+  ],
+  "chasm_far": [
+   0,
+   0,
+   17.6
+  ],
+  "open": [
+   -6,
+   0,
+   4
+  ],
+  "pillars": [
+   0,
+   0,
+   -12
+  ],
+  "spare": [
+   20,
+   0,
+   -20
+  ]
+ },
+ "lights": [
+  {
+   "position": [
+    -14,
+    8.5,
+    -12
+   ],
+   "color": [
+    1.0,
+    0.86,
+    0.68
+   ],
+   "intensity": 260,
+   "range": 26
+  },
+  {
+   "position": [
+    -14,
+    8.5,
+    4
+   ],
+   "color": [
+    1.0,
+    0.86,
+    0.68
+   ],
+   "intensity": 260,
+   "range": 26
+  },
+  {
+   "position": [
+    0,
+    8.5,
+    -12
+   ],
+   "color": [
+    1.0,
+    0.86,
+    0.68
+   ],
+   "intensity": 260,
+   "range": 26
+  },
+  {
+   "position": [
+    0,
+    8.5,
+    4
+   ],
+   "color": [
+    1.0,
+    0.86,
+    0.68
+   ],
+   "intensity": 260,
+   "range": 26
+  },
+  {
+   "position": [
+    14,
+    8.5,
+    -12
+   ],
+   "color": [
+    1.0,
+    0.86,
+    0.68
+   ],
+   "intensity": 260,
+   "range": 26
+  },
+  {
+   "position": [
+    14,
+    8.5,
+    4
+   ],
+   "color": [
+    1.0,
+    0.86,
+    0.68
+   ],
+   "intensity": 260,
+   "range": 26
+  }
+ ],
+ "ambient": [
+  0.09,
+  0.085,
+  0.08
+ ]
+}

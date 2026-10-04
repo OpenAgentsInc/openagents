@@ -69,6 +69,26 @@ pub enum ProjectileKind {
     MagicMissile,
     Fireball,
 }
+/// How area spells treat a flight: Wind Wall, for example, deflects
+/// ordinary arrows and bolts but not siege boulders.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FlightTag {
+    /// An arrow, bolt, or other ordinary ammunition.
+    Ordinary,
+    /// A boulder or other siege ammunition.
+    Siege,
+    /// A projectile a spell creates.
+    Spell,
+}
+impl ProjectileKind {
+    pub fn tag(self) -> FlightTag {
+        match self {
+            Self::Bow => FlightTag::Ordinary,
+            Self::Firebolt | Self::MagicMissile | Self::Fireball => FlightTag::Spell,
+        }
+    }
+}
 impl From<Spell> for ProjectileKind {
     fn from(spell: Spell) -> Self {
         match spell {

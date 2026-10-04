@@ -106,6 +106,14 @@ impl Controls {
             position
         }
     }
+    /// Moves an actor's authored place by `delta`, as a shove does, and
+    /// frees it from any root.
+    pub fn displace(&mut self, id: u32, delta: Vec3) {
+        if delta.is_finite() {
+            *self.offsets.entry(id).or_default() += delta;
+        }
+        self.roots.remove(&id);
+    }
     pub fn held(&self, id: u32) -> bool {
         self.roots.contains_key(&id)
     }
@@ -229,27 +237,9 @@ impl Controls {
                 });
             }
             Utility::Thunderwave => {
-                for actor in simulation.snapshot().actors {
-                    let delta = Vec3::from(actor.pos) - player;
-                    let forward = delta.dot(direction);
-                    let side = delta.dot(Vec3::new(-direction.z, 0.0, direction.x));
-                    if actor.alive
-                        && actor.faction != "player"
-                        && (0.0..=4.572).contains(&forward)
-                        && side.abs() <= 2.286
-                        && visible(actor.pos.into())
-                    {
-                        simulation.bow_impact(actor.id, 9)?;
-                        let push = direction * 3.048;
-                        *self.offsets.entry(actor.id).or_default() += push;
-                        simulation.place_chamber_actor(
-                            actor.id,
-                            (Vec3::from(actor.pos) + push).to_array(),
-                            actor.yaw,
-                        )?;
-                        self.roots.remove(&actor.id);
-                    }
-                }
+                // Saves, damage, and pushes resolve in the spell physics
+                // layer (`crate::spells::thunderwave`); this records the cue.
+                let _ = &visible;
                 self.areas.push(Area {
                     kind: spell,
                     position: player + direction * 2.286,
@@ -327,32 +317,13 @@ mod tests {
         let mut c = Controls::default();
         c.cast(&mut s, Utility::Thunderwave, 0.0, Vec3::ZERO, Vec3::Z, None)
             .unwrap();
-        assert_eq!(
-            s.snapshot()
-                .actors
-                .iter()
-                .find(|a| a.id == ids[0])
-                .unwrap()
-                .hp,
-            91
-        );
         assert_eq!(s.snapshot().player.hp, 200);
-        assert!(
-            (s.snapshot()
-                .actors
-                .iter()
-                .find(|a| a.id == ids[0])
-                .unwrap()
-                .pos[2]
-                - 5.048)
-                .abs()
-                < 0.001
-        );
         assert_eq!(s.snapshot().player.mana, 17);
         assert!(
             c.cast(&mut s, Utility::Thunderwave, 1.0, Vec3::ZERO, Vec3::Z, None)
                 .is_err()
         );
+        c.displace(ids[0], Vec3::Z * 3.048);
         assert!(
             c.position(ids[0], Vec3::Z * 2.0, 2.0)
                 .distance(Vec3::Z * 5.048)

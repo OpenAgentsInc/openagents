@@ -233,6 +233,8 @@ pub mod combat;
 pub mod controls;
 pub mod events;
 pub mod play;
+pub mod playground;
 pub mod room;
 pub mod rules;
+pub mod spells;
 pub mod utilities;
