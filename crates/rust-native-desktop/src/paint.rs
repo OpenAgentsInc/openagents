@@ -177,6 +177,7 @@ fn bounds(op: &Op) -> Option<Rect> {
         | Op::Stroke { rect, .. }
         | Op::Glyph { rect, .. }
         | Op::Check { rect, .. }
+        | Op::Working { rect, .. }
         | Op::Surface { rect, .. } => *rect,
         Op::Text {
             paragraph,
@@ -297,6 +298,27 @@ fn paint_clipped(
                 frame.line(point(0.24, 0.52), point(0.42, 0.70), width, *color);
                 frame.line(point(0.42, 0.70), point(0.76, 0.32), width, *color);
             }
+            Op::Working { rect, color, cells } => {
+                let r = px(rect);
+                let side = rust_native::motion::WORKING_SIDE;
+                // Cells half a cell apart fill the side.
+                let cell = (r.w / (1.5 * side as f32 - 0.5)).max(1.0);
+                let pitch = cell * 1.5;
+                for (index, opacity) in cells.iter().enumerate() {
+                    let (row, column) = (index / side, index % side);
+                    let alpha = (u16::from(color.alpha) * u16::from(*opacity) / 255) as u8;
+                    frame.fill(
+                        crate::PxRect {
+                            x: r.x + column as f32 * pitch,
+                            y: r.y + row as f32 * pitch,
+                            w: cell,
+                            h: cell,
+                        },
+                        cell / 2.0,
+                        Color { alpha, ..*color },
+                    );
+                }
+            }
             Op::Surface { resource, rect, .. } => surfaces(resource, frame, px(rect)),
         }
     }
@@ -306,6 +328,60 @@ fn paint_clipped(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_working_frame_repaints_only_the_indicator() {
+        let mut retained = Retained::default();
+        let mut fonts = Fonts::new();
+        let rect = Rect {
+            x: 20.0,
+            y: 10.0,
+            w: 10.0,
+            h: 10.0,
+        };
+        let mut scene = Scene {
+            ops: vec![
+                Op::Fill {
+                    rect: Rect {
+                        x: 0.0,
+                        y: 40.0,
+                        w: 100.0,
+                        h: 40.0,
+                    },
+                    radius: 0.0,
+                    color: Color::rgb(40, 40, 40),
+                },
+                Op::Working {
+                    rect,
+                    color: Color::rgb(230, 230, 230),
+                    cells: [153; crate::layout::WORKING_CELLS],
+                },
+            ],
+            ..Scene::default()
+        };
+        let mut surfaces = |_: &str, _: &mut Frame, _: PxRect| {};
+        let size = (100, 100);
+        retained.update(&scene, size, 1.0, 0.0, None, &mut fonts, &mut surfaces);
+        let unchanged = retained.update(&scene, size, 1.0, 0.0, None, &mut fonts, &mut surfaces);
+        assert!(unchanged.is_empty(), "a resting indicator paints nothing");
+        let mut opacities = [0.1; crate::layout::WORKING_CELLS];
+        opacities[7] = 1.0;
+        assert!(scene.animate_working(opacities));
+        let regions = retained.update(&scene, size, 1.0, 0.0, None, &mut fonts, &mut surfaces);
+        assert_eq!(regions.len(), 1);
+        let damage = regions[0];
+        assert!(damage.w <= 14.0 && damage.h <= 14.0, "{damage:?}");
+        let frame = retained.frame().expect("a frame");
+        // The bright bottom-center cell is brighter than a dim corner.
+        let cell = 10.0 / 4.0;
+        let at = |column: f32, row: f32| {
+            frame.pixel(
+                (20.0 + column * cell * 1.5 + cell / 2.0) as usize,
+                (10.0 + row * cell * 1.5 + cell / 2.0) as usize,
+            )[0]
+        };
+        assert!(at(1.0, 2.0) > at(0.0, 0.0));
+    }
     #[test]
     fn a_skipped_submission_retries_pixels_even_when_the_scene_stays_unchanged() {
         let mut retained = Retained::default();

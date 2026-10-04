@@ -28,6 +28,7 @@
 use crate::text::{Fonts, Paragraph, font};
 use crate::theme::{Theme, space};
 use rust_native::layout::display::Weight;
+use rust_native::motion;
 use rust_native::style::{Color, Style, TextAlign, TextWeight, Viewport};
 use rust_native::{Axis, Element, Glyph, Node, TextRole, View};
 use std::collections::BTreeSet;
@@ -39,6 +40,12 @@ pub const CHECKBOX: f32 = 18.0;
 const CHECKBOX_GAP: f32 = 10.0;
 /// A filled button's padding, in points: sideways and up and down.
 const BUTTON_PAD: (f32, f32) = (18.0, 9.0);
+/// The side of the working indicator, in points.
+pub const WORKING: f32 = 10.0;
+/// The space between the working indicator and its label, in points.
+const WORKING_GAP: f32 = 8.0;
+/// Cells in the working indicator.
+pub const WORKING_CELLS: usize = motion::WORKING_SIDE * motion::WORKING_SIDE;
 
 /// A rectangle in points.
 #[derive(Clone, Copy, Debug, PartialEq, Default)]
@@ -101,6 +108,15 @@ pub enum Op {
         rect: Rect,
         color: Color,
     },
+    /// The working indicator ([`rust_native::motion::Working`]): a square
+    /// grid of cells in `color`, each at its opacity out of 255, row by row
+    /// from the top. The window sets the opacities each frame; layout leaves
+    /// every cell at rest.
+    Working {
+        rect: Rect,
+        color: Color,
+        cells: [u8; WORKING_CELLS],
+    },
     /// The application paints the surface `resource` here.
     Surface {
         resource: String,
@@ -153,7 +169,49 @@ pub struct ViewportRegion {
     pub offset: f32,
 }
 
+/// Each cell's opacity out of 255, for an [`Op::Working`].
+pub fn working_cells(opacities: [f32; WORKING_CELLS]) -> [u8; WORKING_CELLS] {
+    opacities.map(|opacity| (opacity.clamp(0.0, 1.0) * 255.0).round() as u8)
+}
+
 impl Scene {
+    /// Whether the scene draws a working indicator.
+    pub fn working(&self) -> bool {
+        self.ops.iter().any(|op| matches!(op, Op::Working { .. }))
+    }
+
+    /// Sets every working indicator's cells to `opacities`, and returns
+    /// whether any changed. Only a changed indicator's pixels repaint.
+    pub fn animate_working(&mut self, opacities: [f32; WORKING_CELLS]) -> bool {
+        let next = working_cells(opacities);
+        let mut changed = false;
+        for op in &mut self.ops {
+            if let Op::Working { cells, .. } = op
+                && *cells != next
+            {
+                *cells = next;
+                changed = true;
+            }
+        }
+        changed
+    }
+
+    /// When the scene's working indicators next need a frame: `None` when
+    /// it draws none, when the window is hidden, or under `reduced` motion,
+    /// so a still window schedules no frame work.
+    pub fn working_frame(
+        &self,
+        working: &motion::Working,
+        visible: bool,
+        reduced: bool,
+        now: std::time::Instant,
+    ) -> Option<std::time::Instant> {
+        if !visible || !self.working() {
+            return None;
+        }
+        working.next_frame(now, reduced)
+    }
+
     /// The visible rectangle of a registered surface, after nested clips.
     pub fn surface_rect(&self, resource: &str) -> Option<Rect> {
         let mut clips: Vec<Rect> = Vec::new();
@@ -1057,8 +1115,13 @@ impl Engine<'_> {
                 (paragraph.width, paragraph.height)
             }
             Element::Working { label } => {
-                let paragraph = self.paragraph(label, TextRole::Status, &node.style, Some(inner));
-                (paragraph.width, paragraph.height)
+                let label_width = (inner - WORKING - WORKING_GAP).max(1.0);
+                let paragraph =
+                    self.paragraph(label, TextRole::Status, &node.style, Some(label_width));
+                (
+                    WORKING + WORKING_GAP + paragraph.width,
+                    paragraph.height.max(WORKING),
+                )
             }
             Element::Button {
                 label,
@@ -1409,9 +1472,30 @@ impl Engine<'_> {
                 self.text(paragraph, ix, iy, inner, align, color);
             }
             Element::Working { label } => {
-                let paragraph = self.paragraph(label, TextRole::Status, &node.style, Some(inner));
+                let label_width = (inner - WORKING - WORKING_GAP).max(1.0);
+                let paragraph =
+                    self.paragraph(label, TextRole::Status, &node.style, Some(label_width));
                 let color = self.text_color(TextRole::Status, &node.style);
-                self.text(paragraph, ix, iy, inner, align, color);
+                let height = paragraph.height.max(WORKING);
+                self.scene.ops.push(Op::Working {
+                    rect: Rect {
+                        x: ix,
+                        y: iy + (height - WORKING) / 2.0,
+                        w: WORKING,
+                        h: WORKING,
+                    },
+                    color,
+                    cells: working_cells([motion::WORKING_REST; WORKING_CELLS]),
+                });
+                let label_y = iy + (height - paragraph.height) / 2.0;
+                self.text(
+                    paragraph,
+                    ix + WORKING + WORKING_GAP,
+                    label_y,
+                    label_width,
+                    align,
+                    color,
+                );
             }
             Element::Composer { placeholder, .. } => {
                 let resource = format!("composer:{}", node.key);
@@ -2223,6 +2307,48 @@ mod tests {
         assert_eq!(end.viewports[0].offset, full - 200.0);
         assert_eq!(end.bounds["row-19"].y + 30.0 + 8.0, rect.y + 200.0);
         assert_eq!(fades(&end), 18);
+    }
+
+    #[test]
+    fn a_working_indicator_animates_only_while_one_is_drawn() {
+        use rust_native::motion::{FRAME_INTERVAL, WORKING_REST, Working};
+        use std::time::{Duration, Instant};
+        let working = node(
+            "working",
+            Style::default(),
+            Element::Working {
+                label: "Coder is working".into(),
+            },
+        );
+        let mut scene = lay_out(working);
+        let (rect, cells) = scene
+            .ops
+            .iter()
+            .find_map(|op| match op {
+                Op::Working { rect, cells, .. } => Some((*rect, *cells)),
+                _ => None,
+            })
+            .expect("the indicator");
+        assert_eq!((rect.w, rect.h), (WORKING, WORKING));
+        // Layout leaves every cell at rest; the label follows the cells.
+        assert_eq!(cells, working_cells([WORKING_REST; WORKING_CELLS]));
+        assert_eq!(scene.texts(), vec!["Coder is working"]);
+
+        let epoch = Instant::now();
+        let clock = Working::new(epoch);
+        let later = epoch + Duration::from_millis(10);
+        assert_eq!(
+            scene.working_frame(&clock, true, false, later),
+            Some(epoch + FRAME_INTERVAL)
+        );
+        assert_eq!(scene.working_frame(&clock, false, false, later), None);
+        assert_eq!(scene.working_frame(&clock, true, true, later), None);
+        assert!(scene.animate_working(clock.cells(later, false)));
+        assert!(!scene.animate_working(clock.cells(later, false)));
+
+        let still = lay_out(text("a", "Done"));
+        assert!(!still.working());
+        assert_eq!(still.working_frame(&clock, true, false, later), None);
     }
 
     #[test]

@@ -14,6 +14,12 @@
 //! (`backdrop.rs`). Frames come as the backdrop asks for them, never while
 //! the window is hidden.
 //!
+//! A working indicator in the view animates on the shared
+//! [`rust_native::motion::Working`] clock, about 30 frames a second, and
+//! repaints only its own cells. Frames come only while one is drawn, the
+//! window shows, and motion is not reduced; otherwise the indicator rests
+//! and the loop sleeps.
+//!
 //! Input becomes a revision-bound [`Activation`] naming the view's instance,
 //! revision, and the button's key; the adapter resolves it against the
 //! current view with [`rust_native::ValidatedView::activate`] and hands the
@@ -238,6 +244,8 @@ fn run_shell<A: App>(
         captured_surface: None,
         captured_cursor: false,
         access: None,
+        working: rust_native::motion::Working::new(Instant::now()),
+        working_due: None,
         #[cfg(target_os = "linux")]
         drops: None,
         #[cfg(target_os = "linux")]
@@ -469,6 +477,10 @@ struct Shell<A: App> {
     captured_cursor: bool,
     /// The screen readers' view of the window ([`crate::access`]).
     access: Option<access::Access>,
+    /// The clock every working indicator in the window shares.
+    working: rust_native::motion::Working,
+    /// When the working indicators next repaint, while one animates.
+    working_due: Option<Instant>,
     /// Files dropped on the window through the Wayland seat
     /// ([`crate::wayland`]); winit has no drag and drop there.
     #[cfg(target_os = "linux")]
@@ -927,6 +939,29 @@ impl<A: App> Shell<A> {
         Some(self.hold.map_or(due, |hold| hold.max(due)))
     }
 
+    /// When the working indicators next want a frame. A deadline that has
+    /// passed repaints them now. `None` when no indicator animates.
+    fn working_due(&mut self, now: Instant) -> Option<Instant> {
+        if self.working_due.is_some_and(|due| due <= now) {
+            self.working_due = None;
+            if self.visible {
+                self.painted = false;
+                self.request_frame();
+            }
+        }
+        if self.working_due.is_none() {
+            self.working_due = self.scene.as_ref().and_then(|scene| {
+                scene.working_frame(
+                    &self.working,
+                    self.visible,
+                    crate::theme::motion::reduced(),
+                    now,
+                )
+            });
+        }
+        self.working_due
+    }
+
     /// Drops a backdrop that failed, leaving the plain window.
     fn drop_backdrop(&mut self, error: &str) {
         eprintln!("the backdrop stopped: {error}");
@@ -996,6 +1031,10 @@ impl<A: App> Shell<A> {
             let scroll = self.scroll;
             self.scene();
             let mut scene = self.scene.take().expect("a scene");
+            if scene.working() {
+                let reduced = crate::theme::motion::reduced();
+                scene.animate_working(self.working.cells(Instant::now(), reduced));
+            }
             for op in &mut scene.ops {
                 if let crate::layout::Op::Surface {
                     resource, version, ..
@@ -1380,10 +1419,11 @@ impl<A: App> ApplicationHandler<()> for Shell<A> {
         if frame.is_some_and(|frame| frame <= now) {
             self.request_frame();
         }
-        let wake = match (self.wake, frame.filter(|frame| *frame > now)) {
-            (Some(a), Some(b)) => Some(a.min(b)),
-            (a, b) => a.or(b),
-        };
+        let working = self.working_due(now);
+        let wake = rust_native::motion::earliest(
+            rust_native::motion::earliest(self.wake, frame.filter(|frame| *frame > now)),
+            working,
+        );
         event_loop.set_control_flow(match wake {
             Some(wake) => ControlFlow::WaitUntil(wake),
             None => ControlFlow::Wait,
