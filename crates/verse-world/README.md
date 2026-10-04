@@ -57,6 +57,10 @@ projectile and shield cues by caster life. The native camera/HUD still focuses t
 primary adventurer. `player_snapshot` and `player_admission` expose actor-specific
 state to a trusted host; they do not authenticate a network caller. Additional
 catalog spells outside the original ten still need shared-caster adapters.
+`Game::new_in` and `Game::combat_in` bind collision, navigation, and actor lives to
+the trusted host’s selected instance. Checkpoints and combat resets preserve it;
+the existing local constructors select instance zero. Instance identity fences
+commands and targets but does not authenticate a caller.
 Transactional saves, multiplayer
 replication, and authoring tools remain on the
 [engine roadmap](../../docs/verse/engine/roadmap.md).

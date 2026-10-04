@@ -44,7 +44,7 @@ pub struct Encounter {
 impl Game {
     /// Resets this local encounter while preserving command and event fences.
     pub fn restart_combat(&mut self, agent: bool) -> Result<(), String> {
-        let mut fresh = Self::combat(self.scene.clone(), agent)?;
+        let mut fresh = Self::combat_in(self.scene.clone(), agent, self.player_life().instance)?;
         fresh.adopt_restart_fences(self)?;
         fresh.rebuild_players_after_restart(self)?;
         fresh.time = fresh.scene.cut_at - if agent { 3. } else { 0. };
@@ -52,7 +52,12 @@ impl Game {
         Ok(())
     }
     /// Starts a resettable combat encounter; manual and agent modes share all rules.
-    pub fn combat(mut scene: Scene, agent: bool) -> Result<Self, String> {
+    pub fn combat(scene: Scene, agent: bool) -> Result<Self, String> {
+        Self::combat_in(scene, agent, 0)
+    }
+
+    /// Starts combat in the instance selected by its trusted host.
+    pub fn combat_in(mut scene: Scene, agent: bool, instance: u64) -> Result<Self, String> {
         scene.duration = 200.0;
         for actor in &mut scene.actors {
             if actor.nameplate {
@@ -71,7 +76,7 @@ impl Game {
                 animation: verse_engine::motion::State::Yell.into(),
             },
         });
-        let mut game = Self::new(scene)?;
+        let mut game = Self::new_in(scene, instance)?;
         let mut encounter = Encounter::default();
         for actor in &game.scene.actors {
             if actor.nameplate {

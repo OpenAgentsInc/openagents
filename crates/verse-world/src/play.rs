@@ -1071,7 +1071,12 @@ impl Game {
         self.simulation.cooldown_duration(spell)
     }
 
-    pub fn new(mut scene: Scene) -> Result<Self, String> {
+    pub fn new(scene: Scene) -> Result<Self, String> {
+        Self::new_in(scene, 0)
+    }
+
+    /// Creates a chamber in the instance selected by its trusted host.
+    pub fn new_in(mut scene: Scene, instance: u64) -> Result<Self, String> {
         scene
             .cues
             .retain(|c| !matches!(c.action, Action::Bow { .. }));
@@ -1108,7 +1113,7 @@ impl Game {
         let query_scene = if colliders.is_empty() {
             Default::default()
         } else {
-            crate::room::profile_query_scene(scene.collision_profile.as_deref(), 0)?
+            crate::room::profile_query_scene(scene.collision_profile.as_deref(), instance)?
         };
         let spells = crate::spells::SpellWorld::new(&colliders, SPELL_SEED);
         let next_player_actor = scene
@@ -1129,14 +1134,14 @@ impl Game {
             npc_characters: BTreeMap::new(),
             routes: BTreeMap::new(),
             navigation_goals: BTreeMap::new(),
-            blockers: physics::walkable::Blockers::new(0),
-            bodies: physics::lifetimes::Bodies::new(0),
+            blockers: physics::walkable::Blockers::new(instance),
+            bodies: physics::lifetimes::Bodies::new(instance),
             navigation_plans: 0,
             navigation_budget_refusals: 0,
             navigation: if scene.collision_profile.as_deref() != Some("original-chamber-v1") {
                 None
             } else {
-                Some(crate::room::navigation(0)?)
+                Some(crate::room::navigation(instance)?)
             },
             physics_clock: physics::FixedStep::new(1. / 120., 12),
             clock_origin: None,
@@ -1150,7 +1155,7 @@ impl Game {
             emitted_cues: Default::default(),
             admission: crate::Admission::new(
                 verse_engine::core::LifeId {
-                    instance: 0,
+                    instance,
                     actor: scene
                         .actors
                         .iter()
@@ -1181,7 +1186,7 @@ impl Game {
                     (
                         *id,
                         verse_engine::core::LifeId {
-                            instance: 0,
+                            instance,
                             actor: *id,
                             generation: 0,
                         },

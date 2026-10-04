@@ -807,6 +807,62 @@ impl Game {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn authored_instances_fence_commands_targets_and_survive_reset() {
+        let scene = Scene::from_json(include_bytes!(
+            "../../../../assets/verse/original/ritual.json"
+        ))
+        .unwrap();
+        let mut left = Game::combat_in(scene.clone(), false, 41).unwrap();
+        let mut right = Game::combat_in(scene, false, 42).unwrap();
+        for game in [&mut left, &mut right] {
+            game.time = game.scene.cut_at;
+            game.tick(0., [0.; 2]).unwrap();
+        }
+        assert_eq!(left.player_life().actor, right.player_life().actor);
+        assert_ne!(left.player_life(), right.player_life());
+        let foreign = left
+            .admission
+            .command(left.authority_tick, Intent::Jump)
+            .unwrap();
+        assert!(right.submit(Controller(1), foreign).is_err());
+        let foreign_target = left.actor_life(left.selected).unwrap();
+        let cast = right
+            .admission
+            .command(
+                right.authority_tick,
+                Intent::Cast {
+                    ability: Ability::FireBolt,
+                    target: Some(foreign_target),
+                    aim: [0., 0., 1.],
+                },
+            )
+            .unwrap();
+        assert!(right.submit(Controller(1), cast).is_err());
+        let extra = left
+            .add_player(Controller(10), Vec3::new(3., 0., -22.))
+            .unwrap();
+        assert_eq!(extra.instance, 41);
+        let bytes = left.checkpoint().unwrap();
+        let mut restored = Game::restore(&bytes).unwrap();
+        assert_eq!(bytes, restored.checkpoint().unwrap());
+        for _ in 0..8 {
+            left.tick(1. / 30., [0.; 2]).unwrap();
+            restored.tick(1. / 30., [0.; 2]).unwrap();
+        }
+        assert_eq!(left.checkpoint().unwrap(), restored.checkpoint().unwrap());
+        left.restart_combat(false).unwrap();
+        assert_eq!(left.player_life().instance, 41);
+        let revived = left.player_admission(extra.actor).unwrap().actor();
+        assert_eq!(revived.instance, 41);
+        assert_eq!(revived.generation, extra.generation + 1);
+        assert!(left.player_snapshot(extra).is_err());
+        assert!(left.lives.values().all(|life| life.instance == 41));
+        assert_eq!(left.bodies.instance, 41);
+        assert_eq!(left.blockers.instance, 41);
+        Game::restore(&left.checkpoint().unwrap()).unwrap();
+    }
+
     fn world() -> (Game, LifeId) {
         world_profile(true)
     }
