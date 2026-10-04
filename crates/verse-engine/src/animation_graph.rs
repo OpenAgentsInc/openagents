@@ -790,8 +790,8 @@ pub struct Playback {
     sampled: Option<bool>,
     changed: f64,
     duration: f32,
-    from: Vec<Local>,
-    current: Vec<Local>,
+    from: std::sync::Arc<[Local]>,
+    current: std::sync::Arc<[Local]>,
     source: Option<usize>,
     epoch: u64,
     cursor: crate::markers::Cursor,
@@ -854,8 +854,8 @@ impl Playback {
             next.life = Some(life);
             next.state = admitted.graph.initial;
             next.entered = clock;
-            next.current.clear();
-            next.from.clear();
+            next.current = Default::default();
+            next.from = Default::default();
             next.source = None;
             next.cursor = crate::markers::Cursor::default();
         }
@@ -875,7 +875,7 @@ impl Playback {
             .graph
             .locals(&admitted.model, root, values, time as f32)?;
         if reset || seeked || next.current.is_empty() {
-            next.current = target;
+            next.current = target.into();
             next.from = next.current.clone();
             next.changed = clock;
             next.duration = 0.;
@@ -886,12 +886,18 @@ impl Playback {
                 ((clock - next.changed) / f64::from(next.duration)).clamp(0., 1.) as f32
             };
             let weight = weight * weight * (3. - 2. * weight);
-            next.current = next
-                .from
-                .iter()
-                .zip(target)
-                .map(|(a, b)| blend(*a, b, weight))
-                .collect();
+            next.current = if weight == 0. {
+                next.from.clone()
+            } else if weight == 1. {
+                target.into()
+            } else {
+                next.from
+                    .iter()
+                    .zip(target)
+                    .map(|(a, b)| blend(*a, b, weight))
+                    .collect::<Vec<_>>()
+                    .into()
+            };
         }
         let source = admitted.marker_source(root, values);
         if reset || seeked || transitioned || next.source != Some(source) {
@@ -1673,6 +1679,28 @@ mod tests {
         let duplicate = json.replace("\"idle\":0", "\"idle\":0,\"idle\":0");
         assert_ne!(json, duplicate);
         assert!(serde_json::from_str::<Authored>(&duplicate).is_err());
+    }
+    #[test]
+    fn transactional_candidates_share_immutable_pose_buffers() {
+        let (model, graph) = playback_fixture();
+        let admitted = Admitted::new(graph, &model).unwrap();
+        let mut playback = Playback::default();
+        playback
+            .update(&admitted, life(0), &[Value::Boolean(true)], 0.)
+            .unwrap();
+        let retained = playback.clone();
+        assert!(std::sync::Arc::ptr_eq(&retained.current, &playback.current));
+        assert!(std::sync::Arc::ptr_eq(&retained.from, &playback.from));
+        assert!(
+            playback
+                .update(&admitted, life(0), &[Value::Scalar(1.)], 1.)
+                .is_err()
+        );
+        assert!(std::sync::Arc::ptr_eq(&retained.current, &playback.current));
+        playback
+            .update(&admitted, life(0), &[Value::Boolean(false)], 0.1)
+            .unwrap();
+        assert!(std::sync::Arc::ptr_eq(&retained.current, &playback.from));
     }
     #[test]
     fn semantic_graph_version_and_selector_aliases_are_refused() {
