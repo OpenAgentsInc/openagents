@@ -1,0 +1,32 @@
+{
+  "schema": "verse.battle.scale.run.v1",
+  "acceptance": "failed",
+  "workload": {
+    "players": 20,
+    "hostile_npcs": 40,
+    "cultist_health": 20000,
+    "native_clients": 1,
+    "headless_clients": 19,
+    "seconds": 60,
+    "compiled_revisions": {
+      "host": "639288dd31",
+      "clients": "639288dd31"
+    },
+    "fixture_revision": "639288dd31f078f6583a5fc99414b1bdc43fce5c",
+    "limits": [
+      "NPC health is raised in the authored load scene to sustain spell and AI work.",
+      "Headless player connections do not establish rendering performance on their machines.",
+      "Native player and load generator share one host machine."
+    ]
+  },
+  "stability": "All twenty connections complete; every measured headless occupancy sample retains forty live hostile NPCs.",
+  "limits": [
+    "Native frame p95 is 74.605 ms versus 82.048 ms in the preceding run; differing trajectories and instance counts prevent isolated attribution.",
+    "Shadow draw p95 is 430 versus 1485; CPU command finalization p95 is 53.173 ms versus 63.689 ms.",
+    "Prediction correction p95 is 2.210 m and maximum is 4.385 m, worse than the preceding run.",
+    "Host reports 2.698 dropped seconds and simulation p99 histogram upper bound 125 ms, exceeding its 33.3 ms tick interval.",
+    "Persistent storage is disabled; this is not durable-battle acceptance.",
+    "GPU execution and input-to-display latency are not isolated. Nineteen headless clients do not establish rendering performance on their machines.",
+    "Visual inspection of the 30-second frame confirms a bounded set of anchored nameplates and separated damage totals; it does not establish skeletal-shadow equivalence to the fallback."
+  ]
+}
