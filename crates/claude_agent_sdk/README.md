@@ -4,12 +4,18 @@ A Rust SDK for programmatically building AI agents with Claude Code's capabiliti
 
 This SDK is a Rust implementation of Anthropic's official [Claude Agent SDK](https://platform.claude.com/docs/en/agent-sdk/overview), providing the same functionality with native Rust ergonomics.
 
-Status, October 4, 2026: no crate in this workspace depends on this one yet,
-and no Agent Studio seat runs on it. Studio Claude seats run a Claude Code
-session or Microcoder's loop instead. Running a seat on this SDK, with its
-permission callback raising studio approvals, is
-[#10571](https://github.com/OpenAgentsInc/openagents/issues/10571); see the
-[Agent Studio audit](../../docs/verse/agent-studio-audit.md).
+Status, October 4, 2026: an Agent Studio seat on `claude/sdk:MODEL` runs its
+turn on this SDK, through `microcoder`'s `claude_sdk` engine
+(`crates/microcoder/src/repository/claude_sdk.rs`,
+[#10571](https://github.com/OpenAgentsInc/openagents/issues/10571)). The
+engine uses the owner's Claude Code login and reads no API key. Its
+permission callback turns each tool request outside the task's worktree into
+a studio approval: **Allow once** runs that exact request, **Deny** refuses
+it, and the seat's standing rules apply. The engine runs under full access
+only. See the [Agent Studio audit](../../docs/verse/agent-studio-audit.md).
+
+On Unix the CLI leads a process group of its own; `Query::kill`, or dropping
+the `Query`, stops the whole group.
 
 ## Installation
 

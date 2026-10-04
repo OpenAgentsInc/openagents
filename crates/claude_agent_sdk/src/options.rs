@@ -201,6 +201,10 @@ pub struct QueryOptions {
     /// Environment variables.
     pub env: Option<HashMap<String, String>>,
 
+    /// Variables the CLI does not inherit from this process, such as
+    /// `ANTHROPIC_API_KEY` when the session must use the Claude Code login.
+    pub env_remove: Vec<String>,
+
     /// Extra CLI arguments.
     pub extra_args: HashMap<String, Option<String>>,
 

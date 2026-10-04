@@ -33,6 +33,11 @@ impl Default for ExecutableConfig {
 /// Process transport for communicating with Claude Code CLI.
 pub struct ProcessTransport {
     child: Child,
+    /// The child's process ID, which is also its process group's on Unix.
+    #[cfg_attr(not(unix), allow(dead_code))]
+    pid: Option<u32>,
+    /// Whether the process group was signalled already.
+    stopped: bool,
     stdin: ChildStdin,
     stdout_rx: Option<mpsc::Receiver<Result<StdoutMessage>>>,
     /// Handle to the stdout reader task.
@@ -46,6 +51,19 @@ impl ProcessTransport {
         args: Vec<String>,
         cwd: Option<PathBuf>,
         env: Option<Vec<(String, String)>>,
+    ) -> Result<Self> {
+        Self::spawn_with(config, args, cwd, env, &[]).await
+    }
+
+    /// [`ProcessTransport::spawn`], with the variables named in `removed`
+    /// left out of what the CLI inherits. On Unix the CLI leads a process
+    /// group of its own, so stopping it stops every process it started.
+    pub async fn spawn_with(
+        config: ExecutableConfig,
+        args: Vec<String>,
+        cwd: Option<PathBuf>,
+        env: Option<Vec<(String, String)>>,
+        removed: &[String],
     ) -> Result<Self> {
         let (command, command_args) = Self::build_command(&config)?;
 
@@ -67,13 +85,19 @@ impl ProcessTransport {
             cmd.current_dir(cwd);
         }
 
+        for key in removed {
+            cmd.env_remove(key);
+        }
         if let Some(env_vars) = env {
             for (key, value) in env_vars {
                 cmd.env(key, value);
             }
         }
+        #[cfg(unix)]
+        cmd.process_group(0);
 
         let mut child = cmd.spawn()?;
+        let pid = child.id();
 
         let stdin = child.stdin.take().ok_or_else(|| {
             Error::SpawnFailed(std::io::Error::new(
@@ -97,6 +121,8 @@ impl ProcessTransport {
 
         Ok(Self {
             child,
+            pid,
+            stopped: false,
             stdin,
             stdout_rx: Some(stdout_rx),
             _stdout_task: stdout_task,
@@ -244,23 +270,38 @@ impl ProcessTransport {
         }
     }
 
-    /// Kill the CLI process.
+    /// Kill the CLI process and, on Unix, its process group, then wait
+    /// for the CLI to exit.
     pub async fn kill(&mut self) -> Result<()> {
-        self.child.kill().await?;
+        self.kill_group();
+        self.child.wait().await?;
         Ok(())
     }
 
-    /// Wait for the process to exit and return the exit code.
-    pub async fn wait(&mut self) -> Result<Option<i32>> {
-        let status = self.child.wait().await?;
-        Ok(status.code())
+    /// Start killing the CLI's process group (on Unix) and the CLI itself,
+    /// without waiting. The group is signalled once, even after the CLI
+    /// exited, so a command it left running in the background stops too.
+    pub fn kill_group(&mut self) {
+        if !self.stopped {
+            self.stopped = true;
+            #[cfg(unix)]
+            if let Some(group) = self.pid.and_then(|pid| i32::try_from(pid).ok()) {
+                // SAFETY: `kill` takes no pointers; a negative ID names the
+                // group the CLI leads, which `spawn_with` created.
+                unsafe {
+                    libc::kill(-group, libc::SIGKILL);
+                }
+            }
+        }
+        if matches!(self.child.try_wait(), Ok(None)) {
+            let _ = self.child.start_kill();
+        }
     }
 }
 
 impl Drop for ProcessTransport {
     fn drop(&mut self) {
-        // Try to kill the process on drop
-        let _ = self.child.start_kill();
+        self.kill_group();
     }
 }
 

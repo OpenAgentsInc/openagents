@@ -663,6 +663,11 @@ enum AgentEngine {
     /// ([`codex_session`], #10250): a Codex route whose endpoint is
     /// [`codex_session::CODEX_SESSION_ENDPOINT`].
     CodexSession,
+    /// One Claude Code session on the Claude Agent SDK ([`claude_sdk`],
+    /// #10571), whose tool requests outside the worktree become
+    /// approvals: a Claude route whose endpoint is
+    /// [`claude_sdk::CLAUDE_SDK_ENDPOINT`].
+    ClaudeSdk,
 }
 
 impl AgentEngine {
@@ -675,6 +680,9 @@ impl AgentEngine {
                 if route.generation_endpoint == claude_session::CLAUDE_SESSION_ENDPOINT =>
             {
                 Some(AgentEngine::ClaudeSession)
+            }
+            Provider::Claude if route.generation_endpoint == claude_sdk::CLAUDE_SDK_ENDPOINT => {
+                Some(AgentEngine::ClaudeSdk)
             }
             Provider::Codex
                 if route.generation_endpoint == codex_session::CODEX_SESSION_ENDPOINT =>
@@ -690,7 +698,7 @@ impl AgentEngine {
             AgentEngine::Devin => Provider::Devin,
             AgentEngine::OpenCode => Provider::OpenCode,
             AgentEngine::Grok => Provider::Grok,
-            AgentEngine::ClaudeSession => Provider::Claude,
+            AgentEngine::ClaudeSession | AgentEngine::ClaudeSdk => Provider::Claude,
             AgentEngine::CodexSession => Provider::Codex,
         }
     }
@@ -701,7 +709,7 @@ impl AgentEngine {
             AgentEngine::Devin => "Devin",
             AgentEngine::OpenCode => "OpenCode",
             AgentEngine::Grok => "Grok Build",
-            AgentEngine::ClaudeSession => "Claude Code",
+            AgentEngine::ClaudeSession | AgentEngine::ClaudeSdk => "Claude Code",
             AgentEngine::CodexSession => "Codex",
         }
     }
@@ -714,6 +722,7 @@ impl AgentEngine {
             AgentEngine::Grok => "grok",
             AgentEngine::ClaudeSession => "claude_session",
             AgentEngine::CodexSession => "codex_session",
+            AgentEngine::ClaudeSdk => "claude_sdk",
         }
     }
 
@@ -722,7 +731,7 @@ impl AgentEngine {
             AgentEngine::Devin => devin::binary().map_err(|why| (StartCause::Devin, why)),
             AgentEngine::OpenCode => opencode::binary().map_err(|why| (StartCause::OpenCode, why)),
             AgentEngine::Grok => grok::binary().map_err(|why| (StartCause::Grok, why)),
-            AgentEngine::ClaudeSession => {
+            AgentEngine::ClaudeSession | AgentEngine::ClaudeSdk => {
                 claude_session::binary().map_err(|why| (StartCause::Claude, why))
             }
             AgentEngine::CodexSession => {
@@ -744,6 +753,7 @@ impl AgentEngine {
             AgentEngine::Grok => grok::turn(host, route, program, recipe).await,
             AgentEngine::ClaudeSession => claude_session::turn(host, route, program, recipe).await,
             AgentEngine::CodexSession => codex_session::turn(host, route, program, recipe).await,
+            AgentEngine::ClaudeSdk => claude_sdk::turn(host, route, program, recipe).await,
         }
     }
 }
@@ -865,7 +875,8 @@ pub async fn execute(
         let mut unavailable = unavailable;
         // A lean Claude Code or Codex session takes its input as text, so
         // a task with images runs the engine in the loop, which takes them
-        // natively.
+        // natively. An Agent SDK session is left out instead: the loop
+        // would run its commands without the approvals it asks for.
         let stages = stages
             .into_iter()
             .map(|stage| match stage {
@@ -1176,7 +1187,7 @@ async fn run_stages_with<T: codex_transport::Transport>(
                             Some(recipe) if !recipe.frozen.is_empty() => {
                                 Some(if ended.checks_passed {
                                     Some(true)
-                                } else if cancelled || independent {
+                                } else if cancelled || independent || ended.asked.is_some() {
                                     None
                                 } else {
                                     Some(recipe.check(&host, "after the turn").await)
@@ -1274,6 +1285,7 @@ fn private_spec(host: &Host, spec: acp_client::process::Spec) -> acp_client::pro
     }
 }
 
+pub mod claude_sdk;
 pub mod claude_session;
 pub mod codex_session;
 mod devin;

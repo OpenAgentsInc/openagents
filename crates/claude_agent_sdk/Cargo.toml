@@ -20,5 +20,8 @@ async-trait = "0.1"
 tracing = "0.1"
 which = "8"
 
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [lints]
 workspace = true

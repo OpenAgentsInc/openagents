@@ -90,6 +90,9 @@ pub(crate) struct Ended {
     /// The host ended the turn because the delegate recipe's frozen checks
     /// passed while the agent worked (#10208): done, not stopped.
     pub checks_passed: bool,
+    /// The turn ended asking the person (#10571): the reply is the
+    /// question or the approval, and the task waits for the answer.
+    pub asked: Option<coder::task::interaction::Kind>,
 }
 
 impl Ended {
@@ -105,6 +108,9 @@ impl Ended {
     pub fn ending(&self, cancelled: bool) -> (&'static str, bool) {
         match self.stop {
             _ if cancelled => ("cancelled_or_host_refusal", false),
+            _ if self.asked.is_some() && self.error.is_none() => {
+                (self.asked.map_or("", |kind| kind.ending()), true)
+            }
             _ if self.checks_passed => ("checks_passed", true),
             Some(StopReason::EndTurn) => ("model_finished", true),
             _ if self.refused.is_some() && self.error.is_none() => {
@@ -158,6 +164,7 @@ impl Ended {
                 "turn_stats": self.stats,
             },
             "cost_usd": self.cost_usd,
+            "asked": self.asked.map(|kind| kind.ending()),
             "cost_unknown": if self.cost_usd.is_some() {
                 Value::Null
             } else if self.engine == ENGINE {

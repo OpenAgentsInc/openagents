@@ -2638,6 +2638,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "futures",
+ "libc",
  "serde",
  "serde_json",
  "thiserror 2.0.20",
@@ -8239,6 +8240,7 @@ dependencies = [
  "acp-client",
  "atif",
  "base64 0.22.1",
+ "claude_agent_sdk",
  "coder",
  "coder-boundary",
  "coder-delegate",

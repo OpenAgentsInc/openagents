@@ -296,11 +296,14 @@ impl Route {
     /// as it always has; only a route that names one is refused.
     #[must_use]
     pub fn refusal(&self, access: adapter::Access) -> Option<String> {
-        if self.engine != Some(RouteEngine::Session) || access == adapter::Access::Full {
+        if !matches!(self.engine, Some(RouteEngine::Session | RouteEngine::Sdk))
+            || access == adapter::Access::Full
+        {
             return None;
         }
-        let agent = match self.provider {
-            Provider::Claude => "a Claude Code session",
+        let agent = match (self.provider, self.engine) {
+            (_, Some(RouteEngine::Sdk)) => "a Claude Agent SDK session",
+            (Provider::Claude, _) => "a Claude Code session",
             _ => "a Codex CLI session",
         };
         let looped = Route {
@@ -326,8 +329,8 @@ impl std::fmt::Display for Route {
 /// The engine a Claude or Codex route names (#10568): the provider's own
 /// agent in one lean session, or Microcoder's step loop on the provider.
 /// It overrides the owner's host-wide [`ClaudeRuns`] or [`CodexRuns`] for
-/// the route's tasks. A later engine, such as an Agent SDK session
-/// (#10571), is one more variant and word here.
+/// the route's tasks. An Agent SDK session (#10571) is a third, for
+/// Claude only.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RouteEngine {
@@ -338,11 +341,15 @@ pub enum RouteEngine {
     /// Microcoder's step loop on the provider, as [`ClaudeRuns::Loop`]
     /// and [`CodexRuns::Loop`] run it.
     Loop,
+    /// One Claude Code session on the Claude Agent SDK (#10571), whose
+    /// permission callback asks the person to approve each tool request
+    /// outside the task's worktree. Claude only, and full access only.
+    Sdk,
 }
 
 impl RouteEngine {
     /// Every engine, in the order a message lists them.
-    pub const ALL: [RouteEngine; 2] = [RouteEngine::Session, RouteEngine::Loop];
+    pub const ALL: [RouteEngine; 3] = [RouteEngine::Session, RouteEngine::Loop, RouteEngine::Sdk];
 
     /// The engine's word in a route.
     #[must_use]
@@ -350,6 +357,7 @@ impl RouteEngine {
         match self {
             RouteEngine::Session => "session",
             RouteEngine::Loop => "loop",
+            RouteEngine::Sdk => "sdk",
         }
     }
 
@@ -360,13 +368,15 @@ impl RouteEngine {
     }
 
     /// Whether `provider` runs this engine: only Claude and Codex have a
-    /// session and a loop to choose between.
+    /// session and a loop to choose between, and only Claude an Agent SDK
+    /// session.
     #[must_use]
     pub const fn runs_on(self, provider: Provider) -> bool {
         match self {
             RouteEngine::Session | RouteEngine::Loop => {
                 matches!(provider, Provider::Claude | Provider::Codex)
             }
+            RouteEngine::Sdk => matches!(provider, Provider::Claude),
         }
     }
 }
@@ -458,7 +468,7 @@ impl Policy {
             // A route that names a session runs the loop here: only the
             // loop's commands can be held to a read-only boundary.
             for route in &mut policy.engine.routes {
-                if route.engine == Some(RouteEngine::Session) {
+                if matches!(route.engine, Some(RouteEngine::Session | RouteEngine::Sdk)) {
                     route.engine = Some(RouteEngine::Loop);
                 }
             }
@@ -731,9 +741,12 @@ impl Policy {
             // A Claude or Codex route runs as one lean session when the
             // route names it, or the owner chose it for the provider, and
             // the run has full access (#10246, #10250, #10568).
-            generation_endpoint: if route.wants_session(engine)
+            generation_endpoint: if route.engine == Some(RouteEngine::Sdk)
                 && engine.access == adapter::Access::Full
             {
+                // A Claude Agent SDK session (#10571).
+                super::capacity::CLAUDE_SDK_ENDPOINT.into()
+            } else if route.wants_session(engine) && engine.access == adapter::Access::Full {
                 if route.provider == Provider::Claude {
                     super::capacity::CLAUDE_SESSION_ENDPOINT.into()
                 } else {
@@ -2639,9 +2652,13 @@ pub(crate) fn parse_route(text: &str) -> std::result::Result<Route, String> {
         return Err(format!("usage: `{text}`: {why}"));
     }
     if engine.is_some_and(|engine| !engine.runs_on(provider)) {
-        return Err(format!(
-            "usage: `{text}`: only claude and codex routes name an engine; {provider} runs its own agent"
-        ));
+        return Err(if provider == Provider::Codex {
+            format!("usage: `{text}`: only claude routes run on the Agent SDK")
+        } else {
+            format!(
+                "usage: `{text}`: only claude and codex routes name an engine; {provider} runs its own agent"
+            )
+        });
     }
     Ok(Route {
         provider,
@@ -3006,6 +3023,7 @@ mod tests {
         for text in [
             "claude/session:claude-opus-5-5",
             "claude/loop:claude-opus-5-5",
+            "claude/sdk:claude-opus-5-5",
             "codex/session:gpt-6-luna",
             "codex/loop:gpt-6-luna",
             "claude:claude-opus-5-5",
@@ -3018,8 +3036,10 @@ mod tests {
         assert_eq!(named.model, "claude-opus-5-5");
         assert_eq!(named.engine, Some(RouteEngine::Loop));
         assert_eq!(parse_route("claude:claude-opus-5-5").unwrap().engine, None);
-        let unknown = parse_route("claude/sdk:claude-opus-5-5").unwrap_err();
-        assert!(unknown.contains("session or loop"), "{unknown}");
+        let unknown = parse_route("claude/acp:claude-opus-5-5").unwrap_err();
+        assert!(unknown.contains("session or loop or sdk"), "{unknown}");
+        let sdk = parse_route("codex/sdk:gpt-6-luna").unwrap_err();
+        assert!(sdk.contains("only claude routes"), "{sdk}");
         let agent = parse_route("grok/session:default").unwrap_err();
         assert!(agent.contains("only claude and codex"), "{agent}");
         assert!(parse_route("devin/loop:default").is_err());
@@ -3068,6 +3088,10 @@ mod tests {
             endpoint(&policy, "codex/session:gpt-6-luna"),
             capacity::CODEX_SESSION_ENDPOINT
         );
+        assert_eq!(
+            endpoint(&policy, "claude/sdk:claude-opus-5-5"),
+            capacity::CLAUDE_SDK_ENDPOINT
+        );
         // The other way round.
         policy.engine.claude = ClaudeRuns::Loop;
         policy.engine.codex = CodexRuns::Session;
@@ -3101,6 +3125,15 @@ mod tests {
         );
         assert!(
             route("claude/session:claude-opus-5-5")
+                .refusal(adapter::Access::Full)
+                .is_none()
+        );
+        let why = route("claude/sdk:claude-opus-5-5")
+            .refusal(adapter::Access::Boundary)
+            .unwrap();
+        assert!(why.contains("Claude Agent SDK session"), "{why}");
+        assert!(
+            route("claude/sdk:claude-opus-5-5")
                 .refusal(adapter::Access::Full)
                 .is_none()
         );

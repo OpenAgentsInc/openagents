@@ -84,6 +84,14 @@ pub const GROK_ENDPOINT: &str = "local:grok-acp";
 /// own login; it is not a URL, and no request goes to it from Microcoder.
 pub const CLAUDE_SESSION_ENDPOINT: &str = "local:claude-code-session";
 
+/// The endpoint a grant names for a Claude route on the Claude Agent SDK
+/// (#10571): the local `claude` process driven over its control protocol
+/// by `claude_agent_sdk`, whose permission callback turns each tool
+/// request outside the task's worktree into an approval. It uses Claude
+/// Code's own login; it is not a URL, and no request goes to it from
+/// Microcoder.
+pub const CLAUDE_SDK_ENDPOINT: &str = "local:claude-agent-sdk";
+
 /// The endpoint a grant names for a Codex route that runs as one lean
 /// `codex exec` session (#10250) instead of Microcoder's step loop: the
 /// local `codex` process, briefed by Jev, on the headless core prompt. It

@@ -192,9 +192,14 @@ impl Query {
         let env = options.env_vars();
         let env = (!env.is_empty()).then_some(env);
 
-        let mut transport =
-            ProcessTransport::spawn(options.executable.clone(), args, options.cwd.clone(), env)
-                .await?;
+        let mut transport = ProcessTransport::spawn_with(
+            options.executable.clone(),
+            args,
+            options.cwd.clone(),
+            env,
+            &options.env_remove,
+        )
+        .await?;
 
         // The reader task waits on stdout without holding the stdin lock,
         // otherwise initialize (and every later control write) deadlocks.
@@ -693,6 +698,22 @@ impl Query {
     /// Check if the query has completed.
     pub fn is_completed(&self) -> bool {
         self.completed
+    }
+
+    /// Stop the CLI: its whole process group on Unix, then wait for it to
+    /// exit. Dropping the query also stops it, without waiting.
+    pub async fn kill(&self) -> Result<()> {
+        self.transport.lock().await.kill().await
+    }
+}
+
+impl Drop for Query {
+    fn drop(&mut self) {
+        // The control handlers hold the transport too, so dropping the
+        // query alone would leave the CLI running.
+        if let Ok(mut transport) = self.transport.try_lock() {
+            transport.kill_group();
+        }
     }
 }
 
