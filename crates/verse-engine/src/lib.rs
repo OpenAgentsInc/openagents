@@ -2,6 +2,7 @@
 //!
 //! This core has no GPU, platform, game rules, transport, or credentials.
 pub mod animation;
+pub mod animation_graph;
 pub mod assets;
 pub mod audio;
 pub mod audio_cues;

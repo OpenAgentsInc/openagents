@@ -31,12 +31,12 @@ fn vector(keys: &[(f32, [f32; 3])], t: f32, default: [f32; 3]) -> Vec3 {
     Vec3::from(a).lerp(Vec3::from(b), f)
 }
 #[derive(Clone, Copy)]
-struct Local {
-    translation: Vec3,
-    rotation: Quat,
-    scale: Vec3,
+pub(crate) struct Local {
+    pub(crate) translation: Vec3,
+    pub(crate) rotation: Quat,
+    pub(crate) scale: Vec3,
 }
-fn sample(model: &Model, binding: Binding, time: f32) -> Vec<Local> {
+pub(crate) fn sample(model: &Model, binding: Binding, time: f32) -> Vec<Local> {
     let clip = model.clips.iter().find(|c| c.id == binding.clip);
     let time = clip.map_or(0.0, |c| {
         if !time.is_finite() || c.duration <= 0.0 {
@@ -83,7 +83,7 @@ fn sample(model: &Model, binding: Binding, time: f32) -> Vec<Local> {
         })
         .collect()
 }
-fn matrices(model: &Model, locals: &[Local]) -> Vec<Mat4> {
+pub(crate) fn matrices(model: &Model, locals: &[Local]) -> Vec<Mat4> {
     let mut result = vec![Mat4::IDENTITY; model.bones.len().max(1)];
     for (i, bone) in model.bones.iter().enumerate() {
         let p = Vec3::from(bone.pivot);
@@ -118,7 +118,7 @@ pub fn pose(model: &Model, animation: u16, time: f32) -> Vec<Mat4> {
         &sample(model, resolve(model, animation.into()).unwrap(), time),
     )
 }
-fn resolve(model: &Model, selection: Selection) -> Result<Binding, String> {
+pub(crate) fn resolve(model: &Model, selection: Selection) -> Result<Binding, String> {
     match selection {
         Selection::Named(state) => {
             let binding = model

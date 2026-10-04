@@ -219,76 +219,13 @@ impl Pack {
         }
         let mut vertices = 0;
         for model in self.models.values() {
-            let mut ids = std::collections::BTreeSet::new();
-            let duplicate_ids = model
-                .clips
-                .iter()
-                .fold(false, |duplicate, clip| !ids.insert(clip.id) || duplicate);
-            if !model.states.is_empty() && duplicate_ids
-                || model.states.values().any(|binding| {
-                    !ids.contains(&binding.clip)
-                        || !binding.transition_seconds.is_finite()
-                        || !(0. ..=2.).contains(&binding.transition_seconds)
-                })
-            {
-                return Err("Invalid semantic animation bindings".into());
-            }
-            if model.markers.len() > 512 || (!model.markers.is_empty() && duplicate_ids) {
-                return Err("Invalid animation marker track capacity or clip identity".into());
-            }
-            let mut marker_clips = std::collections::BTreeSet::new();
-            for authored in &model.markers {
-                authored.track.validate()?;
-                let clip = model
-                    .clips
-                    .iter()
-                    .find(|clip| clip.id == authored.clip)
-                    .ok_or("Animation marker track references a missing clip")?;
-                if !marker_clips.insert(authored.clip)
-                    || authored.track.duration != f64::from(clip.duration)
-                {
-                    return Err(
-                        "Animation marker track has duplicate identity or mismatched duration"
-                            .into(),
-                    );
-                }
-            }
-            if let Some(skin) = &model.skin {
-                if skin.names.len() != model.bones.len()
-                    || skin.rest.len() != model.bones.len()
-                    || skin.inverse_bind.len() != model.bones.len()
-                    || skin.basis.iter().any(|v| !v.is_finite())
-                    || glam::Mat4::from_cols_array(&skin.basis).determinant().abs() < 1e-8
-                    || skin.inverse_bind.iter().flatten().any(|v| !v.is_finite())
-                    || skin.rest.iter().any(|r| {
-                        r.translation
-                            .iter()
-                            .chain(&r.rotation)
-                            .chain(&r.scale)
-                            .any(|v| !v.is_finite())
-                            || glam::Quat::from_array(r.rotation).length_squared() < 1e-8
-                    })
-                {
-                    return Err("Invalid skeletal bind data".into());
-                }
-            }
+            model.validate_animation()?;
             if model
                 .attachments
                 .iter()
                 .any(|a| a.bone >= model.bones.len() || a.position.iter().any(|v| !v.is_finite()))
             {
                 return Err("Invalid model attachment".into());
-            }
-            if model.bones.len() > 256 || model.clips.len() > 512 || !model.height.is_finite() {
-                return Err("Invalid model skeleton".into());
-            }
-            for (i, bone) in model.bones.iter().enumerate() {
-                if bone.parent < -1
-                    || bone.parent >= i as i16
-                    || bone.pivot.iter().any(|x| !x.is_finite())
-                {
-                    return Err("Invalid bone hierarchy".into());
-                }
             }
             for surface in &model.surfaces {
                 surface.material.validate(self.textures.len())?;
@@ -319,22 +256,92 @@ impl Pack {
                     }
                 }
             }
-            for clip in &model.clips {
-                let mut tracks = std::collections::BTreeSet::new();
-                if clip.bones.iter().any(|keys| !tracks.insert(keys.bone)) {
-                    return Err("Duplicate animation bone track".into());
-                }
-                if !clip.duration.is_finite()
-                    || clip.duration <= 0.0
-                    || clip.bones.iter().any(|k| k.bone >= model.bones.len())
-                {
-                    return Err("Invalid animation clip".into());
-                }
-                for keys in &clip.bones {
-                    validate_keys(&keys.translation, clip.duration)?;
-                    validate_keys(&keys.rotation, clip.duration)?;
-                    validate_keys(&keys.scale, clip.duration)?;
-                }
+        }
+        Ok(())
+    }
+}
+impl Model {
+    /// Validates motion data independently of mesh, texture, and file admission.
+    pub fn validate_animation(&self) -> Result<(), String> {
+        let model = self;
+        let mut ids = std::collections::BTreeSet::new();
+        let duplicate_ids = model
+            .clips
+            .iter()
+            .fold(false, |duplicate, clip| !ids.insert(clip.id) || duplicate);
+        if !model.states.is_empty() && duplicate_ids
+            || model.states.values().any(|binding| {
+                !ids.contains(&binding.clip)
+                    || !binding.transition_seconds.is_finite()
+                    || !(0. ..=2.).contains(&binding.transition_seconds)
+            })
+        {
+            return Err("Invalid semantic animation bindings".into());
+        }
+        if model.markers.len() > 512 || (!model.markers.is_empty() && duplicate_ids) {
+            return Err("Invalid animation marker track capacity or clip identity".into());
+        }
+        let mut marker_clips = std::collections::BTreeSet::new();
+        for authored in &model.markers {
+            authored.track.validate()?;
+            let clip = model
+                .clips
+                .iter()
+                .find(|clip| clip.id == authored.clip)
+                .ok_or("Animation marker track references a missing clip")?;
+            if !marker_clips.insert(authored.clip)
+                || authored.track.duration != f64::from(clip.duration)
+            {
+                return Err(
+                    "Animation marker track has duplicate identity or mismatched duration".into(),
+                );
+            }
+        }
+        if let Some(skin) = &model.skin {
+            if skin.names.len() != model.bones.len()
+                || skin.rest.len() != model.bones.len()
+                || skin.inverse_bind.len() != model.bones.len()
+                || skin.basis.iter().any(|v| !v.is_finite())
+                || glam::Mat4::from_cols_array(&skin.basis).determinant().abs() < 1e-8
+                || skin.inverse_bind.iter().flatten().any(|v| !v.is_finite())
+                || skin.rest.iter().any(|r| {
+                    r.translation
+                        .iter()
+                        .chain(&r.rotation)
+                        .chain(&r.scale)
+                        .any(|v| !v.is_finite())
+                        || glam::Quat::from_array(r.rotation).length_squared() < 1e-8
+                })
+            {
+                return Err("Invalid skeletal bind data".into());
+            }
+        }
+        if model.bones.len() > 256 || model.clips.len() > 512 || !model.height.is_finite() {
+            return Err("Invalid model skeleton".into());
+        }
+        for (i, bone) in model.bones.iter().enumerate() {
+            if bone.parent < -1
+                || bone.parent >= i as i16
+                || bone.pivot.iter().any(|x| !x.is_finite())
+            {
+                return Err("Invalid bone hierarchy".into());
+            }
+        }
+        for clip in &model.clips {
+            let mut tracks = std::collections::BTreeSet::new();
+            if clip.bones.iter().any(|keys| !tracks.insert(keys.bone)) {
+                return Err("Duplicate animation bone track".into());
+            }
+            if !clip.duration.is_finite()
+                || clip.duration <= 0.0
+                || clip.bones.iter().any(|k| k.bone >= model.bones.len())
+            {
+                return Err("Invalid animation clip".into());
+            }
+            for keys in &clip.bones {
+                validate_keys(&keys.translation, clip.duration)?;
+                validate_keys(&keys.rotation, clip.duration)?;
+                validate_keys(&keys.scale, clip.duration)?;
             }
         }
         Ok(())
