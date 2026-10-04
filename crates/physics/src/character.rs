@@ -400,6 +400,7 @@ fn recover(
 ) -> Result<DVec3, String> {
     let start = feet;
     let mut last = None;
+    let mut contacts = std::collections::BTreeSet::new();
     for _ in 0..12 {
         let result = scene.overlap(settings.capsule(feet), filter)?;
         if result.truncated {
@@ -413,11 +414,25 @@ fn recover(
         else {
             return Ok(feet);
         };
+        contacts.insert(hit.collider);
         last = Some((hit.collider, hit.penetration, hit.normal));
         feet += hit.normal * (hit.penetration + SKIN);
     }
+    let capsules = scene.snapshot(filter.instance).ok().map(|snapshot| {
+        snapshot
+            .colliders
+            .into_iter()
+            .filter(|shape| {
+                contacts.contains(&shape.key)
+                    && matches!(
+                        shape.geometry,
+                        crate::queries::GeometrySnapshot::Capsule { .. }
+                    )
+            })
+            .collect::<Vec<_>>()
+    });
     Err(format!(
-        "Character spawn recovery did not converge: actor {:?}, start {start:?}, end {feet:?}, last contact {last:?}",
+        "Character spawn recovery did not converge: actor {:?}, start {start:?}, end {feet:?}, last contact {last:?}, contacted capsules {capsules:?}",
         filter.ignore
     ))
 }

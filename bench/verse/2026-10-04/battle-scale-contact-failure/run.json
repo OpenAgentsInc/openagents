@@ -1,0 +1,24 @@
+{
+  "schema": "verse.battle.scale.run.v1",
+  "acceptance": "failed",
+  "reason": "Cultist actor 12 still penetrates cultist actor 4 by 0.01037 m after twelve recovery corrections. The host stops before all twenty connections complete.",
+  "workload": {
+    "players": 20,
+    "hostile_npcs": 40,
+    "cultist_health": 20000,
+    "native_clients": 1,
+    "headless_clients": 19,
+    "seconds": 60,
+    "compiled_revision": "1822528c2b",
+    "fixture_revision": "cc2a8e5c321feab1abb3b83317b0c2476b962f03",
+    "limits": [
+      "NPC health is raised in the authored load scene to sustain spell and AI work.",
+      "Headless player connections do not establish rendering performance on their machines.",
+      "Native player and load generator share one host machine."
+    ]
+  },
+  "limits": [
+    "This is collision failure evidence, not scale or frame-time acceptance.",
+    "Nineteen connections complete before the host fails."
+  ]
+}

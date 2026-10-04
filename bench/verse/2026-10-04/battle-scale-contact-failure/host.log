@@ -1,0 +1,4 @@
+Chamber 220 listening on 127.0.0.1:61937
+Chamber stopped: 734 ticks, 5169 requests, 19 completed connections, 0.000000 dropped seconds
+Checkpoint storage: 0 commits, 0 bytes, 0.000000 seconds
+Character spawn recovery did not converge: actor Some(Life { instance: 220, entity: 12, generation: 0 }), start DVec3(0.779159985508662, 0.0, -8.714240092841301), end DVec3(0.8397574269934679, 0.0520387175778884, -8.671906279043325), last contact Some((ColliderKey { life: Life { instance: 220, entity: 4, generation: 0 }, shape: 0 }, 0.010371712557996016, DVec3(-0.8863820262464843, 0.4629545372357601, 0.0)))
