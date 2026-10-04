@@ -748,10 +748,14 @@ pub fn scenario() -> crate::playground::Scenario {
                 game.spawn_prop(name, spec, Vec3::new(x, y, z), 0.)?;
             }
             let state = &mut game.spells.gust;
-            for x in [9.0, 9.5, 10.0, 10.5] {
-                state.add_flame(DVec3::new(x, 1., 7.35), false)?;
+            // Candles and two lanterns in the re-aimed Line's path, so the
+            // close shot catches them going out.
+            for z in [-1.6, -2.1, -2.6, -3.1] {
+                state.add_flame(DVec3::new(-7.1, 1., z), false)?;
             }
-            state.add_flame(DVec3::new(11.0, 1.2, 7.3), true)?;
+            for z in [-2.0, -3.4] {
+                state.add_flame(DVec3::new(-4.9, 1.2, z), true)?;
+            }
             state.volleys.push(Volley {
                 at: 4.0,
                 direction: DVec3::NEG_X,
@@ -816,19 +820,26 @@ pub fn scenario() -> crate::playground::Scenario {
             ]
         },
         camera: || {
-            let down_the_line = (Vec3::new(3., 12., 20.), Vec3::new(3., 4., 0.));
-            let across = (Vec3::new(8., 13., -2.), Vec3::new(-8., 5., -1.5));
+            // Close on the dummies and the prop row as the wind hits them.
+            let row = (Vec3::new(3.8, 3.6, 12.6), Vec3::new(3.8, 1.0, 6.0));
+            // Close on the walker crossing into the Line at half speed, with
+            // the archer's arrows passing.
+            let walker = (Vec3::new(10.2, 2.8, 11.2), Vec3::new(10.6, 0.9, 5.0));
+            // Across the re-aimed Line: the second row, candles, and lanterns.
+            let sweep = (Vec3::new(1.5, 3.6, 0.6), Vec3::new(-6., 0.9, 0.4));
             [
-                (0., down_the_line),
-                (7.0, down_the_line),
-                (7.6, across),
-                (12., across),
+                (0., row),
+                (2.4, row),
+                (2.9, walker),
+                (6.7, walker),
+                (7.25, sweep),
+                (12., sweep),
             ]
             .into_iter()
             .map(|(at, (eye, target))| Shot { at, eye, target })
             .collect()
         },
-        replay_camera: (Vec3::new(3.5, 9.5, 17.5), Vec3::new(3.5, 3., 0.5)),
+        replay_camera: (Vec3::new(3.8, 3.6, 12.6), Vec3::new(3.8, 1.0, 6.0)),
         check: |game| {
             let moved = |label: &str| {
                 game.spells
