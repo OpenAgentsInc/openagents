@@ -36,6 +36,22 @@ pub struct Item {
 pub const CHANGELOG: &[Release] = &[
     Release {
         version: "1.0.0",
+        build: "46",
+        title: "Everglade",
+        what_to_test: "Open Account, then Changelog, and check build 46 is first. Open Verse and walk through the arch lettered EVERGLADE: the first visit downloads the glade, with progress, Cancel, and Retry. In Everglade you play the hooded ranger, with no spade beside you; walk the path to the workshop, the yard, and the hall. Come back by walking through the arch lettered THE GRID or tapping The Grid, and check you return beside the Everglade arch with other players visible again. A second visit should open without downloading.",
+        items: &[
+            Item {
+                title: "Everglade",
+                detail: "Walk through the EVERGLADE arch on the Grid to visit a forest glade and its workshop, where you will work with a team of coding agents.",
+            },
+            Item {
+                title: "A ranger in the glade",
+                detail: "In Everglade you play an outfitted ranger instead of the Grid's figure.",
+            },
+        ],
+    },
+    Release {
+        version: "1.0.0",
         build: "45",
         title: "Your wallet on your computers",
         what_to_test: "Open Account, then Changelog, and check build 45 is first. On a computer connected to this phone, run openagents wallet link: the phone should ask \"Use your wallet on ...?\" with the same six-digit code the computer shows. Check the codes match, tap Approve, and confirm with Face ID; the computer should then say your wallet is on it, with the same balance as the phone. Open Account, then Computers: an online computer that runs background watchers lists them under its status. Open Account, then Your keys, add a key, and tap Test. Long-press text in a chat and try Give feedback.",
