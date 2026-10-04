@@ -235,6 +235,7 @@ pub mod events;
 pub mod feather_fall;
 pub mod gust;
 pub mod levitate;
+pub mod meteor_swarm;
 pub mod play;
 pub mod reverse_gravity;
 pub mod room;
