@@ -548,6 +548,10 @@ struct App {
     /// Whether the window is in front, so a studio signal also raises a
     /// desktop notice while it is not.
     window_focused: bool,
+    /// `--everglade` asked to open Everglade and it has not loaded yet. The
+    /// request survives a load that losing focus cancels, so a window that
+    /// starts behind another still enters once it comes to the front.
+    everglade_pending: bool,
 }
 
 /// The replay list: the retained `beats-winner` runs and which is chosen.
@@ -793,6 +797,7 @@ impl App {
             studio_muted: options.studio_muted,
             studio_badge: None,
             window_focused: true,
+            everglade_pending: false,
         })
     }
 
@@ -1237,6 +1242,27 @@ impl App {
 
     /// Start loading Everglade from the plaza without walking to its
     /// portal, then hand off as a portal entry does.
+    /// Starts or restarts the `--everglade` load while it is pending and the
+    /// window is in front, and drops the request once Everglade is in.
+    fn open_pending_everglade(&mut self) {
+        if !self.everglade_pending {
+            return;
+        }
+        // In, or failed with its error on screen: a failed load is not
+        // retried, so the player sees why.
+        if self.runtime.zone == crate::zones::ZoneId::Everglade
+            || self.runtime.zone_load_state() == crate::zones::LoadState::Failed
+        {
+            self.everglade_pending = false;
+        } else if self.window_focused
+            && self.runtime.is_plaza()
+            && !self.runtime.zone_loading()
+            && self.runtime.everglade_loader_idle()
+        {
+            self.open_everglade();
+        }
+    }
+
     fn open_everglade(&mut self) {
         match self.runtime.enter_everglade() {
             Ok(()) => {
@@ -2510,6 +2536,7 @@ impl App {
         // Suspend the plaza before a completed download can install a ruins pose.
         self.sync_zone_services(true);
         self.runtime.zone_tick();
+        self.open_pending_everglade();
         if self.runtime.zone_revision != self.rendered_zone_revision {
             self.stop_map();
             self.map_error = None;
@@ -3025,10 +3052,11 @@ impl ApplicationHandler for App {
             }
         }
         self.window = Some(window);
-        // `--everglade` enters once, at the first window; a later resume
+        // `--everglade` enters once, from the first window; a later resume
         // leaves the player where they are.
         if std::mem::take(&mut self.connection_options.everglade) {
-            self.open_everglade();
+            self.everglade_pending = true;
+            self.open_pending_everglade();
         }
     }
 
@@ -3158,6 +3186,7 @@ impl ApplicationHandler for App {
                 if !focused {
                     self.suspend_world();
                 }
+                self.open_pending_everglade();
                 if let Some(mount) = &mut self.mount {
                     let _ = mount.set_active(focused);
                 }

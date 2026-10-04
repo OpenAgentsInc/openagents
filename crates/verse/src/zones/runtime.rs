@@ -1004,6 +1004,15 @@ impl WorldRuntime {
     /// # Errors
     /// The player is not in the plaza, a load is under way, or the pack
     /// cannot be requested.
+    /// Whether Everglade's loader could start a load now, so a caller can
+    /// wait out a canceled load instead of failing on it.
+    pub fn everglade_loader_idle(&mut self) -> bool {
+        self.zone_state
+            .everglade_loader
+            .as_mut()
+            .is_some_and(everglade_pack::Loader::idle)
+    }
+
     pub fn enter_everglade(&mut self) -> Result<(), String> {
         if !self.is_plaza() || self.zone_loading() {
             return Err("Everglade enters only from the plaza".into());

@@ -56,7 +56,7 @@ const OUTER_SLOPE: f32 = 0.1;
 /// The return portal, at the start of the approach path.
 pub(crate) const RETURN_PORTAL: Vec3 = Vec3::new(0.0, 0.0, -32.0);
 /// Where the player arrives: on the approach path, facing the workshop.
-const SPAWN: Vec3 = Vec3::new(0.0, 0.0, -25.0);
+const SPAWN: Vec3 = Vec3::new(0.0, 0.0, -20.0);
 const SPAWN_YAW: f32 = 0.0;
 /// Distance from a station's standing point within which the caption names
 /// the station, m.

@@ -108,6 +108,13 @@ impl Loader {
     }
 
     /// Starts one entry attempt. A canceled worker must finish before retrying.
+    /// Whether [`Self::request`] would start a load now: no load is running
+    /// and a canceled one has finished.
+    pub fn idle(&mut self) -> bool {
+        self.reap_canceled();
+        self.worker.is_none()
+    }
+
     pub fn request(&mut self) -> bool {
         self.reap_canceled();
         if self.worker.is_some() {
