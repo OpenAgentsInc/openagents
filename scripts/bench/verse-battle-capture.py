@@ -16,6 +16,28 @@ if not (1<=args.seconds<=90 and 2<=args.players<=20 and 0<=args.delay_ms<=250 an
 root=pathlib.Path(tempfile.mkdtemp(prefix='verse-battle-scale-'))
 os.chmod(root,0o700)
 print('Scratch artifacts '+str(root),flush=True)
+host_cpu_samples=[]
+host_cpu_errors=0
+def sample_host_cpu(process):
+    global host_cpu_errors
+    try:
+        raw=subprocess.run(['ps','-o','time=','-p',str(process.pid)],capture_output=True,text=True,
+                           env={**os.environ,'LC_ALL':'C'},timeout=2)
+        if raw.returncode or not raw.stdout.strip():
+            return
+        value=raw.stdout.strip()
+        days=0
+        if '-' in value:
+            day,value=value.split('-',1);days=int(day)
+        seconds=0.
+        for part in value.split(':'):
+            seconds=seconds*60+float(part)
+        if len(host_cpu_samples)<160:
+            host_cpu_samples.append({'elapsed_seconds':time.monotonic()-host_cpu_started,
+                                     'cumulative_cpu_seconds':days*86400+seconds})
+    except (OSError,ValueError,subprocess.TimeoutExpired):
+        host_cpu_errors+=1
+
 repo=pathlib.Path(__file__).resolve().parents[2]
 assets=args.asset_dir.resolve()
 binaries=args.binaries.resolve()
@@ -90,10 +112,14 @@ try:
         log=open(root/(role+'.log'),'w');logs.append(log)
         p=subprocess.Popen([str(binaries/'verse_remote'),str(path)],stdout=log,stderr=log,env=env);processes.append(p);clients.append((role,p))
     started=time.monotonic()
+    host_cpu_started=started
+    sample_host_cpu(hostp)
     while any(p.poll() is None for _,p in clients):
         if time.monotonic()-started>args.seconds+100:raise RuntimeError('Client deadline exceeded')
+        sample_host_cpu(hostp)
         time.sleep(1)
     loadp.wait(timeout=50)
+    sample_host_cpu(hostp)
     codes={role:p.returncode for role,p in clients};codes['load']=loadp.returncode
     print('Client exits '+json.dumps(codes),flush=True)
     proxy.terminate();proxy.wait(timeout=10)
@@ -108,4 +134,9 @@ finally:
             try:p.wait(timeout=10)
             except subprocess.TimeoutExpired:p.kill();p.wait()
     for log in logs:log.close()
+    (root/'host-cpu.json').write_text(json.dumps({
+        'schema':'verse.host.cpu-observation.v1','samples':host_cpu_samples,'sample_errors':host_cpu_errors,
+        'limits':['External process CPU time includes all host threads, not isolated simulation stages.',
+                  'CPU time precision depends on the system ps implementation.',
+                  'Samples cover native capture and load completion; startup is excluded.']},indent=2)+'\n')
 print('Artifacts '+str(root),flush=True)
