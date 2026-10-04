@@ -338,6 +338,29 @@ another machine cannot be reached at loopback.
 refuses any other relay instead of ignoring it. `--timeout SECONDS` bounds the
 relay read and the handshake (default 15).
 
+## Agent Studio (`openagents studio`)
+
+`openagents studio` drives the Agent Studio coordinator
+(`coder::task::studio`, [the specification](../verse/agent-studio.md)) on
+this computer's task store. Seats bind a name and role to an auto-start
+route. A goal starts a lead task whose reply ends with a plan; the
+coordinator validates the plan, holds each entry until the tasks it depends
+on are done, and then submits it to the inbox and notes it eligible for the
+auto-start policy. An invalid plan, a lead without a plan, and a failed
+dependency each become a decision on the goal.
+
+```sh
+openagents studio seat set lead --role lead --route codex:gpt-6-luna
+openagents studio seat set ada --route claude:claude-opus-5-5
+openagents studio goal submit "Add a --verbose flag" --workspace openagents
+openagents --json studio goal list
+openagents studio plan list GOAL
+openagents studio message ada "Keep commits small."
+```
+
+The resident host runs the same reconciliation with each auto-start sweep;
+`openagents studio sync` runs it now.
+
 ## Verse (NIP-MV)
 
 Headless presence: see who is around, listen, speak, move, and gesture.

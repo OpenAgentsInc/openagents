@@ -167,6 +167,7 @@ pub fn help() -> Vec<GroupHelp<'static>> {
             Some(crate::boat_run::USAGE),
             crate::boat_run::EFFECTS,
         ),
+        group("studio", Some(crate::studio::USAGE), crate::studio::EFFECTS),
         group("shadow", Some(crate::shadow::USAGE), crate::shadow::EFFECTS),
         group(
             "efficiency",

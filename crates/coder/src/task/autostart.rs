@@ -734,6 +734,30 @@ pub fn record(root: &Path, entry: &Entry) -> Result<(), String> {
         .map_err(|_| "cannot write the auto-start journal".into())
 }
 
+/// Record in the journal under `root` that `device` made `task`'s turn
+/// starting at revision `turn` eligible in `workspace`, asking for
+/// `requested` first. The policy's sweep starts it under its own bounds;
+/// with the policy off the entry is inert. The studio coordinator
+/// ([`super::studio`]) records the tasks it releases this way.
+///
+/// # Errors
+/// The journal cannot be written.
+pub fn note_eligible(
+    root: &Path,
+    at: u64,
+    task: &str,
+    device: &str,
+    workspace: &str,
+    turn: u64,
+    requested: Option<Provider>,
+) -> std::result::Result<(), String> {
+    let mut entry = Entry::new(at, "eligible").task(task).at_turn(turn);
+    entry.device = Some(device.into());
+    entry.workspace = Some(workspace.into());
+    entry.requested = requested.map(|provider| provider.as_str().to_owned());
+    record(root, &entry)
+}
+
 /// Every readable entry, oldest first. Unreadable lines are skipped.
 #[must_use]
 pub fn journal(root: &Path) -> Vec<Entry> {
@@ -1114,13 +1138,15 @@ impl Autostart {
         turn: u64,
         requested: Option<Provider>,
     ) {
-        let mut entry = Entry::new((self.now)(), "eligible")
-            .task(task)
-            .at_turn(turn);
-        entry.device = Some(device.into());
-        entry.workspace = Some(workspace.into());
-        entry.requested = requested.map(|provider| provider.as_str().to_owned());
-        if let Err(error) = record(&self.root, &entry) {
+        if let Err(error) = note_eligible(
+            &self.root,
+            (self.now)(),
+            task,
+            device,
+            workspace,
+            turn,
+            requested,
+        ) {
             eprintln!("openagents host: auto-start: {error}");
         }
     }
@@ -1642,6 +1668,9 @@ pub fn spawn_sweeper(autostart: Arc<Autostart>) {
         .name("coder-autostart".into())
         .spawn(move || {
             loop {
+                // Release the studio's plan entries whose dependencies
+                // cleared first, so this sweep can start them.
+                super::studio::sweep(&autostart.store, &autostart.root, unix_now());
                 autostart.sweep();
                 std::thread::sleep(SWEEP_EVERY);
             }
@@ -2360,7 +2389,7 @@ const ENGINE_FLAGS: [&str; 10] = [
 ];
 
 /// `PROVIDER:MODEL`, where the provider is one of the closed set.
-fn parse_route(text: &str) -> std::result::Result<Route, String> {
+pub(crate) fn parse_route(text: &str) -> std::result::Result<Route, String> {
     let (provider, model) = text
         .split_once(':')
         .ok_or_else(|| format!("usage: --route takes PROVIDER:MODEL, not `{text}`"))?;

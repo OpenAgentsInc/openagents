@@ -71,6 +71,7 @@ mod sov_host;
 #[cfg(unix)]
 mod ssh;
 mod study;
+mod studio;
 mod terminal;
 #[cfg(test)]
 mod tree;
@@ -122,6 +123,8 @@ Coder:
                would lose, archive an ended task's, and restore an archived one.
   ssh          Start or adopt a host over SSH and tunnel to it.
   boat         Build and test this checkout's change on a Boat sandbox, not here.
+  studio       Agent Studio: seats, goals a lead plans, plan entries released as their
+               dependencies finish, shared memory, and messages to seats.
   shadow       What a sample of Coder runs would have cost through the raw engine
                (off unless set: coder.shadow).
   efficiency   Routed against raw delegation, from recorded runs: cost per
@@ -315,6 +318,7 @@ fn main() -> ExitCode {
         "worktree" | "worktrees" => worktree::run(&output, &rest),
         "settings" => settings::run(&output, &rest),
         "boat" => boat_run::run(&output, &rest),
+        "studio" => studio::run(&output, &rest),
         "shadow" => shadow::run(&output, &rest),
         "efficiency" => efficiency::run(&output, &rest),
         "cloud" => cloud::run(&output, &rest),

@@ -60,6 +60,7 @@ pub mod settings;
 pub mod shadow;
 pub mod spare;
 pub mod steer;
+pub mod studio;
 pub mod targets;
 pub use targets::facts as background_facts;
 pub mod usage;
@@ -605,7 +606,7 @@ pub fn parse_command(bytes: &[u8]) -> Result<Command, Error> {
     Ok(command)
 }
 
-fn identifier(value: &str, slash: bool) -> bool {
+pub(crate) fn identifier(value: &str, slash: bool) -> bool {
     !value.is_empty()
         && value.len() <= 128
         && value.as_bytes()[0].is_ascii_alphanumeric()
@@ -614,7 +615,7 @@ fn identifier(value: &str, slash: bool) -> bool {
         })
 }
 
-fn text(value: &str, max: usize, multiline: bool) -> bool {
+pub(crate) fn text(value: &str, max: usize, multiline: bool) -> bool {
     !value.trim().is_empty()
         && value.len() <= max
         && value
@@ -1088,7 +1089,7 @@ pub(crate) static TASK_LOCK_WAITS: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(0);
 
 /// Wait up to `wait` for `lock`'s exclusive OS lock.
-fn take_lock(lock: &File, wait: Duration) -> Result<(), Error> {
+pub(crate) fn take_lock(lock: &File, wait: Duration) -> Result<(), Error> {
     let started = Instant::now();
     loop {
         match lock.try_lock() {
@@ -1103,7 +1104,7 @@ fn take_lock(lock: &File, wait: Duration) -> Result<(), Error> {
 }
 
 /// Open a stable private lock file, creating it when absent.
-fn open_lock(path: &Path) -> Result<File, Error> {
+pub(crate) fn open_lock(path: &Path) -> Result<File, Error> {
     match private_open(path, true, true) {
         Ok(file) => Ok(file),
         Err(Error::Io(error)) if error.kind() == std::io::ErrorKind::AlreadyExists => {
@@ -1127,7 +1128,7 @@ fn write_new(path: &Path, bytes: &[u8]) -> Result<(), Error> {
 
 /// Replace `dir/name` with `bytes` atomically: a durable temporary file,
 /// a rename, and a directory sync.
-fn replace_file(dir: &Path, name: &str, bytes: &[u8]) -> Result<(), Error> {
+pub(crate) fn replace_file(dir: &Path, name: &str, bytes: &[u8]) -> Result<(), Error> {
     let temporary = dir.join(format!(".{name}.tmp"));
     write_new(&temporary, bytes)?;
     regular_or_absent(&dir.join(name))?;
@@ -1677,7 +1678,7 @@ fn sync_directory(_: &Path) -> Result<(), Error> {
 /// is created for this user alone (an owner-only DACL), and the store
 /// directory must be one this user owns that admits no one else.
 #[cfg(windows)]
-fn prepare_directory(path: &Path) -> Result<(), Error> {
+pub(crate) fn prepare_directory(path: &Path) -> Result<(), Error> {
     match std::fs::symlink_metadata(path) {
         Ok(_) => return verify_directory(path),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
@@ -1706,7 +1707,7 @@ fn verify_directory(path: &Path) -> Result<(), Error> {
 }
 
 #[cfg(windows)]
-fn verify_same_file(path: &Path, file: &File) -> Result<(), Error> {
+pub(crate) fn verify_same_file(path: &Path, file: &File) -> Result<(), Error> {
     let (at_path, path_metadata) = private_fs::identity_of(path)?;
     let opened = private_fs::identity(file)?;
     if !path_metadata.is_file()
@@ -1756,7 +1757,7 @@ fn make_private_directory(_: &Path) -> Result<(), Error> {
 }
 
 #[cfg(unix)]
-fn prepare_directory(path: &Path) -> Result<(), Error> {
+pub(crate) fn prepare_directory(path: &Path) -> Result<(), Error> {
     use std::os::unix::fs::DirBuilderExt;
     match std::fs::symlink_metadata(path) {
         Ok(_) => return verify_directory(path),
@@ -1806,7 +1807,7 @@ fn verify_directory(path: &Path) -> Result<(), Error> {
     Ok(())
 }
 
-fn regular_or_absent(path: &Path) -> Result<bool, Error> {
+pub(crate) fn regular_or_absent(path: &Path) -> Result<bool, Error> {
     match std::fs::symlink_metadata(path) {
         Ok(metadata) if metadata.is_file() && !metadata.file_type().is_symlink() => Ok(true),
         Ok(_) => Err(Error::UnsafePath),
@@ -1816,7 +1817,7 @@ fn regular_or_absent(path: &Path) -> Result<bool, Error> {
 }
 
 #[cfg(unix)]
-fn verify_same_file(path: &Path, file: &File) -> Result<(), Error> {
+pub(crate) fn verify_same_file(path: &Path, file: &File) -> Result<(), Error> {
     use std::os::unix::fs::{MetadataExt, PermissionsExt};
     let path_metadata = std::fs::symlink_metadata(path)?;
     let file_metadata = file.metadata()?;
@@ -1851,7 +1852,7 @@ fn private_open(path: &Path, create: bool, write: bool) -> Result<File, Error> {
 }
 
 #[cfg(not(any(unix, windows)))]
-fn prepare_directory(_: &Path) -> Result<(), Error> {
+pub(crate) fn prepare_directory(_: &Path) -> Result<(), Error> {
     Err(Error::UnsupportedPlatform)
 }
 #[cfg(not(any(unix, windows)))]
@@ -1859,7 +1860,7 @@ fn verify_directory(_: &Path) -> Result<(), Error> {
     Err(Error::UnsupportedPlatform)
 }
 #[cfg(not(any(unix, windows)))]
-fn verify_same_file(_: &Path, _: &File) -> Result<(), Error> {
+pub(crate) fn verify_same_file(_: &Path, _: &File) -> Result<(), Error> {
     Err(Error::UnsupportedPlatform)
 }
 #[cfg(not(any(unix, windows)))]
