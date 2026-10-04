@@ -292,6 +292,10 @@ Reverse Gravity (`src/reverse_gravity.rs`, slot Shift+9) is a concentration
 cylinder field whose top band holds a hover spring; characters in it get a
 zero-gravity override and exact upward motion, and ceiling strikes and the
 final drop deal falling damage. Casting it again dismisses it.
+Telekinesis (`src/telekinesis.rs`, row-two slot 0) grips an object with soft
+joints to a kinematic hand, or a creature by driving its character toward the
+hand with gravity suspended. While the hand has path left, the movement keys
+steer it; jumping lets go.
 
 To add a spell: write `src/spells/<name>.rs` with its cast and a
 `playground::Scenario`, add one `SpellDef` line to `spells::CATALOG` (its

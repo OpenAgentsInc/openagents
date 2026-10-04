@@ -68,7 +68,7 @@ pub struct SpellDef {
 /// 1 Wall of Stone (#10453), 2 Levitate (#10454), 3 Feather Fall (#10455),
 /// 4 Gust of Wind (#10456), 5 Wind Wall (#10457), 6 Black Tentacles
 /// (#10458), 7 Meteor Swarm (#10459), 8 Reverse Gravity (#10460).
-pub const CATALOG: &[SpellDef] = &[wind_wall::DEF, levitate::DEF, crate::reverse_gravity::game::SPELL];
+pub const CATALOG: &[SpellDef] = &[wind_wall::DEF, levitate::DEF, crate::reverse_gravity::game::SPELL, crate::telekinesis::DEF];
 
 pub fn spell_in_slot(slot: u8) -> Option<&'static SpellDef> {
     CATALOG.iter().find(|s| s.slot == slot)
@@ -169,6 +169,9 @@ pub struct SpellWorld {
     /// Reverse Gravity's casts, creatures, and falls.
     #[serde(default)]
     pub reverse_gravity: crate::reverse_gravity::game::State,
+    /// Each caster's Telekinesis hand and grip.
+    #[serde(default)]
+    pub telekinesis: BTreeMap<u64, crate::telekinesis::Telekinesis>,
 }
 
 impl Default for SpellWorld {
@@ -213,6 +216,7 @@ impl SpellWorld {
             wind: wind_wall::Wind::default(),
             levitations: Default::default(),
             reverse_gravity: Default::default(),
+            telekinesis: BTreeMap::new(),
         }
     }
 
@@ -250,6 +254,11 @@ impl SpellWorld {
             || self.concentration.values().any(|cast| *cast > self.casts)
             || self.wind.validate(self.casts).is_err()
             || self.reverse_gravity.validate(self.props.len()).is_err()
+            || self.telekinesis.len() > 16
+            || self
+                .telekinesis
+                .values()
+                .any(|t| t.hand.0 as usize >= bodies || t.cast > self.casts)
         {
             return Err("Invalid spell world checkpoint".into());
         }
@@ -536,7 +545,7 @@ impl SpellWorld {
         for cast in expired {
             self.end_cast(cast)?;
         }
-        if self.props.iter().all(|p| p.removed || p.spec.secured) {
+        if self.props.iter().all(|p| p.removed || p.spec.secured) && self.telekinesis.is_empty() {
             self.world.tick += u64::from(steps);
             return Ok(());
         }
@@ -548,6 +557,9 @@ impl SpellWorld {
             self.levitations
                 .drive(&mut self.world, &mut self.ledger, &self.props);
             // What the field adds: only bodies that respond this step.
+            for tk in self.telekinesis.values_mut() {
+                tk.substep_before(&mut self.world);
+            }
             let mut field_terms: Vec<(String, DVec3, DVec3)> = vec![];
             for body in self.world.bodies() {
                 let responds = body.kind == physics::BodyKind::Dynamic
@@ -601,6 +613,9 @@ impl SpellWorld {
                         angular: twist,
                     },
                 );
+            }
+            for tk in self.telekinesis.values_mut() {
+                tk.substep_after(&mut self.world, &mut self.ledger);
             }
             for (_, removed) in std::mem::take(&mut self.world.slept) {
                 self.ledger.add(

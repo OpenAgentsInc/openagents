@@ -1622,6 +1622,8 @@ impl Game {
         } else {
             self.pending_movement.take().unwrap_or([0.; 2])
         };
+        // A Telekinesis hand with path left takes the movement keys.
+        let movement = crate::telekinesis::steer_input(self, movement, dt);
         let forward = Vec3::new(-self.yaw.sin(), 0.0, -self.yaw.cos());
         let right = Vec3::new(-forward.z, 0.0, forward.x);
         let input = Vec3::new(
@@ -1640,6 +1642,8 @@ impl Game {
         let previous_player = self.player;
         self.previous_player = self.player;
         let jump = std::mem::take(&mut self.pending_jump) && !dead;
+        // Jumping while Telekinesis holds something lets go instead.
+        let jump = jump && !crate::telekinesis::let_go(self);
         let mut player_path = vec![];
         if self.colliders.is_empty() {
             self.player = self.move_player(self.player, delta)?;
@@ -1752,6 +1756,8 @@ impl Game {
                     // A levitated character moves only by pushing off.
                     let levitated = self.spells.levitations.holds(a.actor.id);
                     let velocity = if knocked || levitated {
+                    let knocked = character.knocked() || self.spells.holds_creature(a.actor.id);
+                    let velocity = if knocked {
                         glam::DVec3::ZERO
                     } else {
                         glam::DVec3::new(velocity.x, 0., velocity.z).clamp_length_max(100.)
@@ -2277,9 +2283,11 @@ impl Game {
                 }
             }
         }
+        crate::telekinesis::before_step(self)?;
         self.spells.begin_tick();
         self.spells.step(steps as u32, self.time)?;
         crate::reverse_gravity::game::step(self, dt)?;
+        crate::telekinesis::after_step(self, steps)?;
         let masses: BTreeMap<u64, f64> = std::iter::once(self.player_actor())
             .chain(self.additional_players.keys().copied())
             .chain(living.iter().copied())
