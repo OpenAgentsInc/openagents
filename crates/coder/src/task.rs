@@ -61,6 +61,7 @@ pub mod shadow;
 pub mod spare;
 pub mod steer;
 pub mod studio;
+pub mod studio_sim;
 pub mod targets;
 pub use targets::facts as background_facts;
 pub mod usage;
