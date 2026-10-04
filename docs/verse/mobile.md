@@ -210,12 +210,11 @@ pack first.
   Everglade replaces the Grid.
 - **In Everglade.** The player arrives on the approach path facing the
   workshop and walks the glade with the Grid's sticks: move, look, and jump.
-  The zone panel shows the caption and **The Grid**. The OpenAgents app has
-  no studio panel, so it offers no **Interact** at a station; Coder's phones
-  keep theirs.
+  The OpenAgents app draws no zone panel inside a zone: no caption, hints,
+  or buttons, only the world and its sticks. It has no studio panel, so it
+  offers no **Interact** at a station; Coder's phones keep theirs.
 - **Returning.** The return arch, lettered **THE GRID**, stands 7 m behind
-  Everglade's spawn. Walking through it, or the panel's **The Grid** button,
-  comes back 3.5 m in front of the Grid's Everglade arch, facing away from
+  Everglade's spawn. Walking through it comes back 3.5 m in front of the Grid's Everglade arch, facing away from
   it, and presence rejoins `verse-bare` there.
 
 ### The Grid's portal to Lagrange 1

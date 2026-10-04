@@ -2616,13 +2616,12 @@ impl Scene {
         )
     }
 
-    /// Whether the bare world draws the zone panel: while a zone loads or
-    /// failed to load (with Cancel, or Retry and Dismiss), and inside a
-    /// zone.
+    /// Whether the bare world draws the zone panel: only while a zone loads
+    /// or failed to load (with Cancel, or Retry and Dismiss). Inside a zone
+    /// it draws none (owner, 2026-10-04): the world is the screen, and the
+    /// player leaves by walking back through the zone's arch.
     fn bare_zone_panel(&self) -> bool {
-        self.world.is_bare()
-            && (!self.world.is_plaza()
-                || self.world.zone_load_state() != verse::zones::LoadState::Idle)
+        self.world.is_bare() && self.world.zone_load_state() != verse::zones::LoadState::Idle
     }
 
     fn plaza_online_allowed(&self) -> bool {

@@ -289,18 +289,8 @@ fn the_grid_portal_pauses_presence_in_lagrange_1_and_the_return_rejoins() {
     assert_eq!(packet.remote_entities, 0);
     let published = relay.published().len();
 
-    // The zone's panel is drawn in white and grays above the stick.
-    let hud = scene.zone_hud_snapshot();
-    assert!(hud.visible);
-    let [_, y, _, h] = hud.frame;
-    assert!(y + h < sy - 56.0, "the panel covers the stick");
-    let ui = scene.map_ui();
-    assert!(ui.vertices.len() > scene.stick_ui().vertices.len());
-    assert!(
-        ui.vertices
-            .iter()
-            .all(|v| v.color[0] == v.color[1] && v.color[1] == v.color[2])
-    );
+    // Inside a zone the app draws no zone panel.
+    assert!(!scene.bare_zone_panel());
     // Nothing more reaches the relay while the player is in the zone.
     run(
         &mut scene,
@@ -316,17 +306,9 @@ fn the_grid_portal_pauses_presence_in_lagrange_1_and_the_return_rejoins() {
             .all(|event| event.pubkey != me)
     );
 
-    // The panel's button returns to the Grid in front of the portal.
-    let button = hud
-        .buttons
-        .iter()
-        .find(|b| b.action == verse::zones::Intent::Return)
-        .unwrap();
-    assert_eq!(button.label, "The Grid");
-    let [bx, by, bw, bh] = button.frame;
-    let at = [bx + bw / 2.0, by + bh / 2.0];
-    scene.pointer(2, PointerPhase::Down, at[0], at[1]).unwrap();
-    scene.pointer(2, PointerPhase::Up, at[0], at[1]).unwrap();
+    // Leaving (as walking back through the zone's arch does) returns to
+    // the Grid in front of the portal.
+    scene.zone_intent(verse::zones::Intent::Return).unwrap();
     assert!(scene.world.is_plaza());
     assert_eq!(scene.world.player.pos, gate.front().0);
     let session = scene.session.as_ref().expect("presence rejoins");
@@ -349,10 +331,10 @@ fn the_grid_portal_pauses_presence_in_lagrange_1_and_the_return_rejoins() {
 
 /// Walking through the Grid's arch to Everglade loads the zone's pinned pack
 /// with the zone panel's progress and Cancel on the Grid, enters Everglade
-/// with presence paused, and the panel's **The Grid** button comes back in
-/// front of the arch, where presence rejoins `verse-bare`.
+/// with presence paused and no panel drawn, and leaving comes back in front
+/// of the arch, where presence rejoins `verse-bare`.
 #[test]
-fn the_everglade_arch_loads_its_pack_pauses_presence_and_the_grid_button_rejoins() {
+fn the_everglade_arch_loads_its_pack_pauses_presence_and_the_return_rejoins() {
     use verse::zones::everglade_pack::{PACK_DIRECTORY, PACK_EXTENSION, PACK_SHA256};
     use verse::zones::{Intent, ZoneId};
     let relay = loopback_relay::LoopbackRelay::start();
@@ -451,23 +433,14 @@ fn the_everglade_arch_loads_its_pack_pauses_presence_and_the_grid_button_rejoins
         .place_player([podium[0], 0.0, podium[1]].into(), 0.0)
         .unwrap();
     assert!(scene.world.studio_panel_here().is_some());
-    let hud = scene.zone_hud_snapshot();
-    assert!(hud.buttons.iter().all(|b| b.action != Intent::Interact));
+    // Inside Everglade the app draws no zone panel, caption, or buttons.
+    assert!(!scene.bare_zone_panel());
     assert!(scene.zone_intent(Intent::Interact).is_err());
     assert!(scene.studio.is_none());
 
-    // The panel's button returns to the Grid in front of the arch, and
-    // presence rejoins.
-    let button = hud
-        .buttons
-        .iter()
-        .find(|b| b.action == Intent::Return)
-        .unwrap();
-    assert_eq!(button.label, "The Grid");
-    let [bx, by, bw, bh] = button.frame;
-    let at = [bx + bw / 2.0, by + bh / 2.0];
-    scene.pointer(2, PointerPhase::Down, at[0], at[1]).unwrap();
-    scene.pointer(2, PointerPhase::Up, at[0], at[1]).unwrap();
+    // Leaving (as walking back through THE GRID arch does) returns to the
+    // Grid in front of the arch, and presence rejoins.
+    scene.zone_intent(Intent::Return).unwrap();
     assert!(scene.world.is_plaza());
     assert_eq!(scene.world.player.pos, front);
     assert_eq!(
