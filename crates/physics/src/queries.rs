@@ -396,6 +396,10 @@ impl Scene {
     pub fn query_profile(&self) -> Option<QueryProfile> {
         self.profiling.snapshot()
     }
+    /// Preserves an observation scope when the host replaces scene geometry.
+    pub fn continue_profiling(&mut self, previous: &Self) {
+        self.profiling = previous.profiling.clone();
+    }
 
     pub fn capsule_keys(&self) -> impl Iterator<Item = ColliderKey> + '_ {
         self.capsules.keys().copied()

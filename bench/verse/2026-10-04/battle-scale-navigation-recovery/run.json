@@ -1,0 +1,33 @@
+{
+  "schema": "verse.battle.scale.run.v1",
+  "acceptance": "failed",
+  "workload": {
+    "players": 20,
+    "hostile_npcs": 40,
+    "cultist_health": 20000,
+    "native_clients": 1,
+    "headless_clients": 19,
+    "seconds": 60,
+    "persistent_storage": false,
+    "compiled_revisions": {
+      "host": "ce2598fb20",
+      "clients": "ce2598fb20"
+    },
+    "fixture_revision": "ce2598fb201eb7508912fa9d938ef0895dd9c272",
+    "limits": [
+      "NPC health is raised in the authored load scene to sustain spell and AI work.",
+      "Headless player connections do not establish rendering performance on their machines.",
+      "Native player and load generator share one host machine."
+    ]
+  },
+  "failure": "Directed NPC navigation still calls strict motor recovery and stops the host on actor 211 squeezed between two capsules and prop 10033.",
+  "limits": [
+    "Host completes 2413 ticks with zero dropped seconds before the fatal recovery.",
+    "Simulation p99 histogram upper bound is 16 ms and maximum is 17.528 ms in this truncated run; the earlier 500 ms result is not reproduced.",
+    "Native frame p95 is 58.045 ms and correction p95 is 0.761 m, maximum 1.586 m; truncated trajectories prevent sustained acceptance or isolated attribution.",
+    "Collision query aggregates are absent because runtime blocker replacement discarded the enabled profiling scope.",
+    "Zero contained blocks does not imply containment coverage: the remaining strict navigation path bypasses it.",
+    "Compiled binaries are from ce2598fb20. Persistent storage is disabled.",
+    "Partial headless and native receipts are retained without credentials or save state."
+  ]
+}

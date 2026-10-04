@@ -993,6 +993,7 @@ impl Game {
             scene.insert(collider)?;
         }
         self.spells.insert_query_colliders(&mut scene)?;
+        scene.continue_profiling(&self.query_scene);
         self.query_scene = scene;
         self.colliders = bounds;
         self.blockers = next;
@@ -1124,14 +1125,16 @@ impl Game {
         let mut filter = physics::queries::Filter::blocking(instance);
         filter.ignore = ignore;
         for _ in 0..steps {
-            character.step(
+            if !self.motor_recovery.observe(character.step_contained(
                 &self.query_scene,
                 filter,
                 physics::character::Settings::default(),
                 movement * (120. / steps as f64),
                 false,
                 1. / 120.,
-            )?;
+            )?) {
+                break;
+            }
         }
         if character.feet.distance(position.as_dvec3()) < distance as f64 * 0.1 {
             route.stuck_steps = route.stuck_steps.saturating_add(1);
@@ -4875,6 +4878,33 @@ mod friendly_tests {
 mod motor_containment_tests {
     use super::*;
     #[test]
+    fn query_measurements_survive_dynamic_blocker_scene_replacement() {
+        let scene =
+            Scene::from_json(include_bytes!("../../../assets/verse/original/ritual.json")).unwrap();
+        let mut game = Game::combat(scene, false).unwrap();
+        game.enable_query_profiling();
+        let filter = physics::queries::Filter::blocking(game.player_life().instance);
+        game.query_scene
+            .ray(glam::DVec3::Y * 2., -glam::DVec3::Y, 4., filter)
+            .unwrap();
+        game.set_navigation_blocker(
+            physics::queries::Life {
+                instance: game.player_life().instance,
+                entity: 90003,
+                generation: 0,
+            },
+            glam::DVec3::new(8., 0., -22.),
+            glam::DVec3::new(8.5, 1., -21.5),
+        )
+        .unwrap();
+        assert_eq!(game.query_profile().unwrap().ray.calls, 1);
+        game.query_scene
+            .ray(glam::DVec3::Y * 2., -glam::DVec3::Y, 4., filter)
+            .unwrap();
+        assert_eq!(game.query_profile().unwrap().ray.calls, 2);
+    }
+
+    #[test]
     fn blocked_player_recovery_does_not_stop_the_world_clock() {
         use physics::queries::{ColliderKey, Life, Mesh, MeshCollider, Usage};
         let scene =
@@ -4915,6 +4945,28 @@ mod motor_containment_tests {
         assert!(game.time > time);
         assert_eq!(game.motor_recovery.blocks, 3);
         assert!(game.motor_recovery.last_diagnostic.is_some());
+        // An already planned route can become obstructed before its motor step.
+        // Exercise the navigation motor rather than allowing the planner to refuse it.
+        game.routes.insert(
+            1,
+            Route {
+                life: game.actor_life(1).unwrap(),
+                target: position + Vec3::X,
+                planned_at: game.time,
+                blocker_revision: game.blockers.revision,
+                points: vec![(position + Vec3::X).as_dvec3()],
+                cursor: 0,
+                stuck_steps: 0,
+                refusal: None,
+            },
+        );
+        assert_eq!(
+            game.move_hostile(1, position, position + Vec3::X, 0.1)
+                .unwrap(),
+            position
+        );
+        assert_eq!(game.motor_recovery.blocks, 4);
+
         let checkpoint: serde_json::Value =
             serde_json::from_slice(&game.checkpoint().unwrap()).unwrap();
         assert!(checkpoint["world"].get("motor_recovery").is_none());
