@@ -14,6 +14,7 @@ from reading to a tested port.
 | --- | --- |
 | [2026-09-27-chaos-physics-candidates.md](2026-09-27-chaos-physics-candidates.md) | Chaos (UE 5.8.3) against `crates/physics`: solver, collision, joints, determinism, and tooling candidates, ranked, plus rejections |
 | [2026-09-27-lagrange-realism-audit.md](2026-09-27-lagrange-realism-audit.md) | Lagrange 1 beyond rigid bodies: lighting, materials, camera, sky and precision, and non-rigid effects, with a phased roadmap (R0–R6) |
+| [2026-10-04-lighting-audit.md](2026-10-04-lighting-audit.md) | Unreal's lighting systems (UE 5.8.3) against Verse's renderer: GI, shadows, sky and fog, AO, reflections, post-processing, and the mobile path, with verdicts and a phased plan for WebGL2, phones, and desktop |
 
 When a candidate becomes an issue or lands, update its **Status** in the
 note. Put new notes here with a date prefix and add a row to this table.
