@@ -1064,6 +1064,13 @@ impl Autostart {
         self
     }
 
+    /// The host root whose journal notes tasks eligible, as the studio
+    /// coordinator's releases need ([`super::studio::Studio::with_host_root`]).
+    #[must_use]
+    pub(crate) fn root(&self) -> &Path {
+        &self.root
+    }
+
     /// Sweep after a creation: on a new thread, so the host answers the
     /// device first, unless [`Autostart::foreground`] asked otherwise.
     pub fn sweep_soon(self: &Arc<Self>) {

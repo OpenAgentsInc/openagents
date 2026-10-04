@@ -16,7 +16,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use coder_host::access::protocol::{QueueEdit, QueueItem, QueueLease, TaskQueue};
+use coder_host::access::protocol::{Operation, QueueEdit, QueueItem, QueueLease, TaskQueue};
 use coder_host::{
     Code, CommandAction, Note, Principal, Standing, TaskCommand, TaskCreate, TaskRef, Tasks,
 };
@@ -602,6 +602,189 @@ impl Tasks for Inbox {
                 reason: reason.into(),
             },
         })
+    }
+
+    /// The studio of this task store, joined with its tasks. A store
+    /// without a studio has an empty one; reading never creates it.
+    fn studio(&self) -> Result<coder_host::access::studio::View, Code> {
+        if !super::studio::Studio::present(&self.store) {
+            return Ok(coder_host::access::studio::View::default());
+        }
+        let tasks = Store::open(&self.store).map_err(refusal)?;
+        let studio = super::studio::Studio::open(&self.store).map_err(studio_refusal)?;
+        Ok(studio.wire(&tasks, &self.store))
+    }
+
+    /// A studio intent on this store's coordinator. A task's question or
+    /// approval is answered through the durable command journal under
+    /// the device's command ID, as `task.command` answers one; every
+    /// other intent answers once per request ID.
+    fn studio_intent(
+        &self,
+        key: &str,
+        principal: &Principal,
+        op: &Operation,
+        standing: Standing<'_>,
+    ) -> Result<String, Code> {
+        use super::studio::{NewGoal, Party, PlanOutcome, Repository, Studio};
+        if let Operation::AnswerDecision {
+            decision,
+            based_on,
+            text,
+            command,
+            issued_at,
+        } = op
+        {
+            let studio = Studio::open(&self.store).map_err(studio_refusal)?;
+            let for_task = studio.state().goal(decision).is_none();
+            if for_task && !studio.holds_task(decision) {
+                return Err(Code::Forbidden);
+            }
+            drop(studio);
+            if for_task {
+                let answer = TaskCommand {
+                    command: command.clone(),
+                    task: decision.clone(),
+                    action: CommandAction::Answer,
+                    based_on: *based_on,
+                    text: text.clone(),
+                    emulate: false,
+                    issued_at: *issued_at,
+                };
+                return self
+                    .command(principal, &answer, standing)
+                    .map(|task| task.task);
+            }
+        }
+        let now = super::autostart::unix_now();
+        let mut tasks = Store::open(&self.store).map_err(refusal)?;
+        let mut studio = Studio::open(&self.store).map_err(studio_refusal)?;
+        if let Some(autostart) = &self.autostart {
+            studio = studio.with_host_root(autostart.root());
+        }
+        if let Some(reference) = studio.answered(key) {
+            return Ok(reference);
+        }
+        let (reference, released) = match op {
+            Operation::SubmitGoal {
+                text,
+                workspace,
+                lead,
+            } => {
+                let root = self.workspaces.get(workspace).ok_or(Code::Forbidden)?;
+                let goal = NewGoal {
+                    text: text.clone(),
+                    repository: Repository {
+                        label: workspace.clone(),
+                        path: root.to_string_lossy().into_owned(),
+                    },
+                    lead: lead.clone(),
+                };
+                let (goal_id, _) = studio
+                    .submit_goal(&mut tasks, goal, now)
+                    .map_err(studio_refusal)?;
+                (goal_id, true)
+            }
+            Operation::MessageSeat { seat, text } => {
+                let to = seat
+                    .clone()
+                    .map_or(Party::Everyone, |name| Party::Seat { name });
+                studio
+                    .message(&tasks, Party::Person, to, text, now)
+                    .map_err(studio_refusal)?;
+                (seat.clone().unwrap_or_else(|| "everyone".into()), false)
+            }
+            Operation::PauseSeat { seat } => {
+                studio.pause_seat(seat).map_err(studio_refusal)?;
+                (seat.clone(), false)
+            }
+            Operation::ResumeSeat { seat } => {
+                let released = studio
+                    .resume_seat(&mut tasks, seat, now)
+                    .map_err(studio_refusal)?;
+                (seat.clone(), !released.is_empty())
+            }
+            Operation::StopSeat { seat } => {
+                studio.stop_seat(&mut tasks, seat).map_err(studio_refusal)?;
+                (seat.clone(), false)
+            }
+            Operation::ReassignTask { task, seat } => {
+                studio.reassign(task, seat).map_err(studio_refusal)?;
+                (task.clone(), false)
+            }
+            Operation::CancelStudioTask { task } => {
+                studio
+                    .cancel_task(&mut tasks, task, now)
+                    .map_err(studio_refusal)?;
+                (task.clone(), false)
+            }
+            Operation::RetryTask { task } => {
+                let fresh = studio
+                    .retry_task(&mut tasks, task, now)
+                    .map_err(studio_refusal)?;
+                (fresh, true)
+            }
+            Operation::PrioritizeTask { task } => {
+                studio.prioritize(task).map_err(studio_refusal)?;
+                (task.clone(), false)
+            }
+            Operation::AnswerDecision {
+                decision,
+                based_on,
+                text,
+                ..
+            } => {
+                let outcome = studio
+                    .answer_goal(&mut tasks, decision, *based_on, text, now)
+                    .map_err(studio_refusal)?;
+                let released =
+                    matches!(outcome, PlanOutcome::Accepted { released } if !released.is_empty());
+                (decision.clone(), released)
+            }
+            _ => return Err(Code::Unsupported),
+        };
+        studio
+            .record_answer(key, &reference)
+            .map_err(studio_refusal)?;
+        drop(studio);
+        drop(tasks);
+        if released && let Some(autostart) = &self.autostart {
+            autostart.sweep_soon();
+        }
+        Ok(reference)
+    }
+
+    /// Record a rejection in the studio's shared memory, cancelling the
+    /// task if it still runs. Its worktree stays until it is archived.
+    fn studio_reject(
+        &self,
+        _principal: &Principal,
+        task: &str,
+        reviewed: &coder_host::Reviewed,
+        reason: &str,
+    ) -> Result<(), Code> {
+        if !super::studio::Studio::present(&self.store) {
+            return Err(Code::Forbidden);
+        }
+        let mut tasks = Store::open(&self.store).map_err(refusal)?;
+        let mut studio = super::studio::Studio::open(&self.store).map_err(studio_refusal)?;
+        studio
+            .reject(&mut tasks, task, &reviewed.head, reason)
+            .map(|_| ())
+            .map_err(studio_refusal)
+    }
+}
+
+/// The refusal a device receives for a studio coordinator failure.
+fn studio_refusal(error: super::studio::Error) -> Code {
+    use super::studio::Error as Studio;
+    match error {
+        Studio::Tasks(error) => refusal(error),
+        Studio::Invalid(_) => Code::Malformed,
+        Studio::UnknownSeat(_) | Studio::UnknownGoal(_) => Code::Forbidden,
+        Studio::State(_) => Code::Conflict,
+        Studio::LimitExceeded(_) => Code::Bounds,
+        Studio::Corrupt(_) => Code::Unavailable,
     }
 }
 

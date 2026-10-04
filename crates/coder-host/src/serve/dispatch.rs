@@ -8,7 +8,10 @@ use std::sync::Arc;
 
 use coder_access::Code;
 use coder_access::host::Dispatch;
-use coder_access::protocol::{Operation, QueueEdit, Receipt, TaskQueue};
+use coder_access::protocol::{
+    CommandAction, Operation, QueueEdit, Receipt, TaskCommand, TaskQueue,
+};
+use coder_access::studio::{MergeDecision, Merged, Snapshot, Stream, Update, Verdict};
 use coder_pty::wire::{Launch, Open, Reason, Size, Value};
 
 use super::Shared;
@@ -57,6 +60,83 @@ fn principal(device: &str, grant: Option<(&str, u64)>) -> crate::tasks::Principa
         grant: grant.map(|(id, _)| id.to_owned()),
         epoch: grant.map(|(_, epoch)| epoch),
     }
+}
+
+/// A new Agent Studio stream, named from this process's start time and
+/// identity, so a client's sequence from an earlier process reads as stale.
+pub(crate) fn studio_stream() -> Stream {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_nanos());
+    Stream::new(format!("{nanos:x}{:08x}", std::process::id()))
+}
+
+/// Merge, request changes to, or reject a studio task's change at the
+/// revisions a device reviewed. The task owner reads the review again
+/// first: a worktree that moved refuses as `stale`, unless a merge of
+/// exactly these revisions already published, which a retry answers
+/// again. **Merge** goes to the landing path (`task.publish`),
+/// **Request changes** is the task's next turn through the durable
+/// command journal under the device's command ID, and **Reject** is the
+/// owner's record. Returns the record and the task a follow-up changed.
+pub(crate) fn studio_merge(
+    tasks: &dyn crate::tasks::Tasks,
+    principal: &crate::tasks::Principal,
+    decision: &MergeDecision,
+    standing: crate::tasks::Standing<'_>,
+) -> Result<(Merged, Option<TaskRef>), Code> {
+    let review = tasks.review(&decision.task)?;
+    let same = |base: &str, head_commit: &str, head: &str| {
+        base == decision.base && head_commit == decision.head_commit && head == decision.head
+    };
+    let published = decision.verdict == Verdict::Merge
+        && review
+            .publication
+            .as_ref()
+            .is_some_and(|p| same(&p.base, &p.head_commit, &p.head));
+    if !published && !same(&review.base, &review.head_commit, &review.head) {
+        return Err(Code::Stale);
+    }
+    let reviewed = crate::tasks::Reviewed {
+        base: decision.base.clone(),
+        head_commit: decision.head_commit.clone(),
+        head: decision.head.clone(),
+    };
+    let mut merged = Merged {
+        task: decision.task.clone(),
+        base: decision.base.clone(),
+        head_commit: decision.head_commit.clone(),
+        head: decision.head.clone(),
+        verdict: decision.verdict,
+        publication: None,
+    };
+    let mut changed = None;
+    match decision.verdict {
+        Verdict::Merge => {
+            merged.publication = Some(tasks.publish(principal, &decision.task, &reviewed)?);
+        }
+        Verdict::RequestChanges => {
+            let based_on = tasks
+                .current()
+                .into_iter()
+                .find(|task| task.task == decision.task)
+                .map_or(0, |task| task.revision);
+            let command = TaskCommand {
+                command: decision.command.clone(),
+                task: decision.task.clone(),
+                action: CommandAction::Send,
+                based_on,
+                text: decision.text.clone(),
+                emulate: false,
+                issued_at: decision.issued_at,
+            };
+            changed = Some(tasks.command(principal, &command, standing)?);
+        }
+        Verdict::Reject => {
+            tasks.studio_reject(principal, &decision.task, &reviewed, &decision.text)?;
+        }
+    }
+    Ok((merged, changed))
 }
 
 /// A single-use `coder-pair:` invitation to this host's read-only Coder
@@ -161,6 +241,46 @@ impl Dispatch for Dispatcher {
         Ok(queue)
     }
 
+    /// The studio now, from the task owner's coordinator, at the next
+    /// point of this process's stream.
+    fn studio_snapshot(&mut self, _device: &str) -> Result<Snapshot, Code> {
+        let view = self.shared.tasks.studio()?;
+        Ok(self
+            .shared
+            .studio
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .snapshot(view))
+    }
+
+    /// What changed in the studio since `since`; `stale` when this
+    /// process's stream does not hold that point.
+    fn studio_update(&mut self, _device: &str, stream: &str, since: u64) -> Result<Update, Code> {
+        let view = self.shared.tasks.studio()?;
+        self.shared
+            .studio
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .update(view, stream, since)
+    }
+
+    /// A merge decision for a device holding `review`.
+    fn studio_merge(
+        &mut self,
+        _request: &str,
+        device: &str,
+        grant: Option<(&str, u64)>,
+        decision: &MergeDecision,
+    ) -> Result<Merged, Code> {
+        let principal = principal(device, grant);
+        let authority = self.shared.authority.clone();
+        let standing = move |other: &crate::tasks::Principal| super::standing(&authority, other);
+        let (merged, changed) =
+            studio_merge(self.shared.tasks.as_ref(), &principal, decision, &standing)?;
+        self.changed.extend(changed);
+        Ok(merged)
+    }
+
     /// What a task changed, for a device holding `observe`.
     fn review(
         &mut self,
@@ -212,6 +332,23 @@ impl Dispatch for Dispatcher {
                     .clone()
                     .command(&principal, command, &standing);
                 self.task(op, result)
+            }
+            // A studio intent goes to the task owner's coordinator; the
+            // studio's next update shows what it changed.
+            op if op.studio_intent() => {
+                let principal = principal(device, grant);
+                let authority = self.shared.authority.clone();
+                let standing =
+                    move |other: &crate::tasks::Principal| super::standing(&authority, other);
+                let reference = self
+                    .shared
+                    .tasks
+                    .clone()
+                    .studio_intent(request, &principal, op, &standing)?;
+                Ok(Receipt {
+                    operation: op.name().into(),
+                    reference,
+                })
             }
             _ => self.dispatch(request, device, op),
         }
@@ -332,3 +469,7 @@ impl Dispatch for Dispatcher {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "studio_tests.rs"]
+mod studio_tests;

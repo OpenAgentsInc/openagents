@@ -96,6 +96,9 @@ pub(crate) struct Shared {
     /// Tailnet admission as the control socket's `tailnet_status` reports
     /// it (#10125): `None` until the serving program says.
     pub(crate) tailnet: std::sync::Mutex<Option<Tailnet>>,
+    /// The Agent Studio stream `studio.snapshot` and `studio.update`
+    /// answer from: one per process, so a restart reads as a new stream.
+    pub(crate) studio: std::sync::Mutex<coder_access::studio::Stream>,
     /// Requests in flight on every path, and when the last one ended: what
     /// a restart for an update waits out.
     pub(crate) activity: activity::Activity,
@@ -236,6 +239,7 @@ pub async fn start(config: Config, tasks: Arc<dyn Tasks>) -> Result<Running> {
         restart: tokio::sync::watch::channel(false).0,
         engines: std::sync::Mutex::new(Vec::new()),
         tailnet: std::sync::Mutex::new(None),
+        studio: std::sync::Mutex::new(dispatch::studio_stream()),
         activity: activity::Activity::default(),
         closing: std::sync::atomic::AtomicBool::new(false),
         #[cfg(unix)]

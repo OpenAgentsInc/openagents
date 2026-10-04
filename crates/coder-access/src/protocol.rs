@@ -21,7 +21,7 @@ pub const MAX_REQUEST_LIFETIME: u64 = 60;
 pub const INVITATION_LIFETIME: u64 = coder_connect::pairing::LIFETIME;
 pub const ENROLLMENT_LIFETIME: u64 = 300;
 pub const MAX_CODE_ATTEMPTS: u32 = 5;
-const MAX_SAFE: u64 = 9_007_199_254_740_991;
+pub(crate) const MAX_SAFE: u64 = 9_007_199_254_740_991;
 const CODE_ALPHABET: &[u8; 32] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 
 /// A parsed host invitation. It holds a temporary capability: never log it.
@@ -723,6 +723,74 @@ pub enum Operation {
         until: Option<u64>,
         resume: bool,
     },
+    /// The Agent Studio now, in full ([`crate::studio::Snapshot`]). A
+    /// read.
+    #[serde(rename = "studio.snapshot")]
+    StudioSnapshot {},
+    /// What changed in the studio since `since` in `stream`
+    /// ([`crate::studio::Update`]). A read. A host that no longer holds
+    /// that point refuses as `stale`, and the client reads a snapshot.
+    #[serde(rename = "studio.update")]
+    StudioUpdate { stream: String, since: u64 },
+    /// Start a goal on an admitted repository: the lead seat (the first
+    /// lead when `lead` is null) plans it. `workspace` is a host label,
+    /// never a path.
+    #[serde(rename = "studio.goal.submit")]
+    SubmitGoal {
+        text: String,
+        workspace: String,
+        lead: Option<String>,
+    },
+    /// Message one seat, or every seat when `seat` is null. A running task
+    /// reads it through the steer path; otherwise its next briefing does.
+    #[serde(rename = "studio.seat.message")]
+    MessageSeat { seat: Option<String>, text: String },
+    /// Pause a seat: it keeps its task and takes no new one.
+    #[serde(rename = "studio.seat.pause")]
+    PauseSeat { seat: String },
+    /// Resume a paused seat.
+    #[serde(rename = "studio.seat.resume")]
+    ResumeSeat { seat: String },
+    /// Stop a seat: cancel its active task, return that task to the board
+    /// as planned, and pause the seat.
+    #[serde(rename = "studio.seat.stop")]
+    StopSeat { seat: String },
+    /// Give a planned task to another seat.
+    #[serde(rename = "studio.task.reassign")]
+    ReassignTask { task: String, seat: String },
+    /// Cancel a planned or running studio task.
+    #[serde(rename = "studio.task.cancel")]
+    CancelStudioTask { task: String },
+    /// Plan a failed or cancelled studio task again, under a new task
+    /// identity.
+    #[serde(rename = "studio.task.retry")]
+    RetryTask { task: String },
+    /// Move a planned task ahead of its goal's other planned tasks.
+    #[serde(rename = "studio.task.prioritize")]
+    PrioritizeTask { task: String },
+    /// Answer an open studio decision: a task's question or approval,
+    /// through the existing `answer` command keyed by `command`; or a
+    /// goal's plan decision, with a plan. `based_on` is the decision's
+    /// own `based_on`; another refuses as `stale`.
+    #[serde(rename = "studio.decision.answer")]
+    AnswerDecision {
+        decision: String,
+        based_on: u64,
+        text: String,
+        command: String,
+        issued_at: u64,
+    },
+    /// Read a studio task's review: files, counts, diff, and the three
+    /// revisions a merge decision binds to. A read.
+    #[serde(rename = "studio.review.open")]
+    OpenReview { task: String },
+    /// **Merge**, **Request changes**, or **Reject** a studio task at the
+    /// reviewed revisions. A worktree that changed since refuses as
+    /// `stale`.
+    #[serde(rename = "studio.merge.decide")]
+    DecideMerge {
+        decision: Box<crate::studio::MergeDecision>,
+    },
 }
 impl Operation {
     /// A read with no effect, whose reply the host does not retain: an
@@ -731,7 +799,31 @@ impl Operation {
     pub fn reads_only(&self) -> bool {
         matches!(
             self,
-            Self::ListThreads {} | Self::ReadThread { .. } | Self::ReviewTask { .. }
+            Self::ListThreads {}
+                | Self::ReadThread { .. }
+                | Self::ReviewTask { .. }
+                | Self::StudioSnapshot {}
+                | Self::StudioUpdate { .. }
+                | Self::OpenReview { .. }
+        )
+    }
+
+    /// A `studio.*` intent the host hands its task owner, answered by a
+    /// `dispatched` receipt.
+    #[must_use]
+    pub fn studio_intent(&self) -> bool {
+        matches!(
+            self,
+            Self::SubmitGoal { .. }
+                | Self::MessageSeat { .. }
+                | Self::PauseSeat { .. }
+                | Self::ResumeSeat { .. }
+                | Self::StopSeat { .. }
+                | Self::ReassignTask { .. }
+                | Self::CancelStudioTask { .. }
+                | Self::RetryTask { .. }
+                | Self::PrioritizeTask { .. }
+                | Self::AnswerDecision { .. }
         )
     }
     /// Whether the host retains this operation's reply for an exact retry.
@@ -791,6 +883,20 @@ impl Operation {
             Self::LogBackground { .. } => "background.log",
             Self::RunBackground { .. } => "background.run",
             Self::PauseBackground { .. } => "background.pause",
+            Self::StudioSnapshot {} => "studio.snapshot",
+            Self::StudioUpdate { .. } => "studio.update",
+            Self::SubmitGoal { .. } => "studio.goal.submit",
+            Self::MessageSeat { .. } => "studio.seat.message",
+            Self::PauseSeat { .. } => "studio.seat.pause",
+            Self::ResumeSeat { .. } => "studio.seat.resume",
+            Self::StopSeat { .. } => "studio.seat.stop",
+            Self::ReassignTask { .. } => "studio.task.reassign",
+            Self::CancelStudioTask { .. } => "studio.task.cancel",
+            Self::RetryTask { .. } => "studio.task.retry",
+            Self::PrioritizeTask { .. } => "studio.task.prioritize",
+            Self::AnswerDecision { .. } => "studio.decision.answer",
+            Self::OpenReview { .. } => "studio.review.open",
+            Self::DecideMerge { .. } => "studio.merge.decide",
         }
     }
     /// The right this operation requires. Redemption uses the invitation's
@@ -810,7 +916,10 @@ impl Operation {
             | Self::ReviewTask { .. }
             | Self::ListBackground {}
             | Self::ShowBackground { .. }
-            | Self::LogBackground { .. } => Some(Right::Observe),
+            | Self::LogBackground { .. }
+            | Self::StudioSnapshot {}
+            | Self::StudioUpdate { .. }
+            | Self::OpenReview { .. } => Some(Right::Observe),
             Self::CreateTask { .. }
             | Self::SteerTask { .. }
             | Self::CancelTask { .. }
@@ -828,8 +937,19 @@ impl Operation {
             | Self::PublishTask { .. }
             | Self::PutArtifact { .. }
             | Self::RunBackground { .. }
-            | Self::PauseBackground { .. } => Some(Right::Operate),
+            | Self::PauseBackground { .. }
+            | Self::SubmitGoal { .. }
+            | Self::MessageSeat { .. }
+            | Self::PauseSeat { .. }
+            | Self::ResumeSeat { .. }
+            | Self::StopSeat { .. }
+            | Self::ReassignTask { .. }
+            | Self::CancelStudioTask { .. }
+            | Self::RetryTask { .. }
+            | Self::PrioritizeTask { .. }
+            | Self::AnswerDecision { .. } => Some(Right::Operate),
             Self::OpenTerminal { .. } => Some(Right::Terminal),
+            Self::DecideMerge { .. } => Some(Right::Review),
         }
     }
     pub fn validate(&self) -> Result<()> {
@@ -968,6 +1088,53 @@ impl Operation {
                     sealed.validate()?;
                 }
             }
+            Self::StudioSnapshot {} => {}
+            Self::StudioUpdate { stream, since } => {
+                crate::studio::stream_id(stream)?;
+                safe(*since)?;
+            }
+            Self::SubmitGoal {
+                text: goal,
+                workspace,
+                lead,
+            } => {
+                crate::studio::text(goal, crate::studio::MAX_SUBMIT)?;
+                text(workspace, 128)?;
+                if let Some(lead) = lead {
+                    crate::studio::seat_name(lead)?;
+                }
+            }
+            Self::MessageSeat { seat, text } => {
+                if let Some(seat) = seat {
+                    crate::studio::seat_name(seat)?;
+                }
+                crate::studio::text(text, crate::studio::MAX_MESSAGE)?;
+            }
+            Self::PauseSeat { seat } | Self::ResumeSeat { seat } | Self::StopSeat { seat } => {
+                crate::studio::seat_name(seat)?;
+            }
+            Self::ReassignTask { task, seat } => {
+                crate::studio::id(task)?;
+                crate::studio::seat_name(seat)?;
+            }
+            Self::CancelStudioTask { task }
+            | Self::RetryTask { task }
+            | Self::PrioritizeTask { task }
+            | Self::OpenReview { task } => crate::studio::id(task)?,
+            Self::AnswerDecision {
+                decision,
+                based_on,
+                text,
+                command,
+                issued_at,
+            } => {
+                crate::studio::id(decision)?;
+                safe(*based_on)?;
+                crate::studio::text(text, crate::studio::MAX_ANSWER)?;
+                identity(command).map_err(Error::from)?;
+                safe(*issued_at)?;
+            }
+            Self::DecideMerge { decision } => decision.validate()?,
         }
         Ok(())
     }
@@ -1132,6 +1299,18 @@ pub enum Outcome {
     Background {
         background: Box<serde_json::Value>,
     },
+    /// The Agent Studio in full (`studio.snapshot`).
+    Studio {
+        snapshot: Box<crate::studio::Snapshot>,
+    },
+    /// What changed in the studio (`studio.update`).
+    StudioUpdate {
+        update: Box<crate::studio::Update>,
+    },
+    /// What the host did with a merge decision (`studio.merge.decide`).
+    Merged {
+        merged: Box<crate::studio::Merged>,
+    },
 }
 
 /// The largest `background` outcome.
@@ -1245,6 +1424,15 @@ impl Outcome {
         if let Self::Published { publication } = self {
             publication.validate()?;
         }
+        if let Self::Studio { snapshot } = self {
+            snapshot.validate()?;
+        }
+        if let Self::StudioUpdate { update } = self {
+            update.validate()?;
+        }
+        if let Self::Merged { merged } = self {
+            merged.validate()?;
+        }
         if let Self::Background { .. } = self
             && serde_json::to_vec(self).map_or(true, |bytes| bytes.len() > MAX_BACKGROUND_BYTES)
         {
@@ -1285,7 +1473,20 @@ impl Outcome {
             (Operation::ReadThread { thread, .. }, Self::Thread { thread: page }) => {
                 page.thread == *thread
             }
-            (Operation::ReviewTask { task }, Self::Review { review }) => review.task == *task,
+            (
+                Operation::ReviewTask { task } | Operation::OpenReview { task },
+                Self::Review { review },
+            ) => review.task == *task,
+            (Operation::StudioSnapshot {}, Self::Studio { .. }) => true,
+            (Operation::StudioUpdate { stream, since }, Self::StudioUpdate { update }) => {
+                update.stream == *stream && update.from == *since
+            }
+            (Operation::DecideMerge { decision }, Self::Merged { merged }) => {
+                merged.answers(decision)
+            }
+            (op, Self::Dispatched { receipt }) if op.studio_intent() => {
+                receipt.operation == op.name()
+            }
             (
                 Operation::PublishTask {
                     task,

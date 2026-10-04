@@ -12,7 +12,7 @@
 //! running context, and a cancel requests a stop.
 
 use coder_access::Code;
-use coder_access::protocol::{QueueEdit, TaskCommand, TaskCreate, TaskQueue};
+use coder_access::protocol::{Operation, QueueEdit, TaskCommand, TaskCreate, TaskQueue};
 use nostr::activity_summary::{Attention, Phase};
 
 /// A task after an accepted operation.
@@ -405,6 +405,54 @@ pub trait Tasks: Send + Sync {
         _task: &str,
         _reviewed: &Reviewed,
     ) -> Result<coder_access::review::Publication, Code> {
+        Err(Code::Unsupported)
+    }
+
+    /// The Agent Studio as this owner's coordinator holds it, joined with
+    /// its tasks, for `studio.snapshot` and `studio.update`
+    /// (`docs/verse/agent-studio.md`). Log lines follow the disclosure
+    /// rule in [`coder_access::studio`]. The default, an owner without a
+    /// studio, refuses as `unsupported`.
+    ///
+    /// # Errors
+    /// Returns the NIP-HOST refusal code the device receives.
+    fn studio(&self) -> Result<coder_access::studio::View, Code> {
+        Err(Code::Unsupported)
+    }
+
+    /// Apply a `studio.*` intent ([`Operation::studio_intent`]) for
+    /// `principal`, whose `operate` right the host checked. `key`, the
+    /// NIP-HOST request ID, is the idempotency key; `standing` rechecks a
+    /// sender before a deferred answer runs. Returns the reference the
+    /// receipt names: the goal, seat, or task. The default refuses as
+    /// `unsupported`.
+    ///
+    /// # Errors
+    /// Returns the NIP-HOST refusal code the device receives.
+    fn studio_intent(
+        &self,
+        _key: &str,
+        _principal: &Principal,
+        _op: &Operation,
+        _standing: Standing<'_>,
+    ) -> Result<String, Code> {
+        Err(Code::Unsupported)
+    }
+
+    /// Record that `principal`, whose `review` right the host checked,
+    /// rejected the studio task `task` at the `reviewed` revisions, with
+    /// an optional `reason`. The task's worktree stays for inspection
+    /// until it is archived. The default refuses as `unsupported`.
+    ///
+    /// # Errors
+    /// Returns the NIP-HOST refusal code the device receives.
+    fn studio_reject(
+        &self,
+        _principal: &Principal,
+        _task: &str,
+        _reviewed: &Reviewed,
+        _reason: &str,
+    ) -> Result<(), Code> {
         Err(Code::Unsupported)
     }
 }

@@ -15,6 +15,7 @@ pub mod protocol;
 pub mod review;
 pub mod rights;
 pub mod spend;
+pub mod studio;
 pub mod thread;
 pub mod wallet_link;
 

@@ -196,6 +196,11 @@ Studio intents, each a NIP-HOST operation checked against the device's grant:
 | `review.open` | `observe` | Read a task's review: files, hunks, counts, revisions. |
 | `merge.decide` | `review` | **Merge**, **Request changes**, or **Reject** a task at the reviewed revision. |
 
+On the wire each intent's operation kind carries a `studio.` prefix, such as
+`studio.goal.submit`, because `task.cancel` already names a NIP-HOST
+operation. [NIP-HOST](../../nips/openagents/NIP-HOST.md#operations) lists the
+operations, their fields, and their refusals.
+
 Host to client, one full `studio.snapshot` on connect and then
 `studio.update` deltas, each with a monotonic sequence so a client that misses
 one asks for a fresh snapshot. A snapshot carries goals, seats (activity,

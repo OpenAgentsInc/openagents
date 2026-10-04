@@ -1212,6 +1212,10 @@ impl Studio {
         let mut released = Vec::new();
         for index in 0..self.state.goals.len() {
             if self.state.goals[index].lead.state != SlotState::Submitted {
+                // A paused lead's goal waits for it to resume.
+                if self.paused_seat(&self.state.goals[index].lead.seat) {
+                    continue;
+                }
                 released.push(self.release(tasks, index, None, now)?);
             }
             let goal = &self.state.goals[index];
@@ -1302,7 +1306,7 @@ impl Studio {
                     ));
                 }
             }
-            if ready {
+            if ready && !self.paused_seat(&item.slot.seat) {
                 released.push(self.release(tasks, index, Some(entry), now)?);
             }
         }
@@ -1826,6 +1830,10 @@ pub fn sweep(store: &Path, root: &Path, now: u64) {
         eprintln!("openagents host: studio: {error}");
     }
 }
+
+// The NIP-HOST studio intents and the view a device draws.
+#[path = "studio_intents.rs"]
+mod intents;
 
 #[cfg(test)]
 #[path = "studio_tests.rs"]

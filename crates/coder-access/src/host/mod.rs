@@ -158,6 +158,47 @@ pub trait Dispatch: Send {
     ) -> std::result::Result<serde_json::Value, Code> {
         Err(Code::Unsupported)
     }
+    /// The Agent Studio now, for `device`, which holds `observe`
+    /// (`studio.snapshot`). A host without a studio has none to offer.
+    fn studio_snapshot(
+        &mut self,
+        _device: &str,
+    ) -> std::result::Result<crate::studio::Snapshot, Code> {
+        Err(Code::Unsupported)
+    }
+    /// What changed in the studio since `since` in `stream`, for `device`,
+    /// which holds `observe` (`studio.update`). A stream that no longer
+    /// holds that point refuses as `stale`.
+    fn studio_update(
+        &mut self,
+        _device: &str,
+        _stream: &str,
+        _since: u64,
+    ) -> std::result::Result<crate::studio::Update, Code> {
+        Err(Code::Unsupported)
+    }
+    /// A studio task's review, for `device`, which holds `observe`
+    /// (`studio.review.open`). The default reads it as `task.review` does.
+    fn studio_review(
+        &mut self,
+        device: &str,
+        task: &str,
+    ) -> std::result::Result<crate::review::TaskReview, Code> {
+        self.review(device, task)
+    }
+    /// Decide a studio task's merge at the reviewed revisions, for
+    /// `device`, which holds `review`, admitted under `grant` (`None` for
+    /// the owner). `request` is the idempotency key. A worktree whose
+    /// revisions moved since the review refuses as `stale`.
+    fn studio_merge(
+        &mut self,
+        _request: &str,
+        _device: &str,
+        _grant: Option<(&str, u64)>,
+        _decision: &crate::studio::MergeDecision,
+    ) -> std::result::Result<crate::studio::Merged, Code> {
+        Err(Code::Unsupported)
+    }
 }
 /// Where the host keeps agent spend requests (phase 1 agent spending). The
 /// host has checked the sender's `operate` right, and for `spend.list` that
@@ -965,6 +1006,84 @@ impl Host {
                     Err(code) => Err(Error::new(code, "the host could not read the thread")),
                 }
             }
+            Operation::StudioSnapshot {} => match dispatch.studio_snapshot(&p.key) {
+                Ok(snapshot) => {
+                    let outcome = Outcome::Studio {
+                        snapshot: Box::new(snapshot),
+                    };
+                    match outcome.validate() {
+                        Ok(()) => Ok(outcome),
+                        Err(_) => Err(Error::new(
+                            Code::Unavailable,
+                            "the studio snapshot is invalid",
+                        )),
+                    }
+                }
+                Err(code) => Err(Error::new(code, "the host could not read its studio")),
+            },
+            Operation::StudioUpdate { stream, since } => {
+                match dispatch.studio_update(&p.key, stream, *since) {
+                    Ok(update) => {
+                        let outcome = Outcome::StudioUpdate {
+                            update: Box::new(update),
+                        };
+                        match outcome.validate() {
+                            Ok(()) if outcome.answers(&request.op) => Ok(outcome),
+                            _ => Err(Error::new(
+                                Code::Unavailable,
+                                "the studio update is invalid",
+                            )),
+                        }
+                    }
+                    Err(code) => Err(Error::new(
+                        code,
+                        "the host holds no studio update from that point",
+                    )),
+                }
+            }
+            Operation::OpenReview { task } => match dispatch.studio_review(&p.key, task) {
+                Ok(review) => {
+                    let outcome = Outcome::Review {
+                        review: Box::new(review),
+                    };
+                    match outcome.validate() {
+                        Ok(()) if outcome.answers(&request.op) => Ok(outcome),
+                        _ => Err(Error::new(Code::Unavailable, "the task review is invalid")),
+                    }
+                }
+                Err(code) => Err(Error::new(code, "the host could not review the task")),
+            },
+            Operation::DecideMerge { decision } => {
+                // Record the admitted intent before the effect; the task
+                // owner keys a merge by its review and a request for
+                // changes by its command ID, so a retry repeats nothing.
+                if book.replies.len() >= MAX_REPLIES {
+                    return fail(Code::Bounds, "retained reply limit reached");
+                }
+                book.replies.insert(
+                    request.request.clone(),
+                    Retained {
+                        request_event: origin.0.to_owned(),
+                        signer: origin.1.to_owned(),
+                        expires_at: request.expires_at,
+                        reply: None,
+                    },
+                );
+                store.save(book)?;
+                let grant = p.grant.as_deref().zip(request.epoch);
+                match dispatch.studio_merge(&request.request, &p.key, grant, decision) {
+                    Ok(merged) => {
+                        let outcome = Outcome::Merged {
+                            merged: Box::new(merged),
+                        };
+                        match outcome.validate() {
+                            Ok(()) if outcome.answers(&request.op) => Ok(outcome),
+                            _ => Err(Error::new(Code::Unavailable, "the merge record is invalid")),
+                        }
+                    }
+                    Err(code) => Err(Error::new(code, "the host refused the merge decision")),
+                }
+            }
             Operation::ReviewTask { task } => match dispatch.review(&p.key, task) {
                 Ok(review) => {
                     let outcome = Outcome::Review {
@@ -1101,7 +1220,17 @@ impl Host {
             | Operation::CommandTask { .. }
             | Operation::SendThread { .. }
             | Operation::StopThread { .. }
-            | Operation::RunThread { .. } => {
+            | Operation::RunThread { .. }
+            | Operation::SubmitGoal { .. }
+            | Operation::MessageSeat { .. }
+            | Operation::PauseSeat { .. }
+            | Operation::ResumeSeat { .. }
+            | Operation::StopSeat { .. }
+            | Operation::ReassignTask { .. }
+            | Operation::CancelStudioTask { .. }
+            | Operation::RetryTask { .. }
+            | Operation::PrioritizeTask { .. }
+            | Operation::AnswerDecision { .. } => {
                 // Record the admitted intent before the effect. A crash after
                 // dispatch replays the same idempotency key, never a new one.
                 if book.replies.len() >= MAX_REPLIES {

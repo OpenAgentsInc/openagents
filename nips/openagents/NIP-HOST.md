@@ -675,6 +675,11 @@ A request is `openagents.host-request.v1`:
 | `thread.send` | `operate` | `dispatched` |
 | `thread.stop` | `operate` | `dispatched` |
 | `thread.run` | `operate` | `dispatched` |
+| `studio.snapshot` | `observe` | `studio` |
+| `studio.update` | `observe` | `studio_update` |
+| `studio.review.open` | `observe` | `review` |
+| `studio.goal.submit`, `studio.seat.message`, `studio.seat.pause`, `studio.seat.resume`, `studio.seat.stop`, `studio.task.reassign`, `studio.task.cancel`, `studio.task.retry`, `studio.task.prioritize`, `studio.decision.answer` | `operate` | `dispatched` |
+| `studio.merge.decide` | `review` | `merged` |
 
 `task.create` carries `{title, prompt, workspace}`. The title is at most 200
 bytes, the prompt at most 16 KiB, and the workspace a host-scoped label of at
@@ -838,6 +843,57 @@ no execution authority beyond that handoff: the host's auto-start policy
 still decides whether the task runs.
 Unlike every other operation, the host does not retain a `thread.list` or
 `thread.read` reply (see [Admission order and retention](#admission-order-and-retention)).
+The `studio.*` operations carry the
+[Agent Studio](../../docs/verse/agent-studio.md#the-client-is-a-view): the
+host's studio coordinator is the source of truth, and a device sends
+intents and draws what the host answers. The wire types are
+`coder_access::studio`. A studio task, goal, or decision identity is 1 to
+128 ASCII letters, digits, dots, hyphens, and underscores, starting with a
+letter or digit; a seat name is 1 to 32 lowercase letters, digits, and
+hyphens. `studio.snapshot` carries nothing and returns `studio`:
+`{snapshot: {stream, sequence, view}}`, where `view` holds goals, seats
+(activity, station, task, route, look, paused), tasks (status,
+dependencies, seat, board position), open decisions, repository summaries
+by workspace label, and at most 8 log lines per seat, each list in key
+order. `studio.update` carries `{stream, since}` and returns
+`studio_update`: `{update: {stream, from, sequence, put, removed}}`, the
+items that changed since `since`, whole, and the keys that went away.
+`stream` names one host process; a host that started again, that no longer
+holds `since`, or whose change does not fit one update refuses as `stale`,
+and the device reads a fresh snapshot. A view or update encodes in at most
+48 KiB; the host drops the oldest log lines, then the oldest finished goals,
+to fit. A log line is display text the host derives from the task's ATIF
+steps: the activity and the tool's name with the purpose the surface
+showed, or the first line of what the agent said, never a call's arguments
+or output. `studio.goal.submit` carries `{text, workspace, lead}` (a goal
+of at most 4 KiB, a workspace label, and a lead seat or null for the first
+lead); `studio.seat.message` carries `{seat, text}` (null for every seat,
+at most 4 KiB); `studio.seat.pause`, `studio.seat.resume`, and
+`studio.seat.stop` carry `{seat}`; `studio.task.reassign` carries `{task,
+seat}`; and `studio.task.cancel`, `studio.task.retry`, and
+`studio.task.prioritize` carry `{task}`. Pause keeps a seat's task and
+holds back new ones; stop also cancels its queued or running task and
+returns it to the board under a new task identity. Reassign and prioritize
+apply to a planned task that has not started, and retry to a failed or
+cancelled one. `studio.decision.answer` carries `{decision, based_on, text,
+command, issued_at}`: a waiting task's question or approval is answered
+through the `task.command` `answer` path under the device's 64-hex
+`command` ID, and a goal's plan decision takes a plan as `text`; a
+`based_on` other than the decision's refuses as `stale`.
+`studio.review.open` carries `{task}` and answers `review` as
+`task.review` does. `studio.merge.decide` carries `{decision: {task, base,
+head_commit, head, verdict, text, command, issued_at}}`, where `verdict` is
+`merge`, `request_changes` (with the changes asked for as `text`), or
+`reject` (with an optional reason). The host reads the review again and
+refuses a decision whose three revisions differ as `stale`, so the device
+reloads the review; a retried merge whose publication already holds those
+revisions answers it again. **Merge** hands the change to the `task.publish`
+landing path, **Request changes** is the task's next turn through the
+command journal under `command`, and **Reject** records the decision and
+keeps the worktree until archive. It answers `merged`: `{merged: {task,
+base, head_commit, head, verdict, publication}}`, with the publication for
+a merge only. An intent answers once per request ID. The host does not
+retain a `studio.snapshot`, `studio.update`, or `studio.review.open` reply.
 `task.steer` carries `{task, revision, prompt}` and `task.cancel` carries
 `{task, revision, reason}`: the host-issued task ID from a `task.create`
 receipt, the task revision the device last read, and a replacement prompt of
@@ -999,8 +1055,8 @@ and act. Every operation, including an exact retry, repeats these checks.
 
 The idempotency key is the request ID. The host retains the signed reply of
 an admitted principal with the exact request event ID until the request
-expires. The exception is a read with no effect, `thread.list` and
-`thread.read`: its reply is not retained, so a device that polls a streaming
+expires. The exception is a read with no effect, `thread.list`,
+`thread.read`, and the studio reads: its reply is not retained, so a device that polls a streaming
 thread never fills the host's store, and an exact retry reads again and may
 answer newer content. An identical retry returns the retained bytes while the principal
 is still current. Different bytes under the same request ID refuse as

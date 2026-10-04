@@ -75,6 +75,8 @@ pub enum Completeness {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct TaskReview {
+    /// A host-issued task ID, or an Agent Studio task's identity
+    /// ([`crate::studio::id`]).
     pub task: String,
     /// The commit the task started from.
     pub base: String,
@@ -184,7 +186,7 @@ impl TaskReview {
     /// # Errors
     /// A field outside its bound or form.
     pub fn validate(&self) -> Result<()> {
-        crate::protocol::identity(&self.task).map_err(crate::Error::from)?;
+        crate::studio::id(&self.task)?;
         revision(&self.base)?;
         revision(&self.head_commit)?;
         revision(&self.head)?;
@@ -234,7 +236,7 @@ impl Publication {
     /// A field outside its bound or form.
     pub fn validate(&self) -> Result<()> {
         crate::protocol::identity(&self.operation).map_err(crate::Error::from)?;
-        crate::protocol::identity(&self.task).map_err(crate::Error::from)?;
+        crate::studio::id(&self.task)?;
         revision(&self.base)?;
         revision(&self.head_commit)?;
         revision(&self.head)?;

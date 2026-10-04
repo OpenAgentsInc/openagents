@@ -16,6 +16,7 @@ mod flows;
 #[path = "../../../coder-control/src/tests/relay.rs"]
 mod relay;
 mod renew;
+mod studio;
 mod supersede;
 
 const POLICY: RelayPolicy = RelayPolicy::LoopbackTest;
@@ -29,7 +30,11 @@ pub(super) fn now() -> u64 {
 
 /// Records admitted dispatches keyed by request ID, like an idempotent task owner.
 #[derive(Clone, Default)]
-pub(super) struct Recorder(Arc<Mutex<Vec<(String, String, String)>>>, SpendStub);
+pub(super) struct Recorder(
+    Arc<Mutex<Vec<(String, String, String)>>>,
+    SpendStub,
+    studio::Stub,
+);
 
 /// Answers `spend.list` with no requests and records the sender and grant;
 /// records a receipt as sent.
@@ -65,6 +70,34 @@ impl crate::host::Spends for SpendStub {
 impl Dispatch for Recorder {
     fn spends(&mut self) -> Option<&mut dyn crate::host::Spends> {
         Some(&mut self.1)
+    }
+    fn studio_snapshot(
+        &mut self,
+        _device: &str,
+    ) -> std::result::Result<crate::studio::Snapshot, Code> {
+        Ok(self.2.snapshot())
+    }
+    fn studio_update(
+        &mut self,
+        _device: &str,
+        stream: &str,
+        since: u64,
+    ) -> std::result::Result<crate::studio::Update, Code> {
+        self.2.update(stream, since)
+    }
+    fn studio_merge(
+        &mut self,
+        request: &str,
+        device: &str,
+        _grant: Option<(&str, u64)>,
+        decision: &crate::studio::MergeDecision,
+    ) -> std::result::Result<crate::studio::Merged, Code> {
+        let merged = self.2.merge(decision)?;
+        self.0
+            .lock()
+            .unwrap()
+            .push((request.into(), device.into(), "studio.merge.decide".into()));
+        Ok(merged)
     }
     fn dispatch(
         &mut self,
