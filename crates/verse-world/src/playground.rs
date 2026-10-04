@@ -183,6 +183,7 @@ pub fn scenarios() -> Vec<Scenario> {
         crate::telekinesis::scenario(),
         crate::spells::wind_wall::scenario(),
         crate::spells::levitate::scenario(),
+        crate::spells::feather_fall::scenario(),
         bow_stance(),
         crate::reverse_gravity::game::scenario(),
     ]
@@ -409,6 +410,7 @@ impl Run {
         for record in recent.into_iter().rev() {
             lines.push(format!("[{:5.2}] {}", record.at, record.text));
         }
+        lines.extend(crate::spells::feather_fall::overlay(game));
         lines.push(String::new());
         for track in game.spells.tracks.iter().rev().take(10).rev() {
             if let Some((_, moved)) = measure(game, track) {

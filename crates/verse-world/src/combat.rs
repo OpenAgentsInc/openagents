@@ -504,6 +504,10 @@ pub fn drive(game: &mut Game, dt: f32) -> Result<[f32; 2], String> {
     if game.casting.is_some() {
         return Ok([0.0; 2]);
     }
+    // A reaction comes before the next action.
+    if crate::spells::feather_fall::react(game)? {
+        return Ok([0.0; 2]);
+    }
     if ready {
         let mut candidates = Vec::new();
         if threatened && game.controls.shield <= 0 {

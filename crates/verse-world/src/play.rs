@@ -2180,6 +2180,9 @@ impl Game {
         if actor.is_some_and(|id| self.scene.actors.iter().any(|a| a.id == id && a.friendly)) {
             return Ok(());
         }
+        if crate::spells::feather_fall::cushion(self, actor, height)? {
+            return Ok(());
+        }
         let dice = crate::spells::fall_dice(height);
         if dice == 0 {
             return Ok(());
@@ -2336,6 +2339,7 @@ impl Game {
         self.spells.couple(&mut movers)?;
         couple_characters(&mut movers);
         self.spells.sync_query_poses(&mut self.query_scene)?;
+        crate::spells::feather_fall::step(self, dt)?;
         if self.snapshot().player.hp == 0 {
             self.spells.end_concentration(player)?;
         }
