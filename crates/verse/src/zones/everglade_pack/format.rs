@@ -108,7 +108,7 @@ impl Limits {
         texture_edge: 1024,
         triangles: 250_000,
         model_triangles: 16_384,
-        committed_bytes: 30_000_000,
+        committed_bytes: 30_500_000,
         character_triangles: 40_000,
     };
 }

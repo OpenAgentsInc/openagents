@@ -85,6 +85,10 @@ pub struct PlayerController {
     ground_y: f32,
     /// Horizontal speed this frame, in meters per second, for animation.
     pub speed: f32,
+    /// This frame's movement intent relative to the facing, for animation:
+    /// forward (1) or back (-1), and right (1) or left (-1).
+    pub ahead: f32,
+    pub side: f32,
 }
 
 impl PlayerController {
@@ -97,6 +101,8 @@ impl PlayerController {
             vel_y: 0.0,
             ground_y: 0.0,
             speed: 0.0,
+            ahead: 0.0,
+            side: 0.0,
         }
     }
 
@@ -187,6 +193,7 @@ impl PlayerController {
             Vec3::ZERO
         };
         self.speed = step.length();
+        (self.ahead, self.side) = (ahead, side);
         self.pos.x += step.x * dt;
         self.pos.z += step.z * dt;
 

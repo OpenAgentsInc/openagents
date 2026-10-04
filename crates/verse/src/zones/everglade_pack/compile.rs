@@ -66,8 +66,16 @@ pub const PLAYER_DETAIL_TRIANGLES: usize = 1_000;
 /// neighbors, in meters, quaternion units, or scale.
 const KEY_TOLERANCE: f32 = 1e-4;
 /// The player's clips: the pack's name and the chamber's clip ID for idle,
-/// walk, run, and the airborne pose.
-pub const PLAYER_CLIPS: [(&str, u16); 4] = [("idle", 0), ("walk", 4), ("run", 5), ("jump", 37)];
+/// walk, run, the airborne pose, backpedal, and the two strafes.
+pub const PLAYER_CLIPS: [(&str, u16); 7] = [
+    ("idle", 0),
+    ("walk", 4),
+    ("run", 5),
+    ("jump", 37),
+    ("backpedal", 13),
+    ("strafe_left", 14),
+    ("strafe_right", 15),
+];
 const CREATOR: &str = "Quaternius";
 const LICENSE: &str = "CC0-1.0";
 const LICENSE_FILE: &str = "license.txt";

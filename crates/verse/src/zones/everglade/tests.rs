@@ -895,7 +895,29 @@ fn movement_drives_the_characters_clips() {
     for _ in 0..4 {
         runtime.tick(&back, 0.05);
     }
-    assert_eq!(motion(&runtime), Some(Motion::Walk));
+    assert_eq!(motion(&runtime), Some(Motion::Backpedal));
+    // A sideways step strafes instead of running forward.
+    for (input, strafe) in [
+        (
+            InputState {
+                strafe_left: true,
+                ..InputState::default()
+            },
+            Motion::StrafeLeft,
+        ),
+        (
+            InputState {
+                strafe_right: true,
+                ..InputState::default()
+            },
+            Motion::StrafeRight,
+        ),
+    ] {
+        for _ in 0..4 {
+            runtime.tick(&input, 0.05);
+        }
+        assert_eq!(motion(&runtime), Some(strafe));
+    }
     runtime.tick(
         &InputState {
             jump: true,

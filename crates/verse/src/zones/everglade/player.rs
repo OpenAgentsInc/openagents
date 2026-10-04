@@ -37,11 +37,22 @@ pub enum Motion {
     Walk,
     Run,
     Jump,
+    Backpedal,
+    StrafeLeft,
+    StrafeRight,
 }
 
 impl Motion {
     /// Every motion, in clip order.
-    pub const ALL: [Self; 4] = [Self::Idle, Self::Walk, Self::Run, Self::Jump];
+    pub const ALL: [Self; 7] = [
+        Self::Idle,
+        Self::Walk,
+        Self::Run,
+        Self::Jump,
+        Self::Backpedal,
+        Self::StrafeLeft,
+        Self::StrafeRight,
+    ];
     /// Below this horizontal speed the character stands, m/s.
     pub const MOVING: f32 = 0.1;
     /// From this horizontal speed the character runs rather than walks, m/s:
@@ -63,6 +74,18 @@ impl Motion {
         }
     }
 
+    /// The motion for the player as `at` moves: a sideways step strafes and
+    /// a backward one backpedals; otherwise as [`Self::of`].
+    #[must_use]
+    pub fn of_player(at: &PlayerController) -> Self {
+        match Self::of(at.speed, at.airborne()) {
+            Self::Walk | Self::Run if at.ahead < 0.0 => Self::Backpedal,
+            Self::Walk | Self::Run if at.ahead == 0.0 && at.side < 0.0 => Self::StrafeLeft,
+            Self::Walk | Self::Run if at.ahead == 0.0 && at.side > 0.0 => Self::StrafeRight,
+            motion => motion,
+        }
+    }
+
     /// The pack clip it plays.
     #[must_use]
     pub fn clip(self) -> &'static str {
@@ -71,6 +94,9 @@ impl Motion {
             Self::Walk => "walk",
             Self::Run => "run",
             Self::Jump => "jump",
+            Self::Backpedal => "backpedal",
+            Self::StrafeLeft => "strafe_left",
+            Self::StrafeRight => "strafe_right",
         }
     }
 
@@ -137,7 +163,7 @@ struct Head {
 /// The pack's character, ready to pose any number of times.
 pub(crate) struct Rig {
     model: Model,
-    motions: [Loop; 4],
+    motions: [Loop; Motion::ALL.len()],
     /// Each posture's clip, in [`Posture::ALL`] order; `None` plays idle.
     postures: [Option<Loop>; Posture::ALL.len()],
     /// The images and materials, without a mesh.
@@ -169,7 +195,7 @@ impl Rig {
             id: 0,
             duration: 1.0,
             distance: 0.0,
-        }; 4];
+        }; Motion::ALL.len()];
         let mut clips = Vec::new();
         for motion in Motion::ALL {
             let clip = character
@@ -593,7 +619,7 @@ impl Cast {
     pub fn advance(&mut self, at: &PlayerController, seats: &[SeatFigure], dt: f32) {
         let rig = &self.rig;
         let mut vertices = Vec::with_capacity(rig.template.len() * (1 + seats.len()));
-        let motion = Motion::of(at.speed, at.airborne());
+        let motion = Motion::of_player(at);
         let joints = self
             .player
             .advance(rig, Play::Motion(motion), at.speed, dt)
@@ -651,7 +677,18 @@ mod tests {
             assert_eq!(Motion::of(speed, true), Motion::Jump);
         }
         let clips: Vec<_> = Motion::ALL.iter().map(|m| m.clip()).collect();
-        assert_eq!(clips, ["idle", "walk", "run", "jump"]);
+        assert_eq!(
+            clips,
+            [
+                "idle",
+                "walk",
+                "run",
+                "jump",
+                "backpedal",
+                "strafe_left",
+                "strafe_right"
+            ]
+        );
         assert!(Motion::ALL.iter().enumerate().all(|(i, m)| m.index() == i));
     }
 

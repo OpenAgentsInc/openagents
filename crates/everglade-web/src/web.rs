@@ -132,6 +132,10 @@ struct Page {
     /// The previous frame's `performance.now()`, in milliseconds.
     last: Option<f64>,
     stopped: bool,
+    /// The HUD atlas at CSS-pixel metrics, for the hotbar.
+    layout: Option<Atlas>,
+    /// A held Up (1) or Down (-1) and the pointer holding it, if any.
+    climb: Option<(Option<i32>, f32)>,
 }
 
 async fn run() -> Result<(), String> {
@@ -168,7 +172,8 @@ async fn run() -> Result<(), String> {
     } else {
         wgpu::Backends::BROWSER_WEBGPU | wgpu::Backends::GL
     };
-    let atlas = Atlas::new((14.0 * scale).round());
+    let mut atlas = Atlas::new((14.0 * scale).round());
+    zones::everglade::hotbar::add_sprites(&mut atlas)?;
     let mut canvas = canvas;
     let mut renderer = open(&canvas, backends, &runtime, &atlas, width, height).await?;
     // Everglade's textured world draws only on the physical renderer. A
@@ -223,6 +228,8 @@ async fn run() -> Result<(), String> {
         scale,
         last: None,
         stopped: false,
+        layout: atlas.layout_at_scale(scale),
+        climb: None,
     }));
     listen(&window, &page)?;
     animate(window, page);
@@ -335,19 +342,113 @@ impl Page {
             self.rendered_revision = self.runtime.zone_revision;
         }
         let input = self.input.take();
-        self.runtime
+        let dt = self
+            .runtime
             .tick_with_mode(&input, dt, self.input.orbit, true);
+        if let Some((_, direction)) = self.climb {
+            if self.runtime.everglade_levitating() {
+                self.runtime.everglade_climb(direction, dt);
+            } else {
+                self.climb = None;
+            }
+        }
 
         let size = self.renderer.size();
         let aspect = self.renderer.aspect();
         let view = self.runtime.view(aspect);
         let dynamic = self.runtime.dynamic_mesh();
-        // No zone panel over the world (owner, 2026-10-04): the page is the
-        // glade alone, and its caption and controls live outside the canvas.
-        let ui = verse::ui::UiBatch::default();
+        // No zone panel over the world (owner, 2026-10-04): the glade and
+        // its hotbar, laid out in CSS pixels and drawn in device pixels.
+        let mut ui = verse::ui::UiBatch::default();
+        if let (Some(layout), Some(slots)) = (&self.layout, self.runtime.everglade_hotbar()) {
+            zones::everglade::hotbar::draw(&mut ui, layout, self.css_size(), 0.0, &slots);
+            for vertex in &mut ui.vertices {
+                vertex.pos = vertex.pos.map(|v| v * self.scale);
+            }
+        }
         if let DrawStatus::Error(error) = self.renderer.draw(view, &dynamic, &ui) {
             self.fail(&error);
         }
+    }
+
+    /// The canvas's size in CSS pixels.
+    fn css_size(&self) -> [f32; 2] {
+        let size = self.renderer.size();
+        [size[0] / self.scale, size[1] / self.scale]
+    }
+
+    /// Presses the hotbar slot under `at` (CSS pixels) for `pointer`;
+    /// returns whether one was there.
+    fn press_hotbar(&mut self, at: [f32; 2], pointer: Option<i32>) -> bool {
+        let Some(intent) = zones::everglade::hotbar::hit(at, self.css_size(), 0.0) else {
+            return false;
+        };
+        self.press(intent, pointer);
+        true
+    }
+
+    /// Up and Down climb while held; any other slot acts once.
+    fn press(&mut self, intent: zones::Intent, pointer: Option<i32>) {
+        match intent {
+            zones::Intent::Rise | zones::Intent::Lower => {
+                if self.runtime.everglade_levitating() {
+                    let direction = if intent == zones::Intent::Rise {
+                        1.0
+                    } else {
+                        -1.0
+                    };
+                    self.climb = Some((pointer, direction));
+                }
+            }
+            intent => {
+                let _ = self.runtime.zone_intent(intent);
+            }
+        }
+    }
+
+    /// Lets go of a held Up or Down by `pointer` (`None` for keys).
+    fn release_climb(&mut self, pointer: Option<i32>, direction: Option<f32>) {
+        if let Some((held, held_direction)) = self.climb
+            && held == pointer
+            && direction.is_none_or(|d| d == held_direction)
+        {
+            self.climb = None;
+        }
+    }
+
+    /// The hotbar's keys: 1 to 9 are its slots, L levitates, and while
+    /// levitating Space and X hold Up and Down. Returns whether it used the
+    /// key.
+    fn hotbar_key(&mut self, code: &str, down: bool) -> bool {
+        let slots = &zones::everglade::hotbar::SLOTS;
+        let slot = code
+            .strip_prefix("Digit")
+            .and_then(|d| d.parse::<usize>().ok())
+            .filter(|&n| (1..=slots.len()).contains(&n))
+            .map(|n| slots[n - 1].0);
+        let levitating = self.runtime.everglade_levitating();
+        let intent = match (code, slot) {
+            (_, Some(intent)) => intent,
+            ("KeyL", _) => zones::Intent::Levitate,
+            ("Space", _) if levitating || !down => zones::Intent::Rise,
+            ("KeyX", _) if levitating || !down => zones::Intent::Lower,
+            _ => return false,
+        };
+        if self.runtime.everglade_hotbar().is_none() {
+            return false;
+        }
+        if down {
+            self.press(intent, None);
+            // Space rises instead of jumping while levitating.
+            return code != "Space" || levitating;
+        }
+        let direction = match intent {
+            zones::Intent::Rise => Some(1.0),
+            zones::Intent::Lower => Some(-1.0),
+            _ => return slot.is_some() || code == "KeyL",
+        };
+        self.release_climb(None, direction);
+        false
     }
 
     fn apply(&mut self, action: Option<Action>) {
@@ -394,7 +495,13 @@ fn listen(window: &Window, page: &Rc<RefCell<Page>>) -> Result<(), String> {
             if event.ctrl_key() || event.meta_key() || event.alt_key() {
                 return;
             }
-            if page.borrow_mut().input.key(&event.code(), down) {
+            let mut page = page.borrow_mut();
+            if event.repeat() {
+                event.prevent_default();
+                return;
+            }
+            let used = page.hotbar_key(&event.code(), down);
+            if used || page.input.key(&event.code(), down) {
                 event.prevent_default();
             }
         }
@@ -415,6 +522,10 @@ fn listen(window: &Window, page: &Rc<RefCell<Page>>) -> Result<(), String> {
             let _ = target.focus();
             let _ = target.set_pointer_capture(event.pointer_id());
             let mut page = page.borrow_mut();
+            let on_canvas = [event.offset_x() as f32, event.offset_y() as f32];
+            if page.press_hotbar(on_canvas, Some(event.pointer_id())) {
+                return;
+            }
             if event.pointer_type() == "touch" {
                 let at = [event.client_x() as f32, event.client_y() as f32];
                 page.input.touch_start(event.pointer_id(), at);
@@ -445,6 +556,7 @@ fn listen(window: &Window, page: &Rc<RefCell<Page>>) -> Result<(), String> {
         let page = page.clone();
         on(&canvas, name, move |event: PointerEvent| {
             let mut page = page.borrow_mut();
+            page.release_climb(Some(event.pointer_id()), None);
             if event.pointer_type() == "touch" {
                 page.input.touch_end(event.pointer_id());
             } else {

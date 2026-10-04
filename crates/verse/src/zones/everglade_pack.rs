@@ -31,9 +31,9 @@ pub use format::{
 use pinned::PinnedFile;
 
 /// Exact content identity of the reviewed Everglade pack.
-pub const PACK_SHA256: &str = "cf6abad272a078412754402c34f7c99e92abb8ec33d694210eb16f967a306313";
+pub const PACK_SHA256: &str = "4bbd3b18ae0f698a37da40e738176b180e3d7b2a4e72944102424a16ce0b598c";
 /// Transfer size of the reviewed Everglade pack.
-pub const PACK_BYTES: u64 = 14975536;
+pub const PACK_BYTES: u64 = 15003865;
 /// The most triangles the Everglade layout may place, counting each placement.
 pub const PLACED_TRIANGLE_BUDGET: u64 = 300_000;
 /// Where packs are committed, relative to the repository root.
