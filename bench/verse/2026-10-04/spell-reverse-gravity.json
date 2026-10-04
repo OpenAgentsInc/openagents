@@ -1,73 +1,99 @@
 {
   "schema": "openagents.verse.spell-playground.v1",
-  "spell": "feather-fall",
-  "title": "Feather Fall",
-  "srd": "Level 1 Transmutation | Reaction | Range 60 ft | up to 5 falling creatures | 1 minute",
+  "spell": "reverse-gravity",
+  "title": "Reverse Gravity",
+  "srd": "Level 7 Transmutation | Range 100 ft | 50-ft-radius, 100-ft-high Cylinder | DEX save to grab a fixed object | Concentration, 1 minute",
   "srd_source": "SRD 5.2.1 (SRD_CC_v5.2.1.pdf)",
   "rules_revision": "verse-chamber-owned-v17",
-  "seed": 455,
-  "dice_rolled": 22,
+  "seed": 460,
+  "dice_rolled": 171,
   "saves": [
     {
-      "at": 1.5,
+      "at": 1.0333333015441895,
       "save": {
         "target": 101,
-        "ability": "Constitution",
-        "roll": 1,
+        "ability": "Dexterity",
+        "roll": 3,
         "modifier": 0,
-        "total": 1,
+        "total": 3,
         "dc": 15,
         "success": false,
         "forced": true
       }
     },
     {
-      "at": 1.5,
+      "at": 1.0333333015441895,
       "save": {
         "target": 102,
-        "ability": "Constitution",
-        "roll": 1,
+        "ability": "Dexterity",
+        "roll": 5,
         "modifier": 0,
-        "total": 1,
+        "total": 5,
         "dc": 15,
         "success": false,
         "forced": true
       }
     },
     {
-      "at": 1.5,
+      "at": 1.0333333015441895,
       "save": {
         "target": 103,
-        "ability": "Constitution",
-        "roll": 1,
+        "ability": "Dexterity",
+        "roll": 7,
         "modifier": 0,
-        "total": 1,
+        "total": 7,
         "dc": 15,
         "success": false,
         "forced": true
       }
     },
     {
-      "at": 1.5,
+      "at": 1.0333333015441895,
       "save": {
         "target": 104,
-        "ability": "Constitution",
-        "roll": 1,
+        "ability": "Dexterity",
+        "roll": 19,
         "modifier": 0,
-        "total": 1,
+        "total": 19,
+        "dc": 15,
+        "success": true,
+        "forced": true
+      }
+    },
+    {
+      "at": 1.0333333015441895,
+      "save": {
+        "target": 105,
+        "ability": "Dexterity",
+        "roll": 17,
+        "modifier": 0,
+        "total": 17,
+        "dc": 15,
+        "success": true,
+        "forced": true
+      }
+    },
+    {
+      "at": 1.0333333015441895,
+      "save": {
+        "target": 106,
+        "ability": "Dexterity",
+        "roll": 2,
+        "modifier": 0,
+        "total": 2,
         "dc": 15,
         "success": false,
         "forced": true
       }
     },
     {
-      "at": 1.5,
+      "at": 1.0333333015441895,
       "save": {
-        "target": 105,
-        "ability": "Constitution",
-        "roll": 1,
+        "target": 107,
+        "ability": "Dexterity",
+        "roll": 4,
         "modifier": 0,
-        "total": 1,
+        "total": 4,
         "dc": 15,
         "success": false,
         "forced": true
@@ -75,122 +101,318 @@
     }
   ],
   "log": [
-    "[1.50] Dummy 1: CON save 1 +0 = 1 vs DC 15 fails; 13 thunder, pushed 10 ft",
-    "[1.50] Dummy 2: CON save 1 +0 = 1 vs DC 15 fails; 11 thunder, pushed 10 ft",
-    "[1.50] Dummy 3: CON save 1 +0 = 1 vs DC 15 fails; 11 thunder, pushed 10 ft",
-    "[1.50] Dummy 4: CON save 1 +0 = 1 vs DC 15 fails; 11 thunder, pushed 10 ft",
-    "[1.50] Dummy 5: CON save 1 +0 = 1 vs DC 15 fails; 10 thunder, pushed 10 ft",
-    "[2.30] Reaction: Dummy 2, Dummy 3, Dummy 4 descend at 60 ft/round (3 of 5 max)",
-    "[3.40] Dummy 1 fell 60 ft: 6d6 = 28 bludgeoning",
-    "[3.40] Dummy 5 fell 60 ft: 6d6 = 22 bludgeoning",
-    "[7.33] Dummy 3 lands softly after 61 ft: 0 damage (drag removed 29.3 kJ)",
-    "[7.70] Dummy 2 lands softly after 61 ft: 0 damage (drag removed 29.3 kJ)",
-    "[7.70] Dummy 4 lands softly after 61 ft: 0 damage (drag removed 29.3 kJ)"
+    "[1.00] Cast at (-11.3, -6.5): 50-ft-radius, 100-ft-high cylinder",
+    "[1.03] Dummy A: DEX save 3 +0 = 3 vs DC 15 fails; falls upward",
+    "[1.03] Dummy B: DEX save 5 +0 = 5 vs DC 15 fails; falls upward",
+    "[1.03] Dummy C: DEX save 7 +0 = 7 vs DC 15 fails; falls upward",
+    "[1.03] Dummy D (saves, no grip): DEX save 19 +0 = 19 vs DC 15 succeeds, but nothing is in reach; falls upward",
+    "[1.03] Dummy E (clings): DEX save 17 +0 = 17 vs DC 15 succeeds; grabs a fixed object and stays down",
+    "[1.03] Dummy F (indoor): DEX save 2 +0 = 2 vs DC 15 fails; falls upward",
+    "[1.03] Dummy G (indoor): DEX save 4 +0 = 4 vs DC 15 fails; falls upward",
+    "[2.63] Dummy F (indoor) slams into the ceiling after 40 ft up",
+    "[2.63] Dummy F (indoor) fell 40 ft: 4d6 = 18 bludgeoning",
+    "[2.63] Dummy G (indoor) slams into the ceiling after 40 ft up",
+    "[2.63] Dummy G (indoor) fell 40 ft: 4d6 = 16 bludgeoning",
+    "[2.63] Barrel (indoor) cracks against the ceiling after 43 ft: 4d6 = 12 bludgeoning",
+    "[2.67] Crate (indoor) cracks against the ceiling after 44 ft: 4d6 = 18 bludgeoning",
+    "[3.70] Dummy A hovers at the top, 100 ft up",
+    "[3.70] Dummy B hovers at the top, 100 ft up",
+    "[3.70] Dummy C hovers at the top, 100 ft up",
+    "[3.70] Dummy D (saves, no grip) hovers at the top, 100 ft up",
+    "[5.00] Edge crate 1 shoved sideways at 3.5 m/s",
+    "[5.00] Edge crate 2 shoved sideways at 3.5 m/s",
+    "[7.97] Edge crate 2 crashes down after 99 ft: 9d6 = 36 bludgeoning",
+    "[8.07] Edge crate 1 crashes down after 99 ft: 9d6 = 29 bludgeoning",
+    "[10.00] Dismissed: everything falls",
+    "[10.03] The spell ends: everything falls",
+    "[11.17] Dummy F (indoor) fell 40 ft: 4d6 = 15 bludgeoning",
+    "[11.17] Dummy G (indoor) fell 40 ft: 4d6 = 13 bludgeoning",
+    "[11.67] Barrel (indoor) crashes down after 43 ft: 4d6 = 12 bludgeoning",
+    "[11.70] Crate (indoor) crashes down after 44 ft: 4d6 = 19 bludgeoning",
+    "[11.80] Dummy A fell 100 ft: 10d6 = 34 bludgeoning",
+    "[11.80] Dummy B fell 100 ft: 10d6 = 34 bludgeoning",
+    "[11.80] Dummy C fell 100 ft: 10d6 = 29 bludgeoning",
+    "[11.80] Dummy D (saves, no grip) fell 100 ft: 10d6 = 34 bludgeoning",
+    "[12.47] Plank 2 crashes down after 99 ft: 9d6 = 30 bludgeoning",
+    "[12.47] Plank 3 crashes down after 99 ft: 9d6 = 22 bludgeoning",
+    "[12.50] Crate 1 crashes down after 99 ft: 9d6 = 34 bludgeoning",
+    "[12.50] Crate 2 crashes down after 99 ft: 9d6 = 24 bludgeoning",
+    "[12.50] Barrel 1 crashes down after 99 ft: 9d6 = 37 bludgeoning",
+    "[12.50] Barrel 2 crashes down after 99 ft: 9d6 = 23 bludgeoning",
+    "[12.50] Plank 1 crashes down after 100 ft: 9d6 = 25 bludgeoning",
+    "[12.50] Plank 5 crashes down after 99 ft: 9d6 = 26 bludgeoning",
+    "[12.53] Plank 4 crashes down after 99 ft: 9d6 = 34 bludgeoning"
   ],
-  "tracks": [
-    {
-      "label": "Dummy 1",
-      "spell": "Thunderwave",
-      "at": 1.5,
-      "start": [
-        13.670000076293945,
-        18.75,
-        4.0
-      ],
-      "final": [
-        11.434516906738281,
-        9.999999747378752e-6,
-        2.180948495864868
-      ],
-      "requested_ft": 10.0,
-      "measured_ft": 9.455613589358826
-    },
-    {
-      "label": "Dummy 2",
-      "spell": "Thunderwave",
-      "at": 1.5,
-      "start": [
-        14.1899995803833,
-        18.75,
-        5.0
-      ],
-      "final": [
-        -2.574995994567871,
-        9.999999747378752e-6,
-        -5.341745376586914
-      ],
-      "requested_ft": 10.0,
-      "measured_ft": 64.62644811675153
-    },
-    {
-      "label": "Dummy 3",
-      "spell": "Thunderwave",
-      "at": 1.5,
-      "start": [
-        13.869999885559082,
-        18.75,
-        6.0
-      ],
-      "final": [
-        -17.13845443725586,
-        9.999999747378752e-6,
-        6.0
-      ],
-      "requested_ft": 10.0,
-      "measured_ft": 101.7337740249834
-    },
-    {
-      "label": "Dummy 4",
-      "spell": "Thunderwave",
-      "at": 1.5,
-      "start": [
-        14.1899995803833,
-        18.75,
-        7.0
-      ],
-      "final": [
-        -2.574995994567871,
-        9.999999747378752e-6,
-        17.34172248840332
-      ],
-      "requested_ft": 10.0,
-      "measured_ft": 64.6264086923955
-    },
-    {
-      "label": "Dummy 5",
-      "spell": "Thunderwave",
-      "at": 1.5,
-      "start": [
-        13.670000076293945,
-        18.75,
-        8.0
-      ],
-      "final": [
-        11.434516906738281,
-        9.999999747378752e-6,
-        9.819051742553711
-      ],
-      "requested_ft": 10.0,
-      "measured_ft": 9.455614083061487
-    }
-  ],
+  "tracks": [],
   "props": [
     {
-      "name": "Tower",
-      "kind": "StoneBlock",
-      "mass_kg": 1000.0,
+      "name": "Crate 1",
+      "kind": "Crate",
+      "mass_kg": 20.0,
+      "secured": false,
+      "removed": false,
+      "center": [
+        -8.000000492377481,
+        0.29999999985788295,
+        -3.9999944855849905
+      ],
+      "rotation": [
+        -3.539562057938709e-11,
+        0.1494360133340459,
+        -2.3420206786784317e-10,
+        0.988771398210338
+      ]
+    },
+    {
+      "name": "Crate 2",
+      "kind": "Crate",
+      "mass_kg": 20.0,
+      "secured": false,
+      "removed": false,
+      "center": [
+        -11.500000492377483,
+        0.29999999985788295,
+        -7.4999944855849945
+      ],
+      "rotation": [
+        -3.539562003577493e-11,
+        0.1494360133340459,
+        -2.342020682849469e-10,
+        0.988771398210338
+      ]
+    },
+    {
+      "name": "Barrel 1",
+      "kind": "Barrel",
+      "mass_kg": 60.0,
+      "secured": false,
+      "removed": false,
+      "center": [
+        -8.99997378910071,
+        0.4499999999997677,
+        -8.00009428432291
+      ],
+      "rotation": [
+        -3.5157889662470473e-13,
+        0.00005382902022596411,
+        -3.5593188582988634e-14,
+        0.9999999985512183
+      ]
+    },
+    {
+      "name": "Barrel 2",
+      "kind": "Barrel",
+      "mass_kg": 60.0,
+      "secured": false,
+      "removed": false,
+      "center": [
+        -11.99997378910071,
+        0.4499999999997677,
+        -5.000094284322904
+      ],
+      "rotation": [
+        -3.5157870899942377e-13,
+        0.00005382902022591048,
+        -3.559327631032202e-14,
+        0.9999999985512183
+      ]
+    },
+    {
+      "name": "Plank 1",
+      "kind": "Crate",
+      "mass_kg": 6.0,
+      "secured": false,
+      "removed": false,
+      "center": [
+        -7.762177924677897,
+        0.04999997782856263,
+        -3.305718557152154
+      ],
+      "rotation": [
+        6.724797023110574e-8,
+        0.0909504671740097,
+        -6.930444271665284e-9,
+        0.9958554174782728
+      ]
+    },
+    {
+      "name": "Plank 2",
+      "kind": "Crate",
+      "mass_kg": 6.0,
+      "secured": false,
+      "removed": false,
+      "center": [
+        -7.59298350986203,
+        0.049999999999999614,
+        -1.9187044030363891
+      ],
+      "rotation": [
+        1.1174058868117034e-16,
+        -0.9962700220246457,
+        -1.290359381946958e-15,
+        -0.08629045842393177
+      ]
+    },
+    {
+      "name": "Plank 3",
+      "kind": "Crate",
+      "mass_kg": 6.0,
+      "secured": false,
+      "removed": false,
+      "center": [
+        -4.699705374200397,
+        0.04999999987348276,
+        1.1920846681668429
+      ],
+      "rotation": [
+        -2.4137867452878115e-11,
+        0.4578889983181969,
+        4.686458046198745e-11,
+        -0.889009372964739
+      ]
+    },
+    {
+      "name": "Plank 4",
+      "kind": "Crate",
+      "mass_kg": 6.0,
+      "secured": false,
+      "removed": false,
+      "center": [
+        -6.097859252825773,
+        0.0499995026057824,
+        -0.18855067746720805
+      ],
+      "rotation": [
+        2.3592322972182448e-7,
+        0.9898224721090115,
+        1.6409279736199622e-6,
+        -0.1423076726858293
+      ]
+    },
+    {
+      "name": "Plank 5",
+      "kind": "Crate",
+      "mass_kg": 6.0,
+      "secured": false,
+      "removed": false,
+      "center": [
+        -7.586169996910326,
+        0.04999999999999894,
+        1.0018047837364226
+      ],
+      "rotation": [
+        6.9038360834425145e-18,
+        -0.020286248128728583,
+        4.420655025275728e-16,
+        -0.9997942128942634
+      ]
+    },
+    {
+      "name": "Secured crate",
+      "kind": "Crate",
+      "mass_kg": 20.0,
       "secured": true,
       "removed": false,
       "center": [
-        16.0,
-        9.375,
-        6.0
+        -5.599999904632568,
+        0.30000001192092896,
+        -10.800000190734863
       ],
       "rotation": [
         0.0,
         0.0,
         0.0,
         1.0
+      ]
+    },
+    {
+      "name": "Ceiling slab",
+      "kind": "StoneBlock",
+      "mass_kg": 1000.0,
+      "secured": true,
+      "removed": false,
+      "center": [
+        -10.0,
+        14.342000007629395,
+        3.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "name": "Crate (indoor)",
+      "kind": "Crate",
+      "mass_kg": 20.0,
+      "secured": false,
+      "removed": false,
+      "center": [
+        -10.500000341160412,
+        0.29999999982910086,
+        1.2000017211748844
+      ],
+      "rotation": [
+        1.8896146951999002e-16,
+        -6.640916364461457e-7,
+        -2.8483188003516075e-10,
+        0.9999999999997796
+      ]
+    },
+    {
+      "name": "Barrel (indoor)",
+      "kind": "Barrel",
+      "mass_kg": 60.0,
+      "secured": false,
+      "removed": false,
+      "center": [
+        -7.999909765184646,
+        0.4499999181169823,
+        1.500658440372379
+      ],
+      "rotation": [
+        -1.676976320405726e-9,
+        0.0013179390617876754,
+        -6.364280408118132e-8,
+        0.9999991315179355
+      ]
+    },
+    {
+      "name": "Edge crate 1",
+      "kind": "Crate",
+      "mass_kg": 20.0,
+      "secured": false,
+      "removed": false,
+      "center": [
+        2.677942031416005,
+        0.2999999999745729,
+        11.155304816116672
+      ],
+      "rotation": [
+        -3.6639786238743164e-11,
+        -2.07689353945324e-7,
+        -5.73862586597351e-12,
+        0.9999999999999786
+      ]
+    },
+    {
+      "name": "Edge crate 2",
+      "kind": "Crate",
+      "mass_kg": 20.0,
+      "secured": false,
+      "removed": false,
+      "center": [
+        5.017948685401205,
+        0.2999999999745161,
+        9.299367228380046
+      ],
+      "rotation": [
+        -3.6734657199079386e-11,
+        -7.229092167941194e-7,
+        -5.7384880912885036e-12,
+        0.9999999999997387
       ]
     }
   ],
@@ -199,84 +421,165 @@
       "id": 14,
       "name": "Wizard",
       "position": [
-        18.149999618530273,
-        18.75,
-        6.0
+        5.75,
+        0.0,
+        0.0
       ],
       "health": 200
     },
     {
       "id": 101,
-      "name": "Dummy 1",
+      "name": "Dummy A",
       "position": [
-        11.434516906738281,
+        -11.34000015258789,
         9.999999747378752e-6,
-        2.180948495864868
+        -6.510000228881836
       ],
-      "health": 59
+      "health": 66
     },
     {
       "id": 102,
-      "name": "Dummy 2",
+      "name": "Dummy B",
       "position": [
-        -2.574995994567871,
+        -13.0,
         9.999999747378752e-6,
-        -5.341745376586914
+        -3.0
       ],
-      "health": 89
+      "health": 66
     },
     {
       "id": 103,
-      "name": "Dummy 3",
+      "name": "Dummy C",
       "position": [
-        -17.13845443725586,
+        -7.0,
         9.999999747378752e-6,
-        6.0
+        -9.0
       ],
-      "health": 89
+      "health": 71
     },
     {
       "id": 104,
-      "name": "Dummy 4",
+      "name": "Dummy D (saves, no grip)",
       "position": [
-        -2.574995994567871,
+        -13.0,
         9.999999747378752e-6,
-        17.34172248840332
+        -9.0
       ],
-      "health": 89
+      "health": 66
     },
     {
       "id": 105,
-      "name": "Dummy 5",
+      "name": "Dummy E (clings)",
       "position": [
-        11.434516906738281,
-        9.999999747378752e-6,
-        9.819051742553711
+        -4.599999904632568,
+        0.0,
+        -12.0
       ],
-      "health": 68
+      "health": 100
+    },
+    {
+      "id": 106,
+      "name": "Dummy F (indoor)",
+      "position": [
+        -11.0,
+        9.999999747378752e-6,
+        3.0
+      ],
+      "health": 67
+    },
+    {
+      "id": 107,
+      "name": "Dummy G (indoor)",
+      "position": [
+        -9.0,
+        9.999999747378752e-6,
+        4.0
+      ],
+      "health": 71
     }
   ],
   "ledger": {
-    "terms": {},
+    "terms": {
+      "gravity": {
+        "linear": [
+          0.0,
+          -32910.424499993656,
+          0.0
+        ],
+        "angular": [
+          -106689.93889502888,
+          0.0,
+          283195.1678718429
+        ]
+      },
+      "scripted shove": {
+        "linear": [
+          93.84628365917129,
+          0.0,
+          103.4797069598882
+        ],
+        "angular": [
+          3154.0614681107672,
+          562.520570309397,
+          -2860.4347259073947
+        ]
+      },
+      "sleep": {
+        "linear": [
+          3.306816626080788e-16,
+          -2.255140518769859e-17,
+          2.3180242447740075e-16
+        ],
+        "angular": [
+          2.289826434108445e-15,
+          2.4244770915305815e-15,
+          -1.2643940785030917e-15
+        ]
+      },
+      "spell:Reverse Gravity": {
+        "linear": [
+          -13.763935062604698,
+          22666.044757181422,
+          -15.355210270702248
+        ],
+        "angular": [
+          79712.09712575037,
+          -84.82200267990211,
+          -204354.49846647074
+        ]
+      },
+      "static contact": {
+        "linear": [
+          -80.08234859656699,
+          10244.379742816294,
+          -88.12449668918654
+        ],
+        "angular": [
+          23823.780301169918,
+          -477.6985676294964,
+          -75980.2346794792
+        ]
+      }
+    },
     "residual_relative": {
-      "linear": 0.0,
-      "angular": 0.0
+      "linear": 5.0822715278671263e-14,
+      "angular": 1.7477246604439856e-14
     },
     "tolerance": 1e-9
   },
   "replay": {
     "window_s": [
-      1.7000000476837158,
-      3.200000047683716
+      0.8999999761581421,
+      3.4000000953674316
     ],
     "speed": 0.25,
     "source": "checkpoint at the window start, stepped again with the same admitted commands",
     "identical_to_live": true
   },
-  "live_seconds": 12.0,
-  "video_seconds": 18.0,
-  "authority_tick": 360,
-  "physics_steps": 1440,
+  "live_seconds": 14.0,
+  "video_seconds": 24.0,
+  "authority_tick": 420,
+  "physics_steps": 1680,
   "renderer": "owned native GPU pipeline; scripted admitted commands; no grading",
   "prepared_pack": {
     "inventory": {

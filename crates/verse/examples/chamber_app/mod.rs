@@ -1702,8 +1702,18 @@ fn combat_game(pack: &Pack, scene: Scene, agent: bool) -> Result<Game, String> {
     Ok(game)
 }
 
+/// Spell playground recordings render the scene at 2560x1440 with the
+/// renderer's 4x multisampling, like the native window on a Retina display.
+/// The HUD keeps its 1280x720 logical layout and scales with the frame.
+const RECORD: [u32; 2] = [2560, 1440];
+
 /// Starts an H.264 encoder that reads 1280x720 RGBA frames at 30 fps.
 fn encoder(output: &std::path::Path) -> Result<std::process::Child, String> {
+    encoder_sized(output, [1280, 720])
+}
+
+/// Starts an H.264 encoder that reads RGBA frames of `size` at 30 fps.
+fn encoder_sized(output: &std::path::Path, size: [u32; 2]) -> Result<std::process::Child, String> {
     std::process::Command::new("ffmpeg")
         .args([
             "-y",
@@ -1714,7 +1724,7 @@ fn encoder(output: &std::path::Path) -> Result<std::process::Child, String> {
             "-pixel_format",
             "rgba",
             "-video_size",
-            "1280x720",
+            &format!("{}x{}", size[0], size[1]),
             "-framerate",
             "30",
             "-i",
@@ -1775,12 +1785,16 @@ fn record_spell(
     app.renderer = Some(Renderer::new(
         (*app.pack).clone(),
         &app.dir,
-        1280,
-        720,
+        RECORD[0],
+        RECORD[1],
         &app.atlas,
         &chamber::playground_static_instances(),
     )?);
-    let mut encoder = encoder(output)?;
+    app.renderer
+        .as_ref()
+        .unwrap()
+        .set_overlay_size(1280.0, 720.0);
+    let mut encoder = encoder_sized(output, RECORD)?;
     let mut pipe = encoder.stdin.take().ok_or("Missing encoder input")?;
     let poster = run.live_frames() + run.frames().saturating_sub(run.live_frames()) / 2;
     while !run.done() {
@@ -1835,7 +1849,7 @@ fn record_spell(
             .draw(view, &actors, &ui, &lighting)?;
         pipe.write_all(&pixels).map_err(|e| e.to_string())?;
         if run.frame() == poster {
-            save_png(&output.with_extension("png"), &pixels)?;
+            save_png_size(&output.with_extension("png"), &pixels, RECORD)?;
         }
     }
     drop(pipe);

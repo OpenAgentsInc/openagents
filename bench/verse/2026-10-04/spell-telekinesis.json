@@ -1,73 +1,34 @@
 {
   "schema": "openagents.verse.spell-playground.v1",
-  "spell": "feather-fall",
-  "title": "Feather Fall",
-  "srd": "Level 1 Transmutation | Reaction | Range 60 ft | up to 5 falling creatures | 1 minute",
+  "spell": "telekinesis",
+  "title": "Telekinesis",
+  "srd": "Level 5 Transmutation | Range 60 ft | Concentration, up to 10 min | STR save (creatures) | move up to 30 ft",
   "srd_source": "SRD 5.2.1 (SRD_CC_v5.2.1.pdf)",
   "rules_revision": "verse-chamber-owned-v17",
-  "seed": 455,
-  "dice_rolled": 22,
+  "seed": 452,
+  "dice_rolled": 2,
   "saves": [
     {
-      "at": 1.5,
-      "save": {
-        "target": 101,
-        "ability": "Constitution",
-        "roll": 1,
-        "modifier": 0,
-        "total": 1,
-        "dc": 15,
-        "success": false,
-        "forced": true
-      }
-    },
-    {
-      "at": 1.5,
+      "at": 7.633333206176758,
       "save": {
         "target": 102,
-        "ability": "Constitution",
-        "roll": 1,
+        "ability": "Strength",
+        "roll": 18,
         "modifier": 0,
-        "total": 1,
+        "total": 18,
         "dc": 15,
-        "success": false,
+        "success": true,
         "forced": true
       }
     },
     {
-      "at": 1.5,
+      "at": 8.233333587646484,
       "save": {
-        "target": 103,
-        "ability": "Constitution",
-        "roll": 1,
+        "target": 101,
+        "ability": "Strength",
+        "roll": 3,
         "modifier": 0,
-        "total": 1,
-        "dc": 15,
-        "success": false,
-        "forced": true
-      }
-    },
-    {
-      "at": 1.5,
-      "save": {
-        "target": 104,
-        "ability": "Constitution",
-        "roll": 1,
-        "modifier": 0,
-        "total": 1,
-        "dc": 15,
-        "success": false,
-        "forced": true
-      }
-    },
-    {
-      "at": 1.5,
-      "save": {
-        "target": 105,
-        "ability": "Constitution",
-        "roll": 1,
-        "modifier": 0,
-        "total": 1,
+        "total": 3,
         "dc": 15,
         "success": false,
         "forced": true
@@ -75,122 +36,558 @@
     }
   ],
   "log": [
-    "[1.50] Dummy 1: CON save 1 +0 = 1 vs DC 15 fails; 13 thunder, pushed 10 ft",
-    "[1.50] Dummy 2: CON save 1 +0 = 1 vs DC 15 fails; 11 thunder, pushed 10 ft",
-    "[1.50] Dummy 3: CON save 1 +0 = 1 vs DC 15 fails; 11 thunder, pushed 10 ft",
-    "[1.50] Dummy 4: CON save 1 +0 = 1 vs DC 15 fails; 11 thunder, pushed 10 ft",
-    "[1.50] Dummy 5: CON save 1 +0 = 1 vs DC 15 fails; 10 thunder, pushed 10 ft",
-    "[2.30] Reaction: Dummy 2, Dummy 3, Dummy 4 descend at 60 ft/round (3 of 5 max)",
-    "[3.40] Dummy 1 fell 60 ft: 6d6 = 28 bludgeoning",
-    "[3.40] Dummy 5 fell 60 ft: 6d6 = 22 bludgeoning",
-    "[7.33] Dummy 3 lands softly after 61 ft: 0 damage (drag removed 29.3 kJ)",
-    "[7.70] Dummy 2 lands softly after 61 ft: 0 damage (drag removed 29.3 kJ)",
-    "[7.70] Dummy 4 lands softly after 61 ft: 0 damage (drag removed 29.3 kJ)"
+    "[0.20] Thrown crate: gripped (Small, 20 kg; no save for an unattended object)",
+    "[1.70] Thrown crate: released at 6.1 m/s (let go, 33.2 ft away)",
+    "[2.70] Tower crate 1: gripped (Small, 20 kg; no save for an unattended object)",
+    "[3.57] Tower crate 1: released at 0.0 m/s (let go, 16.5 ft away)",
+    "[3.60] Tower crate 2: gripped (Small, 20 kg; no save for an unattended object)",
+    "[4.57] Tower crate 2: released at 0.0 m/s (let go, 16.4 ft away)",
+    "[4.60] Tower crate 3: gripped (Small, 20 kg; no save for an unattended object)",
+    "[5.97] Tower crate 3: released at 0.0 m/s (let go, 16.5 ft away)",
+    "[6.00] Tower crate 4: gripped (Small, 20 kg; no save for an unattended object)",
+    "[7.47] Tower crate 4: released at 0.0 m/s (let go, 16.9 ft away)",
+    "[7.63] Dummy B: STR save 18 +0 = 18 vs DC 15 succeeds; not moved",
+    "[8.23] Dummy A: STR save 3 +0 = 3 vs DC 15 fails; Restrained and lifted for one round",
+    "[14.23] Dummy A: hold expired after one round; it falls",
+    "[15.03] Dummy A fell 21 ft: 2d6 = 8 bludgeoning",
+    "[16.37] Stone block: gripped (Medium, 1000 kg; no save for an unattended object)",
+    "[17.50] Range crate: gripped (Small, 20 kg; no save for an unattended object)",
+    "[17.50] Stone block: released (switched targets, 8.3 ft away)",
+    "[19.10] hand moved its 30 ft; it freezes and the target stays suspended",
+    "[19.17] Range crate: released (beyond 60 ft, 60.3 ft away)"
   ],
   "tracks": [
     {
-      "label": "Dummy 1",
-      "spell": "Thunderwave",
-      "at": 1.5,
+      "label": "Thrown crate",
+      "spell": "Telekinesis",
+      "at": 0.20000000298023224,
       "start": [
-        13.670000076293945,
-        18.75,
-        4.0
+        3.2499999999966005,
+        0.2999999999981224,
+        5.4535816259418246e-11
       ],
       "final": [
-        11.434516906738281,
-        9.999999747378752e-6,
-        2.180948495864868
+        -6.151695377538178,
+        0.8186559346041941,
+        0.02610572687499519
       ],
-      "requested_ft": 10.0,
-      "measured_ft": 9.455613589358826
+      "requested_ft": 0.0,
+      "measured_ft": 30.845576185712805
     },
     {
-      "label": "Dummy 2",
-      "spell": "Thunderwave",
-      "at": 1.5,
+      "label": "Tower crate 1",
+      "spell": "Telekinesis",
+      "at": 2.700000047683716,
       "start": [
-        14.1899995803833,
-        18.75,
-        5.0
+        7.464488983150896,
+        0.2999999999981224,
+        4.696863651330171
       ],
       "final": [
-        -2.574995994567871,
-        9.999999747378752e-6,
-        -5.341745376586914
+        5.735460813737459,
+        0.29637678723944433,
+        5.001804092664093
       ],
-      "requested_ft": 10.0,
-      "measured_ft": 64.62644811675153
+      "requested_ft": 0.0,
+      "measured_ft": 5.760212268888148
     },
     {
-      "label": "Dummy 3",
-      "spell": "Thunderwave",
-      "at": 1.5,
+      "label": "Tower crate 2",
+      "spell": "Telekinesis",
+      "at": 3.5999999046325684,
       "start": [
-        13.869999885559082,
-        18.75,
-        6.0
+        4.035511970516619,
+        0.2999999999981224,
+        4.696864128167329
       ],
       "final": [
-        -17.13845443725586,
-        9.999999747378752e-6,
-        6.0
+        5.748099701271882,
+        0.8936758089739275,
+        5.001758513659919
       ],
-      "requested_ft": 10.0,
-      "measured_ft": 101.7337740249834
+      "requested_ft": 0.0,
+      "measured_ft": 5.7070748182092705
     },
     {
-      "label": "Dummy 4",
-      "spell": "Thunderwave",
-      "at": 1.5,
+      "label": "Tower crate 3",
+      "spell": "Telekinesis",
+      "at": 4.599999904632568,
       "start": [
-        14.1899995803833,
-        18.75,
-        7.0
+        8.97108840942043,
+        0.2999999999981224,
+        3.8242104054042674
       ],
       "final": [
-        -2.574995994567871,
-        9.999999747378752e-6,
-        17.34172248840332
+        5.746923889739363,
+        1.4916679360307392,
+        4.999804644031612
       ],
-      "requested_ft": 10.0,
-      "measured_ft": 64.6264086923955
+      "requested_ft": 0.0,
+      "measured_ft": 11.25918990035478
     },
     {
-      "label": "Dummy 5",
-      "spell": "Thunderwave",
-      "at": 1.5,
+      "label": "Tower crate 4",
+      "spell": "Telekinesis",
+      "at": 6.0,
       "start": [
-        13.670000076293945,
-        18.75,
-        8.0
+        2.5289115905727724,
+        0.2999999999981224,
+        3.8242111206600047
       ],
       "final": [
-        11.434516906738281,
-        9.999999747378752e-6,
-        9.819051742553711
+        5.748882531393961,
+        2.091674628288044,
+        5.001011355138884
       ],
-      "requested_ft": 10.0,
-      "measured_ft": 9.455614083061487
+      "requested_ft": 0.0,
+      "measured_ft": 11.24762243227515
+    },
+    {
+      "label": "Dummy B",
+      "spell": "Telekinesis",
+      "at": 7.633333206176758,
+      "start": [
+        5.75,
+        0.0,
+        -3.5
+      ],
+      "final": [
+        5.75,
+        0.0,
+        -3.5
+      ],
+      "requested_ft": 0.0,
+      "measured_ft": 0.0
+    },
+    {
+      "label": "Dummy A",
+      "spell": "Telekinesis",
+      "at": 8.233333587646484,
+      "start": [
+        3.25,
+        0.0,
+        -3.5
+      ],
+      "final": [
+        3.25,
+        9.999999747378752e-6,
+        -3.5
+      ],
+      "requested_ft": 0.0,
+      "measured_ft": 0.0
+    },
+    {
+      "label": "Stone block",
+      "spell": "Telekinesis",
+      "at": 16.366666793823242,
+      "start": [
+        8.249999999996602,
+        0.3749999999981219,
+        5.453848092046896e-11
+      ],
+      "final": [
+        6.794032215138208,
+        0.3749999999722703,
+        0.5097212080462789
+      ],
+      "requested_ft": 0.0,
+      "measured_ft": 5.061069497898456
+    },
+    {
+      "label": "Range crate",
+      "spell": "Telekinesis",
+      "at": 17.5,
+      "start": [
+        -1.7794332504306458,
+        0.2999999999981224,
+        5.955471992547212
+      ],
+      "final": [
+        -8.311446146893854,
+        0.29999999985144293,
+        11.121779900022227
+      ],
+      "requested_ft": 0.0,
+      "measured_ft": 27.323296723793824
     }
   ],
   "props": [
     {
-      "name": "Tower",
-      "kind": "StoneBlock",
-      "mass_kg": 1000.0,
-      "secured": true,
+      "name": "Thrown crate",
+      "kind": "Crate",
+      "mass_kg": 20.0,
+      "secured": false,
       "removed": false,
       "center": [
-        16.0,
-        9.375,
-        6.0
+        -6.151695377538178,
+        0.8186559346041941,
+        0.02610572687499519
       ],
       "rotation": [
-        0.0,
-        0.0,
-        0.0,
-        1.0
+        -0.03354600820488336,
+        -0.13406035025791366,
+        0.9481040468290967,
+        0.2863585238971131
+      ]
+    },
+    {
+      "name": "Plank 1",
+      "kind": "Crate",
+      "mass_kg": 6.0,
+      "secured": false,
+      "removed": false,
+      "center": [
+        -3.9010341491589475,
+        0.7945067809440168,
+        -0.0377708112774898
+      ],
+      "rotation": [
+        -0.004849777088000304,
+        -0.0030356014122939166,
+        0.5403569155630102,
+        0.8414164656039791
+      ]
+    },
+    {
+      "name": "Plank 2",
+      "kind": "Crate",
+      "mass_kg": 6.0,
+      "secured": false,
+      "removed": false,
+      "center": [
+        -3.9958432462094646,
+        0.7086701900800687,
+        -0.044704620608445905
+      ],
+      "rotation": [
+        -0.0058926586533164325,
+        -0.0028434069216971432,
+        0.5393378754715349,
+        0.8420640401376396
+      ]
+    },
+    {
+      "name": "Plank 3",
+      "kind": "Crate",
+      "mass_kg": 6.0,
+      "secured": false,
+      "removed": false,
+      "center": [
+        -4.159584387464542,
+        0.6531167580514226,
+        -0.050290034773899525
+      ],
+      "rotation": [
+        -0.0018333873232354617,
+        -0.000048031221957469014,
+        0.5387217407058965,
+        0.842481763882598
+      ]
+    },
+    {
+      "name": "Plank 4",
+      "kind": "Crate",
+      "mass_kg": 6.0,
+      "secured": false,
+      "removed": false,
+      "center": [
+        -4.327839345297514,
+        0.5992693415247632,
+        -0.051981029868193133
+      ],
+      "rotation": [
+        0.0016845921402525769,
+        0.0022277188776055673,
+        0.539141401009819,
+        0.8422106322857084
+      ]
+    },
+    {
+      "name": "Plank 5",
+      "kind": "Crate",
+      "mass_kg": 6.0,
+      "secured": false,
+      "removed": false,
+      "center": [
+        -4.560143328513368,
+        0.574324397530278,
+        -0.04965058003571334
+      ],
+      "rotation": [
+        0.0029336351108332744,
+        0.0038135533406566707,
+        0.5396886945523964,
+        0.8418509152862427
+      ]
+    },
+    {
+      "name": "Plank 6",
+      "kind": "Crate",
+      "mass_kg": 6.0,
+      "secured": false,
+      "removed": false,
+      "center": [
+        -4.712473656114632,
+        0.5139251230659039,
+        -0.046778286605220425
+      ],
+      "rotation": [
+        0.0050223414367359534,
+        0.005434446940089912,
+        0.5411255297489174,
+        0.840909272113765
+      ]
+    },
+    {
+      "name": "Plank 7",
+      "kind": "Crate",
+      "mass_kg": 6.0,
+      "secured": false,
+      "removed": false,
+      "center": [
+        -4.789203082529525,
+        0.4176429793910308,
+        -0.04446956122455158
+      ],
+      "rotation": [
+        0.0030659002367671704,
+        0.004640400095860716,
+        0.5417127670419093,
+        0.8405452664589141
+      ]
+    },
+    {
+      "name": "Plank 8",
+      "kind": "Crate",
+      "mass_kg": 6.0,
+      "secured": false,
+      "removed": false,
+      "center": [
+        -4.726547900773581,
+        0.057490110738099766,
+        -0.029272080362741253
+      ],
+      "rotation": [
+        0.0026955737777226096,
+        0.0026973622477694617,
+        0.7056362050883149,
+        0.7085640438150066
+      ]
+    },
+    {
+      "name": "Stack crate 1-1",
+      "kind": "Crate",
+      "mass_kg": 20.0,
+      "secured": false,
+      "removed": false,
+      "center": [
+        -5.6556912725576804,
+        0.2999915731654798,
+        -0.6571785647283636
+      ],
+      "rotation": [
+        4.396698534595325e-6,
+        -0.02162026091464237,
+        3.9559007755005715e-6,
+        0.9997662548230974
+      ]
+    },
+    {
+      "name": "Stack crate 1-2",
+      "kind": "Crate",
+      "mass_kg": 20.0,
+      "secured": false,
+      "removed": false,
+      "center": [
+        -5.637364314353331,
+        0.29990598513352495,
+        -0.015472734597026857
+      ],
+      "rotation": [
+        0.000057267255984725766,
+        0.007866964171973122,
+        -0.00006052314103093692,
+        0.9999690514871586
+      ]
+    },
+    {
+      "name": "Stack crate 1-3",
+      "kind": "Crate",
+      "mass_kg": 20.0,
+      "secured": false,
+      "removed": false,
+      "center": [
+        -5.610991167750867,
+        0.29995314978670384,
+        0.6420300975631936
+      ],
+      "rotation": [
+        -2.805431156498931e-6,
+        0.04116668932878114,
+        0.00003617704098460432,
+        0.9991522918820029
+      ]
+    },
+    {
+      "name": "Stack crate 2-1",
+      "kind": "Crate",
+      "mass_kg": 20.0,
+      "secured": false,
+      "removed": false,
+      "center": [
+        -6.631019610433783,
+        0.29990111129522645,
+        -0.4188021293395227
+      ],
+      "rotation": [
+        0.06705013534849846,
+        0.06703602663859087,
+        0.703907186240316,
+        0.7039354541728235
+      ]
+    },
+    {
+      "name": "Stack crate 2-2",
+      "kind": "Crate",
+      "mass_kg": 20.0,
+      "secured": false,
+      "removed": false,
+      "center": [
+        -6.675632030597795,
+        0.29991925225985516,
+        0.4958964412309902
+      ],
+      "rotation": [
+        -0.09376557418556479,
+        -0.09374664037880019,
+        0.7008521748230085,
+        0.700875034197394
+      ]
+    },
+    {
+      "name": "Stack crate 3-1",
+      "kind": "Crate",
+      "mass_kg": 20.0,
+      "secured": false,
+      "removed": false,
+      "center": [
+        -7.549487772664985,
+        0.29999699576324784,
+        0.3877367522531579
+      ],
+      "rotation": [
+        0.1396369786323617,
+        0.13963583022929263,
+        0.6931796564925723,
+        0.6931849053026481
+      ]
+    },
+    {
+      "name": "Tower crate 1",
+      "kind": "Crate",
+      "mass_kg": 20.0,
+      "secured": false,
+      "removed": false,
+      "center": [
+        5.735460813737459,
+        0.29637678723944433,
+        5.001804092664093
+      ],
+      "rotation": [
+        -0.0012075076702173283,
+        0.00023177551176423397,
+        -0.0010396085937597161,
+        0.999998703708815
+      ]
+    },
+    {
+      "name": "Tower crate 2",
+      "kind": "Crate",
+      "mass_kg": 20.0,
+      "secured": false,
+      "removed": false,
+      "center": [
+        5.748099701271882,
+        0.8936758089739275,
+        5.001758513659919
+      ],
+      "rotation": [
+        -0.0010393199170309966,
+        -0.0008125831146503917,
+        -0.00026940808214543656,
+        0.9999990934706278
+      ]
+    },
+    {
+      "name": "Tower crate 3",
+      "kind": "Crate",
+      "mass_kg": 20.0,
+      "secured": false,
+      "removed": false,
+      "center": [
+        5.746923889739363,
+        1.4916679360307392,
+        4.999804644031612
+      ],
+      "rotation": [
+        0.0004666537898480664,
+        -0.0006908909324996318,
+        0.0015546250870096814,
+        0.999998444021189
+      ]
+    },
+    {
+      "name": "Tower crate 4",
+      "kind": "Crate",
+      "mass_kg": 20.0,
+      "secured": false,
+      "removed": false,
+      "center": [
+        5.748882531393961,
+        2.091674628288044,
+        5.001011355138884
+      ],
+      "rotation": [
+        0.0004632917344046055,
+        0.0002448627045418235,
+        0.0015555568877908127,
+        0.9999986528219894
+      ]
+    },
+    {
+      "name": "Stone block",
+      "kind": "StoneBlock",
+      "mass_kg": 1000.0,
+      "secured": false,
+      "removed": false,
+      "center": [
+        6.794032215138208,
+        0.3749999999722703,
+        0.5097212080462789
+      ],
+      "rotation": [
+        -3.691439746555864e-11,
+        -0.056234990502975576,
+        -2.079130234982622e-12,
+        0.9984175608647567
+      ]
+    },
+    {
+      "name": "Range crate",
+      "kind": "Crate",
+      "mass_kg": 20.0,
+      "secured": false,
+      "removed": false,
+      "center": [
+        -8.311446146893854,
+        0.29999999985144293,
+        11.121779900022227
+      ],
+      "rotation": [
+        2.748308697294367e-14,
+        -0.00011098572309704326,
+        -2.475950875224428e-10,
+        0.9999999938410847
       ]
     }
   ],
@@ -199,84 +596,103 @@
       "id": 14,
       "name": "Wizard",
       "position": [
-        18.149999618530273,
-        18.75,
-        6.0
+        7.363651752471924,
+        0.0,
+        -1.2763320207595825
       ],
       "health": 200
     },
     {
       "id": 101,
-      "name": "Dummy 1",
+      "name": "Dummy A",
       "position": [
-        11.434516906738281,
+        3.25,
         9.999999747378752e-6,
-        2.180948495864868
+        -3.5
       ],
-      "health": 59
+      "health": 92
     },
     {
       "id": 102,
-      "name": "Dummy 2",
+      "name": "Dummy B",
       "position": [
-        -2.574995994567871,
-        9.999999747378752e-6,
-        -5.341745376586914
+        5.75,
+        0.0,
+        -3.5
       ],
-      "health": 89
-    },
-    {
-      "id": 103,
-      "name": "Dummy 3",
-      "position": [
-        -17.13845443725586,
-        9.999999747378752e-6,
-        6.0
-      ],
-      "health": 89
-    },
-    {
-      "id": 104,
-      "name": "Dummy 4",
-      "position": [
-        -2.574995994567871,
-        9.999999747378752e-6,
-        17.34172248840332
-      ],
-      "health": 89
-    },
-    {
-      "id": 105,
-      "name": "Dummy 5",
-      "position": [
-        11.434516906738281,
-        9.999999747378752e-6,
-        9.819051742553711
-      ],
-      "health": 68
+      "health": 100
     }
   ],
   "ledger": {
-    "terms": {},
+    "terms": {
+      "gravity": {
+        "linear": [
+          0.0,
+          -39346.27500000095,
+          0.0
+        ],
+        "angular": [
+          23864.457169408768,
+          0.0,
+          -190053.01111477474
+        ]
+      },
+      "sleep": {
+        "linear": [
+          0.010437882555241466,
+          -0.0003096684665272432,
+          0.003644610524099433
+        ],
+        "angular": [
+          0.010437393195924759,
+          0.017475516471533874,
+          -0.02161557861917385
+        ]
+      },
+      "static contact": {
+        "linear": [
+          3558.0850955694577,
+          28466.917286058593,
+          -940.1607692532828
+        ],
+        "angular": [
+          -19545.75508169899,
+          7849.683677598328,
+          98112.66139119807
+        ]
+      },
+      "telekinesis": {
+        "linear": [
+          -3558.0955334519867,
+          10879.358023609635,
+          940.1571246427565
+        ],
+        "angular": [
+          -4318.712525103095,
+          -7849.70115311487,
+          91940.37133915618
+        ]
+      }
+    },
     "residual_relative": {
-      "linear": 0.0,
-      "angular": 0.0
+      "linear": 1.2360243402841653e-14,
+      "angular": 1.3497330914875376e-15
     },
     "tolerance": 1e-9
   },
   "replay": {
     "window_s": [
-      1.7000000476837158,
-      3.200000047683716
+      1.5,
+      2.5
     ],
     "speed": 0.25,
     "source": "checkpoint at the window start, stepped again with the same admitted commands",
     "identical_to_live": true
   },
-  "live_seconds": 12.0,
-  "video_seconds": 18.0,
-  "authority_tick": 360,
-  "physics_steps": 1440,
+  "live_seconds": 20.200000762939453,
+  "video_seconds": 24.200000762939453,
+  "authority_tick": 606,
+  "physics_steps": 2424,
   "renderer": "owned native GPU pipeline; scripted admitted commands; no grading",
   "prepared_pack": {
     "inventory": {

@@ -4,7 +4,7 @@
   "title": "Thunderwave",
   "srd": "Level 1 Evocation | Range Self (15-ft Cube) | CON save | 2d8 Thunder, push 10 ft",
   "srd_source": "SRD 5.2.1 (SRD_CC_v5.2.1.pdf)",
-  "rules_revision": "verse-chamber-owned-v14",
+  "rules_revision": "verse-chamber-owned-v17",
   "seed": 451,
   "dice_rolled": 6,
   "saves": [
@@ -526,7 +526,7 @@
         0.0,
         0.0
       ],
-      "health": 100
+      "health": 200
     },
     {
       "id": 101,
@@ -635,7 +635,7 @@
       "schema": "openagents.verse.asset-admission.v1",
       "purpose": "original_local",
       "compiler": "verse:compiler:original-chamber",
-      "compiler_revision": "5f1e8f976f8e61528b83340798a9aef6bd25f69f5754f82880451e0965bdbc27",
+      "compiler_revision": "8cb4be8f0af241ce1f7370f59519e4ac1512acfd62dcc6e269b01843e5e3792c",
       "assets": [
         "verse:model:adventurer",
         "verse:model:arrow",
@@ -659,15 +659,19 @@
         "verse:model:effect-shield",
         "verse:model:effect-wave",
         "verse:model:effect-web",
+        "verse:model:gear-hat",
+        "verse:model:gear-wand",
         "verse:model:navigation-blocker",
         "verse:model:particle-smoke",
         "verse:model:particle-spark",
         "verse:model:playground-hall",
         "verse:model:prop-anvil",
         "verse:model:prop-barrel",
+        "verse:model:prop-boulder",
         "verse:model:prop-crate",
         "verse:model:prop-crate-secured",
         "verse:model:prop-dummy",
+        "verse:model:prop-sheet",
         "verse:model:prop-stone",
         "verse:model:prop/Banner_2",
         "verse:model:prop/Barrel",
@@ -695,6 +699,7 @@
         "verse:source:bestiary-puglin",
         "verse:source:fantasy-props",
         "verse:source:fira-mono",
+        "verse:source:game-icons",
         "verse:source:project",
         "verse:source:quaternius",
         "verse:texture:material/adventurer/0",
@@ -778,11 +783,20 @@
           }
         ],
         [
+          "verse:source:game-icons",
+          {
+            "creator": "Lorc and Delapouite, game-icons.net",
+            "license": "cc_by30",
+            "revision": "661c0cad7c127d99290562d9c2c2079356781712547746cc9cdfdd293341c839",
+            "format": "svg/credits"
+          }
+        ],
+        [
           "verse:source:project",
           {
             "creator": "OpenAgents contributors",
             "license": "apache2",
-            "revision": "5f1e8f976f8e61528b83340798a9aef6bd25f69f5754f82880451e0965bdbc27",
+            "revision": "8cb4be8f0af241ce1f7370f59519e4ac1512acfd62dcc6e269b01843e5e3792c",
             "format": "rust/wgsl/json"
           }
         ],
@@ -798,10 +812,10 @@
       ]
     },
     "schema": "openagents.verse.prepared-pack.v1",
-    "manifest_sha256": "32188f6af5e8c8747b92f287a280146bfb4bb39fb2cd8176c5618165c4e3bb82",
-    "manifest_bytes": 82932075,
-    "vertices": 271502,
-    "indices": 997299,
+    "manifest_sha256": "29c4b1ac39dc928dba868a2a1b8e79fd0336eab160da0eeedf152fb2b4c8c1b1",
+    "manifest_bytes": 83344323,
+    "vertices": 271814,
+    "indices": 997743,
     "encoded_bytes": 34477502,
     "rgba_bytes": 164233224,
     "budget": {

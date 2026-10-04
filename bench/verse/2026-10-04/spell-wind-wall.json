@@ -595,7 +595,7 @@
       "schema": "openagents.verse.asset-admission.v1",
       "purpose": "original_local",
       "compiler": "verse:compiler:original-chamber",
-      "compiler_revision": "ab775a16faef918e0c0b420bc9b8268c669f70ae4398553809afed0478c752c9",
+      "compiler_revision": "8cb4be8f0af241ce1f7370f59519e4ac1512acfd62dcc6e269b01843e5e3792c",
       "assets": [
         "verse:model:adventurer",
         "verse:model:arrow",
@@ -756,7 +756,7 @@
           {
             "creator": "OpenAgents contributors",
             "license": "apache2",
-            "revision": "ab775a16faef918e0c0b420bc9b8268c669f70ae4398553809afed0478c752c9",
+            "revision": "8cb4be8f0af241ce1f7370f59519e4ac1512acfd62dcc6e269b01843e5e3792c",
             "format": "rust/wgsl/json"
           }
         ],
@@ -772,7 +772,7 @@
       ]
     },
     "schema": "openagents.verse.prepared-pack.v1",
-    "manifest_sha256": "98fb4b959c558b94ccfe633399967ca588f88c1f6829b4db6a285cadead57489",
+    "manifest_sha256": "29c4b1ac39dc928dba868a2a1b8e79fd0336eab160da0eeedf152fb2b4c8c1b1",
     "manifest_bytes": 83344323,
     "vertices": 271814,
     "indices": 997743,

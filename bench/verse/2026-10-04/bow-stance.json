@@ -1,259 +1,36 @@
 {
   "schema": "openagents.verse.spell-playground.v1",
-  "spell": "feather-fall",
-  "title": "Feather Fall",
-  "srd": "Level 1 Transmutation | Reaction | Range 60 ft | up to 5 falling creatures | 1 minute",
+  "spell": "bow",
+  "title": "Bow stance",
+  "srd": "Stowed on the back; drawn in the left hand while shooting",
   "srd_source": "SRD 5.2.1 (SRD_CC_v5.2.1.pdf)",
   "rules_revision": "verse-chamber-owned-v17",
-  "seed": 455,
-  "dice_rolled": 22,
-  "saves": [
-    {
-      "at": 1.5,
-      "save": {
-        "target": 101,
-        "ability": "Constitution",
-        "roll": 1,
-        "modifier": 0,
-        "total": 1,
-        "dc": 15,
-        "success": false,
-        "forced": true
-      }
-    },
-    {
-      "at": 1.5,
-      "save": {
-        "target": 102,
-        "ability": "Constitution",
-        "roll": 1,
-        "modifier": 0,
-        "total": 1,
-        "dc": 15,
-        "success": false,
-        "forced": true
-      }
-    },
-    {
-      "at": 1.5,
-      "save": {
-        "target": 103,
-        "ability": "Constitution",
-        "roll": 1,
-        "modifier": 0,
-        "total": 1,
-        "dc": 15,
-        "success": false,
-        "forced": true
-      }
-    },
-    {
-      "at": 1.5,
-      "save": {
-        "target": 104,
-        "ability": "Constitution",
-        "roll": 1,
-        "modifier": 0,
-        "total": 1,
-        "dc": 15,
-        "success": false,
-        "forced": true
-      }
-    },
-    {
-      "at": 1.5,
-      "save": {
-        "target": 105,
-        "ability": "Constitution",
-        "roll": 1,
-        "modifier": 0,
-        "total": 1,
-        "dc": 15,
-        "success": false,
-        "forced": true
-      }
-    }
-  ],
-  "log": [
-    "[1.50] Dummy 1: CON save 1 +0 = 1 vs DC 15 fails; 13 thunder, pushed 10 ft",
-    "[1.50] Dummy 2: CON save 1 +0 = 1 vs DC 15 fails; 11 thunder, pushed 10 ft",
-    "[1.50] Dummy 3: CON save 1 +0 = 1 vs DC 15 fails; 11 thunder, pushed 10 ft",
-    "[1.50] Dummy 4: CON save 1 +0 = 1 vs DC 15 fails; 11 thunder, pushed 10 ft",
-    "[1.50] Dummy 5: CON save 1 +0 = 1 vs DC 15 fails; 10 thunder, pushed 10 ft",
-    "[2.30] Reaction: Dummy 2, Dummy 3, Dummy 4 descend at 60 ft/round (3 of 5 max)",
-    "[3.40] Dummy 1 fell 60 ft: 6d6 = 28 bludgeoning",
-    "[3.40] Dummy 5 fell 60 ft: 6d6 = 22 bludgeoning",
-    "[7.33] Dummy 3 lands softly after 61 ft: 0 damage (drag removed 29.3 kJ)",
-    "[7.70] Dummy 2 lands softly after 61 ft: 0 damage (drag removed 29.3 kJ)",
-    "[7.70] Dummy 4 lands softly after 61 ft: 0 damage (drag removed 29.3 kJ)"
-  ],
-  "tracks": [
-    {
-      "label": "Dummy 1",
-      "spell": "Thunderwave",
-      "at": 1.5,
-      "start": [
-        13.670000076293945,
-        18.75,
-        4.0
-      ],
-      "final": [
-        11.434516906738281,
-        9.999999747378752e-6,
-        2.180948495864868
-      ],
-      "requested_ft": 10.0,
-      "measured_ft": 9.455613589358826
-    },
-    {
-      "label": "Dummy 2",
-      "spell": "Thunderwave",
-      "at": 1.5,
-      "start": [
-        14.1899995803833,
-        18.75,
-        5.0
-      ],
-      "final": [
-        -2.574995994567871,
-        9.999999747378752e-6,
-        -5.341745376586914
-      ],
-      "requested_ft": 10.0,
-      "measured_ft": 64.62644811675153
-    },
-    {
-      "label": "Dummy 3",
-      "spell": "Thunderwave",
-      "at": 1.5,
-      "start": [
-        13.869999885559082,
-        18.75,
-        6.0
-      ],
-      "final": [
-        -17.13845443725586,
-        9.999999747378752e-6,
-        6.0
-      ],
-      "requested_ft": 10.0,
-      "measured_ft": 101.7337740249834
-    },
-    {
-      "label": "Dummy 4",
-      "spell": "Thunderwave",
-      "at": 1.5,
-      "start": [
-        14.1899995803833,
-        18.75,
-        7.0
-      ],
-      "final": [
-        -2.574995994567871,
-        9.999999747378752e-6,
-        17.34172248840332
-      ],
-      "requested_ft": 10.0,
-      "measured_ft": 64.6264086923955
-    },
-    {
-      "label": "Dummy 5",
-      "spell": "Thunderwave",
-      "at": 1.5,
-      "start": [
-        13.670000076293945,
-        18.75,
-        8.0
-      ],
-      "final": [
-        11.434516906738281,
-        9.999999747378752e-6,
-        9.819051742553711
-      ],
-      "requested_ft": 10.0,
-      "measured_ft": 9.455614083061487
-    }
-  ],
-  "props": [
-    {
-      "name": "Tower",
-      "kind": "StoneBlock",
-      "mass_kg": 1000.0,
-      "secured": true,
-      "removed": false,
-      "center": [
-        16.0,
-        9.375,
-        6.0
-      ],
-      "rotation": [
-        0.0,
-        0.0,
-        0.0,
-        1.0
-      ]
-    }
-  ],
+  "seed": 1,
+  "dice_rolled": 0,
+  "saves": [],
+  "log": [],
+  "tracks": [],
+  "props": [],
   "actors": [
     {
       "id": 14,
       "name": "Wizard",
       "position": [
-        18.149999618530273,
-        18.75,
-        6.0
+        5.75,
+        0.0,
+        0.0
       ],
       "health": 200
     },
     {
       "id": 101,
-      "name": "Dummy 1",
+      "name": "Dummy",
       "position": [
-        11.434516906738281,
-        9.999999747378752e-6,
-        2.180948495864868
+        8.149999618530273,
+        0.0,
+        0.0
       ],
-      "health": 59
-    },
-    {
-      "id": 102,
-      "name": "Dummy 2",
-      "position": [
-        -2.574995994567871,
-        9.999999747378752e-6,
-        -5.341745376586914
-      ],
-      "health": 89
-    },
-    {
-      "id": 103,
-      "name": "Dummy 3",
-      "position": [
-        -17.13845443725586,
-        9.999999747378752e-6,
-        6.0
-      ],
-      "health": 89
-    },
-    {
-      "id": 104,
-      "name": "Dummy 4",
-      "position": [
-        -2.574995994567871,
-        9.999999747378752e-6,
-        17.34172248840332
-      ],
-      "health": 89
-    },
-    {
-      "id": 105,
-      "name": "Dummy 5",
-      "position": [
-        11.434516906738281,
-        9.999999747378752e-6,
-        9.819051742553711
-      ],
-      "health": 68
+      "health": 94
     }
   ],
   "ledger": {
@@ -266,17 +43,17 @@
   },
   "replay": {
     "window_s": [
-      1.7000000476837158,
-      3.200000047683716
+      2.299999952316284,
+      3.5999999046325684
     ],
     "speed": 0.25,
     "source": "checkpoint at the window start, stepped again with the same admitted commands",
     "identical_to_live": true
   },
-  "live_seconds": 12.0,
-  "video_seconds": 18.0,
-  "authority_tick": 360,
-  "physics_steps": 1440,
+  "live_seconds": 9.0,
+  "video_seconds": 14.199999809265137,
+  "authority_tick": 270,
+  "physics_steps": 1080,
   "renderer": "owned native GPU pipeline; scripted admitted commands; no grading",
   "prepared_pack": {
     "inventory": {

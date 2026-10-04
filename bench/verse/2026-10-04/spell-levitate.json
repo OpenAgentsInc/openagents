@@ -1,195 +1,126 @@
 {
   "schema": "openagents.verse.spell-playground.v1",
-  "spell": "feather-fall",
-  "title": "Feather Fall",
-  "srd": "Level 1 Transmutation | Reaction | Range 60 ft | up to 5 falling creatures | 1 minute",
+  "spell": "levitate",
+  "title": "Levitate",
+  "srd": "Level 2 Transmutation | Range 60 ft | Concentration, 10 min | CON save if unwilling | rise 20 ft, 500 lb max",
   "srd_source": "SRD 5.2.1 (SRD_CC_v5.2.1.pdf)",
   "rules_revision": "verse-chamber-owned-v17",
-  "seed": 455,
-  "dice_rolled": 22,
+  "seed": 454,
+  "dice_rolled": 0,
   "saves": [
     {
-      "at": 1.5,
-      "save": {
-        "target": 101,
-        "ability": "Constitution",
-        "roll": 1,
-        "modifier": 0,
-        "total": 1,
-        "dc": 15,
-        "success": false,
-        "forced": true
-      }
-    },
-    {
-      "at": 1.5,
+      "at": 15.399999618530273,
       "save": {
         "target": 102,
         "ability": "Constitution",
-        "roll": 1,
+        "roll": 18,
         "modifier": 0,
-        "total": 1,
+        "total": 18,
         "dc": 15,
-        "success": false,
-        "forced": true
-      }
-    },
-    {
-      "at": 1.5,
-      "save": {
-        "target": 103,
-        "ability": "Constitution",
-        "roll": 1,
-        "modifier": 0,
-        "total": 1,
-        "dc": 15,
-        "success": false,
-        "forced": true
-      }
-    },
-    {
-      "at": 1.5,
-      "save": {
-        "target": 104,
-        "ability": "Constitution",
-        "roll": 1,
-        "modifier": 0,
-        "total": 1,
-        "dc": 15,
-        "success": false,
-        "forced": true
-      }
-    },
-    {
-      "at": 1.5,
-      "save": {
-        "target": 105,
-        "ability": "Constitution",
-        "roll": 1,
-        "modifier": 0,
-        "total": 1,
-        "dc": 15,
-        "success": false,
+        "success": true,
         "forced": true
       }
     }
   ],
   "log": [
-    "[1.50] Dummy 1: CON save 1 +0 = 1 vs DC 15 fails; 13 thunder, pushed 10 ft",
-    "[1.50] Dummy 2: CON save 1 +0 = 1 vs DC 15 fails; 11 thunder, pushed 10 ft",
-    "[1.50] Dummy 3: CON save 1 +0 = 1 vs DC 15 fails; 11 thunder, pushed 10 ft",
-    "[1.50] Dummy 4: CON save 1 +0 = 1 vs DC 15 fails; 11 thunder, pushed 10 ft",
-    "[1.50] Dummy 5: CON save 1 +0 = 1 vs DC 15 fails; 10 thunder, pushed 10 ft",
-    "[2.30] Reaction: Dummy 2, Dummy 3, Dummy 4 descend at 60 ft/round (3 of 5 max)",
-    "[3.40] Dummy 1 fell 60 ft: 6d6 = 28 bludgeoning",
-    "[3.40] Dummy 5 fell 60 ft: 6d6 = 22 bludgeoning",
-    "[7.33] Dummy 3 lands softly after 61 ft: 0 damage (drag removed 29.3 kJ)",
-    "[7.70] Dummy 2 lands softly after 61 ft: 0 damage (drag removed 29.3 kJ)",
-    "[7.70] Dummy 4 lands softly after 61 ft: 0 damage (drag removed 29.3 kJ)"
+    "[0.50] Dummy A (willing): rises up to 20 ft",
+    "[1.80] Dummy A (willing): pushes off at 10.5 ft/s (climbing cap 10.5 ft/s)",
+    "[7.63] Dummy A (willing): bounces, 7.9 -> 0.8 ft/s (restitution 0.10)",
+    "[9.00] Crate: rises up to 20 ft",
+    "[9.03] Dummy A (willing): concentration ends; floats down at 10 ft/s or less",
+    "[11.07] Dummy A (willing): lands gently, no falling damage",
+    "[12.00] Crate: altitude -20 ft, now 0 ft above the ground",
+    "[13.70] Anvil + load: refused, too heavy: 661 lb (300 kg) > 500 lb",
+    "[15.40] Dummy B (unwilling): CON save 18 +0 = 18 vs DC 15 succeeds; unaffected",
+    "[18.10] Crate: altitude +20 ft, now 20 ft above the ground"
   ],
   "tracks": [
     {
-      "label": "Dummy 1",
-      "spell": "Thunderwave",
-      "at": 1.5,
+      "label": "Dummy A (willing)",
+      "spell": "Levitate",
+      "at": 0.5,
       "start": [
-        13.670000076293945,
-        18.75,
-        4.0
+        7.349999904632568,
+        0.0,
+        -12.0
       ],
       "final": [
-        11.434516906738281,
+        22.866456985473633,
         9.999999747378752e-6,
-        2.180948495864868
+        -12.0
       ],
-      "requested_ft": 10.0,
-      "measured_ft": 9.455613589358826
+      "requested_ft": 0.0,
+      "measured_ft": 50.90701142008223
     },
     {
-      "label": "Dummy 2",
-      "spell": "Thunderwave",
-      "at": 1.5,
+      "label": "Crate",
+      "spell": "Levitate",
+      "at": 9.0,
       "start": [
-        14.1899995803833,
-        18.75,
-        5.0
+        15.999999999996602,
+        0.2999999999981224,
+        -1.499999999945464
       ],
       "final": [
-        -2.574995994567871,
-        9.999999747378752e-6,
-        -5.341745376586914
+        15.999999999977653,
+        5.072236116931856,
+        12.45054005965288
       ],
-      "requested_ft": 10.0,
-      "measured_ft": 64.62644811675153
+      "requested_ft": 0.0,
+      "measured_ft": 45.769488384509
     },
     {
-      "label": "Dummy 3",
+      "label": "Crate",
       "spell": "Thunderwave",
-      "at": 1.5,
+      "at": 18.899999618530273,
       "start": [
-        13.869999885559082,
-        18.75,
-        6.0
+        15.999999999996602,
+        1.175007922554619,
+        -1.499999999945464
       ],
       "final": [
-        -17.13845443725586,
-        9.999999747378752e-6,
-        6.0
+        15.999999999977653,
+        5.072236116931856,
+        12.45054005965288
       ],
       "requested_ft": 10.0,
-      "measured_ft": 101.7337740249834
-    },
-    {
-      "label": "Dummy 4",
-      "spell": "Thunderwave",
-      "at": 1.5,
-      "start": [
-        14.1899995803833,
-        18.75,
-        7.0
-      ],
-      "final": [
-        -2.574995994567871,
-        9.999999747378752e-6,
-        17.34172248840332
-      ],
-      "requested_ft": 10.0,
-      "measured_ft": 64.6264086923955
-    },
-    {
-      "label": "Dummy 5",
-      "spell": "Thunderwave",
-      "at": 1.5,
-      "start": [
-        13.670000076293945,
-        18.75,
-        8.0
-      ],
-      "final": [
-        11.434516906738281,
-        9.999999747378752e-6,
-        9.819051742553711
-      ],
-      "requested_ft": 10.0,
-      "measured_ft": 9.455614083061487
+      "measured_ft": 45.769488384509
     }
   ],
   "props": [
     {
-      "name": "Tower",
-      "kind": "StoneBlock",
-      "mass_kg": 1000.0,
-      "secured": true,
+      "name": "Crate",
+      "kind": "Crate",
+      "mass_kg": 20.0,
+      "secured": false,
       "removed": false,
       "center": [
-        16.0,
-        9.375,
-        6.0
+        15.999999999977653,
+        5.072236116931856,
+        12.45054005965288
       ],
       "rotation": [
-        0.0,
-        0.0,
-        0.0,
+        1.5513914853686711e-18,
+        -3.9468946699069296e-11,
+        -3.1293465015282414e-12,
+        1.0
+      ]
+    },
+    {
+      "name": "Anvil + load",
+      "kind": "Anvil",
+      "mass_kg": 300.0,
+      "secured": false,
+      "removed": false,
+      "center": [
+        12.500000000000155,
+        0.19999999998893106,
+        -1.9999999999699754
+      ],
+      "rotation": [
+        3.467905617533778e-17,
+        -4.128658012895071e-11,
+        -1.581276948211405e-11,
         1.0
       ]
     }
@@ -199,84 +130,127 @@
       "id": 14,
       "name": "Wizard",
       "position": [
-        18.149999618530273,
-        18.75,
-        6.0
+        16.0,
+        0.0,
+        -4.0
       ],
       "health": 200
     },
     {
       "id": 101,
-      "name": "Dummy 1",
+      "name": "Dummy A (willing)",
       "position": [
-        11.434516906738281,
+        22.866456985473633,
         9.999999747378752e-6,
-        2.180948495864868
+        -12.0
       ],
-      "health": 59
+      "health": 100
     },
     {
       "id": 102,
-      "name": "Dummy 2",
+      "name": "Dummy B (unwilling)",
       "position": [
-        -2.574995994567871,
-        9.999999747378752e-6,
-        -5.341745376586914
+        13.0,
+        0.0,
+        1.5
       ],
-      "health": 89
-    },
-    {
-      "id": 103,
-      "name": "Dummy 3",
-      "position": [
-        -17.13845443725586,
-        9.999999747378752e-6,
-        6.0
-      ],
-      "health": 89
-    },
-    {
-      "id": 104,
-      "name": "Dummy 4",
-      "position": [
-        -2.574995994567871,
-        9.999999747378752e-6,
-        17.34172248840332
-      ],
-      "health": 89
-    },
-    {
-      "id": 105,
-      "name": "Dummy 5",
-      "position": [
-        11.434516906738281,
-        9.999999747378752e-6,
-        9.819051742553711
-      ],
-      "health": 68
+      "health": 100
     }
   ],
   "ledger": {
-    "terms": {},
+    "terms": {
+      "gravity": {
+        "linear": [
+          0.0,
+          -4022.100000000262,
+          0.0
+        ],
+        "angular": [
+          -3144.991395328555,
+          0.0,
+          -59203.34999998916
+        ]
+      },
+      "levitate damping": {
+        "linear": [
+          1.8970430567974895e-11,
+          0.0,
+          -13.956355207601511
+        ],
+        "angular": [
+          -42.900825517464376,
+          223.30168332154827,
+          -5.83137301739491e-11
+        ]
+      },
+      "levitate hold": {
+        "linear": [
+          0.0,
+          2482.4999999607385,
+          0.0
+        ],
+        "angular": [
+          99.5267482461196,
+          0.0,
+          39719.99999935842
+        ]
+      },
+      "sleep": {
+        "linear": [
+          2.393918396847994e-16,
+          -2.914335439641033e-16,
+          4.681584980792408e-16
+        ],
+        "angular": [
+          -4.308185752448726e-16,
+          -6.5065357615153326e-15,
+          -3.716124630276259e-15
+        ]
+      },
+      "spell:thunderwave": {
+        "linear": [
+          -1.5558669875160148e-10,
+          0.0,
+          114.46357137624204
+        ],
+        "angular": [
+          134.49560321098053,
+          -1831.4171420192504,
+          1.828156036772506e-10
+        ]
+      },
+      "static contact": {
+        "linear": [
+          1.2212453270876722e-15,
+          1569.5999999999965,
+          -1.717376241217039e-16
+        ],
+        "angular": [
+          3090.1499999508005,
+          1.509903313490213e-14,
+          19963.350000000264
+        ]
+      }
+    },
     "residual_relative": {
-      "linear": 0.0,
-      "angular": 0.0
+      "linear": 3.2011028552172283e-14,
+      "angular": 1.7638262647170416e-14
     },
     "tolerance": 1e-9
   },
   "replay": {
     "window_s": [
-      1.7000000476837158,
-      3.200000047683716
+      1.600000023841858,
+      2.4000000953674316
     ],
     "speed": 0.25,
     "source": "checkpoint at the window start, stepped again with the same admitted commands",
     "identical_to_live": true
   },
-  "live_seconds": 12.0,
-  "video_seconds": 18.0,
-  "authority_tick": 360,
-  "physics_steps": 1440,
+  "live_seconds": 21.5,
+  "video_seconds": 24.700000762939453,
+  "authority_tick": 645,
+  "physics_steps": 2580,
   "renderer": "owned native GPU pipeline; scripted admitted commands; no grading",
   "prepared_pack": {
     "inventory": {

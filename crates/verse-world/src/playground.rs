@@ -176,6 +176,9 @@ pub struct Scenario {
     pub check: fn(&Game) -> Result<(), String>,
 }
 
+/// Log lines the playground overlay shows; older lines stay in the evidence.
+pub const OVERLAY_LOG_LINES: usize = 3;
+
 /// Every registered scenario, one line per spell.
 pub fn scenarios() -> Vec<Scenario> {
     vec![
@@ -406,26 +409,20 @@ impl Run {
             format!("t = {:.2} s", game.time)
         });
         lines.push(String::new());
-        let recent: Vec<_> = game.spells.log.iter().rev().take(7).collect();
+        // Keep the panel small so the action stays visible: the latest log
+        // lines only. Measured displacements are drawn as trails in the scene
+        // and recorded in the evidence JSON.
+        let recent: Vec<_> = game
+            .spells
+            .log
+            .iter()
+            .rev()
+            .take(OVERLAY_LOG_LINES)
+            .collect();
         for record in recent.into_iter().rev() {
             lines.push(format!("[{:5.2}] {}", record.at, record.text));
         }
         lines.extend(crate::spells::feather_fall::overlay(game));
-        lines.push(String::new());
-        for track in game.spells.tracks.iter().rev().take(10).rev() {
-            if let Some((_, moved)) = measure(game, track) {
-                lines.push(format!(
-                    "{:<18} moved {:5.1} ft{}",
-                    track.label,
-                    moved / FEET,
-                    if track.requested > 0. {
-                        format!(" (pushed {:.0} ft)", track.requested / FEET)
-                    } else {
-                        " (no push)".into()
-                    }
-                ));
-            }
-        }
         lines
     }
     /// The evidence JSON for `spell-<key>.json`.

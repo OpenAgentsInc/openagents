@@ -229,7 +229,7 @@ pub fn scenario() -> Scenario {
             let tower = (Vec3::new(1.25, 3.4, -3.), Vec3::new(6., 1.2, 4.2));
             // From the south, between the pillars: Dummy A (x 3.25) sits
             // right of center, and its 8 m peak and the floor both fit.
-            let dummies = (Vec3::new(1.5, 4.5, -13.), Vec3::new(5.5, 4.2, -3.5));
+            let dummies = (Vec3::new(0.5, 5.0, -16.), Vec3::new(5.5, 6.4, -3.5));
             // Close on the stone block (8.25, 0.4, 0) as it rises.
             let stone = (Vec3::new(7.5, 2.6, -4.2), Vec3::new(8.25, 1.5, 0.));
             // Follow the range crate out to 60 ft, where it drops.

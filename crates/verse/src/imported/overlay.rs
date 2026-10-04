@@ -1628,7 +1628,7 @@ pub fn spell_panel(
         y - 6.0,
         panel_width,
         panel_height,
-        [0.0, 0.0, 0.0, 0.62],
+        [0.0, 0.0, 0.0, 0.45],
     );
     for (i, line) in lines.iter().enumerate() {
         if i == 0 {
