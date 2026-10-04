@@ -9,7 +9,8 @@ near-term migration to original assets.
 
 [Agent Studio](agent-studio.md) is the proposed specification for a team of
 coding agents, on any engine the Coder host routes, doing real repository work
-inside Verse while people watch, answer, and approve merges.
+inside Verse while people watch, answer, and approve merges, with panels
+harvested from Zeron.
 
 For cross-project priorities and dependencies, see the [master roadmap](../roadmap.md).
 

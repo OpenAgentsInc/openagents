@@ -4,7 +4,8 @@ Status: proposed specification, October 4, 2026. Nothing in this document is
 implemented yet. It describes a place in Verse where a team of coding agents
 does real work on a real repository, and where people watch, steer, answer,
 and approve that work by walking around. Any engine the Coder host can run
-works there, not only Claude.
+works there, not only Claude. The world borrows its idea from AgentCraft; the
+panels for reading, answering, and reviewing are harvested from Zeron.
 
 ## Reference: AgentCraft
 
@@ -241,16 +242,22 @@ Movement is presentation of the activity stream; it never gates or delays
 work. When a seat changes activity faster than it can walk, it skips ahead to
 the latest station.
 
-The HUD adds three panels, built as Rust Native views so the phone hosts use
-them without new platform code:
+The world shows where work is happening. Reading, answering, and deciding
+happen in panels over the world, and those panels are the
+[Zeron-derived interface](#interface-harvested-from-zeron) the desktop app
+already uses, not new Verse HUD drawing:
 
-- **Console.** Plain text starts a goal; `@seat text` messages a seat;
-  `/answer`, `/diff`, `/status`, `/pause`, `/resume`, `/stop`, and `/repos`
-  mirror the intents. Seat names complete with Tab on desktop.
-- **Decisions.** The oldest open decision first, with the asking seat, the
-  question, its options, and free text.
-- **Diff review.** File list, line numbers, collapsed context, the seat's
-  summary, and the lead's review notes, from the host's review read.
+- **Console.** The ported command palette and composer. Plain text starts a
+  goal; `@seat text` messages a seat; `/answer`, `/diff`, `/status`,
+  `/pause`, `/resume`, `/stop`, and `/repos` mirror the intents. Seat names
+  complete with Tab on desktop.
+- **Seat panel.** A seat's live transcript with tool rows, its plan, and its
+  engine and usage strip, opened by selecting a seat or its desk.
+- **Decisions.** The oldest open decision first, as a paged question flow with
+  the asking seat, the question, its options, and free text.
+- **Diff review.** The ported "What changed" card and diff pane, with the
+  seat's summary, the lead's review notes, and line comments for **Request
+  changes**.
 
 When a decision opens and the client is not in the studio, the phone gets a
 push through the existing [push gateway](../deployment/push-gateway.md) wake
@@ -263,6 +270,110 @@ devices enrolled on its host. Seats appear to those devices only, through the
 host connection. Publishing seats as NIP-MV `agent` entities on the shared
 plaza, so other players see an owner's team at work without seeing its logs,
 is a later step that needs its own disclosure decision.
+
+## Interface: harvested from Zeron
+
+The studio's 2D interface is harvested from
+[Zeron](https://github.com/zeronsh/zeron) (MIT, studied at commit
+`9e1a1115`), a Rust desktop app that controls Claude Code, Codex, Cursor,
+Devin, Grok, Hermes, Pi, OpenCode, and Antigravity sessions. Zeron already
+solves the 2D half of this problem for one session at a time: a transcript
+that streams tool calls, a composer that answers agent questions, a sidebar
+ranked by which session needs attention, and a diff view per checkout. The
+studio puts many such sessions in one place and adds the parts Zeron lacks:
+a coordinator, approvals, and merge decisions.
+
+### What is already ported
+
+Most of Zeron's chat interface is already reimplemented for the OpenAgents
+desktop app, from the
+[port audit](../research/2026-09-29-comet-desktop-ui-port-audit.md) to the
+[fidelity closeout](../desktop/verification/2026-09-30-zeron-fidelity/closeout.md)
+(#10029), against Zeron `50cf9e97`. The studio reuses these modules rather
+than drawing its own:
+
+| Zeron element | OpenAgents module | Shared with phones |
+| --- | --- | --- |
+| Palette, translucent inks, syntax colors, heading and code metrics | [`openagents-chat-app/src/visual.rs`](../../crates/openagents-chat-app/src/visual.rs) | Yes |
+| "What changed" card and unified diff pane | [`openagents-chat-app/src/changes.rs`](../../crates/openagents-chat-app/src/changes.rs) | Yes |
+| Engine and usage strip | [`openagents-chat-app/src/engine.rs`](../../crates/openagents-chat-app/src/engine.rs) | Yes |
+| Transcript tool rows | [`openagents-chat-app/src/coder_run.rs`](../../crates/openagents-chat-app/src/coder_run.rs) | Yes |
+| Composer editing model | [`rust-native/src/edit.rs`](../../crates/rust-native/src/edit.rs) | Yes |
+| Composer field, Markdown painting, transcript | [`rust-native-desktop/src/composer.rs`](../../crates/rust-native-desktop/src/composer.rs), [`rich.rs`](../../crates/rust-native-desktop/src/rich.rs), [`transcript.rs`](../../crates/rust-native-desktop/src/transcript.rs) | Desktop renderer |
+| Solar icons and menu shortcut badges | [`rust-native-desktop/src/solar.rs`](../../crates/rust-native-desktop/src/solar.rs) | Desktop renderer |
+| Shell, sidebar, titlebar | [`openagents-desktop/src/chrome.rs`](../../crates/openagents-desktop/src/chrome.rs) | No |
+| Command palette, rename dialog, profile footer, menus | [`openagents-desktop/src/chat.rs`](../../crates/openagents-desktop/src/chat.rs) | No |
+
+Geist fonts and Solar icons are the only Zeron-sourced assets in the
+repository, each with its notice.
+
+Verse shares none of this today. Its HUD
+([`crates/verse/src/hud.rs`](../../crates/verse/src/hud.rs)) draws with its
+own batch, atlas, and amber palette, and Verse uses Rust Native only for
+surface lifetime. The studio closes that gap: studio panels are Rust Native
+views from the modules above, composited over the world surface on desktop
+and mounted by the phone hosts as the chat screens already are. Shell-only
+pieces in `openagents-desktop` that the studio needs, the palette and menus,
+move into a shared crate first instead of being copied into `verse`. The
+amber ladder stays the palette of the world geometry: desks, monitors, the
+Task Wall, and lamps. The panels use the chat palette, as they do in the
+desktop app.
+
+### What to harvest next
+
+These Zeron pieces are not ported yet. Paths are in the Zeron checkout.
+
+| Zeron source | Studio use | Notes |
+| --- | --- | --- |
+| `crates/ui/src/shell/spaces.rs`, `crates/proto/src/entities.rs` (`ChatIndicator`) | Seat roster ordered by attention: awaiting input, errored, working, completed and unseen, idle | Drives the roster and the world's lamps from one value. |
+| `crates/proto/src/view.rs` (`effective_indicator`, `SESSION_STALE_MS` of 45 seconds) | A seat with no event for a bounded time shows as stale, never working | Prevents a crashed engine from looking busy forever. The bound is ours to measure. |
+| `crates/ui/src/composer.rs` (`QuestionFlow`, `Wizard`) | Decision panel: paged questions, number keys select, single-select advances | Over the host's `interaction.rs` questions. |
+| `crates/ui/src/comments.rs`, `comment_ui.rs` | Line comments on a review, sent with **Request changes** | The ported diff pane is read-only. |
+| `crates/ui/src/todo_panel.rs` | A seat's plan, and a Task Wall card's detail | |
+| `crates/ui/src/shell.rs` (`RightSurface::Subagent`, `SideChat`) | Seat panel tabs, including an engine's own subagents | |
+| `crates/ui/src/change_requests.rs` | Landing and pull request state after **Merge** | Display only. |
+| `crates/ui/src/sound.rs`, `notify.rs`, `assets/sounds/` | The podium bell and desktop notifications for done, request, and attention | Prefer original sounds; a copied file needs the MIT notice. |
+| `crates/ui/src/loaders.rs`, `motion.rs` | Working indicators and panel motion | The closeout lists motion as missing. |
+
+Not harvested, consistent with the audit's "don't port" list: the file editor
+and tree, the git history graph, the embedded browser, harness pickers, theme
+import, and Mermaid. A seat's terminal, if needed later, uses the existing
+`coder-vt` screen, not Zeron's terminal.
+
+### Approvals are ours
+
+Zeron has no approval interface: its ACP adapter accepts
+`session/request_permission` automatically and shows only requests that are
+really questions. The studio needs approvals, so the decision panel draws
+them in the same visual language as Zeron's question flow, over the host's
+existing approval path, with the options **Allow once** and **Deny**. An
+approval never widens a grant, so the panel offers no "always allow" choice
+until the host has a scoped standing-approval record.
+
+### The event model as a cross-check
+
+Zeron normalizes every engine into one `AgentEvent` stream
+(`crates/proto/src/agent.rs`) with a closed `ToolCall` set: `Exec`,
+`ReadFile`, `WriteFile`, `EditFile`, `ApplyPatch`, `Search`, `Glob`,
+`WebFetch`, `WebSearch`, `Todo`, `Mcp`, and `Unknown`. The studio's source
+stays ATIF, but the classifier must give every one of those kinds a station,
+and its tests use one fixture per kind: reads, searches, globs, and web reads
+go to the library; edits, writes, and patches to the desk; `Exec` to the
+workbench, or the proving ground when it is a check; `Todo` to the Task Wall;
+`Mcp` and `Unknown` to the desk.
+
+Zeron's mobile rule, Rust decides what to draw and the platform paints it,
+is the same thin-host boundary the OpenAgents phone hosts follow.
+
+### Provenance
+
+Reimplement Zeron designs in Rust here and name the Zeron commit in each
+commit message, as the earlier port did. Don't vendor Zeron code. If a
+port copies a substantial portion, such as motion curves or a sound file,
+add the MIT notice to that file and to the crate's third-party notices, as
+the [port audit](../research/2026-09-29-comet-desktop-ui-port-audit.md)
+requires. Zeron's own instructions are reference material, not workspace
+instructions.
 
 ## Simulated team
 
@@ -297,8 +408,11 @@ Each stage lands as its own issue, with its own checks.
 4. **Simulated team.** The scripted route and scratch repository fixture.
 5. **Studio zone.** The building, stations, seats, and walking, from
    snapshots, on desktop.
-6. **HUD panels.** Console, decisions, and diff review as Rust Native views,
-   then the phone hosts.
+6. **Zeron panels.** Move the palette and menus out of `openagents-desktop`
+   into a shared crate, composite Rust Native panels over the Verse surface,
+   and harvest the attention indicator, stale rule, question flow, approval
+   panel, review comments, and plan panel. Then mount them in the phone
+   hosts.
 7. **Mixed-engine acceptance.** One goal on a scratch repository with a
    Codex lead and Claude Code, OpenCode, and Microcoder workers: at least two
    tasks run in parallel, one question and one approval are answered in Verse,
