@@ -253,6 +253,7 @@ pub struct Renderer {
     shadow_pipeline: wgpu::RenderPipeline,
     pose_layout: wgpu::BindGroupLayout,
     materials: BTreeMap<material_gpu::Key, wgpu::BindGroup>,
+    shadow_materials: BTreeMap<material_gpu::Key, wgpu::BindGroup>,
     pipelines: Vec<wgpu::RenderPipeline>,
     catalog: verse_engine::residency::Catalog,
     models: HashMap<verse_engine::residency::ModelHandle, Vec<Batch>>,
@@ -605,6 +606,16 @@ impl Renderer {
             label: Some("imported material"),
             entries: &material_entries,
         });
+        let shadow_material_entries: Vec<_> = material_entries
+            .iter()
+            .filter(|entry| entry.binding <= 2)
+            .cloned()
+            .collect();
+        let shadow_material_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("Verse shadow alpha material"),
+                entries: &shadow_material_entries,
+            });
         let frame = buffer(
             &device,
             "imported camera",
@@ -785,6 +796,7 @@ impl Renderer {
             .flat_map(|model| model.surfaces.iter().map(material_gpu::Key::from_surface))
             .collect();
         let mut materials = BTreeMap::new();
+        let mut shadow_materials = BTreeMap::new();
         for key in keys {
             let uniform = buffer(
                 &device,
@@ -806,6 +818,14 @@ impl Renderer {
                     resource: uniform.as_entire_binding(),
                 },
             ];
+            shadow_materials.insert(
+                key,
+                device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("Verse shadow alpha resources"),
+                    layout: &shadow_material_layout,
+                    entries: &entries,
+                }),
+            );
             for (channel, slot) in key.maps.into_iter().enumerate() {
                 let views = &texture_views[slot.unwrap_or(key.texture)];
                 entries.push(wgpu::BindGroupEntry {
@@ -849,7 +869,7 @@ impl Renderer {
                 label: None,
                 bind_group_layouts: &[
                     Some(&shadow_layout),
-                    Some(&texture_layout),
+                    Some(&shadow_material_layout),
                     Some(&pose_layout),
                 ],
                 immediate_size: 0,
@@ -966,6 +986,7 @@ impl Renderer {
             shadow_pipeline,
             pose_layout,
             materials,
+            shadow_materials,
             pipelines,
             catalog,
             models,
@@ -1356,7 +1377,7 @@ impl Renderer {
                     .iter()
                     .filter(|b| b.blend < 2 && !b.emissive)
                 {
-                    bundle.set_bind_group(1, &self.materials[&batch.material], &[]);
+                    bundle.set_bind_group(1, &self.shadow_materials[&batch.material], &[]);
                     bundle.set_vertex_buffer(0, batch.vertices.slice(..));
                     bundle.set_index_buffer(batch.indices.slice(..), wgpu::IndexFormat::Uint32);
                     bundle.draw_indexed(0..batch.count, 0, 0..1);
@@ -1672,7 +1693,7 @@ impl Renderer {
         })
     }
     fn draw_batch<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, batch: &'a Batch) {
-        pass.set_bind_group(1, &self.materials[&batch.material], &[]);
+        pass.set_bind_group(1, &self.shadow_materials[&batch.material], &[]);
         pass.set_vertex_buffer(0, batch.vertices.slice(..));
         pass.set_index_buffer(batch.indices.slice(..), wgpu::IndexFormat::Uint32);
         pass.draw_indexed(0..batch.count, 0, 0..1);
