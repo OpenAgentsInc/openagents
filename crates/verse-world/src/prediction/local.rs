@@ -138,17 +138,43 @@ impl Local {
                 return Err("Local prediction observation regressed".into());
             }
         }
+        let reset = self.context() != Some((baseline.life, baseline.epoch));
+        let shift = if reset {
+            0
+        } else {
+            self.inputs
+                .iter()
+                .find(|i| {
+                    i.sequence
+                        .is_none_or(|sequence| sequence > baseline.applied_sequence)
+                })
+                .map_or(0, |i| baseline.physics_step.saturating_sub(i.step))
+        };
+        let step = self
+            .step
+            .checked_add(shift)
+            .ok_or("Local prediction clock exhausted")?;
+        let simulated = self
+            .simulated
+            .checked_add(shift)
+            .ok_or("Local prediction clock exhausted")?;
         self.collision.update(geometry)?;
-        if self.context() != Some((baseline.life, baseline.epoch)) {
+        if reset {
             self.inputs.clear();
             self.step = baseline.physics_step;
             self.fraction = 0.;
             self.motion_time = 0.;
             self.moving = false;
         } else {
-            self.step = self.step.max(baseline.physics_step);
             self.inputs
                 .retain(|i| i.sequence.is_none_or(|s| s > baseline.applied_sequence));
+            // Preserve pending intervals when authority overtakes their local timestamps.
+            // Shift the whole retained timeline, including its already simulated watermark.
+            for input in &mut self.inputs {
+                input.step += shift;
+            }
+            self.step = step.max(baseline.physics_step);
+            self.simulated = simulated;
         }
         self.character = Some(baseline.character);
         self.yaw = baseline.yaw;
@@ -475,6 +501,101 @@ mod tests {
             intent,
         }
     }
+    #[test]
+    fn overtaken_pending_intervals_preserve_move_jump_stop_and_expire() {
+        let (mut local, mut baseline, geometry) = setup();
+        let stop = Intent::Move {
+            axes: [0., 0.],
+            yaw: 0.,
+        };
+        local.queue(1, stop.clone()).unwrap();
+        local.bind(1, &command(baseline, 1, stop.clone())).unwrap();
+        local.advance(4. / 120.).unwrap();
+        local.queue(2, movement()).unwrap();
+        local.bind(2, &command(baseline, 2, movement())).unwrap();
+        local.advance(4. / 120.).unwrap();
+        local.queue(3, Intent::Jump).unwrap();
+        local.bind(3, &command(baseline, 3, Intent::Jump)).unwrap();
+        local.advance(4. / 120.).unwrap();
+        local.queue(4, stop.clone()).unwrap();
+        local.advance(4. / 120.).unwrap();
+        let before = local.pose().unwrap();
+        assert!(before.airborne && before.position.x > 0.4);
+        baseline.physics_step = 36;
+        baseline.applied_sequence = 1;
+        local.observe(baseline, &geometry, 2, 2).unwrap();
+        local.advance(0.).unwrap();
+        let after = local.pose().unwrap();
+        assert!(before.position.distance(after.position) < 0.00001);
+        assert!((before.motion_time - after.motion_time).abs() < 0.00001);
+        assert_eq!(local.timing().step, 48);
+        assert_eq!(
+            local
+                .timing()
+                .inputs
+                .iter()
+                .map(|i| i.step)
+                .collect::<Vec<_>>(),
+            vec![36, 40, 44]
+        );
+        assert_eq!(local.pending(), 3);
+        // A later acknowledgment retires the move and jump, without replaying either.
+        baseline.physics_step = 48;
+        baseline.applied_sequence = 3;
+        baseline.character = local.character.unwrap();
+        local.observe(baseline, &geometry, 3, 3).unwrap();
+        local.advance(0.).unwrap();
+        assert_eq!(local.pending(), 1);
+        assert_eq!(local.timing().inputs[0].token, 4);
+        let mut expected = baseline.character;
+        movement::advance(
+            &mut expected,
+            local.collision.scene(),
+            Filter::blocking(7),
+            glam::DVec3::ZERO,
+            false,
+            4,
+            1. / 120.,
+        )
+        .unwrap();
+        assert_eq!(
+            serde_json::to_vec(&local.character.unwrap()).unwrap(),
+            serde_json::to_vec(&expected).unwrap()
+        );
+        for _ in 0..22 {
+            if local.advance(0.1).is_err() {
+                break;
+            }
+        }
+        assert!(local.context().is_none());
+    }
+
+    #[test]
+    fn overtaken_unacknowledged_hold_keeps_its_age_and_expires() {
+        let (mut local, mut baseline, geometry) = setup();
+        local.queue(1, movement()).unwrap();
+        local.advance(0.1).unwrap();
+        baseline.physics_step = 60;
+        local.observe(baseline, &geometry, 2, 2).unwrap();
+        local.advance(0.).unwrap();
+        assert_eq!(local.timing().step, 72);
+        assert_eq!(local.timing().inputs[0].step, 60);
+        for _ in 0..5 {
+            local.advance(0.1).unwrap();
+        }
+        assert_eq!(local.pose().unwrap().axes, [0., 0.]);
+        let stopped = local.pose().unwrap().position;
+        local.advance(0.1).unwrap();
+        assert_eq!(local.pose().unwrap().position, stopped);
+        baseline.epoch += 1;
+        baseline.physics_step = 84;
+        local.observe(baseline, &geometry, 3, 3).unwrap();
+        local.advance(0.).unwrap();
+        assert_eq!(local.pending(), 0);
+        assert_eq!(local.timing().step, 84);
+        assert_eq!(local.pose().unwrap().position, glam::Vec3::ZERO);
+    }
+
     #[test]
     fn timing_distinguishes_local_steps_input_binding_and_authoritative_ack() {
         let (mut local, mut baseline, geometry) = setup();
