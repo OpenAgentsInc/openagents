@@ -3,7 +3,7 @@
 
 use super::{
     Control, Everglade, Intent, Lab, Lagrange, LoadState, PortalProjection, Ruins, Snapshot,
-    ZoneId, assets,
+    ZoneId, assets, everglade_pack,
 };
 use crate::{
     controller::{InputState, PlayerController},
@@ -30,9 +30,12 @@ impl WorldRuntime {
         }
     }
 
-    /// Configure a host-owned cache directory. This does not read or fetch assets.
+    /// Configure a host-owned cache directory. This does not read or fetch
+    /// assets. The Ruins and Everglade packs share it; each is named by its
+    /// own digest.
     pub fn configure_zone_cache(&mut self, path: std::path::PathBuf) {
         self.zone_cancel_loading();
+        self.zone_state.everglade_loader = Some(everglade_pack::Loader::new(path.clone()));
         self.zone_state.loader = Some(assets::Loader::new(path));
     }
     pub fn is_plaza(&self) -> bool {
@@ -48,6 +51,9 @@ impl WorldRuntime {
         if let Some(loader) = &mut self.zone_state.loader {
             loader.cancel();
         }
+        if let Some(loader) = &mut self.zone_state.everglade_loader {
+            loader.cancel();
+        }
         self.zone_state.loading = LoadState::Idle;
         self.zone_state.progress = 0.0;
         self.zone_state.error = None;
@@ -55,33 +61,53 @@ impl WorldRuntime {
     /// Poll only while the native surface is active, before its presence tick.
     /// A true result invalidates the old world GPU buffers and pointer capture.
     pub fn zone_tick(&mut self) -> bool {
-        let event = self
+        let ruins = self
             .zone_state
             .loader
             .as_mut()
             .and_then(assets::Loader::poll);
+        let everglade = self
+            .zone_state
+            .everglade_loader
+            .as_mut()
+            .and_then(everglade_pack::Loader::poll);
         if !self.zone_loading() {
             return false;
         }
-        match event {
+        match ruins {
             Some(assets::LoadEvent::Progress { received, total }) => {
-                self.zone_state.progress = if total == 0 {
-                    0.0
-                } else {
-                    (received as f32 / total as f32).clamp(0.0, 1.0)
-                };
+                self.zone_load_progress(received, total);
             }
             Some(assets::LoadEvent::Ready(assets)) => {
                 self.install_ruins(*assets);
                 return true;
             }
-            Some(assets::LoadEvent::Failed(error)) => {
-                self.zone_state.error = Some(error.chars().take(180).collect());
-                self.zone_state.loading = LoadState::Failed;
+            Some(assets::LoadEvent::Failed(error)) => self.zone_load_failed(&error),
+            None => {}
+        }
+        match everglade {
+            Some(everglade_pack::LoadEvent::Progress { received, total }) => {
+                self.zone_load_progress(received, total);
             }
+            Some(everglade_pack::LoadEvent::Ready(pack)) => {
+                self.install_everglade(&pack);
+                return self.zone_state.everglade.is_some();
+            }
+            Some(everglade_pack::LoadEvent::Failed(error)) => self.zone_load_failed(&error),
             None => {}
         }
         false
+    }
+    fn zone_load_progress(&mut self, received: u64, total: u64) {
+        self.zone_state.progress = if total == 0 {
+            0.0
+        } else {
+            (received as f32 / total as f32).clamp(0.0, 1.0)
+        };
+    }
+    fn zone_load_failed(&mut self, error: &str) {
+        self.zone_state.error = Some(error.chars().take(180).collect());
+        self.zone_state.loading = LoadState::Failed;
     }
     /// Install already verified artwork. Offline tools use the same decoder.
     pub fn install_ruins(&mut self, assets: assets::LoadedAssets) {
@@ -153,16 +179,26 @@ impl WorldRuntime {
         let _ = self.set_spawn(Lab::spawn(), Lab::spawn_yaw());
         self.camera = crate::camera::FollowCamera::default();
     }
-    /// Enter Everglade's generated glade. Nothing is downloaded.
-    pub fn install_everglade(&mut self) {
+    /// Enter Everglade with its verified pack. Offline tools use the same
+    /// decoder ([`everglade_pack::ZonePack::load_local`]).
+    pub fn install_everglade(&mut self, pack: &everglade_pack::ZonePack) {
+        // A repeated completion cannot replace the saved plaza return pose.
         if !self.is_plaza() {
             return;
         }
+        let world = match Everglade::world(pack) {
+            Ok(world) => world,
+            Err(error) => {
+                self.zone_load_failed(&error);
+                return;
+            }
+        };
         self.zone_state.plaza_pose = Some((self.player.pos, self.player.yaw));
-        self.zone_cancel_loading();
-        self.world = Everglade::world();
+        self.world = world;
         self.zone_state.everglade = Some(Everglade::new());
         self.zone = ZoneId::Everglade;
+        self.zone_state.loading = LoadState::Idle;
+        self.zone_state.error = None;
         self.zone_state.progress = 1.0;
         self.zone_revision = self.zone_revision.saturating_add(1);
         let _ = self.set_spawn(Everglade::spawn(), Everglade::spawn_yaw());
@@ -221,19 +257,21 @@ impl WorldRuntime {
                     self.install_lab();
                     return Ok(());
                 }
-                if destination == ZoneId::Everglade {
-                    self.cancel_navigation();
-                    self.doors.cancel_transient();
-                    self.install_everglade();
-                    return Ok(());
-                }
-                super::Manifest::ruins()?;
-                let loader = self
-                    .zone_state
-                    .loader
-                    .as_mut()
-                    .ok_or("Zone storage is unavailable")?;
-                if !loader.request() {
+                let requested = if destination == ZoneId::Everglade {
+                    self.zone_state
+                        .everglade_loader
+                        .as_mut()
+                        .ok_or("Zone storage is unavailable")?
+                        .request()
+                } else {
+                    super::Manifest::ruins()?;
+                    self.zone_state
+                        .loader
+                        .as_mut()
+                        .ok_or("Zone storage is unavailable")?
+                        .request()
+                };
+                if !requested {
                     return Err("Finishing the previous load; try again".into());
                 }
                 self.cancel_navigation();
@@ -499,13 +537,14 @@ impl WorldRuntime {
         let caption = if self.zone_loading() {
             add("cancel", "Cancel", Intent::Cancel, true);
             format!(
-                "Loading Ruins · {}%",
+                "Loading {} · {}%",
+                self.zone_state.destination.label(),
                 (self.zone_state.progress * 100.0) as u32
             )
         } else if self.zone_state.loading == LoadState::Failed {
             add("retry", "Retry", Intent::Retry, portal.near);
             add("cancel", "Dismiss", Intent::Cancel, true);
-            "Ruins could not load".into()
+            format!("{} could not load", self.zone_state.destination.label())
         } else if self.zone == ZoneId::Ruins {
             if let Some(c) = &combat {
                 for ability in &c.abilities {
@@ -636,7 +675,12 @@ impl WorldRuntime {
                 add("enter", "Enter Lab", Intent::Enter, true);
                 "Physics Lab · live rigid-body sandbox".into()
             } else if self.nearest_portal().0 == ZoneId::Everglade {
-                add("enter", "Enter Everglade", Intent::Enter, true);
+                add(
+                    "enter",
+                    "Enter Everglade",
+                    Intent::Enter,
+                    self.zone_state.everglade_loader.is_some(),
+                );
                 "Everglade · the Agent Studio's forest glade".into()
             } else {
                 add(
@@ -871,6 +915,7 @@ impl WorldRuntime {
             mesh.extend(&crate::avatar::mesh(&self.player, &self.gait));
         }
         if let Some(everglade) = &self.zone_state.everglade {
+            // Carries the lit stage the textured glade draws on.
             mesh.extend(everglade.dynamic());
             // Until the studio's seats arrive, the plaza character walks it.
             mesh.extend(&crate::avatar::mesh(&self.player, &self.gait));

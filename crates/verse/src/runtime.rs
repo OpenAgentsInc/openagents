@@ -473,6 +473,10 @@ impl WorldRuntime {
             eye.y = eye
                 .y
                 .max(crate::zones::everglade::height(eye.x, eye.z) + 0.4);
+            eye = crate::zones::everglade::keep_eye_inside(
+                self.player.pos + Vec3::Y * crate::camera::FOCUS_HEIGHT,
+                eye,
+            );
         }
         View {
             view_proj: self.camera.view_proj_from_eye(eye, self.player.yaw, aspect),

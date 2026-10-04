@@ -1,29 +1,54 @@
 //! Offline visual acceptance of Everglade with the shared renderer.
-//! Usage: everglade_capture OUTPUT.png
+//! Usage: everglade_capture OUTPUT.png [approach|yard|hall]
 //!
-//! Enters Everglade from the plaza arch and renders the greybox glade from
-//! the yard, looking over the station markers toward the workshop outline,
-//! with the zone HUD.
-use std::path::PathBuf;
+//! Installs Everglade from the committed, pinned pack, as a portal entry
+//! does after the download, and renders one of three views with the zone
+//! HUD:
+//!
+//! - `approach` (the default): from the stepping stones near the return
+//!   portal, up the path through the gate toward the workshop.
+//! - `yard`: from above the yard's south edge, over the Task Wall, the
+//!   proving ring, and the podium to the hall's facade.
+//! - `hall`: inside the hall, over the desks and their monitors toward the
+//!   gallery and the hearth.
+use std::path::{Path, PathBuf};
 use verse::{
     controller::InputState,
     runtime::{Action, WorldRuntime},
-    zones,
+    zones::{self, everglade_pack},
 };
 
 fn main() -> Result<(), String> {
-    let output = PathBuf::from(
-        std::env::args()
-            .nth(1)
-            .ok_or("Expected an output PNG path")?,
-    );
+    let mut args = std::env::args().skip(1);
+    let output = PathBuf::from(args.next().ok_or("Expected an output PNG path")?);
+    let view = args.next().unwrap_or_else(|| "approach".into());
+    let pack = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join(everglade_pack::PACK_DIRECTORY)
+        .join(format!(
+            "{}.{}",
+            everglade_pack::PACK_SHA256,
+            everglade_pack::PACK_EXTENSION
+        ));
+    let pack = everglade_pack::ZonePack::load_local(&pack)?;
     let mut runtime = WorldRuntime::new();
-    runtime.set_spawn(glam::Vec3::new(-24.0, 0.0, -27.0), 0.0)?;
-    runtime.zone_intent(zones::Intent::Enter)?;
-    // Stand at the yard's south edge facing the hall, and look down over
-    // the yard's markers from behind and above.
-    runtime.set_spawn(glam::Vec3::new(-3.0, 0.0, -14.0), 0.0)?;
-    runtime.apply(Action::Orbit { dx: 0.0, dy: 80.0 })?;
+    runtime.install_everglade(&pack);
+    if runtime.zone != zones::ZoneId::Everglade {
+        return Err("Everglade did not install from the pinned pack".into());
+    }
+    let (at, yaw, tilt) = match view.as_str() {
+        "approach" => (glam::Vec3::new(0.0, 0.0, -29.0), 0.0, 0.0),
+        "yard" => (glam::Vec3::new(-3.0, 0.0, -15.0), 0.25, 80.0),
+        // At the desks station; the camera stays inside, by the doors.
+        "hall" => (glam::Vec3::new(0.0, 0.0, 5.0), 0.0, 20.0),
+        other => {
+            return Err(format!(
+                "unknown view `{other}`; use approach, yard, or hall"
+            ));
+        }
+    };
+    runtime.set_spawn(at, yaw)?;
+    runtime.apply(Action::Orbit { dx: 0.0, dy: tilt })?;
     let idle = InputState::default();
     for _ in 0..10 {
         runtime.tick(&idle, 0.05);

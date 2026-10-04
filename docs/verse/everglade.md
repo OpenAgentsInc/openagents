@@ -3,10 +3,12 @@
 Status: proposed specification, October 4, 2026. Delivery step 1 is
 implemented: the admitted sources under `assets/verse/everglade/` and the pack
 compiler and loader in `verse::zones::everglade_pack`. Delivery step 3 is
-implemented: `ZoneId::Everglade` with generated ground, the plaza arch, and
-greybox station markers in
-[`zones/everglade/`](../../crates/verse/src/zones/everglade/mod.rs). The rest
-is not implemented yet.
+implemented: `ZoneId::Everglade` with generated ground and the plaza arch in
+[`zones/everglade/`](../../crates/verse/src/zones/everglade/mod.rs). Delivery
+step 4 is implemented: the pack loads on entry, and the layout in
+[`zones/everglade/layout.rs`](../../crates/verse/src/zones/everglade/layout.rs)
+places the glade, the workshop, and each station's furniture with their
+blockers. The rest is not implemented yet.
 
 Everglade is a loaded Verse zone: a forest glade with a small timber-and-plaster
 workshop where a person works with a team of coding agents. It is where the

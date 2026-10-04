@@ -15,8 +15,8 @@ separately loaded **zones**:
   generated in Rust; nothing is downloaded.
 - **Everglade** (southwest arch, `EVERGLADE`): the forest glade where the
   [Agent Studio](agent-studio.md) will live ([specification](everglade.md)).
-  Today it is a greybox: generated ground, the workshop's outline, and a marker
-  at each studio station. Nothing is downloaded.
+  Its ground is generated; its trees, workshop, and station furniture come
+  from a pinned pack of CC0 Quaternius models that loads on entry.
 
 A *loaded zone* is an independently loaded scene with its own world ID,
 presentation, physics profile, and rules profile. It differs from the named
@@ -32,11 +32,11 @@ belong in the [iOS](../../bins/coder-ios/README.md) and
 | --- | --- | --- | --- | --- | --- |
 | `ZoneId` / serialized ID | `Plaza` / `plaza` | `Ruins` / `ruins` | `Lagrange1` / `lagrange1` | `PhysicsLab` / `physics_lab` | `Everglade` / `everglade` |
 | World ID | `verse-plaza` | `ruins-v1` | `lagrange-1-v1` | `physics-lab-v1` | `everglade-v1` |
-| Presentation | Coder's four amber intensities on near-black | Forest greens, baked model colors, fog 24–82 m | Vacuum black, direct sunlight from −Z, fog only at the 1–2 km sky shell | Dark blueprint hall, cyan edges on dark faces, fog 30–90 m | Green-gold day sky, vertex-colored grass and paths, lamplight-gold markers, fog 40–170 m |
-| Geometry | Shared Rust world | Pinned on-demand pack plus retained heightfield and voxel ruins | Procedural station, stars, Sun, Earth, and Moon | Procedural hall, railed stage, and scenario bodies | Generated heightfield (flat 34 m clearing rising to the 58 m tree ring), workshop outline, station markers |
+| Presentation | Coder's four amber intensities on near-black | Forest greens, baked model colors, fog 24–82 m | Vacuum black, direct sunlight from −Z, fog only at the 1–2 km sky shell | Dark blueprint hall, cyan edges on dark faces, fog 30–90 m | Green-gold day sky on a lit stage, textured Quaternius models with alpha-tested foliage, fog 40–170 m |
+| Geometry | Shared Rust world | Pinned on-demand pack plus retained heightfield and voxel ruins | Procedural station, stars, Sun, Earth, and Moon | Procedural hall, railed stage, and scenario bodies | Generated heightfield (flat 34 m clearing rising to the 58 m tree ring) and a pinned textured pack: tree ring, workshop hall, yard, and station furniture, with Verse-drawn boards |
 | Physics | Flat-ground walking, collision, jump | `ruins.heightfield.v1`: original controller on the retained heightfield | Sun–Earth CR3BP orbit, linearized L1 field locally, rigid bodies, cold-gas EVA pack ([details](lagrange-1.md)) | Flat-ground walking; nine `physics` crate scenarios at 1/120 s ([details](physics-lab.md)) | Plaza walking and jumping over the heightfield |
 | Rules | Exploration and product interactions | `ruins.wizard-woods.v1`: retained real-time ECS | Construction sandbox: grab, carry, latch | Sandbox: choose a scenario and turn knobs | Exploration; the caption names the station in reach |
-| Assets | Built in | 6.6 MB verified pack, cached on disk | None | None | None yet; a pinned pack is specified |
+| Assets | Built in | 6.6 MB verified pack, cached on disk | None | None | 13.4 MB verified pack, cached on disk |
 | Network | NIP-MV plaza presence; Gym connection | Local-only | Local-only | Local-only | Local-only |
 | Code | [`world.rs`](../../crates/verse/src/world.rs) | [`zones/ruins.rs`](../../crates/verse/src/zones/ruins.rs), [`verse-ruins`](../../crates/verse-ruins/) | [`zones/lagrange/`](../../crates/verse/src/zones/lagrange/mod.rs), [`pbr`](../../crates/verse/src/pbr/mod.rs), [`verse-lagrange`](../../crates/verse-lagrange/) | [`zones/lab/`](../../crates/verse/src/zones/lab/mod.rs), [`physics`](../../crates/physics/) | [`zones/everglade/`](../../crates/verse/src/zones/everglade/mod.rs) |
 
@@ -52,15 +52,16 @@ select the HUD control (**Enter Ruins**, **Enter L1**, **Enter Lab**, or
 **Enter Everglade**). The nearest arch decides the
 destination. Desktop uses **F**.
 
-- **Ruins** shows loading progress with **Cancel**. The plaza stays active until
-  the pack passes content and decode checks. A failed load keeps the plaza and
-  offers **Retry** or **Dismiss**. Walking past the arch never fetches the pack.
-- **Lagrange 1**, the **Physics Lab**, and **Everglade** install immediately
-  because their geometry is generated.
+- **Ruins** and **Everglade** show loading progress with **Cancel**. The plaza
+  stays active until the pack passes content and decode checks. A failed load
+  keeps the plaza and offers **Retry** or **Dismiss**. Walking past an arch
+  never fetches a pack.
+- **Lagrange 1** and the **Physics Lab** install immediately because their
+  geometry is generated.
 
 Inside a zone, **Plaza** returns without requiring a win or a finished build.
 Return restores the saved plaza position and releases the zone's geometry,
-simulation, and GPU buffers. The Ruins pack can stay in the disk cache.
+simulation, and GPU buffers. The Ruins and Everglade packs can stay in the disk cache.
 Re-entering any zone starts a fresh local simulation.
 
 The OpenAgents app's bare world (the Grid) has one walk-in arch instead, to

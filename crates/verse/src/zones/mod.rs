@@ -270,6 +270,7 @@ impl Default for Snapshot {
 
 pub(crate) struct State {
     loader: Option<assets::Loader>,
+    everglade_loader: Option<everglade_pack::Loader>,
     loading: LoadState,
     progress: f32,
     error: Option<String>,
@@ -289,6 +290,7 @@ impl Default for State {
     fn default() -> Self {
         Self {
             loader: None,
+            everglade_loader: None,
             loading: LoadState::Idle,
             progress: 0.0,
             error: None,

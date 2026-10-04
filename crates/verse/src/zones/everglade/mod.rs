@@ -1,24 +1,33 @@
 //! Everglade: the forest glade where the Agent Studio lives
 //! (`docs/verse/everglade.md`).
 //!
-//! This module registers the zone with generated ground and greybox station
-//! markers. The ground is a heightfield computed in Rust: flat inside the
-//! clearing, rising toward the tree ring. The studio's stations have fixed
-//! standing points in [`STATIONS`], so the textured layout (#10487) and the
-//! studio workspace (#10465) build on the same coordinates. The player walks
-//! the shared plaza controller over the heightfield; nothing is downloaded.
+//! The ground is a heightfield computed in Rust: flat inside the clearing,
+//! rising toward the tree ring. The glade and the workshop are placements
+//! of the pinned Everglade pack's models (`layout`), drawn as textured,
+//! alpha-tested cells on a lit stage, with the Task Wall and the desk
+//! monitors drawn by Verse (`boards`). The pack loads on portal entry, as
+//! the Ruins pack does. The studio's stations have fixed standing points in
+//! [`STATIONS`], which the studio workspace (#10465) builds on. The player
+//! walks the shared plaza controller over the heightfield.
 
+mod boards;
 mod draw;
+pub mod layout;
+mod scene;
 #[cfg(test)]
 mod tests;
 
 use crate::{
     controller::{Footprint, InputState, PlayerController},
     mesh::Mesh,
+    pbr::{Key, Neon},
     world::World,
 };
 use glam::Vec3;
 use std::f32::consts::FRAC_PI_2;
+use std::sync::Arc;
+
+use super::everglade_pack::ZonePack;
 
 /// Half the walkable square, m. The glade is about 120 m across; the square
 /// runs past the tree ring so its rising ground closes the view.
@@ -81,23 +90,11 @@ impl Station {
     pub fn position(&self) -> Vec3 {
         Vec3::new(self.at[0], height(self.at[0], self.at[1]), self.at[1])
     }
-
-    /// Where the greybox marker post stands: ahead of the standing point,
-    /// where the furniture will go.
-    #[must_use]
-    pub fn marker(&self) -> Vec3 {
-        let ahead = crate::controller::forward(self.facing) * MARKER_OFFSET;
-        let at = self.position() + ahead;
-        Vec3::new(at.x, height(at.x, at.z), at.z)
-    }
 }
 
-/// Distance from a standing point to its marker post, m.
-const MARKER_OFFSET: f32 = 1.4;
-
 /// The stations of the layout table in `docs/verse/everglade.md`, in the
-/// table's order. Later layout work replaces the markers with furniture at
-/// these points; it does not move them.
+/// table's order. Each station's furniture stands ahead of its point, in
+/// the direction it faces; layout changes never move these points.
 pub const STATIONS: [Station; 10] = [
     Station {
         id: "approach",
@@ -212,7 +209,7 @@ pub fn station_near(x: f32, z: f32) -> Option<&'static Station> {
         .map(|(s, _)| s)
 }
 
-/// The zone's live state: the clock that bobs the station beacons.
+/// The zone's live state: its clock and the lit stage its frames draw on.
 pub(crate) struct Everglade {
     elapsed: f32,
     rendered: Mesh,
@@ -220,12 +217,44 @@ pub(crate) struct Everglade {
 
 impl Everglade {
     pub fn new() -> Self {
-        let mut zone = Self {
+        Self {
             elapsed: 0.0,
-            rendered: Mesh::default(),
-        };
-        zone.rendered = draw::beacons(zone.elapsed);
-        zone
+            rendered: Self::stage(0.0),
+        }
+    }
+
+    /// The physical stage: the zone's green-gold air as background and fog,
+    /// a warm afternoon sun from behind the approach that casts shadows
+    /// over the clearing, and sky and ground fill. Textured meshes draw only
+    /// on a lit stage.
+    fn stage(time: f32) -> Mesh {
+        let air = super::atmosphere(super::ZoneId::Everglade);
+        Mesh {
+            neon: Some(Neon {
+                field: air.color,
+                fog_start: air.fog_start,
+                fog_end: air.fog_end,
+                line_gain: 1.0,
+                line_width: 1.4,
+                bloom: 0.04,
+                vignette: 0.15,
+                time,
+                key: Some(Key {
+                    dir: Vec3::new(-0.35, 0.8, -0.45).normalize(),
+                    illuminance: 4_000.0,
+                    angular_radius: 0.03,
+                    rim_dir: Vec3::new(0.5, 0.35, 0.6).normalize(),
+                    rim_illuminance: 900.0,
+                    rim_angular_radius: 0.1,
+                    sky: 1_200.0,
+                    ground: 450.0,
+                    ev100: 10.0,
+                    shadow_center: Vec3::new(0.0, 0.0, -4.0),
+                    shadow_half: 40.0,
+                }),
+            }),
+            ..Mesh::default()
+        }
     }
 
     pub fn spawn() -> Vec3 {
@@ -236,14 +265,22 @@ impl Everglade {
         SPAWN_YAW
     }
 
-    /// The ground, the workshop outline, and the station markers.
-    pub fn world() -> World {
+    /// The ground, the textured glade and workshop from `pack` with their
+    /// blockers, and the boards.
+    ///
+    /// # Errors
+    ///
+    /// Returns a message when the pack lacks a placed model or the scene
+    /// exceeds the renderer's bounds.
+    pub fn world(pack: &ZonePack) -> Result<World, String> {
         let mut world = World::default();
         draw::ground(&mut world.mesh);
-        draw::outlines(&mut world.mesh);
-        draw::markers(&mut world.mesh);
-        place_layout(&mut world);
-        world
+        let (scene, blockers) = scene::build(pack, &layout::placements())?;
+        world.mesh.textured = Some(Arc::new(scene));
+        world.blockers = blockers;
+        world.blockers.extend(layout::board_blockers());
+        boards::draw(&mut world.mesh);
+        Ok(world)
     }
 
     /// Walk the shared plaza controller over the heightfield. The controller
@@ -266,7 +303,7 @@ impl Everglade {
 
     pub fn tick(&mut self, dt: f32) {
         self.elapsed = (self.elapsed + dt) % 1000.0;
-        self.rendered = draw::beacons(self.elapsed);
+        self.rendered = Self::stage(self.elapsed);
     }
 
     pub fn dynamic(&self) -> &Mesh {
@@ -277,14 +314,47 @@ impl Everglade {
     pub fn caption(at: Vec3) -> String {
         match station_near(at.x, at.z) {
             Some(station) => format!("Everglade\n{} · {}", station.studio, station.place),
-            None => "Everglade\nWalk to a station marker".into(),
+            None => "Everglade\nWalk up to a station".into(),
         }
     }
 }
 
-/// Where the textured glade and workshop join the zone (#10487). The admitted
-/// Everglade pack's placements (#10484), drawn as textured, alpha-tested
-/// cells by the zone renderer (#10485), extend `world` here with their prop
-/// blockers, keeping [`STATIONS`] fixed. Until then the vertex-colored ground
-/// and greybox markers stand alone, and this adds nothing.
-fn place_layout(_world: &mut World) {}
+/// The hall's interior, inset from its walls, and the height under its
+/// eaves, m: the third-person camera stays inside while the player does.
+const INTERIOR: ([f32; 2], [f32; 2]) = ([-7.4, 1.5], [7.4, 10.5]);
+const INTERIOR_TOP: f32 = 2.9;
+
+/// Pulls the camera's `eye` toward the player's `focus` so it stays inside
+/// the hall while the focus is inside, instead of looking through a wall or
+/// the roof. Elsewhere `eye` is returned unchanged.
+#[must_use]
+pub fn keep_eye_inside(focus: Vec3, eye: Vec3) -> Vec3 {
+    let (min, max) = INTERIOR;
+    let within = |p: Vec3| (min[0]..=max[0]).contains(&p.x) && (min[1]..=max[1]).contains(&p.z);
+    if !focus.is_finite() || !eye.is_finite() || !within(focus) {
+        return eye;
+    }
+    let delta = eye - focus;
+    let mut t = 1.0_f32;
+    let limits = [
+        (focus.x, delta.x, min[0], max[0]),
+        (focus.z, delta.z, min[1], max[1]),
+        (
+            focus.y,
+            delta.y,
+            f32::NEG_INFINITY,
+            INTERIOR_TOP.max(focus.y),
+        ),
+    ];
+    for (start, step, low, high) in limits {
+        if step > 0.0 && start + step > high {
+            t = t.min((high - start) / step);
+        } else if step < 0.0 && start + step < low {
+            t = t.min((low - start) / step);
+        }
+    }
+    if t >= 1.0 {
+        return eye;
+    }
+    focus + delta * t.max(0.0)
+}
