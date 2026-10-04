@@ -1,0 +1,158 @@
+//! Runs one explicitly configured authenticated TLS chamber.
+use std::{
+    path::Path,
+    sync::{Arc, Mutex},
+};
+use verse_world::{
+    play::Game,
+    service::{host::Config, net},
+};
+fn bounded(path: &Path, limit: usize, private: bool) -> Result<Vec<u8>, String> {
+    use std::io::Read;
+    let file = std::fs::File::open(path).map_err(|_| "Cannot open chamber host input")?;
+    let metadata = file
+        .metadata()
+        .map_err(|_| "Cannot inspect chamber host input")?;
+    if !metadata.is_file() {
+        return Err("Chamber host input must be a regular file".into());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        if private && metadata.permissions().mode() & 0o077 != 0 {
+            return Err("TLS private key must have owner-only permissions".into());
+        }
+    }
+    #[cfg(not(unix))]
+    let _ = private;
+    let mut bytes = vec![];
+    file.take(limit as u64 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|_| "Cannot read chamber host input")?;
+    if bytes.len() > limit {
+        return Err("Chamber host input exceeds its byte budget".into());
+    }
+    Ok(bytes)
+}
+async fn shutdown() -> Result<(), String> {
+    #[cfg(unix)]
+    {
+        let mut terminate =
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                .map_err(|_| "Cannot register chamber termination signal")?;
+        tokio::select! {
+            result = tokio::signal::ctrl_c() => result.map_err(|_| "Cannot await chamber interrupt".into()),
+            _ = terminate.recv() => Ok(()),
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        tokio::signal::ctrl_c()
+            .await
+            .map_err(|_| "Cannot await chamber interrupt".into())
+    }
+}
+async fn serve(config: Config) -> Result<(), String> {
+    let scene =
+        verse_engine::director::Scene::from_json(&bounded(&config.scene, 1024 * 1024, false)?)?;
+    let pack = verse_engine::assets::Pack::read(&config.pack)?;
+    let mut game = Game::combat_in(scene, false, config.instance)?;
+    verse::imported::props::admit_collision(&pack, &mut game)?;
+    let gateway = config.gateway(game)?;
+    let certificate = rustls::pki_types::CertificateDer::from(bounded(
+        &config.certificate_der,
+        1024 * 1024,
+        false,
+    )?);
+    let key = rustls::pki_types::PrivateKeyDer::try_from(bounded(
+        &config.private_key_der,
+        64 * 1024,
+        true,
+    )?)
+    .map_err(|_| "Invalid configured DER private key")?;
+    let tls = rustls::ServerConfig::builder_with_provider(Arc::new(
+        rustls::crypto::ring::default_provider(),
+    ))
+    .with_safe_default_protocol_versions()
+    .map_err(|_| "Cannot configure TLS protocol versions")?
+    .with_no_client_auth()
+    .with_single_cert(vec![certificate], key)
+    .map_err(|_| "Configured TLS certificate or private key refused")?;
+    let listener = tokio::net::TcpListener::bind(config.listen)
+        .await
+        .map_err(|_| "Cannot bind configured chamber listener")?;
+    println!(
+        "Chamber {} listening on {}",
+        config.instance,
+        listener
+            .local_addr()
+            .map_err(|_| "Cannot inspect chamber listener")?
+    );
+    let signal_failure = Arc::new(Mutex::new(None));
+    let failure = signal_failure.clone();
+    let exit = net::serve(listener, Arc::new(tls), gateway, async move {
+        if shutdown().await.is_err() {
+            *failure.lock().unwrap() = Some("Cannot await chamber shutdown signal".to_string());
+        }
+    })
+    .await;
+    println!(
+        "Chamber stopped: {} ticks, {} requests, {} completed connections, {:.6} dropped seconds",
+        exit.stats.ticks,
+        exit.stats.requests,
+        exit.stats.completed_connections,
+        exit.stats.dropped_seconds
+    );
+    if let Some(error) = exit.failure {
+        return Err(error);
+    }
+    if let Some(error) = signal_failure.lock().unwrap().take() {
+        return Err(error);
+    }
+    Ok(())
+}
+fn run() -> Result<(), String> {
+    let mut args = std::env::args_os().skip(1);
+    let path = args.next().ok_or("Usage: verse_host CONFIG.json")?;
+    if args.next().is_some() {
+        return Err("Usage: verse_host CONFIG.json".into());
+    }
+    let config = Config::from_json(&bounded(Path::new(&path), 64 * 1024, false)?)?;
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| e.to_string())?;
+    runtime.block_on(serve(config))
+}
+fn main() {
+    if let Err(error) = run() {
+        eprintln!("{error}");
+        std::process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn host_file_inputs_reject_oversized_and_non_regular_sources() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("certificate.der");
+        std::fs::write(&path, [1, 2, 3]).unwrap();
+        assert_eq!(bounded(&path, 3, false).unwrap(), vec![1, 2, 3]);
+        assert!(bounded(&path, 2, false).is_err());
+        assert!(bounded(dir.path(), 16, false).is_err());
+    }
+    #[cfg(unix)]
+    #[test]
+    fn tls_private_key_requires_owner_only_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("synthetic-key.der");
+        std::fs::write(&path, [1, 2, 3]).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert!(bounded(&path, 16, true).is_err());
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        assert_eq!(bounded(&path, 16, true).unwrap(), vec![1, 2, 3]);
+    }
+}

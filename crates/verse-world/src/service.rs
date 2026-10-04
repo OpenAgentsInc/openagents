@@ -9,6 +9,8 @@ pub mod client;
 #[cfg(feature = "service-auth")]
 pub mod event_cursor;
 #[cfg(feature = "service-net")]
+pub mod host;
+#[cfg(feature = "service-net")]
 pub mod net;
 #[cfg(feature = "service-auth")]
 pub mod presentation;

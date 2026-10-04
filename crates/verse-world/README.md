@@ -197,6 +197,7 @@ Run it with:
 ```sh
 cargo run -p verse --no-default-features --features imported-desktop,remote-chamber --example verse_remote -- CONFIG.json
 ```
+
 The JSON configuration requires `address` (socket address), `server_name` (TLS
 name), `instance` (host instance), `trust_der` (DER trust certificate path),
 `key_file` (owner-only file containing the enrolled 32-byte signing key as hex),
@@ -206,6 +207,24 @@ is used during login and is not passed to the window or worker. Callers must
 supply matching original scene/assets and a configured host; automatic host
 setup, scene/pack identity matching, remote audio, prediction, and native live
 acceptance remain.
+
+Run the configured host with:
+
+```sh
+cargo run -p verse --no-default-features --features remote-chamber --example verse_host -- HOST.json
+```
+
+Host JSON requires `listen` (socket address), nonzero `instance`, `scene`, `pack`,
+`certificate_der`, `private_key_der`, and `enrollments`. Paths resolve from the
+working directory. Each enrollment contains a 64-character x-only `public_key`
+and `role`: `{"type":"primary"}`, `{"type":"player","spawn":[x,y,z]}`, or
+`{"type":"spectator"}`. Keys must be unique; at most one primary, 63 additional
+players, and 128 total enrollments are accepted. The private DER key requires
+owner-only permissions on Unix. The host loads combat authority and pack prop
+collision before serving TLS. Ctrl+C or Unix SIGTERM drains connections and
+prints final tick/request/timing statistics. Grants and world state are not yet
+saved across process restart; scene/pack identity matching and live native
+multiplayer acceptance remain.
 
 Revocation leaves an uncontrolled actor in the world; actor retirement and capacity reclamation remain lifecycle work.
 Transactional saves, multiplayer

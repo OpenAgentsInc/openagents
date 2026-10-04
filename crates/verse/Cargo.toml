@@ -20,7 +20,7 @@ panels = ["dep:rust-native-desktop", "dep:openagents-chat-app"]
 studio-host = ["dep:openagents-connect"]
 imported-desktop = ["dep:winit", "capture", "native-audio"]
 native-audio = ["dep:cpal"]
-remote-chamber = ["verse-world/service-net"]
+remote-chamber = ["verse-world/service-net", "tokio/signal"]
 
 [dependencies]
 cpal = { version = "=0.18.2", optional = true }
@@ -165,3 +165,7 @@ required-features = ["imported-desktop"]
 [[example]]
 name = "verse_remote"
 required-features = ["imported-desktop", "remote-chamber"]
+
+[[example]]
+name = "verse_host"
+required-features = ["remote-chamber"]
