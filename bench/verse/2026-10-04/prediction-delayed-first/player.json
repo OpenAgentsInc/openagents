@@ -1,0 +1,3827 @@
+{
+  "schema": "verse.remote.capture.v1",
+  "profile": {
+    "schema": "verse.remote.profile.v1",
+    "client_preparation_ms": {
+      "samples": 2163,
+      "omitted": 0,
+      "median": 0.42874999999999996,
+      "p95": 0.817875,
+      "max": 7.958290999999999
+    },
+    "render_submission_cpu_ms": {
+      "samples": 2163,
+      "omitted": 0,
+      "median": 26.882791,
+      "p95": 35.707125,
+      "max": 50.01033399999999
+    },
+    "frame_interval_ms": {
+      "samples": 2163,
+      "omitted": 0,
+      "median": 27.701292,
+      "p95": 36.591417,
+      "max": 7522.268333
+    },
+    "prediction_correction_meters": {
+      "samples": 259,
+      "omitted": 0,
+      "median": 0.0,
+      "p95": 1.6535396575927734,
+      "max": 7.037391662597656
+    },
+    "binding_to_outcome_ms": {
+      "samples": 100,
+      "omitted": 0,
+      "median": 102.835333,
+      "p95": 140.53574999999998,
+      "max": 207.964583
+    },
+    "limits": [
+      "Render submission includes presentation waits; GPU execution is not measured.",
+      "Binding-to-outcome includes transport, server processing, and client update delivery; it is not isolated network RTT.",
+      "Samples retain the first 8192 observations per series; omitted observations are counted."
+    ]
+  },
+  "frames": 1799,
+  "sampled_frames": 1060,
+  "duplicated_frames": 739,
+  "dropped_capture_frames": 132,
+  "encoded_size": [
+    1280,
+    720
+  ],
+  "world_start": 14.402597427368164,
+  "world_end": 81.23332977294922,
+  "accepted_cast_commands": {
+    "Fire Bolt": 2,
+    "Fireball": 3,
+    "Grease": 3,
+    "Light": 2,
+    "Magic Missile": 2,
+    "Misty Step": 1,
+    "Shield": 3,
+    "Shoot Bow": 2,
+    "Thunderwave": 2,
+    "Web": 3
+  },
+  "demo_trace": [
+    {
+      "time": 21.5,
+      "ability": "Shield",
+      "ready": true,
+      "hp": 200
+    },
+    {
+      "time": 23.766666412353516,
+      "ability": "Fireball",
+      "ready": true,
+      "hp": 200
+    },
+    {
+      "time": 26.299999237060547,
+      "ability": "Web",
+      "ready": true,
+      "hp": 200
+    },
+    {
+      "time": 28.71666717529297,
+      "ability": "Grease",
+      "ready": true,
+      "hp": 200
+    },
+    {
+      "time": 30.83333396911621,
+      "ability": "Light",
+      "ready": true,
+      "hp": 174
+    },
+    {
+      "time": 33.46666717529297,
+      "ability": "Thunderwave",
+      "ready": true,
+      "hp": 174
+    },
+    {
+      "time": 35.66666793823242,
+      "ability": "Misty Step",
+      "ready": true,
+      "hp": 174
+    },
+    {
+      "time": 38.099998474121094,
+      "ability": "Shoot Bow",
+      "ready": true,
+      "hp": 140
+    },
+    {
+      "time": 40.43333435058594,
+      "ability": "Fire Bolt",
+      "ready": true,
+      "hp": 132
+    },
+    {
+      "time": 43.29999923706055,
+      "ability": "Magic Missile",
+      "ready": true,
+      "hp": 132
+    },
+    {
+      "time": 45.70000076293945,
+      "ability": "Shield",
+      "ready": true,
+      "hp": 132
+    },
+    {
+      "time": 49.733333587646484,
+      "ability": "Fireball",
+      "ready": true,
+      "hp": 132
+    },
+    {
+      "time": 51.733333587646484,
+      "ability": "Web",
+      "ready": true,
+      "hp": 132
+    },
+    {
+      "time": 53.900001525878906,
+      "ability": "Grease",
+      "ready": true,
+      "hp": 132
+    },
+    {
+      "time": 56.20000076293945,
+      "ability": "Light",
+      "ready": true,
+      "hp": 132
+    },
+    {
+      "time": 58.36666488647461,
+      "ability": "Thunderwave",
+      "ready": true,
+      "hp": 132
+    },
+    {
+      "time": 60.53333282470703,
+      "ability": "Misty Step",
+      "ready": true,
+      "hp": 132
+    },
+    {
+      "time": 63.43333435058594,
+      "ability": "Shoot Bow",
+      "ready": true,
+      "hp": 132
+    },
+    {
+      "time": 65.69999694824219,
+      "ability": "Fire Bolt",
+      "ready": true,
+      "hp": 132
+    },
+    {
+      "time": 67.76667022705078,
+      "ability": "Magic Missile",
+      "ready": true,
+      "hp": 132
+    },
+    {
+      "time": 70.03333282470703,
+      "ability": "Shield",
+      "ready": true,
+      "hp": 98
+    },
+    {
+      "time": 72.03333282470703,
+      "ability": "Fireball",
+      "ready": true,
+      "hp": 90
+    },
+    {
+      "time": 74.30000305175781,
+      "ability": "Web",
+      "ready": true,
+      "hp": 90
+    },
+    {
+      "time": 77.4000015258789,
+      "ability": "Grease",
+      "ready": true,
+      "hp": 74
+    },
+    {
+      "time": 79.4000015258789,
+      "ability": "Light",
+      "ready": true,
+      "hp": 56
+    }
+  ],
+  "demo_slot": 25,
+  "pending_commands": 1,
+  "final_status": "",
+  "window_failure": null,
+  "damage_events": 37,
+  "dialogue_events": 4,
+  "minimum_owned_hp": 56,
+  "programmatic_controller": true,
+  "programmatic_respawn": true,
+  "programmatic_movement": true,
+  "respawn_attempts": [],
+  "owned_life_changes": 0,
+  "native_dimensions": [
+    2560,
+    1440
+  ],
+  "capture_wall_seconds": 60.0672485,
+  "wire_version": 21,
+  "final_inventory": {
+    "life": {
+      "instance": 220,
+      "actor": 15,
+      "generation": 0
+    },
+    "revision": 0,
+    "experience": 0,
+    "items": [],
+    "quests": [],
+    "level": {
+      "level": 1,
+      "start": 0,
+      "next": null
+    },
+    "quest_log": [],
+    "catalog": {
+      "version": 1,
+      "items": []
+    },
+    "outfits": {
+      "version": 1,
+      "outfits": []
+    },
+    "outfit": 0,
+    "equipment": {
+      "version": 1,
+      "gear": []
+    },
+    "equipped": {}
+  },
+  "final_state": {
+    "collision": {
+      "instance": 220,
+      "colliders": [
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 0,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              -22.0,
+              -0.6000000238418579,
+              -37.0
+            ],
+            "max": [
+              22.0,
+              0.0,
+              23.0
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 0,
+              "generation": 0
+            },
+            "shape": 1
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              -22.5,
+              0.0,
+              -37.0
+            ],
+            "max": [
+              -21.5,
+              12.0,
+              23.0
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 0,
+              "generation": 0
+            },
+            "shape": 2
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              21.5,
+              0.0,
+              -37.0
+            ],
+            "max": [
+              22.5,
+              12.0,
+              23.0
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 0,
+              "generation": 0
+            },
+            "shape": 3
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              -22.0,
+              0.0,
+              -37.5
+            ],
+            "max": [
+              22.0,
+              12.0,
+              -36.5
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 0,
+              "generation": 0
+            },
+            "shape": 4
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              -22.0,
+              0.0,
+              16.5
+            ],
+            "max": [
+              22.0,
+              12.0,
+              17.5
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 0,
+              "generation": 0
+            },
+            "shape": 5
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              -15.699999809265137,
+              0.0,
+              -25.700000762939453
+            ],
+            "max": [
+              -14.300000190734863,
+              10.0,
+              -24.299999237060547
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 0,
+              "generation": 0
+            },
+            "shape": 6
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              -15.899999618530273,
+              2.5999999046325684,
+              -25.899999618530273
+            ],
+            "max": [
+              -14.100000381469727,
+              3.0,
+              -24.100000381469727
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 0,
+              "generation": 0
+            },
+            "shape": 7
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              -15.699999809265137,
+              0.0,
+              -13.699999809265137
+            ],
+            "max": [
+              -14.300000190734863,
+              10.0,
+              -12.300000190734863
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 0,
+              "generation": 0
+            },
+            "shape": 8
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              -15.899999618530273,
+              2.5999999046325684,
+              -13.899999618530273
+            ],
+            "max": [
+              -14.100000381469727,
+              3.0,
+              -12.100000381469727
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 0,
+              "generation": 0
+            },
+            "shape": 9
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              -15.699999809265137,
+              0.0,
+              -0.699999988079071
+            ],
+            "max": [
+              -14.300000190734863,
+              10.0,
+              0.699999988079071
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 0,
+              "generation": 0
+            },
+            "shape": 10
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              -15.899999618530273,
+              2.5999999046325684,
+              -0.8999999761581421
+            ],
+            "max": [
+              -14.100000381469727,
+              3.0,
+              0.8999999761581421
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 0,
+              "generation": 0
+            },
+            "shape": 11
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              -15.699999809265137,
+              0.0,
+              11.300000190734863
+            ],
+            "max": [
+              -14.300000190734863,
+              10.0,
+              12.699999809265137
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 0,
+              "generation": 0
+            },
+            "shape": 12
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              -15.899999618530273,
+              2.5999999046325684,
+              11.100000381469727
+            ],
+            "max": [
+              -14.100000381469727,
+              3.0,
+              12.899999618530273
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 0,
+              "generation": 0
+            },
+            "shape": 13
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              14.300000190734863,
+              0.0,
+              -25.700000762939453
+            ],
+            "max": [
+              15.699999809265137,
+              10.0,
+              -24.299999237060547
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 0,
+              "generation": 0
+            },
+            "shape": 14
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              14.100000381469727,
+              2.5999999046325684,
+              -25.899999618530273
+            ],
+            "max": [
+              15.899999618530273,
+              3.0,
+              -24.100000381469727
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 0,
+              "generation": 0
+            },
+            "shape": 15
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              14.300000190734863,
+              0.0,
+              -13.699999809265137
+            ],
+            "max": [
+              15.699999809265137,
+              10.0,
+              -12.300000190734863
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 0,
+              "generation": 0
+            },
+            "shape": 16
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              14.100000381469727,
+              2.5999999046325684,
+              -13.899999618530273
+            ],
+            "max": [
+              15.899999618530273,
+              3.0,
+              -12.100000381469727
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 0,
+              "generation": 0
+            },
+            "shape": 17
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              14.300000190734863,
+              0.0,
+              -0.699999988079071
+            ],
+            "max": [
+              15.699999809265137,
+              10.0,
+              0.699999988079071
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 0,
+              "generation": 0
+            },
+            "shape": 18
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              14.100000381469727,
+              2.5999999046325684,
+              -0.8999999761581421
+            ],
+            "max": [
+              15.899999618530273,
+              3.0,
+              0.8999999761581421
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 0,
+              "generation": 0
+            },
+            "shape": 19
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              14.300000190734863,
+              0.0,
+              11.300000190734863
+            ],
+            "max": [
+              15.699999809265137,
+              10.0,
+              12.699999809265137
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 0,
+              "generation": 0
+            },
+            "shape": 20
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              14.100000381469727,
+              2.5999999046325684,
+              11.100000381469727
+            ],
+            "max": [
+              15.899999618530273,
+              3.0,
+              12.899999618530273
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 0,
+              "generation": 0
+            },
+            "shape": 21
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              16.5,
+              0.0,
+              -29.950000762939453
+            ],
+            "max": [
+              19.5,
+              0.25,
+              -29.049999237060547
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 0,
+              "generation": 0
+            },
+            "shape": 22
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              16.5,
+              0.0,
+              -29.05000114440918
+            ],
+            "max": [
+              19.5,
+              0.5,
+              -28.149999618530273
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 0,
+              "generation": 0
+            },
+            "shape": 23
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              16.5,
+              0.0,
+              -28.150001525878906
+            ],
+            "max": [
+              19.5,
+              0.75,
+              -27.25
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 0,
+              "generation": 0
+            },
+            "shape": 24
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              16.5,
+              0.0,
+              -27.25
+            ],
+            "max": [
+              19.5,
+              1.0,
+              -26.349998474121094
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 0,
+              "generation": 0
+            },
+            "shape": 25
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              16.5,
+              0.0,
+              -26.350000381469727
+            ],
+            "max": [
+              19.5,
+              1.25,
+              -25.44999885559082
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 0,
+              "generation": 0
+            },
+            "shape": 26
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              16.5,
+              0.0,
+              -25.450000762939453
+            ],
+            "max": [
+              19.5,
+              1.5,
+              -24.549999237060547
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 1,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 2,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.9,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Capsule",
+            "a": [
+              -0.0,
+              -0.55,
+              -0.0
+            ],
+            "b": [
+              0.0,
+              0.55,
+              0.0
+            ],
+            "radius": 0.35
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 2,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 2,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.9290573000907898,
+              0.9,
+              -13.477320671081543
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Capsule",
+            "a": [
+              -0.0,
+              -0.55,
+              -0.0
+            ],
+            "b": [
+              0.0,
+              0.55,
+              0.0
+            ],
+            "radius": 0.35
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 3,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              1.5968300342559814,
+              0.0,
+              -18.136421966552735
+            ],
+            "max": [
+              2.2968300342559815,
+              0.24,
+              -16.536421966552734
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 4,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 2,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              -0.831558108329773,
+              0.9,
+              -13.08687686920166
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Capsule",
+            "a": [
+              -0.0,
+              -0.55,
+              -0.0
+            ],
+            "b": [
+              0.0,
+              0.55,
+              0.0
+            ],
+            "radius": 0.35
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 5,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              -1.88189754486084,
+              0.0,
+              -13.900657463073731
+            ],
+            "max": [
+              -1.1818975448608398,
+              0.24,
+              -12.30065746307373
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 6,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 2,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              -4.100986957550049,
+              0.9,
+              -16.4412784576416
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Capsule",
+            "a": [
+              -0.0,
+              -0.55,
+              -0.0
+            ],
+            "b": [
+              0.0,
+              0.55,
+              0.0
+            ],
+            "radius": 0.35
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 7,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 2,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              -1.4240760803222656,
+              0.9,
+              -9.837987899780273
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Capsule",
+            "a": [
+              -0.0,
+              -0.55,
+              -0.0
+            ],
+            "b": [
+              0.0,
+              0.55,
+              0.0
+            ],
+            "radius": 0.35
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 8,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 2,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.34563401341438293,
+              0.9,
+              -8.523202896118164
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Capsule",
+            "a": [
+              -0.0,
+              -0.55,
+              -0.0
+            ],
+            "b": [
+              0.0,
+              0.55,
+              0.0
+            ],
+            "radius": 0.35
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 9,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 2,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              4.6612701416015625,
+              0.9,
+              -9.604811668395996
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Capsule",
+            "a": [
+              -0.0,
+              -0.55,
+              -0.0
+            ],
+            "b": [
+              0.0,
+              0.55,
+              0.0
+            ],
+            "radius": 0.35
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 10,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              5.0104364395141605,
+              0.0,
+              -10.36221103668213
+            ],
+            "max": [
+              5.71043643951416,
+              0.24,
+              -8.762211036682128
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 11,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 2,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              4.9973602294921875,
+              0.9,
+              -11.6554594039917
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Capsule",
+            "a": [
+              -0.0,
+              -0.55,
+              -0.0
+            ],
+            "b": [
+              0.0,
+              0.55,
+              0.0
+            ],
+            "radius": 0.35
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 12,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              3.413367176055908,
+              0.0,
+              -17.187645721435548
+            ],
+            "max": [
+              4.113367176055908,
+              0.24,
+              -15.587645721435546
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 13,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 2,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              2.993501901626587,
+              0.9,
+              -12.337004661560059
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Capsule",
+            "a": [
+              -0.0,
+              -0.55,
+              -0.0
+            ],
+            "b": [
+              0.0,
+              0.55,
+              0.0
+            ],
+            "radius": 0.35
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 14,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 2,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              -11.600870132446289,
+              0.9000099999997474,
+              -16.470468521118164
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Capsule",
+            "a": [
+              -0.0,
+              -0.55,
+              -0.0
+            ],
+            "b": [
+              0.0,
+              0.55,
+              0.0
+            ],
+            "radius": 0.35
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 15,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 2,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              -0.31445321440696716,
+              0.9000099999997474,
+              -7.096274375915527
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Capsule",
+            "a": [
+              -0.0,
+              -0.55,
+              -0.0
+            ],
+            "b": [
+              0.0,
+              0.55,
+              0.0
+            ],
+            "radius": 0.35
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 10018,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              -11.563644409179688,
+              0.0,
+              -7.986996650695801
+            ],
+            "max": [
+              -6.436357021331787,
+              1.4642040729522705,
+              -6.013003349304199
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 10025,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              -10.236377716064453,
+              0.0,
+              3.8200533390045166
+            ],
+            "max": [
+              -7.76362419128418,
+              2.038832426071167,
+              6.179947853088379
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 10027,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              -17.39682388305664,
+              0.0,
+              5.7620134353637695
+            ],
+            "max": [
+              -15.003174781799316,
+              2.2545032501220703,
+              8.23798656463623
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 10028,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              -18.376047134399414,
+              0.0,
+              -10.755412101745605
+            ],
+            "max": [
+              -15.823953628540039,
+              1.4304547309875488,
+              -9.244589805603027
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 10029,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              -17.798030853271484,
+              0.0,
+              -13.69803237915039
+            ],
+            "max": [
+              -16.40196990966797,
+              1.7959169149398804,
+              -12.301969528198242
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 10031,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              -6.922426700592041,
+              0.0,
+              1.8784072399139404
+            ],
+            "max": [
+              -5.677572727203369,
+              2.231259822845459,
+              3.1215932369232178
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 10033,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              6.436357021331787,
+              0.0,
+              -7.986996650695801
+            ],
+            "max": [
+              11.563644409179688,
+              1.4642040729522705,
+              -6.013003349304199
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 10040,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              7.76362419128418,
+              0.0,
+              3.8200533390045166
+            ],
+            "max": [
+              10.236377716064453,
+              2.038832426071167,
+              6.179947853088379
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 10042,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              15.003174781799316,
+              0.0,
+              5.7620134353637695
+            ],
+            "max": [
+              17.39682388305664,
+              2.2545032501220703,
+              8.23798656463623
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 10043,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              15.823953628540039,
+              0.0,
+              -10.755412101745605
+            ],
+            "max": [
+              18.376047134399414,
+              1.4304547309875488,
+              -9.244589805603027
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 10044,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              16.40196990966797,
+              0.0,
+              -13.69803237915039
+            ],
+            "max": [
+              17.798030853271484,
+              1.7959169149398804,
+              -12.301969528198242
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 10046,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "rotation": [
+              0.0,
+              0.0,
+              0.0,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              5.677572727203369,
+              0.0,
+              1.8784072399139404
+            ],
+            "max": [
+              6.922426700592041,
+              2.231259822845459,
+              3.1215932369232178
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 4294967296,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              -6.000000000003401,
+              0.2999999999981224,
+              -3.999999999945464
+            ],
+            "rotation": [
+              1.8578635638171648e-18,
+              -3.946894687990464e-11,
+              -3.1293467598195373e-12,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              -0.3,
+              -0.3,
+              -0.3
+            ],
+            "max": [
+              0.3,
+              0.3,
+              0.3
+            ]
+          }
+        },
+        {
+          "key": {
+            "life": {
+              "instance": 220,
+              "entity": 4294967297,
+              "generation": 0
+            },
+            "shape": 0
+          },
+          "layers": 1,
+          "usage": "Blocking",
+          "pose": {
+            "position": [
+              5.999999999010974,
+              0.44999998821075216,
+              -4.000000001714897
+            ],
+            "rotation": [
+              -8.802395654641995e-10,
+              1.3260993066445334e-9,
+              1.0997080935072105e-9,
+              1.0
+            ]
+          },
+          "geometry": {
+            "type": "Box",
+            "min": [
+              -0.3,
+              -0.45,
+              -0.3
+            ],
+            "max": [
+              0.3,
+              0.45,
+              0.3
+            ]
+          }
+        }
+      ]
+    },
+    "movement": {
+      "life": {
+        "instance": 220,
+        "actor": 15,
+        "generation": 0
+      },
+      "epoch": 1,
+      "applied_sequence": 124,
+      "physics_step": 7348,
+      "held": {
+        "axes": [
+          1.0,
+          0.0
+        ],
+        "until": 7240
+      },
+      "policy": {
+        "walking_scale": 1.0,
+        "jump_allowed": true
+      },
+      "character": {
+        "feet": [
+          -0.3144532067871147,
+          9.999999999979996e-6,
+          -7.096274377166662
+        ],
+        "vertical_speed": 0.0,
+        "support": {
+          "life": {
+            "instance": 220,
+            "entity": 0,
+            "generation": 0
+          },
+          "shape": 0
+        },
+        "support_pose": {
+          "position": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "rotation": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        "external": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "gravity": null,
+        "peak": null,
+        "landed": null
+      },
+      "yaw": 3.1415927410125732
+    },
+    "hud": {
+      "life": {
+        "instance": 220,
+        "actor": 15,
+        "generation": 0
+      },
+      "time": 81.23332977294922,
+      "resources": {
+        "hp": 56,
+        "max_hp": 200,
+        "mana": 20,
+        "max_mana": 20
+      },
+      "slots": [
+        {
+          "ability": "Bow",
+          "ready": true,
+          "remaining": 0.0,
+          "duration": 1.0
+        },
+        {
+          "ability": "FireBolt",
+          "ready": true,
+          "remaining": 0.0,
+          "duration": 0.30000001192092896
+        },
+        {
+          "ability": "MagicMissile",
+          "ready": true,
+          "remaining": 0.0,
+          "duration": 1.5
+        },
+        {
+          "ability": "Fireball",
+          "ready": true,
+          "remaining": 0.0,
+          "duration": 2.0
+        },
+        {
+          "ability": "MistyStep",
+          "ready": true,
+          "remaining": 0.0,
+          "duration": 6.0
+        },
+        {
+          "ability": "Thunderwave",
+          "ready": true,
+          "remaining": 0.0,
+          "duration": 4.0
+        },
+        {
+          "ability": "Web",
+          "ready": false,
+          "remaining": 1.600006103515625,
+          "duration": 8.0
+        },
+        {
+          "ability": "Grease",
+          "ready": false,
+          "remaining": 2.8333358764648438,
+          "duration": 5.0
+        },
+        {
+          "ability": "Light",
+          "ready": true,
+          "remaining": 0.0,
+          "duration": 1.0
+        },
+        {
+          "ability": "Shield",
+          "ready": true,
+          "remaining": 0.0,
+          "duration": 8.0
+        }
+      ],
+      "casting": null
+    },
+    "snapshot": {
+      "elapsed": 61.233333587646484,
+      "player": {
+        "hp": 56,
+        "max_hp": 200,
+        "mana": 20,
+        "max_mana": 20
+      },
+      "abilities": [
+        {
+          "id": "firebolt",
+          "label": "Firebolt",
+          "cost": 0,
+          "ready": true,
+          "cooldown_remaining": 0.0
+        },
+        {
+          "id": "magic_missile",
+          "label": "Magic missile",
+          "cost": 2,
+          "ready": true,
+          "cooldown_remaining": 0.0
+        },
+        {
+          "id": "fireball",
+          "label": "Fireball",
+          "cost": 5,
+          "ready": true,
+          "cooldown_remaining": 0.0
+        }
+      ],
+      "actors": [
+        {
+          "id": 0,
+          "kind": "wizard",
+          "faction": "player",
+          "pos": [
+            -11.600870132446289,
+            9.999999747378752e-6,
+            -16.470468521118164
+          ],
+          "yaw": 3.1415927410125732,
+          "hp": 74,
+          "max_hp": 200,
+          "alive": true
+        },
+        {
+          "id": 1,
+          "kind": "wizard",
+          "faction": "undead",
+          "pos": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "yaw": 0.0,
+          "hp": 300000,
+          "max_hp": 300000,
+          "alive": true
+        },
+        {
+          "id": 2,
+          "kind": "wizard",
+          "faction": "undead",
+          "pos": [
+            0.9290573000907898,
+            0.0,
+            -13.477320671081543
+          ],
+          "yaw": 0.0,
+          "hp": 15,
+          "max_hp": 15,
+          "alive": true
+        },
+        {
+          "id": 4,
+          "kind": "wizard",
+          "faction": "undead",
+          "pos": [
+            -0.831558108329773,
+            0.0,
+            -13.08687686920166
+          ],
+          "yaw": 0.0,
+          "hp": 15,
+          "max_hp": 15,
+          "alive": true
+        },
+        {
+          "id": 6,
+          "kind": "wizard",
+          "faction": "undead",
+          "pos": [
+            -4.100986957550049,
+            0.0,
+            -16.4412784576416
+          ],
+          "yaw": 0.0,
+          "hp": 15,
+          "max_hp": 15,
+          "alive": true
+        },
+        {
+          "id": 7,
+          "kind": "wizard",
+          "faction": "undead",
+          "pos": [
+            -1.4240760803222656,
+            0.0,
+            -9.837987899780273
+          ],
+          "yaw": 0.0,
+          "hp": 15,
+          "max_hp": 15,
+          "alive": true
+        },
+        {
+          "id": 8,
+          "kind": "wizard",
+          "faction": "undead",
+          "pos": [
+            0.34563401341438293,
+            0.0,
+            -8.523202896118164
+          ],
+          "yaw": 0.0,
+          "hp": 9,
+          "max_hp": 15,
+          "alive": true
+        },
+        {
+          "id": 9,
+          "kind": "wizard",
+          "faction": "undead",
+          "pos": [
+            4.6612701416015625,
+            0.0,
+            -9.604811668395996
+          ],
+          "yaw": 0.0,
+          "hp": 3,
+          "max_hp": 15,
+          "alive": true
+        },
+        {
+          "id": 11,
+          "kind": "wizard",
+          "faction": "undead",
+          "pos": [
+            4.9973602294921875,
+            0.0,
+            -11.6554594039917
+          ],
+          "yaw": 0.0,
+          "hp": 15,
+          "max_hp": 15,
+          "alive": true
+        },
+        {
+          "id": 13,
+          "kind": "wizard",
+          "faction": "undead",
+          "pos": [
+            2.993501901626587,
+            0.0,
+            -12.337004661560059
+          ],
+          "yaw": 0.0,
+          "hp": 15,
+          "max_hp": 15,
+          "alive": true
+        },
+        {
+          "id": 14,
+          "kind": "wizard",
+          "faction": "player",
+          "pos": [
+            -0.31445321440696716,
+            9.999999747378752e-6,
+            -7.096274375915527
+          ],
+          "yaw": 3.1415927410125732,
+          "hp": 56,
+          "max_hp": 200,
+          "alive": true
+        }
+      ],
+      "projectiles": [],
+      "effects": [],
+      "counters": {
+        "casts": 39,
+        "projectiles": 20,
+        "hits": 16,
+        "deflections": 0
+      }
+    },
+    "presentation": {
+      "time": 81.23332977294922,
+      "flames": [
+        {
+          "id": 3,
+          "position": [
+            -14.0,
+            4.000000476837158,
+            -24.000001907348633
+          ],
+          "protected": false,
+          "lit": true
+        },
+        {
+          "id": 5,
+          "position": [
+            -14.0,
+            4.000000476837158,
+            -12.000000953674316
+          ],
+          "protected": false,
+          "lit": true
+        },
+        {
+          "id": 7,
+          "position": [
+            -14.0,
+            4.000000476837158,
+            0.0
+          ],
+          "protected": false,
+          "lit": true
+        },
+        {
+          "id": 9,
+          "position": [
+            -14.0,
+            4.000000476837158,
+            11.0
+          ],
+          "protected": false,
+          "lit": true
+        },
+        {
+          "id": 11,
+          "position": [
+            14.0,
+            4.000000476837158,
+            -24.000001907348633
+          ],
+          "protected": false,
+          "lit": true
+        },
+        {
+          "id": 13,
+          "position": [
+            14.0,
+            4.000000476837158,
+            -12.000000953674316
+          ],
+          "protected": false,
+          "lit": true
+        },
+        {
+          "id": 15,
+          "position": [
+            14.0,
+            4.000000476837158,
+            0.0
+          ],
+          "protected": false,
+          "lit": true
+        },
+        {
+          "id": 17,
+          "position": [
+            14.0,
+            4.000000476837158,
+            11.0
+          ],
+          "protected": false,
+          "lit": true
+        },
+        {
+          "id": 23,
+          "position": [
+            -9.000000953674316,
+            2.500000238418579,
+            -6.700000286102295
+          ],
+          "protected": false,
+          "lit": true
+        },
+        {
+          "id": 32,
+          "position": [
+            -6.299999713897705,
+            2.200000286102295,
+            2.500000238418579
+          ],
+          "protected": false,
+          "lit": true
+        },
+        {
+          "id": 38,
+          "position": [
+            9.000000953674316,
+            2.500000238418579,
+            -6.700000286102295
+          ],
+          "protected": false,
+          "lit": true
+        },
+        {
+          "id": 47,
+          "position": [
+            6.299999713897705,
+            2.200000286102295,
+            2.500000238418579
+          ],
+          "protected": false,
+          "lit": true
+        },
+        {
+          "id": 49,
+          "position": [
+            1.6000001430511475,
+            7.65000057220459,
+            -10.000000953674316
+          ],
+          "protected": false,
+          "lit": true
+        },
+        {
+          "id": 50,
+          "position": [
+            0.800000011920929,
+            7.65000057220459,
+            -8.614359855651855
+          ],
+          "protected": false,
+          "lit": true
+        },
+        {
+          "id": 51,
+          "position": [
+            -0.8000001907348633,
+            7.65000057220459,
+            -8.614359855651855
+          ],
+          "protected": false,
+          "lit": true
+        },
+        {
+          "id": 52,
+          "position": [
+            -1.6000001430511475,
+            7.65000057220459,
+            -10.000000953674316
+          ],
+          "protected": false,
+          "lit": true
+        },
+        {
+          "id": 53,
+          "position": [
+            -0.7999998927116394,
+            7.65000057220459,
+            -11.385642051696777
+          ],
+          "protected": false,
+          "lit": true
+        },
+        {
+          "id": 54,
+          "position": [
+            0.8000006675720215,
+            7.65000057220459,
+            -11.385641098022461
+          ],
+          "protected": false,
+          "lit": true
+        }
+      ],
+      "actors": [
+        {
+          "actor": {
+            "id": 1,
+            "name": "Claude",
+            "model": "claude",
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "yaw": 0.044283390045166016,
+            "scale": 2.4000000953674316,
+            "health": 300000,
+            "nameplate": true
+          },
+          "outfit_model": null,
+          "equipment": [],
+          "life": {
+            "instance": 220,
+            "actor": 1,
+            "generation": 0
+          },
+          "teleport_stamp": null,
+          "animation": "cast",
+          "animation_time": 1.133331298828125,
+          "visible": true,
+          "health": 300000
+        },
+        {
+          "actor": {
+            "id": 14,
+            "name": "Adventurer",
+            "model": "adventurer",
+            "position": [
+              -11.600870132446289,
+              9.999999747378752e-6,
+              -16.470468521118164
+            ],
+            "yaw": 3.1415927410125732,
+            "scale": 1.0,
+            "health": 200,
+            "nameplate": false
+          },
+          "outfit_model": null,
+          "equipment": [],
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "teleport_stamp": 63.733333587646484,
+          "animation": "backpedal",
+          "animation_time": 19.86787223815918,
+          "visible": true,
+          "health": 74
+        },
+        {
+          "actor": {
+            "id": 2,
+            "name": "Cultist of Anthropic",
+            "model": "cultist",
+            "position": [
+              0.9290573000907898,
+              0.0,
+              -13.477320671081543
+            ],
+            "yaw": -9.617241859436035,
+            "scale": 1.0,
+            "health": 15,
+            "nameplate": true
+          },
+          "outfit_model": null,
+          "equipment": [],
+          "life": {
+            "instance": 220,
+            "actor": 2,
+            "generation": 0
+          },
+          "teleport_stamp": null,
+          "animation": "combat_ready",
+          "animation_time": 81.61332702636719,
+          "visible": true,
+          "health": 15
+        },
+        {
+          "actor": {
+            "id": 4,
+            "name": "Cultist of Anthropic",
+            "model": "cultist",
+            "position": [
+              -0.831558108329773,
+              0.0,
+              -13.08687686920166
+            ],
+            "yaw": -3.0554866790771484,
+            "scale": 1.0,
+            "health": 15,
+            "nameplate": true
+          },
+          "outfit_model": null,
+          "equipment": [],
+          "life": {
+            "instance": 220,
+            "actor": 4,
+            "generation": 0
+          },
+          "teleport_stamp": null,
+          "animation": "combat_ready",
+          "animation_time": 81.99333190917969,
+          "visible": true,
+          "health": 15
+        },
+        {
+          "actor": {
+            "id": 6,
+            "name": "Cultist of Anthropic",
+            "model": "cultist",
+            "position": [
+              -4.100986957550049,
+              0.0,
+              -16.4412784576416
+            ],
+            "yaw": 1.5669043064117432,
+            "scale": 1.0,
+            "health": 15,
+            "nameplate": true
+          },
+          "outfit_model": null,
+          "equipment": [],
+          "life": {
+            "instance": 220,
+            "actor": 6,
+            "generation": 0
+          },
+          "teleport_stamp": null,
+          "animation": "prone",
+          "animation_time": 1.0,
+          "visible": true,
+          "health": 15
+        },
+        {
+          "actor": {
+            "id": 7,
+            "name": "Cultist of Anthropic",
+            "model": "cultist",
+            "position": [
+              -1.4240760803222656,
+              0.0,
+              -9.837987899780273
+            ],
+            "yaw": 9.809346199035645,
+            "scale": 1.0,
+            "health": 15,
+            "nameplate": true
+          },
+          "outfit_model": null,
+          "equipment": [],
+          "life": {
+            "instance": 220,
+            "actor": 7,
+            "generation": 0
+          },
+          "teleport_stamp": null,
+          "animation": "combat_ready",
+          "animation_time": 82.5633316040039,
+          "visible": true,
+          "health": 15
+        },
+        {
+          "actor": {
+            "id": 8,
+            "name": "Cultist of Anthropic",
+            "model": "cultist",
+            "position": [
+              0.34563401341438293,
+              0.0,
+              -8.523202896118164
+            ],
+            "yaw": 2.708315849304199,
+            "scale": 1.0,
+            "health": 15,
+            "nameplate": true
+          },
+          "outfit_model": null,
+          "equipment": [],
+          "life": {
+            "instance": 220,
+            "actor": 8,
+            "generation": 0
+          },
+          "teleport_stamp": null,
+          "animation": "combat_ready",
+          "animation_time": 82.75332641601562,
+          "visible": true,
+          "health": 9
+        },
+        {
+          "actor": {
+            "id": 9,
+            "name": "Cultist of Anthropic",
+            "model": "cultist",
+            "position": [
+              4.6612701416015625,
+              0.0,
+              -9.604811668395996
+            ],
+            "yaw": 2.0377626419067383,
+            "scale": 1.0,
+            "health": 15,
+            "nameplate": true
+          },
+          "outfit_model": null,
+          "equipment": [],
+          "life": {
+            "instance": 220,
+            "actor": 9,
+            "generation": 0
+          },
+          "teleport_stamp": null,
+          "animation": "prone",
+          "animation_time": 1.0,
+          "visible": true,
+          "health": 3
+        },
+        {
+          "actor": {
+            "id": 11,
+            "name": "Cultist of Anthropic",
+            "model": "cultist",
+            "position": [
+              4.9973602294921875,
+              0.0,
+              -11.6554594039917
+            ],
+            "yaw": 8.56328010559082,
+            "scale": 1.0,
+            "health": 15,
+            "nameplate": true
+          },
+          "outfit_model": null,
+          "equipment": [],
+          "life": {
+            "instance": 220,
+            "actor": 11,
+            "generation": 0
+          },
+          "teleport_stamp": null,
+          "animation": "combat_ready",
+          "animation_time": 83.32332611083984,
+          "visible": true,
+          "health": 15
+        },
+        {
+          "actor": {
+            "id": 13,
+            "name": "Cultist of Anthropic",
+            "model": "cultist",
+            "position": [
+              2.993501901626587,
+              0.0,
+              -12.337004661560059
+            ],
+            "yaw": 8.861732482910156,
+            "scale": 1.0,
+            "health": 15,
+            "nameplate": true
+          },
+          "outfit_model": null,
+          "equipment": [],
+          "life": {
+            "instance": 220,
+            "actor": 13,
+            "generation": 0
+          },
+          "teleport_stamp": null,
+          "animation": "combat_ready",
+          "animation_time": 83.70333099365234,
+          "visible": true,
+          "health": 15
+        },
+        {
+          "actor": {
+            "id": 15,
+            "name": "Adventurer 15",
+            "model": "adventurer",
+            "position": [
+              -0.31445321440696716,
+              9.999999747378752e-6,
+              -7.096274375915527
+            ],
+            "yaw": 3.1415927410125732,
+            "scale": 1.0,
+            "health": 200,
+            "nameplate": false
+          },
+          "outfit_model": null,
+          "equipment": [],
+          "life": {
+            "instance": 220,
+            "actor": 15,
+            "generation": 0
+          },
+          "teleport_stamp": 67.03333282470703,
+          "animation": "combat_ready",
+          "animation_time": 81.23332977294922,
+          "visible": true,
+          "health": 56
+        }
+      ],
+      "corpses": [
+        {
+          "actor": {
+            "id": 3,
+            "name": "Cultist of Anthropic",
+            "model": "cultist",
+            "position": [
+              1.9468300342559814,
+              0.0,
+              -17.336421966552734
+            ],
+            "yaw": 4.653992176055908,
+            "scale": 1.0,
+            "health": 15,
+            "nameplate": false
+          },
+          "outfit_model": null,
+          "equipment": [],
+          "life": {
+            "instance": 220,
+            "actor": 3,
+            "generation": 0
+          },
+          "teleport_stamp": null,
+          "animation": "death",
+          "animation_time": 35.79999542236328,
+          "visible": true,
+          "health": 0
+        },
+        {
+          "actor": {
+            "id": 5,
+            "name": "Cultist of Anthropic",
+            "model": "cultist",
+            "position": [
+              -1.5318975448608398,
+              0.0,
+              -13.10065746307373
+            ],
+            "yaw": 0.7035222053527832,
+            "scale": 1.0,
+            "health": 15,
+            "nameplate": false
+          },
+          "outfit_model": null,
+          "equipment": [],
+          "life": {
+            "instance": 220,
+            "actor": 5,
+            "generation": 0
+          },
+          "teleport_stamp": null,
+          "animation": "death",
+          "animation_time": 13.599998474121094,
+          "visible": true,
+          "health": 0
+        },
+        {
+          "actor": {
+            "id": 10,
+            "name": "Cultist of Anthropic",
+            "model": "cultist",
+            "position": [
+              5.36043643951416,
+              0.0,
+              -9.562211036682129
+            ],
+            "yaw": 9.653995513916016,
+            "scale": 1.0,
+            "health": 15,
+            "nameplate": false
+          },
+          "outfit_model": null,
+          "equipment": [],
+          "life": {
+            "instance": 220,
+            "actor": 10,
+            "generation": 0
+          },
+          "teleport_stamp": null,
+          "animation": "death",
+          "animation_time": 11.599998474121094,
+          "visible": true,
+          "health": 0
+        },
+        {
+          "actor": {
+            "id": 12,
+            "name": "Cultist of Anthropic",
+            "model": "cultist",
+            "position": [
+              3.763367176055908,
+              0.0,
+              -16.387645721435547
+            ],
+            "yaw": 8.09023380279541,
+            "scale": 1.0,
+            "health": 15,
+            "nameplate": false
+          },
+          "outfit_model": null,
+          "equipment": [],
+          "life": {
+            "instance": 220,
+            "actor": 12,
+            "generation": 0
+          },
+          "teleport_stamp": null,
+          "animation": "death",
+          "animation_time": 40.83332824707031,
+          "visible": true,
+          "health": 0
+        }
+      ],
+      "effects": [
+        {
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "position": [
+            -11.600870132446289,
+            9.999999747378752e-6,
+            -16.470468521118164
+          ],
+          "shield": 0,
+          "shield_until": 72.30000305175781,
+          "light": [
+            -4.783187389373779,
+            0.3000100255012512,
+            -17.128244400024414
+          ],
+          "areas": [
+            {
+              "kind": "Web",
+              "position": [
+                -4.100986957550049,
+                0.0,
+                -16.4412784576416
+              ],
+              "until": 85.66666412353516
+            },
+            {
+              "kind": "Grease",
+              "position": [
+                -4.100986957550049,
+                0.0,
+                -16.4412784576416
+              ],
+              "until": 85.53333282470703
+            }
+          ]
+        },
+        {
+          "life": {
+            "instance": 220,
+            "actor": 15,
+            "generation": 0
+          },
+          "position": [
+            -0.31445321440696716,
+            9.999999747378752e-6,
+            -7.096274375915527
+          ],
+          "shield": 0,
+          "shield_until": 74.80000305175781,
+          "light": [
+            -1.8522614240646362,
+            0.30000001192092896,
+            -19.602214813232422
+          ],
+          "areas": [
+            {
+              "kind": "Web",
+              "position": [
+                4.6612701416015625,
+                0.0,
+                -9.604811668395996
+              ],
+              "until": 86.83333587646484
+            },
+            {
+              "kind": "Grease",
+              "position": [
+                4.6612701416015625,
+                0.0,
+                -9.604811668395996
+              ],
+              "until": 89.06666564941406
+            }
+          ]
+        }
+      ],
+      "hostile_casts": [
+        {
+          "caster": {
+            "instance": 220,
+            "actor": 1,
+            "generation": 0
+          },
+          "target_life": {
+            "instance": 220,
+            "actor": 15,
+            "generation": 0
+          },
+          "position": null,
+          "origin": [
+            0.0,
+            4.0,
+            0.0
+          ],
+          "target": [
+            1.1790668964385986,
+            9.999999747378752e-6,
+            -7.096274375915527
+          ],
+          "started": 80.0999984741211,
+          "release": 81.4000015258789,
+          "impact": 82.05000305175781,
+          "radius": 3.200000047683716,
+          "boss": true
+        }
+      ],
+      "impacts": [],
+      "props": [
+        {
+          "life": {
+            "instance": 220,
+            "entity": 4294967296,
+            "generation": 0
+          },
+          "kind": "Crate",
+          "secured": false,
+          "center": [
+            -6.0,
+            0.30000001192092896,
+            -4.0
+          ],
+          "rotation": [
+            1.8578635790208918e-18,
+            -3.9468945473020156e-11,
+            -3.1293468250731538e-12,
+            1.0
+          ],
+          "dimensions": [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.6000000238418579
+          ]
+        },
+        {
+          "life": {
+            "instance": 220,
+            "entity": 4294967297,
+            "generation": 0
+          },
+          "kind": "Barrel",
+          "secured": false,
+          "center": [
+            6.0,
+            0.44999998807907104,
+            -4.0
+          ],
+          "rotation": [
+            -8.802395479179381e-10,
+            1.326099341447673e-9,
+            1.0997081023589317e-9,
+            1.0
+          ],
+          "dimensions": [
+            0.6000000238418579,
+            0.8999999761581421,
+            0.6000000238418579
+          ]
+        }
+      ],
+      "blockers": [
+        {
+          "life": {
+            "instance": 220,
+            "entity": 10018,
+            "generation": 0
+          },
+          "min": [
+            -11.563644409179688,
+            0.0,
+            -7.986996650695801
+          ],
+          "max": [
+            -6.436357021331787,
+            1.4642040729522705,
+            -6.013003349304199
+          ],
+          "table_proxy": true
+        },
+        {
+          "life": {
+            "instance": 220,
+            "entity": 10025,
+            "generation": 0
+          },
+          "min": [
+            -10.236377716064453,
+            0.0,
+            3.8200533390045166
+          ],
+          "max": [
+            -7.76362419128418,
+            2.038832426071167,
+            6.179947853088379
+          ],
+          "table_proxy": true
+        },
+        {
+          "life": {
+            "instance": 220,
+            "entity": 10027,
+            "generation": 0
+          },
+          "min": [
+            -17.39682388305664,
+            0.0,
+            5.7620134353637695
+          ],
+          "max": [
+            -15.003174781799316,
+            2.2545032501220703,
+            8.23798656463623
+          ],
+          "table_proxy": true
+        },
+        {
+          "life": {
+            "instance": 220,
+            "entity": 10028,
+            "generation": 0
+          },
+          "min": [
+            -18.376047134399414,
+            0.0,
+            -10.755412101745605
+          ],
+          "max": [
+            -15.823953628540039,
+            1.4304547309875488,
+            -9.244589805603027
+          ],
+          "table_proxy": true
+        },
+        {
+          "life": {
+            "instance": 220,
+            "entity": 10029,
+            "generation": 0
+          },
+          "min": [
+            -17.798030853271484,
+            0.0,
+            -13.69803237915039
+          ],
+          "max": [
+            -16.40196990966797,
+            1.7959169149398804,
+            -12.301969528198242
+          ],
+          "table_proxy": true
+        },
+        {
+          "life": {
+            "instance": 220,
+            "entity": 10031,
+            "generation": 0
+          },
+          "min": [
+            -6.922426700592041,
+            0.0,
+            1.8784072399139404
+          ],
+          "max": [
+            -5.677572727203369,
+            2.231259822845459,
+            3.1215932369232178
+          ],
+          "table_proxy": true
+        },
+        {
+          "life": {
+            "instance": 220,
+            "entity": 10033,
+            "generation": 0
+          },
+          "min": [
+            6.436357021331787,
+            0.0,
+            -7.986996650695801
+          ],
+          "max": [
+            11.563644409179688,
+            1.4642040729522705,
+            -6.013003349304199
+          ],
+          "table_proxy": true
+        },
+        {
+          "life": {
+            "instance": 220,
+            "entity": 10040,
+            "generation": 0
+          },
+          "min": [
+            7.76362419128418,
+            0.0,
+            3.8200533390045166
+          ],
+          "max": [
+            10.236377716064453,
+            2.038832426071167,
+            6.179947853088379
+          ],
+          "table_proxy": true
+        },
+        {
+          "life": {
+            "instance": 220,
+            "entity": 10042,
+            "generation": 0
+          },
+          "min": [
+            15.003174781799316,
+            0.0,
+            5.7620134353637695
+          ],
+          "max": [
+            17.39682388305664,
+            2.2545032501220703,
+            8.23798656463623
+          ],
+          "table_proxy": true
+        },
+        {
+          "life": {
+            "instance": 220,
+            "entity": 10043,
+            "generation": 0
+          },
+          "min": [
+            15.823953628540039,
+            0.0,
+            -10.755412101745605
+          ],
+          "max": [
+            18.376047134399414,
+            1.4304547309875488,
+            -9.244589805603027
+          ],
+          "table_proxy": true
+        },
+        {
+          "life": {
+            "instance": 220,
+            "entity": 10044,
+            "generation": 0
+          },
+          "min": [
+            16.40196990966797,
+            0.0,
+            -13.69803237915039
+          ],
+          "max": [
+            17.798030853271484,
+            1.7959169149398804,
+            -12.301969528198242
+          ],
+          "table_proxy": true
+        },
+        {
+          "life": {
+            "instance": 220,
+            "entity": 10046,
+            "generation": 0
+          },
+          "min": [
+            5.677572727203369,
+            0.0,
+            1.8784072399139404
+          ],
+          "max": [
+            6.922426700592041,
+            2.231259822845459,
+            3.1215932369232178
+          ],
+          "table_proxy": true
+        }
+      ]
+    },
+    "actors": [
+      {
+        "source": 0,
+        "life": {
+          "instance": 220,
+          "actor": 14,
+          "generation": 0
+        }
+      },
+      {
+        "source": 1,
+        "life": {
+          "instance": 220,
+          "actor": 1,
+          "generation": 0
+        }
+      },
+      {
+        "source": 2,
+        "life": {
+          "instance": 220,
+          "actor": 2,
+          "generation": 0
+        }
+      },
+      {
+        "source": 4,
+        "life": {
+          "instance": 220,
+          "actor": 4,
+          "generation": 0
+        }
+      },
+      {
+        "source": 6,
+        "life": {
+          "instance": 220,
+          "actor": 6,
+          "generation": 0
+        }
+      },
+      {
+        "source": 7,
+        "life": {
+          "instance": 220,
+          "actor": 7,
+          "generation": 0
+        }
+      },
+      {
+        "source": 8,
+        "life": {
+          "instance": 220,
+          "actor": 8,
+          "generation": 0
+        }
+      },
+      {
+        "source": 9,
+        "life": {
+          "instance": 220,
+          "actor": 9,
+          "generation": 0
+        }
+      },
+      {
+        "source": 11,
+        "life": {
+          "instance": 220,
+          "actor": 11,
+          "generation": 0
+        }
+      },
+      {
+        "source": 13,
+        "life": {
+          "instance": 220,
+          "actor": 13,
+          "generation": 0
+        }
+      },
+      {
+        "source": 14,
+        "life": {
+          "instance": 220,
+          "actor": 15,
+          "generation": 0
+        }
+      }
+    ]
+  }
+}

@@ -309,6 +309,8 @@ The [inventory window profile](../../../bench/verse/2026-10-03/inventory-window/
 
 [#10558](https://github.com/OpenAgentsInc/openagents/issues/10558) adds life-bound quest markers, authored giver dialogue, and authenticated native accept/turn-in actions; the [dressed capture receipt](../../../bench/verse/2026-10-04/giver-dressed/run.json) and [TLS quest-chain receipt](../../../bench/verse/2026-10-04/giver-dialogue/tls.json) cover both summoner objectives and retry-safe 175 XP, while foreground lighting, prediction/reconciliation, and broader roadmap acceptance remain.
 
+[#10559](https://github.com/OpenAgentsInc/openagents/issues/10559) adds native owned-movement prediction, exact replicated collision geometry, acknowledgment reconciliation, and capture telemetry. The [first delayed-network run](../../../bench/verse/2026-10-04/prediction-delayed-first/run.json) records two moving players using all ten abilities and a read-only spectator through delayed TLS, with zero host dropped time. Acceptance fails: correction measurements mix intentional teleports with reconciliation, render-submission p95 reaches about 35 ms with three concurrent 1440p clients, and capture queues drop frames. Correction analysis, latency improvements, lifecycle fixtures, and full VE-5 acceptance remain.
+
 ## Reuse inventory
 
 Review baseline: OpenAgents `843c92dd7e`. The entries below were checked against

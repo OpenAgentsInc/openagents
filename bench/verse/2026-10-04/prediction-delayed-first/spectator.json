@@ -1,0 +1,1388 @@
+{
+  "schema": "verse.remote.capture.v1",
+  "profile": {
+    "schema": "verse.remote.profile.v1",
+    "client_preparation_ms": {
+      "samples": 2146,
+      "omitted": 0,
+      "median": 0.251958,
+      "p95": 0.330709,
+      "max": 6.304084
+    },
+    "render_submission_cpu_ms": {
+      "samples": 2146,
+      "omitted": 0,
+      "median": 27.025625,
+      "p95": 34.397667,
+      "max": 47.808499999999995
+    },
+    "frame_interval_ms": {
+      "samples": 2146,
+      "omitted": 0,
+      "median": 27.612000000000002,
+      "p95": 35.170917,
+      "max": 7497.559042
+    },
+    "prediction_correction_meters": {
+      "samples": 0,
+      "omitted": 0,
+      "median": null,
+      "p95": null,
+      "max": null
+    },
+    "binding_to_outcome_ms": {
+      "samples": 0,
+      "omitted": 0,
+      "median": null,
+      "p95": null,
+      "max": null
+    },
+    "limits": [
+      "Render submission includes presentation waits; GPU execution is not measured.",
+      "Binding-to-outcome includes transport, server processing, and client update delivery; it is not isolated network RTT.",
+      "Samples retain the first 8192 observations per series; omitted observations are counted."
+    ]
+  },
+  "frames": 1800,
+  "sampled_frames": 1008,
+  "duplicated_frames": 792,
+  "dropped_capture_frames": 129,
+  "encoded_size": [
+    1280,
+    720
+  ],
+  "world_start": 14.66859245300293,
+  "world_end": 81.46666717529297,
+  "accepted_cast_commands": {},
+  "demo_trace": [],
+  "demo_slot": 0,
+  "pending_commands": 0,
+  "final_status": "",
+  "window_failure": null,
+  "damage_events": 37,
+  "dialogue_events": 4,
+  "minimum_owned_hp": null,
+  "programmatic_controller": false,
+  "programmatic_respawn": false,
+  "programmatic_movement": false,
+  "respawn_attempts": [],
+  "owned_life_changes": 0,
+  "native_dimensions": [
+    2560,
+    1440
+  ],
+  "capture_wall_seconds": 60.059520083,
+  "wire_version": 21,
+  "final_inventory": null,
+  "final_state": {
+    "hud": null,
+    "snapshot": {
+      "elapsed": 61.46666717529297,
+      "player": {
+        "hp": 74,
+        "max_hp": 200,
+        "mana": 18,
+        "max_mana": 20
+      },
+      "abilities": [
+        {
+          "id": "firebolt",
+          "label": "Firebolt",
+          "cost": 0,
+          "ready": true,
+          "cooldown_remaining": 0.0
+        },
+        {
+          "id": "magic_missile",
+          "label": "Magic missile",
+          "cost": 2,
+          "ready": true,
+          "cooldown_remaining": 0.0
+        },
+        {
+          "id": "fireball",
+          "label": "Fireball",
+          "cost": 5,
+          "ready": true,
+          "cooldown_remaining": 0.0
+        }
+      ],
+      "actors": [
+        {
+          "id": 0,
+          "kind": "wizard",
+          "faction": "player",
+          "pos": [
+            -11.600870132446289,
+            9.999999747378752e-6,
+            -17.019107818603516
+          ],
+          "yaw": 3.1415927410125732,
+          "hp": 74,
+          "max_hp": 200,
+          "alive": true
+        },
+        {
+          "id": 1,
+          "kind": "wizard",
+          "faction": "undead",
+          "pos": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "yaw": 0.0,
+          "hp": 300000,
+          "max_hp": 300000,
+          "alive": true
+        },
+        {
+          "id": 2,
+          "kind": "wizard",
+          "faction": "undead",
+          "pos": [
+            0.9290573000907898,
+            0.0,
+            -13.477320671081543
+          ],
+          "yaw": 0.0,
+          "hp": 15,
+          "max_hp": 15,
+          "alive": true
+        },
+        {
+          "id": 4,
+          "kind": "wizard",
+          "faction": "undead",
+          "pos": [
+            -0.831558108329773,
+            0.0,
+            -13.08687686920166
+          ],
+          "yaw": 0.0,
+          "hp": 15,
+          "max_hp": 15,
+          "alive": true
+        },
+        {
+          "id": 6,
+          "kind": "wizard",
+          "faction": "undead",
+          "pos": [
+            -4.100986957550049,
+            0.0,
+            -16.4412784576416
+          ],
+          "yaw": 0.0,
+          "hp": 15,
+          "max_hp": 15,
+          "alive": true
+        },
+        {
+          "id": 7,
+          "kind": "wizard",
+          "faction": "undead",
+          "pos": [
+            -1.4240760803222656,
+            0.0,
+            -9.837987899780273
+          ],
+          "yaw": 0.0,
+          "hp": 15,
+          "max_hp": 15,
+          "alive": true
+        },
+        {
+          "id": 8,
+          "kind": "wizard",
+          "faction": "undead",
+          "pos": [
+            0.34563401341438293,
+            0.0,
+            -8.523202896118164
+          ],
+          "yaw": 0.0,
+          "hp": 9,
+          "max_hp": 15,
+          "alive": true
+        },
+        {
+          "id": 9,
+          "kind": "wizard",
+          "faction": "undead",
+          "pos": [
+            4.6612701416015625,
+            0.0,
+            -9.604811668395996
+          ],
+          "yaw": 0.0,
+          "hp": 3,
+          "max_hp": 15,
+          "alive": true
+        },
+        {
+          "id": 11,
+          "kind": "wizard",
+          "faction": "undead",
+          "pos": [
+            4.9973602294921875,
+            0.0,
+            -11.6554594039917
+          ],
+          "yaw": 0.0,
+          "hp": 15,
+          "max_hp": 15,
+          "alive": true
+        },
+        {
+          "id": 13,
+          "kind": "wizard",
+          "faction": "undead",
+          "pos": [
+            2.993501901626587,
+            0.0,
+            -12.337004661560059
+          ],
+          "yaw": 0.0,
+          "hp": 15,
+          "max_hp": 15,
+          "alive": true
+        },
+        {
+          "id": 14,
+          "kind": "wizard",
+          "faction": "player",
+          "pos": [
+            -0.31445321440696716,
+            9.999999747378752e-6,
+            -7.096274375915527
+          ],
+          "yaw": 3.1415927410125732,
+          "hp": 56,
+          "max_hp": 200,
+          "alive": true
+        }
+      ],
+      "projectiles": [],
+      "effects": [],
+      "counters": {
+        "casts": 39,
+        "projectiles": 20,
+        "hits": 16,
+        "deflections": 0
+      }
+    },
+    "presentation": {
+      "time": 81.46666717529297,
+      "flames": [
+        {
+          "id": 3,
+          "position": [
+            -14.0,
+            4.000000476837158,
+            -24.000001907348633
+          ],
+          "protected": false,
+          "lit": true
+        },
+        {
+          "id": 5,
+          "position": [
+            -14.0,
+            4.000000476837158,
+            -12.000000953674316
+          ],
+          "protected": false,
+          "lit": true
+        },
+        {
+          "id": 7,
+          "position": [
+            -14.0,
+            4.000000476837158,
+            0.0
+          ],
+          "protected": false,
+          "lit": true
+        },
+        {
+          "id": 9,
+          "position": [
+            -14.0,
+            4.000000476837158,
+            11.0
+          ],
+          "protected": false,
+          "lit": true
+        },
+        {
+          "id": 11,
+          "position": [
+            14.0,
+            4.000000476837158,
+            -24.000001907348633
+          ],
+          "protected": false,
+          "lit": true
+        },
+        {
+          "id": 13,
+          "position": [
+            14.0,
+            4.000000476837158,
+            -12.000000953674316
+          ],
+          "protected": false,
+          "lit": true
+        },
+        {
+          "id": 15,
+          "position": [
+            14.0,
+            4.000000476837158,
+            0.0
+          ],
+          "protected": false,
+          "lit": true
+        },
+        {
+          "id": 17,
+          "position": [
+            14.0,
+            4.000000476837158,
+            11.0
+          ],
+          "protected": false,
+          "lit": true
+        },
+        {
+          "id": 23,
+          "position": [
+            -9.000000953674316,
+            2.500000238418579,
+            -6.700000286102295
+          ],
+          "protected": false,
+          "lit": true
+        },
+        {
+          "id": 32,
+          "position": [
+            -6.299999713897705,
+            2.200000286102295,
+            2.500000238418579
+          ],
+          "protected": false,
+          "lit": true
+        },
+        {
+          "id": 38,
+          "position": [
+            9.000000953674316,
+            2.500000238418579,
+            -6.700000286102295
+          ],
+          "protected": false,
+          "lit": true
+        },
+        {
+          "id": 47,
+          "position": [
+            6.299999713897705,
+            2.200000286102295,
+            2.500000238418579
+          ],
+          "protected": false,
+          "lit": true
+        },
+        {
+          "id": 49,
+          "position": [
+            1.6000001430511475,
+            7.65000057220459,
+            -10.000000953674316
+          ],
+          "protected": false,
+          "lit": true
+        },
+        {
+          "id": 50,
+          "position": [
+            0.800000011920929,
+            7.65000057220459,
+            -8.614359855651855
+          ],
+          "protected": false,
+          "lit": true
+        },
+        {
+          "id": 51,
+          "position": [
+            -0.8000001907348633,
+            7.65000057220459,
+            -8.614359855651855
+          ],
+          "protected": false,
+          "lit": true
+        },
+        {
+          "id": 52,
+          "position": [
+            -1.6000001430511475,
+            7.65000057220459,
+            -10.000000953674316
+          ],
+          "protected": false,
+          "lit": true
+        },
+        {
+          "id": 53,
+          "position": [
+            -0.7999998927116394,
+            7.65000057220459,
+            -11.385642051696777
+          ],
+          "protected": false,
+          "lit": true
+        },
+        {
+          "id": 54,
+          "position": [
+            0.8000006675720215,
+            7.65000057220459,
+            -11.385641098022461
+          ],
+          "protected": false,
+          "lit": true
+        }
+      ],
+      "actors": [
+        {
+          "actor": {
+            "id": 1,
+            "name": "Claude",
+            "model": "claude",
+            "position": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "yaw": 0.044283390045166016,
+            "scale": 2.4000000953674316,
+            "health": 300000,
+            "nameplate": true
+          },
+          "outfit_model": null,
+          "equipment": [],
+          "life": {
+            "instance": 220,
+            "actor": 1,
+            "generation": 0
+          },
+          "teleport_stamp": null,
+          "animation": "spell_release",
+          "animation_time": 0.0666656494140625,
+          "visible": true,
+          "health": 300000
+        },
+        {
+          "actor": {
+            "id": 14,
+            "name": "Adventurer",
+            "model": "adventurer",
+            "position": [
+              -11.600870132446289,
+              9.999999747378752e-6,
+              -17.019107818603516
+            ],
+            "yaw": 3.1415927410125732,
+            "scale": 1.0,
+            "health": 200,
+            "nameplate": false
+          },
+          "outfit_model": null,
+          "equipment": [],
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "teleport_stamp": 63.733333587646484,
+          "animation": "combat_ready",
+          "animation_time": 81.46666717529297,
+          "visible": true,
+          "health": 74
+        },
+        {
+          "actor": {
+            "id": 2,
+            "name": "Cultist of Anthropic",
+            "model": "cultist",
+            "position": [
+              0.9290573000907898,
+              0.0,
+              -13.477320671081543
+            ],
+            "yaw": -9.617241859436035,
+            "scale": 1.0,
+            "health": 15,
+            "nameplate": true
+          },
+          "outfit_model": null,
+          "equipment": [],
+          "life": {
+            "instance": 220,
+            "actor": 2,
+            "generation": 0
+          },
+          "teleport_stamp": null,
+          "animation": "cast",
+          "animation_time": 0.1999969482421875,
+          "visible": true,
+          "health": 15
+        },
+        {
+          "actor": {
+            "id": 4,
+            "name": "Cultist of Anthropic",
+            "model": "cultist",
+            "position": [
+              -0.831558108329773,
+              0.0,
+              -13.08687686920166
+            ],
+            "yaw": -3.0554866790771484,
+            "scale": 1.0,
+            "health": 15,
+            "nameplate": true
+          },
+          "outfit_model": null,
+          "equipment": [],
+          "life": {
+            "instance": 220,
+            "actor": 4,
+            "generation": 0
+          },
+          "teleport_stamp": null,
+          "animation": "combat_ready",
+          "animation_time": 82.22666931152344,
+          "visible": true,
+          "health": 15
+        },
+        {
+          "actor": {
+            "id": 6,
+            "name": "Cultist of Anthropic",
+            "model": "cultist",
+            "position": [
+              -4.100986957550049,
+              0.0,
+              -16.4412784576416
+            ],
+            "yaw": 1.4939031600952148,
+            "scale": 1.0,
+            "health": 15,
+            "nameplate": true
+          },
+          "outfit_model": null,
+          "equipment": [],
+          "life": {
+            "instance": 220,
+            "actor": 6,
+            "generation": 0
+          },
+          "teleport_stamp": null,
+          "animation": "prone",
+          "animation_time": 1.0,
+          "visible": true,
+          "health": 15
+        },
+        {
+          "actor": {
+            "id": 7,
+            "name": "Cultist of Anthropic",
+            "model": "cultist",
+            "position": [
+              -1.4240760803222656,
+              0.0,
+              -9.837987899780273
+            ],
+            "yaw": 9.809346199035645,
+            "scale": 1.0,
+            "health": 15,
+            "nameplate": true
+          },
+          "outfit_model": null,
+          "equipment": [],
+          "life": {
+            "instance": 220,
+            "actor": 7,
+            "generation": 0
+          },
+          "teleport_stamp": null,
+          "animation": "combat_ready",
+          "animation_time": 82.79666900634766,
+          "visible": true,
+          "health": 15
+        },
+        {
+          "actor": {
+            "id": 8,
+            "name": "Cultist of Anthropic",
+            "model": "cultist",
+            "position": [
+              0.34563401341438293,
+              0.0,
+              -8.523202896118164
+            ],
+            "yaw": 2.708315849304199,
+            "scale": 1.0,
+            "health": 15,
+            "nameplate": true
+          },
+          "outfit_model": null,
+          "equipment": [],
+          "life": {
+            "instance": 220,
+            "actor": 8,
+            "generation": 0
+          },
+          "teleport_stamp": null,
+          "animation": "combat_ready",
+          "animation_time": 82.98666381835938,
+          "visible": true,
+          "health": 9
+        },
+        {
+          "actor": {
+            "id": 9,
+            "name": "Cultist of Anthropic",
+            "model": "cultist",
+            "position": [
+              4.6612701416015625,
+              0.0,
+              -9.604811668395996
+            ],
+            "yaw": 2.0377626419067383,
+            "scale": 1.0,
+            "health": 15,
+            "nameplate": true
+          },
+          "outfit_model": null,
+          "equipment": [],
+          "life": {
+            "instance": 220,
+            "actor": 9,
+            "generation": 0
+          },
+          "teleport_stamp": null,
+          "animation": "prone",
+          "animation_time": 1.0,
+          "visible": true,
+          "health": 3
+        },
+        {
+          "actor": {
+            "id": 11,
+            "name": "Cultist of Anthropic",
+            "model": "cultist",
+            "position": [
+              4.9973602294921875,
+              0.0,
+              -11.6554594039917
+            ],
+            "yaw": 8.56328010559082,
+            "scale": 1.0,
+            "health": 15,
+            "nameplate": true
+          },
+          "outfit_model": null,
+          "equipment": [],
+          "life": {
+            "instance": 220,
+            "actor": 11,
+            "generation": 0
+          },
+          "teleport_stamp": null,
+          "animation": "combat_ready",
+          "animation_time": 83.5566635131836,
+          "visible": true,
+          "health": 15
+        },
+        {
+          "actor": {
+            "id": 13,
+            "name": "Cultist of Anthropic",
+            "model": "cultist",
+            "position": [
+              2.993501901626587,
+              0.0,
+              -12.337004661560059
+            ],
+            "yaw": 8.861732482910156,
+            "scale": 1.0,
+            "health": 15,
+            "nameplate": true
+          },
+          "outfit_model": null,
+          "equipment": [],
+          "life": {
+            "instance": 220,
+            "actor": 13,
+            "generation": 0
+          },
+          "teleport_stamp": null,
+          "animation": "combat_ready",
+          "animation_time": 83.9366683959961,
+          "visible": true,
+          "health": 15
+        },
+        {
+          "actor": {
+            "id": 15,
+            "name": "Adventurer 15",
+            "model": "adventurer",
+            "position": [
+              -0.31445321440696716,
+              9.999999747378752e-6,
+              -7.096274375915527
+            ],
+            "yaw": 3.1415927410125732,
+            "scale": 1.0,
+            "health": 200,
+            "nameplate": false
+          },
+          "outfit_model": null,
+          "equipment": [],
+          "life": {
+            "instance": 220,
+            "actor": 15,
+            "generation": 0
+          },
+          "teleport_stamp": 67.03333282470703,
+          "animation": "combat_ready",
+          "animation_time": 81.46666717529297,
+          "visible": true,
+          "health": 56
+        }
+      ],
+      "corpses": [
+        {
+          "actor": {
+            "id": 3,
+            "name": "Cultist of Anthropic",
+            "model": "cultist",
+            "position": [
+              1.9468300342559814,
+              0.0,
+              -17.336421966552734
+            ],
+            "yaw": 4.653992176055908,
+            "scale": 1.0,
+            "health": 15,
+            "nameplate": false
+          },
+          "outfit_model": null,
+          "equipment": [],
+          "life": {
+            "instance": 220,
+            "actor": 3,
+            "generation": 0
+          },
+          "teleport_stamp": null,
+          "animation": "death",
+          "animation_time": 36.03333282470703,
+          "visible": true,
+          "health": 0
+        },
+        {
+          "actor": {
+            "id": 5,
+            "name": "Cultist of Anthropic",
+            "model": "cultist",
+            "position": [
+              -1.5318975448608398,
+              0.0,
+              -13.10065746307373
+            ],
+            "yaw": 0.7035222053527832,
+            "scale": 1.0,
+            "health": 15,
+            "nameplate": false
+          },
+          "outfit_model": null,
+          "equipment": [],
+          "life": {
+            "instance": 220,
+            "actor": 5,
+            "generation": 0
+          },
+          "teleport_stamp": null,
+          "animation": "death",
+          "animation_time": 13.833335876464844,
+          "visible": true,
+          "health": 0
+        },
+        {
+          "actor": {
+            "id": 10,
+            "name": "Cultist of Anthropic",
+            "model": "cultist",
+            "position": [
+              5.36043643951416,
+              0.0,
+              -9.562211036682129
+            ],
+            "yaw": 9.653995513916016,
+            "scale": 1.0,
+            "health": 15,
+            "nameplate": false
+          },
+          "outfit_model": null,
+          "equipment": [],
+          "life": {
+            "instance": 220,
+            "actor": 10,
+            "generation": 0
+          },
+          "teleport_stamp": null,
+          "animation": "death",
+          "animation_time": 11.833335876464844,
+          "visible": true,
+          "health": 0
+        },
+        {
+          "actor": {
+            "id": 12,
+            "name": "Cultist of Anthropic",
+            "model": "cultist",
+            "position": [
+              3.763367176055908,
+              0.0,
+              -16.387645721435547
+            ],
+            "yaw": 8.09023380279541,
+            "scale": 1.0,
+            "health": 15,
+            "nameplate": false
+          },
+          "outfit_model": null,
+          "equipment": [],
+          "life": {
+            "instance": 220,
+            "actor": 12,
+            "generation": 0
+          },
+          "teleport_stamp": null,
+          "animation": "death",
+          "animation_time": 41.06666564941406,
+          "visible": true,
+          "health": 0
+        }
+      ],
+      "effects": [
+        {
+          "life": {
+            "instance": 220,
+            "actor": 14,
+            "generation": 0
+          },
+          "position": [
+            -11.600870132446289,
+            9.999999747378752e-6,
+            -17.019107818603516
+          ],
+          "shield": 0,
+          "shield_until": 72.30000305175781,
+          "light": [
+            -4.783187389373779,
+            0.3000100255012512,
+            -17.128244400024414
+          ],
+          "areas": [
+            {
+              "kind": "Web",
+              "position": [
+                -4.100986957550049,
+                0.0,
+                -16.4412784576416
+              ],
+              "until": 85.66666412353516
+            },
+            {
+              "kind": "Grease",
+              "position": [
+                -4.100986957550049,
+                0.0,
+                -16.4412784576416
+              ],
+              "until": 85.53333282470703
+            }
+          ]
+        },
+        {
+          "life": {
+            "instance": 220,
+            "actor": 15,
+            "generation": 0
+          },
+          "position": [
+            -0.31445321440696716,
+            9.999999747378752e-6,
+            -7.096274375915527
+          ],
+          "shield": 0,
+          "shield_until": 74.80000305175781,
+          "light": [
+            -1.8522614240646362,
+            0.30000001192092896,
+            -19.602214813232422
+          ],
+          "areas": [
+            {
+              "kind": "Web",
+              "position": [
+                4.6612701416015625,
+                0.0,
+                -9.604811668395996
+              ],
+              "until": 86.83333587646484
+            },
+            {
+              "kind": "Grease",
+              "position": [
+                4.6612701416015625,
+                0.0,
+                -9.604811668395996
+              ],
+              "until": 89.06666564941406
+            }
+          ]
+        }
+      ],
+      "hostile_casts": [
+        {
+          "caster": {
+            "instance": 220,
+            "actor": 1,
+            "generation": 0
+          },
+          "target_life": {
+            "instance": 220,
+            "actor": 15,
+            "generation": 0
+          },
+          "position": [
+            0.12092781811952591,
+            3.6923141479492188,
+            -0.7278100848197937
+          ],
+          "origin": [
+            0.0,
+            4.0,
+            0.0
+          ],
+          "target": [
+            1.1790668964385986,
+            9.999999747378752e-6,
+            -7.096274375915527
+          ],
+          "started": 80.0999984741211,
+          "release": 81.4000015258789,
+          "impact": 82.05000305175781,
+          "radius": 3.200000047683716,
+          "boss": true
+        },
+        {
+          "caster": {
+            "instance": 220,
+            "actor": 2,
+            "generation": 0
+          },
+          "target_life": {
+            "instance": 220,
+            "actor": 15,
+            "generation": 0
+          },
+          "position": null,
+          "origin": [
+            0.9290573000907898,
+            1.399999976158142,
+            -13.477320671081543
+          ],
+          "target": [
+            -0.31445321440696716,
+            9.999999747378752e-6,
+            -7.096274375915527
+          ],
+          "started": 81.26667022705078,
+          "release": 82.26667022705078,
+          "impact": 83.0666732788086,
+          "radius": 1.600000023841858,
+          "boss": false
+        }
+      ],
+      "impacts": [],
+      "props": [
+        {
+          "life": {
+            "instance": 220,
+            "entity": 4294967296,
+            "generation": 0
+          },
+          "kind": "Crate",
+          "secured": false,
+          "center": [
+            -6.0,
+            0.30000001192092896,
+            -4.0
+          ],
+          "rotation": [
+            1.8578635790208918e-18,
+            -3.9468945473020156e-11,
+            -3.1293468250731538e-12,
+            1.0
+          ],
+          "dimensions": [
+            0.6000000238418579,
+            0.6000000238418579,
+            0.6000000238418579
+          ]
+        },
+        {
+          "life": {
+            "instance": 220,
+            "entity": 4294967297,
+            "generation": 0
+          },
+          "kind": "Barrel",
+          "secured": false,
+          "center": [
+            6.0,
+            0.44999998807907104,
+            -4.0
+          ],
+          "rotation": [
+            -8.802395479179381e-10,
+            1.326099341447673e-9,
+            1.0997081023589317e-9,
+            1.0
+          ],
+          "dimensions": [
+            0.6000000238418579,
+            0.8999999761581421,
+            0.6000000238418579
+          ]
+        }
+      ],
+      "blockers": [
+        {
+          "life": {
+            "instance": 220,
+            "entity": 10018,
+            "generation": 0
+          },
+          "min": [
+            -11.563644409179688,
+            0.0,
+            -7.986996650695801
+          ],
+          "max": [
+            -6.436357021331787,
+            1.4642040729522705,
+            -6.013003349304199
+          ],
+          "table_proxy": true
+        },
+        {
+          "life": {
+            "instance": 220,
+            "entity": 10025,
+            "generation": 0
+          },
+          "min": [
+            -10.236377716064453,
+            0.0,
+            3.8200533390045166
+          ],
+          "max": [
+            -7.76362419128418,
+            2.038832426071167,
+            6.179947853088379
+          ],
+          "table_proxy": true
+        },
+        {
+          "life": {
+            "instance": 220,
+            "entity": 10027,
+            "generation": 0
+          },
+          "min": [
+            -17.39682388305664,
+            0.0,
+            5.7620134353637695
+          ],
+          "max": [
+            -15.003174781799316,
+            2.2545032501220703,
+            8.23798656463623
+          ],
+          "table_proxy": true
+        },
+        {
+          "life": {
+            "instance": 220,
+            "entity": 10028,
+            "generation": 0
+          },
+          "min": [
+            -18.376047134399414,
+            0.0,
+            -10.755412101745605
+          ],
+          "max": [
+            -15.823953628540039,
+            1.4304547309875488,
+            -9.244589805603027
+          ],
+          "table_proxy": true
+        },
+        {
+          "life": {
+            "instance": 220,
+            "entity": 10029,
+            "generation": 0
+          },
+          "min": [
+            -17.798030853271484,
+            0.0,
+            -13.69803237915039
+          ],
+          "max": [
+            -16.40196990966797,
+            1.7959169149398804,
+            -12.301969528198242
+          ],
+          "table_proxy": true
+        },
+        {
+          "life": {
+            "instance": 220,
+            "entity": 10031,
+            "generation": 0
+          },
+          "min": [
+            -6.922426700592041,
+            0.0,
+            1.8784072399139404
+          ],
+          "max": [
+            -5.677572727203369,
+            2.231259822845459,
+            3.1215932369232178
+          ],
+          "table_proxy": true
+        },
+        {
+          "life": {
+            "instance": 220,
+            "entity": 10033,
+            "generation": 0
+          },
+          "min": [
+            6.436357021331787,
+            0.0,
+            -7.986996650695801
+          ],
+          "max": [
+            11.563644409179688,
+            1.4642040729522705,
+            -6.013003349304199
+          ],
+          "table_proxy": true
+        },
+        {
+          "life": {
+            "instance": 220,
+            "entity": 10040,
+            "generation": 0
+          },
+          "min": [
+            7.76362419128418,
+            0.0,
+            3.8200533390045166
+          ],
+          "max": [
+            10.236377716064453,
+            2.038832426071167,
+            6.179947853088379
+          ],
+          "table_proxy": true
+        },
+        {
+          "life": {
+            "instance": 220,
+            "entity": 10042,
+            "generation": 0
+          },
+          "min": [
+            15.003174781799316,
+            0.0,
+            5.7620134353637695
+          ],
+          "max": [
+            17.39682388305664,
+            2.2545032501220703,
+            8.23798656463623
+          ],
+          "table_proxy": true
+        },
+        {
+          "life": {
+            "instance": 220,
+            "entity": 10043,
+            "generation": 0
+          },
+          "min": [
+            15.823953628540039,
+            0.0,
+            -10.755412101745605
+          ],
+          "max": [
+            18.376047134399414,
+            1.4304547309875488,
+            -9.244589805603027
+          ],
+          "table_proxy": true
+        },
+        {
+          "life": {
+            "instance": 220,
+            "entity": 10044,
+            "generation": 0
+          },
+          "min": [
+            16.40196990966797,
+            0.0,
+            -13.69803237915039
+          ],
+          "max": [
+            17.798030853271484,
+            1.7959169149398804,
+            -12.301969528198242
+          ],
+          "table_proxy": true
+        },
+        {
+          "life": {
+            "instance": 220,
+            "entity": 10046,
+            "generation": 0
+          },
+          "min": [
+            5.677572727203369,
+            0.0,
+            1.8784072399139404
+          ],
+          "max": [
+            6.922426700592041,
+            2.231259822845459,
+            3.1215932369232178
+          ],
+          "table_proxy": true
+        }
+      ]
+    },
+    "actors": [
+      {
+        "source": 0,
+        "life": {
+          "instance": 220,
+          "actor": 14,
+          "generation": 0
+        }
+      },
+      {
+        "source": 1,
+        "life": {
+          "instance": 220,
+          "actor": 1,
+          "generation": 0
+        }
+      },
+      {
+        "source": 2,
+        "life": {
+          "instance": 220,
+          "actor": 2,
+          "generation": 0
+        }
+      },
+      {
+        "source": 4,
+        "life": {
+          "instance": 220,
+          "actor": 4,
+          "generation": 0
+        }
+      },
+      {
+        "source": 6,
+        "life": {
+          "instance": 220,
+          "actor": 6,
+          "generation": 0
+        }
+      },
+      {
+        "source": 7,
+        "life": {
+          "instance": 220,
+          "actor": 7,
+          "generation": 0
+        }
+      },
+      {
+        "source": 8,
+        "life": {
+          "instance": 220,
+          "actor": 8,
+          "generation": 0
+        }
+      },
+      {
+        "source": 9,
+        "life": {
+          "instance": 220,
+          "actor": 9,
+          "generation": 0
+        }
+      },
+      {
+        "source": 11,
+        "life": {
+          "instance": 220,
+          "actor": 11,
+          "generation": 0
+        }
+      },
+      {
+        "source": 13,
+        "life": {
+          "instance": 220,
+          "actor": 13,
+          "generation": 0
+        }
+      },
+      {
+        "source": 14,
+        "life": {
+          "instance": 220,
+          "actor": 15,
+          "generation": 0
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,240 @@
+{
+  "schema": "verse.prediction.delayed.run.v1",
+  "code_revision": "9f0eb7340d4a9a99aac2ba60237db2d247d96ffd",
+  "acceptance": "failed",
+  "transport": "loopback TLS with bounded directional TCP-chunk delay and jitter",
+  "seconds": 60,
+  "clients": {
+    "primary": {
+      "profile": {
+        "schema": "verse.remote.profile.v1",
+        "client_preparation_ms": {
+          "samples": 2118,
+          "omitted": 0,
+          "median": 0.408875,
+          "p95": 0.741625,
+          "max": 6.792249999999999
+        },
+        "render_submission_cpu_ms": {
+          "samples": 2118,
+          "omitted": 0,
+          "median": 27.045334,
+          "p95": 35.939875,
+          "max": 58.618042
+        },
+        "frame_interval_ms": {
+          "samples": 2118,
+          "omitted": 0,
+          "median": 27.837,
+          "p95": 37.130875,
+          "max": 7472.877459
+        },
+        "prediction_correction_meters": {
+          "samples": 257,
+          "omitted": 0,
+          "median": 0.0,
+          "p95": 1.7755087614059448,
+          "max": 8.231932640075684
+        },
+        "binding_to_outcome_ms": {
+          "samples": 96,
+          "omitted": 0,
+          "median": 103.687708,
+          "p95": 129.207917,
+          "max": 144.104
+        },
+        "limits": [
+          "Render submission includes presentation waits; GPU execution is not measured.",
+          "Binding-to-outcome includes transport, server processing, and client update delivery; it is not isolated network RTT.",
+          "Samples retain the first 8192 observations per series; omitted observations are counted."
+        ]
+      },
+      "frames": 1800,
+      "sampled_frames": 1041,
+      "duplicated_frames": 759,
+      "dropped_capture_frames": 136,
+      "native_dimensions": [
+        2560,
+        1440
+      ],
+      "accepted_cast_commands": {
+        "Fire Bolt": 2,
+        "Fireball": 3,
+        "Grease": 3,
+        "Light": 3,
+        "Magic Missile": 2,
+        "Misty Step": 2,
+        "Shield": 3,
+        "Shoot Bow": 2,
+        "Thunderwave": 3,
+        "Web": 3
+      },
+      "minimum_owned_hp": 74,
+      "window_failure": null,
+      "final_status": "",
+      "owned_life_changes": 0,
+      "pending_commands": 2
+    },
+    "player": {
+      "profile": {
+        "schema": "verse.remote.profile.v1",
+        "client_preparation_ms": {
+          "samples": 2163,
+          "omitted": 0,
+          "median": 0.42874999999999996,
+          "p95": 0.817875,
+          "max": 7.958290999999999
+        },
+        "render_submission_cpu_ms": {
+          "samples": 2163,
+          "omitted": 0,
+          "median": 26.882791,
+          "p95": 35.707125,
+          "max": 50.01033399999999
+        },
+        "frame_interval_ms": {
+          "samples": 2163,
+          "omitted": 0,
+          "median": 27.701292,
+          "p95": 36.591417,
+          "max": 7522.268333
+        },
+        "prediction_correction_meters": {
+          "samples": 259,
+          "omitted": 0,
+          "median": 0.0,
+          "p95": 1.6535396575927734,
+          "max": 7.037391662597656
+        },
+        "binding_to_outcome_ms": {
+          "samples": 100,
+          "omitted": 0,
+          "median": 102.835333,
+          "p95": 140.53574999999998,
+          "max": 207.964583
+        },
+        "limits": [
+          "Render submission includes presentation waits; GPU execution is not measured.",
+          "Binding-to-outcome includes transport, server processing, and client update delivery; it is not isolated network RTT.",
+          "Samples retain the first 8192 observations per series; omitted observations are counted."
+        ]
+      },
+      "frames": 1799,
+      "sampled_frames": 1060,
+      "duplicated_frames": 739,
+      "dropped_capture_frames": 132,
+      "native_dimensions": [
+        2560,
+        1440
+      ],
+      "accepted_cast_commands": {
+        "Fire Bolt": 2,
+        "Fireball": 3,
+        "Grease": 3,
+        "Light": 2,
+        "Magic Missile": 2,
+        "Misty Step": 1,
+        "Shield": 3,
+        "Shoot Bow": 2,
+        "Thunderwave": 2,
+        "Web": 3
+      },
+      "minimum_owned_hp": 56,
+      "window_failure": null,
+      "final_status": "",
+      "owned_life_changes": 0,
+      "pending_commands": 1
+    },
+    "spectator": {
+      "profile": {
+        "schema": "verse.remote.profile.v1",
+        "client_preparation_ms": {
+          "samples": 2146,
+          "omitted": 0,
+          "median": 0.251958,
+          "p95": 0.330709,
+          "max": 6.304084
+        },
+        "render_submission_cpu_ms": {
+          "samples": 2146,
+          "omitted": 0,
+          "median": 27.025625,
+          "p95": 34.397667,
+          "max": 47.808499999999995
+        },
+        "frame_interval_ms": {
+          "samples": 2146,
+          "omitted": 0,
+          "median": 27.612000000000002,
+          "p95": 35.170917,
+          "max": 7497.559042
+        },
+        "prediction_correction_meters": {
+          "samples": 0,
+          "omitted": 0,
+          "median": null,
+          "p95": null,
+          "max": null
+        },
+        "binding_to_outcome_ms": {
+          "samples": 0,
+          "omitted": 0,
+          "median": null,
+          "p95": null,
+          "max": null
+        },
+        "limits": [
+          "Render submission includes presentation waits; GPU execution is not measured.",
+          "Binding-to-outcome includes transport, server processing, and client update delivery; it is not isolated network RTT.",
+          "Samples retain the first 8192 observations per series; omitted observations are counted."
+        ]
+      },
+      "frames": 1800,
+      "sampled_frames": 1008,
+      "duplicated_frames": 792,
+      "dropped_capture_frames": 129,
+      "native_dimensions": [
+        2560,
+        1440
+      ],
+      "accepted_cast_commands": {},
+      "minimum_owned_hp": null,
+      "window_failure": null,
+      "final_status": "",
+      "owned_life_changes": 0,
+      "pending_commands": 0
+    }
+  },
+  "host_log": "Chamber 220 listening on 127.0.0.1:49937\nChamber stopped: 2465 ticks, 1723 requests, 3 completed connections, 0.000000 dropped seconds\nCheckpoint storage: 0 commits, 0 bytes, 0.000000 seconds\n",
+  "proxy": {
+    "schema": "verse.delayed-route.v1",
+    "delay_ms": 40,
+    "jitter_ms": 20,
+    "connections": 3,
+    "upstream_bytes": 199933,
+    "downstream_bytes": 20924227,
+    "forwarded_chunks": 3458,
+    "errors": 0,
+    "refused_connections": 0,
+    "limits": [
+      "Delay applies to each TCP read chunk, not decrypted game messages.",
+      "TCP preserves byte order; this fixture does not simulate packet loss."
+    ],
+    "wall_seconds": 81.359655584
+  },
+  "process_exits": {
+    "clients": {
+      "primary": 0,
+      "player": 0,
+      "spectator": 0
+    },
+    "host": 0
+  },
+  "limits": [
+    "Correction series currently mixes ordinary reconciliation and intentional same-life teleports; it must be separated before judging movement correction maxima.",
+    "Three concurrent 2560x1440 render clients share one GPU; this is not isolated single-client device performance.",
+    "Frame-interval maximum includes initialization; no isolated input-to-photon or GPU timer measurement is provided.",
+    "Capture frames can be dropped or duplicated; see each receipt.",
+    "No player died in this run; death/respawn acceptance remains."
+  ]
+}
