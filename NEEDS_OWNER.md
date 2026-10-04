@@ -127,3 +127,20 @@ Provide only its assigned ordinary gym credentials at runtime. Verify TCP 3724
 and 8085 and the coordinator route before starting Voyager. CoderOS and Mac
 pool execution are implemented and checked; no public realm or Boat tailnet
 credential was created. See [the parallel runbook](docs/wow/parallel.md).
+
+## Everglade studio on phones (#10476, #10485, #10486)
+
+Build the Coder iOS app from current `main` and run it in a simulator, then on
+a device. Walk through the Everglade arch on the plaza, wait for the pack to
+download, and confirm the glade renders textured (grass, trees with cut-out
+leaves, the workshop) on Metal. At the notice board, a desk, the podium, and
+the merge station, tap **Interact** and confirm that the console, the seat
+panel, decisions, and diff review open, and that the close control returns to
+the world. Run `testEvergladePortalEntersGladeAndReturns`; it now needs the
+pack download and still names its screenshot "Everglade greybox glade".
+
+Repeat on the Android emulator and a device, on Vulkan or GLES: the same four
+stations, the back button closing the panel, and the TalkBack Interact action.
+Until the live host source lands (#10492), every panel says the studio has not
+loaded. The Rust panel and scene tests pass. Open a follow-up issue for any
+rendering or mounting defect.
