@@ -6,9 +6,8 @@ use std::collections::BTreeMap;
 use verse_engine::director::{Action, Frame, Scene};
 use verse_engine::motion::State;
 
-/// Checkpoint and evidence rules revision. v14 moves Thunderwave onto the
-/// spell physics layer: seeded saves, 2d8 damage, and calibrated pushes.
-pub const RULES_REVISION: &str = "verse-chamber-owned-v14";
+/// Checkpoint revision. v15 stores per-player combat resources and projectile casters.
+pub const RULES_REVISION: &str = "verse-chamber-owned-v15";
 /// Seed of the chamber's spell dice; scenarios may reseed before acting.
 pub const SPELL_SEED: u64 = 0x5EED_0451;
 
@@ -3140,7 +3139,7 @@ mod checkpoint_tests {
         saved["version"] = 9.into();
         assert!(Game::restore(&serde_json::to_vec(&saved).unwrap()).is_err());
         saved["version"] = 1.into();
-        saved["world"]["simulation"]["player"]["hp"] = (-5).into();
+        saved["world"]["simulation"]["players"]["0"]["resources"]["hp"] = (-5).into();
         assert!(Game::restore(&serde_json::to_vec(&saved).unwrap()).is_err());
     }
     #[test]
@@ -3767,7 +3766,7 @@ mod player_respawn_tests {
         let g = game();
         let mut saved: serde_json::Value =
             serde_json::from_slice(&g.checkpoint().unwrap()).unwrap();
-        saved["world"]["simulation"]["player"]["max_hp"] = 100.into();
+        saved["world"]["simulation"]["players"]["0"]["resources"]["max_hp"] = 100.into();
         assert!(Game::restore(&serde_json::to_vec(&saved).unwrap()).is_err());
     }
 }

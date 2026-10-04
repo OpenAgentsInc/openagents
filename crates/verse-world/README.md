@@ -8,7 +8,7 @@ chamber reads its snapshots and cinematic projection. Human and controller
 requests share admission. A trusted adapter supplies controller identity;
 this crate does not authenticate network connections.
 
-The `verse-chamber-owned-v14` rules profile independently implements retained
+The `verse-chamber-owned-v15` rules profile independently implements retained
 chamber behavior; it imports no vendor source. Firebolt deals 8 damage, each of
 three magic missiles deals 4, and fireball deals 15 in a visible 6.096-meter radius
 with three 6-damage burn ticks. Living characters regenerate one mana per second.
@@ -38,6 +38,15 @@ pending arrows replay exactly.
 Hostile flights retain positions, sweep against player controller trajectories
 and cover, and resolve shields through the shared damage path. Checkpoints fence
 source and target lives and reject inconsistent flight positions.
+The combat store now admits up to 64 cooperative players in one simulation, with
+actor-scoped health, mana, regeneration, and projectile-spell cooldowns. Explicit
+caster APIs derive release positions from admitted actors. Arrows, homing spells,
+area hits, and burns exclude friendly players; projectiles and burns retain their
+caster. A revival cancels only that caster's flights and burns. `advance` steps all
+players on one clock, and `snapshot_for` projects the selected player's resources
+alongside public shared actors. The existing native `Game` adapter still controls
+one player; full per-player utility state, movement, and authenticated host
+admission remain necessary before shared service acceptance.
 Transactional saves, multiplayer
 replication, and authoring tools remain on the
 [engine roadmap](../../docs/verse/engine/roadmap.md).
