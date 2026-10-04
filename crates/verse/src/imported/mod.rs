@@ -21,6 +21,7 @@ pub mod original;
 pub mod overlay;
 pub mod play;
 pub mod props;
+mod shadow_cache;
 use lighting::{Frame, Lighting};
 use std::{
     collections::{BTreeMap, HashMap},
@@ -78,6 +79,10 @@ struct Actor {
     shadow_model: Option<verse_engine::residency::ModelHandle>,
     shadow_bundles: Vec<Option<wgpu::RenderBundle>>,
     shadow_count: usize,
+    frozen: shadow_cache::Frozen<(
+        verse_engine::residency::ModelHandle,
+        Option<verse_engine::core::LifeId>,
+    )>,
     world_bundles: Vec<Option<wgpu::RenderBundle>>,
     world_counts: [usize; 4],
 }
@@ -130,6 +135,8 @@ pub struct FrameTimings {
     pub grounded_vertices: usize,
     pub readback: bool,
     pub shadow_draws: usize,
+    pub cached_shadow_casters: usize,
+    pub static_shadow_refreshes: usize,
     pub marker_events: usize,
 }
 /// A presentation marker sampled at the actor's current world placement.
@@ -256,7 +263,7 @@ pub struct Renderer {
     shadow_texture: wgpu::Texture,
     static_shadow_texture: wgpu::Texture,
     static_shadow_views: Vec<wgpu::TextureView>,
-    static_shadow_keys: Vec<Option<[[f32; 4]; 4]>>,
+    static_shadow_keys: Vec<Option<shadow_cache::Face>>,
     shadow_groups: Vec<wgpu::BindGroup>,
     shadow_buffers: Vec<wgpu::Buffer>,
     shadow_pipeline: wgpu::RenderPipeline,
@@ -1210,22 +1217,6 @@ impl Renderer {
         let mut grounded_vertices = 0;
         let ui_bytes = bytemuck::cast_slice(world.overlay().vertices());
         let frame = lighting::frame(view, lighting)?;
-        let refresh: Vec<_> = (0..lighting.shadow_count() * 6)
-            .map(|layer| self.static_shadow_keys[layer] != Some(frame.shadow[layer]))
-            .collect();
-        let plan = verse_engine::render_graph::ChamberPlan::build(&refresh, capture)?;
-        self.queue
-            .write_buffer(&self.frame, 0, bytemuck::bytes_of(&frame));
-        for layer in 0..lighting.lights.len().min(lighting.shadowed).min(4) * 6 {
-            let mut shadow_frame = frame;
-            shadow_frame.view = frame.shadow[layer];
-            self.queue.write_buffer(
-                &self.shadow_buffers[layer],
-                0,
-                bytemuck::bytes_of(&shadow_frame),
-            );
-        }
-        self.queue.write_buffer(&self.ui_buffer, 0, ui_bytes);
         while self.actors.len() <= instances.len() {
             let buffer = buffer(
                 &self.device,
@@ -1247,15 +1238,11 @@ impl Renderer {
                 shadow_model: None,
                 shadow_bundles: (0..24).map(|_| None).collect(),
                 shadow_count: 0,
+                frozen: Default::default(),
                 world_bundles: (0..4).map(|_| None).collect(),
                 world_counts: [0; 4],
             });
         }
-        self.queue.write_buffer(
-            &self.actors[0].buffer,
-            0,
-            bytemuck::bytes_of(&make_pose(&self.pack, None)?),
-        );
         self.playback.retain(|(id, model), _| {
             instances
                 .iter()
@@ -1269,6 +1256,8 @@ impl Renderer {
         let mut adventurer_pose: Option<Pose> = None;
         let mut bow_drawn = false;
         let mut actor_bounds = Vec::with_capacity(instances.len());
+        let mut palettes = Vec::with_capacity(instances.len());
+        let mut frozen = Vec::with_capacity(instances.len());
         for (i, instance) in instances.iter().enumerate() {
             let mut palette = make_pose(&self.pack, Some(instance))?;
             if let Some(id) = instance.actor {
@@ -1351,8 +1340,12 @@ impl Renderer {
                     .as_ref()
                     .and_then(|b| b.posed(&palette)),
             );
-            self.queue
-                .write_buffer(&self.actors[i + 1].buffer, 0, bytemuck::bytes_of(&palette));
+            frozen.push(self.actors[i + 1].frozen.update(
+                (resolved.models()[i], instance.actor),
+                bytemuck::bytes_of(&palette),
+                instance.animation.grounded(),
+            )?);
+            palettes.push(palette);
         }
         for (i, model) in resolved.models().iter().enumerate() {
             let actor = &mut self.actors[i + 1];
@@ -1444,6 +1437,50 @@ impl Renderer {
                 }
             }
         }
+        let shadow_keys: Vec<_> = (0..lighting.shadow_count() * 6)
+            .map(|layer| {
+                let matrix = frame.shadow[layer];
+                let view = Mat4::from_cols_array_2d(&matrix);
+                let casters = frozen
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, revision)| {
+                        let revision = (*revision)?;
+                        (self.actors[i + 1].shadow_count > 0
+                            && actor_bounds[i].is_none_or(|bounds| bounds.visible(view)))
+                        .then_some((i, revision))
+                    })
+                    .collect();
+                shadow_cache::Face { matrix, casters }
+            })
+            .collect();
+        let refresh: Vec<_> = shadow_keys
+            .iter()
+            .enumerate()
+            .map(|(layer, key)| self.static_shadow_keys[layer].as_ref() != Some(key))
+            .collect();
+        let plan = verse_engine::render_graph::ChamberPlan::build(&refresh, capture)?;
+        self.queue
+            .write_buffer(&self.frame, 0, bytemuck::bytes_of(&frame));
+        for layer in 0..lighting.lights.len().min(lighting.shadowed).min(4) * 6 {
+            let mut shadow_frame = frame;
+            shadow_frame.view = frame.shadow[layer];
+            self.queue.write_buffer(
+                &self.shadow_buffers[layer],
+                0,
+                bytemuck::bytes_of(&shadow_frame),
+            );
+        }
+        self.queue.write_buffer(&self.ui_buffer, 0, ui_bytes);
+        self.queue.write_buffer(
+            &self.actors[0].buffer,
+            0,
+            bytemuck::bytes_of(&make_pose(&self.pack, None)?),
+        );
+        for (i, palette) in palettes.iter().enumerate() {
+            self.queue
+                .write_buffer(&self.actors[i + 1].buffer, 0, bytemuck::bytes_of(palette));
+        }
         let prepared = Instant::now();
         let mut shadow_draws = 0;
         let mut encoder = self.device.create_command_encoder(&Default::default());
@@ -1483,8 +1520,13 @@ impl Renderer {
                         self.draw_batch(&mut pass, batch);
                         shadow_draws += 1;
                     }
+                    pass.execute_bundles(shadow_keys[layer].casters.iter().map(|(i, _)| {
+                        let actor = &self.actors[i + 1];
+                        shadow_draws += actor.shadow_count;
+                        actor.shadow_bundles[layer].as_ref().unwrap()
+                    }));
                     drop(pass);
-                    self.static_shadow_keys[layer] = Some(frame.shadow[layer]);
+                    self.static_shadow_keys[layer] = Some(shadow_keys[layer].clone());
                 }
                 ChamberPass::CopyShadow { layer } => {
                     let origin = wgpu::Origin3d {
@@ -1528,6 +1570,7 @@ impl Renderer {
                     pass.execute_bundles(instances.iter().enumerate().filter_map(|(i, _)| {
                         let actor = &self.actors[i + 1];
                         if actor.shadow_count == 0
+                            || frozen[i].is_some()
                             || actor_bounds[i].is_some_and(|bounds| !bounds.visible(shadow_view))
                         {
                             return None;
@@ -1666,6 +1709,8 @@ impl Renderer {
                 grounded_vertices,
                 readback: false,
                 shadow_draws,
+                cached_shadow_casters: frozen.iter().filter(|revision| revision.is_some()).count(),
+                static_shadow_refreshes: refresh.iter().filter(|value| **value).count(),
                 marker_events: self.marker_events.len(),
                 ..Default::default()
             };
@@ -1705,6 +1750,8 @@ impl Renderer {
             grounded_vertices,
             readback: true,
             shadow_draws,
+            cached_shadow_casters: frozen.iter().filter(|revision| revision.is_some()).count(),
+            static_shadow_refreshes: refresh.iter().filter(|value| **value).count(),
             marker_events: self.marker_events.len(),
         };
         Ok(out)

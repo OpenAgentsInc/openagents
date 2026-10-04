@@ -1150,6 +1150,23 @@ pub fn run(original_default: bool) -> Result<(), String> {
         app.interpolation = 1.;
         save_png(&output.join("player-dead.png"), &app.draw_frame()?)?;
         if mode.as_deref() == Some("--residency-proof") {
+            let cold = std::fs::read(output.join("player-dead.png")).map_err(|e| e.to_string())?;
+            app.draw_frame()?;
+            let cached = app.draw_frame()?;
+            save_png(&output.join("cached-dead.png"), &cached)?;
+            let timing = app.renderer.as_ref().unwrap().last_timings;
+            if cold != std::fs::read(output.join("cached-dead.png")).map_err(|e| e.to_string())?
+                || timing.cached_shadow_casters == 0
+                || timing.static_shadow_refreshes != 0
+            {
+                return Err("Cached corpse shadows changed pixels or failed to reuse depth".into());
+            }
+            std::fs::write(output.join("shadow-cache.json"), serde_json::to_vec_pretty(
+                &serde_json::json!({"schema":"openagents.verse.shadow-cache-proof.v1",
+                    "cold_cached_pixels_identical":true, "cached_shadow_casters":timing.cached_shadow_casters,
+                    "static_shadow_refreshes":timing.static_shadow_refreshes,
+                    "dynamic_shadow_draws":timing.shadow_draws})
+            ).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
             let frame = app.game.frame();
             let actors = chamber::instances(&app.pack, &frame)?;
             let prior = app.renderer.as_ref().unwrap().resolve_instances(&actors)?;
