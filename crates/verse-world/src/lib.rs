@@ -250,5 +250,6 @@ pub mod service;
 pub mod spells;
 pub mod telekinesis;
 pub mod utilities;
+pub mod visuals;
 pub mod wall_of_stone;
 pub mod wind_wall;

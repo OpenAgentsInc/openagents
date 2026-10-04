@@ -244,6 +244,8 @@ The [inventory window profile](../../../bench/verse/2026-10-03/inventory-window/
 
 [#10508](https://github.com/OpenAgentsInc/openagents/issues/10508) extends wire version four with hostile telegraph/flight presentation and transient impact flashes. Data carries caster/target lives, positions, timelines, radii, and effect kinds without a damage-execution API. Admission validates identities, finite values, active timelines, unique casters, and budgets. Tests cover extraction/serialization, malformed lives/positions/times/radii/kinds/budgets, and actual TLS spectator reception. Native rendering/lighting adapters, props/blockers, HUD, prediction, persistence, and full service acceptance remain.
 
+[#10509](https://github.com/OpenAgentsInc/openagents/issues/10509) moves native spell instances and dynamic lighting onto shared read-only combat visuals. Local extraction and validated remote state produce the same shield/light/area, projectile, hostile, and impact values. The local app extracts once per frame for both consumers; nearest-light priorities and particle budgets remain. Remote projectile admission also validates caster bindings, unique IDs, finite values, and capacity. Tests cover local/remote equivalence, malformed projectiles, independent player effects, explosion fading, nearest lights, and deterministic particle bounds. Native transport mounting, remote HUD/props/blockers, prediction, persistence, and full service acceptance remain.
+
 ## Reuse inventory
 
 Review baseline: OpenAgents `843c92dd7e`. The entries below were checked against

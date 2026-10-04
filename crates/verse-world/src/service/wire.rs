@@ -140,6 +140,46 @@ pub struct Request {
     pub body: Body,
 }
 impl State {
+    /// Produces renderer values only after complete remote state admission.
+    pub fn combat_visuals(&self, instance: u64) -> Result<crate::visuals::Combat, String> {
+        self.validate(instance)?;
+        Ok(crate::visuals::Combat {
+            time: self.presentation.time,
+            projectiles: self.snapshot.projectiles.clone(),
+            players: self
+                .presentation
+                .effects
+                .iter()
+                .map(|e| crate::visuals::Player {
+                    position: e.position.into(),
+                    shield: e.shield,
+                    shield_until: e.shield_until,
+                    light: e.light.map(Into::into),
+                    areas: e.areas.clone(),
+                })
+                .collect(),
+            hostile: self
+                .presentation
+                .hostile_casts
+                .iter()
+                .map(|c| crate::visuals::Hostile {
+                    origin: c.origin.into(),
+                    target: c.target.into(),
+                    position: c.position.map(Into::into),
+                    started: c.started,
+                    release: c.release,
+                    radius: c.radius,
+                    boss: c.boss,
+                })
+                .collect(),
+            impacts: self
+                .presentation
+                .impacts
+                .iter()
+                .map(|i| (i.position.into(), i.at, i.kind))
+                .collect(),
+        })
+    }
     /// Admits the shared snapshot and its complete presentation life bindings.
     pub fn validate(&self, instance: u64) -> Result<(), String> {
         let mut sources = std::collections::BTreeSet::new();
@@ -164,6 +204,20 @@ impl State {
             || snapshot_sources.len() != self.snapshot.actors.len()
         {
             return Err("Invalid chamber snapshot life bindings".into());
+        }
+        let mut projectiles = std::collections::BTreeSet::new();
+        if self.snapshot.projectiles.len() > 128
+            || self.snapshot.projectiles.iter().any(|p| {
+                !projectiles.insert(p.id)
+                    || !sources.contains(&p.caster)
+                    || !p
+                        .pos
+                        .iter()
+                        .chain(&p.vel)
+                        .all(|v| v.is_finite() && v.abs() <= 1_000_000.)
+            })
+        {
+            return Err("Invalid chamber projectile presentation".into());
         }
         self.presentation.validate(instance, &self.actors)
     }
@@ -727,6 +781,91 @@ mod tests {
         assert_eq!(corpse.animation, verse_engine::motion::State::Death.into());
     }
 
+    #[test]
+    fn admitted_remote_combat_visuals_match_local_extraction() {
+        let mut g = gateway();
+        let k = key(24);
+        g.enroll_primary(public(&k)).unwrap();
+        let id = join(&mut g, &k);
+        g.chamber.game.activate(Ability::Shield).unwrap();
+        g.chamber.game.activate(Ability::Light).unwrap();
+        let time = g.game().time;
+        g.chamber.game.impacts.push((Vec3::Y, time, 1));
+        let frame = g.game().frame();
+        let caster = frame
+            .actors
+            .iter()
+            .find(|p| p.actor.model != "adventurer")
+            .unwrap();
+        let target = frame
+            .actors
+            .iter()
+            .find(|p| p.actor.model == "adventurer")
+            .unwrap();
+        g.chamber
+            .game
+            .encounter
+            .as_mut()
+            .unwrap()
+            .casts
+            .push(crate::combat::EnemyCast {
+                actor: caster.actor.id,
+                life: caster.life.unwrap(),
+                target_life: target.life.unwrap(),
+                position: Some(caster.actor.position),
+                origin: caster.actor.position,
+                target: target.actor.position,
+                started: time,
+                release: time + 1.,
+                impact: time + 2.,
+                damage: 8,
+                radius: 1.6,
+                boss: false,
+            });
+        let local = crate::visuals::Combat::extract(g.game());
+        let r = send(&mut g, id, 2, Body::Snapshot {});
+        let Reply::Snapshot { mut state } = r.body else {
+            panic!("Expected snapshot")
+        };
+        let remote = state.combat_visuals(110).unwrap();
+        assert_eq!(local.time, remote.time);
+        assert_eq!(
+            format!("{:?}", local.players),
+            format!("{:?}", remote.players)
+        );
+        assert_eq!(
+            format!("{:?}", local.hostile),
+            format!("{:?}", remote.hostile)
+        );
+        assert_eq!(
+            format!("{:?}", local.impacts),
+            format!("{:?}", remote.impacts)
+        );
+        assert_eq!(
+            format!("{:?}", local.projectiles),
+            format!("{:?}", remote.projectiles)
+        );
+        let caster = state.actors[0].source;
+        let projectile = crate::rules::Projectile {
+            id: 1,
+            caster,
+            kind: crate::rules::ProjectileKind::Fireball,
+            pos: [0.; 3],
+            vel: [1., 0., 0.],
+        };
+        state.snapshot.projectiles.push(projectile.clone());
+        assert!(state.combat_visuals(110).is_ok());
+        for case in 0..4 {
+            let mut bad = state.clone();
+            match case {
+                0 => bad.snapshot.projectiles[0].pos[0] = f32::NAN,
+                1 => bad.snapshot.projectiles[0].caster = u32::MAX,
+                2 => bad.snapshot.projectiles.push(projectile.clone()),
+                _ => bad.snapshot.projectiles = vec![projectile.clone(); 129],
+            }
+            assert!(bad.combat_visuals(110).is_err());
+        }
+    }
     #[test]
     fn strict_request_budget_versions_and_nested_fields_are_enforced() {
         let mut g = gateway();

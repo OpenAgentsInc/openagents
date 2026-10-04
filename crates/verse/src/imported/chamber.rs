@@ -327,17 +327,30 @@ pub fn prop_instances(pack: &Pack, game: &super::play::Game, alpha: f32) -> Vec<
 }
 /// Bind transient illumination to the same combat events that draw the effects.
 pub fn combat_lighting(game: &super::play::Game) -> super::lighting::Lighting {
+    lighting_from_visuals(
+        &verse_world::visuals::Combat::extract(game),
+        position_from_wow(game.scene.origin_wow),
+        game.scene.collision_profile.as_deref() == Some(verse_world::playground::PROFILE),
+        game.player,
+    )
+}
+/// Uses the same effect lighting for local authority and admitted remote data.
+pub fn lighting_from_visuals(
+    visuals: &verse_world::visuals::Combat,
+    origin: Vec3,
+    playground: bool,
+    focus: Vec3,
+) -> super::lighting::Lighting {
     use super::lighting::{Light, MAX_LIGHTS};
     use verse_world::utilities::Utility;
-    let mut lighting =
-        if game.scene.collision_profile.as_deref() == Some(verse_world::playground::PROFILE) {
-            playground_lighting()
-        } else {
-            lighting(position_from_wow(game.scene.origin_wow))
-        };
-    lighting.time = game.time;
+    let mut lighting = if playground {
+        playground_lighting()
+    } else {
+        lighting(origin)
+    };
+    lighting.time = visuals.time;
     let mut effects = Vec::new();
-    for (_, _, controls) in game.controlled_effects() {
+    for controls in &visuals.players {
         if let Some(position) = controls.light {
             effects.push(Light {
                 position,
@@ -347,7 +360,7 @@ pub fn combat_lighting(game: &super::play::Game) -> super::lighting::Lighting {
             });
         }
     }
-    for p in game.snapshot().projectiles {
+    for p in &visuals.projectiles {
         if p.kind == verse_world::rules::ProjectileKind::Bow {
             continue;
         }
@@ -367,11 +380,11 @@ pub fn combat_lighting(game: &super::play::Game) -> super::lighting::Lighting {
             range,
         });
     }
-    for (position, at, kind) in &game.impacts {
+    for (position, at, kind) in &visuals.impacts {
         if *kind == 3 {
             continue;
         }
-        let age = game.time - at;
+        let age = visuals.time - at;
         if !(0.0..0.6).contains(&age) {
             continue;
         }
@@ -391,18 +404,18 @@ pub fn combat_lighting(game: &super::play::Game) -> super::lighting::Lighting {
             range: if *kind == 1 { 15.0 } else { 7.0 },
         });
     }
-    for (_, position, controls) in game.controlled_effects() {
-        if controls.shield > 0 && game.time < controls.shield_until {
+    for controls in &visuals.players {
+        if controls.shield > 0 && visuals.time < controls.shield_until {
             effects.push(Light {
-                position: position + Vec3::Y * 1.3,
+                position: controls.position + Vec3::Y * 1.3,
                 color: Vec3::new(0.08, 0.5, 1.0),
                 intensity: 22.0,
                 range: 4.5,
             });
         }
     }
-    for area in game.controlled_effects().flat_map(|(_, _, c)| &c.areas) {
-        let left = area.until - game.time;
+    for area in visuals.players.iter().flat_map(|c| &c.areas) {
+        let left = area.until - visuals.time;
         if left <= 0.0 {
             continue;
         }
@@ -418,15 +431,15 @@ pub fn combat_lighting(game: &super::play::Game) -> super::lighting::Lighting {
             range,
         });
     }
-    if let Some(encounter) = &game.encounter {
-        for cast in &encounter.casts {
-            let position = if game.time < cast.release {
+    {
+        for cast in &visuals.hostile {
+            let position = if visuals.time < cast.release {
                 cast.origin
             } else {
                 cast.position.unwrap_or(cast.origin)
             };
             let charge =
-                ((game.time - cast.started) / (cast.release - cast.started)).clamp(0.0, 1.0);
+                ((visuals.time - cast.started) / (cast.release - cast.started)).clamp(0.0, 1.0);
             effects.push(Light {
                 position,
                 color: Vec3::new(0.65, 0.04, 1.0),
@@ -436,7 +449,7 @@ pub fn combat_lighting(game: &super::play::Game) -> super::lighting::Lighting {
         }
     }
     // Reserve two shadow slots for the brightest nearby effects; keep fixture light stable.
-    let priority = |l: &Light| l.intensity / (1.0 + l.position.distance_squared(game.player));
+    let priority = |l: &Light| l.intensity / (1.0 + l.position.distance_squared(focus));
     effects.sort_by(|a, b| priority(b).total_cmp(&priority(a)));
     effects.truncate(MAX_LIGHTS - lighting.lights.len());
     let shadowed_effects = effects.len().min(2);
@@ -738,8 +751,12 @@ pub fn add_effect_models(pack: &mut Pack, dir: &std::path::Path) -> Result<(), S
     pack.validate()
 }
 pub fn spell_instances(game: &super::play::Game) -> Vec<Instance> {
+    spell_instances_from_visuals(&verse_world::visuals::Combat::extract(game))
+}
+/// Draws admitted visual values without borrowing local world authority.
+pub fn spell_instances_from_visuals(visuals: &verse_world::visuals::Combat) -> Vec<Instance> {
     let mut out = Vec::new();
-    for p in game.snapshot().projectiles {
+    for p in &visuals.projectiles {
         if p.kind == verse_world::rules::ProjectileKind::Bow {
             continue;
         }
@@ -754,7 +771,7 @@ pub fn spell_instances(game: &super::play::Game) -> Vec<Instance> {
             model: if force { "effect-force" } else { "effect-fire" }.into(),
             transform: Mat4::from_translation(p.pos.into()) * Mat4::from_scale(Vec3::splat(scale)),
             animation: 0.into(),
-            time: game.time,
+            time: visuals.time,
             emission: Vec3::ONE,
         });
         for trail in 1..4 {
@@ -765,18 +782,19 @@ pub fn spell_instances(game: &super::play::Game) -> Vec<Instance> {
                     Vec3::from(p.pos) - Vec3::from(p.vel).normalize_or_zero() * trail as f32 * 0.2,
                 ) * Mat4::from_scale(Vec3::splat(scale * (1.0 - trail as f32 * 0.2))),
                 animation: 0.into(),
-                time: game.time,
+                time: visuals.time,
                 emission: Vec3::ONE,
             });
         }
     }
     use verse_world::utilities::Utility;
-    for area in game
-        .controlled_effects()
-        .flat_map(|(_, _, c)| &c.areas)
-        .filter(|a| a.until > game.time)
+    for area in visuals
+        .players
+        .iter()
+        .flat_map(|c| &c.areas)
+        .filter(|a| a.until > visuals.time)
     {
-        let left = area.until - game.time;
+        let left = area.until - visuals.time;
         let (model, scale, alpha) = match area.kind {
             Utility::MistyStep => ("effect-mist", Vec3::new(0.9, 1.7, 0.9), left / 0.7),
             Utility::Thunderwave => (
@@ -802,48 +820,49 @@ pub fn spell_instances(game: &super::play::Game) -> Vec<Instance> {
                     Mat4::from_scale(scale)
                 },
             animation: 0.into(),
-            time: game.time,
+            time: visuals.time,
             emission: Vec3::splat(alpha),
         });
     }
-    for (_, player_position, controls) in game.controlled_effects() {
+    for controls in &visuals.players {
+        let player_position = controls.position;
         if let Some(position) = controls.light {
             out.push(Instance {
                 actor: None,
                 model: "effect-light".into(),
                 transform: Mat4::from_translation(position) * Mat4::from_scale(Vec3::splat(0.12)),
                 animation: 0.into(),
-                time: game.time,
+                time: visuals.time,
                 emission: Vec3::ONE,
             });
         }
-        if controls.shield > 0 && game.time < controls.shield_until {
+        if controls.shield > 0 && visuals.time < controls.shield_until {
             out.push(Instance {
                 actor: None,
                 model: "effect-shield".into(),
                 transform: Mat4::from_translation(player_position + Vec3::Y * 1.05)
-                    * Mat4::from_rotation_y(game.time * 0.7)
+                    * Mat4::from_rotation_y(visuals.time * 0.7)
                     * Mat4::from_scale(Vec3::new(1.1, 1.25, 1.1)),
                 animation: 0.into(),
-                time: game.time,
+                time: visuals.time,
                 emission: Vec3::splat(0.8),
             });
         }
-        if controls.shield > 0 && game.time < controls.shield_until {
+        if controls.shield > 0 && visuals.time < controls.shield_until {
             for n in 0..6 {
-                let angle = game.time * 1.3 + n as f32 * std::f32::consts::TAU / 6.0;
+                let angle = visuals.time * 1.3 + n as f32 * std::f32::consts::TAU / 6.0;
                 let center = player_position
                     + Vec3::new(
                         angle.cos() * 1.05,
                         1.05 + (angle * 2.0).sin() * 0.8,
                         angle.sin() * 1.05,
                     );
-                out.push(particle("effect-force", center, 0.18, 0.5, game.time));
+                out.push(particle("effect-force", center, 0.18, 0.5, visuals.time));
             }
         }
     }
-    if let Some(encounter) = &game.encounter {
-        for cast in &encounter.casts {
+    {
+        for cast in &visuals.hostile {
             out.push(Instance {
                 actor: None,
                 model: "effect-rune".into(),
@@ -851,10 +870,10 @@ pub fn spell_instances(game: &super::play::Game) -> Vec<Instance> {
                     * Mat4::from_rotation_x(-std::f32::consts::FRAC_PI_2)
                     * Mat4::from_scale(Vec3::splat(cast.radius)),
                 animation: 0.into(),
-                time: game.time,
+                time: visuals.time,
                 emission: Vec3::splat(0.6),
             });
-            let position = if game.time < cast.release {
+            let position = if visuals.time < cast.release {
                 cast.origin
             } else {
                 cast.position.unwrap_or(cast.origin)
@@ -865,10 +884,10 @@ pub fn spell_instances(game: &super::play::Game) -> Vec<Instance> {
                 model: "effect-shadow".into(),
                 transform: Mat4::from_translation(position) * Mat4::from_scale(Vec3::splat(size)),
                 animation: 0.into(),
-                time: game.time,
+                time: visuals.time,
                 emission: Vec3::ONE,
             });
-            if game.time >= cast.release {
+            if visuals.time >= cast.release {
                 let direction = (cast.target + Vec3::Y - cast.origin).normalize_or_zero();
                 out.push(Instance {
                     actor: None,
@@ -877,17 +896,17 @@ pub fn spell_instances(game: &super::play::Game) -> Vec<Instance> {
                         * Mat4::from_quat(Quat::from_rotation_arc(Vec3::Y, direction))
                         * Mat4::from_scale(Vec3::new(size * 0.7, 0.85, 1.0)),
                     animation: 0.into(),
-                    time: game.time,
+                    time: visuals.time,
                     emission: Vec3::splat(0.75),
                 });
             }
         }
     }
-    for (position, at, kind) in &game.impacts {
+    for (position, at, kind) in &visuals.impacts {
         if *kind == 3 {
             continue;
         }
-        let elapsed = game.time - at;
+        let elapsed = visuals.time - at;
         let scale = if *kind == 1 {
             0.6 + elapsed * 10.0
         } else {
@@ -898,11 +917,11 @@ pub fn spell_instances(game: &super::play::Game) -> Vec<Instance> {
             model: "effect-impact".into(),
             transform: Mat4::from_translation(*position) * Mat4::from_scale(Vec3::splat(scale)),
             animation: 0.into(),
-            time: game.time,
+            time: visuals.time,
             emission: Vec3::splat((1.0 - elapsed / 0.6).max(0.0)),
         });
     }
-    for p in &game.snapshot().projectiles {
+    for p in &visuals.projectiles {
         if matches!(
             p.kind,
             verse_world::rules::ProjectileKind::MagicMissile
@@ -913,7 +932,7 @@ pub fn spell_instances(game: &super::play::Game) -> Vec<Instance> {
         let direction = Vec3::from(p.vel).normalize_or_zero();
         for n in 0..8 {
             let age = (n as f32 + 0.5) * 0.045;
-            let phase = game.time * 8.0 + n as f32 * 2.4 + p.id as f32;
+            let phase = visuals.time * 8.0 + n as f32 * 2.4 + p.id as f32;
             let center = Vec3::from(p.pos) - direction * Vec3::from(p.vel).length() * age
                 + Vec3::new(phase.sin(), age * 3.0, phase.cos()) * age * 0.4;
             out.push(particle(
@@ -921,7 +940,7 @@ pub fn spell_instances(game: &super::play::Game) -> Vec<Instance> {
                 center,
                 0.12 + age * 0.25,
                 1.0 - age / 0.5,
-                game.time,
+                visuals.time,
             ));
             if n % 2 == 0 {
                 out.push(particle(
@@ -929,16 +948,16 @@ pub fn spell_instances(game: &super::play::Game) -> Vec<Instance> {
                     center + Vec3::Y * age,
                     0.2 + age,
                     age * 0.65,
-                    game.time,
+                    visuals.time,
                 ));
             }
         }
     }
-    for (position, at, kind) in &game.impacts {
+    for (position, at, kind) in &visuals.impacts {
         if *kind == 3 {
             continue;
         }
-        let age = game.time - at;
+        let age = visuals.time - at;
         for n in 0..if *kind == 1 { 16 } else { 6 } {
             let seed = *at * 7.31 + position.dot(Vec3::new(0.17, 0.31, 0.73)) + n as f32 * 2.39996;
             let direction =
@@ -950,7 +969,7 @@ pub fn spell_instances(game: &super::play::Game) -> Vec<Instance> {
                 center,
                 0.05 + 0.08 * (1.0 - age / 0.6),
                 (1.0 - age / 0.6).max(0.0),
-                game.time,
+                visuals.time,
             ));
         }
     }
@@ -1067,6 +1086,23 @@ mod tests {
             game.submit(verse_world::Controller(10), command).unwrap();
         }
         let effects = spell_instances(&game);
+        let visuals = verse_world::visuals::Combat::extract(&game);
+        assert_eq!(
+            format!("{:?}", effects),
+            format!("{:?}", spell_instances_from_visuals(&visuals))
+        );
+        assert_eq!(
+            format!("{:?}", combat_lighting(&game)),
+            format!(
+                "{:?}",
+                lighting_from_visuals(
+                    &visuals,
+                    position_from_wow(game.scene.origin_wow),
+                    false,
+                    game.player
+                )
+            )
+        );
         let shields: Vec<_> = effects
             .iter()
             .filter(|i| i.model == "effect-shield")

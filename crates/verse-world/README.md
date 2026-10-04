@@ -139,8 +139,13 @@ still require adapters.
 Wire version four also carries hostile cast telegraphs/flights and transient
 impact flashes. Presentation validates caster/target lives, finite positions,
 timelines, radii, effect kinds, and budgets. These values describe visuals;
-clients never apply hostile damage. Native effects and lighting still need to
-consume this data. Older wire versions are refused.
+clients never apply hostile damage. Older wire versions are refused.
+
+`visuals::Combat` supplies read-only spell, shield, area, hostile, and impact
+values to rendering. Local extraction and validated `State::combat_visuals`
+share that contract. Native spell instances and dynamic lighting consume it;
+the local app extracts it once per frame. Remote transport mounting, HUD,
+props/blockers, and full service acceptance remain.
 
 Revocation leaves an uncontrolled actor in the world; actor retirement and capacity reclamation remain lifecycle work.
 Transactional saves, multiplayer

@@ -358,14 +358,20 @@ impl App {
             );
         }
         let mut actors = chamber::instances(&self.pack, &frame)?;
-        actors.extend(chamber::spell_instances(&self.game));
+        let combat_visuals = verse_world::visuals::Combat::extract(&self.game);
+        actors.extend(chamber::spell_instances_from_visuals(&combat_visuals));
         actors.extend(chamber::blocker_instances(&self.pack, &self.game));
         actors.extend(chamber::prop_instances(
             &self.pack,
             &self.game,
             self.interpolation,
         ));
-        let lighting = chamber::combat_lighting(&self.game);
+        let lighting = chamber::lighting_from_visuals(
+            &combat_visuals,
+            position_from_wow(self.game.scene.origin_wow),
+            self.game.scene.collision_profile.as_deref() == Some(verse_world::playground::PROFILE),
+            self.game.player,
+        );
         let renderer = self.renderer.as_mut().unwrap();
         renderer.set_overlay_size(width, height);
         let pixels = if self.presenter.is_none() || self.proof.is_some() {
