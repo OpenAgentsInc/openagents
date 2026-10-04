@@ -707,6 +707,7 @@ mod tests {
 
     fn task(id: &str, entry: &str, status: coder_access::studio::TaskStatus) -> Task {
         Task {
+            spend: Default::default(),
             task: id.into(),
             goal: "g-old".into(),
             entry: entry.into(),

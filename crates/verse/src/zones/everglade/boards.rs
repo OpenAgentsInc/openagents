@@ -646,6 +646,7 @@ mod tests {
     #[test]
     fn each_shown_card_is_a_target_on_the_wall() {
         let task = |id: &str, status| Task {
+            spend: Default::default(),
             task: id.into(),
             goal: "g1".into(),
             entry: id.into(),
@@ -675,6 +676,8 @@ mod tests {
             "both top cards share a row"
         );
         assert!(running.distance(held) > 0.1, "in different columns");
+    }
+
     use coder_access::studio::Goal;
 
     #[test]
@@ -712,6 +715,7 @@ mod tests {
         goal(&mut empty, Some(&View::default()));
         let view = View {
             goals: vec![Goal {
+                spend: Default::default(),
                 goal: "g1".into(),
                 text: "Add a dark mode".into(),
                 workspace: "repo".into(),

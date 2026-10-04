@@ -105,7 +105,51 @@ pub fn title(kind: &PanelKind, view: Option<&Studio>) -> String {
         },
         PanelKind::Decisions => "Decisions".into(),
         PanelKind::Review => "Diff review".into(),
+        PanelKind::Task(id) => view
+            .and_then(|v| v.tasks.iter().find(|t| &t.task == id))
+            .map_or_else(|| "Task".into(), |task| task.title.clone()),
+        PanelKind::Library => "Library".into(),
     }
+}
+
+/// One task's details on a phone: its seat, status, and dependencies. The
+/// task actions stay on the desktop's task panel.
+fn task_rows(view: &Studio, id: &str) -> Vec<Node<Intent>> {
+    let Some(task) = view.tasks.iter().find(|t| t.task == id) else {
+        return vec![note(
+            "task-missing",
+            "This task is no longer on the Task Wall.",
+        )];
+    };
+    let mut body = format!("**{}**\n\n{} · {:?}", task.title, task.seat, task.status);
+    if !task.depends_on.is_empty() {
+        body.push_str(&format!("\n\nWaits on: {}", task.depends_on.join(", ")));
+    }
+    vec![markdown("studio-task".into(), &body)]
+}
+
+/// The shared memory on a phone: the pinned plan first, then the newest
+/// entries.
+fn library_rows(view: &Studio) -> Vec<Node<Intent>> {
+    if view.memory.is_empty() {
+        return vec![note(
+            "library-empty",
+            "Nothing is in the shared memory yet.",
+        )];
+    }
+    let mut entries: Vec<_> = view.memory.iter().collect();
+    entries.sort_by_key(|m| (!m.pinned, std::cmp::Reverse(m.entry.clone())));
+    entries
+        .into_iter()
+        .enumerate()
+        .map(|(i, memory)| {
+            let heading = if memory.pinned { "Plan" } else { "Note" };
+            markdown(
+                format!("studio-memory-{i}"),
+                &format!("**{heading}** · {}\n\n{}", memory.author, memory.text),
+            )
+        })
+        .collect()
 }
 
 /// When the goal named `goal` was submitted, for ordering.
@@ -442,6 +486,8 @@ pub fn rows(
         PanelKind::Seat(_) | PanelKind::Desk(_) => seat_rows(kind, view),
         PanelKind::Decisions => decision_rows(view),
         PanelKind::Review => review_rows(view, review),
+        PanelKind::Task(id) => task_rows(view, id),
+        PanelKind::Library => library_rows(view),
     };
     // Keep the whole view inside Rust Native's encoded bound: stop at the
     // row count or the byte budget, whichever comes first.

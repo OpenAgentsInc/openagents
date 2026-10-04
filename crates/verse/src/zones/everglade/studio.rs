@@ -567,8 +567,9 @@ impl Particles {
     }
 }
 
-/// The seat that owns the oldest open decision ([`intents::decisions`]):
-/// the asking seat, or the goal's lead for a decision about the goal.
+/// The seat that owns the decision the podium answers next
+/// ([`intents::decisions`]: most urgent kind first, then oldest): the
+/// asking seat, or the goal's lead for a decision about the goal.
 #[must_use]
 pub fn marked(view: &View) -> Option<&str> {
     let oldest = intents::decisions(view).into_iter().next()?;
@@ -832,6 +833,8 @@ impl Studio {
     /// first (`signals::Signals::observe`).
     pub fn take_events(&mut self) -> Vec<super::signals::Event> {
         std::mem::take(&mut self.events)
+    }
+
     /// Where the player stands, once a frame before [`Studio::tick`], so
     /// a waiting seat can meet them and heads can turn to them.
     pub fn set_player(&mut self, player: Option<Vec3>) {
@@ -1144,6 +1147,8 @@ impl Studio {
     /// Turns the studio's sounds on or off.
     pub fn set_sounds(&mut self, on: bool) {
         self.muted = !on;
+    }
+
     /// Every seat as the zone draws it: where it stands, its posture, and
     /// where it looks.
     #[must_use]

@@ -254,6 +254,7 @@ mod tests {
 
     fn goal(id: &str, status: GoalStatus, done: u32, total: u32, at: u64) -> Goal {
         Goal {
+            spend: Default::default(),
             goal: id.into(),
             text: format!("goal {id}"),
             workspace: "repo".into(),
@@ -267,6 +268,7 @@ mod tests {
 
     fn task(id: &str, status: TaskStatus) -> Task {
         Task {
+            spend: Default::default(),
             task: id.into(),
             goal: "g1".into(),
             entry: id.into(),

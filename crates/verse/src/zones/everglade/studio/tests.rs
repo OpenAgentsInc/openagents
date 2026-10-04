@@ -541,6 +541,7 @@ fn a_waiting_seat_walks_over_to_a_player_near_the_podium_and_back() {
 
 fn goal(id: &str, submitted_at: u64) -> coder_access::studio::Goal {
     coder_access::studio::Goal {
+        spend: Default::default(),
         goal: id.into(),
         text: "Greet the visitor".into(),
         workspace: "site".into(),
@@ -574,7 +575,7 @@ fn decision(
 }
 
 #[test]
-fn the_mark_stands_over_the_seat_that_owns_the_oldest_decision() {
+fn the_mark_stands_over_the_seat_whose_decision_the_podium_answers_next() {
     let mut view = View {
         goals: vec![goal("g1", 10), goal("g2", 5)],
         seats: vec![
@@ -593,8 +594,14 @@ fn the_mark_stands_over_the_seat_that_owns_the_oldest_decision() {
     assert_eq!(marked(&view), Some("grace"));
     // A decision about the goal itself belongs to the goal's lead.
     let mut goal_only = view.clone();
-    goal_only.decisions[1] = decision("d2", "g2", None, "Plan the greeting.");
+    goal_only.decisions = vec![decision("d2", "g2", None, "Plan the greeting.")];
     assert_eq!(marked(&goal_only), Some("lead"));
+    // A seat's question comes before an older plan problem, as at the
+    // podium.
+    let mut mixed = view.clone();
+    mixed.decisions[1] = decision("d2", "g2", None, "Plan the greeting.");
+    mixed.canonicalize();
+    assert_eq!(marked(&mixed), Some("ada"));
     // No open decision, no mark.
     let mut none = view.clone();
     none.decisions.clear();
@@ -631,6 +638,7 @@ fn the_mark_stands_over_the_seat_that_owns_the_oldest_decision() {
 #[test]
 fn the_lead_asks_the_person_then_hands_a_worker_its_task() {
     let task = |id: &str, entry: &str, seat: &str, title: &str| Task {
+        spend: Default::default(),
         task: id.into(),
         goal: "g1".into(),
         entry: entry.into(),
