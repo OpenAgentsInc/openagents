@@ -104,6 +104,9 @@ struct Scene {
     textured_pending: Option<PreparedTextured>,
     /// The world's textured meshes on the GPU.
     textured: Option<TexturedGpu>,
+    /// The dynamic mesh's figure on the GPU, with the scene it was uploaded
+    /// from; a different scene uploads again.
+    figure: Option<(std::sync::Arc<TexturedScene>, TexturedGpu)>,
     /// Created on the first frame that carries a sky.
     photo: Option<Photo>,
     photo_failed: bool,
@@ -692,6 +695,7 @@ impl Renderer {
         self.scene.world_lit = upload_lit(&self.device, &world.lit);
         self.scene.textured_pending = textured;
         self.scene.textured = None;
+        self.scene.figure = None;
         // Animated models can be much larger than plaza avatars. A return
         // releases their buffer capacity instead of retaining the largest zone.
         self.scene.dynamic_faces = dynamic_batch(&self.device, "verse dynamic faces");
@@ -963,6 +967,9 @@ fn validate_frame(view: View, dynamic: &Mesh, ui: &UiBatch) -> Result<(), String
         })
     {
         return Err("frame exceeds its physical geometry bounds".into());
+    }
+    if let Some(figure) = &dynamic.figure {
+        figure.validate()?;
     }
     Ok(())
 }
@@ -1536,6 +1543,7 @@ impl Scene {
                 None
             }),
             textured: None,
+            figure: None,
             photo: None,
             photo_failed: false,
             headroom: 1.0,
@@ -1735,6 +1743,21 @@ impl Scene {
         if let Some((scene, merged)) = self.textured_pending.take() {
             self.textured = Some(photo.upload_textured(device, queue, &scene, &merged));
         }
+        if let Some(figure) = &dynamic.figure {
+            if self
+                .figure
+                .as_ref()
+                .is_none_or(|(scene, _)| !std::sync::Arc::ptr_eq(scene, &figure.scene))
+            {
+                self.figure = Some((
+                    figure.scene.clone(),
+                    photo.upload_figure(device, queue, figure),
+                ));
+            }
+            if let Some((_, gpu)) = &self.figure {
+                gpu.write_vertices(queue, &figure.vertices);
+            }
+        }
         if matches!(stage, Stage::Space(_))
             && let Err(error) = photo.prepare_space(device, queue)
         {
@@ -1774,6 +1797,10 @@ impl Scene {
                 (&self.dynamic_lines.buffer, self.dynamic_lines.count),
             ],
             textured: self.textured.as_ref(),
+            figure: dynamic
+                .figure
+                .as_ref()
+                .and(self.figure.as_ref().map(|(_, gpu)| gpu)),
         };
         photo.headroom = self.headroom;
         photo.encode(

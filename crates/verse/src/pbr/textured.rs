@@ -645,6 +645,84 @@ impl TexturedScene {
     }
 }
 
+/// One animated textured model in a frame's dynamic mesh, such as a skinned
+/// character posed on the CPU.
+///
+/// The renderer uploads `scene`'s images, materials, and the indices of its
+/// one mesh once for each distinct `scene` (by [`Arc`] identity), then
+/// rewrites one vertex buffer from `vertices` each frame. That keeps skinning
+/// off the GPU, so OpenGL ES 3.0 and WebGL2, which have no storage buffers,
+/// draw it as desktops do. It draws in the textured passes after the world's
+/// cells, without culling, and casts shadows.
+#[derive(Clone)]
+pub struct Figure {
+    /// Images, materials, and exactly one mesh without placements.
+    pub scene: std::sync::Arc<TexturedScene>,
+    /// This frame's world-space vertices: every primitive's in turn, as many
+    /// as the mesh has.
+    pub vertices: std::sync::Arc<Vec<TexturedVertex>>,
+}
+
+impl std::fmt::Debug for Figure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Figure({:?}, {} vertices)",
+            self.scene,
+            self.vertices.len()
+        )
+    }
+}
+
+impl Figure {
+    /// Checks the scene, that the frame's vertices match its mesh, and that
+    /// they are finite.
+    ///
+    /// # Errors
+    ///
+    /// Returns a message naming the first part that is out of bounds.
+    pub fn validate(&self) -> Result<(), String> {
+        self.scene.validate()?;
+        let [mesh] = self.scene.meshes.as_slice() else {
+            return Err("a figure has exactly one mesh".into());
+        };
+        let count: usize = mesh.primitives.iter().map(|p| p.vertices.len()).sum();
+        if !self.scene.placements.is_empty()
+            || count != self.vertices.len()
+            || count > u32::MAX as usize
+            || !self.vertices.iter().all(TexturedVertex::finite)
+        {
+            return Err("a figure's vertices do not match its mesh".into());
+        }
+        Ok(())
+    }
+
+    /// The figure's mesh as uploaded: its bind-pose vertices, its indices
+    /// offset into one buffer, and one batch per primitive.
+    pub(crate) fn merged(&self) -> Merged {
+        let mut merged = Merged::default();
+        for mesh in &self.scene.meshes {
+            for p in &mesh.primitives {
+                let base = merged.vertices.len() as u32;
+                let first = merged.indices.len() as u32;
+                merged.vertices.extend_from_slice(&p.vertices);
+                merged.indices.extend(p.indices.iter().map(|i| i + base));
+                if p.indices.is_empty() {
+                    continue;
+                }
+                merged.batches.push(Batch {
+                    material: p.material,
+                    first,
+                    count: p.indices.len() as u32,
+                    min: Vec3::splat(f32::NEG_INFINITY),
+                    max: Vec3::splat(f32::INFINITY),
+                });
+            }
+        }
+        merged
+    }
+}
+
 /// A merged scene: world-space vertices and indices, and the cells that
 /// draw ranges of them.
 #[derive(Clone, Debug, Default, PartialEq)]

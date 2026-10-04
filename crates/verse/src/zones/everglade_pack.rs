@@ -24,13 +24,16 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, mpsc};
 use std::thread::JoinHandle;
 
-pub use format::{AlphaMode, Limits, Material, Model, Primitive, Texture, Vertex, ZonePack};
+pub use format::{
+    AlphaMode, Character, Clip, Joint, Limits, Material, Model, Primitive, SkinnedPrimitive,
+    SkinnedVertex, Texture, Track, Vertex, ZonePack,
+};
 use pinned::PinnedFile;
 
 /// Exact content identity of the reviewed Everglade pack.
-pub const PACK_SHA256: &str = "b57e33f733865ff639c87e6c0314f7e8f55c59d6ef313271880459ffb64bc49c";
+pub const PACK_SHA256: &str = "3680adf2e3d6c67831596a19fb19aa2f2b4e014a39c8abcaabc3e0ccc2ae7297";
 /// Transfer size of the reviewed Everglade pack.
-pub const PACK_BYTES: u64 = 13373560;
+pub const PACK_BYTES: u64 = 14960884;
 /// The most triangles the Everglade layout may place, counting each placement.
 pub const PLACED_TRIANGLE_BUDGET: u64 = 250_000;
 /// Where packs are committed, relative to the repository root.
@@ -39,7 +42,10 @@ pub const PACK_DIRECTORY: &str = "assets/verse/everglade";
 pub const PACK_EXTENSION: &str = "vtp";
 // Retain previous reviewed digests here when changing PACK_SHA256. Other
 // zones share the cache directory; arbitrary digest names are not ours.
-const EVERGLADE_PACK_HISTORY: &[&str] = &[PACK_SHA256];
+const EVERGLADE_PACK_HISTORY: &[&str] = &[
+    PACK_SHA256,
+    "b57e33f733865ff639c87e6c0314f7e8f55c59d6ef313271880459ffb64bc49c",
+];
 
 /// The reviewed pack and its source.
 pub fn pinned() -> PinnedFile {

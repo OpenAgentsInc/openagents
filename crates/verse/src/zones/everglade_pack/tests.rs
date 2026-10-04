@@ -136,8 +136,8 @@ fn write_manifest(
 #[test]
 fn synthetic_sources_compile_deterministically_and_round_trip() {
     let root = synthetic_root();
-    let first = compile::compile(root.path(), &["glade"], &Limits::EVERGLADE).unwrap();
-    let second = compile::compile(root.path(), &["glade"], &Limits::EVERGLADE).unwrap();
+    let first = compile::compile(root.path(), &["glade"], None, &Limits::EVERGLADE).unwrap();
+    let second = compile::compile(root.path(), &["glade"], None, &Limits::EVERGLADE).unwrap();
     assert_eq!(first, second);
     assert_eq!(first.sha256, sha(&first.bytes));
     assert_eq!((first.models, first.triangles), (1, 2));
@@ -174,7 +174,7 @@ fn oversized_textures_are_downscaled_with_alpha_weighting() {
         texture_edge: 4,
         ..Limits::EVERGLADE
     };
-    let compiled = compile::compile(root.path(), &["glade"], &limits).unwrap();
+    let compiled = compile::compile(root.path(), &["glade"], None, &limits).unwrap();
     let pack = format::decode(&compiled.bytes, &limits).unwrap();
     let texture = &pack.textures[0];
     assert_eq!((texture.width, texture.height), (4, 4));
@@ -202,7 +202,7 @@ fn changed_sources_are_refused_by_digest() {
     let mut bytes = std::fs::read(&bin).unwrap();
     bytes[0] ^= 1;
     std::fs::write(&bin, bytes).unwrap();
-    let error = compile::compile(root.path(), &["glade"], &Limits::EVERGLADE).unwrap_err();
+    let error = compile::compile(root.path(), &["glade"], None, &Limits::EVERGLADE).unwrap_err();
     assert!(error.contains("digest mismatch: glade/Card.bin"), "{error}");
 }
 
@@ -210,7 +210,7 @@ fn changed_sources_are_refused_by_digest() {
 fn unadmitted_and_linked_files_are_refused() {
     let root = synthetic_root();
     std::fs::write(root.path().join("glade/Leaf_Normal.png"), leaf_png()).unwrap();
-    let error = compile::compile(root.path(), &["glade"], &Limits::EVERGLADE).unwrap_err();
+    let error = compile::compile(root.path(), &["glade"], None, &Limits::EVERGLADE).unwrap_err();
     assert!(error.contains("unadmitted file"), "{error}");
 
     #[cfg(unix)]
@@ -220,7 +220,7 @@ fn unadmitted_and_linked_files_are_refused() {
         let outside = root.path().join("Leaf.png");
         std::fs::rename(set.join("Leaf.png"), &outside).unwrap();
         std::os::unix::fs::symlink(&outside, set.join("Leaf.png")).unwrap();
-        assert!(compile::compile(root.path(), &["glade"], &Limits::EVERGLADE).is_err());
+        assert!(compile::compile(root.path(), &["glade"], None, &Limits::EVERGLADE).is_err());
     }
 }
 
@@ -228,7 +228,7 @@ fn unadmitted_and_linked_files_are_refused() {
 fn every_budget_is_enforced_by_the_compiler() {
     let root = synthetic_root();
     let refused = |limits: Limits| {
-        compile::compile(root.path(), &["glade"], &limits).expect_err("budget must refuse")
+        compile::compile(root.path(), &["glade"], None, &limits).expect_err("budget must refuse")
     };
     let error = refused(Limits {
         triangles: 1,
@@ -374,7 +374,13 @@ fn committed_manifests_admit_only_base_color_sources_with_licenses() {
 #[test]
 fn committed_sources_compile_within_budgets_to_the_pinned_pack() {
     let root = repository().join(PACK_DIRECTORY);
-    let compiled = compile::compile(&root, &SETS, &Limits::EVERGLADE).unwrap();
+    let compiled = compile::compile(
+        &root,
+        &SETS,
+        Some(&root.join(compile::PLAYER_SOURCES)),
+        &Limits::EVERGLADE,
+    )
+    .unwrap();
     assert!(compiled.triangles <= Limits::EVERGLADE.triangles);
     assert!(compiled.decoded_texture_bytes <= Limits::EVERGLADE.decoded_texture_bytes);
     assert!(
@@ -411,6 +417,24 @@ fn committed_sources_compile_within_budgets_to_the_pinned_pack() {
             .iter()
             .all(|t| t.width <= 1024 && t.height <= 1024)
     );
+    // The ritual chamber's player, with the clips the movement states play,
+    // within its own triangle budget and with bounded images.
+    let player = pack.character.as_ref().expect("the player's character");
+    assert_eq!(player.name, "player/male-ranger");
+    for clip in ["idle", "walk", "run", "jump"] {
+        assert!(player.clip(clip).is_some(), "{clip}");
+    }
+    assert!(player.clip("walk").unwrap().distance > 1.0);
+    assert!(player.clip("run").unwrap().distance > player.clip("walk").unwrap().distance);
+    assert_eq!(player.clip("idle").unwrap().distance, 0.0);
+    assert!(player.triangles() <= Limits::EVERGLADE.character_triangles);
+    assert!(compiled.triangles >= player.triangles());
+    for primitive in &player.primitives {
+        let texture = pack.materials[primitive.material as usize].texture.unwrap();
+        let texture = &pack.textures[texture as usize];
+        assert!(texture.name.starts_with("player/"));
+        assert!(texture.width <= compile::PLAYER_TEXTURE_EDGE);
+    }
 
     if PACK_BYTES != 0 {
         assert_eq!(compiled.sha256, PACK_SHA256, "rebuild and repin the pack");
@@ -423,7 +447,7 @@ fn committed_sources_compile_within_budgets_to_the_pinned_pack() {
 
 fn tiny_contents() -> Contents {
     let root = synthetic_root();
-    let compiled = compile::compile(root.path(), &["glade"], &Limits::EVERGLADE).unwrap();
+    let compiled = compile::compile(root.path(), &["glade"], None, &Limits::EVERGLADE).unwrap();
     format::decode_contents(&compiled.bytes, &Limits::EVERGLADE).unwrap()
 }
 
@@ -612,4 +636,87 @@ fn pruning_removes_only_named_history_and_stale_own_temps() {
     // A recent temp may belong to a live install.
     assert!(cache.join(".test-1-1.part").exists());
     assert!(cache.join(file.cache_name()).exists());
+}
+
+/// A one-triangle character on the tiny pack's material.
+fn tiny_character() -> format::Character {
+    use format::{Character, Clip, Joint, SkinnedPrimitive, SkinnedVertex, Track, Vertex};
+    let identity = glam::Mat4::IDENTITY.to_cols_array();
+    let joint = |parent| Joint {
+        parent,
+        translation: [0.0, 1.0, 0.0],
+        rotation: [0.0, 0.0, 0.0, 1.0],
+        scale: [1.0; 3],
+        inverse_bind: identity,
+    };
+    let vertex = |x: f32| SkinnedVertex {
+        vertex: Vertex {
+            position: [x, 1.0, 0.0],
+            normal: [0.0, 0.0, 1.0],
+            uv: [x, 0.5],
+            color: [255; 4],
+        },
+        joints: [1, 0, 0, 0],
+        weights: [200, 55, 0, 0],
+    };
+    Character {
+        name: "player/test".into(),
+        joints: vec![joint(-1), joint(0)],
+        primitives: vec![SkinnedPrimitive {
+            material: 0,
+            vertices: vec![vertex(0.0), vertex(1.0), vertex(0.5)],
+            indices: vec![0, 1, 2],
+        }],
+        clips: vec![Clip {
+            name: "walk".into(),
+            duration: 1.0,
+            distance: 1.5,
+            tracks: vec![Track {
+                joint: 1,
+                translation: vec![],
+                rotation: vec![
+                    (0.0, [0.0, 0.0, 0.0, 1.0]),
+                    (1.0, [0.0, 0.7071, 0.0, 0.7071]),
+                ],
+                scale: vec![(0.0, [1.0; 3])],
+            }],
+        }],
+    }
+}
+
+#[test]
+fn a_character_round_trips_and_is_bounded() {
+    let mut contents = tiny_contents();
+    contents.character = Some(tiny_character());
+    let bytes = format::encode(&contents, &Limits::EVERGLADE).unwrap();
+    let decoded = format::decode_contents(&bytes, &Limits::EVERGLADE).unwrap();
+    assert_eq!(decoded, contents);
+    assert!(format::decode_contents(&bytes[..bytes.len() - 1], &Limits::EVERGLADE).is_err());
+
+    // A character's triangles count against its own budget.
+    let tight = Limits {
+        character_triangles: 0,
+        ..Limits::EVERGLADE
+    };
+    assert!(format::encode(&contents, &tight).is_err());
+    assert!(format::decode_contents(&bytes, &tight).is_err());
+
+    let refused = |change: &dyn Fn(&mut format::Character)| {
+        let mut broken = contents.clone();
+        change(broken.character.as_mut().unwrap());
+        format::encode(&broken, &Limits::EVERGLADE).is_err()
+    };
+    // A parent after its child, an influence past the skeleton, a vertex
+    // with no weight, a colored vertex, a key past its clip, a repeated
+    // clip, a nonfinite pose, and a missing material are refused.
+    assert!(refused(&|c| c.joints[0].parent = 1));
+    assert!(refused(&|c| c.primitives[0].vertices[0].joints[0] = 2));
+    assert!(refused(&|c| c.primitives[0].vertices[0].weights = [0; 4]));
+    assert!(refused(
+        &|c| c.primitives[0].vertices[0].vertex.color = [0; 4]
+    ));
+    assert!(refused(&|c| c.clips[0].tracks[0].rotation[1].0 = 2.0));
+    assert!(refused(&|c| c.clips.push(c.clips[0].clone())));
+    assert!(refused(&|c| c.joints[1].translation[0] = f32::NAN));
+    assert!(refused(&|c| c.primitives[0].material = 99));
 }

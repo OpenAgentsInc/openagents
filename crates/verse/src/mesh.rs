@@ -42,6 +42,9 @@ pub struct Mesh {
     /// renderer merges and uploads them once when the world is set, and
     /// draws them in physical frames (see [`crate::pbr::textured`]).
     pub textured: Option<std::sync::Arc<crate::pbr::textured::TexturedScene>>,
+    /// An animated textured model, read from a frame's dynamic mesh only
+    /// and drawn in physical frames (see [`crate::pbr::textured::Figure`]).
+    pub figure: Option<crate::pbr::textured::Figure>,
 }
 
 impl Mesh {
@@ -150,6 +153,9 @@ impl Mesh {
         }
         if other.textured.is_some() {
             self.textured.clone_from(&other.textured);
+        }
+        if other.figure.is_some() {
+            self.figure.clone_from(&other.figure);
         }
     }
 }

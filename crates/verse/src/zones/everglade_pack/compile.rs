@@ -1,5 +1,5 @@
 //! The Everglade pack compiler: admitted Quaternius sources in, one pinned
-//! `VTP1` pack out.
+//! `VTP2` pack out.
 //!
 //! The compiler reads each source set under `assets/verse/everglade/`, checks
 //! every file against the set's `openagents.verse.source-manifest.v1`
@@ -9,6 +9,14 @@
 //! than their edge are downscaled with an alpha-weighted box filter; the rest
 //! are stored as their admitted bytes. The same sources always give the same
 //! pack bytes.
+//!
+//! The player's character is the ritual chamber's: the Universal
+//! [`PLAYER_APPEARANCE`] composed by `imported::characters` from the retained
+//! character sources, which are checked against their own pinned manifest
+//! (`assets/verse/characters/quaternius/manifest.json`) and counted under it
+//! rather than under the Everglade sets. Only its base-color images, bounded
+//! to [`PLAYER_TEXTURE_EDGE`], its skeleton, and the clips in
+//! [`PLAYER_CLIPS`] are packed.
 
 use std::collections::BTreeMap;
 use std::io::Read;
@@ -18,7 +26,8 @@ use glam::{Mat3, Mat4, Vec3};
 use sha2::{Digest, Sha256};
 
 use super::format::{
-    self, AlphaMode, Contents, EncodedTexture, Limits, Material, Model, Primitive, Vertex,
+    self, AlphaMode, Character, Clip, Contents, EncodedTexture, Joint, Limits, Material, Model,
+    Primitive, SkinnedPrimitive, SkinnedVertex, Track, Vertex,
 };
 
 /// The manifest schema every admitted set declares.
@@ -40,6 +49,25 @@ pub const LARGE_TEXTURES: &[&str] = &[
     "props/T_Trim_Furniture_BaseColor.png",
     "props/T_Trim_Props_BaseColor.png",
 ];
+/// The retained Universal character sources, relative to the pack
+/// directory.
+pub const PLAYER_SOURCES: &str = "../characters/quaternius";
+/// The appearance the ritual chamber's player wears by default
+/// (`verse_play`).
+pub const PLAYER_APPEARANCE: &str = "male-ranger";
+/// The longest edge of the player's outfit image.
+pub const PLAYER_TEXTURE_EDGE: u32 = 512;
+/// The longest edge of the player's other base-color images that cover at
+/// least [`PLAYER_DETAIL_TRIANGLES`]; the rest get half of it.
+pub const PLAYER_DETAIL_EDGE: u32 = 256;
+/// The triangles an image must cover to get [`PLAYER_DETAIL_EDGE`].
+pub const PLAYER_DETAIL_TRIANGLES: usize = 1_000;
+/// How far a dropped key may differ from the interpolation of its
+/// neighbors, in meters, quaternion units, or scale.
+const KEY_TOLERANCE: f32 = 1e-4;
+/// The player's clips: the pack's name and the chamber's clip ID for idle,
+/// walk, run, and the airborne pose.
+pub const PLAYER_CLIPS: [(&str, u16); 4] = [("idle", 0), ("walk", 4), ("run", 5), ("jump", 37)];
 const CREATOR: &str = "Quaternius";
 const LICENSE: &str = "CC0-1.0";
 const LICENSE_FILE: &str = "license.txt";
@@ -75,7 +103,7 @@ pub struct Compiled {
     pub sha256: String,
     /// Models in the pack.
     pub models: usize,
-    /// Triangles over every model, once each.
+    /// Triangles over every model, once each, and the character.
     pub triangles: u64,
     /// Decoded RGBA bytes over every texture.
     pub decoded_texture_bytes: u64,
@@ -561,6 +589,205 @@ impl Builder<'_> {
         }
     }
 
+    /// Composes the chamber's player from the verified character sources and
+    /// converts it from the chamber's basis back to the sources' space.
+    fn player(&mut self, sources: &Path) -> Result<Character, String> {
+        crate::imported::inventory::verify_characters(sources)?;
+        // The importer writes its bounded images beside its pack; they are
+        // read back, bounded again, and removed.
+        let scratch =
+            std::env::temp_dir().join(format!("verse-everglade-player-{}", std::process::id()));
+        std::fs::create_dir_all(&scratch).map_err(|e| format!("{}: {e}", scratch.display()))?;
+        let result = self.player_in(sources, &scratch);
+        let _ = std::fs::remove_dir_all(&scratch);
+        result
+    }
+
+    fn player_in(&mut self, sources: &Path, scratch: &Path) -> Result<Character, String> {
+        use crate::imported::characters;
+        let mut engine = verse_engine::assets::Pack {
+            inventory: None,
+            version: 1,
+            source_revision: String::new(),
+            models: BTreeMap::new(),
+            textures: Vec::new(),
+            placements: Vec::new(),
+        };
+        let model = characters::appearance(&mut engine, scratch, sources, PLAYER_APPEARANCE)?;
+        let skin = model.skin.as_ref().ok_or("The player has no skin")?;
+        let inverse = Mat4::from_cols_array(&skin.basis).inverse();
+        if model.bones.len() > format::MAX_JOINTS {
+            return Err("The player has too many joints".into());
+        }
+        let joints = model
+            .bones
+            .iter()
+            .enumerate()
+            .map(|(i, bone)| Joint {
+                parent: bone.parent,
+                translation: skin.rest[i].translation,
+                rotation: skin.rest[i].rotation,
+                scale: skin.rest[i].scale,
+                inverse_bind: skin.inverse_bind[i],
+            })
+            .collect();
+        // The image that covers the most triangles, the outfit, keeps the
+        // largest edge; the head and skin are small on screen, and images
+        // under few triangles, such as the eyes and brows, smaller still.
+        let mut covered: BTreeMap<usize, usize> = BTreeMap::new();
+        for surface in &model.surfaces {
+            *covered.entry(surface.texture).or_default() += surface.indices.len() / 3;
+        }
+        let outfit = covered.iter().max_by_key(|c| *c.1).map(|c| *c.0);
+        // One primitive per material, in first-use order.
+        let mut primitives: Vec<SkinnedPrimitive> = Vec::new();
+        for surface in model.surfaces.iter().filter(|s| !s.indices.is_empty()) {
+            let edge = if Some(surface.texture) == outfit {
+                PLAYER_TEXTURE_EDGE
+            } else if covered[&surface.texture] >= PLAYER_DETAIL_TRIANGLES {
+                PLAYER_DETAIL_EDGE
+            } else {
+                PLAYER_DETAIL_EDGE / 2
+            };
+            let material = self.player_material(&engine, scratch, surface, edge)?;
+            let vertices: Vec<SkinnedVertex> = surface
+                .vertices
+                .iter()
+                .map(|v| SkinnedVertex {
+                    vertex: Vertex {
+                        position: inverse.transform_point3(v.position.into()).to_array(),
+                        normal: inverse
+                            .transform_vector3(v.normal.into())
+                            .normalize_or_zero()
+                            .to_array(),
+                        uv: v.uv,
+                        color: [255; 4],
+                    },
+                    joints: v.joints.map(|j| j as u8),
+                    weights: unit_weights(v.weights),
+                })
+                .collect();
+            let limit = u16::MAX as usize + 1;
+            if let Some(existing) = primitives
+                .iter_mut()
+                .find(|p| p.material == material && p.vertices.len() + vertices.len() <= limit)
+            {
+                let base = existing.vertices.len() as u32;
+                existing.vertices.extend(vertices);
+                existing
+                    .indices
+                    .extend(surface.indices.iter().map(|i| i + base));
+            } else if vertices.len() <= limit {
+                primitives.push(SkinnedPrimitive {
+                    material,
+                    vertices,
+                    indices: surface.indices.clone(),
+                });
+            } else {
+                return Err("A player surface exceeds 65,536 vertices".into());
+            }
+        }
+        let mut clips = Vec::new();
+        for (name, id) in PLAYER_CLIPS {
+            let clip = model
+                .clips
+                .iter()
+                .find(|c| c.id == id)
+                .ok_or(format!("The player has no {name} clip"))?;
+            clips.push(Clip {
+                name: name.into(),
+                duration: clip.duration,
+                distance: characters::loop_distance(id),
+                tracks: clip
+                    .bones
+                    .iter()
+                    .map(|keys| Track {
+                        joint: keys.bone as u16,
+                        translation: reduce_keys(&keys.translation),
+                        rotation: reduce_keys(&keys.rotation),
+                        scale: reduce_keys(&keys.scale),
+                    })
+                    .collect(),
+            });
+        }
+        for primitive in &mut primitives {
+            weld(primitive);
+        }
+        Ok(Character {
+            name: format!("player/{PLAYER_APPEARANCE}"),
+            joints,
+            primitives,
+            clips,
+        })
+    }
+
+    /// The pack material for one of the player's surfaces: its base-color
+    /// image, tint and opacity, and alpha mode. The sources' materials are
+    /// all double-sided.
+    fn player_material(
+        &mut self,
+        engine: &verse_engine::assets::Pack,
+        scratch: &Path,
+        surface: &verse_engine::assets::Surface,
+        edge: u32,
+    ) -> Result<u16, String> {
+        let image = engine
+            .textures
+            .get(surface.texture)
+            .ok_or("A player surface names a missing image")?;
+        let key = ("player".to_owned(), image.file.clone());
+        let texture = match self.textures.get(&key) {
+            Some(&index) => index,
+            None => {
+                let bytes = read_regular(&scratch.join(&image.file), MAX_SOURCE_FILE_BYTES)?;
+                let digest = image
+                    .file
+                    .trim_start_matches("universal-source-")
+                    .get(..16)
+                    .ok_or("A player image has an unexpected name")?;
+                let edge = edge.min(self.limits.texture_edge);
+                let texture = prepare_texture(format!("player/{digest}"), &bytes, edge)?;
+                let index =
+                    u16::try_from(self.contents.textures.len()).map_err(|_| "Too many textures")?;
+                self.contents.textures.push(texture);
+                self.textures.insert(key, index);
+                index
+            }
+        };
+        let alpha = match surface.blend {
+            0 => AlphaMode::Opaque,
+            1 => AlphaMode::Mask {
+                cutoff: surface.material.alpha_cutoff,
+            },
+            2 => AlphaMode::Blend,
+            _ => return Err("A player surface is additive".into()),
+        };
+        let candidate = Material {
+            name: format!("player/{}", self.contents.materials.len()),
+            texture: Some(texture),
+            base_color: [
+                surface.tint[0],
+                surface.tint[1],
+                surface.tint[2],
+                surface.material.opacity,
+            ],
+            alpha,
+            double_sided: true,
+        };
+        if let Some(index) = self.contents.materials.iter().position(|m| {
+            m.name.starts_with("player/")
+                && m.texture == candidate.texture
+                && m.base_color == candidate.base_color
+                && m.alpha == candidate.alpha
+        }) {
+            return Ok(index as u16);
+        }
+        let index =
+            u16::try_from(self.contents.materials.len()).map_err(|_| "Too many materials")?;
+        self.contents.materials.push(candidate);
+        Ok(index)
+    }
+
     fn model(&mut self, set: &SourceSet, file: &str) -> Result<Model, String> {
         let label = format!("{}/{file}", set.name);
         let gltf = gltf::Gltf::from_slice(&set.files[file])
@@ -720,12 +947,101 @@ impl Builder<'_> {
     }
 }
 
-/// Compiles the admitted sets under `root` into a pack within `limits`.
+/// Drops each key that linear interpolation between the kept keys around it
+/// reproduces within [`KEY_TOLERANCE`], keeping the first and last keys.
+/// A channel that never changes keeps one key.
+fn reduce_keys<const N: usize>(keys: &[(f32, [f32; N])]) -> Vec<(f32, [f32; N])> {
+    let Some((&first, rest)) = keys.split_first() else {
+        return Vec::new();
+    };
+    if rest.iter().all(|k| {
+        k.1.iter()
+            .zip(first.1)
+            .all(|(a, b)| (a - b).abs() <= KEY_TOLERANCE)
+    }) {
+        return vec![first];
+    }
+    let mut kept = vec![first];
+    for i in 1..keys.len() {
+        let Some(&next) = keys.get(i + 1) else {
+            kept.push(keys[i]);
+            break;
+        };
+        let previous = *kept.last().unwrap_or(&first);
+        let span = next.0 - previous.0;
+        let t = if span > 0.0 {
+            (keys[i].0 - previous.0) / span
+        } else {
+            0.0
+        };
+        let redundant = (0..N).all(|c| {
+            let between = previous.1[c] + (next.1[c] - previous.1[c]) * t;
+            (between - keys[i].1[c]).abs() <= KEY_TOLERANCE
+        });
+        if !redundant {
+            kept.push(keys[i]);
+        }
+    }
+    kept
+}
+
+/// Merges identical vertices of one primitive and renumbers its indices.
+fn weld(primitive: &mut SkinnedPrimitive) {
+    type Key = ([u32; 3], [u8; 3], [u32; 2], [u8; 4], [u8; 4]);
+    let key = |v: &SkinnedVertex| -> Key {
+        (
+            v.vertex.position.map(f32::to_bits),
+            v.vertex.normal.map(|n| format::snorm8(n) as u8),
+            v.vertex.uv.map(f32::to_bits),
+            v.joints,
+            v.weights,
+        )
+    };
+    let mut seen: BTreeMap<Key, u32> = BTreeMap::new();
+    let mut vertices = Vec::new();
+    let mut remap = Vec::with_capacity(primitive.vertices.len());
+    for vertex in &primitive.vertices {
+        let index = *seen.entry(key(vertex)).or_insert_with(|| {
+            vertices.push(*vertex);
+            vertices.len() as u32 - 1
+        });
+        remap.push(index);
+    }
+    for index in &mut primitive.indices {
+        *index = remap[*index as usize];
+    }
+    primitive.vertices = vertices;
+}
+
+/// Quantizes four skin weights to 255ths that sum to 255, giving any
+/// rounding remainder to the heaviest.
+fn unit_weights(weights: [f32; 4]) -> [u8; 4] {
+    let clean = weights.map(|w| if w.is_finite() { w.max(0.0) } else { 0.0 });
+    let total: f32 = clean.iter().sum();
+    if total <= 0.0 {
+        return [255, 0, 0, 0];
+    }
+    let mut out = clean.map(|w| (w / total * 255.0).round() as u8);
+    let sum: i32 = out.iter().map(|&w| i32::from(w)).sum();
+    let heaviest = (0..4)
+        .max_by(|&a, &b| clean[a].total_cmp(&clean[b]))
+        .unwrap_or(0);
+    out[heaviest] = (i32::from(out[heaviest]) + 255 - sum).clamp(0, 255) as u8;
+    out
+}
+
+/// Compiles the admitted sets under `root`, and the player from the
+/// character sources at `player` when given, into a pack within `limits`.
 ///
 /// Refuses a file whose digest differs from its manifest, an unadmitted file
 /// in a set, and any budget the pack or the committed sources exceed. The
 /// result has been decoded by the same decoder the loader runs.
-pub fn compile(root: &Path, sets: &[&str], limits: &Limits) -> Result<Compiled, String> {
+pub fn compile(
+    root: &Path,
+    sets: &[&str],
+    player: Option<&Path>,
+    limits: &Limits,
+) -> Result<Compiled, String> {
     let mut source_bytes = 0u64;
     let mut loaded = Vec::new();
     for set in sets {
@@ -746,6 +1062,10 @@ pub fn compile(root: &Path, sets: &[&str], limits: &Limits) -> Result<Compiled, 
     }
     models.sort_by(|a, b| a.name.cmp(&b.name));
     builder.contents.models = models;
+    if let Some(sources) = player {
+        let character = builder.player(sources)?;
+        builder.contents.character = Some(character);
+    }
     let contents = builder.contents;
     let bytes = format::encode(&contents, limits)?;
     let decoded = format::decode(&bytes, limits)?;
@@ -758,7 +1078,8 @@ pub fn compile(root: &Path, sets: &[&str], limits: &Limits) -> Result<Compiled, 
     Ok(Compiled {
         sha256: format!("{:x}", Sha256::digest(&bytes)),
         models: decoded.models.len(),
-        triangles: decoded.models.iter().map(Model::triangles).sum(),
+        triangles: decoded.models.iter().map(Model::triangles).sum::<u64>()
+            + decoded.character.as_ref().map_or(0, Character::triangles),
         decoded_texture_bytes: decoded.decoded_texture_bytes(),
         source_bytes,
         bytes,

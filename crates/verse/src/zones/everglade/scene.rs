@@ -22,7 +22,7 @@ const GLASS: f32 = 0.1;
 
 /// Pack indices already copied into the scene.
 #[derive(Default)]
-struct Copied<'a> {
+pub(super) struct Copied<'a> {
     images: BTreeMap<u16, usize>,
     materials: BTreeMap<u16, usize>,
     meshes: BTreeMap<&'a str, (usize, ([f32; 3], [f32; 3]))>,
@@ -89,7 +89,7 @@ fn copy_model(
     Ok(scene.add_mesh(TexturedMesh { primitives }))
 }
 
-fn copy_material(
+pub(super) fn copy_material(
     pack: &ZonePack,
     index: u16,
     scene: &mut TexturedScene,

@@ -195,9 +195,19 @@ impl WorldRuntime {
                 return;
             }
         };
+        let mut spawn = self.player;
+        spawn.pos = Everglade::spawn();
+        spawn.yaw = Everglade::spawn_yaw();
+        let everglade = match Everglade::new(pack, &spawn) {
+            Ok(everglade) => everglade,
+            Err(error) => {
+                self.zone_load_failed(&error);
+                return;
+            }
+        };
         self.zone_state.plaza_pose = Some((self.player.pos, self.player.yaw));
         self.world = world;
-        self.zone_state.everglade = Some(Everglade::new());
+        self.zone_state.everglade = Some(everglade);
         self.zone = ZoneId::Everglade;
         self.zone_state.loading = LoadState::Idle;
         self.zone_state.error = None;
@@ -1108,7 +1118,7 @@ impl WorldRuntime {
             lab.tick(dt);
         }
         if let Some(everglade) = &mut self.zone_state.everglade {
-            everglade.tick(dt);
+            everglade.tick(dt, &self.player);
             self.zone_state.studio.tick(dt);
         }
     }
@@ -1133,7 +1143,7 @@ impl WorldRuntime {
         if let Some(everglade) = &self.zone_state.everglade {
             // Carries the lit stage the textured glade draws on.
             mesh.extend(everglade.dynamic());
-            mesh.extend(&crate::avatar::mesh(&self.player, &self.gait));
+            mesh.extend(&everglade.player_mesh(&self.player, &self.gait));
             // The studio's seats, nameplates, lamps, and live boards.
             mesh.extend(&self.zone_state.studio.mesh(self.view(1.0).eye));
         }

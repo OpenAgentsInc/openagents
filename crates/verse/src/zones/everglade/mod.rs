@@ -9,11 +9,13 @@
 //! the Ruins pack does. The studio's stations have fixed standing points in
 //! [`STATIONS`]; the Agent Studio's seats walk between them and the
 //! stations open its panels ([`studio`]). The player walks the shared
-//! plaza controller over the heightfield.
+//! plaza controller over the heightfield as the ritual chamber's outfitted
+//! character from the pack ([`player`]), and no companion follows.
 
 mod boards;
 mod draw;
 pub mod layout;
+pub mod player;
 mod scene;
 pub mod studio;
 #[cfg(test)]
@@ -211,18 +213,27 @@ pub fn station_near(x: f32, z: f32) -> Option<&'static Station> {
         .map(|(s, _)| s)
 }
 
-/// The zone's live state: its clock and the lit stage its frames draw on.
+/// The zone's live state: its clock, the lit stage its frames draw on, and
+/// the player's character.
 pub(crate) struct Everglade {
     elapsed: f32,
     rendered: Mesh,
+    player: Option<player::Player>,
 }
 
 impl Everglade {
-    pub fn new() -> Self {
-        Self {
+    /// The zone with `pack`'s player character standing at `at`. A pack
+    /// without a character leaves the player as the plaza's avatar.
+    ///
+    /// # Errors
+    ///
+    /// Returns a message when the pack's character cannot play.
+    pub fn new(pack: &ZonePack, at: &PlayerController) -> Result<Self, String> {
+        Ok(Self {
             elapsed: 0.0,
             rendered: Self::stage(0.0),
-        }
+            player: player::Player::new(pack, at)?,
+        })
     }
 
     /// The physical stage: the zone's green-gold air as background and fog,
@@ -304,13 +315,35 @@ impl Everglade {
         player.set_surface_height(ground);
     }
 
-    pub fn tick(&mut self, dt: f32) {
+    /// Advances the clock and poses the player's character for `at`.
+    pub fn tick(&mut self, dt: f32, at: &PlayerController) {
         self.elapsed = (self.elapsed + dt) % 1000.0;
         self.rendered = Self::stage(self.elapsed);
+        if let Some(player) = &mut self.player {
+            player.advance(at, dt);
+        }
     }
 
     pub fn dynamic(&self) -> &Mesh {
         &self.rendered
+    }
+
+    /// The player as drawn: the posed character, or the plaza's avatar when
+    /// the pack has no character.
+    pub fn player_mesh(&self, at: &PlayerController, gait: &crate::avatar::Gait) -> Mesh {
+        match &self.player {
+            Some(player) => Mesh {
+                figure: Some(player.figure()),
+                ..Mesh::default()
+            },
+            None => crate::avatar::mesh(at, gait),
+        }
+    }
+
+    /// What the player's character is doing, when the pack has one.
+    #[cfg(test)]
+    pub fn player_motion(&self) -> Option<player::Motion> {
+        self.player.as_ref().map(player::Player::motion)
     }
 
     /// The HUD caption for a player standing at `at`: the station in

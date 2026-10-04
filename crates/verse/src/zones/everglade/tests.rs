@@ -314,6 +314,9 @@ fn the_layout_stays_within_the_placed_triangle_budget() {
         + super::draw::triangles();
     eprintln!("Everglade places {triangles} triangles of {PLACED_TRIANGLE_BUDGET} with the ground");
     assert!(triangles <= PLACED_TRIANGLE_BUDGET, "{triangles}");
+    // The player is drawn, not placed; it has its own budget in the pack.
+    let player = pack().character.as_ref().expect("the player's character");
+    assert!(player.triangles() <= everglade_pack::Limits::EVERGLADE.character_triangles);
 }
 
 #[test]
@@ -771,4 +774,88 @@ fn walking_through_the_grids_everglade_arch_loads_the_pack_and_the_grid_arch_ret
     runtime.zone_intent(Intent::Return).unwrap();
     assert!(runtime.is_plaza());
     assert_eq!(runtime.player.pos, gate.front().0);
+}
+
+#[test]
+fn the_player_is_the_outfitted_character_and_no_companion_follows() {
+    let mut runtime = entered();
+    let idle = crate::controller::InputState::default();
+    for _ in 0..5 {
+        runtime.tick(&idle, 0.05);
+    }
+    let dynamic = runtime.dynamic_mesh();
+    let figure = dynamic.figure.as_ref().expect("the posed character");
+    figure.validate().unwrap();
+    // It stands on the ground where the player does, about as tall as one.
+    let feet = runtime.player.pos;
+    let (low, high) = figure
+        .vertices
+        .iter()
+        .fold((f32::MAX, f32::MIN), |(lo, hi), v| {
+            (lo.min(v.pos[1]), hi.max(v.pos[1]))
+        });
+    assert!(
+        (low - feet.y).abs() < 0.15,
+        "feet at {low}, ground {}",
+        feet.y
+    );
+    assert!((1.5..2.3).contains(&(high - feet.y)), "head at {high}");
+    assert!(figure.vertices.iter().all(|v| {
+        let p = Vec3::from(v.pos);
+        (p.x - feet.x).hypot(p.z - feet.z) < 1.2
+    }));
+    // No boxy avatar and no spade: no amber edges at the player at all.
+    let spade = runtime.agent.mesh();
+    assert!(
+        dynamic
+            .lines
+            .iter()
+            .all(|v| !spade.lines.iter().any(|s| s.pos == v.pos))
+    );
+    assert!(!runtime.companion_present());
+    assert!(!runtime.companion(1.6).near);
+    assert!(!runtime.pet_companion());
+}
+
+#[test]
+fn movement_drives_the_characters_clips() {
+    use super::player::Motion;
+    use crate::controller::InputState;
+    let mut runtime = entered();
+    let motion = |runtime: &WorldRuntime| {
+        runtime
+            .zone_state
+            .everglade
+            .as_ref()
+            .and_then(Everglade::player_motion)
+    };
+    runtime.tick(&InputState::default(), 0.05);
+    assert_eq!(motion(&runtime), Some(Motion::Idle));
+    let forward = InputState {
+        forward: true,
+        ..InputState::default()
+    };
+    let before = runtime.dynamic_mesh().figure.unwrap().vertices;
+    for _ in 0..4 {
+        runtime.tick(&forward, 0.05);
+    }
+    assert_eq!(motion(&runtime), Some(Motion::Run));
+    // The pose follows the player rather than standing still.
+    assert_ne!(runtime.dynamic_mesh().figure.unwrap().vertices, before);
+    let back = InputState {
+        backward: true,
+        ..InputState::default()
+    };
+    for _ in 0..4 {
+        runtime.tick(&back, 0.05);
+    }
+    assert_eq!(motion(&runtime), Some(Motion::Walk));
+    runtime.tick(
+        &InputState {
+            jump: true,
+            ..InputState::default()
+        },
+        0.05,
+    );
+    assert_eq!(motion(&runtime), Some(Motion::Jump));
 }

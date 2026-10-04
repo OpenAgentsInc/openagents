@@ -198,6 +198,17 @@ pub(crate) struct TexturedGpu {
     groups: Vec<wgpu::BindGroup>,
 }
 
+impl TexturedGpu {
+    /// Rewrites a figure's vertices; the caller has checked their count
+    /// against the uploaded mesh ([`textured::Figure::validate`]).
+    pub fn write_vertices(&self, queue: &wgpu::Queue, vertices: &[TexturedVertex]) {
+        let bytes: &[u8] = bytemuck::cast_slice(vertices);
+        if !bytes.is_empty() && bytes.len() as u64 <= self.vertices.size() {
+            queue.write_buffer(&self.vertices, 0, bytes);
+        }
+    }
+}
+
 struct PostPipelines {
     layout: wgpu::BindGroupLayout,
     down: wgpu::RenderPipeline,
@@ -975,6 +986,34 @@ impl Photo {
         scene: &TexturedScene,
         merged: &textured::Merged,
     ) -> TexturedGpu {
+        self.upload_textured_with(device, queue, scene, merged, wgpu::BufferUsages::VERTEX)
+    }
+
+    /// Uploads a [`textured::Figure`]'s images, materials, and indices, with
+    /// a vertex buffer [`TexturedGpu::write_vertices`] rewrites each frame.
+    pub fn upload_figure(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        figure: &textured::Figure,
+    ) -> TexturedGpu {
+        self.upload_textured_with(
+            device,
+            queue,
+            &figure.scene,
+            &figure.merged(),
+            wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+        )
+    }
+
+    fn upload_textured_with(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        scene: &TexturedScene,
+        merged: &textured::Merged,
+        vertex_usage: wgpu::BufferUsages,
+    ) -> TexturedGpu {
         let max = device.limits().max_texture_dimension_2d;
         let images: Vec<wgpu::TextureView> = scene
             .images
@@ -1036,7 +1075,7 @@ impl Photo {
             vertices: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("verse textured vertices"),
                 contents: vertex_bytes,
-                usage: wgpu::BufferUsages::VERTEX,
+                usage: vertex_usage,
             }),
             indices: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("verse textured indices"),
@@ -1047,6 +1086,13 @@ impl Photo {
             materials: scene.materials.clone(),
             groups,
         }
+    }
+
+    /// A figure's batches in drawing order, never culled.
+    fn figure_order(figure: Option<&TexturedGpu>, view: crate::render::View) -> Vec<usize> {
+        figure.map_or_else(Vec::new, |gpu| {
+            textured::draw_order(&gpu.batches, &gpu.materials, view.eye, |_| true)
+        })
     }
 
     /// The textured cells this frame draws, in drawing order.
@@ -1433,8 +1479,9 @@ impl Photo {
         };
         queue.write_buffer(&self.frame, 0, bytemuck::bytes_of(&frame));
 
-        self.encode_shadow(encoder, world.lit, world.textured);
+        self.encode_shadow(encoder, world.lit, [world.textured, world.figure]);
         let order = Self::textured_order(world.textured, view);
+        let figure_order = Self::figure_order(world.figure, view);
 
         // Scene pass.
         let direct = self.post.is_none();
@@ -1497,8 +1544,10 @@ impl Photo {
             }
             // The texture written last frame holds the newest adaptation.
             pass.set_bind_group(1, &targets.guide_groups[targets.parity ^ 1], &[]);
-            self.draw_textured(&mut pass, world.textured, &order, Pass::Opaque);
-            self.draw_textured(&mut pass, world.textured, &order, Pass::Masked);
+            for which in [Pass::Opaque, Pass::Masked] {
+                self.draw_textured(&mut pass, world.textured, &order, which);
+                self.draw_textured(&mut pass, world.figure, &figure_order, which);
+            }
             pass.set_pipeline(&self.pipelines.legacy);
             for (buffer, count) in world.faces {
                 if count > 0 {
@@ -1507,6 +1556,7 @@ impl Photo {
                 }
             }
             self.draw_textured(&mut pass, world.textured, &order, Pass::Blended);
+            self.draw_textured(&mut pass, world.figure, &figure_order, Pass::Blended);
             pass.set_pipeline(&self.pipelines.wide);
             for (buffer, count) in world.lines {
                 if count >= 2 {
@@ -1555,7 +1605,7 @@ impl Photo {
         &self,
         encoder: &mut wgpu::CommandEncoder,
         world_lit: (&wgpu::Buffer, u32),
-        textured: Option<&TexturedGpu>,
+        textured: [Option<&TexturedGpu>; 2],
     ) {
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("verse sun shadow"),
@@ -1583,27 +1633,26 @@ impl Photo {
                 pass.draw(0..count, 0..1);
             }
         }
-        let Some(gpu) = textured else {
-            return;
-        };
-        pass.set_vertex_buffer(0, gpu.vertices.slice(..));
-        pass.set_index_buffer(gpu.indices.slice(..), wgpu::IndexFormat::Uint32);
-        for masked in [false, true] {
-            if masked {
-                pass.set_pipeline(&self.pipelines.textured_shadow_masked);
-                pass.set_bind_group(1, &self.empty_group, &[]);
-            } else {
-                pass.set_pipeline(&self.pipelines.textured_shadow);
-            }
-            for batch in &gpu.batches {
-                let cell_pass = gpu.materials[batch.material].alpha.pass();
-                if textured::raster(cell_pass, false).shadow != Some(masked) {
-                    continue;
-                }
+        for gpu in textured.into_iter().flatten() {
+            pass.set_vertex_buffer(0, gpu.vertices.slice(..));
+            pass.set_index_buffer(gpu.indices.slice(..), wgpu::IndexFormat::Uint32);
+            for masked in [false, true] {
                 if masked {
-                    pass.set_bind_group(2, &gpu.groups[batch.material], &[]);
+                    pass.set_pipeline(&self.pipelines.textured_shadow_masked);
+                    pass.set_bind_group(1, &self.empty_group, &[]);
+                } else {
+                    pass.set_pipeline(&self.pipelines.textured_shadow);
                 }
-                pass.draw_indexed(batch.first..batch.first + batch.count, 0, 0..1);
+                for batch in &gpu.batches {
+                    let cell_pass = gpu.materials[batch.material].alpha.pass();
+                    if textured::raster(cell_pass, false).shadow != Some(masked) {
+                        continue;
+                    }
+                    if masked {
+                        pass.set_bind_group(2, &gpu.groups[batch.material], &[]);
+                    }
+                    pass.draw_indexed(batch.first..batch.first + batch.count, 0, 0..1);
+                }
             }
         }
     }
@@ -1659,9 +1708,12 @@ impl Photo {
             field: [neon.field[0], neon.field[1], neon.field[2], 0.0],
         };
         let mut uniform = frame(reversed, neon.line_width, 1.0);
-        let lit = neon
-            .key
-            .filter(|_| world.lit.1 > 0 || self.dynamic_lit.count > 0 || world.textured.is_some());
+        let lit = neon.key.filter(|_| {
+            world.lit.1 > 0
+                || self.dynamic_lit.count > 0
+                || world.textured.is_some()
+                || world.figure.is_some()
+        });
         if let Some(key) = &lit {
             // Pre-exposed lux: the stage's lines stay at unit exposure.
             let exposure = super::exposure(key.ev100);
@@ -1693,8 +1745,13 @@ impl Photo {
         }
         queue.write_buffer(&self.frame, 0, bytemuck::bytes_of(&uniform));
         if lit.is_some() {
-            self.encode_shadow(encoder, world.lit, world.textured);
+            self.encode_shadow(encoder, world.lit, [world.textured, world.figure]);
         }
+        let figure_order = if lit.is_some() {
+            Self::figure_order(world.figure, view)
+        } else {
+            Vec::new()
+        };
         let order = if lit.is_some() {
             Self::textured_order(world.textured, view)
         } else {
@@ -1751,8 +1808,10 @@ impl Photo {
                         pass.draw(0..count, 0..1);
                     }
                 }
-                self.draw_textured(&mut pass, world.textured, &order, Pass::Opaque);
-                self.draw_textured(&mut pass, world.textured, &order, Pass::Masked);
+                for which in [Pass::Opaque, Pass::Masked] {
+                    self.draw_textured(&mut pass, world.textured, &order, which);
+                    self.draw_textured(&mut pass, world.figure, &figure_order, which);
+                }
             }
             pass.set_pipeline(&self.pipelines.legacy);
             for (buffer, count) in world.faces {
@@ -1762,6 +1821,7 @@ impl Photo {
                 }
             }
             self.draw_textured(&mut pass, world.textured, &order, Pass::Blended);
+            self.draw_textured(&mut pass, world.figure, &figure_order, Pass::Blended);
             pass.set_pipeline(&self.pipelines.wide);
             for (buffer, count) in world.lines {
                 if count >= 2 {
@@ -1983,6 +2043,8 @@ pub(crate) struct Batches<'a> {
     pub faces: [(&'a wgpu::Buffer, u32); 2],
     pub lines: [(&'a wgpu::Buffer, u32); 2],
     pub textured: Option<&'a TexturedGpu>,
+    /// The dynamic mesh's figure, its vertices written for this frame.
+    pub figure: Option<&'a TexturedGpu>,
 }
 
 /// Illuminance at the station from the full Earth, lux per channel: a

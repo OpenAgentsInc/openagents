@@ -103,6 +103,14 @@ The zone renderer gains textured static meshes:
   every backend requests (no storage buffers or compute).
 - Everglade's atmosphere has its own colors: a green-gold day sky, warm fog,
   and lamplight inside the workshop. Amber stays the plaza's palette.
+- The player is the ritual chamber's outfitted character (the Universal male
+  Ranger that `verse_play` binds as `adventurer`), not the Grid's boxy
+  avatar, and no spade companion follows in Everglade. The pack carries it as
+  one skinned character with idle, walk, run, and jump clips, composed from
+  the retained character sources under their own manifest; the movement
+  state picks the clip, and the character is skinned on the CPU into a
+  textured figure each frame, so GLES and WebGL2 draw it too. Its triangles
+  have their own budget (40,000) and are not counted as placed.
 
 ## The zone
 

@@ -60,7 +60,12 @@ fn run() -> Result<(), String> {
         Some(other) => return Err(format!("unknown argument: {other}")),
     };
     let limits = Limits::EVERGLADE;
-    let compiled = compile::compile(&root, &compile::SETS, &limits)?;
+    let compiled = compile::compile(
+        &root,
+        &compile::SETS,
+        Some(&root.join(compile::PLAYER_SOURCES)),
+        &limits,
+    )?;
     let name = format!("{}.{}", compiled.sha256, everglade_pack::PACK_EXTENSION);
     let length = compiled.bytes.len() as u64;
     println!(

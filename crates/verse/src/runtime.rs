@@ -510,6 +510,14 @@ impl WorldRuntime {
         result
     }
 
+    /// Whether the spade companion follows the player here: in the
+    /// furnished plaza and the zones entered from it, except Everglade,
+    /// where the player walks as the outfitted character alone.
+    #[must_use]
+    pub fn companion_present(&self) -> bool {
+        !self.bare && self.zone != crate::zones::ZoneId::Everglade
+    }
+
     /// Project the animated spade center into normalized viewport coordinates.
     #[must_use]
     pub fn companion(&self, aspect: f32) -> Companion {
@@ -518,7 +526,7 @@ impl WorldRuntime {
         let distance = center.distance(shoulder);
         let clip = self.view(aspect).view_proj * center.extend(1.0);
         let mut result = Companion {
-            near: !self.bare && distance.is_finite() && distance <= COMPANION_RANGE,
+            near: self.companion_present() && distance.is_finite() && distance <= COMPANION_RANGE,
             visible: false,
             screen_x: 0.5,
             screen_y: 0.5,
@@ -1047,7 +1055,9 @@ impl WorldRuntime {
             Mesh::default()
         };
         dynamic.extend(&self.zone_dynamic_mesh());
-        dynamic.extend(&self.agent.mesh());
+        if self.companion_present() {
+            dynamic.extend(&self.agent.mesh());
+        }
         if self.is_plaza() {
             dynamic.extend(&self.doors.mesh(&self.player));
             let offset = self.player.pos - world::COMPUTER;

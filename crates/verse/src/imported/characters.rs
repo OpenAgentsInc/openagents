@@ -602,21 +602,43 @@ fn chain(
     }
     Ok(result)
 }
+/// The authored humanoid clips: ID, seconds per loop, and how far a foot
+/// reaches ahead of and behind its rest point, m.
+const MOTIONS: [(u16, f32, f32); 10] = [
+    (0, 3., 0.),
+    (4, 0.72, 0.40),
+    (5, 0.42, 0.53),
+    (13, 0.55, -0.34),
+    (14, 0.42, 0.45),
+    (15, 0.42, -0.45),
+    (25, 2., 0.),
+    (51, 2., 0.),
+    (52, 1., 0.),
+    (53, 1.1, 0.),
+];
+/// The share of a gait cycle a foot spends on the ground.
+fn stance(id: u16) -> f32 {
+    if matches!(id, 5 | 14 | 15) {
+        0.40
+    } else if id == 13 {
+        0.30
+    } else {
+        0.46
+    }
+}
+/// Meters the body travels over one loop of authored clip `id`, while a
+/// planted foot sweeps its full stride; zero for a clip without a stride.
+#[must_use]
+pub fn loop_distance(id: u16) -> f32 {
+    MOTIONS
+        .iter()
+        .find(|m| m.0 == id)
+        .map_or(0., |&(_, _, stride)| 2. * stride.abs() / stance(id))
+}
 fn humanoid_motion(model: &mut Model) -> Result<(), String> {
     let skin = model.skin.as_ref().unwrap();
     let rest_global = globals(model);
-    for (id, duration, stride) in [
-        (0, 3., 0.),
-        (4, 0.72, 0.40),
-        (5, 0.42, 0.53),
-        (13, 0.55, -0.34),
-        (14, 0.42, 0.45),
-        (15, 0.42, -0.45),
-        (25, 2., 0.),
-        (51, 2., 0.),
-        (52, 1., 0.),
-        (53, 1.1, 0.),
-    ] {
+    for (id, duration, stride) in MOTIONS {
         let mut tracks: BTreeMap<usize, BoneKeys> =
             fingers(model).into_iter().map(|b| (b.bone, b)).collect();
         for sample in 0..=32 {
@@ -668,13 +690,7 @@ fn humanoid_motion(model: &mut Model) -> Result<(), String> {
                     .ok_or("Missing foot")?;
                 let p = (phase + offset) % 1.;
                 // Contact occupies most of the cycle; only the returning foot lifts.
-                let stance = if matches!(id, 5 | 14 | 15) {
-                    0.40
-                } else if id == 13 {
-                    0.30
-                } else {
-                    0.46
-                };
+                let stance = stance(id);
                 let (forward, lift) = if p < stance {
                     (1. - 2. * p / stance, 0.)
                 } else {
@@ -939,51 +955,59 @@ pub fn install_bestiary(
     pack.source_revision = "verse-bestiary-ritual-v1".into();
     pack.validate()
 }
+/// Composes one Standard appearance on its outfit's rig: the outfit, the base
+/// body's head, hair where the outfit has no hood, and the runtime clips and
+/// states the chamber plays.
+pub fn appearance(pack: &mut Pack, dir: &Path, root: &Path, name: &str) -> Result<Model, String> {
+    let (outfit, sex, full) = match name {
+        "male-ranger" => ("Male_Ranger", "Male", false),
+        "female-ranger" => ("Female_Ranger", "Female", false),
+        "male-peasant" => ("Male_Peasant", "Male", false),
+        "female-peasant" => ("Female_Peasant", "Female", false),
+        "superhero-male" => ("", "Male", true),
+        "superhero-female" => ("", "Female", true),
+        _ => return Err("Unknown Universal character appearance".into()),
+    };
+    let base_path = root.join(format!("base/Superhero_{sex}_FullBody.gltf"));
+    let base = import(pack, dir, &base_path)?;
+    let mut model = if full {
+        base
+    } else {
+        let mut outfit = import(pack, dir, &root.join(format!("outfits/{outfit}.gltf")))?;
+        compose(&mut outfit, base, true)?;
+        outfit
+    };
+    if full || name.ends_with("peasant") {
+        let hair = if sex == "Male" {
+            "Hair_Buzzed"
+        } else {
+            "Hair_Buns"
+        };
+        compose(
+            &mut model,
+            import(pack, dir, &root.join(format!("hair/{hair}.gltf")))?,
+            false,
+        )?;
+    }
+    model.height = model
+        .surfaces
+        .iter()
+        .flat_map(|s| {
+            s.indices
+                .iter()
+                .map(|i| s.vertices[*i as usize].position[2])
+        })
+        .fold(0., f32::max);
+    animations(&mut model, &root.join("animations.glb"))?;
+    Ok(model)
+}
 /// Installs all six Standard appearances and binds the selected player outfit.
 pub fn install(pack: &mut Pack, dir: &Path, root: &Path, appearance: &str) -> Result<(), String> {
     if !APPEARANCES.contains(&appearance) {
         return Err("Unknown Universal character appearance".into());
     }
-    let recipes = [
-        ("male-ranger", "Male_Ranger", "Male", false),
-        ("female-ranger", "Female_Ranger", "Female", false),
-        ("male-peasant", "Male_Peasant", "Male", false),
-        ("female-peasant", "Female_Peasant", "Female", false),
-        ("superhero-male", "", "Male", true),
-        ("superhero-female", "", "Female", true),
-    ];
-    for (name, outfit, sex, full) in recipes {
-        let base_path = root.join(format!("base/Superhero_{sex}_FullBody.gltf"));
-        let base = import(pack, dir, &base_path)?;
-        let mut model = if full {
-            base
-        } else {
-            let mut outfit = import(pack, dir, &root.join(format!("outfits/{outfit}.gltf")))?;
-            compose(&mut outfit, base, true)?;
-            outfit
-        };
-        if full || name.ends_with("peasant") {
-            let hair = if sex == "Male" {
-                "Hair_Buzzed"
-            } else {
-                "Hair_Buns"
-            };
-            compose(
-                &mut model,
-                import(pack, dir, &root.join(format!("hair/{hair}.gltf")))?,
-                false,
-            )?;
-        }
-        model.height = model
-            .surfaces
-            .iter()
-            .flat_map(|s| {
-                s.indices
-                    .iter()
-                    .map(|i| s.vertices[*i as usize].position[2])
-            })
-            .fold(0., f32::max);
-        animations(&mut model, &root.join("animations.glb"))?;
+    for name in APPEARANCES {
+        let model = self::appearance(pack, dir, root, name)?;
         pack.models.insert(format!("universal-{name}"), model);
     }
     for (role, appearance) in [
