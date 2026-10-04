@@ -118,6 +118,21 @@ pub struct Quality {
     pub materials: Materials,
 }
 
+impl Quality {
+    /// The sky light's reflection cube: its edge in texels at the sharpest
+    /// level, and the GGX samples averaged per texel of each blurrier level.
+    /// Every tier builds it on the CPU and samples it with an explicit level
+    /// of detail, so the low tier draws it as the others do, only coarser.
+    #[must_use]
+    pub const fn sky_cube(&self) -> (u32, u32) {
+        match self.tier {
+            Tier::Low => (16, 32),
+            Tier::Medium => (32, 64),
+            Tier::High => (64, 64),
+        }
+    }
+}
+
 impl Tier {
     pub const ALL: [Self; 3] = [Self::Low, Self::Medium, Self::High];
 
@@ -267,6 +282,15 @@ mod tests {
         let low = Tier::Low.quality();
         assert_eq!(low.shadow_filter, ShadowFilter::Fixed);
         assert!(!low.screen_space);
+        // Every tier has a sky cube; higher tiers make it no coarser.
+        for pair in Tier::ALL.windows(2) {
+            let (lower, higher) = (pair[0].quality().sky_cube(), pair[1].quality().sky_cube());
+            assert!(lower.0 <= higher.0 && lower.1 <= higher.1);
+        }
+        for tier in Tier::ALL {
+            let (size, samples) = tier.quality().sky_cube();
+            assert!(size.is_power_of_two() && size >= 16 && samples > 0);
+        }
     }
 
     #[test]

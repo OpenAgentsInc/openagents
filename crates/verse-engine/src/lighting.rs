@@ -23,6 +23,9 @@ pub struct Lighting {
     pub time: f32,
     pub lights: Vec<Light>,
     pub shadowed: usize,
+    /// Fog that thins with height, toward `fog`. Without it, fog is uniform
+    /// at `density` per meter of distance.
+    pub height_fog: Option<HeightFog>,
 }
 impl Default for Lighting {
     fn default() -> Self {
@@ -34,7 +37,156 @@ impl Default for Lighting {
             time: 0.0,
             lights: vec![],
             shadowed: 4,
+            height_fog: None,
         }
+    }
+}
+
+impl Lighting {
+    /// The fog the scene draws: its height fog, or uniform distance fog at
+    /// `density`.
+    #[must_use]
+    pub fn fog_shape(&self) -> HeightFog {
+        self.height_fog
+            .unwrap_or_else(|| HeightFog::distance(self.density))
+    }
+}
+
+/// Exponential height fog: density falls off exponentially with height, so
+/// the optical depth along a straight view ray has a closed form (Wenzel,
+/// "Real-Time Atmospheric Effects in Games Revisited", GDC 2007; Quílez,
+/// "Better Fog"). Fog begins `start` meters from the eye, never exceeds
+/// `max_opacity`, and scatters sunlight toward the eye in a lobe around the
+/// Sun's direction.
+///
+/// The shaders evaluate the same functions; [`HeightFog::uniform`] packs the
+/// parameters they read.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct HeightFog {
+    /// Extinction per meter at height `base`.
+    pub density: f32,
+    /// The height where the density is `density`, meters.
+    pub base: f32,
+    /// How fast density falls with height, per meter; zero is uniform fog.
+    pub falloff: f32,
+    /// Distance from the eye where fog begins, meters.
+    pub start: f32,
+    /// The most opacity fog reaches, 0 to 1.
+    pub max_opacity: f32,
+    /// In-scattered sunlight looking straight at the Sun, as a multiple of
+    /// the Sun's tint.
+    pub sun_strength: f32,
+    /// The lobe's sharpness: the power of the cosine to the Sun.
+    pub sun_exponent: f32,
+}
+
+/// The largest magnitude an exponent in the fog's closed form may take, so
+/// single-precision exponentials stay finite.
+const FOG_EXPONENT_LIMIT: f32 = 80.0;
+
+impl HeightFog {
+    /// Uniform distance fog: `density` per meter everywhere, from the eye,
+    /// up to full opacity, without a sun lobe.
+    #[must_use]
+    pub const fn distance(density: f32) -> Self {
+        Self {
+            density,
+            base: 0.0,
+            falloff: 0.0,
+            start: 0.0,
+            max_opacity: 1.0,
+            sun_strength: 0.0,
+            sun_exponent: 1.0,
+        }
+    }
+
+    /// Refuses non-finite or out-of-range parameters.
+    pub fn validate(&self) -> Result<(), String> {
+        let values = [
+            self.density,
+            self.base,
+            self.falloff,
+            self.start,
+            self.max_opacity,
+            self.sun_strength,
+            self.sun_exponent,
+        ];
+        if values.iter().any(|v| !v.is_finite())
+            || !(0.0..=1.0).contains(&self.density)
+            || self.base.abs() > 10_000.0
+            || !(0.0..=10.0).contains(&self.falloff)
+            || !(0.0..=10_000.0).contains(&self.start)
+            || !(0.0..=1.0).contains(&self.max_opacity)
+            || !(0.0..=16.0).contains(&self.sun_strength)
+            || !(1.0..=256.0).contains(&self.sun_exponent)
+        {
+            return Err("Invalid height fog".into());
+        }
+        Ok(())
+    }
+
+    /// The fog's optical depth between `eye` and `point`: the integral of
+    /// `density × exp(−falloff × (y − base))` along the ray from where fog
+    /// starts.
+    #[must_use]
+    pub fn optical_depth(&self, eye: Vec3, point: Vec3) -> f32 {
+        let ray = point - eye;
+        let length = ray.length();
+        let travel = length - self.start;
+        if travel <= 0.0 || self.density <= 0.0 {
+            return 0.0;
+        }
+        // The ray from the start distance to the point.
+        let first = eye.y + ray.y * (self.start / length);
+        let rise = ray.y * (travel / length);
+        let at_start = self.density
+            * (-self.falloff * (first - self.base))
+                .clamp(-FOG_EXPONENT_LIMIT, FOG_EXPONENT_LIMIT)
+                .exp();
+        // The mean density along the ray relative to its start:
+        // (1 − e^(−k)) / k, which tends to 1 − k / 2 as k vanishes.
+        let k = (self.falloff * rise).clamp(-FOG_EXPONENT_LIMIT, FOG_EXPONENT_LIMIT);
+        let shape = if k.abs() > 1e-4 {
+            (1.0 - (-k).exp()) / k
+        } else {
+            1.0 - 0.5 * k
+        };
+        at_start * travel * shape
+    }
+
+    /// How much of the view toward `point` the fog covers, 0 to
+    /// `max_opacity`.
+    #[must_use]
+    pub fn opacity(&self, eye: Vec3, point: Vec3) -> f32 {
+        (1.0 - (-self.optical_depth(eye, point)).exp()).min(self.max_opacity)
+    }
+
+    /// The fog's opacity on a stage whose world ends at `end` meters: full
+    /// fog over the last 30% of that horizontal distance, so the zone's fog
+    /// range still hides the world's edge.
+    #[must_use]
+    pub fn stage_opacity(&self, eye: Vec3, point: Vec3, end: f32) -> f32 {
+        let distance = glam::Vec2::new(point.x - eye.x, point.z - eye.z).length();
+        let x = ((distance - 0.7 * end) / (0.3 * end).max(1e-3)).clamp(0.0, 1.0);
+        self.opacity(eye, point).max(x * x * (3.0 - 2.0 * x))
+    }
+
+    /// In-scattered sunlight along unit view direction `view` toward the
+    /// unit Sun direction `sun`, as a multiple of the Sun's tint.
+    #[must_use]
+    pub fn sun_lobe(&self, view: Vec3, sun: Vec3) -> f32 {
+        self.sun_strength * view.dot(sun).max(0.0).powf(self.sun_exponent)
+    }
+
+    /// The parameters as the shaders read them: density, base, falloff, and
+    /// start; then the opacity cap, the lobe's strength and exponent, and 1
+    /// to mark the fog present.
+    #[must_use]
+    pub fn uniform(&self) -> [[f32; 4]; 2] {
+        [
+            [self.density, self.base, self.falloff, self.start],
+            [self.max_opacity, self.sun_strength, self.sun_exponent, 1.0],
+        ]
     }
 }
 
@@ -56,6 +208,9 @@ impl Lighting {
             || !self.time.is_finite()
         {
             return Err("Invalid scene illumination".into());
+        }
+        if let Some(fog) = &self.height_fog {
+            fog.validate()?;
         }
         for (index, light) in self.lights.iter().enumerate() {
             light.sample(self.time, index)?;
@@ -657,5 +812,150 @@ mod tests {
         };
         assert!(hdr.same_table(&Grade::NEUTRAL));
         assert!(!Grade::CHAMBER.same_table(&Grade::NEUTRAL));
+    }
+
+    fn glade_fog() -> HeightFog {
+        HeightFog {
+            density: 0.005,
+            base: 0.0,
+            falloff: 0.12,
+            start: 40.0,
+            max_opacity: 0.92,
+            sun_strength: 0.4,
+            sun_exponent: 3.0,
+        }
+    }
+
+    /// The trapezoid rule along the ray, against which the closed form is
+    /// checked.
+    fn integrated_depth(fog: &HeightFog, eye: Vec3, point: Vec3) -> f32 {
+        let ray = point - eye;
+        let length = ray.length();
+        let density = |t: f32| {
+            if t * length < fog.start {
+                0.0
+            } else {
+                let y = eye.y + ray.y * t;
+                fog.density * (-fog.falloff * (y - fog.base)).exp()
+            }
+        };
+        let steps = 4_000;
+        let mut depth = 0.0;
+        for i in 0..steps {
+            let a = i as f32 / steps as f32;
+            let b = (i + 1) as f32 / steps as f32;
+            depth += (density(a) + density(b)) * 0.5 * (b - a) * length;
+        }
+        depth
+    }
+
+    #[test]
+    fn height_fog_has_the_closed_form_of_its_density() {
+        let fog = glade_fog();
+        let eye = Vec3::new(0.0, 1.7, 0.0);
+        for point in [
+            Vec3::new(120.0, 0.0, 0.0),
+            Vec3::new(0.0, 9.0, 150.0),
+            Vec3::new(60.0, 40.0, 60.0),
+            Vec3::new(-30.0, -5.0, 80.0),
+            Vec3::new(100.0, 1.7, 0.0),
+        ] {
+            let closed = fog.optical_depth(eye, point);
+            let numeric = integrated_depth(&fog, eye, point);
+            assert!(
+                (closed - numeric).abs() < 1e-3 * numeric.max(1.0),
+                "{point}: {closed} against {numeric}"
+            );
+        }
+    }
+
+    #[test]
+    fn uniform_distance_fog_is_the_chambers_exponential() {
+        let fog = HeightFog::distance(0.012);
+        let eye = Vec3::new(1.0, 2.0, 3.0);
+        for point in [Vec3::new(30.0, 2.0, 3.0), Vec3::new(1.0, 50.0, -40.0)] {
+            let expected = 1.0 - (-(point - eye).length() * 0.012).exp();
+            assert!((fog.opacity(eye, point) - expected).abs() < 1e-6);
+        }
+        let mut lighting = Lighting::default();
+        assert_eq!(lighting.fog_shape(), HeightFog::distance(lighting.density));
+        lighting.height_fog = Some(glade_fog());
+        assert_eq!(lighting.fog_shape(), glade_fog());
+    }
+
+    #[test]
+    fn height_fog_starts_late_caps_and_thins_with_height() {
+        let fog = glade_fog();
+        let eye = Vec3::new(0.0, 1.7, 0.0);
+        // Nothing nearer than the start distance.
+        assert_eq!(fog.opacity(eye, Vec3::new(0.0, 0.0, 39.0)), 0.0);
+        assert!(fog.opacity(eye, Vec3::new(0.0, 0.0, 80.0)) > 0.0);
+        // The cap holds however far the ray runs through dense fog.
+        let dense = HeightFog {
+            density: 0.5,
+            ..fog
+        };
+        assert_eq!(dense.opacity(eye, Vec3::new(0.0, 0.0, 900.0)), 0.92);
+        // At equal distance, a hilltop is clearer than the valley floor, and
+        // an eye up on the hill sees less fog than one in the hollow.
+        let floor = fog.opacity(eye, Vec3::new(0.0, 0.0, 120.0));
+        let hill = fog.opacity(eye, Vec3::new(0.0, 10.0, 120.0));
+        assert!(hill < floor, "{hill} {floor}");
+        let high_eye = Vec3::new(0.0, 11.7, 0.0);
+        let from_hill = fog.opacity(high_eye, Vec3::new(0.0, 10.0, 120.0));
+        assert!(from_hill < hill, "{from_hill} {hill}");
+        // The stage's range is still the limit: fog is total at its end.
+        let edge = fog.stage_opacity(eye, Vec3::new(0.0, 0.0, 180.0), 170.0);
+        assert_eq!(edge, 1.0);
+        let near = Vec3::new(0.0, 0.0, 100.0);
+        assert_eq!(fog.stage_opacity(eye, near, 170.0), fog.opacity(eye, near));
+    }
+
+    #[test]
+    fn the_sun_lobe_glows_toward_the_sun_only() {
+        let fog = glade_fog();
+        let sun = Vec3::new(-0.35, 0.8, -0.45).normalize();
+        let toward = Vec3::new(sun.x, 0.0, sun.z).normalize();
+        assert!((fog.sun_lobe(sun, sun) - fog.sun_strength).abs() < 1e-5);
+        assert!(fog.sun_lobe(toward, sun) > fog.sun_lobe(-toward, sun));
+        assert_eq!(fog.sun_lobe(-sun, sun), 0.0);
+        let packed = fog.uniform();
+        assert_eq!(packed[0], [0.005, 0.0, 0.12, 40.0]);
+        assert_eq!(packed[1], [0.92, 0.4, 3.0, 1.0]);
+    }
+
+    #[test]
+    fn invalid_height_fog_is_refused() {
+        assert!(glade_fog().validate().is_ok());
+        assert!(HeightFog::distance(0.008).validate().is_ok());
+        let bad = [
+            HeightFog {
+                density: f32::NAN,
+                ..glade_fog()
+            },
+            HeightFog {
+                falloff: -0.1,
+                ..glade_fog()
+            },
+            HeightFog {
+                max_opacity: 1.5,
+                ..glade_fog()
+            },
+            HeightFog {
+                sun_exponent: 0.0,
+                ..glade_fog()
+            },
+        ];
+        for fog in bad {
+            assert!(fog.validate().is_err(), "{fog:?}");
+        }
+        let lighting = Lighting {
+            height_fog: Some(HeightFog {
+                start: -1.0,
+                ..glade_fog()
+            }),
+            ..Lighting::default()
+        };
+        assert!(lighting.validate(view()).is_err());
     }
 }

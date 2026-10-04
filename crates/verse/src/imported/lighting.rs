@@ -15,6 +15,9 @@ pub(super) struct Frame {
     pub meta: [f32; 4],
     pub lights: [[f32; 4]; MAX_LIGHTS * 2],
     pub shadow: [[[f32; 4]; 4]; 24],
+    /// Height fog's base height, falloff, start distance, and opacity cap;
+    /// `fog`'s w is its density.
+    pub fog_shape: [f32; 4],
 }
 pub(super) fn frame(view: View, lighting: &Lighting) -> Result<Frame, String> {
     lighting.validate(view)?;
@@ -27,12 +30,9 @@ pub(super) fn frame(view: View, lighting: &Lighting) -> Result<Frame, String> {
         lighting.ambient.z,
         lighting.exposure,
     ];
-    f.fog = [
-        lighting.fog.x,
-        lighting.fog.y,
-        lighting.fog.z,
-        lighting.density,
-    ];
+    let fog = lighting.fog_shape();
+    f.fog = [lighting.fog.x, lighting.fog.y, lighting.fog.z, fog.density];
+    f.fog_shape = [fog.base, fog.falloff, fog.start, fog.max_opacity];
     f.meta = [
         lighting.lights.len() as f32,
         lighting.time,
@@ -76,6 +76,31 @@ mod tests {
         );
         lighting.lights.push(light);
         assert!(frame(view, &lighting).is_err());
+    }
+    /// Without height fog the chamber keeps its uniform distance fog; with
+    /// it, the shader reads the fog's shape beside its density.
+    #[test]
+    fn fog_packs_its_density_and_shape() {
+        let view = View {
+            view_proj: Mat4::IDENTITY,
+            eye: Vec3::ZERO,
+        };
+        let mut lighting = Lighting::default();
+        let f = frame(view, &lighting).unwrap();
+        assert_eq!(f.fog[3], lighting.density);
+        assert_eq!(f.fog_shape, [0.0, 0.0, 0.0, 1.0]);
+        lighting.height_fog = Some(verse_engine::lighting::HeightFog {
+            density: 0.02,
+            base: 1.0,
+            falloff: 0.3,
+            start: 5.0,
+            max_opacity: 0.8,
+            sun_strength: 0.0,
+            sun_exponent: 1.0,
+        });
+        let f = frame(view, &lighting).unwrap();
+        assert_eq!(f.fog[3], 0.02);
+        assert_eq!(f.fog_shape, [1.0, 0.3, 5.0, 0.8]);
     }
     #[test]
     fn all_cube_faces_look_outward_and_bad_lights_are_refused() {

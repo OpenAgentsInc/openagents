@@ -8,6 +8,7 @@ pub mod audio;
 pub mod audio_cues;
 pub mod core;
 pub mod director;
+pub mod environment;
 pub mod inventory;
 pub mod lighting;
 #[cfg(feature = "asset-io")]

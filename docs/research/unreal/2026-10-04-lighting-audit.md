@@ -726,6 +726,13 @@ stays analytic after the table.
 glass and metal reflect the sky; fog thins on high ground and glows toward
 the sun; the amber plaza is unchanged.
 
+**Status:** A2, A3, and B2 are implemented under issue #10562. The SH
+projection, cube prefilter, and fog math are `verse_engine::environment` and
+`verse_engine::lighting::HeightFog`; the sky light is
+`crates/verse/src/pbr/environment.rs`. The key's `sky` illuminance still sets
+the sky light's level on surfaces facing up, so a stylized sky does not
+change the stage's exposure balance; the sky sets its color and gradient.
+
 ### Phase 3 — Baked occlusion and bounce
 
 | ID | Item | Size | Crate | Verdict |

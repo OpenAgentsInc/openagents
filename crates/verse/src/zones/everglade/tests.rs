@@ -128,6 +128,12 @@ fn the_everglade_portal_loads_the_pinned_pack_and_returns_to_the_plaza_pose() {
     assert!(day.zenith[2] > day.zenith[0] && day.zenith[2] > day.horizon[2]);
     // The Sun stands above the horizon, where the key light comes from.
     assert!(stage.key.unwrap().dir.y > 0.3);
+    // The zone's low height fog reaches the stage, and the ramp's end is
+    // still where it is total.
+    let fog = stage.height_fog.expect("height fog");
+    assert_eq!(Some(fog), atmosphere(ZoneId::Everglade).height_fog);
+    assert!(fog.validate().is_ok() && fog.falloff > 0.0);
+    assert_eq!(fog.start, stage.fog_start);
     // Walking works on the generated ground.
     let start = runtime.player.pos;
     for _ in 0..20 {

@@ -1,4 +1,6 @@
-struct Frame { view:mat4x4<f32>,eye:vec4<f32>,ambient:vec4<f32>,fog:vec4<f32>,settings:vec4<f32>,lights:array<vec4<f32>,64>,shadow:array<mat4x4<f32>,24> };
+// fog: rgb color, w density at the base height (1/m). fog_shape: base height
+// (m), falloff with height (1/m), start distance (m), and opacity cap.
+struct Frame { view:mat4x4<f32>,eye:vec4<f32>,ambient:vec4<f32>,fog:vec4<f32>,settings:vec4<f32>,lights:array<vec4<f32>,64>,shadow:array<mat4x4<f32>,24>,fog_shape:vec4<f32> };
 struct Pose { model:mat4x4<f32>,params:vec4<f32>,bones:array<mat4x4<f32>,256> };
 struct Material { params:vec4<f32>,channels:vec4<f32>,emission:vec4<f32>,maps:vec4<f32> };
 @group(0) @binding(0) var<uniform> frame:Frame;
@@ -90,6 +92,19 @@ fn reflectance(n:vec3<f32>,view:vec3<f32>,light:vec3<f32>,diffuse_color:vec3<f32
  let diffuse=(vec3(1.0)-fresnel)*diffuse_color/3.14159265;
  return (diffuse+distribution*visibility*fresnel)*nl*3.14159265;
 }
+// Exponential height fog (verse_engine::lighting::HeightFog) between the eye
+// and p: the closed-form optical depth from the start distance, capped.
+// Without falloff, start, or cap it is uniform fog, 1 - exp(-density x distance).
+fn fog_amount(p:vec3<f32>)->f32{
+ let ray=p-frame.eye.xyz;let len=max(length(ray),0.0001);let travel=len-frame.fog_shape.z;
+ if travel<=0.0||frame.fog.w<=0.0{return 0.0;}
+ let first=frame.eye.y+ray.y*(frame.fog_shape.z/len);let rise=ray.y*(travel/len);
+ let at_start=frame.fog.w*exp(clamp(-frame.fog_shape.y*(first-frame.fog_shape.x),-80.0,80.0));
+ let k=clamp(frame.fog_shape.y*rise,-80.0,80.0);
+ var shape=1.0-0.5*k;
+ if abs(k)>0.0001{shape=(1.0-exp(-k))/k;}
+ return min(1.0-exp(-at_start*travel*shape),frame.fog_shape.w);
+}
 @fragment fn fs(v:Out,@builtin(front_facing) front:bool)->@location(0) vec4<f32>{
  if pose.params.x>1.5 {
   let tex=textureSample(image,tex_sampler,v.uv);
@@ -139,6 +154,6 @@ fn reflectance(n:vec3<f32>,view:vec3<f32>,light:vec3<f32>,diffuse_color:vec3<f32
  // Exposed linear radiance into the floating-point scene target. The shared
  // output pass (pbr/post.wgsl) adds bloom, grades, and tone-maps it, as it
  // does for the physical path; the cap keeps half floats finite.
- let fog=1.0-exp(-length(frame.eye.xyz-v.pos)*frame.fog.w);let color=min(mix(lit,frame.fog.rgb,fog)*frame.ambient.w,vec3(60000.0));
+ let fog=fog_amount(v.pos);let color=min(mix(lit,frame.fog.rgb,fog)*frame.ambient.w,vec3(60000.0));
  return vec4(color,select(alpha,1.0,material.params.y==0.0));
 }

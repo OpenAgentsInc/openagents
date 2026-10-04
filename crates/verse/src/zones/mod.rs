@@ -120,6 +120,10 @@ pub struct Atmosphere {
     pub color: [f32; 3],
     pub fog_start: f32,
     pub fog_end: f32,
+    /// Fog that thins with height and glows toward the Sun, for zones drawn
+    /// on the physical path. `fog_end` stays the distance where fog is
+    /// total. The amber zones keep their distance ramp.
+    pub height_fog: Option<verse_engine::lighting::HeightFog>,
 }
 impl Atmosphere {
     pub fn validate(self) -> Result<Self, String> {
@@ -135,6 +139,9 @@ impl Atmosphere {
         {
             return Err("Zone atmosphere exceeds its bounds".into());
         }
+        if let Some(fog) = &self.height_fog {
+            fog.validate()?;
+        }
         Ok(self)
     }
 }
@@ -144,30 +151,45 @@ pub fn atmosphere(zone: ZoneId) -> Atmosphere {
             color: crate::palette::field(),
             fog_start: crate::render::FOG_START,
             fog_end: crate::render::FOG_END,
+            height_fog: None,
         },
         ZoneId::Ruins => Atmosphere {
             color: [0.045, 0.092, 0.079],
             fog_start: 24.0,
             fog_end: 82.0,
+            height_fog: None,
         },
         // Vacuum: no scattering. Fog only fades the edge of the 2 km sky shell.
         ZoneId::Lagrange1 => Atmosphere {
             color: [0.0, 0.0, 0.004],
             fog_start: 1_000.0,
             fog_end: 2_000.0,
+            height_fog: None,
         },
         // A dark blueprint hall; fog only softens the far floor grid.
         ZoneId::PhysicsLab => Atmosphere {
             color: [0.006, 0.01, 0.018],
             fog_start: 30.0,
             fog_end: 90.0,
+            height_fog: None,
         },
         // Warm late-morning haze: the horizon of Everglade's daylight sky,
-        // which fades the tree ring into it.
+        // which fades the tree ring into it. The haze lies low: its density
+        // halves about every 6 m of height, so the hollows fog over before
+        // the ring's high ground, and it brightens toward the Sun.
         ZoneId::Everglade => Atmosphere {
             color: [0.72, 0.66, 0.50],
             fog_start: 40.0,
             fog_end: 170.0,
+            height_fog: Some(verse_engine::lighting::HeightFog {
+                density: 0.005,
+                base: 0.0,
+                falloff: 0.12,
+                start: 40.0,
+                max_opacity: 0.92,
+                sun_strength: 0.4,
+                sun_exponent: 3.0,
+            }),
         },
     }
 }

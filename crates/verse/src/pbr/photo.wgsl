@@ -56,6 +56,17 @@ struct Frame {
     sky_horizon: vec4<f32>,
     // rgb Sun tint; w the disc's angular radius (rad).
     sky_sun: vec4<f32>,
+    // Daylight sky light: x 1 when lit surfaces take it; y the reflection
+    // cube's last level, which roughness 1 reads.
+    sky_light: vec4<f32>,
+    // The sky light's irradiance as order-two spherical harmonics (rgb), in
+    // `sky_irradiance`'s order with each band's cosine weight folded in.
+    sky_sh: array<vec4<f32>, 9>,
+    // Height fog: density (1/m), base height (m), falloff (1/m), and start
+    // distance (m).
+    fog_shape: vec4<f32>,
+    // x opacity cap; y Sun lobe strength; z its exponent; w 1 when present.
+    fog_lobe: vec4<f32>,
 };
 
 @group(0) @binding(0) var<uniform> f: Frame;
@@ -71,6 +82,8 @@ struct Frame {
 @group(0) @binding(10) var moon_albedo: texture_2d<f32>;
 @group(0) @binding(11) var milky_way: texture_2d<f32>;
 @group(0) @binding(12) var linear_repeat: sampler;
+// The daylight sky prefiltered by roughness, one GGX lobe per level.
+@group(0) @binding(13) var sky_cube: texture_cube<f32>;
 // The most recent adapted scene luminance, for display-referred guides.
 @group(1) @binding(0) var adapted: texture_2d<f32>;
 
@@ -145,19 +158,54 @@ fn expose(luminance: vec3<f32>) -> vec3<f32> {
 // Distance fog toward the field, as the amber world's own shader applies it.
 // Under a daylight sky the fog takes the sky's color along the view ray, a
 // single-scattering aerial perspective: fully fogged ground matches the sky
-// behind it, so the horizon has no seam.
+// behind it, so the horizon has no seam. A stage with height fog uses it in
+// place of the ramp, and sunlight scattered toward the eye brightens the fog
+// on the Sun's side.
 fn neon_fog(color: vec3<f32>, world: vec3<f32>, weight: f32) -> vec3<f32> {
     if f.neon.w < 0.5 {
         return color;
     }
     let d = distance(world.xz, f.eye.xz);
     let t = clamp((d - f.neon.x) / max(f.neon.y - f.neon.x, 1e-3), 0.0, 1.0);
+    let ray = world - f.eye.xyz;
+    let dir = ray / max(length(ray), 1e-4);
     var air = f.field.rgb;
     if f.sky_zenith.w > 0.5 {
-        let ray = world - f.eye.xyz;
-        air = daylight_air(ray / max(length(ray), 1e-4));
+        air = daylight_air(dir);
     }
-    return mix(color, air, t * t * weight);
+    var amount = t * t;
+    if f.fog_lobe.w > 0.5 {
+        // The ramp's end stays the limit: over its last 30% the fog closes
+        // in, so the world's edge stays hidden (`HeightFog::stage_opacity`).
+        let end = f.neon.y;
+        let edge = smoothstep(0.0, 1.0, (d - 0.7 * end) / max(0.3 * end, 1e-3));
+        amount = max(height_fog(world), edge);
+        air += f.sky_sun.rgb * f.fog_lobe.y * pow(max(dot(dir, f.sun.xyz), 0.0), f.fog_lobe.z);
+    }
+    return mix(color, air, amount * weight);
+}
+
+// Exponential height fog (`verse_engine::lighting::HeightFog`): the opacity
+// between the eye and `world`. Density falls exponentially with height, so
+// the optical depth along the ray from the start distance has a closed form
+// (Wenzel 2007; Quilez, "Better Fog").
+fn height_fog(world: vec3<f32>) -> f32 {
+    let ray = world - f.eye.xyz;
+    let len = max(length(ray), 1e-4);
+    let travel = len - f.fog_shape.w;
+    if travel <= 0.0 || f.fog_shape.x <= 0.0 {
+        return 0.0;
+    }
+    let first = f.eye.y + ray.y * (f.fog_shape.w / len);
+    let rise = ray.y * (travel / len);
+    let at_start = f.fog_shape.x * exp(clamp(-f.fog_shape.z * (first - f.fog_shape.y), -80.0, 80.0));
+    // The mean density relative to the start: (1 - e^-k) / k.
+    let k = clamp(f.fog_shape.z * rise, -80.0, 80.0);
+    var shape = 1.0 - 0.5 * k;
+    if abs(k) > 1e-4 {
+        shape = (1.0 - exp(-k)) / k;
+    }
+    return min(1.0 - exp(-at_start * travel * shape), f.fog_lobe.x);
 }
 
 // ---------------------------------------------------------------------------
@@ -486,6 +534,22 @@ fn probe_irradiance(p: vec3<f32>, n: vec3<f32>) -> vec3<f32> {
     return max(vec3<f32>(r.x + dot(r.yzw, n), g.x + dot(g.yzw, n), b.x + dot(b.yzw, n)), vec3<f32>(0.0));
 }
 
+fn luma(c: vec3<f32>) -> f32 {
+    return dot(c, vec3<f32>(0.2126, 0.7152, 0.0722));
+}
+
+// The daylight sky's irradiance on a surface facing `n`: the nine
+// spherical-harmonic terms of `verse_engine::environment::basis`, with the
+// coefficients' cosine weights already folded in.
+fn sky_irradiance(n: vec3<f32>) -> vec3<f32> {
+    var e = f.sky_sh[0].rgb;
+    e += f.sky_sh[1].rgb * n.y + f.sky_sh[2].rgb * n.z + f.sky_sh[3].rgb * n.x;
+    e += f.sky_sh[4].rgb * (n.x * n.y) + f.sky_sh[5].rgb * (n.y * n.z);
+    e += f.sky_sh[6].rgb * (3.0 * n.z * n.z - 1.0) + f.sky_sh[7].rgb * (n.x * n.z);
+    e += f.sky_sh[8].rgb * (n.x * n.x - n.y * n.y);
+    return max(e, vec3<f32>(0.0));
+}
+
 const POISSON: array<vec2<f32>, 16> = array<vec2<f32>, 16>(
     vec2<f32>(-0.94201624, -0.39906216), vec2<f32>(0.94558609, -0.76890725),
     vec2<f32>(-0.094184101, -0.92938870), vec2<f32>(0.34495938, 0.29387760),
@@ -728,13 +792,28 @@ fn shade(i: Shading) -> vec3<f32> {
     }
     direct_part = radiance;
 
-    // Bounce light from nearby surfaces through the probe grid.
-    let irr = probe_irradiance(i.world, n) * i.ambient;
-    radiance += diffuse_color / PI * irr;
-    // Glossy bounce: the probes' radiance toward the reflection direction.
     let r = reflect(-v, n);
     let so = clamp(pow(nov + ao, exp2(-16.0 * roughness - 1.0)) - 1.0 + ao, 0.0, 1.0);
-    let lr = probe_irradiance(i.world, r) / PI;
+    var irr: vec3<f32>;
+    var lr: vec3<f32>;
+    if f.sky_light.x > 0.5 {
+        // The daylight sky's light: its irradiance times the surface's local
+        // ambient (vertex occlusion or the baked multiplier), and the
+        // prefiltered sky toward the reflection at the antialiased
+        // roughness's level, read with an explicit level of detail. Glossy
+        // light is scaled by local over open-sky irradiance, so covered
+        // surfaces stop reflecting the open sky (Lagarde and Zanuttini 2012).
+        let open = sky_irradiance(n);
+        irr = open * i.ambient;
+        let normalization = clamp(luma(irr) / max(luma(open), 1e-4), 0.0, 1.0);
+        lr = textureSampleLevel(sky_cube, linear_clamp, r, sqrt(a) * f.sky_light.y).rgb * normalization;
+    } else {
+        // Bounce light from nearby surfaces through the probe grid, and the
+        // probes' radiance toward the reflection direction as glossy bounce.
+        irr = probe_irradiance(i.world, n) * i.ambient;
+        lr = probe_irradiance(i.world, r) / PI;
+    }
+    radiance += diffuse_color / PI * irr;
     radiance += lr * e_spec * so;
 
     if DEBUG == 1u {

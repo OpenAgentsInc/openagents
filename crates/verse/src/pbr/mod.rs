@@ -24,6 +24,7 @@
 //! draw through [`textured`] in the same frames.
 
 pub mod bake;
+pub mod environment;
 pub(crate) mod gpu;
 pub(crate) mod output;
 pub mod sky;
@@ -34,6 +35,7 @@ use std::sync::Arc;
 
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat3, Vec3};
+pub use verse_engine::lighting::HeightFog;
 
 /// Solar illuminance at Sun–Earth L1, lux. The solar constant (1361 W/m²) at
 /// 0.99 AU with a luminous efficacy of about 94 lm/W.
@@ -283,9 +285,15 @@ pub struct Neon {
     /// stage draws no lit geometry.
     pub key: Option<Key>,
     /// A daytime sky drawn behind the stage instead of the flat field. Fog
-    /// then fades toward the sky's color along each view ray. Without it the
+    /// then fades toward the sky's color along each view ray, and with a key
+    /// light the sky also lights the stage ([`environment`]). Without it the
     /// stage clears to its field.
     pub daylight: Option<Daylight>,
+    /// Fog that thins with height and glows toward the Sun, in place of the
+    /// linear ramp from `fog_start` to `fog_end`. The ramp's end stays the
+    /// distance where fog is total. Without it the stage keeps the amber
+    /// world's ramp.
+    pub height_fog: Option<HeightFog>,
 }
 
 /// A stylized daytime sky for a neon stage, in the stage's display-linear
@@ -310,6 +318,9 @@ pub struct Daylight {
     pub sun: [f32; 3],
     /// Cloud cover from 0 (clear) to 1 (overcast).
     pub clouds: f32,
+    /// The ground's diffuse albedo. The sky light treats everything below
+    /// the horizon as this ground, lit by the key and the sky.
+    pub ground: [f32; 3],
 }
 
 impl Daylight {
@@ -321,6 +332,7 @@ impl Daylight {
             .iter()
             .chain(&self.horizon)
             .chain(&self.sun)
+            .chain(&self.ground)
             .all(|c| c.is_finite() && (0.0..=1.0).contains(c))
             && (0.0..=1.0).contains(&self.clouds)
     }
@@ -344,7 +356,11 @@ pub struct Key {
     pub rim_dir: Vec3,
     pub rim_illuminance: f32,
     pub rim_angular_radius: f32,
-    /// Ambient irradiance on surfaces facing straight up and straight down, lux.
+    /// Ambient irradiance on surfaces facing straight up and straight down,
+    /// lux. Under a [`Daylight`] sky the sky's own light replaces both: its
+    /// colors, gradient, and lit ground set the ambient's shape, and `sky`
+    /// only sets its level on surfaces facing up. The ambient light bake
+    /// still reads both as the open sky's irradiance.
     pub sky: f32,
     pub ground: f32,
     /// Exposure value at ISO 100 that carries these lux onto the stage.
@@ -398,6 +414,7 @@ impl Neon {
             time,
             key: None,
             daylight: None,
+            height_fog: None,
         }
     }
 
@@ -448,11 +465,15 @@ mod tests {
     fn stages_draw_daylight_only_when_asked() {
         assert!(Neon::plaza(0.0).daylight.is_none());
         assert!(Neon::neutral(0.0).daylight.is_none());
+        // The amber stages keep their linear fog ramp.
+        assert!(Neon::plaza(0.0).height_fog.is_none());
+        assert!(Neon::neutral(0.0).height_fog.is_none());
         let day = Daylight {
             zenith: [0.1, 0.3, 0.7],
             horizon: [0.7, 0.65, 0.5],
             sun: [1.0, 0.9, 0.6],
             clouds: 0.4,
+            ground: [0.1, 0.11, 0.07],
         };
         assert!(day.valid());
         assert!(!Daylight { clouds: 1.5, ..day }.valid());

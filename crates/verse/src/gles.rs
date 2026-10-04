@@ -319,6 +319,50 @@ mod tests {
         }
     }
 
+    /// Lit and textured surfaces read the daylight sky's reflection cube with
+    /// an explicit level of detail, which GLSL ES 3.00 has without an
+    /// extension, and through the one sampler the probes also use. The
+    /// height fog and the sky's irradiance are uniform arithmetic.
+    /// `default_variants_are_valid_and_translate_to_metal` covers Metal.
+    #[test]
+    fn the_sky_light_and_height_fog_translate_for_webgl2() {
+        let source = wgsl(include_str!("pbr/photo.wgsl"), true);
+        let (module, info) = parse("photo", &source);
+        for set in constant_sets(&[("DIRECT", &[0.0, 1.0])]) {
+            for entry in [
+                "fs_lit",
+                "fs_textured",
+                "fs_textured_masked",
+                "fs_textured_blend",
+            ] {
+                let (glsl, pairs) =
+                    write_gles(&module, &info, naga::ShaderStage::Fragment, entry, &set)
+                        .unwrap_or_else(|e| panic!("{entry}: {e}"));
+                assert!(glsl.contains("samplerCube"), "{entry} has no cube");
+                assert!(
+                    glsl.contains("textureLod("),
+                    "{entry} reads no explicit level"
+                );
+                assert!(!glsl.contains("#extension"), "{entry} needs an extension");
+                assert!(
+                    pairs.iter().any(
+                        |(texture, sampler)| texture == "sky_cube" && sampler == "linear_clamp"
+                    ),
+                    "{entry}: {pairs:?}"
+                );
+            }
+            // Fog reaches the lines and faces drawn on the stage too.
+            for (stage, entry) in [
+                (naga::ShaderStage::Fragment, "fs_legacy"),
+                (naga::ShaderStage::Fragment, "fs_wide"),
+            ] {
+                let (glsl, _) = write_gles(&module, &info, stage, entry, &set)
+                    .unwrap_or_else(|e| panic!("{entry}: {e}"));
+                assert!(glsl.contains("height_fog"), "{entry} has no height fog");
+            }
+        }
+    }
+
     /// The GLES side replaces exactly the constructs GLSL ES lacks: the
     /// default side still uses them, so the preprocessor did not drop the
     /// wrong branch.

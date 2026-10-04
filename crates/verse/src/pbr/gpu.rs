@@ -19,6 +19,7 @@ use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3};
 use wgpu::util::DeviceExt;
 
+use super::environment::{SkyInputs, SkyLightGpu};
 use super::output::{self, Look, Output, OutputTargets};
 use super::textured::{self, Pass, TexturedMaterial, TexturedScene, TexturedVertex};
 use super::{GlowVertex, LitVertex, Neon, ProbeGrid, Sky, sky};
@@ -61,6 +62,14 @@ struct Frame {
     sky_zenith: [f32; 4],
     sky_horizon: [f32; 4],
     sky_sun: [f32; 4],
+    /// The daylight sky's light: x 1 when lit surfaces take it, y the
+    /// reflection cube's last level; and its irradiance as order-two
+    /// spherical harmonics ([`super::environment`]).
+    sky_light: [f32; 4],
+    sky_sh: [[f32; 4]; 9],
+    /// Height fog ([`super::HeightFog::uniform`]); `fog_lobe` w 1 when present.
+    fog_shape: [f32; 4],
+    fog_lobe: [f32; 4],
 }
 
 #[repr(C)]
@@ -286,6 +295,9 @@ pub(crate) struct Photo {
     probes: [wgpu::TextureView; 3],
     probe_version: Option<u64>,
     sky_textures: [wgpu::TextureView; 5],
+    /// The daylight sky's diffuse and glossy light, rebuilt when the sky or
+    /// the key light changes.
+    sky_light: SkyLightGpu,
     pipelines: Pipelines,
     /// A textured material's image, sampler, and factors (group 2).
     material_layout: wgpu::BindGroupLayout,
@@ -429,6 +441,7 @@ impl Photo {
                     ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                     count: None,
                 },
+                texture_entry(13, wgpu::TextureViewDimension::Cube, float),
             ],
         });
         let frame = device.create_buffer(&wgpu::BufferDescriptor {
@@ -479,6 +492,7 @@ impl Photo {
         // The Sun, Earth, Moon, and stars load on the first space frame; the
         // neon stage never needs them.
         let sky_textures = placeholder_sky(device, queue);
+        let sky_light = SkyLightGpu::empty(device, queue);
         let scene_group = scene_group(
             device,
             &scene_layout,
@@ -489,6 +503,7 @@ impl Photo {
             &linear_clamp,
             &sky_textures,
             &linear_repeat,
+            &sky_light.view,
         );
 
         let frame_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -935,6 +950,7 @@ impl Photo {
             probes,
             probe_version: None,
             sky_textures,
+            sky_light,
             pipelines,
             material_layout,
             empty_group,
@@ -989,6 +1005,7 @@ impl Photo {
             &self.linear_clamp,
             &self.sky_textures,
             &self.linear_repeat,
+            &self.sky_light.view,
         );
     }
 
@@ -1399,6 +1416,10 @@ impl Photo {
             sky_zenith: [0.0; 4],
             sky_horizon: [0.0; 4],
             sky_sun: [0.0; 4],
+            sky_light: [0.0; 4],
+            sky_sh: [[0.0; 4]; 9],
+            fog_shape: [0.0; 4],
+            fog_lobe: [0.0; 4],
         };
         queue.write_buffer(&self.frame, 0, bytemuck::bytes_of(&frame));
 
@@ -1634,6 +1655,10 @@ impl Photo {
             sky_zenith: [0.0; 4],
             sky_horizon: [0.0; 4],
             sky_sun: [0.0; 4],
+            sky_light: [0.0; 4],
+            sky_sh: [[0.0; 4]; 9],
+            fog_shape: [0.0; 4],
+            fog_lobe: [0.0; 4],
         };
         let mut uniform = frame(reversed, neon.line_width, 1.0);
         let daylight = neon.daylight.filter(super::Daylight::valid);
@@ -1680,6 +1705,26 @@ impl Photo {
                 probes.dims[2] as f32,
                 1.0,
             ];
+        }
+        if let (Some(key), Some(day)) = (&lit, &daylight) {
+            // Under a daylight sky, the sky lights the stage in place of the
+            // key's uniform sky and ground, at the key's level.
+            let exposure = super::exposure(key.ev100);
+            let inputs = SkyInputs {
+                daylight: *day,
+                sun: key.dir.normalize_or(Vec3::Y),
+                sun_illuminance: key.illuminance * exposure,
+                level: key.sky * exposure,
+            };
+            let quality = self.capability.quality;
+            if self.sky_light.update(device, queue, &inputs, &quality) {
+                self.rebuild_groups(device);
+            }
+            uniform.sky_light = [1.0, self.sky_light.max_lod, 0.0, 0.0];
+            uniform.sky_sh = self.sky_light.sh;
+        }
+        if let Some(fog) = neon.height_fog.filter(|fog| fog.validate().is_ok()) {
+            [uniform.fog_shape, uniform.fog_lobe] = fog.uniform();
         }
         queue.write_buffer(&self.frame, 0, bytemuck::bytes_of(&uniform));
         if lit.is_some() {
@@ -1903,6 +1948,7 @@ fn scene_group(
     linear_clamp: &wgpu::Sampler,
     sky: &[wgpu::TextureView; 5],
     linear_repeat: &wgpu::Sampler,
+    sky_light: &wgpu::TextureView,
 ) -> wgpu::BindGroup {
     let view = |binding, view| wgpu::BindGroupEntry {
         binding,
@@ -1937,6 +1983,7 @@ fn scene_group(
                 binding: 12,
                 resource: wgpu::BindingResource::Sampler(linear_repeat),
             },
+            view(13, sky_light),
         ],
     })
 }

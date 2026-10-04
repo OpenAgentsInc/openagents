@@ -137,8 +137,19 @@ The zone renderer gains textured static meshes:
   as partial occluders, so the workshop interior and the ground under the
   tree ring darken. A coarse probe grid of the same light shades the
   characters. The bake runs on a worker thread; in a browser it advances a
-  little each frame at lower quality. Sky-cube specular occlusion (item B2)
-  waits for the sky light of phase 2.
+  little each frame at lower quality.
+- The sky lights the zone (`pbr::environment`, items A2 and B2): the daylight
+  sky, with its clouds at their mean cover and the lit ground below the
+  horizon, is projected on the CPU into order-two spherical harmonics for
+  diffuse light and a GGX-prefiltered cube for reflections, at the key's
+  `sky` level. Shaded sides take the sky's blue-to-haze gradient, glossy
+  surfaces reflect the sky, and reflections scale by the baked light over
+  the open sky's, so covered surfaces stop reflecting it. The quality tier
+  sets only the cube's size; WebGL2 samples it with an explicit level.
+- Fog is exponential height fog (item A3, `HeightFog` in
+  `zones::atmosphere`): it starts at 40 m, thins with height so hilltops
+  stay clearer than hollows, brightens toward the Sun, and still closes in
+  completely by 170 m.
 
 ## The zone
 

@@ -321,8 +321,8 @@ impl Everglade {
     /// The physical stage: a late-morning daylight sky whose horizon haze is
     /// the zone's air and fog, a warm sun from behind the approach that
     /// casts shadows over the clearing and stands in the sky where the
-    /// shadows say it is, and sky and ground fill. Textured meshes draw only
-    /// on a lit stage.
+    /// shadows say it is, and the sky's own light as fill, with low height
+    /// fog. Textured meshes draw only on a lit stage.
     fn stage(time: f32) -> Mesh {
         let air = super::atmosphere(super::ZoneId::Everglade);
         Mesh {
@@ -341,7 +341,12 @@ impl Everglade {
                     horizon: air.color,
                     sun: [1.0, 0.86, 0.62],
                     clouds: 0.38,
+                    // Grass and leaf litter: under the key and the sky it
+                    // returns about the irradiance the key's ground fill
+                    // gave surfaces facing down.
+                    ground: [0.10, 0.11, 0.07],
                 }),
+                height_fog: air.height_fog,
             }),
             ..Mesh::default()
         }
