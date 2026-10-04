@@ -53,11 +53,16 @@ pub fn cinematic(
         let desired_x = ((ndc.x + 1.0) * width * 0.5 - w * 0.5).clamp(4.0, width - w - 4.0);
         let anchor = (1.0 - ndc.y) * height * 0.5;
         let mut selected = (desired_x, (anchor - row_height).max(5.0));
-        'search: for row in 0..15 {
+        'search: for row in 0..30 {
             for column in [0, -1, 1, -2, 2, -3, 3] {
                 let x = (desired_x + column as f32 * (w + 5.0)).clamp(4.0, width - w - 4.0);
-                let y = anchor - row_height - row as f32 * row_height;
-                if y < 5.0 {
+                let offset = if row % 2 == 0 {
+                    row / 2
+                } else {
+                    -(row + 1) / 2
+                };
+                let y = anchor - row_height - offset as f32 * row_height;
+                if y < 5.0 || y + row_height > height - 5.0 {
                     continue;
                 }
                 if !occupied.iter().any(|(ox, oy, ow)| {

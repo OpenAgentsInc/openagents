@@ -1,0 +1,19 @@
+{
+  "schema": "openagents.verse.friendly-giver-capture.v1",
+  "source_commit": "6c44eea397",
+  "command": "verse_play --quest-giver --lair-proof bench/verse/2026-10-04/friendly-giver",
+  "exit_code": 0,
+  "dimensions": [
+    1920,
+    1080
+  ],
+  "capture_scope": "offscreen native authored scene, not authenticated quest interaction or performance acceptance",
+  "inspection": {
+    "friendly_body_visible": true,
+    "green_nameplate_visible": true,
+    "hostile_bars_red": true,
+    "nameplate_overlap_observed": true
+  },
+  "next": "Verify revised nameplate placement and authenticated enrollment before closing #10557",
+  "inspected_image": "player-handoff.png"
+}
