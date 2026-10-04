@@ -25,6 +25,12 @@ Minecraft studio; Everglade is the same workspace built in Verse Engine from
 stylized CC0 kits, and its panels are the Zeron-derived interface the studio
 already specifies.
 
+![Everglade: a city for building things together](everglade-map.png)
+
+The [illustrated map](everglade-map.svg) imagines Everglade grown into a
+small city around its commons: neighborhoods for living, making,
+learning, and gathering, with quiet woods at the edges.
+
 ## Inspiration
 
 > my strong suspicion is that the optimal way to manage multiple
