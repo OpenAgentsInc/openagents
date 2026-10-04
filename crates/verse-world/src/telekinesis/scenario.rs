@@ -164,8 +164,9 @@ fn script() -> Vec<Cue> {
     s.wait(2);
     s.cast();
     s.steer(0, LIFT);
-    // The hold runs one round from the cast; it then falls and lands.
-    s.tick += 180 - 31 + 30;
+    // The hold runs one round from the cast; it then falls, lands, and
+    // shows its falling damage before the next shot.
+    s.tick += 180 - 31 + 60;
     // 4. The stone block.
     s.face(yaw_to(STONE));
     s.wait(2);
@@ -182,8 +183,8 @@ fn script() -> Vec<Cue> {
     s.cues
 }
 
-/// Seconds of live action: the script's last cue is at tick 557.
-const LIVE: f32 = 19.2;
+/// Seconds of live action: the script's last cue is at tick 587.
+const LIVE: f32 = 20.2;
 /// The throw: the release at 1.67 s and the stack's collapse.
 const REPLAY: (f32, f32) = (1.5, 2.5);
 
@@ -226,20 +227,26 @@ pub fn scenario() -> Scenario {
             // stone wall fills x 10.0 to 10.6, so no eye sits in a solid.
             let throw = (Vec3::new(-0.5, 3.6, -9.), Vec3::new(-0.5, 1.4, 0.));
             let tower = (Vec3::new(1.25, 3.4, -3.), Vec3::new(6., 1.2, 4.2));
-            let dummies = (Vec3::new(-4., 3.5, -6.), Vec3::new(4.5, 3.8, -5.));
-            let stone = (Vec3::new(4.6, 2.6, -3.6), Vec3::new(7.6, 1.8, 0.4));
-            let range = (Vec3::new(-1., 9.5, -7.), Vec3::new(-2., 0.5, 6.));
+            // From the south, between the pillars: Dummy A (x 3.25) sits
+            // right of center, and its 8 m peak and the floor both fit.
+            let dummies = (Vec3::new(1.5, 4.5, -13.), Vec3::new(5.5, 4.2, -3.5));
+            // Close on the stone block (8.25, 0.4, 0) as it rises.
+            let stone = (Vec3::new(7.5, 2.6, -4.2), Vec3::new(8.25, 1.5, 0.));
+            // Follow the range crate out to 60 ft, where it drops.
+            let range_out = (Vec3::new(2., 3.4, 0.5), Vec3::new(-2.5, 1., 7.));
+            let range_end = (Vec3::new(-3.5, 3., 5.5), Vec3::new(-7.5, 0.8, 10.5));
             [
                 (0., throw),
                 (2.6, throw),
                 (3.0, tower),
                 (7.4, tower),
                 (7.8, dummies),
-                (15.2, dummies),
-                (15.5, stone),
-                (16.4, stone),
-                (16.8, range),
-                (LIVE, range),
+                (16., dummies),
+                (16.3, stone),
+                (17.3, stone),
+                (17.6, range_out),
+                (19.1, range_end),
+                (LIVE, range_end),
             ]
             .into_iter()
             .map(|(at, (eye, target))| shot(at, eye, target))
