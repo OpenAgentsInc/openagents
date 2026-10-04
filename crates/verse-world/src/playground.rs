@@ -178,6 +178,7 @@ pub fn creature(id: u64, name: &str, model: &str, position: Vec3, yaw: f32, heal
         scale: 1.,
         health,
         nameplate: true,
+        friendly: false,
     }
 }
 

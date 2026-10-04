@@ -17,7 +17,13 @@ pub struct Actor {
     pub scale: f32,
     pub health: u32,
     pub nameplate: bool,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub friendly: bool,
 }
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Action {
@@ -117,6 +123,7 @@ impl Scene {
                 || a.name.len() > 128
                 || a.model.len() > 128
                 || a.health == 0
+                || (a.friendly && (a.model == "adventurer" || !a.nameplate))
             {
                 return Err("Invalid cinematic actor".into());
             }
@@ -130,7 +137,10 @@ impl Scene {
                     return Err("Invalid cinematic yell".into());
                 }
                 Action::Bow { target, damage }
-                    if !ids.contains(target) || *target == c.actor || *damage == 0 =>
+                    if !ids.contains(target)
+                        || *target == c.actor
+                        || *damage == 0
+                        || self.actors.iter().any(|a| a.id == *target && a.friendly) =>
                 {
                     return Err("Invalid directed shot".into());
                 }
@@ -146,7 +156,7 @@ impl Scene {
         let mut a = a.clone();
         if a.model == "adventurer" {
             a.position.z += ((time - self.cut_at) / 4.0).clamp(0.0, 1.0) * 5.0;
-        } else if a.model.starts_with("cultist") && time > self.cut_at + 2.0 {
+        } else if !a.friendly && a.model.starts_with("cultist") && time > self.cut_at + 2.0 {
             let panic = ((time - self.cut_at - 2.0) / 5.0).clamp(0.0, 1.0);
             a.yaw = 0.0;
             a.position.x += a.position.x.signum() * panic * 1.2;
@@ -193,7 +203,8 @@ impl Scene {
                 animation = State::Idle.into();
             }
             let mut animation_time = time + a.id as f32 * 0.19;
-            if actor.model.starts_with("cultist")
+            if !actor.friendly
+                && actor.model.starts_with("cultist")
                 && time > self.cut_at + 2.0
                 && time < self.cut_at + 7.0
             {
@@ -375,6 +386,45 @@ mod tests {
             assert_eq!(actual.animation, expected.animation);
         }
     }
+    #[test]
+    fn friendly_role_preserves_pose_and_refuses_directed_damage() {
+        let mut s = scene();
+        s.cues.clear();
+        let giver = s.actors.iter_mut().find(|a| a.id == 2).unwrap();
+        giver.friendly = true;
+        let expected = giver.position;
+        s.validate().unwrap();
+        let frame = s.frame(s.cut_at + 4.0);
+        let giver = frame.actors.iter().find(|a| a.actor.id == 2).unwrap();
+        assert_eq!(giver.actor.position, expected);
+        assert_eq!(giver.animation, Selection::Legacy(0));
+        let restored = Scene::from_json(&serde_json::to_vec(&s).unwrap()).unwrap();
+        assert!(restored.actors.iter().find(|a| a.id == 2).unwrap().friendly);
+        s.cues.push(Cue {
+            at: 1.0,
+            actor: 14,
+            action: Action::Bow {
+                target: 2,
+                damage: 1,
+            },
+        });
+        assert!(s.validate().is_err());
+    }
+
+    #[test]
+    fn legacy_scene_omits_friendly_role_and_player_cannot_be_friendly() {
+        let mut s = scene();
+        assert!(s.actors.iter().all(|a| !a.friendly));
+        let encoded = serde_json::to_string(&s).unwrap();
+        assert!(!encoded.contains("friendly"));
+        s.actors
+            .iter_mut()
+            .find(|a| a.model == "adventurer")
+            .unwrap()
+            .friendly = true;
+        assert!(s.validate().is_err());
+    }
+
     #[test]
     fn cues_cannot_target_missing_actors() {
         let mut s = scene();
