@@ -1,0 +1,540 @@
+{
+  "schema": "verse.multiplayer.load.v2",
+  "status": "complete",
+  "seconds": 90,
+  "players": [
+    {
+      "player": 0,
+      "status": "complete",
+      "failure_stage": null,
+      "omitted_latency_samples": 0,
+      "snapshots": 19,
+      "snapshot_bytes": 1297978,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 7,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_inputs": 2605,
+      "input_pressure": 0,
+      "refusals": 573,
+      "accepted_casts": {
+        "Shield": 1
+      },
+      "minimum_hp": 200,
+      "binding_to_outcome_ms": {
+        "samples": 577,
+        "p95": 1559.5458330000001,
+        "max": 2752.878333
+      }
+    },
+    {
+      "player": 1,
+      "status": "complete",
+      "failure_stage": null,
+      "omitted_latency_samples": 0,
+      "snapshots": 18,
+      "snapshot_bytes": 1228110,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 7,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_inputs": 2605,
+      "input_pressure": 0,
+      "refusals": 575,
+      "accepted_casts": {},
+      "minimum_hp": 200,
+      "binding_to_outcome_ms": {
+        "samples": 576,
+        "p95": 1549.4387080000001,
+        "max": 2724.9154999999996
+      }
+    },
+    {
+      "player": 2,
+      "status": "complete",
+      "failure_stage": null,
+      "omitted_latency_samples": 0,
+      "snapshots": 15,
+      "snapshot_bytes": 1014039,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 4,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_inputs": 2601,
+      "input_pressure": 0,
+      "refusals": 578,
+      "accepted_casts": {
+        "Shield": 1
+      },
+      "minimum_hp": 200,
+      "binding_to_outcome_ms": {
+        "samples": 581,
+        "p95": 1549.033291,
+        "max": 2724.743958
+      }
+    },
+    {
+      "player": 3,
+      "status": "complete",
+      "failure_stage": null,
+      "omitted_latency_samples": 0,
+      "snapshots": 17,
+      "snapshot_bytes": 1161733,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 6,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_inputs": 2601,
+      "input_pressure": 0,
+      "refusals": 575,
+      "accepted_casts": {
+        "Shield": 1
+      },
+      "minimum_hp": 200,
+      "binding_to_outcome_ms": {
+        "samples": 578,
+        "p95": 1549.015583,
+        "max": 2724.6119169999997
+      }
+    },
+    {
+      "player": 4,
+      "status": "complete",
+      "failure_stage": null,
+      "omitted_latency_samples": 0,
+      "snapshots": 21,
+      "snapshot_bytes": 1447273,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 10,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_inputs": 2600,
+      "input_pressure": 0,
+      "refusals": 570,
+      "accepted_casts": {
+        "Shield": 1
+      },
+      "minimum_hp": 200,
+      "binding_to_outcome_ms": {
+        "samples": 574,
+        "p95": 1548.4157910000001,
+        "max": 2752.706709
+      }
+    },
+    {
+      "player": 5,
+      "status": "complete",
+      "failure_stage": null,
+      "omitted_latency_samples": 0,
+      "snapshots": 19,
+      "snapshot_bytes": 1310458,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 8,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_inputs": 2600,
+      "input_pressure": 0,
+      "refusals": 574,
+      "accepted_casts": {
+        "Shield": 1
+      },
+      "minimum_hp": 200,
+      "binding_to_outcome_ms": {
+        "samples": 577,
+        "p95": 1562.1156250000001,
+        "max": 2723.611667
+      }
+    },
+    {
+      "player": 6,
+      "status": "complete",
+      "failure_stage": null,
+      "omitted_latency_samples": 0,
+      "snapshots": 16,
+      "snapshot_bytes": 1090981,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 5,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_inputs": 2600,
+      "input_pressure": 0,
+      "refusals": 577,
+      "accepted_casts": {
+        "Shield": 1
+      },
+      "minimum_hp": 200,
+      "binding_to_outcome_ms": {
+        "samples": 580,
+        "p95": 1549.560541,
+        "max": 2724.60925
+      }
+    },
+    {
+      "player": 7,
+      "status": "complete",
+      "failure_stage": null,
+      "omitted_latency_samples": 0,
+      "snapshots": 17,
+      "snapshot_bytes": 1155270,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 6,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_inputs": 2605,
+      "input_pressure": 0,
+      "refusals": 577,
+      "accepted_casts": {},
+      "minimum_hp": 200,
+      "binding_to_outcome_ms": {
+        "samples": 579,
+        "p95": 1562.215208,
+        "max": 2723.2477080000003
+      }
+    },
+    {
+      "player": 8,
+      "status": "complete",
+      "failure_stage": null,
+      "omitted_latency_samples": 0,
+      "snapshots": 15,
+      "snapshot_bytes": 1017704,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 4,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_inputs": 2601,
+      "input_pressure": 0,
+      "refusals": 578,
+      "accepted_casts": {
+        "Shield": 1
+      },
+      "minimum_hp": 200,
+      "binding_to_outcome_ms": {
+        "samples": 581,
+        "p95": 1544.492417,
+        "max": 2724.943417
+      }
+    },
+    {
+      "player": 9,
+      "status": "complete",
+      "failure_stage": null,
+      "omitted_latency_samples": 0,
+      "snapshots": 13,
+      "snapshot_bytes": 869626,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 2,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_inputs": 2604,
+      "input_pressure": 0,
+      "refusals": 580,
+      "accepted_casts": {
+        "Shield": 1
+      },
+      "minimum_hp": 200,
+      "binding_to_outcome_ms": {
+        "samples": 583,
+        "p95": 1549.097334,
+        "max": 2724.610291
+      }
+    },
+    {
+      "player": 10,
+      "status": "complete",
+      "failure_stage": null,
+      "omitted_latency_samples": 0,
+      "snapshots": 20,
+      "snapshot_bytes": 1384386,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 9,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_inputs": 2605,
+      "input_pressure": 0,
+      "refusals": 574,
+      "accepted_casts": {},
+      "minimum_hp": 182,
+      "binding_to_outcome_ms": {
+        "samples": 576,
+        "p95": 1563.076916,
+        "max": 2723.117667
+      }
+    },
+    {
+      "player": 11,
+      "status": "complete",
+      "failure_stage": null,
+      "omitted_latency_samples": 0,
+      "snapshots": 17,
+      "snapshot_bytes": 1153033,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 6,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_inputs": 2605,
+      "input_pressure": 0,
+      "refusals": 577,
+      "accepted_casts": {},
+      "minimum_hp": 94,
+      "binding_to_outcome_ms": {
+        "samples": 579,
+        "p95": 1566.254208,
+        "max": 2723.449708
+      }
+    },
+    {
+      "player": 12,
+      "status": "complete",
+      "failure_stage": null,
+      "omitted_latency_samples": 0,
+      "snapshots": 17,
+      "snapshot_bytes": 1152630,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 6,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_inputs": 2605,
+      "input_pressure": 0,
+      "refusals": 577,
+      "accepted_casts": {},
+      "minimum_hp": 100,
+      "binding_to_outcome_ms": {
+        "samples": 579,
+        "p95": 1563.072958,
+        "max": 2723.457333
+      }
+    },
+    {
+      "player": 13,
+      "status": "complete",
+      "failure_stage": null,
+      "omitted_latency_samples": 0,
+      "snapshots": 20,
+      "snapshot_bytes": 1379571,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 9,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_inputs": 2601,
+      "input_pressure": 0,
+      "refusals": 570,
+      "accepted_casts": {
+        "Shield": 1
+      },
+      "minimum_hp": 112,
+      "binding_to_outcome_ms": {
+        "samples": 573,
+        "p95": 1534.5307080000002,
+        "max": 2735.461042
+      }
+    },
+    {
+      "player": 14,
+      "status": "complete",
+      "failure_stage": null,
+      "omitted_latency_samples": 0,
+      "snapshots": 19,
+      "snapshot_bytes": 1296697,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 8,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_inputs": 2600,
+      "input_pressure": 0,
+      "refusals": 572,
+      "accepted_casts": {
+        "Shield": 1
+      },
+      "minimum_hp": 192,
+      "binding_to_outcome_ms": {
+        "samples": 574,
+        "p95": 1549.387166,
+        "max": 2752.229125
+      }
+    },
+    {
+      "player": 15,
+      "status": "complete",
+      "failure_stage": null,
+      "omitted_latency_samples": 0,
+      "snapshots": 20,
+      "snapshot_bytes": 1382151,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 9,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_inputs": 2491,
+      "input_pressure": 0,
+      "refusals": 559,
+      "accepted_casts": {
+        "Shield": 1,
+        "Thunderwave": 1
+      },
+      "minimum_hp": 0,
+      "binding_to_outcome_ms": {
+        "samples": 565,
+        "p95": 1484.4375830000001,
+        "max": 2341.31075
+      }
+    },
+    {
+      "player": 16,
+      "status": "complete",
+      "failure_stage": null,
+      "omitted_latency_samples": 0,
+      "snapshots": 31,
+      "snapshot_bytes": 2159430,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 19,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_inputs": 2340,
+      "input_pressure": 0,
+      "refusals": 516,
+      "accepted_casts": {
+        "Light": 1,
+        "Magic Missile": 1,
+        "Shield": 1,
+        "Shoot Bow": 1
+      },
+      "minimum_hp": 0,
+      "binding_to_outcome_ms": {
+        "samples": 528,
+        "p95": 1558.905584,
+        "max": 2725.758542
+      }
+    },
+    {
+      "player": 17,
+      "status": "complete",
+      "failure_stage": null,
+      "omitted_latency_samples": 0,
+      "snapshots": 20,
+      "snapshot_bytes": 1378912,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 9,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_inputs": 2493,
+      "input_pressure": 0,
+      "refusals": 558,
+      "accepted_casts": {
+        "Thunderwave": 1
+      },
+      "minimum_hp": 0,
+      "binding_to_outcome_ms": {
+        "samples": 563,
+        "p95": 1483.976208,
+        "max": 2341.2835
+      }
+    },
+    {
+      "player": 18,
+      "status": "complete",
+      "failure_stage": null,
+      "omitted_latency_samples": 0,
+      "snapshots": 28,
+      "snapshot_bytes": 1954706,
+      "maximum_actors": 60,
+      "maximum_players": 20,
+      "maximum_live_hostiles": 40,
+      "battle_occupancy": {
+        "samples": 17,
+        "minimum_live_hostiles": 40,
+        "mean_live_hostiles": 40.0
+      },
+      "movement_inputs": 2443,
+      "input_pressure": 0,
+      "refusals": 537,
+      "accepted_casts": {
+        "Fire Bolt": 1,
+        "Grease": 1,
+        "Shield": 1
+      },
+      "minimum_hp": 0,
+      "binding_to_outcome_ms": {
+        "samples": 544,
+        "p95": 1562.217708,
+        "max": 2732.542667
+      }
+    }
+  ],
+  "limits": [
+    "Headless authenticated clients measure transport and authority load, not rendering.",
+    "Binding-to-outcome includes server processing and client delivery, not isolated RTT.",
+    "Timing retains at most 8192 samples per player."
+  ]
+}

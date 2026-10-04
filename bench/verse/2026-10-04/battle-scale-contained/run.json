@@ -1,0 +1,33 @@
+{
+  "schema": "verse.battle.scale.run.v1",
+  "acceptance": "failed",
+  "workload": {
+    "players": 20,
+    "hostile_npcs": 40,
+    "cultist_health": 20000,
+    "native_clients": 1,
+    "headless_clients": 19,
+    "seconds": 60,
+    "persistent_storage": false,
+    "compiled_revisions": {
+      "host": "0cfd1decc2",
+      "clients": "0cfd1decc2"
+    },
+    "fixture_revision": "011a4422b5086f6a12b6b19bc3f196e6c0cacdfd",
+    "limits": [
+      "NPC health is raised in the authored load scene to sustain spell and AI work.",
+      "Headless player connections do not establish rendering performance on their machines.",
+      "Native player and load generator share one host machine."
+    ]
+  },
+  "stability": "All 20 connections and processes complete; every recorded occupancy sample retains 40 live hostile NPCs.",
+  "limits": [
+    "Frame p95 is 59.994 ms and CPU command finalization p95 is 40.994 ms; changed actor trajectories and refresh counts prevent isolated attribution.",
+    "Host simulation p99 histogram upper bound is 500 ms, maximum 529.369 ms, and 39.340 seconds are dropped.",
+    "Prediction correction p95 is 4.051 m, maximum 6.401 m.",
+    "Only Fireball, Shield, and Web are accepted by the native controller in this run; this does not establish full-kit battle acceptance.",
+    "Host records zero blocked motor advances; this run does not independently exercise recovery containment.",
+    "Persistent storage is disabled. The paired persistent run fails on storage backpressure before meaningful combat.",
+    "GPU execution and input-to-display latency remain unmeasured; the native client and host share a non-isolated contributor machine."
+  ]
+}
