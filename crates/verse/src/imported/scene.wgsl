@@ -67,8 +67,16 @@ fn surface_normal(v:Out,geometric:vec3<f32>)->vec3<f32>{
 }
 // Independently implemented GGX distribution, correlated Smith visibility, and
 // Schlick Fresnel. Point strengths retain the chamber's Lambert normalization.
-fn reflectance(n:vec3<f32>,view:vec3<f32>,light:vec3<f32>,albedo:vec3<f32>,roughness:f32,metallic:f32)->vec3<f32>{
- let nl=max(dot(n,light),0.0);let nv=max(dot(n,view),0.0001);
+fn reflectance(n:vec3<f32>,view:vec3<f32>,light:vec3<f32>,diffuse_color:vec3<f32>,f0:vec3<f32>,roughness:f32,nv:f32)->vec3<f32>{
+ let nl=max(dot(n,light),0.0);
+ // At unit roughness, GGX and Smith simplify exactly. The chamber's
+ // broad matte surfaces avoid constructing a half vector for every light.
+ if roughness==1.0 {
+  let vh=sqrt(clamp((1.0+dot(view,light))*0.5,0.0,1.0));
+  let grazing=1.0-vh;let g2=grazing*grazing;
+  let fresnel=f0+(vec3(1.0)-f0)*(g2*g2*grazing);
+  return ((vec3(1.0)-fresnel)*diffuse_color+fresnel*0.5/max(nl+nv,0.00001))*nl;
+ }
  let sum=view+light;let half=sum/max(length(sum),0.0001);
  let nh=max(dot(n,half),0.0);let vh=clamp(dot(view,half),0.0,1.0);
  let alpha=roughness*roughness;let a2=alpha*alpha;
@@ -77,10 +85,10 @@ fn reflectance(n:vec3<f32>,view:vec3<f32>,light:vec3<f32>,albedo:vec3<f32>,rough
  let lambda_v=nl*sqrt(nv*nv*(1.0-a2)+a2);
  let lambda_l=nv*sqrt(nl*nl*(1.0-a2)+a2);
  let visibility=0.5/max(lambda_v+lambda_l,0.00001);
- let f0=mix(vec3(0.04),albedo,metallic);
+
  let grazing=1.0-vh;let g2=grazing*grazing;
  let fresnel=f0+(vec3(1.0)-f0)*(g2*g2*grazing);
- let diffuse=(vec3(1.0)-fresnel)*(1.0-metallic)*albedo/3.14159265;
+ let diffuse=(vec3(1.0)-fresnel)*diffuse_color/3.14159265;
  return (diffuse+distribution*visibility*fresnel)*nl*3.14159265;
 }
 @fragment fn fs(v:Out,@builtin(front_facing) front:bool)->@location(0) vec4<f32>{
@@ -113,6 +121,9 @@ fn reflectance(n:vec3<f32>,view:vec3<f32>,light:vec3<f32>,albedo:vec3<f32>,rough
  let albedo=tex.rgb*v.tint;
  var lit=albedo*(1.0-metallic)*frame.ambient.rgb*ao;
  let view_delta=frame.eye.xyz-v.pos;let view_direction=view_delta/max(length(view_delta),0.0001);
+ let diffuse_color=albedo*(1.0-metallic);
+ let f0=mix(vec3(0.04),albedo,metallic);
+ let nv=max(dot(n,view_direction),0.0001);
  for(var i=0u;i<u32(frame.settings.x);i++){
   let source=frame.lights[i*2u];let radiance=frame.lights[i*2u+1u];
   let delta=source.xyz-v.pos;let distance_squared=dot(delta,delta);
@@ -121,7 +132,7 @@ fn reflectance(n:vec3<f32>,view:vec3<f32>,light:vec3<f32>,albedo:vec3<f32>,rough
   if dot(n,direction)<=0.0 {continue;}
   let attenuation=max(1.0-d/source.w,0.0);
   let falloff=attenuation*attenuation/(1.0+distance_squared);
-  lit+=reflectance(n,view_direction,direction,albedo,roughness,metallic)
+  lit+=reflectance(n,view_direction,direction,diffuse_color,f0,roughness,nv)
       *radiance.rgb*radiance.w*falloff*occlusion(i,v.pos,geometric);
  }
  emission+=select(vec3(0.0),albedo*0.7,material.params.x>0.5);
