@@ -25,6 +25,11 @@
 //! landing after the spell ends deals it for the downward span, by the same
 //! table. Everything serializes, so a checkpoint taken mid-rise continues
 //! exactly.
+//!
+//! [`game`] wires the spell into the chamber authority, its action-bar
+//! slot, and the spell playground.
+
+pub mod game;
 
 use glam::DVec3;
 use physics::{BodyId, BodyKind, Joint, JointId, World};

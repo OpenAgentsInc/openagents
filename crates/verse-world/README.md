@@ -288,6 +288,11 @@ travels its SRD distance; walls and contacts change the result. Spell fields
 joints, and concentration end with their cast. Every external impulse is a
 named `physics::Ledger` term.
 
+Reverse Gravity (`src/reverse_gravity.rs`, slot Shift+9) is a concentration
+cylinder field whose top band holds a hover spring; characters in it get a
+zero-gravity override and exact upward motion, and ceiling strikes and the
+final drop deal falling damage. Casting it again dismisses it.
+
 To add a spell: write `src/spells/<name>.rs` with its cast and a
 `playground::Scenario`, add one `SpellDef` line to `spells::CATALOG` (its
 reserved row-two slot), and one line to `playground::scenarios`. Record it with

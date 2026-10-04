@@ -183,6 +183,7 @@ pub fn scenarios() -> Vec<Scenario> {
         crate::spells::wind_wall::scenario(),
         crate::spells::levitate::scenario(),
         bow_stance(),
+        crate::reverse_gravity::game::scenario(),
     ]
 }
 

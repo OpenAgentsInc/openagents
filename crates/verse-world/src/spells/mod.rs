@@ -68,7 +68,7 @@ pub struct SpellDef {
 /// 1 Wall of Stone (#10453), 2 Levitate (#10454), 3 Feather Fall (#10455),
 /// 4 Gust of Wind (#10456), 5 Wind Wall (#10457), 6 Black Tentacles
 /// (#10458), 7 Meteor Swarm (#10459), 8 Reverse Gravity (#10460).
-pub const CATALOG: &[SpellDef] = &[wind_wall::DEF, levitate::DEF];
+pub const CATALOG: &[SpellDef] = &[wind_wall::DEF, levitate::DEF, crate::reverse_gravity::game::SPELL];
 
 pub fn spell_in_slot(slot: u8) -> Option<&'static SpellDef> {
     CATALOG.iter().find(|s| s.slot == slot)
@@ -166,6 +166,9 @@ pub struct SpellWorld {
     pub wind: wind_wall::Wind,
     #[serde(default)]
     pub levitations: levitate::Levitations,
+    /// Reverse Gravity's casts, creatures, and falls.
+    #[serde(default)]
+    pub reverse_gravity: crate::reverse_gravity::game::State,
 }
 
 impl Default for SpellWorld {
@@ -209,6 +212,7 @@ impl SpellWorld {
             removed: 0,
             wind: wind_wall::Wind::default(),
             levitations: Default::default(),
+            reverse_gravity: Default::default(),
         }
     }
 
@@ -245,6 +249,7 @@ impl SpellWorld {
                 .any(|b| !b.pos.is_finite() || !b.vel.is_finite() || !b.omega.is_finite())
             || self.concentration.values().any(|cast| *cast > self.casts)
             || self.wind.validate(self.casts).is_err()
+            || self.reverse_gravity.validate(self.props.len()).is_err()
         {
             return Err("Invalid spell world checkpoint".into());
         }
@@ -555,7 +560,7 @@ impl SpellWorld {
                 for field in self.fields.iter().filter(|f| f.area.contains(body.pos)) {
                     field_terms.push((
                         format!("spell:{}", field.spell),
-                        field.acceleration * body.mass * dt,
+                        field.accel_at(body.pos, body.vel, gravity) * body.mass * dt,
                         body.pos,
                     ));
                 }
