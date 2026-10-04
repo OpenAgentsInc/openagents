@@ -269,3 +269,12 @@ WebGPU before traffic moved. Rollback:
 The first build of this change (`9088c30a1d`) failed: `breez/boltz-client`,
 a git dependency of `breez-sdk-spark`, returned 404, so no clean build of
 the workspace could fetch it. It is now vendored under `vendor/boltz-client`.
+
+## 2026-10-04: coder-web-10535d62b5
+
+Everglade loads sooner and draws where WebGPU cannot (888be7cb7b,
+10535d62b5): the loader downloads the module with progress over the canvas,
+the image serves gzip copies of the build (the module drops from 11.3 MB to
+7.7 MB), and the page retries on WebGL2 when a browser's WebGPU rejects the
+physical renderer. Both paths rendered the glade on the `new` tag before
+traffic moved. Rollback: `--to-revisions coder-web-98ddaac99d=100`.
