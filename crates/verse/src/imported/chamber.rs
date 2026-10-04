@@ -489,12 +489,28 @@ pub fn prop_instances_from_poses(
 }
 /// Bind transient illumination to the same combat events that draw the effects.
 pub fn combat_lighting(game: &super::play::Game) -> super::lighting::Lighting {
-    lighting_from_visuals(
+    let mut lighting = lighting_from_visuals(
         &verse_world::visuals::Combat::extract(game),
         position_from_wow(game.scene.origin_wow),
         game.scene.collision_profile.as_deref() == Some(verse_world::playground::PROFILE),
         game.player,
-    )
+    );
+    // A Reverse Gravity column lifts bodies far above the scene's lights.
+    let column = verse_world::reverse_gravity::game::column_lights(game);
+    lighting
+        .lights
+        .truncate(super::lighting::MAX_LIGHTS.saturating_sub(column.len()));
+    lighting.lights.extend(
+        column.into_iter().map(
+            |(position, color, intensity, range)| super::lighting::Light {
+                position,
+                color,
+                intensity,
+                range,
+            },
+        ),
+    );
+    lighting
 }
 /// Uses the same effect lighting for local authority and admitted remote data.
 pub fn lighting_from_visuals(

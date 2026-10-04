@@ -875,30 +875,109 @@ pub fn scenario() -> crate::playground::Scenario {
             ]
         },
         camera: || {
+            // The overlay panel covers the top of the frame's left half, so
+            // every shot aims left of and above its subject.
             let start = (Vec3::new(9.5, 3.0, 6.0), Vec3::new(-9., 2.0, -4.));
-            let wide = (Vec3::new(21., 16., 21.), Vec3::new(-13., 14., -3.));
-            let pillar = (Vec3::new(0.5, 3.5, -5.5), Vec3::new(-5.2, 1.4, -12.));
+            // From the hall's far corner, 45 m out: the whole 100-foot column
+            // in the lower right two-thirds of the frame.
+            let column = (Vec3::new(22.5, 12., 22.5), Vec3::new(-17.7, 18.3, 3.2));
+            // Level with the hovering cluster, 25 m out.
+            let hover = (Vec3::new(8., 26., 10.), Vec3::new(-13.4, 33., -0.9));
+            // Low and close on the open dummies for the crash.
+            let crash = (Vec3::new(-2., 3.5, 2.), Vec3::new(-13., 2.5, -4.));
             [
                 (0., start),
                 (0.9, start),
-                (1.6, wide),
-                (3.8, wide),
-                (4.3, pillar),
-                (4.9, pillar),
-                (5.4, wide),
-                (14., wide),
+                (1.2, column),
+                (4.1, column),
+                (4.4, hover),
+                (8.9, hover),
+                (9.2, column),
+                (10.9, column),
+                (11.2, crash),
+                (14., crash),
             ]
             .into_iter()
             .map(|(at, (eye, target))| Shot { at, eye, target })
             .collect()
         },
-        replay_camera: (Vec3::new(20., 8., 20.), Vec3::new(-11., 9., -3.)),
+        // Low on the open dummies, so the replay shows them leave the floor.
+        replay_camera: (Vec3::new(6., 6., 8.), Vec3::new(-14., 8., -2.)),
         check: check_scenario,
     }
 }
 
 /// The wizard's yaw toward the playground cylinder, rad.
 const PLAYGROUND_YAW: f32 = 1.208;
+/// Lights a renderer adds while a cylinder stands, as (position, color,
+/// intensity, range): three around the axis just under the top, where bodies
+/// hover far above any scene lighting, and one halfway up for the rise.
+pub fn column_lights(game: &Game) -> Vec<(Vec3, Vec3, f32, f32)> {
+    let color = Vec3::new(0.78, 0.82, 1.0);
+    let mut lights = vec![];
+    for active in game
+        .spells
+        .reverse_gravity
+        .active
+        .iter()
+        .filter(|a| a.ended.is_none())
+    {
+        let c = &active.cylinder;
+        let axis = c.base.as_vec3();
+        let top = c.top() as f32;
+        for i in 0..3 {
+            let angle = i as f32 * std::f32::consts::TAU / 3.;
+            lights.push((
+                axis + Vec3::new(7. * angle.cos(), top - axis.y - 2.5, 7. * angle.sin()),
+                color,
+                320.,
+                24.,
+            ));
+        }
+        lights.push((axis + Vec3::Y * ((top - axis.y) * 0.5), color, 200., 22.));
+    }
+    lights
+}
+
+/// World-space guide lines for the overlay: each standing cylinder's top
+/// and bottom rings, a faint middle ring, and four verticals.
+pub fn guide_lines(game: &Game) -> Vec<(Vec3, Vec3, [f32; 4])> {
+    const SEGMENTS: usize = 48;
+    let outline = [0.72, 0.55, 1.0, 0.85];
+    let faint = [0.72, 0.55, 1.0, 0.35];
+    let mut out = vec![];
+    for active in game
+        .spells
+        .reverse_gravity
+        .active
+        .iter()
+        .filter(|a| a.ended.is_none())
+    {
+        let c = &active.cylinder;
+        let (base, top) = (c.base.y as f32 + 0.03, c.top() as f32);
+        let at = |angle: f32, y: f32| {
+            Vec3::new(
+                c.base.x as f32 + c.radius as f32 * angle.cos(),
+                y,
+                c.base.z as f32 + c.radius as f32 * angle.sin(),
+            )
+        };
+        let step = std::f32::consts::TAU / SEGMENTS as f32;
+        for i in 0..SEGMENTS {
+            let (a, b) = (i as f32 * step, (i + 1) as f32 * step);
+            out.push((at(a, base), at(b, base), outline));
+            out.push((at(a, top), at(b, top), outline));
+            let middle = (base + top) * 0.5;
+            out.push((at(a, middle), at(b, middle), faint));
+        }
+        for i in 0..4 {
+            let a = i as f32 * std::f32::consts::FRAC_PI_2;
+            out.push((at(a, base), at(a, top), outline));
+        }
+    }
+    out
+}
+
 /// Center of the playground cylinder, m: [`AIM_DISTANCE`] ahead of the
 /// caster spawn at (5.75, 0, 0) along [`PLAYGROUND_YAW`]. Dummy A stands
 /// there.

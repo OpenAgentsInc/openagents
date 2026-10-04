@@ -1604,7 +1604,10 @@ pub fn spell_panel(
             ui.line(atlas, a, b, 1.5, color);
         }
     }
-    for (from, to, color) in verse_world::spells::wind_wall::guide_lines(game) {
+    for (from, to, color) in verse_world::spells::wind_wall::guide_lines(game)
+        .into_iter()
+        .chain(verse_world::reverse_gravity::game::guide_lines(game))
+    {
         if let (Some(a), Some(b)) = (
             project(view_proj, from, width, height),
             project(view_proj, to, width, height),
