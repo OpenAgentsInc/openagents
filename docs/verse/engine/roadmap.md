@@ -32,6 +32,14 @@ catch-up limit and recorded dropped time. Chamber arrows carry target life IDs
 and cannot damage a later respawn. This starts VE-0; authority extraction,
 generation fencing for other effects, and physics substep integration remain.
 
+[#10436](https://github.com/OpenAgentsInc/openagents/issues/10436) introduces
+the headless `verse-world` command boundary. Local human and controller ability
+requests share ownership, life, epoch, sequence, tick-window, and finite-input
+admission. Explicit control handoffs fence queued commands. Movement still uses
+the local solver directly, and combat resolution still uses retained Ruins rules;
+owned rules extraction, service authentication, persistence, and replication
+remain required before VE-4/VE-5 acceptance.
+
 [#10426](https://github.com/OpenAgentsInc/openagents/issues/10426) implements the
 first asset-free procedural scene. The `verse_play` native example generates an
 original chamber, skeletal placeholder actors, weapons, particles, and UI

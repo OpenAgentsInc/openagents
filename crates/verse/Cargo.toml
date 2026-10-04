@@ -18,6 +18,7 @@ imported-desktop = ["dep:winit", "capture"]
 [dependencies]
 gltf = { version = "=1.4.1", default-features = false, features = ["import", "utils", "names"] }
 verse-engine = { path = "../verse-engine" }
+verse-world = { path = "../verse-world" }
 bytemuck = { version = "1.25", features = ["derive"] }
 coder = { path = "../coder", optional = true }
 coder-delegate = { path = "../coder-delegate", optional = true }

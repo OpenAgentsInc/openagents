@@ -72,7 +72,7 @@ impl Game {
         encounter.boss_max = 300_000;
         encounter.boss_remaining = 300_000;
         game.encounter = Some(encounter);
-        game.agent_controlled = agent;
+        game.control_handoff(agent)?;
         game.selected = 1;
         Ok(game)
     }

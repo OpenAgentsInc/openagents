@@ -14696,6 +14696,7 @@ dependencies = [
  "verse-engine",
  "verse-lagrange",
  "verse-ruins",
+ "verse-world",
  "verse-wow",
  "webpki-roots 1.0.9",
  "wgpu",
@@ -14731,6 +14732,14 @@ dependencies = [
  "serde",
  "serde_json",
  "server_core",
+]
+
+[[package]]
+name = "verse-world"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "verse-engine",
 ]
 
 [[package]]

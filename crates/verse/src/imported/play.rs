@@ -5,7 +5,7 @@ use verse_engine::director::{Action, Frame, Scene};
 use verse_ruins::chamber_spells::{Controls, Utility};
 use verse_ruins::{Simulation, Snapshot, Spell};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Ability {
     Bow,
     FireBolt,
@@ -124,6 +124,7 @@ pub struct DamageNumber {
     pub serial: u64,
 }
 pub struct Game {
+    admission: verse_world::Admission,
     colliders: Vec<physics::kinematic::Aabb>,
     pub scene: Scene,
     pub encounter: Option<super::combat::Encounter>,
@@ -267,6 +268,19 @@ impl Game {
             Some(_) => return Err("Unsupported scene collision profile".into()),
         };
         Ok(Self {
+            admission: verse_world::Admission::new(
+                verse_engine::core::LifeId {
+                    instance: 0,
+                    actor: scene
+                        .actors
+                        .iter()
+                        .find(|a| a.model == "adventurer")
+                        .unwrap()
+                        .id,
+                    generation: 0,
+                },
+                verse_world::Controller(1),
+            ),
             colliders,
             scene,
             encounter: None,
@@ -791,6 +805,57 @@ impl Game {
         }
     }
     pub fn activate(&mut self, ability: Ability) -> Result<(), String> {
+        let tick = (f64::from(self.time) * 30.0).floor() as u64;
+        let intent = verse_world::Intent::Cast {
+            ability,
+            target: self.lives.get(&self.selected).copied(),
+            aim: [-self.yaw.sin(), 0., -self.yaw.cos()],
+        };
+        let command = self
+            .admission
+            .command(tick, intent)
+            .map_err(|e| format!("Command refused: {e:?}"))?;
+        self.submit(self.admission.controller(), command)
+    }
+    /// Fences queued commands when switching between human and agent control.
+    pub fn control_handoff(&mut self, agent: bool) -> Result<(), String> {
+        self.admission
+            .handoff(verse_world::Controller(if agent { 2 } else { 1 }))
+            .map_err(|e| format!("Control handoff refused: {e:?}"))?;
+        self.agent_controlled = agent;
+        Ok(())
+    }
+    /// Applies a controller command through the same local admission boundary.
+    pub fn submit(
+        &mut self,
+        controller: verse_world::Controller,
+        command: verse_world::Command<Ability>,
+    ) -> Result<(), String> {
+        let verse_world::Intent::Cast {
+            ability,
+            target,
+            aim,
+        } = command.intent
+        else {
+            return Err("Movement command integration is pending".into());
+        };
+        if aim[1].abs() > 0.001 {
+            return Err("The chamber requires horizontal aim".into());
+        }
+        if target.is_some_and(|life| self.lives.get(&life.actor) != Some(&life)) {
+            return Err("Target life is stale".into());
+        }
+        let tick = (f64::from(self.time) * 30.0).floor() as u64;
+        self.admission
+            .admit(controller, &command, tick)
+            .map_err(|e| format!("Command refused: {e:?}"))?;
+        if let Some(target) = target {
+            self.selected = target.actor;
+        }
+        self.yaw = (-aim[0]).atan2(-aim[2]);
+        self.activate_admitted(ability)
+    }
+    fn activate_admitted(&mut self, ability: Ability) -> Result<(), String> {
         if !self.unlocked() {
             return Err("Wait for the cinematic camera handoff".into());
         }
@@ -916,6 +981,35 @@ impl Game {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn queued_ability_cannot_cross_control_handoff_or_spend_resources() {
+        let mut g = Game::combat(game().scene, false).unwrap();
+        g.time = g.scene.cut_at;
+        let command = g
+            .admission
+            .command(
+                (f64::from(g.time) * 30.).floor() as u64,
+                verse_world::Intent::Cast {
+                    ability: Ability::Shield,
+                    target: None,
+                    aim: [0., 0., -1.],
+                },
+            )
+            .unwrap();
+        let mana = g.snapshot().player.mana;
+        assert!(
+            g.submit(verse_world::Controller(99), command.clone())
+                .is_err()
+        );
+        assert_eq!(g.snapshot().player.mana, mana);
+        g.control_handoff(true).unwrap();
+        g.control_handoff(false).unwrap();
+        assert!(g.submit(verse_world::Controller(1), command).is_err());
+        assert_eq!(g.snapshot().player.mana, mana);
+        assert!(g.encounter.as_ref().unwrap().used.is_empty());
+        g.activate(Ability::Shield).unwrap();
+        assert!(g.snapshot().player.mana < mana);
+    }
     fn game() -> Game {
         Game::new(
             Scene::from_json(include_bytes!(
