@@ -387,7 +387,7 @@ fn committed_sources_compile_within_budgets_to_the_pinned_pack() {
         "village/Wall_Plaster_Straight",
         "village/Window_Wide_Flat1",
         "props/Workbench",
-        "props/Chest_Wood",
+        "props/Crate_Metal",
     ] {
         assert!(pack.model(name).is_some(), "{name}");
     }

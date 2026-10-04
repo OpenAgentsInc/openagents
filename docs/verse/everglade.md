@@ -117,7 +117,7 @@ pad, with a yard in front and a tree ring around both.
 | Hearth corner | Cauldron, candles | Oracle |
 | Yard ring | Training dummy, anvil, rock border | Proving ground |
 | Lectern by the door | Book stand, lantern, banner | Podium |
-| Strongroom | Chest, metal fence, ornament | Merge station |
+| Strongroom | Metal crate, metal fence, ornament | Merge station |
 | Bench under the trees | Bench, stools, mushrooms | Lounge |
 | Wagon by the gate | Wagon, crates | Workbench (running commands) |
 

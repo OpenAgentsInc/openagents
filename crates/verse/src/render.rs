@@ -2177,13 +2177,30 @@ mod tests {
             let Some(opaque) = render(one_quad(AlphaMode::Opaque)) else {
                 return;
             };
-            let background = brightness(at(&masked, -2.0, 0.0));
-            // Alpha 0.2 is under the cutoff: the stage shows through.
-            assert!(
-                brightness(at(&masked, -0.5, 0.0)) <= background + 8,
-                "{:?} over {background}",
-                at(&masked, -0.5, 0.0)
-            );
+            let Some(empty) = render(TexturedScene::default()) else {
+                return;
+            };
+            // Alpha 0.2 everywhere is under the cutoff: the stage shows
+            // through. A uniform texture keeps the passing half's glow out of
+            // the comparison, and each point is compared with the same point
+            // of an empty frame because the stage's lighting varies.
+            let mut hidden = one_quad(AlphaMode::Mask { cutoff: 0.5 });
+            hidden.images[0]
+                .rgba
+                .chunks_mut(4)
+                .for_each(|texel| texel[3] = 51);
+            let Some(hidden) = render(hidden) else {
+                return;
+            };
+            for x in [-0.5, 0.5] {
+                let background = brightness(at(&empty, x, 0.0));
+                assert!(
+                    brightness(at(&hidden, x, 0.0)) <= background + 8,
+                    "{:?} over {background}",
+                    at(&hidden, x, 0.0)
+                );
+            }
+            let background = brightness(at(&empty, 0.5, 0.0));
             // Alpha 0.9 passes, and an opaque material ignores alpha.
             assert!(brightness(at(&masked, 0.5, 0.0)) > background + 60);
             assert!(brightness(at(&opaque, -0.5, 0.0)) > background + 60);

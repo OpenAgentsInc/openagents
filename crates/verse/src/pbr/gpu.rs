@@ -1477,12 +1477,12 @@ impl Photo {
             // The Sun first, then the farther of the Earth and Moon.
             pass.set_pipeline(&self.pipelines.bodies);
             pass.draw(0..6, 0..1);
-            let order = if sky.moon.distance > sky.earth.distance {
+            let bodies = if sky.moon.distance > sky.earth.distance {
                 [2, 1]
             } else {
                 [1, 2]
             };
-            for kind in order {
+            for kind in bodies {
                 pass.draw(0..6, kind..kind + 1);
             }
             pass.set_pipeline(&self.pipelines.lit);

@@ -26,7 +26,7 @@ renderer samples base color only.
 | `Bookcase_2`, `BookStand`, `Scroll_1`, `Book_Stack_1` | Library and podium |
 | `Cauldron`, `CandleStick_Triple` | Oracle, at the hearth |
 | `Dummy`, `Anvil` | Proving ground |
-| `Chest_Wood` | Merge station |
+| `Crate_Metal` | Merge station (the rigged chest is not static, so the strongroom uses a metal crate) |
 | `Bench`, `Stool` | Lounge |
 | `Banner_2`, `Lantern_Wall` | Podium and walls |
 

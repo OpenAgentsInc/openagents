@@ -28,11 +28,9 @@ pub use format::{AlphaMode, Limits, Material, Model, Primitive, Texture, Vertex,
 use pinned::PinnedFile;
 
 /// Exact content identity of the reviewed Everglade pack.
-///
-/// Placeholder until the pack is built; see the module documentation.
-pub const PACK_SHA256: &str = "0000000000000000000000000000000000000000000000000000000000000000";
-/// Transfer size of the reviewed Everglade pack. Zero until the pack is built.
-pub const PACK_BYTES: u64 = 0;
+pub const PACK_SHA256: &str = "b57e33f733865ff639c87e6c0314f7e8f55c59d6ef313271880459ffb64bc49c";
+/// Transfer size of the reviewed Everglade pack.
+pub const PACK_BYTES: u64 = 13373560;
 /// The most triangles the Everglade layout may place, counting each placement.
 pub const PLACED_TRIANGLE_BUDGET: u64 = 250_000;
 /// Where packs are committed, relative to the repository root.
