@@ -306,6 +306,50 @@ fn cards(world: &mut Mesh, view: &View) {
     place(world, &board, mesh);
 }
 
+/// The middle of each card the Task Wall shows, in the glade, with its
+/// task's identity, laid out as [`cards`] draws them, so selecting a card
+/// opens its task's details.
+#[must_use]
+pub fn card_targets(view: &View) -> Vec<(Vec3, String)> {
+    let board = TASK_WALL;
+    let [w, h] = board.size;
+    let (hw, hh) = (w / 2.0, h / 2.0);
+    let column_width = (w - 0.12) / TASK_COLUMNS.len() as f32;
+    let submitted = |goal: &str| {
+        view.goals
+            .iter()
+            .find(|g| g.goal == goal)
+            .map_or(0, |g| g.submitted_at)
+    };
+    let mut tasks: Vec<_> = view.tasks.iter().collect();
+    tasks.sort_by(|a, b| {
+        submitted(&b.goal)
+            .cmp(&submitted(&a.goal))
+            .then(a.position.cmp(&b.position))
+    });
+    let transform = board.transform();
+    let top = hh - 0.3 - 0.2;
+    let mut targets = Vec::new();
+    for index in 0..TASK_COLUMNS.len() {
+        let center = hw - 0.06 - (index as f32 + 0.5) * column_width;
+        let here: Vec<_> = tasks
+            .iter()
+            .filter(|task| column(task.status) == index)
+            .collect();
+        let shown = if here.len() > COLUMN_CARDS {
+            COLUMN_CARDS - 1
+        } else {
+            here.len()
+        };
+        for (row, task) in here.iter().take(shown).enumerate() {
+            let y = top - row as f32 * (CARD + CARD_GAP) - CARD / 2.0;
+            let at = transform.transform_point3(Vec3::new(center, y, -0.012));
+            targets.push((at, task.task.clone()));
+        }
+    }
+    targets
+}
+
 /// What a desk's monitor shows: the seat at the desk with its activity and
 /// its newest log lines, or the desk's number when no seat sits there.
 fn screen(world: &mut Mesh, index: usize, view: Option<&View>) {
@@ -377,4 +421,44 @@ pub(super) fn live(view: Option<&View>) -> Mesh {
         screen(&mut mesh, index, view);
     }
     mesh
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use coder_access::studio::Task;
+
+    #[test]
+    fn each_shown_card_is_a_target_on_the_wall() {
+        let task = |id: &str, status| Task {
+            task: id.into(),
+            goal: "g1".into(),
+            entry: id.into(),
+            position: 1,
+            title: "A task".into(),
+            seat: "ada".into(),
+            depends_on: Vec::new(),
+            status,
+        };
+        let mut view = View::default();
+        for n in 0..COLUMN_CARDS + 2 {
+            view.tasks
+                .push(task(&format!("held-{n}"), TaskStatus::Held));
+        }
+        view.tasks.push(task("running", TaskStatus::Running));
+        let targets = card_targets(&view);
+        // A full column shows one card fewer and says how many more.
+        assert_eq!(targets.len(), COLUMN_CARDS - 1 + 1);
+        let [w, h] = TASK_WALL.size;
+        for (at, _) in &targets {
+            assert!(at.distance(TASK_WALL.center) < w.hypot(h) / 2.0);
+        }
+        let running = targets.iter().find(|(_, id)| id == "running").unwrap().0;
+        let held = targets.iter().find(|(_, id)| id == "held-0").unwrap().0;
+        assert!(
+            (running.y - held.y).abs() < 1e-4,
+            "both top cards share a row"
+        );
+        assert!(running.distance(held) > 0.1, "in different columns");
+    }
 }

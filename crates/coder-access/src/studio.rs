@@ -9,7 +9,8 @@
 //! required right, and it draws what the host answers:
 //!
 //! - `studio.snapshot` answers a full [`Snapshot`]: goals, seats, tasks,
-//!   decisions, repository summaries, and a bounded log tail per seat.
+//!   decisions, repository summaries, a bounded log tail per seat, and the
+//!   newest shared memory entries with the current plan pinned.
 //! - `studio.update` answers an [`Update`] from the sequence the client
 //!   holds to the host's current one: the items that changed and the ones
 //!   that went away. A host that no longer holds that sequence, or a
@@ -71,6 +72,13 @@ pub const MAX_REVIEW_TEXT: usize = 16 * 1024;
 pub const MAX_VIEW_BYTES: usize = 48 * 1024;
 /// How many earlier views a host keeps to compute updates from.
 pub const MAX_HISTORY: usize = 64;
+/// The most shared memory entries a view carries: the newest, and the
+/// pinned plan.
+pub const MAX_MEMORY: usize = 16;
+/// The longest memory entry text a view carries.
+pub const MAX_MEMORY_TEXT: usize = 1024;
+/// The longest memory entry author a view carries.
+pub const MAX_AUTHOR: usize = 64;
 
 /// What model calls cost, summed from each ended turn's recorded cost:
 /// the providers' reported cost, or tokens at list price where Coder
@@ -375,6 +383,47 @@ pub struct Log {
     pub lines: Vec<LogLine>,
 }
 
+/// What a shared memory entry records.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MemoryKind {
+    /// A goal's accepted plan.
+    Plan,
+    /// A decision the team or the person made.
+    Decision,
+    /// A repository convention.
+    Convention,
+    Note,
+}
+
+/// One shared memory entry, which every briefing carries.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Memory {
+    /// Its key: [`memory_key`] of the entry's sequence, so key order is
+    /// the order the entries were written.
+    pub entry: String,
+    pub kind: MemoryKind,
+    /// Who wrote it, as display text such as `@ada` or `the person`.
+    pub author: String,
+    /// The goal it belongs to; absent for the whole studio.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub goal: Option<String>,
+    /// Its text, at most [`MAX_MEMORY_TEXT`] bytes.
+    pub text: String,
+    /// The current plan, which the library shows first. At most one entry
+    /// is pinned, and only a plan.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub pinned: bool,
+}
+
+/// The key of the memory entry with `sequence`: `m` and twelve digits, so
+/// key order is sequence order.
+#[must_use]
+pub fn memory_key(sequence: u64) -> String {
+    format!("m{sequence:012}")
+}
+
 /// The studio as a view draws it. Every list is in key order with
 /// distinct keys. In an [`Update`], it holds only what changed.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -392,6 +441,10 @@ pub struct View {
     pub repositories: Vec<Repository>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub logs: Vec<Log>,
+    /// The newest shared memory entries and the pinned plan. A host that
+    /// predates shared memory in the view sends none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub memory: Vec<Memory>,
 }
 
 /// The kind of item an update removes.
@@ -404,6 +457,7 @@ pub enum Kind {
     Decision,
     Repository,
     Log,
+    Memory,
 }
 
 /// An item an update removes.
@@ -721,6 +775,24 @@ impl Keyed for Log {
     }
 }
 
+impl Keyed for Memory {
+    const KIND: Kind = Kind::Memory;
+    fn key(&self) -> &str {
+        &self.entry
+    }
+    fn validate(&self) -> Result<()> {
+        id(&self.entry)?;
+        line(&self.author, MAX_AUTHOR)?;
+        if let Some(goal) = &self.goal {
+            id(goal)?;
+        }
+        if self.pinned && self.kind != MemoryKind::Plan {
+            return fail(Code::Malformed, "only a plan is pinned");
+        }
+        text(&self.text, MAX_MEMORY_TEXT)
+    }
+}
+
 /// Check a list's items, bound, and key order.
 fn check<T: Keyed>(items: &[T], max: usize) -> Result<()> {
     count(items.len(), max)?;
@@ -797,6 +869,7 @@ impl View {
         canonical(&mut self.decisions);
         canonical(&mut self.repositories);
         canonical(&mut self.logs);
+        canonical(&mut self.memory);
     }
 
     /// Check every item's bounds, each list's bound and key order, and the
@@ -811,6 +884,10 @@ impl View {
         check(&self.decisions, MAX_DECISIONS)?;
         check(&self.repositories, MAX_REPOSITORIES)?;
         check(&self.logs, MAX_SEATS)?;
+        check(&self.memory, MAX_MEMORY)?;
+        if self.memory.iter().filter(|entry| entry.pinned).count() > 1 {
+            return fail(Code::Malformed, "a view pins at most one plan");
+        }
         if encoded_len(self) > MAX_VIEW_BYTES {
             return fail(Code::Bounds, "studio view exceeds its bound");
         }
@@ -818,8 +895,9 @@ impl View {
     }
 
     /// Shrink the view until it encodes in `max` bytes: drop the oldest
-    /// line of the longest log tail, then the oldest finished goal with
-    /// its tasks and decisions. Returns whether it fits.
+    /// line of the longest log tail, then the oldest memory entry that is
+    /// not pinned, then the oldest finished goal with its tasks and
+    /// decisions. Returns whether it fits.
     pub fn fit(&mut self, max: usize) -> bool {
         while encoded_len(&*self) > max {
             if let Some(log) = self
@@ -829,6 +907,10 @@ impl View {
                 .max_by_key(|log| log.lines.len())
             {
                 log.lines.remove(0);
+                continue;
+            }
+            if let Some(index) = self.memory.iter().position(|entry| !entry.pinned) {
+                self.memory.remove(index);
                 continue;
             }
             let oldest = self
@@ -868,6 +950,7 @@ impl View {
             &mut removed,
         );
         diff(&old.logs, &new.logs, &mut put.logs, &mut removed);
+        diff(&old.memory, &new.memory, &mut put.memory, &mut removed);
         (put, removed)
     }
 
@@ -879,6 +962,13 @@ impl View {
         apply(&mut self.decisions, &put.decisions, removed);
         apply(&mut self.repositories, &put.repositories, removed);
         apply(&mut self.logs, &put.logs, removed);
+        apply(&mut self.memory, &put.memory, removed);
+    }
+
+    /// The pinned plan, when the view carries one.
+    #[must_use]
+    pub fn plan(&self) -> Option<&Memory> {
+        self.memory.iter().find(|entry| entry.pinned)
     }
 }
 
@@ -907,7 +997,7 @@ impl Update {
         self.put.validate()?;
         count(
             self.removed.len(),
-            MAX_GOALS + MAX_SEATS * 2 + MAX_TASKS + MAX_DECISIONS + MAX_REPOSITORIES,
+            MAX_GOALS + MAX_SEATS * 2 + MAX_TASKS + MAX_DECISIONS + MAX_REPOSITORIES + MAX_MEMORY,
         )?;
         for gone in &self.removed {
             match gone.kind {
@@ -1245,6 +1335,7 @@ mod tests {
                     text: "editing: apply_patch".into(),
                 }],
             }],
+            memory: Vec::new(),
         };
         view.canonicalize();
         view
@@ -1477,6 +1568,90 @@ mod tests {
         let mut long = good;
         long.logs[0].lines[0].text = "x".repeat(MAX_LINE + 1);
         assert_eq!(long.validate().unwrap_err().code, Code::Bounds);
+    }
+
+    fn memory(sequence: u64, kind: MemoryKind, pinned: bool) -> Memory {
+        Memory {
+            entry: memory_key(sequence),
+            kind,
+            author: "@planner".into(),
+            goal: Some("g1-0011aabb".into()),
+            text: "Plan for goal g1-0011aabb:\n- first: First step [@builder]".into(),
+            pinned,
+        }
+    }
+
+    #[test]
+    fn shared_memory_and_the_pinned_plan_travel_in_the_view() {
+        let mut old = view();
+        old.memory = vec![
+            memory(1, MemoryKind::Plan, true),
+            memory(2, MemoryKind::Decision, false),
+        ];
+        old.validate().unwrap();
+        assert_eq!(
+            old.plan().map(|plan| plan.entry.as_str()),
+            Some("m000000000001")
+        );
+        assert!(
+            memory_key(9) < memory_key(10),
+            "key order is sequence order"
+        );
+        // A newer plan takes the pin; the update carries both entries.
+        let mut new = old.clone();
+        new.memory[0].pinned = false;
+        new.memory.push(memory(3, MemoryKind::Plan, true));
+        new.validate().unwrap();
+        let (put, removed) = View::diff(&old, &new);
+        assert_eq!(put.memory.len(), 2);
+        assert!(removed.is_empty());
+        let mut applied = old.clone();
+        applied.apply(&put, &removed);
+        assert_eq!(applied, new);
+        assert_eq!(applied.plan().unwrap().entry, memory_key(3));
+        // Two pins, a pinned note, or too much text are refused.
+        let mut twice = new.clone();
+        twice.memory[0].pinned = true;
+        assert!(twice.validate().is_err());
+        let mut note = old.clone();
+        note.memory[1].pinned = true;
+        note.memory[0].pinned = false;
+        assert!(note.validate().is_err());
+        let mut long = old.clone();
+        long.memory[1].text = "x".repeat(MAX_MEMORY_TEXT + 1);
+        assert_eq!(long.validate().unwrap_err().code, Code::Bounds);
+        // A view from a host without shared memory still reads.
+        let older: View = serde_json::from_str("{\"goals\":[]}").unwrap();
+        assert!(older.memory.is_empty() && older.plan().is_none());
+    }
+
+    #[test]
+    fn a_view_drops_unpinned_memory_before_any_goal() {
+        let mut big = view();
+        big.logs[0].lines.clear();
+        big.goals[0].status = GoalStatus::Done;
+        big.memory = vec![
+            memory(1, MemoryKind::Plan, true),
+            memory(2, MemoryKind::Note, false),
+            memory(3, MemoryKind::Note, false),
+        ];
+        let whole = encoded_len(&big);
+        let mut fitted = big.clone();
+        assert!(fitted.fit(whole - 1));
+        assert_eq!(fitted.memory.len(), 2);
+        assert_eq!(
+            fitted.memory[1].entry,
+            memory_key(3),
+            "the oldest goes first"
+        );
+        assert_eq!(fitted.goals.len(), 1, "the goal stays while memory can go");
+        // The pinned plan goes only with nothing else left to drop.
+        let mut pinned = big;
+        pinned.memory.truncate(1);
+        let size = encoded_len(&pinned);
+        assert!(pinned.fit(size - 1));
+        assert!(pinned.goals.is_empty());
+        assert_eq!(pinned.memory.len(), 1);
     }
 
     #[test]

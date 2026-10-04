@@ -76,6 +76,8 @@ pub enum Intent {
 pub enum Key {
     Escape,
     Tab,
+    /// Shift+Tab.
+    BackTab,
     Up,
     Down,
     PageUp,
@@ -86,12 +88,16 @@ pub enum Key {
     Char(char),
     Backspace,
     Enter,
+    /// Shift+Enter: a line break in the composer's draft.
+    NewLine,
     Other,
 }
 
 /// The longest draft the composer holds, in bytes: the longest text a
 /// studio intent carries.
 pub const MAX_DRAFT: usize = 16 * 1024;
+/// The most lines of a draft the composer shows; earlier lines scroll off.
+const COMPOSER_LINES: usize = 6;
 
 /// A rectangle in points, origin at the window's top-left.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -235,10 +241,25 @@ impl Panel {
         }
     }
 
+    /// Whether the panel has a composer.
+    #[must_use]
+    pub fn has_composer(&self) -> bool {
+        self.composer.is_some()
+    }
+
     /// What the person typed in the composer.
     #[must_use]
     pub fn draft(&self) -> &str {
         &self.draft
+    }
+
+    /// Replaces the composer's draft, such as with a completion or a line
+    /// from the history. Does nothing without a composer.
+    pub fn set_draft(&mut self, draft: &str) {
+        if self.composer.is_some() && self.draft != draft && draft.len() <= MAX_DRAFT {
+            draft.clone_into(&mut self.draft);
+            self.rebuild();
+        }
     }
 
     /// Takes the composer's draft, leaving it empty.
@@ -259,6 +280,27 @@ impl Panel {
     #[must_use]
     pub fn diff_document(&self) -> Option<&changes::Document> {
         self.diff.as_ref()
+    }
+
+    /// The index of the diff line at the top of the changes tab.
+    #[must_use]
+    pub fn diff_top(&self) -> usize {
+        (self.diff_scroll / DIFF_LINE).floor() as usize
+    }
+
+    /// Scrolls the changes tab so diff line `index` is at its top, as far
+    /// as the diff scrolls.
+    pub fn scroll_diff_to(&mut self, index: usize) {
+        let height = self.body().h;
+        let limit = self
+            .diff
+            .as_ref()
+            .map_or(0.0, |doc| doc.scroll_limit(height, DIFF_LINE));
+        let scroll = (index as f32 * DIFF_LINE).clamp(0.0, limit);
+        if scroll != self.diff_scroll {
+            self.diff_scroll = scroll;
+            self.rebuild();
+        }
     }
 
     /// The tab the body shows.
@@ -454,6 +496,13 @@ impl Panel {
                     }
                     return None;
                 }
+                Key::NewLine => {
+                    if !self.draft.is_empty() && self.draft.len() < MAX_DRAFT {
+                        self.draft.push('\n');
+                        self.rebuild();
+                    }
+                    return None;
+                }
                 Key::Enter => {
                     return (!self.draft.trim().is_empty()).then_some(Intent::Submit);
                 }
@@ -462,7 +511,7 @@ impl Panel {
         }
         match key {
             Key::Escape => self.set_focus(false),
-            Key::Tab => {
+            Key::Tab | Key::BackTab => {
                 return Some(Intent::Show(match self.tab {
                     Tab::Transcript => Tab::Changes,
                     Tab::Changes => Tab::Transcript,
@@ -474,7 +523,7 @@ impl Panel {
             Key::PageDown => self.scroll(-page),
             Key::Home => self.scroll(f32::MAX / 4.0),
             Key::End => self.scroll(-f32::MAX / 4.0),
-            Key::Char(_) | Key::Backspace | Key::Enter | Key::Other => {}
+            Key::Char(_) | Key::Backspace | Key::Enter | Key::NewLine | Key::Other => {}
         }
         None
     }
@@ -758,7 +807,9 @@ impl Panel {
             },
         };
         let hint = match (self.focused, self.composer.is_some()) {
-            (true, true) => "Type, then Enter sends · Esc returns to the world · Tab switches",
+            (true, true) => {
+                "Type, then Enter sends · Shift+Enter adds a line · Esc returns to the world"
+            }
             (true, false) => "Esc returns to the world · Tab switches",
             (false, true) => "Click the panel to read it or type",
             (false, false) => "Click the panel to read it",
@@ -814,10 +865,17 @@ impl Panel {
             let (value, color) = if self.draft.is_empty() {
                 (placeholder.clone(), visual::MUTED)
             } else {
-                // The draft's end, so a long draft keeps the header short.
-                let skip = self.draft.chars().count().saturating_sub(240);
-                let end: String = self.draft.chars().skip(skip).collect();
-                let more = if skip > 0 { "…" } else { "" };
+                // The draft's end, at most six lines, so a long draft keeps
+                // the header short.
+                let lines: Vec<&str> = self.draft.split('\n').collect();
+                let tail = lines[lines.len().saturating_sub(COMPOSER_LINES)..].join("\n");
+                let skip = tail.chars().count().saturating_sub(240);
+                let end: String = tail.chars().skip(skip).collect();
+                let more = if skip > 0 || lines.len() > COMPOSER_LINES {
+                    "…"
+                } else {
+                    ""
+                };
                 (format!("› {more}{end}"), visual::TEXT)
             };
             let mut composer = text("panel-composer", &value, TextRole::Body);
@@ -1132,10 +1190,33 @@ mod tests {
         let stop = at(&panel, "panel-action-1");
         assert!(panel.press(stop));
         assert_eq!(panel.release(stop), Some(Intent::Action(1)));
+        // Shift+Enter breaks a line; a draft never starts with one.
+        assert!(panel.key(Key::NewLine).is_none());
+        assert!(panel.draft().is_empty());
+        for key in [Key::Char('a'), Key::NewLine, Key::Char('b')] {
+            assert!(panel.key(key).is_none());
+        }
+        assert_eq!(panel.draft(), "a\nb");
+        panel.set_draft("@ada ");
+        assert_eq!(panel.draft(), "@ada ");
         // Without a composer, typing does nothing.
         panel.set_composer(None);
         assert!(panel.key(Key::Char('x')).is_none());
         assert!(panel.draft().is_empty());
+        panel.set_draft("ignored");
+        assert!(panel.draft().is_empty());
+    }
+
+    #[test]
+    fn the_diff_scrolls_to_a_line() {
+        let mut panel = sample();
+        panel.apply(Intent::Show(Tab::Changes));
+        let _ = panel.image(WINDOW, 1.0).unwrap();
+        assert_eq!(panel.diff_top(), 0);
+        // The sample fits the panel, so it does not scroll past its top.
+        panel.scroll_diff_to(5);
+        assert_eq!(panel.diff_top(), 0);
+        assert_eq!(panel.key(Key::BackTab), Some(Intent::Show(Tab::Transcript)));
     }
 
     #[test]

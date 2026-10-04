@@ -93,7 +93,8 @@ fn stations_open_their_panels() {
         );
     }
     // Stations without a panel, and open ground, open nothing.
-    assert_eq!(Studio::panel_at(at("library")), None);
+    assert_eq!(Studio::panel_at(at("library")), Some(PanelKind::Library));
+    assert_eq!(Studio::panel_at(at("oracle")), None);
     assert_eq!(Studio::panel_at(Vec3::new(30.0, 0.0, 30.0)), None);
 }
 

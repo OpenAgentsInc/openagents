@@ -383,6 +383,8 @@ pub fn button_label(panel: &studio::PanelKind) -> &'static str {
         studio::PanelKind::Desk(_) | studio::PanelKind::Seat(_) => "Seat",
         studio::PanelKind::Decisions => "Decisions",
         studio::PanelKind::Review => "Review",
+        studio::PanelKind::Task(_) => "Task",
+        studio::PanelKind::Library => "Library",
     }
 }
 
@@ -394,6 +396,8 @@ pub fn panel_name(panel: &studio::PanelKind) -> &'static str {
         studio::PanelKind::Desk(_) | studio::PanelKind::Seat(_) => "the seat's panel",
         studio::PanelKind::Decisions => "the decisions",
         studio::PanelKind::Review => "the diff review",
+        studio::PanelKind::Task(_) => "the task's details",
+        studio::PanelKind::Library => "the memory library",
     }
 }
 

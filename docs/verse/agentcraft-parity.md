@@ -31,7 +31,7 @@ limit; **Missing** does not exist.
 | CI after each task; one automatic fix round; then review with the failure noted | Missing: a red check fails the task and waits for a manual retry | Lead review and CI loop |
 | Lead reviews the diff before the merge decision | Missing | Lead review and CI loop |
 | Merge conflicts go back to the worker to resolve | Partial: the simulated team only | Lead review and CI loop |
-| Pause, resume, stop, spawn; hand-off of committed work on reassign | Partial: on the host; Verse lacks retry, reassign, prioritize, cancel | Studio panels |
+| Pause, resume, stop, spawn; hand-off of committed work on reassign | Partial: Verse sends every intent; reassign moves only a task that has not started | Studio panels |
 | Spend per agent, task, and goal, shown in status | Done: kept per task across restarts; in the snapshot, `studio goal list`, and the Verse console and seat panel | |
 | Session resume and restart recovery | Done | |
 
@@ -60,12 +60,12 @@ limit; **Missing** does not exist.
 
 | AgentCraft | Studio today | Gap issue |
 | --- | --- | --- |
-| Console with prefixes, completion, history, acknowledgments in place | Partial: no completion, history, or several commands | Studio panels |
-| Decision screen: priority order, number keys, accident guards | Partial | Studio panels |
-| Diff review with keys and the worker's summary | Partial | Studio panels |
-| Agent card: state, task, decisions, recent log, actions | Partial: the seat panel | Studio panels |
-| Task details with retry, prioritize, reassign, cancel | Missing | Studio panels |
-| Memory library | Missing: the library is a place only | Studio panels |
+| Console with prefixes, completion, history, acknowledgments in place | Partial: the history lasts the session, not across runs | Studio panels |
+| Decision screen: priority order, number keys, accident guards | Done | |
+| Diff review with keys and the worker's summary | Partial: no line wrap; the summary is the worker's newest log line | Studio panels |
+| Agent card: state, task, decisions, recent log, actions | Done | |
+| Task details with retry, prioritize, reassign, cancel | Partial: the snapshot carries no checks or branch | Studio panels |
+| Memory library | Done: shared memory with the plan pinned, in the snapshot | |
 
 ## Not pursued
 

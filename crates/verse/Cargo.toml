@@ -8,7 +8,7 @@ publish.workspace = true
 
 [features]
 default = ["desktop"]
-desktop = ["dep:winit", "model-host", "xp-host", "replay-host", "capture", "panels", "studio-host"]
+desktop = ["dep:winit", "dep:arboard", "model-host", "xp-host", "replay-host", "capture", "panels", "studio-host"]
 model-host = ["dep:coder", "dep:coder-delegate"]
 xp-host = ["dep:xp-ledger"]
 replay-host = ["dep:gym", "dep:knowledge"]
@@ -27,6 +27,8 @@ remote-chamber = ["verse-world/service-net", "tokio/signal"]
 web = ["wgpu/webgl"]
 
 [dependencies]
+# The studio review's copy-path key, on the desktop.
+arboard = { version = "3.6.1", optional = true }
 cpal = { version = "=0.18.2", optional = true }
 gltf = { version = "=1.4.1", default-features = false, features = ["import", "utils", "names"] }
 verse-engine = { path = "../verse-engine", features = ["asset-io"] }

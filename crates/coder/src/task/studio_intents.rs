@@ -690,8 +690,59 @@ impl Studio {
                 open_tasks,
             })
             .collect();
+        out.memory = self.wire_memory();
         out.canonicalize();
         out
+    }
+
+    /// The shared memory a device's library shows: the newest
+    /// [`wire::MAX_MEMORY`] entries, with the newest plan pinned and kept
+    /// even when it is older than the rest.
+    fn wire_memory(&self) -> Vec<wire::Memory> {
+        let memory = &self.state.memory;
+        // The newest plan, by its place in the list.
+        let plan = memory
+            .iter()
+            .rposition(|item| item.kind == MemoryKind::Plan);
+        let first = memory.len().saturating_sub(wire::MAX_MEMORY);
+        let mut kept: Vec<usize> = (first..memory.len()).collect();
+        if let Some(plan) = plan
+            && plan < first
+        {
+            kept.remove(0);
+            kept.insert(0, plan);
+        }
+        let mut previous: Option<(u64, usize)> = None;
+        kept.into_iter()
+            .map(|index| {
+                let item = &memory[index];
+                // Two entries written in one change share a sequence, so
+                // the later ones take a suffix that keeps key order.
+                let repeat = match previous {
+                    Some((sequence, n)) if sequence == item.sequence => n + 1,
+                    _ => 0,
+                };
+                previous = Some((item.sequence, repeat));
+                (index, item, repeat)
+            })
+            .map(|(index, item, repeat)| wire::Memory {
+                entry: if repeat == 0 {
+                    wire::memory_key(item.sequence)
+                } else {
+                    format!("{}-{repeat}", wire::memory_key(item.sequence))
+                },
+                kind: match item.kind {
+                    MemoryKind::Plan => wire::MemoryKind::Plan,
+                    MemoryKind::Decision => wire::MemoryKind::Decision,
+                    MemoryKind::Convention => wire::MemoryKind::Convention,
+                    MemoryKind::Note => wire::MemoryKind::Note,
+                },
+                author: wire::first_line(&item.author.to_string(), wire::MAX_AUTHOR),
+                goal: item.goal_id.clone().filter(|goal| wire::id(goal).is_ok()),
+                text: clean(&item.text, wire::MAX_MEMORY_TEXT, "(empty)"),
+                pinned: Some(index) == plan,
+            })
+            .collect()
     }
 
     /// The seat's newest task in the inbox, active or not.

@@ -10,10 +10,11 @@
 //!
 //! [`console`] reads a line typed at the console: plain text starts a
 //! goal, `@seat text` messages a seat, and the slash commands mirror the
-//! studio's intents.
+//! studio's intents. [`complete`] offers what Tab completes a line to:
+//! seats, commands, decision identities, tasks, and repositories.
 
 use coder_access::review::TaskReview;
-use coder_access::studio::{Decision, MergeDecision, Verdict, View};
+use coder_access::studio::{Decision, DecisionKind, MergeDecision, Task, Verdict, View};
 use coder_access::{Operation, Right};
 use sha2::{Digest, Sha256};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -34,6 +35,17 @@ pub enum Action {
     Pause(String),
     Resume(String),
     Stop(String),
+    /// Plan a failed or cancelled task again, under a new identity.
+    Retry(String),
+    /// Move a planned task ahead of its goal's other planned tasks.
+    Prioritize(String),
+    /// Cancel a planned or running task.
+    Cancel(String),
+    /// Give a planned task to another seat.
+    Reassign {
+        task: String,
+        seat: String,
+    },
     /// Answer the open decision `decision` at `based_on`.
     Answer {
         decision: String,
@@ -67,6 +79,10 @@ impl Action {
             Self::Pause(seat) => Operation::PauseSeat { seat },
             Self::Resume(seat) => Operation::ResumeSeat { seat },
             Self::Stop(seat) => Operation::StopSeat { seat },
+            Self::Retry(task) => Operation::RetryTask { task },
+            Self::Prioritize(task) => Operation::PrioritizeTask { task },
+            Self::Cancel(task) => Operation::CancelStudioTask { task },
+            Self::Reassign { task, seat } => Operation::ReassignTask { task, seat },
             Self::Answer {
                 decision,
                 based_on,
@@ -106,6 +122,38 @@ impl Action {
             _ => Right::Operate,
         }
     }
+
+    /// What sending this does, in a few words, for the acknowledgment the
+    /// composer shows in place of the sent text.
+    #[must_use]
+    pub fn describe(&self) -> String {
+        match self {
+            Self::SubmitGoal { workspace, .. } => format!("new goal on {workspace}"),
+            Self::Message {
+                seat: Some(seat), ..
+            } => format!("message to {seat}"),
+            Self::Message { seat: None, .. } => "message to every seat".into(),
+            Self::Pause(seat) => format!("pause {seat}"),
+            Self::Resume(seat) => format!("resume {seat}"),
+            Self::Stop(seat) => format!("stop {seat}"),
+            Self::Retry(task) => format!("retry {}", short(task)),
+            Self::Prioritize(task) => format!("prioritize {}", short(task)),
+            Self::Cancel(task) => format!("cancel {}", short(task)),
+            Self::Reassign { task, seat } => format!("reassign {} to {seat}", short(task)),
+            Self::Answer { decision, .. } => format!("answer {}", short(decision)),
+            Self::Decide { verdict, .. } => match verdict {
+                Verdict::Merge => "merge".into(),
+                Verdict::RequestChanges => "request changes".into(),
+                Verdict::Reject => "reject".into(),
+            },
+            Self::ListWorkspaces => "list the repositories".into(),
+        }
+    }
+}
+
+/// At most the first 16 characters of an identity, for display.
+fn short(id: &str) -> &str {
+    id.char_indices().nth(16).map_or(id, |(end, _)| &id[..end])
 }
 
 /// Whether `rights` hold `right`.
@@ -142,9 +190,24 @@ pub fn now() -> u64 {
         .map_or(0, |elapsed| elapsed.as_secs())
 }
 
-/// The open decisions, oldest first: by when their goal was submitted,
-/// then by the asking task's place on the goal's board. The podium answers
-/// the first.
+/// How soon a decision of `kind` comes up: a seat blocked on an approval
+/// first, then a seat's question, then a goal's plan decision.
+fn urgency(kind: DecisionKind) -> u8 {
+    match kind {
+        DecisionKind::Approval => 0,
+        DecisionKind::Question => 1,
+        DecisionKind::InvalidPlan
+        | DecisionKind::NoPlan
+        | DecisionKind::LeadFailed
+        | DecisionKind::DependencyFailed => 2,
+    }
+}
+
+/// The open decisions in the order the podium takes them: approvals, then
+/// questions, then goal decisions, and within each, oldest first by when
+/// their goal was submitted, then by the asking task's place on the
+/// goal's board. The podium answers the first unless the person moves to
+/// another.
 #[must_use]
 pub fn decisions(view: &View) -> Vec<&Decision> {
     let submitted = |goal: &str| {
@@ -159,11 +222,55 @@ pub fn decisions(view: &View) -> Vec<&Decision> {
     };
     let mut open: Vec<&Decision> = view.decisions.iter().collect();
     open.sort_by(|a, b| {
-        submitted(&a.goal)
-            .cmp(&submitted(&b.goal))
+        urgency(a.kind)
+            .cmp(&urgency(b.kind))
+            .then(submitted(&a.goal).cmp(&submitted(&b.goal)))
             .then(position(a.task.as_deref()).cmp(&position(b.task.as_deref())))
     });
     open
+}
+
+/// The name a task goes by at the console: its plan entry when no other
+/// task in the view shares it, else its identity.
+#[must_use]
+pub fn task_name<'a>(view: &View, task: &'a Task) -> &'a str {
+    let shared = view
+        .tasks
+        .iter()
+        .filter(|other| other.entry == task.entry)
+        .count();
+    if shared == 1 { &task.entry } else { &task.task }
+}
+
+/// The task `word` names: its identity, its plan entry when only one task
+/// has it, or the start of exactly one identity.
+///
+/// # Errors
+/// Why `word` names no task, or more than one.
+pub fn find_task<'a>(view: &'a View, word: &str) -> Result<&'a Task, String> {
+    if word.is_empty() {
+        return Err("Name a task after /task.".into());
+    }
+    if let Some(task) = view.tasks.iter().find(|task| task.task == word) {
+        return Ok(task);
+    }
+    let by_entry: Vec<&Task> = view.tasks.iter().filter(|t| t.entry == word).collect();
+    let found = if by_entry.is_empty() {
+        view.tasks
+            .iter()
+            .filter(|task| task.task.starts_with(word))
+            .collect()
+    } else {
+        by_entry
+    };
+    match found.as_slice() {
+        [one] => Ok(one),
+        [] => Err(format!("No task is named {word}.")),
+        many => Err(format!(
+            "{word} names {} tasks; Tab completes their identities.",
+            many.len()
+        )),
+    }
 }
 
 /// What a line typed at the console asks for.
@@ -171,10 +278,23 @@ pub fn decisions(view: &View) -> Vec<&Decision> {
 pub enum Console {
     /// Send this intent.
     Act(Action),
+    /// `/spawn @seat [text]`: resume the seat, and message it `text`.
+    Spawn { seat: String, text: Option<String> },
+    /// Plain text with several repositories and none picked: the person
+    /// picks the goal's repository first.
+    PickRepository(String),
     /// `/diff`: open the diff review.
     Review,
+    /// `/decide`: open the decisions at the podium.
+    Decide,
     /// `/status`: say what the studio is doing.
     Status,
+    /// `/help`: say what the console reads.
+    Help,
+    /// `/clear`: forget what the console said.
+    Clear,
+    /// `/sound on` or `/sound off`.
+    Sound(bool),
     /// `/repo LABEL`: start later goals on this repository.
     Repository(String),
     /// The line asks for nothing the console can do; the text says why.
@@ -183,13 +303,22 @@ pub enum Console {
 
 /// The console's help text.
 pub const HELP: &str = "Plain text starts a goal; `@seat text` messages a seat, and \
-     `@everyone text` every seat; `/answer text` answers the oldest decision; \
-     `/pause`, `/resume`, and `/stop` take a seat; `/diff` opens the review; \
-     `/status` sums up; `/repos` lists the repositories and `/repo LABEL` picks one.";
+     `@everyone text` every seat; `/answer [decision] text` answers a decision, the \
+     first waiting without one; `/pause`, `/resume`, `/stop`, and `/spawn @seat [text]` \
+     take a seat; `/task TASK cancel|retry|prioritize|reassign @seat` changes a task; \
+     `/decide` opens the decisions and `/diff` the review; `/status` sums up; `/repos` \
+     lists the repositories and `/repo LABEL` picks one; `/clear` and `/sound on|off`. \
+     Tab completes, Up and Down walk the history, and Shift+Enter adds a line.";
+
+/// The console's commands, for completion.
+pub const COMMANDS: [&str; 14] = [
+    "answer", "clear", "decide", "diff", "help", "pause", "repo", "repos", "resume", "sound",
+    "spawn", "status", "stop", "task",
+];
 
 /// Reads `line`, typed at the console, against the studio `view`. A goal
-/// starts on `workspace` when one is picked, else on the view's first
-/// repository.
+/// starts on `workspace` when one is picked, else on the view's only
+/// repository; with several, the person picks one first.
 #[must_use]
 pub fn console(line: &str, view: &View, workspace: Option<&str>) -> Console {
     let line = line.trim();
@@ -197,6 +326,7 @@ pub fn console(line: &str, view: &View, workspace: Option<&str>) -> Console {
         return Console::Refused("Type a goal, `@seat text`, or a command.".into());
     }
     let seat = |name: &str| -> Result<String, Console> {
+        let name = name.trim_start_matches('@');
         if view.seats.iter().any(|s| s.seat == name) {
             Ok(name.to_owned())
         } else if name.is_empty() {
@@ -232,44 +362,164 @@ pub fn console(line: &str, view: &View, workspace: Option<&str>) -> Console {
             Err(refused) => refused,
         };
         return match word {
-            "answer" => {
-                let Some(oldest) = decisions(view).into_iter().next() else {
-                    return Console::Refused("No decision waits on you.".into());
-                };
-                if argument.is_empty() {
-                    return Console::Refused("Write the answer after /answer.".into());
-                }
-                Console::Act(Action::Answer {
-                    decision: oldest.decision.clone(),
-                    based_on: oldest.based_on,
-                    text: argument.into(),
-                })
-            }
+            "answer" => answer(argument, view),
             "pause" => seat_action(Action::Pause),
             "resume" => seat_action(Action::Resume),
             "stop" => seat_action(Action::Stop),
+            "spawn" => {
+                let (name, text) = argument
+                    .split_once(char::is_whitespace)
+                    .unwrap_or((argument, ""));
+                match seat(name) {
+                    Ok(seat) => Console::Spawn {
+                        seat,
+                        text: Some(text.trim().to_owned()).filter(|text| !text.is_empty()),
+                    },
+                    Err(refused) => refused,
+                }
+            }
+            "task" => task(argument, view),
             "diff" => Console::Review,
+            "decide" => Console::Decide,
             "status" => Console::Status,
+            "help" => Console::Help,
+            "clear" => Console::Clear,
+            "sound" => match argument {
+                "on" => Console::Sound(true),
+                "off" => Console::Sound(false),
+                _ => Console::Refused("Write /sound on or /sound off.".into()),
+            },
             "repos" => Console::Act(Action::ListWorkspaces),
             "repo" if !argument.is_empty() => Console::Repository(argument.into()),
             "repo" => Console::Refused("Name the repository after /repo.".into()),
             other => Console::Refused(format!("No command is named /{other}.")),
         };
     }
-    let workspace = workspace.map(str::to_owned).or_else(|| {
-        view.repositories
-            .first()
-            .map(|repository| repository.workspace.clone())
-    });
+    let workspace = workspace
+        .map(str::to_owned)
+        .or_else(|| match view.repositories.as_slice() {
+            [only] => Some(only.workspace.clone()),
+            _ => None,
+        });
     match workspace {
         Some(workspace) => Console::Act(Action::SubmitGoal {
             text: line.into(),
             workspace,
         }),
+        None if view.repositories.len() > 1 => Console::PickRepository(line.into()),
         None => Console::Refused(
             "Pick a repository first: `/repos` lists them and `/repo LABEL` picks one.".into(),
         ),
     }
+}
+
+/// `/answer [decision] text`: the named open decision, or the first the
+/// podium takes.
+fn answer(argument: &str, view: &View) -> Console {
+    let (first, rest) = argument
+        .split_once(char::is_whitespace)
+        .unwrap_or((argument, ""));
+    let named = view.decisions.iter().find(|open| open.decision == first);
+    let (open, text) = match named {
+        Some(open) => (Some(open), rest.trim()),
+        None => (decisions(view).into_iter().next(), argument),
+    };
+    let Some(open) = open else {
+        return Console::Refused("No decision waits on you.".into());
+    };
+    if text.is_empty() {
+        return Console::Refused("Write the answer after /answer.".into());
+    }
+    Console::Act(Action::Answer {
+        decision: open.decision.clone(),
+        based_on: open.based_on,
+        text: text.into(),
+    })
+}
+
+/// `/task TASK cancel|retry|prioritize|reassign @seat`.
+fn task(argument: &str, view: &View) -> Console {
+    let mut words = argument.split_whitespace();
+    let Some(name) = words.next() else {
+        return Console::Refused(
+            "Write /task, a task, and cancel, retry, prioritize, or reassign @seat.".into(),
+        );
+    };
+    let task = match find_task(view, name) {
+        Ok(task) => task.task.clone(),
+        Err(why) => return Console::Refused(why),
+    };
+    match words.next() {
+        Some("cancel") => Console::Act(Action::Cancel(task)),
+        Some("retry") => Console::Act(Action::Retry(task)),
+        Some("prioritize") => Console::Act(Action::Prioritize(task)),
+        Some("reassign") => match words.next().map(|seat| seat.trim_start_matches('@')) {
+            Some(seat) if view.seats.iter().any(|s| s.seat == seat) => {
+                Console::Act(Action::Reassign {
+                    task,
+                    seat: seat.to_owned(),
+                })
+            }
+            Some(seat) => Console::Refused(format!("No seat is named {seat}.")),
+            None => Console::Refused("Name the seat after reassign.".into()),
+        },
+        Some(other) => Console::Refused(format!(
+            "/task does not {other}: write cancel, retry, prioritize, or reassign @seat."
+        )),
+        None => Console::Refused("Write cancel, retry, prioritize, or reassign @seat.".into()),
+    }
+}
+
+/// The lines Tab completes `line` to, in order: the last word completed as
+/// a seat after `@` or a seat command, a command after `/`, a task after
+/// `/task`, a task change after the task, a decision after `/answer`, or
+/// a repository after `/repo`. Empty when nothing completes it.
+#[must_use]
+pub fn complete(line: &str, view: &View) -> Vec<String> {
+    let (head, word) = match line.rfind(char::is_whitespace) {
+        Some(at) => line.split_at(at + 1),
+        None => ("", line),
+    };
+    let words: Vec<&str> = head.split_whitespace().collect();
+    let seats = || view.seats.iter().map(|seat| seat.seat.clone());
+    let options: Vec<String> = match words.as_slice() {
+        [] if word.starts_with('@') => seats()
+            .chain(std::iter::once("everyone".to_owned()))
+            .map(|name| format!("@{name}"))
+            .collect(),
+        [] if word.starts_with('/') => COMMANDS.iter().map(|c| format!("/{c}")).collect(),
+        ["/pause" | "/resume" | "/stop" | "/spawn"] => {
+            seats().map(|name| format!("@{name}")).collect()
+        }
+        ["/task"] => view
+            .tasks
+            .iter()
+            .map(|task| task_name(view, task).to_owned())
+            .collect(),
+        ["/task", _] => ["cancel", "prioritize", "reassign", "retry"]
+            .iter()
+            .map(|verb| (*verb).to_owned())
+            .collect(),
+        ["/task", _, "reassign"] => seats().map(|name| format!("@{name}")).collect(),
+        ["/answer"] => decisions(view)
+            .into_iter()
+            .map(|open| open.decision.clone())
+            .collect(),
+        ["/repo"] => view
+            .repositories
+            .iter()
+            .map(|repository| repository.workspace.clone())
+            .collect(),
+        ["/sound"] => vec!["off".into(), "on".into()],
+        _ => Vec::new(),
+    };
+    let mut lines: Vec<String> = options
+        .into_iter()
+        .filter(|option| option.starts_with(word))
+        .map(|option| format!("{head}{option}"))
+        .collect();
+    lines.dedup();
+    lines
 }
 
 /// One line that sums up the studio, for `/status`.
@@ -298,9 +548,7 @@ pub fn status(view: &View) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use coder_access::studio::{
-        Activity, DecisionKind, Goal, GoalStatus, Repository, Role, Seat, Station,
-    };
+    use coder_access::studio::{Activity, Goal, GoalStatus, Repository, Role, Seat, Station};
 
     fn view() -> View {
         let seat = |name: &str| Seat {
@@ -455,5 +703,192 @@ mod tests {
         assert_ne!(answer.operation(1), answer.operation(1));
         assert!(allows(&[Right::Observe, Right::Operate], Right::Operate));
         assert!(!allows(&[Right::Observe], Right::Review));
+    }
+
+    fn task(id: &str, entry: &str, status: coder_access::studio::TaskStatus) -> Task {
+        Task {
+            task: id.into(),
+            goal: "g-old".into(),
+            entry: entry.into(),
+            position: 1,
+            title: format!("Do {entry}"),
+            seat: "ada".into(),
+            depends_on: Vec::new(),
+            status,
+        }
+    }
+
+    fn busy() -> View {
+        use coder_access::studio::TaskStatus;
+        let mut view = view();
+        view.tasks = vec![
+            task("studio-g-old-a", "a", TaskStatus::Failed),
+            task("studio-g-old-lead", "lead", TaskStatus::Done),
+            task("studio-g-new-lead", "lead", TaskStatus::Running),
+        ];
+        view
+    }
+
+    #[test]
+    fn approvals_come_before_questions_and_goal_decisions() {
+        let mut view = view();
+        let asked = |id: &str, kind: DecisionKind| Decision {
+            decision: id.into(),
+            goal: "g-new".into(),
+            task: Some(id.into()),
+            seat: Some("ada".into()),
+            kind,
+            text: "May I?".into(),
+            based_on: 1,
+        };
+        view.decisions.push(asked("q-new", DecisionKind::Question));
+        view.decisions.push(asked("p-new", DecisionKind::Approval));
+        let order: Vec<&str> = decisions(&view)
+            .into_iter()
+            .map(|open| open.decision.as_str())
+            .collect();
+        assert_eq!(order, ["p-new", "q-new", "g-old", "g-new"]);
+        // `/answer` takes the first, or the one it names.
+        assert!(matches!(
+            console("/answer yes", &view, None),
+            Console::Act(Action::Answer { decision, .. }) if decision == "p-new"
+        ));
+        assert!(matches!(
+            console("/answer g-new Use this plan", &view, None),
+            Console::Act(Action::Answer { decision, text, .. })
+                if decision == "g-new" && text == "Use this plan"
+        ));
+    }
+
+    #[test]
+    fn the_console_changes_tasks_and_spawns_seats() {
+        let view = busy();
+        assert_eq!(
+            console("/task a retry", &view, None),
+            Console::Act(Action::Retry("studio-g-old-a".into()))
+        );
+        assert_eq!(
+            console("/task studio-g-new cancel", &view, None),
+            Console::Act(Action::Cancel("studio-g-new-lead".into()))
+        );
+        assert_eq!(
+            console("/task a reassign @lead", &view, None),
+            Console::Act(Action::Reassign {
+                task: "studio-g-old-a".into(),
+                seat: "lead".into()
+            })
+        );
+        assert_eq!(
+            console("/task a prioritize", &view, None),
+            Console::Act(Action::Prioritize("studio-g-old-a".into()))
+        );
+        // Two leads share the entry, so it names neither.
+        assert!(matches!(
+            console("/task lead cancel", &view, None),
+            Console::Refused(_)
+        ));
+        assert!(matches!(
+            console("/task a reassign @grace", &view, None),
+            Console::Refused(_)
+        ));
+        assert!(matches!(
+            console("/task a", &view, None),
+            Console::Refused(_)
+        ));
+        assert_eq!(
+            console("/spawn @ada Pick up the docs", &view, None),
+            Console::Spawn {
+                seat: "ada".into(),
+                text: Some("Pick up the docs".into())
+            }
+        );
+        assert_eq!(
+            console("/spawn ada", &view, None),
+            Console::Spawn {
+                seat: "ada".into(),
+                text: None
+            }
+        );
+        assert_eq!(
+            console("/pause @ada", &view, None),
+            Console::Act(Action::Pause("ada".into()))
+        );
+        assert_eq!(console("/decide", &view, None), Console::Decide);
+        assert_eq!(console("/clear", &view, None), Console::Clear);
+        assert_eq!(console("/help", &view, None), Console::Help);
+        assert_eq!(console("/sound off", &view, None), Console::Sound(false));
+        assert!(matches!(
+            console("/sound loud", &view, None),
+            Console::Refused(_)
+        ));
+    }
+
+    #[test]
+    fn a_goal_with_several_repositories_asks_which_first() {
+        let mut view = view();
+        view.repositories.push(Repository {
+            workspace: "site".into(),
+            goals: 0,
+            open_tasks: 0,
+        });
+        assert_eq!(
+            console("Add a flag", &view, None),
+            Console::PickRepository("Add a flag".into())
+        );
+        assert_eq!(
+            console("Add a flag", &view, Some("site")),
+            Console::Act(Action::SubmitGoal {
+                text: "Add a flag".into(),
+                workspace: "site".into()
+            })
+        );
+    }
+
+    #[test]
+    fn tab_completes_seats_commands_tasks_and_decisions() {
+        let view = busy();
+        assert_eq!(complete("@a", &view), ["@ada"]);
+        assert_eq!(complete("@", &view), ["@ada", "@lead", "@everyone"]);
+        assert_eq!(complete("/st", &view), ["/status", "/stop"]);
+        assert_eq!(complete("/pause @l", &view), ["/pause @lead"]);
+        assert_eq!(
+            complete("/task ", &view),
+            [
+                "/task a",
+                "/task studio-g-old-lead",
+                "/task studio-g-new-lead"
+            ]
+        );
+        assert_eq!(
+            complete("/task a re", &view),
+            ["/task a reassign", "/task a retry"]
+        );
+        assert_eq!(
+            complete("/task a reassign @", &view),
+            ["/task a reassign @ada", "/task a reassign @lead"]
+        );
+        assert_eq!(complete("/answer g-o", &view), ["/answer g-old"]);
+        assert_eq!(complete("/repo a", &view), ["/repo app"]);
+        assert!(complete("plain words", &view).is_empty());
+        assert!(complete("", &view).is_empty());
+    }
+
+    #[test]
+    fn task_changes_name_their_operations() {
+        for action in [
+            Action::Retry("studio-g-old-a".into()),
+            Action::Prioritize("studio-g-old-a".into()),
+            Action::Cancel("studio-g-old-a".into()),
+            Action::Reassign {
+                task: "studio-g-old-a".into(),
+                seat: "lead".into(),
+            },
+        ] {
+            assert_eq!(action.right(), Right::Operate);
+            let operation = action.operation(1_790_000_000);
+            operation.validate().unwrap();
+            assert_eq!(operation.required(), Some(Right::Operate));
+            assert!(!action.describe().is_empty());
+        }
     }
 }

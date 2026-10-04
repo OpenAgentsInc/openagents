@@ -523,6 +523,12 @@ struct App {
     studio_target: Option<StudioPanel>,
     /// Whether the panel took the left button's last press.
     panel_press: bool,
+    /// Whether Shift is held while the panel has focus, for Shift+Enter
+    /// and Shift+Tab.
+    panel_shift: bool,
+    /// What the studio console keeps while its panel is closed: the
+    /// history and the unsent draft.
+    studio_recall: crate::panels::studio::Recall,
 }
 
 /// The replay list: the retained `beats-winner` runs and which is chosen.
@@ -762,11 +768,14 @@ impl App {
             panel_press: false,
             studio_panel: None,
             studio_target: None,
+            panel_shift: false,
+            studio_recall: crate::panels::studio::Recall::default(),
         })
     }
 
     /// Opens the panel, or closes it when it is open.
     fn toggle_panel(&mut self) {
+        self.keep_console();
         self.panel = match self.panel.take() {
             Some(_) => None,
             None => Some(crate::panels::Panel::new("Agent transcript")),
@@ -778,6 +787,7 @@ impl App {
     /// Opens the Agent Studio panel `kind` over the world, in place of any
     /// open panel.
     fn open_studio_panel(&mut self, kind: StudioPanel) {
+        self.keep_console();
         let review = self.studio_review(&kind);
         let studio = self.runtime.studio();
         let mut panel =
@@ -793,6 +803,9 @@ impl App {
         );
         if kind == StudioPanel::Review && review.is_some() {
             panel.apply(crate::panels::Intent::Show(crate::panels::Tab::Changes));
+        }
+        if kind == StudioPanel::Console {
+            controller.restore(std::mem::take(&mut self.studio_recall), &mut panel);
         }
         self.panel = Some(panel);
         self.studio_panel = Some(controller);
@@ -818,6 +831,16 @@ impl App {
         }
     }
 
+    /// Keeps what the open console holds, its history and unsent draft,
+    /// for the next time it opens.
+    fn keep_console(&mut self) {
+        if let (Some(controller), Some(panel)) = (&self.studio_panel, &self.panel)
+            && *controller.kind() == StudioPanel::Console
+        {
+            self.studio_recall = controller.recall(panel);
+        }
+    }
+
     /// Carries out an intent a studio panel's control resolved: sends its
     /// studio intent, or opens another panel, then fills the panel again.
     fn studio_panel_intent(&mut self, intent: crate::panels::Intent) {
@@ -831,25 +854,52 @@ impl App {
             }
             _ => return,
         };
+        self.studio_effects(effects);
+    }
+
+    /// Carries out what a studio panel's control or key asked for, then
+    /// fills the panel again.
+    fn studio_effects(&mut self, effects: Vec<crate::panels::studio::Effect>) {
+        use crate::panels::studio::Effect;
         for effect in effects {
             match effect {
-                crate::panels::studio::Effect::Send(action) => {
+                Effect::Send(action) => {
                     let operation =
                         action.operation(crate::zones::everglade::studio::intents::now());
-                    if let Err(error) = self.runtime.studio_send(operation)
-                        && let Some(controller) = &mut self.studio_panel
-                    {
-                        controller.say(format!(
+                    let result = self.runtime.studio_send(operation).map_err(|error| {
+                        format!(
                             "Not sent (`{}`): {}",
                             crate::panels::studio::code_word(error.code),
                             error.message
-                        ));
+                        )
+                    });
+                    if let (Some(controller), Some(panel)) =
+                        (&mut self.studio_panel, &mut self.panel)
+                    {
+                        controller.sent(result, panel);
                     }
                 }
-                crate::panels::studio::Effect::Open(kind) => {
+                Effect::Open(kind) => {
                     self.open_studio_panel(kind);
                     return;
                 }
+                Effect::Answer(decision) => {
+                    self.open_studio_panel(StudioPanel::Decisions);
+                    if let Some(controller) = &mut self.studio_panel {
+                        controller.select(&decision);
+                    }
+                    self.fill_studio_panel();
+                    return;
+                }
+                Effect::Copy(text) => {
+                    let copied = arboard::Clipboard::new()
+                        .and_then(|mut clipboard| clipboard.set_text(text))
+                        .is_ok();
+                    if !copied && let Some(controller) = &mut self.studio_panel {
+                        controller.say("The clipboard did not take the path.");
+                    }
+                }
+                Effect::Sound(on) => self.runtime.studio_sounds(on),
             }
         }
         self.fill_studio_panel();
@@ -867,6 +917,7 @@ impl App {
         if let Some(panel) = &mut self.panel
             && !panel.apply(intent)
         {
+            self.keep_console();
             self.panel = None;
         }
     }
@@ -945,14 +996,23 @@ impl App {
     /// `text` is what the key typed, for a panel's composer.
     fn panel_key(&mut self, code: KeyCode, pressed: bool, text: Option<&str>) -> bool {
         use crate::panels::Key;
-        let Some(panel) = self.panel.as_mut().filter(|p| p.focused()) else {
+        let shift_key = matches!(code, KeyCode::ShiftLeft | KeyCode::ShiftRight);
+        if shift_key {
+            self.panel_shift = pressed;
+        }
+        if !self.panel.as_ref().is_some_and(|p| p.focused()) {
             return false;
-        };
+        }
+        if shift_key {
+            return true;
+        }
         if !pressed {
             return true;
         }
+        let shift = self.panel_shift;
         let keys = match code {
             KeyCode::Escape => vec![Key::Escape],
+            KeyCode::Tab if shift => vec![Key::BackTab],
             KeyCode::Tab => vec![Key::Tab],
             KeyCode::ArrowUp => vec![Key::Up],
             KeyCode::ArrowDown => vec![Key::Down],
@@ -960,6 +1020,7 @@ impl App {
             KeyCode::PageDown => vec![Key::PageDown],
             KeyCode::Home => vec![Key::Home],
             KeyCode::End => vec![Key::End],
+            KeyCode::Enter | KeyCode::NumpadEnter if shift => vec![Key::NewLine],
             KeyCode::Enter | KeyCode::NumpadEnter => vec![Key::Enter],
             KeyCode::Backspace => vec![Key::Backspace],
             _ => match text.filter(|text| !text.chars().any(char::is_control)) {
@@ -967,11 +1028,37 @@ impl App {
                 _ => vec![Key::Other],
             },
         };
-        let intents: Vec<_> = keys.into_iter().filter_map(|key| panel.key(key)).collect();
-        for intent in intents {
-            self.panel_intent(intent);
+        for key in keys {
+            self.panel_key_one(key);
         }
         true
+    }
+
+    /// Hands one key to the open panel: a studio panel's controller takes
+    /// it first, for completion, history, number keys, and the review's
+    /// keys; else the panel does.
+    fn panel_key_one(&mut self, key: crate::panels::Key) {
+        if let Some(kind) = self.studio_panel.as_ref().map(|c| c.kind().clone()) {
+            let review = self.studio_review(&kind);
+            let now = std::time::Instant::now();
+            let taken = match (&mut self.studio_panel, &mut self.panel) {
+                (Some(controller), Some(panel)) => controller.key(
+                    key,
+                    panel,
+                    self.runtime.studio().view(),
+                    review.as_ref(),
+                    now,
+                ),
+                _ => None,
+            };
+            if let Some(effects) = taken {
+                self.studio_effects(effects);
+                return;
+            }
+        }
+        if let Some(intent) = self.panel.as_mut().and_then(|panel| panel.key(key)) {
+            self.panel_intent(intent);
+        }
     }
 
     /// Gives the panel a left-button press or release. Returns true when

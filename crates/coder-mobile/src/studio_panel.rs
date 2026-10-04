@@ -647,6 +647,7 @@ mod tests {
                     },
                 ],
             }],
+            memory: Vec::new(),
         }
     }
 

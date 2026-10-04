@@ -231,6 +231,10 @@ pub enum PanelKind {
     Decisions,
     /// The diff review, at the merge station.
     Review,
+    /// One task's details, opened by selecting its Task Wall card.
+    Task(String),
+    /// Shared memory with the pinned plan first, at the library.
+    Library,
 }
 
 impl PanelKind {
@@ -242,6 +246,7 @@ impl PanelKind {
             "task_wall" => Some(Self::Console),
             "podium" => Some(Self::Decisions),
             "merge" => Some(Self::Review),
+            "library" => Some(Self::Library),
             _ => None,
         }
     }
@@ -434,6 +439,8 @@ pub struct Studio {
     revision: u64,
     /// The host's newest answer to something a panel sent or read.
     status: Option<Answer>,
+    /// Whether `/sound off` silenced the studio for the session.
+    muted: bool,
 }
 
 impl Default for Studio {
@@ -446,6 +453,7 @@ impl Default for Studio {
             boards: boards::live(None),
             revision: 0,
             status: None,
+            muted: false,
         }
     }
 }
@@ -695,6 +703,24 @@ impl Studio {
     /// Every seat's name and where it stands, in key order.
     pub fn seats(&self) -> impl Iterator<Item = (&str, Vec3)> {
         self.seats.iter().map(|seat| (seat.name.as_str(), seat.pos))
+    }
+
+    /// The middle of each Task Wall card, in the glade, with its task.
+    #[must_use]
+    pub fn cards(&self) -> Vec<(Vec3, String)> {
+        self.view().map(boards::card_targets).unwrap_or_default()
+    }
+
+    /// Whether the studio's sounds play: `/sound off` at the console
+    /// silences them for the session.
+    #[must_use]
+    pub fn sounds(&self) -> bool {
+        !self.muted
+    }
+
+    /// Turns the studio's sounds on or off.
+    pub fn set_sounds(&mut self, on: bool) {
+        self.muted = !on;
     }
 
     /// The review the source holds of `task`.

@@ -1,7 +1,8 @@
 //! The Agent Studio's panels over Everglade (`docs/verse/agent-studio.md`,
-//! "The studio in Verse"): the console at the notice board, a seat's panel
-//! at its desk, the decisions at the podium, and the diff review at the
-//! merge station.
+//! "The studio in Verse"): the console at the notice board, a seat's agent
+//! card at its desk, the decisions at the podium, the diff review at the
+//! merge station, a task's details on its Task Wall card, and shared
+//! memory at the library.
 //!
 //! Each panel is a [`Panel`] of transcript rows in the chat palette, built
 //! from the studio snapshot Everglade draws. The decisions read each
@@ -10,27 +11,55 @@
 //! app's attention value (`openagents_chat_app::attention`). The review is
 //! the task's real diff in the changes tab.
 //!
-//! A [`Controller`] turns a panel's controls into studio intents
-//! ([`intents`]): the console's composer starts goals and messages seats,
-//! a seat's panel pauses, resumes, stops, and messages its seat, the
-//! podium answers the oldest decision page by page with the question
-//! flow, and the merge station decides **Merge**, **Request changes**
-//! (with line comments from `openagents_chat_app::review_comments`), or
-//! **Reject**. A panel offers a control only when the source's rights
-//! hold its right, and the host checks it again. The host's newest answer,
-//! or its refusal code, shows in every studio panel.
+//! A [`Controller`] turns a panel's controls and keys into studio intents
+//! ([`intents`]):
+//!
+//! - The console's composer starts goals and messages seats. Tab completes
+//!   seats, commands, decisions, and tasks; Up and Down walk the history;
+//!   Shift+Enter adds a line; and what was sent, or why the host refused
+//!   it, shows in place of the draft. A refused draft comes back. With
+//!   several repositories, a goal asks which one first.
+//! - A seat's agent card shows its state, task, the decisions it owns or
+//!   filed, and its recent log; it pauses, resumes, stops, spawns, and
+//!   messages its seat.
+//! - The podium takes approvals, then questions, then goal decisions,
+//!   oldest first. Number keys pick options and Tab moves between
+//!   decisions. Enter alone never grants, and option keys wait out a short
+//!   lock after a decision comes up.
+//! - The merge station decides **Merge**, **Request changes** (with line
+//!   comments from `openagents_chat_app::review_comments`), or **Reject**,
+//!   which asks for a second press. Keys move between files and hunks and
+//!   copy a file's path.
+//! - A task's details retry, prioritize, reassign, and cancel it; cancel
+//!   asks for a second press.
+//!
+//! A panel offers a control only when the source's rights hold its right,
+//! and the host checks it again. The host's newest answer, or its refusal
+//! code, shows in every studio panel.
 
-use super::{Intent, Panel, Tab, message, tool};
+use super::{Intent, Key, Panel, Tab, message, tool};
 use crate::zones::everglade::studio::intents::{self, Action, Console};
 use crate::zones::everglade::studio::{Answer, PanelKind, word};
 use coder_access::review::TaskReview;
 use coder_access::studio::{
-    Activity, Decision, DecisionKind, Seat, Spend, Task, TaskStatus, Verdict, View,
+    Activity, Decision, DecisionKind, Memory, MemoryKind, Seat, Spend, Task, TaskStatus, Verdict,
+    View,
 };
 use coder_access::{Code, Outcome, Right};
-use openagents_chat_app::{attention, decision, review_comments};
+use openagents_chat_app::{attention, changes, decision, review_comments};
 use rust_native::{MessageRole, Node, ToolState};
 use std::collections::BTreeMap;
+use std::time::{Duration, Instant};
+
+/// How long option keys and Enter wait after a decision comes up at the
+/// podium, so a key meant for the last one never answers the next.
+pub const INPUT_LOCK: Duration = Duration::from_millis(350);
+/// How long **Reject** or **Cancel** waits for its confirming press.
+pub const CONFIRM: Duration = Duration::from_secs(5);
+/// The most lines the console's history keeps.
+pub const MAX_HISTORY: usize = 50;
+/// The most decisions an agent card offers to answer.
+const CARD_DECISIONS: usize = 2;
 
 /// The attention a seat doing `activity` shows in the roster: the desktop
 /// app's indicator over the seat's activity. A seat whose task is over is
@@ -62,6 +91,15 @@ pub fn seat<'a>(kind: &PanelKind, view: &'a View) -> Option<&'a Seat> {
     }
 }
 
+/// The task a panel of `kind` shows, if it shows one.
+#[must_use]
+pub fn task<'a>(kind: &PanelKind, view: &'a View) -> Option<&'a Task> {
+    match kind {
+        PanelKind::Task(id) => view.tasks.iter().find(|t| t.task == *id),
+        _ => None,
+    }
+}
+
 /// The panel's title.
 #[must_use]
 pub fn title(kind: &PanelKind, view: Option<&View>) -> String {
@@ -76,6 +114,11 @@ pub fn title(kind: &PanelKind, view: Option<&View>) -> String {
         },
         PanelKind::Decisions => "Decisions".into(),
         PanelKind::Review => "Diff review".into(),
+        PanelKind::Task(_) => match view.and_then(|v| task(kind, v)) {
+            Some(task) => format!("Task · {}", task.title),
+            None => "Task".into(),
+        },
+        PanelKind::Library => "Library".into(),
     }
 }
 
@@ -102,6 +145,22 @@ pub fn reviewable(view: &View) -> Vec<&Task> {
             .then(b.position.cmp(&a.position))
     });
     tasks
+}
+
+/// The word a task's status is shown with.
+#[must_use]
+pub fn status_word(status: TaskStatus) -> &'static str {
+    match status {
+        TaskStatus::Held => "planned",
+        TaskStatus::Blocked => "blocked",
+        TaskStatus::Queued => "queued",
+        TaskStatus::Running => "running",
+        TaskStatus::Waiting => "waiting on you",
+        TaskStatus::Done => "done",
+        TaskStatus::Failed => "failed",
+        TaskStatus::Cancelled => "cancelled",
+        TaskStatus::Missing => "missing",
+    }
 }
 
 fn note(key: &str, text: &str) -> Node<()> {
@@ -178,8 +237,8 @@ fn console(view: &View, rights: &[Right]) -> Vec<Node<()>> {
         rows.push(note(
             "decisions-open",
             &match open {
-                1 => "1 decision waits at the podium.".to_owned(),
-                n => format!("{n} decisions wait at the podium."),
+                1 => "1 decision waits at the podium. `/decide` opens it.".to_owned(),
+                n => format!("{n} decisions wait at the podium. `/decide` opens them."),
             },
         ));
     }
@@ -196,6 +255,21 @@ fn console(view: &View, rights: &[Right]) -> Vec<Node<()>> {
     rows
 }
 
+/// The state a log line shows in: failed for a failure, running for the
+/// last line of a seat that is `working`, else done.
+fn line_state(activity: Activity, working: bool, last: bool) -> ToolState {
+    if matches!(activity, Activity::Failed | Activity::Blocked) {
+        ToolState::Failed
+    } else if working && last {
+        ToolState::Running
+    } else {
+        ToolState::Done
+    }
+}
+
+/// The agent card: the seat's state and task, the decisions it owns (its
+/// own question or approval) or filed (its goal's plan decision as lead),
+/// and its recent log.
 fn seat_rows(kind: &PanelKind, view: &View) -> Vec<Node<()>> {
     let Some(seat) = seat(kind, view) else {
         return vec![note("no-seat", "No seat sits at this desk.")];
@@ -209,22 +283,50 @@ fn seat_rows(kind: &PanelKind, view: &View) -> Vec<Node<()>> {
         .task
         .as_deref()
         .and_then(|id| view.tasks.iter().find(|t| t.task == id));
+    let state = if seat.paused && seat.task.is_none() {
+        "Stopped".to_owned()
+    } else {
+        indicator(seat.activity)
+            .label()
+            .unwrap_or("Idle")
+            .to_owned()
+    };
     let mut body = format!(
-        "**{}** · {role} · {}\n\n{}{} · {} spent",
+        "**{}** · {role} · {}\n\n{state} · {}{} · {} spent",
         seat.seat,
         seat.route,
         word(seat.activity),
         if seat.paused { " · paused" } else { "" },
         seat.spend.label()
     );
-    if let Some(task) = task {
-        body.push_str(&format!(
-            "\n\nTask: {} · {} spent",
+    match task {
+        Some(task) => body.push_str(&format!(
+            "\n\nTask: {} · {} · {} spent",
             task.title,
+            status_word(task.status),
             task.spend.label()
-        ));
+        )),
+        None => body.push_str("\n\nNo task."),
     }
     rows.push(message("seat", MessageRole::Assistant, &body));
+    for open in intents::decisions(view)
+        .into_iter()
+        .filter(|open| open.seat.as_deref() == Some(seat.seat.as_str()))
+    {
+        let whose = if open.task.is_some() {
+            "Waiting on you"
+        } else {
+            "Filed for its goal"
+        };
+        rows.push(note(
+            &format!("owned-{}", open.decision),
+            &format!(
+                "**{whose}** · {}\n\n{}",
+                heading(open),
+                coder_access::studio::first_line(&open.text, 240)
+            ),
+        ));
+    }
     let lines = view
         .logs
         .iter()
@@ -232,23 +334,160 @@ fn seat_rows(kind: &PanelKind, view: &View) -> Vec<Node<()>> {
         .map_or(&[][..], |log| log.lines.as_slice());
     let working = indicator(seat.activity) == attention::Indicator::Working;
     for (i, line) in lines.iter().enumerate() {
-        let state = if matches!(line.activity, Activity::Failed | Activity::Blocked) {
-            ToolState::Failed
-        } else if working && i + 1 == lines.len() {
-            ToolState::Running
-        } else {
-            ToolState::Done
-        };
         rows.push(tool(
             &format!("log-{i}"),
             word(line.activity),
             &line.text,
             "",
-            state,
+            line_state(line.activity, working, i + 1 == lines.len()),
         ));
     }
     if lines.is_empty() {
         rows.push(note("no-log", "Nothing in this seat's log yet."));
+    }
+    rows
+}
+
+/// A task's details: its place, seat, goal, dependencies, the decision it
+/// waits on, and its newest log line.
+fn task_rows(kind: &PanelKind, view: &View) -> Vec<Node<()>> {
+    let Some(task) = task(kind, view) else {
+        return vec![note("no-task", "This task is no longer on the board.")];
+    };
+    let mut rows = Vec::new();
+    let place = if task.entry == "lead" {
+        "the lead's plan".to_owned()
+    } else {
+        format!("step {} of its goal", task.position)
+    };
+    let mut body = format!(
+        "**{}** · {}\n\n{place} · seat {} · `{}`",
+        task.title,
+        status_word(task.status),
+        task.seat,
+        intents::task_name(view, task)
+    );
+    if let Some(goal) = view.goals.iter().find(|goal| goal.goal == task.goal) {
+        body.push_str(&format!("\n\nGoal: {} · on {}", goal.text, goal.workspace));
+    }
+    rows.push(message("task", MessageRole::Assistant, &body));
+    if !task.depends_on.is_empty() {
+        let mut after = "**Depends on**".to_owned();
+        for entry in &task.depends_on {
+            let found = view
+                .tasks
+                .iter()
+                .find(|other| other.goal == task.goal && other.entry == *entry);
+            match found {
+                Some(other) => after.push_str(&format!(
+                    "\n- {entry}: {} · {}",
+                    other.title,
+                    status_word(other.status)
+                )),
+                None => after.push_str(&format!("\n- {entry}: not on the board")),
+            }
+        }
+        rows.push(note("depends", &after));
+    }
+    if let Some(open) = view
+        .decisions
+        .iter()
+        .find(|open| open.task.as_deref() == Some(task.task.as_str()))
+    {
+        rows.push(note("asks", &format!("{}\n\n{}", heading(open), open.text)));
+    }
+    let line = view
+        .logs
+        .iter()
+        .find(|log| log.task.as_deref() == Some(task.task.as_str()))
+        .and_then(|log| log.lines.last());
+    match line {
+        Some(line) => rows.push(tool(
+            "live",
+            word(line.activity),
+            &line.text,
+            "",
+            line_state(line.activity, task.status == TaskStatus::Running, true),
+        )),
+        None => rows.push(note("no-live", "No log line from this task yet.")),
+    }
+    rows
+}
+
+/// The word a memory entry's kind is shown with.
+fn memory_word(kind: MemoryKind) -> &'static str {
+    match kind {
+        MemoryKind::Plan => "Plan",
+        MemoryKind::Decision => "Decision",
+        MemoryKind::Convention => "Convention",
+        MemoryKind::Note => "Note",
+    }
+}
+
+/// `plan`'s text with each listed plan entry followed by its task's
+/// status, so the pinned plan reads as a progress report.
+fn annotated(plan: &Memory, view: &View) -> String {
+    plan.text
+        .lines()
+        .map(|line| {
+            let entry = line
+                .strip_prefix("- ")
+                .and_then(|rest| rest.split_once(':'))
+                .map(|(entry, _)| entry.trim());
+            let found = entry.and_then(|entry| {
+                view.tasks.iter().find(|task| {
+                    task.entry == entry && plan.goal.as_deref().is_none_or(|g| task.goal == g)
+                })
+            });
+            match found {
+                Some(task) => format!("{line} · {}", status_word(task.status)),
+                None => line.to_owned(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Shared memory as the library shows it: the pinned plan first, then the
+/// other entries, newest first.
+fn library_rows(view: &View) -> Vec<Node<()>> {
+    let mut rows = Vec::new();
+    let goal = |entry: &Memory| {
+        entry
+            .goal
+            .as_deref()
+            .map_or(String::new(), |goal| format!(" · goal {goal}"))
+    };
+    if let Some(plan) = view.plan() {
+        rows.push(message(
+            "plan",
+            MessageRole::Assistant,
+            &format!(
+                "**Plan** · pinned · from {}{}\n\n{}",
+                plan.author,
+                goal(plan),
+                annotated(plan, view)
+            ),
+        ));
+    }
+    for entry in view.memory.iter().rev().filter(|entry| !entry.pinned) {
+        rows.push(message(
+            &format!("memory-{}", entry.entry),
+            MessageRole::User,
+            &format!(
+                "**{}** · from {}{}\n\n{}",
+                memory_word(entry.kind),
+                entry.author,
+                goal(entry),
+                entry.text
+            ),
+        ));
+    }
+    if rows.is_empty() {
+        rows.push(note(
+            "no-memory",
+            "No shared memory yet. The lead's plan is pinned here once a goal is planned.",
+        ));
     }
     rows
 }
@@ -284,13 +523,17 @@ fn heading(open: &Decision) -> String {
     }
 }
 
-fn decision_rows(view: &View) -> Vec<Node<()>> {
+fn decision_rows(view: &View, answering: Option<&str>) -> Vec<Node<()>> {
     let mut rows = Vec::new();
-    for (i, open) in intents::decisions(view).into_iter().enumerate() {
+    let open = intents::decisions(view);
+    let answering = answering.or_else(|| open.first().map(|d| d.decision.as_str()));
+    for (i, open) in open.into_iter().enumerate() {
         let flow = flow(open);
-        let heading = heading(open);
+        let mut body = heading(open);
+        if answering == Some(open.decision.as_str()) {
+            body.push_str(" · *answering now*");
+        }
         let pages = flow.pages();
-        let mut body = heading;
         for (n, page) in pages.iter().enumerate() {
             if pages.len() > 1 {
                 body.push_str(&format!("\n\n*{} of {}*", n + 1, pages.len()));
@@ -309,7 +552,17 @@ fn decision_rows(view: &View) -> Vec<Node<()>> {
             &body,
         ));
     }
-    if rows.is_empty() {
+    let merges = reviewable(view).len();
+    if merges > 0 {
+        rows.push(note(
+            "merges",
+            &match merges {
+                1 => "1 change waits at the merge station.".to_owned(),
+                n => format!("{n} changes wait at the merge station."),
+            },
+        ));
+    }
+    if view.decisions.is_empty() {
         rows.push(note("no-decisions", "No decision waits on you."));
     }
     rows
@@ -322,11 +575,8 @@ fn review_rows(view: &View, review: Option<&TaskReview>, rights: &[Right]) -> Ve
             "No review is open. A done task's review loads here when its seat finishes.",
         )];
     };
-    let title = view
-        .tasks
-        .iter()
-        .find(|t| t.task == review.task)
-        .map_or(review.task.as_str(), |t| t.title.as_str());
+    let task = view.tasks.iter().find(|t| t.task == review.task);
+    let title = task.map_or(review.task.as_str(), |t| t.title.as_str());
     let mut body = format!(
         "**What changed** · {title}\n\n{} {} · +{} −{}",
         review.files_total,
@@ -346,17 +596,44 @@ fn review_rows(view: &View, review: Option<&TaskReview>, rights: &[Right]) -> Ve
             file.removed.unwrap_or(0)
         ));
     }
+    let mut rows = vec![message("review", MessageRole::Assistant, &body)];
+    // The worker's summary: the newest line its log holds for the task.
+    let summary = view
+        .logs
+        .iter()
+        .find(|log| log.task.as_deref() == Some(review.task.as_str()))
+        .and_then(|log| log.lines.last().map(|line| (log.seat.as_str(), line)));
+    if let Some((seat, line)) = summary {
+        rows.push(note(
+            "review-summary",
+            &format!("**{seat}'s summary** · {}", line.text),
+        ));
+    }
+    // The reviewers' notes: decisions shared memory holds on the task.
+    let notes: Vec<&Memory> = view
+        .memory
+        .iter()
+        .filter(|entry| entry.kind == MemoryKind::Decision && entry.text.contains(&review.task))
+        .collect();
+    if !notes.is_empty() {
+        let mut text = "**Reviewers' notes**".to_owned();
+        for entry in notes {
+            text.push_str(&format!("\n- {} · {}", entry.author, entry.text));
+        }
+        rows.push(note("review-notes", &text));
+    }
     let help = if intents::allows(rights, Right::Review) {
         "Pick a line in **What changed** and type to comment on it; with no line picked, \
-         what you type is your note. **Request changes** sends the note and the comments."
+         what you type is your note. **Request changes** sends the note and the comments. \
+         In **What changed**, `n` and `p` move between files, `]` and `[` between hunks, \
+         `c` copies the file's path, and Enter starts a note."
     } else {
         "**Merge**, **Request changes**, and **Reject** need a host connection with the \
-         `review` right."
+         `review` right. In **What changed**, `n` and `p` move between files, `]` and `[` \
+         between hunks, and `c` copies the file's path."
     };
-    vec![
-        message("review", MessageRole::Assistant, &body),
-        note("review-help", help),
-    ]
+    rows.push(note("review-help", help));
+    rows
 }
 
 /// The rows a panel of `kind` shows for `view`, and for the review panel,
@@ -385,8 +662,10 @@ pub fn rows_for(
     match kind {
         PanelKind::Console => console(view, rights),
         PanelKind::Seat(_) | PanelKind::Desk(_) => seat_rows(kind, view),
-        PanelKind::Decisions => decision_rows(view),
+        PanelKind::Decisions => decision_rows(view, None),
         PanelKind::Review => review_rows(view, review, rights),
+        PanelKind::Task(_) => task_rows(kind, view),
+        PanelKind::Library => library_rows(view),
     }
 }
 
@@ -437,13 +716,20 @@ pub fn status_text(answer: &Answer) -> String {
     }
 }
 
-/// What a studio panel's control asks the app to do.
+/// What a studio panel's control or key asks the app to do.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Effect {
-    /// Send this intent to the host ([`crate::zones::everglade::studio::Studio::send`]).
+    /// Send this intent to the host ([`crate::zones::everglade::studio::Studio::send`]),
+    /// then tell the controller what became of it ([`Controller::sent`]).
     Send(Action),
     /// Show this panel instead.
     Open(PanelKind),
+    /// Show the podium at this decision.
+    Answer(String),
+    /// Put this text on the clipboard.
+    Copy(String),
+    /// Turn the studio's sounds on or off.
+    Sound(bool),
 }
 
 fn review_identity(review: Option<&TaskReview>) -> Option<(String, String)> {
@@ -454,6 +740,8 @@ fn review_identity(review: Option<&TaskReview>) -> Option<(String, String)> {
 #[derive(Clone, Debug, PartialEq)]
 enum Control {
     Act(Action),
+    /// Resume a stopped seat.
+    Spawn(String),
     /// Pick an option on the decision's current page.
     Pick {
         decision: String,
@@ -461,13 +749,52 @@ enum Control {
     },
     /// Go back a page in the decision's flow.
     Back(String),
+    /// Move to the next (1) or previous (-1) open decision.
+    Cycle(isize),
     /// Decide the open review.
     Decide(Verdict),
+    /// Give the task to the seat the composer names.
+    Reassign(String),
+    /// Start the waiting goal on this repository.
+    Repository(String),
+    /// Show another panel.
+    Open(PanelKind),
+    /// Show the podium at this decision.
+    AnswerAt(String),
+}
+
+impl Control {
+    /// Whether the control asks for a second press: **Reject** and
+    /// **Cancel** cannot be undone.
+    fn confirms(&self) -> bool {
+        matches!(
+            self,
+            Self::Decide(Verdict::Reject) | Self::Act(Action::Cancel(_))
+        )
+    }
+}
+
+/// What the console keeps while its panel is closed: the history, the
+/// unsent draft, and the picked repository.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Recall {
+    history: Vec<String>,
+    draft: String,
+    workspace: Option<String>,
+}
+
+/// Something sent from a panel: the text to put back if it is refused,
+/// what it does in a few words, and the host's ticket once it left.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Sending {
+    text: String,
+    describe: String,
+    ticket: Option<u64>,
 }
 
 /// The state behind one open studio panel: which panel it is, the studio
-/// revision it shows, its controls, the decisions' question flows, and
-/// the review's line comments and note.
+/// revision it shows, its controls, the decisions' question flows, the
+/// review's line comments and note, and the console's history.
 pub struct Controller {
     kind: PanelKind,
     shown: Option<u64>,
@@ -482,6 +809,31 @@ pub struct Controller {
     workspace: Option<String>,
     /// What the panel said back to the last thing typed or pressed.
     said: Option<String>,
+    /// Whether the source holds the `operate` right, as of the last fill.
+    operate: bool,
+    /// The console's sent lines, oldest first, where Up walked to, and
+    /// the draft Up walked away from.
+    history: Vec<String>,
+    recall: Option<usize>,
+    stash: String,
+    /// The lines Tab offered and the one the draft shows.
+    completion: Option<(Vec<String>, usize)>,
+    /// A goal waiting for the person to pick its repository.
+    picking: Option<String>,
+    /// What the composer shows in place of the last thing sent.
+    ack: Option<String>,
+    sending: Option<Sending>,
+    /// The decision the person moved to at the podium.
+    selected: Option<String>,
+    /// The decision the podium shows and when it came up.
+    front: Option<(String, Instant)>,
+    /// A **Reject** or **Cancel** waiting for its second press, and until
+    /// when.
+    confirm: Option<(Control, Instant)>,
+    /// The review: whether keys type the note rather than move through the
+    /// diff, and the diff line the last move went to.
+    typing: bool,
+    cursor: Option<usize>,
 }
 
 impl Controller {
@@ -497,6 +849,19 @@ impl Controller {
             note: String::new(),
             workspace: None,
             said: None,
+            operate: false,
+            history: Vec::new(),
+            recall: None,
+            stash: String::new(),
+            completion: None,
+            picking: None,
+            ack: None,
+            sending: None,
+            selected: None,
+            front: None,
+            confirm: None,
+            typing: false,
+            cursor: None,
         }
     }
 
@@ -514,9 +879,41 @@ impl Controller {
         self.shown != Some(revision) || self.reviewed != review_identity(review)
     }
 
-    /// The open decision the podium answers now: the oldest.
-    fn oldest<'a>(&self, view: Option<&'a View>) -> Option<&'a Decision> {
-        view.and_then(|view| intents::decisions(view).into_iter().next())
+    /// What the console keeps while closed, with `panel`'s unsent draft.
+    #[must_use]
+    pub fn recall(&self, panel: &Panel) -> Recall {
+        Recall {
+            history: self.history.clone(),
+            draft: panel.draft().to_owned(),
+            workspace: self.workspace.clone(),
+        }
+    }
+
+    /// Takes back what the console kept while closed. Call after
+    /// [`Controller::fill`], so the composer holds the draft.
+    pub fn restore(&mut self, recall: Recall, panel: &mut Panel) {
+        self.history = recall.history;
+        if recall.workspace.is_some() {
+            self.workspace = recall.workspace;
+        }
+        if panel.draft().is_empty() {
+            panel.set_draft(&recall.draft);
+        }
+    }
+
+    /// Moves the podium to the open decision `decision`.
+    pub fn select(&mut self, decision: &str) {
+        self.selected = Some(decision.to_owned());
+    }
+
+    /// The open decision the podium answers now: the one the person moved
+    /// to, else the first in the podium's order.
+    fn answering<'a>(&self, view: Option<&'a View>) -> Option<&'a Decision> {
+        let open = intents::decisions(view?);
+        self.selected
+            .as_deref()
+            .and_then(|id| open.iter().copied().find(|d| d.decision == id))
+            .or_else(|| open.first().copied())
     }
 
     /// The review the merge station may decide: loaded, and of a task the
@@ -527,6 +924,41 @@ impl Controller {
     ) -> Option<&'a TaskReview> {
         let view = view?;
         review.filter(|review| view.tasks.iter().any(|task| task.task == review.task))
+    }
+
+    /// Whether a key at `now` comes too soon after the podium's decision
+    /// came up. A decision that came up since the last fill starts the
+    /// lock now.
+    fn locked(&mut self, open: &Decision, now: Instant) -> bool {
+        match &self.front {
+            Some((id, since)) if *id == open.decision => now < *since + INPUT_LOCK,
+            _ => {
+                self.front = Some((open.decision.clone(), now));
+                true
+            }
+        }
+    }
+
+    /// Whether a press of `control` at `now` is its confirming press; the
+    /// first press waits [`CONFIRM`] for it.
+    fn confirmed(&mut self, control: &Control, now: Instant) -> bool {
+        match &self.confirm {
+            Some((waiting, until)) if waiting == control && now <= *until => {
+                self.confirm = None;
+                true
+            }
+            _ => {
+                self.confirm = Some((control.clone(), now + CONFIRM));
+                false
+            }
+        }
+    }
+
+    /// Whether `control` waits for its confirming press.
+    fn arming(&self, control: &Control) -> bool {
+        self.confirm
+            .as_ref()
+            .is_some_and(|(waiting, until)| waiting == control && Instant::now() <= *until)
     }
 
     /// Shows the studio at `revision` in `panel`: its title, rows, diff,
@@ -542,10 +974,39 @@ impl Controller {
         status: Option<&Answer>,
     ) {
         self.shown = Some(revision);
-        self.reviewed = review_identity(review);
+        let identity = review_identity(review);
+        if self.reviewed != identity {
+            self.typing = false;
+            self.cursor = None;
+        }
+        self.reviewed = identity;
         if let Some(view) = view {
             self.flows
                 .retain(|id, _| view.decisions.iter().any(|open| open.decision == *id));
+        }
+        // The host's answer to what this panel sent: acknowledged in place
+        // of the draft, and a refused draft comes back.
+        let mut restore = None;
+        if let Some(status) = status
+            && let Some(sending) = &self.sending
+            && sending.ticket == Some(status.ticket)
+        {
+            let sending = self.sending.take().expect("matched above");
+            match &status.result {
+                Ok(_) => self.ack = Some(format!("Sent: {}", sending.describe)),
+                Err(error) => {
+                    self.ack = Some(format!(
+                        "Refused: {} (`{}`)",
+                        sending.describe,
+                        code_word(error.code)
+                    ));
+                    if !sending.text.is_empty() {
+                        self.said =
+                            Some("The host refused it; your text is back in the composer.".into());
+                        restore = Some(sending.text);
+                    }
+                }
+            }
         }
         panel.set_title(&title(&self.kind, view));
         if self.kind == PanelKind::Review {
@@ -556,6 +1017,7 @@ impl Controller {
         }
         let mut rows = rows_for(&self.kind, view, review, rights);
         let operate = intents::allows(rights, Right::Operate);
+        self.operate = operate;
         let mut controls = Vec::new();
         let mut composer = None;
         match &self.kind {
@@ -563,60 +1025,118 @@ impl Controller {
                 if operate && view.is_some() {
                     composer = Some("Type a goal, @seat and a message, or a /command".to_owned());
                 }
-                if let Some(workspace) = &self.workspace {
+                if let (Some(text), Some(view)) = (&self.picking, view) {
+                    rows.push(note(
+                        "console-pick",
+                        &format!(
+                            "Pick the repository for **{text}**: press its number or its \
+                             button. Esc keeps the goal as a draft."
+                        ),
+                    ));
+                    for repository in view.repositories.iter().take(9) {
+                        controls.push(Control::Repository(repository.workspace.clone()));
+                    }
+                } else if let Some(workspace) = &self.workspace {
                     rows.push(note(
                         "console-repository",
                         &format!("Goals start on **{workspace}**."),
                     ));
                 }
+                if let Some((lines, shown)) = &self.completion
+                    && lines.len() > 1
+                {
+                    let listed: Vec<String> = lines
+                        .iter()
+                        .enumerate()
+                        .map(|(i, line)| {
+                            if i == *shown {
+                                format!("**{line}**")
+                            } else {
+                                line.clone()
+                            }
+                        })
+                        .collect();
+                    rows.push(note(
+                        "console-completion",
+                        &format!("Tab: {}", listed.join(" · ")),
+                    ));
+                }
             }
             PanelKind::Seat(_) | PanelKind::Desk(_) => {
-                if let Some(seat) = view.and_then(|view| seat(&self.kind, view))
+                if let Some(view) = view
+                    && let Some(seat) = seat(&self.kind, view)
                     && operate
                 {
                     let name = seat.seat.clone();
-                    controls.push(if seat.paused {
-                        Control::Act(Action::Resume(name.clone()))
+                    if seat.paused && seat.task.is_none() {
+                        controls.push(Control::Spawn(name.clone()));
                     } else {
-                        Control::Act(Action::Pause(name.clone()))
-                    });
-                    controls.push(Control::Act(Action::Stop(name.clone())));
+                        controls.push(if seat.paused {
+                            Control::Act(Action::Resume(name.clone()))
+                        } else {
+                            Control::Act(Action::Pause(name.clone()))
+                        });
+                        controls.push(Control::Act(Action::Stop(name.clone())));
+                    }
+                    for open in intents::decisions(view)
+                        .into_iter()
+                        .filter(|open| open.seat.as_deref() == Some(name.as_str()))
+                        .take(CARD_DECISIONS)
+                    {
+                        controls.push(Control::AnswerAt(open.decision.clone()));
+                    }
                     composer = Some(format!("Message {name}"));
                 }
             }
             PanelKind::Decisions => {
-                if let Some(open) = self.oldest(view)
-                    && operate
-                {
-                    let flow = self
-                        .flows
-                        .entry(open.decision.clone())
-                        .or_insert_with(|| flow(open));
-                    let page = flow.current();
-                    rows.push(message(
-                        "answering",
-                        MessageRole::System,
-                        &format!(
-                            "Answering: {} · {}{}",
-                            heading(open),
-                            flow.counter(),
-                            if page.options.is_empty() {
-                                " · type the answer".to_owned()
-                            } else {
-                                " · pick an option or type the answer".to_owned()
-                            }
-                        ),
-                    ));
-                    for option in 0..page.options.len() {
-                        controls.push(Control::Pick {
-                            decision: open.decision.clone(),
-                            option,
-                        });
+                if let Some(open) = self.answering(view) {
+                    let id = open.decision.clone();
+                    if self.front.as_ref().is_none_or(|(front, _)| *front != id) {
+                        self.front = Some((id.clone(), Instant::now()));
                     }
-                    if flow.page() > 0 {
-                        controls.push(Control::Back(open.decision.clone()));
+                    if let Some(view) = view {
+                        rows = decision_rows(view, Some(&id));
                     }
-                    composer = Some("Type the answer".to_owned());
+                    let count = view.map_or(0, |view| view.decisions.len());
+                    if operate {
+                        let flow = self.flows.entry(id.clone()).or_insert_with(|| flow(open));
+                        let page = flow.current();
+                        let place = intents::decisions(view.expect("a decision is open"))
+                            .iter()
+                            .position(|other| other.decision == id)
+                            .map_or(1, |i| i + 1);
+                        rows.push(message(
+                            "answering",
+                            MessageRole::System,
+                            &format!(
+                                "Answering {place} of {count}: {} · {}{}",
+                                heading(open),
+                                flow.counter(),
+                                if page.options.is_empty() {
+                                    " · type the answer".to_owned()
+                                } else {
+                                    " · press an option's number, or type the answer".to_owned()
+                                }
+                            ),
+                        ));
+                        for option in 0..page.options.len() {
+                            controls.push(Control::Pick {
+                                decision: id.clone(),
+                                option,
+                            });
+                        }
+                        if flow.page() > 0 {
+                            controls.push(Control::Back(id.clone()));
+                        }
+                        composer = Some("Type the answer".to_owned());
+                    }
+                    if count > 1 {
+                        controls.push(Control::Cycle(-1));
+                        controls.push(Control::Cycle(1));
+                    }
+                }
+                if view.is_some_and(|view| !reviewable(view).is_empty()) {
+                    controls.push(Control::Open(PanelKind::Review));
                 }
             }
             PanelKind::Review => {
@@ -626,7 +1146,11 @@ impl Controller {
                     for verdict in [Verdict::Merge, Verdict::RequestChanges, Verdict::Reject] {
                         controls.push(Control::Decide(verdict));
                     }
-                    composer = Some("Type a note, or a comment on the picked line".to_owned());
+                    composer = Some(if panel.tab() == Tab::Changes && !self.typing {
+                        "Enter writes a note · n p file · ] [ hunk · c copies the path".to_owned()
+                    } else {
+                        "Type a note, or a comment on the picked line".to_owned()
+                    });
                     if let Some(target) = panel
                         .selected_line()
                         .zip(panel.diff_document())
@@ -658,6 +1182,41 @@ impl Controller {
                     }
                 }
             }
+            PanelKind::Task(id) => {
+                if let Some(task) = view.and_then(|view| task(&self.kind, view))
+                    && operate
+                {
+                    match task.status {
+                        TaskStatus::Failed | TaskStatus::Cancelled | TaskStatus::Blocked => {
+                            controls.push(Control::Act(Action::Retry(id.clone())));
+                        }
+                        TaskStatus::Held | TaskStatus::Queued => {
+                            controls.push(Control::Act(Action::Prioritize(id.clone())));
+                            controls.push(Control::Reassign(id.clone()));
+                            composer = Some("Type @seat, then Reassign or Enter".to_owned());
+                        }
+                        _ => {}
+                    }
+                    if !task.status.is_final() {
+                        controls.push(Control::Act(Action::Cancel(id.clone())));
+                    }
+                }
+            }
+            PanelKind::Library => {}
+        }
+        if let Some((waiting, _)) = &self.confirm
+            && self.arming(waiting)
+        {
+            rows.push(note(
+                "confirm",
+                match waiting {
+                    Control::Decide(_) => {
+                        "Press **Confirm reject** to reject: the task closes, and its worktree \
+                         stays for inspection."
+                    }
+                    _ => "Press **Confirm cancel** to cancel the task: it stops the work on it.",
+                },
+            ));
         }
         if let Some(said) = &self.said {
             rows.push(note("said", said));
@@ -667,32 +1226,56 @@ impl Controller {
         }
         let labels: Vec<(String, bool)> = controls
             .iter()
-            .map(|control| {
-                let label = match control {
-                    Control::Act(Action::Pause(_)) => "Pause".to_owned(),
-                    Control::Act(Action::Resume(_)) => "Resume".to_owned(),
-                    Control::Act(Action::Stop(_)) => "Stop".to_owned(),
-                    Control::Act(_) => "Send".to_owned(),
-                    Control::Pick { decision, option } => self
-                        .flows
-                        .get(decision)
-                        .and_then(|flow| flow.current().options.get(*option))
-                        .map_or_else(
-                            || format!("Option {}", option + 1),
-                            |label| format!("{}. {label}", option + 1),
-                        ),
-                    Control::Back(_) => "Back".to_owned(),
-                    Control::Decide(Verdict::Merge) => "Merge".to_owned(),
-                    Control::Decide(Verdict::RequestChanges) => "Request changes".to_owned(),
-                    Control::Decide(Verdict::Reject) => "Reject".to_owned(),
-                };
-                (label, true)
-            })
+            .enumerate()
+            .map(|(index, control)| (self.label(control, index), true))
             .collect();
         self.controls = controls;
         panel.set_rows(rows);
         panel.set_actions(labels);
+        // What was sent shows in place of the draft until the next one.
+        let composer = composer.map(|placeholder| self.ack.clone().unwrap_or(placeholder));
         panel.set_composer(composer.as_deref());
+        if let Some(text) = restore
+            && panel.draft().is_empty()
+        {
+            panel.set_draft(&text);
+        }
+    }
+
+    /// The label of `control`, the `index`th button. A repository's
+    /// button carries the number key that picks it.
+    fn label(&self, control: &Control, index: usize) -> String {
+        match control {
+            Control::Act(Action::Pause(_)) => "Pause".to_owned(),
+            Control::Act(Action::Resume(_)) => "Resume".to_owned(),
+            Control::Act(Action::Stop(_)) => "Stop".to_owned(),
+            Control::Act(Action::Retry(_)) => "Retry".to_owned(),
+            Control::Act(Action::Prioritize(_)) => "Prioritize".to_owned(),
+            Control::Act(Action::Cancel(_)) if self.arming(control) => "Confirm cancel".to_owned(),
+            Control::Act(Action::Cancel(_)) => "Cancel".to_owned(),
+            Control::Act(_) => "Send".to_owned(),
+            Control::Spawn(_) => "Spawn".to_owned(),
+            Control::Pick { decision, option } => self
+                .flows
+                .get(decision)
+                .and_then(|flow| flow.current().options.get(*option))
+                .map_or_else(
+                    || format!("Option {}", option + 1),
+                    |label| format!("{}. {label}", option + 1),
+                ),
+            Control::Back(_) => "Back".to_owned(),
+            Control::Cycle(step) if *step < 0 => "Previous decision".to_owned(),
+            Control::Cycle(_) => "Next decision".to_owned(),
+            Control::Decide(Verdict::Merge) => "Merge".to_owned(),
+            Control::Decide(Verdict::RequestChanges) => "Request changes".to_owned(),
+            Control::Decide(Verdict::Reject) if self.arming(control) => "Confirm reject".to_owned(),
+            Control::Decide(Verdict::Reject) => "Reject".to_owned(),
+            Control::Reassign(_) => "Reassign".to_owned(),
+            Control::Repository(label) => format!("{}. {label}", index + 1),
+            Control::Open(PanelKind::Review) => "Open the review".to_owned(),
+            Control::Open(_) => "Open".to_owned(),
+            Control::AnswerAt(id) => format!("Answer {}", short(id)),
+        }
     }
 
     /// Carries out `intent`, which `panel` resolved, against the studio
@@ -708,21 +1291,7 @@ impl Controller {
         self.said = None;
         match intent {
             Intent::Action(index) => match self.controls.get(index).cloned() {
-                Some(Control::Act(action)) => vec![Effect::Send(action)],
-                Some(Control::Pick { decision, option }) => {
-                    let step = self
-                        .flows
-                        .get_mut(&decision)
-                        .map_or(decision::Step::Stay, |flow| flow.select(option));
-                    self.step(&decision, step, view)
-                }
-                Some(Control::Back(decision)) => {
-                    if let Some(flow) = self.flows.get_mut(&decision) {
-                        flow.back();
-                    }
-                    Vec::new()
-                }
-                Some(Control::Decide(verdict)) => self.decide(verdict, view, review),
+                Some(control) => self.press(control, panel, view, review, Instant::now()),
                 None => Vec::new(),
             },
             Intent::Submit => {
@@ -733,44 +1302,242 @@ impl Controller {
         }
     }
 
+    /// Carries out a press of `control` at `now`.
+    fn press(
+        &mut self,
+        control: Control,
+        panel: &mut Panel,
+        view: Option<&View>,
+        review: Option<&TaskReview>,
+        now: Instant,
+    ) -> Vec<Effect> {
+        if control.confirms() && !self.confirmed(&control, now) {
+            return Vec::new();
+        }
+        if !control.confirms() {
+            self.confirm = None;
+        }
+        match control {
+            Control::Act(action) => self.send(action, ""),
+            Control::Spawn(seat) => self.send(Action::Resume(seat), ""),
+            Control::Pick { decision, option } => {
+                let step = self
+                    .flows
+                    .get_mut(&decision)
+                    .map_or(decision::Step::Stay, |flow| flow.select(option));
+                self.step(&decision, step, view, "")
+            }
+            Control::Back(decision) => {
+                if let Some(flow) = self.flows.get_mut(&decision) {
+                    flow.back();
+                }
+                Vec::new()
+            }
+            Control::Cycle(step) => {
+                self.cycle(step, view);
+                Vec::new()
+            }
+            Control::Decide(verdict) => self.decide(verdict, view, review),
+            Control::Reassign(task) => {
+                let draft = panel.take_draft();
+                self.reassign(&task, &draft, panel, view)
+            }
+            Control::Repository(label) => self.pick_repository(&label),
+            Control::Open(kind) => vec![Effect::Open(kind)],
+            Control::AnswerAt(id) => vec![Effect::Answer(id)],
+        }
+    }
+
+    /// Sends `action`; `text` is what the person typed for it, which comes
+    /// back to the composer if the host refuses it.
+    fn send(&mut self, action: Action, text: &str) -> Vec<Effect> {
+        let describe = action.describe();
+        self.ack = Some(format!("Sending: {describe}…"));
+        self.sending = Some(Sending {
+            text: text.to_owned(),
+            describe,
+            ticket: None,
+        });
+        vec![Effect::Send(action)]
+    }
+
+    /// What became of the last [`Effect::Send`]: the host's ticket, whose
+    /// answer [`Controller::fill`] acknowledges, or why it never left, in
+    /// which case its text comes back to `panel`'s composer.
+    pub fn sent(&mut self, result: Result<u64, String>, panel: &mut Panel) {
+        let Some(sending) = &mut self.sending else {
+            return;
+        };
+        if sending.ticket.is_some() {
+            return;
+        }
+        match result {
+            Ok(ticket) => sending.ticket = Some(ticket),
+            Err(why) => {
+                let text = std::mem::take(&mut sending.text);
+                self.sending = None;
+                self.ack = None;
+                self.said = Some(why);
+                if !text.is_empty() && panel.draft().is_empty() {
+                    panel.set_draft(&text);
+                }
+            }
+        }
+    }
+
+    /// Moves the podium `step` decisions along, wrapping.
+    fn cycle(&mut self, step: isize, view: Option<&View>) {
+        let Some(view) = view else { return };
+        let open = intents::decisions(view);
+        if open.is_empty() {
+            return;
+        }
+        let at = self
+            .answering(Some(view))
+            .and_then(|current| open.iter().position(|d| d.decision == current.decision))
+            .unwrap_or(0);
+        let len = open.len() as isize;
+        let next = (at as isize + step).rem_euclid(len) as usize;
+        self.selected = Some(open[next].decision.clone());
+    }
+
+    /// Starts the goal waiting on a repository on `label`, which later
+    /// goals start on too.
+    fn pick_repository(&mut self, label: &str) -> Vec<Effect> {
+        let Some(text) = self.picking.take() else {
+            return Vec::new();
+        };
+        self.workspace = Some(label.to_owned());
+        self.send(
+            Action::SubmitGoal {
+                text: text.clone(),
+                workspace: label.to_owned(),
+            },
+            &text,
+        )
+    }
+
+    /// Gives `task` to the seat `draft` names as `@seat`.
+    fn reassign(
+        &mut self,
+        task: &str,
+        draft: &str,
+        panel: &mut Panel,
+        view: Option<&View>,
+    ) -> Vec<Effect> {
+        let name = draft.trim().trim_start_matches('@');
+        if name.is_empty() {
+            self.said = Some("Type @seat in the composer, then press Reassign or Enter.".into());
+            return Vec::new();
+        }
+        if !view.is_some_and(|view| view.seats.iter().any(|seat| seat.seat == name)) {
+            self.said = Some(format!("No seat is named {name}."));
+            panel.set_draft(draft);
+            return Vec::new();
+        }
+        self.send(
+            Action::Reassign {
+                task: task.to_owned(),
+                seat: name.to_owned(),
+            },
+            draft,
+        )
+    }
+
+    /// Keeps `line` in the console's history.
+    fn remember(&mut self, line: &str) {
+        let line = line.trim();
+        if !line.is_empty() && self.history.last().is_none_or(|last| last != line) {
+            self.history.push(line.to_owned());
+            if self.history.len() > MAX_HISTORY {
+                self.history.remove(0);
+            }
+        }
+        self.recall = None;
+        self.stash.clear();
+    }
+
     fn submit(
         &mut self,
         draft: &str,
-        panel: &Panel,
+        panel: &mut Panel,
         view: Option<&View>,
         review: Option<&TaskReview>,
     ) -> Vec<Effect> {
         let Some(view) = view else {
             self.said = Some("The studio has not loaded yet.".into());
+            panel.set_draft(draft);
             return Vec::new();
         };
-        match &self.kind {
-            PanelKind::Console => match intents::console(draft, view, self.workspace.as_deref()) {
-                Console::Act(action) => vec![Effect::Send(action)],
-                Console::Review => vec![Effect::Open(PanelKind::Review)],
-                Console::Status => {
-                    self.said = Some(intents::status(view));
-                    Vec::new()
+        match self.kind.clone() {
+            PanelKind::Console => {
+                self.remember(draft);
+                self.completion = None;
+                match intents::console(draft, view, self.workspace.as_deref()) {
+                    Console::Act(action) => self.send(action, draft),
+                    Console::Spawn { seat, text } => {
+                        let mut effects = self.send(Action::Resume(seat.clone()), draft);
+                        if let Some(text) = text {
+                            effects.push(Effect::Send(Action::Message {
+                                seat: Some(seat),
+                                text,
+                            }));
+                        }
+                        effects
+                    }
+                    Console::PickRepository(text) => {
+                        self.picking = Some(text);
+                        self.said = Some("Which repository? Press its number.".into());
+                        Vec::new()
+                    }
+                    Console::Review => vec![Effect::Open(PanelKind::Review)],
+                    Console::Decide => vec![Effect::Open(PanelKind::Decisions)],
+                    Console::Status => {
+                        self.said = Some(intents::status(view));
+                        Vec::new()
+                    }
+                    Console::Help => {
+                        self.said = Some(intents::HELP.into());
+                        Vec::new()
+                    }
+                    Console::Clear => {
+                        self.ack = None;
+                        self.picking = None;
+                        Vec::new()
+                    }
+                    Console::Sound(on) => {
+                        self.said = Some(if on {
+                            "Studio sounds are on.".into()
+                        } else {
+                            "Studio sounds are off for this session.".into()
+                        });
+                        vec![Effect::Sound(on)]
+                    }
+                    Console::Repository(label) => {
+                        self.said = Some(format!("Goals start on {label} now."));
+                        self.workspace = Some(label);
+                        Vec::new()
+                    }
+                    Console::Refused(why) => {
+                        self.said = Some(why);
+                        // The text comes back so the person can fix it.
+                        panel.set_draft(draft);
+                        Vec::new()
+                    }
                 }
-                Console::Repository(label) => {
-                    self.said = Some(format!("Goals start on {label} now."));
-                    self.workspace = Some(label);
-                    Vec::new()
-                }
-                Console::Refused(why) => {
-                    self.said = Some(why);
-                    Vec::new()
-                }
-            },
+            }
             PanelKind::Seat(_) | PanelKind::Desk(_) => match seat(&self.kind, view) {
-                Some(seat) => vec![Effect::Send(Action::Message {
-                    seat: Some(seat.seat.clone()),
-                    text: draft.trim().to_owned(),
-                })],
+                Some(seat) => {
+                    let action = Action::Message {
+                        seat: Some(seat.seat.clone()),
+                        text: draft.trim().to_owned(),
+                    };
+                    self.send(action, draft)
+                }
                 None => Vec::new(),
             },
             PanelKind::Decisions => {
-                let Some(open) = self.oldest(Some(view)) else {
+                let Some(open) = self.answering(Some(view)) else {
                     self.said = Some("No decision waits on you.".into());
                     return Vec::new();
                 };
@@ -780,9 +1547,10 @@ impl Controller {
                     .entry(id.clone())
                     .or_insert_with(|| flow(open))
                     .answer_typed(draft);
-                self.step(&id, step, Some(view))
+                self.step(&id, step, Some(view), draft)
             }
             PanelKind::Review => {
+                self.typing = false;
                 let Some(review) = Self::decidable(Some(view), review) else {
                     self.said = Some("No review is open to comment on.".into());
                     return Vec::new();
@@ -809,12 +1577,21 @@ impl Controller {
                 }
                 Vec::new()
             }
+            PanelKind::Task(task) => self.reassign(&task, draft, panel, Some(view)),
+            PanelKind::Library => Vec::new(),
         }
     }
 
     /// What a step of decision `id`'s flow does: a finished flow sends its
-    /// answer at the decision's own point.
-    fn step(&mut self, id: &str, step: decision::Step, view: Option<&View>) -> Vec<Effect> {
+    /// answer at the decision's own point. `typed` is the draft that
+    /// finished it, if any.
+    fn step(
+        &mut self,
+        id: &str,
+        step: decision::Step,
+        view: Option<&View>,
+        typed: &str,
+    ) -> Vec<Effect> {
         let decision::Step::Done(text) = step else {
             return Vec::new();
         };
@@ -824,11 +1601,17 @@ impl Controller {
             self.said = Some("That decision was answered already.".into());
             return Vec::new();
         };
-        vec![Effect::Send(Action::Answer {
-            decision: open.decision.clone(),
-            based_on: open.based_on,
-            text,
-        })]
+        if self.selected.as_deref() == Some(id) {
+            self.selected = None;
+        }
+        self.send(
+            Action::Answer {
+                decision: open.decision.clone(),
+                based_on: open.based_on,
+                text,
+            },
+            typed,
+        )
     }
 
     fn decide(
@@ -860,11 +1643,222 @@ impl Controller {
         if verdict != Verdict::Merge {
             self.note.clear();
         }
-        vec![Effect::Send(Action::Decide {
-            review: Box::new(review.clone()),
-            verdict,
-            text,
-        })]
+        self.send(
+            Action::Decide {
+                review: Box::new(review.clone()),
+                verdict,
+                text,
+            },
+            "",
+        )
+    }
+
+    /// A key pressed while `panel` has focus, at `now`, before the panel
+    /// takes it. Returns what the app does when the controller took the
+    /// key, or `None` when the panel takes it as usual.
+    pub fn key(
+        &mut self,
+        key: Key,
+        panel: &mut Panel,
+        view: Option<&View>,
+        review: Option<&TaskReview>,
+        now: Instant,
+    ) -> Option<Vec<Effect>> {
+        if !matches!(key, Key::Tab | Key::BackTab) {
+            self.completion = None;
+        }
+        match self.kind {
+            PanelKind::Console => self.console_key(key, panel, view),
+            PanelKind::Decisions => self.decision_key(key, panel, view, now),
+            PanelKind::Review => self.review_key(key, panel, review),
+            _ => None,
+        }
+    }
+
+    fn console_key(
+        &mut self,
+        key: Key,
+        panel: &mut Panel,
+        view: Option<&View>,
+    ) -> Option<Vec<Effect>> {
+        let view = view?;
+        if !panel.has_composer() {
+            return None;
+        }
+        match key {
+            Key::Tab | Key::BackTab => {
+                let forward = key == Key::Tab;
+                let cycling = self.completion.as_ref().is_some_and(|(lines, shown)| {
+                    lines.get(*shown).is_some_and(|l| l == panel.draft())
+                });
+                if cycling && let Some((lines, shown)) = &mut self.completion {
+                    let len = lines.len();
+                    *shown = if forward {
+                        (*shown + 1) % len
+                    } else {
+                        (*shown + len - 1) % len
+                    };
+                    panel.set_draft(&lines[*shown]);
+                } else {
+                    let lines = intents::complete(panel.draft(), view);
+                    if lines.is_empty() {
+                        self.completion = None;
+                        self.said = Some(if panel.draft().is_empty() {
+                            "Type @ or / and Tab completes seats and commands.".into()
+                        } else {
+                            "Nothing completes that.".into()
+                        });
+                    } else {
+                        let shown = if forward { 0 } else { lines.len() - 1 };
+                        panel.set_draft(&lines[shown]);
+                        self.said = None;
+                        self.completion = Some((lines, shown));
+                    }
+                }
+                Some(Vec::new())
+            }
+            Key::Up if !self.history.is_empty() => {
+                let index = match self.recall {
+                    None => {
+                        self.stash = panel.draft().to_owned();
+                        self.history.len() - 1
+                    }
+                    Some(index) => index.saturating_sub(1),
+                };
+                self.recall = Some(index);
+                panel.set_draft(&self.history[index]);
+                Some(Vec::new())
+            }
+            Key::Down if self.recall.is_some() => {
+                let index = self.recall.unwrap_or(0) + 1;
+                if index < self.history.len() {
+                    self.recall = Some(index);
+                    panel.set_draft(&self.history[index]);
+                } else {
+                    self.recall = None;
+                    let stash = std::mem::take(&mut self.stash);
+                    panel.set_draft(&stash);
+                }
+                Some(Vec::new())
+            }
+            Key::Char(digit @ '1'..='9') if self.picking.is_some() && panel.draft().is_empty() => {
+                let index = digit as usize - '1' as usize;
+                let label = view.repositories.get(index)?.workspace.clone();
+                self.said = None;
+                Some(self.pick_repository(&label))
+            }
+            Key::Escape if self.picking.is_some() => {
+                // The goal waits as a draft; the panel still takes Escape.
+                if let Some(text) = self.picking.take()
+                    && panel.draft().is_empty()
+                {
+                    panel.set_draft(&text);
+                }
+                None
+            }
+            _ => None,
+        }
+    }
+
+    fn decision_key(
+        &mut self,
+        key: Key,
+        panel: &mut Panel,
+        view: Option<&View>,
+        now: Instant,
+    ) -> Option<Vec<Effect>> {
+        let open = self.answering(view)?;
+        match key {
+            Key::Tab | Key::BackTab => {
+                self.said = None;
+                self.cycle(if key == Key::Tab { 1 } else { -1 }, view);
+                Some(Vec::new())
+            }
+            Key::Char(digit @ '1'..='9') if self.operate && panel.draft().is_empty() => {
+                let number = digit as usize - '0' as usize;
+                let id = open.decision.clone();
+                let takes = self
+                    .flows
+                    .entry(id.clone())
+                    .or_insert_with(|| flow(open))
+                    .takes_number(number);
+                if !takes {
+                    // Not an option here: the key types into the composer.
+                    return None;
+                }
+                if self.locked(open, now) {
+                    self.said = Some(
+                        "That key came too soon after the decision came up, so it was not \
+                         taken. Press it again."
+                            .into(),
+                    );
+                    return Some(Vec::new());
+                }
+                self.said = None;
+                let step = self
+                    .flows
+                    .get_mut(&id)
+                    .map_or(decision::Step::Stay, |flow| flow.press_number(number));
+                Some(self.step(&id, step, view, ""))
+            }
+            Key::Enter if !panel.draft().trim().is_empty() && self.locked(open, now) => {
+                self.said = Some(
+                    "Enter came too soon after the decision came up, so nothing was sent. \
+                     Press it again."
+                        .into(),
+                );
+                Some(Vec::new())
+            }
+            _ => None,
+        }
+    }
+
+    fn review_key(
+        &mut self,
+        key: Key,
+        panel: &mut Panel,
+        review: Option<&TaskReview>,
+    ) -> Option<Vec<Effect>> {
+        if panel.tab() != Tab::Changes || !panel.draft().is_empty() || self.typing {
+            if key == Key::Escape {
+                self.typing = false;
+            }
+            return None;
+        }
+        review?;
+        let top = self.cursor.unwrap_or_else(|| panel.diff_top());
+        let doc = panel.diff_document()?;
+        let jump = match key {
+            Key::Char('n') => landmark(doc, top, changes::Kind::File, true),
+            Key::Char('p') => landmark(doc, top, changes::Kind::File, false),
+            Key::Char(']') => landmark(doc, top, changes::Kind::Hunk, true),
+            Key::Char('[') => landmark(doc, top, changes::Kind::Hunk, false),
+            Key::Char('c') => {
+                let at = panel.selected_line().or(self.cursor).unwrap_or(top);
+                return Some(match path_at(doc, at) {
+                    Some(path) => {
+                        self.said = Some(format!("Copied `{path}`."));
+                        vec![Effect::Copy(path)]
+                    }
+                    None => {
+                        self.said = Some("No file is shown to copy the path of.".into());
+                        Vec::new()
+                    }
+                });
+            }
+            Key::Enter => {
+                self.typing = true;
+                self.said =
+                    Some("Type your note, or a comment on the picked line; Enter keeps it.".into());
+                return Some(Vec::new());
+            }
+            _ => return None,
+        };
+        if let Some(line) = jump {
+            self.cursor = Some(line);
+            panel.scroll_diff_to(line);
+        }
+        Some(Vec::new())
     }
 
     /// Says `text` in the panel, such as why a send was refused before it
@@ -872,6 +1866,58 @@ impl Controller {
     pub fn say(&mut self, text: impl Into<String>) {
         self.said = Some(text.into());
     }
+}
+
+/// At most the first 12 characters of an identity, for a button.
+fn short(id: &str) -> &str {
+    id.char_indices().nth(12).map_or(id, |(end, _)| &id[..end])
+}
+
+/// The next (or, backward, the previous) line of `kind` after (before)
+/// line `from`, wrapping around the diff.
+fn landmark(
+    doc: &changes::Document,
+    from: usize,
+    kind: changes::Kind,
+    forward: bool,
+) -> Option<usize> {
+    let found: Vec<usize> = doc
+        .lines()
+        .iter()
+        .enumerate()
+        .filter(|(_, line)| line.kind == kind)
+        .map(|(index, _)| index)
+        .collect();
+    if forward {
+        found
+            .iter()
+            .copied()
+            .find(|&index| index > from)
+            .or_else(|| found.first().copied())
+    } else {
+        found
+            .iter()
+            .rev()
+            .copied()
+            .find(|&index| index < from)
+            .or_else(|| found.last().copied())
+    }
+}
+
+/// The path of the file diff line `at` belongs to.
+fn path_at(doc: &changes::Document, at: usize) -> Option<String> {
+    let lines = doc.lines();
+    let end = at.min(lines.len().checked_sub(1)?);
+    let header = lines[..=end]
+        .iter()
+        .rev()
+        .find(|line| line.kind == changes::Kind::File)
+        .or_else(|| lines.iter().find(|line| line.kind == changes::Kind::File))?;
+    header
+        .text
+        .rsplit_once(" b/")
+        .map(|(_, path)| path.trim().trim_matches('"').to_owned())
+        .filter(|path| !path.is_empty())
 }
 
 /// Shows `kind` for `view` in `panel`: its title, rows, and for the review,
@@ -1177,5 +2223,453 @@ mod tests {
             assert_eq!(rows.len(), 1);
             assert_eq!(rows[0].key, "not-loaded");
         }
+    }
+
+    fn type_in(panel: &mut Panel, text: &str) {
+        for ch in text.chars() {
+            panel.key(Key::Char(ch));
+        }
+    }
+
+    /// Hands `key` to the controller first, then to the panel, as the app
+    /// does, and carries out a submit.
+    fn press_key(
+        controller: &mut Controller,
+        panel: &mut Panel,
+        key: Key,
+        view: &View,
+        review: Option<&TaskReview>,
+        now: Instant,
+    ) -> Vec<Effect> {
+        if let Some(effects) = controller.key(key, panel, Some(view), review, now) {
+            return effects;
+        }
+        match panel.key(key) {
+            Some(intent) => controller.intent(intent, panel, Some(view), review),
+            None => Vec::new(),
+        }
+    }
+
+    fn console_view() -> View {
+        use coder_access::studio::Repository;
+        let mut view = studio();
+        view.repositories = vec![Repository {
+            workspace: "app".into(),
+            goals: 1,
+            open_tasks: 1,
+        }];
+        view
+    }
+
+    #[test]
+    fn the_console_completes_recalls_and_acknowledges_in_place() {
+        let view = console_view();
+        let mut panel = Panel::new("console");
+        let mut controller = Controller::new(PanelKind::Console);
+        controller.fill(&mut panel, 1, Some(&view), None, &ALL, None);
+        let now = Instant::now();
+        // Tab completes a seat.
+        type_in(&mut panel, "@a");
+        press_key(&mut controller, &mut panel, Key::Tab, &view, None, now);
+        assert_eq!(panel.draft(), "@ada");
+        // Tab cycles commands, forward and back.
+        panel.take_draft();
+        type_in(&mut panel, "/st");
+        press_key(&mut controller, &mut panel, Key::Tab, &view, None, now);
+        assert_eq!(panel.draft(), "/status");
+        press_key(&mut controller, &mut panel, Key::Tab, &view, None, now);
+        assert_eq!(panel.draft(), "/stop");
+        press_key(&mut controller, &mut panel, Key::BackTab, &view, None, now);
+        assert_eq!(panel.draft(), "/status");
+        // A message goes out, and its acknowledgment takes the draft's place.
+        panel.take_draft();
+        type_in(&mut panel, "@ada Keep it short");
+        let effects = press_key(&mut controller, &mut panel, Key::Enter, &view, None, now);
+        assert_eq!(
+            effects,
+            vec![Effect::Send(Action::Message {
+                seat: Some("ada".into()),
+                text: "Keep it short".into()
+            })]
+        );
+        assert!(panel.draft().is_empty());
+        controller.sent(Ok(7), &mut panel);
+        let refused = Answer {
+            ticket: 7,
+            operation: "studio.seat.message",
+            result: Err(coder_access::Error::new(Code::MissingRight, "no operate")),
+        };
+        controller.fill(&mut panel, 2, Some(&view), None, &ALL, Some(&refused));
+        assert_eq!(
+            panel.draft(),
+            "@ada Keep it short",
+            "a refused draft comes back"
+        );
+        assert!(controller.ack.as_deref().unwrap().starts_with("Refused"));
+        // Up walks the history; Down comes back to the draft.
+        panel.take_draft();
+        type_in(&mut panel, "half");
+        press_key(&mut controller, &mut panel, Key::Up, &view, None, now);
+        assert_eq!(panel.draft(), "@ada Keep it short");
+        press_key(&mut controller, &mut panel, Key::Down, &view, None, now);
+        assert_eq!(panel.draft(), "half");
+        // A refused line comes back to be fixed.
+        panel.take_draft();
+        type_in(&mut panel, "/dance");
+        assert!(press_key(&mut controller, &mut panel, Key::Enter, &view, None, now).is_empty());
+        assert_eq!(panel.draft(), "/dance");
+        // What the console keeps while closed comes back.
+        let kept = controller.recall(&panel);
+        let mut again = Panel::new("console");
+        let mut reopened = Controller::new(PanelKind::Console);
+        reopened.fill(&mut again, 3, Some(&view), None, &ALL, None);
+        reopened.restore(kept, &mut again);
+        assert_eq!(again.draft(), "/dance");
+        assert_eq!(reopened.history.last().map(String::as_str), Some("/dance"));
+    }
+
+    #[test]
+    fn a_goal_with_several_repositories_waits_for_a_pick() {
+        use coder_access::studio::Repository;
+        let mut view = console_view();
+        view.repositories.push(Repository {
+            workspace: "site".into(),
+            goals: 0,
+            open_tasks: 0,
+        });
+        let mut panel = Panel::new("console");
+        let mut controller = Controller::new(PanelKind::Console);
+        controller.fill(&mut panel, 1, Some(&view), None, &ALL, None);
+        type_in(&mut panel, "Add a flag");
+        let now = Instant::now();
+        assert!(press_key(&mut controller, &mut panel, Key::Enter, &view, None, now).is_empty());
+        controller.fill(&mut panel, 1, Some(&view), None, &ALL, None);
+        assert_eq!(
+            controller.controls,
+            vec![
+                Control::Repository("app".into()),
+                Control::Repository("site".into())
+            ]
+        );
+        let effects = press_key(
+            &mut controller,
+            &mut panel,
+            Key::Char('2'),
+            &view,
+            None,
+            now,
+        );
+        assert_eq!(
+            effects,
+            vec![Effect::Send(Action::SubmitGoal {
+                text: "Add a flag".into(),
+                workspace: "site".into()
+            })]
+        );
+        assert_eq!(controller.workspace.as_deref(), Some("site"));
+    }
+
+    #[test]
+    fn the_console_spawns_and_opens_the_podium() {
+        let view = console_view();
+        let mut panel = Panel::new("console");
+        let mut controller = Controller::new(PanelKind::Console);
+        controller.fill(&mut panel, 1, Some(&view), None, &ALL, None);
+        let now = Instant::now();
+        type_in(&mut panel, "/spawn @ada Read the docs");
+        assert_eq!(
+            press_key(&mut controller, &mut panel, Key::Enter, &view, None, now),
+            vec![
+                Effect::Send(Action::Resume("ada".into())),
+                Effect::Send(Action::Message {
+                    seat: Some("ada".into()),
+                    text: "Read the docs".into()
+                })
+            ]
+        );
+        type_in(&mut panel, "/decide");
+        assert_eq!(
+            press_key(&mut controller, &mut panel, Key::Enter, &view, None, now),
+            vec![Effect::Open(PanelKind::Decisions)]
+        );
+        type_in(&mut panel, "/sound off");
+        assert_eq!(
+            press_key(&mut controller, &mut panel, Key::Enter, &view, None, now),
+            vec![Effect::Sound(false)]
+        );
+    }
+
+    fn two_decisions() -> View {
+        let mut view = studio();
+        view.decisions.push(Decision {
+            decision: "g1-0011aabb".into(),
+            goal: "g1-0011aabb".into(),
+            task: None,
+            seat: Some("ada".into()),
+            kind: DecisionKind::NoPlan,
+            text: "Answer with a plan.".into(),
+            based_on: 3,
+        });
+        view.canonicalize();
+        view
+    }
+
+    #[test]
+    fn the_podium_takes_number_keys_after_its_lock_and_tab_moves_on() {
+        let view = two_decisions();
+        let mut panel = Panel::new("decisions");
+        let mut controller = Controller::new(PanelKind::Decisions);
+        controller.fill(&mut panel, 1, Some(&view), None, &ALL, None);
+        // The approval comes first, before the goal's plan decision.
+        let (front, since) = controller.front.clone().unwrap();
+        assert_eq!(front, "studio-g1-0011aabb-b");
+        // Enter alone sends nothing.
+        assert!(press_key(&mut controller, &mut panel, Key::Enter, &view, None, since).is_empty());
+        // A number key during the lock is dropped and says so.
+        let early = since + INPUT_LOCK / 2;
+        assert!(
+            press_key(
+                &mut controller,
+                &mut panel,
+                Key::Char('1'),
+                &view,
+                None,
+                early
+            )
+            .is_empty()
+        );
+        assert!(controller.said.as_deref().unwrap().contains("too soon"));
+        assert!(panel.draft().is_empty(), "the dropped key typed nothing");
+        // After it, 2 denies the approval at once.
+        let later = since + INPUT_LOCK * 2;
+        assert_eq!(
+            press_key(
+                &mut controller,
+                &mut panel,
+                Key::Char('2'),
+                &view,
+                None,
+                later
+            ),
+            vec![Effect::Send(Action::Answer {
+                decision: "studio-g1-0011aabb-b".into(),
+                based_on: 7,
+                text: decision::DENIED.into()
+            })]
+        );
+        // Tab moves to the next decision, and a typed answer goes there.
+        controller.fill(&mut panel, 2, Some(&view), None, &ALL, None);
+        press_key(&mut controller, &mut panel, Key::Tab, &view, None, later);
+        controller.fill(&mut panel, 2, Some(&view), None, &ALL, None);
+        let (_, since) = controller.front.clone().unwrap();
+        type_in(&mut panel, "Plan below");
+        let effects = press_key(
+            &mut controller,
+            &mut panel,
+            Key::Enter,
+            &view,
+            None,
+            since + INPUT_LOCK * 2,
+        );
+        assert!(matches!(
+            effects.as_slice(),
+            [Effect::Send(Action::Answer { decision, text, .. })]
+                if decision == "g1-0011aabb" && text == "Plan below"
+        ));
+    }
+
+    #[test]
+    fn reject_asks_for_a_second_press() {
+        let view = studio();
+        let review = review();
+        let mut panel = Panel::new("review");
+        let mut controller = Controller::new(PanelKind::Review);
+        controller.fill(&mut panel, 1, Some(&view), Some(&review), &ALL, None);
+        let reject = 2;
+        assert!(
+            controller
+                .intent(
+                    Intent::Action(reject),
+                    &mut panel,
+                    Some(&view),
+                    Some(&review)
+                )
+                .is_empty(),
+            "the first press only arms it"
+        );
+        controller.fill(&mut panel, 1, Some(&view), Some(&review), &ALL, None);
+        assert_eq!(
+            controller.label(&controller.controls[reject], reject),
+            "Confirm reject"
+        );
+        let effects = controller.intent(
+            Intent::Action(reject),
+            &mut panel,
+            Some(&view),
+            Some(&review),
+        );
+        assert!(matches!(
+            effects.as_slice(),
+            [Effect::Send(Action::Decide {
+                verdict: Verdict::Reject,
+                ..
+            })]
+        ));
+    }
+
+    #[test]
+    fn review_keys_move_between_files_and_copy_a_path() {
+        let view = studio();
+        let mut review = review();
+        review.diff = "diff --git a/one.rs b/one.rs\n--- a/one.rs\n+++ b/one.rs\n@@ -1,1 +1,2 @@\n fn a() {}\n+fn b() {}\n@@ -9,1 +10,2 @@\n fn c() {}\n+fn d() {}\ndiff --git a/two.rs b/two.rs\n--- a/two.rs\n+++ b/two.rs\n@@ -1,1 +1,2 @@\n fn e() {}\n+fn f() {}\n".into();
+        let mut panel = Panel::new("review");
+        let mut controller = Controller::new(PanelKind::Review);
+        controller.fill(&mut panel, 1, Some(&view), Some(&review), &ALL, None);
+        panel.apply(Intent::Show(Tab::Changes));
+        let now = Instant::now();
+        let hit = |controller: &mut Controller, panel: &mut Panel, key| {
+            press_key(controller, panel, key, &view, Some(&review), now)
+        };
+        hit(&mut controller, &mut panel, Key::Char(']'));
+        assert_eq!(controller.cursor, Some(3), "the first hunk");
+        hit(&mut controller, &mut panel, Key::Char(']'));
+        assert_eq!(controller.cursor, Some(6), "the second hunk");
+        hit(&mut controller, &mut panel, Key::Char('n'));
+        assert_eq!(controller.cursor, Some(9), "the second file");
+        assert_eq!(
+            hit(&mut controller, &mut panel, Key::Char('c')),
+            vec![Effect::Copy("two.rs".into())]
+        );
+        hit(&mut controller, &mut panel, Key::Char('n'));
+        assert_eq!(
+            controller.cursor,
+            Some(0),
+            "moving on wraps to the first file"
+        );
+        hit(&mut controller, &mut panel, Key::Char('p'));
+        assert_eq!(controller.cursor, Some(9));
+        // Enter starts a note: then the keys type.
+        hit(&mut controller, &mut panel, Key::Enter);
+        hit(&mut controller, &mut panel, Key::Char('n'));
+        assert_eq!(panel.draft(), "n");
+    }
+
+    #[test]
+    fn the_agent_card_shows_owned_decisions_and_spawns_a_stopped_seat() {
+        let mut view = studio();
+        let rows = rows(&PanelKind::Seat("ada".into()), Some(&view), None);
+        assert!(
+            rows.iter()
+                .any(|row| row.key == "owned-studio-g1-0011aabb-b")
+        );
+        let mut panel = Panel::new("seat");
+        let mut controller = Controller::new(PanelKind::Seat("ada".into()));
+        controller.fill(&mut panel, 1, Some(&view), None, &ALL, None);
+        assert_eq!(
+            controller.controls[2],
+            Control::AnswerAt("studio-g1-0011aabb-b".into())
+        );
+        assert_eq!(
+            controller.intent(Intent::Action(2), &mut panel, Some(&view), None),
+            vec![Effect::Answer("studio-g1-0011aabb-b".into())]
+        );
+        // A stopped seat is paused without a task; it spawns again.
+        view.seats[0].paused = true;
+        view.seats[0].task = None;
+        controller.fill(&mut panel, 2, Some(&view), None, &ALL, None);
+        assert_eq!(controller.controls[0], Control::Spawn("ada".into()));
+        assert_eq!(
+            controller.intent(Intent::Action(0), &mut panel, Some(&view), None),
+            vec![Effect::Send(Action::Resume("ada".into()))]
+        );
+    }
+
+    #[test]
+    fn task_details_send_the_task_intents_and_cancel_confirms() {
+        let mut view = studio();
+        view.tasks[1].status = TaskStatus::Held;
+        let id = "studio-g1-0011aabb-b".to_owned();
+        let kind = PanelKind::Task(id.clone());
+        assert!(
+            rows(&kind, Some(&view), None)
+                .iter()
+                .any(|row| row.key == "task")
+        );
+        let mut panel = Panel::new("task");
+        let mut controller = Controller::new(kind.clone());
+        controller.fill(&mut panel, 1, Some(&view), None, &[Right::Observe], None);
+        assert!(controller.controls.is_empty(), "observing offers nothing");
+        controller.fill(&mut panel, 1, Some(&view), None, &ALL, None);
+        assert_eq!(
+            controller.controls,
+            vec![
+                Control::Act(Action::Prioritize(id.clone())),
+                Control::Reassign(id.clone()),
+                Control::Act(Action::Cancel(id.clone())),
+            ]
+        );
+        assert_eq!(
+            controller.intent(Intent::Action(0), &mut panel, Some(&view), None),
+            vec![Effect::Send(Action::Prioritize(id.clone()))]
+        );
+        type_in(&mut panel, "@ada");
+        assert_eq!(
+            controller.intent(Intent::Action(1), &mut panel, Some(&view), None),
+            vec![Effect::Send(Action::Reassign {
+                task: id.clone(),
+                seat: "ada".into()
+            })]
+        );
+        assert!(
+            controller
+                .intent(Intent::Action(2), &mut panel, Some(&view), None)
+                .is_empty()
+        );
+        assert_eq!(
+            controller.intent(Intent::Action(2), &mut panel, Some(&view), None),
+            vec![Effect::Send(Action::Cancel(id.clone()))]
+        );
+        // A failed task retries.
+        view.tasks[1].status = TaskStatus::Failed;
+        controller.fill(&mut panel, 2, Some(&view), None, &ALL, None);
+        assert_eq!(
+            controller.controls,
+            vec![Control::Act(Action::Retry(id.clone()))]
+        );
+    }
+
+    #[test]
+    fn the_library_pins_the_plan_with_its_progress() {
+        use coder_access::studio::memory_key;
+        let mut view = studio();
+        view.memory = vec![
+            Memory {
+                entry: memory_key(1),
+                kind: MemoryKind::Plan,
+                author: "@lead".into(),
+                goal: Some("g1-0011aabb".into()),
+                text: "Plan for goal g1-0011aabb:\n- a: Parse the flag [@ada]\n- b: Ship the flag [@ada] (after a)".into(),
+                pinned: true,
+            },
+            Memory {
+                entry: memory_key(2),
+                kind: MemoryKind::Convention,
+                author: "the person".into(),
+                goal: None,
+                text: "Keep the palette amber.".into(),
+                pinned: false,
+            },
+        ];
+        let rows = rows(&PanelKind::Library, Some(&view), None);
+        assert_eq!(rows[0].key, "plan", "the plan is pinned first");
+        assert_eq!(rows[1].key, format!("memory-{}", memory_key(2)));
+        let plan = annotated(&view.memory[0], &view);
+        assert!(plan.contains("Parse the flag [@ada] · done"), "{plan}");
+        assert!(plan.contains("(after a) · waiting on you"), "{plan}");
+        view.memory.clear();
+        assert_eq!(
+            super::rows(&PanelKind::Library, Some(&view), None)[0].key,
+            "no-memory"
+        );
     }
 }

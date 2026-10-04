@@ -1032,6 +1032,11 @@ impl WorldRuntime {
         self.zone_state.studio.send(operation)
     }
 
+    /// Turns the studio's sounds on or off for the session (`/sound`).
+    pub fn studio_sounds(&mut self, on: bool) {
+        self.zone_state.studio.set_sounds(on);
+    }
+
     /// The panel the interact key opens where the player stands, in
     /// Everglade.
     #[must_use]
@@ -1044,9 +1049,9 @@ impl WorldRuntime {
 
     /// The panel a click at `(x, y)`, as fractions of the viewport from its
     /// top-left, selects in Everglade: a seat opens its panel, a desk's
-    /// monitor its seat's, and the Task Wall, the podium, and the merge
-    /// station theirs. The nearest target within a small screen radius
-    /// wins.
+    /// monitor its seat's, a Task Wall card its task's details, and the
+    /// Task Wall, the podium, the merge station, and the library theirs.
+    /// The nearest target within a small screen radius wins.
     #[must_use]
     pub fn studio_pick(&self, aspect: f32, x: f32, y: f32) -> Option<PanelKind> {
         /// Screen radius a target takes clicks in, as a fraction of the
@@ -1075,6 +1080,15 @@ impl WorldRuntime {
             super::everglade::layout::TASK_WALL.center,
             PanelKind::Console,
         ));
+        // A card opens its task's details; nearer the click than the
+        // wall's middle, it wins over the console.
+        targets.extend(
+            self.zone_state
+                .studio
+                .cards()
+                .into_iter()
+                .map(|(at, task)| (at, PanelKind::Task(task))),
+        );
         for station in &super::everglade::STATIONS {
             if let Some(panel) = PanelKind::at_station(station.id)
                 && panel != PanelKind::Console

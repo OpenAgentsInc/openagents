@@ -392,6 +392,57 @@ fn the_wire_view_is_bounded_and_shows_pauses_decisions_and_tasks() {
     let b = view.tasks.iter().find(|task| task.entry == "b").unwrap();
     assert_eq!(b.depends_on, vec!["a".to_owned()]);
     assert_eq!(view.repositories[0].open_tasks, 1);
+    // The accepted plan is the pinned memory entry.
+    let pinned = view.plan().expect("the plan is pinned");
+    assert_eq!(pinned.kind, wire::MemoryKind::Plan);
+    assert_eq!(pinned.goal.as_deref(), Some(goal.as_str()));
+    assert!(pinned.text.starts_with("Plan for goal"), "{}", pinned.text);
+}
+
+#[test]
+fn the_wire_view_keeps_the_newest_memory_and_the_pinned_plan() {
+    let scratch = scratch();
+    let (mut tasks, mut studio, goal) = team(&scratch);
+    studio.reconcile(&mut tasks, 1, &no_reply).unwrap();
+    studio
+        .answer_goal(
+            &mut tasks,
+            &goal,
+            studio.state().goals[0].decision.as_ref().unwrap().sequence,
+            &plan(),
+            2,
+        )
+        .unwrap();
+    let plan_entry = studio
+        .state()
+        .memory
+        .iter()
+        .find(|item| item.kind == MemoryKind::Plan)
+        .map(|item| item.sequence)
+        .unwrap();
+    for n in 0..wire::MAX_MEMORY + 3 {
+        studio
+            .remember(
+                MemoryKind::Convention,
+                Party::Person,
+                None,
+                &format!("Convention {n}: keep the palette amber."),
+            )
+            .unwrap();
+    }
+    let view = studio.wire(&tasks, &scratch.store);
+    view.validate().unwrap();
+    assert_eq!(view.memory.len(), wire::MAX_MEMORY);
+    let pinned = view.plan().expect("the plan stays pinned");
+    assert_eq!(pinned.entry, wire::memory_key(plan_entry));
+    assert_eq!(view.memory.iter().filter(|entry| entry.pinned).count(), 1);
+    let newest = view.memory.last().unwrap();
+    assert!(
+        newest
+            .text
+            .starts_with(&format!("Convention {}", wire::MAX_MEMORY + 2))
+    );
+    assert_eq!(newest.author, "the person");
 }
 
 #[test]
