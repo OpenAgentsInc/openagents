@@ -321,6 +321,13 @@ impl Graph {
     ) -> Result<Option<&'a Transition>, String> {
         self.validate_controls()?;
         self.validate_values(values)?;
+        self.choose_transition(state, values)
+    }
+    fn choose_transition<'a>(
+        &'a self,
+        state: usize,
+        values: &[Value],
+    ) -> Result<Option<&'a Transition>, String> {
         let state = self
             .states
             .get(state)
@@ -508,6 +515,261 @@ impl Graph {
             poses.push(pose);
         }
         Ok(poses.pop().unwrap())
+    }
+}
+/// Immutable admission owns only skeletal motion data, excluding mesh geometry.
+pub struct Admitted {
+    id: u64,
+    graph: Graph,
+    model: Model,
+}
+static NEXT_GRAPH: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+impl Admitted {
+    pub fn new(graph: Graph, model: &Model) -> Result<Self, String> {
+        graph.validate(model)?;
+        let id = NEXT_GRAPH
+            .fetch_update(
+                std::sync::atomic::Ordering::Relaxed,
+                std::sync::atomic::Ordering::Relaxed,
+                |id| id.checked_add(1),
+            )
+            .map_err(|_| "Animation graph identity exhausted")?;
+        Ok(Self {
+            id,
+            graph,
+            model: Model {
+                source: String::new(),
+                source_sha256: String::new(),
+                height: model.height,
+                bones: model.bones.clone(),
+                clips: model.clips.clone(),
+                states: model.states.clone(),
+                skin: model.skin.clone(),
+                markers: model.markers.clone(),
+                surfaces: Vec::new(),
+                attachments: Vec::new(),
+            },
+        })
+    }
+    pub fn graph(&self) -> &Graph {
+        &self.graph
+    }
+    /// Normal layers distribute marker ownership by mean mask weight; additive
+    /// layers retain base ownership. Blend weights accumulate through the DAG.
+    /// The largest contribution wins, with the lowest node index breaking ties.
+    fn marker_source(&self, root: usize, values: &[Value]) -> usize {
+        let mut weights = vec![0.; root + 1];
+        weights[root] = 1.;
+        for i in (0..=root).rev() {
+            let mass = weights[i];
+            if mass == 0. {
+                continue;
+            }
+            match &self.graph.nodes[i] {
+                Node::Clip { .. } => {}
+                Node::Blend1d { parameter, samples } => {
+                    let Value::Scalar(value) = values[*parameter] else {
+                        unreachable!()
+                    };
+                    let (a, b, weight) = blend_pair(samples, value);
+                    weights[a] += mass * (1. - weight);
+                    weights[b] += mass * weight;
+                }
+                Node::Layer {
+                    base,
+                    layer,
+                    mode,
+                    weight,
+                    mask,
+                } => {
+                    let effective = if matches!(mode, LayerMode::Additive { .. }) {
+                        0.
+                    } else {
+                        let weight = match weight {
+                            Weight::Constant { value } => *value,
+                            Weight::Parameter { parameter } => {
+                                let Value::Scalar(value) = values[*parameter] else {
+                                    unreachable!()
+                                };
+                                value
+                            }
+                        };
+                        weight * mask.iter().sum::<f32>() / mask.len() as f32
+                    };
+                    weights[*base] += mass * (1. - effective);
+                    weights[*layer] += mass * effective;
+                }
+            }
+        }
+        let mut best = None;
+        for (i, weight) in weights.into_iter().enumerate() {
+            if matches!(self.graph.nodes[i], Node::Clip { .. })
+                && best.is_none_or(|(_, old)| weight > old)
+            {
+                best = Some((i, weight));
+            }
+        }
+        best.unwrap().0
+    }
+}
+#[derive(Clone, Default)]
+pub struct Playback {
+    graph: Option<u64>,
+    life: Option<crate::core::LifeId>,
+    state: usize,
+    clock: f64,
+    entered: f64,
+    sample_time: f64,
+    sampled: Option<bool>,
+    changed: f64,
+    duration: f32,
+    from: Vec<Local>,
+    current: Vec<Local>,
+    source: Option<usize>,
+    epoch: u64,
+    cursor: crate::markers::Cursor,
+}
+#[derive(Debug)]
+pub struct Frame {
+    pub matrices: Vec<Mat4>,
+    pub markers: Vec<crate::markers::Event>,
+    pub state: usize,
+    pub selection_epoch: u64,
+}
+impl Playback {
+    /// Refusals preserve the prior state and marker cursor. Clock seeks, admitted
+    /// graph replacements, and actor-life changes establish a fresh pose baseline.
+    /// During crossfades the outgoing pose is frozen; target-state clips own markers.
+    pub fn update(
+        &mut self,
+        admitted: &Admitted,
+        life: crate::core::LifeId,
+        values: &[Value],
+        clock: f64,
+    ) -> Result<Frame, String> {
+        self.update_time(admitted, life, values, clock, None)
+    }
+    /// Uses an admitted presentation phase, such as distance-driven locomotion,
+    /// while the independent clock governs transitions. Backward phases seek.
+    pub fn update_sampled(
+        &mut self,
+        admitted: &Admitted,
+        life: crate::core::LifeId,
+        values: &[Value],
+        sample_time: f64,
+        clock: f64,
+    ) -> Result<Frame, String> {
+        if !sample_time.is_finite() || !(0. ..=1_000_000.).contains(&sample_time) {
+            return Err("Invalid animation graph presentation phase".into());
+        }
+        self.update_time(admitted, life, values, clock, Some(sample_time))
+    }
+    fn update_time(
+        &mut self,
+        admitted: &Admitted,
+        life: crate::core::LifeId,
+        values: &[Value],
+        clock: f64,
+        sample_time: Option<f64>,
+    ) -> Result<Frame, String> {
+        if !clock.is_finite() || !(0. ..=1_000_000.).contains(&clock) {
+            return Err("Invalid animation graph playback clock".into());
+        }
+        admitted.graph.validate_values(values)?;
+        let mut next = self.clone();
+        let reset = next.graph != Some(admitted.id)
+            || next.life != Some(life)
+            || clock < next.clock
+            || next.sampled != Some(sample_time.is_some());
+        if reset {
+            next.graph = Some(admitted.id);
+            next.sampled = Some(sample_time.is_some());
+            next.life = Some(life);
+            next.state = admitted.graph.initial;
+            next.entered = clock;
+            next.current.clear();
+            next.from.clear();
+            next.source = None;
+            next.cursor = crate::markers::Cursor::default();
+        }
+        let edge = admitted.graph.choose_transition(next.state, values)?;
+        let transitioned = edge.is_some();
+        if let Some(edge) = edge {
+            next.state = edge.target;
+            next.entered = clock;
+            next.changed = clock;
+            next.duration = edge.seconds;
+            next.from = next.current.clone();
+        }
+        let root = admitted.graph.states[next.state].node;
+        let time = sample_time.unwrap_or(clock - next.entered);
+        let seeked = !reset && !transitioned && time < next.sample_time;
+        let target = admitted
+            .graph
+            .locals(&admitted.model, root, values, time as f32)?;
+        if reset || seeked || next.current.is_empty() {
+            next.current = target;
+            next.from = next.current.clone();
+            next.changed = clock;
+            next.duration = 0.;
+        } else {
+            let weight = if next.duration == 0. {
+                1.
+            } else {
+                ((clock - next.changed) / f64::from(next.duration)).clamp(0., 1.) as f32
+            };
+            let weight = weight * weight * (3. - 2. * weight);
+            next.current = next
+                .from
+                .iter()
+                .zip(target)
+                .map(|(a, b)| blend(*a, b, weight))
+                .collect();
+        }
+        let source = admitted.marker_source(root, values);
+        if reset || seeked || transitioned || next.source != Some(source) {
+            next.epoch = next
+                .epoch
+                .checked_add(1)
+                .ok_or("Animation graph selection epoch exhausted")?;
+            next.cursor = crate::markers::Cursor::default();
+        }
+        next.source = Some(source);
+        let Node::Clip { state, rate } = admitted.graph.nodes[source] else {
+            unreachable!()
+        };
+        let binding = animation::resolve(&admitted.model, state.into())?;
+        let markers = if let Some(track) = admitted
+            .model
+            .markers
+            .iter()
+            .find(|track| track.clip == binding.clip)
+        {
+            next.cursor.advance(
+                &track.track,
+                life,
+                next.epoch,
+                time * f64::from(rate),
+                binding.mode == crate::motion::Mode::Loop,
+            )?
+        } else {
+            next.cursor = crate::markers::Cursor::default();
+            Vec::new()
+        };
+        let matrices = animation::matrices(&admitted.model, &next.current);
+        if matrices.iter().any(|matrix| !matrix.is_finite()) {
+            return Err("Animation graph playback produced a nonfinite hierarchy".into());
+        }
+        next.clock = clock;
+        next.sample_time = time;
+        let frame = Frame {
+            matrices,
+            markers,
+            state: next.state,
+            selection_epoch: next.epoch,
+        };
+        *self = next;
+        Ok(frame)
     }
 }
 fn blend(a: Local, b: Local, weight: f32) -> Local {
@@ -886,6 +1148,302 @@ mod tests {
                 .transition(0, &[Value::Scalar(0.5), Value::Boolean(true)])
                 .is_err()
         );
+    }
+    fn life(generation: u64) -> crate::core::LifeId {
+        crate::core::LifeId {
+            instance: 1,
+            actor: 7,
+            generation,
+        }
+    }
+    fn playback_fixture() -> (Model, Graph) {
+        let (mut model, _) = fixture();
+        model.states.insert(
+            State::Cast,
+            Binding {
+                clip: 2,
+                mode: Mode::Hold,
+                transition_seconds: 1.,
+            },
+        );
+        model.clips.push(Clip {
+            id: 2,
+            duration: 1.,
+            bones: vec![BoneKeys {
+                bone: 1,
+                translation: vec![(0., [-2., 0., 0.])],
+                rotation: vec![],
+                scale: vec![],
+            }],
+        });
+        let edge = |target, value| Transition {
+            target,
+            seconds: 1.,
+            conditions: vec![Condition::Boolean {
+                parameter: 0,
+                value,
+            }],
+        };
+        let graph = Graph {
+            parameters: vec![Parameter::Boolean {
+                name: "moving".into(),
+                default: false,
+            }],
+            nodes: [State::Idle, State::Walk, State::Cast]
+                .into_iter()
+                .map(|state| Node::Clip { state, rate: 1. })
+                .collect(),
+            states: vec![
+                GraphState {
+                    name: "idle".into(),
+                    node: 0,
+                    transitions: vec![edge(1, true)],
+                },
+                GraphState {
+                    name: "walk".into(),
+                    node: 1,
+                    transitions: vec![edge(2, false)],
+                },
+                GraphState {
+                    name: "cast".into(),
+                    node: 2,
+                    transitions: vec![edge(1, true)],
+                },
+            ],
+            initial: 0,
+        };
+        (model, graph)
+    }
+    #[test]
+    fn graph_crossfade_interrupts_from_current_pose_and_resets_exact_lives() {
+        let (model, graph) = playback_fixture();
+        let admitted = Admitted::new(graph, &model).unwrap();
+        let mut playback = Playback::default();
+        playback
+            .update(&admitted, life(0), &[Value::Boolean(false)], 0.)
+            .unwrap();
+        playback
+            .update(&admitted, life(0), &[Value::Boolean(true)], 0.1)
+            .unwrap();
+        let middle = playback
+            .update(&admitted, life(0), &[Value::Boolean(true)], 0.6)
+            .unwrap();
+        assert!(
+            middle.matrices[1]
+                .transform_point3(Vec3::ZERO)
+                .abs_diff_eq(Vec3::X, 1e-5)
+        );
+        let interrupted = playback
+            .update(&admitted, life(0), &[Value::Boolean(false)], 0.6)
+            .unwrap();
+        assert_eq!(middle.matrices, interrupted.matrices);
+        let next = playback
+            .update(&admitted, life(0), &[Value::Boolean(false)], 1.1)
+            .unwrap();
+        assert!(
+            next.matrices[1]
+                .transform_point3(Vec3::ZERO)
+                .abs_diff_eq(Vec3::X * -0.5, 1e-5)
+        );
+        let respawn = playback
+            .update(&admitted, life(1), &[Value::Boolean(false)], 1.1)
+            .unwrap();
+        assert!(respawn.matrices[1].abs_diff_eq(Mat4::IDENTITY, 1e-5));
+        assert!(respawn.selection_epoch > next.selection_epoch);
+        assert!(respawn.markers.is_empty());
+    }
+    #[test]
+    fn weighted_markers_change_source_without_replay_and_refusals_are_atomic() {
+        let (mut model, mut graph) = fixture();
+        for state in &mut graph.states {
+            state.transitions.clear();
+        }
+        model.markers = [0, 1]
+            .into_iter()
+            .map(|clip| crate::markers::ClipTrack {
+                clip,
+                track: crate::markers::Track {
+                    duration: 1.,
+                    markers: vec![
+                        crate::markers::Marker {
+                            id: 1,
+                            seconds: 0.25,
+                        },
+                        crate::markers::Marker {
+                            id: 2,
+                            seconds: 0.75,
+                        },
+                    ],
+                },
+            })
+            .collect();
+        let admitted = Admitted::new(graph, &model).unwrap();
+        let mut playback = Playback::default();
+        let values = |speed| [Value::Scalar(speed), Value::Boolean(false)];
+        playback
+            .update(&admitted, life(0), &values(0.4), 0.)
+            .unwrap();
+        let first = playback
+            .update(&admitted, life(0), &values(0.4), 0.3)
+            .unwrap();
+        assert_eq!(first.markers.len(), 1);
+        let switched = playback
+            .update(&admitted, life(0), &values(0.6), 0.4)
+            .unwrap();
+        assert!(switched.markers.is_empty());
+        assert!(switched.selection_epoch > first.selection_epoch);
+        let right = playback
+            .update(&admitted, life(0), &values(0.6), 0.8)
+            .unwrap();
+        assert_eq!(right.markers.len(), 1);
+        assert_eq!(right.markers[0].marker, 2);
+        let clock = playback.clock;
+        let epoch = playback.epoch;
+        assert!(
+            playback
+                .update(&admitted, life(0), &values(0.6), 1000.)
+                .is_err()
+        );
+        assert_eq!(playback.clock, clock);
+        assert_eq!(playback.epoch, epoch);
+        let retry = playback
+            .update(&admitted, life(0), &values(0.6), 0.9)
+            .unwrap();
+        assert!(retry.markers.is_empty());
+        let tie = playback
+            .update(&admitted, life(0), &values(0.5), 0.9)
+            .unwrap();
+        assert!(tie.markers.is_empty());
+        assert_eq!(playback.source, Some(0));
+    }
+    #[test]
+    fn admitted_motion_is_immutable_and_replacement_and_seek_reset_baselines() {
+        let (mut model, graph) = playback_fixture();
+        let admitted = Admitted::new(graph.clone(), &model).unwrap();
+        model.clips[1].bones[0].translation[0].1 = [90., 0., 0.];
+        assert!(admitted.model.surfaces.is_empty());
+        let mut playback = Playback::default();
+        let first = playback
+            .update(&admitted, life(0), &[Value::Boolean(true)], 10.)
+            .unwrap();
+        assert!(
+            first.matrices[1]
+                .transform_point3(Vec3::ZERO)
+                .abs_diff_eq(Vec3::X * 2., 1e-5)
+        );
+        let seek = playback
+            .update(&admitted, life(0), &[Value::Boolean(false)], 5.)
+            .unwrap();
+        assert!(seek.selection_epoch > first.selection_epoch);
+        assert!(seek.markers.is_empty());
+        let replacement = Admitted::new(graph, &model).unwrap();
+        let replaced = playback
+            .update(&replacement, life(0), &[Value::Boolean(true)], 5.)
+            .unwrap();
+        assert!(replaced.selection_epoch > seek.selection_epoch);
+        assert!(
+            replaced.matrices[1]
+                .transform_point3(Vec3::ZERO)
+                .abs_diff_eq(Vec3::X * 90., 1e-5)
+        );
+    }
+    #[test]
+    fn distance_driven_phase_can_pause_and_seek_without_advancing_authority() {
+        let (mut model, mut graph) = fixture();
+        for state in &mut graph.states {
+            state.transitions.clear();
+        }
+        model.markers.push(crate::markers::ClipTrack {
+            clip: 1,
+            track: crate::markers::Track {
+                duration: 1.,
+                markers: vec![crate::markers::Marker {
+                    id: 1,
+                    seconds: 0.25,
+                }],
+            },
+        });
+        let admitted = Admitted::new(graph, &model).unwrap();
+        let mut playback = Playback::default();
+        let values = [Value::Scalar(1.), Value::Boolean(false)];
+        playback
+            .update_sampled(&admitted, life(0), &values, 0., 100.)
+            .unwrap();
+        let moving = playback
+            .update_sampled(&admitted, life(0), &values, 0.3, 101.)
+            .unwrap();
+        assert_eq!(moving.markers.len(), 1);
+        let paused = playback
+            .update_sampled(&admitted, life(0), &values, 0.3, 110.)
+            .unwrap();
+        assert!(paused.markers.is_empty());
+        assert_eq!(moving.matrices, paused.matrices);
+        let seek = playback
+            .update_sampled(&admitted, life(0), &values, 0.1, 111.)
+            .unwrap();
+        assert!(seek.markers.is_empty());
+        assert!(seek.selection_epoch > paused.selection_epoch);
+        assert!(
+            playback
+                .update_sampled(&admitted, life(0), &values, f64::NAN, 112.)
+                .is_err()
+        );
+        assert_eq!(playback.clock, 111.);
+    }
+    #[test]
+    fn changing_phase_policy_establishes_a_marker_baseline() {
+        let (mut model, mut graph) = fixture();
+        for state in &mut graph.states {
+            state.transitions.clear();
+        }
+        model.markers.push(crate::markers::ClipTrack {
+            clip: 1,
+            track: crate::markers::Track {
+                duration: 1.,
+                markers: vec![crate::markers::Marker {
+                    id: 1,
+                    seconds: 0.25,
+                }],
+            },
+        });
+        let admitted = Admitted::new(graph, &model).unwrap();
+        let mut playback = Playback::default();
+        let values = [Value::Scalar(1.), Value::Boolean(false)];
+        playback.update(&admitted, life(0), &values, 0.).unwrap();
+        let timed = playback.update(&admitted, life(0), &values, 0.3).unwrap();
+        assert_eq!(timed.markers.len(), 1);
+        let sampled = playback
+            .update_sampled(&admitted, life(0), &values, 10.3, 0.4)
+            .unwrap();
+        assert!(sampled.markers.is_empty());
+        assert!(sampled.selection_epoch > timed.selection_epoch);
+        let timed_again = playback.update(&admitted, life(0), &values, 0.5).unwrap();
+        assert!(timed_again.markers.is_empty());
+        assert!(timed_again.selection_epoch > sampled.selection_epoch);
+    }
+    #[test]
+    fn invalid_parameters_and_epoch_exhaustion_preserve_playback() {
+        let (model, graph) = playback_fixture();
+        let admitted = Admitted::new(graph, &model).unwrap();
+        let mut playback = Playback::default();
+        playback
+            .update(&admitted, life(0), &[Value::Boolean(false)], 0.)
+            .unwrap();
+        assert!(
+            playback
+                .update(&admitted, life(0), &[Value::Scalar(1.)], 1.)
+                .is_err()
+        );
+        assert_eq!(playback.clock, 0.);
+        assert_eq!(playback.state, 0);
+        playback.epoch = u64::MAX;
+        assert!(
+            playback
+                .update(&admitted, life(1), &[Value::Boolean(true)], 1.)
+                .is_err()
+        );
+        assert_eq!(playback.life, Some(life(0)));
+        assert_eq!(playback.epoch, u64::MAX);
     }
     #[test]
     fn serialization_retains_graph_data_and_refuses_unknown_fields() {
