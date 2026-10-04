@@ -9,7 +9,7 @@ description = "Portable command admission and owned world authority for Verse"
 [dependencies]
 verse-engine = { path = "../verse-engine" }
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["float_roundtrip"] }
 glam = { version = "0.30.10", features = ["serde"] }
 physics = { path = "../physics" }
 

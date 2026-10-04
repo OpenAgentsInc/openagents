@@ -1,0 +1,15 @@
+{
+  "schema": "openagents.verse.grounded-movement.v1",
+  "rules_revision": "verse-chamber-owned-v2",
+  "authority_tick": 300,
+  "physics_steps": 1200,
+  "physics_dropped_seconds": 0.0,
+  "max_height_m": 2.467801570892334,
+  "final_feet": [
+    18.0,
+    9.999999747378752e-6,
+    -22.406818389892578
+  ],
+  "jump_command_frame": 110,
+  "renderer": "native GPU frames; programmatic admitted movement and jump; no grading"
+}

@@ -36,6 +36,7 @@
 //! mechanisms. See `docs/physics/2026-09-27-genesis-port-roadmap.md`.
 
 pub mod body;
+pub mod character;
 pub mod clock;
 pub mod collision;
 pub mod contact;

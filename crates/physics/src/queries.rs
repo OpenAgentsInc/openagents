@@ -1,5 +1,5 @@
 //! Instance-scoped, read-only triangle mesh queries in double-precision meters.
-use glam::DVec3;
+use glam::{DQuat, DVec3};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -38,6 +38,7 @@ pub struct Filter {
     pub instance: u64,
     pub layers: u32,
     pub ignore: Option<Life>,
+    pub exclude: Option<ColliderKey>,
     pub usages: u8,
     pub limit: usize,
 }
@@ -47,6 +48,7 @@ impl Filter {
             instance,
             layers: u32::MAX,
             ignore: None,
+            exclude: None,
             usages: Usage::Blocking.bit(),
             limit: 64,
         }
@@ -62,6 +64,7 @@ impl Filter {
             && collider.layers & self.layers != 0
             && collider.usage.bit() & self.usages != 0
             && self.ignore != Some(collider.key.life)
+            && self.exclude != Some(collider.key)
     }
 }
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
@@ -106,6 +109,7 @@ struct Node {
 pub struct Mesh {
     triangles: Vec<Triangle>,
     nodes: Vec<Node>,
+    solid_box: Option<Bounds>,
 }
 impl Mesh {
     /// Compiles the twelve boundary triangles of a nondegenerate box.
@@ -132,7 +136,7 @@ impl Mesh {
             [0, 1, 3, 2],
             [4, 6, 7, 5],
         ];
-        Self::compile(
+        let mut mesh = Self::compile(
             faces
                 .into_iter()
                 .flat_map(|[a, b, c, d]| {
@@ -142,7 +146,9 @@ impl Mesh {
                     ]
                 })
                 .collect(),
-        )
+        )?;
+        mesh.solid_box = Some(Bounds { min, max });
+        Ok(mesh)
     }
     pub fn compile(triangles: Vec<Triangle>) -> Result<Self, String> {
         if triangles.is_empty() || triangles.len() > MAX_TRIANGLES {
@@ -163,6 +169,7 @@ impl Mesh {
         let mut mesh = Self {
             triangles,
             nodes: vec![],
+            solid_box: None,
         };
         mesh.build((0..mesh.triangles.len()).collect());
         Ok(mesh)
@@ -269,11 +276,14 @@ impl Capsule {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Hit {
     pub collider: ColliderKey,
+    /// Source triangle index, or `usize::MAX` for a solid-volume recovery hit.
     pub triangle: usize,
     pub fraction: f64,
     pub distance: f64,
     pub position: DVec3,
     pub normal: DVec3,
+    /// Oriented triangle plane normal, distinct from a rounded edge contact.
+    pub surface_normal: DVec3,
     pub penetration: f64,
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -328,9 +338,55 @@ impl Collector {
 /// Collider identities determine iteration order; queries never update geometry.
 #[derive(Clone, Debug, Default)]
 pub struct Scene {
+    poses: BTreeMap<ColliderKey, Pose>,
     colliders: BTreeMap<ColliderKey, MeshCollider>,
 }
+/// A rigid pose preserves a compiled mesh hierarchy without rescaling it.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
+pub struct Pose {
+    pub position: DVec3,
+    pub rotation: DQuat,
+}
+impl Default for Pose {
+    fn default() -> Self {
+        Self {
+            position: DVec3::ZERO,
+            rotation: DQuat::IDENTITY,
+        }
+    }
+}
+impl Pose {
+    pub fn point(self, local: DVec3) -> DVec3 {
+        self.position + self.rotation * local
+    }
+    pub fn inverse_point(self, world: DVec3) -> DVec3 {
+        self.rotation.conjugate() * (world - self.position)
+    }
+    fn capsule(self, world: Capsule) -> Capsule {
+        Capsule {
+            a: self.inverse_point(world.a),
+            b: self.inverse_point(world.b),
+            radius: world.radius,
+        }
+    }
+}
 impl Scene {
+    pub fn pose(&self, key: ColliderKey) -> Option<Pose> {
+        self.colliders
+            .contains_key(&key)
+            .then(|| self.poses.get(&key).copied().unwrap_or_default())
+    }
+    pub fn set_pose(&mut self, key: ColliderKey, pose: Pose) -> Result<(), String> {
+        valid_point(pose.position)?;
+        if !pose.rotation.is_finite() || (pose.rotation.length_squared() - 1.).abs() > 1e-8 {
+            return Err("Invalid collision pose".into());
+        }
+        if !self.colliders.contains_key(&key) {
+            return Err("Collision identity does not exist".into());
+        }
+        self.poses.insert(key, pose);
+        Ok(())
+    }
     pub fn insert(&mut self, collider: MeshCollider) -> Result<(), String> {
         if self.colliders.contains_key(&collider.key) {
             return Err("Collision identity already exists".into());
@@ -352,6 +408,7 @@ impl Scene {
         Ok(())
     }
     pub fn remove(&mut self, key: ColliderKey) -> Option<MeshCollider> {
+        self.poses.remove(&key);
         self.colliders.remove(&key)
     }
     pub fn ray(
@@ -370,14 +427,17 @@ impl Scene {
         {
             return Err("Invalid spatial ray".into());
         }
-        let end = origin + direction * distance;
-        let bounds = Bounds {
-            min: origin.min(end) - DVec3::splat(EPS),
-            max: origin.max(end) + DVec3::splat(EPS),
-        };
         let mut out = Collector::new(filter.limit);
         let mut stats = Stats::default();
         for collider in self.colliders.values().filter(|c| filter.admits(c)) {
+            let pose = self.pose(collider.key).unwrap();
+            let origin = pose.inverse_point(origin);
+            let direction = pose.rotation.conjugate() * direction;
+            let end = origin + direction * distance;
+            let bounds = Bounds {
+                min: origin.min(end) - DVec3::splat(EPS),
+                max: origin.max(end) + DVec3::splat(EPS),
+            };
             collider.mesh.visit(bounds, &mut stats, |index, triangle| {
                 if let Some((at, point)) = ray_triangle(origin, direction, distance, triangle) {
                     let mut normal = triangle.normal();
@@ -389,8 +449,9 @@ impl Scene {
                         triangle: index,
                         fraction: if distance > 0. { at / distance } else { 0. },
                         distance: at,
-                        position: point,
-                        normal,
+                        position: pose.point(point),
+                        normal: pose.rotation * normal,
+                        surface_normal: pose.rotation * normal,
                         penetration: 0.,
                     });
                 }
@@ -405,6 +466,23 @@ impl Scene {
         let mut out = Collector::new(filter.limit);
         let mut stats = Stats::default();
         for collider in self.colliders.values().filter(|c| filter.admits(c)) {
+            let pose = self.pose(collider.key).unwrap();
+            let capsule = pose.capsule(capsule);
+            if let Some(bounds) = collider.mesh.solid_box {
+                if let Some((normal, penetration, point)) = inside_box(capsule, bounds) {
+                    out.push(Hit {
+                        collider: collider.key,
+                        triangle: usize::MAX,
+                        fraction: 0.,
+                        distance: 0.,
+                        position: pose.point(point),
+                        normal: pose.rotation * normal,
+                        surface_normal: pose.rotation * normal,
+                        penetration,
+                    });
+                    continue;
+                }
+            }
             collider
                 .mesh
                 .visit(capsule.bounds(), &mut stats, |index, triangle| {
@@ -416,8 +494,13 @@ impl Scene {
                             triangle: index,
                             fraction: 0.,
                             distance: 0.,
-                            position: point,
-                            normal: contact_normal(axis, point, triangle, capsule),
+                            position: pose.point(point),
+                            normal: pose.rotation * contact_normal(axis, point, triangle, capsule),
+                            surface_normal: pose.rotation
+                                * oriented_normal(
+                                    triangle,
+                                    contact_normal(axis, point, triangle, capsule),
+                                ),
                             penetration: (capsule.radius - separation).max(0.),
                         });
                     }
@@ -432,10 +515,28 @@ impl Scene {
         if !delta.is_finite() || delta.length() > 1_000_000. {
             return Err("Invalid capsule displacement".into());
         }
-        let bounds = capsule.bounds().union(capsule.translated(delta).bounds());
         let mut out = Collector::new(filter.limit);
         let mut stats = Stats::default();
         for collider in self.colliders.values().filter(|c| filter.admits(c)) {
+            let pose = self.pose(collider.key).unwrap();
+            let capsule = pose.capsule(capsule);
+            let delta = pose.rotation.conjugate() * delta;
+            if let Some(bounds) = collider.mesh.solid_box {
+                if let Some((normal, penetration, point)) = inside_box(capsule, bounds) {
+                    out.push(Hit {
+                        collider: collider.key,
+                        triangle: usize::MAX,
+                        fraction: 0.,
+                        distance: 0.,
+                        position: pose.point(point),
+                        normal: pose.rotation * normal,
+                        surface_normal: pose.rotation * normal,
+                        penetration,
+                    });
+                    continue;
+                }
+            }
+            let bounds = capsule.bounds().union(capsule.translated(delta).bounds());
             collider.mesh.visit(bounds, &mut stats, |index, triangle| {
                 if let Some((fraction, point, normal, penetration)) =
                     sweep_triangle(capsule, delta, triangle)?
@@ -445,8 +546,9 @@ impl Scene {
                         triangle: index,
                         fraction,
                         distance: delta.length() * fraction,
-                        position: point,
-                        normal,
+                        position: pose.point(point),
+                        normal: pose.rotation * normal,
+                        surface_normal: pose.rotation * oriented_normal(triangle, normal),
                         penetration,
                     });
                 }
@@ -882,4 +984,63 @@ mod tests {
         assert_eq!(ground.normal, DVec3::Y);
         assert!(Mesh::from_box(DVec3::ZERO, DVec3::ZERO).is_err());
     }
+}
+
+fn oriented_normal(triangle: Triangle, contact: DVec3) -> DVec3 {
+    let normal = triangle.normal();
+    if normal.dot(contact) < 0. {
+        -normal
+    } else {
+        normal
+    }
+}
+
+// Filled occupancy is available only for explicitly compiled solid boxes.
+// Arbitrary triangle meshes remain two-sided surfaces. Upright solid recovery
+// chooses a horizontal or upward exit so a buried spawn does not cross its floor.
+fn inside_box(capsule: Capsule, bounds: Bounds) -> Option<(DVec3, f64, DVec3)> {
+    let delta = capsule.b - capsule.a;
+    let mut enter: f64 = 0.;
+    let mut exit: f64 = 1.;
+    for axis in 0..3 {
+        if delta[axis].abs() < 1e-12 {
+            if capsule.a[axis] <= bounds.min[axis] || capsule.a[axis] >= bounds.max[axis] {
+                return None;
+            }
+        } else {
+            let a = (bounds.min[axis] - capsule.a[axis]) / delta[axis];
+            let b = (bounds.max[axis] - capsule.a[axis]) / delta[axis];
+            enter = enter.max(a.min(b));
+            exit = exit.min(a.max(b));
+        }
+    }
+    if enter >= exit {
+        return None;
+    }
+    let mut point = capsule.a + delta * ((enter + exit) * 0.5);
+    let lo = capsule.a.min(capsule.b) - DVec3::splat(capsule.radius);
+    let hi = capsule.a.max(capsule.b) + DVec3::splat(capsule.radius);
+    let mut best = (DVec3::ZERO, f64::INFINITY);
+    for axis in 0..3 {
+        let mut normal = DVec3::ZERO;
+        normal[axis] = -1.;
+        let negative = hi[axis] - bounds.min[axis];
+        if axis != 1 && negative < best.1 {
+            best = (normal, negative);
+        }
+        normal[axis] = 1.;
+        let positive = bounds.max[axis] - lo[axis];
+        if positive < best.1 {
+            best = (normal, positive);
+        }
+    }
+    for axis in 0..3 {
+        if best.0[axis] < 0. {
+            point[axis] = bounds.min[axis];
+        }
+        if best.0[axis] > 0. {
+            point[axis] = bounds.max[axis];
+        }
+    }
+    Some((best.0, best.1, point))
 }

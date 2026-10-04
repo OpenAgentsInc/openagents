@@ -28,6 +28,7 @@ struct App {
     game: Game,
     last: Instant,
     schedule: verse_engine::core::FixedSchedule,
+    interpolation: f32,
     keys: HashSet<KeyCode>,
     cursor: [f32; 2],
     controls: ClassicControls,
@@ -62,6 +63,7 @@ impl App {
             strafe_right: key(KeyCode::KeyE),
         };
         let batch = self.schedule.advance(elapsed)?;
+        self.interpolation = batch.interpolation;
         for _ in 0..batch.steps {
             let movement = if self.game.unlocked() && !self.game.agent_controlled {
                 self.controls.step(
@@ -117,7 +119,7 @@ impl App {
             .motion(delta, &mut self.game.yaw, &mut self.game.camera);
     }
     fn draw_frame(&mut self) -> Result<Vec<u8>, String> {
-        let frame = self.game.frame();
+        let frame = self.game.interpolated_frame(self.interpolation)?;
         let view = View {
             view_proj: frame.view_projection(1280.0 / 720.0),
             eye: frame.eye,
@@ -256,6 +258,11 @@ impl ApplicationHandler for App {
                                     self.keys.clear();
                                     self.pending_select = false;
                                     self.capture_pointer();
+                                }
+                                KeyCode::Space if !self.game.agent_controlled => {
+                                    if let Err(error) = self.game.jump() {
+                                        self.game.message = error;
+                                    }
                                 }
                                 KeyCode::NumLock => {
                                     if self.game.unlocked() {
@@ -520,6 +527,7 @@ pub fn run(original_default: bool) -> Result<(), String> {
         game,
         last: Instant::now(),
         schedule: verse_engine::core::FixedSchedule::new(30, 3)?,
+        interpolation: 1.,
         keys: HashSet::new(),
         cursor: [0.0; 2],
         controls: ClassicControls::default(),
@@ -538,7 +546,9 @@ pub fn run(original_default: bool) -> Result<(), String> {
     }
     if matches!(
         mode.as_deref(),
-        Some("--demo" | "--utility-demo" | "--combat-demo" | "--navigation-demo")
+        Some(
+            "--demo" | "--utility-demo" | "--combat-demo" | "--navigation-demo" | "--movement-demo"
+        )
     ) {
         return demo(
             &mut app,
@@ -546,6 +556,7 @@ pub fn run(original_default: bool) -> Result<(), String> {
             mode.as_deref() == Some("--utility-demo"),
             mode.as_deref() == Some("--combat-demo"),
             mode.as_deref() == Some("--navigation-demo"),
+            mode.as_deref() == Some("--movement-demo"),
         );
     }
     if matches!(mode.as_deref(), Some("--agent" | "--combat")) {
@@ -591,10 +602,26 @@ fn demo(
     utility: bool,
     combat: bool,
     navigation: bool,
+    movement_demo: bool,
 ) -> Result<(), String> {
     use std::io::Write;
     if combat {
         app.game = Game::combat(app.game.scene.clone(), true)?;
+    }
+    if movement_demo {
+        let mut scene = app.game.scene.clone();
+        scene
+            .actors
+            .iter_mut()
+            .find(|a| a.model == "adventurer")
+            .unwrap()
+            .position = Vec3::new(18., 0., -32.);
+        app.game = Game::new(scene)?;
+        app.game.time = 20.;
+        app.game.yaw = std::f32::consts::PI;
+        app.game.camera.yaw = app.game.yaw;
+        app.game.camera.pitch = 0.25;
+        app.game.camera.distance = 7.;
     }
     if navigation {
         if app.game.scene.collision_profile.is_none() {
@@ -673,14 +700,27 @@ fn demo(
         .spawn()
         .map_err(|e| e.to_string())?;
     let mut pipe = encoder.stdin.take().ok_or("Missing encoder input")?;
+    let mut movement_max_height: f32 = 0.;
+    app.interpolation = 1.;
     for frame in 0..if combat {
         3600
-    } else if navigation {
+    } else if navigation || movement_demo {
         300
     } else {
         480
     } {
-        app.game.tick(1.0 / 30.0, [0.0, 0.0])?;
+        if movement_demo && frame == 110 {
+            app.game.jump()?;
+        }
+        app.game.tick(
+            1.0 / 30.0,
+            if movement_demo && frame < 180 {
+                [0., 0.25]
+            } else {
+                [0.; 2]
+            },
+        )?;
+        movement_max_height = movement_max_height.max(app.game.player.y);
         let sequence = if utility {
             [
                 (90, Ability::Light),
@@ -699,7 +739,7 @@ fn demo(
             ]
         };
         for (at, ability) in sequence {
-            if !combat && !navigation && frame == at {
+            if !combat && !navigation && !movement_demo && frame == at {
                 if ability == Ability::Thunderwave {
                     let target = app
                         .game
@@ -724,6 +764,21 @@ fn demo(
                 frame as f32 / 30.0,
                 app.game.snapshot().player.hp
             );
+        }
+        if movement_demo && frame == 120 {
+            save_png(&output.with_extension("png"), &pixels)?;
+        }
+        if movement_demo && frame == 299 {
+            if movement_max_height < 2. || app.game.player.y > 0.001 {
+                return Err("Movement capture did not climb, jump, and land".into());
+            }
+            std::fs::write(output.with_extension("json"),serde_json::to_vec_pretty(&serde_json::json!({
+                "schema":"openagents.verse.grounded-movement.v1", "rules_revision":"verse-chamber-owned-v2",
+                "authority_tick":app.game.authority_tick, "physics_steps":app.game.physics_steps,
+                "physics_dropped_seconds":app.game.physics_clock.dropped,"max_height_m":movement_max_height,
+                "final_feet":app.game.player.to_array(),"jump_command_frame":110,
+                "renderer":"native GPU frames; programmatic admitted movement and jump; no grading"
+            })).map_err(|e|e.to_string())?).map_err(|e|e.to_string())?;
         }
         if navigation && frame == 299 {
             save_png(&output.with_extension("png"), &pixels)?;
@@ -752,7 +807,7 @@ fn demo(
             }
             if encounter.ended.is_some_and(|at| app.game.time - at >= 5.0) {
                 save_png(&output.with_extension("png"), &pixels)?;
-                let evidence = serde_json::json!({"schema":"openagents.verse.agent-combat.v1","rules_revision":"verse-chamber-owned-v1","authority_tick":app.game.authority_tick,"committed_event_count":app.game.events.len(),"asset_pack":app.pack.source_revision,"controller":"local observation-driven tactical controller","control_mode":"agent","time":app.game.time,"ended_at":encounter.ended,"player":app.game.snapshot().player,"boss_remaining":encounter.boss_remaining,"boss_max":encounter.boss_max,"cultists_defeated":encounter.kills,"damage_taken":encounter.damage,"shield_absorbed":encounter.absorbed,"dodged":encounter.dodged,"enemy_casts":encounter.enemy_casts,"ability_uses":encounter.used,"boss_model":{"source":app.pack.models["claude"].source,"sha256":app.pack.models["claude"].source_sha256,"height_m":app.game.scene.actors.iter().find(|a|a.model=="claude").unwrap().scale * app.pack.models["claude"].height * 0.9144},"renderer":"owned native GPU pipeline; no grading; no chat-input automation"});
+                let evidence = serde_json::json!({"schema":"openagents.verse.agent-combat.v1","rules_revision":"verse-chamber-owned-v2","authority_tick":app.game.authority_tick,"physics_steps":app.game.physics_steps,"physics_dropped_seconds":app.game.physics_clock.dropped,"committed_event_count":app.game.events.len(),"asset_pack":app.pack.source_revision,"controller":"local observation-driven tactical controller","control_mode":"agent","time":app.game.time,"ended_at":encounter.ended,"player":app.game.snapshot().player,"boss_remaining":encounter.boss_remaining,"boss_max":encounter.boss_max,"cultists_defeated":encounter.kills,"damage_taken":encounter.damage,"shield_absorbed":encounter.absorbed,"dodged":encounter.dodged,"enemy_casts":encounter.enemy_casts,"ability_uses":encounter.used,"boss_model":{"source":app.pack.models["claude"].source,"sha256":app.pack.models["claude"].source_sha256,"height_m":app.game.scene.actors.iter().find(|a|a.model=="claude").unwrap().scale * app.pack.models["claude"].height * 0.9144},"renderer":"owned native GPU pipeline; no grading; no chat-input automation"});
                 std::fs::write(
                     output.with_extension("json"),
                     serde_json::to_vec_pretty(&evidence).map_err(|e| e.to_string())?,

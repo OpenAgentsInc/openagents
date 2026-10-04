@@ -60,6 +60,16 @@ pub fn room_boxes() -> Vec<RoomBox> {
             );
         }
     }
+    // The side stairs exercise the same authored solids in rendering and movement.
+    for step in 0..6 {
+        let height = (step + 1) as f32 * 0.25;
+        add(
+            Vec3::new(18., height * 0.5, -29.5 + step as f32 * 0.9),
+            Vec3::new(1.5, height * 0.5, 0.45),
+            [0.23, 0.24, 0.27],
+            false,
+        );
+    }
     boxes
 }
 /// Compiles collision boxes from the same authored solids as the room mesh.

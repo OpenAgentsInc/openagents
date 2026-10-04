@@ -698,7 +698,11 @@ fn humanoid_motion(model: &mut Model) -> Result<(), String> {
     Ok(())
 }
 fn animations(model: &mut Model, path: &Path) -> Result<(), String> {
-    for (id, name) in [(64, "Idle_No_Loop"), (68, "Yes")] {
+    for (id, name) in [
+        (37, "NinjaJump_Idle_Loop"),
+        (64, "Idle_No_Loop"),
+        (68, "Yes"),
+    ] {
         retarget_clip(model, path, id, name)?;
     }
     retarget_clip(model, path, 250, "Idle_No_Loop")?;
@@ -930,7 +934,9 @@ mod tests {
         for name in APPEARANCES {
             let model = &pack.models[&format!("universal-{name}")];
             assert!(model.surfaces.iter().all(|s| !s.indices.is_empty()));
-            for id in [0, 1, 4, 5, 13, 14, 15, 25, 46, 51, 52, 53, 64, 68, 100, 109] {
+            for id in [
+                0, 1, 4, 5, 13, 14, 15, 25, 37, 46, 51, 52, 53, 64, 68, 100, 109,
+            ] {
                 assert!(model.clips.iter().any(|c| c.id == id));
                 let pose = verse_engine::animation::pose(model, id, 0.7);
                 assert!(pose.iter().all(|m| m.is_finite()));

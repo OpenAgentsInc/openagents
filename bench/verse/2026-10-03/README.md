@@ -121,3 +121,20 @@ both native example builds, dependency-tree inspection, and this native capture.
 The local Bestiary license boundary remains unchanged. This proves owned local
 combat; transactional saves, multiplayer, capsule/mesh movement, and tools remain
 on the roadmap.
+
+
+## Grounded capsule movement
+
+`grounded-movement.mp4` records 10 seconds of native 1280 × 720 frames at 30 FPS.
+The adventurer climbs the authored side stairs, jumps through an admitted command
+at frame 110, reaches 2.468 meters, and lands. `grounded-movement.png` captures
+the airborne pose. The JSON receipt records 300 command ticks, 1,200 physics
+substeps, and no dropped physics time. Space runs the same admitted jump in
+interactive play. Player and NPC positions interpolate only in presentation.
+
+The `verse-chamber-owned-v2` profile retains exact movement checkpoint replay.
+Checks: 87 runnable physics tests (the existing external Genesis oracle is
+ignored), 47 world tests, 47 Lagrange tests, 16 Physics Lab tests, the Standard
+outfit animation test, formatting, and both native chamber example builds.
+Compiled navigation, body lifetime integration, relative-motion projectile CCD,
+multiplayer, and tools remain roadmap work.

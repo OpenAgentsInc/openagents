@@ -103,8 +103,19 @@ solids into triangle query fixtures. Meshes describe two-sided surfaces, not
 automatic filled-volume occupancy. Conservative advancement is independently
 implemented; the public method also appears in
 [Pan, Zhang, and Manocha's collision-checking study](https://www.roboticsproceedings.org/rss07/p32.pdf).
-No planner or reference-engine code is imported. #10439 integrates grounded
-character movement and 120 Hz substeps; that acceptance remains pending.
+No planner or reference-engine code is imported.
+
+[#10439](https://github.com/OpenAgentsInc/openagents/issues/10439) adds grounded
+upright capsules: wall sliding, slope admission, stairs, gravity, jump and ceiling
+rejection, solid-box spawn recovery, checked teleport endpoints, and moving
+platform poses. Rigid poses reuse compiled mesh hierarchies. Player and NPC
+movement run four 120 Hz substeps per 30 Hz chamber command tick; the clock
+records dropped time. Space submits an admitted jump; presentation interpolates
+player and NPC positions without changing authority. The owned profile is now
+`verse-chamber-owned-v2`; checkpoints include movement state and preserve exact
+floating-point replay. Native side stairs share rendered and collision geometry.
+Compiled navigation, general entity/body lifetime integration, and relative-motion
+projectile CCD remain VE-2 work; the existing box navigation remains in use.
 
 ## Reuse inventory
 

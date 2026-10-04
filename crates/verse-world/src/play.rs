@@ -128,6 +128,15 @@ pub struct DamageNumber {
 pub struct Game {
     admission: crate::Admission,
     pending_movement: Option<[f32; 2]>,
+    pending_jump: bool,
+    character: physics::character::Character,
+    npc_characters: BTreeMap<u64, physics::character::Character>,
+    pub physics_clock: physics::FixedStep,
+    pub physics_steps: u64,
+    previous_player: Vec3,
+    previous_npc: BTreeMap<u64, Vec3>,
+    #[serde(skip)]
+    query_scene: physics::queries::Scene,
     pub events: Vec<crate::events::Event>,
     event_serial: u64,
     emitted_cues: std::collections::BTreeSet<usize>,
@@ -233,7 +242,7 @@ impl Game {
     pub fn checkpoint(&self) -> Result<Vec<u8>, String> {
         self.simulation.validate()?;
         let bytes = serde_json::to_vec(&serde_json::json!({
-            "version": 1, "rules_revision": "verse-chamber-owned-v1", "world": self,
+            "version": 1, "rules_revision": "verse-chamber-owned-v2", "world": self,
         }))
         .map_err(|e| e.to_string())?;
         if bytes.len() > 2 * 1024 * 1024 {
@@ -253,13 +262,17 @@ impl Game {
             return Err("World checkpoint budget exceeded".into());
         }
         let saved: Saved = serde_json::from_slice(bytes).map_err(|e| e.to_string())?;
-        if saved.version != 1 || saved.rules_revision != "verse-chamber-owned-v1" {
+        if saved.version != 1 || saved.rules_revision != "verse-chamber-owned-v2" {
             return Err("Unsupported world checkpoint".into());
         }
         let mut world = saved.world;
         world.scene.validate()?;
         world.simulation.validate()?;
         world.controls.validate()?;
+        world.character.validate()?;
+        for character in world.npc_characters.values() {
+            character.validate()?;
+        }
         if !world.time.is_finite()
             || world.time < 0.
             || !world.player.is_finite()
@@ -316,6 +329,32 @@ impl Game {
             Some("original-chamber-v1") => crate::room::colliders(),
             Some(_) => return Err("Unsupported scene collision profile".into()),
         };
+        world.query_scene = if world.colliders.is_empty() {
+            Default::default()
+        } else {
+            crate::room::query_scene(world.admission.actor().instance)?
+        };
+        if !world.character.feet.is_finite()
+            || !world.character.vertical_speed.is_finite()
+            || world.npc_characters.iter().any(|(id, character)| {
+                !world.lives.contains_key(id)
+                    || !character.feet.is_finite()
+                    || !character.vertical_speed.is_finite()
+            })
+            || world
+                .previous_npc
+                .iter()
+                .any(|(id, pose)| !world.lives.contains_key(id) || !pose.is_finite())
+            || !world.previous_player.is_finite()
+            || world.physics_clock.dt != 1. / 120.
+            || world.physics_clock.max_steps != 12
+            || !world.physics_clock.accumulator.is_finite()
+            || !(0. ..world.physics_clock.dt).contains(&world.physics_clock.accumulator)
+            || !world.physics_clock.dropped.is_finite()
+            || world.physics_clock.dropped < 0.
+        {
+            return Err("Invalid world movement checkpoint".into());
+        }
         world.simulation.set_colliders(world.colliders.clone());
         Ok(world)
     }
@@ -326,15 +365,17 @@ impl Game {
             p.z = p.z.clamp(-25., 12.);
             return Ok(p);
         }
-        let center = position.as_dvec3() + glam::DVec3::Y * 0.9;
-        let moved = physics::kinematic::move_and_slide(
-            center,
-            glam::DVec3::new(0.35, 0.9, 0.35),
+        Ok(physics::character::slide(
+            &self.query_scene,
+            physics::queries::Filter::blocking(self.admission.actor().instance),
+            physics::character::Settings::default(),
+            position.as_dvec3(),
             delta.as_dvec3(),
-            &self.colliders,
-        )?;
-        Ok((moved - glam::DVec3::Y * 0.9).as_vec3())
+            true,
+        )?
+        .as_vec3())
     }
+
     pub(super) fn move_hostile(
         &self,
         position: Vec3,
@@ -357,11 +398,15 @@ impl Game {
         };
         let delta = waypoint - center;
         let movement = delta.normalize_or_zero() * delta.length().min(distance as f64);
-        Ok(
-            (physics::kinematic::move_and_slide(center, half, movement, &self.colliders)?
-                - glam::DVec3::Y * 0.9)
-                .as_vec3(),
-        )
+        Ok(physics::character::slide(
+            &self.query_scene,
+            physics::queries::Filter::blocking(self.admission.actor().instance),
+            physics::character::Settings::default(),
+            position.as_dvec3(),
+            movement,
+            true,
+        )?
+        .as_vec3())
     }
     pub(super) fn attack_clear(&self, start: Vec3, end: Vec3) -> bool {
         physics::kinematic::sweep_box(
@@ -431,8 +476,21 @@ impl Game {
             Some(_) => return Err("Unsupported scene collision profile".into()),
         };
         simulation.set_colliders(colliders.clone());
+        let query_scene = if colliders.is_empty() {
+            Default::default()
+        } else {
+            crate::room::query_scene(0)?
+        };
         Ok(Self {
             pending_movement: None,
+            pending_jump: false,
+            character: physics::character::Character::new(player.as_dvec3()),
+            npc_characters: BTreeMap::new(),
+            physics_clock: physics::FixedStep::new(1. / 120., 12),
+            physics_steps: 0,
+            previous_player: player,
+            previous_npc: BTreeMap::new(),
+            query_scene,
             events: vec![],
             event_serial: 0,
             emitted_cues: Default::default(),
@@ -539,6 +597,10 @@ impl Game {
                 } else {
                     109
                 };
+                if !self.colliders.is_empty() && self.character.support.is_none() {
+                    a.animation = 37;
+                    a.animation_time = 0.2;
+                }
                 if let Some(cast) = &self.casting {
                     a.animation = 52;
                     a.animation_time = self.time - cast.started;
@@ -678,6 +740,17 @@ impl Game {
         {
             return Err("Invalid play input".into());
         }
+        let actor_positions = self.snapshot().actors;
+        self.previous_npc = self
+            .ids
+            .iter()
+            .filter_map(|(id, sim_id)| {
+                actor_positions
+                    .iter()
+                    .find(|actor| actor.id == *sim_id)
+                    .map(|actor| (*id, Vec3::from(actor.pos)))
+            })
+            .collect();
         let previous = self
             .encounter
             .as_ref()
@@ -736,7 +809,37 @@ impl Game {
             self.message = "Cast interrupted by movement".into();
         }
         let previous_player = self.player;
-        self.player = self.move_player(self.player, delta)?;
+        self.previous_player = self.player;
+        let jump = std::mem::take(&mut self.pending_jump) && !dead;
+        let physics_steps = self.physics_clock.advance(dt as f64);
+        if self.colliders.is_empty() {
+            self.player = self.move_player(self.player, delta)?;
+        } else {
+            if self.character.feet.as_vec3() != self.player {
+                self.character = physics::character::Character::new(self.player.as_dvec3());
+            }
+            let steps = physics_steps;
+            let velocity = if dt > 0. {
+                (delta / dt).as_dvec3()
+            } else {
+                glam::DVec3::ZERO
+            };
+            for step in 0..steps {
+                self.character.step(
+                    &self.query_scene,
+                    physics::queries::Filter::blocking(self.admission.actor().instance),
+                    physics::character::Settings::default(),
+                    velocity,
+                    jump && step == 0,
+                    self.physics_clock.dt,
+                )?;
+            }
+            self.physics_steps = self
+                .physics_steps
+                .checked_add(steps as u64)
+                .ok_or("Physics step counter exhausted")?;
+            self.player = self.character.feet.as_vec3();
+        }
         let travelled = self.player.distance(previous_player);
         self.motion_clock += travelled / speed;
         self.moving = travelled > 0.00001;
@@ -765,7 +868,32 @@ impl Game {
                             .unwrap()
                             .pos,
                     );
-                    self.move_player(previous, desired - previous)?
+                    let character = self
+                        .npc_characters
+                        .entry(a.actor.id)
+                        .or_insert_with(|| physics::character::Character::new(previous.as_dvec3()));
+                    if character.feet.as_vec3() != previous {
+                        *character = physics::character::Character::new(previous.as_dvec3());
+                    }
+                    let displacement = (desired - previous).as_dvec3();
+                    let velocity = if dt > 0. {
+                        displacement / dt as f64
+                    } else {
+                        glam::DVec3::ZERO
+                    };
+                    let velocity =
+                        glam::DVec3::new(velocity.x, 0., velocity.z).clamp_length_max(100.);
+                    for _ in 0..physics_steps {
+                        character.step(
+                            &self.query_scene,
+                            physics::queries::Filter::blocking(self.admission.actor().instance),
+                            physics::character::Settings::default(),
+                            velocity,
+                            false,
+                            self.physics_clock.dt,
+                        )?;
+                    }
+                    character.feet.as_vec3()
                 };
                 self.simulation
                     .place_chamber_actor(*id, position.to_array(), a.actor.yaw)?;
@@ -935,6 +1063,8 @@ impl Game {
             self.observed_health.insert(source, actor.health as i32);
             self.controls.forget_actor(old);
             self.npc_deaths.remove(&actor.id);
+            self.npc_characters.remove(&actor.id);
+            self.previous_npc.remove(&actor.id);
             self.npc_motion.remove(&actor.id);
             self.npc_motion_clock.remove(&actor.id);
             self.npc_yaw.remove(&actor.id);
@@ -1049,6 +1179,36 @@ impl Game {
             .map_err(|e| format!("Command refused: {e:?}"))?;
         self.submit(self.admission.controller(), command)
     }
+    pub fn jump(&mut self) -> Result<(), String> {
+        let command = self
+            .admission
+            .command(self.authority_tick, crate::Intent::Jump)
+            .map_err(|e| format!("Jump refused: {e:?}"))?;
+        self.submit(self.admission.controller(), command)
+    }
+    /// Produces a read-only pose between the previous and current authority ticks.
+    pub fn interpolated_frame(&self, alpha: f32) -> Result<Frame, String> {
+        if !alpha.is_finite() || !(0. ..=1.).contains(&alpha) {
+            return Err("Invalid presentation interpolation".into());
+        }
+        let mut frame = self.frame();
+        if self.unlocked() {
+            let pose = self.previous_player.lerp(self.player, alpha);
+            let delta = pose - self.player;
+            for actor in &mut frame.actors {
+                if actor.actor.model == "adventurer" {
+                    actor.actor.position = pose;
+                } else if actor.health > 0 {
+                    if let Some(previous) = self.previous_npc.get(&actor.actor.id) {
+                        actor.actor.position = previous.lerp(actor.actor.position, alpha);
+                    }
+                }
+            }
+            frame.eye += delta;
+            frame.target += delta;
+        }
+        Ok(frame)
+    }
     /// Fences queued commands when switching between human and agent control.
     pub fn control_handoff(&mut self, agent: bool) -> Result<(), String> {
         self.admission
@@ -1056,6 +1216,7 @@ impl Game {
             .map_err(|e| format!("Control handoff refused: {e:?}"))?;
         self.agent_controlled = agent;
         self.pending_movement = None;
+        self.pending_jump = false;
         Ok(())
     }
     /// Applies a controller command through the same local admission boundary.
@@ -1066,6 +1227,13 @@ impl Game {
     ) -> Result<(), String> {
         if !self.unlocked() || self.snapshot().player.hp == 0 {
             return Err("The adventurer cannot act in the current state".into());
+        }
+        if matches!(command.intent, crate::Intent::Jump) {
+            self.admission
+                .admit(controller, &command, self.authority_tick)
+                .map_err(|e| format!("Command refused: {e:?}"))?;
+            self.pending_jump = true;
+            return Ok(());
         }
         if let crate::Intent::Move { axes, yaw } = command.intent {
             let tick = self.authority_tick;
@@ -1130,6 +1298,16 @@ impl Game {
             } else {
                 None
             };
+            if let Some(destination) = teleport {
+                let mut check = self.character;
+                check.teleport(
+                    &self.query_scene,
+                    physics::queries::Filter::blocking(self.admission.actor().instance),
+                    physics::character::Settings::default(),
+                    destination.as_dvec3(),
+                )?;
+            }
+            let before_utility = self.snapshot().actors;
             let colliders = &self.colliders;
             let origin = self.player + Vec3::Y * 1.4;
             let destination = self.controls.cast_with_visibility(
@@ -1150,7 +1328,30 @@ impl Game {
                     .is_ok_and(|hit| hit.is_none())
                 },
             )?;
+            if spell == Utility::Thunderwave && !self.colliders.is_empty() {
+                for actor in self.snapshot().actors {
+                    if let Some(before) = before_utility.iter().find(|old| old.id == actor.id) {
+                        let start = Vec3::from(before.pos);
+                        let solved = self.move_player(start, Vec3::from(actor.pos) - start)?;
+                        self.simulation.place_chamber_actor(
+                            actor.id,
+                            solved.to_array(),
+                            actor.yaw,
+                        )?;
+                        if let Some((id, _)) =
+                            self.ids.iter().find(|(_, sim_id)| **sim_id == actor.id)
+                        {
+                            self.npc_characters
+                                .insert(*id, physics::character::Character::new(solved.as_dvec3()));
+                        }
+                    }
+                }
+            }
             self.player = destination;
+            if spell == Utility::MistyStep {
+                self.character = physics::character::Character::new(destination.as_dvec3());
+                self.previous_player = destination;
+            }
             self.record_ability(ability);
             self.last_cast = Some((ability, self.time));
             self.message = format!("{}: {}", ability.label(), ability.description());
@@ -1892,5 +2093,76 @@ mod checkpoint_tests {
         assert!(game.submit(crate::Controller(1), old).is_err());
         assert_eq!(game.actor_life(2), Some(old_life.next().unwrap()));
         game.activate(Ability::Shield).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod grounded_movement_tests {
+    use super::*;
+    fn game() -> Game {
+        let scene =
+            Scene::from_json(include_bytes!("../../../assets/verse/original/ritual.json")).unwrap();
+        let mut game = Game::new(scene).unwrap();
+        game.time = 30.;
+        game
+    }
+    #[test]
+    fn four_substeps_jump_checkpoint_and_read_only_interpolation() {
+        let mut game = game();
+        game.tick(1. / 30., [0.; 2]).unwrap();
+        assert_eq!(game.physics_steps, 4);
+        game.jump().unwrap();
+        game.tick(1. / 30., [0.; 2]).unwrap();
+        assert!(game.player.y > 0.1);
+        assert_eq!(
+            game.frame()
+                .actors
+                .iter()
+                .find(|a| a.actor.model == "adventurer")
+                .unwrap()
+                .animation,
+            37
+        );
+        let before = game.checkpoint().unwrap();
+        let frame = game.interpolated_frame(0.5).unwrap();
+        let position = frame
+            .actors
+            .iter()
+            .find(|a| a.actor.model == "adventurer")
+            .unwrap()
+            .actor
+            .position;
+        assert!(position.y > game.previous_player.y && position.y < game.player.y);
+        assert_eq!(before, game.checkpoint().unwrap());
+        let mut restored = Game::restore(&before).unwrap();
+        for _ in 0..120 {
+            game.tick(1. / 30., [0.; 2]).unwrap();
+            restored.tick(1. / 30., [0.; 2]).unwrap();
+        }
+        assert_eq!(game.checkpoint().unwrap(), restored.checkpoint().unwrap());
+        assert!(game.player.y < 0.001);
+        game.jump().unwrap();
+        game.control_handoff(false).unwrap();
+        game.tick(1. / 30., [0.; 2]).unwrap();
+        assert!(game.player.y < 0.001);
+    }
+    #[test]
+    fn frame_rates_produce_identical_grounded_authority() {
+        let mut poses = vec![];
+        for hz in [30, 60, 144] {
+            let mut game = game();
+            let mut schedule = verse_engine::core::FixedSchedule::new(30, 3).unwrap();
+            for _ in 0..hz * 2 {
+                let batch = schedule.advance(1. / hz as f64).unwrap();
+                for _ in 0..batch.steps {
+                    game.tick(batch.seconds, [0.25, 1.]).unwrap();
+                }
+            }
+            assert_eq!(game.physics_steps, 240);
+            assert_eq!(game.physics_clock.dropped, 0.);
+            poses.push(game.player);
+        }
+        assert_eq!(poses[0], poses[1]);
+        assert_eq!(poses[1], poses[2]);
     }
 }

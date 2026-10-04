@@ -8,6 +8,7 @@ pub struct Controller(pub u64);
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Intent<A> {
+    Jump,
     Move {
         axes: [f32; 2],
         yaw: f32,
@@ -113,6 +114,7 @@ impl Admission {
             return Err(Refusal::WrongTick);
         }
         match &command.intent {
+            Intent::Jump => {}
             Intent::Move { axes, yaw } => {
                 if !yaw.is_finite() || axes.iter().any(|v| !v.is_finite() || v.abs() > 1.) {
                     return Err(Refusal::InvalidIntent);
