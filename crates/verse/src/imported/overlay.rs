@@ -279,6 +279,27 @@ pub fn damage_numbers(
         height,
     );
 }
+fn combat_bursts(
+    numbers: &[verse_world::play::DamageNumber],
+    time: f32,
+) -> Vec<(&verse_world::play::DamageNumber, i64)> {
+    let mut bursts: BTreeMap<(u64, bool), (&verse_world::play::DamageNumber, i64)> =
+        BTreeMap::new();
+    for number in numbers {
+        if !(0.0..1.35).contains(&(time - number.at)) {
+            continue;
+        }
+        let burst = bursts
+            .entry((number.actor, number.incoming))
+            .or_insert((number, 0));
+        burst.1 += i64::from(number.amount);
+        if number.at > burst.0.at {
+            burst.0 = number;
+        }
+    }
+    bursts.into_values().collect()
+}
+
 /// Shares native floating text rendering with admitted remote damage values.
 pub fn damage_numbers_from_values(
     ui: &mut UiBatch,
@@ -295,7 +316,26 @@ pub fn damage_numbers_from_values(
         .font("combat")
         .layout_at_scale(720.0 / height)
         .unwrap();
-    for number in numbers {
+    let mut bursts = combat_bursts(numbers, time);
+    bursts.sort_by(|(a, _), (b, _)| {
+        let distance = |number: &verse_world::play::DamageNumber| {
+            frame
+                .actors
+                .iter()
+                .find(|a| a.actor.id == number.actor)
+                .map_or(number.position, |a| a.actor.position)
+                .distance_squared(frame.target)
+        };
+        (!a.incoming)
+            .cmp(&(!b.incoming))
+            .then_with(|| distance(a).total_cmp(&distance(b)))
+            .then_with(|| a.actor.cmp(&b.actor))
+    });
+    let mut occupied: Vec<[f32; 4]> = Vec::new();
+    for (number, amount) in bursts {
+        if occupied.len() == 8 {
+            break;
+        }
         let age = time - number.at;
         if !(0.0..1.35).contains(&age) {
             continue;
@@ -315,10 +355,20 @@ pub fn damage_numbers_from_values(
             continue;
         }
         let alpha = ((1.35 - age) / 0.35).clamp(0.0, 1.0);
-        let text = format!("-{}", number.amount);
-        let lane = (number.serial % 3) as f32 - 1.0;
-        let x = (ndc.x * 0.5 + 0.5) * width + lane * 24.0 - font.measure(&text) * 0.5;
+        let text = format!("-{amount}");
+        let text_width = font.measure(&text);
+        let x = (ndc.x * 0.5 + 0.5) * width - text_width * 0.5;
         let y = (0.5 - ndc.y * 0.5) * height - age * 55.0;
+        let bounds = [x - 4., y - 4., x + text_width + 4., y + 32.];
+        if occupied.iter().any(|other| {
+            bounds[0] < other[2]
+                && bounds[2] > other[0]
+                && bounds[1] < other[3]
+                && bounds[3] > other[1]
+        }) {
+            continue;
+        }
+        occupied.push(bounds);
         for (dx, dy) in [(-2.0, 0.0), (2.0, 0.0), (0.0, -2.0), (0.0, 2.0)] {
             ui.text(&font, x + dx, y + dy, &text, [0.0, 0.0, 0.0, alpha]);
         }
@@ -431,6 +481,38 @@ mod tests {
         );
         assert!(expired.vertices.is_empty());
     }
+    #[test]
+    fn combat_bursts_sum_health_loss_without_mixing_incoming_or_expired_hits() {
+        let number = |actor, amount, at, incoming| verse_world::play::DamageNumber {
+            actor,
+            amount,
+            at,
+            incoming,
+            position: glam::Vec3::ZERO,
+            serial: 0,
+        };
+        let values = [
+            number(1, 45, 4.8, false),
+            number(1, 45, 4.9, false),
+            number(1, 20, 4.9, true),
+            number(1, 900, 2., false),
+            number(1, 900, 6., false),
+            number(2, 13, 4.9, false),
+        ];
+        let bursts = combat_bursts(&values, 5.);
+        assert_eq!(bursts.len(), 3);
+        assert!(bursts.iter().any(|(number, total)| number.actor == 1
+            && !number.incoming
+            && *total == 90
+            && number.at == 4.9));
+        assert!(
+            bursts
+                .iter()
+                .any(|(number, total)| number.actor == 1 && number.incoming && *total == 20)
+        );
+        assert!(combat_bursts(&values, 8.).is_empty());
+    }
+
     #[test]
     fn crowded_plates_stay_anchored_and_selected_target_has_priority() {
         let scene = verse_engine::director::Scene::from_json(include_bytes!(
