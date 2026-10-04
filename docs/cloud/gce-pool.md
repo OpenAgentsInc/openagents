@@ -109,8 +109,24 @@ instead.
 A run starts in a session of its own on the host (`setsid`), writing its
 events to `~/.oa-pool/runs/<run>/out`; the orchestrator follows that file,
 and a dropped connection is followed again from the next unread line (up to
-five times, and not when the host is gone). Ctrl-C kills each running flow's
-session on its host.
+five times). If GCE confirms that the host is gone or no longer running,
+the issue resumes on another host in the same granted pool. When no slot is
+available, the orchestrator starts a replacement within `--max-hosts`, trying
+each spot zone before falling back to on demand. After three lost hosts, it
+stops recovery and reports failure. A failed GCE listing or an SSH disconnect
+alone never launches a duplicate run.
+
+Each loss appends a `preempted` record to `runs.jsonl` before replacement starts,
+with the host, task, timestamp, wall time, and cost. The final record includes
+those records in `preemptions`. Wall time includes recovery; estimated cost
+sums the run's slot share on each host. The replacement takes only the lost
+task's claim and fetches its `coder/progress-<task8>` or
+`coder/stranded-<task8>` branch (also accepting a full-task progress branch).
+It restores the saved diff onto the latest default branch before the engine
+starts, so the full recovered change passes the normal checks and landing.
+When neither branch exists, it starts from scratch. A changed claim, fetch
+error, or restoration conflict refuses recovery rather than discarding work.
+Ctrl-C kills each running flow's session on its host and stops recovery.
 
 ## Credentials
 

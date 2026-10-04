@@ -294,17 +294,8 @@ async fn a_replaced_program_still_starts_again_after_a_project_change() {
         assert!(Instant::now() < deadline, "the host never started again");
         std::thread::sleep(Duration::from_millis(50));
     }
-    answers("after starting again");
-    let listed =
-        control(&socket, serde_json::json!({"kind": "project_list"})).expect("the projects");
-    assert_eq!(listed["projects"][0]["label"], "site", "{listed}");
-    assert!(serve.try_wait().unwrap().is_none(), "the host exited");
-    let text = std::fs::read_to_string(&log).unwrap();
-    assert!(!text.contains("cannot start again"), "{text}");
-    assert_eq!(text.matches("control socket").count(), 2, "{text}");
-
-    // The host stops on `SIGTERM` once it says it serves: the control
-    // socket answers a moment before its stop handler is installed.
+    // The inherited control socket can answer before startup logs are
+    // written. Wait for startup before checking the logs or sending SIGTERM.
     let deadline = Instant::now() + Duration::from_secs(30);
     while std::fs::read_to_string(&log)
         .unwrap_or_default()
@@ -315,6 +306,15 @@ async fn a_replaced_program_still_starts_again_after_a_project_change() {
         assert!(Instant::now() < deadline, "the host never served again");
         std::thread::sleep(Duration::from_millis(50));
     }
+    answers("after starting again");
+    let listed =
+        control(&socket, serde_json::json!({"kind": "project_list"})).expect("the projects");
+    assert_eq!(listed["projects"][0]["label"], "site", "{listed}");
+    assert!(serve.try_wait().unwrap().is_none(), "the host exited");
+    let text = std::fs::read_to_string(&log).unwrap();
+    assert!(!text.contains("cannot start again"), "{text}");
+    assert_eq!(text.matches("control socket").count(), 2, "{text}");
+
     let pid = libc::pid_t::try_from(serve.id()).unwrap();
     // SAFETY: `kill` takes two integers; the process is this test's child.
     assert_eq!(unsafe { libc::kill(pid, libc::SIGTERM) }, 0);

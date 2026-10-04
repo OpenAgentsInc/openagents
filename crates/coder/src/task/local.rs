@@ -283,6 +283,34 @@ pub(crate) fn git_out(dir: &Path, args: &[&str]) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
+/// Applies the saved change onto the current baseline without replacing newer
+/// upstream files. Conflicts refuse recovery before an engine starts.
+fn restore_progress(worktree: &Path, saved: &str) -> Result<(), String> {
+    use std::io::Write;
+    use std::process::Stdio;
+    let base = git_out(worktree, &["merge-base", "HEAD", saved])?;
+    let patch = git_out(worktree, &["diff", "--binary", base.trim(), saved])?;
+    if patch.trim().is_empty() {
+        return Ok(());
+    }
+    let mut child = git()
+        .arg("-C")
+        .arg(worktree)
+        .args(["apply", "--3way", "--index"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    let sent = child.stdin.take().unwrap().write_all(patch.as_bytes());
+    let output = child.wait_with_output().map_err(|e| e.to_string())?;
+    sent.map_err(|e| e.to_string())?;
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).into_owned());
+    }
+    Ok(())
+}
+
 /// The Git checkout `dir` is in.
 ///
 /// # Errors
@@ -1068,6 +1096,34 @@ impl Local {
         self.start_full(dir, base, title, prompt, thread, &[], None)
     }
 
+    /// Starts an issue task from `base`, restoring the tree of a fetched
+    /// progress commit before the engine starts. The baseline stays at `base`,
+    /// so checks and landing include the recovered change.
+    ///
+    /// # Errors
+    /// The saved tree cannot be restored, or the task cannot start.
+    pub fn start_recovered(
+        &self,
+        dir: &Path,
+        base: &str,
+        saved: &str,
+        title: &str,
+        prompt: &str,
+        thread: Option<&str>,
+    ) -> Result<Record, String> {
+        self.start_with(
+            dir,
+            Some(base),
+            title,
+            prompt,
+            thread,
+            &[],
+            None,
+            Shape::default(),
+            Some(saved),
+        )
+    }
+
     /// [`Local::start`] with the images a chat on this computer attached:
     /// their exact bytes are kept with the task ([`super::media`]) and the
     /// task's intent names them, so the run's grant admits exactly those
@@ -1132,6 +1188,7 @@ impl Local {
             &[],
             Some(requested),
             shape,
+            None,
         )
     }
 
@@ -1155,6 +1212,7 @@ impl Local {
             images,
             requested,
             Shape::default(),
+            None,
         )
     }
 
@@ -1169,6 +1227,7 @@ impl Local {
         images: &[super::media::wire::Upload],
         requested: Option<Provider>,
         shape: Shape,
+        recovered: Option<&str>,
     ) -> Result<Record, String> {
         let began = Instant::now();
         let references: Vec<_> = images.iter().map(|image| image.reference.clone()).collect();
@@ -1281,6 +1340,12 @@ impl Local {
                 worktree
             }
         };
+        if let Some(saved) = recovered {
+            if let Err(why) = restore_progress(&worktree, saved) {
+                self.remove_worktree(&checkout.top, &worktree);
+                return Err(format!("Git could not restore the pushed work: {why}"));
+            }
+        }
         // The repository's own setup, in the task's worktree and before
         // its engine starts; a spare never has it (#10297).
         let setting_up = Instant::now();
@@ -2720,6 +2785,31 @@ mod tests {
                 grant_digest: "sha256:held".into(),
             })
         }
+    }
+
+    #[test]
+    fn recovered_work_refuses_conflicts_and_preserves_binary_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let top = repo_with_file(dir.path(), "baseline");
+        let base = git_out(&top, &["rev-parse", "HEAD"]).unwrap();
+        let saved = commit(&top, "saved");
+        git_out(&top, &["reset", "--hard", base.trim()]).unwrap();
+        commit(&top, "upstream");
+        assert!(restore_progress(&top, saved.trim()).is_err());
+        git_out(&top, &["reset", "--hard", base.trim()]).unwrap();
+        let bytes = [0, 255, 128, 42, 0];
+        std::fs::write(top.join("binary.bin"), bytes).unwrap();
+        git_out(&top, &["add", "binary.bin"]).unwrap();
+        let saved = commit(&top, "baseline");
+        git_out(&top, &["reset", "--hard", base.trim()]).unwrap();
+        restore_progress(&top, saved.trim()).unwrap();
+        assert_eq!(std::fs::read(top.join("binary.bin")).unwrap(), bytes);
+        assert_eq!(
+            git_out(&top, &["diff", "--cached", "--name-only"])
+                .unwrap()
+                .trim(),
+            "binary.bin"
+        );
     }
 
     /// A repository with one file, `a.txt`, holding `text` at its one

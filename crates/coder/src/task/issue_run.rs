@@ -1030,6 +1030,47 @@ pub(crate) fn stranded_branch(task: &str) -> String {
     format!("coder/stranded-{}", &task[..8.min(task.len())])
 }
 
+/// Fetches only branches tied to the lost task. An unavailable remote is an
+/// error, not evidence that there was no pushed work.
+fn recovery_commit(top: &Path, task: &str) -> Result<Option<(String, String)>, String> {
+    if task.is_empty() || !task.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-') {
+        return Err("The lost task has an invalid identifier.".into());
+    }
+    let short = &task[..8.min(task.len())];
+    let branches = [
+        format!("coder/progress-{short}"),
+        stranded_branch(task),
+        format!("coder/progress-{task}"),
+    ];
+    let mut args = vec!["ls-remote", "--heads", "origin"];
+    let refs: Vec<String> = branches.iter().map(|b| format!("refs/heads/{b}")).collect();
+    args.extend(refs.iter().map(String::as_str));
+    let listed = local::git_out(top, &args)?;
+    for (branch, reference) in branches.iter().zip(&refs) {
+        if listed
+            .lines()
+            .any(|line| line.split_whitespace().nth(1) == Some(reference))
+        {
+            local::git_out(top, &["fetch", "--no-tags", "origin", reference])?;
+            let commit = local::git_out(top, &["rev-parse", "FETCH_HEAD^{commit}"])?;
+            return Ok(Some((branch.clone(), commit.trim().to_owned())));
+        }
+    }
+    Ok(None)
+}
+
+/// A replacement may take only the claim of the task on the confirmed lost host.
+fn recovery_claim(issue: &Issue, task: &str) -> bool {
+    active_claim(issue).is_none_or(|claim| {
+        claim
+            .body
+            .split_once(CLAIM_MARK)
+            .and_then(|(_, rest)| rest.strip_prefix(" task="))
+            .and_then(|rest| rest.split_once(" -->"))
+            .is_some_and(|(id, _)| id == task)
+    })
+}
+
 /// The task store's landing lock file, held while a flow fetches, rebases
 /// and pushes (never while its checks run, #10391), and whether another run
 /// holds it now (then the caller says so and waits with `File::lock`).
@@ -1145,6 +1186,21 @@ impl Runner {
         reference: &Reference,
         thread: Option<&str>,
     ) -> Result<Started, Refused> {
+        self.begin_recovering(dir, reference, thread, None)
+    }
+
+    /// Starts a replacement for a task whose cloud host the orchestrator
+    /// confirmed was lost. Other tasks' claims remain protected.
+    ///
+    /// # Errors
+    /// The claim changed, pushed work cannot be fetched, or the flow cannot start.
+    pub fn begin_recovering(
+        &self,
+        dir: &Path,
+        reference: &Reference,
+        thread: Option<&str>,
+        lost_task: Option<&str>,
+    ) -> Result<Started, Refused> {
         let checkout = local::checkout(dir).map_err(Refused::Failed)?;
         let mut policy = Policy::load(&checkout.top).map_err(Refused::Failed)?;
         if let Some(land) = self.land {
@@ -1172,6 +1228,11 @@ impl Runner {
         })?;
         if !issue.open {
             return Err(Refused::Closed(format!("{repository}#{number} is closed.")));
+        }
+        if lost_task.is_some_and(|task| !recovery_claim(&issue, task)) {
+            return Err(Refused::Claimed(
+                "Another task claimed the issue after the host was lost.".into(),
+            ));
         }
         let mut notes = Vec::new();
         let note = |notes: &mut Vec<Note>, text: String| {
@@ -1205,7 +1266,14 @@ impl Runner {
             policy.claim_hours,
             &policy.project,
         ) {
-            if let Some(recovery) = inactive_own_claim(self.local.store(), &repository, &issue) {
+            if lost_task.is_some() {
+                note(
+                    &mut notes,
+                    "Resuming after the previous cloud host was lost.".into(),
+                );
+            } else if let Some(recovery) =
+                inactive_own_claim(self.local.store(), &repository, &issue)
+            {
                 note(&mut notes, recovery);
             } else if self.skip_claimed {
                 return Err(Refused::Claimed(why));
@@ -1224,12 +1292,27 @@ impl Runner {
             Refused::Failed(format!("Git could not fetch origin/{branch}: {why}"))
         })?;
         let base = format!("origin/{branch}");
-        let prompt = prompt(&issue, &self.linked(&repository, &issue));
+        let saved = lost_task
+            .map(|task| recovery_commit(&checkout.top, task))
+            .transpose()
+            .map_err(Refused::Failed)?
+            .flatten();
+        let mut prompt = prompt(&issue, &self.linked(&repository, &issue));
+        if let Some((branch, _)) = &saved {
+            let text = format!(
+                "Recovered pushed work from `{branch}` after the cloud host was lost. Review it and complete the issue; the full recovered change must pass checks."
+            );
+            note(&mut notes, text.clone());
+            prompt.push_str(&format!("\n\n{text}\n"));
+        }
+
         let title = format!("#{number}: {}", issue.title);
         let local = Arc::clone(&self.local);
-        let record = local
-            .start_from(dir, Some(&base), &title, &prompt, thread)
-            .map_err(Refused::Failed)?;
+        let record = match &saved {
+            Some((_, commit)) => local.start_recovered(dir, &base, commit, &title, &prompt, thread),
+            None => local.start_from(dir, Some(&base), &title, &prompt, thread),
+        }
+        .map_err(Refused::Failed)?;
         let land = match policy.land {
             Land::Main => format!("lands it on `{branch}` when the checks pass"),
             Land::PullRequest => "opens a pull request when the checks pass".to_owned(),

@@ -251,3 +251,19 @@ fn reported_subcommands_show_usage_flags_and_an_example_before_parsing() {
         );
     }
 }
+
+#[test]
+fn gce_work_help_explains_recovery_and_on_demand_fallback() {
+    let (code, text, stderr) = run(&["chat", "work", "--help"]);
+    assert_eq!(code, Some(0), "{stderr}");
+    for detail in [
+        "lost host resumes",
+        "progress or stranded branch",
+        "from scratch",
+        "fall back to on demand",
+        "Preemptions",
+        "run record",
+    ] {
+        assert!(text.contains(detail), "Missing {detail}: {text}");
+    }
+}

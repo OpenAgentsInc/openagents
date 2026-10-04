@@ -113,7 +113,10 @@ pub(crate) const USAGE: &str = "usage: openagents chat COMMAND [OPTIONS]
         pool grows within the grant's --max-hosts): the same issue flow
         runs and lands on a pool host, its events stream here, and its wall
         time and estimated cost go in a comment on the issue. Hosts delete
-        themselves when idle. Without a live grant it refuses; it never
+        themselves when idle. A lost host resumes on another pool host from
+        its pushed progress or stranded branch, or from scratch. When spot
+        capacity is unavailable, new hosts fall back to on demand. Preemptions
+        go in the run record. Without a live grant it refuses; it never
         runs elsewhere. Engine logins are API keys (Codex's OpenAI key and
         Grok Build's XAI_API_KEY), as for boat; docs/cloud/gce-pool.md.
 Every command also takes --scratch, --local, and --socket PATH. When this

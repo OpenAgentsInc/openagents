@@ -611,6 +611,15 @@ pub(crate) struct Started {
 
 /// Creates one host of `pool` in the first zone with capacity, spot first.
 fn create(pool: &Pool, public_key: &str) -> Result<Host, String> {
+    create_with(pool, public_key, &zones(), gcloud)
+}
+
+fn create_with(
+    pool: &Pool,
+    public_key: &str,
+    zones: &[String],
+    mut call: impl FnMut(&str, &[&str]) -> Result<String, String>,
+) -> Result<Host, String> {
     let name = format!("oa-pool-{}-{}", pool.pool, word(4));
     let dir = std::env::temp_dir().join(format!("oa-pool-{}", word(8)));
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -626,7 +635,7 @@ fn create(pool: &Pool, public_key: &str) -> Result<Host, String> {
     let mut last = String::new();
     let result = 'found: {
         for model in models {
-            for zone in zones() {
+            for zone in zones {
                 let mut args: Vec<String> = [
                     "compute",
                     "instances",
@@ -673,7 +682,7 @@ fn create(pool: &Pool, public_key: &str) -> Result<Host, String> {
                     args.push("--provisioning-model=SPOT".into());
                 }
                 let refs: Vec<&str> = args.iter().map(String::as_str).collect();
-                match gcloud(&pool.project, &refs) {
+                match call(&pool.project, &refs) {
                     Ok(text) => {
                         let listing: Value =
                             serde_json::from_str(&text).unwrap_or(Value::Array(Vec::new()));
@@ -692,14 +701,14 @@ fn create(pool: &Pool, public_key: &str) -> Result<Host, String> {
         }
         Err(format!(
             "no zone in [{}] had capacity for {}: {last}",
-            zones().join(" "),
+            zones.join(" "),
             pool.machine
         ))
     };
     let _ = std::fs::remove_dir_all(&dir);
     let host = result?;
     // The host's own account may delete this instance and nothing else.
-    if let Err(error) = gcloud(
+    if let Err(error) = call(
         &pool.project,
         &[
             "compute",
@@ -1200,6 +1209,37 @@ mod tests {
         assert_eq!(hosts[0].machine, "c3-standard-8");
         assert!(hosts[0].spot);
         assert_eq!(hosts[0].address.as_deref(), Some("10.128.0.9"));
+    }
+
+    #[test]
+    fn exhausted_spot_zones_fall_back_to_on_demand() {
+        let pool = Pool::grant(None, "c3-standard-8", true, 1, 10);
+        let mut calls = Vec::new();
+        let zones = vec!["us-central1-a".into(), "us-central1-b".into()];
+        let host = create_with(&pool, "ssh-ed25519 fake", &zones, |_, args| {
+            if args.get(2) == Some(&"add-iam-policy-binding") {
+                return Ok(String::new());
+            }
+            let zone = args[args.iter().position(|a| *a == "--zone").unwrap() + 1];
+            let spot = args.contains(&"--provisioning-model=SPOT");
+            calls.push((zone.to_owned(), spot));
+            if spot {
+                return Err("ZONE_RESOURCE_POOL_EXHAUSTED".into());
+            }
+            Ok(json!([{"name": args[3], "zone": zone, "status": "RUNNING",
+                "machineType": "c3-standard-8", "scheduling": {"provisioningModel": "STANDARD"}}])
+            .to_string())
+        })
+        .unwrap();
+        assert!(!host.spot);
+        assert_eq!(
+            calls,
+            [
+                ("us-central1-a".into(), true),
+                ("us-central1-b".into(), true),
+                ("us-central1-a".into(), false)
+            ]
+        );
     }
 
     #[test]

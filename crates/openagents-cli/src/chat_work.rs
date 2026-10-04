@@ -330,25 +330,30 @@ fn worker(
         repository: Some(repository.to_owned()),
         number: issue,
     };
-    let started = match runner.begin(dir, &reference, Some(&thread)) {
-        Ok(started) => started,
-        Err(refused) => {
-            let outcome = match refused {
-                Refused::Claimed(_) => "skipped",
-                Refused::Closed(_) => "closed",
-                Refused::Failed(_) => "not_started",
-            };
-            let _ = sender.send(Told::Done {
-                issue,
-                outcome: outcome.into(),
-                message: refused.to_string(),
-                thread: None,
-                task: None,
-                commits: Vec::new(),
-            });
-            return;
-        }
-    };
+    let lost_task = (std::env::var("OPENAGENTS_CODER_PLACEMENT").as_deref() == Ok("gce"))
+        .then(|| std::env::var("OPENAGENTS_CODER_RECOVER_TASK").ok())
+        .flatten();
+    let started =
+        match runner.begin_recovering(dir, &reference, Some(&thread), lost_task.as_deref()) {
+            Ok(started) => started,
+            Err(refused) => {
+                let outcome = match refused {
+                    Refused::Claimed(_) if lost_task.is_none() => "skipped",
+                    Refused::Claimed(_) => "not_started",
+                    Refused::Closed(_) => "closed",
+                    Refused::Failed(_) => "not_started",
+                };
+                let _ = sender.send(Told::Done {
+                    issue,
+                    outcome: outcome.into(),
+                    message: refused.to_string(),
+                    thread: None,
+                    task: None,
+                    commits: Vec::new(),
+                });
+                return;
+            }
+        };
     let task = started.record.task.clone();
     let _ = sender.send(Told::Started {
         issue,

@@ -1172,3 +1172,118 @@ fn only_a_checkout_with_a_github_origin_has_issues_to_work() {
     ]);
     assert!(super::on_github(&repo));
 }
+
+struct RecoveryLaunch;
+impl super::super::autostart::Launch for RecoveryLaunch {
+    fn launch(
+        &self,
+        _: &super::super::autostart::Engine,
+        _: &Path,
+        _: &Path,
+    ) -> Result<super::super::autostart::Launched, String> {
+        Ok(super::super::autostart::Launched {
+            owner_process: std::process::id(),
+            grant_digest: "sha256:fake".into(),
+        })
+    }
+}
+
+#[test]
+fn cloud_recovery_starts_from_pushed_work_or_scratch_and_checks_the_full_change() {
+    for saved_branch in [
+        None,
+        Some("coder/stranded-losttask"),
+        Some("coder/progress-losttask"),
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let (_, top) = committed_change(dir.path());
+        if let Some(branch) = saved_branch {
+            git(
+                &top,
+                &["push", "-q", "origin", &format!("HEAD:refs/heads/{branch}")],
+            );
+        }
+        // Upstream moved since the lost task started. Recovery must retain it.
+        git(&top, &["reset", "--hard", "origin/main"]);
+        std::fs::write(top.join("new-upstream.txt"), "new main\n").unwrap();
+        git(&top, &["add", "new-upstream.txt"]);
+        git(&top, &["commit", "-q", "-m", "new upstream"]);
+        git(&top, &["push", "-q", "origin", "HEAD:main"]);
+        let baseline = git(&top, &["rev-parse", "HEAD"]);
+        let claim = format!("Claimed. {CLAIM_MARK} task=losttask123 -->");
+        let local = Local::new(dir.path().join("tasks"))
+            .with_probe(|_| super::super::capacity::Connection::Connected)
+            .with_identify(|_| None)
+            .with_opencode_model(|| None)
+            .with_controller(std::env::current_exe().unwrap())
+            .with_launcher(Box::new(RecoveryLaunch));
+        let runner = Runner {
+            local: Arc::new(local),
+            tracker: Arc::new(Claimed {
+                comments: vec![claim],
+                posted: Mutex::new(vec![]),
+            }),
+            checks: Arc::new(NoChecks),
+            land: None,
+            skip_claimed: true,
+            now: || 1_000,
+            artifacts: None,
+        };
+        let reference = Reference {
+            repository: Some("acme/app".into()),
+            number: 42,
+        };
+        assert!(matches!(
+            runner.begin(&top, &reference, None),
+            Err(Refused::Claimed(_))
+        ));
+        let started = runner
+            .begin_recovering(&top, &reference, None, Some("losttask123"))
+            .unwrap_or_else(|e| panic!("{e}"));
+        let worktree = Path::new(&started.record.worktree);
+        assert_eq!(started.record.base, baseline);
+        assert_eq!(
+            std::fs::read_to_string(worktree.join("new-upstream.txt")).unwrap(),
+            "new main\n"
+        );
+        assert_eq!(worktree.join("fix.txt").exists(), saved_branch.is_some());
+        let staged = git(worktree, &["diff", "--cached", "--name-only"]);
+        assert_eq!(
+            staged,
+            if saved_branch.is_some() {
+                "fix.txt"
+            } else {
+                ""
+            }
+        );
+        if saved_branch.is_some() {
+            assert!(
+                load(runner.local.store(), &started.record.task)
+                    .unwrap()
+                    .notes
+                    .iter()
+                    .any(|n| n.text.contains("Recovered pushed work"))
+            );
+        }
+    }
+}
+
+#[test]
+fn cloud_recovery_never_takes_an_unrelated_claim_or_treats_remote_errors_as_scratch() {
+    let own = format!("Claimed. {CLAIM_MARK} task=losttask123 -->");
+    let other = format!("Claimed. {CLAIM_MARK} task=other -->");
+    assert!(recovery_claim(&issue(&[(&own, 100)]), "losttask123"));
+    assert!(!recovery_claim(&issue(&[(&other, 100)]), "losttask123"));
+    assert!(!recovery_claim(
+        &issue(&[("Claimed by another agent", 100)]),
+        "losttask123"
+    ));
+    let dir = tempfile::tempdir().unwrap();
+    let (_, top) = committed_change(dir.path());
+    git(
+        &top,
+        &["remote", "set-url", "origin", "/nonexistent/origin.git"],
+    );
+    assert!(recovery_commit(&top, "losttask123").is_err());
+    assert!(recovery_commit(&top, "../bad").is_err());
+}
