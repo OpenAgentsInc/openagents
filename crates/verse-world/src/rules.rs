@@ -534,7 +534,7 @@ impl Simulation {
         }
         Ok((Vec3::from(self.actors[&caster].pos) + Vec3::Y * 1.1).to_array())
     }
-    fn cast_at(
+    pub(crate) fn cast_at(
         &mut self,
         caster: u32,
         spell: Spell,
@@ -607,7 +607,7 @@ impl Simulation {
         let origin = self.release_origin(caster)?;
         self.launch_bow_at(caster, origin, direction)
     }
-    fn launch_bow_at(
+    pub(crate) fn launch_bow_at(
         &mut self,
         caster: u32,
         origin: [f32; 3],
@@ -920,6 +920,12 @@ impl Simulation {
             self.deaths.remove(&id);
         }
         Ok(())
+    }
+    pub(crate) fn player_resources(&self, id: u32) -> Option<&Player> {
+        self.players.get(&id).map(|p| &p.resources)
+    }
+    pub(crate) fn player_ids(&self) -> impl Iterator<Item = u32> + '_ {
+        self.players.keys().copied()
     }
     pub fn snapshot(&self) -> Snapshot {
         self.snapshot_for(0)

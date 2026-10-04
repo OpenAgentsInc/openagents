@@ -337,13 +337,15 @@ pub fn combat_lighting(game: &super::play::Game) -> super::lighting::Lighting {
         };
     lighting.time = game.time;
     let mut effects = Vec::new();
-    if let Some(position) = game.controls.light {
-        effects.push(Light {
-            position,
-            color: Vec3::new(1.0, 0.8, 0.4),
-            intensity: 55.0,
-            range: 10.0,
-        });
+    for (_, _, controls) in game.controlled_effects() {
+        if let Some(position) = controls.light {
+            effects.push(Light {
+                position,
+                color: Vec3::new(1.0, 0.8, 0.4),
+                intensity: 55.0,
+                range: 10.0,
+            });
+        }
     }
     for p in game.snapshot().projectiles {
         if p.kind == verse_world::rules::ProjectileKind::Bow {
@@ -389,15 +391,17 @@ pub fn combat_lighting(game: &super::play::Game) -> super::lighting::Lighting {
             range: if *kind == 1 { 15.0 } else { 7.0 },
         });
     }
-    if game.controls.shield > 0 && game.time < game.controls.shield_until {
-        effects.push(Light {
-            position: game.player + Vec3::Y * 1.3,
-            color: Vec3::new(0.08, 0.5, 1.0),
-            intensity: 22.0,
-            range: 4.5,
-        });
+    for (_, position, controls) in game.controlled_effects() {
+        if controls.shield > 0 && game.time < controls.shield_until {
+            effects.push(Light {
+                position: position + Vec3::Y * 1.3,
+                color: Vec3::new(0.08, 0.5, 1.0),
+                intensity: 22.0,
+                range: 4.5,
+            });
+        }
     }
-    for area in &game.controls.areas {
+    for area in game.controlled_effects().flat_map(|(_, _, c)| &c.areas) {
         let left = area.until - game.time;
         if left <= 0.0 {
             continue;
@@ -767,7 +771,11 @@ pub fn spell_instances(game: &super::play::Game) -> Vec<Instance> {
         }
     }
     use verse_world::utilities::Utility;
-    for area in game.controls.areas.iter().filter(|a| a.until > game.time) {
+    for area in game
+        .controlled_effects()
+        .flat_map(|(_, _, c)| &c.areas)
+        .filter(|a| a.until > game.time)
+    {
         let left = area.until - game.time;
         let (model, scale, alpha) = match area.kind {
             Utility::MistyStep => ("effect-mist", Vec3::new(0.9, 1.7, 0.9), left / 0.7),
@@ -798,38 +806,40 @@ pub fn spell_instances(game: &super::play::Game) -> Vec<Instance> {
             emission: Vec3::splat(alpha),
         });
     }
-    if let Some(position) = game.controls.light {
-        out.push(Instance {
-            actor: None,
-            model: "effect-light".into(),
-            transform: Mat4::from_translation(position) * Mat4::from_scale(Vec3::splat(0.12)),
-            animation: 0.into(),
-            time: game.time,
-            emission: Vec3::ONE,
-        });
-    }
-    if game.controls.shield > 0 && game.time < game.controls.shield_until {
-        out.push(Instance {
-            actor: None,
-            model: "effect-shield".into(),
-            transform: Mat4::from_translation(game.player + Vec3::Y * 1.05)
-                * Mat4::from_rotation_y(game.time * 0.7)
-                * Mat4::from_scale(Vec3::new(1.1, 1.25, 1.1)),
-            animation: 0.into(),
-            time: game.time,
-            emission: Vec3::splat(0.8),
-        });
-    }
-    if game.controls.shield > 0 && game.time < game.controls.shield_until {
-        for n in 0..6 {
-            let angle = game.time * 1.3 + n as f32 * std::f32::consts::TAU / 6.0;
-            let center = game.player
-                + Vec3::new(
-                    angle.cos() * 1.05,
-                    1.05 + (angle * 2.0).sin() * 0.8,
-                    angle.sin() * 1.05,
-                );
-            out.push(particle("effect-force", center, 0.18, 0.5, game.time));
+    for (_, player_position, controls) in game.controlled_effects() {
+        if let Some(position) = controls.light {
+            out.push(Instance {
+                actor: None,
+                model: "effect-light".into(),
+                transform: Mat4::from_translation(position) * Mat4::from_scale(Vec3::splat(0.12)),
+                animation: 0.into(),
+                time: game.time,
+                emission: Vec3::ONE,
+            });
+        }
+        if controls.shield > 0 && game.time < controls.shield_until {
+            out.push(Instance {
+                actor: None,
+                model: "effect-shield".into(),
+                transform: Mat4::from_translation(player_position + Vec3::Y * 1.05)
+                    * Mat4::from_rotation_y(game.time * 0.7)
+                    * Mat4::from_scale(Vec3::new(1.1, 1.25, 1.1)),
+                animation: 0.into(),
+                time: game.time,
+                emission: Vec3::splat(0.8),
+            });
+        }
+        if controls.shield > 0 && game.time < controls.shield_until {
+            for n in 0..6 {
+                let angle = game.time * 1.3 + n as f32 * std::f32::consts::TAU / 6.0;
+                let center = player_position
+                    + Vec3::new(
+                        angle.cos() * 1.05,
+                        1.05 + (angle * 2.0).sin() * 0.8,
+                        angle.sin() * 1.05,
+                    );
+                out.push(particle("effect-force", center, 0.18, 0.5, game.time));
+            }
         }
     }
     if let Some(encounter) = &game.encounter {
@@ -1025,6 +1035,69 @@ fn portraits(dir: &std::path::Path, pack: &Pack, mut atlas: Atlas) -> Result<Atl
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn controlled_adventurers_keep_distinct_shield_and_light_projections() {
+        let scene = verse_engine::director::Scene::from_json(include_bytes!(
+            "../../../../assets/verse/original/ritual.json"
+        ))
+        .unwrap();
+        let mut game = verse_world::play::Game::new(scene).unwrap();
+        game.time = game.scene.cut_at;
+        game.tick(0., [0.; 2]).unwrap();
+        let second = game
+            .add_player(verse_world::Controller(10), Vec3::new(3., 0., -22.))
+            .unwrap();
+        for ability in [
+            verse_world::play::Ability::Shield,
+            verse_world::play::Ability::Light,
+        ] {
+            game.activate(ability).unwrap();
+            let command = game
+                .player_admission(second.actor)
+                .unwrap()
+                .command(
+                    game.authority_tick,
+                    verse_world::Intent::Cast {
+                        ability,
+                        target: None,
+                        aim: [0., 0., 1.],
+                    },
+                )
+                .unwrap();
+            game.submit(verse_world::Controller(10), command).unwrap();
+        }
+        let effects = spell_instances(&game);
+        let shields: Vec<_> = effects
+            .iter()
+            .filter(|i| i.model == "effect-shield")
+            .map(|i| i.transform.transform_point3(Vec3::ZERO))
+            .collect();
+        assert_eq!(shields.len(), 2);
+        assert!(
+            shields
+                .iter()
+                .any(|p| p.distance(Vec3::new(3., 1.05, -22.)) < 0.001)
+        );
+        assert_eq!(
+            effects.iter().filter(|i| i.model == "effect-light").count(),
+            2
+        );
+        let lights = combat_lighting(&game);
+        assert!(
+            lights
+                .lights
+                .iter()
+                .any(|l| l.position.distance(Vec3::new(3., 1.3, -22.)) < 0.001)
+        );
+        let posed = game.frame();
+        let player = posed
+            .actors
+            .iter()
+            .find(|a| a.actor.id == second.actor)
+            .unwrap();
+        assert_eq!(player.life, Some(second));
+        assert_eq!(player.actor.position, Vec3::new(3., 0., -22.));
+    }
     #[test]
     fn explosions_light_the_room_then_fade_with_the_effect() {
         let scene = verse_engine::director::Scene::from_json(include_bytes!(

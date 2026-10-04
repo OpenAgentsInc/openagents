@@ -56,9 +56,16 @@ impl Cube {
 
 /// Resolves an admitted Thunderwave from the caster's place and facing.
 pub(crate) fn resolve(game: &mut Game, facing: Vec3) -> Result<(), String> {
-    let caster = game.player_actor();
-    let cube = Cube::new(game.player.as_dvec3(), facing.as_dvec3());
-    let origin = game.player + Vec3::Y * 1.4;
+    resolve_for(game, game.player_actor(), game.player, facing)
+}
+pub(crate) fn resolve_for(
+    game: &mut Game,
+    caster: u64,
+    position: Vec3,
+    facing: Vec3,
+) -> Result<(), String> {
+    let cube = Cube::new(position.as_dvec3(), facing.as_dvec3());
+    let origin = position + Vec3::Y * 1.4;
     let colliders = game.colliders.clone();
     // Total cover from static geometry blocks the wave.
     let visible = |p: Vec3| {

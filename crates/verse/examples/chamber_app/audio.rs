@@ -15,7 +15,7 @@ pub struct Audio {
     serial: Option<(u64, u64)>,
     flights: BTreeSet<u32>,
     lives: BTreeMap<(u64, u64), LifeId>,
-    shield: f32,
+    shields: BTreeMap<LifeId, f32>,
     time: f32,
     queued: [u64; 5],
 }
@@ -49,7 +49,10 @@ impl Audio {
                 .map(|projectile| projectile.id)
                 .collect(),
             lives: BTreeMap::new(),
-            shield: game.controls.shield_until,
+            shields: game
+                .controlled_effects()
+                .map(|(life, _, c)| (life, c.shield_until))
+                .collect(),
             time: game.time,
             queued: [0; 5],
         };
@@ -93,7 +96,7 @@ impl Audio {
             self.serial = None;
             self.flights.clear();
             self.lives.clear();
-            self.shield = 0.;
+            self.shields.clear();
         }
         self.time = game.time;
         for event in &game.events {
@@ -149,7 +152,7 @@ impl Audio {
             {
                 self.play(
                     1,
-                    Some(game.player_life()),
+                    game.projectile_caster_life(projectile.caster),
                     projectile.pos.into(),
                     0.6,
                     false,
@@ -157,10 +160,18 @@ impl Audio {
             }
         }
         self.flights = current;
-        if game.controls.shield_until > self.shield && game.controls.shield_until > game.time {
-            self.play(3, Some(game.player_life()), game.player, 0.55, false)?;
+        let current: BTreeMap<_, _> = game
+            .controlled_effects()
+            .map(|(life, _, c)| (life, c.shield_until))
+            .collect();
+        for (life, position, c) in game.controlled_effects() {
+            if c.shield_until > self.shields.get(&life).copied().unwrap_or(0.)
+                && c.shield_until > game.time
+            {
+                self.play(3, Some(life), position, 0.55, false)?;
+            }
         }
-        self.shield = game.controls.shield_until;
+        self.shields = current;
         Ok(())
     }
     pub fn stats(&self) -> serde_json::Value {

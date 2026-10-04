@@ -1,4 +1,5 @@
 //! Owned chamber authority and read-only cinematic presentation.
+mod multiplayer;
 use crate::rules::{Simulation, Snapshot, Spell};
 use crate::utilities::{Controls, Utility};
 use glam::Vec3;
@@ -6,8 +7,8 @@ use std::collections::BTreeMap;
 use verse_engine::director::{Action, Frame, Scene};
 use verse_engine::motion::State;
 
-/// Checkpoint revision. v15 stores per-player combat resources and projectile casters.
-pub const RULES_REVISION: &str = "verse-chamber-owned-v15";
+/// Checkpoint revision. v16 retains shared controlled-player movement, casts, and effects.
+pub const RULES_REVISION: &str = "verse-chamber-owned-v16";
 /// Seed of the chamber's spell dice; scenarios may reseed before acting.
 pub const SPELL_SEED: u64 = 0x5EED_0451;
 
@@ -168,6 +169,8 @@ struct Route {
 }
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct Game {
+    additional_players: BTreeMap<u64, multiplayer::Player>,
+    next_player_actor: u64,
     pub(crate) admission: crate::Admission,
     pending_movement: Option<[f32; 2]>,
     pending_jump: bool,
@@ -322,11 +325,14 @@ impl Game {
         .map(|h| h.fraction))
     }
     pub fn actor_life(&self, actor: u64) -> Option<verse_engine::core::LifeId> {
-        self.lives.get(&actor).copied()
+        self.player_admission(actor)
+            .map(|a| a.actor())
+            .or_else(|| self.lives.get(&actor).copied())
     }
     /// Saves pending combat, controller fences, timers, and presentation clocks.
     pub fn checkpoint(&self) -> Result<Vec<u8>, String> {
         self.simulation.validate()?;
+        self.validate_players()?;
         self.validate_clock()?;
         self.bodies.validate()?;
         self.validate_body_bindings()?;
@@ -365,6 +371,7 @@ impl Game {
             encounter.validate(&world)?;
         }
         world.simulation.validate()?;
+        world.validate_players()?;
         world.controls.validate()?;
         world.blockers.validate()?;
         if world.navigation_goals.iter().any(|(actor, goal)| {
@@ -593,7 +600,8 @@ impl Game {
         self.navigation_goals.contains_key(&actor)
     }
     fn validate_body_bindings(&self) -> Result<(), String> {
-        if self.bodies.records().filter(|r| r.actor).count() != self.ids.len() + 1
+        if self.bodies.records().filter(|r| r.actor).count()
+            != self.ids.len() + 1 + self.additional_players.len()
             || self.bodies.instance != self.admission.actor().instance
         {
             return Err("Checkpoint physics body ownership disagrees".into());
@@ -608,9 +616,7 @@ impl Game {
         let snapshot = self.snapshot();
         for r in self.bodies.records() {
             if !r.actor {
-                if self.lives.contains_key(&r.life.entity)
-                    || r.life.entity == self.admission.actor().actor
-                {
+                if self.actor_life(r.life.entity).is_some() {
                     return Err("Checkpoint prop uses an actor ID".into());
                 }
                 let active = self
@@ -640,7 +646,8 @@ impl Game {
             } else {
                 (
                     self.actor_life(r.life.entity),
-                    self.ids.get(&r.life.entity).copied(),
+                    self.player_source(r.life.entity)
+                        .or_else(|| self.ids.get(&r.life.entity).copied()),
                 )
             };
             let alive =
@@ -764,6 +771,11 @@ impl Game {
         use physics::lifetimes::{Hull, Phase};
         let snapshot = self.snapshot();
         let mut actors = vec![(self.admission.actor(), 0, self.player)];
+        actors.extend(
+            self.additional_players
+                .values()
+                .map(|p| (p.admission.actor(), p.source, p.position)),
+        );
         actors.extend(self.ids.iter().map(|(actor, source)| {
             let position = snapshot
                 .actors
@@ -839,7 +851,7 @@ impl Game {
         min: glam::DVec3,
         max: glam::DVec3,
     ) -> Result<(), String> {
-        if self.lives.contains_key(&life.entity) || life.entity == self.admission.actor().actor {
+        if self.actor_life(life.entity).is_some() {
             return Err("World prop cannot replace an actor collision body".into());
         }
         let mut next = self.blockers.clone();
@@ -854,7 +866,7 @@ impl Game {
         &mut self,
         life: physics::queries::Life,
     ) -> Result<bool, String> {
-        if self.lives.contains_key(&life.entity) || life.entity == self.admission.actor().actor {
+        if self.actor_life(life.entity).is_some() {
             return Err("World prop cannot remove an actor collision body".into());
         }
         let mut next = self.blockers.clone();
@@ -1099,7 +1111,18 @@ impl Game {
             crate::room::profile_query_scene(scene.collision_profile.as_deref(), 0)?
         };
         let spells = crate::spells::SpellWorld::new(&colliders, SPELL_SEED);
+        let next_player_actor = scene
+            .actors
+            .iter()
+            .map(|a| a.id)
+            .filter(|id| *id < 1_000_000)
+            .max()
+            .unwrap_or(0)
+            .checked_add(1)
+            .ok_or("Player actor IDs exhausted")?;
         let mut world = Self {
+            additional_players: BTreeMap::new(),
+            next_player_actor,
             pending_movement: None,
             pending_jump: false,
             character: physics::character::Character::new(player.as_dvec3()),
@@ -1193,11 +1216,7 @@ impl Game {
     pub fn frame(&self) -> Frame {
         let mut frame = self.scene.frame(self.time);
         for actor in &mut frame.actors {
-            actor.life = if actor.actor.model == "adventurer" {
-                Some(self.player_life())
-            } else {
-                self.actor_life(actor.actor.id)
-            };
+            actor.life = self.actor_life(actor.actor.id);
         }
         if !self.unlocked() {
             return frame;
@@ -1207,7 +1226,16 @@ impl Game {
             if self.time > self.scene.duration {
                 a.animation_time = self.time + a.actor.id as f32 * 0.19;
             }
-            if a.actor.model == "adventurer" {
+            if let Some(p) = self.additional_players.get(&a.actor.id) {
+                let hp = snapshot
+                    .actors
+                    .iter()
+                    .find(|a| a.id == p.source)
+                    .map_or(0, |a| a.hp.max(0) as u32);
+                p.frame(a, hp, self.time, !self.colliders.is_empty());
+                continue;
+            }
+            if a.actor.id == self.player_actor() {
                 a.animation_time = if self.moving {
                     self.motion_clock
                 } else {
@@ -1339,7 +1367,7 @@ impl Game {
                             a.actor.yaw = *yaw;
                         }
                     }
-                    if self.controls.held(*id) {
+                    if self.hostile_held(a.actor.id) {
                         a.animation = if a.actor.model.starts_with("cultist")
                             && self.encounter.as_ref().is_some_and(|e| e.ended.is_none())
                         {
@@ -1363,7 +1391,7 @@ impl Game {
                         a.animation = State::Airborne.into();
                         a.animation_time = 0.2;
                     }
-                    if self.controls.prone(a.actor.position, self.time) {
+                    if self.shared_prone(a.actor.position) {
                         a.animation = State::Prone.into();
                         a.animation_time = 1.0;
                     }
@@ -1491,7 +1519,11 @@ impl Game {
         if dead {
             self.casting = None;
         }
-        if !dead && (self.agent_controlled || self.pending_movement.is_none()) {
+        if !dead
+            && (self.agent_controlled
+                || (self.pending_movement.is_none()
+                    && self.admission.controller() == crate::Controller(1)))
+        {
             let movement = if self.agent_controlled {
                 super::combat::drive(self, dt)?
             } else {
@@ -1541,7 +1573,7 @@ impl Game {
             if self.character.feet.as_vec3() != self.player {
                 self.character = physics::character::Character::new(self.player.as_dvec3());
             }
-            let steps = physics_steps;
+            let steps = if dead { 0 } else { physics_steps };
             let velocity = if dt > 0. {
                 (delta / dt).as_dvec3()
             } else {
@@ -1577,6 +1609,7 @@ impl Game {
                 .place_chamber_actor(0, self.player.to_array(), self.yaw)?;
             self.simulation.record_motion_path(0, player_path)?;
         }
+        self.step_additional(physics_steps as u32, dt)?;
         let source_actors = self.snapshot().actors;
         let mut falls = vec![];
         for a in self.scene.frame(self.time).actors {
@@ -1604,7 +1637,10 @@ impl Game {
                         encounter.positions.insert(a.actor.id, authored);
                     }
                 }
-                let desired = self.controls.position(id, authored, self.time);
+                let mut desired = self.controls.position(id, authored, self.time);
+                for p in self.additional_players.values_mut() {
+                    desired = p.controls.position(id, desired, self.time);
+                }
                 let mut npc_path = vec![];
                 let life = self.lives[&a.actor.id];
                 let filter = self.actor_filter(life);
@@ -1749,7 +1785,15 @@ impl Game {
                 let direction = if motion.length_squared() > 0.01 {
                     motion
                 } else {
-                    self.player - Vec3::from(source.pos)
+                    self.living_players()
+                        .into_iter()
+                        .min_by(|a, b| {
+                            a.1.distance_squared(Vec3::from(source.pos))
+                                .total_cmp(&b.1.distance_squared(Vec3::from(source.pos)))
+                                .then_with(|| a.0.actor.cmp(&b.0.actor))
+                        })
+                        .map_or(self.player, |(_, p)| p)
+                        - Vec3::from(source.pos)
                 };
                 let target = (-direction.x).atan2(-direction.z);
                 let yaw = self.npc_yaw.entry(actor.id).or_insert(actor.yaw);
@@ -1826,6 +1870,9 @@ impl Game {
             self.observed_health.remove(&old);
             self.observed_health.insert(source, actor.health as i32);
             self.controls.forget_actor(old);
+            for p in self.additional_players.values_mut() {
+                p.controls.forget_actor(old);
+            }
             self.npc_deaths.remove(&actor.id);
             self.npc_characters.remove(&actor.id);
             self.routes.remove(&actor.id);
@@ -1892,9 +1939,13 @@ impl Game {
         }
     }
     pub fn hostile_held(&self, id: u64) -> bool {
-        self.ids
-            .get(&id)
-            .is_some_and(|source| self.controls.held(*source))
+        self.ids.get(&id).is_some_and(|source| {
+            self.controls.held(*source)
+                || self
+                    .additional_players
+                    .values()
+                    .any(|p| p.controls.held(*source))
+        })
     }
     pub fn hostile_hit(&mut self, damage: i32) -> Result<(i32, i32), String> {
         if self.snapshot().player.hp == 0 {
@@ -1964,6 +2015,9 @@ impl Game {
         if actor == self.player_actor() {
             return Some(self.player);
         }
+        if let Some(p) = self.additional_players.get(&actor) {
+            return Some(p.position);
+        }
         let id = self.ids.get(&actor)?;
         self.snapshot()
             .actors
@@ -1975,6 +2029,8 @@ impl Game {
     pub fn actor_character(&self, actor: u64) -> Option<&physics::character::Character> {
         if actor == self.player_actor() {
             Some(&self.character)
+        } else if let Some(p) = self.additional_players.get(&actor) {
+            Some(&p.character)
         } else {
             self.npc_characters.get(&actor)
         }
@@ -2091,7 +2147,22 @@ impl Game {
                     c.add_velocity(accel * dt);
                 }
             };
-            push(&mut self.character);
+            if self
+                .simulation
+                .player_resources(0)
+                .is_some_and(|p| p.hp > 0)
+            {
+                push(&mut self.character);
+            }
+            for p in self.additional_players.values_mut() {
+                if self
+                    .simulation
+                    .player_resources(p.source)
+                    .is_some_and(|p| p.hp > 0)
+                {
+                    push(&mut p.character);
+                }
+            }
             for actor in &living {
                 if let Some(c) = self.npc_characters.get_mut(actor) {
                     push(c);
@@ -2101,6 +2172,7 @@ impl Game {
         self.spells.begin_tick();
         self.spells.step(steps as u32, self.time)?;
         let masses: BTreeMap<u64, f64> = std::iter::once(self.player_actor())
+            .chain(self.additional_players.keys().copied())
             .chain(living.iter().copied())
             .map(|a| {
                 (
@@ -2110,11 +2182,31 @@ impl Game {
             })
             .collect();
         let player = self.player_actor();
-        let mut movers = vec![crate::spells::Mover {
-            actor: player,
-            mass: masses[&player],
-            character: &mut self.character,
-        }];
+        let mut movers = vec![];
+        if self
+            .simulation
+            .player_resources(0)
+            .is_some_and(|p| p.hp > 0)
+        {
+            movers.push(crate::spells::Mover {
+                actor: player,
+                mass: masses[&player],
+                character: &mut self.character,
+            });
+        }
+        for (actor, p) in self.additional_players.iter_mut() {
+            if self
+                .simulation
+                .player_resources(p.source)
+                .is_some_and(|p| p.hp > 0)
+            {
+                movers.push(crate::spells::Mover {
+                    actor: *actor,
+                    mass: masses[actor],
+                    character: &mut p.character,
+                });
+            }
+        }
         for (actor, character) in self.npc_characters.iter_mut() {
             if living.contains(actor) {
                 movers.push(crate::spells::Mover {
@@ -2129,6 +2221,11 @@ impl Game {
         self.spells.sync_query_poses(&mut self.query_scene)?;
         if self.snapshot().player.hp == 0 {
             self.spells.end_concentration(player)?;
+        }
+        for (actor, p) in &self.additional_players {
+            if self.simulation.snapshot_for(p.source)?.player.hp == 0 {
+                self.spells.end_concentration(*actor)?;
+            }
         }
         Ok(())
     }
@@ -2149,8 +2246,10 @@ impl Game {
             let pose = self.previous_player.lerp(self.player, alpha);
             let delta = pose - self.player;
             for actor in &mut frame.actors {
-                if actor.actor.model == "adventurer" {
+                if actor.actor.id == self.player_actor() {
                     actor.actor.position = pose;
+                } else if let Some(p) = self.additional_players.get(&actor.actor.id) {
+                    actor.actor.position = p.previous.lerp(p.position, alpha);
                 } else if actor.health > 0 {
                     if let Some(previous) = self.previous_npc.get(&actor.actor.id) {
                         actor.actor.position = previous.lerp(actor.actor.position, alpha);
@@ -2216,13 +2315,13 @@ impl Game {
         self.bow_ready = self.time;
         self.controls = Default::default();
         self.impacts.clear();
-        self.damage_numbers.clear();
+        self.damage_numbers.retain(|n| n.actor != old.actor);
         self.observed_health.insert(0, 200);
         self.moving = false;
         self.locomotion = [0.; 2];
         self.motion_clock = 0.;
         if let Some(encounter) = &mut self.encounter {
-            encounter.casts.clear();
+            encounter.casts.retain(|c| c.target_life != old);
             encounter.ended = None;
             encounter.next_action = self.time;
         }
@@ -2247,6 +2346,9 @@ impl Game {
         controller: crate::Controller,
         command: crate::Command<Ability>,
     ) -> Result<(), String> {
+        if command.actor.actor != self.player_actor() {
+            return self.submit_additional(controller, command);
+        }
         if !self.unlocked() || self.snapshot().player.hp == 0 {
             return Err("The adventurer cannot act in the current state".into());
         }

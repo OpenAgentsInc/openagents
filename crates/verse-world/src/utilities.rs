@@ -179,6 +179,23 @@ impl Controls {
         teleport: Option<Vec3>,
         visible: impl Fn(Vec3) -> bool,
     ) -> Result<Vec3, String> {
+        self.cast_with_visibility_for(
+            simulation, 0, spell, time, player, direction, target, teleport, visible,
+        )
+    }
+    /// Uses the admitted caster's resources and this caster's effect state.
+    pub(crate) fn cast_with_visibility_for(
+        &mut self,
+        simulation: &mut Simulation,
+        caster: u32,
+        spell: Utility,
+        time: f32,
+        player: Vec3,
+        direction: Vec3,
+        target: Option<Vec3>,
+        teleport: Option<Vec3>,
+        visible: impl Fn(Vec3) -> bool,
+    ) -> Result<Vec3, String> {
         if teleport.is_some_and(|p| !p.is_finite() || spell != Utility::MistyStep)
             || !time.is_finite()
             || time < 0.0
@@ -211,13 +228,20 @@ impl Controls {
                 p.z = p.z.clamp(-25.0, 12.0);
                 p
             });
-            if simulation.snapshot().actors.iter().any(|a| {
-                a.alive && a.faction != "player" && horizontal(destination, a.pos.into()) < 1.0
-            }) {
+            if simulation
+                .snapshot()
+                .actors
+                .iter()
+                .any(|a| a.alive && a.id != caster && horizontal(destination, a.pos.into()) < 1.0)
+            {
                 return Err("Teleport destination is occupied".into());
             }
         }
-        simulation.spend_chamber_mana(spell.cost())?;
+        self.areas.retain(|a| a.until > time);
+        if self.areas.len() + if spell == Utility::MistyStep { 2 } else { 1 } > 128 {
+            return Err("Utility effect budget exceeded".into());
+        }
+        simulation.spend_mana_for(caster, spell.cost())?;
         self.ready.insert(spell, time + spell.cooldown());
         match spell {
             Utility::Shield => {

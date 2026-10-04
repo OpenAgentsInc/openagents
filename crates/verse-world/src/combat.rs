@@ -46,6 +46,7 @@ impl Game {
     pub fn restart_combat(&mut self, agent: bool) -> Result<(), String> {
         let mut fresh = Self::combat(self.scene.clone(), agent)?;
         fresh.adopt_restart_fences(self)?;
+        fresh.rebuild_players_after_restart(self)?;
         fresh.time = fresh.scene.cut_at - if agent { 3. } else { 0. };
         *self = fresh;
         Ok(())
@@ -100,7 +101,9 @@ impl Encounter {
         }
         for cast in &self.casts {
             if game.actor_life(cast.actor) != Some(cast.life)
-                || game.player_life() != cast.target_life
+                || game
+                    .player_admission(cast.target_life.actor)
+                    .is_none_or(|a| a.actor() != cast.target_life)
                 || !cast.origin.is_finite()
                 || cast.origin.abs().max_element() > 1_000_000.
                 || !cast.target.is_finite()
@@ -169,9 +172,9 @@ impl Encounter {
         if self.ended.is_some() {
             return Ok(());
         }
-        if game.snapshot().player.hp == 0 || boss.health == 0 {
+        if game.living_players().is_empty() || boss.health == 0 {
             self.ended = Some(game.time);
-            if game.snapshot().player.hp == 0 {
+            if game.living_players().is_empty() {
                 game.scene.cues.push(verse_engine::director::Cue {
                     at: game.time,
                     actor: 1,
@@ -206,13 +209,15 @@ impl Encounter {
         let mut keep = Vec::new();
         for mut cast in self.casts.drain(..) {
             if game.actor_life(cast.actor) != Some(cast.life)
-                || game.player_life() != cast.target_life
+                || game
+                    .player_admission(cast.target_life.actor)
+                    .is_none_or(|a| a.actor() != cast.target_life)
             {
                 continue;
             }
             let source = frame.actors.iter().find(|a| a.actor.id == cast.actor);
-            let interrupted = source
-                .is_none_or(|a| a.health == 0 || game.controls.prone(a.actor.position, game.time));
+            let interrupted =
+                source.is_none_or(|a| a.health == 0 || game.shared_prone(a.actor.position));
             if interrupted && game.time < cast.release {
                 continue;
             }
@@ -237,13 +242,15 @@ impl Encounter {
             let mut boundaries: Vec<f32> = (0..=steps)
                 .map(|step| begin + duration * step as f32 / steps as f32)
                 .collect();
-            let segments = game.player_motion_segments();
-            if segments > 1 {
-                boundaries.extend(
-                    (1..segments)
-                        .map(|step| command_start + dt * step as f32 / segments as f32)
-                        .filter(|at| *at > begin && *at < end),
-                );
+            for (life, _) in game.living_players() {
+                let segments = game.player_path_segments(life.actor);
+                if segments > 1 {
+                    boundaries.extend(
+                        (1..segments)
+                            .map(|step| command_start + dt * step as f32 / segments as f32)
+                            .filter(|at| *at > begin && *at < end),
+                    );
+                }
             }
             boundaries.sort_by(f32::total_cmp);
             boundaries.dedup();
@@ -264,17 +271,26 @@ impl Encounter {
                     1.
                 };
                 let wall = game.projectile_cover(position, delta, radius)?;
-                let hit = physics::continuous::sphere_capsule(
-                    position.as_dvec3(),
-                    (position + delta).as_dvec3(),
-                    radius,
-                    game.player_motion_at(from).as_dvec3(),
-                    game.player_motion_at(to).as_dvec3(),
-                    0.35,
-                    1.8,
-                )?;
-                if hit.is_some_and(|t| wall.is_none_or(|w| t < w)) {
-                    let (damage, absorbed) = game.hostile_hit(cast.damage)?;
+                let mut hit: Option<(f64, verse_engine::core::LifeId)> = None;
+                for (life, _) in game.living_players() {
+                    if let Some(t) = physics::continuous::sphere_capsule(
+                        position.as_dvec3(),
+                        (position + delta).as_dvec3(),
+                        radius,
+                        game.player_path_at(life.actor, from).as_dvec3(),
+                        game.player_path_at(life.actor, to).as_dvec3(),
+                        0.35,
+                        1.8,
+                    )? {
+                        if hit.is_none_or(|(old, who)| {
+                            t < old || (t == old && life.actor < who.actor)
+                        }) {
+                            hit = Some((t, life));
+                        }
+                    }
+                }
+                if let Some((_, life)) = hit.filter(|(t, _)| wall.is_none_or(|w| *t < w)) {
+                    let (damage, absorbed) = game.hostile_hit_player(life, cast.damage)?;
                     self.damage += damage;
                     self.absorbed += absorbed;
                     resolved = true;
@@ -297,15 +313,20 @@ impl Encounter {
                 } else {
                     1.
                 };
-                let player = game.player_motion_at(fraction);
-                let delta = player - cast.target;
-                if Vec3::new(delta.x, 0., delta.z).length() <= cast.radius
-                    && game.attack_clear(position, player + Vec3::Y * 1.4)
-                {
-                    let (damage, absorbed) = game.hostile_hit(cast.damage)?;
-                    self.damage += damage;
-                    self.absorbed += absorbed;
-                } else {
+                let mut hits = 0;
+                for (life, _) in game.living_players() {
+                    let player = game.player_path_at(life.actor, fraction);
+                    let delta = player - cast.target;
+                    if Vec3::new(delta.x, 0., delta.z).length() <= cast.radius
+                        && game.attack_clear(position, player + Vec3::Y * 1.4)
+                    {
+                        let (damage, absorbed) = game.hostile_hit_player(life, cast.damage)?;
+                        self.damage += damage;
+                        self.absorbed += absorbed;
+                        hits += 1;
+                    }
+                }
+                if hits == 0 {
                     self.dodged += 1;
                 }
             } else {
@@ -322,9 +343,18 @@ impl Encounter {
             if game.navigation_directed(actor.actor.id) {
                 continue;
             }
-            let delta = game.player - actor.actor.position;
+            let Some((target_life, target_position)) =
+                game.living_players().into_iter().min_by(|a, b| {
+                    a.1.distance_squared(actor.actor.position)
+                        .total_cmp(&b.1.distance_squared(actor.actor.position))
+                        .then_with(|| a.0.actor.cmp(&b.0.actor))
+                })
+            else {
+                continue;
+            };
+            let delta = target_position - actor.actor.position;
             let distance = Vec3::new(delta.x, 0.0, delta.z).length();
-            let blocked = game.controls.prone(actor.actor.position, game.time);
+            let blocked = game.shared_prone(actor.actor.position);
             // Control effects use combat-store IDs; read their admitted pose through Game.
             let blocked = blocked || game.hostile_held(actor.actor.id);
             let casting = self
@@ -337,7 +367,7 @@ impl Encounter {
                 && (distance > if actor.actor.id % 3 == 0 { 3.5 } else { 10.0 }
                     || !game.attack_clear(
                         actor.actor.position + Vec3::Y * 1.4,
-                        game.player + Vec3::Y * 1.4,
+                        target_position + Vec3::Y * 1.4,
                     ))
             {
                 let position = self
@@ -347,7 +377,7 @@ impl Encounter {
                 *position = game.move_hostile(
                     actor.actor.id,
                     *position,
-                    game.player,
+                    target_position,
                     dt * if actor.actor.id % 3 == 0 { 1.8 } else { 0.9 },
                 )?;
             }
@@ -359,7 +389,7 @@ impl Encounter {
                 continue;
             }
             let origin = actor.actor.position + Vec3::Y * if boss { 4.0 } else { 1.4 };
-            if !game.attack_clear(origin, game.player + Vec3::Y * 1.4) {
+            if !game.attack_clear(origin, target_position + Vec3::Y * 1.4) {
                 continue;
             }
             let windup = if boss { 1.3 } else { 1.0 };
@@ -369,10 +399,10 @@ impl Encounter {
                 life: game
                     .actor_life(actor.actor.id)
                     .ok_or("Missing hostile life")?,
-                target_life: game.player_life(),
+                target_life,
                 position: None,
                 origin,
-                target: game.player,
+                target: target_position,
                 started: game.time,
                 release,
                 impact: release + if boss { 0.65 } else { 0.8 },

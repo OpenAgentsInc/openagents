@@ -8,7 +8,7 @@ chamber reads its snapshots and cinematic projection. Human and controller
 requests share admission. A trusted adapter supplies controller identity;
 this crate does not authenticate network connections.
 
-The `verse-chamber-owned-v15` rules profile independently implements retained
+The `verse-chamber-owned-v16` rules profile independently implements retained
 chamber behavior; it imports no vendor source. Firebolt deals 8 damage, each of
 three magic missiles deals 4, and fireball deals 15 in a visible 6.096-meter radius
 with three 6-damage burn ticks. Living characters regenerate one mana per second.
@@ -44,9 +44,19 @@ caster APIs derive release positions from admitted actors. Arrows, homing spells
 area hits, and burns exclude friendly players; projectiles and burns retain their
 caster. A revival cancels only that caster's flights and burns. `advance` steps all
 players on one clock, and `snapshot_for` projects the selected player's resources
-alongside public shared actors. The existing native `Game` adapter still controls
-one player; full per-player utility state, movement, and authenticated host
-admission remain necessary before shared service acceptance.
+alongside public shared actors. `Game::add_player` binds trusted controllers to
+additional adventurers in this same chamber. `submit` dispatches by exact player
+life and retains independent movement, jump, casting, bow/utility cooldowns,
+shields, and travel animation phase. All ten original abilities share the same
+NPCs, capsule collision, spell physics, projectiles, events, and fixed clock.
+Hostiles select the nearest living adventurer with actor-ID ties and sweep their
+actual movement paths; defeat ends the encounter only when all adventurers die.
+Owned respawn and reset fence lives and commands without dropping other players.
+Native effect projections include each player's shield and light; audio routes
+projectile and shield cues by caster life. The native camera/HUD still focuses the
+primary adventurer. `player_snapshot` and `player_admission` expose actor-specific
+state to a trusted host; they do not authenticate a network caller. Additional
+catalog spells outside the original ten still need shared-caster adapters.
 Transactional saves, multiplayer
 replication, and authoring tools remain on the
 [engine roadmap](../../docs/verse/engine/roadmap.md).
