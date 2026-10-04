@@ -1,6 +1,7 @@
 use super::layout::{Collision, DESKS, PATHS, TASK_COLUMNS, TASK_WALL};
 use super::*;
 use crate::{
+    pbr::textured::TexturedScene,
     runtime::WorldRuntime,
     zones::{
         Intent, ZoneId, atmosphere,
@@ -227,30 +228,24 @@ fn the_ground_is_flat_in_the_clearing_and_rises_gently_within_bounds() {
 fn the_world_is_ground_textured_placements_and_boards() {
     let world = world();
     assert!(world.mesh.faces.len() % 3 == 0 && world.mesh.lines.len() % 2 == 0);
-    let extent = world
-        .mesh
-        .faces
-        .iter()
-        .fold(0.0_f32, |m, v| m.max(v.pos[0].abs()).max(v.pos[2].abs()));
-    assert!((extent - HALF_EXTENT).abs() < 1e-3);
     for v in world.mesh.faces.iter().chain(&world.mesh.lines) {
         assert!(v.pos.iter().chain(&v.color).all(|x| x.is_finite()));
         assert!(v.color.iter().all(|c| (0.0..=1.0).contains(c)));
     }
-    // Ground vertices lie on the height function, and the boards add faces
-    // above it.
-    let mut ground = Mesh::default();
+    // The boards are the only vertex-color faces; the ground is textured
+    // (`draw`'s tests check it lies on the height function).
+    assert!(!world.mesh.faces.is_empty());
+    let mut ground = TexturedScene::default();
     super::draw::ground(&mut ground);
-    assert!(!ground.faces.is_empty());
-    for v in &ground.faces {
-        let [x, y, z] = v.pos;
-        assert!((y - height(x, z)).abs() < 1e-4, "{x},{z}");
-    }
-    assert!(world.mesh.faces.len() > ground.faces.len());
-    // Every placement is in the scene, which validates and merges into
-    // cells, with base-color images within the pack's texture budget.
+    assert!(!ground.placements.is_empty());
+    // Every placement and the ground are in the scene, which validates and
+    // merges into cells, with base-color images within the pack's texture
+    // budget.
     let scene = world.mesh.textured.as_ref().expect("a textured scene");
-    assert_eq!(scene.placements.len(), layout::placements().len());
+    assert_eq!(
+        scene.placements.len(),
+        layout::placements().len() + ground.placements.len()
+    );
     scene.validate().unwrap();
     let merged = scene.merge().unwrap();
     assert!(!merged.batches.is_empty());
@@ -302,8 +297,9 @@ fn the_layout_stays_within_the_placed_triangle_budget() {
     let triangles: u64 = layout::placements()
         .iter()
         .map(|p| pack().model(p.model).unwrap().triangles())
-        .sum();
-    eprintln!("Everglade places {triangles} triangles of {PLACED_TRIANGLE_BUDGET}");
+        .sum::<u64>()
+        + super::draw::triangles();
+    eprintln!("Everglade places {triangles} triangles of {PLACED_TRIANGLE_BUDGET} with the ground");
     assert!(triangles <= PLACED_TRIANGLE_BUDGET, "{triangles}");
 }
 

@@ -274,8 +274,9 @@ impl Everglade {
     /// exceeds the renderer's bounds.
     pub fn world(pack: &ZonePack) -> Result<World, String> {
         let mut world = World::default();
-        draw::ground(&mut world.mesh);
-        let (scene, blockers) = scene::build(pack, &layout::placements())?;
+        let (mut scene, blockers) = scene::build(pack, &layout::placements())?;
+        draw::ground(&mut scene);
+        scene.validate()?;
         world.mesh.textured = Some(Arc::new(scene));
         world.blockers = blockers;
         world.blockers.extend(layout::board_blockers());
