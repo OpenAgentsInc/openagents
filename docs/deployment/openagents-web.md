@@ -293,3 +293,14 @@ station captions offer no key the page cannot use (cc345ccb7a). Checked on
 the `new` tag before traffic moved. Rollback:
 `--to-revisions coder-web-8fb2a97218=100`, or `coder-web-4b966fdc06` for the
 last revision that served traffic before it.
+
+## 2026-10-04: coder-web-36fbc814b1
+
+`/everglade` fills the window (36fbc814b1): the canvas covers the whole
+viewport with no site header or footer, the page doesn't zoom, and the
+loading status stays over the canvas's foot. Built from GitHub by the
+automation account and applied from the live spec with only the revision
+name and image changed (`CODER_CHAT_SYNC` quoted). On the `new` tag,
+`/everglade` served the full-screen page and its CSS, and `/`, `/docs`,
+`/live`, `/stats`, `/api/stats`, the build files, and the pack answered 200
+before traffic moved. Rollback: `--to-revisions coder-web-570fe0ba18=100`.
