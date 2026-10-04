@@ -103,6 +103,9 @@ pub(crate) enum Request {
     },
     ResetMotion,
     RecenterCamera,
+    /// Load and enter Everglade from the Grid without walking to its arch,
+    /// for scripted checks (`--verse-script everglade`).
+    EnterEverglade,
     HudInsets {
         top: f32,
         right: f32,
@@ -2089,6 +2092,7 @@ impl Scene {
                 self.reset_motion();
                 Ok(())
             }
+            Request::EnterEverglade => self.world.enter_everglade(),
             Request::RecenterCamera => {
                 self.reset_motion();
                 self.world.camera.yaw_offset = 0.0;

@@ -36,6 +36,26 @@ pub struct Item {
 pub const CHANGELOG: &[Release] = &[
     Release {
         version: "1.0.0",
+        build: "51",
+        title: "Everglade's light, sky, and spells",
+        what_to_test: "Walk through the EVERGLADE arch. Check the blue sky with clouds and a sun, distant hills fading into haze, shadows reaching across the glade, and the workshop interior shaded rather than flat. Use the icon hotbar above the sticks: Levitate, then hold Up or Down to climb, and try Feather Fall, Wall of Stone, Wind Wall, and Reverse Gravity. Walk sideways and backward to see the strafe and backpedal. Leave through THE GRID arch.",
+        items: &[
+            Item {
+                title: "Sky and lighting",
+                detail: "A daylight sky lights the glade, with height fog, baked shading indoors and under trees, and sun shadows that follow you.",
+            },
+            Item {
+                title: "Icon hotbar and spells",
+                detail: "The chamber's icon bar with Levitate, Up, Down, and four spells; hold Up or Down to keep climbing.",
+            },
+            Item {
+                title: "Walking",
+                detail: "The original library's walk and jog, strafing, backpedaling, and landing on roofs.",
+            },
+        ],
+    },
+    Release {
+        version: "1.0.0",
         build: "50",
         title: "Movement controls in Everglade",
         what_to_test: "Walk through the EVERGLADE arch. Above the sticks, tap Jump, switch Sprint back to Run, and tap Levitate. Use Up and Down to change height, then Land to descend gently. Keep a movement stick held while tapping the bar. Leave through THE GRID arch and check the bar disappears.",

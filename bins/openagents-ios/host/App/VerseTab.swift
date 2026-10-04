@@ -950,6 +950,7 @@ private final class VerseWorldScript {
         case ("walkpinch", 2..<60): view.send(["action": "pinch_zoom", "scale": 1.02])
         case ("walkpinch", 89): view.pointer(pointer, phase: "up", at: CGPoint(x: stick.x, y: stick.y - 56))
         case ("recenter", 0): view.send(["action": "recenter_camera"])
+        case ("everglade", 0): view.send(["action": "enter_everglade"])
         case ("turn", 0): view.pointer(pointer, phase: "down", at: look)
         case ("turn", 1): view.pointer(pointer, phase: "move", at: CGPoint(x: look.x + 40, y: look.y))
         case ("turn", 80): view.pointer(pointer, phase: "up", at: CGPoint(x: look.x + 40, y: look.y))
