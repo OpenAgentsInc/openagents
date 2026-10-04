@@ -232,6 +232,7 @@ mod tests {
 pub mod combat;
 pub mod controls;
 pub mod events;
+pub mod feather_fall;
 pub mod levitate;
 pub mod play;
 pub mod room;
