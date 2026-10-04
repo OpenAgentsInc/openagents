@@ -1,0 +1,40 @@
+{
+  "schema": "openagents.verse.animation-graph-proof.v1",
+  "native_commit": "fc5a704cf0168ad3671e8fd74d265bcb4c6ea07b",
+  "frames": 8700,
+  "minimum_graph_instances": 14,
+  "maximum_graph_instances": 14,
+  "marker_events": 427,
+  "respawned_marker_events": 67,
+  "duplicate_marker_identities": 0,
+  "generation_regressions": 0,
+  "audio": {
+    "device": {
+      "rendered_frames": 5052416,
+      "device_errors": 0,
+      "refused_commands": 0,
+      "nonzero_samples": 10100447,
+      "peak": 0.3167935013771057,
+      "capture_dropped_blocks": 0
+    },
+    "queued_by_cue": [
+      427,
+      21,
+      94,
+      7,
+      1
+    ],
+    "sample_rate": 48000
+  },
+  "render_dimensions": [
+    3456,
+    2104
+  ],
+  "samples": 4,
+  "acceptance_passed": true,
+  "source_sha256": {
+    "crates/verse/src/imported/mod.rs": "dd9fbc81eb36e58440fc86170a3f61ab87313da4ef7bf4a1960e091dacac0933",
+    "crates/verse/src/imported/original.rs": "50736b24e46fff189c71f31cb064e3db23a752eee4589a97df487e91b9a0353a",
+    "crates/verse-engine/src/animation_graph.rs": "dc1c90b025819d89aa93141b1041868937446117f3e1e17b415a86aefc4478bf"
+  }
+}
