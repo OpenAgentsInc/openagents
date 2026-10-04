@@ -330,7 +330,7 @@ These Zeron pieces are not ported yet. Paths are in the Zeron checkout.
 | `crates/ui/src/composer.rs` (`QuestionFlow`, `Wizard`) | Decision panel: paged questions, number keys select, single-select advances | Over the host's `interaction.rs` questions. |
 | `crates/ui/src/comments.rs`, `comment_ui.rs` | Line comments on a review, sent with **Request changes** | The model is in [`review_comments.rs`](../../crates/openagents-chat-app/src/review_comments.rs) (#10470); no platform draws it yet. |
 | `crates/ui/src/todo_panel.rs` | A seat's plan, and a Task Wall card's detail | |
-| `crates/ui/src/shell.rs` (`RightSurface::Subagent`, `SideChat`) | Seat panel tabs, including an engine's own subagents | |
+| `crates/ui/src/shell.rs` (`RightSurface::Subagent`, `SideChat`) | Seat panel tabs, including an engine's own subagents | Tab state is in [`openagents-chat-app/src/subagents.rs`](../../crates/openagents-chat-app/src/subagents.rs), whose module documentation lists which engines' traces identify a spawn. |
 | `crates/ui/src/change_requests.rs` | Landing and pull request state after **Merge** | Display only. |
 | `crates/ui/src/sound.rs`, `notify.rs`, `assets/sounds/` | The podium bell and desktop notifications for done, request, and attention | Prefer original sounds; a copied file needs the MIT notice. |
 | `crates/ui/src/loaders.rs`, `motion.rs` | Working indicators and panel motion | The closeout lists motion as missing. |

@@ -1,0 +1,86 @@
+{
+  "schema_version": "ATIF-v1.8",
+  "session_id": "seat-lead",
+  "trajectory_id": "seat-lead",
+  "agent": { "name": "coder", "version": "0.1.0", "model_name": "claude-opus-5-5" },
+  "steps": [
+    { "step_id": 1, "timestamp": "2026-10-04T08:00:00Z", "source": "user", "message": "Fix the flaky relay test and audit the auth flow." },
+    {
+      "step_id": 2, "timestamp": "2026-10-04T08:00:05Z", "source": "agent", "message": "",
+      "model_name": "claude-opus-5-5",
+      "tool_calls": [{
+        "tool_call_id": "toolu_audit",
+        "function_name": "Task",
+        "arguments": {
+          "description": "Audit the auth flow",
+          "subagent_type": "general-purpose",
+          "model": "haiku",
+          "prompt": "Read crates/coder-access and list every place a grant is checked."
+        }
+      }],
+      "observation": { "results": [{
+        "source_call_id": "toolu_audit",
+        "content": "Grants are checked in three places.",
+        "extra": { "status": "completed", "duration_ms": 41000 },
+        "subagent_trajectory_ref": [{ "session_id": "child-audit", "trajectory_id": "child-audit" }]
+      }]}
+    },
+    {
+      "step_id": 3, "timestamp": "2026-10-04T08:00:06Z", "source": "agent", "message": "",
+      "model_name": "claude-opus-5-5",
+      "tool_calls": [{
+        "tool_call_id": "call_flaky",
+        "function_name": "task",
+        "arguments": { "description": "Find the flaky relay test", "prompt": "Run the relay tests ten times." }
+      }],
+      "observation": { "results": [{
+        "source_call_id": "call_flaky",
+        "content": "The handoff test races its timer.",
+        "extra": { "status": "failed", "duration_ms": 90000 }
+      }]}
+    },
+    {
+      "step_id": 4, "timestamp": "2026-10-04T08:00:07Z", "source": "agent", "message": "",
+      "model_name": "claude-opus-5-5",
+      "tool_calls": [{
+        "tool_call_id": "call_ls",
+        "function_name": "Bash",
+        "arguments": { "command": "ls", "model": "not-a-spawn" }
+      }],
+      "observation": { "results": [{ "source_call_id": "call_ls", "content": "Cargo.toml", "extra": { "status": "completed" } }]}
+    },
+    {
+      "step_id": 5, "timestamp": "2026-10-04T08:00:08Z", "source": "agent", "message": "",
+      "model_name": "claude-opus-5-5",
+      "tool_calls": [{
+        "tool_call_id": "call_docs",
+        "function_name": "spawn_subagent",
+        "arguments": { "description": "Check the docs", "model_id": "grok-code" }
+      }]
+    }
+  ],
+  "subagent_trajectories": [{
+    "schema_version": "ATIF-v1.8",
+    "session_id": "child-audit",
+    "trajectory_id": "child-audit",
+    "agent": { "name": "claude-code", "version": "2.1.0", "model_name": "haiku" },
+    "steps": [
+      { "step_id": 1, "timestamp": "2026-10-04T08:00:05Z", "source": "user", "message": "Read crates/coder-access and list every place a grant is checked." },
+      {
+        "step_id": 2, "timestamp": "2026-10-04T08:00:10Z", "source": "agent", "message": "",
+        "model_name": "haiku",
+        "tool_calls": [{
+          "tool_call_id": "toolu_nested",
+          "function_name": "Agent",
+          "arguments": { "description": "Read the revocation epochs", "prompt": "Explain revocation epochs." }
+        }],
+        "observation": { "results": [{
+          "source_call_id": "toolu_nested",
+          "content": "Epochs increase on every revocation.",
+          "extra": { "status": "completed" }
+        }]}
+      },
+      { "step_id": 3, "timestamp": "2026-10-04T08:00:40Z", "source": "agent", "message": "Grants are checked in three places.", "model_name": "haiku" }
+    ]
+  }]
+}
