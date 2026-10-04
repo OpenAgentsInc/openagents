@@ -1193,6 +1193,10 @@ impl Renderer {
         let mut grounded_vertices = 0;
         let ui_bytes = bytemuck::cast_slice(world.overlay().vertices());
         let frame = lighting::frame(view, lighting)?;
+        let refresh: Vec<_> = (0..lighting.shadow_count() * 6)
+            .map(|layer| self.static_shadow_keys[layer] != Some(frame.shadow[layer]))
+            .collect();
+        let plan = verse_engine::render_graph::ChamberPlan::build(&refresh, capture)?;
         self.queue
             .write_buffer(&self.frame, 0, bytemuck::bytes_of(&frame));
         for layer in 0..lighting.lights.len().min(lighting.shadowed).min(4) * 6 {
@@ -1417,185 +1421,202 @@ impl Renderer {
         let prepared = Instant::now();
         let mut shadow_draws = 0;
         let mut encoder = self.device.create_command_encoder(&Default::default());
-        for layer in 0..lighting.shadow_count() * 6 {
-            if self.static_shadow_keys[layer] != Some(frame.shadow[layer]) {
-                let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some("Verse static shadow cache refresh"),
-                    color_attachments: &[],
-                    depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                        view: &self.static_shadow_views[layer],
-                        depth_ops: Some(wgpu::Operations {
-                            load: wgpu::LoadOp::Clear(1.),
-                            store: wgpu::StoreOp::Store,
+        use verse_engine::render_graph::ChamberPass;
+        let mut shadows_encoded = prepared;
+        let mut world_encoded = prepared;
+        let mut overlay_encoded = prepared;
+        for action in plan.actions() {
+            match action {
+                ChamberPass::RefreshShadow { layer } => {
+                    let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                        label: Some("Verse static shadow cache refresh"),
+                        color_attachments: &[],
+                        depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                            view: &self.static_shadow_views[layer],
+                            depth_ops: Some(wgpu::Operations {
+                                load: wgpu::LoadOp::Clear(1.),
+                                store: wgpu::StoreOp::Store,
+                            }),
+                            stencil_ops: None,
                         }),
-                        stencil_ops: None,
-                    }),
-                    ..Default::default()
-                });
-                pass.set_pipeline(&self.shadow_pipeline);
-                pass.set_bind_group(0, &self.shadow_groups[layer], &[]);
-                pass.set_bind_group(2, &self.actors[0].group, &[]);
-                for batch in self
-                    .static_batches
-                    .iter()
-                    .filter(|b| b.blend < 2 && !b.emissive)
-                {
-                    if batch
-                        .bounds
-                        .is_some_and(|b| !b.visible(Mat4::from_cols_array_2d(&frame.shadow[layer])))
-                    {
-                        continue;
-                    }
-                    self.draw_batch(&mut pass, batch);
-                    shadow_draws += 1;
-                }
-                drop(pass);
-                self.static_shadow_keys[layer] = Some(frame.shadow[layer]);
-            }
-            let origin = wgpu::Origin3d {
-                x: 0,
-                y: 0,
-                z: layer as u32,
-            };
-            encoder.copy_texture_to_texture(
-                wgpu::TexelCopyTextureInfo {
-                    texture: &self.static_shadow_texture,
-                    mip_level: 0,
-                    origin,
-                    aspect: wgpu::TextureAspect::All,
-                },
-                wgpu::TexelCopyTextureInfo {
-                    texture: &self.shadow_texture,
-                    mip_level: 0,
-                    origin,
-                    aspect: wgpu::TextureAspect::All,
-                },
-                extent(512, 512),
-            );
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Verse dynamic shadow face"),
-                color_attachments: &[],
-                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &self.shadow_views[layer],
-                    depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Load,
-                        store: wgpu::StoreOp::Store,
-                    }),
-                    stencil_ops: None,
-                }),
-                ..Default::default()
-            });
-            pass.set_pipeline(&self.shadow_pipeline);
-            pass.set_bind_group(0, &self.shadow_groups[layer], &[]);
-            let shadow_view = Mat4::from_cols_array_2d(&frame.shadow[layer]);
-            pass.execute_bundles(instances.iter().enumerate().filter_map(|(i, _)| {
-                let actor = &self.actors[i + 1];
-                if actor.shadow_count == 0
-                    || actor_bounds[i].is_some_and(|bounds| !bounds.visible(shadow_view))
-                {
-                    return None;
-                }
-                shadow_draws += actor.shadow_count;
-                Some(actor.shadow_bundles[layer].as_ref().unwrap())
-            }));
-        }
-        let shadows_encoded = Instant::now();
-        {
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Verse imported world"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &self.multisample_view,
-                    depth_slice: None,
-                    resolve_target: Some(&self.target_view),
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                        store: wgpu::StoreOp::Discard,
-                    },
-                })],
-                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &self.depth,
-                    depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(1.0),
-                        store: wgpu::StoreOp::Discard,
-                    }),
-                    stencil_ops: None,
-                }),
-                ..Default::default()
-            });
-            pass.set_bind_group(0, &self.frame_group, &[]);
-            for blend in 0..4 {
-                let static_bundles =
-                    self.static_batches
-                        .iter()
-                        .enumerate()
-                        .filter_map(|(index, batch)| {
-                            (batch.blend == blend as u8
-                                && batch
-                                    .bounds
-                                    .is_none_or(|bounds| bounds.visible(view.view_proj)))
-                            .then_some(&self.static_world_bundles[index])
-                        });
-                let mut order: Vec<_> = instances.iter().enumerate().collect();
-                if blend == 2 {
-                    order.sort_by(|(_, a), (_, b)| {
-                        b.transform
-                            .w_axis
-                            .truncate()
-                            .distance_squared(view.eye)
-                            .total_cmp(&a.transform.w_axis.truncate().distance_squared(view.eye))
+                        ..Default::default()
                     });
-                }
-                let actor_bundles = order.into_iter().filter_map(|(i, _)| {
-                    let actor = &self.actors[i + 1];
-                    if actor.world_counts[blend] == 0
-                        || actor_bounds[i].is_some_and(|bounds| !bounds.visible(view.view_proj))
+                    pass.set_pipeline(&self.shadow_pipeline);
+                    pass.set_bind_group(0, &self.shadow_groups[layer], &[]);
+                    pass.set_bind_group(2, &self.actors[0].group, &[]);
+                    for batch in self
+                        .static_batches
+                        .iter()
+                        .filter(|b| b.blend < 2 && !b.emissive)
                     {
-                        return None;
+                        if batch.bounds.is_some_and(|b| {
+                            !b.visible(Mat4::from_cols_array_2d(&frame.shadow[layer]))
+                        }) {
+                            continue;
+                        }
+                        self.draw_batch(&mut pass, batch);
+                        shadow_draws += 1;
                     }
-                    Some(actor.world_bundles[blend].as_ref().unwrap())
-                });
-                pass.execute_bundles(static_bundles.chain(actor_bundles));
+                    drop(pass);
+                    self.static_shadow_keys[layer] = Some(frame.shadow[layer]);
+                }
+                ChamberPass::CopyShadow { layer } => {
+                    let origin = wgpu::Origin3d {
+                        x: 0,
+                        y: 0,
+                        z: layer as u32,
+                    };
+                    encoder.copy_texture_to_texture(
+                        wgpu::TexelCopyTextureInfo {
+                            texture: &self.static_shadow_texture,
+                            mip_level: 0,
+                            origin,
+                            aspect: wgpu::TextureAspect::All,
+                        },
+                        wgpu::TexelCopyTextureInfo {
+                            texture: &self.shadow_texture,
+                            mip_level: 0,
+                            origin,
+                            aspect: wgpu::TextureAspect::All,
+                        },
+                        extent(512, 512),
+                    );
+                }
+                ChamberPass::DrawShadow { layer } => {
+                    let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                        label: Some("Verse dynamic shadow face"),
+                        color_attachments: &[],
+                        depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                            view: &self.shadow_views[layer],
+                            depth_ops: Some(wgpu::Operations {
+                                load: wgpu::LoadOp::Load,
+                                store: wgpu::StoreOp::Store,
+                            }),
+                            stencil_ops: None,
+                        }),
+                        ..Default::default()
+                    });
+                    pass.set_pipeline(&self.shadow_pipeline);
+                    pass.set_bind_group(0, &self.shadow_groups[layer], &[]);
+                    let shadow_view = Mat4::from_cols_array_2d(&frame.shadow[layer]);
+                    pass.execute_bundles(instances.iter().enumerate().filter_map(|(i, _)| {
+                        let actor = &self.actors[i + 1];
+                        if actor.shadow_count == 0
+                            || actor_bounds[i].is_some_and(|bounds| !bounds.visible(shadow_view))
+                        {
+                            return None;
+                        }
+                        shadow_draws += actor.shadow_count;
+                        Some(actor.shadow_bundles[layer].as_ref().unwrap())
+                    }));
+                }
+                ChamberPass::WorldResolve => {
+                    shadows_encoded = Instant::now();
+
+                    let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                        label: Some("Verse imported world"),
+                        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                            view: &self.multisample_view,
+                            depth_slice: None,
+                            resolve_target: Some(&self.target_view),
+                            ops: wgpu::Operations {
+                                load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                                store: wgpu::StoreOp::Discard,
+                            },
+                        })],
+                        depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                            view: &self.depth,
+                            depth_ops: Some(wgpu::Operations {
+                                load: wgpu::LoadOp::Clear(1.0),
+                                store: wgpu::StoreOp::Discard,
+                            }),
+                            stencil_ops: None,
+                        }),
+                        ..Default::default()
+                    });
+                    pass.set_bind_group(0, &self.frame_group, &[]);
+                    for blend in 0..4 {
+                        let static_bundles =
+                            self.static_batches
+                                .iter()
+                                .enumerate()
+                                .filter_map(|(index, batch)| {
+                                    (batch.blend == blend as u8
+                                        && batch
+                                            .bounds
+                                            .is_none_or(|bounds| bounds.visible(view.view_proj)))
+                                    .then_some(&self.static_world_bundles[index])
+                                });
+                        let mut order: Vec<_> = instances.iter().enumerate().collect();
+                        if blend == 2 {
+                            order.sort_by(|(_, a), (_, b)| {
+                                b.transform
+                                    .w_axis
+                                    .truncate()
+                                    .distance_squared(view.eye)
+                                    .total_cmp(
+                                        &a.transform.w_axis.truncate().distance_squared(view.eye),
+                                    )
+                            });
+                        }
+                        let actor_bundles = order.into_iter().filter_map(|(i, _)| {
+                            let actor = &self.actors[i + 1];
+                            if actor.world_counts[blend] == 0
+                                || actor_bounds[i]
+                                    .is_some_and(|bounds| !bounds.visible(view.view_proj))
+                            {
+                                return None;
+                            }
+                            Some(actor.world_bundles[blend].as_ref().unwrap())
+                        });
+                        pass.execute_bundles(static_bundles.chain(actor_bundles));
+                    }
+
+                    drop(pass);
+                    world_encoded = Instant::now();
+                }
+                ChamberPass::Overlay => {
+                    let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                        label: Some("Verse imported names and dialogue"),
+                        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                            view: &self.target_view,
+                            depth_slice: None,
+                            resolve_target: None,
+                            ops: wgpu::Operations {
+                                load: wgpu::LoadOp::Load,
+                                store: wgpu::StoreOp::Store,
+                            },
+                        })],
+                        ..Default::default()
+                    });
+                    pass.set_pipeline(&self.ui_pipeline);
+                    pass.set_bind_group(0, &self.ui_group, &[]);
+                    pass.set_vertex_buffer(0, self.ui_buffer.slice(..));
+                    pass.draw(0..world.overlay().vertices().len() as u32, 0..1);
+
+                    drop(pass);
+                    overlay_encoded = Instant::now();
+                }
+                ChamberPass::Readback => {
+                    encoder.copy_texture_to_buffer(
+                        wgpu::TexelCopyTextureInfo {
+                            texture: &self.target,
+                            mip_level: 0,
+                            origin: wgpu::Origin3d::ZERO,
+                            aspect: wgpu::TextureAspect::All,
+                        },
+                        wgpu::TexelCopyBufferInfo {
+                            buffer: &self.readback,
+                            layout: wgpu::TexelCopyBufferLayout {
+                                offset: 0,
+                                bytes_per_row: Some(self.row),
+                                rows_per_image: Some(self.height),
+                            },
+                        },
+                        extent(self.width, self.height),
+                    );
+                }
             }
-        }
-        let world_encoded = Instant::now();
-        {
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Verse imported names and dialogue"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &self.target_view,
-                    depth_slice: None,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Load,
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                ..Default::default()
-            });
-            pass.set_pipeline(&self.ui_pipeline);
-            pass.set_bind_group(0, &self.ui_group, &[]);
-            pass.set_vertex_buffer(0, self.ui_buffer.slice(..));
-            pass.draw(0..world.overlay().vertices().len() as u32, 0..1);
-        }
-        let overlay_encoded = Instant::now();
-        if capture {
-            encoder.copy_texture_to_buffer(
-                wgpu::TexelCopyTextureInfo {
-                    texture: &self.target,
-                    mip_level: 0,
-                    origin: wgpu::Origin3d::ZERO,
-                    aspect: wgpu::TextureAspect::All,
-                },
-                wgpu::TexelCopyBufferInfo {
-                    buffer: &self.readback,
-                    layout: wgpu::TexelCopyBufferLayout {
-                        offset: 0,
-                        bytes_per_row: Some(self.row),
-                        rows_per_image: Some(self.height),
-                    },
-                },
-                extent(self.width, self.height),
-            );
         }
         let finish_started = Instant::now();
         let commands = encoder.finish();
