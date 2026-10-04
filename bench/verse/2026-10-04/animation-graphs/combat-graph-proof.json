@@ -1,0 +1,23 @@
+{
+  "schema": "openagents.verse.animation-graph-combat.v1",
+  "native_commit": "fc5a704cf0168ad3671e8fd74d265bcb4c6ea07b",
+  "frames": 2832,
+  "graph_instances": [
+    13,
+    14
+  ],
+  "render_dimensions": [
+    1280,
+    720
+  ],
+  "samples": 4,
+  "video": "combat.mp4",
+  "receipt": "combat.json",
+  "capture": "offscreen owned GPU rendering, silent 30 fps capture; live device audio is retained separately under shared-poses",
+  "inspection_seconds": [
+    32,
+    58,
+    87
+  ],
+  "inspection": "Casting with shield, firebolt release, and respawned cultist combat poses; grounded corpses and attachment placement preserved. Transition continuity also has portable interrupted-pose tests."
+}
