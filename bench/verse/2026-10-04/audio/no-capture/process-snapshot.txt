@@ -1,0 +1,8 @@
+  PID  PPID  %CPU     ELAPSED COMM
+95259 20236 1321.6       00:29 /Users/christopherdavid/.rustup/toolchains/1.97.1-aarch64-apple-darwin/bin/rustc
+88592 18390 117.3       02:34 /Users/christopherdavid/work/openagents-target-agent1/debug/examples/verse_play
+96274 77951  89.5       00:02 /usr/bin/top
+80574     1  73.2 04-06:02:16 /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/Metadata.framework/Versions/A/Support/mds_stores
+57049     1  48.9 13-12:13:39 /System/Library/PrivateFrameworks/SkyLight.framework/Resources/WindowServer
+17938 17871  10.6 01-10:36:31 /Applications/ChatGPT.app/Contents/Frameworks/Codex Framework.framework/Versions/154.0.8037.93/Helpers/Codex (Service).app/Contents/MacOS/Codex (Service)
+18389 17871   5.0 01-10:36:28 /Applications/ChatGPT.app/Contents/Frameworks/Codex Framework.framework/Versions/154.0.8037.93/Helpers/Codex (Renderer).app/Contents/MacOS/Codex (Renderer)

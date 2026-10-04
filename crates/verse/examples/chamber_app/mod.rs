@@ -61,6 +61,7 @@ struct Stress {
     duration: f64,
     started: Option<Instant>,
     next_cast: f32,
+    next_shield: Option<f32>,
     casts: u64,
     move_forward: bool,
 }
@@ -157,6 +158,14 @@ impl App {
         };
         if let Some(stress) = &mut self.stress {
             self.keys.clear();
+            if stress
+                .next_shield
+                .is_some_and(|time| self.game.time >= time)
+                && self.game.casting.is_none()
+                && self.game.activate(Ability::Shield).is_ok()
+            {
+                stress.next_shield = Some(self.game.time + 15.);
+            }
             if self.game.casting.is_none() && self.game.time >= stress.next_cast {
                 self.game.selected = 1;
                 if self.game.activate(Ability::Fireball).is_ok() {
@@ -366,12 +375,14 @@ impl App {
             vec![]
         };
         let animation_markers = renderer.take_marker_events();
+        let audio_started = Instant::now();
         if let Some(audio) = &mut self.audio {
             if let Err(error) = audio.update(&self.game, view, &animation_markers) {
                 self.audio_error = error;
             }
         }
 
+        let audio_update_ms = audio_started.elapsed().as_secs_f64() * 1000.;
         if let Some(profile) = &mut self.profile {
             let renderer = self.renderer.as_ref().unwrap();
             let timing = renderer.last_timings;
@@ -394,6 +405,7 @@ impl App {
                 "animation_markers":animation_markers,
                 "audio":self.audio.as_ref().map(|audio| audio.stats()),
                 "audio_error":self.audio_error,
+                "audio_update_ms":audio_update_ms,
                 "frame_work_ms":self.world_ms + projection_ms + timing.total_ms,
                 "navigation_plans":self.game.navigation_plans,
                 "physics_steps":self.game.physics_steps,
@@ -1024,7 +1036,7 @@ pub fn run(original_default: bool) -> Result<(), String> {
     let mode = args.next();
     if matches!(
         mode.as_deref(),
-        Some("--reload-window-proof" | "--resize-window-proof")
+        Some("--reload-window-proof" | "--resize-window-proof" | "--audio-window-proof")
     ) {
         let output = PathBuf::from(
             args.next()
@@ -1076,6 +1088,8 @@ pub fn run(original_default: bool) -> Result<(), String> {
             duration,
             started: None,
             next_cast: app.game.time + 1.,
+            next_shield: (mode.as_deref() == Some("--audio-window-proof"))
+                .then_some(app.game.time + 5.),
             casts: 0,
             move_forward: true,
         });
@@ -1104,6 +1118,7 @@ pub fn run(original_default: bool) -> Result<(), String> {
             duration,
             started: None,
             next_cast: app.game.time + 1.,
+            next_shield: None,
             casts: 0,
             move_forward: true,
         });
@@ -1345,6 +1360,7 @@ fn demo(app: &mut App, output: PathBuf, mode: Demo) -> Result<(), String> {
             duration: 100.,
             started: None,
             next_cast: app.game.time + 1.,
+            next_shield: None,
             casts: 0,
             move_forward: true,
         });
