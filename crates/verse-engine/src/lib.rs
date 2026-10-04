@@ -4,6 +4,7 @@
 pub mod animation;
 pub mod assets;
 pub mod audio;
+pub mod audio_cues;
 pub mod core;
 pub mod director;
 pub mod inventory;
