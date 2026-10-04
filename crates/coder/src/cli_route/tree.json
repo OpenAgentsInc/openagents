@@ -6434,8 +6434,122 @@
     },
     {
       "name": "studio",
-      "summary": "Agent Studio: seats, goals a lead plans, plan entries released as their dependencies finish, shared memory, and messages to seats.",
+      "summary": "Agent Studio: one command to launch it on a repository, seats, goals a lead plans, plan entries released as their dependencies finish, shared memory, and messages to seats.",
       "children": [
+        {
+          "name": "up",
+          "leaf": {
+            "path": [
+              "studio",
+              "up"
+            ],
+            "usage": [
+              "up [--repo PATH] [--workspace LABEL] [--team TEAM] [--sim] [--no-verse] [--no-host] [--controller PATH] [--coder PATH] [--verse PATH] [--control-socket PATH]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "up"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "repo",
+                    "value": "PATH",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "workspace",
+                    "value": "LABEL",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "team",
+                    "value": "TEAM",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "sim",
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "no-verse",
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "no-host",
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "controller",
+                    "value": "PATH",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "coder",
+                    "value": "PATH",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "verse",
+                    "value": "PATH",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "control-socket",
+                    "value": "PATH",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Launch the studio on a repository: admit it as a host workspace, turn auto-start on for the team's routes, seat a team, start the host if none runs, and open Verse in Everglade. The default team is a lead and two workers on the signed-in coding agents; TEAM is NAME=ROUTE,NAME=ROUTE,... with the lead first, ROUTE being PROVIDER:MODEL or a provider alone. --sim opens the simulated team on a scratch repository with no model spend. Options are remembered for the next up.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "down",
+          "leaf": {
+            "path": [
+              "studio",
+              "down"
+            ],
+            "usage": [
+              "down"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "down"
+                  }
+                ]
+              }
+            ],
+            "summary": "Stop and undo only what up started and changed.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
         {
           "name": "seat",
           "children": [
@@ -6870,6 +6984,80 @@
       "options": [
         {
           "kind": "option",
+          "name": "repo",
+          "value": "PATH",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "workspace",
+          "value": "LABEL",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "team",
+          "value": "TEAM",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "sim",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "no-verse",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "no-host",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "controller",
+          "value": "PATH",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "coder",
+          "value": "PATH",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "verse",
+          "value": "PATH",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "control-socket",
+          "value": "PATH",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
           "name": "route",
           "value": "ROUTE",
           "open": true,
@@ -6896,14 +7084,6 @@
           "kind": "option",
           "name": "desk",
           "value": "N",
-          "open": true,
-          "optional": true,
-          "repeated": true
-        },
-        {
-          "kind": "option",
-          "name": "workspace",
-          "value": "LABEL",
           "open": true,
           "optional": true,
           "repeated": true
