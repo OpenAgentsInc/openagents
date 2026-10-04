@@ -278,7 +278,11 @@ Wire version 18 adds an owned movement baseline with the exact capsule state,
 yaw, life, control epoch, and applied sequence. Snapshots withhold it while
 movement or jump input is pending, during cinematic/controller control, and
 after death; spectators receive none. Client prediction and reconciliation
-remain in progress.
+remain in progress. The portable `prediction::History` bounds retained movement
+to 64 intervals and 256 substeps, replays only unapplied input, and retires
+history on a newer life or control epoch. Its snapshot observation ordering
+allows multiple corrections within one server tick. Native input binding and
+render integration remain required.
 
 ## Spell physics and the spell playground
 
