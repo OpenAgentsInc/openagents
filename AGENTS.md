@@ -651,6 +651,11 @@ uses, and marks which are implemented and which are only specified.
   `nostr`, `serde`, and `sha2` only, so the phones read XP through Verse's
   `xp-host` feature without linking the knowledge base's model and
   embedding clients; keep it that way.
+- `crates/everglade-web` — Everglade in a browser: a `cdylib` over Verse's
+  `web` feature (`wasm32-unknown-unknown`) that fetches the pinned pack from
+  the same origin and draws the zone with WebGPU or WebGL2.
+  `scripts/build-everglade-web.sh` builds it; its README holds the page
+  contract (canvas ID, output files, and pack URL).
 - `crates/verse-ruins` — the retained Ruins of Atlantis Wizard Woods ECS,
   original player controller, and pinned terrain. Its adapter exposes portable
   gameplay snapshots and destructible meshes. Keep source provenance and

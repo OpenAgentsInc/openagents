@@ -1,0 +1,77 @@
+# everglade-web
+
+Everglade in a browser. This crate is a `cdylib` over Verse's `web` feature:
+it fetches the pinned Everglade pack from the page's own origin, checks its
+length and SHA-256, installs Everglade directly (no plaza, relay, or studio
+host), and draws it with WebGPU, or with WebGL2 where the browser has no
+WebGPU adapter. A native build of the crate is empty.
+
+## Build
+
+```sh
+./scripts/build-everglade-web.sh OUTDIR
+```
+
+The script runs `cargo build --release --target wasm32-unknown-unknown -p
+everglade-web`, then `wasm-bindgen --target web`, then `wasm-opt -O2` when
+Binaryen is installed. It needs:
+
+- The pinned toolchain's `wasm32-unknown-unknown` target.
+- The `wasm-bindgen` CLI at exactly the version `Cargo.lock` pins for the
+  `wasm-bindgen` crate (0.2.128 when this was written): `cargo install
+  wasm-bindgen-cli --version 0.2.128 --locked`. The script refuses another
+  version.
+- A clang with the WebAssembly target, for secp256k1's C. Apple's clang has
+  none; the script finds Homebrew's `llvm`, or set
+  `CC_wasm32_unknown_unknown` (and `AR_wasm32_unknown_unknown`).
+
+## Output and the page contract
+
+The script writes exactly these files, directly in `OUTDIR`:
+
+| File | What it is |
+| --- | --- |
+| `everglade_web.js` | The ES module glue. Its default export, `init`, loads the module. |
+| `everglade_web_bg.wasm` | The module (about 11 MB; about 7.7 MB with gzip). |
+
+The page that serves them must:
+
+- Have a `<canvas id="everglade-canvas">`, sized by CSS. The module draws on
+  that canvas, sets its drawing-buffer size from its laid-out size and the
+  device pixel ratio, and sets `touch-action: none` on it.
+- Import the glue from the same origin and call
+  `init({ module_or_path: "<url of everglade_web_bg.wasm>" })`. The module
+  starts itself when `init` finishes (`#[wasm_bindgen(start)]`).
+- Serve the pinned pack at `/everglade/pack/<PACK_SHA256>.vtp` on the same
+  origin, where `PACK_SHA256` is
+  `verse::zones::everglade_pack::PACK_SHA256` and the file is
+  `assets/verse/everglade/<PACK_SHA256>.vtp` (`PACK_BYTES` long). The module
+  fetches it without credentials, refuses a redirect, stops reading past
+  `PACK_BYTES`, and refuses bytes whose length or SHA-256 differ. A new pack
+  digest is a new URL, so the file can be cached as immutable.
+
+Download progress and errors appear in an element with the ID
+`everglade-status`. The module creates one at the bottom left when the page
+has none, and hides it when the glade appears.
+
+## Local test
+
+```sh
+./scripts/build-everglade-web.sh --with-pack /tmp/everglade
+python3 -m http.server -d /tmp/everglade 8080
+```
+
+`--with-pack` adds the test page `index.html` from this crate and copies the
+committed pack to `everglade/pack/`, so the server root is a complete site.
+Open <http://localhost:8080/>.
+
+## Controls
+
+The shared controller, mapped as on desktop:
+
+- `W`/`S` or the up and down arrows walk; `A`/`D` or the left and right
+  arrows turn; `Q`/`E` strafe; `Shift` runs; `Space` jumps.
+- A left drag orbits the camera, a right drag turns the character, both
+  buttons walk forward, and the wheel zooms.
+- On a touch screen, one finger turns the character and tilts the camera,
+  and two fingers walk forward; pinching them zooms.

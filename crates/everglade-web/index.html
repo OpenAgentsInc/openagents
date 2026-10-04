@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Everglade</title>
+    <style>
+      html, body { margin: 0; height: 100%; background: #0e140c; overflow: hidden; }
+      #everglade-canvas { display: block; width: 100vw; height: 100vh; touch-action: none; outline: none; }
+    </style>
+  </head>
+  <body>
+    <!-- A local test page; the site serves its own. -->
+    <canvas id="everglade-canvas" tabindex="0"></canvas>
+    <script type="module">
+      import init from "./everglade_web.js";
+      init({ module_or_path: "./everglade_web_bg.wasm" });
+    </script>
+  </body>
+</html>

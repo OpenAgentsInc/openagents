@@ -14,7 +14,9 @@ and [`panels/studio.rs`](../../crates/verse/src/panels/studio.rs): seats walk
 between stations from studio snapshots, stations open read-only panels, and
 `verse --studio-sim` or `everglade_capture` with a `studio-` view plays the
 simulated team. Sending intents from Verse and the phones are not
-implemented yet.
+implemented yet. Everglade also runs in a browser through
+[`crates/everglade-web`](../../crates/everglade-web/README.md), without the
+studio.
 
 Everglade is a loaded Verse zone: a forest glade with a small timber-and-plaster
 workshop where a person works with a team of coding agents. It is where the
