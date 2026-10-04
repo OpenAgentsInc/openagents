@@ -243,7 +243,9 @@ uses two codec threads and one filter thread. Timing duplicates remain explicit.
 
 Host JSON requires `listen` (socket address), nonzero `instance`, `scene`, `pack`,
 `certificate_der`, `private_key_der`, and `enrollments`. Paths resolve from the
-working directory. Each enrollment contains a 64-character x-only `public_key`
+working directory. Optional `authored_combat_health: true` preserves hostile health
+from the scene through restart, respawn, and saved-scene compatibility checks;
+omitting it retains the chamber encounter defaults. Each enrollment contains a 64-character x-only `public_key`
 and `role`: `{"type":"primary"}`, `{"type":"player","spawn":[x,y,z]}`, or
 `{"type":"spectator"}`. Keys must be unique; at most one primary, 63 additional
 players, and 128 total enrollments are accepted. The private DER key requires

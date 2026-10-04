@@ -49,7 +49,7 @@ for i,actor in enumerate(cultists):
     actor['health']=20000
 scene=str(root/'battle.json');(root/'battle.json').write_text(json.dumps(authored))
 pack=str(assets/'runtime-pack.json')
-host={'listen':address,'instance':220,'scene':scene,'pack':pack,'certificate_der':str(root/'cert.der'),'private_key_der':str(root/'tls.der'),'enrollments':[{'public_key':k,'role':({'type':'primary'} if role=='primary' else {'type':'player','spawn':[-6+3*((i-1)%5),0,-21+2*((i-1)//5)]})} for i,(role,k) in enumerate(zip(roles,keys))]}
+host={'authored_combat_health':True,'listen':address,'instance':220,'scene':scene,'pack':pack,'certificate_der':str(root/'cert.der'),'private_key_der':str(root/'tls.der'),'enrollments':[{'public_key':k,'role':({'type':'primary'} if role=='primary' else {'type':'player','spawn':[-6+3*((i-1)%5),0,-21+2*((i-1)//5)]})} for i,(role,k) in enumerate(zip(roles,keys))]}
 (root/'host.json').write_text(json.dumps(host))
 env=dict(os.environ)
 (root/'home').mkdir()

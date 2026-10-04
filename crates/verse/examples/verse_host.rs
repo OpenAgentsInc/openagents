@@ -3,10 +3,7 @@ use std::{
     path::Path,
     sync::{Arc, Mutex},
 };
-use verse_world::{
-    play::Game,
-    service::{host::Config, net, persistence::Store},
-};
+use verse_world::service::{host::Config, net, persistence::Store};
 fn bounded(path: &Path, limit: usize, private: bool) -> Result<Vec<u8>, String> {
     use std::io::Read;
     let file = std::fs::File::open(path).map_err(|_| "Cannot open chamber host input")?;
@@ -68,7 +65,7 @@ async fn serve(config: Config) -> Result<(), String> {
         &scene,
         config.pack.parent().unwrap_or(Path::new(".")),
     )?;
-    let mut game = Game::combat_in(scene, false, config.instance)?;
+    let mut game = config.prepare_game(scene)?;
     verse::imported::props::admit_collision(&pack, &mut game)?;
     let mut store = config
         .state_dir

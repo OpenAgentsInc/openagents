@@ -16,6 +16,8 @@ pub struct Config {
     pub private_key_der: PathBuf,
     pub enrollments: Vec<Enrollment>,
     #[serde(default)]
+    pub authored_combat_health: bool,
+    #[serde(default)]
     pub state_dir: Option<PathBuf>,
     #[serde(default)]
     pub rewards: Vec<super::rewards::Policy>,
@@ -42,6 +44,15 @@ pub enum Role {
     Spectator {},
 }
 impl Config {
+    /// Prepares combat using only the operator's configured health policy.
+    pub fn prepare_game(&self, scene: verse_engine::director::Scene) -> Result<Game, String> {
+        self.validate()?;
+        if self.authored_combat_health {
+            Game::combat_authored_in(scene, false, self.instance)
+        } else {
+            Game::combat_in(scene, false, self.instance)
+        }
+    }
     pub fn from_json(bytes: &[u8]) -> Result<Self, String> {
         if bytes.is_empty() || bytes.len() > 64 * 1024 {
             return Err("Host configuration exceeds its byte budget".into());
@@ -226,6 +237,7 @@ mod tests {
                 public_key: keys,
                 role: Role::Primary {},
             }],
+            authored_combat_health: false,
             state_dir: None,
             rewards: Vec::new(),
             progression: Default::default(),
@@ -240,6 +252,73 @@ mod tests {
         ))
         .unwrap();
         Game::combat_in(scene, false, instance).unwrap()
+    }
+    #[test]
+    fn authored_health_survives_reset_and_recovery_fences() {
+        let mut config = config();
+        let mut scene = verse_engine::director::Scene::from_json(include_bytes!(
+            "../../../../assets/verse/original/ritual.json"
+        ))
+        .unwrap();
+        scene
+            .actors
+            .iter_mut()
+            .find(|actor| actor.id == 2)
+            .unwrap()
+            .health = 20_000;
+        let default = config.prepare_game(scene.clone()).unwrap();
+        assert_eq!(
+            default
+                .frame()
+                .actors
+                .iter()
+                .find(|actor| actor.actor.id == 2)
+                .unwrap()
+                .health,
+            15
+        );
+        config.authored_combat_health = true;
+        let mut authored = config.prepare_game(scene.clone()).unwrap();
+        assert_eq!(
+            authored
+                .frame()
+                .actors
+                .iter()
+                .find(|actor| actor.actor.id == 2)
+                .unwrap()
+                .health,
+            20_000
+        );
+        authored.restart_combat(false).unwrap();
+        assert_eq!(
+            authored
+                .frame()
+                .actors
+                .iter()
+                .find(|actor| actor.actor.id == 2)
+                .unwrap()
+                .health,
+            20_000
+        );
+        let restored = Game::restore(&authored.checkpoint().unwrap()).unwrap();
+        assert_eq!(
+            restored
+                .frame()
+                .actors
+                .iter()
+                .find(|actor| actor.actor.id == 2)
+                .unwrap()
+                .health,
+            20_000
+        );
+        let prepared = config.prepare_game(scene).unwrap();
+        let gateway = config.gateway(restored).unwrap();
+        config
+            .validate_recovered_scene(&gateway, &prepared)
+            .unwrap();
+        config.authored_combat_health = false;
+        let other = config.prepare_game(prepared.scene.clone()).unwrap();
+        assert!(config.validate_recovered_scene(&gateway, &other).is_err());
     }
     #[test]
     fn recovery_refuses_changed_identity_roles_and_spawns() {

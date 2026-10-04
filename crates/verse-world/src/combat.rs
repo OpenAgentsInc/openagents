@@ -44,7 +44,8 @@ pub struct Encounter {
 impl Game {
     /// Resets this local encounter while preserving command and event fences.
     pub fn restart_combat(&mut self, agent: bool) -> Result<(), String> {
-        let mut fresh = Self::combat_in(self.scene.clone(), agent, self.player_life().instance)?;
+        let mut fresh =
+            Self::combat_authored_in(self.scene.clone(), agent, self.player_life().instance)?;
         fresh.adopt_restart_fences(self)?;
         fresh.rebuild_players_after_restart(self)?;
         fresh.time = fresh.scene.cut_at - if agent { 3. } else { 0. };
@@ -58,12 +59,21 @@ impl Game {
 
     /// Starts combat in the instance selected by its trusted host.
     pub fn combat_in(mut scene: Scene, agent: bool, instance: u64) -> Result<Self, String> {
-        scene.duration = 200.0;
         for actor in &mut scene.actors {
             if actor.nameplate && !actor.friendly {
                 actor.health = if actor.model == "claude" { 300_000 } else { 15 };
             }
         }
+        Self::combat_authored_in(scene, agent, instance)
+    }
+
+    /// Starts combat with hostile health declared by the trusted scene author.
+    pub fn combat_authored_in(
+        mut scene: Scene,
+        agent: bool,
+        instance: u64,
+    ) -> Result<Self, String> {
+        scene.duration = 200.0;
         // Combat dialogue and attacks replace the staged post-handoff reactions.
         scene
             .cues
@@ -87,8 +97,13 @@ impl Game {
                 );
             }
         }
-        encounter.boss_max = 300_000;
-        encounter.boss_remaining = 300_000;
+        encounter.boss_max = game
+            .scene
+            .actors
+            .iter()
+            .find(|actor| actor.model == "claude")
+            .map_or(300_000, |actor| actor.health);
+        encounter.boss_remaining = encounter.boss_max;
         game.encounter = Some(encounter);
         game.control_handoff(agent)?;
         game.selected = 1;
