@@ -207,6 +207,7 @@ pub fn compile(pack: &mut Pack, dir: &Path, bestiary_path: Option<&Path>) -> Res
         include_bytes!("chamber.rs"),
         include_bytes!("inventory.rs"),
         include_bytes!("scene.wgsl"),
+        include_bytes!("material_gpu.rs"),
         include_bytes!("../ui.rs"),
         include_bytes!("../../../verse-engine/src/overlay.rs"),
         include_bytes!("../../../verse-engine/src/render_world.rs"),

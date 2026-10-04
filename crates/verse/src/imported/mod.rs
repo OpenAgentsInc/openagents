@@ -16,6 +16,7 @@ pub mod controls;
 mod culling;
 pub mod inventory;
 pub mod lighting;
+mod material_gpu;
 pub mod original;
 pub mod overlay;
 pub mod play;
@@ -67,7 +68,7 @@ struct Batch {
     vertices: wgpu::Buffer,
     indices: wgpu::Buffer,
     count: u32,
-    texture: verse_engine::residency::TextureHandle,
+    material: material_gpu::Key,
     blend: u8,
     emissive: bool,
 }
@@ -245,7 +246,7 @@ pub struct Renderer {
     shadow_buffers: Vec<wgpu::Buffer>,
     shadow_pipeline: wgpu::RenderPipeline,
     pose_layout: wgpu::BindGroupLayout,
-    textures: Vec<wgpu::BindGroup>,
+    materials: BTreeMap<material_gpu::Key, wgpu::BindGroup>,
     pipelines: Vec<wgpu::RenderPipeline>,
     catalog: verse_engine::residency::Catalog,
     models: HashMap<verse_engine::residency::ModelHandle, Vec<Batch>>,
@@ -281,7 +282,7 @@ fn extent(w: u32, h: u32) -> wgpu::Extent3d {
         depth_or_array_layers: 1,
     }
 }
-type Merged = BTreeMap<(usize, u8, bool, i32, i32), (Vec<GpuVertex>, Vec<u32>)>;
+type Merged = BTreeMap<(material_gpu::Key, i32, i32), (Vec<GpuVertex>, Vec<u32>)>;
 fn merge(pack: &Pack, instances: &[Instance]) -> Merged {
     let mut merged = Merged::new();
     for instance in instances {
@@ -289,9 +290,7 @@ fn merge(pack: &Pack, instances: &[Instance]) -> Merged {
         for s in &model.surfaces {
             let (v, i) = merged
                 .entry((
-                    s.texture,
-                    s.blend,
-                    s.emissive,
+                    material_gpu::Key::from_surface(s),
                     (instance.transform.w_axis.x / 8.).floor() as i32,
                     (instance.transform.w_axis.z / 8.).floor() as i32,
                 ))
@@ -322,15 +321,11 @@ fn merge(pack: &Pack, instances: &[Instance]) -> Merged {
     }
     merged
 }
-fn upload(
-    device: &wgpu::Device,
-    catalog: &verse_engine::residency::Catalog,
-    merged: Merged,
-) -> Vec<Batch> {
+fn upload(device: &wgpu::Device, merged: Merged) -> Vec<Batch> {
     merged
         .into_iter()
         .filter(|(_, (_, i))| !i.is_empty())
-        .map(|((texture, blend, emissive, _, _), (v, i))| Batch {
+        .map(|((material, _, _), (v, i))| Batch {
             bounds: culling::Bounds::from_points(v.iter().map(|v| Vec3::from(v.position))),
             vertices: buffer(
                 device,
@@ -345,9 +340,9 @@ fn upload(
                 wgpu::BufferUsages::INDEX,
             ),
             count: i.len() as u32,
-            texture: catalog.texture(texture).expect("Validated surface texture"),
-            blend,
-            emissive,
+            material,
+            blend: material.blend,
+            emissive: material.emissive,
         })
         .collect()
 }
@@ -579,27 +574,30 @@ impl Renderer {
             label: Some("imported skeleton"),
             entries: &[uniform(0)],
         });
+        let mut material_entries = vec![
+            uniform(2),
+            wgpu::BindGroupLayoutEntry {
+                binding: 1,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                count: None,
+            },
+        ];
+        for binding in [0, 3, 4, 5, 6] {
+            material_entries.push(wgpu::BindGroupLayoutEntry {
+                binding,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            });
+        }
         let texture_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("imported material"),
-            entries: &[
-                uniform(2),
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
-            ],
+            entries: &material_entries,
         });
         let frame = buffer(
             &device,
@@ -714,7 +712,7 @@ impl Renderer {
             anisotropy_clamp: 4,
             ..Default::default()
         });
-        let mut textures = Vec::new();
+        let mut texture_views = Vec::new();
         for (t, pixels) in pack.textures.iter().zip(&decoded) {
             let tex = device.create_texture(&wgpu::TextureDescriptor {
                 label: Some(&t.file),
@@ -724,7 +722,7 @@ impl Renderer {
                 dimension: wgpu::TextureDimension::D2,
                 format: wgpu::TextureFormat::Rgba8UnormSrgb,
                 usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-                view_formats: &[],
+                view_formats: &[wgpu::TextureFormat::Rgba8Unorm],
             });
             let (mut width, mut height) = (t.width, t.height);
             let mut rgba = pixels.rgba().to_vec();
@@ -768,33 +766,59 @@ impl Renderer {
                     height = next_height;
                 }
             }
-            let view = tex.create_view(&Default::default());
-            for flags in 0..8 {
-                let material = buffer(
-                    &device,
-                    "Verse imported material",
-                    bytemuck::cast_slice(&[(flags / 4) as f32, (flags % 4) as f32, 0.0, 0.0]),
-                    wgpu::BufferUsages::UNIFORM,
-                );
-                textures.push(device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: None,
-                    layout: &texture_layout,
-                    entries: &[
-                        wgpu::BindGroupEntry {
-                            binding: 0,
-                            resource: wgpu::BindingResource::TextureView(&view),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 1,
-                            resource: wgpu::BindingResource::Sampler(&sampler),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 2,
-                            resource: material.as_entire_binding(),
-                        },
-                    ],
-                }));
+            let srgb = tex.create_view(&Default::default());
+            let linear = tex.create_view(&wgpu::TextureViewDescriptor {
+                format: Some(wgpu::TextureFormat::Rgba8Unorm),
+                ..Default::default()
+            });
+            texture_views.push((srgb, linear));
+        }
+        let keys: std::collections::BTreeSet<_> = pack
+            .models
+            .values()
+            .flat_map(|model| model.surfaces.iter().map(material_gpu::Key::from_surface))
+            .collect();
+        let mut materials = BTreeMap::new();
+        for key in keys {
+            let uniform = buffer(
+                &device,
+                "Verse authored material",
+                bytemuck::cast_slice(&key.uniform()),
+                wgpu::BufferUsages::UNIFORM,
+            );
+            let mut entries = vec![
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&texture_views[key.texture].0),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&sampler),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: uniform.as_entire_binding(),
+                },
+            ];
+            for (channel, slot) in key.maps.into_iter().enumerate() {
+                let views = &texture_views[slot.unwrap_or(key.texture)];
+                entries.push(wgpu::BindGroupEntry {
+                    binding: channel as u32 + 3,
+                    resource: wgpu::BindingResource::TextureView(if channel == 3 {
+                        &views.0
+                    } else {
+                        &views.1
+                    }),
+                });
             }
+            materials.insert(
+                key,
+                device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("Verse authored material images"),
+                    layout: &texture_layout,
+                    entries: &entries,
+                }),
+            );
         }
         let format = wgpu::TextureFormat::Rgba8UnormSrgb;
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -825,13 +849,13 @@ impl Renderer {
                 immediate_size: 0,
             });
         let shadow_pipeline=device.create_render_pipeline(&wgpu::RenderPipelineDescriptor{label:Some("Verse skinned local shadow"),layout:Some(&shadow_pipeline_layout),vertex:wgpu::VertexState{module:&shader,entry_point:Some("vs"),compilation_options:Default::default(),buffers:&[wgpu::VertexBufferLayout{array_stride:std::mem::size_of::<GpuVertex>() as u64,step_mode:wgpu::VertexStepMode::Vertex,attributes:&wgpu::vertex_attr_array![0=>Float32x3,1=>Float32x3,2=>Float32x2,3=>Uint32x4,4=>Float32x4,5=>Float32x3]}]},primitive:wgpu::PrimitiveState{cull_mode:None,..Default::default()},depth_stencil:Some(wgpu::DepthStencilState{format:wgpu::TextureFormat::Depth32Float,depth_write_enabled:Some(true),depth_compare:Some(wgpu::CompareFunction::LessEqual),stencil:Default::default(),bias:wgpu::DepthBiasState{constant:1,slope_scale:1.0,clamp:0.0}}),multisample:Default::default(),fragment:Some(wgpu::FragmentState{module:&shader,entry_point:Some("shadow_fs"),compilation_options:Default::default(),targets:&[]}),multiview_mask:None,cache:None});
-        let static_batches = upload(&device, &catalog, merge(&pack, static_instances));
+        let static_batches = upload(&device, merge(&pack, static_instances));
         let mut models = HashMap::new();
         for (name, model) in &pack.models {
             let mut merged = Merged::new();
             for s in &model.surfaces {
                 let (v, i) = merged
-                    .entry((s.texture, s.blend, s.emissive, 0, 0))
+                    .entry((material_gpu::Key::from_surface(s), 0, 0))
                     .or_default();
                 let offset = v.len() as u32;
                 v.extend(s.vertices.iter().map(|p| {
@@ -841,7 +865,7 @@ impl Renderer {
                 }));
                 i.extend(s.indices.iter().map(|i| i + offset));
             }
-            models.insert(catalog.model(name)?, upload(&device, &catalog, merged));
+            models.insert(catalog.model(name)?, upload(&device, merged));
         }
         let target = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("Verse imported capture"),
@@ -935,7 +959,7 @@ impl Renderer {
             shadow_buffers,
             shadow_pipeline,
             pose_layout,
-            textures,
+            materials,
             pipelines,
             catalog,
             models,
@@ -1321,13 +1345,7 @@ impl Renderer {
                     .iter()
                     .filter(|b| b.blend < 2 && !b.emissive)
                 {
-                    bundle.set_bind_group(
-                        1,
-                        &self.textures[self.catalog.texture_slot(batch.texture)? * 8
-                            + usize::from(batch.emissive) * 4
-                            + usize::from(batch.blend)],
-                        &[],
-                    );
+                    bundle.set_bind_group(1, &self.materials[&batch.material], &[]);
                     bundle.set_vertex_buffer(0, batch.vertices.slice(..));
                     bundle.set_index_buffer(batch.indices.slice(..), wgpu::IndexFormat::Uint32);
                     bundle.draw_indexed(0..batch.count, 0, 0..1);
@@ -1615,17 +1633,7 @@ impl Renderer {
         bundle.set_bind_group(0, &self.frame_group, &[]);
         bundle.set_bind_group(2, pose, &[]);
         for batch in batches.iter().filter(|b| b.blend == blend) {
-            bundle.set_bind_group(
-                1,
-                &self.textures[self
-                    .catalog
-                    .texture_slot(batch.texture)
-                    .expect("Resident texture handle")
-                    * 8
-                    + usize::from(batch.emissive) * 4
-                    + usize::from(batch.blend)],
-                &[],
-            );
+            bundle.set_bind_group(1, &self.materials[&batch.material], &[]);
             bundle.set_vertex_buffer(0, batch.vertices.slice(..));
             bundle.set_index_buffer(batch.indices.slice(..), wgpu::IndexFormat::Uint32);
             bundle.draw_indexed(0..batch.count, 0, 0..1);
@@ -1635,17 +1643,7 @@ impl Renderer {
         })
     }
     fn draw_batch<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, batch: &'a Batch) {
-        pass.set_bind_group(
-            1,
-            &self.textures[self
-                .catalog
-                .texture_slot(batch.texture)
-                .expect("Resident texture handle")
-                * 8
-                + usize::from(batch.emissive) * 4
-                + usize::from(batch.blend)],
-            &[],
-        );
+        pass.set_bind_group(1, &self.materials[&batch.material], &[]);
         pass.set_vertex_buffer(0, batch.vertices.slice(..));
         pass.set_index_buffer(batch.indices.slice(..), wgpu::IndexFormat::Uint32);
         pass.draw_indexed(0..batch.count, 0, 0..1);

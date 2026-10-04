@@ -1,12 +1,16 @@
 struct Frame { view:mat4x4<f32>,eye:vec4<f32>,ambient:vec4<f32>,fog:vec4<f32>,settings:vec4<f32>,lights:array<vec4<f32>,64>,shadow:array<mat4x4<f32>,24> };
 struct Pose { model:mat4x4<f32>,params:vec4<f32>,bones:array<mat4x4<f32>,256> };
-struct Material { params:vec4<f32> };
+struct Material { params:vec4<f32>,channels:vec4<f32>,emission:vec4<f32>,maps:vec4<f32> };
 @group(0) @binding(0) var<uniform> frame:Frame;
 @group(0) @binding(1) var shadows:texture_depth_2d_array;
 @group(0) @binding(2) var shadow_sampler:sampler_comparison;
 @group(1) @binding(0) var image:texture_2d<f32>;
 @group(1) @binding(1) var tex_sampler:sampler;
 @group(1) @binding(2) var<uniform> material:Material;
+@group(1) @binding(3) var normal_image:texture_2d<f32>;
+@group(1) @binding(4) var orm_image:texture_2d<f32>;
+@group(1) @binding(5) var occlusion_image:texture_2d<f32>;
+@group(1) @binding(6) var emission_image:texture_2d<f32>;
 @group(2) @binding(0) var<uniform> pose:Pose;
 struct In { @location(0) pos:vec3<f32>,@location(1) normal:vec3<f32>,@location(2) uv:vec2<f32>,@location(3) joints:vec4<u32>,@location(4) weights:vec4<f32>,@location(5) tint:vec3<f32> };
 struct Out { @builtin(position) clip:vec4<f32>,@location(0) pos:vec3<f32>,@location(1) normal:vec3<f32>,@location(2) uv:vec2<f32>,@location(3) tint:vec3<f32> };
