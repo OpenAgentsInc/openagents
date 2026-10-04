@@ -123,6 +123,12 @@ large displacements snap. Resources and effect status remain authoritative lates
 values. World resets require advanced lives; stale ticks, control fences, and
 generations are refused. Streaming and input prediction still remain.
 
+`service::event_cursor::Cursor` validates contiguous event pages and delivers
+each committed serial once. Retention gaps report the missing range explicitly.
+Instance-scoped checkpoints retain progress without dialogue or credentials;
+the TLS client’s `delivered_events` helper advances them after validation.
+Native effects/audio integration and durable client checkpoint storage remain.
+
 Revocation leaves an uncontrolled actor in the world; actor retirement and capacity reclamation remain lifecycle work.
 Transactional saves, multiplayer
 replication, and authoring tools remain on the

@@ -161,6 +161,22 @@ impl Client {
             _ => Err("Unexpected chamber events outcome".into()),
         }
     }
+    /// Delivers unseen committed events using retained reconnect progress.
+    pub async fn delivered_events(
+        &mut self,
+        cursor: &mut super::event_cursor::Cursor,
+        limit: u16,
+    ) -> Result<super::event_cursor::Delivery, String> {
+        if cursor.instance() != self.instance {
+            return Err("Event cursor belongs to another chamber".into());
+        }
+        let after = cursor.after();
+        let response = self.request(Body::Events { after, limit }).await?;
+        if let Reply::Refused { message, .. } = &response.body {
+            return Err(message.clone());
+        }
+        cursor.admit(&response, after, limit)
+    }
     pub async fn respawn(&mut self) -> Result<Response, String> {
         let life = self
             .control()
@@ -225,30 +241,7 @@ impl Client {
             }
             (Reply::Snapshot { state }, Body::Snapshot {}) => state.validate(self.instance),
             (Reply::Events { page }, Body::Events { after, limit }) => {
-                let mut serial = *after;
-                if page.events.len() > usize::from(*limit)
-                    || page.next > page.latest
-                    || page.latest < *after
-                    || page.gap
-                        != page
-                            .oldest
-                            .is_some_and(|oldest| after.saturating_add(1) < oldest)
-                    || page.events.iter().any(|e| {
-                        let invalid = e.instance != self.instance
-                            || e.actor.is_some_and(|a| a.instance != self.instance)
-                            || e.serial <= serial
-                            || e.serial > page.latest
-                            || e.tick > r.tick
-                            || !e.time.is_finite()
-                            || e.time < 0.;
-                        serial = e.serial;
-                        invalid
-                    })
-                    || page.next != serial
-                {
-                    return Err("Invalid chamber event cursor page".into());
-                }
-                Ok(())
+                page.validate(self.instance, r.tick, *after, *limit)
             }
             _ => Err("Unexpected chamber response outcome".into()),
         }
@@ -337,7 +330,21 @@ mod tests {
             serde_json::to_vec(&state_a.actors).unwrap(),
             serde_json::to_vec(&observed.actors).unwrap()
         );
-        assert!(spectator.events(0, 64).await.is_ok());
+        let mut cursor = super::super::event_cursor::Cursor::new(120);
+        spectator.delivered_events(&mut cursor, 64).await.unwrap();
+        let saved = cursor.checkpoint().unwrap();
+        let mut restored = super::super::event_cursor::Cursor::restore(&saved, 120).unwrap();
+        assert!(
+            spectator
+                .delivered_events(&mut restored, 64)
+                .await
+                .unwrap()
+                .events
+                .is_empty()
+        );
+        let mut foreign = super::super::event_cursor::Cursor::new(121);
+        assert!(spectator.delivered_events(&mut foreign, 64).await.is_err());
+        assert_eq!(saved, cursor.checkpoint().unwrap());
         let mut replacement = Client::connect(address, name(), config.clone(), 120, &keys[0])
             .await
             .unwrap();
