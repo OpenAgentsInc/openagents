@@ -27,6 +27,7 @@ pub mod bake;
 pub mod environment;
 pub(crate) mod gpu;
 pub(crate) mod output;
+pub(crate) mod screen;
 pub mod sky;
 pub mod textured;
 pub mod textured_bake;

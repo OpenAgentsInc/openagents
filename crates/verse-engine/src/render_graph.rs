@@ -327,3 +327,172 @@ mod chamber_tests {
         assert!(ChamberPlan::build(&[true; 30], false).is_err());
     }
 }
+
+/// A pass of the physical path's frame (`verse::pbr::gpu`).
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PhotoPass {
+    /// The sun's shadow cascades.
+    Shadow,
+    /// High tier: opaque and masked geometry into a single-sample depth
+    /// buffer that later passes can read, which the multisampled scene
+    /// depth is not.
+    DepthPrepass,
+    /// High tier: ambient occlusion and the sun's contact shadow, traced
+    /// through the prepass depth at half resolution.
+    ScreenTrace,
+    /// High tier: a depth-aware blur that brings the trace back to full
+    /// resolution.
+    ScreenResolve,
+    /// The multisampled scene. It reads the screen-space terms when the
+    /// tier traces them.
+    Scene,
+    /// Bloom, exposure adaptation, and the output transform.
+    Output,
+}
+
+/// The physical path's admitted frame plan: the passes a quality tier runs,
+/// in order. Screen-space passes run only when
+/// [`Quality::screen_space`](crate::quality::Quality::screen_space) is set.
+#[derive(Clone, Debug)]
+pub struct PhotoPlan {
+    schedule: Schedule,
+    actions: Vec<PhotoPass>,
+}
+
+impl PhotoPlan {
+    /// Declares and admits the passes `quality` runs.
+    pub fn build(quality: &crate::quality::Quality) -> Result<Self, String> {
+        let mut graph = Graph::default();
+        let mut actions = Vec::new();
+        let resource = |graph: &mut Graph| {
+            graph.resources.push(Resource { imported: false });
+            graph.resources.len() - 1
+        };
+        let shadow = resource(&mut graph);
+        let scene = resource(&mut graph);
+        let output = resource(&mut graph);
+        let mut push = |graph: &mut Graph, action, pass| {
+            graph.passes.push(pass);
+            actions.push(action);
+            graph.passes.len() - 1
+        };
+        let shadow_pass = push(
+            &mut graph,
+            PhotoPass::Shadow,
+            Pass {
+                writes: vec![shadow],
+                ..Default::default()
+            },
+        );
+        let mut scene_reads = vec![shadow];
+        let mut scene_after = vec![shadow_pass];
+        if quality.screen_space {
+            let depth = resource(&mut graph);
+            let traced = resource(&mut graph);
+            let occlusion = resource(&mut graph);
+            let prepass = push(
+                &mut graph,
+                PhotoPass::DepthPrepass,
+                Pass {
+                    writes: vec![depth],
+                    ..Default::default()
+                },
+            );
+            let trace = push(
+                &mut graph,
+                PhotoPass::ScreenTrace,
+                Pass {
+                    reads: vec![depth],
+                    writes: vec![traced],
+                    after: vec![prepass],
+                },
+            );
+            let resolve = push(
+                &mut graph,
+                PhotoPass::ScreenResolve,
+                Pass {
+                    reads: vec![depth, traced],
+                    writes: vec![occlusion],
+                    after: vec![prepass, trace],
+                },
+            );
+            scene_reads.push(occlusion);
+            scene_after.push(resolve);
+        }
+        let scene_pass = push(
+            &mut graph,
+            PhotoPass::Scene,
+            Pass {
+                reads: scene_reads,
+                writes: vec![scene],
+                after: scene_after,
+            },
+        );
+        push(
+            &mut graph,
+            PhotoPass::Output,
+            Pass {
+                reads: vec![scene],
+                writes: vec![output],
+                after: vec![scene_pass],
+            },
+        );
+        Ok(Self {
+            schedule: graph.admit()?,
+            actions,
+        })
+    }
+
+    pub fn schedule(&self) -> &Schedule {
+        &self.schedule
+    }
+
+    /// The passes in admitted order.
+    pub fn actions(&self) -> impl Iterator<Item = PhotoPass> + '_ {
+        self.schedule.order.iter().map(|&i| self.actions[i])
+    }
+
+    /// Whether the plan runs `pass`.
+    pub fn runs(&self, pass: PhotoPass) -> bool {
+        self.actions.contains(&pass)
+    }
+}
+
+#[cfg(test)]
+mod photo_tests {
+    use super::*;
+    use crate::quality::Tier;
+
+    #[test]
+    fn only_the_high_tier_runs_screen_space_passes() {
+        for tier in [Tier::Low, Tier::Medium] {
+            let plan = PhotoPlan::build(&tier.quality()).unwrap();
+            let actions: Vec<_> = plan.actions().collect();
+            assert_eq!(
+                actions,
+                [PhotoPass::Shadow, PhotoPass::Scene, PhotoPass::Output],
+                "{tier:?}"
+            );
+            for pass in [
+                PhotoPass::DepthPrepass,
+                PhotoPass::ScreenTrace,
+                PhotoPass::ScreenResolve,
+            ] {
+                assert!(!plan.runs(pass), "{tier:?} runs {pass:?}");
+            }
+        }
+        let high = PhotoPlan::build(&Tier::High.quality()).unwrap();
+        let actions: Vec<_> = high.actions().collect();
+        assert_eq!(
+            actions,
+            [
+                PhotoPass::Shadow,
+                PhotoPass::DepthPrepass,
+                PhotoPass::ScreenTrace,
+                PhotoPass::ScreenResolve,
+                PhotoPass::Scene,
+                PhotoPass::Output
+            ]
+        );
+    }
+}

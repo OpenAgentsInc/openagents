@@ -764,6 +764,11 @@ edges crawl; cascade seams are not visible in a slow pan.
 | G1 | GTAO-lite: half resolution, two directions, bilateral blur, ambient term only. | M | `verse` (new post pass) | Pull in later |
 | G2 | Screen-space contact shadows for the sun and the nearest shadowed light. | S–M | `verse` | Pull in later |
 
+**Status:** G0–G2 are implemented on the high tier under issue #10565
+(`verse_engine::render_graph::PhotoPlan`, `crates/verse/src/pbr/screen.rs`),
+with contact shadows for the sun or stage key light only, since the physical
+path has no other shadowed light.
+
 ### Later, when a scene needs it
 
 | ID | Item | Prerequisite | Verdict |

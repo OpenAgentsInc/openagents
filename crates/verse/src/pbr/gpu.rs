@@ -15,6 +15,13 @@
 //! tier selects the sun shadow filter and material detail through pipeline
 //! constants, and the number of sun shadow cascades.
 //!
+//! On the high tier, [`verse_engine::render_graph::PhotoPlan`] adds three
+//! passes between the shadow maps and the scene: a single-sample depth
+//! prepass of the opaque and masked geometry, and [`super::screen`]'s
+//! ambient occlusion and contact shadow trace and resolve. Lit and textured
+//! surfaces read the result, through the `SCREEN` pipeline constant; other
+//! tiers read a white texel and draw exactly as before.
+//!
 //! The sun's shadow is a 2D depth array, one layer per cascade, which WebGL2
 //! supports. A stage key with a shadow distance gets cascades that follow the
 //! camera ([`verse_engine::lighting::fit_cascades`]); every other shadow is
@@ -28,14 +35,16 @@ use wgpu::util::DeviceExt;
 
 use super::environment::{SkyInputs, SkyLightGpu};
 use super::output::{self, Look, Output, OutputTargets};
+use super::screen::{self as screen_space, ScreenGpu, ScreenTargets, ScreenUniform};
 use super::textured::{self, Pass, TexturedMaterial, TexturedScene, TexturedVertex};
 use super::{GlowVertex, LitVertex, Neon, ProbeGrid, Sky, sky};
 use verse_engine::lighting::{
     CascadeSettings, Cascades, Frustum, Grade, MAX_CASCADES, fit_box, fit_cascades,
 };
 use verse_engine::quality::{Platform, Probe, Quality, ShadowFilter, Tier};
+use verse_engine::render_graph::{PhotoPass, PhotoPlan};
 
-const DEPTH: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
+pub(crate) const DEPTH: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 const SHADOW_SIZE: u32 = 2048;
 
 #[repr(C)]
@@ -252,8 +261,10 @@ impl Capability {
         }
     }
 
-    /// The pipeline constants the tier sets in `photo.wgsl`.
-    fn tier_constants(&self) -> [(&'static str, f64); 2] {
+    /// The pipeline constants the tier sets in `photo.wgsl`. `SCREEN` reads
+    /// the screen-space terms, which only a tier with screen-space passes
+    /// draws.
+    fn tier_constants(&self) -> [(&'static str, f64); 3] {
         let flag = |on: bool| if on { 1.0 } else { 0.0 };
         [
             (
@@ -261,6 +272,7 @@ impl Capability {
                 flag(self.quality.shadow_filter == ShadowFilter::Soft),
             ),
             ("DETAIL", flag(self.quality.materials.detail_normals)),
+            ("SCREEN", flag(self.quality.screen_space)),
         ]
     }
 }
@@ -283,6 +295,14 @@ struct Pipelines {
     textured_shadow: wgpu::RenderPipeline,
     /// Masked textured meshes into the shadow map, testing alpha.
     textured_shadow_masked: wgpu::RenderPipeline,
+}
+
+/// The high tier's depth prepass: the shadow casters' shaders drawn with the
+/// camera's matrix into a single-sample, reversed-depth buffer.
+struct Prepass {
+    lit: wgpu::RenderPipeline,
+    textured: wgpu::RenderPipeline,
+    masked: wgpu::RenderPipeline,
 }
 
 /// Textured static meshes on the GPU: merged vertices and indices uploaded
@@ -314,8 +334,11 @@ pub(crate) struct PhotoTargets {
     depth: wgpu::TextureView,
     /// Bloom and adaptation, when the scene renders to a float target.
     output: Option<OutputTargets>,
-    /// The adapted luminance for guides, indexed by the texture last written.
+    /// The adapted luminance for guides, indexed by the texture last
+    /// written, and the screen-space terms lit surfaces read.
     guide_groups: [wgpu::BindGroup; 2],
+    /// The high tier's prepass depth and screen-space terms.
+    screen: Option<ScreenTargets>,
 }
 
 impl PhotoTargets {
@@ -369,6 +392,12 @@ pub(crate) struct Photo {
     /// Repeating, trilinear sampling for base-color images.
     textured_sampler: wgpu::Sampler,
     post: Option<Output>,
+    /// The high tier's depth prepass and screen-space passes.
+    prepass: Option<Prepass>,
+    screen: Option<ScreenGpu>,
+    /// The screen-space terms on tiers that do not trace them: one white
+    /// texel, so lit surfaces multiply their light by exactly one.
+    screen_white: wgpu::TextureView,
     stars: wgpu::Buffer,
     star_count: u32,
     pub dynamic_lit: Stream,
@@ -593,9 +622,10 @@ impl Photo {
         let frame_size = std::mem::size_of::<Frame>() as u64;
         let alignment = u64::from(device.limits().min_uniform_buffer_offset_alignment).max(1);
         let shadow_stride = frame_size.div_ceil(alignment) * alignment;
+        // One copy per cascade, and one after them for the depth prepass.
         let shadow_frames = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("verse shadow frames"),
-            size: shadow_stride * MAX_CASCADES as u64,
+            size: shadow_stride * (MAX_CASCADES as u64 + 1),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
@@ -631,16 +661,29 @@ impl Photo {
         });
         let guide_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("verse photo guides"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                ty: wgpu::BindingType::Texture {
-                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                    view_dimension: wgpu::TextureViewDimension::D2,
-                    multisampled: false,
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
                 },
-                count: None,
-            }],
+                // The screen-space terms (`screen_terms` in `photo.wgsl`).
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+            ],
         });
         let guide_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -662,12 +705,13 @@ impl Photo {
             .ok()
             .and_then(|v| v.parse::<u32>().ok())
             .unwrap_or(0);
-        let [pcss, detail] = capability.tier_constants();
+        let [pcss, detail, screen_constant] = capability.tier_constants();
         let constants = [
             ("DIRECT", if direct { 1.0 } else { 0.0 }),
             ("DEBUG", f64::from(debug)),
             pcss,
             detail,
+            screen_constant,
         ];
         let options = wgpu::PipelineCompilationOptions {
             constants: &constants,
@@ -863,6 +907,59 @@ impl Photo {
         let textured_shadow_opaque = textured_shadow(&shadow_layout, None);
         let textured_shadow_masked =
             textured_shadow(&masked_shadow_layout, Some("fs_shadow_masked"));
+        // The high tier's prepass draws the casters' shaders with the
+        // camera's reversed-depth matrix in the frame copy's `light`, single
+        // sampled and without the shadow bias.
+        let plan = PhotoPlan::build(&capability.quality)?;
+        let prepass = plan.runs(PhotoPass::DepthPrepass).then(|| {
+            let pipeline = |layout: &wgpu::PipelineLayout,
+                            vs: &str,
+                            buffers: &[wgpu::VertexBufferLayout<'_>],
+                            fs: Option<&str>| {
+                device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    label: Some("verse depth prepass"),
+                    layout: Some(layout),
+                    vertex: wgpu::VertexState {
+                        module: &module,
+                        entry_point: Some(vs),
+                        compilation_options: options.clone(),
+                        buffers,
+                    },
+                    primitive: wgpu::PrimitiveState {
+                        topology: triangles,
+                        ..Default::default()
+                    },
+                    depth_stencil: Some(depth_state(true, wgpu::CompareFunction::GreaterEqual)),
+                    multisample: wgpu::MultisampleState::default(),
+                    fragment: fs.map(|fs| wgpu::FragmentState {
+                        module: &module,
+                        entry_point: Some(fs),
+                        compilation_options: options.clone(),
+                        targets: &[],
+                    }),
+                    multiview_mask: None,
+                    cache: None,
+                })
+            };
+            Prepass {
+                lit: pipeline(&shadow_layout, "vs_shadow", &[lit_layout()], None),
+                textured: pipeline(
+                    &shadow_layout,
+                    "vs_shadow_textured",
+                    &[textured_layout()],
+                    None,
+                ),
+                masked: pipeline(
+                    &masked_shadow_layout,
+                    "vs_shadow_textured",
+                    &[textured_layout()],
+                    Some("fs_shadow_masked"),
+                ),
+            }
+        });
+        let screen = plan
+            .runs(PhotoPass::ScreenTrace)
+            .then(|| ScreenGpu::new(device));
         let pipelines = Pipelines {
             textured: textured_pipelines,
             textured_shadow: textured_shadow_opaque,
@@ -878,8 +975,9 @@ impl Photo {
                 None,
                 1,
             ),
+            // Group 1 carries the screen-space terms lit surfaces read.
             lit: make(
-                &layout,
+                &guide_pipeline_layout,
                 "verse photo lit",
                 "vs_lit",
                 Some("fs_lit"),
@@ -1057,6 +1155,9 @@ impl Photo {
             empty_group,
             textured_sampler,
             post,
+            prepass,
+            screen,
+            screen_white: white_terms(device, queue),
             stars: star_buffer,
             star_count: 0,
             dynamic_lit: Stream::new(device, "verse dynamic lit"),
@@ -1360,18 +1461,32 @@ impl Photo {
             .post
             .as_ref()
             .map(|post| post.targets(device, &scene, &adapt, width, height));
+        let screen = self
+            .screen
+            .as_ref()
+            .map(|screen| screen.targets(device, width, height));
+        let terms = screen
+            .as_ref()
+            .map_or(&self.screen_white, |screen| &screen.occlusion);
         let guide_groups = [0, 1].map(|k| {
             device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some("verse photo guides"),
                 layout: &self.guide_layout,
-                entries: &[wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&adapt[k]),
-                }],
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(&adapt[k]),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: wgpu::BindingResource::TextureView(terms),
+                    },
+                ],
             })
         });
         PhotoTargets {
             guide_groups,
+            screen,
             size: [width, height],
             msaa,
             scene,
@@ -1523,6 +1638,7 @@ impl Photo {
         queue.write_buffer(&self.frame, 0, bytemuck::bytes_of(&frame));
 
         self.encode_shadow(queue, encoder, &frame, &shadow, &world);
+        self.encode_screen(queue, encoder, targets, &frame, Some(sun), &world);
         let order = Self::textured_order(world.textured, view);
         let figure_order = Self::figure_order(world.figure, view);
 
@@ -1575,6 +1691,9 @@ impl Photo {
             for kind in bodies {
                 pass.draw(0..6, kind..kind + 1);
             }
+            // The texture written last frame holds the newest adaptation;
+            // lit surfaces read the screen-space terms from the same group.
+            pass.set_bind_group(1, &targets.guide_groups[targets.parity() ^ 1], &[]);
             pass.set_pipeline(&self.pipelines.lit);
             for (buffer, count) in [
                 world.lit,
@@ -1585,8 +1704,6 @@ impl Photo {
                     pass.draw(0..count, 0..1);
                 }
             }
-            // The texture written last frame holds the newest adaptation.
-            pass.set_bind_group(1, &targets.guide_groups[targets.parity() ^ 1], &[]);
             for which in [Pass::Opaque, Pass::Masked] {
                 self.draw_textured(&mut pass, world.textured, &order, which);
                 self.draw_textured(&mut pass, world.figure, &figure_order, which);
@@ -1717,19 +1834,27 @@ impl Photo {
                 [world.lit, dynamic]
             };
             let figure = world.figure.filter(|_| !cascade.cached);
-            self.draw_casters(&mut pass, lit, [world.textured, figure]);
+            let casters = [
+                &self.pipelines.shadow,
+                &self.pipelines.textured_shadow,
+                &self.pipelines.textured_shadow_masked,
+            ];
+            self.draw_casters(&mut pass, casters, lit, [world.textured, figure]);
         }
     }
 
-    /// Draws casters into a bound shadow pass: lit triangles, then the
-    /// opaque and the masked cells of textured meshes.
+    /// Draws casters into a bound shadow or prepass pass: lit triangles,
+    /// then the opaque and the masked cells of textured meshes, through
+    /// `pipelines` for each in that order.
     fn draw_casters(
         &self,
         pass: &mut wgpu::RenderPass<'_>,
+        pipelines: [&wgpu::RenderPipeline; 3],
         lit: [(&wgpu::Buffer, u32); 2],
         textured: [Option<&TexturedGpu>; 2],
     ) {
-        pass.set_pipeline(&self.pipelines.shadow);
+        let [lit_pipeline, opaque_pipeline, masked_pipeline] = pipelines;
+        pass.set_pipeline(lit_pipeline);
         for (buffer, count) in lit {
             if count > 0 {
                 pass.set_vertex_buffer(0, buffer.slice(..));
@@ -1741,10 +1866,10 @@ impl Photo {
             pass.set_index_buffer(gpu.indices.slice(..), wgpu::IndexFormat::Uint32);
             for masked in [false, true] {
                 if masked {
-                    pass.set_pipeline(&self.pipelines.textured_shadow_masked);
+                    pass.set_pipeline(masked_pipeline);
                     pass.set_bind_group(1, &self.empty_group, &[]);
                 } else {
-                    pass.set_pipeline(&self.pipelines.textured_shadow);
+                    pass.set_pipeline(opaque_pipeline);
                 }
                 for batch in &gpu.batches {
                     let cell_pass = gpu.materials[batch.material].alpha.pass();
@@ -1758,6 +1883,63 @@ impl Photo {
                 }
             }
         }
+    }
+
+    /// The high tier's depth prepass and screen-space passes, after the
+    /// shadow maps and before the scene. The prepass draws what the shadow
+    /// maps draw, through a copy of `frame` whose `light` is the camera's
+    /// matrix; `light` points toward the light that casts contact shadows.
+    /// Other tiers run nothing here.
+    fn encode_screen(
+        &self,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+        targets: &PhotoTargets,
+        frame: &Frame,
+        light: Option<Vec3>,
+        world: &Batches<'_>,
+    ) {
+        let (Some(prepass), Some(screen), Some(screen_targets)) =
+            (&self.prepass, &self.screen, &targets.screen)
+        else {
+            return;
+        };
+        let mut copy = *frame;
+        copy.light = frame.view_proj;
+        let offset = self.shadow_stride * MAX_CASCADES as u64;
+        queue.write_buffer(&self.shadow_frames, offset, bytemuck::bytes_of(&copy));
+        {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("verse depth prepass"),
+                color_attachments: &[],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &screen_targets.depth,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(0.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
+            pass.set_bind_group(0, &self.frame_group, &[offset as u32]);
+            let dynamic = (&self.dynamic_lit.buffer, self.dynamic_lit.count);
+            self.draw_casters(
+                &mut pass,
+                [&prepass.lit, &prepass.textured, &prepass.masked],
+                [world.lit, dynamic],
+                [world.textured, world.figure],
+            );
+        }
+        let uniform = ScreenUniform::new(
+            Mat4::from_cols_array_2d(&frame.view_proj),
+            Vec3::new(frame.eye[0], frame.eye[1], frame.eye[2]),
+            light,
+            targets.size,
+        );
+        screen.encode(queue, encoder, screen_targets, &uniform);
     }
 
     /// The neon stage: faces, emissive lines, and the post chain with a
@@ -1884,6 +2066,10 @@ impl Photo {
         queue.write_buffer(&self.frame, 0, bytemuck::bytes_of(&uniform));
         if let Some(shadow) = &shadow {
             self.encode_shadow(queue, encoder, &uniform, shadow, &world);
+        }
+        if let Some(key) = &lit {
+            let toward = key.dir.normalize_or(Vec3::Y);
+            self.encode_screen(queue, encoder, targets, &uniform, Some(toward), &world);
         }
         let figure_order = if lit.is_some() {
             Self::figure_order(world.figure, view)
@@ -2041,7 +2227,7 @@ fn static_identity(world: &Batches<'_>) -> u64 {
 
 /// Reversed depth (Reed 2015): map depth d to 1 − d so a float buffer keeps
 /// micrometer precision near the camera and across the scene.
-fn reversed_depth() -> Mat4 {
+pub(crate) fn reversed_depth() -> Mat4 {
     Mat4::from_cols(
         glam::Vec4::X,
         glam::Vec4::Y,
@@ -2189,6 +2375,41 @@ fn texture3d(
             offset: 0,
             bytes_per_row: Some(dims[0] * 8),
             rows_per_image: Some(dims[1]),
+        },
+        size,
+    );
+    texture.create_view(&Default::default())
+}
+
+/// One white texel in the screen-space terms' format.
+fn white_terms(device: &wgpu::Device, queue: &wgpu::Queue) -> wgpu::TextureView {
+    let size = wgpu::Extent3d {
+        width: 1,
+        height: 1,
+        depth_or_array_layers: 1,
+    };
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("verse screen white"),
+        size,
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: screen_space::OCCLUSION,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    });
+    queue.write_texture(
+        wgpu::TexelCopyTextureInfo {
+            texture: &texture,
+            mip_level: 0,
+            origin: wgpu::Origin3d::ZERO,
+            aspect: wgpu::TextureAspect::All,
+        },
+        &[255, 255],
+        wgpu::TexelCopyBufferLayout {
+            offset: 0,
+            bytes_per_row: Some(2),
+            rows_per_image: Some(1),
         },
         size,
     );
@@ -2451,13 +2672,34 @@ mod tests {
         };
         assert_eq!(
             capability(Tier::Low).tier_constants(),
-            [("PCSS", 0.0), ("DETAIL", 0.0)]
+            [("PCSS", 0.0), ("DETAIL", 0.0), ("SCREEN", 0.0)]
         );
-        for tier in [Tier::Medium, Tier::High] {
-            assert_eq!(
-                capability(tier).tier_constants(),
-                [("PCSS", 1.0), ("DETAIL", 1.0)]
-            );
+        assert_eq!(
+            capability(Tier::Medium).tier_constants(),
+            [("PCSS", 1.0), ("DETAIL", 1.0), ("SCREEN", 0.0)]
+        );
+        assert_eq!(
+            capability(Tier::High).tier_constants(),
+            [("PCSS", 1.0), ("DETAIL", 1.0), ("SCREEN", 1.0)]
+        );
+    }
+
+    /// Only the high tier declares the depth prepass and the screen-space
+    /// passes.
+    #[test]
+    fn the_tier_gates_the_screen_space_passes() {
+        for tier in Tier::ALL {
+            let quality = tier.quality();
+            let plan = PhotoPlan::build(&quality).unwrap();
+            let high = tier == Tier::High;
+            for pass in [
+                PhotoPass::DepthPrepass,
+                PhotoPass::ScreenTrace,
+                PhotoPass::ScreenResolve,
+            ] {
+                assert_eq!(plan.runs(pass), high, "{tier:?} {pass:?}");
+            }
+            assert_eq!(quality.screen_space, high);
         }
     }
 

@@ -101,6 +101,10 @@ struct Frame {
 @group(0) @binding(13) var sky_cube: texture_cube<f32>;
 // The most recent adapted scene luminance, for display-referred guides.
 @group(1) @binding(0) var adapted: texture_2d<f32>;
+// The high tier's screen-space terms at full resolution (`pbr::screen`): red
+// ambient occlusion, green the sun's contact shadow. One white texel on the
+// other tiers, which never read it.
+@group(1) @binding(1) var screen_occlusion: texture_2d<f32>;
 
 // Guides and the amber companion are display colors, not light: undo the
 // exposure adaptation that post-processing will apply to them.
@@ -129,6 +133,17 @@ override DEBUG: u32 = 0u;
 // procedural surface normals, such as crinkled foil facets.
 override PCSS: bool = true;
 override DETAIL: bool = true;
+// SCREEN: the tier traced the screen-space terms this frame's lit surfaces
+// read. Without it they are exactly one.
+override SCREEN: bool = false;
+
+// The screen-space ambient occlusion (x) and contact shadow (y) at a pixel.
+fn screen_terms(pixel: vec2<f32>) -> vec2<f32> {
+    if SCREEN {
+        return textureLoad(screen_occlusion, vec2<i32>(pixel), 0).rg;
+    }
+    return vec2<f32>(1.0);
+}
 
 // Khronos PBR Neutral, duplicated from post.wgsl for the direct path.
 fn neutral(color: vec3<f32>) -> vec3<f32> {
@@ -706,12 +721,16 @@ struct Shading {
     // Multiplies the probes' diffuse irradiance per channel: the lit
     // vertex's occlusion, or a textured vertex's baked ambient light.
     ambient: vec3<f32>,
+    // `screen_terms`: x scales ambient light only, y the sun's direct light
+    // only. Both are one where nothing traced them.
+    screen: vec2<f32>,
 };
 
 @fragment
 fn fs_lit(i: LitOut) -> @location(0) vec4<f32> {
     let ao = vec3<f32>(clamp(i.params.w, 0.0, 1.0));
-    return vec4<f32>(shade(Shading(i.world, i.normal, i.tangent, i.local, i.color, i.params, i.clip.xy, ao)), 1.0);
+    let screen = screen_terms(i.clip.xy);
+    return vec4<f32>(shade(Shading(i.world, i.normal, i.tangent, i.local, i.color, i.params, i.clip.xy, ao, screen)), 1.0);
 }
 
 // The exposed, fogged color of one lit fragment.
@@ -810,7 +829,7 @@ fn shade(i: Shading) -> vec3<f32> {
         }
         var shadow = 1.0;
         if k == 0 {
-            shadow = sun_shadow(i.world, geometric, pixel);
+            shadow = sun_shadow(i.world, geometric, pixel) * i.screen.y;
             if shadow <= 0.0 {
                 continue;
             }
@@ -857,7 +876,11 @@ fn shade(i: Shading) -> vec3<f32> {
     direct_part = radiance;
 
     let r = reflect(-v, n);
-    let so = clamp(pow(nov + ao, exp2(-16.0 * roughness - 1.0)) - 1.0 + ao, 0.0, 1.0);
+    // Screen-space occlusion darkens ambient light, diffuse and glossy,
+    // and never direct light.
+    let ambient_ao = min(ao, i.screen.x);
+    let ambient = i.ambient * i.screen.x;
+    let so = clamp(pow(nov + ambient_ao, exp2(-16.0 * roughness - 1.0)) - 1.0 + ambient_ao, 0.0, 1.0);
     var irr: vec3<f32>;
     var lr: vec3<f32>;
     if f.sky_light.x > 0.5 {
@@ -868,13 +891,13 @@ fn shade(i: Shading) -> vec3<f32> {
         // light is scaled by local over open-sky irradiance, so covered
         // surfaces stop reflecting the open sky (Lagarde and Zanuttini 2012).
         let open = sky_irradiance(n);
-        irr = open * i.ambient;
+        irr = open * ambient;
         let normalization = clamp(luma(irr) / max(luma(open), 1e-4), 0.0, 1.0);
         lr = textureSampleLevel(sky_cube, linear_clamp, r, sqrt(a) * f.sky_light.y).rgb * normalization;
     } else {
         // Bounce light from nearby surfaces through the probe grid, and the
         // probes' radiance toward the reflection direction as glossy bounce.
-        irr = probe_irradiance(i.world, n) * i.ambient;
+        irr = probe_irradiance(i.world, n) * ambient;
         lr = probe_irradiance(i.world, r) / PI;
     }
     radiance += diffuse_color / PI * irr;
@@ -887,7 +910,7 @@ fn shade(i: Shading) -> vec3<f32> {
     } else if DEBUG == 3u {
         radiance = lr * e_spec * so;
     } else if DEBUG == 4u {
-        return vec3<f32>(ao);
+        return vec3<f32>(ambient_ao);
     } else if DEBUG == 5u {
         return vec3<f32>(shadow_seen);
     } else if DEBUG == 6u {
@@ -972,18 +995,19 @@ fn textured_base(uv: vec2<f32>, color: vec4<f32>) -> vec4<f32> {
 // (material code 0) under its baked ambient light: the diffuse multiplier
 // scales the probes' irradiance, and the open sky fraction occludes ambient
 // reflections.
-fn textured_shade(world: vec3<f32>, normal: vec3<f32>, pixel: vec2<f32>, base: vec3<f32>, ambient: vec4<f32>) -> vec3<f32> {
+fn textured_shade(world: vec3<f32>, normal: vec3<f32>, pixel: vec2<f32>, base: vec3<f32>, ambient: vec4<f32>, screen: vec2<f32>) -> vec3<f32> {
     let n = normalize(normal);
     // Code 0 has no anisotropy; any tangent across the normal will do.
     let across = select(vec3<f32>(1.0, 0.0, 0.0), vec3<f32>(0.0, 0.0, 1.0), abs(n.x) > 0.9);
     let params = vec4<f32>(material.params.x, material.params.y, 0.0, clamp(ambient.w, 0.0, 1.0));
-    return shade(Shading(world, n, cross(n, across), world, base, params, pixel, max(ambient.rgb, vec3<f32>(0.0))));
+    return shade(Shading(world, n, cross(n, across), world, base, params, pixel, max(ambient.rgb, vec3<f32>(0.0)), screen));
 }
 
 @fragment
 fn fs_textured(i: TexturedOut) -> @location(0) vec4<f32> {
     let base = textured_base(i.uv, i.color);
-    return vec4<f32>(textured_shade(i.world, i.normal, i.clip.xy, base.rgb, i.ambient), 1.0);
+    let screen = screen_terms(i.clip.xy);
+    return vec4<f32>(textured_shade(i.world, i.normal, i.clip.xy, base.rgb, i.ambient, screen), 1.0);
 }
 
 // glTF's MASK mode: a fragment is fully opaque when its alpha reaches the
@@ -994,15 +1018,18 @@ fn fs_textured_masked(i: TexturedOut) -> @location(0) vec4<f32> {
     if base.a < material.params.z {
         discard;
     }
-    return vec4<f32>(textured_shade(i.world, i.normal, i.clip.xy, base.rgb, i.ambient), 1.0);
+    let screen = screen_terms(i.clip.xy);
+    return vec4<f32>(textured_shade(i.world, i.normal, i.clip.xy, base.rgb, i.ambient, screen), 1.0);
 }
 
 // glTF's BLEND mode, premultiplied, for glass and other thin transparency.
+// The prepass holds the opaque surface behind it, so its screen-space terms
+// are not this surface's.
 @fragment
 fn fs_textured_blend(i: TexturedOut) -> @location(0) vec4<f32> {
     let base = textured_base(i.uv, i.color);
     let alpha = clamp(base.a, 0.0, 1.0);
-    return vec4<f32>(textured_shade(i.world, i.normal, i.clip.xy, base.rgb, i.ambient) * alpha, alpha);
+    return vec4<f32>(textured_shade(i.world, i.normal, i.clip.xy, base.rgb, i.ambient, vec2<f32>(1.0)) * alpha, alpha);
 }
 
 struct TexturedShadowOut {
