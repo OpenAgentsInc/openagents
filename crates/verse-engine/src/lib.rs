@@ -3,6 +3,7 @@
 //! This core has no GPU, platform, game rules, transport, or credentials.
 pub mod animation;
 pub mod assets;
+pub mod audio;
 pub mod core;
 pub mod director;
 pub mod inventory;
