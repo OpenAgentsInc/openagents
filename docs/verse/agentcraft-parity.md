@@ -20,7 +20,7 @@ limit; **Missing** does not exist.
 | Merge only on approval, off-tree, fast-forward into your branch, refused on a dirty checkout | Done: a local merge; nothing is pushed | #10542 |
 | Push blocked inside git, not just in the prompt | Done: Git refuses every transport for a studio task's processes | #10542 |
 | Agents commit under their own name; the approved merge carries yours | Done: seats commit as `Studio <Seat>`; the merge carries the person's identity | #10542 |
-| Permission prompts for risky steps with a risk chip and a scoped "always allow for this agent" | Partial: approvals arrive as decisions; no risk chip or standing rule | Permissions |
+| Permission prompts for risky steps with a risk chip and a scoped "always allow for this agent" | Done: a named step shows its tool, command, risk chip, reason, and directory; **Always allow for this seat** records an exact rule the host applies | #10549 |
 
 ## Orchestration
 

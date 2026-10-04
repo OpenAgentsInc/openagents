@@ -289,6 +289,7 @@ mod tests {
             kind: DecisionKind::Question,
             text: format!("question {id}"),
             based_on: 0,
+            approval: None,
         }
     }
 

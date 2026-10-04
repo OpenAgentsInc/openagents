@@ -4,8 +4,9 @@
 //!
 //! The host's studio coordinator is the source of truth; a view holds no
 //! business logic. It sends intents (`studio.goal.submit`, `studio.seat.*`,
-//! `studio.task.*`, `studio.decision.answer`, `studio.review.open`, and
-//! `studio.merge.decide`), each one NIP-HOST operation with exactly one
+//! `studio.task.*`, `studio.decision.answer`, `studio.decision.always`,
+//! `studio.review.open`, and `studio.merge.decide`), each one NIP-HOST
+//! operation with exactly one
 //! required right, and it draws what the host answers:
 //!
 //! - `studio.snapshot` answers a full [`Snapshot`]: goals, seats, tasks,
@@ -36,6 +37,15 @@
 //! commit, and content tree). The host reads the review again and refuses
 //! a decision whose revisions differ as `stale`, so the client reloads the
 //! review rather than landing a change nobody read.
+//!
+//! An approval whose engine named its step carries an [`Approval`]: the
+//! tool, the exact command, the working directory, the reason, and the
+//! host's [`Risk`] for it. When the host would keep a standing rule for
+//! the step, the approval also carries that rule's exact text, and
+//! `studio.decision.always` echoes the text back: the host records the rule
+//! only when the text still matches the step it holds, so a rule is never
+//! wider than the one the person saw. The host applies a standing rule;
+//! a client never does.
 use crate::protocol::{Operation, Outcome};
 use crate::review::{Publication, revision};
 use crate::{Code, Error, Result, fail};
@@ -68,6 +78,17 @@ pub const MAX_DECISION_TEXT: usize = 1024;
 pub const MAX_SUBMIT: usize = 4 * 1024;
 /// The longest message a `studio.seat.message` carries.
 pub const MAX_MESSAGE: usize = 4 * 1024;
+/// The longest tool name an [`Approval`] carries.
+pub const MAX_STEP_TOOL: usize = 64;
+/// The longest command an [`Approval`] carries.
+pub const MAX_STEP_COMMAND: usize = 512;
+/// The longest working directory an [`Approval`] carries.
+pub const MAX_STEP_CWD: usize = 512;
+/// The longest reason an [`Approval`] carries.
+pub const MAX_STEP_REASON: usize = 512;
+/// The longest standing rule text an [`Approval`] or a
+/// `studio.decision.always` carries.
+pub const MAX_RULE_TEXT: usize = 1536;
 /// The longest answer a `studio.decision.answer` carries: a question's
 /// answer, or a plan for a goal's plan decision.
 pub const MAX_ANSWER: usize = 64 * 1024;
@@ -354,6 +375,79 @@ pub struct Decision {
     /// What `studio.decision.answer` names as `based_on`: the waiting
     /// task's revision, or the goal decision's sequence.
     pub based_on: u64,
+    /// The step an approval asks to take, when its engine named one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approval: Option<Approval>,
+}
+
+/// How much a step can harm, as the host classifies it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Risk {
+    /// Reads, or changes inside the task's own worktree.
+    Low,
+    /// Reaches the network, installs or downloads code, or changes shared
+    /// repository state such as branches and tags.
+    Medium,
+    /// Destroys or rewrites work, publishes, pushes, touches credentials,
+    /// or raises privileges. A high-risk step is approved once at a time.
+    High,
+}
+
+impl Risk {
+    /// The chip's words: "Low risk", "Medium risk", or "High risk".
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Low => "Low risk",
+            Self::Medium => "Medium risk",
+            Self::High => "High risk",
+        }
+    }
+}
+
+/// The step an approval asks to take.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Approval {
+    /// The tool the step uses, such as `shell`.
+    pub tool: String,
+    /// The exact command, at most [`MAX_STEP_COMMAND`] bytes.
+    pub command: String,
+    /// The absolute working directory the command runs in.
+    pub cwd: String,
+    /// Why the engine asks, possibly empty.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub reason: String,
+    pub risk: Risk,
+    /// The exact standing rule **Always allow for this seat** records,
+    /// or `None` when the host keeps no standing rule for this step, as
+    /// for a high-risk one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub always: Option<String>,
+}
+
+impl Approval {
+    /// Check the step's bounds.
+    ///
+    /// # Errors
+    /// `bounds` or `malformed` for a field outside its bound.
+    pub fn validate(&self) -> Result<()> {
+        line(&self.tool, MAX_STEP_TOOL)?;
+        text(&self.command, MAX_STEP_COMMAND)?;
+        line(&self.cwd, MAX_STEP_CWD)?;
+        if !self.cwd.starts_with('/') {
+            return fail(Code::Malformed, "an approval's directory is absolute");
+        }
+        optional_text(&self.reason, MAX_STEP_REASON)?;
+        if let Some(always) = &self.always {
+            text(always, MAX_RULE_TEXT)?;
+            if self.risk == Risk::High {
+                return fail(Code::Malformed, "a high-risk step has no standing rule");
+            }
+        }
+        Ok(())
+    }
 }
 
 /// One admitted repository's summary. Its root stays on the host.
@@ -829,6 +923,12 @@ impl Keyed for Decision {
                 Code::Malformed,
                 "a question or approval names its task, a goal decision none",
             );
+        }
+        if let Some(approval) = &self.approval {
+            if self.kind != DecisionKind::Approval {
+                return fail(Code::Malformed, "only an approval names a step");
+            }
+            approval.validate()?;
         }
         text(&self.text, MAX_DECISION_TEXT)
     }
@@ -1571,6 +1671,7 @@ mod tests {
             kind: DecisionKind::Question,
             text: "Which palette?".into(),
             based_on: 4,
+            approval: None,
         });
         new.validate().unwrap();
         let (put, removed) = View::diff(&old, &new);
@@ -1751,6 +1852,7 @@ mod tests {
             kind: DecisionKind::Question,
             text: "Which?".into(),
             based_on: 1,
+            approval: None,
         });
         assert!(question.validate().is_err());
         let mut long = good;
@@ -1878,5 +1980,53 @@ mod tests {
         let mut unpublished = merged;
         unpublished.verdict = Verdict::Merge;
         assert!(unpublished.validate().is_err());
+    }
+
+    #[test]
+    fn an_approval_names_its_step_and_a_high_risk_step_no_rule() {
+        let step = Approval {
+            tool: "shell".into(),
+            command: "cargo test -p coder".into(),
+            cwd: "/work/repo".into(),
+            reason: "runs the crate's tests".into(),
+            risk: Risk::Low,
+            always: Some("builder may run shell `cargo test -p coder` in /work/repo".into()),
+        };
+        step.validate().unwrap();
+        let mut approval = Decision {
+            decision: "studio-g1-0011aabb-first".into(),
+            goal: "g1-0011aabb".into(),
+            task: Some("studio-g1-0011aabb-first".into()),
+            seat: Some("builder".into()),
+            kind: DecisionKind::Approval,
+            text: "May I run the tests?".into(),
+            based_on: 4,
+            approval: Some(step.clone()),
+        };
+        approval.validate().unwrap();
+        let json = serde_json::to_string(&approval).unwrap();
+        assert_eq!(serde_json::from_str::<Decision>(&json).unwrap(), approval);
+        // A view without the field still reads.
+        approval.approval = None;
+        let old = serde_json::to_string(&approval).unwrap();
+        assert!(!old.contains("\"approval\":"));
+        approval.kind = DecisionKind::Question;
+        approval.approval = Some(step.clone());
+        assert!(
+            approval.validate().is_err(),
+            "only an approval names a step"
+        );
+        let mut high = step.clone();
+        high.risk = Risk::High;
+        assert!(high.validate().is_err(), "a high-risk step has no rule");
+        high.always = None;
+        high.validate().unwrap();
+        let mut relative = step.clone();
+        relative.cwd = "repo".into();
+        assert!(relative.validate().is_err());
+        let mut long = step;
+        long.command = "x".repeat(MAX_STEP_COMMAND + 1);
+        assert_eq!(long.validate().unwrap_err().code, Code::Bounds);
+        assert_eq!(Risk::Medium.label(), "Medium risk");
     }
 }

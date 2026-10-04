@@ -2199,6 +2199,10 @@ pub fn sweep(store: &Path, root: &Path, now: u64) {
 #[path = "studio_intents.rs"]
 mod intents;
 
+// Standing approval rules: **Always allow for this seat**.
+#[path = "studio_rules.rs"]
+pub mod rules;
+
 // Each task's worktree, its local merge, and the push block.
 #[path = "studio_git.rs"]
 pub mod git;

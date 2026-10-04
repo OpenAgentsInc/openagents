@@ -42,8 +42,8 @@ use crate::zones::everglade::studio::intents::{self, Action, Console};
 use crate::zones::everglade::studio::{Answer, PanelKind, word};
 use coder_access::review::TaskReview;
 use coder_access::studio::{
-    Activity, Decision, DecisionKind, Memory, MemoryKind, Seat, Spend, Task, TaskStatus, Verdict,
-    View,
+    Activity, Approval, Decision, DecisionKind, Memory, MemoryKind, Risk, Seat, Spend, Task,
+    TaskStatus, Verdict, View,
 };
 use coder_access::{Code, Outcome, Right};
 use openagents_chat_app::{attention, changes, decision, review_comments};
@@ -506,14 +506,34 @@ fn library_rows(view: &View) -> Vec<Node<()>> {
     rows
 }
 
-/// The question flow a decision is answered with: an approval's two
-/// options, or the question's pages. A goal's plan decision is answered
-/// with a plan as free text.
+/// The question flow a decision is answered with: an approval's options,
+/// with its named step when the host named one, or the question's pages.
+/// A goal's plan decision is answered with a plan as free text.
 #[must_use]
 pub fn flow(open: &Decision) -> decision::Flow {
-    match open.kind {
-        DecisionKind::Approval => decision::Flow::approval(&open.text),
+    match (open.kind, &open.approval) {
+        (DecisionKind::Approval, Some(step)) => {
+            decision::Flow::approval_step(&open.text, prompt(step))
+        }
+        (DecisionKind::Approval, None) => decision::Flow::approval(&open.text),
         _ => decision::Flow::question(&open.text),
+    }
+}
+
+/// The decision panel's prompt for the step an approval names.
+#[must_use]
+pub fn prompt(step: &Approval) -> decision::Prompt {
+    decision::Prompt {
+        tool: step.tool.clone(),
+        command: step.command.clone(),
+        cwd: step.cwd.clone(),
+        reason: step.reason.clone(),
+        risk: match step.risk {
+            Risk::Low => decision::Risk::Low,
+            Risk::Medium => decision::Risk::Medium,
+            Risk::High => decision::Risk::High,
+        },
+        always: step.always.clone(),
     }
 }
 
@@ -537,28 +557,41 @@ fn heading(open: &Decision) -> String {
     }
 }
 
+/// A decision's text at the podium: its heading, each page's prompt and
+/// options, and an approval's named step.
+fn decision_body(open: &Decision) -> String {
+    let flow = flow(open);
+    let pages = flow.pages();
+    let mut body = heading(open);
+    for (n, page) in pages.iter().enumerate() {
+        if pages.len() > 1 {
+            body.push_str(&format!("\n\n*{} of {}*", n + 1, pages.len()));
+        }
+        if !page.prompt.is_empty() {
+            body.push_str("\n\n");
+            body.push_str(&page.prompt);
+        }
+        if let Some(step) = flow.prompt() {
+            body.push_str("\n\n");
+            body.push_str(&step.markdown());
+        }
+        for (k, option) in page.options.iter().enumerate() {
+            body.push_str(&format!("\n{}. {option}", k + 1));
+        }
+    }
+    body
+}
+
 fn decision_rows(view: &View, answering: Option<&str>) -> Vec<Node<()>> {
     let mut rows = Vec::new();
     let open = intents::decisions(view);
     let answering = answering.or_else(|| open.first().map(|d| d.decision.as_str()));
     for (i, open) in open.into_iter().enumerate() {
-        let flow = flow(open);
-        let mut body = heading(open);
+        let mut body = decision_body(open);
         if answering == Some(open.decision.as_str()) {
-            body.push_str(" · *answering now*");
-        }
-        let pages = flow.pages();
-        for (n, page) in pages.iter().enumerate() {
-            if pages.len() > 1 {
-                body.push_str(&format!("\n\n*{} of {}*", n + 1, pages.len()));
-            }
-            if !page.prompt.is_empty() {
-                body.push_str("\n\n");
-                body.push_str(&page.prompt);
-            }
-            for (k, option) in page.options.iter().enumerate() {
-                body.push_str(&format!("\n{}. {option}", k + 1));
-            }
+            // The marker follows the heading, the body's first line.
+            let end = body.find('\n').unwrap_or(body.len());
+            body.insert_str(end, " · *answering now*");
         }
         rows.push(message(
             &format!("decision-{i}-{}", open.decision),
@@ -1609,7 +1642,12 @@ impl Controller {
         let decision::Step::Done(text) = step else {
             return Vec::new();
         };
-        self.flows.remove(id);
+        // **Always allow for this seat** sends the rule the host offered;
+        // the host records and applies it.
+        let always = self
+            .flows
+            .remove(id)
+            .and_then(|flow| flow.always().map(str::to_owned));
         let Some(open) = view.and_then(|view| view.decisions.iter().find(|d| d.decision == id))
         else {
             self.said = Some("That decision was answered already.".into());
@@ -1618,14 +1656,19 @@ impl Controller {
         if self.selected.as_deref() == Some(id) {
             self.selected = None;
         }
-        self.send(
-            Action::Answer {
+        let action = match always {
+            Some(rule) => Action::AllowAlways {
+                decision: open.decision.clone(),
+                based_on: open.based_on,
+                rule,
+            },
+            None => Action::Answer {
                 decision: open.decision.clone(),
                 based_on: open.based_on,
                 text,
             },
-            typed,
-        )
+        };
+        self.send(action, typed)
     }
 
     fn decide(
@@ -2053,6 +2096,7 @@ mod tests {
                 kind: DecisionKind::Approval,
                 text: "Add CHANGELOG.md?".into(),
                 based_on: 7,
+                approval: None,
             }],
             ..View::default()
         }
@@ -2121,6 +2165,72 @@ mod tests {
                 based_on: 7,
                 text: decision::ALLOWED.into()
             })]
+        );
+    }
+
+    const RULE: &str = "ada may run shell `cargo test` in /work/repo without asking again";
+
+    /// The fixture's approval with its step named, as a host shows it.
+    fn named(risk: Risk, always: Option<&str>) -> View {
+        let mut view = studio();
+        view.decisions[0].approval = Some(Approval {
+            tool: "shell".into(),
+            command: "cargo test".into(),
+            cwd: "/work/repo".into(),
+            reason: "checks the flag".into(),
+            risk,
+            always: always.map(str::to_owned),
+        });
+        view
+    }
+
+    #[test]
+    fn the_podium_shows_a_named_step_with_its_risk_and_rule() {
+        let view = named(Risk::Medium, Some(RULE));
+        let text = decision_body(&view.decisions[0]);
+        for shown in [
+            "**shell** · Medium risk",
+            "cargo test",
+            "checks the flag",
+            "In `/work/repo`",
+            "Always allow for this seat",
+            RULE,
+        ] {
+            assert!(text.contains(shown), "{shown}: {text}");
+        }
+        let high = named(Risk::High, None);
+        let text = decision_body(&high.decisions[0]);
+        assert!(text.contains("High risk"), "{text}");
+        assert!(!text.contains("covers:"), "{text}");
+    }
+
+    #[test]
+    fn always_allow_sends_the_offered_rule_for_the_host_to_record() {
+        let view = named(Risk::Low, Some(RULE));
+        let mut panel = Panel::new("decisions");
+        let mut controller = Controller::new(PanelKind::Decisions);
+        controller.fill(&mut panel, 1, Some(&view), None, &ALL, None);
+        // The options come first: Allow once, Always allow for this seat,
+        // and Deny.
+        assert_eq!(
+            controller.intent(Intent::Action(1), &mut panel, Some(&view), None),
+            vec![Effect::Send(Action::AllowAlways {
+                decision: "studio-g1-0011aabb-b".into(),
+                based_on: 7,
+                rule: RULE.into(),
+            })]
+        );
+        let mut panel = Panel::new("decisions");
+        let mut controller = Controller::new(PanelKind::Decisions);
+        controller.fill(&mut panel, 1, Some(&view), None, &ALL, None);
+        assert_eq!(
+            controller.intent(Intent::Action(0), &mut panel, Some(&view), None),
+            vec![Effect::Send(Action::Answer {
+                decision: "studio-g1-0011aabb-b".into(),
+                based_on: 7,
+                text: decision::ALLOWED.into()
+            })],
+            "Allow once keeps no rule"
         );
     }
 
@@ -2471,6 +2581,7 @@ mod tests {
             kind: DecisionKind::NoPlan,
             text: "Answer with a plan.".into(),
             based_on: 3,
+            approval: None,
         });
         view.canonicalize();
         view

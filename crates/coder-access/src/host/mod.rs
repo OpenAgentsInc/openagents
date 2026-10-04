@@ -1222,7 +1222,8 @@ impl Host {
             | Operation::CancelStudioTask { .. }
             | Operation::RetryTask { .. }
             | Operation::PrioritizeTask { .. }
-            | Operation::AnswerDecision { .. } => {
+            | Operation::AnswerDecision { .. }
+            | Operation::AllowAlways { .. } => {
                 // Record the admitted intent before the effect. A crash after
                 // dispatch replays the same idempotency key, never a new one.
                 if book.replies.len() >= MAX_REPLIES {

@@ -382,8 +382,22 @@ Zeron has no approval interface: its ACP adapter accepts
 really questions. The studio needs approvals, so the decision panel draws
 them in the same visual language as Zeron's question flow, over the host's
 existing approval path, with the options **Allow once** and **Deny**. An
-approval never widens a grant, so the panel offers no "always allow" choice
-until the host has a scoped standing-approval record.
+approval never widens a grant.
+
+An approval whose engine names its step, in a fenced JSON block with the
+schema `openagents.coder.approval-step.v1` (`tool`, `command`, `cwd`, and
+`reason`), shows the tool, the exact command, the host's low, medium, or
+high risk chip, the reason, and the working directory. For a step that is
+not high risk, the host also offers a standing rule, and the panel adds
+**Always allow for this seat** with the rule's exact text. The rule names
+one seat and that exact tool, command, and directory, with no wildcard.
+The host records it in the studio's `rules.json`, separate from any
+single-use approval record, only when the text the device sends back still
+matches the step. The host applies a rule, never a client: it answers a
+later matching approval of that seat once, as the rule's author, after
+rechecking that device's grant, and a paused seat's approvals wait for the
+person. The answered turn still runs under a fresh grant with every usual
+check.
 
 ### The event model as a cross-check
 

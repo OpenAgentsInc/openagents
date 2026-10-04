@@ -15,11 +15,18 @@
 //! of its own. Any other text is one page with free text only.
 //!
 //! Zeron has no approval interface, so approvals are ours ([Agent Studio,
-//! "Approvals are ours"]). An approval uses the same panel with exactly two
-//! options, **Allow once** and **Deny**. Its answer is data for the engine:
-//! the next turn runs under a fresh grant with every usual check, so an
-//! answer never widens the task's grant, and the panel offers no standing
-//! approval.
+//! "Approvals are ours"]). An approval uses the same panel with the options
+//! **Allow once** and **Deny**. Its answer is data for the engine: the next
+//! turn runs under a fresh grant with every usual check, so an answer never
+//! widens the task's grant.
+//!
+//! An approval whose step the host named ([`Prompt`]) shows the tool, the
+//! exact command, a risk chip, the reason, and the working directory, after
+//! AgentCraft's permission body (`PermissionBody.java`; reimplemented, not
+//! copied). When the host offers a standing rule for the step, the panel
+//! adds **Always allow for this seat** and shows the rule's exact text: the
+//! host records that rule and applies it, never the panel
+//! ([`Flow::always`]).
 //!
 //! [Agent Studio, "Approvals are ours"]: ../../../docs/verse/agent-studio.md
 
@@ -36,6 +43,8 @@ const MAX_LABEL: usize = 200;
 pub const ALLOWED: &str = "Approved.";
 /// The answer an approval's **Deny** sends.
 pub const DENIED: &str = "Denied.";
+/// The option that keeps a standing rule for the seat.
+pub const ALWAYS: &str = "Always allow for this seat";
 /// What a page the person passed over answers.
 const NO_ANSWER: &str = "No answer.";
 /// The panel's card color, the transcript's card.
@@ -48,6 +57,92 @@ pub enum Kind {
     Question,
     /// Approval of a step the engine named.
     Approval,
+}
+
+/// How much harm a step can do, as the host classified it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Risk {
+    Low,
+    Medium,
+    High,
+}
+
+impl Risk {
+    /// The chip's words.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Low => "Low risk",
+            Self::Medium => "Medium risk",
+            Self::High => "High risk",
+        }
+    }
+
+    /// The chip's color.
+    #[must_use]
+    pub const fn color(self) -> Color {
+        match self {
+            Self::Low => Color::rgb(46, 92, 64),
+            Self::Medium => Color::rgb(122, 92, 28),
+            Self::High => Color::rgb(128, 40, 40),
+        }
+    }
+}
+
+/// The step an approval asks to take, as the host showed it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Prompt {
+    /// The tool, such as `shell`.
+    pub tool: String,
+    /// The exact command.
+    pub command: String,
+    /// The absolute working directory.
+    pub cwd: String,
+    /// Why the engine asks; may be empty.
+    pub reason: String,
+    pub risk: Risk,
+    /// The exact standing rule **Always allow for this seat** records, or
+    /// `None` when the host offers none, as for a high-risk step.
+    pub always: Option<String>,
+}
+
+impl Prompt {
+    /// The prompt as Markdown, for a surface that draws text: the tool and
+    /// its risk, the command in a code block, the reason, the directory,
+    /// and what **Always allow for this seat** covers.
+    #[must_use]
+    pub fn markdown(&self) -> String {
+        let fence = "`".repeat(longest_run(&self.command, '`').max(2) + 1);
+        let mut out = format!(
+            "**{}** · {}\n\n{fence}\n{}\n{fence}",
+            self.tool,
+            self.risk.label(),
+            self.command
+        );
+        if !self.reason.trim().is_empty() {
+            out.push_str(&format!("\n\n{}", self.reason.trim()));
+        }
+        out.push_str(&format!("\n\nIn `{}`", self.cwd));
+        if let Some(rule) = &self.always {
+            out.push_str(&format!("\n\n\"{ALWAYS}\" covers: {rule}"));
+        }
+        out
+    }
+}
+
+/// The longest run of `ch` in `text`.
+fn longest_run(text: &str, ch: char) -> usize {
+    let mut longest = 0;
+    let mut run = 0;
+    for c in text.chars() {
+        if c == ch {
+            run += 1;
+            longest = longest.max(run);
+        } else {
+            run = 0;
+        }
+    }
+    longest
 }
 
 /// One question.
@@ -86,6 +181,8 @@ pub enum Control {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Flow {
     kind: Kind,
+    /// An approval's named step.
+    prompt: Option<Prompt>,
     pages: Vec<Page>,
     page: usize,
     picked: Vec<Option<usize>>,
@@ -118,10 +215,32 @@ impl Flow {
         )
     }
 
+    /// The decision for an approval whose step the host named: **Allow
+    /// once**, **Always allow for this seat** when the host offers a
+    /// standing rule, and **Deny**.
+    #[must_use]
+    pub fn approval_step(text: &str, prompt: Prompt) -> Self {
+        let mut options = vec!["Allow once".to_owned()];
+        if prompt.always.is_some() {
+            options.push(ALWAYS.into());
+        }
+        options.push("Deny".into());
+        let mut flow = Self::new(
+            Kind::Approval,
+            vec![Page {
+                prompt: text.trim().into(),
+                options,
+            }],
+        );
+        flow.prompt = Some(prompt);
+        flow
+    }
+
     fn new(kind: Kind, pages: Vec<Page>) -> Self {
         let count = pages.len();
         Self {
             kind,
+            prompt: None,
             pages,
             page: 0,
             picked: vec![None; count],
@@ -132,6 +251,29 @@ impl Flow {
     #[must_use]
     pub const fn kind(&self) -> Kind {
         self.kind
+    }
+
+    /// An approval's named step, if the host named one.
+    #[must_use]
+    pub fn prompt(&self) -> Option<&Prompt> {
+        self.prompt.as_ref()
+    }
+
+    /// The standing rule the person chose with **Always allow for this
+    /// seat**: the exact text the host offered, which the client sends
+    /// back for the host to record. `None` for any other answer.
+    #[must_use]
+    pub fn always(&self) -> Option<&str> {
+        if self.kind != Kind::Approval || self.picked_label(0) != Some(ALWAYS) {
+            return None;
+        }
+        self.prompt.as_ref()?.always.as_deref()
+    }
+
+    /// The label of the option picked on page `page`.
+    fn picked_label(&self, page: usize) -> Option<&str> {
+        let index = self.picked[page]?;
+        self.pages[page].options.get(index).map(String::as_str)
     }
 
     #[must_use]
@@ -245,10 +387,9 @@ impl Flow {
     #[must_use]
     pub fn answer(&self) -> String {
         if self.kind == Kind::Approval {
-            return if self.picked[0] == Some(0) {
-                ALLOWED
-            } else {
-                DENIED
+            return match self.picked_label(0) {
+                Some("Allow once" | ALWAYS) => ALLOWED,
+                _ => DENIED,
             }
             .into();
         }
@@ -314,10 +455,14 @@ impl Flow {
                 },
             });
         }
+        if let Some(prompt) = &self.prompt {
+            children.extend(step_nodes(&key, prompt));
+        }
         let mut options = Vec::new();
         for (index, label) in page.options.iter().enumerate() {
-            let option_key = match (self.kind, index) {
-                (Kind::Approval, 0) => format!("{prefix}-approve"),
+            let option_key = match (self.kind, label.as_str()) {
+                (Kind::Approval, "Allow once") => format!("{prefix}-approve"),
+                (Kind::Approval, ALWAYS) => format!("{prefix}-always"),
                 (Kind::Approval, _) => format!("{prefix}-deny"),
                 (Kind::Question, _) => format!("{prefix}-option-{}", index + 1),
             };
@@ -356,6 +501,9 @@ impl Flow {
         children.push(status(
             &format!("{key}-hint"),
             match self.kind {
+                Kind::Approval if self.always_offered() => {
+                    "Allow once never widens the task's grant. Always allow keeps the rule above on the host for this seat only; the host applies it, and a high-risk step still asks each time."
+                }
                 Kind::Approval => {
                     "Allow once never widens the task's grant. You can also answer in your own words below."
                 }
@@ -415,6 +563,13 @@ impl Flow {
         }
     }
 
+    /// Whether the host offered a standing rule for this approval.
+    fn always_offered(&self) -> bool {
+        self.prompt
+            .as_ref()
+            .is_some_and(|prompt| prompt.always.is_some())
+    }
+
     /// The page's answer so far, if it has one.
     fn answered(&self, page: usize) -> Option<String> {
         (!self.typed[page].is_empty() || self.picked[page].is_some())
@@ -439,6 +594,80 @@ fn button(key: &str, label: &str, shortcut: Option<String>, enabled: bool) -> No
             intent: (),
         },
     }
+}
+
+/// An approval's named step: the tool with its risk chip, the command,
+/// the reason, the directory, and what a standing rule covers.
+fn step_nodes(key: &str, prompt: &Prompt) -> Vec<Node<()>> {
+    let tool = Node {
+        key: format!("{key}-tool"),
+        style: Style {
+            weight: Some(TextWeight::Bold),
+            ..Style::default()
+        },
+        element: Element::Text {
+            value: prompt.tool.clone(),
+            role: TextRole::Body,
+        },
+    };
+    let chip = Node {
+        key: format!("{key}-risk"),
+        style: Style {
+            background: Some(prompt.risk.color()),
+            radius: Some(6),
+            padding_start: Some(Space::Xs),
+            padding_end: Some(Space::Xs),
+            intrinsic_width: Some(true),
+            ..Style::default()
+        },
+        element: Element::Text {
+            value: prompt.risk.label().into(),
+            role: TextRole::Status,
+        },
+    };
+    let mut nodes = vec![
+        Node {
+            key: format!("{key}-step"),
+            style: Style {
+                gap: Some(Space::Sm),
+                ..Style::default()
+            },
+            element: Element::Stack {
+                axis: Axis::Horizontal,
+                children: vec![tool, chip],
+            },
+        },
+        Node {
+            key: format!("{key}-command"),
+            style: Style {
+                border: Some(prompt.risk.color()),
+                padding_start: Some(Space::Sm),
+                ..Style::default()
+            },
+            element: Element::Text {
+                value: prompt.command.clone(),
+                role: TextRole::Code,
+            },
+        },
+    ];
+    if !prompt.reason.trim().is_empty() {
+        nodes.push(Node {
+            key: format!("{key}-reason"),
+            style: Style::default(),
+            element: Element::Text {
+                value: prompt.reason.trim().into(),
+                role: TextRole::Body,
+            },
+        });
+    }
+    nodes.push(status(&format!("{key}-cwd"), &format!("In {}", prompt.cwd)));
+    if let Some(rule) = &prompt.always {
+        nodes.push(status(
+            &format!("{key}-covers"),
+            &format!("\"{ALWAYS}\" covers: {rule}"),
+        ));
+    }
+    nodes
 }
 
 fn status(key: &str, text: &str) -> Node<()> {
@@ -652,6 +881,76 @@ mod tests {
         let panel = Flow::approval("May I push?").view("task", true);
         let keys: Vec<_> = panel.controls.iter().map(|(key, _)| key.as_str()).collect();
         assert_eq!(keys, ["task-approve", "task-deny"]);
+    }
+
+    fn prompt(risk: Risk, always: Option<&str>) -> Prompt {
+        Prompt {
+            tool: "shell".into(),
+            command: "cargo test -p coder".into(),
+            cwd: "/work/repo".into(),
+            reason: "checks the change".into(),
+            risk,
+            always: always.map(str::to_owned),
+        }
+    }
+
+    const RULE: &str = "ada may run shell `cargo test -p coder` in /work/repo without asking again";
+
+    #[test]
+    fn a_named_step_shows_its_command_risk_reason_and_directory() {
+        let flow = Flow::approval_step("May I run the tests?", prompt(Risk::Low, Some(RULE)));
+        assert_eq!(
+            flow.current().options,
+            ["Allow once", ALWAYS, "Deny"],
+            "the host offered a rule"
+        );
+        let panel = flow.view("task", true);
+        let view = rust_native::View::new("decision", 1, panel.node.clone());
+        assert!(view.validate().is_ok());
+        let keys: Vec<_> = panel.controls.iter().map(|(key, _)| key.as_str()).collect();
+        assert_eq!(keys, ["task-approve", "task-always", "task-deny"]);
+        let text = format!("{:?}", panel.node);
+        for shown in [
+            "task-decision-risk",
+            "Low risk",
+            "cargo test -p coder",
+            "checks the change",
+            "In /work/repo",
+            "covers: ada may run shell",
+        ] {
+            assert!(text.contains(shown), "{shown}: {text}");
+        }
+        let markdown = flow.prompt().unwrap().markdown();
+        assert!(markdown.starts_with("**shell** · Low risk"), "{markdown}");
+        assert!(
+            markdown.contains("```\ncargo test -p coder\n```"),
+            "{markdown}"
+        );
+        assert!(markdown.contains(RULE), "{markdown}");
+    }
+
+    #[test]
+    fn always_allow_sends_the_offered_rule_and_allow_once_none() {
+        let mut flow = Flow::approval_step("May I?", prompt(Risk::Medium, Some(RULE)));
+        assert_eq!(flow.press_number(2), Step::Done(ALLOWED.into()));
+        assert_eq!(flow.always(), Some(RULE));
+        let mut once = Flow::approval_step("May I?", prompt(Risk::Medium, Some(RULE)));
+        assert_eq!(once.press_number(1), Step::Done(ALLOWED.into()));
+        assert_eq!(once.always(), None);
+        let mut deny = Flow::approval_step("May I?", prompt(Risk::Medium, Some(RULE)));
+        assert_eq!(deny.press_number(3), Step::Done(DENIED.into()));
+        assert_eq!(deny.always(), None);
+    }
+
+    #[test]
+    fn a_step_without_a_rule_offers_no_standing_approval() {
+        let mut flow = Flow::approval_step("May I push?", prompt(Risk::High, None));
+        assert_eq!(flow.current().options, ["Allow once", "Deny"]);
+        let text = format!("{:?}", flow.view("task", true).node);
+        assert!(text.contains("High risk"), "{text}");
+        assert!(!text.contains("covers:"), "{text}");
+        assert_eq!(flow.press_number(2), Step::Done(DENIED.into()));
+        assert_eq!(flow.always(), None);
     }
 
     #[test]

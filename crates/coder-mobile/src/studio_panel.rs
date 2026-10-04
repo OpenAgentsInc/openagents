@@ -684,6 +684,7 @@ mod tests {
                 kind: DecisionKind::Approval,
                 text: "Run the migration?".into(),
                 based_on: 3,
+                approval: None,
             }],
             repositories: Vec::new(),
             logs: vec![Log {

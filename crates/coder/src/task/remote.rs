@@ -130,6 +130,138 @@ impl Inbox {
         }
     }
 
+    /// **Always allow for this seat** (`studio.decision.always`): approve
+    /// the waiting studio task's step through the `studio.decision.answer`
+    /// path under the device's command ID, then keep a standing rule for
+    /// that seat and step, recorded by `principal`. The host keeps the
+    /// rule only when `rule` is the exact text it offers for the step
+    /// now; another text, a moved task, or a step the approval did not
+    /// name refuses as `stale`. The intent answers once per request ID.
+    fn allow_always(
+        &self,
+        key: &str,
+        principal: &Principal,
+        op: &Operation,
+        standing: Standing<'_>,
+    ) -> Result<String, Code> {
+        use super::interaction::{self, Step};
+        use super::studio::{Studio, rules::Author};
+        let Operation::AllowAlways {
+            decision,
+            based_on,
+            rule,
+            command,
+            issued_at,
+        } = op
+        else {
+            return Err(Code::Unsupported);
+        };
+        if !Studio::present(&self.store) {
+            return Err(Code::Forbidden);
+        }
+        let (seat, step) = {
+            let studio = Studio::open(&self.store).map_err(studio_refusal)?;
+            if let Some(reference) = studio.answered(key) {
+                return Ok(reference);
+            }
+            let seat = studio.seat_of(decision).ok_or(Code::Forbidden)?;
+            let task = Store::open(&self.store)
+                .and_then(|tasks| tasks.show(decision))
+                .map_err(|_| Code::Forbidden)?;
+            if task.revision != *based_on
+                || interaction::pending(&task) != Some(interaction::Kind::Approval)
+            {
+                return Err(Code::Stale);
+            }
+            let step = super::local::asked_in(Some(&self.store), decision)
+                .as_deref()
+                .and_then(Step::in_reply)
+                .ok_or(Code::Stale)?;
+            if Studio::offer(&seat, &step).as_deref() != Some(rule.as_str()) {
+                return Err(Code::Stale);
+            }
+            // A full rule book refuses before the step is approved.
+            if studio.rules().len() >= super::studio::rules::MAX_RULES
+                && studio.standing_rule(&seat, &step).is_none()
+            {
+                return Err(Code::Bounds);
+            }
+            (seat, step)
+        };
+        let answer = Operation::AnswerDecision {
+            decision: decision.clone(),
+            based_on: *based_on,
+            text: format!("Approved. Always allowed for this seat: {rule}"),
+            command: command.clone(),
+            issued_at: *issued_at,
+        };
+        let reference = self.studio_intent(key, principal, &answer, standing)?;
+        let mut studio = Studio::open(&self.store).map_err(studio_refusal)?;
+        let by = Author {
+            device: principal.device.clone(),
+            grant: principal.grant.clone(),
+            epoch: principal.epoch,
+        };
+        studio
+            .allow_always(&seat, &step, rule, by, super::autostart::unix_now())
+            .map_err(studio_refusal)?;
+        studio
+            .record_answer(key, &reference)
+            .map_err(studio_refusal)?;
+        Ok(reference)
+    }
+
+    /// The host's policy for standing rules: answer each waiting studio
+    /// approval a rule admits, once, as the rule's author, after
+    /// `standing` rechecks that author's grant. The rule is consumed for
+    /// the wait before the answer is recorded, so a failed answer leaves
+    /// the wait to the person rather than answering it twice.
+    fn apply_standing_rules(&self, standing: Standing<'_>) {
+        use super::studio::Studio;
+        if !Studio::present(&self.store) {
+            return;
+        }
+        let due = {
+            let (Ok(tasks), Ok(studio)) = (Store::open(&self.store), Studio::open(&self.store))
+            else {
+                return;
+            };
+            let asked = |task: &str| super::local::asked_in(Some(&self.store), task);
+            studio.standing_answers(&tasks, &asked)
+        };
+        for due in due {
+            let principal = Principal {
+                device: due.rule.by.device.clone(),
+                grant: due.rule.by.grant.clone(),
+                epoch: due.rule.by.epoch,
+            };
+            if !standing(&principal) {
+                continue;
+            }
+            let now = super::autostart::unix_now();
+            let consumed =
+                Studio::open(&self.store).and_then(|mut studio| studio.note_applied(&due, now));
+            if !matches!(consumed, Ok(true)) {
+                continue;
+            }
+            let answer = TaskCommand {
+                command: due.command(),
+                task: due.task.clone(),
+                action: CommandAction::Answer,
+                based_on: due.revision,
+                text: due.answer(),
+                emulate: false,
+                issued_at: now,
+            };
+            if let Err(code) = self.command(&principal, &answer, standing) {
+                eprintln!(
+                    "openagents host: studio: a standing rule's answer to {} was refused: {code:?}",
+                    due.task
+                );
+            }
+        }
+    }
+
     fn apply(&self, command: &Command) -> Result<TaskRef, Code> {
         let bytes = serde_json::to_vec(command).map_err(|_| Code::Malformed)?;
         let mut store = Store::open(&self.store).map_err(refusal)?;
@@ -461,6 +593,7 @@ impl Tasks for Inbox {
     /// Evaluate held commands again, such as queued messages after a turn
     /// ends, with each sender's grant rechecked.
     fn tick(&self, standing: Standing<'_>) {
+        self.apply_standing_rules(standing);
         let check = |sender: &super::commands::Sender| standing(&principal_of(sender));
         let now = super::autostart::unix_now();
         for task in super::commands::open_tasks(&self.store) {
@@ -698,6 +831,9 @@ impl Tasks for Inbox {
         standing: Standing<'_>,
     ) -> Result<String, Code> {
         use super::studio::{NewGoal, Party, PlanOutcome, Repository, Studio};
+        if matches!(op, Operation::AllowAlways { .. }) {
+            return self.allow_always(key, principal, op, standing);
+        }
         if let Operation::AnswerDecision {
             decision,
             based_on,

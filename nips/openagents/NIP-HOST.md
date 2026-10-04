@@ -678,7 +678,7 @@ A request is `openagents.host-request.v1`:
 | `studio.snapshot` | `observe` | `studio` |
 | `studio.update` | `observe` | `studio_update` |
 | `studio.review.open` | `observe` | `review` |
-| `studio.goal.submit`, `studio.seat.message`, `studio.seat.pause`, `studio.seat.resume`, `studio.seat.stop`, `studio.task.reassign`, `studio.task.cancel`, `studio.task.retry`, `studio.task.prioritize`, `studio.decision.answer` | `operate` | `dispatched` |
+| `studio.goal.submit`, `studio.seat.message`, `studio.seat.pause`, `studio.seat.resume`, `studio.seat.stop`, `studio.task.reassign`, `studio.task.cancel`, `studio.task.retry`, `studio.task.prioritize`, `studio.decision.answer`, `studio.decision.always` | `operate` | `dispatched` |
 | `studio.merge.decide` | `review` | `merged` |
 
 `task.create` carries `{title, prompt, workspace}`. The title is at most 200
@@ -879,7 +879,18 @@ cancelled one. `studio.decision.answer` carries `{decision, based_on, text,
 command, issued_at}`: a waiting task's question or approval is answered
 through the `task.command` `answer` path under the device's 64-hex
 `command` ID, and a goal's plan decision takes a plan as `text`; a
-`based_on` other than the decision's refuses as `stale`.
+`based_on` other than the decision's refuses as `stale`. An approval
+decision may carry `approval: {tool, command, cwd, reason, risk, always}`:
+the step its engine named, the host's `low`, `medium`, or `high` risk,
+and, for a step that is not high risk, the exact text of the standing rule
+the host would keep. `studio.decision.always` carries `{decision,
+based_on, rule, command, issued_at}`: it approves the step through the
+`studio.decision.answer` path, then records a rule for that seat and
+exactly that tool, command, and directory. A `rule` other than the text
+the host offers for the step now refuses as `stale`. The host applies a
+rule to a later matching approval of that seat once, as the device that
+recorded it, after rechecking that device's grant; a client never applies
+one.
 `studio.review.open` carries `{task}` and answers `review` as
 `task.review` does. `studio.merge.decide` carries `{decision: {task, base,
 head_commit, head, verdict, text, command, issued_at}}`, where `verdict` is

@@ -890,3 +890,211 @@ fn spend_accumulates_across_turns_and_restarts_and_reaches_the_snapshot() {
         .unwrap();
     assert_eq!(lead_row.spend.microusd, 400_000);
 }
+
+/// The inbox with `asking`'s tasks waiting on an approval: finished, the
+/// run ended asking.
+struct Asking<'a> {
+    tasks: &'a Tasks,
+    asking: BTreeSet<String>,
+}
+
+impl Inbox for Asking<'_> {
+    fn apply(&mut self, _command: &[u8]) -> Result<(), super::super::Error> {
+        Err(super::super::Error::NotFound)
+    }
+
+    fn task(&self, task: &str) -> Option<Task> {
+        let mut found = Inbox::task(self.tasks, task)?;
+        if self.asking.contains(task) {
+            found.status = Status::Finished;
+            found.execution = Execution::Finished;
+            found.run = Some(super::super::studio_sim::run(
+                &found,
+                interaction::APPROVAL_ENDING,
+            ));
+        }
+        Some(found)
+    }
+}
+
+fn step(command: &str, cwd: &str) -> interaction::Step {
+    interaction::Step {
+        schema: interaction::STEP_SCHEMA.into(),
+        tool: "shell".into(),
+        command: command.into(),
+        cwd: cwd.into(),
+        reason: "checks the change".into(),
+    }
+}
+
+fn asks(step: &interaction::Step) -> String {
+    format!(
+        "May I run the tests?\n\n```json\n{}\n```\n",
+        serde_json::to_string(step).unwrap()
+    )
+}
+
+fn author() -> rules::Author {
+    rules::Author {
+        device: "a".repeat(64),
+        grant: Some("b".repeat(64)),
+        epoch: Some(1),
+    }
+}
+
+/// A standing rule admits exactly the step it names, for its own seat:
+/// another seat, command, or directory still asks, as does a paused seat,
+/// a task that waits on nothing, and a revoked rule. The host answers
+/// each wait once, and the rules survive a restart.
+#[test]
+fn a_standing_rule_admits_only_the_matching_step_for_its_seat() {
+    let scratch = scratch();
+    let (mut tasks, mut studio) = team(&scratch);
+    let (_, lead) = studio.submit_goal(&mut tasks, goal(&scratch), 100).unwrap();
+    let tests = step("cargo test -p coder", "/work/repo");
+    let offered = Studio::offer("lead", &tests).unwrap();
+    assert_eq!(
+        offered,
+        "lead may run shell `cargo test -p coder` in /work/repo without asking again"
+    );
+    let asked_for = |wanted: interaction::Step| move |_: &str| Some(asks(&wanted));
+    // A rule for another seat admits nothing the lead asks.
+    let ada = Studio::offer("ada", &tests).unwrap();
+    studio
+        .allow_always("ada", &tests, &ada, author(), 101)
+        .unwrap();
+    let waiting = Asking {
+        tasks: &tasks,
+        asking: BTreeSet::from([lead.task_id.clone()]),
+    };
+    assert!(
+        studio
+            .standing_answers(&waiting, &asked_for(tests.clone()))
+            .is_empty()
+    );
+    // The text the person saw must be the step's own.
+    assert!(matches!(
+        studio.allow_always("lead", &tests, &ada, author(), 102),
+        Err(Error::State(_))
+    ));
+    assert!(matches!(
+        studio.allow_always("nobody", &tests, &offered, author(), 102),
+        Err(Error::UnknownSeat(_))
+    ));
+    let push = step("git push origin main", "/work/repo");
+    assert_eq!(
+        Studio::offer("lead", &push),
+        None,
+        "high risk asks each time"
+    );
+    assert!(matches!(
+        studio.allow_always("lead", &push, &offered, author(), 102),
+        Err(Error::State(_))
+    ));
+    let rule = studio
+        .allow_always("lead", &tests, &offered, author(), 102)
+        .unwrap();
+    assert_eq!(rule.text, offered);
+    assert_eq!(
+        studio
+            .allow_always("lead", &tests, &offered, author(), 103)
+            .unwrap(),
+        rule,
+        "the same rule again keeps the first"
+    );
+    let due = studio.standing_answers(&waiting, &asked_for(tests.clone()));
+    assert_eq!(due.len(), 1);
+    assert_eq!(due[0].task, lead.task_id);
+    assert_eq!(due[0].rule, rule);
+    let command = due[0].command();
+    assert_eq!(command.len(), 64);
+    assert_eq!(command, due[0].clone().command(), "one answer per wait");
+    assert!(due[0].answer().contains(&offered));
+    // A wider or different step still asks.
+    for other in [
+        step("cargo test -p coder --release", "/work/repo"),
+        step("cargo test -p coder", "/work/other"),
+        step("cargo test", "/work/repo"),
+    ] {
+        assert!(
+            studio
+                .standing_answers(&waiting, &asked_for(other.clone()))
+                .is_empty(),
+            "{other:?}"
+        );
+    }
+    // An approval that names no step, or a task that waits on nothing.
+    assert!(
+        studio
+            .standing_answers(&waiting, &|_: &str| Some("May I go ahead?".to_owned()))
+            .is_empty()
+    );
+    let idle = Asking {
+        tasks: &tasks,
+        asking: BTreeSet::new(),
+    };
+    assert!(
+        studio
+            .standing_answers(&idle, &asked_for(tests.clone()))
+            .is_empty()
+    );
+    // A paused seat's approvals wait for the person.
+    studio.pause_seat("lead").unwrap();
+    assert!(
+        studio
+            .standing_answers(&waiting, &asked_for(tests.clone()))
+            .is_empty()
+    );
+    studio.resume_seat(&mut tasks, "lead", 104).unwrap();
+    let waiting = Asking {
+        tasks: &tasks,
+        asking: BTreeSet::from([lead.task_id.clone()]),
+    };
+    assert_eq!(
+        studio
+            .standing_answers(&waiting, &asked_for(tests.clone()))
+            .len(),
+        1
+    );
+    // The rules survive a restart, and a revoked rule admits nothing.
+    drop(studio);
+    let mut studio = Studio::open(&scratch.store).unwrap();
+    assert_eq!(studio.rules().len(), 2);
+    assert_eq!(
+        studio
+            .standing_answers(&waiting, &asked_for(tests.clone()))
+            .len(),
+        1
+    );
+    assert!(studio.revoke_rule(&rule.id).unwrap());
+    assert!(!studio.revoke_rule(&rule.id).unwrap());
+    assert!(
+        studio
+            .standing_answers(&waiting, &asked_for(tests.clone()))
+            .is_empty()
+    );
+    studio
+        .allow_always("lead", &tests, &offered, author(), 105)
+        .unwrap();
+    let due = studio.standing_answers(&waiting, &asked_for(tests.clone()));
+    assert_eq!(due.len(), 1);
+    // The host consumes the rule for this wait once, before it answers.
+    assert!(studio.note_applied(&due[0], 106).unwrap());
+    assert!(!studio.note_applied(&due[0], 107).unwrap());
+    assert_eq!(studio.applied().len(), 1, "one record per wait");
+    assert!(
+        studio
+            .standing_answers(&waiting, &asked_for(tests))
+            .is_empty(),
+        "a consumed wait is not answered again"
+    );
+}
+
+#[test]
+fn a_rule_text_fences_backticks_in_its_command() {
+    let quoted = step("echo `date`", "/work/repo");
+    assert_eq!(
+        rules::text("ada", &quoted),
+        "ada may run shell `` echo `date` `` in /work/repo without asking again"
+    );
+}

@@ -124,6 +124,7 @@ fn studio() -> Snapshot {
                 kind: DecisionKind::Question,
                 text: "Which host should run the tests?".into(),
                 based_on: 1,
+                approval: None,
             }],
             ..View::default()
         },

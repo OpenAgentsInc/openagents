@@ -780,6 +780,21 @@ pub enum Operation {
         command: String,
         issued_at: u64,
     },
+    /// Approve a waiting studio task's step and keep a standing rule for
+    /// its seat: **Always allow for this seat**. `rule` is the exact text
+    /// the approval offered; the host records the rule only when its own
+    /// text for the step still matches, and refuses otherwise as `stale`.
+    /// The approval itself takes the `studio.decision.answer` path under
+    /// `command`. The host applies the rule to later matching steps of
+    /// that seat; it never widens a grant.
+    #[serde(rename = "studio.decision.always")]
+    AllowAlways {
+        decision: String,
+        based_on: u64,
+        rule: String,
+        command: String,
+        issued_at: u64,
+    },
     /// Read a studio task's review: files, counts, diff, and the three
     /// revisions a merge decision binds to. A read.
     #[serde(rename = "studio.review.open")]
@@ -824,6 +839,7 @@ impl Operation {
                 | Self::RetryTask { .. }
                 | Self::PrioritizeTask { .. }
                 | Self::AnswerDecision { .. }
+                | Self::AllowAlways { .. }
         )
     }
     /// An operation the host's same-user control socket takes for its
@@ -917,6 +933,7 @@ impl Operation {
             Self::RetryTask { .. } => "studio.task.retry",
             Self::PrioritizeTask { .. } => "studio.task.prioritize",
             Self::AnswerDecision { .. } => "studio.decision.answer",
+            Self::AllowAlways { .. } => "studio.decision.always",
             Self::OpenReview { .. } => "studio.review.open",
             Self::DecideMerge { .. } => "studio.merge.decide",
         }
@@ -969,7 +986,8 @@ impl Operation {
             | Self::CancelStudioTask { .. }
             | Self::RetryTask { .. }
             | Self::PrioritizeTask { .. }
-            | Self::AnswerDecision { .. } => Some(Right::Operate),
+            | Self::AnswerDecision { .. }
+            | Self::AllowAlways { .. } => Some(Right::Operate),
             Self::OpenTerminal { .. } => Some(Right::Terminal),
             Self::DecideMerge { .. } => Some(Right::Review),
         }
@@ -1153,6 +1171,19 @@ impl Operation {
                 crate::studio::id(decision)?;
                 safe(*based_on)?;
                 crate::studio::text(text, crate::studio::MAX_ANSWER)?;
+                identity(command).map_err(Error::from)?;
+                safe(*issued_at)?;
+            }
+            Self::AllowAlways {
+                decision,
+                based_on,
+                rule,
+                command,
+                issued_at,
+            } => {
+                crate::studio::id(decision)?;
+                safe(*based_on)?;
+                crate::studio::text(rule, crate::studio::MAX_RULE_TEXT)?;
                 identity(command).map_err(Error::from)?;
                 safe(*issued_at)?;
             }

@@ -133,6 +133,13 @@ fn intents() -> Vec<Operation> {
             command: "c".repeat(64),
             issued_at: now(),
         },
+        Operation::AllowAlways {
+            decision: TASK.into(),
+            based_on: 3,
+            rule: "builder may run shell `cargo test` in /work/repo without asking".into(),
+            command: "d".repeat(64),
+            issued_at: now(),
+        },
     ]
 }
 
@@ -240,6 +247,13 @@ fn malformed_studio_intents_are_refused_before_any_effect() {
             command: "short".into(),
             issued_at: 1,
         },
+        Operation::AllowAlways {
+            decision: TASK.into(),
+            based_on: 1,
+            rule: "builder may run shell `ls` in /work".into(),
+            command: "short".into(),
+            issued_at: 1,
+        },
     ] {
         assert_eq!(refused(op.clone()), Code::Malformed, "{}", op.name());
     }
@@ -248,6 +262,16 @@ fn malformed_studio_intents_are_refused_before_any_effect() {
             decision: TASK.into(),
             based_on: 1,
             text: "x".repeat(crate::studio::MAX_ANSWER + 1),
+            command: "c".repeat(64),
+            issued_at: 1,
+        }),
+        Code::Bounds
+    );
+    assert_eq!(
+        refused(Operation::AllowAlways {
+            decision: TASK.into(),
+            based_on: 1,
+            rule: " ".into(),
             command: "c".repeat(64),
             issued_at: 1,
         }),

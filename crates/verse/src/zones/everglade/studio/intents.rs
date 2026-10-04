@@ -52,6 +52,14 @@ pub enum Action {
         based_on: u64,
         text: String,
     },
+    /// Approve the open approval `decision` at `based_on` and ask the
+    /// host to keep the standing rule `rule`, the exact text it offered:
+    /// **Always allow for this seat**.
+    AllowAlways {
+        decision: String,
+        based_on: u64,
+        rule: String,
+    },
     /// **Merge**, **Request changes**, or **Reject** the change `review`
     /// read, at its revisions.
     Decide {
@@ -91,6 +99,17 @@ impl Action {
                 decision,
                 based_on,
                 text,
+                command: mint(),
+                issued_at: now,
+            },
+            Self::AllowAlways {
+                decision,
+                based_on,
+                rule,
+            } => Operation::AllowAlways {
+                decision,
+                based_on,
+                rule,
                 command: mint(),
                 issued_at: now,
             },
@@ -141,6 +160,9 @@ impl Action {
             Self::Cancel(task) => format!("cancel {}", short(task)),
             Self::Reassign { task, seat } => format!("reassign {} to {seat}", short(task)),
             Self::Answer { decision, .. } => format!("answer {}", short(decision)),
+            Self::AllowAlways { decision, .. } => {
+                format!("always allow {} for its seat", short(decision))
+            }
             Self::Decide { verdict, .. } => match verdict {
                 Verdict::Merge => "merge".into(),
                 Verdict::RequestChanges => "request changes".into(),
@@ -582,6 +604,7 @@ mod tests {
             kind: DecisionKind::NoPlan,
             text: "Answer with a plan.".into(),
             based_on,
+            approval: None,
         };
         View {
             goals: vec![goal("g-new", 20), goal("g-old", 10)],
@@ -741,6 +764,7 @@ mod tests {
             kind,
             text: "May I?".into(),
             based_on: 1,
+            approval: None,
         };
         view.decisions.push(asked("q-new", DecisionKind::Question));
         view.decisions.push(asked("p-new", DecisionKind::Approval));

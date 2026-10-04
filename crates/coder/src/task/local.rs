@@ -1843,6 +1843,44 @@ pub fn result_in(store: Option<&Path>, task: &str) -> Option<openagents_chat::ro
     None
 }
 
+/// What the task's waiting turn asked: the text of its question or
+/// approval, read from the task's events in `store` as [`result_in`] reads
+/// a result. `None` unless the task waits for an answer.
+#[must_use]
+pub fn asked_in(store: Option<&Path>, task: &str) -> Option<String> {
+    let store = store.map_or_else(default_store, Path::to_path_buf);
+    let mut follow = Local::new(store).follow(task, None, None);
+    let mut lines = Vec::new();
+    let mut waiting = false;
+    // Each poll reads what is recorded; a few reach a long task's end.
+    for _ in 0..64 {
+        let (more, state) = follow.poll().ok()?;
+        let caught_up = more.is_empty();
+        lines.extend(more);
+        match state {
+            State::Waiting => {
+                waiting = true;
+                break;
+            }
+            State::Ended => return None,
+            State::Running if caught_up => return None,
+            State::Running => {}
+        }
+    }
+    if !waiting {
+        return None;
+    }
+    match &lines
+        .iter()
+        .rev()
+        .find(|line| line.event.ends_turn())?
+        .event
+    {
+        CoderEvent::Question(asked) | CoderEvent::Approval(asked) => Some(asked.text.clone()),
+        _ => None,
+    }
+}
+
 /// Where a completed task's committed change is saved. The checkout can
 /// answer even after retirement removed the worktree.
 pub(super) fn pushed_destination(record: &Record) -> Option<String> {

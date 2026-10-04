@@ -86,7 +86,7 @@ struct Answered {
 
 /// Read a sidecar document, or its default when it is absent or does not
 /// read: a damaged sidecar loses a pause or a retry's memo, never a task.
-fn read<T: Default + for<'de> Deserialize<'de>>(dir: &Path, name: &str) -> T {
+pub(super) fn read<T: Default + for<'de> Deserialize<'de>>(dir: &Path, name: &str) -> T {
     let path = dir.join(name);
     let fits = std::fs::metadata(&path).is_ok_and(|meta| meta.len() <= MAX_SIDECAR_BYTES);
     if !fits || !super::super::regular_or_absent(&path).unwrap_or(false) {
@@ -152,7 +152,7 @@ impl Studio {
         self.paused().contains(name)
     }
 
-    fn write_sidecar(&self, name: &str, value: &impl Serialize) -> Result<(), Error> {
+    pub(super) fn write_sidecar(&self, name: &str, value: &impl Serialize) -> Result<(), Error> {
         super::super::verify_same_file(&self.dir.join(LOCK_FILE), &self.lock)?;
         let bytes = serde_json::to_vec_pretty(value)
             .map_err(|_| Error::Corrupt("a studio file could not be encoded"))?;
@@ -608,6 +608,7 @@ impl Studio {
                         "The goal needs a decision.",
                     ),
                     based_on: decision.sequence,
+                    approval: None,
                 });
             }
         }
@@ -627,17 +628,39 @@ impl Studio {
                 ),
                 _ => (wire::DecisionKind::Question, "The task asks a question."),
             };
-            let asked = super::super::local::result_in(Some(store), &task.task)
-                .map(|run| run.summary)
+            let asked = super::super::local::asked_in(Some(store), &task.task)
+                .or_else(|| {
+                    super::super::local::result_in(Some(store), &task.task).map(|run| run.summary)
+                })
                 .unwrap_or_default();
+            // An approval that names its step shows it exactly, with the
+            // host's risk and the standing rule it would keep.
+            let approval = (kind == wire::DecisionKind::Approval)
+                .then(|| interaction::Step::in_reply(&asked))
+                .flatten()
+                .map(|step| wire::Approval {
+                    risk: step.risk(),
+                    always: Studio::offer(&task.seat, &step)
+                        .filter(|text| text.len() <= wire::MAX_RULE_TEXT),
+                    tool: step.tool,
+                    command: step.command,
+                    cwd: step.cwd,
+                    reason: step.reason,
+                });
+            let shown = if approval.is_some() {
+                interaction::without_step(&asked)
+            } else {
+                asked
+            };
             out.decisions.push(wire::Decision {
                 decision: task.task.clone(),
                 goal: task.goal.clone(),
                 task: Some(task.task.clone()),
                 seat: Some(task.seat.clone()),
                 kind,
-                text: clean(&asked, wire::MAX_DECISION_TEXT, fallback),
+                text: clean(&shown, wire::MAX_DECISION_TEXT, fallback),
                 based_on: record.revision,
+                approval,
             });
         }
         out.decisions.truncate(wire::MAX_DECISIONS);
