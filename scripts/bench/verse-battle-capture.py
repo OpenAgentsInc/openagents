@@ -5,6 +5,7 @@ parser=argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--asset-dir',type=pathlib.Path,required=True)
 parser.add_argument('--binaries',type=pathlib.Path,required=True)
 parser.add_argument('--compiled-revision',required=True)
+parser.add_argument('--client-compiled-revision')
 parser.add_argument('--seconds',type=int,default=60)
 parser.add_argument('--players',type=int,default=20)
 parser.add_argument('--delay-ms',type=int,default=40)
@@ -53,7 +54,7 @@ host={'listen':address,'instance':220,'scene':scene,'pack':pack,'certificate_der
 env=dict(os.environ)
 (root/'home').mkdir()
 env['HOME']=str(root/'home')
-(root/'workload.json').write_text(json.dumps({'players':args.players,'hostile_npcs':40,'cultist_health':20000,'native_clients':1,'headless_clients':args.players-1,'seconds':args.seconds,'compiled_revision':args.compiled_revision,'fixture_revision':subprocess.check_output(['git','rev-parse','HEAD'],cwd=repo,text=True).strip(),'limits':['NPC health is raised in the authored load scene to sustain spell and AI work.','Headless player connections do not establish rendering performance on their machines.','Native player and load generator share one host machine.']}))
+(root/'workload.json').write_text(json.dumps({'players':args.players,'hostile_npcs':40,'cultist_health':20000,'native_clients':1,'headless_clients':args.players-1,'seconds':args.seconds,'compiled_revisions':{'host':args.compiled_revision,'clients':args.client_compiled_revision or args.compiled_revision},'fixture_revision':subprocess.check_output(['git','rev-parse','HEAD'],cwd=repo,text=True).strip(),'limits':['NPC health is raised in the authored load scene to sustain spell and AI work.','Headless player connections do not establish rendering performance on their machines.','Native player and load generator share one host machine.']}))
 logs=[];processes=[]
 try:
     log=open(root/'host.log','w');logs.append(log)
