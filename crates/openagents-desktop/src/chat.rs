@@ -9,6 +9,7 @@ use openagents_chat::basic_coder::Role;
 use openagents_chat::service::{Command, Snapshot};
 use openagents_chat_app::attention;
 use openagents_chat_app::coder_run::{self, Action as RunAction, Run};
+use openagents_chat_app::command_panel;
 use openagents_chat_app::projection::{Appearance, Projection, Reply};
 use openagents_chat_app::session::Session;
 use openagents_chat_app::task_chat::{self, Action as TaskAction};
@@ -39,17 +40,6 @@ const MAX_PENDING_DROPS: usize = 16;
 pub const COMMAND_QUERY: &str = "composer:command-query";
 pub const SEARCH: &str = "composer:chat-search";
 pub const RENAME: &str = "composer:chat-rename";
-const COMMAND_RULE_HEADER: &str = "glyph:command-rule-header";
-const COMMAND_RULE_FOOTER: &str = "glyph:command-rule-footer";
-/// Zeron's palette: at most 30 conversations after filtering, 8-point list
-/// insets, a 2-point row gap, 30- and 45-point rows, an 18-point edge fade.
-const PALETTE_HISTORY_LIMIT: usize = 30;
-const PALETTE_PAD: f32 = 8.0;
-const PALETTE_GAP: f32 = 2.0;
-const PALETTE_SEPARATOR: f32 = 15.0;
-const PALETTE_ACTION_ROW: f32 = 30.0;
-const PALETTE_HISTORY_ROW: f32 = 45.0;
-const PALETTE_FADE: u16 = 18;
 
 pub struct Panel {
     commands: openagents_chat_app::commands::Overlay,
@@ -2080,64 +2070,23 @@ impl Panel {
         ));
         entries
     }
-    /// The open overlay's entries. Zeron's palette keeps every action and at
-    /// most 30 matching conversations, limited after filtering so each chat
-    /// remains searchable.
+    /// The open overlay's entries.
     fn command_entries(&self) -> Vec<openagents_chat_app::commands::Entry> {
-        let mut entries = self.commands.entries(&self.registry());
-        if self.commands.kind == Some(openagents_chat_app::commands::Kind::Palette) {
-            let mut history = 0;
-            entries.retain(|entry| {
-                if matches!(
-                    entry.action,
-                    openagents_chat_app::commands::Action::Switch(_)
-                ) {
-                    history += 1;
-                    history <= PALETTE_HISTORY_LIMIT
-                } else {
-                    true
-                }
-            });
-        }
-        entries
+        command_panel::limit(
+            self.commands.kind.as_ref(),
+            self.commands.entries(&self.registry()),
+        )
     }
     /// The palette results' greatest height at the current window height.
     fn palette_results_height(&self) -> f32 {
-        (self.viewport.1 - 180.0).clamp(100.0, 360.0)
+        command_panel::results_height(self.viewport.1)
     }
-    /// Each palette row's scroll extent (a first history row includes the
-    /// section rule; the end rows include the list's padding) and the
-    /// content height, in points. Matches the laid-out rows exactly.
+    /// Each palette row's scroll extent and the content height, in points.
     fn palette_extents(
         &self,
         entries: &[openagents_chat_app::commands::Entry],
     ) -> (Vec<(f32, f32)>, f32) {
-        let mut extents = Vec::with_capacity(entries.len());
-        let (mut y, mut actions, mut history) = (PALETTE_PAD, false, false);
-        for (index, entry) in entries.iter().enumerate() {
-            if index > 0 {
-                y += PALETTE_GAP;
-            }
-            let top = if index == 0 { 0.0 } else { y };
-            let is_history = self.palette_history(entry).is_some();
-            if is_history && !history && actions {
-                y += PALETTE_SEPARATOR + PALETTE_GAP;
-            }
-            history |= is_history;
-            actions |= !is_history;
-            y += if is_history {
-                PALETTE_HISTORY_ROW
-            } else {
-                PALETTE_ACTION_ROW
-            };
-            let bottom = if index + 1 == entries.len() {
-                y + PALETTE_PAD
-            } else {
-                y
-            };
-            extents.push((top, bottom));
-        }
-        (extents, y + PALETTE_PAD)
+        command_panel::extents(entries, |entry| self.palette_history(entry).is_some())
     }
     fn palette_history(
         &self,
@@ -2167,11 +2116,11 @@ impl Panel {
             }
             _ => false,
         };
-        if inside && dy.is_finite() {
+        if inside {
             let (_, full) = self.palette_extents(&self.command_entries());
-            let limit = (full - self.palette_results_height()).max(0.0);
-            let offset = (self.command_offset - dy).clamp(0.0, limit);
-            if offset != self.command_offset {
+            if let Some(offset) =
+                command_panel::wheel(self.command_offset, dy, full, self.palette_results_height())
+            {
                 self.command_offset = offset;
                 return true;
             }
@@ -2202,7 +2151,7 @@ impl Panel {
         }
         self.commands.open(kind);
         self.command_token = uuid::Uuid::new_v4().simple().to_string();
-        self.command_query = chat_field("Search commands and chats…");
+        self.command_query = chat_field(command_panel::QUERY_PLACEHOLDER);
         self.command_query.focused = searchable;
         self.command_query.set_unframed(true);
         self.command_query
@@ -2846,11 +2795,7 @@ impl Panel {
     pub fn version(&self, resource: &str) -> Option<u64> {
         match resource {
             COMMAND_QUERY => Some(self.command_query.version()),
-            "glyph:command-search"
-            | "glyph:command-shortcut"
-            | "glyph:command-rule"
-            | COMMAND_RULE_HEADER
-            | COMMAND_RULE_FOOTER => Some(0),
+            resource if command_panel::is_surface(resource) => Some(0),
             SEARCH => Some(self.search.version()),
             RENAME => self.rename.as_ref().map(|(_, field)| field.version()),
             TRANSCRIPT => Some(self.transcript.version()),
@@ -2905,17 +2850,8 @@ impl Panel {
         match resource {
             SEARCH => Some((available, 28.0)),
             COMMAND_QUERY => Some((available, 28.0)),
-            "glyph:command-search" => Some((16.0, 16.0)),
-            "glyph:command-shortcut" => Some((
-                if cfg!(target_os = "macos") {
-                    22.0
-                } else {
-                    46.0
-                },
-                16.0,
-            )),
-            "glyph:command-rule" | COMMAND_RULE_HEADER | COMMAND_RULE_FOOTER => {
-                Some((available, 1.0))
+            resource if command_panel::is_surface(resource) => {
+                command_panel::surface_size(resource, available, cfg!(target_os = "macos"))
             }
             RENAME => self
                 .rename
@@ -2948,80 +2884,36 @@ impl Panel {
     }
     pub fn paint(&mut self, resource: &str, frame: &mut Frame, rect: PxRect) -> bool {
         let scale = self.viewport.2;
-        if resource == COMMAND_RULE_HEADER {
+        if resource == command_panel::RULE_HEADER {
             self.command_band.0 = Some(rect);
-        } else if resource == COMMAND_RULE_FOOTER {
+        } else if resource == command_panel::RULE_FOOTER {
             self.command_band.1 = Some(rect);
         }
         if matches!(
             resource,
-            "glyph:command-rule" | COMMAND_RULE_HEADER | COMMAND_RULE_FOOTER
+            command_panel::RULE | command_panel::RULE_HEADER | command_panel::RULE_FOOTER
         ) {
-            frame.fill(
+            frame.fill(rect, 0.0, command_panel::RULE_COLOR);
+            return true;
+        }
+        if resource == command_panel::SHORTCUT_GLYPH {
+            rust_native_desktop::paint::keycap(
+                frame,
+                &mut self.fonts,
                 rect,
-                0.0,
-                Color {
-                    red: 255,
-                    green: 255,
-                    blue: 255,
-                    alpha: 15,
-                },
+                scale,
+                &command_panel::shortcut_parts(cfg!(target_os = "macos")),
+                (
+                    command_panel::KEYCAP_RADIUS,
+                    5.0,
+                    command_panel::KEYCAP_LINE_HEIGHT,
+                ),
+                command_panel::KEYCAP_FILL,
+                openagents_chat_app::visual::MUTED,
             );
             return true;
         }
-        if resource == "glyph:command-shortcut" {
-            use rust_native::layout::display::{Font, FontFamily, Weight};
-            frame.fill(
-                rect,
-                5.0 * scale,
-                Color {
-                    red: 255,
-                    green: 255,
-                    blue: 255,
-                    alpha: 13,
-                },
-            );
-            let font = Font {
-                size: 10.0,
-                weight: Weight::Regular,
-                family: FontFamily::Geist,
-                mono: true,
-                italic: false,
-            };
-            let parts = if cfg!(target_os = "macos") {
-                vec![
-                    (
-                        "⌘",
-                        Font {
-                            family: FontFamily::Inter,
-                            ..font
-                        },
-                    ),
-                    ("K", font),
-                ]
-            } else {
-                vec![("Ctrl+K", font)]
-            };
-            let mut x = rect.x + 5.0 * scale;
-            for (value, font) in parts {
-                let paragraph =
-                    self.fonts
-                        .paragraph_with_line_height(value, font, None, Some(14.0));
-                self.fonts.draw(
-                    frame,
-                    &paragraph,
-                    x,
-                    rect.y + scale,
-                    paragraph.width,
-                    rust_native::style::TextAlign::Start,
-                    scale,
-                    openagents_chat_app::visual::MUTED,
-                );
-                x += paragraph.width * scale;
-            }
-            return true;
-        }
-        if resource == "glyph:command-search" {
+        if resource == command_panel::SEARCH_GLYPH {
             rust_native_desktop::paint_icon(
                 frame,
                 rect,
@@ -3138,12 +3030,7 @@ impl Panel {
         use rust_native_desktop::{OverlayLayout, OverlayPlacement};
         if let Some(kind) = &self.commands.kind {
             Some(OverlayLayout {
-                width: match kind {
-                    Kind::Palette => 560,
-                    Kind::Menu => 216,
-                    Kind::ConfirmArchive => 360,
-                    Kind::Profile => (self.sidebar_width - 16.0).round() as u16,
-                },
+                width: command_panel::width(kind, self.sidebar_width),
                 placement: if *kind == Kind::Menu {
                     self.menu_point.map_or(
                         OverlayPlacement::TopRight { top: 40, right: 10 },
@@ -3157,10 +3044,7 @@ impl Panel {
                 } else {
                     OverlayPlacement::Center
                 },
-                scrim: (!matches!(kind, Kind::Menu | Kind::Profile)).then_some(Color {
-                    alpha: 89,
-                    ..Color::rgb(0, 0, 0)
-                }),
+                scrim: command_panel::scrim(kind),
             })
         } else if self.rename.is_some() {
             Some(OverlayLayout {
@@ -3557,308 +3441,51 @@ impl Panel {
     }
     fn command_panel(&mut self) -> Node<Intent> {
         self.command_rows.clear();
-        if let Some(kind) = &self.commands.kind {
-            let entries: Vec<_> = self
-                .command_entries()
-                .into_iter()
-                .filter(|entry| {
-                    *kind != openagents_chat_app::commands::Kind::Menu
-                        || entry.enabled
-                        || entry.action != openagents_chat_app::commands::Action::Restore
-                })
-                .collect();
-            let label = match kind {
-                openagents_chat_app::commands::Kind::Palette => "Commands",
-                openagents_chat_app::commands::Kind::Menu => "Chat menu",
-                openagents_chat_app::commands::Kind::Profile => "Local profile",
-                openagents_chat_app::commands::Kind::ConfirmArchive => "Archive this conversation?",
-            };
-            let mut rows = vec![];
-            if *kind == openagents_chat_app::commands::Kind::ConfirmArchive {
-                let mut heading = text("command-heading", label, TextRole::Body);
-                heading.style.text_size = Some(13);
-                heading.style.line_height = Some(20);
-                heading.style.padding_points = Some([12, 12, 12, 12]);
-                rows.push(heading);
-            }
-            if *kind == openagents_chat_app::commands::Kind::Palette {
-                let query = Node {
-                    key: "command-query".into(),
-                    style: Style::default(),
-                    element: Element::Composer {
-                        token: self.command_token.clone(),
-                        placeholder: "Search commands and chats…".into(),
-                        max_bytes: 128,
-                        enabled: true,
-                        busy: false,
-                        stop: None,
-                        choices: vec![],
-                        draft: Some(self.commands.query.clone()),
-                        focus: true,
-                    },
-                };
-                let badge = command_surface(
-                    "command-shortcut",
-                    "Command palette shortcut",
-                    "glyph:command-shortcut",
-                );
-                let mut header = stack(
-                    "command-search-header",
-                    Axis::Horizontal,
-                    vec![
-                        Node {
-                            key: "command-search-icon".into(),
-                            style: Style::default(),
-                            element: Element::Surface {
-                                label: "Command search".into(),
-                                resource: "glyph:command-search".into(),
-                            },
-                        },
-                        query,
-                        badge,
-                    ],
-                );
-                header.style.padding_points = Some([8, 16, 7, 16]);
-                header.style.gap_points = Some(10);
-                rows.push(header);
-                rows.push(command_surface(
-                    "command-header-rule",
-                    "Header separator",
-                    COMMAND_RULE_HEADER,
-                ));
-            }
-            if *kind == openagents_chat_app::commands::Kind::Profile {
-                let mut identity = text("profile-identity", "Local", TextRole::Status);
-                identity.style.text_size = Some(11);
-                identity.style.line_height = Some(17);
-                identity.style.padding_points = Some([10, 12, 2, 12]);
-                rows.push(identity);
-            }
-            let mut items = vec![];
-            if entries.is_empty() {
-                items.push(text(
-                    "command-none",
-                    "No matching commands.",
-                    TextRole::Status,
-                ));
-            }
-            let palette = *kind == openagents_chat_app::commands::Kind::Palette;
-            let mut actions_shown = false;
-            let mut history_started = false;
-            if palette {
-                // Scrolling belongs to the wheel and keyboard navigation, not
-                // hover selection: revealing on hover moves another row under
-                // the same pointer.
-                let (extents, full) = self.palette_extents(&entries);
-                let visible = full.min(self.palette_results_height());
-                let limit = full - visible;
-                if std::mem::take(&mut self.command_reveal)
-                    && let Some(&(top, bottom)) = extents.get(self.commands.selected)
-                {
-                    if top < self.command_offset {
-                        self.command_offset = top;
-                    } else if bottom > self.command_offset + visible {
-                        self.command_offset = bottom - visible;
-                    }
-                }
-                self.command_offset = self.command_offset.clamp(0.0, limit.max(0.0));
-            }
-            for (index, entry) in entries.iter().enumerate() {
-                if entry.enabled {
-                    self.command_rows.insert(entry.key.clone(), index);
-                }
-                use openagents_chat_app::commands::{Action as C, Kind};
-                let label = if *kind == Kind::Menu {
-                    match entry.action {
-                        C::Rename => "Rename…",
-                        C::Pin if entry.label.starts_with("Unpin") => "Unpin",
-                        C::Pin => "Pin",
-                        C::Archive => "Archive",
-                        C::Restore => "Unarchive",
-                        _ => &entry.label,
-                    }
-                } else {
-                    &entry.label
-                };
-                let history = if *kind == Kind::Palette {
-                    self.palette_history(entry)
-                } else {
-                    None
-                };
-                let history_label = history.map(|summary| {
-                    format!(
-                        "{}\n{}",
-                        summary.title,
-                        summary
-                            .coder
-                            .as_ref()
-                            .and_then(|coder| coder.project.as_deref())
-                            .unwrap_or("OpenAgents · Saved")
-                    )
-                });
-                if history.is_some() && !history_started && actions_shown {
-                    let mut separator = stack(
-                        "command-history-separator",
-                        Axis::Vertical,
-                        vec![command_surface(
-                            "command-history-rule",
-                            "History separator",
-                            "glyph:command-rule",
-                        )],
-                    );
-                    // Zeron's rule sits inside the first history row with an
-                    // eight-point margin each side; the list gap supplies two.
-                    separator.style.padding_points = Some([8, 0, 6, 0]);
-                    separator.style.gap = Some(Space::None);
-                    items.push(separator);
-                }
-                history_started |= history.is_some();
-                actions_shown |= history.is_none();
-                let mut row = button(
-                    &format!("command-{}", entry.key),
-                    history_label.as_deref().unwrap_or(label),
-                    Action::Command {
-                        key: entry.key.clone(),
-                    },
-                    entry.enabled,
-                );
-                if let Element::Button { icon, shortcut, .. } = &mut row.element {
-                    if *kind == Kind::Palette {
-                        *shortcut = openagents_chat_app::commands::badge(
-                            &entry.action,
-                            cfg!(target_os = "macos"),
-                        )
-                        .map(str::to_owned);
-                    }
-                    *icon = Some(Icon {
-                        glyph: match entry.action {
-                            C::NewChat => Glyph::Compose,
-                            C::Search => Glyph::Search,
-                            C::Settings => Glyph::Settings,
-                            C::Computers => Glyph::Computer,
-                            C::Grid => Glyph::Cloud,
-                            C::Map => Glyph::Map,
-                            C::Saved => Glyph::History,
-                            C::Palette => Glyph::Terminal,
-                            C::Stop => Glyph::Stop,
-                            C::Rename => Glyph::Edit,
-                            C::Pin => Glyph::Pin,
-                            C::Archive => Glyph::Archive,
-                            C::Restore => Glyph::Restore,
-                            C::Feedback => Glyph::Flag,
-                            C::Switch(_) => Glyph::Ask,
-                            _ => Glyph::More,
-                        },
-                        circular: false,
-                        pill: false,
-                    });
-                }
-                if history.is_some() {
-                    if let Element::Button { icon, .. } = &mut row.element {
-                        *icon = None;
-                    }
-                    row.style.button_detail = Some(rust_native::style::ButtonDetail {
-                        text_size: 11,
-                        line_height: 16,
-                        color: openagents_chat_app::visual::MUTED,
-                        leading: true,
-                    });
-                }
-                row.style.weight = Some(TextWeight::Normal);
-                row.style.glyph_color = Some(openagents_chat_app::visual::MUTED);
-                row.style.glyph_size = Some(16);
-                row.style.glyph_gap = Some(10);
-                row.style.align = Some(rust_native::style::TextAlign::Start);
-                row.style.text_size = Some(13);
-                row.style.line_height = Some(if history.is_some() { 17 } else { 18 });
-                row.style.button_padding = Some([
-                    8,
-                    if *kind == Kind::Palette && history.is_none() {
-                        4
-                    } else {
-                        6
-                    },
-                ]);
-                row.style.min_height = Some(if *kind == Kind::Profile {
-                    32
-                } else if history.is_some() {
-                    PALETTE_HISTORY_ROW as u16
-                } else {
-                    PALETTE_ACTION_ROW as u16
-                });
-                row.style.radius = Some(if history.is_some() {
-                    8
-                } else if *kind == openagents_chat_app::commands::Kind::Palette {
-                    10
-                } else {
-                    7
-                });
-                let selected = index == self.commands.selected
-                    && (*kind == Kind::Palette || self.menu_navigation);
-                if history.is_none() && !selected {
-                    row.style.foreground = Some(Color {
-                        alpha: 230,
-                        ..openagents_chat_app::visual::TEXT
-                    });
-                }
-                row.style.background = Some(if selected {
-                    openagents_chat_app::visual::SELECTED
-                } else {
-                    Color::rgb(16, 16, 16)
-                });
-                // Pointer motion and keys choose one row; a resting pointer
-                // does not add a second highlight after keyboard navigation.
-                row.style.hover_background = row.style.background;
-                items.push(row);
-            }
-            let mut results = stack("command-results", Axis::Vertical, items);
-            results.style.padding_points =
-                Some(if *kind == openagents_chat_app::commands::Kind::Palette {
-                    [8, 8, 8, 8]
-                } else {
-                    [4, 4, 4, 4]
-                });
-            results.style.gap_points = Some(2);
-            if palette {
-                results.style.background = Some(Color::rgb(16, 16, 16));
-                results.style.viewport = Some(rust_native::style::Viewport {
-                    max_height: self.palette_results_height() as u16,
-                    offset: self.command_offset.round() as u16,
-                    fade: PALETTE_FADE,
-                });
-            }
-            rows.push(results);
-            if *kind == openagents_chat_app::commands::Kind::Palette {
-                rows.push(command_surface(
-                    "command-footer-rule",
-                    "Footer separator",
-                    COMMAND_RULE_FOOTER,
-                ));
-                let mut hint = stack(
-                    "command-footer",
-                    Axis::Wrap,
-                    vec![
-                        command_key_hint("navigation", "↑ ↓", "Navigate"),
-                        command_key_hint("selection", "↵", "Select"),
-                        command_key_hint("close", "Esc", "Close"),
-                    ],
-                );
-                hint.style.padding_points = Some([7, 16, 7, 16]);
-                hint.style.gap_points = Some(12);
-                rows.push(hint);
-            }
-            let mut panel = stack("command-panel", Axis::Vertical, rows);
-            panel.style.background = Some(Color::rgb(16, 16, 16));
-            panel.style.border = Some(openagents_chat_app::visual::BORDER);
-            panel.style.radius = Some(if *kind == openagents_chat_app::commands::Kind::Palette {
-                16
-            } else {
-                12
-            });
-            panel.style.gap = Some(Space::None);
-            return panel;
+        let Some(kind) = self.commands.kind.clone() else {
+            return command_panel::closed();
+        };
+        let entries = self.command_entries();
+        if kind == openagents_chat_app::commands::Kind::Palette {
+            let (extents, full) = self.palette_extents(&entries);
+            self.command_offset = command_panel::scroll(
+                &extents,
+                full,
+                self.palette_results_height(),
+                self.commands.selected,
+                self.command_offset,
+                std::mem::take(&mut self.command_reveal),
+            );
         }
-        stack("command-panel", Axis::Vertical, vec![])
+        let history = |entry: &openagents_chat_app::commands::Entry| {
+            self.palette_history(entry)
+                .map(|summary| command_panel::History {
+                    title: summary.title.clone(),
+                    detail: summary
+                        .coder
+                        .as_ref()
+                        .and_then(|coder| coder.project.as_deref())
+                        .unwrap_or("OpenAgents · Saved")
+                        .to_owned(),
+                })
+        };
+        let (node, rows) = command_panel::view(
+            command_panel::Panel {
+                kind,
+                entries,
+                selected: self.commands.selected,
+                navigating: self.menu_navigation,
+                token: &self.command_token,
+                query: &self.commands.query,
+                offset: self.command_offset,
+                results_height: self.palette_results_height(),
+                history: &history,
+            },
+            |key| Intent::Chat {
+                action: Action::Command { key: key.into() },
+            },
+        );
+        self.command_rows = rows;
+        node
     }
     pub fn body(&mut self) -> Node<Intent> {
         if self.saved_visible {
@@ -4706,43 +4333,6 @@ fn appearance() -> Appearance<'static> {
     }
 }
 
-fn command_surface(key: &str, label: &str, resource: &str) -> Node<Intent> {
-    Node {
-        key: key.into(),
-        style: Style::default(),
-        element: Element::Surface {
-            label: label.into(),
-            resource: resource.into(),
-        },
-    }
-}
-fn command_key_hint(key: &str, keys: &str, label: &str) -> Node<Intent> {
-    let mut caption = text(&format!("command-{key}-label"), label, TextRole::Status);
-    caption.style.text_size = Some(10);
-    caption.style.line_height = Some(14);
-    caption.style.intrinsic_width = Some(true);
-    let mut keys = text(&format!("command-{key}-keys"), keys, TextRole::Code);
-    keys.style.text_size = Some(10);
-    keys.style.line_height = Some(14);
-    keys.style.foreground = Some(openagents_chat_app::visual::MUTED);
-    let mut cap = stack(&format!("command-{key}-cap"), Axis::Vertical, vec![keys]);
-    cap.style.padding_points = Some([1, 5, 1, 5]);
-    cap.style.intrinsic_width = Some(true);
-    cap.style.background = Some(Color {
-        red: 255,
-        green: 255,
-        blue: 255,
-        alpha: 13,
-    });
-    cap.style.radius = Some(5);
-    let mut hint = stack(
-        &format!("command-{key}-hint"),
-        Axis::Horizontal,
-        vec![cap, caption],
-    );
-    hint.style.gap_points = Some(5);
-    hint
-}
 fn stack(key: &str, axis: Axis, children: Vec<Node<Intent>>) -> Node<Intent> {
     Node {
         key: key.into(),

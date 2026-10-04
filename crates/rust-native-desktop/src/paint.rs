@@ -325,6 +325,38 @@ fn paint_clipped(
     frame.set_clip(None);
 }
 
+/// Paints a key cap into `rect`: a rounded fill and its text runs side by
+/// side from a `pad`-point inset, one point below the top. `radius`, `pad`,
+/// and `line_height` are in points. A menu's shortcut badge is one.
+#[allow(clippy::too_many_arguments)]
+pub fn keycap(
+    frame: &mut Frame,
+    fonts: &mut Fonts,
+    rect: PxRect,
+    scale: f32,
+    parts: &[(&str, rust_native::layout::display::Font)],
+    (radius, pad, line_height): (f32, f32, f32),
+    fill: Color,
+    ink: Color,
+) {
+    frame.fill(rect, radius * scale, fill);
+    let mut x = rect.x + pad * scale;
+    for (value, font) in parts {
+        let paragraph = fonts.paragraph_with_line_height(value, *font, None, Some(line_height));
+        fonts.draw(
+            frame,
+            &paragraph,
+            x,
+            rect.y + scale,
+            paragraph.width,
+            rust_native::style::TextAlign::Start,
+            scale,
+            ink,
+        );
+        x += paragraph.width * scale;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

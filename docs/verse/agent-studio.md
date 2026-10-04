@@ -302,7 +302,8 @@ than drawing its own:
 | Composer field, Markdown painting, transcript | [`rust-native-desktop/src/composer.rs`](../../crates/rust-native-desktop/src/composer.rs), [`rich.rs`](../../crates/rust-native-desktop/src/rich.rs), [`transcript.rs`](../../crates/rust-native-desktop/src/transcript.rs) | Desktop renderer |
 | Solar icons and menu shortcut badges | [`rust-native-desktop/src/solar.rs`](../../crates/rust-native-desktop/src/solar.rs) | Desktop renderer |
 | Shell, sidebar, titlebar | [`openagents-desktop/src/chrome.rs`](../../crates/openagents-desktop/src/chrome.rs) | No |
-| Command palette, rename dialog, profile footer, menus | [`openagents-desktop/src/chat.rs`](../../crates/openagents-desktop/src/chat.rs) | No |
+| Command palette, chat and profile menus, archive confirmation | [`openagents-chat-app/src/command_panel.rs`](../../crates/openagents-chat-app/src/command_panel.rs), key caps in [`rust-native-desktop/src/paint.rs`](../../crates/rust-native-desktop/src/paint.rs) | Yes |
+| Rename dialog, profile footer | [`openagents-desktop/src/chat.rs`](../../crates/openagents-desktop/src/chat.rs) | No |
 
 Geist fonts and Solar icons are the only Zeron-sourced assets in the
 repository, each with its notice.
@@ -313,8 +314,9 @@ own batch, atlas, and amber palette, and Verse uses Rust Native only for
 surface lifetime. The studio closes that gap: studio panels are Rust Native
 views from the modules above, composited over the world surface on desktop
 and mounted by the phone hosts as the chat screens already are. Shell-only
-pieces in `openagents-desktop` that the studio needs, the palette and menus,
-move into a shared crate first instead of being copied into `verse`. The
+pieces in `openagents-desktop` that the studio needs moved into a shared
+crate instead of being copied into `verse`: the palette and menus are in
+`openagents-chat-app` (#10466). The
 amber ladder stays the palette of the world geometry: desks, monitors, the
 Task Wall, and lamps. The panels use the chat palette, as they do in the
 desktop app.

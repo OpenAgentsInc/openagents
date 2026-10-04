@@ -37,6 +37,7 @@ pub mod attachments;
 
 pub mod chat_list;
 
+pub mod command_panel;
 pub mod commands;
 
 pub mod task_chat;
