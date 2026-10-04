@@ -63,8 +63,9 @@ pub const DESK_ASIDE: f32 = 0.7;
 const SLOT: f32 = 0.9;
 /// Within this distance of a waypoint, a seat takes the next, m.
 const ARRIVED: f32 = 0.05;
-/// Height of a seat's lamp over its feet, m.
-const LAMP: f32 = 2.2;
+/// Gap between the top of a seat's nameplate and its lamp, m. The lamp
+/// hangs over the plate, which moves with the eye, so they never overlap.
+const LAMP_GAP: f32 = 0.12;
 /// Height of the bottom of a seat's nameplate over its feet, m, for an
 /// eye above it.
 const PLATE: f32 = 2.45;
@@ -256,6 +257,18 @@ pub fn at_desk(desk: &Desk) -> [f32; 2] {
     [x - DESK_ASIDE * (x - HALL.0[0]).signum(), z]
 }
 
+/// Height of the bottom of a seat's nameplate over its feet for `eye`, m.
+fn plate_lift(feet: Vec3, eye: Vec3) -> f32 {
+    // An eye level with the plate looks at its lower rows.
+    (eye.y - feet.y - PLATE_TALL / 4.0).clamp(PLATE_LOW, PLATE)
+}
+
+/// Height of a seat's lamp over its feet for `eye`, m: just over the top of
+/// its full-size nameplate.
+fn lamp_height(feet: Vec3, eye: Vec3) -> f32 {
+    plate_lift(feet, eye) + PLATE_TALL + LAMP_GAP
+}
+
 /// Plate space to the glade for the nameplate of a seat at `feet` seen
 /// from `eye`, or `None` when the plate is too near the eye to draw.
 ///
@@ -265,8 +278,7 @@ pub fn at_desk(desk: &Desk) -> [f32; 2] {
 /// ceiling. Nearer than `PLATE_TALL / PLATE_ANGLE` it shrinks, so it never
 /// subtends more than about [`PLATE_ANGLE`] however near the eye comes.
 fn plate_transform(feet: Vec3, eye: Vec3) -> Option<Mat4> {
-    // An eye level with the plate looks at its lower rows.
-    let lift = (eye.y - feet.y - PLATE_TALL / 4.0).clamp(PLATE_LOW, PLATE);
+    let lift = plate_lift(feet, eye);
     let mut anchor = feet + Vec3::Y * lift;
     let level = Vec3::new(eye.x - anchor.x, 0.0, eye.z - anchor.z);
     if level.length() > 2.0 * PLATE_OUT {
@@ -644,9 +656,10 @@ impl Studio {
             mesh.extend(&figure);
             let attention = Attention::of(seat.activity);
             if let Some(color) = attention.lamp() {
-                lamp(&mut mesh, seat.pos + Vec3::Y * LAMP, color);
+                let height = lamp_height(seat.pos, eye);
+                lamp(&mut mesh, seat.pos + Vec3::Y * height, color);
                 if attention == Attention::AwaitingInput {
-                    let foot = seat.pos + Vec3::Y * (LAMP + 0.15);
+                    let foot = seat.pos + Vec3::Y * (height + 0.15);
                     let top = seat.pos + Vec3::Y * BEACON;
                     for p in [foot, top] {
                         mesh.lines.push(Vertex {
