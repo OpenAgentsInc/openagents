@@ -384,6 +384,25 @@ impl App {
                     }
                 }
                 Ok(Update::Inventory(r)) => self.view.push_inventory(&r)?,
+                Ok(Update::MovementSuperseded { token, replacement }) => {
+                    let before = self.prediction.pose();
+                    self.pending.retain(|(_, pending)| *pending != Some(token));
+                    if self.prediction.contains(token) {
+                        if let Err(message) = self.prediction.supersede(token, replacement) {
+                            self.prediction.clear();
+                            self.status = message;
+                        }
+                    }
+                    if self.record.is_some() {
+                        if let (Some(before), Some(after)) = (before, self.prediction.pose()) {
+                            if before.life == after.life && before.epoch == after.epoch {
+                                self.profile.retirement(f64::from(before.position.distance(after.position)),
+                                    serde_json::json!({"token":token,"replacement":replacement,
+                                        "reason":"Unsent movement superseded","pending":self.prediction.pending()}));
+                            }
+                        }
+                    }
+                }
                 Ok(Update::CommandBound { token, binding }) => match binding {
                     Ok(command) => {
                         if self.record.is_some() && self.profile.bindings.len() < 64 {
@@ -417,9 +436,7 @@ impl App {
                             }
                         }
                         self.profile.bindings.remove(&token);
-                        if message != worker::SUPERSEDED_MOVEMENT {
-                            self.status = message;
-                        }
+                        self.status = message;
                     }
                 },
                 Ok(Update::Outcome(r)) => {
@@ -1529,9 +1546,9 @@ mod tests {
         app.pending.push_back((None, Some(18)));
         app.status.clear();
         updates
-            .try_send(Update::CommandBound {
+            .try_send(Update::MovementSuperseded {
                 token: 17,
-                binding: Err(worker::SUPERSEDED_MOVEMENT.into()),
+                replacement: 18,
             })
             .unwrap();
         app.consume().unwrap();

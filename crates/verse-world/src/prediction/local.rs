@@ -23,6 +23,7 @@ pub struct Pose {
 struct Input {
     token: u64,
     sequence: Option<u64>,
+    superseded_by: Option<u64>,
     step: u64,
     intent: Intent<Ability>,
 }
@@ -162,11 +163,54 @@ impl Local {
         self.inputs.push_back(Input {
             token,
             sequence: None,
+            superseded_by: None,
             step: self.step,
             intent,
         });
         self.dirty = true;
         Ok(())
+    }
+    /// Retains local motion until the newer unsent movement is acknowledged.
+    pub fn supersede(&mut self, token: u64, replacement: u64) -> Result<(), String> {
+        let old = self
+            .inputs
+            .iter()
+            .position(|i| i.token == token)
+            .ok_or("Unknown superseded input")?;
+        let new = self
+            .inputs
+            .iter()
+            .find(|i| i.token == replacement)
+            .ok_or("Unknown replacement input")?;
+        if replacement <= token
+            || self.inputs[old].sequence.is_some()
+            || self.inputs[old].superseded_by.is_some()
+            || new.sequence.is_some()
+            || !matches!(self.inputs[old].intent, Intent::Move { .. })
+            || !matches!(new.intent, Intent::Move { .. })
+        {
+            return Err("Invalid unsent movement replacement".into());
+        }
+        self.inputs[old].superseded_by = Some(replacement);
+        Ok(())
+    }
+    fn depends_on(&self, token: u64, target: u64) -> bool {
+        let mut current = token;
+        for _ in 0..super::CAPACITY {
+            if current == target {
+                return true;
+            }
+            let Some(next) = self
+                .inputs
+                .iter()
+                .find(|i| i.token == current)
+                .and_then(|i| i.superseded_by)
+            else {
+                return false;
+            };
+            current = next;
+        }
+        false
     }
     pub fn bind(&mut self, token: u64, command: &Command<Ability>) -> Result<(), String> {
         let baseline = self.baseline.ok_or("Local prediction is inactive")?;
@@ -181,6 +225,7 @@ impl Local {
             || command.intent != input.intent
             || command.sequence <= baseline.applied_sequence
             || input.sequence.is_some()
+            || input.superseded_by.is_some()
             || self.inputs.iter().any(|other| {
                 other.sequence.is_some_and(|sequence| {
                     (other.token < token && sequence >= command.sequence)
@@ -190,11 +235,27 @@ impl Local {
         {
             return Err("Predicted input binding does not match transmitted control".into());
         }
-        self.inputs[index].sequence = Some(command.sequence);
+        let associated: Vec<_> = self
+            .inputs
+            .iter()
+            .filter(|i| self.depends_on(i.token, token))
+            .map(|i| i.token)
+            .collect();
+        for input in &mut self.inputs {
+            if associated.contains(&input.token) {
+                input.sequence = Some(command.sequence);
+            }
+        }
         Ok(())
     }
     pub fn reject(&mut self, token: u64) {
-        self.inputs.retain(|i| i.token != token);
+        let retired: Vec<_> = self
+            .inputs
+            .iter()
+            .filter(|i| self.depends_on(i.token, token))
+            .map(|i| i.token)
+            .collect();
+        self.inputs.retain(|i| !retired.contains(&i.token));
         self.dirty = true;
     }
     pub fn advance(&mut self, seconds: f64) -> Result<(), String> {
@@ -374,6 +435,61 @@ mod tests {
             tick: 1,
             intent,
         }
+    }
+    #[test]
+    fn chained_unsent_replacements_preserve_motion_and_retire_with_the_real_ack() {
+        let (mut local, mut baseline, geometry) = setup();
+        let stop = Intent::Move {
+            axes: [0., 0.],
+            yaw: 0.,
+        };
+        local.queue(1, movement()).unwrap();
+        local.advance(0.1).unwrap();
+        local.queue(2, stop.clone()).unwrap();
+        local.advance(0.1).unwrap();
+        let before = local.pose().unwrap().position;
+        assert!(before.x > 0.6);
+        local.supersede(1, 2).unwrap();
+        local.advance(0.).unwrap();
+        assert_eq!(local.pose().unwrap().position, before);
+        local.queue(3, stop.clone()).unwrap();
+        local.supersede(2, 3).unwrap();
+        local.advance(0.).unwrap();
+        assert_eq!(local.pose().unwrap().position, before);
+        assert!(local.bind(1, &command(baseline, 1, movement())).is_err());
+        local.bind(3, &command(baseline, 1, stop)).unwrap();
+        assert!(local.inputs.iter().all(|i| i.sequence == Some(1)));
+        local.queue(4, Intent::Jump).unwrap();
+        local.bind(4, &command(baseline, 2, Intent::Jump)).unwrap();
+        // Authority only received the stop; it never grants the earlier local travel.
+        baseline.physics_step = 24;
+        baseline.applied_sequence = 1;
+        local.observe(baseline, &geometry, 2, 2).unwrap();
+        local.advance(0.).unwrap();
+        assert_eq!(local.pending(), 1);
+        assert_eq!(local.pose().unwrap().position, glam::Vec3::ZERO);
+        local.reject(4);
+        assert_eq!(local.pending(), 0);
+    }
+    #[test]
+    fn refused_replacement_cancels_its_entire_bounded_local_chain() {
+        let (mut local, baseline, _) = setup();
+        local.queue(1, movement()).unwrap();
+        local.advance(0.1).unwrap();
+        local.queue(2, movement()).unwrap();
+        local.supersede(1, 2).unwrap();
+        assert!(local.supersede(2, 1).is_err());
+        assert!(local.supersede(1, 2).is_err());
+        assert!(local.supersede(2, 99).is_err());
+        local.queue(3, Intent::Jump).unwrap();
+        assert!(local.supersede(2, 3).is_err());
+        local.bind(2, &command(baseline, 1, movement())).unwrap();
+        local.reject(2);
+        assert_eq!(local.pending(), 1);
+        assert!(local.contains(3));
+        local.clear();
+        assert!(local.supersede(1, 2).is_err());
+        assert_eq!(local.pending(), 0);
     }
     #[test]
     fn input_moves_before_binding_and_acknowledgment_then_uses_authoritative_hold() {

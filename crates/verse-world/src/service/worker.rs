@@ -12,7 +12,6 @@ pub const INPUT_CAPACITY: usize = 32;
 pub const UPDATE_CAPACITY: usize = 8;
 /// Leaves request capacity for 30 Hz input refreshes and spell commands.
 pub const NATIVE_CADENCE: Duration = Duration::from_millis(50);
-pub const SUPERSEDED_MOVEMENT: &str = "Movement replaced by newer unsent input";
 
 /// Local input requests contain no principal, controller, or transport handle.
 pub enum Input {
@@ -43,6 +42,11 @@ pub enum Update {
     CommandBound {
         token: u64,
         binding: Result<Command<Ability>, String>,
+    },
+    /// Unsent movement remains local history associated with the replacement.
+    MovementSuperseded {
+        token: u64,
+        replacement: u64,
     },
     Outcome(Response),
 }
@@ -149,7 +153,7 @@ pub async fn run(
                     let Some(input) = input else { return Ok(()); };
                     let (mut input, retired) = coalesce_movement(input, &mut inputs, &mut deferred);
                     for token in retired {
-                        updates.send(Update::CommandBound { token, binding: Err(SUPERSEDED_MOVEMENT.into()) }).await
+                        updates.send(Update::MovementSuperseded { token, replacement: match &input { Input::TrackedCommand {token,..} => *token, _ => unreachable!() } }).await
                             .map_err(|_| "Chamber update consumer closed")?;
                     }
                     // Retirement delivery can wait on output backpressure; check freshness afterward.
@@ -165,7 +169,7 @@ pub async fn run(
                     let (latest, retired) = coalesce_movement(input, &mut inputs, &mut deferred);
                     input = latest;
                     for token in retired {
-                        updates.send(Update::CommandBound {token,binding:Err(SUPERSEDED_MOVEMENT.into())}).await
+                        updates.send(Update::MovementSuperseded {token,replacement:match &input {Input::TrackedCommand {token,..}=>*token,_=>unreachable!()}}).await
                             .map_err(|_| "Chamber update consumer closed")?;
                     }
                     let response = match input {
@@ -402,8 +406,10 @@ mod tests {
         timeout(Duration::from_secs(3), async {
             loop {
                 match output.recv().await.unwrap() {
-                    Update::CommandBound { token: 1, binding } => {
-                        assert_eq!(binding.unwrap_err(), SUPERSEDED_MOVEMENT);
+                    Update::MovementSuperseded {
+                        token: 1,
+                        replacement: 2,
+                    } => {
                         retired = true;
                     }
                     Update::CommandBound { token: 2, binding } => {
@@ -480,15 +486,16 @@ mod tests {
         timeout(Duration::from_secs(5), async {
             while outcomes < 3 {
                 match output.recv().await.unwrap() {
+                    Update::MovementSuperseded { token, replacement } => {
+                        assert!(token < 3);
+                        assert_eq!(replacement, 3);
+                        tokens.push(token);
+                    }
                     Update::CommandBound { token, binding } => {
                         tokens.push(token);
-                        if token < 3 {
-                            assert_eq!(binding.unwrap_err(), SUPERSEDED_MOVEMENT);
-                        } else {
-                            let command = binding.unwrap();
-                            sequences.push(command.sequence);
-                            assert_eq!(matches!(command.intent, Intent::Jump), token == 4);
-                        }
+                        let command = binding.unwrap();
+                        sequences.push(command.sequence);
+                        assert_eq!(matches!(command.intent, Intent::Jump), token == 4);
                     }
                     Update::Outcome(response) => {
                         assert!(matches!(response.body, Reply::Accepted));
@@ -629,7 +636,7 @@ mod tests {
                         Update::Snapshot(_)=>snapshots+=1,
                         Update::Inventory(response)=> {assert!(player);let Reply::Inventory{inventory}=response.body else {panic!("Missing inventory");};assert_eq!(inventory.experience,0);inventories+=1;},
                         Update::Events{..}=>{},
-                        Update::CommandBound { .. } | Update::Outcome(_)=>panic!("No player commands submitted"),
+                        Update::MovementSuperseded { .. } | Update::CommandBound { .. } | Update::Outcome(_)=>panic!("No player commands submitted"),
                     }
                 }
             }
@@ -710,7 +717,10 @@ mod tests {
                             accepted += 1;
                         }
                     }
-                    Update::CommandBound { .. } | Update::Events { .. } | Update::Inventory(_) => {}
+                    Update::MovementSuperseded { .. }
+                    | Update::CommandBound { .. }
+                    | Update::Events { .. }
+                    | Update::Inventory(_) => {}
                 }
             }
         })
@@ -780,7 +790,9 @@ mod tests {
                 Update::Inventory(r) => {
                     assert!(matches!(r.body, Reply::Inventory { .. }));
                 }
-                Update::CommandBound { .. } => panic!("No tracked commands submitted"),
+                Update::MovementSuperseded { .. } | Update::CommandBound { .. } => {
+                    panic!("No tracked commands submitted")
+                }
                 Update::Outcome(r) => {
                     assert!(matches!(r.body, Reply::Accepted));
                     accepted = true;
