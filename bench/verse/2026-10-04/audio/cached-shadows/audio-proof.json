@@ -1,0 +1,37 @@
+{
+  "schema": "openagents.verse.audio-proof.v1",
+  "audio_update_p95_ms": 0.005125,
+  "audio": {
+    "device": {
+      "rendered_frames": 5046272,
+      "device_errors": 0,
+      "refused_commands": 0,
+      "nonzero_samples": 10088232,
+      "peak": 0.31770145893096924,
+      "capture_dropped_blocks": 0
+    },
+    "queued_by_cue": [
+      428,
+      21,
+      94,
+      7,
+      1
+    ],
+    "sample_rate": 48000
+  },
+  "render_dimensions": [
+    3456,
+    2104
+  ],
+  "samples": 4,
+  "maximum_cached_shadow_casters": 11,
+  "source_sha256": {
+    "crates/verse-engine/src/audio.rs": "41110784a9e7353efaee30d47ce96842499f5a10135eaf74034bc330dd4690f8",
+    "crates/verse-engine/src/audio_cues.rs": "4f8a49b2b2b609ba2bb704c318692408bca06def812d6890fd8ce7394f24c71e",
+    "crates/verse/src/audio_native.rs": "0f9956c3c9c8714d1fbf47bc174c33a1c8aef2058780a3d1855a7cb890443047",
+    "crates/verse/src/imported/mod.rs": "5c5bf368aa241e739f03a4759b54d10e8729d87925bbf932b6592a5140e8c304",
+    "crates/verse/src/imported/shadow_cache.rs": "7c9eb7c4596aabe9ba7cd7ae7ea5a5ec6ea0367470605fdf8e6dfe25d82ba66e",
+    "crates/verse/examples/chamber_app/audio.rs": "8d029684133af9a962530b497e15a8a1ae78365afd08e9207edafbc60e46c082",
+    "crates/verse/examples/chamber_app/mod.rs": "097ed12e264734d684882ef7ab0e56606403835bb221d5765fb170c5ca51cc5a"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "schema": "openagents.verse.residency-proof.v1",
+  "stale_frame": "Stale or foreign asset catalog",
+  "stale_empty_frame": "Stale or foreign asset catalog",
+  "rebuild_pixels_identical": true,
+  "live_surface_reload": false
+}
