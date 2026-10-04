@@ -283,7 +283,9 @@ impl Game {
         } = &command.intent
         {
             if aim[1].abs() > 0.001
-                || target.is_some_and(|life| self.lives.get(&life.actor) != Some(&life))
+                || target.is_some_and(|life| {
+                    self.lives.get(&life.actor) != Some(&life) || !self.hostile_actor(life.actor)
+                })
             {
                 return Err("Invalid spell target or horizontal aim".into());
             }

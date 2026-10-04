@@ -85,7 +85,7 @@ pub(crate) fn resolve_for(
             snapshot
                 .actors
                 .iter()
-                .find(|a| a.id == *id && a.alive && a.faction != "player")
+                .find(|a| a.id == *id && a.alive && a.faction == "undead")
                 .map(|a| (*actor, *id, Vec3::from(a.pos)))
         })
         .filter(|(_, _, feet)| {

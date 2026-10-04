@@ -60,7 +60,7 @@ impl Game {
     pub fn combat_in(mut scene: Scene, agent: bool, instance: u64) -> Result<Self, String> {
         scene.duration = 200.0;
         for actor in &mut scene.actors {
-            if actor.nameplate {
+            if actor.nameplate && !actor.friendly {
                 actor.health = if actor.model == "claude" { 300_000 } else { 15 };
             }
         }
@@ -79,7 +79,7 @@ impl Game {
         let mut game = Self::new_in(scene, instance)?;
         let mut encounter = Encounter::default();
         for actor in &game.scene.actors {
-            if actor.nameplate {
+            if actor.nameplate && !actor.friendly {
                 encounter.positions.insert(actor.id, actor.position);
                 encounter.ready.insert(
                     actor.id,
@@ -105,7 +105,8 @@ impl Encounter {
             return Err("Encounter checkpoint budget exceeded".into());
         }
         for cast in &self.casts {
-            if game.actor_life(cast.actor) != Some(cast.life)
+            if !game.hostile_actor(cast.actor)
+                || game.actor_life(cast.actor) != Some(cast.life)
                 || game
                     .player_admission(cast.target_life.actor)
                     .is_none_or(|a| a.actor() != cast.target_life)
@@ -342,7 +343,7 @@ impl Encounter {
         for actor in frame
             .actors
             .iter()
-            .filter(|a| a.actor.nameplate && a.health > 0)
+            .filter(|a| a.actor.nameplate && !a.actor.friendly && a.health > 0)
         {
             let boss = actor.actor.model == "claude";
             if game.navigation_directed(actor.actor.id) {
@@ -468,7 +469,9 @@ pub fn drive(game: &mut Game, dt: f32) -> Result<[f32; 2], String> {
     let closest = frame
         .actors
         .iter()
-        .filter(|a| a.actor.nameplate && a.health > 0 && a.actor.model != "claude")
+        .filter(|a| {
+            a.actor.nameplate && !a.actor.friendly && a.health > 0 && a.actor.model != "claude"
+        })
         .min_by(|a, b| {
             a.actor
                 .position
@@ -532,6 +535,7 @@ pub fn drive(game: &mut Game, dt: f32) -> Result<[f32; 2], String> {
                     .iter()
                     .filter(|a| {
                         a.actor.nameplate
+                            && !a.actor.friendly
                             && a.health > 0
                             && a.actor.position.distance(game.player) <= 45.72
                             && game.attack_clear(
@@ -545,6 +549,7 @@ pub fn drive(game: &mut Game, dt: f32) -> Result<[f32; 2], String> {
                             .iter()
                             .filter(|other| {
                                 other.actor.nameplate
+                                    && !other.actor.friendly
                                     && other.health > 0
                                     && other.actor.model != "claude"
                                     && other.actor.position.distance(candidate.actor.position)

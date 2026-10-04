@@ -8,13 +8,16 @@ chamber reads its snapshots and cinematic projection. Human and controller
 requests share admission. A trusted adapter supplies controller identity;
 this crate does not authenticate network connections.
 
-The `verse-chamber-owned-v16` rules profile independently implements retained
+The `verse-chamber-owned-v17` rules profile independently implements retained
 chamber behavior; it imports no vendor source. Firebolt deals 8 damage, each of
 three magic missiles deals 4, and fireball deals 15 in a visible 6.096-meter radius
 with three 6-damage burn ticks. Living characters regenerate one mana per second.
 Spell projectiles stop at static box cover and sweep against relative actor motion
 in 120 Hz slices. Actual character substep paths survive checkpoint replay;
 admitted teleports skip intermediate space.
+Friendly scene actors retain their authored health, stay out of encounter AI and
+combat targeting, and bind to friendly simulation factions in checkpoints; legacy
+v16 checkpoints remain admissible only when no friendly roles are present.
 The native adapter admits commands at 30 Hz. One world clock consumes bounded
 120 Hz steps for movement, combat, and timers; fractional input time remains in
 the accumulator. Combat elapsed time derives from the step count, and scene time

@@ -7,8 +7,8 @@ use std::collections::BTreeMap;
 use verse_engine::director::{Action, Frame, Scene};
 use verse_engine::motion::State;
 
-/// Checkpoint revision. v16 retains shared controlled-player movement, casts, and effects.
-pub const RULES_REVISION: &str = "verse-chamber-owned-v16";
+/// Checkpoint revision. v17 binds friendly scene roles to simulation factions.
+pub const RULES_REVISION: &str = "verse-chamber-owned-v17";
 /// Seed of the chamber's spell dice; scenarios may reseed before acting.
 pub const SPELL_SEED: u64 = 0x5EED_0451;
 
@@ -331,6 +331,7 @@ impl Game {
     }
     /// Saves pending combat, controller fences, timers, and presentation clocks.
     pub fn checkpoint(&self) -> Result<Vec<u8>, String> {
+        self.validate_roles()?;
         self.simulation.validate()?;
         self.validate_players()?;
         self.validate_clock()?;
@@ -360,7 +361,11 @@ impl Game {
             return Err("World checkpoint budget exceeded".into());
         }
         let saved: Saved = serde_json::from_slice(bytes).map_err(|e| e.to_string())?;
-        if saved.version != 1 || saved.rules_revision != RULES_REVISION {
+        if saved.version != 1
+            || (saved.rules_revision != RULES_REVISION
+                && !(saved.rules_revision == "verse-chamber-owned-v16"
+                    && saved.world.scene.actors.iter().all(|a| !a.friendly)))
+        {
             return Err("Unsupported world checkpoint".into());
         }
         let mut world = saved.world;
@@ -370,6 +375,7 @@ impl Game {
         if let Some(encounter) = &world.encounter {
             encounter.validate(&world)?;
         }
+        world.validate_roles()?;
         world.simulation.validate()?;
         world.validate_players()?;
         world.controls.validate()?;
@@ -1071,12 +1077,53 @@ impl Game {
         self.simulation.cooldown_duration(spell)
     }
 
+    pub(crate) fn hostile_actor(&self, actor: u64) -> bool {
+        self.scene
+            .actors
+            .iter()
+            .any(|a| a.id == actor && a.nameplate && !a.friendly)
+    }
+
+    fn validate_roles(&self) -> Result<(), String> {
+        if self
+            .scene
+            .actors
+            .iter()
+            .any(|a| a.friendly && (!a.nameplate || a.model == "adventurer"))
+        {
+            return Err("Invalid friendly scene actor".into());
+        }
+        let snapshot = self.simulation.snapshot();
+        for actor in self.scene.actors.iter().filter(|a| a.nameplate) {
+            let source = self
+                .ids
+                .get(&actor.id)
+                .and_then(|id| snapshot.actors.iter().find(|s| s.id == *id));
+            if match source {
+                Some(source) => {
+                    source.faction != if actor.friendly { "friendly" } else { "undead" }
+                }
+                None => actor.friendly || !self.npc_deaths.contains_key(&actor.id),
+            } {
+                return Err("Scene role disagrees with simulation faction".into());
+            }
+        }
+        Ok(())
+    }
+
     pub fn new(scene: Scene) -> Result<Self, String> {
         Self::new_in(scene, 0)
     }
 
     /// Creates a chamber in the instance selected by its trusted host.
     pub fn new_in(mut scene: Scene, instance: u64) -> Result<Self, String> {
+        if scene
+            .actors
+            .iter()
+            .any(|a| a.friendly && (!a.nameplate || a.model == "adventurer"))
+        {
+            return Err("Invalid friendly scene actor".into());
+        }
         scene
             .cues
             .retain(|c| !matches!(c.action, Action::Bow { .. }));
@@ -1097,10 +1144,16 @@ impl Game {
             .zip(source_ids)
             .map(|(a, id)| (a.id, id))
             .collect();
+        for actor in actors.iter().filter(|a| a.friendly) {
+            simulation.mark_friendly(ids[&actor.id])?;
+        }
         let selected = *ids
             .keys()
-            .find(|id| **id != 1)
-            .or_else(|| ids.keys().next())
+            .find(|id| **id != 1 && actors.iter().any(|a| a.id == **id && !a.friendly))
+            .or_else(|| {
+                ids.keys()
+                    .find(|id| actors.iter().any(|a| a.id == **id && !a.friendly))
+            })
             .ok_or("Missing hostile actors")?;
         let observed_health = simulation
             .snapshot()
@@ -1324,7 +1377,10 @@ impl Game {
                             .is_some_and(|v| v.length_squared() > 0.01)
                         {
                             State::Walk
-                        } else if a.actor.model.starts_with("cultist") && e.ended.is_none() {
+                        } else if !a.actor.friendly
+                            && a.actor.model.starts_with("cultist")
+                            && e.ended.is_none()
+                        {
                             if a.actor.id % 3 == 0 {
                                 State::CombatReadyAlternate
                             } else {
@@ -1387,7 +1443,7 @@ impl Game {
                             a.actor.yaw = *yaw;
                         }
                     }
-                    if self.hostile_held(a.actor.id) {
+                    if !a.actor.friendly && self.hostile_held(a.actor.id) {
                         a.animation = if a.actor.model.starts_with("cultist")
                             && self.encounter.as_ref().is_some_and(|e| e.ended.is_none())
                         {
@@ -1411,7 +1467,7 @@ impl Game {
                         a.animation = State::Airborne.into();
                         a.animation_time = 0.2;
                     }
-                    if self.shared_prone(a.actor.position) {
+                    if !a.actor.friendly && self.shared_prone(a.actor.position) {
                         a.animation = State::Prone.into();
                         a.animation_time = 1.0;
                     }
@@ -1657,9 +1713,12 @@ impl Game {
                         encounter.positions.insert(a.actor.id, authored);
                     }
                 }
-                let mut desired = self.controls.position(id, authored, self.time);
-                for p in self.additional_players.values_mut() {
-                    desired = p.controls.position(id, desired, self.time);
+                let mut desired = authored;
+                if !a.actor.friendly {
+                    desired = self.controls.position(id, authored, self.time);
+                    for p in self.additional_players.values_mut() {
+                        desired = p.controls.position(id, desired, self.time);
+                    }
                 }
                 let mut npc_path = vec![];
                 let life = self.lives[&a.actor.id];
@@ -1794,7 +1853,7 @@ impl Game {
                 else {
                     continue;
                 };
-                if !source.alive {
+                if !source.alive || actor.friendly {
                     continue;
                 }
                 let motion = self
@@ -1870,7 +1929,8 @@ impl Game {
             .actors
             .iter()
             .filter(|a| {
-                a.model.starts_with("cultist")
+                !a.friendly
+                    && a.model.starts_with("cultist")
                     && self
                         .npc_deaths
                         .get(&a.id)
@@ -1991,7 +2051,7 @@ impl Game {
             .frame()
             .actors
             .iter()
-            .filter(|a| a.actor.nameplate && a.health > 0)
+            .filter(|a| a.actor.nameplate && !a.actor.friendly && a.health > 0)
             .map(|a| a.actor.id)
             .collect();
         if !live.is_empty() {
@@ -2144,7 +2204,12 @@ impl Game {
         let snapshot = self.snapshot();
         self.ids
             .iter()
-            .filter(|(_, id)| snapshot.actors.iter().any(|a| a.id == **id && a.alive))
+            .filter(|(_, id)| {
+                snapshot
+                    .actors
+                    .iter()
+                    .any(|a| a.id == **id && a.alive && a.faction == "undead")
+            })
             .map(|(actor, _)| *actor)
             .collect()
     }
@@ -2399,7 +2464,9 @@ impl Game {
         if aim[1].abs() > 0.001 {
             return Err("The chamber requires horizontal aim".into());
         }
-        if target.is_some_and(|life| self.lives.get(&life.actor) != Some(&life)) {
+        if target.is_some_and(|life| {
+            self.lives.get(&life.actor) != Some(&life) || !self.hostile_actor(life.actor)
+        }) {
             return Err("Target life is stale".into());
         }
         let tick = self.authority_tick;
@@ -3890,5 +3957,93 @@ mod player_respawn_tests {
             serde_json::from_slice(&g.checkpoint().unwrap()).unwrap();
         saved["world"]["simulation"]["players"]["0"]["resources"]["max_hp"] = 100.into();
         assert!(Game::restore(&serde_json::to_vec(&saved).unwrap()).is_err());
+    }
+}
+
+#[cfg(test)]
+mod friendly_tests {
+    use super::*;
+
+    fn scene() -> Scene {
+        let mut scene =
+            Scene::from_json(include_bytes!("../../../assets/verse/original/ritual.json")).unwrap();
+        let giver = scene.actors.iter_mut().find(|a| a.id == 2).unwrap();
+        giver.friendly = true;
+        giver.health = 123;
+        scene
+    }
+
+    #[test]
+    fn friendly_giver_stays_out_of_combat_and_survives_restore_and_reset() {
+        let mut game = Game::combat(scene(), true).unwrap();
+        assert!(!game.encounter.as_ref().unwrap().positions.contains_key(&2));
+        for _ in 0..300 {
+            game.tick(1. / 30., [0.; 2]).unwrap();
+        }
+        let giver = game
+            .frame()
+            .actors
+            .into_iter()
+            .find(|a| a.actor.id == 2)
+            .unwrap();
+        assert_eq!(giver.health, 123);
+        assert_eq!(giver.animation, State::Idle.into());
+        assert!(
+            !game
+                .encounter
+                .as_ref()
+                .unwrap()
+                .casts
+                .iter()
+                .any(|c| c.actor == 2)
+        );
+        assert!(!game.living_npcs().contains(&2));
+        let mut restored = Game::restore(&game.checkpoint().unwrap()).unwrap();
+        assert_eq!(
+            restored
+                .snapshot()
+                .actors
+                .iter()
+                .find(|a| a.id == restored.ids[&2])
+                .unwrap()
+                .faction,
+            "friendly"
+        );
+        restored.restart_combat(false).unwrap();
+        assert_eq!(
+            restored
+                .frame()
+                .actors
+                .iter()
+                .find(|a| a.actor.id == 2)
+                .unwrap()
+                .health,
+            123
+        );
+        restored.selected = 2;
+        let mana = restored.snapshot().player.mana;
+        assert!(restored.activate(Ability::Bow).is_err());
+        assert_eq!(restored.snapshot().player.mana, mana);
+    }
+
+    #[test]
+    fn checkpoint_fences_scene_factions_and_legacy_friendly_roles() {
+        let game = Game::new(scene()).unwrap();
+        let value: serde_json::Value = serde_json::from_slice(&game.checkpoint().unwrap()).unwrap();
+        let mut legacy = value.clone();
+        legacy["rules_revision"] = "verse-chamber-owned-v16".into();
+        assert!(Game::restore(&serde_json::to_vec(&legacy).unwrap()).is_err());
+        let mut forged = value;
+        forged["world"]["simulation"]["actors"][game.ids[&2].to_string()]["faction"] =
+            "undead".into();
+        assert!(Game::restore(&serde_json::to_vec(&forged).unwrap()).is_err());
+        let hostile = Game::new(
+            Scene::from_json(include_bytes!("../../../assets/verse/original/ritual.json")).unwrap(),
+        )
+        .unwrap();
+        let mut old: serde_json::Value =
+            serde_json::from_slice(&hostile.checkpoint().unwrap()).unwrap();
+        old["rules_revision"] = "verse-chamber-owned-v16".into();
+        Game::restore(&serde_json::to_vec(&old).unwrap()).unwrap();
     }
 }
