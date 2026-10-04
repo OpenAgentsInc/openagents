@@ -151,6 +151,8 @@ async fn run() -> Result<(), String> {
     status("Opening Everglade…");
     let mut runtime = WorldRuntime::new();
     runtime.install_everglade_bytes(&bytes)?;
+    // The page opens no studio panel, on a keyboard or a touchscreen.
+    runtime.interact_hint = verse::runtime::InteractHint::None;
     drop(bytes);
 
     let scale = (window.device_pixel_ratio() as f32).clamp(1.0, 3.0);

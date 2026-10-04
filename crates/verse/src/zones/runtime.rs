@@ -697,16 +697,13 @@ impl WorldRuntime {
             Lab::caption(&lab.snapshot())
         } else if self.zone_state.everglade.is_some() {
             add("return", self.return_label(), Intent::Return, true);
-            if let Some(panel) = self.studio_panel_here() {
-                let label = match panel {
-                    PanelKind::Console => "Console",
-                    PanelKind::Desk(_) | PanelKind::Seat(_) => "Seat",
-                    PanelKind::Decisions => "Decisions",
-                    PanelKind::Review => "Review",
-                };
+            if self.interact_hint != crate::runtime::InteractHint::None
+                && let Some(panel) = self.studio_panel_here()
+            {
+                let label = crate::zones::everglade::button_label(&panel);
                 add("interact", label, Intent::Interact, true);
             }
-            Everglade::caption(self.player.pos)
+            Everglade::caption(self.player.pos, self.interact_hint)
         } else if portal.near && portal.visible {
             if self.nearest_portal().0 == ZoneId::Lagrange1 {
                 add("enter", "Enter L1", Intent::Enter, true);

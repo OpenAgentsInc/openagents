@@ -347,17 +347,42 @@ impl Everglade {
     }
 
     /// The HUD caption for a player standing at `at`: the station in
-    /// reach, and the panel the interact key opens there.
-    pub fn caption(at: Vec3) -> String {
-        let mut caption = match station_near(at.x, at.z) {
-            Some(station) => format!("Everglade\n{} · {}", station.studio, station.place),
-            None => "Everglade\nWalk up to a station".into(),
+    /// reach, and how this device opens the panel there.
+    pub fn caption(at: Vec3, hint: crate::runtime::InteractHint) -> String {
+        use crate::runtime::InteractHint;
+        let near = station_near(at.x, at.z);
+        let mut caption = match (near, hint) {
+            (Some(station), _) => format!("Everglade\n{} · {}", station.studio, station.place),
+            (None, InteractHint::None) => "Everglade\nWalk the glade and the workshop".into(),
+            (None, _) => "Everglade\nWalk up to a station".into(),
         };
         if let Some(panel) = studio::Studio::panel_at(at) {
-            caption.push_str("\nF opens ");
-            caption.push_str(panel_name(&panel));
+            match hint {
+                InteractHint::Key => {
+                    caption.push_str("\nF opens ");
+                    caption.push_str(panel_name(&panel));
+                }
+                InteractHint::Tap => {
+                    caption.push_str("\nTap ");
+                    caption.push_str(button_label(&panel));
+                    caption.push_str(" to open ");
+                    caption.push_str(panel_name(&panel));
+                }
+                InteractHint::None => {}
+            }
         }
         caption
+    }
+}
+
+/// The zone panel's button for a station's panel.
+#[must_use]
+pub fn button_label(panel: &studio::PanelKind) -> &'static str {
+    match panel {
+        studio::PanelKind::Console => "Console",
+        studio::PanelKind::Desk(_) | studio::PanelKind::Seat(_) => "Seat",
+        studio::PanelKind::Decisions => "Decisions",
+        studio::PanelKind::Review => "Review",
     }
 }
 

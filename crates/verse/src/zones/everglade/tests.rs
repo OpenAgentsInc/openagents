@@ -859,3 +859,23 @@ fn movement_drives_the_characters_clips() {
     );
     assert_eq!(motion(&runtime), Some(Motion::Jump));
 }
+
+#[test]
+fn a_station_caption_names_the_control_the_device_has() {
+    use crate::runtime::InteractHint;
+    let podium = STATIONS.iter().find(|s| s.id == "podium").unwrap();
+    let at = Vec3::new(podium.at[0], 0.0, podium.at[1]);
+    assert!(Everglade::caption(at, InteractHint::Key).contains("F opens the decisions"));
+    let tap = Everglade::caption(at, InteractHint::Tap);
+    assert!(tap.contains("Tap Decisions to open the decisions"), "{tap}");
+    assert!(!tap.contains("F opens"));
+    let none = Everglade::caption(at, InteractHint::None);
+    assert!(!none.contains("F opens") && !none.contains("Tap"), "{none}");
+    // Away from every station, a device with no panels is not asked to
+    // walk up to one.
+    let away = Vec3::new(55.0, 0.0, 55.0);
+    assert!(!Everglade::caption(away, InteractHint::None).contains("station"));
+    // The OpenAgents app's Grid world opens no panel; Coder's phones tap.
+    assert_eq!(WorldRuntime::bare().interact_hint, InteractHint::None);
+    assert_eq!(WorldRuntime::new().interact_hint, InteractHint::Key);
+}

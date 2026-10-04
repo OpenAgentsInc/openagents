@@ -916,7 +916,10 @@ impl Scene {
         let mut world = if config.bare {
             WorldRuntime::bare()
         } else {
-            WorldRuntime::new()
+            let mut world = WorldRuntime::new();
+            // A phone opens a station's panel with the zone panel's button.
+            world.interact_hint = verse::runtime::InteractHint::Tap;
+            world
         };
         if let Some(directory) = config.zone_cache_directory {
             if directory.is_empty()

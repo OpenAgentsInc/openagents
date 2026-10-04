@@ -95,6 +95,20 @@ pub enum Action {
 }
 
 /// State shared by every Verse surface. Services remain separate owners.
+/// How a device opens the panel at a station, so a caption names the
+/// control the person actually has.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum InteractHint {
+    /// A keyboard: the interact key, F.
+    #[default]
+    Key,
+    /// A touchscreen: the zone panel's button for the station.
+    Tap,
+    /// No panel opens here (the OpenAgents app's Grid, the web page), so no
+    /// caption offers one and the zone panel shows no station button.
+    None,
+}
+
 pub struct WorldRuntime {
     pub world: World,
     pub player: PlayerController,
@@ -109,6 +123,9 @@ pub struct WorldRuntime {
     /// The bare world: the plaza grid alone, with no objects, companion,
     /// portals, or interactions, drawn in the neutral palette.
     bare: bool,
+    /// How a station's panel opens on this device, which the zone's caption
+    /// says; see [`InteractHint`].
+    pub interact_hint: InteractHint,
     /// The bare world watched from above with nobody playing here
     /// ([`Self::unoccupied`]): no local avatar is drawn and the player never
     /// moves or touches a body.
@@ -147,6 +164,7 @@ impl WorldRuntime {
             zone_state: crate::zones::State::default(),
             navigation: Navigation::default(),
             bare: false,
+            interact_hint: InteractHint::Key,
             unoccupied: false,
             ball: None,
             avatars: Vec::new(),
@@ -163,6 +181,8 @@ impl WorldRuntime {
         Self {
             world: world::bare(),
             bare: true,
+            // The OpenAgents app's Grid opens no studio panel.
+            interact_hint: InteractHint::None,
             // The ball, the blocks (cubes and dominoes), and the pedestal are off
             // for now (owner, 2026-10-01): the Grid keeps only the Gym.
             // ball: Some(Box::default()),
