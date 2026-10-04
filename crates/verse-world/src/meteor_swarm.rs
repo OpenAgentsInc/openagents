@@ -62,6 +62,38 @@ pub const SPAWN_HEIGHT: f64 = 120.0;
 pub const STAGGER: f64 = 0.25;
 /// Initial meteor speed, m/s.
 pub const INITIAL_SPEED: f64 = 60.0;
+
+/// Where meteors start and how fast: spawn height above the point, m,
+/// initial speed along the slant, m/s, and the delay between meteors, s.
+/// Gravity, the slant, and every rule are the same for any profile.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Flight {
+    pub height: f64,
+    pub speed: f64,
+    pub stagger: f64,
+}
+
+impl Flight {
+    /// 120 m, 60 m/s, a quarter second apart.
+    pub const STANDARD: Self = Self {
+        height: SPAWN_HEIGHT,
+        speed: INITIAL_SPEED,
+        stagger: STAGGER,
+    };
+
+    #[must_use]
+    pub fn valid(self) -> bool {
+        (1.0..=1_000.0).contains(&self.height)
+            && (0.1..=500.0).contains(&self.speed)
+            && (0.0..=10.0).contains(&self.stagger)
+    }
+}
+
+impl Default for Flight {
+    fn default() -> Self {
+        Self::STANDARD
+    }
+}
 /// Slant of the initial velocity from vertical, degrees.
 pub const SLANT_DEGREES: f64 = 20.0;
 /// Upward bias of the blast impulse above horizontal, degrees.
@@ -334,6 +366,8 @@ pub struct MeteorSwarm {
     /// Objects already damaged; they still feel every blast.
     pub damaged: BTreeSet<BodyId>,
     pub impacts: Vec<Impact>,
+    #[serde(default)]
+    pub flight: Flight,
 }
 
 /// Steps in `seconds` at the world's step length.
@@ -372,27 +406,27 @@ pub fn validate(
 /// Spawn position and initial velocity of a meteor that strikes `point`
 /// from `caster`'s side under `gravity` (m/s^2, positive down).
 #[must_use]
-pub fn trajectory(caster: DVec3, point: DVec3, gravity: f64) -> (DVec3, DVec3) {
+pub fn trajectory(caster: DVec3, point: DVec3, gravity: f64, flight: Flight) -> (DVec3, DVec3) {
     let away = DVec3::new(point.x - caster.x, 0.0, point.z - caster.z)
         .try_normalize()
         .unwrap_or(DVec3::X);
     let slant = SLANT_DEGREES.to_radians();
-    let down = INITIAL_SPEED * slant.cos();
-    let across = INITIAL_SPEED * slant.sin();
-    let time = fall_time(gravity);
+    let down = flight.speed * slant.cos();
+    let across = flight.speed * slant.sin();
+    let time = fall_time(gravity, flight);
     let target = point + DVec3::Y * METEOR_RADIUS;
-    let start = target + DVec3::Y * SPAWN_HEIGHT - away * across * time;
+    let start = target + DVec3::Y * flight.height - away * across * time;
     (start, away * across - DVec3::Y * down)
 }
 
-/// Seconds a meteor takes to fall [`SPAWN_HEIGHT`] under `gravity`.
+/// Seconds a meteor takes to fall its spawn height under `gravity`.
 #[must_use]
-pub fn fall_time(gravity: f64) -> f64 {
-    let down = INITIAL_SPEED * SLANT_DEGREES.to_radians().cos();
+pub fn fall_time(gravity: f64, flight: Flight) -> f64 {
+    let down = flight.speed * SLANT_DEGREES.to_radians().cos();
     if gravity > 0.0 {
-        (-down + (down * down + 2.0 * gravity * SPAWN_HEIGHT).sqrt()) / gravity
+        (-down + (down * down + 2.0 * gravity * flight.height).sqrt()) / gravity
     } else {
-        SPAWN_HEIGHT / down
+        flight.height / down
     }
 }
 
@@ -409,10 +443,11 @@ pub fn path_clear(
     caster: DVec3,
     point: DVec3,
     gravity: f64,
+    flight: Flight,
     blocks: impl Fn(BodyId) -> bool,
 ) -> bool {
-    let (start, velocity) = trajectory(caster, point, gravity);
-    let time = fall_time(gravity);
+    let (start, velocity) = trajectory(caster, point, gravity, flight);
+    let time = fall_time(gravity, flight);
     let at = |t: f64| start + velocity * t - DVec3::Y * (0.5 * gravity.max(0.0) * t * t);
     let mut from = start;
     for n in 1..=PATH_SEGMENTS {
@@ -443,7 +478,7 @@ pub fn blast(center: DVec3, at: DVec3) -> DVec3 {
 
 impl MeteorSwarm {
     /// Cast at four points: validate them, roll the damage, and launch the
-    /// first meteor now. The rest follow [`STAGGER`] apart.
+    /// first meteor now. The rest follow the flight's stagger apart.
     ///
     /// # Errors
     ///
@@ -453,19 +488,23 @@ impl MeteorSwarm {
         caster: DVec3,
         points: [DVec3; METEORS],
         gravity: f64,
+        flight: Flight,
         dc: i32,
         visible: impl Fn(DVec3) -> bool,
     ) -> Result<Self, String> {
+        if !flight.valid() {
+            return Err("Invalid Meteor Swarm flight".into());
+        }
         validate(caster, &points, visible).map_err(|r| r.message().to_string())?;
         let damage = Damage::roll(&mut |sides| host.damage_die(sides));
         let world = host.world();
-        let stagger = ticks(world, STAGGER);
+        let stagger = ticks(world, flight.stagger);
         let tick = world.tick;
         let meteors = points
             .iter()
             .enumerate()
             .map(|(i, &point)| {
-                let (start, velocity) = trajectory(caster, point, gravity);
+                let (start, velocity) = trajectory(caster, point, gravity, flight);
                 Meteor {
                     point,
                     spawn_tick: tick + stagger * i as u64,
@@ -485,6 +524,7 @@ impl MeteorSwarm {
             affected: BTreeSet::new(),
             damaged: BTreeSet::new(),
             impacts: Vec::new(),
+            flight,
         };
         swarm.spawn_due(host)?;
         Ok(swarm)

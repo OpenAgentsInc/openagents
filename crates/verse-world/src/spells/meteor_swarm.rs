@@ -57,13 +57,21 @@ pub const MAX_FLAMES: usize = 4;
 /// seven render instances for 0.6 s, and a frame holds at most 256
 /// instances, shared with characters, props, meteors, and blasts.
 pub const MAX_FLAME_CUES: usize = 6;
-/// Render instances the presentation draws for one falling meteor: a dark
-/// core, a fire shell, a hot center, a flame trail, and smoke.
-pub const METEOR_CORE_INSTANCES: usize = 3;
+/// Render instances the presentation draws for one falling meteor: a fire
+/// shell, a hot core, and a flame trail.
+pub const METEOR_CORE_INSTANCES: usize = 2;
 pub const METEOR_TRAIL_INSTANCES: usize = 7;
-pub const METEOR_SMOKE_INSTANCES: usize = 2;
+pub const METEOR_SMOKE_INSTANCES: usize = 0;
 /// Spacing of trail flames behind a meteor, as seconds of its flight.
-pub const METEOR_TRAIL_SPACING: f32 = 0.022;
+pub const METEOR_TRAIL_SPACING: f32 = 0.03;
+/// The playground's meteors: lower and slower than [`mechanics::Flight::STANDARD`]
+/// and half a second apart, so each falls in view for most of a second in
+/// front of the lit hall walls. A recording choice; the rules are the same.
+pub const PLAYGROUND_FLIGHT: mechanics::Flight = mechanics::Flight {
+    height: 30.,
+    speed: 8.,
+    stagger: 0.5,
+};
 /// How long a detonation's fireball shows, s.
 pub const BLAST_SHOW: f32 = 1.2;
 /// How long the fireball takes to swell to the Sphere's radius, s.
@@ -150,6 +158,9 @@ pub struct State {
     /// Recent detonations with their scene times, for fireballs and scorch.
     #[serde(default)]
     pub blasts: Vec<Blast>,
+    /// Flight of the next cast's meteors.
+    #[serde(default)]
+    pub flight: mechanics::Flight,
 }
 
 impl State {
@@ -161,6 +172,7 @@ impl State {
         let bodies = world.bodies().len();
         let body = |id: BodyId| (id.0 as usize) < bodies;
         if self.casts.len() > MAX_CASTS
+            || !self.flight.valid()
             || self.objects.len() > MAX_PROPS * 2
             || self.impacts.len() > MAX_IMPACTS
             || self.blasts.len() > MAX_IMPACTS
@@ -405,7 +417,8 @@ fn creatures(game: &Game) -> Vec<Creature> {
 /// such as a ceiling, a pillar, or a wall, on the way. Props never refuse
 /// a point: a meteor that meets one detonates on it.
 pub fn sky_clear(spells: &SpellWorld, caster: DVec3, point: DVec3) -> bool {
-    mechanics::path_clear(&spells.world, caster, point, GRAVITY, |body| {
+    let flight = spells.meteor_swarm.flight;
+    mechanics::path_clear(&spells.world, caster, point, GRAVITY, flight, |body| {
         !spells.props.iter().any(|p| p.body == body)
     })
 }
@@ -503,6 +516,7 @@ pub fn cast(game: &mut Game) -> Result<(), String> {
     let player = game.player_actor();
     let cast = game.spells.begin_cast(player, false)?;
     let instance = game.admission.actor().instance;
+    let flight = game.spells.meteor_swarm.flight;
     let mut host = Chamber {
         spells: &mut game.spells,
         query: &mut game.query_scene,
@@ -510,7 +524,15 @@ pub fn cast(game: &mut Game) -> Result<(), String> {
         cast,
         saves: Vec::new(),
     };
-    let swarm = MeteorSwarm::cast(&mut host, caster, points, GRAVITY, SPELL_SAVE_DC, |_| true)?;
+    let swarm = MeteorSwarm::cast(
+        &mut host,
+        caster,
+        points,
+        GRAVITY,
+        flight,
+        SPELL_SAVE_DC,
+        |_| true,
+    )?;
     let damage = swarm.damage;
     // Every object in the world when it is cast can be reached.
     register_objects(game);
@@ -524,11 +546,13 @@ pub fn cast(game: &mut Game) -> Result<(), String> {
         game.time,
         NAME,
         format!(
-            "Four meteors at {:.0}, {:.0}, {:.0}, {:.0} ft; rolled {} fire + {} bludgeoning",
+            "Four meteors at {:.0}, {:.0}, {:.0}, {:.0} ft, from {:.0} m at {:.0} m/s; rolled {} fire + {} bludgeoning",
             feet(points[0]),
             feet(points[1]),
             feet(points[2]),
             feet(points[3]),
+            flight.height,
+            flight.speed,
             damage.fire,
             damage.bludgeoning
         ),
@@ -758,7 +782,7 @@ pub fn scenario() -> crate::playground::Scenario {
         srd: mechanics::SRD_LINE,
         seed: 459,
         live: 10.,
-        replay: (2.95, 4.45),
+        replay: (3.0, 4.0),
         setup: |scene, _| {
             for (id, name, x, z) in [
                 (101, "Dummy A1 (overlap)", -4., -16.),
@@ -777,6 +801,7 @@ pub fn scenario() -> crate::playground::Scenario {
         },
         populate: |game, _| {
             use super::{PropKind, PropSpec};
+            game.spells.meteor_swarm.flight = PLAYGROUND_FLIGHT;
             let crate_spec = PropSpec::reference(PropKind::Crate);
             // Props are few and large: every piece and every flame is a
             // render instance, and a frame holds at most 256.
@@ -815,22 +840,24 @@ pub fn scenario() -> crate::playground::Scenario {
                     0.,
                 )?;
             }
-            // A tower of eight 30 cm stone bricks (65 kg each, Small) 1.5 m
-            // beyond the second point, on the far side from the meteor's
-            // approach. The blast throws each at about 4.5 m/s, the upper
-            // bricks, farther from the center, a little less, so the tower
-            // comes apart instead of sliding as one piece.
-            let brick = PropSpec {
+            // A tower of six 45 cm sandstone blocks standing on the
+            // second point, so its meteor strikes the top and blows the
+            // tower apart from above. Mortared blocks this thick are
+            // sturdier than the SRD's resilient Small object, so they take
+            // the damage without breaking and stay whole on screen.
+            let block = PropSpec {
                 size: super::Size::Small,
-                dimensions: glam::DVec3::splat(0.3),
-                mass: 65.,
+                dimensions: glam::DVec3::splat(0.45),
+                // Sandstone, about 2,000 kg per cubic meter.
+                mass: 182.,
+                hit_points: Some(300),
                 ..PropSpec::reference(PropKind::StoneBlock)
             };
-            for n in 0..8 {
+            for n in 0..6 {
                 game.spawn_prop(
-                    &format!("Tower brick {}", n + 1),
-                    brick.clone(),
-                    Vec3::new(-11.8, 0.15 + 0.302 * n as f32, 9.7),
+                    &format!("Tower block {}", n + 1),
+                    block.clone(),
+                    Vec3::new(-10.5, 0.225 + 0.452 * n as f32, 9.),
                     0.,
                 )?;
             }
@@ -874,53 +901,59 @@ pub fn scenario() -> crate::playground::Scenario {
                 },
             ]
         },
-        // Meteors detonate about 1.84 s after their spawn: A at 2.84 s,
-        // C at 3.09 s, B at 3.34 s, and D, early on the overhang, at 3.55 s.
+        // Meteors spawn at 1.0, 1.5, 2.0, and 2.5 s and fall for about
+        // 1.8 s: A lands at 2.8 s, C on the tower top at about 3.25 s, B at
+        // 3.8 s, and D on the overhang at about 4.2 s.
         camera: || {
             let shoulder = (Vec3::new(9., 3., 5.), Vec3::new(-1., 1.5, -14.));
-            let sky = (Vec3::new(2., 1.8, -8.), Vec3::new(12., 50., 8.));
-            let falling = (Vec3::new(1., 6., -4.), Vec3::new(2., 22., -6.));
-            let south = (Vec3::new(-1., 7.5, -5.5), Vec3::new(-1.5, 1., -18.5));
+            // Low at the north end, looking up the hall at the south wall,
+            // so meteors fall in front of lit stone onto A and B.
+            let hall = (Vec3::new(2., 1.4, 12.), Vec3::new(-1., 9., -22.));
+            let tower = (Vec3::new(-14., 2.4, 13.5), Vec3::new(-10.5, 1.8, 9.));
+            let south = (Vec3::new(-1., 7.5, -5.5), Vec3::new(-1., 1., -19.));
             let overhang = (Vec3::new(9., 4.5, 4.), Vec3::new(16.3, 2.4, 11.4));
-            let tower = (Vec3::new(-4., 3.5, 3.), Vec3::new(-11.5, 1., 9.5));
             let wide = (Vec3::new(16., 7., -10.), Vec3::new(-1., 1.5, -18.5));
             [
                 (0., shoulder),
                 (0.9, shoulder),
-                (1.15, sky),
-                (2.0, sky),
-                (2.45, falling),
-                (2.6, south),
-                (3.44, south),
-                (3.46, overhang),
-                (4.9, overhang),
-                (5.0, tower),
+                (1.0, hall),
+                (3.0, hall),
+                (3.02, tower),
+                (3.6, tower),
+                (3.62, south),
+                (4.05, south),
+                (4.07, overhang),
+                (5.4, overhang),
+                (5.42, tower),
                 (7.0, tower),
-                (7.1, wide),
+                (7.02, wide),
                 (10., wide),
             ]
             .into_iter()
             .map(|(at, (eye, target))| Shot { at, eye, target })
             .collect()
         },
-        // The second impact (C) and the tower falling, at 0.25x.
-        replay_camera: (Vec3::new(-4., 3.5, 3.), Vec3::new(-11.5, 1., 9.5)),
+        // The second impact: C on the tower, at 0.25x.
+        replay_camera: (Vec3::new(-14., 2.4, 13.5), Vec3::new(-10.5, 1.8, 9.)),
         check: |game| {
             let state = &game.spells.meteor_swarm;
             if state.impacts.len() != METEORS {
                 return Err(format!("{} meteors detonated", state.impacts.len()));
             }
-            let early: Vec<_> = state.impacts.iter().filter(|i| i.obstructed).collect();
-            if early.len() != 1
-                || early[0].struck.is_none_or(|b| {
-                    !game
-                        .spells
-                        .props
-                        .iter()
-                        .any(|p| p.body == b && p.name == "Overhang")
+            let struck = |prefix: &str| {
+                state.impacts.iter().any(|i| {
+                    i.obstructed
+                        && i.struck.is_some_and(|b| {
+                            game.spells
+                                .props
+                                .iter()
+                                .any(|p| p.body == b && p.name.starts_with(prefix))
+                        })
                 })
-            {
-                return Err("Only the overhang should stop a meteor early".into());
+            };
+            let early = state.impacts.iter().filter(|i| i.obstructed).count();
+            if early != 2 || !struck("Overhang") || !struck("Tower block") {
+                return Err("The overhang and the tower should each stop a meteor early".into());
             }
             let saves: Vec<u64> = game
                 .spells

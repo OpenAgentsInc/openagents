@@ -1,5 +1,5 @@
-//! Meteor Swarm presentation: each falling meteor as a blazing orb (a dark
-//! core inside an orange fire shell with a yellow glow) trailing flame and smoke,
+//! Meteor Swarm presentation: each falling meteor as a blazing orb (a fire
+//! shell around a hot core) trailing flame,
 //! each detonation as a fireball that swells to the 40-foot Sphere with a
 //! flash, a rising fire column, and smoke, scorch marks where they struck,
 //! and the light all of it casts. The instance counts come from
@@ -11,7 +11,7 @@ use verse_world::meteor_swarm::{METEOR_RADIUS, RADIUS};
 use verse_world::play::Game;
 use verse_world::spells::meteor_swarm::{
     BLAST_COLUMN_INSTANCES, BLAST_GROW, BLAST_SHOW, BLAST_SMOKE_INSTANCES, MAX_SCORCHES,
-    METEOR_SMOKE_INSTANCES, METEOR_TRAIL_INSTANCES, METEOR_TRAIL_SPACING,
+    METEOR_TRAIL_INSTANCES, METEOR_TRAIL_SPACING,
 };
 
 /// Peak light of a detonation, and of a falling meteor. Brighter washes the
@@ -55,29 +55,17 @@ pub fn instances(game: &Game) -> Vec<Instance> {
     for (pos, vel) in state.falling(&game.spells.world) {
         let (p, v) = (pos.as_vec3(), vel.as_vec3());
         let flicker = 1.0 + 0.08 * (time * 41.0 + p.x).sin();
-        // A dark core inside an orange fire shell and a yellow glow. Fire
-        // sprites add up, so each stays well below full strength; stacked
-        // at full strength they burn out to white.
-        out.push(particle("effect-grease", p, r * 1.4, 1.0, time));
-        out.push(particle("effect-fire", p, r * 4.5 * flicker, 0.55, time));
-        out.push(particle("effect-light", p, r * 2.2, 0.25, time));
+        // Fire sprites add up and read orange only against lit geometry;
+        // each stays well below full strength so they never burn to white.
+        out.push(particle("effect-impact", p, r * 4.5 * flicker, 0.6, time));
+        out.push(particle("effect-impact", p, r * 2.4, 0.6, time));
         for n in 1..=METEOR_TRAIL_INSTANCES {
             let f = n as f32 / METEOR_TRAIL_INSTANCES as f32;
             out.push(particle(
-                "effect-fire",
+                "effect-impact",
                 p - v * METEOR_TRAIL_SPACING * n as f32,
                 r * (3.6 - 2.4 * f),
-                0.42 * (1.0 - 0.8 * f),
-                time,
-            ));
-        }
-        for n in 1..=METEOR_SMOKE_INSTANCES {
-            let back = METEOR_TRAIL_SPACING * (METEOR_TRAIL_INSTANCES + 2 * n) as f32;
-            out.push(particle(
-                "particle-smoke",
-                p - v * back,
-                r * (2.0 + n as f32),
-                0.45,
+                0.6 * (1.0 - 0.8 * f),
                 time,
             ));
         }

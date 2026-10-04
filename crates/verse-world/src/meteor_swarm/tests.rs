@@ -114,7 +114,16 @@ impl Scene {
     }
 
     fn cast_rigged(mut host: Rigged, points: [DVec3; METEORS]) -> Self {
-        let swarm = MeteorSwarm::cast(&mut host, DVec3::ZERO, points, G, DC, |_| true).unwrap();
+        let swarm = MeteorSwarm::cast(
+            &mut host,
+            DVec3::ZERO,
+            points,
+            G,
+            Flight::STANDARD,
+            DC,
+            |_| true,
+        )
+        .unwrap();
         Self {
             host,
             swarm,
@@ -545,12 +554,78 @@ fn path_clear_matches_where_the_meteor_detonates() {
         DVec3::new(4.0, 0.25, 4.0),
     );
     // The overhang stops the flight to its point, not the others.
-    assert!(!path_clear(&world, DVec3::ZERO, p, G, |_| true));
-    assert!(path_clear(&world, DVec3::ZERO, points()[0], G, |_| true));
+    assert!(!path_clear(
+        &world,
+        DVec3::ZERO,
+        p,
+        G,
+        Flight::STANDARD,
+        |_| true
+    ));
+    assert!(path_clear(
+        &world,
+        DVec3::ZERO,
+        points()[0],
+        G,
+        Flight::STANDARD,
+        |_| true
+    ));
     // A body the caller lets meteors detonate on does not refuse the point.
-    assert!(path_clear(&world, DVec3::ZERO, p, G, |b| b != overhang));
+    assert!(path_clear(
+        &world,
+        DVec3::ZERO,
+        p,
+        G,
+        Flight::STANDARD,
+        |b| b != overhang
+    ));
     // The ground at the point never counts.
-    assert!(path_clear(&flat(), DVec3::ZERO, p, G, |_| true));
+    assert!(path_clear(
+        &flat(),
+        DVec3::ZERO,
+        p,
+        G,
+        Flight::STANDARD,
+        |_| true
+    ));
+}
+
+#[test]
+fn a_slower_lower_flight_keeps_the_rules_and_lands_on_its_points() {
+    let flight = Flight {
+        height: 30.0,
+        speed: 8.0,
+        stagger: 0.5,
+    };
+    let mut host = rigged(flat(), 13);
+    let swarm =
+        MeteorSwarm::cast(&mut host, DVec3::ZERO, points(), G, flight, DC, |_| true).unwrap();
+    let mut scene = Scene {
+        host,
+        swarm,
+        creatures: Vec::new(),
+        objects: Vec::new(),
+    };
+    let spawns: Vec<u64> = scene.swarm.meteors.iter().map(|m| m.spawn_tick).collect();
+    assert_eq!(spawns, vec![0, 60, 120, 180]);
+    let impacts = scene.run(5.0);
+    assert_eq!(impacts.len(), METEORS);
+    for impact in &impacts {
+        assert!(!impact.obstructed, "{impact:?}");
+        assert_eq!(impact.radius, RADIUS);
+    }
+    let expected = ticks(scene.world(), fall_time(G, flight));
+    assert!(
+        impacts[0].tick.abs_diff(expected) <= 2,
+        "{}",
+        impacts[0].tick
+    );
+    let bad = Flight {
+        height: f64::NAN,
+        ..flight
+    };
+    let mut host = rigged(flat(), 13);
+    assert!(MeteorSwarm::cast(&mut host, DVec3::ZERO, points(), G, bad, DC, |_| true).is_err());
 }
 
 #[test]
@@ -620,7 +695,12 @@ fn placement_is_validated() {
     assert_eq!(validate(DVec3::ZERO, &bad, |_| true), Err(Refusal::Invalid));
     let mut host = rigged(flat(), 1);
     let bodies = host.bench.world.bodies().len();
-    assert!(MeteorSwarm::cast(&mut host, DVec3::ZERO, far, G, DC, |_| true).is_err());
+    assert!(
+        MeteorSwarm::cast(&mut host, DVec3::ZERO, far, G, Flight::STANDARD, DC, |_| {
+            true
+        })
+        .is_err()
+    );
     assert_eq!(host.bench.world.bodies().len(), bodies);
     assert_eq!(host.bench.dice, Dice::new(1));
 }
@@ -665,6 +745,7 @@ fn blast_impulses_balance_the_ledger() {
         affected: BTreeSet::new(),
         damaged: BTreeSet::new(),
         impacts: Vec::new(),
+        flight: Flight::STANDARD,
     };
     let origin = DVec3::ZERO;
     let mut ledger = Ledger::new(origin, world.momentum(origin));
