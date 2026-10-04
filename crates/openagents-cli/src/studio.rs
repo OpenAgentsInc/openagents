@@ -142,6 +142,7 @@ fn read(store: &Path, root: &Path) -> Result<View, String> {
             goals: Vec::new(),
             memory: Vec::new(),
             messages: Vec::new(),
+            spend: Default::default(),
         });
     }
     let (mut tasks, mut studio) = open(store, root)?;
@@ -386,6 +387,7 @@ fn seats(output: &Output, view: &View) {
             "ROLE".into(),
             "ROUTE".into(),
             "DESK".into(),
+            "SPENT".into(),
             "TASK".into(),
         ]];
         for item in &view.seats {
@@ -394,6 +396,7 @@ fn seats(output: &Output, view: &View) {
                 role(item.seat.role).into(),
                 item.seat.route.to_string(),
                 item.seat.desk.to_string(),
+                item.spend.label(),
                 match (&item.task_id, item.progress) {
                     (Some(task), Some(progress)) => {
                         format!("{task} ({})", word(&json!(progress)))
@@ -407,19 +410,21 @@ fn seats(output: &Output, view: &View) {
 }
 
 fn goals(output: &Output, view: &View) {
-    output.emit(&json!({"goals": view.goals}), |_| {
+    output.emit(&json!({"goals": view.goals, "spend": view.spend}), |_| {
         if view.goals.is_empty() {
             return "No goals yet.".into();
         }
-        view.goals
+        let mut lines: Vec<String> = view
+            .goals
             .iter()
             .map(|goal| {
                 let mut line = format!(
-                    "{}  {}  {}/{} tasks over  {}",
+                    "{}  {}  {}/{} tasks over  {} spent  {}",
                     goal.goal_id,
                     word(&json!(goal.status)),
                     goal.final_tasks,
                     goal.total_tasks,
+                    goal.spend.label(),
                     goal.text.lines().next().unwrap_or("")
                 );
                 if let Some(decision) = &goal.decision {
@@ -429,8 +434,9 @@ fn goals(output: &Output, view: &View) {
                 }
                 line
             })
-            .collect::<Vec<_>>()
-            .join("\n")
+            .collect();
+        lines.push(format!("Studio spend: {}", view.spend.label()));
+        lines.join("\n")
     });
 }
 
@@ -453,6 +459,7 @@ fn plan(output: &Output, view: &View, goal: &str) -> Result<(), String> {
             "SEAT".into(),
             "PROGRESS".into(),
             "AFTER".into(),
+            "SPENT".into(),
             "TITLE".into(),
         ]];
         for entry in &found.entries {
@@ -461,6 +468,7 @@ fn plan(output: &Output, view: &View, goal: &str) -> Result<(), String> {
                 entry.seat.clone(),
                 word(&json!(entry.progress)),
                 entry.depends_on.join(","),
+                entry.spend.label(),
                 entry.title.clone(),
             ]);
         }

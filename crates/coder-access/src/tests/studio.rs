@@ -2,7 +2,8 @@
 //! stale merge refusal, and a missed update forcing a fresh snapshot.
 use super::*;
 use crate::studio::{
-    Activity, Goal, GoalStatus, MergeDecision, Merged, Mirror, Role, Seat, Stream, Verdict, View,
+    Activity, Goal, GoalStatus, MergeDecision, Merged, Mirror, Role, Seat, Spend, Stream, Verdict,
+    View,
 };
 
 /// The revisions the stub's worktree is at until a test moves its head.
@@ -73,6 +74,7 @@ fn view() -> View {
             final_tasks: 0,
             total_tasks: 0,
             submitted_at: 1_790_000_000,
+            spend: Spend::default(),
         }],
         seats: vec![Seat {
             seat: "planner".into(),
@@ -84,6 +86,7 @@ fn view() -> View {
             station: Activity::Reading.station(),
             task: Some("studio-g1-0011aabb-lead".into()),
             paused: false,
+            spend: Spend::default(),
         }],
         ..View::default()
     }

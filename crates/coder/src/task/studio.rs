@@ -23,6 +23,12 @@
 //! - **Messages.** A message to a seat with a running task arrives through
 //!   the existing steer path ([`super::steer`]), never by editing its
 //!   prompt; otherwise it waits and the seat's next briefing carries it.
+//! - **Spend.** Each studio task's model spend, summed from its turns'
+//!   recorded cost (the providers' reported cost, or tokens at list
+//!   price where Coder prices them), is kept per task with its goal and
+//!   seat ([`Studio::record_spend`]), so it survives a restart and a task
+//!   the inbox no longer holds. A view sums it per task, seat, and goal.
+//!   It is information, never a limit.
 //!
 //! Submission stays the inert inbox submission it always is: a released
 //! task records the seat's route model and asks for the seat's provider,
@@ -53,6 +59,7 @@ use super::{
     Action, COMMAND_SCHEMA, Command, Execution, RequestedConfiguration, Status, Store, Task,
     TaskIntent, Workspace, interaction,
 };
+pub use coder_host::access::studio::Spend;
 
 /// The persisted coordinator document.
 pub const STATE_SCHEMA: &str = "openagents.coder.studio.v1";
@@ -109,6 +116,12 @@ pub trait Inbox {
 
     /// The task `task_id`, if the inbox holds it.
     fn task(&self, task_id: &str) -> Option<Task>;
+
+    /// What the task `task_id` has spent over its ended turns
+    /// ([`spend_of`]), if the inbox holds it.
+    fn spend(&self, task_id: &str) -> Option<Spend> {
+        self.task(task_id).map(|task| spend_of(&task))
+    }
 }
 
 impl Inbox for Store {
@@ -319,6 +332,50 @@ pub struct MemoryEntry {
     pub text: String,
 }
 
+/// What one studio task spent, with the goal and seat it counts toward.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct TaskSpend {
+    pub goal_id: String,
+    pub seat: String,
+    pub spend: Spend,
+}
+
+/// What `task` spent: every ended turn's recorded cost. A turn whose whole
+/// cost is not known adds its known parts and counts as unpriced; a turn
+/// still running adds nothing yet.
+#[must_use]
+pub fn spend_of(task: &Task) -> Spend {
+    spend_of_results(
+        task.earlier
+            .iter()
+            .chain(task.run.as_ref())
+            .filter_map(|run| run.result.as_ref()),
+    )
+}
+
+/// What the ended turns with `results` spent together.
+fn spend_of_results<'a>(
+    results: impl IntoIterator<Item = &'a super::owner::ResultRecord>,
+) -> Spend {
+    results.into_iter().fold(Spend::default(), |spend, result| {
+        let turn = match result.cost_microusd {
+            Some(microusd) => Spend {
+                microusd,
+                unpriced: 0,
+            },
+            None => Spend {
+                microusd: result
+                    .engine_microusd
+                    .unwrap_or(0)
+                    .saturating_add(result.jev_microusd.unwrap_or(0)),
+                unpriced: 1,
+            },
+        };
+        spend.plus(turn)
+    })
+}
+
 /// The persisted coordinator document.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -330,6 +387,10 @@ pub struct State {
     pub goals: Vec<Goal>,
     pub memory: Vec<MemoryEntry>,
     pub messages: Vec<Message>,
+    /// Each studio task's spend, by task identity: earlier attempts and
+    /// tasks the inbox no longer holds included.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub spend: BTreeMap<String, TaskSpend>,
 }
 
 impl Default for State {
@@ -341,6 +402,7 @@ impl Default for State {
             goals: Vec::new(),
             memory: Vec::new(),
             messages: Vec::new(),
+            spend: BTreeMap::new(),
         }
     }
 }
@@ -487,6 +549,9 @@ pub struct SeatView {
     pub task_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub progress: Option<Progress>,
+    /// What its tasks spent, across every goal.
+    #[serde(default)]
+    pub spend: Spend,
 }
 
 /// A plan entry with its task's progress.
@@ -498,6 +563,9 @@ pub struct EntryView {
     pub depends_on: Vec<String>,
     pub task_id: String,
     pub progress: Progress,
+    /// What its current task spent.
+    #[serde(default)]
+    pub spend: Spend,
 }
 
 /// A goal with its progress.
@@ -516,6 +584,12 @@ pub struct GoalView {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub decision: Option<Decision>,
     pub entries: Vec<EntryView>,
+    /// What the lead's current task spent.
+    #[serde(default)]
+    pub lead_spend: Spend,
+    /// What every task of the goal spent, earlier attempts included.
+    #[serde(default)]
+    pub spend: Spend,
 }
 
 /// The whole coordinator, joined with the inbox: what a view draws.
@@ -526,6 +600,9 @@ pub struct View {
     pub goals: Vec<GoalView>,
     pub memory: Vec<MemoryEntry>,
     pub messages: Vec<Message>,
+    /// What every studio task spent.
+    #[serde(default)]
+    pub spend: Spend,
 }
 
 /// A closed refusal classification.
@@ -1268,7 +1345,64 @@ impl Studio {
             }
             released.extend(self.release_ready(tasks, index, now)?);
         }
+        self.record_spend(tasks)?;
         Ok(released)
+    }
+
+    /// Keep what each submitted studio task has spent, read from the
+    /// inbox, beside the goal and seat it counts toward. A task the inbox
+    /// no longer holds keeps what was recorded. Saves only on a change.
+    /// Returns whether anything changed.
+    ///
+    /// # Errors
+    /// The studio document cannot be written.
+    pub fn record_spend(&mut self, tasks: &dyn Inbox) -> Result<bool, Error> {
+        let fresh = self.live_spend(tasks);
+        let mut changed = false;
+        for (task_id, entry) in fresh {
+            if self.state.spend.get(&task_id) != Some(&entry) {
+                self.state.spend.insert(task_id, entry);
+                changed = true;
+            }
+        }
+        if changed {
+            self.save()?;
+        }
+        Ok(changed)
+    }
+
+    /// What each submitted studio task the inbox holds has spent, when it
+    /// has spent anything or was recorded before.
+    fn live_spend(&self, tasks: &dyn Inbox) -> BTreeMap<String, TaskSpend> {
+        let mut fresh = BTreeMap::new();
+        for goal in &self.state.goals {
+            let slots = std::iter::once(&goal.lead).chain(goal.plan.iter().map(|e| &e.slot));
+            for slot in slots.filter(|slot| slot.state == SlotState::Submitted) {
+                let Some(spend) = tasks.spend(&slot.task_id) else {
+                    continue;
+                };
+                if spend.is_zero() && !self.state.spend.contains_key(&slot.task_id) {
+                    continue;
+                }
+                fresh.insert(
+                    slot.task_id.clone(),
+                    TaskSpend {
+                        goal_id: goal.goal_id.clone(),
+                        seat: slot.seat.clone(),
+                        spend,
+                    },
+                );
+            }
+        }
+        fresh
+    }
+
+    /// Every studio task's spend: what was recorded, with what the inbox
+    /// holds now in place of it.
+    fn spends(&self, tasks: &dyn Inbox) -> BTreeMap<String, TaskSpend> {
+        let mut all = self.state.spend.clone();
+        all.extend(self.live_spend(tasks));
+        all
     }
 
     /// Release goal `index`'s plan entries that are held or releasing and
@@ -1685,6 +1819,13 @@ impl Studio {
     /// The coordinator joined with the inbox's task states.
     #[must_use]
     pub fn view(&self, tasks: &dyn Inbox) -> View {
+        let spends = self.spends(tasks);
+        let summed = |keep: &dyn Fn(&TaskSpend) -> bool| {
+            spends
+                .values()
+                .filter(|&entry| keep(entry))
+                .fold(Spend::default(), |sum, entry| sum.plus(entry.spend))
+        };
         let seats = self
             .state
             .seats
@@ -1695,6 +1836,7 @@ impl Studio {
                     seat: seat.clone(),
                     task_id: active.as_ref().map(|(id, _)| id.clone()),
                     progress: active.map(|(_, progress)| progress),
+                    spend: summed(&|entry| entry.seat == seat.name),
                 }
             })
             .collect();
@@ -1702,7 +1844,16 @@ impl Studio {
             .state
             .goals
             .iter()
-            .map(|goal| goal_view(goal, tasks))
+            .map(|goal| {
+                let mut view = goal_view(goal, tasks);
+                let of = |task_id: &str| spends.get(task_id).map(|entry| entry.spend);
+                view.lead_spend = of(&view.lead_task_id).unwrap_or_default();
+                for entry in &mut view.entries {
+                    entry.spend = of(&entry.task_id).unwrap_or_default();
+                }
+                view.spend = summed(&|entry| entry.goal_id == goal.goal_id);
+                view
+            })
             .collect();
         View {
             sequence: self.state.sequence,
@@ -1710,6 +1861,7 @@ impl Studio {
             goals,
             memory: self.state.memory.clone(),
             messages: self.state.messages.clone(),
+            spend: summed(&|_| true),
         }
     }
 }
@@ -1750,6 +1902,7 @@ fn goal_view(goal: &Goal, tasks: &dyn Inbox) -> GoalView {
                 depends_on: entry.depends_on.clone(),
                 task_id: entry.slot.task_id.clone(),
                 progress,
+                spend: Spend::default(),
             }
         })
         .collect();
@@ -1779,6 +1932,8 @@ fn goal_view(goal: &Goal, tasks: &dyn Inbox) -> GoalView {
         total_tasks,
         decision: goal.decision.clone(),
         entries,
+        lead_spend: Spend::default(),
+        spend: Spend::default(),
     }
 }
 

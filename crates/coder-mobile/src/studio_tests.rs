@@ -102,6 +102,7 @@ fn studio() -> Snapshot {
                 final_tasks: 0,
                 total_tasks: 2,
                 submitted_at: 5,
+                spend: Default::default(),
             }],
             seats: vec![Seat {
                 seat: "ada".into(),
@@ -113,6 +114,7 @@ fn studio() -> Snapshot {
                 station: Station::Podium,
                 task: None,
                 paused: false,
+                spend: Default::default(),
             }],
             decisions: vec![Decision {
                 decision: "g1".into(),

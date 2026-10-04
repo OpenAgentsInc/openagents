@@ -72,6 +72,59 @@ pub const MAX_VIEW_BYTES: usize = 48 * 1024;
 /// How many earlier views a host keeps to compute updates from.
 pub const MAX_HISTORY: usize = 64;
 
+/// What model calls cost, summed from each ended turn's recorded cost:
+/// the providers' reported cost, or tokens at list price where Coder
+/// prices them. Information only, never a limit.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Spend {
+    /// Micro-dollars of every known part.
+    pub microusd: u64,
+    /// Ended turns whose whole cost is not known; [`Spend::microusd`]
+    /// holds only their known parts.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub unpriced: u32,
+}
+
+fn is_zero(value: &u32) -> bool {
+    *value == 0
+}
+
+impl Spend {
+    /// Nothing spent and nothing unpriced.
+    #[must_use]
+    pub fn is_zero(&self) -> bool {
+        *self == Self::default()
+    }
+
+    /// This spend and `other` together.
+    #[must_use]
+    pub fn plus(self, other: Self) -> Self {
+        Self {
+            microusd: self.microusd.saturating_add(other.microusd),
+            unpriced: self.unpriced.saturating_add(other.unpriced),
+        }
+    }
+
+    /// The amount in dollars to the cent (`$1.25`), `<$0.01` for a smaller
+    /// amount above zero, and a trailing `+` when a turn's cost is not
+    /// wholly known.
+    #[must_use]
+    pub fn label(&self) -> String {
+        let amount = if self.microusd > 0 && self.microusd < 5_000 {
+            "<$0.01".to_owned()
+        } else {
+            let cents = self.microusd.saturating_add(5_000) / 10_000;
+            format!("${}.{:02}", cents / 100, cents % 100)
+        };
+        if self.unpriced > 0 {
+            format!("{amount}+")
+        } else {
+            amount
+        }
+    }
+}
+
 /// A goal's state.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -104,6 +157,9 @@ pub struct Goal {
     pub total_tasks: u32,
     /// When it was submitted, in Unix seconds.
     pub submitted_at: u64,
+    /// What its tasks spent, earlier attempts included.
+    #[serde(default, skip_serializing_if = "Spend::is_zero")]
+    pub spend: Spend,
 }
 
 /// A seat's part in the team.
@@ -188,6 +244,9 @@ pub struct Seat {
     /// A person paused it: it takes no new task until resumed.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub paused: bool,
+    /// What its tasks spent, across every goal.
+    #[serde(default, skip_serializing_if = "Spend::is_zero")]
+    pub spend: Spend,
 }
 
 /// Where a task is.
@@ -238,6 +297,9 @@ pub struct Task {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub depends_on: Vec<String>,
     pub status: TaskStatus,
+    /// What this task spent, across its turns.
+    #[serde(default, skip_serializing_if = "Spend::is_zero")]
+    pub spend: Spend,
 }
 
 /// Why a decision waits on a person.
@@ -1129,6 +1191,7 @@ mod tests {
             station: activity.station(),
             task: None,
             paused: false,
+            spend: Spend::default(),
         }
     }
 
@@ -1142,6 +1205,7 @@ mod tests {
             seat: "builder".into(),
             depends_on: Vec::new(),
             status,
+            spend: Spend::default(),
         }
     }
 
@@ -1156,6 +1220,7 @@ mod tests {
                 final_tasks: 0,
                 total_tasks: 2,
                 submitted_at: 1_790_000_000,
+                spend: Spend::default(),
             }],
             seats: vec![
                 seat("planner", Activity::Idle),
@@ -1183,6 +1248,33 @@ mod tests {
         };
         view.canonicalize();
         view
+    }
+
+    #[test]
+    fn spend_reads_as_dollars_and_old_views_read_without_it() {
+        let label = |microusd, unpriced| Spend { microusd, unpriced }.label();
+        assert_eq!(label(0, 0), "$0.00");
+        assert_eq!(label(4_999, 0), "<$0.01");
+        assert_eq!(label(1_250_000, 0), "$1.25");
+        assert_eq!(label(12_345_678, 2), "$12.35+");
+        // A view a host encoded before spend was kept still reads.
+        let mut old = serde_json::to_value(view()).unwrap();
+        assert!(old["goals"][0].get("spend").is_none());
+        old["tasks"][0]["spend"] = serde_json::json!({"microusd": 7});
+        let read: View = serde_json::from_value(old).unwrap();
+        assert!(read.goals[0].spend.is_zero());
+        assert_eq!(read.tasks[0].spend.microusd, 7);
+        let total = read.tasks[0].spend.plus(Spend {
+            microusd: 3,
+            unpriced: 1,
+        });
+        assert_eq!(
+            total,
+            Spend {
+                microusd: 10,
+                unpriced: 1
+            }
+        );
     }
 
     #[test]

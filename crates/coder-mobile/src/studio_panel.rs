@@ -575,6 +575,7 @@ mod tests {
             station: Station::Desk,
             task: Some(format!("task-{name}")),
             paused: false,
+            spend: Default::default(),
         }
     }
 
@@ -589,6 +590,7 @@ mod tests {
                 final_tasks: 1,
                 total_tasks: 3,
                 submitted_at: 10,
+                spend: Default::default(),
             }],
             seats: vec![
                 seat("ada", 0, Activity::Thinking),
@@ -605,6 +607,7 @@ mod tests {
                     seat: "ada".into(),
                     depends_on: Vec::new(),
                     status: TaskStatus::Running,
+                    spend: Default::default(),
                 },
                 Task {
                     task: "task-cy".into(),
@@ -615,6 +618,7 @@ mod tests {
                     seat: "cy".into(),
                     depends_on: Vec::new(),
                     status: TaskStatus::Done,
+                    spend: Default::default(),
                 },
             ],
             decisions: vec![Decision {

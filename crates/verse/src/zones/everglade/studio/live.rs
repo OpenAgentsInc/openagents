@@ -526,6 +526,7 @@ mod tests {
                 final_tasks: 0,
                 total_tasks: 0,
                 submitted_at: 1_790_000_000,
+                spend: Default::default(),
             }],
             seats: vec![Seat {
                 seat: "lead".into(),
@@ -537,6 +538,7 @@ mod tests {
                 station: Station::Desk,
                 task: None,
                 paused: false,
+                spend: Default::default(),
             }],
             repositories: vec![Repository {
                 workspace: "app".into(),

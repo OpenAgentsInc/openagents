@@ -313,6 +313,7 @@ mod tests {
             station: Station::Desk,
             task: None,
             paused: false,
+            spend: Default::default(),
         };
         let goal = |id: &str, at: u64| Goal {
             goal: id.into(),
@@ -323,6 +324,7 @@ mod tests {
             final_tasks: 0,
             total_tasks: 0,
             submitted_at: at,
+            spend: Default::default(),
         };
         let decision = |goal: &str, based_on: u64| Decision {
             decision: goal.into(),

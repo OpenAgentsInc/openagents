@@ -538,6 +538,7 @@ impl Studio {
                 final_tasks: u32::try_from(goal.final_tasks).unwrap_or(u32::MAX),
                 total_tasks: u32::try_from(goal.total_tasks).unwrap_or(u32::MAX),
                 submitted_at,
+                spend: goal.spend,
             });
             out.tasks.push(wire::Task {
                 task: goal.lead_task_id.clone(),
@@ -548,6 +549,7 @@ impl Studio {
                 seat: goal.lead_seat.clone(),
                 depends_on: Vec::new(),
                 status: status(goal.lead_progress),
+                spend: goal.lead_spend,
             });
             for (position, entry) in goal.entries.iter().enumerate() {
                 out.tasks.push(wire::Task {
@@ -559,6 +561,7 @@ impl Studio {
                     seat: entry.seat.clone(),
                     depends_on: entry.depends_on.clone(),
                     status: status(entry.progress),
+                    spend: entry.spend,
                 });
             }
             if let Some(decision) = &goal.decision {
@@ -648,6 +651,7 @@ impl Studio {
                 station,
                 task: seat.task_id.clone(),
                 paused: paused.contains(name),
+                spend: seat.spend,
             });
             if let Some(task) = shown {
                 let first = steps.len().saturating_sub(wire::MAX_LOG_LINES * 4);

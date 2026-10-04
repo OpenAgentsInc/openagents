@@ -51,6 +51,10 @@ fn seat(name: &str, role: Role, route: &str, desk: u32) -> Seat {
 struct Tasks {
     store: Store,
     forced: BTreeMap<String, (Status, Execution)>,
+    /// What a task's ended turns spent, as its owner would record it.
+    spent: BTreeMap<String, Spend>,
+    /// Tasks the inbox no longer holds.
+    gone: BTreeSet<String>,
 }
 
 impl Tasks {
@@ -58,6 +62,8 @@ impl Tasks {
         Self {
             store: Store::open(&scratch.store).unwrap(),
             forced: BTreeMap::new(),
+            spent: BTreeMap::new(),
+            gone: BTreeSet::new(),
         }
     }
 
@@ -80,12 +86,25 @@ impl Inbox for Tasks {
     }
 
     fn task(&self, task: &str) -> Option<Task> {
+        if self.gone.contains(task) {
+            return None;
+        }
         let mut found = self.store.show(task).ok()?;
         if let Some((status, execution)) = self.forced.get(task) {
             found.status = *status;
             found.execution = *execution;
         }
         Some(found)
+    }
+
+    fn spend(&self, task: &str) -> Option<Spend> {
+        let found = Inbox::task(self, task)?;
+        Some(
+            self.spent
+                .get(task)
+                .copied()
+                .unwrap_or_else(|| spend_of(&found)),
+        )
     }
 }
 
@@ -708,4 +727,166 @@ fn sweep_leaves_a_store_without_a_studio_alone() {
     let scratch = scratch();
     sweep(&scratch.store, &scratch.root, 100);
     assert!(!scratch.store.exists());
+}
+
+fn ended(cost: super::super::owner::Cost) -> super::super::owner::ResultRecord {
+    let mut result = super::super::owner::ResultRecord {
+        ending: "completed".into(),
+        exit_code: Some(0),
+        stop_requested: false,
+        group_clear: true,
+        elapsed_ms: 1,
+        trace_digest: String::new(),
+        candidate_snapshot: None,
+        artifact_file: None,
+        artifact_digest: None,
+        output_incomplete: false,
+        cost_status: String::new(),
+        cost_microusd: None,
+        engine_microusd: None,
+        jev_microusd: None,
+        payer: None,
+        payer_keys: Vec::new(),
+    };
+    result.priced(cost);
+    result
+}
+
+/// Each ended turn adds its recorded cost; a turn whose whole cost is not
+/// known adds its known part and counts as unpriced.
+#[test]
+fn a_task_spends_what_its_ended_turns_cost() {
+    use super::super::owner::Cost;
+    let first = ended(Cost {
+        engine_microusd: Some(300_000),
+        jev_microusd: Some(20_000),
+    });
+    let second = ended(Cost {
+        engine_microusd: Some(150_000),
+        jev_microusd: None,
+    });
+    let third = ended(Cost::default());
+    assert_eq!(
+        spend_of_results([&first]),
+        Spend {
+            microusd: 320_000,
+            unpriced: 0
+        }
+    );
+    assert_eq!(
+        spend_of_results([&first, &second, &third]),
+        Spend {
+            microusd: 470_000,
+            unpriced: 2
+        }
+    );
+    assert!(spend_of_results(Vec::<&super::super::owner::ResultRecord>::new()).is_zero());
+}
+
+/// Spend accumulates over a task's turns, sums per task, seat, and goal,
+/// survives a restart and a task the inbox no longer holds, and reaches
+/// the device's view.
+#[test]
+fn spend_accumulates_across_turns_and_restarts_and_reaches_the_snapshot() {
+    let scratch = scratch();
+    let (mut tasks, mut studio) = team(&scratch);
+    let (goal_id, lead) = studio.submit_goal(&mut tasks, goal(&scratch), 100).unwrap();
+    let PlanOutcome::Accepted { released } = studio
+        .accept_plan(&mut tasks, &goal_id, diamond().as_bytes(), 100)
+        .unwrap()
+    else {
+        panic!("the plan is valid");
+    };
+    let a = released[0].task_id.clone();
+    // Nothing spent yet: the document carries no spend, as before.
+    assert!(!studio.record_spend(&tasks).unwrap());
+    let path = scratch.store.join(DIR).join(STATE_FILE);
+    let bytes = std::fs::read(&path).unwrap();
+    assert!(!String::from_utf8_lossy(&bytes).contains("\"spend\""));
+    assert!(studio.view(&tasks).spend.is_zero());
+
+    // The lead's turn and `a`'s first turn end.
+    let spent = |microusd| Spend {
+        microusd,
+        unpriced: 0,
+    };
+    tasks.spent.insert(lead.task_id.clone(), spent(400_000));
+    tasks.spent.insert(a.clone(), spent(250_000));
+    studio.reconcile(&mut tasks, 101, &no_reply).unwrap();
+    let view = studio.view(&tasks);
+    assert_eq!(view.spend, spent(650_000));
+    assert_eq!(view.goals[0].spend, spent(650_000));
+    assert_eq!(view.goals[0].lead_spend, spent(400_000));
+    assert_eq!(view.goals[0].entries[0].spend, spent(250_000));
+    let seat = |view: &View, name: &str| {
+        view.seats
+            .iter()
+            .find(|seat| seat.seat.name == name)
+            .unwrap()
+            .spend
+    };
+    assert_eq!(seat(&view, "lead"), spent(400_000));
+    assert_eq!(seat(&view, "ada"), spent(250_000));
+    assert!(seat(&view, "grace").is_zero());
+
+    // `a`'s second turn adds to its first; recording it twice changes
+    // nothing.
+    tasks.spent.insert(
+        a.clone(),
+        Spend {
+            microusd: 600_000,
+            unpriced: 1,
+        },
+    );
+    studio.reconcile(&mut tasks, 102, &no_reply).unwrap();
+    let sequence = studio.state().sequence;
+    assert!(!studio.record_spend(&tasks).unwrap());
+    assert_eq!(studio.state().sequence, sequence);
+    assert_eq!(
+        studio.view(&tasks).goals[0].spend,
+        Spend {
+            microusd: 1_000_000,
+            unpriced: 1
+        }
+    );
+
+    // A restart, with an inbox that no longer holds either task.
+    drop(studio);
+    drop(tasks);
+    let mut tasks = Tasks::open(&scratch);
+    tasks.gone.insert(lead.task_id.clone());
+    tasks.gone.insert(a.clone());
+    let mut studio = Studio::open(&scratch.store).unwrap();
+    studio.reconcile(&mut tasks, 103, &no_reply).unwrap();
+    let view = studio.view(&tasks);
+    let total = Spend {
+        microusd: 1_000_000,
+        unpriced: 1,
+    };
+    assert_eq!(view.spend, total);
+    assert_eq!(view.goals[0].spend, total);
+    assert_eq!(
+        seat(&view, "ada"),
+        Spend {
+            microusd: 600_000,
+            unpriced: 1
+        }
+    );
+    assert_eq!(studio.state().spend[&a].goal_id, goal_id);
+    assert_eq!(studio.state().spend[&a].seat, "ada");
+
+    // The snapshot a device draws carries it per goal, seat, and task.
+    let wire = studio.wire(&tasks, &scratch.store);
+    assert_eq!(wire.goals[0].spend.microusd, 1_000_000);
+    assert_eq!(wire.goals[0].spend.label(), "$1.00+");
+    let ada = wire.seats.iter().find(|seat| seat.seat == "ada").unwrap();
+    assert_eq!(ada.spend.microusd, 600_000);
+    let row = wire.tasks.iter().find(|task| task.task == a).unwrap();
+    assert_eq!(row.spend.microusd, 600_000);
+    let lead_row = wire
+        .tasks
+        .iter()
+        .find(|task| task.task == lead.task_id)
+        .unwrap();
+    assert_eq!(lead_row.spend.microusd, 400_000);
 }

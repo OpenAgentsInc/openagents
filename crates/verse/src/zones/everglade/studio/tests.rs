@@ -15,6 +15,7 @@ fn seat(name: &str, desk: u32, activity: Activity) -> Seat {
         station: activity.station(),
         task: None,
         paused: false,
+        spend: Default::default(),
     }
 }
 
@@ -271,6 +272,7 @@ fn the_world_draws_seats_lamps_beacons_and_live_boards() {
         seat: "lead".into(),
         depends_on: Vec::new(),
         status: TaskStatus::Waiting,
+        spend: Default::default(),
     });
     snap.view.logs.push(Log {
         seat: "lead".into(),

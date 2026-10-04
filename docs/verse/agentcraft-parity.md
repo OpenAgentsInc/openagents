@@ -32,7 +32,7 @@ limit; **Missing** does not exist.
 | Lead reviews the diff before the merge decision | Missing | Lead review and CI loop |
 | Merge conflicts go back to the worker to resolve | Partial: the simulated team only | Lead review and CI loop |
 | Pause, resume, stop, spawn; hand-off of committed work on reassign | Partial: on the host; Verse lacks retry, reassign, prioritize, cancel | Studio panels |
-| Spend per agent, task, and goal, shown in status | Missing | Spend |
+| Spend per agent, task, and goal, shown in status | Done: kept per task across restarts; in the snapshot, `studio goal list`, and the Verse console and seat panel | |
 | Session resume and restart recovery | Done | |
 
 ## Launch

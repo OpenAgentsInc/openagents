@@ -25,7 +25,7 @@ use crate::zones::everglade::studio::intents::{self, Action, Console};
 use crate::zones::everglade::studio::{Answer, PanelKind, word};
 use coder_access::review::TaskReview;
 use coder_access::studio::{
-    Activity, Decision, DecisionKind, Seat, Task, TaskStatus, Verdict, View,
+    Activity, Decision, DecisionKind, Seat, Spend, Task, TaskStatus, Verdict, View,
 };
 use coder_access::{Code, Outcome, Right};
 use openagents_chat_app::{attention, decision, review_comments};
@@ -108,8 +108,26 @@ fn note(key: &str, text: &str) -> Node<()> {
     message(key, MessageRole::System, text)
 }
 
+/// What the studio's goals in `view` spent together.
+#[must_use]
+pub fn spent(view: &View) -> Spend {
+    view.goals
+        .iter()
+        .fold(Spend::default(), |sum, goal| sum.plus(goal.spend))
+}
+
 fn console(view: &View, rights: &[Right]) -> Vec<Node<()>> {
     let mut rows = Vec::new();
+    if !view.goals.is_empty() {
+        let goals = match view.goals.len() {
+            1 => "1 goal".to_owned(),
+            n => format!("{n} goals"),
+        };
+        rows.push(note(
+            "spend",
+            &format!("Spent {} across {goals}.", spent(view).label()),
+        ));
+    }
     let mut goals: Vec<_> = view.goals.iter().collect();
     goals.sort_by(|a, b| b.submitted_at.cmp(&a.submitted_at));
     for goal in goals {
@@ -123,8 +141,13 @@ fn console(view: &View, rights: &[Right]) -> Vec<Node<()>> {
             &format!("goal-{}", goal.goal),
             MessageRole::User,
             &format!(
-                "**Goal** · {status}\n\n{}\n\n{} of {} tasks over · lead {} · {}",
-                goal.text, goal.final_tasks, goal.total_tasks, goal.lead, goal.workspace
+                "**Goal** · {status}\n\n{}\n\n{} of {} tasks over · {} spent · lead {} · {}",
+                goal.text,
+                goal.final_tasks,
+                goal.total_tasks,
+                goal.spend.label(),
+                goal.lead,
+                goal.workspace
             ),
         ));
     }
@@ -187,14 +210,19 @@ fn seat_rows(kind: &PanelKind, view: &View) -> Vec<Node<()>> {
         .as_deref()
         .and_then(|id| view.tasks.iter().find(|t| t.task == id));
     let mut body = format!(
-        "**{}** · {role} · {}\n\n{}{}",
+        "**{}** · {role} · {}\n\n{}{} · {} spent",
         seat.seat,
         seat.route,
         word(seat.activity),
-        if seat.paused { " · paused" } else { "" }
+        if seat.paused { " · paused" } else { "" },
+        seat.spend.label()
     );
     if let Some(task) = task {
-        body.push_str(&format!("\n\nTask: {}", task.title));
+        body.push_str(&format!(
+            "\n\nTask: {} · {} spent",
+            task.title,
+            task.spend.label()
+        ));
     }
     rows.push(message("seat", MessageRole::Assistant, &body));
     let lines = view
@@ -919,6 +947,7 @@ mod tests {
                 final_tasks: 1,
                 total_tasks: 2,
                 submitted_at: 1_790_000_000,
+                spend: Default::default(),
             }],
             seats: vec![Seat {
                 seat: "ada".into(),
@@ -930,6 +959,7 @@ mod tests {
                 station: Station::Podium,
                 task: Some("studio-g1-0011aabb-b".into()),
                 paused: false,
+                spend: Default::default(),
             }],
             tasks: vec![
                 Task {
@@ -941,6 +971,7 @@ mod tests {
                     seat: "ada".into(),
                     depends_on: Vec::new(),
                     status: TaskStatus::Done,
+                    spend: Default::default(),
                 },
                 Task {
                     task: "studio-g1-0011aabb-b".into(),
@@ -951,6 +982,7 @@ mod tests {
                     seat: "ada".into(),
                     depends_on: Vec::new(),
                     status: TaskStatus::Waiting,
+                    spend: Default::default(),
                 },
             ],
             decisions: vec![Decision {
@@ -1104,6 +1136,33 @@ mod tests {
         assert!(text.contains("`stale`"), "{text}");
         assert!(text.contains("nothing landed"), "{text}");
         assert_eq!(code_word(Code::MissingRight), "missing_right");
+    }
+
+    #[test]
+    fn the_console_and_a_seat_panel_show_what_was_spent() {
+        let mut view = studio();
+        view.goals[0].spend = Spend {
+            microusd: 1_500_000,
+            unpriced: 0,
+        };
+        view.seats[0].spend = Spend {
+            microusd: 1_250_000,
+            unpriced: 1,
+        };
+        view.tasks[1].spend = Spend {
+            microusd: 730_000,
+            unpriced: 0,
+        };
+        assert_eq!(spent(&view).label(), "$1.50");
+        let console = rows(&PanelKind::Console, Some(&view), None);
+        assert_eq!(console[0].key, "spend");
+        assert!(format!("{:?}", console[0]).contains("$1.50"));
+        let goal = console.iter().find(|row| row.key.starts_with("goal-"));
+        assert!(format!("{goal:?}").contains("$1.50"));
+        let seat = rows(&PanelKind::Desk(1), Some(&view), None);
+        let body = format!("{:?}", seat[0]);
+        assert!(body.contains("$1.25+"), "{body}");
+        assert!(body.contains("$0.73"), "{body}");
     }
 
     #[test]
