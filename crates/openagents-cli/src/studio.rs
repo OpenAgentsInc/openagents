@@ -4,6 +4,11 @@
 //! their dependencies finish, shared memory, and messages to seats. The
 //! host's auto-start sweep runs the same reconciliation every ten seconds;
 //! these commands drive it before any Verse view exists.
+//!
+//! Every action Everglade's panels take on the running host (decisions,
+//! reviews, merges, steering, and the live view) goes through the host's
+//! control socket in [`crate::studio_host`], as do `goal submit` and
+//! `message` when a host answers there.
 
 use std::path::{Path, PathBuf};
 
@@ -39,8 +44,13 @@ pub(crate) const USAGE: &str = "usage: openagents studio COMMAND [OPTIONS]
   seat list       Every seat with its route, desk, and current task.
   seat remove NAME
                   Remove a seat that holds no task waiting to start.
+  seat pause|resume|stop SEAT
+                  Pause a seat (it keeps its task and takes no new one),
+                  resume it, or stop it: cancel its task, return that task
+                  to the board, and pause the seat.
   goal submit TEXT --workspace LABEL [--lead SEAT]
                   Start a goal on an admitted workspace: its lead plans it.
+                  Goes through the running host when one answers.
   goal list       Every goal with its status and progress.
   plan list GOAL  The goal's plan entries with each task's progress.
   plan accept GOAL FILE
@@ -49,7 +59,40 @@ pub(crate) const USAGE: &str = "usage: openagents studio COMMAND [OPTIONS]
   message SEAT TEXT
                   Message a seat, or every seat with `everyone`. A running
                   task reads it now when its engine reads steering;
-                  otherwise its next briefing carries it.
+                  otherwise its next briefing carries it. Goes through the
+                  running host when one answers.
+  status          The studio on the running host: goals, each seat's
+                  activity, station, and task, and how many decisions wait.
+  tasks [GOAL]    Every studio task, or one goal's: its identity, plan
+                  entry, seat, status, and the entries it waits on.
+  log SEAT        The seat's log tail: what its engine did last.
+  decisions       The open decisions: questions, approvals with the step
+                  they ask to take, and goals waiting on a plan.
+  answer DECISION [TEXT] [--file PATH] [--always]
+                  Answer a decision: `allow` or `deny` an approval, answer
+                  a question, or give a goal its plan (--file PATH, `-`
+                  for stdin). --always approves the step and keeps the
+                  standing rule the approval offers for its seat.
+  review TASK [--diff]
+                  The task's change: its revisions, files, and line counts;
+                  --diff prints the diff.
+  merge TASK [--head REV]
+                  Merge the task's reviewed change into its checkout's
+                  branch. Nothing is pushed. --head refuses when the change
+                  moved past the revision you reviewed.
+  request-changes TASK TEXT [--head REV]
+                  Send the change back to the task's seat with TEXT.
+  reject TASK [REASON] [--head REV]
+                  Close the task; its worktree stays until it is archived.
+  task cancel|retry|prioritize TASK
+                  Cancel a planned or running task, plan a failed or
+                  cancelled one again under a new identity, or move a
+                  planned task ahead of its goal's other planned tasks.
+  task reassign TASK SEAT
+                  Give a planned task to another seat.
+  watch [--interval SECONDS] [--limit N]
+                  Print the studio, then each change as it happens: one
+                  JSON line each under --json. Stops after N lines.
   memory add TEXT [--kind KIND] [--goal GOAL]
                   Add shared memory every briefing carries: a convention,
                   decision, or note (the default).
@@ -60,7 +103,13 @@ Every command takes --tasks DIR (the Coder task store, default
 $OPENAGENTS_TASKS or ~/.openagents/tasks) and --root DIR (the host root,
 default ~/.openagents/host), whose serve.json names the workspaces and
 whose auto-start policy starts released tasks. A seat's route must be one
-the policy admits for its tasks to start.";
+the policy admits for its tasks to start.
+The commands that act on the running host (status through watch, and goal
+submit and message when a host answers) reach it through its control
+socket: --control-socket PATH, by default the one the OpenAgents app and
+`openagents host serve --control` open. They print the host's refusal code
+and message. A task, goal, or decision may be named by a unique prefix of
+its identity.";
 
 /// What each command above does and where the phone runs it, for the
 /// chat router's command tree (`coder::cli_route::tree`).
@@ -71,6 +120,9 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("seat set", Effect::LocalWrite),
     Declared::computer("seat list", Effect::ReadOnly),
     Declared::computer("seat remove", Effect::LocalWrite),
+    Declared::computer("seat pause", Effect::Publishes),
+    Declared::computer("seat resume", Effect::Publishes),
+    Declared::computer("seat stop", Effect::Publishes),
     Declared::computer("goal submit", Effect::Publishes),
     Declared::computer("goal list", Effect::ReadOnly),
     Declared::computer("plan list", Effect::ReadOnly),
@@ -79,6 +131,20 @@ pub(crate) const EFFECTS: &[Declared] = &[
     Declared::computer("memory add", Effect::LocalWrite),
     Declared::computer("memory list", Effect::ReadOnly),
     Declared::computer("sync", Effect::Publishes),
+    Declared::computer("status", Effect::ReadOnly),
+    Declared::computer("tasks", Effect::ReadOnly),
+    Declared::computer("log", Effect::ReadOnly),
+    Declared::computer("decisions", Effect::ReadOnly),
+    Declared::computer("answer", Effect::Publishes),
+    Declared::computer("review", Effect::ReadOnly),
+    Declared::computer("merge", Effect::LocalWrite),
+    Declared::computer("request-changes", Effect::Publishes),
+    Declared::computer("reject", Effect::Publishes),
+    Declared::computer("task cancel", Effect::Publishes),
+    Declared::computer("task retry", Effect::Publishes),
+    Declared::computer("task prioritize", Effect::Publishes),
+    Declared::computer("task reassign", Effect::Publishes),
+    Declared::computer("watch", Effect::LongRunning),
 ];
 
 pub fn run(output: &Output, words: &[String]) -> u8 {
@@ -89,7 +155,12 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         println!("{USAGE}");
         return 0;
     }
-    let args = match Args::parse(words, crate::studio_up::SWITCHES) {
+    let switches: Vec<&str> = crate::studio_up::SWITCHES
+        .iter()
+        .chain(crate::studio_host::SWITCHES)
+        .copied()
+        .collect();
+    let args = match Args::parse(words, &switches) {
         Ok(args) => args,
         Err(message) => return output.usage("studio", &message, USAGE),
     };
@@ -112,6 +183,9 @@ pub fn run(output: &Output, words: &[String]) -> u8 {
         } else {
             crate::studio_up::down(output, &paths)
         };
+    }
+    if let Some(code) = crate::studio_host::dispatch(output, &words, &args) {
+        return code;
     }
     let result = match words.as_slice() {
         ["seat", "set", name] => seat_set(output, &store, name, &args),

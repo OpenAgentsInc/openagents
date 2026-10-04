@@ -71,6 +71,7 @@ mod sov_host;
 #[cfg(unix)]
 mod ssh;
 mod studio;
+mod studio_host;
 mod studio_up;
 mod study;
 mod terminal;

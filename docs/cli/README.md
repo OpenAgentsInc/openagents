@@ -341,25 +341,92 @@ relay read and the handshake (default 15).
 ## Agent Studio (`openagents studio`)
 
 `openagents studio` drives the Agent Studio coordinator
-(`coder::task::studio`, [the specification](../verse/agent-studio.md)) on
-this computer's task store. Seats bind a name and role to an auto-start
-route. A goal starts a lead task whose reply ends with a plan; the
-coordinator validates the plan, holds each entry until the tasks it depends
-on are done, and then submits it to the inbox and notes it eligible for the
-auto-start policy. An invalid plan, a lead without a plan, and a failed
-dependency each become a decision on the goal.
+(`coder::task::studio`, [the specification](../verse/agent-studio.md)).
+Seats bind a name and role to an auto-start route. A goal starts a lead
+task whose reply ends with a plan; the coordinator validates the plan, holds
+each entry until the tasks it depends on are done, and then submits it to
+the inbox and notes it eligible for the auto-start policy. An invalid plan,
+a lead without a plan, and a failed dependency each become a decision on the
+goal.
+
+### Launch and tear down
+
+`openagents studio up --repo PATH` launches the studio on a repository in
+one command. It admits the repository as a host workspace, turns auto-start
+on for the team's routes, seats a team (a lead and two workers on the
+signed-in coding agents, or `--team NAME=ROUTE,...` with the lead first),
+starts the host when none answers its control socket, and opens Verse in
+Everglade. `--no-verse` skips the window, `--no-host` skips starting a host,
+and `--sim` opens the simulated team on a scratch repository with no model
+spend. `up` remembers its options, so a bare `openagents studio up` opens the
+same studio again.
+
+`openagents studio down` stops and undoes only what `up` started and
+changed: the Verse window, the host, the seats it added, the auto-start
+policy, and the workspace. Anything `up` found already there stays.
+
+### Seats, goals, and memory on this computer
+
+These commands read and write this computer's task store directly
+(`--tasks DIR`, default `$OPENAGENTS_TASKS` or `~/.openagents/tasks`, and
+`--root DIR`, the host root):
 
 ```sh
 openagents studio seat set lead --role lead --route codex:gpt-6-luna
 openagents studio seat set ada --route claude:claude-opus-5-5
-openagents studio goal submit "Add a --verbose flag" --workspace openagents
+openagents studio seat list
 openagents --json studio goal list
 openagents studio plan list GOAL
-openagents studio message ada "Keep commits small."
+openagents studio memory add "Run cargo fmt before committing." --kind convention
 ```
 
 The resident host runs the same reconciliation with each auto-start sweep;
 `openagents studio sync` runs it now.
+
+### Acting on the running host
+
+Every action Everglade's panels take goes through the running host's
+control socket as a NIP-HOST `studio.*` operation, so you can work the
+studio without Verse. `--control-socket PATH` names the socket; by default
+it is the one the OpenAgents app and `openagents host serve --control`
+open. `goal submit` and `message` go through the host when one answers, and
+use the local task store otherwise.
+
+| Command | What it does |
+| --- | --- |
+| `status` | Goals, each seat's activity, station, and task, and how many decisions wait. |
+| `tasks [GOAL]` | Every task, or one goal's: identity, plan entry, seat, status, and dependencies. |
+| `log SEAT` | The seat's log tail. |
+| `decisions` | Open questions, approvals with the step they ask to take, and goals waiting on a plan. |
+| `answer DECISION [TEXT] [--file PATH] [--always]` | Answer a decision. `--always` approves the step and keeps the standing rule the approval offers for its seat. |
+| `review TASK [--diff]` | The task's change at its revisions; `--diff` prints the diff. |
+| `merge TASK [--head REV]` | Merge the reviewed change into the checkout's branch. Nothing is pushed. |
+| `request-changes TASK TEXT` | Send the change back to the task's seat. |
+| `reject TASK [REASON]` | Close the task; its worktree stays until it is archived. |
+| `seat pause\|resume\|stop SEAT` | Steer a seat. |
+| `task cancel\|retry\|prioritize TASK`, `task reassign TASK SEAT` | Steer a task. |
+| `goal submit TEXT --workspace LABEL [--lead SEAT]` | Start a goal. |
+| `message SEAT TEXT` | Message a seat, or every seat with `everyone`. |
+| `watch [--interval SECONDS] [--limit N]` | The studio, then each change as it happens. |
+
+A task, goal, or decision may be named by a unique prefix of its identity,
+such as the 12 characters the tables show. To bind a decision to the change
+you read, pass the tree or commit that `review` printed as `--head`; the
+command refuses with `stale` when the change has moved since. Under
+`--json`, each command prints one JSON document, and `watch` prints one JSON
+line per change (a `snapshot` line, then `update` lines). A refusal prints
+the host's code and message, and under `--json` it is
+`{"error", "code", "operation"}` on stdout with exit code `1`.
+
+```sh
+openagents studio goal submit "Add a --verbose flag" --workspace openagents
+openagents studio decisions
+openagents studio answer 3f2a9c1d0b7e allow
+openagents studio answer g1-1ed832be --file plan.json
+openagents studio review 5be04d27a1c3 --diff
+openagents studio merge 5be04d27a1c3 --head 8c1e0f4
+openagents --json studio watch
+```
 
 ## Verse (NIP-MV)
 
