@@ -36,6 +36,16 @@ pub struct Item {
 pub const CHANGELOG: &[Release] = &[
     Release {
         version: "1.0.0",
+        build: "48",
+        title: "The whole screen for Everglade",
+        what_to_test: "Open Account, then Changelog, and check build 48 is first. Walk through the EVERGLADE arch on the Grid: while it downloads the panel still shows progress and Cancel, but inside Everglade there is no black panel at all, only the glade and your sticks. Leave by walking back through the arch lettered THE GRID behind where you arrive.",
+        items: &[Item {
+            title: "No panel over Everglade",
+            detail: "Inside Everglade the screen is all world. Walk back through THE GRID arch to leave.",
+        }],
+    },
+    Release {
+        version: "1.0.0",
         build: "47",
         title: "Everglade on your phone",
         what_to_test: "Open Account, then Changelog, and check build 47 is first. Walk through the EVERGLADE arch on the Grid and walk up to the workshop's stations: the caption names the station and never asks you to press a key.",
