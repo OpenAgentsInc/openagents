@@ -266,7 +266,7 @@ impl Game {
     pub fn checkpoint(&self) -> Result<Vec<u8>, String> {
         self.simulation.validate()?;
         let bytes = serde_json::to_vec(&serde_json::json!({
-            "version": 1, "rules_revision": "verse-chamber-owned-v4", "world": self,
+            "version": 1, "rules_revision": "verse-chamber-owned-v5", "world": self,
         }))
         .map_err(|e| e.to_string())?;
         if bytes.len() > 2 * 1024 * 1024 {
@@ -286,7 +286,7 @@ impl Game {
             return Err("World checkpoint budget exceeded".into());
         }
         let saved: Saved = serde_json::from_slice(bytes).map_err(|e| e.to_string())?;
-        if saved.version != 1 || saved.rules_revision != "verse-chamber-owned-v4" {
+        if saved.version != 1 || saved.rules_revision != "verse-chamber-owned-v5" {
             return Err("Unsupported world checkpoint".into());
         }
         let mut world = saved.world;
@@ -1118,6 +1118,7 @@ impl Game {
         self.previous_player = self.player;
         let jump = std::mem::take(&mut self.pending_jump) && !dead;
         let physics_steps = self.physics_clock.advance(dt as f64);
+        let mut player_path = vec![];
         if self.colliders.is_empty() {
             self.player = self.move_player(self.player, delta)?;
         } else {
@@ -1130,6 +1131,7 @@ impl Game {
             } else {
                 glam::DVec3::ZERO
             };
+            player_path.push(self.character.feet.as_vec3().to_array());
             for step in 0..steps {
                 self.character.step(
                     &self.query_scene,
@@ -1139,6 +1141,7 @@ impl Game {
                     jump && step == 0,
                     self.physics_clock.dt,
                 )?;
+                player_path.push(self.character.feet.as_vec3().to_array());
             }
             self.physics_steps = self
                 .physics_steps
@@ -1149,6 +1152,11 @@ impl Game {
         let travelled = self.player.distance(previous_player);
         self.motion_clock += travelled / speed;
         self.moving = travelled > 0.00001;
+        if player_path.len() >= 2 {
+            self.simulation
+                .place_chamber_actor(0, self.player.to_array(), self.yaw)?;
+            self.simulation.record_motion_path(0, player_path)?;
+        }
         let source_actors = self.snapshot().actors;
         for a in self.scene.frame(self.time).actors {
             if let Some(id) = self.ids.get(&a.actor.id).copied() {
@@ -1176,6 +1184,7 @@ impl Game {
                     }
                 }
                 let desired = self.controls.position(id, authored, self.time);
+                let mut npc_path = vec![];
                 let position = if self.colliders.is_empty() {
                     desired
                 } else {
@@ -1201,6 +1210,7 @@ impl Game {
                     };
                     let velocity =
                         glam::DVec3::new(velocity.x, 0., velocity.z).clamp_length_max(100.);
+                    npc_path.push(character.feet.as_vec3().to_array());
                     for _ in 0..physics_steps {
                         character.step(
                             &self.query_scene,
@@ -1210,11 +1220,15 @@ impl Game {
                             false,
                             self.physics_clock.dt,
                         )?;
+                        npc_path.push(character.feet.as_vec3().to_array());
                     }
                     character.feet.as_vec3()
                 };
                 self.simulation
                     .place_chamber_actor(id, position.to_array(), a.actor.yaw)?;
+                if npc_path.len() >= 2 {
+                    self.simulation.record_motion_path(id, npc_path)?;
+                }
             }
         }
         let mut remaining = Vec::new();

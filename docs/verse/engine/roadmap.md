@@ -129,10 +129,11 @@ it does not import Recast or implement polygonization or funnel routing.
 Spell flights now use relative-motion sphere/capsule contact in 120 Hz slices,
 including moving targets, earliest wall obstruction, impact-time area positions,
 and pending-motion checkpoint replay under `verse-chamber-owned-v4`. Teleports
-explicitly skip intermediate space. Actor motion currently interpolates admitted
-command endpoints; true shared substep trajectories, general life-bound bodies,
-corpse collision, bow flights, and hostile projectile integration remain VE-2
-work. Renderer lighting and overlapping nameplates remain visual work.
+explicitly skip intermediate space. The trajectory integration records actual
+character controller substep positions under `verse-chamber-owned-v5`; projectile
+intervals split at every trajectory corner, and checkpoints validate retained path endpoints. General
+life-bound bodies, corpse collision, bow flights, and hostile projectile
+integration remain VE-2 work. Renderer lighting and overlapping nameplates remain visual work.
 
 ## Reuse inventory
 

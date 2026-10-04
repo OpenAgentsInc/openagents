@@ -109,6 +109,7 @@ pub struct Simulation {
     actors: BTreeMap<u32, Actor>,
     next_id: u32,
     motion_starts: BTreeMap<u32, [f32; 3]>,
+    motion_paths: BTreeMap<u32, Vec<[f32; 3]>>,
     ready: BTreeMap<Spell, f32>,
     global_ready: f32,
     flights: Vec<Flight>,
@@ -127,6 +128,21 @@ fn valid_position(pos: [f32; 3]) -> Result<(), String> {
         Ok(())
     }
 }
+fn motion_position(
+    id: u32,
+    final_pos: [f32; 3],
+    starts: &BTreeMap<u32, [f32; 3]>,
+    paths: &BTreeMap<u32, Vec<[f32; 3]>>,
+    fraction: f32,
+) -> Vec3 {
+    if let Some(path) = paths.get(&id) {
+        let segment = fraction.clamp(0., 1.) * (path.len() - 1) as f32;
+        let index = (segment.floor() as usize).min(path.len() - 2);
+        return Vec3::from(path[index]).lerp(Vec3::from(path[index + 1]), segment - index as f32);
+    }
+    Vec3::from(starts.get(&id).copied().unwrap_or(final_pos)).lerp(Vec3::from(final_pos), fraction)
+}
+
 impl Simulation {
     pub fn validate(&self) -> Result<(), String> {
         if !self.elapsed.is_finite()
@@ -154,6 +170,20 @@ impl Simulation {
             valid_position(*pos)?;
             if !self.actors.contains_key(id) {
                 return Err("Checkpoint motion refers to a removed actor".into());
+            }
+        }
+        for (id, path) in &self.motion_paths {
+            if !(2..=13).contains(&path.len())
+                || self.motion_starts.get(id) != path.first()
+                || self
+                    .actors
+                    .get(id)
+                    .is_none_or(|actor| path.last() != Some(&actor.pos))
+            {
+                return Err("Invalid checkpoint character trajectory".into());
+            }
+            for point in path {
+                valid_position(*point)?;
             }
         }
         let mut ids = std::collections::BTreeSet::new();
@@ -216,6 +246,7 @@ impl Simulation {
             actors: BTreeMap::new(),
             next_id: 1,
             motion_starts: BTreeMap::new(),
+            motion_paths: BTreeMap::new(),
             ready: BTreeMap::new(),
             global_ready: 0.,
             flights: vec![],
@@ -281,9 +312,28 @@ impl Simulation {
         let actor = self.actors.get_mut(&id).ok_or("Unknown chamber actor")?;
         self.motion_starts.entry(id).or_insert(actor.pos);
         actor.pos = pos;
+        self.motion_paths.remove(&id);
         actor.yaw = yaw;
         Ok(())
     }
+    /// Retains the controller's admitted substep positions for continuous collision.
+    pub fn record_motion_path(&mut self, id: u32, path: Vec<[f32; 3]>) -> Result<(), String> {
+        if !(2..=13).contains(&path.len())
+            || self
+                .actors
+                .get(&id)
+                .is_none_or(|actor| path.last() != Some(&actor.pos))
+        {
+            return Err("Invalid admitted character trajectory".into());
+        }
+        for point in &path {
+            valid_position(*point)?;
+        }
+        self.motion_starts.insert(id, path[0]);
+        self.motion_paths.insert(id, path);
+        Ok(())
+    }
+
     /// Places an admitted teleport without sweeping through the skipped space.
     pub fn teleport_chamber_actor(
         &mut self,
@@ -293,6 +343,7 @@ impl Simulation {
     ) -> Result<(), String> {
         self.place_chamber_actor(id, pos, yaw)?;
         self.motion_starts.insert(id, pos);
+        self.motion_paths.remove(&id);
         Ok(())
     }
     pub fn bow_impact(&mut self, id: u32, damage: i32) -> Result<(), String> {
@@ -448,6 +499,7 @@ impl Simulation {
         point: Vec3,
         target: Option<u32>,
         starts: &BTreeMap<u32, [f32; 3]>,
+        paths: &BTreeMap<u32, Vec<[f32; 3]>>,
         fraction: f32,
     ) -> Result<(), String> {
         let final_positions: BTreeMap<_, _> = self
@@ -456,11 +508,7 @@ impl Simulation {
             .map(|(id, actor)| (*id, actor.pos))
             .collect();
         for (id, actor) in &mut self.actors {
-            if let Some(initial) = starts.get(id) {
-                actor.pos = Vec3::from(*initial)
-                    .lerp(Vec3::from(actor.pos), fraction)
-                    .to_array();
-            }
+            actor.pos = motion_position(*id, actor.pos, starts, paths, fraction).to_array();
         }
         let result = self.impact(kind, point, target);
         for (id, pos) in final_positions {
@@ -475,6 +523,7 @@ impl Simulation {
         &mut self,
         dt: f32,
         starts: &BTreeMap<u32, [f32; 3]>,
+        paths: &BTreeMap<u32, Vec<[f32; 3]>>,
         from: f32,
         to: f32,
     ) -> Result<(), String> {
@@ -489,12 +538,7 @@ impl Simulation {
                     .and_then(|id| self.actors.get(&id))
                     .filter(|a| a.alive)
                 {
-                    flight.view.vel = ((starts
-                        .get(&actor.id)
-                        .copied()
-                        .map(Vec3::from)
-                        .unwrap_or(Vec3::from(actor.pos))
-                        .lerp(Vec3::from(actor.pos), from)
+                    flight.view.vel = ((motion_position(actor.id, actor.pos, starts, paths, from)
                         + Vec3::Y * 1.1
                         - start)
                         .normalize_or_zero()
@@ -513,14 +557,8 @@ impl Simulation {
             )?;
             let mut hit: Option<(f32, u32)> = None;
             for actor in self.actors.values().filter(|a| a.id != 0 && a.alive) {
-                let final_feet = Vec3::from(actor.pos);
-                let initial_feet = starts
-                    .get(&actor.id)
-                    .copied()
-                    .map(Vec3::from)
-                    .unwrap_or(final_feet);
-                let feet_start = initial_feet.lerp(final_feet, from);
-                let feet_end = initial_feet.lerp(final_feet, to);
+                let feet_start = motion_position(actor.id, actor.pos, starts, paths, from);
+                let feet_end = motion_position(actor.id, actor.pos, starts, paths, to);
                 let fraction = physics::continuous::sphere_capsule(
                     start.as_dvec3(),
                     (start + delta).as_dvec3(),
@@ -545,6 +583,7 @@ impl Simulation {
                     start + delta * t,
                     Some(id),
                     starts,
+                    paths,
                     from + (to - from) * t,
                 )?;
             } else if let Some(wall) = wall {
@@ -553,6 +592,7 @@ impl Simulation {
                     start + delta * wall.fraction as f32,
                     None,
                     starts,
+                    paths,
                     from + (to - from) * wall.fraction as f32,
                 )?;
             } else {
@@ -568,7 +608,16 @@ impl Simulation {
         if !dt.is_finite() || !(0. ..=0.1).contains(&dt) || !yaw.is_finite() {
             return Err("Invalid world step".into());
         }
-        self.place_chamber_actor(0, position, yaw)?;
+        // The adapter may already have recorded the player controller's path.
+        if self
+            .actors
+            .get(&0)
+            .is_none_or(|actor| actor.pos != position)
+        {
+            self.place_chamber_actor(0, position, yaw)?;
+        } else {
+            self.actors.get_mut(&0).unwrap().yaw = yaw;
+        }
         let began = self.elapsed;
         if self.player.hp > 0 && self.player.mana < self.player.max_mana {
             self.mana_fraction += dt;
@@ -581,15 +630,19 @@ impl Simulation {
         }
         self.effects.clear();
         let starts = std::mem::take(&mut self.motion_starts);
+        let paths = std::mem::take(&mut self.motion_paths);
         let steps = (dt * 120.).ceil().max(1.) as usize;
-        for step in 0..steps {
-            self.elapsed = began + dt * ((step + 1) as f32 / steps as f32);
-            self.advance_flights(
-                dt / steps as f32,
-                &starts,
-                step as f32 / steps as f32,
-                (step + 1) as f32 / steps as f32,
-            )?;
+        let mut boundaries: Vec<f32> = (0..=steps).map(|step| step as f32 / steps as f32).collect();
+        for path in paths.values() {
+            let count = path.len() - 1;
+            boundaries.extend((1..count).map(|step| step as f32 / count as f32));
+        }
+        boundaries.sort_by(f32::total_cmp);
+        boundaries.dedup();
+        for window in boundaries.windows(2) {
+            let (from, to) = (window[0], window[1]);
+            self.elapsed = began + dt * to;
+            self.advance_flights(dt * (to - from), &starts, &paths, from, to)?;
         }
         for mut burn in std::mem::take(&mut self.burns) {
             if !self.actors.get(&burn.actor).is_some_and(|a| a.alive) {
@@ -613,6 +666,7 @@ impl Simulation {
         for id in expired {
             self.actors.remove(&id);
             self.motion_starts.remove(&id);
+            self.motion_paths.remove(&id);
             self.deaths.remove(&id);
         }
         Ok(())
@@ -726,6 +780,43 @@ mod tests {
         s.tick(1. / 30., [0.; 3], 0.).unwrap();
         assert!(s.flights.is_empty());
         assert_eq!(s.actors[&replacement].hp, 10);
+    }
+
+    #[test]
+    fn curved_controller_path_hits_when_endpoint_chord_misses() {
+        let (mut s, ids) = Simulation::chamber([0.; 3], &[([2., 0., 0.4], 100)]).unwrap();
+        s.cast(Spell::Firebolt, [0., 1.1, 0.], [0., 0., 1.])
+            .unwrap();
+        s.record_motion_path(ids[0], vec![[2., 0., 0.4], [0., 0., 0.4], [2., 0., 0.4]])
+            .unwrap();
+        let mut restored: Simulation =
+            serde_json::from_slice(&serde_json::to_vec(&s).unwrap()).unwrap();
+        restored.validate().unwrap();
+        s.tick(1. / 30., [0.; 3], 0.).unwrap();
+        restored.tick(1. / 30., [0.; 3], 0.).unwrap();
+        assert_eq!(s.actors[&ids[0]].hp, 92);
+        assert_eq!(
+            serde_json::to_vec(&s).unwrap(),
+            serde_json::to_vec(&restored).unwrap()
+        );
+    }
+
+    #[test]
+    fn controller_path_avoids_false_endpoint_chord_contact() {
+        let (mut s, ids) = Simulation::chamber([0.; 3], &[([-2., 0., 0.4], 100)]).unwrap();
+        s.cast(Spell::Firebolt, [0., 1.1, 0.], [0., 0., 1.])
+            .unwrap();
+        s.place_chamber_actor(ids[0], [2., 0., 0.4], 0.).unwrap();
+        s.record_motion_path(
+            ids[0],
+            vec![[-2., 0., 0.4], [-2., 0., 2.], [2., 0., 2.], [2., 0., 0.4]],
+        )
+        .unwrap();
+        s.tick(1. / 30., [0.; 3], 0.).unwrap();
+        assert_eq!(s.actors[&ids[0]].hp, 100);
+        assert_eq!(s.flights.len(), 1);
+        assert!(s.record_motion_path(ids[0], vec![[0.; 3]; 14]).is_err());
+        assert!(s.record_motion_path(ids[0], vec![[0.; 3]; 2]).is_err());
     }
 
     #[test]
