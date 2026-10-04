@@ -174,3 +174,156 @@ mod tests {
         assert!(graph.admit().is_ok());
     }
 }
+
+/// Work performed by the chamber backend for an admitted pass.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ChamberPass {
+    RefreshShadow {
+        layer: usize,
+    },
+    CopyShadow {
+        layer: usize,
+    },
+    DrawShadow {
+        layer: usize,
+    },
+    /// Draw multisample color/depth and resolve color in the same GPU pass.
+    WorldResolve,
+    Overlay,
+    Readback,
+}
+
+/// An admitted plan with immutable pass actions and resource dependencies.
+#[derive(Clone, Debug)]
+pub struct ChamberPlan {
+    schedule: Schedule,
+    actions: Vec<ChamberPass>,
+}
+impl ChamberPlan {
+    /// Each boolean declares whether the corresponding cached cube face needs refresh.
+    pub fn build(refresh: &[bool], capture: bool) -> Result<Self, String> {
+        if refresh.len() > 24 || !refresh.len().is_multiple_of(6) {
+            return Err("Chamber render plan requires at most four complete shadow cubes".into());
+        }
+        let mut graph = Graph::default();
+        let mut actions = Vec::new();
+        let mut shadow_resources = Vec::new();
+        let mut shadow_producers = Vec::new();
+        for (layer, &refresh) in refresh.iter().enumerate() {
+            let cached = graph.resources.len();
+            graph.resources.push(Resource { imported: !refresh });
+            let dynamic = graph.resources.len();
+            graph.resources.push(Resource { imported: false });
+            let mut after = Vec::new();
+            if refresh {
+                after.push(graph.passes.len());
+                graph.passes.push(Pass {
+                    writes: vec![cached],
+                    ..Default::default()
+                });
+                actions.push(ChamberPass::RefreshShadow { layer });
+            }
+            let copied = graph.passes.len();
+            graph.passes.push(Pass {
+                reads: vec![cached],
+                writes: vec![dynamic],
+                after,
+            });
+            actions.push(ChamberPass::CopyShadow { layer });
+            shadow_producers.push(graph.passes.len());
+            graph.passes.push(Pass {
+                reads: vec![dynamic],
+                writes: vec![dynamic],
+                after: vec![copied],
+            });
+            actions.push(ChamberPass::DrawShadow { layer });
+            shadow_resources.push(dynamic);
+        }
+        let color = graph.resources.len();
+        graph.resources.push(Resource { imported: false });
+        let multisample = graph.resources.len();
+        graph.resources.push(Resource { imported: false });
+        let depth = graph.resources.len();
+        graph.resources.push(Resource { imported: false });
+        let world = graph.passes.len();
+        graph.passes.push(Pass {
+            reads: shadow_resources,
+            writes: vec![color, multisample, depth],
+            after: shadow_producers,
+        });
+        actions.push(ChamberPass::WorldResolve);
+        let overlay = graph.passes.len();
+        graph.passes.push(Pass {
+            reads: vec![color],
+            writes: vec![color],
+            after: vec![world],
+        });
+        actions.push(ChamberPass::Overlay);
+        if capture {
+            let readback = graph.resources.len();
+            graph.resources.push(Resource { imported: false });
+            graph.passes.push(Pass {
+                reads: vec![color],
+                writes: vec![readback],
+                after: vec![overlay],
+            });
+            actions.push(ChamberPass::Readback);
+        }
+        Ok(Self {
+            schedule: graph.admit()?,
+            actions,
+        })
+    }
+    pub fn schedule(&self) -> &Schedule {
+        &self.schedule
+    }
+    pub fn actions(&self) -> impl Iterator<Item = ChamberPass> + '_ {
+        self.schedule.order.iter().map(|&i| self.actions[i])
+    }
+}
+
+#[cfg(test)]
+mod chamber_tests {
+    use super::*;
+    #[test]
+    fn cache_refresh_precedes_copy_and_dynamic_draw() {
+        let plan = ChamberPlan::build(&[true; 6], true).unwrap();
+        let actions: Vec<_> = plan.actions().collect();
+        assert_eq!(
+            &actions[..3],
+            &[
+                ChamberPass::RefreshShadow { layer: 0 },
+                ChamberPass::CopyShadow { layer: 0 },
+                ChamberPass::DrawShadow { layer: 0 }
+            ]
+        );
+        assert_eq!(
+            &actions[actions.len() - 3..],
+            &[
+                ChamberPass::WorldResolve,
+                ChamberPass::Overlay,
+                ChamberPass::Readback
+            ]
+        );
+    }
+    #[test]
+    fn cached_faces_skip_refresh_but_keep_dynamic_shadows() {
+        let plan = ChamberPlan::build(&[false; 24], false).unwrap();
+        assert_eq!(plan.actions().count(), 50);
+        assert!(
+            !plan
+                .actions()
+                .any(|a| matches!(a, ChamberPass::RefreshShadow { .. } | ChamberPass::Readback))
+        );
+    }
+    #[test]
+    fn every_supported_cache_mask_is_admitted() {
+        for mask in 0..64 {
+            let refresh: Vec<_> = (0..6).map(|bit| mask & (1 << bit) != 0).collect();
+            assert!(ChamberPlan::build(&refresh, mask % 2 == 0).is_ok());
+        }
+        assert!(ChamberPlan::build(&[], true).is_ok());
+        assert!(ChamberPlan::build(&[true; 1], false).is_err());
+        assert!(ChamberPlan::build(&[true; 30], false).is_err());
+    }
+}
