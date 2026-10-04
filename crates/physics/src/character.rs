@@ -398,6 +398,8 @@ fn recover(
     settings: Settings,
     mut feet: DVec3,
 ) -> Result<DVec3, String> {
+    let start = feet;
+    let mut last = None;
     for _ in 0..12 {
         let result = scene.overlap(settings.capsule(feet), filter)?;
         if result.truncated {
@@ -411,9 +413,13 @@ fn recover(
         else {
             return Ok(feet);
         };
+        last = Some((hit.collider, hit.penetration, hit.normal));
         feet += hit.normal * (hit.penetration + SKIN);
     }
-    Err("Character spawn recovery did not converge".into())
+    Err(format!(
+        "Character spawn recovery did not converge: actor {:?}, start {start:?}, end {feet:?}, last contact {last:?}",
+        filter.ignore
+    ))
 }
 pub fn slide(
     scene: &Scene,
