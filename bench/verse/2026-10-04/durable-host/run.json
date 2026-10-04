@@ -1,6 +1,6 @@
 {
   "schema": "verse.durable.host.acceptance.v1",
-  "code_revision": "03e9477cc56986c28e34eaa0d272903fff8467c5",
+  "code_revision": "9600cd20741b964517f092cbf6117450e782586a",
   "environment": "macOS temporary local store and loopback TLS; synthetic enrolled identities",
   "checks": {
     "service_tests": 68,
@@ -28,7 +28,9 @@
     "before_grouping_checkpoint_commits": 274,
     "after_grouping_checkpoint_seconds": 0.8763541319999998,
     "after_grouping_wall_seconds": 3.000776666,
-    "after_grouping_checkpoint_commits": 95
+    "after_grouping_checkpoint_commits": 95,
+    "before_input_submission": "Two player commands issued sequentially within each fixture interval.",
+    "after_input_submission": "Two player commands issued concurrently within each fixture interval."
   },
   "source_sha256": {
     "crates/verse-world/src/service/persistence.rs": "56b585503b237fb445024f0e5678c33fc771e371a2c131c24ee75450afd6ff4b",
@@ -40,5 +42,6 @@
     "Fixture input uses zero movement axes and authored synthetic world state; it measures checkpoint/request work, not rendered combat or input-to-photon latency.",
     "Crash test aborts the host task without graceful shutdown; power-loss testing is not established.",
     "Deduplicated reward/item/quest transactions, progression, prediction/reconciliation, and full VE-5 acceptance remain."
-  ]
+  ],
+  "verified_before_rebase_revision": "03e9477cc56986c28e34eaa0d272903fff8467c5"
 }
