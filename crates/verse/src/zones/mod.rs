@@ -207,6 +207,11 @@ pub enum Intent {
     /// changes nothing; the host opens the panel
     /// ([`WorldRuntime::studio_panel_here`](crate::runtime::WorldRuntime::studio_panel_here)).
     Interact,
+    Jump,
+    Sprint,
+    Levitate,
+    Rise,
+    Lower,
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]

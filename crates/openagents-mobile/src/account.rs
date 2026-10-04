@@ -36,6 +36,16 @@ pub struct Item {
 pub const CHANGELOG: &[Release] = &[
     Release {
         version: "1.0.0",
+        build: "50",
+        title: "Movement controls in Everglade",
+        what_to_test: "Walk through the EVERGLADE arch. Above the sticks, tap Jump, switch Sprint back to Run, and tap Levitate. Use Up and Down to change height, then Land to descend gently. Keep a movement stick held while tapping the bar. Leave through THE GRID arch and check the bar disappears.",
+        items: &[Item {
+            title: "Everglade movement hotbar",
+            detail: "Jump, sprint, levitate, change altitude, and land from touch controls above the sticks.",
+        }],
+    },
+    Release {
+        version: "1.0.0",
         build: "49",
         title: "Everglade grows a lane",
         what_to_test: "Open Account, then Changelog, and check build 49 is first. Walk into Everglade through the EVERGLADE arch. Around the yard you now find three new buildings: a cottage with a chimney to the west, an open café pavilion with tables to the east, and a reading room behind the strongroom. Walk around each one and check you can't walk through their walls, and that every station still reaches as before.",

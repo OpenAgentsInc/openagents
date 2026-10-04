@@ -917,3 +917,52 @@ fn a_station_caption_names_the_control_the_device_has() {
     assert_eq!(WorldRuntime::bare().interact_hint, InteractHint::None);
     assert_eq!(WorldRuntime::new().interact_hint, InteractHint::Key);
 }
+
+#[test]
+fn movement_hotbar_levitates_changes_altitude_and_lands() {
+    use crate::controller::InputState;
+    let mut runtime = entered();
+    runtime.zone_intent(Intent::Lower).unwrap_err();
+    runtime.zone_intent(Intent::Levitate).unwrap();
+    for _ in 0..30 {
+        runtime.tick(&InputState::default(), 0.05);
+    }
+    let hovering = runtime.player.pos.y;
+    assert!((hovering - 1.5).abs() < 0.01);
+    runtime.zone_intent(Intent::Rise).unwrap();
+    for _ in 0..30 {
+        runtime.tick(&InputState::default(), 0.05);
+    }
+    assert!((runtime.player.pos.y - hovering - 1.5).abs() < 0.01);
+    runtime.zone_intent(Intent::Lower).unwrap();
+    for _ in 0..30 {
+        runtime.tick(&InputState::default(), 0.05);
+    }
+    assert!((runtime.player.pos.y - hovering).abs() < 0.01);
+    runtime.zone_intent(Intent::Levitate).unwrap();
+    let before = runtime.player.pos.y;
+    runtime.tick(&InputState::default(), 0.05);
+    assert!((before - runtime.player.pos.y - 0.1).abs() < 0.001);
+    for _ in 0..30 {
+        runtime.tick(&InputState::default(), 0.05);
+    }
+    assert!(!runtime.player.airborne());
+    runtime.zone_intent(Intent::Jump).unwrap();
+    runtime.tick(&InputState::default(), 0.05);
+    assert!(runtime.player.airborne());
+    runtime.zone_intent(Intent::Sprint).unwrap();
+    runtime.tick(
+        &InputState {
+            forward: true,
+            ..InputState::default()
+        },
+        0.05,
+    );
+    assert!(
+        (runtime.player.speed - crate::controller::RUN_SPEED * crate::controller::SPRINT_MULT)
+            .abs()
+            < 0.01
+    );
+    runtime.zone_intent(Intent::Return).unwrap();
+    assert!(runtime.zone_intent(Intent::Levitate).is_err());
+}

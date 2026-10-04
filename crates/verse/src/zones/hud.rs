@@ -81,12 +81,22 @@ impl Hud {
     pub fn snapshot(&self, size: [f32; 2], zone: &super::Snapshot, enabled: bool) -> Snapshot {
         let [top, right, bottom, left] = self.insets;
         let width = (size[0] - left - right - 24.0).clamp(1.0, 420.0);
-        let caption = zone.error.as_deref().unwrap_or(&zone.caption);
+        let compact =
+            zone.id == super::ZoneId::Everglade && zone.controls.len() == 5 && zone.error.is_none();
+        let caption = if compact {
+            ""
+        } else {
+            zone.error.as_deref().unwrap_or(&zone.caption)
+        };
         let lines = caption.split('\n').count().clamp(2, LINES);
         let rows = if zone.controls.len() > ROW { 2 } else { 1 };
         let per_row = zone.controls.len().div_ceil(rows).max(1);
         // Two lines and one row keep the original 102-point panel.
-        let caption_height = 12.0 + 16.0 * lines as f32;
+        let caption_height = if compact {
+            0.0
+        } else {
+            12.0 + 16.0 * lines as f32
+        };
         let height = caption_height + 8.0 + 50.0 * rows as f32;
         let x = left + (size[0] - left - right - width) * 0.5;
         let y = size[1] - bottom - self.clearance - height - 8.0;
@@ -226,13 +236,26 @@ impl Hud {
             }
             ui.frame(atlas, bx, by, bw - 2.0, bh, 1.0, color);
             let limit = ((bw - 8.0) / atlas.advance).floor().max(1.0) as usize;
+            let start = ui.vertices.len();
+            let text = if matches!(
+                b.action,
+                Intent::Jump | Intent::Sprint | Intent::Levitate | Intent::Rise | Intent::Lower
+            ) {
+                b.label.clone()
+            } else {
+                b.label.chars().take(limit).collect::<String>()
+            };
             ui.text(
                 atlas,
                 bx + 4.0,
                 by + if b.cooldown > 0.0 { 6.0 } else { 15.0 },
-                &b.label.chars().take(limit).collect::<String>(),
+                &text,
                 color,
             );
+            let fit = ((bw - 8.0) / (text.chars().count().max(1) as f32 * atlas.advance)).min(1.0);
+            for vertex in &mut ui.vertices[start..] {
+                vertex.pos[0] = bx + 4.0 + (vertex.pos[0] - bx - 4.0) * fit;
+            }
             if b.cooldown > 0.0 {
                 ui.text(
                     atlas,

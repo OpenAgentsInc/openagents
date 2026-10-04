@@ -117,6 +117,12 @@ impl PlayerController {
         self.ground_y = height;
     }
 
+    /// Hold an externally controlled altitude without retaining jump velocity.
+    pub(crate) fn hold_altitude(&mut self, altitude: f32) {
+        self.pos.y = altitude.max(self.ground_y);
+        self.vel_y = 0.0;
+    }
+
     /// Advances the character by `dt` seconds, then pushes it out of every
     /// footprint and back inside the square world of half-width `bound`.
     pub fn update(&mut self, input: &InputState, dt: f32, blockers: &[Footprint], bound: f32) {

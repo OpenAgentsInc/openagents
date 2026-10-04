@@ -24,8 +24,8 @@ impl WorldRuntime {
             ruins.move_player(&mut self.player, input, dt);
         } else if let Some(lagrange) = &mut self.zone_state.lagrange {
             lagrange.move_player(&mut self.player, input, self.camera.pitch, dt);
-        } else if self.zone_state.everglade.is_some() {
-            Everglade::move_player(&mut self.player, input, &self.world.blockers, dt);
+        } else if let Some(everglade) = &mut self.zone_state.everglade {
+            everglade.move_controlled(&mut self.player, input, &self.world.blockers, dt);
         } else {
             self.player
                 .update(input, dt, &self.world.blockers, self.zone_half());
@@ -420,6 +420,27 @@ impl WorldRuntime {
                 }
                 self.zone_state.error = None;
             }
+            Intent::Jump | Intent::Sprint | Intent::Levitate | Intent::Rise | Intent::Lower => {
+                let glade = self
+                    .zone_state
+                    .everglade
+                    .as_mut()
+                    .ok_or("Enter Everglade first")?;
+                match intent {
+                    Intent::Jump => glade.jump = true,
+                    Intent::Sprint => glade.sprinting = !glade.sprinting,
+                    Intent::Levitate => glade.toggle_levitate(&self.player),
+                    Intent::Rise | Intent::Lower if glade.levitating => {
+                        let ground = super::everglade::height(self.player.pos.x, self.player.pos.z);
+                        glade.altitude = (glade.altitude
+                            + if intent == Intent::Rise { 1.5 } else { -1.5 })
+                        .clamp(ground, ground + 18.0);
+                    }
+                    _ => return Err("Levitate before changing altitude".into()),
+                }
+                self.cancel_navigation();
+                self.zone_state.error = None;
+            }
             Intent::Interact => {
                 if self.studio_panel_here().is_none() {
                     return Err("Walk up to a station".into());
@@ -695,7 +716,22 @@ impl WorldRuntime {
             add("step", "Step", Intent::Step, true);
             add("return", "Plaza", Intent::Return, true);
             Lab::caption(&lab.snapshot())
-        } else if self.zone_state.everglade.is_some() {
+        } else if let Some(glade) = &self.zone_state.everglade {
+            add("jump", "Jump", Intent::Jump, !self.player.airborne());
+            add(
+                "sprint",
+                if glade.sprinting { "Run" } else { "Sprint" },
+                Intent::Sprint,
+                true,
+            );
+            add(
+                "levitate",
+                if glade.levitating { "Land" } else { "Levitate" },
+                Intent::Levitate,
+                true,
+            );
+            add("rise", "Up", Intent::Rise, glade.levitating);
+            add("lower", "Down", Intent::Lower, glade.levitating);
             add("return", self.return_label(), Intent::Return, true);
             if self.interact_hint != crate::runtime::InteractHint::None
                 && let Some(panel) = self.studio_panel_here()

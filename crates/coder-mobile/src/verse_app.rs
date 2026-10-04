@@ -2545,10 +2545,8 @@ impl Scene {
 
     pub fn map_ui(&self) -> verse::ui::UiBatch {
         if self.world.is_bare() {
-            // The sticks are the bare world's only controls; the
-            // players there carry their key's first letters overhead. While
-            // a zone loads, and in the zone a portal leads to, the zone's
-            // panel joins them, in the neutral palette.
+            // Loading controls and Everglade's hotbar share the Grid's
+            // neutral palette and leave the movement sticks available.
             let mut ui = self.player_tags();
             if self.bare_zone_panel() {
                 let scale = self.lifecycle.viewport().scale();
@@ -2616,12 +2614,11 @@ impl Scene {
         )
     }
 
-    /// Whether the bare world draws the zone panel: only while a zone loads
-    /// or failed to load (with Cancel, or Retry and Dismiss). Inside a zone
-    /// it draws none (owner, 2026-10-04): the world is the screen, and the
-    /// player leaves by walking back through the zone's arch.
+    /// Show loading controls and Everglade's compact movement hotbar.
     fn bare_zone_panel(&self) -> bool {
-        self.world.is_bare() && self.world.zone_load_state() != verse::zones::LoadState::Idle
+        self.world.is_bare()
+            && (self.world.zone_load_state() != verse::zones::LoadState::Idle
+                || self.world.zone == verse::zones::ZoneId::Everglade)
     }
 
     fn plaza_online_allowed(&self) -> bool {
@@ -2632,9 +2629,9 @@ impl Scene {
         let mut snapshot = self.world.zone_snapshot(self.aspect());
         if self.world.is_bare() {
             // The OpenAgents app has no studio panel to open at a station.
-            snapshot
-                .controls
-                .retain(|control| control.action != ZoneIntent::Interact);
+            snapshot.controls.retain(|control| {
+                !matches!(control.action, ZoneIntent::Interact | ZoneIntent::Return)
+            });
         }
         let size = self.lifecycle.viewport().logical_size();
         if snapshot.portal.visible

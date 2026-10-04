@@ -331,7 +331,7 @@ fn the_grid_portal_pauses_presence_in_lagrange_1_and_the_return_rejoins() {
 
 /// Walking through the Grid's arch to Everglade loads the zone's pinned pack
 /// with the zone panel's progress and Cancel on the Grid, enters Everglade
-/// with presence paused and no panel drawn, and leaving comes back in front
+/// with presence paused and movement controls drawn, and leaving comes back in front
 /// of the arch, where presence rejoins `verse-bare`.
 #[test]
 fn the_everglade_arch_loads_its_pack_pauses_presence_and_the_return_rejoins() {
@@ -433,8 +433,35 @@ fn the_everglade_arch_loads_its_pack_pauses_presence_and_the_return_rejoins() {
         .place_player([podium[0], 0.0, podium[1]].into(), 0.0)
         .unwrap();
     assert!(scene.world.studio_panel_here().is_some());
-    // Inside Everglade the app draws no zone panel, caption, or buttons.
-    assert!(!scene.bare_zone_panel());
+    // The movement hotbar shares touch routing with the held stick.
+    assert!(scene.bare_zone_panel());
+    let hud = scene.zone_hud_snapshot();
+    assert!(hud.visible);
+    assert!(hud.caption.is_empty());
+    assert_eq!(hud.buttons.len(), 5);
+    let button = hud
+        .buttons
+        .iter()
+        .find(|b| b.action == Intent::Levitate)
+        .unwrap();
+    let [x, y, w, h] = button.frame;
+    let [sx, sy] = scene.stick_center();
+    scene.pointer(8, PointerPhase::Down, sx, sy).unwrap();
+    scene
+        .pointer(9, PointerPhase::Down, x + w / 2.0, y + h / 2.0)
+        .unwrap();
+    scene
+        .pointer(9, PointerPhase::Up, x + w / 2.0, y + h / 2.0)
+        .unwrap();
+    assert!(scene.touches.contains_key(&8));
+    assert!(
+        scene
+            .zone_hud_snapshot()
+            .buttons
+            .iter()
+            .any(|b| b.action == Intent::Rise && b.enabled)
+    );
+    scene.pointer(8, PointerPhase::Up, sx, sy).unwrap();
     assert!(scene.zone_intent(Intent::Interact).is_err());
     assert!(scene.studio.is_none());
 
