@@ -76,6 +76,29 @@ pub struct Progress {
     pub experience: u64,
     pub items: Vec<Entry>,
 }
+/// Quest state shown above a giver, ordered by display priority.
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum Marker {
+    Active,
+    Available,
+    TurnIn,
+}
+impl Progress {
+    pub fn marker(&self) -> Option<Marker> {
+        if self.claimed || self.giver_life.is_none() {
+            None
+        } else if self.accepted {
+            Some(if self.progress >= self.goal {
+                Marker::TurnIn
+            } else {
+                Marker::Active
+            })
+        } else {
+            self.available.then_some(Marker::Available)
+        }
+    }
+}
+
 fn name(text: &str) -> bool {
     !text.trim().is_empty() && text.len() <= 80 && text.bytes().all(|c| (32..=126).contains(&c))
 }
@@ -371,5 +394,44 @@ mod tests {
             }
             assert!(bad.validate().is_err());
         }
+    }
+}
+
+#[cfg(test)]
+mod marker_tests {
+    use super::*;
+    #[test]
+    fn markers_follow_enrollment_objectives_claims_and_prerequisites() {
+        let mut progress = Progress {
+            accepted: false,
+            giver: Some(42),
+            giver_life: Some(verse_engine::core::LifeId {
+                instance: 1,
+                actor: 42,
+                generation: 3,
+            }),
+            interactable: false,
+            available: false,
+            id: 1,
+            name: "Quest".into(),
+            progress: 0,
+            goal: 2,
+            claimed: false,
+            experience: 10,
+            items: vec![],
+        };
+        assert_eq!(progress.marker(), None);
+        progress.available = true;
+        assert_eq!(progress.marker(), Some(Marker::Available));
+        progress.accepted = true;
+        assert_eq!(progress.marker(), Some(Marker::Active));
+        progress.progress = 2;
+        assert_eq!(progress.marker(), Some(Marker::TurnIn));
+        progress.claimed = true;
+        assert_eq!(progress.marker(), None);
+        progress.claimed = false;
+        progress.giver_life = None;
+        assert_eq!(progress.marker(), None);
+        assert!(Marker::TurnIn > Marker::Available && Marker::Available > Marker::Active);
     }
 }

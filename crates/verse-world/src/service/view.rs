@@ -106,6 +106,43 @@ impl View {
                 })
             })
     }
+    /// Projects owned quest discovery markers onto current visible friendly lives.
+    pub fn quest_markers(
+        &self,
+    ) -> std::collections::BTreeMap<verse_engine::core::LifeId, super::progression::Marker> {
+        let mut markers = std::collections::BTreeMap::new();
+        let Some(inventory) = self.inventory() else {
+            return markers;
+        };
+        let Some(snapshot) = self.replica.latest() else {
+            return markers;
+        };
+        for quest in &inventory.quest_log {
+            let (Some(life), Some(marker)) = (quest.giver_life, quest.marker()) else {
+                continue;
+            };
+            if life.instance != self.instance
+                || self
+                    .events
+                    .iter()
+                    .any(|e| e.actor == Some(life) && matches!(e.kind, Kind::Death))
+                || !snapshot.presentation.actors.iter().any(|p| {
+                    verse_engine::core::LifeId::from(p.life) == life
+                        && p.visible
+                        && p.health > 0
+                        && p.actor.friendly
+                })
+            {
+                continue;
+            }
+            markers
+                .entry(life)
+                .and_modify(|old: &mut super::progression::Marker| *old = (*old).max(marker))
+                .or_insert(marker);
+        }
+        markers
+    }
+
     pub fn target(&self) -> Option<verse_engine::core::LifeId> {
         self.target
     }
@@ -536,6 +573,10 @@ mod tests {
         let giver = quest.giver_life.unwrap();
         assert_eq!(giver.actor, 1_000_000);
         assert!(view.select_target(Some(giver)).is_err());
+        assert_eq!(
+            view.quest_markers().get(&giver),
+            Some(&crate::service::progression::Marker::Available)
+        );
         let control = client.control().unwrap().clone();
         let accept = Body::AcceptQuest {
             life: control.life,
@@ -561,6 +602,10 @@ mod tests {
         view.push_inventory(&client.request(Body::Inventory {}).await.unwrap())
             .unwrap();
         assert!(view.inventory().unwrap().quest_log[0].accepted);
+        assert_eq!(
+            view.quest_markers().get(&giver),
+            Some(&crate::service::progression::Marker::Active)
+        );
         assert!(!view.inventory().unwrap().quest_log[1].available);
         assert!(matches!(
             client
@@ -588,6 +633,22 @@ mod tests {
             observer.request(accept).await.unwrap().body,
             Reply::Refused { .. }
         ));
+        view.inventory.as_mut().unwrap().1.quest_log[0]
+            .giver_life
+            .as_mut()
+            .unwrap()
+            .generation += 1;
+        assert!(view.quest_markers().is_empty());
+        view.inventory.as_mut().unwrap().1.quest_log[0].giver_life = Some(giver);
+        view.events.push(Event {
+            instance: 120,
+            serial: 999,
+            tick: 1,
+            time: 1.,
+            actor: Some(giver),
+            kind: Kind::Death,
+        });
+        assert!(view.quest_markers().is_empty());
         drop(observer);
         drop(client);
         stop.send(()).unwrap();
