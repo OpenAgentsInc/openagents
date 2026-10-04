@@ -25,9 +25,26 @@
 //! The fixture's seats record a Codex-shaped route with the model
 //! [`MODEL`], so the coordinator steers them as it steers a loop engine.
 //! No engine reads that route.
+//!
+//! The same script also runs on a scratch host (#10572), so Verse and
+//! `openagents studio` act on it through the host's real paths: the
+//! studio intents, the coordinator's sweep, reviews, merges, and the
+//! conflict flow. A [`Scratch`] makes the host's directories, all under
+//! one empty directory: the scratch repository, a host root that names it
+//! as the host's one workspace, and a task store that admits scripted
+//! turns ([`owner::allow_scripted`]). Its [`Engine`] ends each queued
+//! studio task's turn from the script through [`owner::scripted`], which
+//! the task owner records like any run, with no model and no spend. The
+//! engine refuses any root a [`Scratch`] did not mark, any store that
+//! does not admit scripted turns (this computer's own store never does),
+//! and a root whose auto-start policy is on, so it never runs beside a
+//! real engine. `coder host serve --studio-sim` and
+//! `openagents studio up --sim` start it ([`open_host`]).
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use coder_host::access::review::TaskReview;
@@ -37,7 +54,10 @@ use super::studio::{
     self, Delivery, Inbox, MemoryKind, NewGoal, Party, Progress, Repository, Role, Seat, Studio,
     View,
 };
-use super::{Action, COMMAND_SCHEMA, Command, Execution, Status, Task, checks, interaction, owner};
+use super::{
+    Action, COMMAND_SCHEMA, Command, Execution, Status, Store, Task, autostart, checks,
+    interaction, owner, remote,
+};
 
 /// The route a seat would name to ask for the simulated team. No route
 /// parser accepts it; only a [`Fixture`] runs it.
@@ -607,6 +627,32 @@ pub(crate) fn run(task: &Task, ending: &str) -> owner::Run {
     }
 }
 
+/// The seats the script names: the lead `lead` and the workers `ada` and
+/// `grace`, each on the Codex-shaped route with the model [`MODEL`].
+///
+/// # Errors
+/// The coordinator refuses a seat.
+pub fn seat_team(studio: &mut Studio) -> Result<(), Error> {
+    let route = studio::parse_route(&format!("codex:{MODEL}"))?;
+    for (desk, (name, role)) in [
+        ("lead", Role::Lead),
+        ("ada", Role::Worker),
+        ("grace", Role::Worker),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        studio.set_seat(Seat {
+            name: name.into(),
+            role,
+            route: route.clone(),
+            look: "default".into(),
+            desk: desk as u32,
+        })?;
+    }
+    Ok(())
+}
+
 /// A task's worktree and the commit it started from.
 #[derive(Clone, Debug)]
 struct Worktree {
@@ -651,23 +697,7 @@ impl Team {
     pub fn new(fixture: Fixture) -> Result<Self, Error> {
         admit(&fixture.checkout, Some(&fixture))?;
         let mut studio = Studio::open(&fixture.store)?;
-        let route = studio::parse_route(&format!("codex:{MODEL}"))?;
-        for (desk, (name, role)) in [
-            ("lead", Role::Lead),
-            ("ada", Role::Worker),
-            ("grace", Role::Worker),
-        ]
-        .into_iter()
-        .enumerate()
-        {
-            studio.set_seat(Seat {
-                name: name.into(),
-                role,
-                route: route.clone(),
-                look: "default".into(),
-                desk: desk as u32,
-            })?;
-        }
+        seat_team(&mut studio)?;
         Ok(Self {
             fixture,
             inbox: SimInbox::default(),
@@ -1109,6 +1139,530 @@ impl super::landing::Hooks for Lander {
 
     fn stopping(&self) -> bool {
         false
+    }
+}
+
+/// The marker a [`Scratch`] writes in its host root.
+pub const SCRATCH_MARKER: &str = "studio-sim-host.json";
+/// The scratch marker's schema.
+pub const SCRATCH_SCHEMA: &str = "openagents.coder.studio-sim-host.v1";
+/// The workspace label a scratch host serves its repository under.
+pub const WORKSPACE: &str = LABEL;
+/// How often a scratch host's [`Engine`] looks for a turn to end.
+pub const ENGINE_EVERY: Duration = Duration::from_millis(250);
+/// What a worker's conflict follow-up asks it to run, as the coordinator
+/// words it ([`studio::flow`]): `(`git merge TARGET`)`.
+const MERGE_HINT: &str = "(`git merge ";
+
+/// The marker a scratch host's root holds: the task store and checkout a
+/// [`Scratch`] made.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct ScratchMarker {
+    schema: String,
+    store: String,
+    checkout: String,
+}
+
+/// A scratch host for the simulated team (#10572): every directory a host
+/// keeps, under one directory the caller owns and never under the home
+/// directory's Coder state.
+#[derive(Clone, Debug)]
+pub struct Scratch {
+    pub dir: PathBuf,
+    /// The scratch repository, its `origin`, and its marker.
+    pub fixture: Fixture,
+    /// The host root: `serve.json`, the studio's worktrees, and the
+    /// scratch marker.
+    pub root: PathBuf,
+    /// The host's task store, which admits scripted turns.
+    pub store: PathBuf,
+    /// The host's access store.
+    pub state: PathBuf,
+    /// The host's file key source.
+    pub keys: PathBuf,
+    /// The host's control socket.
+    pub socket: PathBuf,
+}
+
+impl Scratch {
+    fn at(dir: &Path, fixture: Fixture) -> Self {
+        Self {
+            dir: dir.to_path_buf(),
+            fixture,
+            root: dir.join("host"),
+            store: dir.join("tasks"),
+            state: dir.join("coder-access"),
+            keys: dir.join("connect"),
+            socket: dir.join("control.sock"),
+        }
+    }
+
+    /// Make a scratch host in `dir`, which must be absent or empty: the
+    /// scratch repository ([`Fixture::create`]), a host root whose
+    /// `serve.json` admits its checkout as workspace [`WORKSPACE`], and a
+    /// task store that admits scripted turns. No seat is set; see
+    /// [`Scratch::seat_team`].
+    ///
+    /// # Errors
+    /// `dir` is in use, under the home directory's Coder state, or a file
+    /// cannot be written.
+    pub fn create(dir: &Path) -> Result<Self, Error> {
+        std::fs::create_dir_all(dir)?;
+        if std::fs::read_dir(dir)?.next().is_some() {
+            return Err(Error::Refused(format!(
+                "{} is not empty; a scratch host starts in an empty directory",
+                dir.display()
+            )));
+        }
+        let dir = dir.canonicalize()?;
+        let fixture = Fixture::create(&dir.join("fixture"))?;
+        let scratch = Self::at(&dir, fixture);
+        crate::private::create_dir_all(&scratch.root)?;
+        owner::allow_scripted(&scratch.store, "the Agent Studio's simulated team")?;
+        let workspaces = BTreeMap::from([(WORKSPACE.to_owned(), scratch.fixture.checkout.clone())]);
+        coder_host::settings::ServeSettings::new(Vec::new(), workspaces)
+            .save(&scratch.root)
+            .map_err(|error| Error::Refused(format!("cannot write the host settings: {error}")))?;
+        let marker = ScratchMarker {
+            schema: SCRATCH_SCHEMA.into(),
+            store: scratch.store.canonicalize()?.to_string_lossy().into_owned(),
+            checkout: scratch.fixture.checkout.to_string_lossy().into_owned(),
+        };
+        let bytes = serde_json::to_vec_pretty(&marker)
+            .map_err(|error| Error::Refused(format!("the marker could not be encoded: {error}")))?;
+        std::fs::write(scratch.root.join(SCRATCH_MARKER), bytes)?;
+        Ok(scratch)
+    }
+
+    /// The scratch host [`Scratch::create`] made in `dir`.
+    ///
+    /// # Errors
+    /// `dir` holds no scratch host.
+    pub fn open(dir: &Path) -> Result<Self, Error> {
+        let dir = dir.canonicalize()?;
+        let fixture = Fixture::at(&dir.join("fixture"));
+        let scratch = Self::at(&dir, fixture);
+        let marker = read_marker(&scratch.root)?;
+        if !same_path(Path::new(&marker.store), &scratch.store)
+            || !same_path(Path::new(&marker.checkout), &scratch.fixture.checkout)
+        {
+            return Err(Error::Refused(format!(
+                "{} holds no scratch host",
+                dir.display()
+            )));
+        }
+        Ok(scratch)
+    }
+
+    /// Seat the script's team in the scratch host's studio ([`seat_team`]).
+    ///
+    /// # Errors
+    /// The coordinator cannot open or refuses a seat.
+    pub fn seat_team(&self) -> Result<(), Error> {
+        let mut studio = Studio::open(&self.store)?;
+        seat_team(&mut studio)
+    }
+}
+
+fn read_marker(root: &Path) -> Result<ScratchMarker, Error> {
+    std::fs::read(root.join(SCRATCH_MARKER))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<ScratchMarker>(&bytes).ok())
+        .filter(|marker| marker.schema == SCRATCH_SCHEMA)
+        .ok_or_else(|| {
+            Error::Refused(format!(
+                "the scripted engine runs only on a scratch host's root, not {}",
+                root.display()
+            ))
+        })
+}
+
+fn same_path(a: &Path, b: &Path) -> bool {
+    match (a.canonicalize(), b.canonicalize()) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => false,
+    }
+}
+
+/// Whether the auto-start policy in `root` is on, or cannot be read.
+fn policy_on(root: &Path) -> bool {
+    match autostart::Policy::load(root) {
+        Ok(policy) => policy.is_some_and(|policy| policy.enabled),
+        Err(_) => true,
+    }
+}
+
+/// What a studio task is to the script.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Part {
+    /// A goal's lead task.
+    Lead,
+    /// Plan entry `key`'s task, worked by `seat`.
+    Entry { key: String, seat: String },
+    /// The lead's review of a plan entry's change.
+    Review,
+}
+
+/// Every studio task the coordinator holds, by task identity.
+fn parts(state: &studio::State) -> BTreeMap<String, Part> {
+    let mut parts = BTreeMap::new();
+    for goal in &state.goals {
+        parts.insert(goal.lead.task_id.clone(), Part::Lead);
+        for entry in &goal.plan {
+            parts.insert(
+                entry.slot.task_id.clone(),
+                Part::Entry {
+                    key: entry.id.clone(),
+                    seat: entry.slot.seat.clone(),
+                },
+            );
+            if let Some(review) = entry.flow.as_ref().and_then(|flow| flow.review.as_ref()) {
+                parts.insert(review.task_id.clone(), Part::Review);
+            }
+        }
+    }
+    parts
+}
+
+/// The scripted engine of a scratch host (#10572): each pass runs the
+/// coordinator's sweep, as the host's auto-start sweeper does, then ends
+/// the turn of every queued studio task from the script through
+/// [`owner::scripted`].
+#[derive(Clone, Debug)]
+pub struct Engine {
+    root: PathBuf,
+    store: PathBuf,
+}
+
+impl Engine {
+    /// The engine for the scratch host with root `root` and task store
+    /// `store`.
+    ///
+    /// # Errors
+    /// `root` holds no [`Scratch`] marker naming `store`, `store` does not
+    /// admit scripted turns, or `root`'s auto-start policy is on.
+    pub fn open(root: &Path, store: &Path) -> Result<Self, Error> {
+        let marker = read_marker(root)?;
+        if !same_path(Path::new(&marker.store), store) {
+            return Err(Error::Refused(format!(
+                "the scratch host at {} keeps another task store than {}",
+                root.display(),
+                store.display()
+            )));
+        }
+        if !owner::scripted_allowed(store) {
+            return Err(Error::Refused(format!(
+                "the task store {} does not admit scripted turns",
+                store.display()
+            )));
+        }
+        if policy_on(root) {
+            return Err(Error::Refused(
+                "the scratch host's auto-start policy is on; the scripted engine never runs beside a real one".into(),
+            ));
+        }
+        Ok(Self {
+            root: root.canonicalize()?,
+            store: store.canonicalize()?,
+        })
+    }
+
+    /// One pass: the coordinator's sweep, then one scripted turn for each
+    /// queued studio task, then the sweep again so the coordinator sees
+    /// them. Returns a sentence for each turn it ended. A turn the owner
+    /// refuses is reported and left for the next pass.
+    ///
+    /// # Errors
+    /// The auto-start policy turned on, or the store or the coordinator
+    /// cannot be read.
+    pub fn step(&self) -> Result<Vec<String>, Error> {
+        if policy_on(&self.root) {
+            return Err(Error::Refused(
+                "the scratch host's auto-start policy is on; the scripted engine stops".into(),
+            ));
+        }
+        studio::sweep(&self.store, &self.root, autostart::unix_now());
+        if !Studio::present(&self.store) {
+            return Ok(Vec::new());
+        }
+        let roles = {
+            let studio = Studio::open(&self.store)?;
+            parts(studio.state())
+        };
+        let queued: Vec<Task> = Store::open(&self.store)?
+            .list()?
+            .into_iter()
+            .filter(|task| {
+                task.status == Status::Queued
+                    && task.run.is_none()
+                    && roles.contains_key(&task.task_id)
+            })
+            .collect();
+        let mut ended = Vec::new();
+        for task in queued {
+            let part = &roles[&task.task_id];
+            match owner::scripted(&self.store, &task.task_id, |task, workspace| {
+                host_turn(part, task, workspace)
+            }) {
+                Ok(done) => ended.push(format!(
+                    "ended turn {} of {} ({})",
+                    done.turn(),
+                    done.task_id,
+                    done.run
+                        .as_ref()
+                        .and_then(|run| run.result.as_ref())
+                        .map_or("", |result| result.ending.as_str())
+                )),
+                Err(error) => eprintln!(
+                    "openagents host: studio sim: task {} waits: {error}",
+                    task.task_id
+                ),
+            }
+        }
+        if !ended.is_empty() {
+            studio::sweep(&self.store, &self.root, autostart::unix_now());
+        }
+        Ok(ended)
+    }
+
+    /// Run a pass every `every` on a thread of its own until the returned
+    /// handle is dropped or stopped.
+    #[must_use]
+    pub fn spawn(self, every: Duration) -> Running {
+        let stop = Arc::new(AtomicBool::new(false));
+        let flag = stop.clone();
+        let handle = std::thread::spawn(move || {
+            while !flag.load(Ordering::Relaxed) {
+                if let Err(error) = self.step() {
+                    eprintln!("openagents host: studio sim: {error}");
+                }
+                std::thread::sleep(every);
+            }
+        });
+        Running {
+            stop,
+            handle: Some(handle),
+        }
+    }
+}
+
+/// A running [`Engine`]. Dropping it stops the engine after its pass.
+#[derive(Debug)]
+pub struct Running {
+    stop: Arc<AtomicBool>,
+    handle: Option<std::thread::JoinHandle<()>>,
+}
+
+impl Running {
+    /// Stop the engine and wait for its pass to end.
+    pub fn stop(mut self) {
+        self.halt();
+    }
+
+    /// Leave the engine running for as long as the process runs.
+    pub fn detach(mut self) {
+        self.handle = None;
+        self.stop = Arc::new(AtomicBool::new(false));
+    }
+
+    fn halt(&mut self) {
+        self.stop.store(true, Ordering::Relaxed);
+        if let Some(handle) = self.handle.take() {
+            let _ = handle.join();
+        }
+    }
+}
+
+impl Drop for Running {
+    fn drop(&mut self) {
+        self.halt();
+    }
+}
+
+/// The launcher a scratch host's auto-start holds: it starts nothing.
+/// The host's root has no policy, so it is never asked; were it asked, it
+/// would refuse rather than start a real engine.
+struct NoEngine;
+
+impl autostart::Launch for NoEngine {
+    fn launch(
+        &self,
+        _engine: &autostart::Engine,
+        _grant: &Path,
+        _store: &Path,
+    ) -> Result<autostart::Launched, String> {
+        Err("the simulated studio starts no engine; its scripted engine ends its turns".into())
+    }
+}
+
+/// The task inbox a scratch host serves: the host's own inbox over
+/// `store`, with an auto-start whose launcher starts nothing, so studio
+/// intents give each task its worktree under `root` as on any host.
+#[must_use]
+pub fn inbox(store: &Path, root: &Path, workspaces: &BTreeMap<String, PathBuf>) -> remote::Inbox {
+    let autostart = Arc::new(autostart::Autostart::new(
+        root.to_path_buf(),
+        store.to_path_buf(),
+        workspaces.clone(),
+        Box::new(NoEngine),
+        autostart::unix_now,
+    ));
+    remote::Inbox::new(store, workspaces.clone()).with_autostart(autostart)
+}
+
+/// Open a scratch host's tasks for `coder host serve --studio-sim`: the
+/// [`inbox`], with the scripted [`Engine`] running for as long as the
+/// process runs.
+///
+/// # Errors
+/// The engine refuses the root or the store ([`Engine::open`]).
+pub fn open_host(
+    store: &Path,
+    root: &Path,
+    workspaces: &BTreeMap<String, PathBuf>,
+) -> Result<Arc<dyn coder_host::Tasks>, String> {
+    let engine = Engine::open(root, store).map_err(|error| error.to_string())?;
+    let inbox = inbox(store, root, workspaces);
+    engine.spawn(ENGINE_EVERY).detach();
+    Ok(Arc::new(inbox) as Arc<dyn coder_host::Tasks>)
+}
+
+/// One scripted turn of a studio task on a scratch host.
+fn host_turn(part: &Part, task: &Task, workspace: &Path) -> Result<owner::Scripted, String> {
+    let finished = |reply: String| owner::Scripted {
+        ending: "model_finished".into(),
+        reply,
+    };
+    let prompt = task.effective_prompt();
+    // The turns before this one that were the script's own, not a
+    // conflict the coordinator sent back.
+    let index = std::iter::once(task.intent.prompt.as_str())
+        .chain(task.follow_ups.iter().map(|item| item.prompt.as_str()))
+        .take(task.turn().saturating_sub(1))
+        .filter(|prompt| !prompt.contains(MERGE_HINT))
+        .count();
+    let (key, seat) = match part {
+        Part::Review => {
+            let verdict = serde_json::json!({
+                "schema": studio::flow::REVIEW_SCHEMA,
+                "verdict": "approve",
+                "notes": "The change does what its task asks.",
+            });
+            return Ok(finished(format!(
+                "I read the change and its checks.\n\n```json\n{verdict}\n```\n"
+            )));
+        }
+        Part::Lead => ("lead", "lead".to_owned()),
+        Part::Entry { key, seat } => {
+            if prompt.contains(MERGE_HINT) {
+                return resolve_conflict(key, seat, prompt, workspace).map(finished);
+            }
+            (key.as_str(), seat.clone())
+        }
+    };
+    let Some(turn) = turns(key).get(index) else {
+        return Ok(finished("Nothing more to change.".into()));
+    };
+    Ok(match *turn {
+        Turn::Ask(question) => owner::Scripted {
+            ending: interaction::QUESTION_ENDING.into(),
+            reply: question.into(),
+        },
+        Turn::Approve(step) => owner::Scripted {
+            ending: interaction::APPROVAL_ENDING.into(),
+            reply: step.into(),
+        },
+        Turn::Plan => finished(format!(
+            "I read the repository.\n\n```json\n{}\n```\n",
+            plan()
+        )),
+        Turn::Edit { files, message } => {
+            for (path, text) in files {
+                write(workspace, path, text).map_err(|error| error.to_string())?;
+            }
+            seat_git(workspace, &["add", "-A"], &seat, true)?;
+            seat_git(workspace, &["commit", "-q", "-m", message], &seat, true)?;
+            finished(message.to_owned())
+        }
+    })
+}
+
+/// A conflict follow-up: merge the branch the coordinator names into the
+/// worktree, write the seat's scripted resolution, and commit the merge.
+fn resolve_conflict(
+    key: &str,
+    seat: &str,
+    prompt: &str,
+    workspace: &Path,
+) -> Result<String, String> {
+    let files = resolution(key);
+    if files.is_empty() {
+        return Err(format!("seat {seat} has no scripted resolution"));
+    }
+    let target = prompt
+        .split_once(MERGE_HINT)
+        .and_then(|(_, rest)| rest.split_once("`)"))
+        .map(|(target, _)| target.trim())
+        .filter(|target| !target.is_empty() && !target.starts_with('-'))
+        .unwrap_or(BRANCH)
+        .to_owned();
+    // A merge that conflicts leaves markers the resolution replaces.
+    seat_git(workspace, &["merge", "--no-edit", &target], seat, false)?;
+    for (path, text) in files {
+        write(workspace, path, text).map_err(|error| error.to_string())?;
+    }
+    seat_git(workspace, &["add", "-A"], seat, true)?;
+    let pending = seat_git(workspace, &["status", "--porcelain"], seat, true)?;
+    let message = format!("Merge {target} and resolve the conflict");
+    if !pending.trim().is_empty() || merge_in_progress(workspace, seat) {
+        seat_git(workspace, &["commit", "-q", "-m", &message], seat, true)?;
+    }
+    let names: Vec<&str> = files.iter().map(|(path, _)| *path).collect();
+    Ok(format!(
+        "Merged {target} and resolved {}.",
+        names.join(", ")
+    ))
+}
+
+/// Whether a merge waits to be committed in the worktree at `dir`.
+fn merge_in_progress(dir: &Path, seat: &str) -> bool {
+    seat_git(
+        dir,
+        &["rev-parse", "-q", "--verify", "MERGE_HEAD"],
+        seat,
+        true,
+    )
+    .is_ok()
+}
+
+/// Run Git in `dir` as seat `seat` ([`studio::git::identity`]), with no
+/// global or system configuration. Returns its trimmed standard output;
+/// a failure is an error only when `strict`.
+fn seat_git(dir: &Path, args: &[&str], seat: &str, strict: bool) -> Result<String, String> {
+    let (name, email) = studio::git::identity(seat);
+    let output = super::local::git()
+        .arg("-C")
+        .arg(dir)
+        .arg("-c")
+        .arg(format!("user.name={name}"))
+        .arg("-c")
+        .arg(format!("user.email={email}"))
+        .arg("-c")
+        .arg("commit.gpgsign=false")
+        .args(args)
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .output()
+        .map_err(|error| format!("cannot run git: {error}"))?;
+    if output.status.success() || !strict {
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned())
+    } else {
+        Err(format!(
+            "git {}: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&output.stderr).trim()
+        ))
     }
 }
 

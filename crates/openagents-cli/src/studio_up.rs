@@ -8,9 +8,16 @@
 //! `coder host autostart on --route` would), seats a team (a lead and
 //! workers on the coding agents signed in here, or `--team`), starts
 //! `coder host serve` when no host answers the control socket, and opens
-//! Verse straight into Everglade. `up --sim` opens Verse on the simulated
-//! team instead: a scratch repository under the system's temporary
-//! directory, no host, and no model spend.
+//! Verse straight into Everglade. `up --sim` starts a scratch host whose
+//! studio is the simulated team instead (#10572): its access store, root,
+//! task store, keys, control socket, and scratch repository all live in
+//! one new directory under the system's temporary directory, never under
+//! the home directory, and no launch agent or keychain item is made. The
+//! host runs `coder host serve --studio-sim`, whose scripted engine ends
+//! the studio's turns with no model spend
+//! (`coder::task::studio_sim`), and Verse opens on its control socket, so
+//! Everglade and `openagents studio --control-socket SOCKET` both act on
+//! it. `down` stops that host and removes its directory.
 //!
 //! `up` records what it changed and started in `ROOT/studio-up.json`, and
 //! `down` undoes exactly that: it closes the Verse window it opened, stops
@@ -30,6 +37,7 @@ use coder::task::autostart::{
 };
 use coder::task::capacity::{self, Provider};
 use coder::task::studio::{self, Role, Seat, Studio};
+use coder::task::studio_sim;
 use coder_host::settings::ServeSettings;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -184,6 +192,22 @@ pub(crate) struct Record {
     /// The Verse window `up` opened.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub verse_pid: Option<u32>,
+    /// The simulated team's scratch host directory `up --sim` made.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sim_dir: Option<PathBuf>,
+    /// The simulated team's scratch host `up --sim` started.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sim_host_pid: Option<u32>,
+}
+
+impl Record {
+    /// Whether `up` changed anything of the host's own files or seats.
+    fn changed_host(&self) -> bool {
+        self.policy_written
+            || !self.workspaces_added.is_empty()
+            || !self.seats_added.is_empty()
+            || !self.seats_replaced.is_empty()
+    }
 }
 
 impl Record {
@@ -256,25 +280,8 @@ fn up_inner(output: &Output, args: &Args, paths: &Paths) -> Result<(), String> {
     let mut record = Record::load(&paths.root).unwrap_or_default();
     record.at = autostart::unix_now();
     if defaults.sim {
-        // The simulated team needs no host: Verse records it against its
-        // own scratch repository on first entry to Everglade.
         defaults.save(&paths.root)?;
-        stop_verse(&mut record);
-        record.verse_pid = verse(vec!["--studio-sim".into()])?;
-        record.save(&paths.root)?;
-        output.emit(
-            &json!({"sim": true, "verse_pid": record.verse_pid}),
-            |_| match record.verse_pid {
-                Some(pid) => format!(
-                    "Opened Everglade on the simulated team (Verse pid {pid}); no model is called."
-                ),
-                None => {
-                    "The simulated team is ready; open it with `verse --studio-sim --everglade`."
-                        .into()
-                }
-            },
-        );
-        return Ok(());
+        return up_sim(output, args, paths, &mut record, &verse);
     }
     let repo = defaults
         .repo
@@ -359,6 +366,168 @@ fn up_inner(output: &Output, args: &Args, paths: &Paths) -> Result<(), String> {
         lines.join("\n")
     });
     Ok(())
+}
+
+/// `up --sim`: a new scratch host whose studio is the simulated team, its
+/// host started with `--studio-sim`, and Verse on its control socket.
+/// Whatever an earlier `up --sim` started is stopped and removed first.
+fn up_sim(
+    output: &Output,
+    args: &Args,
+    paths: &Paths,
+    record: &mut Record,
+    verse: &dyn Fn(Vec<String>) -> Result<Option<u32>, String>,
+) -> Result<(), String> {
+    stop_verse(record);
+    for note in stop_sim(record) {
+        eprintln!("openagents studio up: {note}");
+    }
+    let scratch = studio_sim::Scratch::create(&scratch_dir()?)
+        .and_then(|scratch| scratch.seat_team().map(|()| scratch))
+        .map_err(|error| format!("cannot make the simulated team's scratch host: {error}"))?;
+    record.sim_dir = Some(scratch.dir.clone());
+    record.save(&paths.root)?;
+    let sim = sim_paths(&scratch);
+    if !args.switch("no-host") {
+        let program = find_program("coder", args.option("coder"))?;
+        // The scratch host runs with a home of its own, so nothing it does
+        // reads or writes this computer's.
+        let home = scratch.dir.join("home");
+        std::fs::create_dir_all(&home)
+            .map_err(|error| format!("cannot create {}: {error}", home.display()))?;
+        record.sim_host_pid = Some(start_host(
+            &program,
+            &sim,
+            &sim_serve_args(&sim),
+            Some(&home),
+        )?);
+        record.save(&paths.root)?;
+    }
+    let opened = verse(vec![
+        "--studio-socket".into(),
+        sim.socket.display().to_string(),
+    ]);
+    if let Ok(pid) = &opened {
+        record.verse_pid = *pid;
+    }
+    record.save(&paths.root)?;
+    let verse_pid = opened?;
+    let socket = sim.socket.display().to_string();
+    let submit = format!(
+        "openagents studio goal submit '{}' --workspace {} --control-socket {socket}",
+        studio_sim::GOAL,
+        studio_sim::WORKSPACE
+    );
+    let value = json!({
+        "sim": true,
+        "dir": scratch.dir,
+        "workspace": studio_sim::WORKSPACE,
+        "repo": scratch.fixture.checkout,
+        "root": sim.root,
+        "tasks": sim.tasks,
+        "socket": sim.socket,
+        "host_pid": record.sim_host_pid,
+        "verse_pid": verse_pid,
+        "goal": studio_sim::GOAL,
+    });
+    output.emit(&value, |_| {
+        let mut lines = vec![match record.sim_host_pid {
+            Some(pid) => format!(
+                "Started the simulated team's scratch host (pid {pid}) in {}; its scripted engine calls no model.",
+                scratch.dir.display()
+            ),
+            None => format!(
+                "Made the simulated team's scratch host in {}; start it with `coder host serve --studio-sim` (--no-host).",
+                scratch.dir.display()
+            ),
+        }];
+        lines.push(format!(
+            "Workspace `{}` is the scratch repository {}.",
+            studio_sim::WORKSPACE,
+            scratch.fixture.checkout.display()
+        ));
+        lines.push(format!("Submit the script's goal: {submit}"));
+        lines.push(format!(
+            "Act on it with `openagents studio COMMAND --control-socket {socket} --tasks {} --root {}`.",
+            sim.tasks.display(),
+            sim.root.display()
+        ));
+        match verse_pid {
+            Some(pid) => lines.push(format!("Opened Everglade (Verse pid {pid}).")),
+            None => lines.push(format!(
+                "Open Everglade with `verse --everglade --studio-socket {socket}`."
+            )),
+        }
+        lines.push("Stop it and remove its directory with `openagents studio down`.".into());
+        lines.join("\n")
+    });
+    Ok(())
+}
+
+/// A new directory for a simulated team's scratch host, under the system's
+/// temporary directory. Its name stays short: the control socket's path
+/// inside it must fit a Unix socket address.
+fn scratch_dir() -> Result<PathBuf, String> {
+    let base = std::env::temp_dir();
+    for attempt in 0..100u32 {
+        let dir = base.join(format!("oa-sim-{}-{attempt}", std::process::id()));
+        if !dir.exists() {
+            return Ok(dir);
+        }
+    }
+    Err(format!(
+        "no free scratch directory under {}",
+        base.display()
+    ))
+}
+
+/// The host paths of a simulated team's scratch host.
+pub(crate) fn sim_paths(scratch: &studio_sim::Scratch) -> Paths {
+    Paths {
+        root: scratch.root.clone(),
+        tasks: scratch.store.clone(),
+        state: scratch.state.clone(),
+        keys: scratch.keys.clone(),
+        socket: scratch.socket.clone(),
+    }
+}
+
+/// The `coder host serve` arguments for a simulated team's scratch host:
+/// [`serve_args`] without iroh, which the studio does not need, and with
+/// `--studio-sim`.
+pub(crate) fn sim_serve_args(paths: &Paths) -> Vec<String> {
+    let mut args: Vec<String> = serve_args(paths)
+        .into_iter()
+        .filter(|arg| arg != "--iroh")
+        .collect();
+    args.push("--studio-sim".into());
+    args
+}
+
+/// Stop the simulated team's scratch host an earlier `up --sim` started
+/// and remove its directory. Returns a sentence for each thing done.
+fn stop_sim(record: &mut Record) -> Vec<String> {
+    let mut notes = Vec::new();
+    if let Some(pid) = record.sim_host_pid.take().filter(|pid| pid_alive(*pid)) {
+        match stop(pid) {
+            Ok(()) => notes.push(format!(
+                "Stopped the simulated team's scratch host (pid {pid})."
+            )),
+            Err(error) => notes.push(format!(
+                "The simulated team's scratch host did not stop: {error}."
+            )),
+        }
+    }
+    if let Some(dir) = record.sim_dir.take() {
+        // Only a directory a scratch host marked is removed.
+        if studio_sim::Scratch::open(&dir).is_ok() {
+            match std::fs::remove_dir_all(&dir) {
+                Ok(()) => notes.push(format!("Removed {}.", dir.display())),
+                Err(error) => notes.push(format!("Could not remove {}: {error}.", dir.display())),
+            }
+        }
+    }
+    notes
 }
 
 /// The setup steps against the host at `paths`, recording each change in
@@ -743,7 +912,7 @@ fn ensure_host(
         ));
     }
     let program = find_program("coder", args.option("coder"))?;
-    let pid = start_host(&program, paths)?;
+    let pid = start_host(&program, paths, &serve_args(paths), None)?;
     record.host_pid = Some(pid);
     Ok(Host::Started { pid })
 }
@@ -768,10 +937,17 @@ pub(crate) fn serve_args(paths: &Paths) -> Vec<String> {
     ]
 }
 
+/// Start `coder host ARGS` for the host at `paths` and wait for its control
+/// socket. `home`, when given, is the `HOME` it runs with.
 #[cfg(unix)]
-fn start_host(program: &Path, paths: &Paths) -> Result<u32, String> {
+fn start_host(
+    program: &Path,
+    paths: &Paths,
+    args: &[String],
+    home: Option<&Path>,
+) -> Result<u32, String> {
     let log = paths.root.join("studio-host.log");
-    let mut child = spawn_detached(program, &serve_args(paths), &log)?;
+    let mut child = spawn_detached(program, args, &log, home)?;
     let pid = child.id();
     let until = Instant::now() + HOST_WAIT;
     loop {
@@ -797,7 +973,12 @@ fn start_host(program: &Path, paths: &Paths) -> Result<u32, String> {
 }
 
 #[cfg(not(unix))]
-fn start_host(_program: &Path, _paths: &Paths) -> Result<u32, String> {
+fn start_host(
+    _program: &Path,
+    _paths: &Paths,
+    _args: &[String],
+    _home: Option<&Path>,
+) -> Result<u32, String> {
     Err("the studio starts a host only on macOS and Linux".into())
 }
 
@@ -805,7 +986,7 @@ fn start_host(_program: &Path, _paths: &Paths) -> Result<u32, String> {
 fn launch_verse(program: &Path, extra: &[String], root: &Path) -> Result<u32, String> {
     let mut args = vec!["--everglade".to_owned()];
     args.extend(extra.iter().cloned());
-    spawn_detached(program, &args, &root.join("studio-verse.log")).map(|child| child.id())
+    spawn_detached(program, &args, &root.join("studio-verse.log"), None).map(|child| child.id())
 }
 
 #[cfg(not(unix))]
@@ -814,12 +995,14 @@ fn launch_verse(_program: &Path, _extra: &[String], _root: &Path) -> Result<u32,
 }
 
 /// Run `program` in a session of its own, so it outlives this command,
-/// with its output appended to `log`.
+/// with its output appended to `log` and `home`, when given, as its
+/// `HOME`.
 #[cfg(unix)]
 fn spawn_detached(
     program: &Path,
     args: &[String],
     log: &Path,
+    home: Option<&Path>,
 ) -> Result<std::process::Child, String> {
     use std::os::unix::fs::OpenOptionsExt;
     use std::os::unix::process::CommandExt;
@@ -835,6 +1018,9 @@ fn spawn_detached(
         .stdin(std::process::Stdio::null())
         .stdout(log.try_clone().map_err(|e| e.to_string())?)
         .stderr(log);
+    if let Some(home) = home {
+        command.env("HOME", home);
+    }
     // SAFETY: setsid is async-signal-safe and touches no memory; it runs in
     // the child between fork and exec.
     unsafe {
@@ -931,7 +1117,10 @@ pub(crate) fn down(output: &Output, paths: &Paths) -> u8 {
         return 0;
     };
     stop_verse(&mut record);
-    let mut notes = teardown(paths, &record);
+    let mut notes = stop_sim(&mut record);
+    if record.changed_host() {
+        notes.extend(teardown(paths, &record));
+    }
     if let Some(pid) = record.host_pid.filter(|pid| pid_alive(*pid)) {
         match stop(pid) {
             Ok(()) => notes.push(format!("Stopped the host (pid {pid}).")),
@@ -1345,6 +1534,59 @@ mod tests {
         assert_eq!(loaded.workspaces_added, ["w"]);
         assert_eq!(loaded.host_pid, Some(42));
         assert_eq!(loaded.schema, RECORD_SCHEMA);
+    }
+
+    #[test]
+    fn the_simulated_host_serves_its_own_scratch_paths_without_iroh() {
+        let dir = tempfile::tempdir().unwrap();
+        let scratch = studio_sim::Scratch::create(&dir.path().join("sim")).unwrap();
+        let paths = sim_paths(&scratch);
+        let args = sim_serve_args(&paths);
+        let after = |flag: &str| {
+            let at = args.iter().position(|a| a == flag).unwrap();
+            PathBuf::from(&args[at + 1])
+        };
+        assert_eq!(&args[..2], ["host", "serve"]);
+        assert_eq!(after("--root"), scratch.root);
+        assert_eq!(after("--tasks"), scratch.store);
+        assert_eq!(after("--state"), scratch.state);
+        assert_eq!(after("--keys"), scratch.keys);
+        assert_eq!(after("--control-socket"), scratch.socket);
+        assert!(args.iter().any(|a| a == "--studio-sim"));
+        assert!(!args.iter().any(|a| a == "--iroh" || a == "--keychain"));
+        // Every path is inside the scratch directory.
+        for path in [
+            &paths.root,
+            &paths.tasks,
+            &paths.state,
+            &paths.keys,
+            &paths.socket,
+        ] {
+            assert!(path.starts_with(&scratch.dir), "{}", path.display());
+        }
+    }
+
+    #[test]
+    fn down_stops_the_simulated_host_and_removes_only_a_scratch_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let scratch = studio_sim::Scratch::create(&dir.path().join("sim")).unwrap();
+        let plain = dir.path().join("plain");
+        std::fs::create_dir_all(&plain).unwrap();
+        let mut record = Record {
+            sim_dir: Some(plain.clone()),
+            ..Record::default()
+        };
+        assert!(stop_sim(&mut record).is_empty());
+        assert!(plain.is_dir(), "a directory no scratch host marked stays");
+        assert!(!record.changed_host());
+        let mut record = Record {
+            sim_dir: Some(scratch.dir.clone()),
+            ..Record::default()
+        };
+        let notes = stop_sim(&mut record);
+        assert_eq!(notes.len(), 1, "{notes:?}");
+        assert!(!scratch.dir.exists());
+        assert!(record.sim_dir.is_none());
     }
 }
 

@@ -1,25 +1,26 @@
-//! `openagents studio` against a scratch host (#10566): a host with its
-//! access store, host root, control socket, and task store under a
-//! temporary directory, a scratch repository as its one workspace, and a
-//! temporary `HOME` for every command. Nothing here reaches the person's
-//! own host, home, or relays.
+//! `openagents studio` against a simulated scratch host (#10566, #10572): a
+//! host with its access store, host root, control socket, and task store
+//! under a temporary directory, the simulated team's scratch repository as
+//! its one workspace, and a temporary `HOME` for every command. Nothing
+//! here reaches the person's own host, home, or relays.
 //!
-//! A goal goes from submission through a plan answer and a review, and a
-//! merge of the unfinished task is refused with the host's reason, with
-//! only `openagents studio` commands, each under `--json`:
-//! `seat set`, `goal submit`, `tasks`, `task cancel`, `sync`, `decisions`,
-//! `answer`, `review`, `merge`, `seat pause` and `resume`, `status`, and
-//! `watch`, and a refused intent prints the host's code.
-//!
-//! No engine runs, so the test stands in for one: it cancels the lead's
-//! task so the coordinator opens the goal's plan decision, and commits a
-//! change in a task's worktree, recorded as a local run records it. Every
-//! task the test creates is archived through the host when it ends, pass
-//! or fail.
+//! The host's turns are the scripted engine's
+//! (`coder::task::studio_sim::Engine`): it ends each studio task's turn
+//! from the simulated team's script through the task owner, with no model
+//! and no spend, so the coordinator, the lead's reviews, the merges, and
+//! the conflict flow all run on the host's own paths. The person's side is
+//! only `openagents studio` commands, each under `--json`: `seat set`,
+//! `goal submit`, `message`, `tasks`, `decisions`, `answer` (the lead's
+//! question and the release's approval), `sync`, `seat pause` and
+//! `resume`, `review`, `request-changes`, `merge` (a stale one refused, a
+//! conflicting one sent back to its seat, and three that land in the
+//! checkout), `status`, and `watch`, and a refused intent prints the
+//! host's code. Every task the test creates is archived through the host
+//! when it ends, pass or fail.
 #![cfg(unix)]
 
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -39,14 +40,16 @@ mod relay;
 
 const POLICY: RelayPolicy = RelayPolicy::LoopbackTest;
 /// How long the studio may take to show what a step did.
-const WAIT: Duration = Duration::from_secs(60);
-const GOAL: &str = "Greet with Hello, studio and document the greeting.";
+const WAIT: Duration = Duration::from_secs(90);
+/// How often the scripted engine looks for a turn to end.
+const ENGINE_EVERY: Duration = Duration::from_millis(150);
 
 /// A scratch host and everything it keeps.
 struct Host {
-    temp: tempfile::TempDir,
+    _temp: tempfile::TempDir,
     runtime: tokio::runtime::Runtime,
     running: Option<coder_host::Running>,
+    engine: Option<studio_sim::Running>,
     _relay: tokio::task::JoinHandle<()>,
     socket: PathBuf,
     root: PathBuf,
@@ -70,6 +73,11 @@ impl Ran {
             "the command failed:\n{}\n{}",
             self.stdout, self.stderr
         );
+        self.document()
+    }
+
+    /// The one JSON document the command printed, whatever its exit.
+    fn document(&self) -> Value {
         serde_json::from_str(self.stdout.trim())
             .unwrap_or_else(|error| panic!("not one JSON document ({error}):\n{}", self.stdout))
     }
@@ -84,12 +92,13 @@ fn host() -> Host {
     let temp = tempfile::tempdir().expect("a scratch directory");
     let home = temp.path().join("home");
     std::fs::create_dir_all(&home).expect("a scratch home");
-    let fixture = studio_sim::Fixture::create(&temp.path().join("fixture")).expect("a repository");
-    let checkout = std::fs::canonicalize(&fixture.checkout).expect("the checkout");
-    let store = temp.path().join("tasks");
-    let root = temp.path().join("host");
+    let scratch =
+        studio_sim::Scratch::create(&temp.path().join("s")).expect("a simulated scratch host");
+    let checkout = scratch.fixture.checkout.clone();
+    let store = scratch.store.clone();
+    let root = scratch.root.clone();
     let socket = temp.path().join("c/control.sock");
-    let workspaces = BTreeMap::from([("scratch".to_owned(), checkout.clone())]);
+    let workspaces = BTreeMap::from([(studio_sim::WORKSPACE.to_owned(), checkout.clone())]);
     let (running, relay) = runtime.block_on(async {
         let (relay, task, _) = relay::start().await;
         let access = temp.path().join("access");
@@ -108,15 +117,21 @@ fn host() -> Host {
             uid: coder_host::control::own_uid(),
         });
         config.workspaces = workspaces.clone();
-        let tasks = Arc::new(coder::task::remote::Inbox::new(store.clone(), workspaces))
-            as Arc<dyn coder_host::Tasks>;
+        // The scratch host's inbox: studio intents give each task its own
+        // worktree under the root, and nothing starts a real engine.
+        let tasks =
+            Arc::new(studio_sim::inbox(&store, &root, &workspaces)) as Arc<dyn coder_host::Tasks>;
         let running = coder_host::start(config, tasks).await.expect("the host");
         (running, task)
     });
+    let engine = studio_sim::Engine::open(&root, &store)
+        .expect("the scripted engine")
+        .spawn(ENGINE_EVERY);
     Host {
-        temp,
+        _temp: temp,
         runtime,
         running: Some(running),
+        engine: Some(engine),
         _relay: relay,
         socket,
         root,
@@ -187,6 +202,62 @@ impl Host {
         }
     }
 
+    /// The open decision of `kind` that `task` asks, once the studio shows
+    /// it: its identity and text.
+    fn decision(&self, task: &str, kind: &str) -> (String, String) {
+        let open = self.until(&["decisions"], &format!("a {kind} from {task}"), |open| {
+            find_decision(open, task, kind).is_some()
+        });
+        let found = find_decision(&open, task, kind).expect("the decision");
+        (
+            found["decision"].as_str().expect("its identity").to_owned(),
+            found["text"].as_str().unwrap_or_default().to_owned(),
+        )
+    }
+
+    /// The task's review now: its tree and its diff.
+    fn review(&self, task: &str) -> (String, String) {
+        let review = self.studio(&["review", task, "--diff"]).json();
+        let review = &review["review"];
+        (
+            review["head"]
+                .as_str()
+                .expect("the reviewed tree")
+                .to_owned(),
+            review["diff"].as_str().unwrap_or_default().to_owned(),
+        )
+    }
+
+    /// Waits until `entry`'s change waits on the merge decision at a tree
+    /// other than `not`, and returns that tree. The change must show the
+    /// same tree on two reads in a row: a turn that just ended reads as
+    /// done for the moment before the coordinator sends it to the lead's
+    /// review.
+    fn ready(&self, goal: &str, entry: &str, task_id: &str, not: Option<&str>) -> String {
+        let mut head = String::new();
+        let mut seen: Option<String> = None;
+        self.until(
+            &["tasks", goal],
+            &format!("`{entry}` ready to merge"),
+            |tasks| {
+                if !task(tasks, goal, entry).is_some_and(|task| task["status"] == "done") {
+                    seen = None;
+                    return false;
+                }
+                let now = self.review(task_id).0;
+                if not == Some(now.as_str()) {
+                    seen = None;
+                    return false;
+                }
+                let stable = seen.as_deref() == Some(now.as_str());
+                seen = Some(now.clone());
+                head = now;
+                stable
+            },
+        );
+        head
+    }
+
     /// One NIP-HOST operation on the control socket, as the test's own
     /// cleanup sends it.
     fn control(&self, operation: Operation) -> Result<(), String> {
@@ -241,36 +312,24 @@ impl Host {
         Ok(tasks.len())
     }
 
+    /// Stops the scripted engine, so no turn starts while the test cleans
+    /// up.
+    fn stop_engine(&mut self) {
+        if let Some(engine) = self.engine.take() {
+            engine.stop();
+        }
+    }
+
     fn shutdown(&mut self) {
         if let Some(running) = self.running.take() {
             self.runtime.block_on(running.shutdown());
         }
     }
-}
 
-fn git(dir: &Path, args: &[&str]) -> String {
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(dir)
-        .args([
-            "-c",
-            "user.name=seat",
-            "-c",
-            "user.email=seat@studio.invalid",
-            "-c",
-            "commit.gpgsign=false",
-        ])
-        .args(args)
-        .env("GIT_CONFIG_GLOBAL", "/dev/null")
-        .env("GIT_CONFIG_NOSYSTEM", "1")
-        .output()
-        .expect("git runs");
-    assert!(
-        output.status.success(),
-        "git {args:?}: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    String::from_utf8_lossy(&output.stdout).trim().to_owned()
+    /// The checkout's file at `path`, or empty.
+    fn checked_out(&self, path: &str) -> String {
+        std::fs::read_to_string(self.checkout.join(path)).unwrap_or_default()
+    }
 }
 
 /// The goal's task for plan entry `entry`, when the list holds it.
@@ -281,8 +340,35 @@ fn task<'a>(tasks: &'a Value, goal: &str, entry: &str) -> Option<&'a Value> {
         .find(|task| task["goal"] == goal && task["entry"] == entry)
 }
 
+/// The open decision of `kind` that task `task` asks.
+fn find_decision<'a>(open: &'a Value, task: &str, kind: &str) -> Option<&'a Value> {
+    open["decisions"]
+        .as_array()?
+        .iter()
+        .find(|decision| decision["task"] == task && decision["kind"] == kind)
+}
+
+/// The goal's task identity for plan entry `entry`, once it is released.
+fn task_id(host: &Host, goal: &str, entry: &str) -> String {
+    let tasks = host.until(&["tasks", goal], &format!("`{entry}` released"), |tasks| {
+        task(tasks, goal, entry).is_some_and(|task| task["status"] != "held")
+    });
+    task(&tasks, goal, entry)
+        .and_then(|task| task["task"].as_str())
+        .expect("the task's identity")
+        .to_owned()
+}
+
+/// Merges `task` at `head` and returns the command's JSON and exit code.
+fn merge(host: &Host, task: &str, head: &str) -> (i32, Value) {
+    let ran = host.studio(&["merge", task, "--head", head]);
+    let code = ran.code;
+    (code, ran.document())
+}
+
 fn run(host: &Host) {
-    // Seats, set locally as the owner sets them.
+    // Seats, set locally as the owner sets them: the script's lead and
+    // workers.
     for (name, role) in [("lead", "lead"), ("ada", "worker"), ("grace", "worker")] {
         let seat = host
             .studio(&[
@@ -306,66 +392,38 @@ fn run(host: &Host) {
 
     // The goal goes through the host, which names its lead's task.
     let submitted = host
-        .studio(&["goal", "submit", GOAL, "--workspace", "scratch"])
+        .studio(&[
+            "goal",
+            "submit",
+            studio_sim::GOAL,
+            "--workspace",
+            studio_sim::WORKSPACE,
+        ])
         .json();
     assert_eq!(submitted["operation"], "studio.goal.submit");
     let goal = submitted["goal_id"]
         .as_str()
         .expect("the goal's identity")
         .to_owned();
-    let lead = host.until(&["tasks", &goal], "the lead's task", |tasks| {
-        task(tasks, &goal, "lead").is_some()
-    });
-    let lead = task(&lead, &goal, "lead").expect("the lead's task").clone();
-    assert_eq!(lead["status"], "queued");
-    assert_eq!(lead["seat"], "lead");
-    let lead_task = lead["task"].as_str().expect("its identity").to_owned();
+    let lead = task_id(host, &goal, "lead");
 
-    // The lead's task ends without a plan, and the coordinator's pass
-    // opens the goal's decision. A shortened identity names the task.
-    let cancelled = host.studio(&["task", "cancel", &lead_task[..12]]).json();
-    assert_eq!(cancelled["operation"], "studio.task.cancel");
-    assert_eq!(cancelled["task"], lead_task.as_str());
-    host.until(&["tasks", &goal], "the lead's task cancelled", |tasks| {
-        task(tasks, &goal, "lead").is_some_and(|task| task["status"] == "cancelled")
-    });
-    host.studio(&["sync"]).json();
-    let open = host.until(&["decisions"], "the goal's decision", |open| {
-        open["decisions"]
-            .as_array()
-            .is_some_and(|all| all.iter().any(|decision| decision["goal"] == goal.as_str()))
-    });
-    let decision = open["decisions"]
-        .as_array()
-        .and_then(|all| {
-            all.iter()
-                .find(|decision| decision["goal"] == goal.as_str())
-        })
-        .and_then(|decision| decision["decision"].as_str())
-        .expect("the decision's identity")
-        .to_owned();
+    // A message to a seat goes through the host.
+    let sent = host
+        .studio(&["message", "@grace", studio_sim::STEER])
+        .json();
+    assert_eq!(sent["operation"], "studio.seat.message");
 
-    // The answer is a plan, which resumes the goal.
-    let plan = host.temp.path().join("plan.json");
-    std::fs::write(&plan, studio_sim::plan()).expect("the plan");
+    // The lead asks the person a question; the answer starts its next
+    // turn, which plans the goal.
+    let (question, text) = host.decision(&lead, "question");
+    assert!(text.contains("Which greeting"), "{text}");
     let answered = host
-        .studio(&[
-            "answer",
-            &decision,
-            "--file",
-            plan.to_str().expect("a path"),
-        ])
+        .studio(&["answer", &question[..12], studio_sim::ANSWER])
         .json();
     assert_eq!(answered["operation"], "studio.decision.answer");
-    let released = host.until(&["tasks", &goal], "the plan released", |tasks| {
-        ["greet", "docs"]
-            .iter()
-            .all(|entry| task(tasks, &goal, entry).is_some_and(|task| task["status"] == "queued"))
-    });
-    let greet = task(&released, &goal, "greet")
-        .and_then(|task| task["task"].as_str())
-        .expect("the greeting task")
-        .to_owned();
+    host.studio(&["sync"]).json();
+    let greet = task_id(host, &goal, "greet");
+    let docs = task_id(host, &goal, "docs");
 
     // Steering through the host: pause and resume a seat.
     let paused = host.studio(&["seat", "pause", "grace"]).json();
@@ -376,7 +434,7 @@ fn run(host: &Host) {
     // A refused intent prints the host's code and message.
     let refused = host.studio(&["seat", "pause", "nobody"]);
     assert_eq!(refused.code, 1, "{}", refused.stderr);
-    let refusal: Value = serde_json::from_str(refused.stdout.trim()).expect("a JSON refusal");
+    let refusal = refused.document();
     assert_eq!(refusal["operation"], "studio.seat.pause");
     assert!(
         refusal["code"]
@@ -390,85 +448,87 @@ fn run(host: &Host) {
         refused.stderr
     );
 
-    // A seat's change to review: a worktree with one commit, recorded as a
-    // local run records it.
-    let worktree = host.temp.path().join("worktrees/greet");
-    std::fs::create_dir_all(worktree.parent().expect("a parent")).expect("the worktrees");
-    git(
-        &host.checkout,
-        &[
-            "worktree",
-            "add",
-            "-q",
-            "--detach",
-            worktree.to_str().expect("a path"),
-            "HEAD",
-        ],
-    );
-    let base = git(&worktree, &["rev-parse", "HEAD"]);
-    std::fs::write(worktree.join("greeting.txt"), "Hello, studio\n").expect("a change");
-    git(
-        &worktree,
-        &["commit", "-q", "-am", "Greet with Hello, studio"],
-    );
-    let record = serde_json::json!({
-        "schema": coder::task::local::RECORD_SCHEMA,
-        "task": greet,
-        "project": "scratch",
-        "checkout": host.checkout.to_string_lossy(),
-        "worktree": worktree.to_string_lossy(),
-        "base": base,
-        "turns": [],
-    });
-    let records = host.store.join("local");
-    std::fs::create_dir_all(&records).expect("the records");
-    std::fs::write(
-        records.join(format!("{greet}.json")),
-        serde_json::to_vec(&record).expect("a record"),
-    )
-    .expect("the record");
-
-    // The review, with its diff.
-    let review = host.studio(&["review", &greet, "--diff"]).json();
-    let review = &review["review"];
-    assert_eq!(review["base"], base.as_str());
-    assert!(
-        review["diff"]
-            .as_str()
-            .is_some_and(|diff| diff.contains("Hello, studio")),
-        "{review}"
-    );
-    let head = review["head"]
-        .as_str()
-        .expect("the reviewed tree")
-        .to_owned();
-
-    // A merge bound to a revision the change moved past is refused before
-    // it is sent.
+    // The greeting, reviewed by the lead, lands in the checkout.
+    let head = host.ready(&goal, "greet", &greet, None);
+    let (_, diff) = host.review(&greet);
+    assert!(diff.contains("Hello, studio"), "{diff}");
     let moved = host.studio(&["merge", &greet, "--head", &"0".repeat(40)]);
     assert_eq!(moved.code, 1, "{}", moved.stderr);
-    let moved: Value = serde_json::from_str(moved.stdout.trim()).expect("a JSON refusal");
-    assert_eq!(moved["code"], "stale");
+    assert_eq!(moved.document()["code"], "stale");
+    let (code, landed) = merge(host, &greet, &head);
+    assert_eq!(code, 0, "{landed}");
+    assert_eq!(landed["merged"]["publication"]["state"], "published");
+    assert_eq!(host.checked_out("greeting.txt"), "Hello, studio\n");
 
-    // The merge at the reviewed revisions is refused, with the host's
-    // reason, while the task's turn has not run: the host merges only a
-    // finished change. A scripted engine that ends turns on a scratch host
-    // (#10572) carries this run through the merge itself.
-    let unfinished = host.studio(&["merge", &greet, "--head", &head]);
-    assert_eq!(unfinished.code, 1, "{}", unfinished.stderr);
-    let unfinished: Value = serde_json::from_str(unfinished.stdout.trim()).expect("a JSON refusal");
-    assert_eq!(unfinished["code"], "conflict");
+    // The person asks for a change to the documentation; a merge at the
+    // earlier review is then refused as stale.
+    let first = host.ready(&goal, "docs", &docs, None);
+    let sent = host
+        .studio(&[
+            "request-changes",
+            &docs,
+            studio_sim::CHANGES,
+            "--head",
+            &first,
+        ])
+        .json();
+    assert_eq!(sent["merged"]["verdict"], "request_changes");
+    let changed = host.ready(&goal, "docs", &docs, Some(&first));
+    let (stale, refusal) = merge(host, &docs, &first);
+    assert_eq!(stale, 1);
+    assert_eq!(refusal["code"], "stale", "{refusal}");
+
+    // Both workers changed the README's status line, so this merge
+    // conflicts: nothing lands, and the change goes back to grace, who
+    // merges the branch in and resolves it.
+    let (code, conflicted) = merge(host, &docs, &changed);
+    assert_eq!(code, 1, "{conflicted}");
+    let publication = &conflicted["merged"]["publication"];
+    assert_eq!(publication["state"], "refused");
     assert!(
-        unfinished["error"]
+        publication["note"]
             .as_str()
-            .is_some_and(|reason| reason.contains("has not run")),
-        "{unfinished}"
+            .is_some_and(|note| note.contains("conflict") && note.contains("README.md")),
+        "{publication}"
     );
-    assert_ne!(
-        std::fs::read_to_string(host.checkout.join("greeting.txt")).expect("the greeting"),
-        "Hello, studio\n",
-        "nothing landed in the checkout"
+    assert!(!host.checked_out("README.md").contains("documented"));
+    let resolved = host.ready(&goal, "docs", &docs, Some(&changed));
+    let (_, diff) = host.review(&docs);
+    assert!(!diff.contains("<<<<<<<"), "{diff}");
+    let (code, landed) = merge(host, &docs, &resolved);
+    assert_eq!(code, 0, "{landed}");
+    assert_eq!(landed["merged"]["publication"]["state"], "published");
+    assert!(
+        host.checked_out("README.md")
+            .contains("Status: greets people, documented")
     );
+    assert!(
+        host.checked_out("docs/greeting.md")
+            .contains("greeting.txt")
+    );
+
+    // The release waits on both, then asks the person to approve its
+    // step; once allowed, its changelog lands too.
+    let release = task_id(host, &goal, "release");
+    let (approval, text) = host.decision(&release, "approval");
+    assert!(text.contains("CHANGELOG.md"), "{text}");
+    let allowed = host
+        .studio(&["answer", &approval, studio_sim::ALLOW])
+        .json();
+    assert_eq!(allowed["kind"], "approval");
+    let head = host.ready(&goal, "release", &release, None);
+    let (code, landed) = merge(host, &release, &head);
+    assert_eq!(code, 0, "{landed}");
+    assert!(host.checked_out("CHANGELOG.md").contains("Hello, studio"));
+
+    // The goal is done.
+    host.until(&["status"], "the goal done", |status| {
+        status["view"]["goals"].as_array().is_some_and(|goals| {
+            goals
+                .iter()
+                .any(|item| item["goal"] == goal.as_str() && item["status"] == "done")
+        })
+    });
 
     // The live view: one snapshot line under --json.
     let watched = host.studio(&["watch", "--limit", "1"]);
@@ -485,16 +545,17 @@ fn run(host: &Host) {
 }
 
 #[test]
-fn a_goal_is_planned_and_reviewed_and_an_unfinished_merge_refused_from_the_command_line() {
+fn the_simulated_team_takes_a_goal_through_question_approval_conflict_and_merge() {
     let mut host = host();
     let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run(&host)));
+    host.stop_engine();
     let archived = host.archive();
     host.shutdown();
     if let Err(panic) = outcome {
         std::panic::resume_unwind(panic);
     }
     assert!(
-        archived.expect("every task the test created is archived") >= 3,
-        "the lead and two plan tasks were created"
+        archived.expect("every task the test created is archived") >= 4,
+        "the lead and three plan tasks were created"
     );
 }

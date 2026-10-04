@@ -130,7 +130,7 @@ exist.
 | Devin, OpenCode, Grok Build seats | Tested | Routes accepted by `autostart::parse_route`; their ACP permission requests are answered by policy, not raised as studio approvals |
 | Claude Agent SDK seat | Missing | `crates/claude_agent_sdk` has no dependents (`grep` over every `Cargo.toml`); its README still tells users to export `ANTHROPIC_API_KEY` |
 | `openagents studio up --repo PATH` and `down` | Tested | `studio_up.rs` tests; not run here (no current binary, and it changes the host's policy). A policy it creates uses `boundary` access, so Claude seats then run the loop, not a Claude Code session |
-| `openagents studio up --sim`, `verse --studio-sim` | Partial | A recorded replay inside Verse (`zones/everglade/studio/fixture.rs`); the fixture source holds no rights and refuses every intent as `unsupported`; no host, so the command line cannot see it |
+| `openagents studio up --sim`, `verse --studio-sim` | Tested | #10572: `up --sim` starts a scratch host (`coder host serve --studio-sim`) whose scripted engine ends the studio's turns through `owner::scripted`; `crates/openagents-cli/tests/studio_host.rs` drives its question, approval, conflict, and merges through `openagents studio`. `verse --studio-sim` is still the recorded replay |
 | Everglade live view, panels, intents (desktop) | Tested | `crates/verse/tests/studio_host.rs`; the owner's running `verse --everglade` has the code |
 | Phone studio panels | Partial | `crates/coder-mobile/src/studio_panel.rs` observes only; "Everglade does not open" a host connection with `operate` or `review` |
 | Seat configuration from Verse or NIP-HOST | Missing | No `studio.seat.set` operation; seats change only through the local `openagents studio seat` commands |

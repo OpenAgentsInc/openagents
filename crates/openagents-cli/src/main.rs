@@ -418,6 +418,8 @@ async fn host(arguments: &[String]) -> u8 {
     coder_host::control::set_local_runner(coder::task::local::runner_here);
     coder_host::control::set_local_engines(coder::task::local::engines_here);
     coder_host::control::set_local_result(coder::task::local::result_in);
+    // `serve --studio-sim`: a scratch host's simulated studio (#10572).
+    coder_host::cli::set_studio_sim(coder::task::studio_sim::open_host);
     #[cfg(unix)]
     coder_host::background::set_facts(coder::task::background_facts);
     #[cfg(unix)]

@@ -47,6 +47,11 @@ pub const USAGE: &str = "usage: openagents host COMMAND [OPTIONS]
         [--no-telemetry]
         [--iroh [--iroh-relay URL | --no-iroh-relay] [--iroh-bind ADDR]...]
         [--control | --control-socket PATH] [--keychain | --keys DIR] [--label NAME]
+        [--studio-sim]
+serve --studio-sim serves a scratch host made for the Agent Studio's
+simulated team (`openagents studio up --sim`): its scripted engine ends the
+studio's turns with no model. It needs --state, --root, and --tasks outside
+~/.openagents and file keys, never the keychain.
 The desktop app runs `serve --keychain --iroh --control`: the owner, host,
 and iroh keys live in the keychain, the host establishes its own owner on
 first start, and `openagents connect` and the app reach it through the
@@ -63,6 +68,53 @@ const DEFAULT_GRANT_SECS: u64 = 7 * 24 * 60 * 60;
 /// the host admits.
 pub type OpenTasks =
     dyn FnOnce(&Path, &BTreeMap<String, PathBuf>) -> std::result::Result<Arc<dyn Tasks>, String>;
+
+/// Opens a scratch host's simulated studio (#10572) for `serve
+/// --studio-sim`: the task store, the host root, and the workspace labels
+/// the host admits. The program that runs the host sets it
+/// ([`set_studio_sim`]); this crate has no studio of its own.
+pub type OpenStudioSim =
+    fn(&Path, &Path, &BTreeMap<String, PathBuf>) -> std::result::Result<Arc<dyn Tasks>, String>;
+
+static STUDIO_SIM: std::sync::OnceLock<OpenStudioSim> = std::sync::OnceLock::new();
+
+/// Lets `serve --studio-sim` open a scratch host's simulated studio with
+/// `open`. Without it, the flag is refused.
+pub fn set_studio_sim(open: OpenStudioSim) {
+    let _ = STUDIO_SIM.set(open);
+}
+
+/// Why `serve --studio-sim` refuses these directories, or `None`: the
+/// access store, the host root, and the task store must each be given
+/// and lie outside `~/.openagents`, so a scratch host never serves this
+/// computer's own state.
+fn studio_sim_refusal(
+    state: &Path,
+    root: &Path,
+    tasks: Option<&Path>,
+    keychain: bool,
+) -> Option<String> {
+    if keychain {
+        return Some("--studio-sim keeps its keys in files; use --keys DIR, not --keychain".into());
+    }
+    let Some(tasks) = tasks else {
+        return Some("--studio-sim needs --tasks DIR, the scratch host's task store".into());
+    };
+    let own = std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".openagents"));
+    let canonical = |path: &Path| path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    for (name, path) in [("--state", state), ("--root", root), ("--tasks", tasks)] {
+        if own
+            .as_deref()
+            .is_some_and(|own| canonical(path).starts_with(canonical(own)))
+        {
+            return Some(format!(
+                "--studio-sim serves only a scratch host; {name} {} is this computer's own state",
+                path.display()
+            ));
+        }
+    }
+    None
+}
 
 /// Run `coder host ARGS`. Returns the process exit code.
 pub async fn run(args: &[String], open_tasks: Box<OpenTasks>) -> u8 {
@@ -159,7 +211,7 @@ struct Options {
     flags: Vec<String>,
 }
 
-const FLAGS: [&str; 11] = [
+const FLAGS: [&str; 12] = [
     "--json",
     "--loopback",
     "--loopback-test",
@@ -171,6 +223,7 @@ const FLAGS: [&str; 11] = [
     "--no-iroh-relay",
     "--control",
     "--keychain",
+    "--studio-sim",
 ];
 
 /// The Nostr relay a host serves when none is recorded or given and it
@@ -636,6 +689,10 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
     // The listener is loopback by default; this flag states it explicitly,
     // as an SSH launcher does.
     let _ = options.flag("--loopback");
+    // A scratch host's simulated studio (#10572), checked once `--tasks`
+    // is read.
+    let studio_sim = options.flag("--studio-sim");
+    let keychain = options.flags.iter().any(|flag| flag == "--keychain");
     // An SSH launcher starts a host on a machine it set up in the same
     // command: `--owner` establishes the owner on first start, and is a
     // no-op for the same owner afterwards. Another owner is refused.
@@ -726,8 +783,14 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
             None => root.join("runtime"),
         })
     };
-    let tasks_dir = match options.one("--tasks")? {
-        Some(path) => PathBuf::from(path),
+    let tasks_given = options.one("--tasks")?.map(PathBuf::from);
+    if studio_sim
+        && let Some(why) = studio_sim_refusal(&state, root, tasks_given.as_deref(), keychain)
+    {
+        return Err(Error::Config(why));
+    }
+    let tasks_dir = match tasks_given {
+        Some(path) => path,
         None => home(".openagents/tasks")?,
     };
     options.finish()?;
@@ -742,7 +805,17 @@ async fn serve(common: &Common, options: &mut Options, open_tasks: Box<OpenTasks
         }),
         _ => None,
     };
-    let tasks = open_tasks(&tasks_dir, &workspaces).map_err(Error::Config)?;
+    let tasks = if studio_sim {
+        let open = STUDIO_SIM.get().ok_or_else(|| {
+            Error::Config(
+                "this program serves no simulated studio; run `coder host serve --studio-sim`"
+                    .into(),
+            )
+        })?;
+        open(&tasks_dir, root, &workspaces).map_err(Error::Config)?
+    } else {
+        open_tasks(&tasks_dir, &workspaces).map_err(Error::Config)?
+    };
     // The last step before serving, so a refused start uses no generation.
     let generation = generation::resolve(&generation::counter_root(root), generation)?;
     let mut config = Config::new(state.clone(), relays.clone(), generation);
@@ -1626,6 +1699,28 @@ mod tests {
             assert!(options.flag(flag), "{flag}");
         }
         assert_eq!(options.all("--relay"), ["ws://127.0.0.1:9/"]);
+        assert!(options.finish().is_ok());
+    }
+
+    #[test]
+    fn studio_sim_needs_its_own_scratch_directories_and_file_keys() {
+        let dir = tempfile::tempdir().unwrap();
+        let (state, root, tasks) = (
+            dir.path().join("coder-access"),
+            dir.path().join("host"),
+            dir.path().join("tasks"),
+        );
+        assert_eq!(studio_sim_refusal(&state, &root, Some(&tasks), false), None);
+        assert!(
+            studio_sim_refusal(&state, &root, None, false)
+                .is_some_and(|why| why.contains("--tasks"))
+        );
+        assert!(
+            studio_sim_refusal(&state, &root, Some(&tasks), true)
+                .is_some_and(|why| why.contains("--keychain"))
+        );
+        let mut options = Options::parse(&["--studio-sim".to_owned()]).unwrap();
+        assert!(options.flag("--studio-sim"));
         assert!(options.finish().is_ok());
     }
 

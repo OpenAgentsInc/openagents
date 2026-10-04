@@ -26,7 +26,7 @@ What runs today, per the [Agent Studio audit](agent-studio-audit.md):
   Those steps need Verse on the desktop until #10566 adds them.
 - A merge can land a task that hasn't finished, and a refusal reaches the
   client as a bare code (#10567).
-- The simulated team is a read-only replay inside Verse, not a host route.
+- The simulated team runs on a scratch host (`openagents studio up --sim`).
   See [Simulated team](#simulated-team).
 
 ## Reference: AgentCraft
@@ -456,15 +456,21 @@ instructions.
 
 ## Simulated team
 
-Status: a read-only replay inside Verse. `verse --studio-sim` and
-`openagents studio up --sim` play a recorded script
+Status: implemented on a scratch host (#10572). `openagents studio up --sim`
+makes a scratch host in a new directory under the system's temporary
+directory (access store, root, task store, keys, control socket, and the
+scratch repository, with a `HOME` of its own), starts
+`coder host serve --studio-sim` there, and opens Verse on its control
+socket. The host's scripted engine
+([`studio_sim.rs`](../../crates/coder/src/task/studio_sim.rs)) ends each
+studio task's turn from the script through the task owner's scripted turn
+(`owner::scripted`), recorded like any run, so Everglade and
+`openagents studio --control-socket SOCKET` answer, steer, review, and merge
+through the host's own paths with no model spend. `openagents studio down`
+stops the host and removes the directory. `verse --studio-sim` still plays
+the recorded replay
 ([`zones/everglade/studio/fixture.rs`](../../crates/verse/src/zones/everglade/studio/fixture.rs))
-with no host behind it. The fixture holds no rights and refuses every intent
-as `unsupported`, so a person can watch the team but can't answer, steer, or
-merge, and the command line can't see it. It drives the `everglade_capture`
-example's `studio-` views and demos with no model spend. #10572 replaces it
-with the design below: a scratch host whose studio is the scripted team, so
-Verse and `openagents studio` both act on it.
+that drives the `everglade_capture` example's `studio-` views.
 
 The design: a `sim` route in the host runs a scripted team against a scratch
 repository: real worktrees, real commits, real reviews, a question, an
@@ -479,7 +485,12 @@ drives every studio feature with no model spend, and it is the fixture for:
   Verse equivalent of AgentCraft's screenshot gallery.
 
 The simulated route is a host test fixture, never a route an auto-start policy
-or a person can select on a real repository.
+or a person can select on a real repository. The scripted engine runs only
+with `serve --studio-sim`, which refuses an access store, root, or task store
+under `~/.openagents` and the keychain; only on a root a scratch host marked;
+only on a task store that admits scripted turns, which this computer's own
+store never does; and never while the root's auto-start policy is on. A real
+engine's admission is unchanged.
 
 ## Delivery
 

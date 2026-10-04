@@ -32,6 +32,31 @@ pub const OWNER_ENDED_TEXT: &str = "Coder's process ended unexpectedly";
 /// written by a newer program, with a field the engine does not know or
 /// without one it still requires (#10113).
 pub const GRANT_SHAPE: &str = "the execution grant has an invalid shape";
+/// The adapter a scripted turn's admission names (#10572): a turn whose
+/// reply, ending, and worktree change come from a script the scratch host
+/// holds, not from a model. Only [`scripted`] records one, and only in a
+/// task store [`allow_scripted`] marked.
+pub const SCRIPTED_ADAPTER: &str = "scripted";
+/// The file in a task store that admits scripted turns there. A scripted
+/// turn's grant names it as its program.
+pub const SCRIPTED_MARKER: &str = "scripted-engine.json";
+/// The marker's schema.
+pub const SCRIPTED_SCHEMA: &str = "openagents.coder.scripted-engine.v1";
+/// The network a scripted turn's admission records: it runs no process,
+/// so it reaches none.
+pub const SCRIPTED_NETWORK: &str = "none_scripted";
+/// The read scope a scripted turn's admission records: the script reads
+/// and writes only the task's workspace.
+pub const SCRIPTED_READ_SCOPE: &str = "workspace_scripted";
+/// A scripted turn reads its instructions once, at admission.
+pub const SCRIPTED_STEERING: coder_delegate::steering::Steering =
+    coder_delegate::steering::Steering {
+        adapter: SCRIPTED_ADAPTER,
+        native: coder_delegate::steering::Native::TurnBoundary,
+        emulation: None,
+        acknowledgment: coder_delegate::steering::Acknowledgment::NextTurnStart,
+        limitations: &["A scripted turn runs no engine; its reply comes from a script."],
+    };
 /// The most owner events one task retains. No event is silently pruned.
 pub(super) const MAX_HOST_EVENTS: usize = 8192;
 
@@ -449,52 +474,12 @@ pub(super) fn transition(record: &Record, tasks: &mut BTreeMap<String, Task>) ->
                 || admission.grant.task_id != task.task_id
                 || admission.grant.intent_digest != task.intent_digest
                 || admission.grant.expected_revision != task.revision
-                || task.intent.configuration.adapter != admission.adapter
-                || match (
-                    &admission.grant.adapter_configuration,
-                    admission.adapter.as_str(),
-                ) {
-                    (None, "bounded-command") => task.intent.configuration.model.is_some(),
-                    (Some(config), super::adapter::NAME) => !task
-                        .intent
-                        .configuration
-                        .model
-                        .as_deref()
-                        .is_some_and(|model| config.admits_model(model)),
-                    _ => true,
-                }
-                || if admission
-                    .grant
-                    .adapter_configuration
-                    .as_ref()
-                    .is_some_and(|config| config.container.is_some())
-                {
-                    admission.network != "container_network_none"
-                        || admission.read_scope != "workspace_host_reads_and_pinned_container_image"
-                } else if admission
-                    .grant
-                    .adapter_configuration
-                    .as_ref()
-                    .is_some_and(|config| config.access == super::adapter::Access::Full)
-                {
-                    // The owner's full access: the host user's reads and
-                    // network, and nothing narrower claimed.
-                    admission.network != "host_network" || admission.read_scope != "host_user"
-                } else if admission
-                    .grant
-                    .adapter_configuration
-                    .as_ref()
-                    .is_some_and(|config| config.access == super::adapter::Access::Toolchains)
-                {
-                    // This computer's tools: the network, and reads of the
-                    // workspace, the system, and the derived toolchains.
-                    admission.network != "host_network"
-                        || admission.read_scope != "workspace_system_and_toolchains"
+                // A scripted turn (#10572) is admitted only in its own
+                // shape; every other admission is checked exactly as before.
+                || if admission.adapter == SCRIPTED_ADAPTER {
+                    !scripted_admission(task, admission)
                 } else {
-                    !matches!(
-                        admission.network.as_str(),
-                        "external_ip_denied_localhost_allowed" | "network_namespace_isolated"
-                    ) || admission.read_scope != "workspace_and_system"
+                    real_admission_refused(task, admission)
                 }
                 || admission.authority != "local_os_user"
                 || !admission
@@ -652,6 +637,76 @@ pub(super) fn transition(record: &Record, tasks: &mut BTreeMap<String, Task>) ->
     }
     task.revision += 1;
     Ok(())
+}
+
+/// Whether `admission` is a scripted turn's, in the one shape [`scripted`]
+/// records: a studio-shaped task (Coder's adapter and a model), a grant
+/// with no engine configuration, requirements, or arguments whose program
+/// is the store's [`SCRIPTED_MARKER`], and the scripted network and read
+/// scope. Nothing here admits a real engine.
+fn scripted_admission(task: &Task, admission: &Admission) -> bool {
+    admission.adapter == SCRIPTED_ADAPTER
+        && admission.grant.adapter_configuration.is_none()
+        && admission.grant.requirements.is_none()
+        && admission.grant.arguments.is_empty()
+        && admission.grant.program.file_name() == Some(std::ffi::OsStr::new(SCRIPTED_MARKER))
+        && task.intent.configuration.adapter == super::adapter::NAME
+        && task.intent.configuration.model.is_some()
+        && admission.network == SCRIPTED_NETWORK
+        && admission.read_scope == SCRIPTED_READ_SCOPE
+}
+
+/// Whether an admission other than a scripted turn's is refused: the
+/// task's adapter, the grant's configuration and model, and the network
+/// and read scope its access claims.
+fn real_admission_refused(task: &Task, admission: &Admission) -> bool {
+    task.intent.configuration.adapter != admission.adapter
+        || match (
+            &admission.grant.adapter_configuration,
+            admission.adapter.as_str(),
+        ) {
+            (None, "bounded-command") => task.intent.configuration.model.is_some(),
+            (Some(config), super::adapter::NAME) => !task
+                .intent
+                .configuration
+                .model
+                .as_deref()
+                .is_some_and(|model| config.admits_model(model)),
+            _ => true,
+        }
+        || if admission
+            .grant
+            .adapter_configuration
+            .as_ref()
+            .is_some_and(|config| config.container.is_some())
+        {
+            admission.network != "container_network_none"
+                || admission.read_scope != "workspace_host_reads_and_pinned_container_image"
+        } else if admission
+            .grant
+            .adapter_configuration
+            .as_ref()
+            .is_some_and(|config| config.access == super::adapter::Access::Full)
+        {
+            // The owner's full access: the host user's reads and
+            // network, and nothing narrower claimed.
+            admission.network != "host_network" || admission.read_scope != "host_user"
+        } else if admission
+            .grant
+            .adapter_configuration
+            .as_ref()
+            .is_some_and(|config| config.access == super::adapter::Access::Toolchains)
+        {
+            // This computer's tools: the network, and reads of the
+            // workspace, the system, and the derived toolchains.
+            admission.network != "host_network"
+                || admission.read_scope != "workspace_system_and_toolchains"
+        } else {
+            !matches!(
+                admission.network.as_str(),
+                "external_ip_denied_localhost_allowed" | "network_namespace_isolated"
+            ) || admission.read_scope != "workspace_and_system"
+        }
 }
 
 impl Store {
@@ -1248,6 +1303,250 @@ pub async fn execute(directory: &Path, bytes: &[u8]) -> Result<Task, Error> {
     Ok(task)
 }
 
+/// What a scripted turn did, as its script says (#10572).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Scripted {
+    /// The result ending: `model_finished`, or the ending of a question
+    /// or an approval ([`super::interaction`]).
+    pub ending: String,
+    /// The turn's reply, recorded as the agent's last message.
+    pub reply: String,
+}
+
+/// The marker [`allow_scripted`] writes.
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct ScriptedMarker {
+    schema: String,
+    /// Who admitted scripted turns here, in a few words.
+    reason: String,
+}
+
+/// Whether `directory` is this computer's own task store, or anything
+/// under `~/.openagents`: state a scripted turn never touches.
+fn own_state(directory: &Path) -> bool {
+    let canonical = |path: &Path| path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    let directory = canonical(directory);
+    if directory == canonical(&super::local::default_store()) {
+        return true;
+    }
+    std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .is_some_and(|home| directory.starts_with(canonical(&home.join(".openagents"))))
+}
+
+/// Admit scripted turns ([`scripted`]) in the task store at `directory`,
+/// creating it when absent (#10572): a scratch host's store, for the
+/// Agent Studio's simulated team and the tests that drive a studio to its
+/// merge. `reason` says who asked. Nothing else ever admits them.
+///
+/// # Errors
+/// [`Error::UnsafePath`] for this computer's own task store or anything
+/// under `~/.openagents`; store and write failures.
+pub fn allow_scripted(directory: &Path, reason: &str) -> Result<(), Error> {
+    if own_state(directory) {
+        return Err(Error::UnsafePath);
+    }
+    drop(Store::open(directory)?);
+    if own_state(directory) {
+        return Err(Error::UnsafePath);
+    }
+    let marker = ScriptedMarker {
+        schema: SCRIPTED_SCHEMA.into(),
+        reason: reason.into(),
+    };
+    let bytes = serde_json::to_vec_pretty(&marker)
+        .map_err(|_| Error::Corrupt("the scripted engine's marker could not be encoded"))?;
+    std::fs::write(directory.join(SCRIPTED_MARKER), bytes)?;
+    Ok(())
+}
+
+/// Whether the task store at `directory` admits scripted turns: it holds
+/// the marker [`allow_scripted`] wrote, and it is not this computer's own.
+#[must_use]
+pub fn scripted_allowed(directory: &Path) -> bool {
+    !own_state(directory)
+        && std::fs::read(directory.join(SCRIPTED_MARKER))
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<ScriptedMarker>(&bytes).ok())
+            .is_some_and(|marker| marker.schema == SCRIPTED_SCHEMA)
+}
+
+/// End the queued turn of task `task_id` in the task store at `directory`
+/// with a scripted engine (#10572), recorded as the owner records any run:
+/// the admission, the effect intent, the script's effect, and the result,
+/// with an ATIF trace whose last agent message is the script's reply. The
+/// script gets the task and its workspace (a studio task's worktree),
+/// may change and commit files there, and returns how the turn ended and
+/// its reply; an `Err` ends the turn failed with the reason in its trace.
+///
+/// No engine, model, or process runs, and nothing is spent. The store must
+/// admit scripted turns ([`allow_scripted`]), and the task must be
+/// studio-shaped (Coder's adapter, a model) and queued. A real engine's
+/// admission is unchanged: only an admission naming [`SCRIPTED_ADAPTER`]
+/// in exactly this shape takes this path.
+///
+/// # Errors
+/// The store does not admit scripted turns, the task is not queued, its
+/// workspace overlaps the store, or the store refuses a record.
+pub fn scripted(
+    directory: &Path,
+    task_id: &str,
+    script: impl FnOnce(&Task, &Path) -> Result<Scripted, String>,
+) -> Result<Task, Error> {
+    if !scripted_allowed(directory) {
+        return Err(Error::InvalidCommand(
+            "scripted turns run only in a task store a scratch host admitted them in",
+        ));
+    }
+    let (owner, task) = {
+        let store = Store::open_for_owner(directory)?;
+        let owner = Owner::acquire_waiting(&store, task_id)?;
+        let task = store.show(task_id)?;
+        if task.run.is_some() || task.status != Status::Queued {
+            return Err(Error::InvalidTransition);
+        }
+        (owner, task)
+    };
+    let workspace = Path::new(&task.intent.workspace.path).canonicalize()?;
+    if owner.dir.starts_with(&workspace) || workspace.starts_with(&owner.dir) {
+        return Err(Error::UnsafePath);
+    }
+    let program = owner.dir.join(SCRIPTED_MARKER).canonicalize()?;
+    let source_revision = super::local::git_out(&workspace, &["rev-parse", "HEAD"])
+        .map(|text| text.trim().to_owned())
+        .unwrap_or_default();
+    let before = Snapshot::observe(&workspace);
+    if !before.is_complete() {
+        return Err(refused("the source snapshot is incomplete"));
+    }
+    let context = checks::Context::capture(&task, &workspace, None)?;
+    let grant = Grant {
+        schema: GRANT_SCHEMA.into(),
+        task_id: task.task_id.clone(),
+        intent_digest: task.intent_digest.clone(),
+        expected_revision: task.revision,
+        expected_source_snapshot: None,
+        program: program.clone(),
+        arguments: Vec::new(),
+        write_workspace: true,
+        wall_seconds: 60,
+        stream_bytes: 64 * 1024,
+        memory_bytes: 64 * 1024 * 1024,
+        requirements: None,
+        adapter_configuration: None,
+    };
+    let bytes = serde_json::to_vec_pretty(&grant)
+        .map_err(|_| Error::InvalidCommand("the scripted grant could not be encoded"))?;
+    Grant::parse(&bytes)?;
+    let admission = Admission {
+        grant,
+        grant_digest: digest_bytes(&bytes),
+        grant_request: String::from_utf8(bytes).map_err(refused)?,
+        workspace: workspace.clone(),
+        source_revision,
+        source_snapshot: before.digest(),
+        program_digest: digest_bytes(&std::fs::read(&program)?),
+        adapter: SCRIPTED_ADAPTER.into(),
+        network: SCRIPTED_NETWORK.into(),
+        read_scope: SCRIPTED_READ_SCOPE.into(),
+        authority: "local_os_user".into(),
+        trace_file: task.trace_file(task.turn()),
+        context,
+    };
+    owner.record(Event::Admitted {
+        admission: Box::new(admission.clone()),
+    })?;
+    let trace_path = owner.dir.join(&admission.trace_file);
+    let session = Session::opening(
+        &format!("{}-{}", task.task_id, task.turn()),
+        SCRIPTED_ADAPTER,
+        SCRIPTED_ADAPTER,
+        &workspace.display().to_string(),
+        env!("CARGO_PKG_VERSION"),
+    );
+    let mut trace = Log::create_at(&trace_path, &session)?;
+    trace.append(&Step::said(Source::User, task.effective_prompt()))?;
+    for step in super::consumed_steers(&task, &SCRIPTED_STEERING) {
+        trace.append(&step)?;
+    }
+    trace.append(
+        &Step::said(
+            Source::System,
+            "A scripted turn admitted by the scratch host; no engine runs.",
+        )
+        .noting("admission", json!(admission)),
+    )?;
+    let started = Instant::now();
+    let state = Store::open_for_owner(&owner.dir)?.show(&task.task_id)?;
+    // A cancellation accepted before the script ran permits no effect.
+    let (ending, exit_code, stop_requested) = if state.status == Status::CancelRequested {
+        ("cancelled_before_dispatch".to_owned(), None, true)
+    } else {
+        let effect_id = effect_id_for(&task);
+        owner.record(Event::EffectIntent {
+            effect_id: effect_id.clone(),
+        })?;
+        trace.append(
+            &Step::said(
+                Source::System,
+                "Effect intent persisted before the script ran.",
+            )
+            .noting("effect_id", json!(effect_id)),
+        )?;
+        match script(&task, &workspace) {
+            Ok(done) => {
+                trace.append(&Step::said(Source::Agent, &done.reply))?;
+                (done.ending, Some(0), false)
+            }
+            Err(why) => {
+                trace.append(&Step::said(
+                    Source::System,
+                    &format!("The script failed: {why}"),
+                ))?;
+                ("scripted_failed".to_owned(), Some(1), false)
+            }
+        }
+    };
+    let mut result = ResultRecord {
+        ending,
+        exit_code,
+        stop_requested,
+        group_clear: true,
+        elapsed_ms: started.elapsed().as_millis().try_into().unwrap_or(u64::MAX),
+        trace_digest: String::new(),
+        candidate_snapshot: None,
+        artifact_file: None,
+        artifact_digest: None,
+        output_incomplete: false,
+        cost_status: String::new(),
+        cost_microusd: None,
+        engine_microusd: None,
+        jev_microusd: None,
+        payer: None,
+        payer_keys: Vec::new(),
+    };
+    // No model was called: a known zero.
+    result.priced(Cost::ZERO);
+    let after = Snapshot::observe(&workspace);
+    if after.is_complete() {
+        result.candidate_snapshot = Some(after.digest());
+    }
+    let (artifact_file, artifact_digest) = artifact::retain(&owner.dir, &before, &after)?;
+    result.artifact_file = Some(artifact_file);
+    result.artifact_digest = Some(artifact_digest);
+    trace.append(
+        &Step::said(
+            Source::System,
+            "The scripted turn ended; independent checks have not run.",
+        )
+        .noting("result", json!(result)),
+    )?;
+    trace.finish(atif::log::ENDED)?;
+    result.trace_digest = digest_bytes(&std::fs::read(&trace_path)?);
+    owner.record(Event::Result { result })
+}
+
 fn record_delivery(trace: &mut Log, delivery: &supervise::Delivery) -> Result<(), Error> {
     if !delivery.is_empty() {
         trace.append(
@@ -1292,3 +1591,6 @@ mod route_tests;
 // `chat send` following a task whose owner process died (#10248).
 #[cfg(all(test, unix))]
 mod follow_tests;
+// Scripted turns on a scratch host's store (#10572).
+#[cfg(all(test, unix))]
+mod scripted_tests;
