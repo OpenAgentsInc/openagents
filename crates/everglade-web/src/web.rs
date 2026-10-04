@@ -68,6 +68,58 @@ impl log::Log for Console {
     fn flush(&self) {}
 }
 
+/// A renderer drawing into `canvas` through `backends`: WebGPU when the
+/// browser offers an adapter and `backends` admits it, otherwise WebGL2.
+async fn open(
+    canvas: &HtmlCanvasElement,
+    backends: wgpu::Backends,
+    runtime: &WorldRuntime,
+    atlas: &Atlas,
+    width: u32,
+    height: u32,
+) -> Result<Renderer, String> {
+    // WebGL2 creates its canvas surface through the instance's display
+    // handle; WebGPU ignores it.
+    let mut descriptor = wgpu::InstanceDescriptor::new_with_display_handle(Box::new(WebDisplay));
+    descriptor.backends = backends;
+    let instance = wgpu::util::new_instance_with_webgpu_detection(descriptor).await;
+    let surface = instance
+        .create_surface(wgpu::SurfaceTarget::Canvas(canvas.clone()))
+        .map_err(|e| format!("cannot draw on the canvas: {e}"))?;
+    Renderer::from_surface_async(
+        instance,
+        surface,
+        width,
+        height,
+        &runtime.world.mesh,
+        atlas,
+        RenderOptions {
+            max_extent: MAX_SIDE,
+            ..RenderOptions::default()
+        },
+    )
+    .await
+}
+
+/// The browser's display, for wgpu's WebGL2 backend.
+#[derive(Debug)]
+struct WebDisplay;
+
+impl raw_window_handle::HasDisplayHandle for WebDisplay {
+    fn display_handle(
+        &self,
+    ) -> Result<raw_window_handle::DisplayHandle<'_>, raw_window_handle::HandleError> {
+        Ok(raw_window_handle::DisplayHandle::web())
+    }
+}
+
+/// The first line of a possibly long error, such as a shader compiler's,
+/// bounded for the page's status line.
+fn first_line(error: &str) -> String {
+    let line = error.lines().next().unwrap_or(error);
+    line.chars().take(240).collect()
+}
+
 /// Everything the frame loop owns.
 struct Page {
     canvas: HtmlCanvasElement,
@@ -105,34 +157,62 @@ async fn run() -> Result<(), String> {
     let (width, height) = drawing_size(&canvas, scale);
     canvas.set_width(width);
     canvas.set_height(height);
-    let mut descriptor = wgpu::InstanceDescriptor::new_without_display_handle();
-    descriptor.backends = wgpu::Backends::BROWSER_WEBGPU | wgpu::Backends::GL;
-    // WebGPU when the browser offers an adapter, otherwise WebGL2.
-    let instance = wgpu::util::new_instance_with_webgpu_detection(descriptor).await;
-    let surface = instance
-        .create_surface(wgpu::SurfaceTarget::Canvas(canvas.clone()))
-        .map_err(|e| format!("cannot draw on the canvas: {e}"))?;
+    // `?gl` forces WebGL2, the path browsers without WebGPU take, so it can
+    // be checked from any browser.
+    let force_gl = window
+        .location()
+        .search()
+        .is_ok_and(|query| query.split(['?', '&']).any(|part| part == "gl"));
+    let backends = if force_gl {
+        wgpu::Backends::GL
+    } else {
+        wgpu::Backends::BROWSER_WEBGPU | wgpu::Backends::GL
+    };
     let atlas = Atlas::new((14.0 * scale).round());
-    let mut renderer = Renderer::from_surface_async(
-        instance,
-        surface,
-        width,
-        height,
-        &runtime.world.mesh,
-        &atlas,
-        RenderOptions {
-            max_extent: MAX_SIDE,
-            ..RenderOptions::default()
-        },
-    )
-    .await?;
-    if let Some(error) = renderer.physical_error() {
+    let mut canvas = canvas;
+    let mut renderer = open(&canvas, backends, &runtime, &atlas, width, height).await?;
+    // Everglade's textured world draws only on the physical renderer. A
+    // browser whose WebGPU rejects it (WebKit's, on some devices) may still
+    // run it on WebGL2, so try that on a fresh canvas: a canvas that has a
+    // WebGPU context cannot open a WebGL2 one.
+    if let Some(error) = renderer.physical_error().map(str::to_owned)
+        && !force_gl
+    {
         web_sys::console::warn_1(&JsValue::from_str(&format!(
-            "Everglade: the physical renderer is unavailable, drawing amber: {error}"
+            "Everglade: WebGPU cannot run the physical renderer, trying WebGL2: {error}"
         )));
+        if let Ok(fresh) = canvas
+            .clone_node()
+            .map(|node| node.unchecked_into::<HtmlCanvasElement>())
+        {
+            fresh.set_width(width);
+            fresh.set_height(height);
+            if let Ok(fallback) =
+                open(&fresh, wgpu::Backends::GL, &runtime, &atlas, width, height).await
+                && fallback.physical_error().is_none()
+                && canvas.replace_with_with_node_1(&fresh).is_ok()
+            {
+                canvas = fresh;
+                renderer = fallback;
+            }
+        }
     }
+    // Without the physical renderer the page would show an empty field, so
+    // it says why instead.
+    let unavailable = renderer.physical_error().map(|error| {
+        web_sys::console::error_1(&JsValue::from_str(&format!(
+            "Everglade: the physical renderer is unavailable: {error}"
+        )));
+        format!(
+            "This browser's graphics cannot draw Everglade's world yet: {}",
+            first_line(error)
+        )
+    });
     renderer.set_atmosphere(zones::atmosphere(runtime.zone))?;
-    hide_status(&document);
+    match &unavailable {
+        Some(reason) => status(reason),
+        None => hide_status(&document),
+    }
 
     let page = Rc::new(RefCell::new(Page {
         canvas,

@@ -157,7 +157,7 @@ details summary{cursor:pointer;color:var(--w75)}
 /* /everglade: the Everglade web build's canvas (static/everglade.js). */
 .glade{position:relative;border:1px solid var(--w25);aspect-ratio:16/10;margin:0 0 .75rem;background:var(--bg)}
 .glade canvas{display:block;width:100%;height:100%;touch-action:none}
-.glade-status{color:var(--w100);margin:0 0 .75rem}
+.glade-status{position:absolute;inset:auto 0 0 0;margin:0;padding:.5rem .75rem;color:var(--w100);background:rgba(0,0,0,.72)}
 .glade-status:empty{display:none}
 
 /* /stats: the payment numbers as tables and bar series, no script. */

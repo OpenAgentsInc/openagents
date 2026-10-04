@@ -22,7 +22,7 @@ use std::path::{Path, PathBuf};
 
 use axum::Router;
 use axum::extract::{Path as UrlPath, State};
-use axum::http::{HeaderValue, StatusCode, header};
+use axum::http::{HeaderMap, HeaderValue, StatusCode, header};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 
@@ -73,16 +73,16 @@ fn build(app: &App) -> Option<&Path> {
     (directory.join(GLUE).is_file() && directory.join(WASM).is_file()).then_some(directory)
 }
 
-fn body() -> String {
+fn body(wasm_bytes: u64) -> String {
     format!(
         "<section class=\"everglade\" aria-labelledby=\"everglade-title\">\
 <h1 id=\"everglade-title\">Everglade</h1>\
 <p class=\"lede\">A forest glade with a small workshop, the Verse zone where a person works \
 with a team of coding agents. It runs here in your browser.</p>\
 <div class=\"glade\" id=\"everglade\" data-module=\"/everglade/{GLUE}\" \
-data-wasm=\"/everglade/{WASM}\" data-pack=\"{PACK_PATH}\">\
-<canvas id=\"{CANVAS_ID}\" tabindex=\"0\" aria-label=\"The Everglade zone\"></canvas></div>\
-<p class=\"glade-status\" id=\"everglade-status\" aria-live=\"polite\">Loading Everglade.</p>\
+data-wasm=\"/everglade/{WASM}\" data-wasm-bytes=\"{wasm_bytes}\" data-pack=\"{PACK_PATH}\">\
+<canvas id=\"{CANVAS_ID}\" tabindex=\"0\" aria-label=\"The Everglade zone\"></canvas>\
+<p class=\"glade-status\" id=\"everglade-status\" aria-live=\"polite\">Loading Everglade…</p></div>\
 <p class=\"dim\">Move and look as in the Verse on your Mac. The world's download is large \
 the first time; your browser keeps it after that.</p>\
 <p><a href=\"/docs/verse\">[ The Verse ]</a> <span class=\"dim\">The guide to the Verse \
@@ -104,7 +104,15 @@ async fn everglade(State(app): State<App>) -> Response {
     if build(&app).is_none() {
         return page("Everglade", None, UNAVAILABLE);
     }
-    let mut response = page("Everglade", None, &body());
+    // The loader reports the module's download against its uncompressed
+    // size, since a compressed response's length is not what it reads.
+    let wasm_bytes = match build(&app) {
+        Some(directory) => tokio::fs::metadata(directory.join(WASM))
+            .await
+            .map_or(0, |metadata| metadata.len()),
+        None => 0,
+    };
+    let mut response = page("Everglade", None, &body(wasm_bytes));
     response.headers_mut().insert(
         header::CONTENT_SECURITY_POLICY,
         HeaderValue::from_static(EVERGLADE_POLICY),
@@ -150,11 +158,57 @@ pub(crate) fn pack_name(name: &str) -> bool {
     })
 }
 
-async fn build_file(State(app): State<App>, UrlPath(file): UrlPath<String>) -> Response {
+async fn build_file(
+    State(app): State<App>,
+    UrlPath(file): UrlPath<String>,
+    request: HeaderMap,
+) -> Response {
     let (Some(directory), Some(content_type)) = (build(&app), build_type(&file)) else {
         return crate::not_found().await;
     };
-    serve(directory.join(&file), content_type, BUILD_CACHE).await
+    // The build stage writes a gzip copy beside each file; the wasm is about
+    // a third smaller compressed.
+    let gzip = accepts_gzip(&request);
+    if gzip {
+        let compressed = directory.join(format!("{file}.gz"));
+        if tokio::fs::metadata(&compressed)
+            .await
+            .is_ok_and(|metadata| metadata.is_file())
+        {
+            let mut response = serve(compressed, content_type, BUILD_CACHE).await;
+            if response.status().is_success() {
+                let headers = response.headers_mut();
+                headers.insert(header::CONTENT_ENCODING, HeaderValue::from_static("gzip"));
+                headers.insert(header::VARY, HeaderValue::from_static("accept-encoding"));
+            }
+            return response;
+        }
+    }
+    let mut response = serve(directory.join(&file), content_type, BUILD_CACHE).await;
+    response
+        .headers_mut()
+        .insert(header::VARY, HeaderValue::from_static("accept-encoding"));
+    response
+}
+
+/// Whether the request's `Accept-Encoding` admits gzip.
+pub(crate) fn accepts_gzip(request: &HeaderMap) -> bool {
+    request
+        .get_all(header::ACCEPT_ENCODING)
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .flat_map(|value| value.split(','))
+        .any(|coding| {
+            let mut parts = coding.split(';');
+            let name = parts.next().unwrap_or("").trim();
+            let refused = parts.any(|param| {
+                param
+                    .trim()
+                    .strip_prefix("q=")
+                    .is_some_and(|q| q.trim().parse::<f32>().is_ok_and(|q| q == 0.0))
+            });
+            (name.eq_ignore_ascii_case("gzip") || name == "*") && !refused
+        })
 }
 
 async fn pack_file(State(app): State<App>, UrlPath(file): UrlPath<String>) -> Response {
@@ -197,6 +251,21 @@ async fn serve(path: PathBuf, content_type: &'static str, cache: &'static str) -
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gzip_is_sent_only_when_the_request_accepts_it() {
+        let with = |value: &'static str| {
+            let mut headers = HeaderMap::new();
+            headers.insert(header::ACCEPT_ENCODING, HeaderValue::from_static(value));
+            accepts_gzip(&headers)
+        };
+        assert!(with("gzip, deflate, br"));
+        assert!(with("br;q=1.0, GZIP;q=0.5"));
+        assert!(with("*"));
+        assert!(!with("br"));
+        assert!(!with("gzip;q=0"));
+        assert!(!accepts_gzip(&HeaderMap::new()));
+    }
 
     #[test]
     fn only_plain_js_and_wasm_names_are_build_files() {

@@ -13,6 +13,8 @@ crate-type = ["cdylib", "rlib"]
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 verse = { path = "../verse", default-features = false, features = ["web"] }
 wgpu = "29.0.4"
+# The browser display handle wgpu's WebGL2 backend needs on its instance.
+raw-window-handle = "0.6"
 # The `wasm-bindgen` CLI that `scripts/build-everglade-web.sh` runs must be
 # the version Cargo.lock resolves here; the script checks.
 wasm-bindgen = "0.2.128"
@@ -32,6 +34,7 @@ web-sys = { version = "0.3", features = [
     "HtmlCanvasElement",
     "HtmlElement",
     "KeyboardEvent",
+    "Location",
     "MouseEvent",
     "Node",
     "Performance",

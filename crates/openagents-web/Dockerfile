@@ -35,6 +35,7 @@ COPY . .
 RUN scripts/build-everglade-web.sh /build/everglade \
     && test -f /build/everglade/everglade_web.js \
     && test -f /build/everglade/everglade_web_bg.wasm \
+    && gzip -9 -k /build/everglade/everglade_web.js /build/everglade/everglade_web_bg.wasm \
     && mkdir -p /build/everglade/pack \
     && cp assets/verse/everglade/*.vtp /build/everglade/pack/
 

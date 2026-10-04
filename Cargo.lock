@@ -4818,6 +4818,7 @@ dependencies = [
  "console_error_panic_hook",
  "js-sys",
  "log",
+ "raw-window-handle",
  "verse",
  "wasm-bindgen",
  "wasm-bindgen-futures",
