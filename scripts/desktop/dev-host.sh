@@ -21,7 +21,23 @@
 #     (backing up any earlier one), which runs
 #     `coder host serve --keychain --iroh --control` as the app's does, with
 #     the login shell's PATH, and logs to ~/.openagents/dev-host/host.log.
-# Install again after pulling to move the host to the new code.
+# Install again after pulling to move the host to the new code, or let
+# the host follow main on its own:
+#
+#   scripts/desktop/dev-host.sh follow-on [--every MINUTES]
+#   scripts/desktop/dev-host.sh follow-off
+#
+# follow-on keeps a detached checkout of origin/main at
+# ~/.openagents/dev-host/checkout (never your working tree) and installs a
+# launchd agent, com.openagents.dev.host.follow, that runs `follow` from it
+# every 15 minutes (or MINUTES). Each `follow` pass fetches origin/main; when
+# it differs from the installed host, it builds coder and microcoder in
+# OA_DEV_HOST_TARGET (default ~/work/openagents-target-devhost), and installs
+# them only while no task or turn is running, so a restart never cuts work
+# short; a busy host gets the build on a later pass. A commit that fails to
+# build or to start is skipped until main moves again, and a host that does
+# not start is put back on the build it replaced. Passes log to
+# ~/.openagents/dev-host/follow.log.
 # uninstall stops the development host, removes its plist, puts the old
 # microcoder back, and enables the app's login agent again; it starts the
 # next time OpenAgents.app opens (or at login).
@@ -38,21 +54,139 @@ bin="$HOME/.openagents/bin"
 command="${1:-status}"
 [ $# -gt 0 ] && shift
 build=1
-for arg in "$@"; do
-  case "$arg" in
+every=15
+while [ $# -gt 0 ]; do
+  case "$1" in
     --no-build) build=0 ;;
-    *) echo "unknown option $arg" >&2; exit 64 ;;
+    --every) every="${2:?--every needs minutes}"; shift ;;
+    *) echo "unknown option $1" >&2; exit 64 ;;
   esac
+  shift
 done
+follow_label="com.openagents.dev.host.follow"
+follow_plist="$HOME/Library/LaunchAgents/$follow_label.plist"
+checkout="$base/checkout"
+follow_log="$base/follow.log"
 
 running_pid() { launchctl print "$domain/$1" 2>/dev/null | sed -n 's/^[[:space:]]*pid = //p' | head -1; }
+login_path() {
+  local path
+  path="$("${SHELL:-/bin/zsh}" -l -c 'printf %s "$PATH"' 2>/dev/null || true)"
+  printf %s "${path:-$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin}"
+}
+note() { printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >> "$follow_log"; }
+# Whether the installed host has work in flight: a task that is not
+# finished, cancelled, or queued (running, being cancelled, or unknown), or
+# a coder turn or delegation that has not finished.
+busy() {
+  local coder="$base/current/coder"
+  [ -x "$coder" ] || return 1
+  "$coder" activity >/dev/null 2>&1 && return 0
+  "$coder" task list --json 2>/dev/null | python3 -c '
+import json, sys
+tasks = json.load(sys.stdin)
+sys.exit(0 if any(t.get("status") not in ("finished", "cancelled", "queued") for t in tasks) else 1)
+'
+}
 
 case "$command" in
   status)
     echo "development host: $(running_pid "$label" || true)"
     [ -L "$base/current" ] && "$base/current/coder" --version
     echo "app's host: $(running_pid "$app_label" || true)"
-    launchctl print-disabled "$domain" | grep -F "$app_label" || true ;;
+    launchctl print-disabled "$domain" | grep -F "$app_label" || true
+    echo "following main: $([ -f "$follow_plist" ] && echo yes || echo no)"
+    [ -f "$follow_log" ] && tail -1 "$follow_log"
+    true ;;
+  follow)
+    # One pass, from the follow checkout only: it resets that checkout.
+    [ "$root" = "$checkout" ] || { echo "follow runs from $checkout; use follow-on" >&2; exit 64; }
+    mkdir "$base/follow.lock" 2>/dev/null || exit 0
+    trap 'rmdir "$base/follow.lock"' EXIT
+    export CARGO_TARGET_DIR="${OA_DEV_HOST_TARGET:-$HOME/work/openagents-target-devhost}"
+    git -C "$root" fetch -q origin main || { note "fetch failed"; exit 1; }
+    target="$(git -C "$root" rev-parse --short=10 origin/main)"
+    installed="$(basename "$(readlink "$base/current" 2>/dev/null || echo none)")"
+    [ "$target" = "$installed" ] && exit 0
+    [ "$(cat "$base/follow.failed" 2>/dev/null)" = "$target" ] && exit 0
+    git -C "$root" checkout -q --detach --force origin/main
+    note "building $target (installed: $installed)"
+    if ! nice -n 10 cargo build -q --release --manifest-path "$root/Cargo.toml" \
+        -p coder --bin coder -p microcoder --bin microcoder >> "$follow_log" 2>&1; then
+      echo "$target" > "$base/follow.failed"
+      note "build of $target failed; staying on $installed"
+      exit 1
+    fi
+    if busy; then
+      note "built $target; work is running, so the install waits for a later pass"
+      exit 0
+    fi
+    previous="$(readlink "$base/current" 2>/dev/null || true)"
+    if "$root/scripts/desktop/dev-host.sh" install --no-build >> "$follow_log" 2>&1; then
+      rm -f "$base/follow.failed"
+      note "installed $target"
+    else
+      echo "$target" > "$base/follow.failed"
+      note "$target did not start; putting $installed back"
+      if [ -n "$previous" ]; then
+        ln -sfn "$previous" "$base/current"
+        launchctl kickstart -k "$domain/$label" 2>/dev/null ||
+          launchctl bootstrap "$domain" "$plist" 2>/dev/null || true
+      fi
+      exit 1
+    fi ;;
+  follow-on)
+    [ "$(uname -s)" = Darwin ] || { echo "macOS only" >&2; exit 64; }
+    [ -f "$plist" ] || { echo "install the development host first" >&2; exit 64; }
+    case "$every" in ''|*[!0-9]*|0) echo "--every takes whole minutes" >&2; exit 64 ;; esac
+    if [ ! -d "$checkout/.git" ] && [ ! -f "$checkout/.git" ]; then
+      git -C "$root" fetch -q origin main
+      git -C "$root" worktree add -q --detach "$checkout" origin/main
+    fi
+    cat > "$follow_plist.new" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Moves the development Coder host to origin/main
+     (scripts/desktop/dev-host.sh follow). -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>$follow_label</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>$checkout/scripts/desktop/dev-host.sh</string>
+    <string>follow</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>$(login_path)</string>
+  </dict>
+  <key>StartInterval</key>
+  <integer>$((every * 60))</integer>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>LowPriorityIO</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>$follow_log</string>
+  <key>StandardErrorPath</key>
+  <string>$follow_log</string>
+</dict>
+</plist>
+PLIST
+    plutil -lint -s "$follow_plist.new"
+    mv -f "$follow_plist.new" "$follow_plist"
+    launchctl bootout "$domain/$follow_label" 2>/dev/null || true
+    launchctl bootstrap "$domain" "$follow_plist"
+    echo "the development host follows origin/main every $every minutes; see $follow_log" ;;
+  follow-off)
+    launchctl bootout "$domain/$follow_label" 2>/dev/null || true
+    rm -f "$follow_plist"
+    echo "the development host no longer follows main; $checkout stays for the next follow-on" ;;
   install)
     [ "$(uname -s)" = Darwin ] || { echo "macOS only" >&2; exit 64; }
     identity="${OA_DEVELOPER_ID_APPLICATION:-$(security find-identity -v -p codesigning |
@@ -77,8 +211,7 @@ case "$command" in
     fi
     mkdir -p "$bin"
     cp "$dir/microcoder" "$bin/microcoder.new" && mv -f "$bin/microcoder.new" "$bin/microcoder"
-    login_path="$("${SHELL:-/bin/zsh}" -l -c 'printf %s "$PATH"' 2>/dev/null || true)"
-    [ -n "$login_path" ] || login_path="$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+    login_path="$(login_path)"
     if [ -f "$plist" ]; then
       cp -p "$plist" "$base/$label.plist.bak.$(date +%Y%m%d%H%M%S)"
     fi
@@ -146,6 +279,8 @@ PLIST
       mv -f "$bin/microcoder.before-dev-host" "$bin/microcoder"
     fi
     launchctl enable "$domain/$app_label"
+    launchctl bootout "$domain/$follow_label" 2>/dev/null || true
+    rm -f "$follow_plist"
     echo "development host removed; the app's host starts when OpenAgents.app opens or at login" ;;
-  *) echo "usage: scripts/desktop/dev-host.sh install [--no-build]|status|uninstall" >&2; exit 64 ;;
+  *) echo "usage: scripts/desktop/dev-host.sh install [--no-build]|status|uninstall|follow-on [--every MINUTES]|follow-off" >&2; exit 64 ;;
 esac
