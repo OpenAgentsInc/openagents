@@ -5,7 +5,7 @@ use super::{
     wire::{Body, Reply, Response},
 };
 use crate::{Command, Intent, play::Ability};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, oneshot};
 
 pub const INPUT_CAPACITY: usize = 32;
@@ -47,6 +47,22 @@ pub enum Update {
     Outcome(Response),
 }
 
+/// Reuses only recent verified response control; server admission still checks every command.
+fn fresh_control(
+    input: &Input,
+    control: Option<&super::wire::Control>,
+    observed: Option<Instant>,
+) -> bool {
+    let (Input::TrackedCommand { life, epoch, .. }, Some(control), Some(observed)) =
+        (input, control, observed)
+    else {
+        return false;
+    };
+    control.life == (*life).into()
+        && control.epoch == *epoch
+        && observed.elapsed() <= Duration::from_millis(50)
+}
+
 /// Coalesces only consecutive, increasing movement tokens in the same control context.
 /// A cast, jump, lifecycle action, or different context remains the next queued input.
 fn coalesce_movement(
@@ -55,6 +71,9 @@ fn coalesce_movement(
     deferred: &mut Option<Input>,
 ) -> (Input, Vec<u64>) {
     let mut retired = Vec::new();
+    if deferred.is_some() {
+        return (input, retired);
+    }
     for _ in 0..INPUT_CAPACITY {
         let Input::TrackedCommand {
             token,
@@ -109,6 +128,7 @@ pub async fn run(
         let mut inventory_life = None;
         let mut last_token = 0;
         let mut deferred = None;
+        let mut last_response = None;
         loop {
             let mut polling = false;
             let update = tokio::select! {
@@ -127,16 +147,25 @@ pub async fn run(
                     match deferred.take() { Some(input) => Some(input), None => inputs.recv().await }
                 } => {
                     let Some(input) = input else { return Ok(()); };
-                    // Refresh admitted tick/control before deriving an owned command.
-                    let response = client.request(Body::Snapshot {}).await?;
-                    if let Reply::Refused { message, .. } = &response.body {
-                        return Err(message.clone());
-                    }
-                    updates.send(Update::Snapshot(response)).await
-                        .map_err(|_| "Chamber update consumer closed")?;
-                    let (input, retired) = coalesce_movement(input, &mut inputs, &mut deferred);
+                    let (mut input, retired) = coalesce_movement(input, &mut inputs, &mut deferred);
                     for token in retired {
                         updates.send(Update::CommandBound { token, binding: Err(SUPERSEDED_MOVEMENT.into()) }).await
+                            .map_err(|_| "Chamber update consumer closed")?;
+                    }
+                    // Retirement delivery can wait on output backpressure; check freshness afterward.
+                    if !fresh_control(&input, client.control(), last_response) {
+                        let response = client.request(Body::Snapshot {}).await?;
+                        if let Reply::Refused { message, .. } = &response.body {
+                            return Err(message.clone());
+                        }
+                        updates.send(Update::Snapshot(response)).await
+                            .map_err(|_| "Chamber update consumer closed")?;
+                    }
+                    // Input may have changed while the refresh was in flight.
+                    let (latest, retired) = coalesce_movement(input, &mut inputs, &mut deferred);
+                    input = latest;
+                    for token in retired {
+                        updates.send(Update::CommandBound {token,binding:Err(SUPERSEDED_MOVEMENT.into())}).await
                             .map_err(|_| "Chamber update consumer closed")?;
                     }
                     let response = match input {
@@ -167,6 +196,7 @@ pub async fn run(
                     Update::Outcome(response)
                 }
             };
+            last_response = Some(Instant::now());
             updates
                 .send(update)
                 .await
@@ -217,6 +247,43 @@ mod tests {
     use rustls::pki_types::ServerName;
     use tokio::time::timeout;
 
+    #[test]
+    fn verified_control_reuse_requires_recent_exact_life_and_epoch() {
+        let life = verse_engine::core::LifeId {
+            instance: 120,
+            actor: 14,
+            generation: 0,
+        };
+        let input = Input::TrackedCommand {
+            token: 1,
+            life,
+            epoch: 1,
+            intent: Intent::Jump,
+        };
+        let mut control = super::super::wire::Control {
+            life: life.into(),
+            epoch: 1,
+            accepted_sequence: 0,
+        };
+        assert!(fresh_control(&input, Some(&control), Some(Instant::now())));
+        assert!(!fresh_control(&input, Some(&control), None));
+        assert!(!fresh_control(&input, None, Some(Instant::now())));
+        assert!(!fresh_control(
+            &input,
+            Some(&control),
+            Some(Instant::now() - Duration::from_millis(75))
+        ));
+        control.epoch += 1;
+        assert!(!fresh_control(&input, Some(&control), Some(Instant::now())));
+        control.epoch = 1;
+        control.life.generation += 1;
+        assert!(!fresh_control(&input, Some(&control), Some(Instant::now())));
+        assert!(!fresh_control(
+            &Input::Respawn,
+            Some(&control),
+            Some(Instant::now())
+        ));
+    }
     #[test]
     fn unsent_movement_coalesces_without_crossing_actions_or_control_fences() {
         let life = verse_engine::core::LifeId {
@@ -274,6 +341,96 @@ mod tests {
             deferred,
             Some(Input::Command(Intent::Cast { .. }))
         ));
+    }
+    #[tokio::test]
+    async fn movement_arriving_during_refresh_replaces_the_unsent_command() {
+        let keys = [key(71), key(72), key(73)];
+        let (address, connector, server_stop, server) = start(&keys).await;
+        let mut client = Client::connect(
+            address,
+            ServerName::try_from("localhost").unwrap(),
+            connector.config().clone(),
+            120,
+            &keys[0],
+        )
+        .await
+        .unwrap();
+        client.snapshot().await.unwrap();
+        let control = client.control().unwrap().clone();
+        let (input, inputs) = mpsc::channel(INPUT_CAPACITY);
+        let (updates, mut output) = mpsc::channel(1);
+        let gate = updates.clone();
+        let (stop, stopped) = oneshot::channel();
+        let worker = tokio::spawn(run(
+            client,
+            Cursor::new(120),
+            Duration::from_secs(1),
+            inputs,
+            updates,
+            stopped,
+        ));
+        timeout(Duration::from_secs(3), async {
+            while !matches!(output.recv().await.unwrap(), Update::Inventory(_)) {}
+        })
+        .await
+        .unwrap();
+        tokio::time::sleep(Duration::from_millis(75)).await;
+        gate.send(Update::CommandBound {
+            token: 0,
+            binding: Err("Test delivery barrier".into()),
+        })
+        .await
+        .unwrap();
+        let movement = |token| Input::TrackedCommand {
+            token,
+            life: control.life.into(),
+            epoch: control.epoch,
+            intent: Intent::Move {
+                axes: if token == 1 { [1., 0.] } else { [0., 0.] },
+                yaw: 0.,
+            },
+        };
+        input.send(movement(1)).await.unwrap();
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        input.send(movement(2)).await.unwrap();
+        assert!(matches!(
+            output.recv().await.unwrap(),
+            Update::CommandBound { token: 0, .. }
+        ));
+        let mut retired = false;
+        let mut bound = false;
+        timeout(Duration::from_secs(3), async {
+            loop {
+                match output.recv().await.unwrap() {
+                    Update::CommandBound { token: 1, binding } => {
+                        assert_eq!(binding.unwrap_err(), SUPERSEDED_MOVEMENT);
+                        retired = true;
+                    }
+                    Update::CommandBound { token: 2, binding } => {
+                        assert!(retired);
+                        let command = binding.unwrap();
+                        assert!(matches!(
+                            command.intent,
+                            Intent::Move { axes: [0., 0.], .. }
+                        ));
+                        bound = true;
+                    }
+                    Update::Outcome(response) => {
+                        assert!(retired && bound);
+                        assert!(matches!(response.body, Reply::Accepted));
+                        break;
+                    }
+                    Update::CommandBound { .. } => panic!("Unexpected binding"),
+                    _ => {}
+                }
+            }
+        })
+        .await
+        .unwrap();
+        stop.send(()).unwrap();
+        worker.await.unwrap().unwrap();
+        server_stop.send(()).unwrap();
+        assert!(server.await.unwrap().failure.is_none());
     }
     #[tokio::test]
     async fn coalesced_tls_inputs_bind_only_latest_moves_and_preserve_jump_order() {

@@ -399,8 +399,23 @@ impl App {
                         }
                     }
                     Err(message) => {
+                        let before = self.prediction.pose();
                         self.pending.retain(|(_, pending)| *pending != Some(token));
                         self.prediction.reject(token);
+                        if self.record.is_some() {
+                            self.prediction.advance(0.)?;
+                            if let (Some(before), Some(after)) = (before, self.prediction.pose()) {
+                                if before.life == after.life && before.epoch == after.epoch {
+                                    self.profile.retirement(
+                                        f64::from(before.position.distance(after.position)),
+                                        serde_json::json!({"token":token,"reason":message,
+                                            "life":after.life,"epoch":after.epoch,
+                                            "before":before.position,"after":after.position,
+                                            "pending":self.prediction.pending()}),
+                                    );
+                                }
+                            }
+                        }
                         self.profile.bindings.remove(&token);
                         if message != worker::SUPERSEDED_MOVEMENT {
                             self.status = message;

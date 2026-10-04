@@ -79,6 +79,9 @@ pub(crate) struct Profile {
     pub frame_interval_ms: Samples,
     pub correction_meters: Samples,
     pub discontinuity_meters: Samples,
+    pub retirement_correction_meters: Samples,
+    pub retirement_trace: Vec<serde_json::Value>,
+    pub omitted_retirements: u64,
     pub correction_trace: Vec<serde_json::Value>,
     pub omitted_corrections: u64,
     pub reset_observations: u64,
@@ -86,6 +89,20 @@ pub(crate) struct Profile {
     pub bindings: std::collections::BTreeMap<u64, std::time::Instant>,
 }
 impl Profile {
+    pub fn retirement(&mut self, distance: f64, context: serde_json::Value) {
+        if !distance.is_finite() || distance < 0. {
+            return;
+        }
+        self.retirement_correction_meters.add(distance);
+        if distance > 0.01 {
+            if self.retirement_trace.len() < 256 {
+                self.retirement_trace
+                    .push(serde_json::json!({"distance_meters":distance,"context":context}));
+            } else {
+                self.omitted_retirements += 1;
+            }
+        }
+    }
     pub fn correction(&mut self, distance: f64, reset: bool, context: serde_json::Value) {
         if !distance.is_finite() || distance < 0. {
             return;
@@ -106,13 +123,16 @@ impl Profile {
         }
     }
     pub fn summary(&self) -> serde_json::Value {
-        serde_json::json!({"schema":"verse.remote.profile.v2",
+        serde_json::json!({"schema":"verse.remote.profile.v3",
             "client_preparation_ms":self.preparation_ms.summary(),
             "render_submission_cpu_ms":self.render_submission_ms.summary(),
             "frame_interval_ms":self.frame_interval_ms.summary(),
             "prediction_correction_meters":self.correction_meters.summary(),
             "intentional_discontinuity_meters":self.discontinuity_meters.summary(),
             "reset_observations":self.reset_observations,
+            "input_retirement_correction_meters":self.retirement_correction_meters.summary(),
+            "retirement_trace":self.retirement_trace,
+            "omitted_retirements":self.omitted_retirements,
             "correction_trace":self.correction_trace,
             "omitted_corrections":self.omitted_corrections,
             "binding_to_outcome_ms":self.bound_to_outcome_ms.summary(),
@@ -260,6 +280,21 @@ impl Drop for Recorder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn retirement_series_is_separate_and_bounded() {
+        let mut profile = Profile::default();
+        for _ in 0..300 {
+            profile.retirement(0.3, serde_json::json!({"token":1}));
+        }
+        let summary = profile.summary();
+        assert_eq!(
+            summary["input_retirement_correction_meters"]["samples"],
+            300
+        );
+        assert_eq!(summary["retirement_trace"].as_array().unwrap().len(), 256);
+        assert_eq!(summary["omitted_retirements"], 44);
+        assert_eq!(summary["prediction_correction_meters"]["samples"], 0);
+    }
     #[test]
     fn discontinuities_do_not_pollute_reconciliation_and_traces_are_bounded() {
         let mut profile = Profile::default();
