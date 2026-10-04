@@ -12,10 +12,30 @@ pub fn cinematic(
     width: f32,
     height: f32,
 ) -> UiBatch {
+    cinematic_with_markers(
+        atlas,
+        frame,
+        heights,
+        projection,
+        width,
+        height,
+        &BTreeMap::new(),
+    )
+}
+
+pub fn cinematic_with_markers(
+    atlas: &Atlas,
+    frame: &Frame,
+    heights: &BTreeMap<String, f32>,
+    projection: Mat4,
+    width: f32,
+    height: f32,
+    markers: &BTreeMap<verse_engine::core::LifeId, verse_world::service::progression::Marker>,
+) -> UiBatch {
     let mut ui = UiBatch::default();
     let diagonal = width.hypot(height);
     let plate_scale = diagonal / 1280.0;
-    let row_height = 34.0 * plate_scale;
+    let row_height = if markers.is_empty() { 34.0 } else { 58.0 } * plate_scale;
     let small = atlas.layout_at_scale(18.0 / (0.01 * diagonal)).unwrap();
     let atlas_plate = &small;
     let mut occupied: Vec<(f32, f32, f32)> = Vec::new();
@@ -73,8 +93,27 @@ pub fn cinematic(
                 }
             }
         }
-        let (x, y) = selected;
+        let (x, mut y) = selected;
         occupied.push((x, y, w));
+        if actor.actor.friendly
+            && let Some(marker) = actor.life.and_then(|life| markers.get(&life))
+        {
+            use verse_world::service::progression::Marker;
+            let (text, color) = match marker {
+                Marker::Available => ("!", [1.0, 0.82, 0.1, 1.0]),
+                Marker::Active => ("?", [0.65, 0.65, 0.65, 1.0]),
+                Marker::TurnIn => ("?", [1.0, 0.82, 0.1, 1.0]),
+            };
+            outlined(
+                &mut ui,
+                atlas_plate,
+                x + (w - atlas_plate.measure(text)) * 0.5,
+                y,
+                text,
+                color,
+            );
+            y += 24.0 * plate_scale;
+        }
         outlined(
             &mut ui,
             atlas_plate,
@@ -391,6 +430,72 @@ mod tests {
                 .filter(|v| v.color == [1., 0., 0., 1.])
                 .count(),
             6
+        );
+    }
+
+    #[test]
+    fn quest_marker_draws_only_for_the_matching_living_friendly_life() {
+        use verse_world::service::progression::Marker;
+        let scene = verse_engine::director::Scene::from_json(include_bytes!(
+            "../../../../assets/verse/original/ritual-quests.json"
+        ))
+        .unwrap();
+        let mut frame = scene.frame(20.8);
+        frame.actors.retain(|a| a.actor.id == 1_000_000);
+        frame.actors[0].actor.position = glam::Vec3::ZERO;
+        let life = verse_engine::core::LifeId {
+            instance: 1,
+            actor: 1_000_000,
+            generation: 2,
+        };
+        frame.actors[0].life = Some(life);
+        let heights = BTreeMap::from([("cultist".into(), 2.)]);
+        let projection = Mat4::perspective_rh(1., 16. / 9., 0.1, 100.)
+            * Mat4::look_at_rh(
+                glam::Vec3::new(0., 3., -8.),
+                glam::Vec3::Y * 2.,
+                glam::Vec3::Y,
+            );
+        let atlas = Atlas::new(16.);
+        let mut markers = BTreeMap::from([(life, Marker::Available)]);
+        let draw = |frame: &Frame, markers: &BTreeMap<_, _>| {
+            cinematic_with_markers(&atlas, frame, &heights, projection, 1280., 720., markers)
+        };
+        let gold = [1., 0.82, 0.1, 1.];
+        assert!(
+            draw(&frame, &markers)
+                .vertices
+                .iter()
+                .any(|v| v.color == gold)
+        );
+        markers.insert(life, Marker::Active);
+        assert!(
+            draw(&frame, &markers)
+                .vertices
+                .iter()
+                .any(|v| v.color == [0.65, 0.65, 0.65, 1.])
+        );
+        markers.insert(life, Marker::TurnIn);
+        assert!(
+            draw(&frame, &markers)
+                .vertices
+                .iter()
+                .any(|v| v.color == gold)
+        );
+        frame.actors[0].life.as_mut().unwrap().generation += 1;
+        assert!(
+            !draw(&frame, &markers)
+                .vertices
+                .iter()
+                .any(|v| v.color == gold)
+        );
+        frame.actors[0].life = Some(life);
+        frame.actors[0].health = 0;
+        assert!(
+            !draw(&frame, &markers)
+                .vertices
+                .iter()
+                .any(|v| v.color == gold)
         );
     }
 

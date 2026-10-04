@@ -429,13 +429,14 @@ impl App {
                 .iter()
                 .map(|(id, m)| (id.clone(), m.height))
                 .collect();
-            ui = overlay::cinematic(
+            ui = overlay::cinematic_with_markers(
                 &self.atlas,
                 &rendered.frame,
                 &heights,
                 projection,
                 width,
                 720.,
+                &self.view.quest_markers(),
             );
             overlay::damage_numbers_from_values(
                 &mut ui,
