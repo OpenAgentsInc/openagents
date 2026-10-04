@@ -38,6 +38,13 @@ impl Track {
         Ok(())
     }
 }
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ClipTrack {
+    pub clip: u16,
+    pub track: Track,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Event {
     pub life: LifeId,

@@ -557,6 +557,7 @@ pub fn add_effect_models(pack: &mut Pack, dir: &std::path::Path) -> Result<(), S
         pack.models.insert(
             name.into(),
             Model {
+                markers: Vec::new(),
                 states: Default::default(),
                 skin: None,
                 source: format!(
@@ -605,6 +606,7 @@ pub fn add_effect_models(pack: &mut Pack, dir: &std::path::Path) -> Result<(), S
         pack.models.insert(
             name.into(),
             Model {
+                markers: Vec::new(),
                 states: Default::default(),
                 skin: None,
                 source: format!("verse/particles/{name}"),
@@ -630,6 +632,7 @@ pub fn add_effect_models(pack: &mut Pack, dir: &std::path::Path) -> Result<(), S
     pack.models.insert(
         "effect-ribbon".into(),
         Model {
+            markers: Vec::new(),
             states: Default::default(),
             skin: None,
             source: "verse/ribbon/effect-ribbon".into(),
@@ -684,6 +687,7 @@ pub fn add_effect_models(pack: &mut Pack, dir: &std::path::Path) -> Result<(), S
         pack.models.insert(
             name.into(),
             Model {
+                markers: Vec::new(),
                 states: Default::default(),
                 skin: None,
                 source: format!("verse/procedural/{name}"),

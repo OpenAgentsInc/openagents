@@ -313,6 +313,7 @@ mod tests {
     }
     fn fixture() -> (Pack, Inventory) {
         let model = Model {
+            markers: Vec::new(),
             states: Default::default(),
             skin: None,
             source: "original.mesh".into(),

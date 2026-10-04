@@ -249,6 +249,7 @@ mod tests {
         };
         let basis = Mat4::from_rotation_x(0.7) * Mat4::from_scale(Vec3::splat(2.));
         let mut model = Model {
+            markers: Vec::new(),
             states: Default::default(),
             source: String::new(),
             source_sha256: String::new(),
@@ -311,6 +312,7 @@ mod tests {
     #[test]
     fn interrupted_transitions_preserve_pose_and_rotation_length() {
         let model = Model {
+            markers: Vec::new(),
             states: Default::default(),
             skin: None,
             source: String::new(),
@@ -355,6 +357,7 @@ mod tests {
     #[test]
     fn death_holds_the_final_pose_while_idle_keeps_looping() {
         let mut model = Model {
+            markers: Vec::new(),
             states: Default::default(),
             skin: None,
             source: String::new(),
@@ -386,6 +389,7 @@ mod tests {
     #[test]
     fn child_inherits_interpolated_parent_motion() {
         let model = Model {
+            markers: Vec::new(),
             states: Default::default(),
             skin: None,
             source: String::new(),
@@ -428,6 +432,7 @@ mod semantic_tests {
     };
     fn model() -> Model {
         Model {
+            markers: Vec::new(),
             states: std::collections::BTreeMap::from([
                 (
                     State::Idle,

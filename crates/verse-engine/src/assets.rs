@@ -110,6 +110,8 @@ fn read_states<'de, D: serde::Deserializer<'de>>(
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Model {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub markers: Vec<crate::markers::ClipTrack>,
     #[serde(
         default,
         deserialize_with = "read_states",
@@ -231,6 +233,26 @@ impl Pack {
             {
                 return Err("Invalid semantic animation bindings".into());
             }
+            if model.markers.len() > 512 || (!model.markers.is_empty() && duplicate_ids) {
+                return Err("Invalid animation marker track capacity or clip identity".into());
+            }
+            let mut marker_clips = std::collections::BTreeSet::new();
+            for authored in &model.markers {
+                authored.track.validate()?;
+                let clip = model
+                    .clips
+                    .iter()
+                    .find(|clip| clip.id == authored.clip)
+                    .ok_or("Animation marker track references a missing clip")?;
+                if !marker_clips.insert(authored.clip)
+                    || authored.track.duration != f64::from(clip.duration)
+                {
+                    return Err(
+                        "Animation marker track has duplicate identity or mismatched duration"
+                            .into(),
+                    );
+                }
+            }
             if let Some(skin) = &model.skin {
                 if skin.names.len() != model.bones.len()
                     || skin.rest.len() != model.bones.len()
@@ -342,6 +364,7 @@ mod tests {
             models: BTreeMap::from([(
                 "room".into(),
                 Model {
+                    markers: Vec::new(),
                     states: Default::default(),
                     skin: None,
                     source: String::new(),
@@ -386,6 +409,34 @@ mod tests {
             bones: vec![],
         });
         assert!(pack.validate().is_ok());
+        use crate::markers::{ClipTrack, Marker, Track};
+        let authored = ClipTrack {
+            clip: 421,
+            track: Track {
+                duration: 1.,
+                markers: vec![Marker {
+                    id: 7,
+                    seconds: 0.5,
+                }],
+            },
+        };
+        pack.models
+            .get_mut("room")
+            .unwrap()
+            .markers
+            .push(authored.clone());
+        assert!(pack.validate().is_ok());
+        pack.models.get_mut("room").unwrap().markers[0].clip = 999;
+        assert!(pack.validate().is_err());
+        pack.models.get_mut("room").unwrap().markers[0] = authored.clone();
+        pack.models.get_mut("room").unwrap().markers[0]
+            .track
+            .duration = 2.;
+        assert!(pack.validate().is_err());
+        pack.models.get_mut("room").unwrap().markers[0] = authored.clone();
+        pack.models.get_mut("room").unwrap().markers.push(authored);
+        assert!(pack.validate().is_err());
+        pack.models.get_mut("room").unwrap().markers.pop();
         let duplicate = pack.models["room"].clips[0].clone();
         pack.models.get_mut("room").unwrap().clips.push(duplicate);
         assert!(pack.validate().is_err());

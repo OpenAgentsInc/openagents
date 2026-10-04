@@ -1727,6 +1727,7 @@ mod tests {
     fn reload_motion_identity_ignores_source_paths_and_tracks_animation_changes() {
         use verse_engine::assets::{Clip, Model};
         let mut model = Model {
+            markers: Vec::new(),
             states: Default::default(),
             skin: None,
             source: "old.glb".into(),
@@ -1752,6 +1753,7 @@ mod tests {
         use super::*;
         use verse_engine::assets::{Model, Surface, Vertex};
         let model = Model {
+            markers: Vec::new(),
             states: Default::default(),
             skin: None,
             source: "fixture".into(),

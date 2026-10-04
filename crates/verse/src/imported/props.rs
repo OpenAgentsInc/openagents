@@ -73,6 +73,7 @@ pub fn install(pack: &mut Pack, dir: &Path, root: &Path) -> Result<(), String> {
         height: 0.6,
         attachments: vec![],
         skin: None,
+        markers: Vec::new(),
         states: Default::default(),
     };
     for (radius, height, tint) in [

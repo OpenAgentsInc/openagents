@@ -374,6 +374,7 @@ mod tests {
                 models: BTreeMap::from([(
                     "fixture".into(),
                     Model {
+                        markers: Vec::new(),
                         states: Default::default(),
                         skin: None,
                         source: "test/assets".into(),

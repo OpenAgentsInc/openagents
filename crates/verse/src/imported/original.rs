@@ -20,6 +20,7 @@ fn png_file(dir: &Path, name: &str, size: u32, pixels: &[u8]) -> Result<(), Stri
 }
 fn model(name: &str, height: f32) -> Model {
     Model {
+        markers: Vec::new(),
         states: Default::default(),
         skin: None,
         source: format!("verse/original/{name}"),

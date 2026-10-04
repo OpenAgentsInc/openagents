@@ -170,6 +170,7 @@ pub fn import(pack: &mut Pack, dir: &Path, path: &Path) -> Result<Model, String>
         })
         .collect();
     let mut model = Model {
+        markers: Vec::new(),
         states: Default::default(),
         source: format!(
             "verse/interchange/{}",
