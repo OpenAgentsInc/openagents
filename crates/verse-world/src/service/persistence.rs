@@ -276,6 +276,46 @@ mod tests {
         assert!(Store::open(&root, [8; 32], 121).is_err());
     }
     #[test]
+    fn committed_rewards_recover_once_and_failed_grants_do_not_reach_disk() {
+        use crate::service::rewards::{Entry, Transaction};
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("state");
+        let mut store = Store::open(&root, [8; 32], 120).unwrap();
+        let mut g = prepared();
+        let actor = g.game().player_life().actor;
+        let tx = Transaction {
+            instance: 120,
+            actor,
+            source: [9; 32],
+            experience: 45,
+            items: vec![Entry { id: 1, count: 2 }],
+            quests: vec![Entry { id: 3, count: 1 }],
+        };
+        let receipt = g.grant_reward(tx.clone()).unwrap();
+        store.commit(&g).unwrap();
+        drop(store);
+        let mut store = Store::open(&root, [8; 32], 120).unwrap();
+        let mut recovered = store.recover().unwrap();
+        assert_eq!(recovered.grant_reward(tx.clone()).unwrap(), receipt);
+        assert_eq!(recovered.character_rewards(actor).unwrap().experience, 45);
+        store.commit(&recovered).unwrap();
+        let before = std::fs::read(root.join("chamber.json")).unwrap();
+        assert_eq!(recovered.grant_reward(tx.clone()).unwrap(), receipt);
+        assert!(!store.commit(&recovered).unwrap().written);
+        std::fs::create_dir(root.join("next.json")).unwrap();
+        let mut next = tx.clone();
+        next.source = [10; 32];
+        recovered.grant_reward(next).unwrap();
+        assert!(store.commit(&recovered).is_err());
+        assert_eq!(std::fs::read(root.join("chamber.json")).unwrap(), before);
+        drop(store);
+        std::fs::remove_dir(root.join("next.json")).unwrap();
+        let mut store = Store::open(&root, [8; 32], 120).unwrap();
+        let mut recovered = store.recover().unwrap();
+        assert_eq!(recovered.character_rewards(actor).unwrap().experience, 45);
+        assert_eq!(recovered.grant_reward(tx).unwrap(), receipt);
+    }
+    #[test]
     fn corrupt_state_and_failed_replacement_never_become_acknowledged_commits() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path().join("state");

@@ -132,6 +132,16 @@ impl Gateway {
     pub fn enroll_spectator(&mut self, key: [u8; 32]) -> Result<(), String> {
         self.chamber.enroll_spectator(valid_principal(key)?)
     }
+    /// Trusted host operation, excluded from client request payloads.
+    pub fn grant_reward(
+        &mut self,
+        transaction: super::rewards::Transaction,
+    ) -> Result<super::rewards::Receipt, String> {
+        self.chamber.grant_reward(transaction)
+    }
+    pub fn character_rewards(&self, actor: u64) -> Option<&super::rewards::Character> {
+        self.chamber.character_rewards(actor)
+    }
     fn clock(&mut self, now_ms: u64) -> Result<(), String> {
         if now_ms < self.last_now {
             return Err("Authentication clock moved backward".into());

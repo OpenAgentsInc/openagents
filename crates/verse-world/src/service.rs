@@ -18,6 +18,7 @@ pub mod persistence;
 pub mod presentation;
 #[cfg(feature = "service-auth")]
 pub mod replica;
+pub mod rewards;
 #[cfg(feature = "service-auth")]
 pub mod save;
 #[cfg(feature = "service-auth")]
@@ -71,6 +72,7 @@ pub struct Chamber {
     grants: BTreeMap<Principal, Rights>,
     connections: BTreeMap<u64, Connection>,
     next_session: u64,
+    rewards: rewards::Ledger,
 }
 
 impl Chamber {
@@ -84,12 +86,30 @@ impl Chamber {
             grants: BTreeMap::new(),
             connections: BTreeMap::new(),
             next_session: 1,
+            rewards: rewards::Ledger::default(),
         })
     }
 
     /// Read-only authority for host presentation and checkpoint extraction.
     pub fn game(&self) -> &Game {
         &self.game
+    }
+
+    /// Host-only grants; the host must commit its checkpoint before acknowledging.
+    pub fn grant_reward(
+        &mut self,
+        transaction: rewards::Transaction,
+    ) -> Result<rewards::Receipt, String> {
+        if transaction.instance != self.game.player_life().instance
+            || self.game.player_admission(transaction.actor).is_none()
+        {
+            return Err("Reward character or instance is foreign".into());
+        }
+        self.rewards.apply(transaction)
+    }
+
+    pub fn character_rewards(&self, actor: u64) -> Option<&rewards::Character> {
+        self.rewards.character(actor)
     }
 
     fn room_for_grant(&self, principal: Principal) -> Result<(), String> {

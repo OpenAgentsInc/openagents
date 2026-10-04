@@ -306,5 +306,15 @@ failure stops the host without publishing those replies. Committed snapshots
 carry version, revision, and checksum; interrupted staging files are discarded
 under the writer lock. The host reports checkpoint commits, bytes, and elapsed
 storage work. The [durable host fixture](../../bench/verse/2026-10-04/durable-host/run.json)
-retains restart/refusal checks and shared TLS input measurements. Deduplicated
-rewards, inventory, quests, and progression remain.
+retains restart/refusal checks and shared TLS input measurements.
+
+Trusted hosts use `Gateway::grant_reward` for bounded character experience,
+item stacks, and quest counters. A stable source ID binds one exact transaction
+per character; retries return its original receipt, and conflicting reuse or
+limit failures leave every field unchanged. Call `Store::commit` before
+acknowledging a host-created reward. Version-two chamber saves replay the retained
+transactions; version-one saves upgrade with an empty ledger. Instance reset
+retains rewards and retry identities. Receipts are never evicted: after 4,096
+transactions, new grants are refused. Authored combat/quest reward policies,
+client inventory presentation, item spending/equipment, and progression rules
+remain.
