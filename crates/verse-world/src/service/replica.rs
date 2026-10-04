@@ -18,6 +18,7 @@ pub struct Buffer {
     previous: Option<Frame>,
     current: Option<Frame>,
     generations: BTreeMap<u64, u64>,
+    prop_generations: BTreeMap<u64, u64>,
 }
 impl Buffer {
     pub fn new(instance: u64, max_displacement: f32) -> Result<Self, String> {
@@ -30,6 +31,7 @@ impl Buffer {
             previous: None,
             current: None,
             generations: BTreeMap::new(),
+            prop_generations: BTreeMap::new(),
         })
     }
     /// Replaces state only after validating every context, life, and budget.
@@ -105,6 +107,32 @@ impl Buffer {
                 reset = true;
             }
         }
+        let mut prop_generations = if reset {
+            BTreeMap::new()
+        } else {
+            self.prop_generations.clone()
+        };
+        for prop in &state.presentation.props {
+            if prop_generations.get(&prop.life.entity).is_some_and(|g| {
+                prop.life.generation < *g
+                    || (prop.life.generation == *g
+                        && !reset
+                        && self.current.as_ref().is_some_and(|current| {
+                            !current
+                                .state
+                                .presentation
+                                .props
+                                .iter()
+                                .any(|p| p.life == prop.life)
+                        }))
+            }) {
+                return Err("Replica prop generation regressed".into());
+            }
+            prop_generations.insert(prop.life.entity, prop.life.generation);
+        }
+        if prop_generations.len() > 512 {
+            return Err("Replica prop generation history budget exceeded".into());
+        }
         let next = Frame {
             tick: response.tick,
             control: response.control.clone(),
@@ -121,6 +149,7 @@ impl Buffer {
         }
         self.current = Some(next);
         self.generations = generations;
+        self.prop_generations = prop_generations;
         Ok(())
     }
     pub fn latest(&self) -> Option<&State> {
@@ -170,6 +199,28 @@ impl Buffer {
             actor.actor.yaw = old.actor.yaw + yaw * alpha;
             actor.animation_time =
                 old.animation_time + (actor.animation_time - old.animation_time) * alpha;
+        }
+        let props: BTreeMap<_, _> = previous
+            .state
+            .presentation
+            .props
+            .iter()
+            .map(|p| (p.life.entity, p))
+            .collect();
+        for prop in &mut result.props {
+            let Some(old) = props.get(&prop.life.entity) else {
+                continue;
+            };
+            if prop.life != old.life
+                || prop.kind != old.kind
+                || prop.secured != old.secured
+                || prop.dimensions != old.dimensions
+                || prop.center.distance(old.center) > self.max_displacement
+            {
+                continue;
+            }
+            prop.center = old.center.lerp(prop.center, alpha);
+            prop.rotation = old.rotation.slerp(prop.rotation, alpha);
         }
         let positions: BTreeMap<_, _> = result
             .actors
@@ -489,5 +540,107 @@ pub(super) mod tests {
         let restored: crate::utilities::Controls =
             serde_json::from_slice(&serde_json::to_vec(&c).unwrap()).unwrap();
         assert_eq!(restored.teleport_stamp(), Some(stamp));
+    }
+    fn prop() -> crate::visuals::Prop {
+        crate::visuals::Prop {
+            life: physics::queries::Life {
+                instance: 130,
+                entity: crate::spells::PROP_ENTITY_BASE,
+                generation: 0,
+            },
+            kind: crate::spells::PropKind::Crate,
+            secured: false,
+            center: Vec3::ZERO,
+            rotation: glam::Quat::IDENTITY,
+            dimensions: Vec3::ONE,
+        }
+    }
+    #[test]
+    fn prop_poses_interpolate_snap_new_lives_and_retire_removed_lives() {
+        let mut first = response(1);
+        state(&mut first).presentation.props = vec![prop()];
+        let mut next = first.clone();
+        next.tick = 2;
+        state(&mut next).presentation.time += 1.;
+        let p = &mut state(&mut next).presentation.props[0];
+        p.center = Vec3::X * 2.;
+        p.rotation = glam::Quat::from_rotation_y(std::f32::consts::FRAC_PI_2);
+        let mut b = Buffer::new(130, 4.).unwrap();
+        b.push(&first).unwrap();
+        b.push(&next).unwrap();
+        let sampled = b.sample(0.5).unwrap().unwrap();
+        assert_eq!(sampled.props[0].center, Vec3::X);
+        assert!(
+            sampled.props[0]
+                .rotation
+                .dot(glam::Quat::from_rotation_y(std::f32::consts::FRAC_PI_4))
+                .abs()
+                > 0.99999
+        );
+        next.tick = 3;
+        let p = &mut state(&mut next).presentation.props[0];
+        p.life.generation = 1;
+        p.center = Vec3::X * 3.;
+        b.push(&next).unwrap();
+        assert_eq!(b.sample(0.).unwrap().unwrap().props[0].center, Vec3::X * 3.);
+        let saved = serde_json::to_vec(b.latest().unwrap()).unwrap();
+        let mut stale = next.clone();
+        stale.tick = 4;
+        state(&mut stale).presentation.props[0].life.generation = 0;
+        assert!(b.push(&stale).is_err());
+        assert_eq!(saved, serde_json::to_vec(b.latest().unwrap()).unwrap());
+        let mut removed = next.clone();
+        removed.tick = 4;
+        state(&mut removed).presentation.props.clear();
+        b.push(&removed).unwrap();
+        assert!(b.sample(0.).unwrap().unwrap().props.is_empty());
+        next.tick = 5;
+        assert!(b.push(&next).is_err());
+        state(&mut next).presentation.props[0].life.generation = 2;
+        b.push(&next).unwrap();
+        let mut reset = next.clone();
+        reset.tick = 6;
+        let s = state(&mut reset);
+        s.presentation.time = 0.;
+        s.snapshot.elapsed = 0.;
+        for p in &mut s.presentation.actors {
+            p.life.generation += 1;
+        }
+        for a in &mut s.actors {
+            a.life.generation += 1;
+        }
+        for e in &mut s.presentation.effects {
+            e.life.generation += 1;
+        }
+        s.presentation.props[0].life.generation = 0;
+        s.presentation.props[0].center = Vec3::X * 4.;
+        b.push(&reset).unwrap();
+        assert_eq!(b.sample(0.).unwrap().unwrap().props[0].center, Vec3::X * 4.);
+    }
+    #[test]
+    fn malformed_prop_transforms_and_budgets_leave_the_replica_unchanged() {
+        let mut first = response(1);
+        state(&mut first).presentation.props = vec![prop()];
+        let mut b = Buffer::new(130, 4.).unwrap();
+        b.push(&first).unwrap();
+        let saved = serde_json::to_vec(b.latest().unwrap()).unwrap();
+        for case in 0..7 {
+            let mut bad = first.clone();
+            bad.tick = 2;
+            let p = &mut state(&mut bad).presentation.props[0];
+            match case {
+                0 => p.life.instance += 1,
+                1 => p.center.x = f32::NAN,
+                2 => p.rotation = glam::Quat::from_xyzw(0., 0., 0., 0.),
+                3 => p.dimensions.x = 0.,
+                4 => p.life.entity = 0,
+                5 => state(&mut bad).presentation.props.push(prop()),
+                _ => {
+                    state(&mut bad).presentation.props = vec![prop(); crate::spells::MAX_PROPS + 1]
+                }
+            }
+            assert!(b.push(&bad).is_err());
+            assert_eq!(saved, serde_json::to_vec(b.latest().unwrap()).unwrap());
+        }
     }
 }

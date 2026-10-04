@@ -5,7 +5,7 @@ use verse_engine::core::LifeId;
 use super::auth::{Challenge, ConnectionId, Gateway};
 use crate::{Command, Intent, events::Event, play::Ability, rules::Snapshot};
 
-pub const VERSION: u16 = 5;
+pub const VERSION: u16 = 6;
 pub const MAX_REQUEST_BYTES: usize = 16 * 1024;
 pub const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 
@@ -1017,9 +1017,9 @@ mod tests {
         let reply = send(&mut g, id, 1, Body::Snapshot {});
         assert!(matches!(reply.body, Reply::Refused { .. }));
         for bytes in [
-            br#"{"version":6,"request_id":1,"body":{"type":"snapshot"}}"#.to_vec(),
-            br#"{"version":5,"request_id":1,"controller":1,"body":{"type":"snapshot"}}"#.to_vec(),
-            br#"{"version":5,"request_id":1,"body":{"type":"snapshot","principal":"fake"}}"#
+            br#"{"version":7,"request_id":1,"body":{"type":"snapshot"}}"#.to_vec(),
+            br#"{"version":6,"request_id":1,"controller":1,"body":{"type":"snapshot"}}"#.to_vec(),
+            br#"{"version":6,"request_id":1,"body":{"type":"snapshot","principal":"fake"}}"#
                 .to_vec(),
             vec![b' '; MAX_REQUEST_BYTES + 1],
         ] {

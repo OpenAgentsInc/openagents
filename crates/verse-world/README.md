@@ -172,6 +172,14 @@ clear selection; friendly/foreign/stale lives are refused. Native `target_hud`
 shares local portrait/name/health drawing, hides dead targets, and rejects stale
 frame lives before drawing. Remote mounting and catalog adapters remain.
 
+Wire version six carries live physics prop box poses through presentation.
+Kinds, secured variants, dimensions, centers, and unit rotations are bounded
+and instance/life validated. Replica sampling interpolates compatible poses,
+snaps life/shape changes, omits removed props, and refuses retired generations.
+An admitted world reset clears prior prop interpolation/history. Native local
+and remote prop values share model transforms without client physics stepping.
+Remote blockers and window mounting remain.
+
 Revocation leaves an uncontrolled actor in the world; actor retirement and capacity reclamation remain lifecycle work.
 Transactional saves, multiplayer
 replication, and authoring tools remain on the

@@ -56,6 +56,7 @@ pub struct Presentation {
     pub effects: Vec<Effects>,
     pub hostile_casts: Vec<HostileCast>,
     pub impacts: Vec<Impact>,
+    pub props: Vec<crate::visuals::Prop>,
 }
 impl Presentation {
     pub(super) fn extract(game: &Game, bindings: &[ActorBinding]) -> Self {
@@ -97,6 +98,7 @@ impl Presentation {
             })
             .collect();
         Self {
+            props: crate::visuals::prop_poses(game, 1.),
             time: frame.time,
             actors,
             effects,
@@ -229,6 +231,7 @@ impl Presentation {
                 return Err("Invalid chamber impact presentation".into());
             }
         }
+        crate::visuals::validate_props(&self.props, instance)?;
         Ok(())
     }
 }
@@ -336,6 +339,16 @@ mod tests {
         let keys = [key(81), key(82), key(83)];
         let mut gateway = gateway(&keys);
         add_cast(&mut gateway.chamber.game);
+        gateway
+            .chamber
+            .game
+            .spawn_prop(
+                "Crate",
+                crate::spells::PropSpec::reference(crate::spells::PropKind::Crate).secured(),
+                Vec3::new(0., 1., -8.),
+                0.,
+            )
+            .unwrap();
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let (tls, connector) = tls();
@@ -355,6 +368,9 @@ mod tests {
         let state = client.snapshot().await.unwrap();
         assert_eq!(state.presentation.hostile_casts.len(), 1);
         assert_eq!(state.presentation.impacts.len(), 1);
+        assert_eq!(state.presentation.props.len(), 1);
+        assert_eq!(state.presentation.props[0].life.instance, 120);
+        assert_eq!(state.presentation.props[0].center, Vec3::new(0., 1., -8.));
         assert!(client.control().is_none());
         client.close().await.unwrap();
         stop.send(()).unwrap();

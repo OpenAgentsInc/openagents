@@ -302,25 +302,32 @@ pub fn playground_static_instances() -> Vec<Instance> {
 }
 /// Dynamic props at their interpolated poses, scaled to their collision boxes.
 pub fn prop_instances(pack: &Pack, game: &super::play::Game, alpha: f32) -> Vec<Instance> {
-    let spells = &game.spells;
-    (0..spells.props.len())
-        .filter(|i| !spells.props[*i].removed)
-        .filter_map(|i| {
-            let prop = &spells.props[i];
-            let model = prop.spec.kind.model(prop.spec.secured);
-            pack.models.contains_key(model).then(|| {
-                let (center, rotation) = spells.prop_pose(i, alpha as f64);
-                Instance {
-                    actor: None,
-                    model: model.into(),
-                    transform: Mat4::from_translation(center.as_vec3())
-                        * Mat4::from_quat(rotation.as_quat())
-                        * Mat4::from_scale(prop.spec.dimensions.as_vec3() / 0.9144)
-                        * basis(),
-                    animation: 0.into(),
-                    time: game.time,
-                    emission: Vec3::ONE,
-                }
+    prop_instances_from_poses(
+        pack,
+        &verse_world::visuals::prop_poses(game, alpha),
+        game.time,
+    )
+}
+/// Draws local or admitted remote box poses without stepping physics.
+pub fn prop_instances_from_poses(
+    pack: &Pack,
+    props: &[verse_world::visuals::Prop],
+    time: f32,
+) -> Vec<Instance> {
+    props
+        .iter()
+        .filter_map(|p| {
+            let model = p.kind.model(p.secured);
+            pack.models.contains_key(model).then(|| Instance {
+                actor: None,
+                model: model.into(),
+                transform: Mat4::from_translation(p.center)
+                    * Mat4::from_quat(p.rotation)
+                    * Mat4::from_scale(p.dimensions / 0.9144)
+                    * basis(),
+                animation: 0.into(),
+                time,
+                emission: Vec3::ONE,
             })
         })
         .collect()
@@ -1054,6 +1061,36 @@ fn portraits(dir: &std::path::Path, pack: &Pack, mut atlas: Atlas) -> Result<Atl
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn local_and_read_only_prop_values_share_native_model_and_box_transforms() {
+        let scene = verse_engine::director::Scene::from_json(include_bytes!(
+            "../../../../assets/verse/original/ritual.json"
+        ))
+        .unwrap();
+        let mut game = verse_world::play::Game::new_in(scene, 160).unwrap();
+        game.spawn_prop(
+            "Crate",
+            verse_world::spells::PropSpec::reference(verse_world::spells::PropKind::Crate)
+                .secured(),
+            Vec3::new(0., 1., -8.),
+            0.4,
+        )
+        .unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let pack = super::super::original::generate(dir.path()).unwrap();
+        let poses = verse_world::visuals::prop_poses(&game, 0.5);
+        verse_world::visuals::validate_props(&poses, 160).unwrap();
+        let local = prop_instances(&pack, &game, 0.5);
+        let remote = prop_instances_from_poses(&pack, &poses, game.time);
+        assert_eq!(local.len(), 1);
+        assert_eq!(local[0].model, "prop-crate-secured");
+        assert_eq!(format!("{:?}", local), format!("{:?}", remote));
+        assert!(remote[0].transform.is_finite());
+        assert!(
+            (remote[0].transform.transform_point3(Vec3::ZERO) - poses[0].center).length() < 0.00001
+        );
+    }
+
     #[test]
     fn controlled_adventurers_keep_distinct_shield_and_light_projections() {
         let scene = verse_engine::director::Scene::from_json(include_bytes!(
