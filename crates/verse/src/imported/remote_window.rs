@@ -399,10 +399,12 @@ impl App {
                         }
                     }
                     Err(message) => {
-                        self.pending.pop_front();
+                        self.pending.retain(|(_, pending)| *pending != Some(token));
                         self.prediction.reject(token);
                         self.profile.bindings.remove(&token);
-                        self.status = message;
+                        if message != worker::SUPERSEDED_MOVEMENT {
+                            self.status = message;
+                        }
                     }
                 },
                 Ok(Update::Outcome(r)) => {
@@ -498,10 +500,7 @@ impl App {
         } else {
             axes
         };
-        if self.controlled()
-            && now >= self.next_move
-            && self.input.capacity() == worker::INPUT_CAPACITY
-        {
+        if self.controlled() && now >= self.next_move && self.input.capacity() > 0 {
             self.send(Input::Command(Intent::Move {
                 axes,
                 yaw: self.yaw,
@@ -1509,6 +1508,23 @@ mod tests {
         app.send(Input::Respawn);
         assert_eq!(app.status, "Chamber connection stopped");
         assert!(app.consume().is_ok());
+        app.pending.clear();
+        app.pending.push_back((Some(Ability::Shield), None));
+        app.pending.push_back((None, Some(17)));
+        app.pending.push_back((None, Some(18)));
+        app.status.clear();
+        updates
+            .try_send(Update::CommandBound {
+                token: 17,
+                binding: Err(worker::SUPERSEDED_MOVEMENT.into()),
+            })
+            .unwrap();
+        app.consume().unwrap();
+        assert_eq!(
+            app.pending.iter().copied().collect::<Vec<_>>(),
+            vec![(Some(Ability::Shield), None), (None, Some(18))]
+        );
+        assert!(app.status.is_empty());
         drop(updates);
         assert!(app.consume().is_err());
     }

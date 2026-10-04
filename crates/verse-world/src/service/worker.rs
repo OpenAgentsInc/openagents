@@ -12,6 +12,7 @@ pub const INPUT_CAPACITY: usize = 32;
 pub const UPDATE_CAPACITY: usize = 8;
 /// Leaves request capacity for 30 Hz input refreshes and spell commands.
 pub const NATIVE_CADENCE: Duration = Duration::from_millis(50);
+pub const SUPERSEDED_MOVEMENT: &str = "Movement replaced by newer unsent input";
 
 /// Local input requests contain no principal, controller, or transport handle.
 pub enum Input {
@@ -46,6 +47,41 @@ pub enum Update {
     Outcome(Response),
 }
 
+/// Coalesces only consecutive, increasing movement tokens in the same control context.
+/// A cast, jump, lifecycle action, or different context remains the next queued input.
+fn coalesce_movement(
+    mut input: Input,
+    inputs: &mut mpsc::Receiver<Input>,
+    deferred: &mut Option<Input>,
+) -> (Input, Vec<u64>) {
+    let mut retired = Vec::new();
+    for _ in 0..INPUT_CAPACITY {
+        let Input::TrackedCommand {
+            token,
+            life,
+            epoch,
+            intent: Intent::Move { .. },
+        } = &input
+        else {
+            break;
+        };
+        let (token, life, epoch) = (*token, *life, *epoch);
+        let Ok(next) = inputs.try_recv() else {
+            break;
+        };
+        let compatible = matches!(&next, Input::TrackedCommand {
+            token: newer, life: next_life, epoch: next_epoch, intent: Intent::Move { .. }
+        } if token > 0 && *newer > token && *next_life == life && *next_epoch == epoch);
+        if !compatible {
+            *deferred = Some(next);
+            break;
+        }
+        retired.push(token);
+        input = next;
+    }
+    (input, retired)
+}
+
 /// Runs on the caller's Tokio runtime, independently of the render loop.
 /// Bounded output backpressure pauses polling and input; no updates are dropped.
 /// Shutdown cancels uncertain IO and closes the owned connection without replay.
@@ -72,6 +108,7 @@ pub async fn run(
         let mut next_inventory = tokio::time::Instant::now();
         let mut inventory_life = None;
         let mut last_token = 0;
+        let mut deferred = None;
         loop {
             let mut polling = false;
             let update = tokio::select! {
@@ -86,7 +123,9 @@ pub async fn run(
                     let delivery = client.delivered_events(&mut cursor, 64).await?;
                     Update::Events { delivery, checkpoint: cursor.checkpoint()? }
                 }
-                input = inputs.recv() => {
+                input = async {
+                    match deferred.take() { Some(input) => Some(input), None => inputs.recv().await }
+                } => {
                     let Some(input) = input else { return Ok(()); };
                     // Refresh admitted tick/control before deriving an owned command.
                     let response = client.request(Body::Snapshot {}).await?;
@@ -95,6 +134,11 @@ pub async fn run(
                     }
                     updates.send(Update::Snapshot(response)).await
                         .map_err(|_| "Chamber update consumer closed")?;
+                    let (input, retired) = coalesce_movement(input, &mut inputs, &mut deferred);
+                    for token in retired {
+                        updates.send(Update::CommandBound { token, binding: Err(SUPERSEDED_MOVEMENT.into()) }).await
+                            .map_err(|_| "Chamber update consumer closed")?;
+                    }
                     let response = match input {
                         Input::TrackedCommand { token, life, epoch, intent } => {
                             let binding = if token == 0 || token <= last_token {
@@ -173,6 +217,146 @@ mod tests {
     use rustls::pki_types::ServerName;
     use tokio::time::timeout;
 
+    #[test]
+    fn unsent_movement_coalesces_without_crossing_actions_or_control_fences() {
+        let life = verse_engine::core::LifeId {
+            instance: 120,
+            actor: 14,
+            generation: 0,
+        };
+        let make = |token, epoch, intent| Input::TrackedCommand {
+            token,
+            life,
+            epoch,
+            intent,
+        };
+        let movement = || Intent::Move {
+            axes: [1., 0.],
+            yaw: 0.,
+        };
+        let (send, mut inputs) = mpsc::channel(INPUT_CAPACITY);
+        send.try_send(make(2, 1, movement())).unwrap();
+        send.try_send(make(3, 1, movement())).unwrap();
+        send.try_send(make(4, 1, Intent::Jump)).unwrap();
+        send.try_send(make(5, 1, movement())).unwrap();
+        let mut deferred = None;
+        let (last, retired) = coalesce_movement(make(1, 1, movement()), &mut inputs, &mut deferred);
+        assert_eq!(retired, vec![1, 2]);
+        assert!(matches!(last, Input::TrackedCommand { token: 3, .. }));
+        assert!(matches!(
+            deferred.take(),
+            Some(Input::TrackedCommand {
+                token: 4,
+                intent: Intent::Jump,
+                ..
+            })
+        ));
+        assert!(matches!(
+            inputs.try_recv().unwrap(),
+            Input::TrackedCommand { token: 5, .. }
+        ));
+        for (token, epoch) in [(6, 2), (6, 1), (5, 1)] {
+            send.try_send(make(token, epoch, movement())).unwrap();
+            let (_, retired) =
+                coalesce_movement(make(6, 1, movement()), &mut inputs, &mut deferred);
+            assert!(retired.is_empty());
+            assert!(deferred.take().is_some());
+        }
+        send.try_send(Input::Command(Intent::Cast {
+            ability: Ability::Shield,
+            target: None,
+            aim: [0., 0., 1.],
+        }))
+        .unwrap();
+        let (_, retired) = coalesce_movement(make(7, 1, movement()), &mut inputs, &mut deferred);
+        assert!(retired.is_empty());
+        assert!(matches!(
+            deferred,
+            Some(Input::Command(Intent::Cast { .. }))
+        ));
+    }
+    #[tokio::test]
+    async fn coalesced_tls_inputs_bind_only_latest_moves_and_preserve_jump_order() {
+        let keys = [key(81), key(82), key(83)];
+        let (address, connector, server_stop, server) = start(&keys).await;
+        let mut client = Client::connect(
+            address,
+            ServerName::try_from("localhost").unwrap(),
+            connector.config().clone(),
+            120,
+            &keys[0],
+        )
+        .await
+        .unwrap();
+        client.snapshot().await.unwrap();
+        let control = client.control().unwrap().clone();
+        let (input, inputs, updates, mut output) = channels();
+        for token in 1..=5 {
+            input
+                .try_send(Input::TrackedCommand {
+                    token,
+                    life: control.life.into(),
+                    epoch: control.epoch,
+                    intent: if token == 4 {
+                        Intent::Jump
+                    } else {
+                        Intent::Move {
+                            axes: [0., 0.],
+                            yaw: 0.,
+                        }
+                    },
+                })
+                .unwrap();
+        }
+        let (stop, stopped) = oneshot::channel();
+        let worker = tokio::spawn(run(
+            client,
+            Cursor::new(120),
+            NATIVE_CADENCE,
+            inputs,
+            updates,
+            stopped,
+        ));
+        let mut tokens = vec![];
+        let mut outcomes = 0;
+        let mut sequences = vec![];
+        timeout(Duration::from_secs(5), async {
+            while outcomes < 3 {
+                match output.recv().await.unwrap() {
+                    Update::CommandBound { token, binding } => {
+                        tokens.push(token);
+                        if token < 3 {
+                            assert_eq!(binding.unwrap_err(), SUPERSEDED_MOVEMENT);
+                        } else {
+                            let command = binding.unwrap();
+                            sequences.push(command.sequence);
+                            assert_eq!(matches!(command.intent, Intent::Jump), token == 4);
+                        }
+                    }
+                    Update::Outcome(response) => {
+                        assert!(matches!(response.body, Reply::Accepted));
+                        outcomes += 1;
+                    }
+                    _ => {}
+                }
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(tokens, vec![1, 2, 3, 4, 5]);
+        assert_eq!(
+            sequences,
+            vec![
+                control.accepted_sequence + 1,
+                control.accepted_sequence + 2,
+                control.accepted_sequence + 3
+            ]
+        );
+        stop.send(()).unwrap();
+        worker.await.unwrap().unwrap();
+        server_stop.send(()).unwrap();
+        assert!(server.await.unwrap().failure.is_none());
+    }
     #[tokio::test]
     async fn tracked_inputs_bind_before_outcomes_and_reject_stale_control() {
         let keys = [key(91), key(92), key(93)];
