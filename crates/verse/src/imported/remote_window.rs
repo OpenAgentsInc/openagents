@@ -115,6 +115,7 @@ struct App {
     pending: std::collections::VecDeque<Option<Ability>>,
     accepted_casts: std::collections::BTreeMap<String, u64>,
     damage_events: u64,
+    demo_trace: Vec<serde_json::Value>,
     dialogue_events: u64,
     min_hp: i32,
     recorded_world_start: Option<f32>,
@@ -160,6 +161,7 @@ impl App {
             pending: std::collections::VecDeque::new(),
             accepted_casts: Default::default(),
             damage_events: 0,
+            demo_trace: vec![],
             dialogue_events: 0,
             min_hp: i32::MAX,
             recorded_world_start: None,
@@ -212,35 +214,23 @@ impl App {
             return;
         }
         let target = self.view.target();
-        let aim = target
-            .and_then(|life| {
-                self.view
-                    .replica()
-                    .latest()?
-                    .presentation
-                    .actors
-                    .iter()
-                    .find(|p| verse_engine::core::LifeId::from(p.life) == life)
-                    .map(|p| p.actor.position + Vec3::Y)
-            })
-            .unwrap_or_else(|| {
-                self.view
-                    .replica()
-                    .latest()
-                    .and_then(|s| s.hud.as_ref())
-                    .and_then(|h| {
-                        self.view
-                            .replica()
-                            .latest()?
-                            .presentation
-                            .actors
-                            .iter()
-                            .find(|p| verse_engine::core::LifeId::from(p.life) == h.life)
-                    })
-                    .map_or(Vec3::ZERO, |p| {
-                        p.actor.position + self.camera.direction() * 20.
-                    })
-            });
+        let state = self.view.replica().latest().unwrap();
+        let hud = state.hud.as_ref().unwrap();
+        let player = state
+            .presentation
+            .actors
+            .iter()
+            .find(|p| verse_engine::core::LifeId::from(p.life) == hud.life)
+            .map_or(Vec3::ZERO, |p| p.actor.position);
+        let target_position = target.and_then(|life| {
+            state
+                .presentation
+                .actors
+                .iter()
+                .find(|p| verse_engine::core::LifeId::from(p.life) == life)
+                .map(|p| p.actor.position)
+        });
+        let aim = horizontal_aim(player, target_position, self.camera.direction());
         self.send(Input::Command(Intent::Cast {
             ability,
             target,
@@ -512,6 +502,9 @@ impl App {
         let ability = order[self.demo_slot % order.len()];
         self.demo_slot += 1;
         self.next_demo = state.presentation.time + 2.;
+        if self.demo_trace.len() < 64 {
+            self.demo_trace.push(serde_json::json!({"time":state.presentation.time,"ability":ability.label(),"ready":hud.slots.iter().find(|s|s.ability==ability).map(|s|s.ready),"hp":hud.resources.hp}));
+        }
         if !hud.slots.iter().any(|s| s.ability == ability && s.ready) {
             return;
         }
@@ -535,8 +528,14 @@ impl App {
                     .total_cmp(&b.actor.position.distance_squared(player))
             })
             .map(|p| verse_engine::core::LifeId::from(p.life));
-        if self.view.select_target(target).is_ok() {
-            self.cast(ability);
+        match self.view.select_target(target) {
+            Ok(()) => self.cast(ability),
+            Err(error) => {
+                if self.demo_trace.len() < 64 {
+                    self.demo_trace
+                        .push(serde_json::json!({"selection_refused":error}));
+                }
+            }
         }
     }
     fn finish_recording(&mut self) -> Result<(), String> {
@@ -544,7 +543,7 @@ impl App {
             let dropped = recorder.dropped;
             let stats = recorder.finish()?;
             let options = self.record.as_ref().unwrap();
-            let proof = serde_json::json!({"schema":"verse.remote.capture.v1","frames":stats.frames,"sampled_frames":stats.sampled,"duplicated_frames":stats.duplicated,"dropped_capture_frames":dropped,"encoded_size":[1280,720],"world_start":self.recorded_world_start,"world_end":self.view.replica().latest().map(|s|s.presentation.time),"accepted_cast_commands":self.accepted_casts,"damage_events":self.damage_events,"dialogue_events":self.dialogue_events,"minimum_owned_hp":self.min_hp,"programmatic_controller":options.controller,"native_dimensions":self.renderer.as_ref().map(|r|r.dimensions()),"capture_wall_seconds":self.record_started.map(|s|s.elapsed().as_secs_f64()),"wire_version":verse_world::service::wire::VERSION,"final_state":self.view.replica().latest()});
+            let proof = serde_json::json!({"schema":"verse.remote.capture.v1","frames":stats.frames,"sampled_frames":stats.sampled,"duplicated_frames":stats.duplicated,"dropped_capture_frames":dropped,"encoded_size":[1280,720],"world_start":self.recorded_world_start,"world_end":self.view.replica().latest().map(|s|s.presentation.time),"accepted_cast_commands":self.accepted_casts,"demo_trace":self.demo_trace,"demo_slot":self.demo_slot,"pending_commands":self.pending.len(),"final_status":self.status,"damage_events":self.damage_events,"dialogue_events":self.dialogue_events,"minimum_owned_hp":self.min_hp,"programmatic_controller":options.controller,"native_dimensions":self.renderer.as_ref().map(|r|r.dimensions()),"capture_wall_seconds":self.record_started.map(|s|s.elapsed().as_secs_f64()),"wire_version":verse_world::service::wire::VERSION,"final_state":self.view.replica().latest()});
             std::fs::write(
                 options.output.with_extension("json"),
                 serde_json::to_vec_pretty(&proof)
@@ -734,6 +733,11 @@ impl ApplicationHandler for App {
         }
     }
 }
+fn horizontal_aim(player: Vec3, target: Option<Vec3>, camera: Vec3) -> Vec3 {
+    let mut direction = target.map_or(camera, |target| target - player);
+    direction.y = 0.;
+    direction.normalize_or(Vec3::NEG_Z)
+}
 fn key_ability(key: KeyCode) -> Option<Ability> {
     let index = match key {
         KeyCode::Digit1 => 0,
@@ -753,6 +757,25 @@ fn key_ability(key: KeyCode) -> Option<Ability> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn remote_casts_use_horizontal_directions_instead_of_world_aim_points() {
+        let aim = horizontal_aim(
+            Vec3::new(4., 3., -20.),
+            Some(Vec3::new(7., 8., -16.)),
+            Vec3::NEG_Z,
+        );
+        assert_eq!(aim.y, 0.);
+        assert!((aim.length() - 1.).abs() < 0.00001);
+        assert!(aim.x > 0. && aim.z > 0.);
+        assert_eq!(
+            horizontal_aim(Vec3::ZERO, Some(Vec3::ZERO), Vec3::Y),
+            Vec3::NEG_Z
+        );
+        assert_eq!(
+            horizontal_aim(Vec3::ZERO, None, Vec3::new(0., -0.5, -0.5)),
+            Vec3::NEG_Z
+        );
+    }
     #[test]
     fn bounded_native_input_reports_pressure_and_closed_update_streams() {
         let dir = tempfile::tempdir().unwrap();
