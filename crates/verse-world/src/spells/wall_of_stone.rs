@@ -23,8 +23,8 @@ use super::{
 use crate::play::Game;
 use crate::wall_of_stone::creatures::{Creature, enclosed, push_out, shortest_exit};
 use crate::wall_of_stone::rig::{
-    BREAK_STEPS, Bond, BondKind, DEBRIS_GRIDS, FOOTING_FORCE, FOOTING_FREQUENCY, SEAM_FORCE,
-    SEAM_GAP, SEAM_TORQUE, wake_near,
+    BREAK_STEPS, Bond, BondKind, DEBRIS_GRIDS, FOOTING_FORCE, FOOTING_FREQUENCY, FOOTING_TORQUE,
+    SEAM_FORCE, SEAM_GAP, SEAM_TORQUE, wake_near,
 };
 use crate::wall_of_stone::validate::{Plan, Refusal, Stone, validate};
 use crate::wall_of_stone::{
@@ -183,6 +183,43 @@ pub struct State {
 }
 
 impl State {
+    /// Rejects a checkpoint whose wall state is out of bounds, refers to
+    /// missing props or bodies, or holds a non-finite value.
+    pub fn validate(&self, spells: &SpellWorld) -> Result<(), String> {
+        let bodies = spells.world.bodies().len();
+        let finite_joint = |bond: &Bond| {
+            spells.world.joint(bond.joint).is_none_or(|j| {
+                j.max_force.is_finite()
+                    && j.max_torque.is_finite()
+                    && j.impulse.is_finite()
+                    && j.angular_impulse.is_finite()
+                    && j.point.is_finite()
+            })
+        };
+        if self.walls.len() > MAX_WALLS
+            || self.queued.len() > 16
+            || self.queued.iter().any(|o| !o.side.is_finite())
+            || self.walls.iter().any(|w| {
+                !w.cast_at.is_finite()
+                    || w.cast > spells.casts
+                    || w.panels.len() > 40
+                    || w.bonds.len() != w.anchors.len()
+                    || w.panels.iter().any(|p| p.prop >= spells.props.len())
+                    || w.debris
+                        .iter()
+                        .any(|(prop, until)| *prop >= spells.props.len() || !until.is_finite())
+                    || w.anchors.iter().flatten().any(|a| a.0 as usize >= bodies)
+                    || w.pending.iter().any(|i| *i >= w.bonds.len())
+                    || w.bonds
+                        .iter()
+                        .any(|b| b.broken.is_some_and(|t| !t.is_finite()) || !finite_joint(b))
+            })
+        {
+            return Err("Invalid Wall of Stone checkpoint".into());
+        }
+        Ok(())
+    }
+
     /// Queues the layout the next cast raises.
     pub fn author(&mut self, layout: Layout, side: DVec3) -> Result<(), String> {
         if self.queued.len() >= 16 || !side.is_finite() {
@@ -572,7 +609,7 @@ fn raise(
             world[panel].orientation.inverse() * (footing.at - world[panel].pos),
             JointKind::Point,
         )
-        .limited(FOOTING_FORCE, f64::INFINITY)
+        .limited(FOOTING_FORCE, FOOTING_TORQUE)
         .soft(FOOTING_FREQUENCY, 1.0);
         bonds.push(Bond {
             kind: BondKind::Footing {
@@ -1443,6 +1480,33 @@ mod tests {
                 .iter()
                 .all(|p| !game.spells.props[p.prop].removed)
         );
+    }
+
+    #[test]
+    fn checkpoints_round_trip_with_intact_and_breaking_joints() {
+        let mut run = crate::playground::Run::new(scenario()).unwrap();
+        let mut saved = 0;
+        // Intact (the bridge just raised), mid-collapse, and after.
+        for at in [5.7, 10.3, 10.8] {
+            while run.game.time < at {
+                run.advance().unwrap();
+            }
+            run.game
+                .spells
+                .wall_of_stone
+                .validate(&run.game.spells)
+                .unwrap();
+            let bytes = run.game.checkpoint().unwrap();
+            let mut restored = Game::restore(&bytes).unwrap();
+            let mut live = Game::restore(&bytes).unwrap();
+            for _ in 0..15 {
+                live.tick(1. / 30., [0.; 2]).unwrap();
+                restored.tick(1. / 30., [0.; 2]).unwrap();
+            }
+            assert_eq!(live.checkpoint().unwrap(), restored.checkpoint().unwrap());
+            saved += 1;
+        }
+        assert_eq!(saved, 3);
     }
 
     #[test]

@@ -34,6 +34,9 @@ pub const SEAM_GAP: f64 = 0.005;
 /// Largest force the pin between a panel and stone carries, N. A bridge
 /// half tipping off its abutment pulls about 37 500 N on it.
 pub const FOOTING_FORCE: f64 = 20_000.0;
+/// Torque limit recorded on a pin, N m. A point joint carries no torque;
+/// the limit is finite so a checkpoint's JSON can hold it.
+pub const FOOTING_TORQUE: f64 = f64::MAX;
 /// Natural frequency of the pin between a panel and stone, rad/s. Soft, so
 /// the pin and the contacts beside it share the load instead of fighting
 /// over it; it sags about 1 cm under a hanging panel.
@@ -221,7 +224,7 @@ impl Wall {
                 world[panel].orientation.inverse() * (footing.at - world[panel].pos),
                 JointKind::Point,
             )
-            .limited(FOOTING_FORCE, f64::INFINITY)
+            .limited(FOOTING_FORCE, FOOTING_TORQUE)
             .soft(FOOTING_FREQUENCY, 1.0);
             bonds.push(Bond {
                 kind: BondKind::Footing {

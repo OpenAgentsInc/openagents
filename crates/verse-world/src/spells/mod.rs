@@ -247,6 +247,7 @@ impl SpellWorld {
         self.world.check_version()?;
         self.dice.validate()?;
         self.levitations.validate(self.props.len(), self.casts)?;
+        self.wall_of_stone.validate(self)?;
         let bodies = self.world.bodies().len();
         let mut lives = std::collections::BTreeSet::new();
         if self.props.len() > MAX_PROPS
