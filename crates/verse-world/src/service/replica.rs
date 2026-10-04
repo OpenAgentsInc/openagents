@@ -19,6 +19,7 @@ pub struct Buffer {
     current: Option<Frame>,
     generations: BTreeMap<u64, u64>,
     prop_generations: BTreeMap<u64, u64>,
+    blocker_generations: BTreeMap<u64, u64>,
 }
 impl Buffer {
     pub fn new(instance: u64, max_displacement: f32) -> Result<Self, String> {
@@ -32,6 +33,7 @@ impl Buffer {
             current: None,
             generations: BTreeMap::new(),
             prop_generations: BTreeMap::new(),
+            blocker_generations: BTreeMap::new(),
         })
     }
     /// Replaces state only after validating every context, life, and budget.
@@ -133,6 +135,34 @@ impl Buffer {
         if prop_generations.len() > 512 {
             return Err("Replica prop generation history budget exceeded".into());
         }
+        let mut blocker_generations = if reset {
+            BTreeMap::new()
+        } else {
+            self.blocker_generations.clone()
+        };
+        for blocker in &state.presentation.blockers {
+            if blocker_generations
+                .get(&blocker.life.entity)
+                .is_some_and(|g| {
+                    blocker.life.generation < *g
+                        || (blocker.life.generation == *g
+                            && !reset
+                            && self.current.as_ref().is_some_and(|c| {
+                                !c.state
+                                    .presentation
+                                    .blockers
+                                    .iter()
+                                    .any(|b| b.life == blocker.life)
+                            }))
+                })
+            {
+                return Err("Replica blocker generation is stale or retired".into());
+            }
+            blocker_generations.insert(blocker.life.entity, blocker.life.generation);
+        }
+        if blocker_generations.len() > 512 {
+            return Err("Replica blocker history budget exceeded".into());
+        }
         let next = Frame {
             tick: response.tick,
             control: response.control.clone(),
@@ -150,6 +180,7 @@ impl Buffer {
         self.current = Some(next);
         self.generations = generations;
         self.prop_generations = prop_generations;
+        self.blocker_generations = blocker_generations;
         Ok(())
     }
     pub fn latest(&self) -> Option<&State> {
@@ -642,5 +673,52 @@ pub(super) mod tests {
             assert!(b.push(&bad).is_err());
             assert_eq!(saved, serde_json::to_vec(b.latest().unwrap()).unwrap());
         }
+    }
+    #[test]
+    fn blocker_bounds_validate_atomically_and_retire_without_interpolation() {
+        let blocker = crate::visuals::Blocker {
+            life: physics::queries::Life {
+                instance: 130,
+                entity: 10000,
+                generation: 0,
+            },
+            min: glam::DVec3::ZERO,
+            max: glam::DVec3::ONE,
+            table_proxy: true,
+        };
+        let mut first = response(1);
+        state(&mut first).presentation.blockers = vec![blocker.clone()];
+        let mut b = Buffer::new(130, 4.).unwrap();
+        b.push(&first).unwrap();
+        let saved = serde_json::to_vec(b.latest().unwrap()).unwrap();
+        for case in 0..6 {
+            let mut bad = first.clone();
+            bad.tick = 2;
+            let p = &mut state(&mut bad).presentation.blockers[0];
+            match case {
+                0 => p.life.instance += 1,
+                1 => p.min.x = f64::NAN,
+                2 => p.max = p.min,
+                3 => p.table_proxy = false,
+                4 => state(&mut bad).presentation.blockers.push(blocker.clone()),
+                _ => state(&mut bad).presentation.blockers = vec![blocker.clone(); 257],
+            }
+            assert!(b.push(&bad).is_err());
+            assert_eq!(saved, serde_json::to_vec(b.latest().unwrap()).unwrap());
+        }
+        let mut moved = first.clone();
+        moved.tick = 2;
+        state(&mut moved).presentation.blockers[0].max.x = 2.;
+        b.push(&moved).unwrap();
+        assert_eq!(b.sample(0.).unwrap().unwrap().blockers[0].max.x, 2.);
+        let mut removed = moved.clone();
+        removed.tick = 3;
+        state(&mut removed).presentation.blockers.clear();
+        b.push(&removed).unwrap();
+        assert!(b.sample(0.).unwrap().unwrap().blockers.is_empty());
+        moved.tick = 4;
+        assert!(b.push(&moved).is_err());
+        state(&mut moved).presentation.blockers[0].life.generation = 1;
+        b.push(&moved).unwrap();
     }
 }

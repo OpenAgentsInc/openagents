@@ -57,6 +57,7 @@ pub struct Presentation {
     pub hostile_casts: Vec<HostileCast>,
     pub impacts: Vec<Impact>,
     pub props: Vec<crate::visuals::Prop>,
+    pub blockers: Vec<crate::visuals::Blocker>,
 }
 impl Presentation {
     pub(super) fn extract(game: &Game, bindings: &[ActorBinding]) -> Self {
@@ -99,6 +100,7 @@ impl Presentation {
             .collect();
         Self {
             props: crate::visuals::prop_poses(game, 1.),
+            blockers: crate::visuals::blocker_bounds(game),
             time: frame.time,
             actors,
             effects,
@@ -232,6 +234,7 @@ impl Presentation {
             }
         }
         crate::visuals::validate_props(&self.props, instance)?;
+        crate::visuals::validate_blockers(&self.blockers, instance)?;
         Ok(())
     }
 }
@@ -349,6 +352,20 @@ mod tests {
                 0.,
             )
             .unwrap();
+        let blocker = physics::queries::Life {
+            instance: 120,
+            entity: 10000,
+            generation: 0,
+        };
+        gateway
+            .chamber
+            .game
+            .set_navigation_blocker(
+                blocker,
+                glam::DVec3::new(-0.5, 0., -8.5),
+                glam::DVec3::new(0.5, 1., -7.5),
+            )
+            .unwrap();
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let (tls, connector) = tls();
@@ -371,6 +388,13 @@ mod tests {
         assert_eq!(state.presentation.props.len(), 1);
         assert_eq!(state.presentation.props[0].life.instance, 120);
         assert_eq!(state.presentation.props[0].center, Vec3::new(0., 1., -8.));
+        assert!(
+            state
+                .presentation
+                .blockers
+                .iter()
+                .any(|b| b.life == blocker && b.table_proxy)
+        );
         assert!(client.control().is_none());
         client.close().await.unwrap();
         stop.send(()).unwrap();

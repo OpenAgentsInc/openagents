@@ -258,6 +258,8 @@ The [inventory window profile](../../../bench/verse/2026-10-03/inventory-window/
 
 [#10515](https://github.com/OpenAgentsInc/openagents/issues/10515) adds wire version six authoritative prop poses. Live physics box lives, kinds/secured variants, dimensions, centers, and rotations are validated for instance, identity, finite values, unit rotation, and capacity. Replica sampling interpolates compatible transforms, snaps life/shape/displacement changes, drops removed props, refuses retired generations, and clears prop history on an admitted world reset. Native local/remote prop values share one model-transform path without remote physics execution. Tests cover extraction/checkpoints/removal, malformed transforms/budgets, interpolation/lifecycle/reset fences, real TLS reception, and matching native transforms. Remote blockers, mounting, camera/audio, catalog adapters, prediction, persistence, and full acceptance remain.
 
+[#10516](https://github.com/OpenAgentsInc/openagents/issues/10516) adds wire version seven active blocker lives and bounds. Extraction omits corpse blockers and preserves authored table proxy metadata. Admission validates box bounds, identities, capacity, and retirement; replicas use the latest bounds without interpolation. Native local and remote values share model transforms without client collision authority. Tests cover extraction/removal, malformed and duplicate bounds, generation retirement, TLS reception, and native transform/table proxy parity. Native mounting, camera/audio, catalog adapters, prediction, persistence, and full acceptance remain.
+
 ## Reuse inventory
 
 Review baseline: OpenAgents `843c92dd7e`. The entries below were checked against

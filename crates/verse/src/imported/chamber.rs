@@ -83,31 +83,32 @@ pub fn instances(
 
 /// Projects admitted world props using the same bounds as collision and routing.
 pub fn blocker_instances(pack: &Pack, game: &super::play::Game) -> Vec<Instance> {
+    blocker_instances_from_bounds(pack, &verse_world::visuals::blocker_bounds(game), game.time)
+}
+/// Draws admitted cover bounds without constructing local navigation or physics.
+pub fn blocker_instances_from_bounds(
+    pack: &Pack,
+    blockers: &[verse_world::visuals::Blocker],
+    time: f32,
+) -> Vec<Instance> {
     if !pack.models.contains_key("navigation-blocker") {
         return vec![];
     }
-    game.navigation_blockers()
-        .active_bounds()
-        .filter(|(life, _, _)| {
-            !(pack.models.contains_key("prop/Table_Large")
-                && (10_000..10_256).contains(&life.entity))
-                && !game.physics_bodies().get(*life).is_some_and(|body| {
-                    matches!(body.phase, physics::lifetimes::Phase::Corpse { .. })
-                })
-        })
-        .map(|(_, min, max)| Instance {
+    blockers
+        .iter()
+        .filter(|b| !(b.table_proxy && pack.models.contains_key("prop/Table_Large")))
+        .map(|b| Instance {
             actor: None,
             model: "navigation-blocker".into(),
-            transform: Mat4::from_translation(((min + max) * 0.5).as_vec3())
-                * Mat4::from_scale((max - min).as_vec3() / 0.9144)
+            transform: Mat4::from_translation(((b.min + b.max) * 0.5).as_vec3())
+                * Mat4::from_scale((b.max - b.min).as_vec3() / 0.9144)
                 * basis(),
             animation: 0.into(),
-            time: game.time,
+            time,
             emission: Vec3::ONE,
         })
         .collect()
 }
-
 pub fn classic_atlas(dir: &std::path::Path) -> Result<Atlas, String> {
     let font = std::fs::read(dir.join("FRIZQT__.TTF"))
         .map_err(|e| format!("Import Classic UI assets with wow-import --ui-only: {e}"))?;
@@ -1061,6 +1062,37 @@ fn portraits(dir: &std::path::Path, pack: &Pack, mut atlas: Atlas) -> Result<Atl
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn local_and_read_only_blocker_bounds_share_native_transforms_and_table_proxy_rules() {
+        let scene = verse_engine::director::Scene::from_json(include_bytes!(
+            "../../../../assets/verse/original/ritual.json"
+        ))
+        .unwrap();
+        let mut game = verse_world::play::Game::new_in(scene, 160).unwrap();
+        let life = physics::queries::Life {
+            instance: 160,
+            entity: 10000,
+            generation: 0,
+        };
+        game.set_navigation_blocker(
+            life,
+            glam::DVec3::new(-0.5, 0., -8.5),
+            glam::DVec3::new(0.5, 1., -7.5),
+        )
+        .unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let mut pack = super::super::original::generate(dir.path()).unwrap();
+        let bounds = verse_world::visuals::blocker_bounds(&game);
+        verse_world::visuals::validate_blockers(&bounds, 160).unwrap();
+        let local = blocker_instances(&pack, &game);
+        let remote = blocker_instances_from_bounds(&pack, &bounds, game.time);
+        assert_eq!(local.len(), 1);
+        assert_eq!(format!("{:?}", local), format!("{:?}", remote));
+        let model = pack.models["navigation-blocker"].clone();
+        pack.models.insert("prop/Table_Large".into(), model);
+        assert!(blocker_instances_from_bounds(&pack, &bounds, game.time).is_empty());
+    }
+
     #[test]
     fn local_and_read_only_prop_values_share_native_model_and_box_transforms() {
         let scene = verse_engine::director::Scene::from_json(include_bytes!(

@@ -178,7 +178,11 @@ and instance/life validated. Replica sampling interpolates compatible poses,
 snaps life/shape changes, omits removed props, and refuses retired generations.
 An admitted world reset clears prior prop interpolation/history. Native local
 and remote prop values share model transforms without client physics stepping.
-Remote blockers and window mounting remain.
+Wire version seven also carries active blocker lives and bounds, omits corpse
+blockers, and preserves authored table proxy metadata. Admission rejects malformed
+boxes and retired lives. Native local and remote bounds share model transforms;
+remote bounds use the latest host state without constructing client collision.
+Remote window mounting remains.
 
 Revocation leaves an uncontrolled actor in the world; actor retirement and capacity reclamation remain lifecycle work.
 Transactional saves, multiplayer

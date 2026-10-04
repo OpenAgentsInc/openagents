@@ -150,3 +150,90 @@ mod prop_tests {
         assert!(prop_poses(&game, 1.).is_empty());
     }
 }
+
+/// Active cover bounds for drawing; clients acquire no collision mutation rights.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Blocker {
+    pub life: physics::queries::Life,
+    pub min: glam::DVec3,
+    pub max: glam::DVec3,
+    pub table_proxy: bool,
+}
+pub fn blocker_bounds(game: &Game) -> Vec<Blocker> {
+    game.navigation_blockers()
+        .active_bounds()
+        .filter(|(life, _, _)| {
+            !game
+                .physics_bodies()
+                .get(*life)
+                .is_some_and(|b| matches!(b.phase, physics::lifetimes::Phase::Corpse { .. }))
+        })
+        .map(|(life, min, max)| Blocker {
+            life,
+            min,
+            max,
+            table_proxy: (10_000..10_256).contains(&life.entity),
+        })
+        .collect()
+}
+pub fn validate_blockers(blockers: &[Blocker], instance: u64) -> Result<(), String> {
+    let mut entities = std::collections::BTreeSet::new();
+    if blockers.len() > 256
+        || blockers.iter().any(|b| {
+            b.life.instance != instance
+                || b.life.entity == 0
+                || !entities.insert(b.life.entity)
+                || !b.min.is_finite()
+                || !b.max.is_finite()
+                || !b.min.cmplt(b.max).all()
+                || b.min.abs().max_element() > 1_000_000.
+                || b.max.abs().max_element() > 1_000_000.
+                || b.table_proxy != (10_000..10_256).contains(&b.life.entity)
+        })
+    {
+        return Err("Invalid replicated blocker bounds or budget".into());
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod blocker_tests {
+    use super::*;
+    #[test]
+    fn active_bounds_preserve_box_lives_and_omit_retired_cover() {
+        let scene = verse_engine::director::Scene::from_json(include_bytes!(
+            "../../../assets/verse/original/ritual.json"
+        ))
+        .unwrap();
+        let mut game = Game::new_in(scene, 160).unwrap();
+        let life = physics::queries::Life {
+            instance: 160,
+            entity: 10000,
+            generation: 0,
+        };
+        game.set_navigation_blocker(
+            life,
+            glam::DVec3::new(-0.5, 0., -8.5),
+            glam::DVec3::new(0.5, 1., -7.5),
+        )
+        .unwrap();
+        let bounds = blocker_bounds(&game);
+        validate_blockers(&bounds, 160).unwrap();
+        let b = bounds.iter().find(|b| b.life == life).unwrap();
+        assert!(b.table_proxy);
+        game.remove_navigation_blocker(life).unwrap();
+        assert!(!blocker_bounds(&game).iter().any(|b| b.life == life));
+        assert!(game.set_navigation_blocker(life, b.min, b.max).is_err());
+        game.set_navigation_blocker(
+            physics::queries::Life {
+                generation: 1,
+                ..life
+            },
+            b.min,
+            b.max,
+        )
+        .unwrap();
+        validate_blockers(&blocker_bounds(&game), 160).unwrap();
+    }
+}
