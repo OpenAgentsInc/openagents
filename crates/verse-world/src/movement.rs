@@ -5,6 +5,26 @@ use physics::{
     queries::{Filter, Scene},
 };
 
+/// Authoritative movement state after all admitted movement and jump input is consumed.
+#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Baseline {
+    pub life: verse_engine::core::LifeId,
+    pub epoch: u64,
+    pub applied_sequence: u64,
+    pub character: Character,
+    pub yaw: f32,
+}
+impl Baseline {
+    pub fn validate(&self) -> Result<(), String> {
+        self.character.validate()?;
+        if self.life.actor == 0 || !self.yaw.is_finite() {
+            return Err("Invalid authoritative movement baseline".into());
+        }
+        Ok(())
+    }
+}
+
 pub struct Walk {
     pub direction: Vec3,
     pub speed: f32,

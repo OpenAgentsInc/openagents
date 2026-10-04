@@ -5,7 +5,7 @@ use verse_engine::core::LifeId;
 use super::auth::{Challenge, ConnectionId, Gateway};
 use crate::{Command, Intent, events::Event, play::Ability, rules::Snapshot};
 
-pub const VERSION: u16 = 17;
+pub const VERSION: u16 = 18;
 pub const MAX_REQUEST_BYTES: usize = 16 * 1024;
 pub const MAX_RESPONSE_BYTES: usize = 2 * 1024 * 1024;
 
@@ -180,6 +180,26 @@ impl State {
         {
             return Err("Owned HUD does not match admitted control".into());
         }
+        if let Some(movement) = &self.movement {
+            movement.validate()?;
+            let control = control
+                .as_ref()
+                .ok_or("Movement baseline has no admitted control")?;
+            let actor = self
+                .presentation
+                .actors
+                .iter()
+                .find(|a| a.life == control.life)
+                .ok_or("Movement baseline actor is missing")?;
+            if movement.life != control.life.into()
+                || movement.epoch != control.epoch
+                || movement.applied_sequence != control.accepted_sequence
+                || movement.character.feet.as_vec3() != actor.actor.position
+                || self.hud.as_ref().is_none_or(|h| h.resources.hp <= 0)
+            {
+                return Err("Movement baseline does not match applied owned state".into());
+            }
+        }
         Ok(())
     }
     /// Produces renderer values only after complete remote state admission.
@@ -319,6 +339,8 @@ pub struct ActorBinding {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct State {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub movement: Option<crate::movement::Baseline>,
     pub hud: Option<crate::hud::Own>,
     pub snapshot: Snapshot,
     pub presentation: super::presentation::Presentation,
@@ -636,6 +658,13 @@ impl Gateway {
                 }
                 Ok(Reply::Snapshot {
                     state: State {
+                        movement: self
+                            .admission(id)
+                            .ok()
+                            .map(|a| self.game().movement_baseline(a.actor()))
+                            .transpose()
+                            .map_err(|e| ("movement", e))?
+                            .flatten(),
                         presentation,
                         hud: self
                             .admission(id)
@@ -769,6 +798,84 @@ mod tests {
             Reply::Accepted
         ));
         id
+    }
+    #[test]
+    fn movement_baselines_wait_for_applied_inputs_and_match_owned_control() {
+        let mut g = gateway();
+        let player = key(131);
+        let other = key(132);
+        let spectator = key(133);
+        g.enroll_primary(public(&player)).unwrap();
+        g.enroll_player(public(&other), Vec3::new(3., 0., -22.))
+            .unwrap();
+        g.enroll_spectator(public(&spectator)).unwrap();
+        let player = join(&mut g, &player);
+        let other = join(&mut g, &other);
+        let spectator = join(&mut g, &spectator);
+        g.tick(1. / 30.).unwrap();
+        for id in [player, other] {
+            let initial = send(&mut g, id, 2, Body::Snapshot {});
+            let Reply::Snapshot { state } = initial.body else {
+                panic!("Expected snapshot");
+            };
+            state.validate_control(110, &initial.control).unwrap();
+            let baseline = state.movement.unwrap();
+            assert_eq!(baseline.applied_sequence, 0);
+            let command = g
+                .admission(id)
+                .unwrap()
+                .command(
+                    g.game().authority_tick,
+                    crate::Intent::Move {
+                        axes: [1., 0.],
+                        yaw: 0.,
+                    },
+                )
+                .unwrap();
+            g.submit(id, command).unwrap();
+            let command = g
+                .admission(id)
+                .unwrap()
+                .command(g.game().authority_tick, crate::Intent::Jump)
+                .unwrap();
+            g.submit(id, command).unwrap();
+            let pending = send(&mut g, id, 3, Body::Snapshot {});
+            assert_eq!(pending.control.as_ref().unwrap().accepted_sequence, 2);
+            let Reply::Snapshot { state } = pending.body else {
+                panic!("Expected snapshot");
+            };
+            assert!(state.movement.is_none());
+            g.tick(1. / 30.).unwrap();
+            let applied = send(&mut g, id, 4, Body::Snapshot {});
+            let Reply::Snapshot { state } = applied.body else {
+                panic!("Expected snapshot");
+            };
+            state.validate_control(110, &applied.control).unwrap();
+            let moved = state.movement.unwrap();
+            assert_eq!(moved.applied_sequence, 2);
+            assert!(moved.character.feet.x > baseline.character.feet.x);
+            assert!(moved.character.feet.y > baseline.character.feet.y);
+            for forgery in 0..3 {
+                let mut forged = state.clone();
+                let motor = forged.movement.as_mut().unwrap();
+                match forgery {
+                    0 => motor.epoch += 1,
+                    1 => motor.applied_sequence += 1,
+                    _ => motor.character.feet.x += 1.,
+                };
+                assert!(forged.validate_control(110, &applied.control).is_err());
+            }
+        }
+        let observer = send(&mut g, spectator, 2, Body::Snapshot {});
+        let Reply::Snapshot { state } = observer.body else {
+            panic!("Expected snapshot");
+        };
+        assert!(state.movement.is_none());
+        state.validate_control(110, &observer.control).unwrap();
+        let life = g.admission(player).unwrap().actor();
+        let mut stale = life;
+        stale.generation += 1;
+        assert!(g.game().movement_baseline(stale).is_err());
     }
     #[test]
     fn signed_json_players_and_spectator_share_state_and_control_acknowledgments() {

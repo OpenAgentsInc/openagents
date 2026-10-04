@@ -110,6 +110,48 @@ impl Player {
     }
 }
 impl Game {
+    pub fn movement_baseline(
+        &self,
+        life: LifeId,
+    ) -> Result<Option<crate::movement::Baseline>, String> {
+        let (admission, character, yaw, pending, dead) = if life.actor == self.player_actor() {
+            (
+                &self.admission,
+                self.character,
+                self.yaw,
+                self.pending_movement.is_some() || self.pending_jump || self.agent_controlled,
+                self.snapshot().player.hp == 0,
+            )
+        } else {
+            let player = self
+                .additional_players
+                .get(&life.actor)
+                .ok_or("Unknown movement character")?;
+            (
+                &player.admission,
+                player.character,
+                player.yaw,
+                player.pending_move.is_some() || player.pending_jump,
+                self.simulation.snapshot_for(player.source)?.player.hp == 0,
+            )
+        };
+        if admission.actor() != life {
+            return Err("Movement baseline life mismatch".into());
+        }
+        if !self.unlocked() || pending || dead || self.colliders.is_empty() {
+            return Ok(None);
+        }
+        let baseline = crate::movement::Baseline {
+            life,
+            epoch: admission.epoch(),
+            applied_sequence: admission.accepted_sequence(),
+            character,
+            yaw,
+        };
+        baseline.validate()?;
+        Ok(Some(baseline))
+    }
+
     /// Binds a trusted controller to a new adventurer in this same world.
     /// A network host must admit membership and select the spawn before calling this.
     pub fn add_player(&mut self, controller: Controller, spawn: Vec3) -> Result<LifeId, String> {

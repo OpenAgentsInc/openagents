@@ -271,9 +271,14 @@ The adventurer starts with 200 HP. After defeat, **Respawn** restores health and
 Presentation snapshots carry named animation states and exact actor lives. They select locomotion, combat, casting, prone, and death poses without assuming any model’s internal clip IDs.
 
 Quest catalogs can include bounded authored offer, objective-reminder, and turn-in
-dialogue. Wire version 17 carries that text in owned quest progress; the selected
-text follows enrollment and objective state. Native dialogue panel integration
-remains in progress.
+dialogue. Owned quest progress carries that text; the native giver panel selects
+the offer, reminder, or turn-in text from enrollment and objective state.
+
+Wire version 18 adds an owned movement baseline with the exact capsule state,
+yaw, life, control epoch, and applied sequence. Snapshots withhold it while
+movement or jump input is pending, during cinematic/controller control, and
+after death; spectators receive none. Client prediction and reconciliation
+remain in progress.
 
 ## Spell physics and the spell playground
 
