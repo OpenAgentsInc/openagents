@@ -32,6 +32,30 @@ pub fn cinematic_with_markers(
     height: f32,
     markers: &BTreeMap<verse_engine::core::LifeId, verse_world::service::progression::Marker>,
 ) -> UiBatch {
+    cinematic_with_focus(
+        atlas,
+        frame,
+        heights,
+        projection,
+        width,
+        height,
+        markers,
+        frame.target,
+        None,
+    )
+}
+
+pub fn cinematic_with_focus(
+    atlas: &Atlas,
+    frame: &Frame,
+    heights: &BTreeMap<String, f32>,
+    projection: Mat4,
+    width: f32,
+    height: f32,
+    markers: &BTreeMap<verse_engine::core::LifeId, verse_world::service::progression::Marker>,
+    focus: glam::Vec3,
+    target: Option<verse_engine::core::LifeId>,
+) -> UiBatch {
     let mut ui = UiBatch::default();
     let diagonal = width.hypot(height);
     let plate_scale = diagonal / 1280.0;
@@ -51,11 +75,37 @@ pub fn cinematic_with_markers(
             occupied.push((250.0 * scale, y, 232.0 * scale));
         }
     }
-    for actor in frame
+    let mut candidates: Vec<_> = frame
         .actors
         .iter()
         .filter(|a| a.visible && a.actor.nameplate && a.health > 0)
-    {
+        .filter(|a| {
+            (target.is_some() && a.life == target)
+                || a.actor.position.distance_squared(focus) <= 18. * 18.
+        })
+        .collect();
+    candidates.sort_by(|a, b| {
+        let priority = |a: &&verse_engine::director::ActorFrame| {
+            (
+                !(target.is_some() && a.life == target),
+                a.actor.model != "claude",
+            )
+        };
+        priority(&a)
+            .cmp(&priority(&b))
+            .then_with(|| {
+                a.actor
+                    .position
+                    .distance_squared(focus)
+                    .total_cmp(&b.actor.position.distance_squared(focus))
+            })
+            .then_with(|| a.actor.id.cmp(&b.actor.id))
+    });
+    let mut shown = 0;
+    for actor in candidates {
+        if shown == 6 {
+            break;
+        }
         let head = actor.actor.position
             + glam::Vec3::Y * (heights[&actor.actor.model] * actor.actor.scale * 0.9144 + 0.6096);
         let clip = projection * head.extend(1.0);
@@ -72,28 +122,18 @@ pub fn cinematic_with_markers(
             + 8.0;
         let desired_x = ((ndc.x + 1.0) * width * 0.5 - w * 0.5).clamp(4.0, width - w - 4.0);
         let anchor = (1.0 - ndc.y) * height * 0.5;
-        let mut selected = (desired_x, (anchor - row_height).max(5.0));
-        'search: for row in 0..30 {
-            for column in [0, -1, 1, -2, 2, -3, 3] {
-                let x = (desired_x + column as f32 * (w + 5.0)).clamp(4.0, width - w - 4.0);
-                let offset = if row % 2 == 0 {
-                    row / 2
-                } else {
-                    -(row + 1) / 2
-                };
-                let y = anchor - row_height - offset as f32 * row_height;
-                if y < 5.0 || y + row_height > height - 5.0 {
-                    continue;
-                }
-                if !occupied.iter().any(|(ox, oy, ow)| {
-                    x < ox + ow + 4.0 && x + w + 4.0 > *ox && (y - oy).abs() < row_height
-                }) {
-                    selected = (x, y);
-                    break 'search;
-                }
-            }
+        let x = desired_x;
+        let mut y = (anchor - row_height).max(5.0);
+        // Keep each plate at its character's head. Crowded plates are omitted
+        // instead of being moved onto unrelated characters or empty floor.
+        if y + row_height > height - 5.0
+            || occupied.iter().any(|(ox, oy, ow)| {
+                x < ox + ow + 4.0 && x + w + 4.0 > *ox && (y - oy).abs() < row_height
+            })
+        {
+            continue;
         }
-        let (x, mut y) = selected;
+        shown += 1;
         occupied.push((x, y, w));
         if actor.actor.friendly
             && let Some(marker) = actor.life.and_then(|life| markers.get(&life))
@@ -391,6 +431,76 @@ mod tests {
         );
         assert!(expired.vertices.is_empty());
     }
+    #[test]
+    fn crowded_plates_stay_anchored_and_selected_target_has_priority() {
+        let scene = verse_engine::director::Scene::from_json(include_bytes!(
+            "../../../../assets/verse/original/ritual.json"
+        ))
+        .unwrap();
+        let mut frame = scene.frame(scene.cut_at + 1.);
+        frame.yell = None;
+        let prototype = frame
+            .actors
+            .iter()
+            .find(|a| a.actor.id == 2)
+            .unwrap()
+            .clone();
+        frame.actors = (0..40)
+            .map(|id| {
+                let mut actor = prototype.clone();
+                actor.actor.id = id + 100;
+                actor.actor.position = glam::Vec3::ZERO;
+                actor.actor.friendly = id == 39;
+                actor.life = Some(verse_engine::core::LifeId {
+                    instance: 1,
+                    actor: id + 100,
+                    generation: 0,
+                });
+                actor
+            })
+            .collect();
+        let target = frame.actors.last().unwrap().life;
+        let heights = frame
+            .actors
+            .iter()
+            .map(|a| (a.actor.model.clone(), 2.))
+            .collect();
+        let atlas = Atlas::new(16.);
+        let projection = Mat4::perspective_rh(1., 16. / 9., 0.1, 100.)
+            * Mat4::look_at_rh(
+                glam::Vec3::new(0., 3., -8.),
+                glam::Vec3::Y * 2.,
+                glam::Vec3::Y,
+            );
+        let draw = |frame: &Frame| {
+            cinematic_with_focus(
+                &atlas,
+                frame,
+                &heights,
+                projection,
+                1280.,
+                720.,
+                &BTreeMap::new(),
+                glam::Vec3::ZERO,
+                target,
+            )
+        };
+        for distance in [0., 40.] {
+            for actor in &mut frame.actors {
+                actor.actor.position.z = distance;
+            }
+            let ui = draw(&frame);
+            assert_eq!(
+                ui.vertices
+                    .iter()
+                    .filter(|v| v.color == [0.15, 0.85, 0.25, 1.])
+                    .count(),
+                6
+            );
+            assert!(!ui.vertices.iter().any(|v| v.color == [1., 0., 0., 1.]));
+        }
+    }
+
     #[test]
     fn friendly_nameplates_are_green_and_dead_plates_are_hidden() {
         let scene = verse_engine::director::Scene::from_json(include_bytes!(
