@@ -661,8 +661,25 @@ impl Simulation {
     }
 
     pub fn tick(&mut self, dt: f32, position: [f32; 3], yaw: f32) -> Result<(), String> {
+        self.tick_at(dt, self.elapsed + dt, position, yaw)
+    }
+    /// Advances on the owning world's clock rather than accumulating another one.
+    pub(super) fn tick_at(
+        &mut self,
+        dt: f32,
+        at: f32,
+        position: [f32; 3],
+        yaw: f32,
+    ) -> Result<(), String> {
         valid_position(position)?;
-        if !dt.is_finite() || !(0. ..=0.1).contains(&dt) || !yaw.is_finite() {
+        let tolerance = f32::EPSILON * at.abs().max(1.) * 4.;
+        if !dt.is_finite()
+            || !(0. ..=0.1).contains(&dt)
+            || !yaw.is_finite()
+            || !at.is_finite()
+            || at < self.elapsed
+            || ((at - self.elapsed) - dt).abs() > tolerance
+        {
             return Err("Invalid world step".into());
         }
         // The adapter may already have recorded the player controller's path.
@@ -675,7 +692,7 @@ impl Simulation {
         } else {
             self.actors.get_mut(&0).unwrap().yaw = yaw;
         }
-        let began = self.elapsed;
+        let began = at - dt;
         if self.player.hp > 0 && self.player.mana < self.player.max_mana {
             self.mana_fraction += dt;
             if self.mana_fraction >= 1. {
@@ -698,7 +715,7 @@ impl Simulation {
         boundaries.dedup();
         for window in boundaries.windows(2) {
             let (from, to) = (window[0], window[1]);
-            self.elapsed = began + dt * to;
+            self.elapsed = if to == 1. { at } else { began + dt * to };
             self.advance_flights(dt * (to - from), &starts, &paths, from, to)?;
         }
         for mut burn in std::mem::take(&mut self.burns) {

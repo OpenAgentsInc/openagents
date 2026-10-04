@@ -149,6 +149,7 @@ pub struct Game {
     navigation: Option<std::sync::Arc<physics::walkable::Navigation>>,
     pub physics_clock: physics::FixedStep,
     pub physics_steps: u64,
+    clock_origin: Option<f64>,
     previous_player: Vec3,
     #[serde(skip)]
     player_trajectory: Vec<[f32; 3]>,
@@ -290,13 +291,14 @@ impl Game {
     /// Saves pending combat, controller fences, timers, and presentation clocks.
     pub fn checkpoint(&self) -> Result<Vec<u8>, String> {
         self.simulation.validate()?;
+        self.validate_clock()?;
         self.bodies.validate()?;
         self.validate_body_bindings()?;
         if let Some(encounter) = &self.encounter {
             encounter.validate(self)?;
         }
         let bytes = serde_json::to_vec(&serde_json::json!({
-            "version": 1, "rules_revision": "verse-chamber-owned-v10", "world": self,
+            "version": 1, "rules_revision": "verse-chamber-owned-v11", "world": self,
         }))
         .map_err(|e| e.to_string())?;
         if bytes.len() > 2 * 1024 * 1024 {
@@ -316,10 +318,11 @@ impl Game {
             return Err("World checkpoint budget exceeded".into());
         }
         let saved: Saved = serde_json::from_slice(bytes).map_err(|e| e.to_string())?;
-        if saved.version != 1 || saved.rules_revision != "verse-chamber-owned-v10" {
+        if saved.version != 1 || saved.rules_revision != "verse-chamber-owned-v11" {
             return Err("Unsupported world checkpoint".into());
         }
         let mut world = saved.world;
+        world.validate_clock()?;
         world.bodies.validate()?;
         world.validate_body_bindings()?;
         if let Some(encounter) = &world.encounter {
@@ -463,6 +466,20 @@ impl Game {
         world.simulation.set_colliders(world.colliders.clone());
         world.sync_actor_colliders()?;
         Ok(world)
+    }
+    fn validate_clock(&self) -> Result<(), String> {
+        let elapsed = self.physics_steps as f64 * self.physics_clock.dt;
+        if self.snapshot().elapsed != elapsed as f32
+            || self.clock_origin.is_none() && self.physics_steps != 0
+            || self.clock_origin.is_some_and(|origin| {
+                !origin.is_finite()
+                    || origin.abs() > 1_000_000.
+                    || (origin + elapsed) as f32 != self.time
+            })
+        {
+            return Err("World and combat clocks disagree".into());
+        }
+        Ok(())
     }
     fn move_player(&self, position: Vec3, delta: Vec3) -> Result<Vec3, String> {
         if self.colliders.is_empty() {
@@ -1060,6 +1077,7 @@ impl Game {
                 Some(crate::room::navigation(0)?)
             },
             physics_clock: physics::FixedStep::new(1. / 120., 12),
+            clock_origin: None,
             physics_steps: 0,
             previous_player: player,
             player_trajectory: vec![],
@@ -1353,9 +1371,37 @@ impl Game {
                 .checked_add(1)
                 .ok_or("Authority tick exhausted")?;
         }
-        self.time += dt;
+        let requested = dt;
+        let active = if self.unlocked() {
+            dt
+        } else {
+            self.time += dt;
+            self.timeline_events()?;
+            if !self.unlocked() {
+                return Ok(());
+            }
+            let active = (self.time - self.scene.cut_at).clamp(0., dt);
+            self.time = self.scene.cut_at;
+            active
+        };
+        let elapsed = self.physics_steps as f64 * self.physics_clock.dt;
+        // Trusted fixture placement can rebase scene time without changing combat time.
+        if self
+            .clock_origin
+            .is_none_or(|origin| (origin + elapsed) as f32 != self.time)
+        {
+            self.clock_origin = Some(self.time as f64 - elapsed);
+        }
+        let physics_steps = self.physics_clock.advance(active as f64);
+        self.physics_steps = self
+            .physics_steps
+            .checked_add(physics_steps as u64)
+            .ok_or("Physics step counter exhausted")?;
+        let dt = (physics_steps as f64 * self.physics_clock.dt) as f32;
+        self.time =
+            (self.clock_origin.unwrap() + self.physics_steps as f64 * self.physics_clock.dt) as f32;
         self.timeline_events()?;
-        if !self.unlocked() {
+        if requested > 0. && physics_steps == 0 {
             return Ok(());
         }
         self.respawn_cultists()?;
@@ -1406,7 +1452,6 @@ impl Game {
         let previous_player = self.player;
         self.previous_player = self.player;
         let jump = std::mem::take(&mut self.pending_jump) && !dead;
-        let physics_steps = self.physics_clock.advance(dt as f64);
         let mut player_path = vec![];
         if self.colliders.is_empty() {
             self.player = self.move_player(self.player, delta)?;
@@ -1434,10 +1479,6 @@ impl Game {
                 )?;
                 player_path.push(self.character.feet.as_vec3().to_array());
             }
-            self.physics_steps = self
-                .physics_steps
-                .checked_add(steps as u64)
-                .ok_or("Physics step counter exhausted")?;
             self.player = self.character.feet.as_vec3();
         }
         self.place_actor_body(self.admission.actor(), self.player, dt as f64)?;
@@ -1550,7 +1591,12 @@ impl Game {
                 self.message = "Cast blocked by chamber geometry".into();
             }
         }
-        self.simulation.tick(dt, self.player.to_array(), self.yaw)?;
+        self.simulation.tick_at(
+            dt,
+            (self.physics_steps as f64 * self.physics_clock.dt) as f32,
+            self.player.to_array(),
+            self.yaw,
+        )?;
         for effect in self.snapshot().effects {
             self.impacts
                 .push((effect.pos.into(), self.time, effect.kind));
@@ -2729,6 +2775,35 @@ mod grounded_movement_tests {
         let mut game = Game::new(scene).unwrap();
         game.time = 30.;
         game
+    }
+    #[test]
+    fn fractional_frames_retain_input_and_share_one_clock_across_replay() {
+        let mut game = game();
+        game.tick(0., [0.; 2]).unwrap();
+        game.jump().unwrap();
+        let start = game.player;
+        game.tick(1. / 240., [0., 1.]).unwrap();
+        assert_eq!(game.time, 30.);
+        assert_eq!(game.snapshot().elapsed, 0.);
+        assert_eq!(game.player, start);
+        assert!(game.pending_jump);
+        let bytes = game.checkpoint().unwrap();
+        let mut restored = Game::restore(&bytes).unwrap();
+        for _ in 0..239 {
+            game.tick(1. / 240., [0., 1.]).unwrap();
+            restored.tick(1. / 240., [0., 1.]).unwrap();
+            assert_eq!(game.checkpoint().unwrap(), restored.checkpoint().unwrap());
+            assert_eq!(
+                game.snapshot().elapsed,
+                (game.physics_steps as f64 / 120.) as f32
+            );
+        }
+        assert_eq!(game.physics_steps, 120);
+        assert_eq!(game.time, 31.);
+        assert_eq!(game.snapshot().elapsed, 1.);
+        let mut forged: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        forged["world"]["physics_steps"] = serde_json::json!(1);
+        assert!(Game::restore(&serde_json::to_vec(&forged).unwrap()).is_err());
     }
     #[test]
     fn four_substeps_jump_checkpoint_and_read_only_interpolation() {

@@ -8,15 +8,18 @@ chamber reads its snapshots and cinematic projection. Human and controller
 requests share admission. A trusted adapter supplies controller identity;
 this crate does not authenticate network connections.
 
-The `verse-chamber-owned-v10` rules profile independently implements retained
+The `verse-chamber-owned-v11` rules profile independently implements retained
 chamber behavior; it imports no vendor source. Firebolt deals 8 damage, each of
 three magic missiles deals 4, and fireball deals 15 in a visible 6.096-meter radius
 with three 6-damage burn ticks. Living characters regenerate one mana per second.
 Spell projectiles stop at static box cover and sweep against relative actor motion
 in 120 Hz slices. Actual character substep paths survive checkpoint replay;
 admitted teleports skip intermediate space.
-Shared authority runs at 30 Hz in the native adapter; `tick` also retains bounded
-fixture steps. Checkpoints rebuild static collision and compiled walkable
+The native adapter admits commands at 30 Hz. One world clock consumes bounded
+120 Hz steps for movement, combat, and timers; fractional input time remains in
+the accumulator. Combat elapsed time derives from the step count, and scene time
+uses a retained origin. Checkpoints validate both clocks and retain pending input.
+Checkpoints rebuild static collision and compiled walkable
 navigation from the scene profile. Grounded capsules admit slopes, stairs, jumps, and moving platform
 poses; NPC routes fence dynamic blocker generations.
 
@@ -35,6 +38,6 @@ pending arrows replay exactly.
 Hostile flights retain positions, sweep against player controller trajectories
 and cover, and resolve shields through the shared damage path. Checkpoints fence
 source and target lives and reject inconsistent flight positions.
-Unified clock ownership, transactional saves, multiplayer
+Transactional saves, multiplayer
 replication, and authoring tools remain on the
 [engine roadmap](../../docs/verse/engine/roadmap.md).
