@@ -242,6 +242,8 @@ The [inventory window profile](../../../bench/verse/2026-10-03/inventory-window/
 
 [#10507](https://github.com/OpenAgentsInc/openagents/issues/10507) adds the Rust remote client worker. Sequential TLS IO runs outside rendering with bounded polling, input/update queues, ordered snapshot/event/outcome delivery, and backpressure. Commands refresh admitted control; shutdown cancels uncertain IO without replay. Event checkpoints accompany delivery for persistence after consumption. Real TLS tests cover player shield commands and replicas, spectator snapshots, context/cadence/queue budgets, consumer loss, and shutdown under backpressure. This is client polling infrastructure; native GPU integration, subscribed server updates, prediction/reconciliation, durable gameplay, and full acceptance remain.
 
+[#10508](https://github.com/OpenAgentsInc/openagents/issues/10508) extends wire version four with hostile telegraph/flight presentation and transient impact flashes. Data carries caster/target lives, positions, timelines, radii, and effect kinds without a damage-execution API. Admission validates identities, finite values, active timelines, unique casters, and budgets. Tests cover extraction/serialization, malformed lives/positions/times/radii/kinds/budgets, and actual TLS spectator reception. Native rendering/lighting adapters, props/blockers, HUD, prediction, persistence, and full service acceptance remain.
+
 ## Reuse inventory
 
 Review baseline: OpenAgents `843c92dd7e`. The entries below were checked against

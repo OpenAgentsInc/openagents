@@ -136,6 +136,12 @@ before submission. Shutdown cancels uncertain IO without replay. Persist event
 checkpoints only after consuming their delivery. Native rendering and prediction
 still require adapters.
 
+Wire version four also carries hostile cast telegraphs/flights and transient
+impact flashes. Presentation validates caster/target lives, finite positions,
+timelines, radii, effect kinds, and budgets. These values describe visuals;
+clients never apply hostile damage. Native effects and lighting still need to
+consume this data. Older wire versions are refused.
+
 Revocation leaves an uncontrolled actor in the world; actor retirement and capacity reclamation remain lifecycle work.
 Transactional saves, multiplayer
 replication, and authoring tools remain on the
