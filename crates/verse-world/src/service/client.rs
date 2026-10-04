@@ -90,6 +90,9 @@ impl Client {
     pub fn connected(&self) -> bool {
         self.stream.is_some()
     }
+    pub fn instance(&self) -> u64 {
+        self.instance
+    }
     pub fn tick(&self) -> u64 {
         self.tick
     }

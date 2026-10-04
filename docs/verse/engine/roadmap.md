@@ -240,6 +240,8 @@ The [inventory window profile](../../../bench/verse/2026-10-03/inventory-window/
 
 [#10506](https://github.com/OpenAgentsInc/openagents/issues/10506) adds bounded event delivery cursors. Clients validate contiguous serials, instance/life bindings, ticks, payload bounds, and retention metadata before advancing progress. Duplicate pages emit no repeated effects; explicit gaps report missing serial ranges. Instance-scoped checkpoints retain progress without dialogue or credentials, and the TLS client exposes validated delivery. Tests cover partial/overlapping pages, gaps, reconnect checkpoints, malformed payloads, foreign instances, regressions, and real TLS delivery. Streaming cadence, native effects/audio integration, durable client storage, prediction, and full service acceptance remain.
 
+[#10507](https://github.com/OpenAgentsInc/openagents/issues/10507) adds the Rust remote client worker. Sequential TLS IO runs outside rendering with bounded polling, input/update queues, ordered snapshot/event/outcome delivery, and backpressure. Commands refresh admitted control; shutdown cancels uncertain IO without replay. Event checkpoints accompany delivery for persistence after consumption. Real TLS tests cover player shield commands and replicas, spectator snapshots, context/cadence/queue budgets, consumer loss, and shutdown under backpressure. This is client polling infrastructure; native GPU integration, subscribed server updates, prediction/reconciliation, durable gameplay, and full acceptance remain.
+
 ## Reuse inventory
 
 Review baseline: OpenAgents `843c92dd7e`. The entries below were checked against

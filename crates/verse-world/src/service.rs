@@ -16,6 +16,8 @@ pub mod presentation;
 pub mod replica;
 #[cfg(feature = "service-auth")]
 pub mod wire;
+#[cfg(feature = "service-net")]
+pub mod worker;
 
 use std::collections::BTreeMap;
 

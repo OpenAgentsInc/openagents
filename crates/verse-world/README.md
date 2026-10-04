@@ -129,6 +129,13 @@ Instance-scoped checkpoints retain progress without dialogue or credentials;
 the TLS client’s `delivered_events` helper advances them after validation.
 Native effects/audio integration and durable client checkpoint storage remain.
 
+`service::worker::run` owns client IO on a Tokio task outside rendering. Fixed
+queues retain ordered snapshots, events, and command outcomes with backpressure;
+33–1,000 ms polling skips missed intervals. Commands refresh admitted control
+before submission. Shutdown cancels uncertain IO without replay. Persist event
+checkpoints only after consuming their delivery. Native rendering and prediction
+still require adapters.
+
 Revocation leaves an uncontrolled actor in the world; actor retirement and capacity reclamation remain lifecycle work.
 Transactional saves, multiplayer
 replication, and authoring tools remain on the
