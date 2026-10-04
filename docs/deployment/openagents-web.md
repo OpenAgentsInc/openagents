@@ -315,3 +315,15 @@ name and image changed (`CODER_CHAT_SYNC` quoted). On the `new` tag, `/`,
 `/everglade`, `/docs`, `/live`, `/stats`, `/api/stats`, and the new pack
 answered 200, and the served wasm pins the new pack, before traffic moved.
 Rollback: `--to-revisions coder-web-36fbc814b1=100`.
+
+## 2026-10-04: coder-web-db7f3ddf47
+
+`/everglade` gains the daylight sky (fb48b98886), the four untargeted
+spells on the hotbar (5c08a2928b), the hotbar on the page with its keys and
+pointer presses, and strafe and backpedal clips in the repinned pack
+`4bbd3b18ae…` (db7f3ddf47). Built from GitHub by the automation account and
+applied from the live spec with only the revision name and image changed
+(`CODER_CHAT_SYNC` quoted). On the `new` tag the pages and the new pack
+answered 200, the served wasm pins the new pack, and headless Chrome drew
+the sky and the seven-slot hotbar before traffic moved. Rollback:
+`--to-revisions coder-web-61053682b1=100`.
