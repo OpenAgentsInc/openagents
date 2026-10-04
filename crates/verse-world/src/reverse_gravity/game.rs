@@ -273,7 +273,7 @@ pub fn cast(game: &mut Game) -> Result<(), String> {
         .into_iter()
         .find(|a| a.actor.id == selected && a.health > 0)
         .and_then(|_| game.actor_position(selected))
-        .map(Vec3::as_dvec3)
+        .map(|v| v.as_dvec3())
         .filter(|p| p.distance(origin) <= RANGE);
     let point = target.unwrap_or(origin + facing * AIM_DISTANCE);
     if point.distance(origin) > RANGE {
