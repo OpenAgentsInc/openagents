@@ -407,7 +407,7 @@ mod simulated {
             .unwrap();
         let view = recording.frames()[testing].view.clone();
         let mut runtime = super::super::super::tests::entered();
-        runtime.set_studio_source(Box::new(Player::new(recording, testing, None)));
+        runtime.set_studio_source(Box::new(Player::new(recording.clone(), testing, None)));
         runtime.update_studio(true, 0.0);
         assert_eq!(runtime.studio().view(), Some(&view));
         let tester = view
@@ -439,9 +439,9 @@ mod simulated {
             let seat = rows(&desk, Some(&view), None);
             assert!(seat.iter().any(|row| row.key.starts_with("log-")));
             // The merge station shows a done task's real diff.
-            let done = recording().frames().last().unwrap().view.clone();
+            let done = recording.frames().last().unwrap().view.clone();
             let task = reviewable(&done)[0].task.clone();
-            let review = recording().review(&task).cloned();
+            let review = recording.review(&task).cloned();
             assert!(review.as_ref().is_some_and(|r| !r.diff.is_empty()));
             let panel =
                 crate::panels::studio::open(&PanelKind::Review, Some(&done), review.as_ref());
@@ -451,14 +451,14 @@ mod simulated {
                 review.as_ref().map(|r| r.diff.as_str())
             );
             // The podium shows the open decision while the lead asks.
-            let asking = recording()
+            let asking = recording
                 .find(|v| {
                     v.decisions
                         .iter()
                         .any(|d| d.kind == coder_access::studio::DecisionKind::Question)
                 })
                 .unwrap();
-            let asking = &recording().frames()[asking].view;
+            let asking = &recording.frames()[asking].view;
             let decisions = rows(&PanelKind::Decisions, Some(asking), None);
             assert!(decisions.iter().any(|row| row.key.starts_with("decision-")));
         }
