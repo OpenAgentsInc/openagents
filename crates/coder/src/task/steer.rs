@@ -13,6 +13,12 @@
 //! whole coding agent (Grok Build, OpenCode, Devin), which reads its
 //! instructions only when a turn starts, start the next turn instead
 //! ([`super::local::Local::steer`]).
+//!
+//! An accepted steer is not a consumed one (NIP-SESS, "Steering
+//! capability"). Each task keeps a count of the messages taken from it, in
+//! `<store>/local/<task>.steer.taken`, and [`add`] answers the place a
+//! message holds in that count: the engine has read it once [`taken`]
+//! reaches that place.
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -22,6 +28,73 @@ pub const MAX_BYTES: usize = 32 * 1024;
 
 fn path(store: &Path, task: &str) -> PathBuf {
     store.join("local").join(format!("{task}.steer.jsonl"))
+}
+
+fn taken_path(store: &Path, task: &str) -> PathBuf {
+    store.join("local").join(format!("{task}.steer.taken"))
+}
+
+/// The messages waiting in `task`'s file, in the order they were sent.
+fn waiting(store: &Path, task: &str) -> Vec<String> {
+    std::fs::read_to_string(path(store, task))
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|line| serde_json::from_str::<String>(line).ok())
+        .filter(|message| !message.trim().is_empty())
+        .collect()
+}
+
+/// Replace `task`'s waiting messages with `messages`, under its lock.
+fn rewrite(store: &Path, task: &str, messages: &[String]) -> Result<(), String> {
+    let at = path(store, task);
+    if messages.is_empty() {
+        return match std::fs::remove_file(&at) {
+            Err(error) if error.kind() != std::io::ErrorKind::NotFound => Err(error.to_string()),
+            _ => Ok(()),
+        };
+    }
+    let mut body = String::new();
+    for message in messages {
+        body.push_str(&serde_json::to_string(message).map_err(|e| e.to_string())?);
+        body.push('\n');
+    }
+    let mut file = crate::private::file(
+        std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true),
+    )
+    .open(&at)
+    .map_err(|e| e.to_string())?;
+    file.write_all(body.as_bytes()).map_err(|e| e.to_string())?;
+    file.sync_all().map_err(|e| e.to_string())
+}
+
+/// How many messages the engine has taken from `task`, ever.
+#[must_use]
+pub fn taken(store: &Path, task: &str) -> u64 {
+    std::fs::read_to_string(taken_path(store, task))
+        .ok()
+        .and_then(|text| text.trim().parse().ok())
+        .unwrap_or(0)
+}
+
+fn add_taken(store: &Path, task: &str, more: u64) {
+    if more == 0 {
+        return;
+    }
+    let total = taken(store, task).saturating_add(more);
+    if let Ok(mut file) = crate::private::file(
+        std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true),
+    )
+    .open(taken_path(store, task))
+    {
+        let _ = writeln!(file, "{total}");
+        let _ = file.sync_all();
+    }
 }
 
 fn lock(store: &Path, task: &str) -> Result<std::fs::File, String> {
@@ -39,11 +112,13 @@ fn lock(store: &Path, task: &str) -> Result<std::fs::File, String> {
     Ok(file)
 }
 
-/// Leaves `text` for `task`'s running turn.
+/// Leaves `text` for `task`'s running turn. Returns the message's place
+/// in the count of messages taken from `task`: the engine has read it once
+/// [`taken`] reaches it.
 ///
 /// # Errors
 /// The message is empty or too long, or cannot be written.
-pub fn add(store: &Path, task: &str, text: &str) -> Result<(), String> {
+pub fn add(store: &Path, task: &str, text: &str) -> Result<u64, String> {
     let text = text.trim();
     if text.is_empty() || text.len() > MAX_BYTES {
         return Err("A message for Coder is 1 to 32,768 bytes.".into());
@@ -54,10 +129,13 @@ pub fn add(store: &Path, task: &str, text: &str) -> Result<(), String> {
         .open(path(store, task))
         .map_err(|e| e.to_string())?;
     writeln!(file, "{line}").map_err(|e| e.to_string())?;
-    file.sync_all().map_err(|e| e.to_string())
+    file.sync_all().map_err(|e| e.to_string())?;
+    let place = taken(store, task) + waiting(store, task).len() as u64;
+    Ok(place)
 }
 
-/// Takes every message waiting for `task`, in the order they were sent.
+/// Takes every message waiting for `task`, in the order they were sent,
+/// and counts them as read.
 #[must_use]
 pub fn take(store: &Path, task: &str) -> Vec<String> {
     let at = path(store, task);
@@ -67,12 +145,30 @@ pub fn take(store: &Path, task: &str) -> Vec<String> {
     let Ok(_held) = lock(store, task) else {
         return Vec::new();
     };
-    let text = std::fs::read_to_string(&at).unwrap_or_default();
+    let messages = waiting(store, task);
     let _ = std::fs::remove_file(&at);
-    text.lines()
-        .filter_map(|line| serde_json::from_str::<String>(line).ok())
-        .filter(|message| !message.trim().is_empty())
-        .collect()
+    add_taken(store, task, messages.len() as u64);
+    messages
+}
+
+/// Withdraws the first waiting message for `task` equal to `text`
+/// without counting it as read, so it can reach the engine another way.
+/// Returns whether one was waiting.
+///
+/// # Errors
+/// The waiting messages cannot be rewritten.
+pub fn withdraw(store: &Path, task: &str, text: &str) -> Result<bool, String> {
+    if !path(store, task).exists() {
+        return Ok(false);
+    }
+    let _held = lock(store, task)?;
+    let mut messages = waiting(store, task);
+    let Some(at) = messages.iter().position(|message| message == text.trim()) else {
+        return Ok(false);
+    };
+    messages.remove(at);
+    rewrite(store, task, &messages)?;
+    Ok(true)
 }
 
 #[cfg(test)]
@@ -93,5 +189,35 @@ mod tests {
         );
         assert!(take(dir.path(), "t1").is_empty());
         assert_eq!(take(dir.path(), "t2"), ["Another task."]);
+    }
+
+    #[test]
+    fn a_message_is_read_once_the_taken_count_reaches_its_place() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(taken(dir.path(), "t1"), 0);
+        assert_eq!(add(dir.path(), "t1", "First.").unwrap(), 1);
+        assert_eq!(add(dir.path(), "t1", "Second.").unwrap(), 2);
+        // Accepted, not yet read.
+        assert_eq!(taken(dir.path(), "t1"), 0);
+        assert_eq!(take(dir.path(), "t1").len(), 2);
+        assert_eq!(taken(dir.path(), "t1"), 2);
+        assert_eq!(add(dir.path(), "t1", "Third.").unwrap(), 3);
+        assert_eq!(taken(dir.path(), "t1"), 2);
+        assert_eq!(take(dir.path(), "t1"), ["Third."]);
+        assert_eq!(taken(dir.path(), "t1"), 3);
+    }
+
+    #[test]
+    fn a_withdrawn_message_is_not_counted_as_read() {
+        let dir = tempfile::tempdir().unwrap();
+        add(dir.path(), "t1", "Keep.").unwrap();
+        add(dir.path(), "t1", "Withdraw.").unwrap();
+        assert!(withdraw(dir.path(), "t1", "Withdraw.").unwrap());
+        assert!(!withdraw(dir.path(), "t1", "Withdraw.").unwrap());
+        assert_eq!(take(dir.path(), "t1"), ["Keep."]);
+        assert_eq!(taken(dir.path(), "t1"), 1);
+        assert!(!withdraw(dir.path(), "t1", "Keep.").unwrap());
+        // The next message takes the place after what was read.
+        assert_eq!(add(dir.path(), "t1", "Next.").unwrap(), 2);
     }
 }

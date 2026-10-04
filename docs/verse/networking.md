@@ -141,15 +141,30 @@ state), **later**, **no**.
 | Raw agent telemetry | Block AO `24200` | No: it carries tool arguments and output the studio never discloses |
 | Studio content in world chat | NIP-MV C7 | No: scope is a display rule, not privacy |
 
-Two gaps to close:
+Two gaps, both closed (#10551):
 
 - **Approval authority.** NIP-HOST says no HOST right approves a POL action,
-  yet `studio.decision.answer` answers approvals under `operate`. The host
-  must also record the answering device as the approver for that exact
-  action, single-use, as POL requires.
+  yet `studio.decision.answer` answered approvals under `operate`. The host
+  now binds the answering device (key, grant, and epoch) as the approver of
+  that exact step, bound to the task revision, turn, and run, and consumes
+  the binding once when the task's command journal accepts the answer
+  ([`studio_approvals.rs`](../../crates/coder/src/task/studio_approvals.rs)).
 - **Kind `39005`.** Block NIP-CW uses `39005` for thread summaries, and
-  upstream NIP-29 now uses it for pinned events. Resolve before the studio
-  pins anything in a group.
+  upstream NIP-29 uses it for pinned events. Both meanings stay; the shape
+  and the delivery path tell them apart, and the studio pins only through
+  NIP-29
+  ([the decision](../protocol/nip-expansion.md#kind-39005-pinned-events-and-thread-summaries)).
+
+Step 1 also adopts the wake and steering rows above. A studio task's
+question or approval raises its NIP-WS summary with a headline of its seat
+and plan title; a goal's own decision raises a summary under a subject
+derived from the goal, closed by a superseding summary once it is answered.
+The summary sealed to a device is the NIP-PL wake, because the phone's push
+lease matches the device's `3188` artifacts. Each message to a seat records
+its native mode (`mid_turn` through the steer path, `turn_boundary` through
+the next briefing) and whether the engine read it, and the seat panel shows
+both. A steered message whose task ended unread returns to the seat's next
+briefing.
 
 ### The Block lane as a mirror
 

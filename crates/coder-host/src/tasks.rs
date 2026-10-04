@@ -134,6 +134,21 @@ impl Note {
     }
 }
 
+/// A studio goal's open decision, which asks the person for an answer
+/// through an activity summary of its own (NIP-WS attention `input`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GoalDecision {
+    /// The goal's summary subject: 64 lowercase hex characters the task
+    /// owner derives from the goal, never a task's identity.
+    pub subject: String,
+    /// The coordinator sequence that opened the decision. A later
+    /// decision of the same goal has a greater one.
+    pub sequence: u64,
+    /// The headline, from host state only: the lead seat and the kind of
+    /// decision, never engine text.
+    pub headline: String,
+}
+
 /// Why a task's owner process never admitted it. The owner reports the
 /// cause in its launch diagnostic; the host words it from this type alone,
 /// never from the owner's text.
@@ -351,6 +366,20 @@ pub trait Tasks: Send + Sync {
     /// without running. The default has none.
     fn note(&self, _task: &str) -> Option<Note> {
         None
+    }
+
+    /// The headline a waiting task's summary carries while its question or
+    /// approval asks for the person, built from host state alone: for a
+    /// studio task, its seat and plan entry title. The default has none,
+    /// and the note's generic headline stands.
+    fn decision_headline(&self, _task: &str) -> Option<String> {
+        None
+    }
+
+    /// The studio goals whose decision waits on the person. The host
+    /// raises each one's own activity summary. The default has none.
+    fn goal_decisions(&self) -> Vec<GoalDecision> {
+        Vec::new()
     }
 
     /// Presence capabilities this task owner adds to the host's own

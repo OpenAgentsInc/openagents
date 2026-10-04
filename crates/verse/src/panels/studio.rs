@@ -345,6 +345,20 @@ fn seat_rows(kind: &PanelKind, view: &View) -> Vec<Node<()>> {
     if lines.is_empty() {
         rows.push(note("no-log", "Nothing in this seat's log yet."));
     }
+    // Each message to the seat with its delivery: an accepted steer is
+    // not a consumed one (NIP-SESS).
+    for sent in view.messages.iter().filter(|sent| sent.seat == seat.seat) {
+        rows.push(message(
+            &format!("message-{}", sent.message),
+            MessageRole::User,
+            &format!(
+                "**{}**: {}\n\n*{}*",
+                sent.sender(),
+                sent.text,
+                sent.delivery()
+            ),
+        ));
+    }
     rows
 }
 
@@ -2209,6 +2223,54 @@ mod tests {
         let body = format!("{:?}", seat[0]);
         assert!(body.contains("$1.25+"), "{body}");
         assert!(body.contains("$0.73"), "{body}");
+    }
+
+    #[test]
+    fn a_seat_panel_shows_whether_its_engine_read_each_message() {
+        use coder_access::studio::{DeliveryMode, DeliveryState, SeatMessage, message_key};
+        let mut view = studio();
+        view.messages = vec![
+            SeatMessage {
+                message: message_key(4),
+                seat: "ada".into(),
+                from: None,
+                at: 1_790_000_000,
+                text: "Keep it short".into(),
+                mode: DeliveryMode::MidTurn,
+                state: DeliveryState::Accepted,
+                task: Some("studio-g1-0011aabb-b".into()),
+            },
+            SeatMessage {
+                message: message_key(5),
+                seat: "grace".into(),
+                from: Some("ada".into()),
+                at: 1_790_000_001,
+                text: "Not for this seat".into(),
+                mode: DeliveryMode::TurnBoundary,
+                state: DeliveryState::Waiting,
+                task: None,
+            },
+        ];
+        let seat = rows(&PanelKind::Desk(1), Some(&view), None);
+        let shown: Vec<String> = seat
+            .iter()
+            .filter(|row| row.key.starts_with("message-"))
+            .map(|row| format!("{row:?}"))
+            .collect();
+        assert_eq!(shown.len(), 1, "only this seat's messages");
+        assert!(shown[0].contains("Keep it short"), "{}", shown[0]);
+        assert!(
+            shown[0].contains("sent mid-turn, not read yet"),
+            "{}",
+            shown[0]
+        );
+        view.messages[0].state = DeliveryState::Consumed;
+        let seat = rows(&PanelKind::Desk(1), Some(&view), None);
+        let read = seat
+            .iter()
+            .find(|row| row.key.starts_with("message-"))
+            .unwrap();
+        assert!(format!("{read:?}").contains("read mid-turn"));
     }
 
     #[test]

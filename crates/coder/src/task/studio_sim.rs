@@ -540,7 +540,7 @@ impl SimInbox {
 
 /// The run an owner would record for `task`'s current turn, ended with
 /// `ending`.
-fn run(task: &Task, ending: &str) -> owner::Run {
+pub(crate) fn run(task: &Task, ending: &str) -> owner::Run {
     let grant = owner::Grant {
         schema: owner::GRANT_SCHEMA.into(),
         task_id: task.task_id.clone(),

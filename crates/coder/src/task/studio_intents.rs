@@ -33,7 +33,14 @@
 //! ATIF step through [`atif::classify`], the classifier a replay shares.
 //! Log lines are display text: an activity and a tool's name with the
 //! purpose the surface showed, or the first line of what the agent said.
-//! A call's arguments and output never leave the host.
+//! A call's arguments and output never leave the host. Each message to a
+//! seat carries its delivery: the native mode it went by and whether the
+//! engine read it (NIP-SESS steering acknowledgments).
+//!
+//! A decision waiting on the person raises an activity summary (NIP-WS)
+//! whose headline the host builds from its own state, the seat and the
+//! plan entry's title, never from what the engine said
+//! ([`Studio::decision_headline`], [`Studio::goal_decisions`]).
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -43,8 +50,8 @@ use serde::{Deserialize, Serialize};
 
 use super::super::{Action, COMMAND_SCHEMA, Command, interaction};
 use super::{
-    DecisionKind, Error, GoalStatus, Inbox, LOCK_FILE, MAX_MEMORY_BYTES, MemoryKind, Party,
-    PlanOutcome, Progress, Released, Role, SlotState, Studio, cut, progress,
+    DecisionKind, Delivery, Error, GoalStatus, Inbox, LOCK_FILE, MAX_MEMORY_BYTES, MemoryKind,
+    Party, PlanOutcome, Progress, Released, Role, SlotState, Studio, cut, progress,
 };
 
 /// The paused seats, beside the studio document.
@@ -706,6 +713,7 @@ impl Studio {
             })
             .collect();
         out.memory = self.wire_memory();
+        out.messages = self.wire_messages(tasks);
         out.canonicalize();
         out
     }
@@ -756,6 +764,121 @@ impl Studio {
                 goal: item.goal_id.clone().filter(|goal| wire::id(goal).is_ok()),
                 text: clean(&item.text, wire::MAX_MEMORY_TEXT, "(empty)"),
                 pinned: Some(index) == plan,
+            })
+            .collect()
+    }
+
+    /// The newest messages to seats, each with its delivery.
+    fn wire_messages(&self, tasks: &dyn Inbox) -> Vec<wire::SeatMessage> {
+        let mut out = Vec::new();
+        for message in self.state.messages.iter().rev() {
+            if out.len() >= wire::MAX_MESSAGES {
+                break;
+            }
+            let Party::Seat { name } = &message.to else {
+                continue;
+            };
+            let read = || {
+                if self.consumed(tasks, message) == Some(true) {
+                    wire::DeliveryState::Consumed
+                } else {
+                    wire::DeliveryState::Accepted
+                }
+            };
+            let (mode, state, task) = match &message.delivery {
+                Delivery::Steered { task_id } => {
+                    (wire::DeliveryMode::MidTurn, read(), Some(task_id.clone()))
+                }
+                Delivery::Briefed { task_id } => (
+                    wire::DeliveryMode::TurnBoundary,
+                    read(),
+                    Some(task_id.clone()),
+                ),
+                Delivery::Waiting => (
+                    wire::DeliveryMode::TurnBoundary,
+                    wire::DeliveryState::Waiting,
+                    None,
+                ),
+                Delivery::Recorded => continue,
+            };
+            let text = wire::first_line(&message.text, wire::MAX_LINE);
+            out.push(wire::SeatMessage {
+                message: wire::message_key(message.sequence),
+                seat: name.clone(),
+                from: match &message.from {
+                    Party::Seat { name } => Some(name.clone()),
+                    _ => None,
+                },
+                at: message.at,
+                text: if text.is_empty() {
+                    "A message.".into()
+                } else {
+                    text
+                },
+                mode,
+                state,
+                task,
+            });
+        }
+        out.reverse();
+        out
+    }
+
+    /// The headline of the activity summary a studio task raises while
+    /// its question or approval waits on the person: the seat and the
+    /// plan entry's title, or the plan for a lead. `None` when the task
+    /// is not the studio's or waits on nothing.
+    #[must_use]
+    pub fn decision_headline(&self, tasks: &dyn Inbox, task_id: &str) -> Option<String> {
+        let record = tasks.task(task_id)?;
+        let kind = interaction::pending(&record)?;
+        let (index, entry) = self.locate(task_id).ok()?;
+        let goal = &self.state.goals[index];
+        let (seat, title) = match entry {
+            None => (&goal.lead.seat, None),
+            Some(entry) => {
+                let entry = &goal.plan[entry];
+                let title = wire::first_line(&entry.title, wire::MAX_TITLE);
+                (&entry.slot.seat, (!title.is_empty()).then_some(title))
+            }
+        };
+        Some(match (kind, title) {
+            (interaction::Kind::Approval, Some(title)) => {
+                format!("{seat} asks for approval: {title}")
+            }
+            (interaction::Kind::Approval, None) => format!("{seat} asks for approval on the plan"),
+            (interaction::Kind::Question, Some(title)) => format!("{seat} has a question: {title}"),
+            (interaction::Kind::Question, None) => {
+                format!("{seat} has a question about the plan")
+            }
+        })
+    }
+
+    /// Each goal's open decision, as the activity summary that asks the
+    /// person for it names it: the goal's own subject
+    /// ([`super::goal_subject`]), the coordinator sequence that opened it,
+    /// and a headline of the lead seat and the kind of decision.
+    #[must_use]
+    pub fn goal_decisions(&self) -> Vec<coder_host::GoalDecision> {
+        self.state
+            .goals
+            .iter()
+            .filter_map(|goal| {
+                let decision = goal.decision.as_ref()?;
+                let lead = &goal.lead.seat;
+                let headline = match decision.kind {
+                    DecisionKind::InvalidPlan => format!("{lead}'s plan needs a decision"),
+                    DecisionKind::NoPlan => format!("{lead} finished without a plan"),
+                    DecisionKind::LeadFailed => format!("{lead}'s plan did not finish"),
+                    DecisionKind::DependencyFailed => {
+                        format!("A task in {lead}'s plan cannot start")
+                    }
+                };
+                Some(coder_host::GoalDecision {
+                    subject: super::goal_subject(&goal.goal_id),
+                    sequence: decision.sequence,
+                    headline,
+                })
             })
             .collect()
     }

@@ -38,11 +38,19 @@ fn scratch() -> Scratch {
 struct Tasks {
     store: Store,
     forced: BTreeMap<String, (Status, Execution)>,
+    /// Tasks whose turn ended with this result ending.
+    ended: BTreeMap<String, String>,
 }
 
 impl Tasks {
     fn force(&mut self, task: &str, status: Status, execution: Execution) {
         self.forced.insert(task.into(), (status, execution));
+    }
+
+    /// End `task`'s turn with `ending`, as its owner would record it.
+    fn end(&mut self, task: &str, ending: &str) {
+        self.force(task, Status::Finished, Execution::Finished);
+        self.ended.insert(task.into(), ending.into());
     }
 }
 
@@ -56,6 +64,9 @@ impl Inbox for Tasks {
         if let Some((status, execution)) = self.forced.get(task) {
             found.status = *status;
             found.execution = *execution;
+        }
+        if let Some(ending) = self.ended.get(task) {
+            found.run = Some(super::super::super::studio_sim::run(&found, ending));
         }
         Some(found)
     }
@@ -77,6 +88,7 @@ fn team(scratch: &Scratch) -> (Tasks, Studio, String) {
     let mut tasks = Tasks {
         store: Store::open(&scratch.store).unwrap(),
         forced: BTreeMap::new(),
+        ended: BTreeMap::new(),
     };
     let mut studio = Studio::open(&scratch.store)
         .unwrap()
@@ -443,6 +455,162 @@ fn the_wire_view_keeps_the_newest_memory_and_the_pinned_plan() {
             .starts_with(&format!("Convention {}", wire::MAX_MEMORY + 2))
     );
     assert_eq!(newest.author, "the person");
+}
+
+#[test]
+fn a_waiting_decision_is_named_from_host_state() {
+    use super::super::super::interaction::{APPROVAL_ENDING, QUESTION_ENDING};
+    let scratch = scratch();
+    let (mut tasks, mut studio, goal) = team(&scratch);
+    // The lead finished with no plan: the goal's decision raises a summary
+    // of its own, never under a task's identity.
+    studio.reconcile(&mut tasks, 1, &no_reply).unwrap();
+    let sequence = studio.state().goals[0].decision.as_ref().unwrap().sequence;
+    let open = studio.goal_decisions();
+    assert_eq!(open.len(), 1);
+    assert_eq!(open[0].subject, super::super::goal_subject(&goal));
+    assert_ne!(open[0].subject, studio.state().goals[0].lead.task_id);
+    assert_eq!(open[0].sequence, sequence);
+    assert_eq!(open[0].headline, "lead finished without a plan");
+    // Answering it closes it.
+    studio
+        .answer_goal(&mut tasks, &goal, sequence, &plan(), 2)
+        .unwrap();
+    assert!(studio.goal_decisions().is_empty());
+    // A task's approval or question names its seat and title.
+    let a = slot(&studio, "a").task_id;
+    assert_eq!(studio.decision_headline(&tasks, &a), None);
+    tasks.end(&a, APPROVAL_ENDING);
+    assert_eq!(
+        studio.decision_headline(&tasks, &a).as_deref(),
+        Some("ada asks for approval: Parse the flag")
+    );
+    tasks.end(&a, QUESTION_ENDING);
+    assert_eq!(
+        studio.decision_headline(&tasks, &a).as_deref(),
+        Some("ada has a question: Parse the flag")
+    );
+    let lead = studio.state().goals[0].lead.task_id.clone();
+    tasks.end(&lead, APPROVAL_ENDING);
+    assert_eq!(
+        studio.decision_headline(&tasks, &lead).as_deref(),
+        Some("lead asks for approval on the plan")
+    );
+    // A task the studio does not hold has none.
+    assert_eq!(studio.decision_headline(&tasks, &"f".repeat(64)), None);
+}
+
+#[test]
+fn an_approval_binds_the_answering_device_to_the_exact_step_once() {
+    use super::super::super::interaction::{APPROVAL_ENDING, QUESTION_ENDING};
+    use super::super::approvals::{Action, Approver, Verdict};
+    let scratch = scratch();
+    let (mut tasks, mut studio, goal) = team(&scratch);
+    studio
+        .accept_plan(&mut tasks, &goal, plan().as_bytes(), 1)
+        .unwrap();
+    let a = slot(&studio, "a").task_id;
+    tasks.end(&a, APPROVAL_ENDING);
+    let record = tasks.task(&a).unwrap();
+    let action = Action::of(&record).unwrap();
+    assert_eq!(
+        (action.task.as_str(), action.revision, action.turn),
+        (a.as_str(), record.revision, 1)
+    );
+    let device = Approver {
+        device: "d".repeat(64),
+        grant: Some("grant-1".into()),
+        epoch: Some(2),
+    };
+    let bound = studio
+        .bind_approval(&action, device.clone(), "Approved.", "c1", 5)
+        .unwrap();
+    assert_eq!(bound.verdict, Verdict::Approve);
+    studio.consume_approval(&bound.subject, "c1", 6).unwrap();
+    let held = studio.approvals(&a).unwrap();
+    assert_eq!(held.len(), 1);
+    assert_eq!(held[0].approver, device);
+    assert_eq!(held[0].consumed_at, Some(6));
+    // Single use: another answer to the same step refuses.
+    assert!(matches!(
+        studio.bind_approval(&action, device, "Approved.", "c2", 7),
+        Err(Error::State(_))
+    ));
+    // A question asks no approval, so it binds no approver.
+    tasks.end(&a, QUESTION_ENDING);
+    assert!(Action::of(&tasks.task(&a).unwrap()).is_none());
+}
+
+#[test]
+fn a_seat_message_says_whether_its_engine_read_it() {
+    use super::super::super::steer;
+    let scratch = scratch();
+    let (mut tasks, mut studio, goal) = team(&scratch);
+    studio
+        .accept_plan(&mut tasks, &goal, plan().as_bytes(), 1)
+        .unwrap();
+    let a = slot(&studio, "a").task_id;
+    tasks.force(&a, Status::Running, Execution::Running);
+    let ada = || Party::Seat { name: "ada".into() };
+    let sent = studio
+        .message(&tasks, Party::Person, ada(), "Use tabs.", 2)
+        .unwrap();
+    assert_eq!(sent[0].steer, Some(1));
+    // Accepted for the running turn, not read yet.
+    let view = studio.wire(&tasks, &scratch.store);
+    view.validate().unwrap();
+    let shown = &view.messages[0];
+    assert_eq!(
+        (shown.mode, shown.state, shown.task.as_deref()),
+        (
+            wire::DeliveryMode::MidTurn,
+            wire::DeliveryState::Accepted,
+            Some(a.as_str())
+        )
+    );
+    assert_eq!(shown.from, None);
+    // The turn reads it between steps.
+    assert_eq!(steer::take(studio.store(), &a), ["Use tabs."]);
+    let view = studio.wire(&tasks, &scratch.store);
+    assert_eq!(view.messages[0].state, wire::DeliveryState::Consumed);
+    // A message the turn ended before reading returns to the seat's next
+    // briefing, and leaves the task's steering.
+    studio
+        .message(&tasks, Party::Person, ada(), "Keep the README.", 3)
+        .unwrap();
+    tasks.force(&a, Status::Finished, Execution::Finished);
+    studio.reconcile(&mut tasks, 4, &no_reply).unwrap();
+    let returned = studio
+        .state()
+        .messages
+        .iter()
+        .find(|message| message.text == "Keep the README.")
+        .unwrap();
+    assert_eq!(returned.delivery, Delivery::Waiting);
+    assert_eq!(returned.steer, None);
+    assert!(steer::take(studio.store(), &a).is_empty());
+    let view = studio.wire(&tasks, &scratch.store);
+    view.validate().unwrap();
+    let shown = view
+        .messages
+        .iter()
+        .find(|message| message.text == "Keep the README.")
+        .unwrap();
+    assert_eq!(
+        (shown.mode, shown.state, shown.task.as_deref()),
+        (
+            wire::DeliveryMode::TurnBoundary,
+            wire::DeliveryState::Waiting,
+            None
+        )
+    );
+    // The message that was read stays read.
+    let read = view
+        .messages
+        .iter()
+        .find(|message| message.text == "Use tabs.")
+        .unwrap();
+    assert_eq!(read.state, wire::DeliveryState::Consumed);
 }
 
 #[test]

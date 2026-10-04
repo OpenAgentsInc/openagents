@@ -136,6 +136,45 @@ impl Inbox {
         let receipt = store.apply(&bytes).map_err(refusal)?;
         Ok(reference(&receipt))
     }
+
+    /// Bind `principal` as the approver of the step studio task `task`
+    /// asks to approve at revision `based_on`, under the answer's
+    /// `command` ID. Returns the approval subject, or `None` when the task
+    /// asks no approval at that revision: a question, or a stale answer
+    /// the command journal refuses.
+    fn bind_approver(
+        &self,
+        principal: &Principal,
+        task: &str,
+        based_on: u64,
+        text: &str,
+        command: &str,
+    ) -> Result<Option<String>, Code> {
+        use super::studio::approvals::{Action, Approver};
+        let record = Store::open(&self.store)
+            .map_err(refusal)?
+            .show(task)
+            .map_err(|_| Code::Forbidden)?;
+        let Some(action) = Action::of(&record).filter(|action| action.revision == based_on) else {
+            return Ok(None);
+        };
+        let approver = Approver {
+            device: principal.device.clone(),
+            grant: principal.grant.clone(),
+            epoch: principal.epoch,
+        };
+        let mut studio = super::studio::Studio::open(&self.store).map_err(studio_refusal)?;
+        let bound = studio
+            .bind_approval(
+                &action,
+                approver,
+                text,
+                command,
+                super::autostart::unix_now(),
+            )
+            .map_err(studio_refusal)?;
+        Ok(Some(bound.subject))
+    }
 }
 
 impl Tasks for Inbox {
@@ -487,6 +526,28 @@ impl Tasks for Inbox {
     /// provider refused. The reset comes from the policy's record or the
     /// capacity book. Or a task the policy ended because its owner process
     /// never admitted it, with the cause the owner reported.
+    /// A studio task's question or approval: its seat and plan entry
+    /// title, from the coordinator's state.
+    fn decision_headline(&self, id: &str) -> Option<String> {
+        if !super::studio::Studio::present(&self.store) {
+            return None;
+        }
+        let tasks = Store::open(&self.store).ok()?;
+        super::interaction::pending(&tasks.show(id).ok()?)?;
+        let studio = super::studio::Studio::open(&self.store).ok()?;
+        studio.decision_headline(&tasks, id)
+    }
+
+    /// The studio's goals whose decision waits on the person.
+    fn goal_decisions(&self) -> Vec<coder_host::GoalDecision> {
+        if !super::studio::Studio::present(&self.store) {
+            return Vec::new();
+        }
+        super::studio::Studio::open(&self.store)
+            .map(|studio| studio.goal_decisions())
+            .unwrap_or_default()
+    }
+
     fn note(&self, id: &str) -> Option<Note> {
         let task = Store::open(&self.store).ok()?.show(id).ok()?;
         match super::interaction::pending(&task) {
@@ -624,7 +685,11 @@ impl Tasks for Inbox {
     /// A studio intent on this store's coordinator. A task's question or
     /// approval is answered through the durable command journal under
     /// the device's command ID, as `task.command` answers one; every
-    /// other intent answers once per request ID.
+    /// other intent answers once per request ID. An answer to an
+    /// approval first binds the answering device as the approver of that
+    /// exact step ([`super::studio::approvals`]), and the binding is
+    /// consumed when the journal accepts the answer: `operate` sends the
+    /// answer, it does not approve.
     fn studio_intent(
         &self,
         key: &str,
@@ -648,6 +713,7 @@ impl Tasks for Inbox {
             }
             drop(studio);
             if for_task {
+                let bound = self.bind_approver(principal, decision, *based_on, text, command)?;
                 let answer = TaskCommand {
                     command: command.clone(),
                     task: decision.clone(),
@@ -657,9 +723,15 @@ impl Tasks for Inbox {
                     emulate: false,
                     issued_at: *issued_at,
                 };
-                return self
-                    .command(principal, &answer, standing)
-                    .map(|task| task.task);
+                let answered = self.command(principal, &answer, standing)?;
+                if let Some(subject) = bound {
+                    Studio::open(&self.store)
+                        .and_then(|mut studio| {
+                            studio.consume_approval(&subject, command, super::autostart::unix_now())
+                        })
+                        .map_err(studio_refusal)?;
+                }
+                return Ok(answered.task);
             }
         }
         let now = super::autostart::unix_now();

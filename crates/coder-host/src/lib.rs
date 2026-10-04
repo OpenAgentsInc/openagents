@@ -69,7 +69,9 @@ pub use coder_access::protocol::{
 pub use config::Config;
 #[cfg(feature = "host")]
 pub use serve::{Running, start};
-pub use tasks::{NoTasks, Note, Passed, Principal, Reviewed, Standing, StartCause, TaskRef, Tasks};
+pub use tasks::{
+    GoalDecision, NoTasks, Note, Passed, Principal, Reviewed, Standing, StartCause, TaskRef, Tasks,
+};
 
 /// The host protocol version the ready record and presence report.
 pub const PROTOCOL_VERSION: u32 = coder_reach::PROTOCOL_VERSION;

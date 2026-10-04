@@ -330,6 +330,15 @@ fn seat_rows(kind: &PanelKind, view: &Studio) -> Vec<Node<Intent>> {
     if lines.is_empty() {
         rows.push(note("no-log", "Nothing in this seat's log yet."));
     }
+    // Each message to the seat with its delivery: an accepted steer is
+    // not a consumed one.
+    for sent in view.messages.iter().filter(|sent| sent.seat == seat.seat) {
+        rows.push(text(
+            format!("studio-message-{}", sent.message),
+            &format!("{}: {} · {}", sent.sender(), sent.text, sent.delivery()),
+            TextRole::Body,
+        ));
+    }
     rows
 }
 
@@ -694,6 +703,7 @@ mod tests {
                 ],
             }],
             memory: Vec::new(),
+            messages: Vec::new(),
         }
     }
 

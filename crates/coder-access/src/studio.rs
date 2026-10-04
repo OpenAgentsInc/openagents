@@ -27,6 +27,11 @@
 //! disclosure policy: an activity and a tool's name, or the first line of
 //! what the agent said. They never carry a call's arguments or output.
 //!
+//! Each message to a seat carries its delivery under NIP-SESS steering
+//! ([`SeatMessage`]): the native mode it reached the engine by, and
+//! whether the engine consumed it, because an accepted steer is not a
+//! consumed one.
+//!
 //! A merge decision binds to the review's three revisions (base, `HEAD`
 //! commit, and content tree). The host reads the review again and refuses
 //! a decision whose revisions differ as `stale`, so the client reloads the
@@ -79,6 +84,8 @@ pub const MAX_MEMORY: usize = 16;
 pub const MAX_MEMORY_TEXT: usize = 1024;
 /// The longest memory entry author a view carries.
 pub const MAX_AUTHOR: usize = 64;
+/// The most messages to seats a view carries, the newest.
+pub const MAX_MESSAGES: usize = 32;
 
 /// What model calls cost, summed from each ended turn's recorded cost:
 /// the providers' reported cost, or tokens at list price where Coder
@@ -424,6 +431,82 @@ pub fn memory_key(sequence: u64) -> String {
     format!("m{sequence:012}")
 }
 
+/// How a message reached, or will reach, its seat's engine: the native
+/// mode of NIP-SESS steering the delivery used.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeliveryMode {
+    /// Left for the seat's running turn, which reads it between steps.
+    MidTurn,
+    /// Carried by the briefing of the seat's next task, when it starts.
+    TurnBoundary,
+}
+
+/// Whether a message's engine has it. An accepted steer is not a consumed
+/// one (NIP-SESS, "Steering capability").
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeliveryState {
+    /// Held for the seat's next task.
+    Waiting,
+    /// Accepted for the engine, which has not read it yet.
+    Accepted,
+    /// The engine read it: the running turn took it, or the task whose
+    /// briefing carries it started.
+    Consumed,
+}
+
+/// One message to a seat and its delivery.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SeatMessage {
+    /// Its key: the coordinator sequence that sent it, as 20 digits, so
+    /// key order is sending order.
+    pub message: String,
+    /// The seat it is for.
+    pub seat: String,
+    /// The seat that sent it; none for the person.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from: Option<String>,
+    /// When it was sent, in Unix seconds.
+    pub at: u64,
+    /// Its first line, at most [`MAX_LINE`] bytes.
+    pub text: String,
+    pub mode: DeliveryMode,
+    pub state: DeliveryState,
+    /// The task it was left for or briefed into; none while it waits.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub task: Option<String>,
+}
+
+impl SeatMessage {
+    /// Who sent it, as a panel names them: `You` or the seat.
+    #[must_use]
+    pub fn sender(&self) -> &str {
+        self.from.as_deref().unwrap_or("You")
+    }
+
+    /// What a panel shows of its delivery, such as `read mid-turn`.
+    #[must_use]
+    pub fn delivery(&self) -> &'static str {
+        match (self.mode, self.state) {
+            (_, DeliveryState::Waiting) => "waits for its next task",
+            (DeliveryMode::MidTurn, DeliveryState::Accepted) => "sent mid-turn, not read yet",
+            (DeliveryMode::MidTurn, DeliveryState::Consumed) => "read mid-turn",
+            (DeliveryMode::TurnBoundary, DeliveryState::Accepted) => {
+                "in its next task's briefing, not started yet"
+            }
+            (DeliveryMode::TurnBoundary, DeliveryState::Consumed) => "read when its task started",
+        }
+    }
+}
+
+/// The key of the message the coordinator sent at `sequence`.
+#[must_use]
+pub fn message_key(sequence: u64) -> String {
+    format!("{sequence:020}")
+}
+
 /// The studio as a view draws it. Every list is in key order with
 /// distinct keys. In an [`Update`], it holds only what changed.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -445,6 +528,9 @@ pub struct View {
     /// predates shared memory in the view sends none.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub memory: Vec<Memory>,
+    /// The newest messages to seats, oldest first.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub messages: Vec<SeatMessage>,
 }
 
 /// The kind of item an update removes.
@@ -458,6 +544,7 @@ pub enum Kind {
     Repository,
     Log,
     Memory,
+    Message,
 }
 
 /// An item an update removes.
@@ -793,6 +880,40 @@ impl Keyed for Memory {
     }
 }
 
+impl Keyed for SeatMessage {
+    const KIND: Kind = Kind::Message;
+    fn key(&self) -> &str {
+        &self.message
+    }
+    fn validate(&self) -> Result<()> {
+        message_id(&self.message)?;
+        seat_name(&self.seat)?;
+        if let Some(from) = &self.from {
+            seat_name(from)?;
+        }
+        line(&self.text, MAX_LINE)?;
+        if let Some(task) = &self.task {
+            id(task)?;
+        }
+        let waits = self.state == DeliveryState::Waiting;
+        if waits != self.task.is_none() || (waits && self.mode != DeliveryMode::TurnBoundary) {
+            return fail(
+                Code::Malformed,
+                "a waiting message names no task and waits for a turn boundary",
+            );
+        }
+        Ok(())
+    }
+}
+
+/// A message key: exactly 20 ASCII digits.
+fn message_id(value: &str) -> Result<()> {
+    if value.len() != 20 || !value.bytes().all(|byte| byte.is_ascii_digit()) {
+        return fail(Code::Malformed, "not a studio message key");
+    }
+    Ok(())
+}
+
 /// Check a list's items, bound, and key order.
 fn check<T: Keyed>(items: &[T], max: usize) -> Result<()> {
     count(items.len(), max)?;
@@ -870,6 +991,7 @@ impl View {
         canonical(&mut self.repositories);
         canonical(&mut self.logs);
         canonical(&mut self.memory);
+        canonical(&mut self.messages);
     }
 
     /// Check every item's bounds, each list's bound and key order, and the
@@ -888,6 +1010,7 @@ impl View {
         if self.memory.iter().filter(|entry| entry.pinned).count() > 1 {
             return fail(Code::Malformed, "a view pins at most one plan");
         }
+        check(&self.messages, MAX_MESSAGES)?;
         if encoded_len(self) > MAX_VIEW_BYTES {
             return fail(Code::Bounds, "studio view exceeds its bound");
         }
@@ -896,8 +1019,8 @@ impl View {
 
     /// Shrink the view until it encodes in `max` bytes: drop the oldest
     /// line of the longest log tail, then the oldest memory entry that is
-    /// not pinned, then the oldest finished goal with its tasks and
-    /// decisions. Returns whether it fits.
+    /// not pinned, then the oldest message, then the oldest finished goal
+    /// with its tasks and decisions. Returns whether it fits.
     pub fn fit(&mut self, max: usize) -> bool {
         while encoded_len(&*self) > max {
             if let Some(log) = self
@@ -911,6 +1034,10 @@ impl View {
             }
             if let Some(index) = self.memory.iter().position(|entry| !entry.pinned) {
                 self.memory.remove(index);
+                continue;
+            }
+            if !self.messages.is_empty() {
+                self.messages.remove(0);
                 continue;
             }
             let oldest = self
@@ -951,6 +1078,12 @@ impl View {
         );
         diff(&old.logs, &new.logs, &mut put.logs, &mut removed);
         diff(&old.memory, &new.memory, &mut put.memory, &mut removed);
+        diff(
+            &old.messages,
+            &new.messages,
+            &mut put.messages,
+            &mut removed,
+        );
         (put, removed)
     }
 
@@ -963,6 +1096,7 @@ impl View {
         apply(&mut self.repositories, &put.repositories, removed);
         apply(&mut self.logs, &put.logs, removed);
         apply(&mut self.memory, &put.memory, removed);
+        apply(&mut self.messages, &put.messages, removed);
     }
 
     /// The pinned plan, when the view carries one.
@@ -997,12 +1131,19 @@ impl Update {
         self.put.validate()?;
         count(
             self.removed.len(),
-            MAX_GOALS + MAX_SEATS * 2 + MAX_TASKS + MAX_DECISIONS + MAX_REPOSITORIES + MAX_MEMORY,
+            MAX_GOALS
+                + MAX_SEATS * 2
+                + MAX_TASKS
+                + MAX_DECISIONS
+                + MAX_REPOSITORIES
+                + MAX_MEMORY
+                + MAX_MESSAGES,
         )?;
         for gone in &self.removed {
             match gone.kind {
                 Kind::Seat | Kind::Log => seat_name(&gone.id)?,
                 Kind::Repository => line(&gone.id, 128)?,
+                Kind::Message => message_id(&gone.id)?,
                 _ => id(&gone.id)?,
             }
         }
@@ -1336,9 +1477,56 @@ mod tests {
                 }],
             }],
             memory: Vec::new(),
+            messages: Vec::new(),
         };
         view.canonicalize();
         view
+    }
+
+    fn sent(sequence: u64, state: DeliveryState) -> SeatMessage {
+        SeatMessage {
+            message: message_key(sequence),
+            seat: "builder".into(),
+            from: None,
+            at: 1_790_000_000,
+            text: "Keep the palette to four colors.".into(),
+            mode: DeliveryMode::MidTurn,
+            state,
+            task: Some("studio-g1-0011aabb-first".into()),
+        }
+    }
+
+    #[test]
+    fn a_message_carries_its_delivery_and_updates_when_the_engine_reads_it() {
+        let mut accepted = view();
+        accepted.messages.push(sent(12, DeliveryState::Accepted));
+        accepted.messages.push(sent(9, DeliveryState::Consumed));
+        accepted.canonicalize();
+        accepted.validate().unwrap();
+        // Key order is sending order, whatever the digit count.
+        assert_eq!(accepted.messages[0].message, "00000000000000000009");
+        let mut read = accepted.clone();
+        read.messages[1].state = DeliveryState::Consumed;
+        let (put, removed) = View::diff(&accepted, &read);
+        assert_eq!(put.messages.len(), 1);
+        assert!(removed.is_empty());
+        let mut applied = accepted.clone();
+        applied.apply(&put, &removed);
+        assert_eq!(applied, read);
+        // A waiting message names no task and waits for a turn boundary.
+        let mut waiting = sent(13, DeliveryState::Waiting);
+        assert!(Keyed::validate(&waiting).is_err());
+        waiting.task = None;
+        assert!(Keyed::validate(&waiting).is_err());
+        waiting.mode = DeliveryMode::TurnBoundary;
+        Keyed::validate(&waiting).unwrap();
+        // A view a host encoded before messages were carried still reads.
+        let old: View = serde_json::from_value(serde_json::to_value(view()).unwrap()).unwrap();
+        assert!(old.messages.is_empty());
+        // A removed message names its key.
+        let (_, removed) = View::diff(&read, &old);
+        assert_eq!(removed.len(), 2);
+        assert!(removed.iter().all(|gone| gone.kind == Kind::Message));
     }
 
     #[test]

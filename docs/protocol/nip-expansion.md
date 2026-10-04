@@ -68,6 +68,42 @@ lowercase hexadecimal prefix found among the last 50 non-self events in that
 group; an unknown or malformed reference is rejected. Late group publications
 use the relay's configurable global past-timestamp admission bound.
 
+### Kind 39005: pinned events and thread summaries
+
+Two pinned specifications give kind `39005` different meanings. Upstream
+[NIP-29](../../nips/official/29.md) uses it for a group's pinned events: a
+stored, relay-signed replaceable event whose `d` tag is the group ID and whose
+`e` and `a` tags list the pins, regenerated after each accepted `kind:9010`.
+Block [NIP-CW](../../nips/block/NIP-CW.md) uses it for a thread summary: a
+relay-signed overlay synthesized for one channel-window response, with exactly
+one `e`, one `d` (the row's event ID), and one `h` tag, and a JSON content
+body. nostr-relay already implements both.
+
+**Decision (2026-10-04, #10551): keep both meanings and don't renumber.**
+Neither specification is ours to change, and either renumbering would break
+interoperability with the lane that defined it. The two never meet in the
+same place, so the shapes and the delivery path tell them apart:
+
+- **Where it comes from.** A pin list is stored and answers ordinary `REQ`
+  filters. A thread summary is never stored: it exists only inside a
+  channel-window response or the `resolve_thread_roots` bridge read, and both
+  ask for it explicitly. Relays already reject client-submitted `39005`
+  events, so neither can be forged into the other's store.
+- **What it carries.** A thread summary has an `h` tag and JSON content; a
+  pin list has no `h` tag and empty content. A client classifies a `39005`
+  by the `h` tag before it reads anything else, and treats a summary only
+  as metadata about the row its `e` tag names.
+- **How a cache keys it.** Both are replaceable by `d`. Cache pin lists and
+  thread summaries apart, keyed by group and by channel row. A group ID that
+  is a 64-character lowercase hex string could equal a row's event ID under a
+  single shared key, so the relay should refuse such group IDs; that refusal
+  is not implemented yet.
+
+The Agent Studio follows this rule for its Block-lane mirror
+([Verse networking](../verse/networking.md)): it pins a group's events only
+through NIP-29 `kind:9010`, and it reads thread activity only from channel
+windows. It never publishes or stores a `39005` itself.
+
 ## Management API
 
 Set `NOSTR_RELAY_MANAGEMENT_PUBKEY` and `NOSTR_RELAY_RELAY_URL` to enable the NIP-86

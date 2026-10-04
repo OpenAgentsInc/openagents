@@ -23,6 +23,10 @@
 //! - **Messages.** A message to a seat with a running task arrives through
 //!   the existing steer path ([`super::steer`]), never by editing its
 //!   prompt; otherwise it waits and the seat's next briefing carries it.
+//!   Each steered message keeps its place in its task's steering count, so
+//!   the view says whether the engine read it (NIP-SESS: an accepted steer
+//!   is not a consumed one), and one whose task ended before reading it
+//!   returns to the seat's next briefing ([`Studio::reconcile`]).
 //! - **Spend.** Each studio task's model spend, summed from its turns'
 //!   recorded cost (the providers' reported cost, or tokens at list
 //!   price where Coder prices them), is kept per task with its goal and
@@ -333,6 +337,12 @@ pub struct Message {
     pub to: Party,
     pub text: String,
     pub delivery: Delivery,
+    /// For a steered message, its place in its task's steering count
+    /// ([`super::steer::add`]): the engine read it once the count of
+    /// messages taken reaches it. Absent for a message recorded before
+    /// the count was kept, whose reading is unknown.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub steer: Option<u64>,
 }
 
 /// What a shared memory entry records.
@@ -1368,6 +1378,7 @@ impl Studio {
         now: u64,
         lead_reply: &dyn Fn(&str) -> Option<String>,
     ) -> Result<Vec<Released>, Error> {
+        self.redispatch_unread(tasks)?;
         let mut released = Vec::new();
         for index in 0..self.state.goals.len() {
             if self.state.goals[index].lead.state != SlotState::Submitted {
@@ -1856,9 +1867,9 @@ impl Studio {
         }
         let mut written = Vec::new();
         for (offset, recipient) in recipients.into_iter().enumerate() {
-            let delivery = match &recipient {
+            let (delivery, steer) = match &recipient {
                 Party::Seat { name } => self.deliver(tasks, name, text)?,
-                _ => Delivery::Recorded,
+                _ => (Delivery::Recorded, None),
             };
             written.push(Message {
                 sequence: self.state.sequence + 1 + offset as u64,
@@ -1867,6 +1878,7 @@ impl Studio {
                 to: recipient,
                 text: text.to_owned(),
                 delivery,
+                steer,
             });
         }
         for message in &written {
@@ -1889,7 +1901,14 @@ impl Studio {
         Ok(written)
     }
 
-    fn deliver(&self, tasks: &dyn Inbox, seat: &str, text: &str) -> Result<Delivery, Error> {
+    /// How a message to `seat` goes: through the steer path, with its
+    /// place in the task's steering count, or to the next briefing.
+    fn deliver(
+        &self,
+        tasks: &dyn Inbox,
+        seat: &str,
+        text: &str,
+    ) -> Result<(Delivery, Option<u64>), Error> {
         let reads_steering = self.state.seat(seat).is_some_and(|seat| {
             !matches!(
                 seat.route.provider,
@@ -1899,11 +1918,64 @@ impl Studio {
         let active = self.active_task(tasks, seat);
         match active {
             Some((task_id, Progress::Queued | Progress::Running)) if reads_steering => {
-                super::steer::add(&self.store, &task_id, text).map_err(Error::Invalid)?;
-                Ok(Delivery::Steered { task_id })
+                let place =
+                    super::steer::add(&self.store, &task_id, text).map_err(Error::Invalid)?;
+                Ok((Delivery::Steered { task_id }, Some(place)))
             }
-            _ => Ok(Delivery::Waiting),
+            _ => Ok((Delivery::Waiting, None)),
         }
+    }
+
+    /// Whether the engine read the message `message`: `None` when that is
+    /// not known (a message recorded before the steering count was kept,
+    /// or one that is not for a seat).
+    #[must_use]
+    pub fn consumed(&self, tasks: &dyn Inbox, message: &Message) -> Option<bool> {
+        match &message.delivery {
+            Delivery::Steered { task_id } => message
+                .steer
+                .map(|place| super::steer::taken(&self.store, task_id) >= place),
+            // The turn the briefing opens consumes it when it starts.
+            Delivery::Briefed { task_id } => {
+                Some(tasks.task(task_id).is_some_and(|task| task.run.is_some()))
+            }
+            Delivery::Waiting => Some(false),
+            Delivery::Recorded => None,
+        }
+    }
+
+    /// Return to the seat's next briefing each steered message whose task
+    /// ended before its engine read it: nothing consumed it, so NIP-SESS
+    /// sends it again by a turn that can start. The message leaves the
+    /// task's steering file first, so no later turn of that task reads it
+    /// twice.
+    fn redispatch_unread(&mut self, tasks: &dyn Inbox) -> Result<(), Error> {
+        let mut changed = false;
+        for index in 0..self.state.messages.len() {
+            let message = &self.state.messages[index];
+            let Delivery::Steered { task_id } = &message.delivery else {
+                continue;
+            };
+            if message.steer.is_none()
+                || !progress(tasks, task_id).is_final()
+                || self.consumed(tasks, message) != Some(false)
+            {
+                continue;
+            }
+            if !super::steer::withdraw(&self.store, task_id, &message.text)
+                .map_err(Error::Invalid)?
+            {
+                continue;
+            }
+            let message = &mut self.state.messages[index];
+            message.delivery = Delivery::Waiting;
+            message.steer = None;
+            changed = true;
+        }
+        if changed {
+            self.save()?;
+        }
+        Ok(())
     }
 
     /// The seat's newest active task and its progress.
@@ -2135,10 +2207,25 @@ pub mod git;
 #[path = "studio_flow.rs"]
 pub mod flow;
 pub use flow::{Flow, Stage, Verification};
+#[path = "studio_approvals.rs"]
+pub mod approvals;
 
 #[cfg(test)]
 #[path = "studio_tests.rs"]
 mod tests;
+
+/// The activity summary subject of a goal's open decision (NIP-WS): a
+/// digest of the goal, 64 lowercase hex characters like a task's, and in
+/// a domain of its own, so it is never a task's identity.
+#[must_use]
+pub fn goal_subject(goal_id: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::new()
+        .chain_update(b"openagents.studio.goal-decision.v1\0")
+        .chain_update(goal_id.as_bytes())
+        .finalize();
+    digest.iter().map(|byte| format!("{byte:02x}")).collect()
+}
 
 /// The task id of a goal's slot: the lead's (`entry` is `lead`) or a plan
 /// entry's. Host access names tasks by lower-case 32-byte hex, so the id is

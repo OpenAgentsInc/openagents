@@ -810,6 +810,9 @@ const SWEEP_EVERY: Duration = Duration::from_secs(5);
 /// so devices catch up after a restart.
 async fn summary_loop(shared: Arc<Shared>) {
     let mut known: BTreeMap<String, u64> = BTreeMap::new();
+    // Each studio goal decision this host raised, by subject: the
+    // coordinator sequence that opened it.
+    let mut raised: BTreeMap<String, u64> = BTreeMap::new();
     let mut first = true;
     let mut ticker = tokio::time::interval(STAMP_EVERY);
     let mut swept: Option<(Instant, Option<Vec<u8>>)> = None;
@@ -855,7 +858,78 @@ async fn summary_loop(shared: Arc<Shared>) {
         for task in &changed {
             summarize(&shared, task).await;
         }
+        let tasks = shared.tasks.clone();
+        let Ok(open) = tokio::task::spawn_blocking(move || tasks.goal_decisions()).await else {
+            continue;
+        };
+        let Ok(now) = unix_time() else { continue };
+        for summary in goal_summaries(&shared.host_key, &mut raised, &open, now) {
+            publish_summary(&shared, &summary, now).await;
+        }
     }
+}
+
+/// The headline of a goal decision's summary once it is answered.
+const DECISION_ANSWERED: &str = "Decision answered";
+
+/// The activity summaries studio goal decisions need now, given the ones
+/// this host `raised` (updated in place): a newly open decision asks for
+/// input (phase `waiting`, attention `input`) under the goal's own subject
+/// with its headline from host state; one that closed is superseded by a
+/// summary that asks for nothing. A goal decision opened at coordinator
+/// sequence `s` is summarized at `2s` and closed at `2s + 1`, so each
+/// supersedes the last and a later decision of the same goal supersedes
+/// both. The summary sealed to a device is what wakes its phone through a
+/// relay's NIP-PL executor, whose lease matches the device's `3188`
+/// artifacts.
+pub(crate) fn goal_summaries(
+    host: &str,
+    raised: &mut BTreeMap<String, u64>,
+    open: &[crate::tasks::GoalDecision],
+    now: u64,
+) -> Vec<activity_summary::ActivitySummary> {
+    let mut out = Vec::new();
+    for decision in open {
+        if raised.get(&decision.subject) == Some(&decision.sequence) {
+            continue;
+        }
+        let draft = SummaryDraft {
+            host,
+            subject_kind: SubjectKind::Task,
+            subject: &decision.subject,
+            sequence: decision.sequence.saturating_mul(2),
+            phase: Phase::Waiting,
+            headline: &decision.headline,
+            attention: Attention::Input,
+            updated_at: now,
+        };
+        if let Ok(summary) = activity_summary::encode(&draft) {
+            raised.insert(decision.subject.clone(), decision.sequence);
+            out.push(summary);
+        }
+    }
+    let closed: Vec<(String, u64)> = raised
+        .iter()
+        .filter(|(subject, _)| !open.iter().any(|decision| decision.subject == **subject))
+        .map(|(subject, sequence)| (subject.clone(), *sequence))
+        .collect();
+    for (subject, sequence) in closed {
+        raised.remove(&subject);
+        let draft = SummaryDraft {
+            host,
+            subject_kind: SubjectKind::Task,
+            subject: &subject,
+            sequence: sequence.saturating_mul(2).saturating_add(1),
+            phase: Phase::Running,
+            headline: DECISION_ANSWERED,
+            attention: Attention::None,
+            updated_at: now,
+        };
+        if let Ok(summary) = activity_summary::encode(&draft) {
+            out.push(summary);
+        }
+    }
+    out
 }
 
 /// How often the host looks for new spend requests to wake a phone for.
@@ -901,20 +975,27 @@ async fn spend_wake_loop(shared: Arc<Shared>) {
 }
 
 /// Publish an activity summary for a changed task to every device that
-/// holds `observe`. The headline is the generic phrase for the phase, or
-/// the host's typed note, such as a missing model capacity: a title comes
-/// from a device, and a summary never carries sent text.
+/// holds `observe`. The headline is the generic phrase for the phase, the
+/// host's typed note, such as a missing model capacity, or, while a
+/// studio task's question or approval waits, its seat and title: a title
+/// comes from a device or the host's plan, and a summary never carries
+/// sent text.
 pub(crate) async fn summarize(shared: &Shared, task: &TaskRef) {
     let Ok(now) = unix_time() else { return };
     let tasks = shared.tasks.clone();
     let id = task.task.clone();
-    let note = tokio::task::spawn_blocking(move || tasks.note(&id))
-        .await
-        .ok()
-        .flatten();
-    let Some(summary) = activity(&shared.host_key, task, note, now) else {
+    let (note, headline) =
+        tokio::task::spawn_blocking(move || (tasks.note(&id), tasks.decision_headline(&id)))
+            .await
+            .unwrap_or_default();
+    let Some(summary) = activity(&shared.host_key, task, note, headline.as_deref(), now) else {
         return;
     };
+    publish_summary(shared, &summary, now).await;
+}
+
+/// Seal `summary` to every device that holds `observe` and publish it.
+async fn publish_summary(shared: &Shared, summary: &activity_summary::ActivitySummary, now: u64) {
     for device in shared.authority.active_devices(Some(Right::Observe), now) {
         let (Ok(key), Ok(mailbox)) = (
             XOnlyPublicKey::from_str(&device),
@@ -923,7 +1004,7 @@ pub(crate) async fn summarize(shared: &Shared, task: &TaskRef) {
             continue;
         };
         if let Ok(event) = activity_summary::seal(
-            &summary,
+            summary,
             &shared.secret,
             &key,
             &mailbox,
@@ -936,10 +1017,14 @@ pub(crate) async fn summarize(shared: &Shared, task: &TaskRef) {
 }
 
 /// The same disclosed task state for paired devices and the local owner.
+/// `decision` is the host-state headline of a waiting studio decision
+/// ([`crate::tasks::Tasks::decision_headline`]); it replaces the note's
+/// only while the summary asks for input or an approval.
 pub(crate) fn activity(
     host: &str,
     task: &TaskRef,
     note: Option<crate::tasks::Note>,
+    decision: Option<&str>,
     now: u64,
 ) -> Option<activity_summary::ActivitySummary> {
     // A waiting question or approval asks for the device's attention; the
@@ -950,7 +1035,10 @@ pub(crate) fn activity(
         (Phase::Failed, _) => Attention::Failed,
         _ => Attention::None,
     };
-    let note = note.map(crate::tasks::Note::headline);
+    let note = match (attention, decision) {
+        (Attention::Approval | Attention::Input, Some(decision)) => Some(decision.to_owned()),
+        _ => note.map(crate::tasks::Note::headline),
+    };
     let draft = SummaryDraft {
         host,
         subject_kind: SubjectKind::Task,
@@ -1054,6 +1142,10 @@ fn helpers_of(exe: &std::path::Path) -> Option<std::path::PathBuf> {
     let helpers = macos.parent()?.join("Helpers");
     helpers.join("openagents").is_file().then_some(helpers)
 }
+
+#[cfg(test)]
+#[path = "summary_tests.rs"]
+mod summary_tests;
 
 #[cfg(test)]
 mod bundle_tests {

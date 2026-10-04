@@ -691,6 +691,7 @@ pub(super) fn activity(shared: &Shared, id: &str) -> Reply {
         &shared.host_key,
         &task,
         shared.tasks.note(id),
+        shared.tasks.decision_headline(id).as_deref(),
         crate::unix_time().unwrap_or_default(),
     ) else {
         return super::refused("unavailable", "The task state could not be read.");
