@@ -8,6 +8,7 @@ parser.add_argument('--compiled-revision',required=True)
 parser.add_argument('--client-compiled-revision')
 parser.add_argument('--seconds',type=int,default=60)
 parser.add_argument('--players',type=int,default=20)
+parser.add_argument('--persistent',action='store_true',help='Enable host saves in the isolated scratch directory')
 parser.add_argument('--delay-ms',type=int,default=40)
 parser.add_argument('--jitter-ms',type=int,default=20)
 args=parser.parse_args()
@@ -72,11 +73,13 @@ for i,actor in enumerate(cultists):
 scene=str(root/'battle.json');(root/'battle.json').write_text(json.dumps(authored))
 pack=str(assets/'runtime-pack.json')
 host={'authored_combat_health':True,'listen':address,'instance':220,'scene':scene,'pack':pack,'certificate_der':str(root/'cert.der'),'private_key_der':str(root/'tls.der'),'enrollments':[{'public_key':k,'role':({'type':'primary'} if role=='primary' else {'type':'player','spawn':[-6+3*((i-1)%5),0,-21+2*((i-1)//5)]})} for i,(role,k) in enumerate(zip(roles,keys))]}
+if args.persistent:
+    host['state_dir']=str(root/'state')
 (root/'host.json').write_text(json.dumps(host))
 env=dict(os.environ)
 (root/'home').mkdir()
 env['HOME']=str(root/'home')
-(root/'workload.json').write_text(json.dumps({'players':args.players,'hostile_npcs':40,'cultist_health':20000,'native_clients':1,'headless_clients':args.players-1,'seconds':args.seconds,'compiled_revisions':{'host':args.compiled_revision,'clients':args.client_compiled_revision or args.compiled_revision},'fixture_revision':subprocess.check_output(['git','rev-parse','HEAD'],cwd=repo,text=True).strip(),'limits':['NPC health is raised in the authored load scene to sustain spell and AI work.','Headless player connections do not establish rendering performance on their machines.','Native player and load generator share one host machine.']}))
+(root/'workload.json').write_text(json.dumps({'players':args.players,'hostile_npcs':40,'cultist_health':20000,'native_clients':1,'headless_clients':args.players-1,'seconds':args.seconds,'persistent_storage':args.persistent,'compiled_revisions':{'host':args.compiled_revision,'clients':args.client_compiled_revision or args.compiled_revision},'fixture_revision':subprocess.check_output(['git','rev-parse','HEAD'],cwd=repo,text=True).strip(),'limits':['NPC health is raised in the authored load scene to sustain spell and AI work.','Headless player connections do not establish rendering performance on their machines.','Native player and load generator share one host machine.']}))
 logs=[];processes=[]
 try:
     log=open(root/'host.log','w');logs.append(log)

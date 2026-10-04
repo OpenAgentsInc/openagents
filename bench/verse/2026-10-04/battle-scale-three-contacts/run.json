@@ -1,0 +1,32 @@
+{
+  "schema": "verse.battle.scale.run.v1",
+  "acceptance": "failed",
+  "workload": {
+    "players": 20,
+    "hostile_npcs": 40,
+    "cultist_health": 20000,
+    "native_clients": 1,
+    "headless_clients": 19,
+    "seconds": 60,
+    "persistent_storage": false,
+    "compiled_revisions": {
+      "host": "533d3b0cde",
+      "clients": "533d3b0cde"
+    },
+    "fixture_revision": "533d3b0cde89f0c1d04d89a03e04f22cd8c9d34e",
+    "limits": [
+      "NPC health is raised in the authored load scene to sustain spell and AI work.",
+      "Headless player connections do not establish rendering performance on their machines.",
+      "Native player and load generator share one host machine."
+    ]
+  },
+  "failure": "Host terminates after a three-contact character recovery failure for actor 216.",
+  "limits": [
+    "Only 1352 host ticks complete. This truncated run cannot establish sustained battle acceptance or a controlled prediction comparison.",
+    "Host drops 8.094 seconds and simulation p99 histogram upper bound is 250 ms.",
+    "The failed headless receipt retains all 19 player rows with observation failure stages; every measured occupancy sample retains 40 live hostiles.",
+    "The native client reports an unavailable frame header after host failure. Its partial profile is retained, not treated as complete capture acceptance.",
+    "Persistent storage remains disabled; the new harness option is not runtime validated yet.",
+    "Compilation is from 533d3b0cde. The fixture has an uncommitted harness-only change adding optional persistent storage metadata."
+  ]
+}
