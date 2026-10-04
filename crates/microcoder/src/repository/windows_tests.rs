@@ -122,6 +122,7 @@ fn fixture(access: Access) -> Option<(tempfile::TempDir, PathBuf, Vec<u8>)> {
             container: None,
             fallbacks: Vec::new(),
             access,
+            studio_seat: None,
         }),
     };
     Some((root, store, serde_json::to_vec(&grant).unwrap()))

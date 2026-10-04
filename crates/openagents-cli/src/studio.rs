@@ -123,12 +123,13 @@ fn default_root() -> PathBuf {
 }
 
 /// The task store and its studio, which notes releases in `root`'s
-/// auto-start journal.
+/// auto-start journal and gives each its own worktree under `root`.
 fn open(store: &Path, root: &Path) -> Result<(Store, Studio), String> {
     let tasks = Store::open(store).map_err(|e| e.to_string())?;
     let studio = Studio::open(store)
         .map_err(|e| e.to_string())?
-        .with_host_root(root);
+        .with_host_root(root)
+        .with_worktrees(coder::task::studio::git::worktrees_dir(root));
     Ok((tasks, studio))
 }
 

@@ -75,7 +75,8 @@ pub(crate) fn studio_stream() -> Stream {
 /// revisions a device reviewed. The task owner reads the review again
 /// first: a worktree that moved refuses as `stale`, unless a merge of
 /// exactly these revisions already published, which a retry answers
-/// again. **Merge** goes to the landing path (`task.publish`),
+/// again. **Merge** goes to the landing path (`task.publish`), which for a
+/// studio task merges into its checkout's branch and pushes nothing,
 /// **Request changes** is the task's next turn through the durable
 /// command journal under the device's command ID, and **Reject** is the
 /// owner's record. Returns the record and the task a follow-up changed.

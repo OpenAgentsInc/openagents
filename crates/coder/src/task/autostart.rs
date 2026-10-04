@@ -509,9 +509,41 @@ impl Policy {
         revision: u64,
         launcher: &dyn Launch,
     ) -> std::result::Result<Launched, String> {
+        self.launch_as(
+            grants,
+            store,
+            order,
+            task,
+            intent_digest,
+            revision,
+            None,
+            launcher,
+        )
+    }
+
+    /// [`Policy::launch`] for a studio task of seat `seat`, whose processes
+    /// commit as the seat and cannot push ([`super::studio::git::confine`]).
+    /// `None` is an ordinary task.
+    ///
+    /// # Errors
+    /// As [`Policy::launch`].
+    #[allow(clippy::too_many_arguments)]
+    pub fn launch_as(
+        &self,
+        grants: &Path,
+        store: &Path,
+        order: &[Route],
+        task: &str,
+        intent_digest: &str,
+        revision: u64,
+        seat: Option<&str>,
+        launcher: &dyn Launch,
+    ) -> std::result::Result<Launched, String> {
         if order.is_empty() {
             return Err("no route to start on".into());
         }
+        let mut configuration = self.configuration(order);
+        configuration.studio_seat = seat.map(str::to_owned);
         let program = shell()?;
         // A run that writes gets its independent check (#10232): the
         // recipe's frozen checks and the touched packages' tests.
@@ -534,7 +566,7 @@ impl Policy {
             stream_bytes: 64 * 1024,
             memory_bytes: self.engine.memory_bytes,
             requirements,
-            adapter_configuration: Some(self.configuration(order)),
+            adapter_configuration: Some(configuration),
         };
         let bytes = serde_json::to_vec_pretty(&grant).map_err(|e| e.to_string())?;
         owner::Grant::parse(&bytes).map_err(|e| format!("the grant is invalid: {e}"))?;
@@ -592,6 +624,7 @@ impl Policy {
             container: None,
             fallbacks: order[1..].iter().map(route).collect(),
             access: engine.access,
+            studio_seat: None,
         }
     }
 
@@ -1530,13 +1563,16 @@ impl Autostart {
         intent_digest: &str,
         revision: u64,
     ) -> std::result::Result<Launched, String> {
-        policy.launch(
+        // A studio task, every turn of it, runs confined to local Git work.
+        let seat = super::studio::git::seat_of(&self.store, task);
+        policy.launch_as(
             &self.root.join("autostart"),
             &self.store,
             order,
             task,
             intent_digest,
             revision,
+            seat.as_deref(),
             self.launcher.as_ref(),
         )
     }

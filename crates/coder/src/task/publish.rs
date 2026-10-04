@@ -240,6 +240,18 @@ fn keep(store: &Path, ledger: &mut Ledger, publication: &Publication) -> Result<
         .map_err(Refusal::Store)
 }
 
+/// Keep `publication` as `task`'s, replacing an earlier attempt of the
+/// same operation. A studio task's local merge
+/// ([`super::studio::git::merge`]) keeps its outcome here, so a review
+/// shows it as it shows a publication.
+///
+/// # Errors
+/// The publication file cannot be written.
+pub(crate) fn remember(store: &Path, task: &str, publication: &Publication) -> Result<(), Refusal> {
+    let mut ledger = load(store, task);
+    keep(store, &mut ledger, publication)
+}
+
 /// The last publication of `task` that reached the remote or may have,
 /// if any.
 #[must_use]

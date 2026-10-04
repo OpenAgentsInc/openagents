@@ -1,0 +1,398 @@
+use std::collections::BTreeMap;
+use std::ffi::OsString;
+use std::process::Command;
+
+use coder_host::Tasks as _;
+
+use super::super::super::{Store, remote};
+use super::super::{
+    NewGoal, PLAN_SCHEMA, PlanOutcome, Repository, Role, Seat, Studio, parse_route,
+};
+use super::*;
+
+/// A private scratch directory: the task store, the host root, the
+/// person's checkout, and its `origin` all live under it, never under the
+/// real home.
+fn private_dir() -> tempfile::TempDir {
+    let dir = tempfile::tempdir().unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700)).unwrap();
+    }
+    dir
+}
+
+fn git(dir: &Path, args: &[&str]) -> String {
+    let output = local::git().arg("-C").arg(dir).args(args).output().unwrap();
+    assert!(
+        output.status.success(),
+        "git {args:?}: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8_lossy(&output.stdout).trim().to_owned()
+}
+
+struct Scratch {
+    dir: tempfile::TempDir,
+    store: PathBuf,
+    root: PathBuf,
+    repo: PathBuf,
+    origin: PathBuf,
+}
+
+/// A checkout on `main` with one commit, pushed to a bare `origin`.
+fn scratch() -> Scratch {
+    let dir = private_dir();
+    let repo = dir.path().join("repo");
+    let origin = dir.path().join("origin.git");
+    git(
+        dir.path(),
+        &["init", "-q", "--bare", &origin.to_string_lossy()],
+    );
+    git(
+        dir.path(),
+        &["init", "-q", "-b", "main", &repo.to_string_lossy()],
+    );
+    git(&repo, &["config", "user.name", "Owner Person"]);
+    git(&repo, &["config", "user.email", "owner@example.invalid"]);
+    git(&repo, &["config", "commit.gpgsign", "false"]);
+    std::fs::write(repo.join("README.md"), "hello\n").unwrap();
+    git(&repo, &["add", "-A"]);
+    git(&repo, &["commit", "-q", "-m", "First"]);
+    git(
+        &repo,
+        &["remote", "add", "origin", &origin.to_string_lossy()],
+    );
+    git(&repo, &["push", "-q", "origin", "main"]);
+    Scratch {
+        store: dir.path().join("tasks"),
+        root: dir.path().join("host"),
+        repo,
+        origin,
+        dir,
+    }
+}
+
+fn seat(name: &str, role: Role, route: &str, desk: u32) -> Seat {
+    Seat {
+        name: name.into(),
+        role,
+        route: parse_route(route).unwrap(),
+        look: "default".into(),
+        desk,
+    }
+}
+
+/// Git in `worktree` as a studio task's process runs it: a cleared
+/// environment confined to seat `seat`.
+fn as_seat(seat: &str, worktree: &Path, home: &Path) -> Command {
+    let mut variables: Vec<(OsString, OsString)> = vec![
+        ("PATH".into(), "/usr/bin:/bin".into()),
+        ("HOME".into(), home.into()),
+    ];
+    confine(&mut variables, seat, worktree);
+    let mut command = local::git();
+    command.env_clear().envs(variables).arg("-C").arg(worktree);
+    command
+}
+
+fn succeeds(command: &mut Command) {
+    let output = command.output().unwrap();
+    assert!(
+        output.status.success(),
+        "{command:?}: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn names_follow_the_seat_and_the_task() {
+    assert_eq!(slug("Write the --verbose flag!"), "write-the-verbose-flag");
+    assert_eq!(slug("¿?"), "task");
+    assert!(slug(&"long words ".repeat(10)).len() <= SLUG_MAX);
+    assert_eq!(
+        branch("ada", &"ab".repeat(32), "Parse the flag"),
+        "studio/ada/abababab-parse-the-flag"
+    );
+    assert_eq!(
+        identity("ada"),
+        ("Studio Ada".to_owned(), "ada@studio.invalid".to_owned())
+    );
+}
+
+#[test]
+fn confinement_appends_after_existing_configuration_and_drops_redirects() {
+    let mut variables: Vec<(OsString, OsString)> = vec![
+        ("GIT_CONFIG_COUNT".into(), "1".into()),
+        ("GIT_CONFIG_KEY_0".into(), "remote.origin.url".into()),
+        ("GIT_CONFIG_VALUE_0".into(), "/elsewhere".into()),
+        ("GIT_DIR".into(), "/somewhere/.git".into()),
+        ("GIT_CEILING_DIRECTORIES".into(), "/outer".into()),
+        ("GIT_AUTHOR_NAME".into(), "Someone".into()),
+    ];
+    confine(&mut variables, "ada", Path::new("/work/trees/task"));
+    let value = |name: &str| {
+        let found: Vec<&OsString> = variables
+            .iter()
+            .filter(|(key, _)| key == name)
+            .map(|(_, value)| value)
+            .collect();
+        assert!(found.len() <= 1, "{name} is set twice");
+        found
+            .first()
+            .map(|value| value.to_string_lossy().into_owned())
+    };
+    assert_eq!(value("GIT_DIR"), None);
+    assert_eq!(value("GIT_CONFIG_COUNT").as_deref(), Some("8"));
+    assert_eq!(
+        value("GIT_CONFIG_KEY_0").as_deref(),
+        Some("remote.origin.url")
+    );
+    assert_eq!(value("GIT_CONFIG_KEY_1").as_deref(), Some("protocol.allow"));
+    assert_eq!(value("GIT_CONFIG_VALUE_1").as_deref(), Some("never"));
+    assert_eq!(value("GIT_ALLOW_PROTOCOL").as_deref(), Some(NO_PROTOCOL));
+    assert_eq!(value("GIT_AUTHOR_NAME").as_deref(), Some("Studio Ada"));
+    assert_eq!(
+        value("GIT_CEILING_DIRECTORIES").as_deref(),
+        Some("/work/trees:/outer")
+    );
+}
+
+/// The acceptance flow (#10542): two seats' tasks in separate worktrees,
+/// a review of each diff, a merge that fast-forwards a clean checkout and
+/// is refused on a dirty one, and a push from inside a task that fails.
+#[test]
+fn two_seats_work_apart_review_and_merge_locally_without_pushing() {
+    let s = scratch();
+    let first = git(&s.repo, &["rev-parse", "HEAD"]);
+    let mut tasks = Store::open(&s.store).unwrap();
+    let mut studio = Studio::open(&s.store)
+        .unwrap()
+        .with_host_root(&s.root)
+        .with_worktrees(worktrees_dir(&s.root));
+    studio
+        .set_seat(seat("lead", Role::Lead, "codex:gpt-6-luna", 0))
+        .unwrap();
+    studio
+        .set_seat(seat("ada", Role::Worker, "claude:claude-opus-5-5", 1))
+        .unwrap();
+    studio
+        .set_seat(seat("grace", Role::Worker, "codex:gpt-6-luna", 2))
+        .unwrap();
+    let (goal, _) = studio
+        .submit_goal(
+            &mut tasks,
+            NewGoal {
+                text: "Add two notes.".into(),
+                repository: Repository {
+                    label: "demo".into(),
+                    path: s.repo.to_string_lossy().into_owned(),
+                },
+                lead: None,
+            },
+            1_000,
+        )
+        .unwrap();
+    let plan = serde_json::json!({
+        "schema": PLAN_SCHEMA,
+        "tasks": [
+            {"id": "left", "title": "Write the left note", "seat": "ada"},
+            {"id": "right", "title": "Write the right note", "seat": "grace"},
+        ],
+    })
+    .to_string();
+    let PlanOutcome::Accepted { released } = studio
+        .accept_plan(&mut tasks, &goal, plan.as_bytes(), 1_001)
+        .unwrap()
+    else {
+        panic!("the plan is valid");
+    };
+    assert_eq!(released.len(), 2);
+
+    // Each task has its own worktree and branch under the host's state,
+    // from the checkout's commit, and works there.
+    let home = s.dir.path().join("home");
+    std::fs::create_dir_all(&home).unwrap();
+    let mut worktrees = Vec::new();
+    for (item, file) in released.iter().zip(["left.txt", "right.txt"]) {
+        let record = local::record(&s.store, &item.task_id).expect("a run record");
+        let worktree = PathBuf::from(&record.worktree);
+        assert!(worktree.starts_with(worktrees_dir(&s.root)));
+        assert_eq!(record.base, first);
+        assert_eq!(
+            Path::new(&record.checkout).canonicalize().unwrap(),
+            s.repo.canonicalize().unwrap()
+        );
+        assert_eq!(
+            tasks.show(&item.task_id).unwrap().intent.workspace.path,
+            record.worktree
+        );
+        assert_eq!(
+            seat_of(&s.store, &item.task_id).as_deref(),
+            Some(item.seat.as_str())
+        );
+        let on = git(&worktree, &["symbolic-ref", "--short", "HEAD"]);
+        assert!(on.starts_with(&format!("studio/{}/", item.seat)), "{on}");
+
+        std::fs::write(worktree.join(file), format!("{}\n", item.seat)).unwrap();
+        succeeds(as_seat(&item.seat, &worktree, &home).args(["add", "-A"]));
+        succeeds(as_seat(&item.seat, &worktree, &home).args([
+            "commit",
+            "-q",
+            "-m",
+            "Write a note",
+        ]));
+        let (name, email) = identity(&item.seat);
+        assert_eq!(
+            git(&worktree, &["log", "-1", "--format=%an <%ae>"]),
+            format!("{name} <{email}>")
+        );
+
+        // A push from inside the task fails, however it names the remote.
+        let origin = s.origin.to_string_lossy().into_owned();
+        let url = format!("file://{origin}");
+        for args in [
+            vec!["push", "origin", "HEAD:refs/heads/leak"],
+            vec!["push", origin.as_str(), "HEAD:refs/heads/leak"],
+            vec!["push", url.as_str(), "HEAD:refs/heads/leak"],
+            vec![
+                "-c",
+                "protocol.allow=always",
+                "push",
+                origin.as_str(),
+                "HEAD:refs/heads/leak",
+            ],
+        ] {
+            let pushed = as_seat(&item.seat, &worktree, &home)
+                .args(&args)
+                .output()
+                .unwrap();
+            assert!(!pushed.status.success(), "{args:?} pushed");
+        }
+        assert!(git(&s.origin, &["for-each-ref", "refs/heads/leak"]).is_empty());
+        worktrees.push((item.task_id.clone(), worktree, file));
+    }
+    assert_ne!(worktrees[0].1, worktrees[1].1);
+    drop(studio);
+    drop(tasks);
+
+    // The review shows each task's own diff.
+    let inbox = remote::Inbox::new(
+        &s.store,
+        BTreeMap::from([("demo".to_owned(), s.repo.clone())]),
+    );
+    let mut reviewed = Vec::new();
+    for (task, _, file) in &worktrees {
+        let review = inbox.review(task).unwrap();
+        assert_eq!(review.base, first);
+        assert_eq!(review.files.len(), 1, "{:?}", review.files);
+        assert_eq!(review.files[0].path, *file);
+        assert!(review.diff.contains(file));
+        reviewed.push(coder_host::Reviewed {
+            base: review.base,
+            head_commit: review.head_commit,
+            head: review.head,
+        });
+    }
+    let principal = coder_host::Principal {
+        device: "d".repeat(64),
+        grant: None,
+        epoch: None,
+    };
+
+    // Merge fast-forwards the clean checkout's branch to a merge commit
+    // the person authored; nothing is pushed.
+    let merged = inbox
+        .publish(&principal, &worktrees[0].0, &reviewed[0])
+        .unwrap();
+    assert_eq!(merged.state, PublishState::Published, "{}", merged.note);
+    assert_eq!(merged.landing, Landing::Branch);
+    assert_eq!(merged.branch.as_deref(), Some("main"));
+    let commit = merged.commit.clone().unwrap();
+    assert_eq!(git(&s.repo, &["rev-parse", "HEAD"]), commit);
+    assert!(s.repo.join("left.txt").is_file());
+    assert_eq!(
+        git(&s.repo, &["log", "-1", "--format=%an <%ae>"]),
+        "Owner Person <owner@example.invalid>"
+    );
+    assert_eq!(
+        git(&s.repo, &["log", "-1", "--format=%P"])
+            .split_whitespace()
+            .count(),
+        2
+    );
+    assert_eq!(git(&s.origin, &["rev-parse", "refs/heads/main"]), first);
+    // A retry answers with the same merge.
+    let again = inbox
+        .publish(&principal, &worktrees[0].0, &reviewed[0])
+        .unwrap();
+    assert_eq!(again, merged);
+
+    // A dirty checkout refuses the merge with the reason, and nothing moves.
+    std::fs::write(s.repo.join("README.md"), "edited\n").unwrap();
+    let refused = inbox
+        .publish(&principal, &worktrees[1].0, &reviewed[1])
+        .unwrap();
+    assert_eq!(refused.state, PublishState::Refused);
+    assert!(
+        refused.note.contains("uncommitted changes"),
+        "{}",
+        refused.note
+    );
+    assert_eq!(git(&s.repo, &["rev-parse", "HEAD"]), commit);
+    assert!(!s.repo.join("right.txt").exists());
+    let shown = inbox.review(&worktrees[1].0).unwrap();
+    assert_eq!(shown.publication.unwrap().state, PublishState::Refused);
+
+    // Once the checkout is clean, the same decision merges.
+    git(&s.repo, &["checkout", "--", "README.md"]);
+    let second = inbox
+        .publish(&principal, &worktrees[1].0, &reviewed[1])
+        .unwrap();
+    assert_eq!(second.state, PublishState::Published, "{}", second.note);
+    assert!(s.repo.join("left.txt").is_file());
+    assert!(s.repo.join("right.txt").is_file());
+    assert_eq!(git(&s.origin, &["rev-parse", "refs/heads/main"]), first);
+}
+
+#[test]
+fn a_conflicting_merge_is_refused_and_leaves_the_checkout() {
+    let s = scratch();
+    let worktrees = worktrees_dir(&s.root);
+    let task = "c".repeat(64);
+    let worktree = prepare(
+        &worktrees,
+        &s.store,
+        &s.repo,
+        "ada",
+        &task,
+        "Edit the readme",
+        None,
+    )
+    .unwrap();
+    // Preparing again keeps the same worktree.
+    assert_eq!(
+        prepare(&worktrees, &s.store, &s.repo, "ada", &task, "Edit", None).unwrap(),
+        worktree
+    );
+    let home = s.dir.path().join("home");
+    std::fs::create_dir_all(&home).unwrap();
+    std::fs::write(worktree.join("README.md"), "from the task\n").unwrap();
+    succeeds(as_seat("ada", &worktree, &home).args(["commit", "-q", "-am", "Edit"]));
+    std::fs::write(s.repo.join("README.md"), "from the person\n").unwrap();
+    git(&s.repo, &["commit", "-q", "-am", "Edit too"]);
+    let before = git(&s.repo, &["rev-parse", "HEAD"]);
+    let head = review::head(&worktree).unwrap();
+    let record = local::record(&s.store, &task).unwrap();
+    let reviewed = Reviewed {
+        base: record.base,
+        head_commit: head.commit,
+        head: head.tree,
+    };
+    let refused = merge(&s.store, &task, &reviewed).unwrap();
+    assert_eq!(refused.state, PublishState::Refused);
+    assert!(refused.note.contains("README.md"), "{}", refused.note);
+    assert_eq!(git(&s.repo, &["rev-parse", "HEAD"]), before);
+    assert!(git(&s.repo, &["status", "--porcelain"]).is_empty());
+}

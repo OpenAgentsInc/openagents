@@ -93,6 +93,12 @@ pub struct Configuration {
     /// [`Access::Boundary`], so earlier grants keep their bytes and meaning.
     #[serde(default, skip_serializing_if = "Access::is_boundary")]
     pub access: Access,
+    /// The Agent Studio seat whose task this is (#10542): its processes
+    /// commit as the seat and Git refuses every transport for them
+    /// ([`super::studio::git::confine`]). Absent for every other run, so
+    /// earlier grants keep their bytes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub studio_seat: Option<String>,
 }
 
 /// What an admitted run's commands may reach.
@@ -204,6 +210,10 @@ impl Configuration {
             || self.route != "never"
             || !matches!(self.knowledge.as_str(), "off" | "frozen-context")
             || self.dollar_limit_micros.is_some()
+            || self
+                .studio_seat
+                .as_deref()
+                .is_some_and(|seat| !super::studio::valid_name(seat))
             || self
                 .expected_controller_digest
                 .as_ref()
@@ -1213,14 +1223,32 @@ impl Host {
     }
 
     /// The variables a guarded process adds to its environment: Git's
-    /// repository discovery stops at the worktree's parent. Empty with no
-    /// guard.
+    /// repository discovery stops at the worktree's parent. A studio
+    /// task's process also gets [`super::studio::git::additions`]. Empty
+    /// with no guard and no studio seat.
     #[must_use]
     pub fn guard_environment(&self) -> Vec<(std::ffi::OsString, std::ffi::OsString)> {
-        self.guard
+        let mut variables = self
+            .guard
             .as_ref()
             .map(coder_boundary::source::Guard::environment)
-            .unwrap_or_default()
+            .unwrap_or_default();
+        // A studio task's process also cannot push and commits as its
+        // seat (#10542).
+        if let Some(seat) = &self.configuration().studio_seat {
+            let added = super::studio::git::additions(seat, self.workspace());
+            variables.retain(|(key, _)| !added.iter().any(|(name, _)| name == key));
+            variables.extend(added);
+        }
+        variables
+    }
+
+    /// Confine `variables`, a whole process environment, to local Git
+    /// work when this run is a studio task (#10542).
+    fn confine(&self, variables: &mut Vec<(std::ffi::OsString, std::ffi::OsString)>) {
+        if let Some(seat) = &self.configuration().studio_seat {
+            super::studio::git::confine(variables, seat, self.workspace());
+        }
     }
     pub fn execution_workspace(&self) -> &Path {
         if self.configuration().container.is_some() {
@@ -1272,6 +1300,7 @@ impl Host {
                         .retain(|(key, _)| key != "GIT_CONFIG_COUNT");
                     environment.variables.extend(overrides);
                 }
+                self.confine(&mut environment.variables);
                 let recorded = self.append(
                     &Step::said(
                         Source::System,
@@ -1555,6 +1584,7 @@ impl Host {
             self.workspace(),
             0,
         ));
+        self.confine(&mut variables);
         Ok(variables)
     }
 

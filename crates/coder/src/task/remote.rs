@@ -550,7 +550,9 @@ impl Tasks for Inbox {
     }
 
     /// Publish a local run's reviewed change through GitHub's CLI, once per
-    /// review identity.
+    /// review identity. A studio task's change is merged into its
+    /// checkout's branch instead, off-tree and fast-forward only, and
+    /// nothing is pushed ([`super::studio::git::merge`]).
     fn publish(
         &self,
         _principal: &Principal,
@@ -562,12 +564,16 @@ impl Tasks for Inbox {
             head_commit: reviewed.head_commit.clone(),
             head: reviewed.head.clone(),
         };
-        super::publish::Publisher::new(&self.store, &super::publish::GhForge)
-            .publish(task, &reviewed)
-            .map_err(|refusal| match refusal {
-                super::publish::Refusal::NoWorktree => Code::Unsupported,
-                super::publish::Refusal::Store(_) => Code::Unavailable,
-            })
+        let outcome = if super::studio::git::seat_of(&self.store, task).is_some() {
+            super::studio::git::merge(&self.store, task, &reviewed)
+        } else {
+            super::publish::Publisher::new(&self.store, &super::publish::GhForge)
+                .publish(task, &reviewed)
+        };
+        outcome.map_err(|refusal| match refusal {
+            super::publish::Refusal::NoWorktree => Code::Unsupported,
+            super::publish::Refusal::Store(_) => Code::Unavailable,
+        })
     }
 
     fn local_run(&self, task: &str, thread: &str) -> bool {
@@ -660,7 +666,9 @@ impl Tasks for Inbox {
         let mut tasks = Store::open(&self.store).map_err(refusal)?;
         let mut studio = Studio::open(&self.store).map_err(studio_refusal)?;
         if let Some(autostart) = &self.autostart {
-            studio = studio.with_host_root(autostart.root());
+            studio = studio
+                .with_host_root(autostart.root())
+                .with_worktrees(super::studio::git::worktrees_dir(autostart.root()));
         }
         if let Some(reference) = studio.answered(key) {
             return Ok(reference);

@@ -35,7 +35,10 @@
 //! and with a host root ([`Studio::with_host_root`]) the coordinator notes
 //! it eligible in the auto-start journal, so the owner's policy starts it
 //! under its own bounds. The coordinator never chooses a route around that
-//! policy, never runs an engine, and never lands anything.
+//! policy and never runs an engine. With a worktree directory
+//! ([`Studio::with_worktrees`]) each released task works in a Git
+//! worktree and branch of its own, never in the person's checkout, and
+//! lands only through a person's approved local merge ([`git`]).
 //!
 //! State is one private document, `<store>/studio/state.json`, replaced
 //! atomically with the task store's own file helpers, under the stable
@@ -859,6 +862,9 @@ pub struct Studio {
     dir: PathBuf,
     lock: File,
     host_root: Option<PathBuf>,
+    /// Where released tasks' worktrees go; `None` works in the goal's
+    /// repository, as a coordinator without a host does.
+    worktrees: Option<PathBuf>,
     state: State,
     #[cfg(test)]
     fault: Option<Fault>,
@@ -918,6 +924,7 @@ impl Studio {
             dir,
             lock,
             host_root: None,
+            worktrees: None,
             state,
             #[cfg(test)]
             fault: None,
@@ -929,6 +936,16 @@ impl Studio {
     #[must_use]
     pub fn with_host_root(mut self, root: impl Into<PathBuf>) -> Self {
         self.host_root = Some(root.into());
+        self
+    }
+
+    /// Give each task released from now on its own Git worktree and
+    /// branch under `dir` ([`git::prepare`]), and save the run record its
+    /// review reads. The host's coordinator uses [`git::worktrees_dir`]
+    /// of its root.
+    #[must_use]
+    pub fn with_worktrees(mut self, dir: impl Into<PathBuf>) -> Self {
+        self.worktrees = Some(dir.into());
         self
     }
 
@@ -1485,6 +1502,25 @@ impl Studio {
             _ => {
                 let (prompt, title, briefed) = self.briefing(index, entry, &seat);
                 let goal = &self.state.goals[index];
+                // The task's own worktree, made before its command is saved,
+                // so a restart re-applies bytes that name it.
+                let path = match &self.worktrees {
+                    Some(dir) => git::prepare(
+                        dir,
+                        &self.store,
+                        Path::new(&goal.repository.path),
+                        &seat.name,
+                        &slot.task_id,
+                        &title,
+                        Some(seat.route.provider.as_str()),
+                    )
+                    .map_err(|message| {
+                        Error::Tasks(super::Error::Io(std::io::Error::other(message)))
+                    })?
+                    .to_string_lossy()
+                    .into_owned(),
+                    None => goal.repository.path.clone(),
+                };
                 let command = Command {
                     schema: COMMAND_SCHEMA.into(),
                     command_id: format!("studio-{}", slot.task_id),
@@ -1495,7 +1531,7 @@ impl Studio {
                             title,
                             prompt,
                             workspace: Workspace {
-                                path: goal.repository.path.clone(),
+                                path,
                                 source_revision: None,
                             },
                             configuration: RequestedConfiguration {
@@ -1988,7 +2024,9 @@ pub fn sweep(store: &Path, root: &Path, now: u64) {
     }
     let result = (|| -> Result<Vec<Released>, Error> {
         let mut tasks = Store::open(store)?;
-        let mut studio = Studio::open(store)?.with_host_root(root);
+        let mut studio = Studio::open(store)?
+            .with_host_root(root)
+            .with_worktrees(git::worktrees_dir(root));
         let reply = |task: &str| super::local::result_in(Some(store), task).map(|run| run.summary);
         studio.reconcile(&mut tasks, now, &reply)
     })();
@@ -2000,6 +2038,10 @@ pub fn sweep(store: &Path, root: &Path, now: u64) {
 // The NIP-HOST studio intents and the view a device draws.
 #[path = "studio_intents.rs"]
 mod intents;
+
+// Each task's worktree, its local merge, and the push block.
+#[path = "studio_git.rs"]
+pub mod git;
 
 #[cfg(test)]
 #[path = "studio_tests.rs"]

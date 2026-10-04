@@ -365,9 +365,12 @@ impl Studio {
         let slot = self.slot(index, entry).clone();
         match slot.state {
             SlotState::Held | SlotState::Releasing => {
+                // A task cancelled before it starts needs no worktree.
                 let root = self.host_root.take();
+                let worktrees = self.worktrees.take();
                 let released = self.release(tasks, index, entry, now);
                 self.host_root = root;
+                self.worktrees = worktrees;
                 released?;
             }
             SlotState::Submitted => match progress(tasks, &slot.task_id) {

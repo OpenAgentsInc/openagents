@@ -212,7 +212,11 @@ the client never receives raw tool output that `observe` does not allow.
 A merge decision binds to the review's three revisions. If the worktree
 changed after the review was read, `merge.decide` is refused as stale and the
 client reloads the review. **Merge** hands the task to the existing landing
-path; **Request changes** sends the reviewer's text back to the same seat as a
+path, which for a studio task merges locally: it builds the merge commit
+off-tree, fast-forwards the branch the owner's checkout has checked out, and
+pushes nothing. A dirty checkout, a detached one, or a conflict refuses the
+merge with the reason and leaves the decision open
+([`studio_git.rs`](../../crates/coder/src/task/studio_git.rs)); **Request changes** sends the reviewer's text back to the same seat as a
 follow-up turn; **Reject** closes the task and keeps its worktree for
 inspection until archive.
 
@@ -220,16 +224,20 @@ inspection until archive.
 
 AgentCraft's rules carry over, enforced by the host rather than the view:
 
-- Every task runs in its own worktree on its own branch. No seat writes the
+- Every task runs in its own worktree on its own branch
+  (`studio/<seat>/<task>-<slug>`, under the host's state). No seat writes the
   owner's checkout.
-- No seat lands or pushes. A landing happens only after a person with the
+- No seat lands or pushes. Git itself refuses every transport for a studio
+  task's processes (`GIT_ALLOW_PROTOCOL`, `protocol.allow=never`,
+  `GIT_CEILING_DIRECTORIES`, no inherited `GIT_DIR`-style variables). A
+  landing happens only after a person with the
   `review` right chooses **Merge** at the reviewed revision. A host's existing
   auto-start policy does not imply auto-merge; studio landing is a separate,
   explicit decision.
 - Steps that leave the worktree boundary become approval decisions through the
   existing interaction path. An approval answer never widens a grant.
-- Seats commit under a seat identity. Only the approved landing carries the
-  person's identity, as the landing path already decides.
+- Seats commit as `Studio <Seat>`. Only the approved merge carries the
+  person's identity, signed when their Git configuration signs commits.
 - Smokes and tests run against a scratch host under a temporary `HOME`, and
   archive every task they create, as this repository's agent contract
   requires.
