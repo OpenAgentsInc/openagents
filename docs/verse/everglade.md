@@ -95,7 +95,7 @@ Admission follows the Fantasy Props precedent:
   content-addressed disk cache. Committed files are the pack and the curated
   sources, not the full kits.
 - Budgets: at most 30 MB committed for sources and pack together, at most
-  250,000 triangles placed, and at most 64 MB of decoded textures.
+  300,000 triangles placed, and at most 64 MB of decoded textures.
 
 ## Rendering
 

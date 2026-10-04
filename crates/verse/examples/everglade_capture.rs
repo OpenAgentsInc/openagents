@@ -1,5 +1,5 @@
 //! Offline visual acceptance of Everglade with the shared renderer.
-//! Usage: everglade_capture OUTPUT.png [approach|yard|hall|studio-yard|studio-hall|studio-atrium] [FRAME]
+//! Usage: everglade_capture OUTPUT.png [approach|yard|hall|lane-east|lane-west|studio-yard|studio-hall|studio-atrium] [FRAME]
 //!
 //! Installs Everglade from the committed, pinned pack, as a portal entry
 //! does after the download, and renders one of these views with the zone
@@ -57,12 +57,16 @@ fn main() -> Result<(), String> {
         "approach" => (glam::Vec3::new(0.0, 0.0, -29.0), 0.0, 0.0),
         "yard" | "studio-yard" => (glam::Vec3::new(-3.0, 0.0, -15.0), 0.25, 80.0),
         // At the desks station; the camera stays inside, by the doors.
+        // From the yard toward the café pavilion and the reading room.
+        "lane-east" => (glam::Vec3::new(10.0, 0.0, -20.0), 0.65, 40.0),
+        // From the yard toward the cottage.
+        "lane-west" => (glam::Vec3::new(-7.0, 0.0, -12.0), -0.68, 40.0),
         "hall" | "studio-hall" => (glam::Vec3::new(0.0, 0.0, 5.0), 0.0, 20.0),
         // Inside the gate, looking up at the goal board.
         "studio-atrium" => (glam::Vec3::new(2.8, 0.0, -13.3), 0.5, 10.0),
         other => {
             return Err(format!(
-                "unknown view `{other}`; use approach, yard, hall, studio-yard, studio-hall, \
+                "unknown view `{other}`; use approach, yard, hall, lane-east, lane-west, studio-yard, studio-hall, \
                  or studio-atrium"
             ));
         }

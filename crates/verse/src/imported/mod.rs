@@ -16,6 +16,7 @@ pub mod characters;
 pub mod combat;
 pub mod controls;
 mod culling;
+#[cfg(all(feature = "remote-chamber", feature = "imported-desktop"))]
 pub mod giver_panel;
 pub mod icons;
 pub mod inventory;

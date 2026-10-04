@@ -35,7 +35,7 @@ pub const PACK_SHA256: &str = "3680adf2e3d6c67831596a19fb19aa2f2b4e014a39c8abcaa
 /// Transfer size of the reviewed Everglade pack.
 pub const PACK_BYTES: u64 = 14960884;
 /// The most triangles the Everglade layout may place, counting each placement.
-pub const PLACED_TRIANGLE_BUDGET: u64 = 250_000;
+pub const PLACED_TRIANGLE_BUDGET: u64 = 300_000;
 /// Where packs are committed, relative to the repository root.
 pub const PACK_DIRECTORY: &str = "assets/verse/everglade";
 /// The pack file extension.

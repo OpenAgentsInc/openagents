@@ -288,6 +288,15 @@ fn inside(rect: ([f32; 2], [f32; 2]), x: f32, z: f32, margin: f32) -> bool {
     (x - center[0]).abs() <= half[0] + margin && (z - center[1]).abs() <= half[1] + margin
 }
 
+/// The lane: three small buildings around the clearing, each a little of
+/// the city the map imagines (`docs/verse/everglade-map.png`): a cottage
+/// (Stoop Lane), an open café pavilion (Main Street), and a reading room
+/// (the Knowledge District). Footprints as (center, half extents), m, on
+/// the 2 m grid; each roof is an 8 x 10 round-tile roof.
+pub const COTTAGE: ([f32; 2], [f32; 2]) = ([-21.0, 4.0], [4.0, 5.0]);
+pub const PAVILION: ([f32; 2], [f32; 2]) = ([22.0, -7.0], [4.0, 5.0]);
+pub const READING_ROOM: ([f32; 2], [f32; 2]) = ([20.0, 15.0], [4.0, 5.0]);
+
 /// Where the lounge bench and the wagon stand.
 const BENCH: [f32; 2] = [-25.6, -20.0];
 const WAGON: [f32; 2] = [11.0, -23.0];
@@ -299,6 +308,9 @@ fn open_ground(x: f32, z: f32) -> bool {
     let near = |p: [f32; 2], r: f32| (p[0] - x).hypot(p[1] - z) < r;
     !inside(HALL, x, z, 1.5)
         && !inside(STRONGROOM, x, z, 1.5)
+        && !inside(COTTAGE, x, z, 1.5)
+        && !inside(PAVILION, x, z, 1.5)
+        && !inside(READING_ROOM, x, z, 1.5)
         && !inside(YARD, x, z, 1.0)
         && !path
         && !near([RETURN_PORTAL.x, RETURN_PORTAL.z], 3.5)
@@ -315,6 +327,7 @@ pub fn placements() -> Vec<Placement> {
     stations(&mut out);
     strongroom(&mut out);
     yard(&mut out);
+    lane(&mut out);
     paths(&mut out);
     glade(&mut out);
     out
@@ -504,6 +517,177 @@ fn hall(out: &mut Vec<Placement>) {
         )
         .lift(1.5),
     );
+}
+
+/// A closed building on `rect` with `walls` listed south, north, west, east
+/// (each from west to east, or from south to north), an 8 x 10 round-tile
+/// roof with brick gables, corner posts, and an optional chimney.
+fn house(
+    out: &mut Vec<Placement>,
+    rect: ([f32; 2], [f32; 2]),
+    walls: [&[Piece]; 4],
+    chimney: Option<[f32; 2]>,
+) {
+    let ([cx, cz], [hx, hz]) = rect;
+    let (west, east, south, north) = (cx - hx, cx + hx, cz - hz, cz + hz);
+    let [south_wall, north_wall, west_wall, east_wall] = walls;
+    for (i, piece) in south_wall.iter().enumerate() {
+        wall(out, *piece, [west + 1.0 + 2.0 * i as f32, south], SOUTH);
+    }
+    for (i, piece) in north_wall.iter().enumerate() {
+        wall(out, *piece, [west + 1.0 + 2.0 * i as f32, north], NORTH);
+    }
+    for (i, piece) in west_wall.iter().enumerate() {
+        wall(out, *piece, [west, south + 1.0 + 2.0 * i as f32], WEST);
+    }
+    for (i, piece) in east_wall.iter().enumerate() {
+        wall(out, *piece, [east, south + 1.0 + 2.0 * i as f32], EAST);
+    }
+    for corner in [[west, south], [east, south], [west, north], [east, north]] {
+        out.push(Placement::new(
+            "village/Corner_Exterior_Wood",
+            corner,
+            0.0,
+            Collision::None,
+        ));
+    }
+    roof(out, rect);
+    if let Some(at) = chimney {
+        out.push(Placement::new("village/Prop_Chimney", at, 0.0, Collision::None).lift(4.9));
+    }
+}
+
+/// An 8 x 10 round-tile roof over `rect` with brick gables at its south and
+/// north ends.
+fn roof(out: &mut Vec<Placement>, rect: ([f32; 2], [f32; 2])) {
+    let ([cx, cz], [_, hz]) = rect;
+    out.push(
+        Placement::new(
+            "village/Roof_RoundTiles_8x10",
+            [cx, cz],
+            0.0,
+            Collision::None,
+        )
+        .lift(WALL_TOP),
+    );
+    for (z, facing) in [(cz - hz, SOUTH), (cz + hz, NORTH)] {
+        out.push(
+            Placement::new(
+                "village/Roof_Front_Brick8",
+                [cx, z],
+                facing,
+                Collision::None,
+            )
+            .lift(WALL_TOP),
+        );
+    }
+}
+
+/// The lane's three buildings.
+fn lane(out: &mut Vec<Placement>) {
+    use Piece::{Base, Door, Flat, Plain, Round, Timber};
+    // Stoop Lane cottage: its door faces the yard to the east, with a chimney.
+    house(
+        out,
+        COTTAGE,
+        [
+            &[Round, Plain, Plain, Round],
+            &[Plain, Flat, Flat, Plain],
+            &[Plain, Flat, Timber, Flat, Plain],
+            &[Round, Timber, Door, Timber, Round],
+        ],
+        Some([COTTAGE.0[0] - 2.0, COTTAGE.0[1] + 2.5]),
+    );
+    let ([cx, cz], [hx, _]) = COTTAGE;
+    out.push(
+        Placement::new(
+            "village/Door_4_Round",
+            [cx + hx - 0.35, cz + 0.5],
+            0.0,
+            Collision::None,
+        )
+        .lift(0.02),
+    );
+    out.push(Placement::new(
+        "nature/Bush_Common_Flowers",
+        [cx + hx + 1.4, cz - 3.0],
+        0.4,
+        Collision::Core(0.5),
+    ));
+    out.push(Placement::new(
+        "nature/Bush_Common_Flowers",
+        [cx + hx + 1.4, cz + 3.0],
+        2.1,
+        Collision::Core(0.5),
+    ));
+
+    // Café pavilion: an open timber roof on corner posts over tables.
+    let ([px, pz], [phx, phz]) = PAVILION;
+    for corner in [
+        [px - phx, pz - phz],
+        [px + phx, pz - phz],
+        [px - phx, pz + phz],
+        [px + phx, pz + phz],
+        [px - phx, pz],
+        [px + phx, pz],
+    ] {
+        out.push(Placement::new(
+            "village/Corner_Exterior_Wood",
+            corner,
+            0.0,
+            Collision::Core(0.2),
+        ));
+    }
+    roof(out, PAVILION);
+    for z in [pz - 2.4, pz + 2.4] {
+        out.push(Placement::new(
+            "props/Table_Large",
+            [px, z],
+            FRAC_PI_2,
+            Collision::Bounds,
+        ));
+        for side in [-1.3_f32, 1.3] {
+            for along in [-0.9_f32, 0.9] {
+                out.push(Placement::new(
+                    "props/Stool",
+                    [px + side, z + along],
+                    if side < 0.0 { EAST } else { WEST },
+                    Collision::None,
+                ));
+            }
+        }
+    }
+    out.push(Placement::new("props/Banner_2", [px - phx, pz], WEST, Collision::None).lift(0.6));
+
+    // Reading room: a brick-based timber hall with tall windows; its door
+    // faces south toward the strongroom and the yard.
+    house(
+        out,
+        READING_ROOM,
+        [
+            &[Base, Round, Door, Base],
+            &[Timber, Flat, Flat, Timber],
+            &[Base, Flat, Timber, Flat, Base],
+            &[Base, Round, Timber, Round, Base],
+        ],
+        None,
+    );
+    let ([rx, rz], [_, rhz]) = READING_ROOM;
+    out.push(
+        Placement::new(
+            "village/Door_4_Round",
+            [rx + 1.0 - 0.5, rz - rhz + 0.35],
+            -FRAC_PI_2,
+            Collision::None,
+        )
+        .lift(0.02),
+    );
+    out.push(Placement::new(
+        "nature/Bush_Common",
+        [rx - 3.0, rz - rhz - 1.4],
+        1.0,
+        Collision::Core(0.5),
+    ));
 }
 
 /// Furniture ahead of each station's standing point.

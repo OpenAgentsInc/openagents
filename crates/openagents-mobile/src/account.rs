@@ -36,6 +36,16 @@ pub struct Item {
 pub const CHANGELOG: &[Release] = &[
     Release {
         version: "1.0.0",
+        build: "49",
+        title: "Everglade grows a lane",
+        what_to_test: "Open Account, then Changelog, and check build 49 is first. Walk into Everglade through the EVERGLADE arch. Around the yard you now find three new buildings: a cottage with a chimney to the west, an open café pavilion with tables to the east, and a reading room behind the strongroom. Walk around each one and check you can't walk through their walls, and that every station still reaches as before.",
+        items: &[Item {
+            title: "Three new buildings in Everglade",
+            detail: "A cottage, a café pavilion, and a reading room around the yard, a first step toward the Everglade city map.",
+        }],
+    },
+    Release {
+        version: "1.0.0",
         build: "48",
         title: "The whole screen for Everglade",
         what_to_test: "Open Account, then Changelog, and check build 48 is first. Walk through the EVERGLADE arch on the Grid: while it downloads the panel still shows progress and Cancel, but inside Everglade there is no black panel at all, only the glade and your sticks. Leave by walking back through the arch lettered THE GRID behind where you arrive.",
