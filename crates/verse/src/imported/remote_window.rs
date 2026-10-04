@@ -300,6 +300,12 @@ impl App {
                     ) {
                         self.status = "Quest completed".into();
                     }
+                    if matches!(
+                        r.body,
+                        verse_world::service::wire::Reply::OutfitEquipped { .. }
+                    ) {
+                        self.status = "Outfit updated".into();
+                    }
                     if matches!(r.body, verse_world::service::wire::Reply::ItemUsed { .. }) {
                         self.status = "Item used".into();
                     }
@@ -767,6 +773,9 @@ impl ApplicationHandler for App {
                             width,
                             720.,
                         );
+                        if let Some(outfit) = self.character_panel.take_equip() {
+                            self.send(Input::EquipOutfit(outfit));
+                        }
                         if let Some(item) = self.character_panel.take_use() {
                             self.send(Input::UseItem(item));
                         }

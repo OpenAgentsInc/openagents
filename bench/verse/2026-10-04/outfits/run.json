@@ -1,0 +1,261 @@
+{
+  "schema": "verse.outfits.acceptance.v1",
+  "issue": 10537,
+  "date": "2026-10-04",
+  "fixture": {
+    "after": {
+      "catalog": {
+        "items": [],
+        "version": 1
+      },
+      "experience": 1,
+      "items": [
+        {
+          "count": 2,
+          "id": 1
+        }
+      ],
+      "level": {
+        "level": 1,
+        "next": null,
+        "start": 0
+      },
+      "life": {
+        "actor": 14,
+        "generation": 0,
+        "instance": 120
+      },
+      "outfit": 1,
+      "outfits": {
+        "outfits": [
+          {
+            "id": 1,
+            "model": "universal-male-peasant",
+            "name": "Peasant outfit"
+          },
+          {
+            "id": 2,
+            "model": "universal-female-ranger",
+            "name": "Ranger outfit"
+          }
+        ],
+        "version": 1
+      },
+      "quest_log": [],
+      "quests": [],
+      "revision": 4
+    },
+    "before": {
+      "catalog": {
+        "items": [],
+        "version": 1
+      },
+      "experience": 1,
+      "items": [
+        {
+          "count": 2,
+          "id": 1
+        }
+      ],
+      "level": {
+        "level": 1,
+        "next": null,
+        "start": 0
+      },
+      "life": {
+        "actor": 14,
+        "generation": 0,
+        "instance": 120
+      },
+      "outfit": 0,
+      "outfits": {
+        "outfits": [
+          {
+            "id": 1,
+            "model": "universal-male-peasant",
+            "name": "Peasant outfit"
+          },
+          {
+            "id": 2,
+            "model": "universal-female-ranger",
+            "name": "Ranger outfit"
+          }
+        ],
+        "version": 1
+      },
+      "quest_log": [],
+      "quests": [],
+      "revision": 2
+    },
+    "duplicate_outfit_change": false,
+    "duplicate_spending": false,
+    "failed_storage_ack_withheld": true,
+    "health_after": 100,
+    "health_before": 100,
+    "recovered": {
+      "catalog": {
+        "items": [],
+        "version": 1
+      },
+      "experience": 1,
+      "items": [
+        {
+          "count": 2,
+          "id": 1
+        }
+      ],
+      "level": {
+        "level": 1,
+        "next": null,
+        "start": 0
+      },
+      "life": {
+        "actor": 14,
+        "generation": 0,
+        "instance": 120
+      },
+      "outfit": 1,
+      "outfits": {
+        "outfits": [
+          {
+            "id": 1,
+            "model": "universal-male-peasant",
+            "name": "Peasant outfit"
+          },
+          {
+            "id": 2,
+            "model": "universal-female-ranger",
+            "name": "Ranger outfit"
+          }
+        ],
+        "version": 1
+      },
+      "quest_log": [],
+      "quests": [],
+      "revision": 4
+    },
+    "restart": "aborted_host_task",
+    "schema": "verse.outfit.fixture.v1",
+    "secondary_outfit": 2,
+    "spectator_models_verified": 2,
+    "wire_version": 13
+  },
+  "source_sha256": {
+    "crates/verse-world/src/service.rs": "d4e1bff11e54dfadcc99dc5632967eec035ae22230ee1b75046b726c55ecc98b",
+    "crates/verse-world/src/service/auth.rs": "f2c87d0c29c8d3299e0b12ba9ee9a82ffa6ad1df4acb06d33e1dbfa6f126cb20",
+    "crates/verse-world/src/service/client.rs": "aca4c45bf5a62740603d7e95062fcfdb738582d89959f7a6f0b1b20c807717e7",
+    "crates/verse-world/src/service/host.rs": "3ac503429be38dc2d3103e2f43c9acac7b98cac6aa5c1a5eb0e4d241804e6aea",
+    "crates/verse-world/src/service/items.rs": "ba63f0790471ce654e73e378e29bb2dfe5e10480f9dd2a6b1524e61197e98b06",
+    "crates/verse-world/src/service/net.rs": "9bd182636a1deb5cb9065607ad7a3fc214e384cde0a0274dfa5a7adf2dc75fd1",
+    "crates/verse-world/src/service/persistence.rs": "f9449573ce6bc8b89c11f2cc85ed75bbfe9132a302024d93515b34a0e27b232d",
+    "crates/verse-world/src/service/presentation.rs": "7dfdb871df1e4817b23c4fc65e25094d923c1f88c671ba29d005864c796380eb",
+    "crates/verse-world/src/service/progression.rs": "b1e1735cfe656bf4ee2a2af1cbdebbd2f854c1570be8ac787663ea39e28d53b2",
+    "crates/verse-world/src/service/rewards.rs": "32ce398fc70604194b45c3e25c02bec961d07ce6d8cb68d32d0f10717e2fd2b7",
+    "crates/verse-world/src/service/save.rs": "a0d312509940c9b335a8a57e05c97b66fc955f83a236298a9762e328abfc04f9",
+    "crates/verse-world/src/service/view.rs": "47e6e089c2b70e26cf71eb68ce19444e4cce1ff51a785885675c409d19fe7f55",
+    "crates/verse-world/src/service/wire.rs": "8b5aa9069a5a24ff2a4735b2841f2913bee74f2eac5a52c1c4cb73e0bda86458",
+    "crates/verse-world/src/service/worker.rs": "b1b4b00cf453b7e4fa4fe5549ac3f99f8b2fe7c41ed826b611a137c949ac7f46",
+    "crates/verse/examples/verse_host.rs": "42fc2cadcf1c40020d574020929ee7c3190da9273985e31f5bfae8e6f08fb51e",
+    "crates/verse/src/imported/chamber.rs": "c6e033390e27dba5888dfd0bf1b9c8a4ff1c3b21aff9fbe5abd51b521e82b747",
+    "crates/verse/src/imported/character_panel.rs": "0ab6e403258ddb4c003996423322e3be9a032bcb1b643273cfbb51ce11bd4962",
+    "crates/verse/src/imported/remote_content.rs": "51682e256a47b0f09b498ac4be1431d2f7d1086818daec0469d48953aeee3091",
+    "crates/verse/src/imported/remote_window.rs": "1b7a43a077d168fa60b0995b593486c99c294eb77f49ad6804dcd1263022f554",
+    "crates/verse-world/src/service/outfits.rs": "57d920f9a1fe786ee87108a2577c1b084e19c99adc0c73e6d16663a7a9717e66"
+  },
+  "artifacts": [
+    {
+      "path": "models.png",
+      "sha256": "55b2e8bb2a3b49b5e70495590828bdd2949bc6dda3cb54f4833aa127c628f533",
+      "native_dimensions": [
+        1920,
+        1080
+      ],
+      "visually_inspected": true,
+      "content": "Animated licensed Universal male peasant and female ranger rigs, with selected-rig bow attachments"
+    },
+    {
+      "path": "panels.png",
+      "sha256": "3d8186eafac15906689a1587a320f32b499fa20b06b1057ee765e8c745b1228d",
+      "native_dimensions": [
+        2700,
+        1860
+      ],
+      "visually_inspected": true,
+      "content": "Synthetic inventory and campaign counters, with Equip/Unequip and original tunic icon"
+    },
+    {
+      "path": "ready.png",
+      "sha256": "df9eb0e1c30407297353a4ab9f80ef13e34f6b5868dac8b41b9258d6b161964a",
+      "native_dimensions": [
+        2700,
+        1860
+      ],
+      "visually_inspected": true,
+      "content": "Synthetic inventory and campaign counters, with Equip/Unequip and original tunic icon"
+    }
+  ],
+  "verification": [
+    {
+      "command": "cargo fmt -p verse-world -p verse",
+      "result": "passed"
+    },
+    {
+      "command": "cargo test -p verse-world --features service-net service:: -- --test-threads=1 --nocapture",
+      "passed": 90,
+      "failed": 0
+    },
+    {
+      "command": "cargo test -p verse-world --features service-net service::client::tests::durable_outfit_change_is_replicated_and_survives_failed_commit_and_restart -- --nocapture",
+      "passed": 1,
+      "failed": 0,
+      "note": "Expanded the previously passing fixture to two independently equipped players and a spectator; this is a repeated test, not an additional distinct test."
+    },
+    {
+      "scope": "native character panel including explicit GPU capture",
+      "passed": 5,
+      "failed": 0
+    },
+    {
+      "scope": "animated selected-outfit GPU capture",
+      "passed": 1,
+      "failed": 0
+    },
+    {
+      "scope": "native remote content including missing model/state refusal",
+      "passed": 2,
+      "failed": 0
+    },
+    {
+      "scope": "native remote window consumer",
+      "passed": 5,
+      "failed": 0
+    },
+    {
+      "scope": "verse_host executable configuration",
+      "passed": 2,
+      "failed": 0
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed"
+    }
+  ],
+  "distinct_tests_passed": 105,
+  "checks": [
+    "Owned outfit changes preserve stack counts, resources, combat identity and control.",
+    "Unowned/unknown selections, foreign/stale control and conflicting retry identities refuse atomically.",
+    "Exact old retries return original receipts without undoing later Unequip selection.",
+    "Version-five ordered save replay validates ownership and definitions; version-four saves upgrade with no selected outfit.",
+    "TLS staging failure withholds acknowledgment; abrupt host restart retains both character outfits and original primary receipt.",
+    "Spectator snapshots expose both selected model names while actors retain adventurer identity.",
+    "Native drawing selects equipped models and computes both bow attachments from selected animated rigs.",
+    "Host/client native model admission rejects missing models or required animation states.",
+    "Equip/Unequip panel hit targets emit intents without changing local counters."
+  ],
+  "limits": [
+    "TLS fixture uses generated keys/certificates, scratch storage, and synthetic reward stacks and initial damage.",
+    "GPU model capture samples two selected walking rigs outside a live authenticated combat scene. It proves shared renderer selection/attachments, not runtime outfit switching or a gameplay frame budget.",
+    "Panel captures use synthetic counters and do not establish live OS input acceptance.",
+    "Whole outfits are implemented. Individual armor/weapon attachments, equipment stats, wider quests, prediction/reconciliation and full Verse roadmap acceptance remain."
+  ]
+}

@@ -13,6 +13,7 @@ pub struct Panel {
     page: usize,
     claim: Option<u64>,
     use_item: Option<u64>,
+    equip: Option<u64>,
 }
 fn inside(rect: [f32; 4], point: [f32; 2]) -> bool {
     point[0] >= rect[0]
@@ -30,6 +31,17 @@ fn geometry(width: f32, height: f32) -> Option<[f32; 4]> {
         (width - 32.).min(410.),
         (height - 230.).min(424.),
     ])
+}
+fn outfit_icon(ui: &mut UiBatch, atlas: &Atlas, x: f32, y: f32) {
+    ui.rect(atlas, x, y, 28., 28., [0.026, 0.020, 0.015, 1.]);
+    let cloth = [0.13, 0.38, 0.36, 1.];
+    let trim = [0.65, 0.52, 0.27, 1.];
+    ui.rect(atlas, x + 8., y + 5., 12., 20., cloth);
+    ui.rect(atlas, x + 3., y + 6., 6., 10., cloth);
+    ui.rect(atlas, x + 19., y + 6., 6., 10., cloth);
+    ui.rect(atlas, x + 11., y + 5., 6., 4., [0.026, 0.020, 0.015, 1.]);
+    ui.frame(atlas, x + 8., y + 9., 12., 16., 1., trim);
+    ui.rect(atlas, x + 8., y + 18., 12., 2., trim);
 }
 fn icon(ui: &mut UiBatch, atlas: &Atlas, kind: Kind, x: f32, y: f32) {
     ui.rect(atlas, x, y, 28., 28., [0.026, 0.020, 0.015, 1.]);
@@ -83,10 +95,12 @@ impl Panel {
         self.page = 0;
         self.claim = None;
         self.use_item = None;
+        self.equip = None;
     }
     pub fn close(&mut self) -> bool {
         self.claim = None;
         self.use_item = None;
+        self.equip = None;
         self.kind.take().is_some()
     }
     pub fn take_claim(&mut self) -> Option<u64> {
@@ -95,10 +109,14 @@ impl Panel {
     pub fn take_use(&mut self) -> Option<u64> {
         self.use_item.take()
     }
+    pub fn take_equip(&mut self) -> Option<u64> {
+        self.equip.take()
+    }
     fn row_height(&self, inventory: Option<&Inventory>) -> f32 {
         if (self.kind == Some(Kind::Quests) && inventory.is_some_and(|i| !i.quest_log.is_empty()))
             || (self.kind == Some(Kind::Inventory)
-                && inventory.is_some_and(|i| !i.catalog.items.is_empty()))
+                && inventory
+                    .is_some_and(|i| !i.catalog.items.is_empty() || !i.outfits.outfits.is_empty()))
         {
             56.
         } else {
@@ -162,6 +180,23 @@ impl Panel {
                     .take(self.row_count(Some(inventory), [x, y, w, h]))
                     .enumerate()
                 {
+                    if inventory.outfits.outfit(entry.id).is_ok()
+                        && inside(
+                            [
+                                x + w - 96.,
+                                y + 82. + index as f32 * self.row_height(Some(inventory)) + 23.,
+                                80.,
+                                23.,
+                            ],
+                            point,
+                        )
+                    {
+                        self.equip = Some(if inventory.outfit == entry.id {
+                            0
+                        } else {
+                            entry.id
+                        });
+                    }
                     if inventory.catalog.item(entry.id).is_ok()
                         && inside(
                             [
@@ -434,20 +469,29 @@ impl Panel {
                     1.,
                     [0.39, 0.30, 0.16, 1.],
                 );
-                icon(ui, atlas, kind, x + 18., row + 6.);
-                let name = match (kind, entry.id) {
-                    (Kind::Inventory, 1) => inventory
-                        .catalog
-                        .item(1)
-                        .map(|i| i.name.clone())
-                        .unwrap_or_else(|_| "Ritual ember".to_string()),
-                    (Kind::Quests, 1) => "Disrupt the summoning".to_string(),
-                    (Kind::Inventory, id) => inventory
-                        .catalog
-                        .item(id)
-                        .map(|i| i.name.clone())
-                        .unwrap_or_else(|_| format!("Item {id}")),
-                    (Kind::Quests, id) => format!("Objective {id}"),
+                if kind == Kind::Inventory && inventory.outfits.outfit(entry.id).is_ok() {
+                    outfit_icon(ui, atlas, x + 18., row + 6.);
+                } else {
+                    icon(ui, atlas, kind, x + 18., row + 6.);
+                }
+                let name = if kind == Kind::Inventory && inventory.outfits.outfit(entry.id).is_ok()
+                {
+                    inventory.outfits.outfit(entry.id).unwrap().name.clone()
+                } else {
+                    match (kind, entry.id) {
+                        (Kind::Inventory, 1) => inventory
+                            .catalog
+                            .item(1)
+                            .map(|i| i.name.clone())
+                            .unwrap_or_else(|_| "Ritual ember".to_string()),
+                        (Kind::Quests, 1) => "Disrupt the summoning".to_string(),
+                        (Kind::Inventory, id) => inventory
+                            .catalog
+                            .item(id)
+                            .map(|i| i.name.clone())
+                            .unwrap_or_else(|_| format!("Item {id}")),
+                        (Kind::Quests, id) => format!("Objective {id}"),
+                    }
                 };
                 // Fit unknown content labels within the row without covering the count.
                 let name = font
@@ -461,7 +505,9 @@ impl Panel {
                     x + 58.,
                     row + 24.,
                     if kind == Kind::Inventory {
-                        if inventory.catalog.item(entry.id).is_ok() {
+                        if inventory.catalog.item(entry.id).is_ok()
+                            || inventory.outfits.outfit(entry.id).is_ok()
+                        {
                             ""
                         } else {
                             "Collected"
@@ -493,11 +539,41 @@ impl Panel {
                         );
                     }
                 }
+                if kind == Kind::Inventory && inventory.outfits.outfit(entry.id).is_ok() {
+                    let equipped = inventory.outfit == entry.id;
+                    let action = if equipped { "Unequip" } else { "Equip" };
+                    ui.text(
+                        small,
+                        x + 58.,
+                        row + 24.,
+                        if equipped { "Equipped" } else { "Outfit" },
+                        white,
+                    );
+                    ui.rect(
+                        atlas,
+                        x + w - 96.,
+                        row + 23.,
+                        80.,
+                        23.,
+                        [0.24, 0.14, 0.035, 1.],
+                    );
+                    ui.frame(atlas, x + w - 96., row + 23., 80., 23., 1., gold);
+                    ui.text(
+                        font,
+                        x + w - 56. - font.measure(action) * 0.5,
+                        row + 27.,
+                        action,
+                        gold,
+                    );
+                }
                 let count = entry.count.to_string();
                 ui.text(
                     font,
                     x + w - 22. - font.measure(&count),
-                    row + if kind == Kind::Inventory && inventory.catalog.item(entry.id).is_ok() {
+                    row + if kind == Kind::Inventory
+                        && (inventory.catalog.item(entry.id).is_ok()
+                            || inventory.outfits.outfit(entry.id).is_ok())
+                    {
                         5.
                     } else {
                         13.
@@ -545,7 +621,36 @@ mod tests {
             },
             quest_log: vec![],
             catalog: Default::default(),
+            outfits: Default::default(),
+            outfit: 0,
         }
+    }
+    #[test]
+    fn outfit_buttons_emit_equipping_and_base_selection_without_local_changes() {
+        let mut data = inventory();
+        data.outfits = verse_world::service::outfits::Catalog {
+            version: 1,
+            outfits: vec![verse_world::service::outfits::Outfit {
+                id: 1,
+                name: "Ranger outfit".into(),
+                model: "universal-male-ranger".into(),
+            }],
+        };
+        let mut panel = Panel::default();
+        panel.toggle(Kind::Inventory);
+        let [x, y, w, _] = geometry(900., 620.).unwrap();
+        let point = [x + w - 56., y + 116.];
+        assert!(panel.click(point, Some(&data), 900., 620.));
+        assert_eq!(panel.take_equip(), Some(1));
+        assert_eq!(panel.take_use(), None);
+        assert_eq!(data.outfit, 0);
+        data.outfit = 1;
+        assert!(panel.click(point, Some(&data), 900., 620.));
+        assert_eq!(panel.take_equip(), Some(0));
+        assert_eq!(data.outfit, 1);
+        assert_eq!(data.items[0].count, 1);
+        panel.close();
+        assert_eq!(panel.take_equip(), None);
     }
     #[test]
     fn use_buttons_select_only_owned_authored_items_without_spending_locally() {
@@ -648,11 +753,21 @@ mod tests {
                     mana: 5,
                 }],
             };
+            data.outfits = verse_world::service::outfits::Catalog {
+                version: 1,
+                outfits: vec![verse_world::service::outfits::Outfit {
+                    id: 2,
+                    name: "Ranger outfit".into(),
+                    model: "universal-male-ranger".into(),
+                }],
+            };
+            data.outfit = if completed { 2 } else { 0 };
             data.experience = if completed { 120 } else { 45 };
             data.items = vec![Entry {
                 id: 1,
                 count: if completed { 3 } else { 1 },
             }];
+            data.items.push(Entry { id: 2, count: 1 });
             data.level = verse_world::service::progression::Level {
                 level: if completed { 2 } else { 1 },
                 start: if completed { 100 } else { 0 },

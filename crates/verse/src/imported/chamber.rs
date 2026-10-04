@@ -36,7 +36,20 @@ fn render_remote_sample(
     playground: bool,
     focus: Vec3,
 ) -> Result<RemoteScene, String> {
-    let mut drawn = instances(pack, &sample.frame)?;
+    let outfits: std::collections::BTreeMap<_, _> = sample
+        .presentation
+        .actors
+        .iter()
+        .filter_map(|p| {
+            p.outfit_model
+                .as_ref()
+                .map(|model| (p.life.actor, model.clone()))
+        })
+        .collect();
+    for name in outfits.values() {
+        super::remote_content::outfit_model(pack, name)?;
+    }
+    let mut drawn = instances_with_outfits(pack, &sample.frame, &outfits)?;
     drawn.extend(prop_instances_from_poses(
         pack,
         &sample.presentation.props,
@@ -66,6 +79,19 @@ pub fn instances(
     pack: &Pack,
     frame: &verse_engine::director::Frame,
 ) -> Result<Vec<Instance>, String> {
+    instances_with_outfits(pack, frame, &std::collections::BTreeMap::new())
+}
+fn instances_with_outfits(
+    pack: &Pack,
+    frame: &verse_engine::director::Frame,
+    outfits: &std::collections::BTreeMap<u64, String>,
+) -> Result<Vec<Instance>, String> {
+    let render_model = |actor: &verse_engine::director::Actor| {
+        outfits
+            .get(&actor.id)
+            .cloned()
+            .unwrap_or_else(|| actor.model.clone())
+    };
     let mut actors: Vec<_> = frame
         .actors
         .iter()
@@ -76,7 +102,7 @@ pub fn instances(
                 actor: a.actor.id,
                 generation: 0,
             })),
-            model: a.actor.model.clone(),
+            model: render_model(&a.actor),
             transform: Mat4::from_translation(a.actor.position)
                 * Mat4::from_rotation_y(a.actor.yaw)
                 * Mat4::from_scale(Vec3::splat(a.actor.scale))
@@ -93,7 +119,7 @@ pub fn instances(
     {
         let model = pack
             .models
-            .get("adventurer")
+            .get(&render_model(&a.actor))
             .ok_or("Missing adventurer model")?;
         let drawn = bow_drawn(a.animation);
         let pose = verse_engine::animation::pose_selected(model, a.animation, a.animation_time)?;
@@ -1195,6 +1221,78 @@ mod tests {
         assert!(remote_scene(&pack, &view, 0.5, camera, Vec3::NAN, false, Vec3::ZERO).is_err());
         let invalid = verse_world::service::view::Camera { fov: 0., ..camera };
         assert!(remote_scene(&pack, &view, 0.5, invalid, Vec3::ZERO, false, Vec3::ZERO).is_err());
+    }
+    #[test]
+    #[ignore = "Explicit animated outfit GPU acceptance"]
+    fn capture_owned_outfit_models() {
+        let output = std::env::var_os("VERSE_OUTFIT_CAPTURE").expect("Explicit output path");
+        let dir = tempfile::tempdir().unwrap();
+        let mut pack = super::super::original::generate(dir.path()).unwrap();
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../assets/verse/characters/quaternius");
+        super::super::characters::install(&mut pack, dir.path(), &root, "male-ranger").unwrap();
+        let mut frame = verse_engine::director::Scene::from_json(include_bytes!(
+            "../../../../assets/verse/original/ritual.json"
+        ))
+        .unwrap()
+        .frame(9.);
+        let mut player = frame
+            .actors
+            .iter()
+            .find(|a| a.actor.model == "adventurer")
+            .unwrap()
+            .clone();
+        player.visible = true;
+        player.actor.position = Vec3::new(-1.4, 0., 0.);
+        player.actor.scale = 1.;
+        player.actor.yaw = 0.;
+        player.animation = verse_engine::motion::State::Walk.into();
+        player.animation_time = 0.25;
+        let mut other = player.clone();
+        other.actor.id += 1;
+        other.life = None;
+        other.actor.position.x = 1.4;
+        let ids = [player.actor.id, other.actor.id];
+        frame.actors = vec![player, other];
+        frame.projectiles.clear();
+        let outfits = std::collections::BTreeMap::from([
+            (ids[0], "universal-male-peasant".to_string()),
+            (ids[1], "universal-female-ranger".to_string()),
+        ]);
+        for name in outfits.values() {
+            super::super::remote_content::outfit_model(&pack, name).unwrap();
+        }
+        let drawn = instances_with_outfits(&pack, &frame, &outfits).unwrap();
+        assert_eq!(drawn[0].model, "universal-male-peasant");
+        assert_eq!(drawn[1].model, "universal-female-ranger");
+        assert_eq!(drawn.iter().filter(|i| i.model == "bow").count(), 2);
+        let atlas = super::super::original::atlas().unwrap();
+        let mut renderer =
+            super::super::Renderer::new(pack, dir.path(), 1920, 1080, &atlas, &[]).unwrap();
+        let eye = Vec3::new(0., 2.7, -7.);
+        let camera = crate::render::View {
+            view_proj: Mat4::perspective_rh(45f32.to_radians(), 1920. / 1080., 0.1, 100.)
+                * Mat4::look_at_rh(eye, Vec3::Y, Vec3::Y),
+            eye,
+        };
+        let lighting = super::super::lighting::Lighting {
+            ambient: Vec3::splat(0.75),
+            density: 0.,
+            shadowed: 0,
+            fog: Vec3::splat(0.015),
+            ..Default::default()
+        };
+        let pixels = renderer
+            .draw(camera, &drawn, &crate::ui::UiBatch::default(), &lighting)
+            .unwrap();
+        let mut encoder = png::Encoder::new(std::fs::File::create(output).unwrap(), 1920, 1080);
+        encoder.set_color(png::ColorType::Rgba);
+        encoder.set_depth(png::BitDepth::Eight);
+        encoder
+            .write_header()
+            .unwrap()
+            .write_image_data(&pixels)
+            .unwrap();
     }
     #[test]
     fn local_and_read_only_blocker_bounds_share_native_transforms_and_table_proxy_rules() {

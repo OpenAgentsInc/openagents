@@ -27,6 +27,8 @@ pub struct Transaction {
     pub quests: Vec<Entry>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub spent: Vec<Entry>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outfit: Option<u64>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -34,6 +36,7 @@ pub struct Character {
     pub experience: u64,
     pub items: BTreeMap<u64, u32>,
     pub quests: BTreeMap<u64, u32>,
+    pub outfit: u64,
 }
 
 /// Version-one cooperative reward for each defeated life of an authored NPC.
@@ -76,6 +79,7 @@ impl Policy {
         source[16..24].copy_from_slice(&life.actor.to_be_bytes());
         source[24..].copy_from_slice(&life.generation.to_be_bytes());
         Transaction {
+            outfit: None,
             spent: vec![],
             instance: life.instance,
             actor: recipient,
@@ -167,7 +171,8 @@ impl Ledger {
             || (transaction.experience == 0
                 && transaction.items.is_empty()
                 && transaction.quests.is_empty()
-                && transaction.spent.is_empty())
+                && transaction.spent.is_empty()
+                && transaction.outfit.is_none())
         {
             return Err("Reward identity or grant is empty".into());
         }
@@ -200,6 +205,7 @@ impl Ledger {
                 experience: 0,
                 items: BTreeMap::new(),
                 quests: BTreeMap::new(),
+                outfit: 0,
             });
         next.experience = next
             .experience
@@ -221,6 +227,15 @@ impl Ledger {
                 next.items.insert(entry.id, count);
             }
         }
+        if let Some(outfit) = transaction.outfit {
+            if outfit != 0 && next.items.get(&outfit).copied().unwrap_or(0) == 0 {
+                return Err("Outfit item is not owned".into());
+            }
+            next.outfit = outfit;
+        }
+        if next.outfit != 0 && next.items.get(&next.outfit).copied().unwrap_or(0) == 0 {
+            return Err("Cannot spend the equipped outfit".into());
+        }
         let receipt = Receipt {
             revision: self.receipts.len() as u64 + 1,
             transaction,
@@ -236,6 +251,7 @@ mod tests {
     use super::*;
     fn transaction(source: u8) -> Transaction {
         Transaction {
+            outfit: None,
             spent: vec![],
             instance: 4,
             actor: 10,

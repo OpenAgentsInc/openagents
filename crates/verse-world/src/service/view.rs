@@ -161,7 +161,9 @@ impl View {
                         || inventory.quests != previous.quests
                         || inventory.level != previous.level
                         || inventory.quest_log != previous.quest_log
-                        || inventory.catalog != previous.catalog))
+                        || inventory.catalog != previous.catalog
+                        || inventory.outfits != previous.outfits
+                        || inventory.outfit != previous.outfit))
             {
                 return Err("Remote inventory revision or counters regressed".into());
             }
@@ -438,6 +440,8 @@ mod tests {
             },
             quest_log: vec![],
             catalog: Default::default(),
+            outfits: Default::default(),
+            outfit: 0,
         };
         let mut reply = snapshot.clone();
         reply.request_id = 2;

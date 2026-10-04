@@ -9,6 +9,7 @@ use verse_engine::{director::Actor, motion::Selection};
 #[serde(deny_unknown_fields)]
 pub struct Pose {
     pub actor: Actor,
+    pub outfit_model: Option<String>,
     pub life: Life,
     pub teleport_stamp: Option<f32>,
     pub animation: Selection,
@@ -91,6 +92,7 @@ impl Presentation {
                 }
                 Some(Pose {
                     actor: a.actor.clone(),
+                    outfit_model: None,
                     life: life.into(),
                     teleport_stamp: None,
                     animation: a.animation,
@@ -107,6 +109,7 @@ impl Presentation {
                 let life = a.life.filter(|life| lives.contains(life))?;
                 Some(Pose {
                     actor: a.actor,
+                    outfit_model: None,
                     life: life.into(),
                     teleport_stamp: teleports.get(&life).copied().flatten(),
                     animation: a.animation,
@@ -204,6 +207,11 @@ impl Presentation {
             {
                 return Err("Invalid chamber actor presentation".into());
             }
+            if p.outfit_model.as_ref().is_some_and(|model| {
+                p.actor.model != "adventurer" || !super::outfits::model_name(model)
+            }) {
+                return Err("Invalid outfit presentation".into());
+            }
             if p.actor.model == "adventurer" {
                 players.insert(life);
             }
@@ -217,6 +225,7 @@ impl Presentation {
                 || !entities.insert(p.life.actor)
                 || p.health != 0
                 || p.actor.nameplate
+                || p.outfit_model.is_some()
                 || p.actor.model == "adventurer"
                 || p.animation != verse_engine::motion::State::Death.into()
                 || p.teleport_stamp.is_some()

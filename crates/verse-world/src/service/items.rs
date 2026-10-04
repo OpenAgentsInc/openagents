@@ -55,6 +55,7 @@ impl Catalog {
         if !reserved(&tx.source)
             || tx.source[8..16] != tx.instance.to_be_bytes()
             || tx.source[16..] == [0; 16]
+            || tx.outfit.is_some()
             || tx.experience != 0
             || !tx.items.is_empty()
             || !tx.quests.is_empty()
@@ -84,6 +85,7 @@ pub(super) fn transaction(
     source[8..16].copy_from_slice(&instance.to_be_bytes());
     source[16..].copy_from_slice(&operation);
     Ok(Transaction {
+        outfit: None,
         instance,
         actor,
         source,

@@ -19,6 +19,7 @@ pub enum Input {
     Respawn,
     ClaimQuest(u64),
     UseItem(u64),
+    EquipOutfit(u64),
 }
 /// Ordered updates; persist event progress only after consuming its delivery.
 pub enum Update {
@@ -82,6 +83,7 @@ pub async fn run(
                     let response = match input {
                         Input::Command(intent) => client.command(intent).await?,
                         Input::Respawn => client.respawn().await?,
+                        Input::EquipOutfit(outfit) => {let mut operation=[0;16];getrandom::fill(&mut operation).map_err(|_|"Cannot generate outfit retry identity")?;next_inventory=tokio::time::Instant::now();client.equip_outfit(outfit,operation).await?}
                         Input::UseItem(item) => {let mut operation=[0;16];getrandom::fill(&mut operation).map_err(|_|"Cannot generate item retry identity")?;next_inventory=tokio::time::Instant::now();client.use_item(item,operation).await?}
                         Input::ClaimQuest(quest) => {next_inventory=tokio::time::Instant::now();client.claim_quest(quest).await?}
                     };

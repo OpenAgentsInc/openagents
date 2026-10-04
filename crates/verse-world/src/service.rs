@@ -13,6 +13,7 @@ pub mod host;
 pub mod items;
 #[cfg(feature = "service-net")]
 pub mod net;
+pub mod outfits;
 #[cfg(feature = "service-net")]
 pub mod persistence;
 #[cfg(feature = "service-auth")]
@@ -79,6 +80,7 @@ pub struct Chamber {
     reward_cursor: u64,
     progression: progression::Config,
     items: items::Catalog,
+    outfits: outfits::Catalog,
 }
 
 impl Chamber {
@@ -97,6 +99,7 @@ impl Chamber {
             reward_cursor: 0,
             progression: Default::default(),
             items: Default::default(),
+            outfits: Default::default(),
         })
     }
 
@@ -117,6 +120,8 @@ impl Chamber {
         }
         if progression::reserved(&transaction.source)
             || items::reserved(&transaction.source)
+            || outfits::reserved(&transaction.source)
+            || transaction.outfit.is_some()
             || !transaction.spent.is_empty()
         {
             return Err("Campaign claim source is reserved".into());
@@ -141,7 +146,31 @@ impl Chamber {
         } else if !transaction.spent.is_empty() {
             return Err("Saved debit source is not an admitted item use".into());
         }
+        if outfits::reserved(&transaction.source) {
+            self.outfits.validate_change(&transaction)?;
+        } else if transaction.outfit.is_some() {
+            return Err("Saved outfit source is not an admitted change".into());
+        }
         self.rewards.apply(transaction)
+    }
+    pub fn equip_outfit(
+        &mut self,
+        principal: Principal,
+        session: Session,
+        life: LifeId,
+        epoch: u64,
+        outfit: u64,
+        operation: [u8; 16],
+    ) -> Result<rewards::Receipt, String> {
+        let admission = self.admission(principal, session)?;
+        if admission.actor() != life || admission.epoch() != epoch {
+            return Err("Outfit life or control is stale or foreign".into());
+        }
+        if outfit != 0 {
+            self.outfits.outfit(outfit)?;
+        }
+        let tx = outfits::transaction(life.instance, life.actor, outfit, operation)?;
+        self.rewards.apply(tx)
     }
     pub fn use_item(
         &mut self,

@@ -312,7 +312,7 @@ Trusted hosts use `Gateway::grant_reward` for bounded character experience,
 item stacks, and quest counters. A stable source ID binds one exact transaction
 per character; retries return its original receipt, and conflicting reuse or
 limit failures leave every field unchanged. Call `Store::commit` before
-acknowledging a host-created reward. Version-four chamber saves replay the retained
+acknowledging a host-created reward. Version-five chamber saves replay the retained
 transactions; version-one saves upgrade with an empty ledger. Instance reset
 retains rewards and retry identities. Receipts are never evicted: after 4,096
 transactions, new grants are refused. Host JSON accepts an optional sorted `rewards` array of NPC targets and grants,
@@ -325,7 +325,7 @@ policies are refused on recovery. With no configured rewards, combat grants none
 An authority or storage failure stops the host and retains its previous durable
 checkpoint, including when an entire cooperative reward batch cannot fit.
 
-Wire version twelve provides an authenticated `inventory` read. The connection determines
+Wire version thirteen provides an authenticated `inventory` read. The connection determines
 the character; request bodies contain no actor or grant amounts. Players can read
 their experience, bounded item stacks, and quest counters while dead. Spectators
 are refused. `service::client::Client::inventory` validates the owned life, counts,
@@ -379,3 +379,24 @@ catalog. The native worker generates one operation ID per click and stops on an
 uncertain transport failure instead of automatically retrying with a fresh ID.
 The [item-use receipt](../../bench/verse/2026-10-04/item-use/run.json) retains
 TLS storage-failure/restart checks and a synthetic GPU inventory capture.
+
+Host JSON accepts optional version-one `outfits` configuration, for example
+`{"version":1,"outfits":[{"id":2,"name":"Ranger outfit","model":"universal-male-ranger"}]}`.
+Outfits and recovery items require distinct item IDs. Kill and quest rewards can
+grant outfit stacks through the existing reward entries. **Equip** selects an
+owned outfit; **Unequip** returns to the character's base appearance. Selection
+does not spend the stack or change combat resources, actor identity, or control.
+`Client::equip_outfit` uses an explicit retained 16-byte operation ID, with zero
+as the base outfit selection. Exact retries return the original receipt and do
+not undo a later selection. Version-five saves replay owned selections against
+immutable definitions; older saves upgrade with no configured outfits.
+
+Wire version thirteen sends equipped render models for every controlled player,
+including to spectators. Native drawing uses the equipped rig for character and
+bow presentation while retaining authoritative actor identity. Host startup and
+native extraction refuse missing outfit models or missing chamber animation
+states. The existing Universal pack includes six `universal-*` appearances.
+The [outfit receipt](../../bench/verse/2026-10-04/outfits/run.json) retains
+TLS ownership/restart checks, synthetic panel layouts, and an animated-model GPU
+capture. Individual armor/weapon attachments, equipment stats, and live window
+input acceptance remain separate work.

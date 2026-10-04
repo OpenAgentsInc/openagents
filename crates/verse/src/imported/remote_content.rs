@@ -2,6 +2,30 @@
 use sha2::{Digest, Sha256};
 use std::{io::Read, path::Path};
 use verse_engine::{assets::Pack, director::Scene};
+/// Requires outfit render models to support every chamber animation state.
+pub fn outfit_models(
+    pack: &Pack,
+    catalog: &verse_world::service::outfits::Catalog,
+) -> Result<(), String> {
+    catalog.validate()?;
+    for outfit in &catalog.outfits {
+        outfit_model(pack, &outfit.model)?;
+    }
+    Ok(())
+}
+pub fn outfit_model(pack: &Pack, name: &str) -> Result<(), String> {
+    let model = pack
+        .models
+        .get(name)
+        .ok_or("Equipped outfit model is missing from admitted pack")?;
+    if verse_engine::motion::State::ALL
+        .iter()
+        .any(|state| !model.states.contains_key(state))
+    {
+        return Err("Outfit model is missing a chamber animation state".into());
+    }
+    model.validate_animation()
+}
 /// Computes once before login. The supplied asset directory is not part of the digest.
 pub fn identity(pack: &Pack, scene: &Scene, dir: &Path) -> Result<[u8; 32], String> {
     pack.validate()?;
@@ -62,6 +86,27 @@ pub fn identity(pack: &Pack, scene: &Scene, dir: &Path) -> Result<[u8; 32], Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn outfit_admission_refuses_missing_models_and_animation_states() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut pack = super::super::original::generate(dir.path()).unwrap();
+        let catalog = verse_world::service::outfits::Catalog {
+            version: 1,
+            outfits: vec![verse_world::service::outfits::Outfit {
+                id: 2,
+                name: "Test outfit".into(),
+                model: "adventurer".into(),
+            }],
+        };
+        outfit_models(&pack, &catalog).unwrap();
+        assert!(outfit_model(&pack, "missing-outfit").is_err());
+        pack.models
+            .get_mut("adventurer")
+            .unwrap()
+            .states
+            .remove(&verse_engine::motion::State::Walk);
+        assert!(outfit_models(&pack, &catalog).is_err());
+    }
     #[test]
     fn identity_binds_scene_geometry_and_verified_texture_bytes() {
         let dir = tempfile::tempdir().unwrap();
