@@ -74,6 +74,7 @@
 //! This SDK communicates with the Claude Code CLI via JSONL over stdin/stdout.
 //! The CLI is spawned as a child process with `--output-format stream-json`.
 
+pub mod callbacks;
 pub mod error;
 pub mod options;
 pub mod permissions;
@@ -81,31 +82,41 @@ pub mod protocol;
 pub mod query;
 pub mod transport;
 
+/// The `@anthropic-ai/claude-agent-sdk` version whose wire protocol this
+/// crate tracks.
+pub const UPSTREAM_SDK_VERSION: &str = "0.3.289";
+
 // Re-export main types at crate root
+pub use callbacks::{ElicitationHandler, HookCallback, HookMatcher, UserDialogHandler, hook_fn};
 pub use error::{Error, Result};
 pub use options::{
     AgentDefinition, AgentModel, DEFAULT_CONTROL_TIMEOUT, EffortLevel, McpServerConfig,
-    OutputFormat, PluginConfig, QueryOptions, SandboxNetworkConfig, SandboxSettings, SettingSource,
-    SystemPromptConfig, ThinkingConfig, ThinkingDisplay, ToolsConfig,
+    OutputFormat, PermissionPrompts, PluginConfig, PluginDelivery, QueryOptions,
+    SandboxNetworkConfig, SandboxSettings, SettingSource, SystemPromptConfig, ThinkingConfig,
+    ThinkingDisplay, ToolsConfig,
 };
 pub use permissions::{
     AllowAllPermissions, CallbackPermissionHandler, DenyAllPermissions, PermissionHandler,
     PermissionRequest, PermissionRules, RulesPermissionHandler, permission_handler,
 };
 pub use protocol::{
-    AssistantMessageError, HookCallbackStub, KeepAliveMessage, ModelUsage, PermissionBehavior,
-    PermissionDenial, PermissionMode, PermissionResult, PermissionRule, PermissionUpdate,
-    ResultError, ResultSuccess, SdkApiRetryMessage, SdkAssistantMessage, SdkAuthStatusMessage,
-    SdkCommandsChangedMessage, SdkControlRequest, SdkControlResponse,
+    AssistantMessageError, AsyncHookJSONOutput, CanUseToolRequest, ElicitationAction,
+    ElicitationRequest, ElicitationResult, HookEvent, HookJSONOutput, KeepAliveMessage, ModelUsage,
+    PermissionBehavior, PermissionDenial, PermissionMode, PermissionResult, PermissionRule,
+    PermissionUpdate, RequestUserDialogRequest, ResultError, ResultSuccess, ResultTurnFields,
+    SdkActiveGoalMessage, SdkApiRetryMessage, SdkAssistantMessage, SdkAuthStatusMessage,
+    SdkBackgroundTasksChangedMessage, SdkCommandsChangedMessage, SdkControlRequest,
+    SdkControlRequestProgressMessage, SdkControlResponse, SdkConversationResetMessage,
     SdkElicitationCompleteMessage, SdkFilesPersistedEvent, SdkHookProgressMessage,
-    SdkHookStartedMessage, SdkLocalCommandOutputMessage, SdkMemoryRecallMessage, SdkMessage,
-    SdkMirrorErrorMessage, SdkModelRefusalFallbackMessage, SdkNotificationMessage,
-    SdkPermissionDeniedMessage, SdkPluginInstallMessage, SdkPromptSuggestionMessage,
-    SdkRateLimitEvent, SdkRateLimitInfo, SdkResultMessage, SdkSessionStateChangedMessage,
-    SdkStreamEvent, SdkSystemMessage, SdkTaskNotificationMessage, SdkTaskProgressMessage,
-    SdkTaskStartedMessage, SdkTaskUpdatedMessage, SdkThinkingTokensMessage, SdkToolProgressMessage,
-    SdkToolUseSummaryMessage, SdkUserMessage, StdinMessage, StdoutMessage, SyncHookJSONOutput,
-    TerminalReason, Usage, parse_stdout_line,
+    SdkHookStartedMessage, SdkInformationalMessage, SdkLocalCommandOutputMessage,
+    SdkMemoryRecallMessage, SdkMessage, SdkMirrorErrorMessage, SdkModelRefusalFallbackMessage,
+    SdkModelRefusalNoFallbackMessage, SdkNotificationMessage, SdkPermissionDeniedMessage,
+    SdkPluginInstallMessage, SdkPromptSuggestionMessage, SdkRateLimitEvent, SdkRateLimitInfo,
+    SdkResultMessage, SdkSessionStateChangedMessage, SdkStreamEvent, SdkSystemMessage,
+    SdkTaskNotificationMessage, SdkTaskProgressMessage, SdkTaskStartedMessage,
+    SdkTaskUpdatedMessage, SdkThinkingTokensMessage, SdkToolProgressMessage,
+    SdkToolUseSummaryMessage, SdkUserMessage, SdkWorkerShuttingDownMessage, StdinMessage,
+    StdoutMessage, SyncHookJSONOutput, TerminalReason, Usage, parse_stdout_line,
 };
 pub use query::Query;
 pub use transport::{ExecutableConfig, ProcessTransport};

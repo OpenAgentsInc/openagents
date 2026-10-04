@@ -374,6 +374,40 @@ if let Some(session_id) = query.session_id() {
 }
 ```
 
+## Hooks, Elicitation, and Dialogs
+
+Hook callbacks run in the host. The CLI calls them over the control
+protocol when the hook fires, and the callback's output is the reply:
+
+```rust,no_run
+use claude_agent_sdk::{HookEvent, HookMatcher, QueryOptions, SyncHookJSONOutput, hook_fn};
+
+let deny_shell = hook_fn(|_input, _tool_use_id| async {
+    Ok(SyncHookJSONOutput {
+        hook_specific_output: Some(serde_json::json!({
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": "no shell in this session"
+        })),
+        ..Default::default()
+    }
+    .into())
+});
+let options = QueryOptions::new().hook(HookEvent::PreToolUse, HookMatcher::new(Some("Bash"), deny_shell));
+```
+
+Set `on_elicitation` to answer MCP elicitation (without it, the SDK
+declines) and `on_user_dialog` to answer `request_user_dialog` (without
+it, the request gets no reply). [PARITY.md](PARITY.md) lists what the
+crate covers at SDK 0.3.289 and what remains.
+
+To check the crate against the installed CLI, run the live smoke. It
+saves no session:
+
+```bash
+cargo run -p claude_agent_sdk --example smoke
+```
+
 ## Custom Executable Path
 
 If Claude isn't in your PATH:

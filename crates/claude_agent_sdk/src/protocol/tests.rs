@@ -166,7 +166,7 @@ mod tests {
             "usage": { "input_tokens": 1, "output_tokens": 1 },
             "modelUsage": {},
             "permission_denials": [],
-            "terminal_reason": "api_error",
+            "terminal_reason": "some_future_reason",
             "uuid": "u",
             "session_id": "s"
         });
@@ -229,18 +229,15 @@ mod tests {
 
     #[test]
     fn test_serialize_control_response_allow() {
-        let response = SdkControlResponse {
-            msg_type: ControlResponseType::ControlResponse,
-            response: ControlResponseData::Success {
-                request_id: "req-123".to_string(),
-                response: Some(
-                    serde_json::to_value(PermissionResult::allow(json!({
-                        "command": "ls -la"
-                    })))
-                    .unwrap(),
-                ),
-            },
-        };
+        let response = SdkControlResponse::success(
+            "req-123",
+            Some(
+                serde_json::to_value(PermissionResult::allow(json!({
+                    "command": "ls -la"
+                })))
+                .unwrap(),
+            ),
+        );
 
         let json = serde_json::to_value(&response).unwrap();
         assert_eq!(json["type"], "control_response");
@@ -250,15 +247,10 @@ mod tests {
 
     #[test]
     fn test_serialize_control_response_deny() {
-        let response = SdkControlResponse {
-            msg_type: ControlResponseType::ControlResponse,
-            response: ControlResponseData::Success {
-                request_id: "req-123".to_string(),
-                response: Some(
-                    serde_json::to_value(PermissionResult::deny("Not allowed")).unwrap(),
-                ),
-            },
-        };
+        let response = SdkControlResponse::success(
+            "req-123",
+            Some(serde_json::to_value(PermissionResult::deny("Not allowed")).unwrap()),
+        );
 
         let json = serde_json::to_value(&response).unwrap();
         assert_eq!(json["type"], "control_response");
@@ -279,6 +271,7 @@ mod tests {
             uuid: None,
             session_id: "session-123".to_string(),
             is_replay: None,
+            client_composed: Some(true),
         };
 
         let json = serde_json::to_value(&msg).unwrap();
@@ -586,19 +579,35 @@ mod tests {
         };
         assert_eq!(hook_req.callback_id, "cb-pre-1");
         assert_eq!(hook_req.tool_use_id.as_deref(), Some("tu-1"));
+        assert_eq!(hook_req.hook_event_name(), Some("PreToolUse"));
+    }
 
-        let stub = HookCallbackStub::from_request(&hook_req);
-        assert_eq!(stub.callback_id, "cb-pre-1");
-        assert_eq!(stub.hook_event_name.as_deref(), Some("PreToolUse"));
-        assert_eq!(stub.tool_use_id.as_deref(), Some("tu-1"));
-        assert!(!stub.hook_ran, "stub must not claim a hook ran");
-        assert_eq!(stub.output, SyncHookJSONOutput::continue_without_running());
+    #[test]
+    fn test_hook_json_output_sync_and_async_forms() {
+        let sync = HookJSONOutput::from(SyncHookJSONOutput {
+            hook_specific_output: Some(json!({
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "allow"
+            })),
+            terminal_sequence: Some("\u{7}".into()),
+            ..SyncHookJSONOutput::continue_execution()
+        });
+        let value = serde_json::to_value(&sync).unwrap();
+        assert_eq!(value["continue"], true);
+        assert_eq!(value["hookSpecificOutput"]["permissionDecision"], "allow");
+        assert!(value.get("terminalSequence").is_some());
 
-        let value = stub.response_value();
-        assert_eq!(value, json!({ "continue": true }));
-        assert!(value.get("hookSpecificOutput").is_none());
-        assert!(value.get("decision").is_none());
-        assert!(value.get("permissionDecision").is_none());
+        let parsed: HookJSONOutput =
+            serde_json::from_value(json!({"async": true, "asyncTimeout": 30})).unwrap();
+        assert_eq!(
+            parsed,
+            HookJSONOutput::Async(AsyncHookJSONOutput {
+                is_async: true,
+                async_timeout: Some(30),
+            })
+        );
+        let parsed: HookJSONOutput = serde_json::from_value(json!({"decision": "block"})).unwrap();
+        assert!(matches!(parsed, HookJSONOutput::Sync(_)));
     }
 
     #[test]
@@ -639,6 +648,242 @@ mod tests {
                 assert_eq!(msg.outcome.as_deref(), Some("success"));
             }
             other => panic!("expected hook_response, got {other:?}"),
+        }
+    }
+
+    fn system(subtype: &str, extra: serde_json::Value) -> SdkMessage {
+        let mut value =
+            json!({"type": "system", "subtype": subtype, "uuid": "u", "session_id": "s"});
+        for (key, field) in extra.as_object().unwrap() {
+            value[key] = field.clone();
+        }
+        serde_json::from_value(value).unwrap()
+    }
+
+    #[test]
+    fn test_0_3_289_system_subtypes_parse_to_typed_variants() {
+        match system(
+            "control_request_progress",
+            json!({"request_id": "sdk-1", "status": "api_retry", "attempt": 2, "max_retries": 5, "retry_delay_ms": 400, "error_status": 529}),
+        ) {
+            SdkMessage::System(SdkSystemMessage::ControlRequestProgress(m)) => {
+                assert_eq!(m.request_id, "sdk-1");
+                assert_eq!(m.attempt, Some(2));
+            }
+            other => panic!("expected control_request_progress, got {other:?}"),
+        }
+        match system(
+            "model_refusal_no_fallback",
+            json!({"original_model": "opus", "request_id": null, "content": "refused"}),
+        ) {
+            SdkMessage::System(SdkSystemMessage::ModelRefusalNoFallback(m)) => {
+                assert_eq!(m.original_model, "opus");
+            }
+            other => panic!("expected model_refusal_no_fallback, got {other:?}"),
+        }
+        match system(
+            "background_tasks_changed",
+            json!({"tasks": [{"task_id": "t1", "task_type": "local_bash", "description": "build", "ambient": false}]}),
+        ) {
+            SdkMessage::System(SdkSystemMessage::BackgroundTasksChanged(m)) => {
+                assert_eq!(m.tasks[0].task_id, "t1");
+            }
+            other => panic!("expected background_tasks_changed, got {other:?}"),
+        }
+        match system("worker_shutting_down", json!({"reason": "deploy"})) {
+            SdkMessage::System(SdkSystemMessage::WorkerShuttingDown(m)) => {
+                assert_eq!(m.reason, "deploy");
+            }
+            other => panic!("expected worker_shutting_down, got {other:?}"),
+        }
+        match system(
+            "informational",
+            json!({"content": "heads up", "level": "warning", "prevent_continuation": true}),
+        ) {
+            SdkMessage::System(SdkSystemMessage::Informational(m)) => {
+                assert_eq!(m.level, "warning");
+                assert_eq!(m.prevent_continuation, Some(true));
+            }
+            other => panic!("expected informational, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_0_3_289_top_level_types_parse_to_typed_variants() {
+        let goal = parse_stdout_line(
+            r#"{"type":"active_goal","value":{"condition":"tests pass","iterations":3,"set_at":1700000000000,"tokens_at_start":100},"uuid":"u","session_id":"s"}"#,
+        )
+        .unwrap();
+        match goal {
+            StdoutMessage::Message(SdkMessage::ActiveGoal(m)) => {
+                assert_eq!(m.value.unwrap().condition, "tests pass");
+            }
+            other => panic!("expected active_goal, got {other:?}"),
+        }
+        let cleared =
+            parse_stdout_line(r#"{"type":"active_goal","value":null,"uuid":"u","session_id":"s"}"#)
+                .unwrap();
+        assert!(matches!(
+            cleared,
+            StdoutMessage::Message(SdkMessage::ActiveGoal(ref m)) if m.value.is_none()
+        ));
+
+        let reset = parse_stdout_line(
+            r#"{"type":"conversation_reset","new_conversation_id":"c2","trigger":"clear","uuid":"u","session_id":"s"}"#,
+        )
+        .unwrap();
+        match reset {
+            StdoutMessage::Message(msg @ SdkMessage::ConversationReset(_)) => {
+                assert_eq!(msg.type_name(), "conversation_reset");
+                let round_trip = serde_json::to_value(&msg).unwrap();
+                assert_eq!(round_trip["type"], "conversation_reset");
+                assert_eq!(round_trip["new_conversation_id"], "c2");
+            }
+            other => panic!("expected conversation_reset, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_0_3_289_result_fields_and_new_terminal_reasons() {
+        let json = json!({
+            "type": "result",
+            "subtype": "success",
+            "duration_ms": 10,
+            "duration_api_ms": 8,
+            "is_error": false,
+            "num_turns": 1,
+            "result": "ok",
+            "total_cost_usd": 0.001,
+            "usage": {"input_tokens": 1, "output_tokens": 1},
+            "modelUsage": {"claude-haiku": {
+                "inputTokens": 1, "outputTokens": 1, "cacheReadInputTokens": 0,
+                "cacheCreationInputTokens": 0, "webSearchRequests": 0, "costUSD": 0.001,
+                "contextWindow": 200000, "maxOutputTokens": 64000, "thinkingTokens": 0,
+                "canonicalModel": "claude-haiku-4-5", "provider": "firstParty", "costBasis": "list"
+            }},
+            "permission_denials": [],
+            "structured_output": null,
+            "terminal_reason": "budget_exhausted",
+            "queued_turn_count": 0,
+            "result_index": 0,
+            "user_message_uuid": "um-1",
+            "uuid": "u",
+            "session_id": "s"
+        });
+        match serde_json::from_value::<SdkMessage>(json).unwrap() {
+            SdkMessage::Result(SdkResultMessage::Success(r)) => {
+                assert_eq!(r.terminal_reason, Some(TerminalReason::BudgetExhausted));
+                assert_eq!(r.turn.queued_turn_count, Some(0));
+                assert_eq!(r.turn.user_message_uuid.as_deref(), Some("um-1"));
+                let usage = &r.model_usage["claude-haiku"];
+                assert_eq!(usage.canonical_model.as_deref(), Some("claude-haiku-4-5"));
+                assert_eq!(usage.cost_basis.as_deref(), Some("list"));
+            }
+            other => panic!("expected typed success result, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_0_3_289_assistant_error_values() {
+        let json = json!({
+            "type": "assistant",
+            "message": {"role": "assistant", "content": []},
+            "parent_tool_use_id": null,
+            "error": "cloud_credential_error",
+            "timestamp": "2026-10-04T00:00:00Z",
+            "uuid": "u",
+            "session_id": "s"
+        });
+        match serde_json::from_value::<SdkMessage>(json).unwrap() {
+            SdkMessage::Assistant(m) => {
+                assert!(matches!(
+                    m.error,
+                    Some(AssistantMessageError::CloudCredentialError)
+                ));
+                assert_eq!(m.timestamp.as_deref(), Some("2026-10-04T00:00:00Z"));
+            }
+            other => panic!("expected assistant, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_inbound_control_frames_at_0_3_289() {
+        let elicitation = parse_stdout_line(
+            r#"{"type":"control_request","request_id":"r1","request":{"subtype":"elicitation","mcp_server_name":"docs","message":"Pick","mode":"url","url":"https://example.com","elicitation_id":"e1"}}"#,
+        )
+        .unwrap();
+        match elicitation {
+            StdoutMessage::ControlRequest(SdkControlRequest {
+                request: ControlRequestData::Elicitation(e),
+                ..
+            }) => {
+                assert_eq!(e.mode.as_deref(), Some("url"));
+                assert_eq!(e.elicitation_id.as_deref(), Some("e1"));
+            }
+            other => panic!("expected elicitation, got {other:?}"),
+        }
+
+        let dialog = parse_stdout_line(
+            r#"{"type":"control_request","request_id":"r2","request":{"subtype":"request_user_dialog","dialog_kind":"confirm","payload":{"text":"ok?"},"tool_use_id":"tu"}}"#,
+        )
+        .unwrap();
+        assert!(matches!(
+            dialog,
+            StdoutMessage::ControlRequest(SdkControlRequest {
+                request: ControlRequestData::RequestUserDialog(_),
+                ..
+            })
+        ));
+
+        let cancel =
+            parse_stdout_line(r#"{"type":"control_cancel_request","request_id":"r1"}"#).unwrap();
+        match cancel {
+            StdoutMessage::ControlCancelRequest(c) => assert_eq!(c.request_id, "r1"),
+            other => panic!("expected control_cancel_request, got {other:?}"),
+        }
+
+        let future = parse_stdout_line(
+            r#"{"type":"control_request","request_id":"r3","request":{"subtype":"brand_new","x":1}}"#,
+        )
+        .unwrap();
+        match future {
+            StdoutMessage::UnsupportedControlRequest(u) => {
+                assert_eq!(u.request_id, "r3");
+                assert_eq!(u.subtype, "brand_new");
+                assert_eq!(serde_json::to_value(&u).unwrap()["request"]["x"], 1);
+            }
+            other => panic!("expected unsupported control request, got {other:?}"),
+        }
+
+        let permission = parse_stdout_line(
+            r#"{"type":"control_request","request_id":"r4","request":{"subtype":"can_use_tool","tool_name":"mcp__docs__search","input":{},"tool_use_id":"tu","decision_reason_type":"classifier","classifier_approvable":true,"mcp_server":{"name":"docs"},"display_name":"Search docs"}}"#,
+        )
+        .unwrap();
+        match permission {
+            StdoutMessage::ControlRequest(SdkControlRequest {
+                request: ControlRequestData::CanUseTool(c),
+                ..
+            }) => {
+                assert_eq!(c.decision_reason_type.as_deref(), Some("classifier"));
+                assert_eq!(c.display_name.as_deref(), Some("Search docs"));
+            }
+            other => panic!("expected can_use_tool, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_control_response_carries_pending_requests() {
+        let line = r#"{"type":"control_response","response":{"subtype":"success","request_id":"sdk-3","response":{},"pending_permission_requests":[{"type":"control_request","request_id":"p1","request":{"subtype":"can_use_tool","tool_name":"Bash","input":{},"tool_use_id":"tu"}}]}}"#;
+        match parse_stdout_line(line).unwrap() {
+            StdoutMessage::ControlResponse(SdkControlResponse {
+                response:
+                    ControlResponseData::Success {
+                        pending_permission_requests: Some(pending),
+                        ..
+                    },
+                ..
+            }) => assert_eq!(pending[0].request_id, "p1"),
+            other => panic!("expected success with pending requests, got {other:?}"),
         }
     }
 }

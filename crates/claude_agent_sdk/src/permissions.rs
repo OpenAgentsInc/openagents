@@ -1,7 +1,7 @@
 //! Permission handling for tool use requests.
 
 use crate::error::Result;
-use crate::protocol::{PermissionResult, PermissionUpdate};
+use crate::protocol::{CanUseToolRequest, PermissionResult, PermissionUpdate};
 use async_trait::async_trait;
 use serde_json::Value;
 use std::future::Future;
@@ -38,6 +38,22 @@ pub trait PermissionHandler: Send + Sync {
         tool_use_id: &str,
         agent_id: Option<String>,
     ) -> Result<PermissionResult>;
+
+    /// Check the full 0.3.289 request, including the decision reason type,
+    /// MCP provenance, and display fields. The default forwards to
+    /// [`PermissionHandler::can_use_tool`].
+    async fn can_use_tool_request(&self, request: &CanUseToolRequest) -> Result<PermissionResult> {
+        self.can_use_tool(
+            &request.tool_name,
+            &request.input,
+            request.permission_suggestions.clone(),
+            request.blocked_path.clone(),
+            request.decision_reason.clone(),
+            &request.tool_use_id,
+            request.agent_id.clone(),
+        )
+        .await
+    }
 }
 
 /// A permission handler that allows all tool uses.

@@ -1,13 +1,19 @@
 //! Query struct for executing prompts and streaming responses.
 
+use crate::callbacks::{ElicitationHandler, HookRegistry, UserDialogHandler};
 use crate::error::{Error, Result};
 use crate::options::QueryOptions;
 use crate::permissions::PermissionHandler;
 use crate::protocol::{
-    ControlRequestData, ControlRequestType, ControlResponseData, ControlResponseType,
-    HookCallbackStub, InitializeRequest, PermissionMode, PermissionResult, SdkControlRequest,
-    SdkControlResponse, SdkMessage, SdkUserMessage, SetMaxThinkingTokensRequest, SetModelRequest,
-    SetPermissionModeRequest, StdinMessage, StdoutMessage, UserMessageType,
+    ApplyFlagSettingsRequest, BackgroundTasksRequest, CancelAsyncMessageRequest,
+    ControlRequestData, ControlRequestType, ControlResponseData, ElicitationResult,
+    FileSuggestionsRequest, GetTaskOutputRequest, InterruptRequest, McpCallRequest,
+    McpReadResourceRequest, McpReconnectRequest, McpSetServersRequest, McpToggleRequest,
+    PermissionMode, ReadFileRequest, RegisterRepoRootRequest, RenameSessionRequest,
+    RewindFilesRequest, SdkControlRequest, SdkControlResponse, SdkMessage, SdkUserMessage,
+    SeedReadStateRequest, SetColorRequest, SetMaxThinkingTokensRequest, SetModelRequest,
+    SetPermissionModeRequest, StdinMessage, StdoutMessage, StopTaskRequest, UpdateSettingsRequest,
+    UserMessageType,
 };
 use crate::transport::ProcessTransport;
 use futures::Stream;
@@ -21,16 +27,140 @@ use std::time::Duration;
 use tokio::sync::{Mutex, mpsc, oneshot};
 use tracing::{debug, trace, warn};
 
+type PendingRequests = Arc<Mutex<HashMap<String, oneshot::Sender<Result<Value>>>>>;
+
+/// Subtypes meant for the machine serving the session's tools. The TS SDK
+/// leaves them unanswered, and so does this crate.
+const REMOTE_TOOL_SUBTYPES: &[&str] = &[
+    "remote_tool_call",
+    "remote_plumbing_call",
+    "remote_tools_probe",
+    "remote_tools_reannounce",
+];
+
+/// What answers the control requests the CLI sends.
+struct ControlHandlers {
+    transport: Arc<Mutex<ProcessTransport>>,
+    permission_handler: Option<Arc<dyn PermissionHandler>>,
+    hooks: HookRegistry,
+    on_elicitation: Option<Arc<dyn ElicitationHandler>>,
+    on_user_dialog: Option<Arc<dyn UserDialogHandler>>,
+    /// Inbound requests being answered, so a `control_cancel_request` can
+    /// stop one and a duplicate delivery is skipped.
+    in_flight: Mutex<HashMap<String, tokio::task::AbortHandle>>,
+}
+
+impl ControlHandlers {
+    /// Answer a request on its own task, so a slow hook or permission
+    /// prompt does not stall the stdout reader.
+    async fn spawn(self: &Arc<Self>, request: SdkControlRequest) {
+        let mut in_flight = self.in_flight.lock().await;
+        if in_flight.contains_key(&request.request_id) {
+            debug!(request_id = %request.request_id, "skipping a duplicate control request");
+            return;
+        }
+        let request_id = request.request_id.clone();
+        let handlers = self.clone();
+        let task = tokio::spawn(async move {
+            let request_id = request.request_id.clone();
+            if let Some(response) = handlers.answer(request).await {
+                handlers.send(response).await;
+            }
+            handlers.in_flight.lock().await.remove(&request_id);
+        });
+        in_flight.insert(request_id, task.abort_handle());
+    }
+
+    /// Stop answering a request the CLI withdrew.
+    async fn cancel(&self, request_id: &str) {
+        if let Some(handle) = self.in_flight.lock().await.remove(request_id) {
+            handle.abort();
+        }
+    }
+
+    async fn send(&self, response: SdkControlResponse) {
+        let mut transport = self.transport.lock().await;
+        if let Err(e) = transport
+            .send(&StdinMessage::ControlResponse(response))
+            .await
+        {
+            warn!(error = %e, "failed to send control response");
+        }
+    }
+
+    /// The response to one inbound request, or `None` to stay silent.
+    async fn answer(&self, request: SdkControlRequest) -> Option<SdkControlResponse> {
+        let id = request.request_id;
+        debug!(request_id = %id, subtype = ?request.request.subtype(), "handling control request");
+        let result: Result<Option<Value>> = match request.request {
+            ControlRequestData::CanUseTool(ref tool) => match &self.permission_handler {
+                Some(handler) => handler
+                    .can_use_tool_request(tool)
+                    .await
+                    .and_then(|r| Ok(Some(serde_json::to_value(r)?))),
+                None => Err(Error::InvalidMessage(
+                    "canUseTool callback is not provided".into(),
+                )),
+            },
+            ControlRequestData::HookCallback(ref hook) => self
+                .hooks
+                .run(hook)
+                .await
+                .and_then(|out| Ok(Some(serde_json::to_value(out)?))),
+            ControlRequestData::McpMessage(ref message) => Err(Error::McpError(format!(
+                "SDK MCP server not found: {}",
+                message.server_name
+            ))),
+            ControlRequestData::Elicitation(ref elicitation) => match &self.on_elicitation {
+                Some(handler) => match handler.elicit(elicitation).await {
+                    Ok(Some(answer)) => serde_json::to_value(answer).map(Some).map_err(Error::from),
+                    Ok(None) => return None,
+                    Err(e) => Err(e),
+                },
+                None => serde_json::to_value(ElicitationResult::decline())
+                    .map(Some)
+                    .map_err(Error::from),
+            },
+            ControlRequestData::RequestUserDialog(ref dialog) => match &self.on_user_dialog {
+                Some(handler) => match handler.dialog(dialog).await {
+                    Ok(Some(answer)) => Ok(Some(answer)),
+                    Ok(None) => return None,
+                    Err(e) => Err(e),
+                },
+                None => {
+                    debug!(
+                        dialog_kind = %dialog.dialog_kind,
+                        "no user dialog handler; leaving request_user_dialog unanswered"
+                    );
+                    return None;
+                }
+            },
+            ControlRequestData::OauthTokenRefresh => Err(Error::InvalidMessage(
+                "getOAuthToken callback is not provided".into(),
+            )),
+            ControlRequestData::HostAuthTokenRefresh => Err(Error::InvalidMessage(
+                "getHostAuthToken callback is not provided".into(),
+            )),
+            ref other => Err(Error::InvalidMessage(format!(
+                "unsupported control request subtype: {}",
+                other.subtype().unwrap_or_default()
+            ))),
+        };
+        Some(match result {
+            Ok(response) => SdkControlResponse::success(id, response),
+            Err(e) => SdkControlResponse::error(id, e.to_string()),
+        })
+    }
+}
+
 /// A query execution that streams messages from Claude.
 pub struct Query {
     /// The process transport.
     transport: Arc<Mutex<ProcessTransport>>,
     /// Pending control requests waiting for responses.
-    pending_requests: Arc<Mutex<HashMap<String, oneshot::Sender<Result<Value>>>>>,
+    pending_requests: PendingRequests,
     /// Request ID counter.
     request_counter: AtomicU64,
-    /// Permission handler for tool use requests.
-    permission_handler: Option<Arc<dyn PermissionHandler>>,
     /// Channel to receive messages.
     message_rx: mpsc::Receiver<Result<SdkMessage>>,
     /// Session ID (available after first message).
@@ -39,21 +169,28 @@ pub struct Query {
     initialization: Option<Value>,
     /// How long each control request may wait for a response.
     control_timeout: Duration,
+    /// Send prompts with `client_composed: true`.
+    verbatim_prompts: bool,
     /// Whether the query has completed.
     completed: bool,
 }
 
 impl Query {
     /// Create a new query with a prompt.
+    ///
+    /// With a `permission_handler`, the CLI sends permission prompts to it
+    /// (`--permission-prompt-tool stdio`). Without one, the permission mode
+    /// and rules decide, and a prompt the CLI would show is denied.
     pub async fn new(
         prompt: impl Into<String>,
         options: QueryOptions,
         permission_handler: Option<Arc<dyn PermissionHandler>>,
     ) -> Result<Self> {
         let prompt = prompt.into();
-        let args = options.build_args();
-
-        let env = options.env.clone().map(|e| e.into_iter().collect());
+        options.validate(permission_handler.is_some())?;
+        let args = options.build_args_for(permission_handler.is_some());
+        let env = options.env_vars();
+        let env = (!env.is_empty()).then_some(env);
 
         let mut transport =
             ProcessTransport::spawn(options.executable.clone(), args, options.cwd.clone(), env)
@@ -63,44 +200,42 @@ impl Query {
         // otherwise initialize (and every later control write) deadlocks.
         let stdout_rx = transport.take_stdout_rx();
         let transport = Arc::new(Mutex::new(transport));
-        let pending_requests = Arc::new(Mutex::new(HashMap::new()));
+        let pending_requests: PendingRequests = Arc::new(Mutex::new(HashMap::new()));
 
-        // Create message channel
+        let (hooks, hooks_payload) = HookRegistry::register(&options.hooks);
+        let handlers = Arc::new(ControlHandlers {
+            transport: transport.clone(),
+            permission_handler,
+            hooks,
+            on_elicitation: options.on_elicitation.clone(),
+            on_user_dialog: options.on_user_dialog.clone(),
+            in_flight: Mutex::new(HashMap::new()),
+        });
+
         let (message_tx, message_rx) = mpsc::channel(256);
-
-        // Spawn message processing task
-        let transport_clone = transport.clone();
         let pending_clone = pending_requests.clone();
-        let handler_clone = permission_handler.clone();
-
         tokio::spawn(async move {
-            Self::process_messages(
-                transport_clone,
-                stdout_rx,
-                pending_clone,
-                handler_clone,
-                message_tx,
-            )
-            .await;
+            Self::process_messages(handlers, stdout_rx, pending_clone, message_tx).await;
         });
 
         let mut query = Self {
             transport,
             pending_requests,
             request_counter: AtomicU64::new(0),
-            permission_handler,
             message_rx,
             session_id: None,
             initialization: None,
             control_timeout: options.control_timeout_or_default(),
+            verbatim_prompts: options.verbatim_prompts,
             completed: false,
         };
 
-        // Handshake first. The TS Query does the same: initialize, then the
-        // user prompt. Sending the prompt first left session_id() empty and
-        // made initializationResult() impossible.
+        // Handshake first, as the TS Query does: initialize, then the
+        // user prompt.
         let init = query
-            .send_control_request(ControlRequestData::Initialize(InitializeRequest::default()))
+            .send_control_request(ControlRequestData::Initialize(
+                options.initialize_request(hooks_payload),
+            ))
             .await
             .map_err(|error| match error {
                 Error::InvalidMessage(message) => Error::InitializationFailed(message),
@@ -129,6 +264,7 @@ impl Query {
             uuid: None,
             session_id,
             is_replay: None,
+            client_composed: self.verbatim_prompts.then_some(true),
         };
 
         let mut transport = self.transport.lock().await;
@@ -137,158 +273,88 @@ impl Query {
 
     /// Process messages from the transport.
     async fn process_messages(
-        transport: Arc<Mutex<ProcessTransport>>,
+        handlers: Arc<ControlHandlers>,
         mut stdout_rx: mpsc::Receiver<Result<StdoutMessage>>,
-        pending_requests: Arc<Mutex<HashMap<String, oneshot::Sender<Result<Value>>>>>,
-        permission_handler: Option<Arc<dyn PermissionHandler>>,
+        pending_requests: PendingRequests,
         message_tx: mpsc::Sender<Result<SdkMessage>>,
     ) {
-        loop {
-            let msg = stdout_rx.recv().await;
-
+        while let Some(msg) = stdout_rx.recv().await {
             match msg {
-                Some(Ok(stdout_msg)) => {
-                    match stdout_msg {
-                        StdoutMessage::Message(sdk_msg) => {
-                            if message_tx.send(Ok(sdk_msg)).await.is_err() {
-                                break;
-                            }
-                        }
-                        StdoutMessage::ControlRequest(req) => {
-                            // Handle control requests (e.g., permission checks)
-                            Self::handle_control_request(&transport, &permission_handler, req)
-                                .await;
-                        }
-                        StdoutMessage::ControlResponse(resp) => {
-                            // Route response to waiting request
-                            Self::handle_control_response(&pending_requests, resp).await;
-                        }
-                        StdoutMessage::KeepAlive(_) => {
-                            trace!("Received keep-alive");
-                        }
+                Ok(StdoutMessage::Message(sdk_msg)) => {
+                    if message_tx.send(Ok(sdk_msg)).await.is_err() {
+                        break;
                     }
                 }
-                Some(Err(e)) => {
+                Ok(StdoutMessage::ControlRequest(req)) => handlers.spawn(req).await,
+                Ok(StdoutMessage::UnsupportedControlRequest(req)) => {
+                    if REMOTE_TOOL_SUBTYPES.contains(&req.subtype.as_str()) {
+                        debug!(subtype = %req.subtype, "leaving a remote tool request unanswered");
+                    } else {
+                        handlers
+                            .send(SdkControlResponse::error(
+                                req.request_id,
+                                format!("unsupported control request subtype: {}", req.subtype),
+                            ))
+                            .await;
+                    }
+                }
+                Ok(StdoutMessage::ControlCancelRequest(cancel)) => {
+                    handlers.cancel(&cancel.request_id).await;
+                }
+                Ok(StdoutMessage::ControlResponse(resp)) => {
+                    Self::handle_control_response(&handlers, &pending_requests, resp).await;
+                }
+                Ok(StdoutMessage::KeepAlive(_)) => trace!("received keep-alive"),
+                Err(e) => {
                     let fatal = !matches!(e, Error::UnrecognizedMessage { .. });
-                    if message_tx.send(Err(e)).await.is_err() {
+                    if message_tx.send(Err(e)).await.is_err() || fatal {
                         break;
                     }
-                    if fatal {
-                        break;
-                    }
-                }
-                None => {
-                    // Transport closed
-                    break;
                 }
             }
         }
     }
 
-    /// Handle a control request from the CLI.
-    async fn handle_control_request(
-        transport: &Arc<Mutex<ProcessTransport>>,
-        permission_handler: &Option<Arc<dyn PermissionHandler>>,
-        request: SdkControlRequest,
-    ) {
-        debug!(request_id = %request.request_id, "Handling control request");
-
-        let response = match request.request {
-            ControlRequestData::CanUseTool(ref tool_req) => {
-                // Handle permission request
-                let result = if let Some(handler) = permission_handler {
-                    handler
-                        .can_use_tool(
-                            &tool_req.tool_name,
-                            &tool_req.input,
-                            tool_req.permission_suggestions.clone(),
-                            tool_req.blocked_path.clone(),
-                            tool_req.decision_reason.clone(),
-                            &tool_req.tool_use_id,
-                            tool_req.agent_id.clone(),
-                        )
-                        .await
-                } else {
-                    // Default: allow all
-                    Ok(PermissionResult::allow(tool_req.input.clone()))
-                };
-
-                match result {
-                    Ok(perm_result) => SdkControlResponse {
-                        msg_type: ControlResponseType::ControlResponse,
-                        response: ControlResponseData::Success {
-                            request_id: request.request_id.clone(),
-                            response: Some(serde_json::to_value(perm_result).unwrap_or_default()),
-                        },
-                    },
-                    Err(e) => SdkControlResponse {
-                        msg_type: ControlResponseType::ControlResponse,
-                        response: ControlResponseData::Error {
-                            request_id: request.request_id.clone(),
-                            error: e.to_string(),
-                            pending_permission_requests: None,
-                        },
-                    },
-                }
-            }
-            ControlRequestData::HookCallback(ref hook_req) => {
-                // Typed continue stub. No host hook is invoked.
-                let stub = HookCallbackStub::from_request(hook_req);
-                debug!(
-                    request_id = %request.request_id,
-                    callback_id = %stub.callback_id,
-                    hook_event_name = ?stub.hook_event_name,
-                    hook_ran = stub.hook_ran,
-                    "hook_callback stub continue"
-                );
-                SdkControlResponse {
-                    msg_type: ControlResponseType::ControlResponse,
-                    response: ControlResponseData::Success {
-                        request_id: request.request_id.clone(),
-                        response: Some(stub.response_value()),
-                    },
-                }
-            }
-            _ => {
-                // Respond with success for other requests
-                SdkControlResponse {
-                    msg_type: ControlResponseType::ControlResponse,
-                    response: ControlResponseData::Success {
-                        request_id: request.request_id.clone(),
-                        response: None,
-                    },
-                }
-            }
-        };
-
-        // Send response
-        let mut transport = transport.lock().await;
-        if let Err(e) = transport
-            .send(&StdinMessage::ControlResponse(response))
-            .await
-        {
-            warn!(error = %e, "Failed to send control response");
-        }
-    }
-
-    /// Handle a control response from the CLI.
+    /// Route a control response to its waiting request, and answer any
+    /// permission or dialog requests it carries.
     async fn handle_control_response(
-        pending_requests: &Arc<Mutex<HashMap<String, oneshot::Sender<Result<Value>>>>>,
+        handlers: &Arc<ControlHandlers>,
+        pending_requests: &PendingRequests,
         response: SdkControlResponse,
     ) {
-        let (request_id, result) = match response.response {
+        let (request_id, result, carried) = match response.response {
             ControlResponseData::Success {
                 request_id,
                 response,
-            } => (request_id, Ok(response.unwrap_or(Value::Null))),
+                pending_permission_requests,
+                pending_user_dialog_requests,
+            } => (
+                request_id,
+                Ok(response.unwrap_or(Value::Null)),
+                [pending_permission_requests, pending_user_dialog_requests],
+            ),
             ControlResponseData::Error {
-                request_id, error, ..
-            } => (request_id, Err(Error::InvalidMessage(error))),
+                request_id,
+                error,
+                pending_permission_requests,
+                pending_user_dialog_requests,
+            } => (
+                request_id,
+                Err(Error::InvalidMessage(error)),
+                [pending_permission_requests, pending_user_dialog_requests],
+            ),
         };
 
-        let mut pending = pending_requests.lock().await;
-        if let Some(tx) = pending.remove(&request_id) {
+        if let Some(tx) = pending_requests.lock().await.remove(&request_id) {
             let _ = tx.send(result);
+        }
+        for request in carried.into_iter().flatten().flatten() {
+            if matches!(
+                request.request,
+                ControlRequestData::CanUseTool(_) | ControlRequestData::RequestUserDialog(_)
+            ) {
+                handlers.spawn(request).await;
+            }
         }
     }
 
@@ -300,14 +366,11 @@ impl Query {
         );
 
         let (tx, rx) = oneshot::channel();
+        self.pending_requests
+            .lock()
+            .await
+            .insert(request_id.clone(), tx);
 
-        // Register pending request
-        {
-            let mut pending = self.pending_requests.lock().await;
-            pending.insert(request_id.clone(), tx);
-        }
-
-        // Send request
         let control_req = SdkControlRequest {
             msg_type: ControlRequestType::ControlRequest,
             request_id: request_id.clone(),
@@ -324,45 +387,53 @@ impl Query {
         match tokio::time::timeout(self.control_timeout, rx).await {
             Ok(Ok(result)) => result,
             Ok(Err(_)) | Err(_) => {
-                let mut pending = self.pending_requests.lock().await;
-                pending.remove(&request_id);
+                self.pending_requests.lock().await.remove(&request_id);
                 Err(Error::ControlTimeout)
             }
         }
     }
 
-    /// Interrupt the current query execution.
+    /// Send a control request whose response carries nothing.
+    async fn send_unit(&self, request: ControlRequestData) -> Result<()> {
+        self.send_control_request(request).await.map(|_| ())
+    }
+
+    /// Interrupt the current turn.
     pub async fn interrupt(&self) -> Result<()> {
-        self.send_control_request(ControlRequestData::Interrupt)
-            .await?;
-        Ok(())
+        self.send_unit(ControlRequestData::Interrupt(InterruptRequest::default()))
+            .await
+    }
+
+    /// Interrupt the current turn and drop queued user messages.
+    pub async fn interrupt_and_cancel_queued(&self) -> Result<()> {
+        self.send_unit(ControlRequestData::Interrupt(InterruptRequest {
+            cancel_queued: Some(true),
+        }))
+        .await
     }
 
     /// Change the permission mode.
     pub async fn set_permission_mode(&self, mode: PermissionMode) -> Result<()> {
-        self.send_control_request(ControlRequestData::SetPermissionMode(
+        self.send_unit(ControlRequestData::SetPermissionMode(
             SetPermissionModeRequest { mode },
         ))
-        .await?;
-        Ok(())
+        .await
     }
 
-    /// Change the model.
+    /// Change the model. `None` returns to the default model.
     pub async fn set_model(&self, model: Option<String>) -> Result<()> {
-        self.send_control_request(ControlRequestData::SetModel(SetModelRequest { model }))
-            .await?;
-        Ok(())
+        self.send_unit(ControlRequestData::SetModel(SetModelRequest { model }))
+            .await
     }
 
     /// Set maximum thinking tokens.
     pub async fn set_max_thinking_tokens(&self, max_tokens: Option<u32>) -> Result<()> {
-        self.send_control_request(ControlRequestData::SetMaxThinkingTokens(
+        self.send_unit(ControlRequestData::SetMaxThinkingTokens(
             SetMaxThinkingTokensRequest {
                 max_thinking_tokens: max_tokens,
             },
         ))
-        .await?;
-        Ok(())
+        .await
     }
 
     /// Get MCP server status.
@@ -373,40 +444,69 @@ impl Query {
 
     /// Rewind files to a specific user message.
     pub async fn rewind_files(&self, user_message_id: &str) -> Result<()> {
-        self.send_control_request(ControlRequestData::RewindFiles(
-            crate::protocol::RewindFilesRequest {
-                user_message_id: user_message_id.to_string(),
-            },
-        ))
-        .await?;
-        Ok(())
+        self.send_unit(ControlRequestData::RewindFiles(RewindFilesRequest {
+            user_message_id: user_message_id.to_string(),
+            dry_run: None,
+        }))
+        .await
+    }
+
+    /// Report what rewinding to a user message would change, without
+    /// changing anything.
+    pub async fn rewind_files_dry_run(&self, user_message_id: &str) -> Result<Value> {
+        self.send_control_request(ControlRequestData::RewindFiles(RewindFilesRequest {
+            user_message_id: user_message_id.to_string(),
+            dry_run: Some(true),
+        }))
+        .await
     }
 
     /// Merge settings into the flag settings layer (TS `applyFlagSettings`).
     pub async fn apply_flag_settings(&self, settings: Value) -> Result<Value> {
         self.send_control_request(ControlRequestData::ApplyFlagSettings(
-            crate::protocol::ApplyFlagSettingsRequest { settings },
+            ApplyFlagSettingsRequest { settings },
         ))
+        .await
+    }
+
+    /// Effective settings (TS `getSettings`).
+    pub async fn get_settings(&self) -> Result<Value> {
+        self.send_control_request(ControlRequestData::GetSettings)
+            .await
+    }
+
+    /// Write settings to the user or local settings file. `source` is
+    /// `userSettings` or `localSettings`.
+    pub async fn update_settings(&self, source: &str, settings: Value) -> Result<Value> {
+        self.send_control_request(ControlRequestData::UpdateSettings(UpdateSettingsRequest {
+            source: source.to_string(),
+            settings,
+        }))
         .await
     }
 
     /// Replace dynamically managed MCP servers (TS `setMcpServers`).
     pub async fn set_mcp_servers(&self, servers: Value) -> Result<Value> {
-        self.send_control_request(ControlRequestData::McpSetServers(
-            crate::protocol::McpSetServersRequest { servers },
-        ))
+        self.send_control_request(ControlRequestData::McpSetServers(McpSetServersRequest {
+            servers,
+        }))
         .await
     }
 
     /// Stop a running task (TS `stopTask`).
     pub async fn stop_task(&self, task_id: &str) -> Result<()> {
-        self.send_control_request(ControlRequestData::StopTask(
-            crate::protocol::StopTaskRequest {
-                task_id: task_id.to_string(),
-            },
-        ))
-        .await?;
-        Ok(())
+        self.send_unit(ControlRequestData::StopTask(StopTaskRequest {
+            task_id: task_id.to_string(),
+        }))
+        .await
+    }
+
+    /// Output of a background task (TS `getTaskOutput`).
+    pub async fn get_task_output(&self, task_id: &str) -> Result<Value> {
+        self.send_control_request(ControlRequestData::GetTaskOutput(GetTaskOutputRequest {
+            task_id: task_id.to_string(),
+        }))
+        .await
     }
 
     /// Context-window usage by category (TS `getContextUsage`).
@@ -418,17 +518,17 @@ impl Query {
     /// Background in-flight foreground tasks (TS `backgroundTasks`).
     pub async fn background_tasks(&self, tool_use_id: Option<&str>) -> Result<Value> {
         self.send_control_request(ControlRequestData::BackgroundTasks(
-            crate::protocol::BackgroundTasksRequest {
+            BackgroundTasksRequest {
                 tool_use_id: tool_use_id.map(str::to_string),
             },
         ))
         .await
     }
 
-    /// Drop a queued async user message (TS).
+    /// Drop a queued async user message.
     pub async fn cancel_async_message(&self, message_uuid: &str) -> Result<Value> {
         self.send_control_request(ControlRequestData::CancelAsyncMessage(
-            crate::protocol::CancelAsyncMessageRequest {
+            CancelAsyncMessageRequest {
                 message_uuid: message_uuid.to_string(),
             },
         ))
@@ -447,17 +547,74 @@ impl Query {
             .await
     }
 
-    /// Remote CLI binary version.
+    /// CLI binary version.
     pub async fn get_binary_version(&self) -> Result<Value> {
         self.send_control_request(ControlRequestData::GetBinaryVersion)
+            .await
+    }
+
+    /// Models the session can switch to (TS `supportedModels` over the
+    /// `list_models` subtype).
+    pub async fn list_models(&self) -> Result<Value> {
+        self.send_control_request(ControlRequestData::ListModels)
+            .await
+    }
+
+    /// Permission rules in force (TS `listPermissionRules`).
+    pub async fn list_permission_rules(&self) -> Result<Value> {
+        self.send_control_request(ControlRequestData::ListPermissionRules)
+            .await
+    }
+
+    /// Configured hooks (TS `getHooksListing`).
+    pub async fn get_hooks_listing(&self) -> Result<Value> {
+        self.send_control_request(ControlRequestData::GetHooksListing)
             .await
     }
 
     /// At-mention file autocomplete.
     pub async fn file_suggestions(&self, query: &str) -> Result<Value> {
         self.send_control_request(ControlRequestData::FileSuggestions(
-            crate::protocol::FileSuggestionsRequest {
+            FileSuggestionsRequest {
                 query: query.to_string(),
+            },
+        ))
+        .await
+    }
+
+    /// Read a file through the CLI.
+    pub async fn read_file(&self, request: ReadFileRequest) -> Result<Value> {
+        self.send_control_request(ControlRequestData::ReadFile(request))
+            .await
+    }
+
+    /// Seed the CLI's read-file state for a path.
+    pub async fn seed_read_state(&self, path: &str, mtime: f64) -> Result<Value> {
+        self.send_control_request(ControlRequestData::SeedReadState(SeedReadStateRequest {
+            path: path.to_string(),
+            mtime,
+        }))
+        .await
+    }
+
+    /// Register an additional repository root.
+    pub async fn register_repo_root(&self, request: RegisterRepoRootRequest) -> Result<Value> {
+        self.send_control_request(ControlRequestData::RegisterRepoRoot(request))
+            .await
+    }
+
+    /// Call an MCP tool through the CLI.
+    pub async fn mcp_call(&self, request: McpCallRequest) -> Result<Value> {
+        self.send_control_request(ControlRequestData::McpCall(request))
+            .await
+    }
+
+    /// Read an MCP resource (TS `readMcpResource`).
+    pub async fn read_mcp_resource(&self, server_name: &str, uri: &str) -> Result<Value> {
+        self.send_control_request(ControlRequestData::McpReadResource(
+            McpReadResourceRequest {
+                server_name: server_name.to_string(),
+                uri: uri.to_string(),
             },
         ))
         .await
@@ -475,34 +632,42 @@ impl Query {
             .await
     }
 
+    /// Reload output styles.
+    pub async fn reload_output_styles(&self) -> Result<Value> {
+        self.send_control_request(ControlRequestData::ReloadOutputStyles)
+            .await
+    }
+
     /// Reconnect one MCP server.
     pub async fn reconnect_mcp_server(&self, server_name: &str) -> Result<Value> {
-        self.send_control_request(ControlRequestData::McpReconnect(
-            crate::protocol::McpReconnectRequest {
-                server_name: server_name.to_string(),
-            },
-        ))
+        self.send_control_request(ControlRequestData::McpReconnect(McpReconnectRequest {
+            server_name: server_name.to_string(),
+        }))
         .await
     }
 
     /// Enable or disable one MCP server.
     pub async fn toggle_mcp_server(&self, server_name: &str, enabled: bool) -> Result<Value> {
-        self.send_control_request(ControlRequestData::McpToggle(
-            crate::protocol::McpToggleRequest {
-                server_name: server_name.to_string(),
-                enabled,
-            },
-        ))
+        self.send_control_request(ControlRequestData::McpToggle(McpToggleRequest {
+            server_name: server_name.to_string(),
+            enabled,
+        }))
         .await
     }
 
     /// Set the session title.
     pub async fn rename_session(&self, title: &str) -> Result<Value> {
-        self.send_control_request(ControlRequestData::RenameSession(
-            crate::protocol::RenameSessionRequest {
-                title: title.to_string(),
-            },
-        ))
+        self.send_control_request(ControlRequestData::RenameSession(RenameSessionRequest {
+            title: title.to_string(),
+        }))
+        .await
+    }
+
+    /// Set the session color.
+    pub async fn set_color(&self, color: &str) -> Result<Value> {
+        self.send_control_request(ControlRequestData::SetColor(SetColorRequest {
+            color: color.to_string(),
+        }))
         .await
     }
 
@@ -519,10 +684,8 @@ impl Query {
         self.initialization.as_ref()
     }
 
-    /// Models advertised in the initialize handshake (TS `supportedModels`).
-    ///
-    /// There is no `list_models` control subtype; this is the handshake
-    /// field. Absent until initialize completes.
+    /// Models advertised in the initialize handshake. [`Query::list_models`]
+    /// asks the CLI again.
     pub fn supported_models(&self) -> Option<&Value> {
         self.initialization.as_ref().map(|value| &value["models"])
     }
@@ -543,13 +706,10 @@ impl Stream for Query {
 
         match Pin::new(&mut self.message_rx).poll_recv(cx) {
             Poll::Ready(Some(result)) => {
-                // Update session_id from messages
                 if let Ok(ref msg) = result {
                     match msg {
-                        SdkMessage::System(sys) => {
-                            if let crate::protocol::SdkSystemMessage::Init(init) = sys {
-                                self.session_id = Some(init.session_id.clone());
-                            }
+                        SdkMessage::System(crate::protocol::SdkSystemMessage::Init(init)) => {
+                            self.session_id = Some(init.session_id.clone());
                         }
                         SdkMessage::Result(_) => {
                             self.completed = true;
@@ -603,6 +763,7 @@ mod tests {
         options.fallback_model = Some("sonnet".to_string());
         options.plugins = vec![crate::options::PluginConfig::Local {
             path: "/tmp/plug".to_string(),
+            skip_mcp_discovery: None,
         }];
         let args = options.build_args();
         assert!(args.windows(2).any(|w| w == ["--permission-mode", "auto"]));
@@ -741,7 +902,7 @@ mod tests {
         let request = SdkControlRequest {
             msg_type: ControlRequestType::ControlRequest,
             request_id: "sdk-0".to_string(),
-            request: ControlRequestData::Initialize(InitializeRequest::default()),
+            request: ControlRequestData::Initialize(crate::protocol::InitializeRequest::default()),
         };
         let value = serde_json::to_value(&request).unwrap();
         assert_eq!(value["type"], "control_request");
@@ -832,45 +993,6 @@ rl.on('line', (line) => {
     const FAKE_HANG: &str = r#"#!/usr/bin/env node
 const readline = require('readline');
 readline.createInterface({ input: process.stdin });
-"#;
-
-    /// A fake CLI that answers initialize, then sends a PreToolUse hook_callback.
-    const FAKE_HOOK: &str = r#"#!/usr/bin/env node
-const fs = require('fs');
-const readline = require('readline');
-const log = process.env.FAKE_LOG;
-const rl = readline.createInterface({ input: process.stdin });
-rl.on('line', (line) => {
-  if (!line) return;
-  if (log) fs.appendFileSync(log, line + '\n');
-  let msg;
-  try { msg = JSON.parse(line); } catch { return; }
-  if (msg.type === 'control_request' && msg.request && msg.request.subtype === 'initialize') {
-    process.stdout.write(JSON.stringify({
-      type: 'control_response',
-      response: {
-        subtype: 'success',
-        request_id: msg.request_id,
-        response: JSON.parse('{"commands":[],"agents":[],"output_style":"default","available_output_styles":["default"],"models":[],"account":{}}')
-      }
-    }) + '\n');
-    process.stdout.write(JSON.stringify({
-      type: 'control_request',
-      request_id: 'cli-hook-1',
-      request: {
-        subtype: 'hook_callback',
-        callback_id: 'cb-pre-1',
-        tool_use_id: 'tu-1',
-        input: {
-          hook_event_name: 'PreToolUse',
-          tool_name: 'Bash',
-          tool_input: { command: 'ls' },
-          tool_use_id: 'tu-1'
-        }
-      }
-    }) + '\n');
-  }
-});
 "#;
 
     #[tokio::test]
@@ -1073,39 +1195,450 @@ rl.on('line', (line) => {
         }
     }
 
-    #[tokio::test]
-    async fn hook_callback_replies_continue_without_running_a_hook() {
-        let dir = unique_temp_dir();
-        let fake = write_executable(&dir, "fake-claude", FAKE_HOOK);
-        let log = dir.join("stdin.jsonl");
-        let mut options = options_for_fake(fake, Duration::from_secs(5));
-        options.env = Some(
-            [("FAKE_LOG".to_string(), log.display().to_string())]
-                .into_iter()
-                .collect(),
-        );
+    /// A fake CLI that answers `initialize`, then writes the frames in
+    /// `FAKE_FRAMES` (one JSON object per line). `$HOOK0` in a frame becomes
+    /// the first PreToolUse callback ID from the initialize request. Every
+    /// stdin line is logged to `FAKE_LOG`.
+    const FAKE_SCRIPTED: &str = r#"#!/usr/bin/env node
+const fs = require('fs');
+const readline = require('readline');
+const log = process.env.FAKE_LOG;
+const frames = process.env.FAKE_FRAMES ? fs.readFileSync(process.env.FAKE_FRAMES, 'utf8') : '';
+const rl = readline.createInterface({ input: process.stdin });
+rl.on('line', (line) => {
+  if (!line) return;
+  if (log) fs.appendFileSync(log, line + '\n');
+  let msg;
+  try { msg = JSON.parse(line); } catch { return; }
+  if (msg.type === 'control_request' && msg.request && msg.request.subtype === 'initialize') {
+    process.stdout.write(JSON.stringify({
+      type: 'control_response',
+      response: {
+        subtype: 'success',
+        request_id: msg.request_id,
+        response: JSON.parse('{"commands":[],"agents":[],"output_style":"default","available_output_styles":["default"],"models":[],"account":{}}')
+      }
+    }) + '\n');
+    const hooks = msg.request.hooks || {};
+    const pre = (hooks.PreToolUse || [])[0];
+    const hook0 = pre ? pre.hookCallbackIds[0] : 'none';
+    for (const frame of frames.split('\n')) {
+      if (frame.trim()) process.stdout.write(frame.split('$HOOK0').join(hook0) + '\n');
+    }
+  }
+});
+"#;
 
+    /// Run the scripted fake with `frames` and return every stdin line it
+    /// logged once `settle` has passed.
+    async fn run_scripted(
+        frames: &[Value],
+        mut options: QueryOptions,
+        settle: Duration,
+    ) -> Vec<Value> {
+        let dir = unique_temp_dir();
+        let fake = write_executable(&dir, "fake-claude", FAKE_SCRIPTED);
+        let log = dir.join("stdin.jsonl");
+        let frames_path = dir.join("frames.jsonl");
+        let body: Vec<String> = frames.iter().map(Value::to_string).collect();
+        fs::write(&frames_path, body.join("\n")).unwrap();
+        options.executable = ExecutableConfig {
+            path: Some(fake),
+            executable: None,
+            executable_args: Vec::new(),
+        };
+        options.control_timeout = Some(Duration::from_secs(5));
+        options.env = Some(
+            [
+                ("FAKE_LOG".to_string(), log.display().to_string()),
+                ("FAKE_FRAMES".to_string(), frames_path.display().to_string()),
+            ]
+            .into_iter()
+            .collect(),
+        );
         let query = Query::new("hello", options, None).await.unwrap();
-        tokio::time::sleep(Duration::from_millis(150)).await;
+        tokio::time::sleep(settle).await;
         drop(query);
         tokio::time::sleep(Duration::from_millis(50)).await;
-
-        let recorded = fs::read_to_string(&log).unwrap();
-        let hook_reply = recorded
+        fs::read_to_string(&log)
+            .unwrap()
             .lines()
             .filter_map(|line| serde_json::from_str::<Value>(line).ok())
-            .find(|value| {
-                value["type"] == "control_response"
-                    && value["response"]["request_id"] == "cli-hook-1"
-            })
-            .expect("expected a control_response for the CLI hook_callback");
-        assert_eq!(hook_reply["response"]["subtype"], "success");
-        assert_eq!(hook_reply["response"]["response"]["continue"], true);
-        assert!(
-            hook_reply["response"]["response"]
-                .get("hookSpecificOutput")
-                .is_none()
+            .collect()
+    }
+
+    fn reply_to<'a>(lines: &'a [Value], request_id: &str) -> Option<&'a Value> {
+        lines.iter().find(|value| {
+            value["type"] == "control_response" && value["response"]["request_id"] == request_id
+        })
+    }
+
+    #[tokio::test]
+    async fn hook_callback_runs_the_registered_host_closure() {
+        let ran = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let ran_in_hook = ran.clone();
+        let hook = crate::callbacks::hook_fn(move |input: Value, tool_use_id| {
+            let ran = ran_in_hook.clone();
+            async move {
+                ran.store(true, Ordering::SeqCst);
+                assert_eq!(input["hook_event_name"], "PreToolUse");
+                assert_eq!(tool_use_id.as_deref(), Some("tu-1"));
+                Ok(crate::protocol::SyncHookJSONOutput {
+                    hook_specific_output: Some(serde_json::json!({
+                        "hookEventName": "PreToolUse",
+                        "permissionDecision": "deny",
+                        "permissionDecisionReason": "no shell"
+                    })),
+                    ..Default::default()
+                }
+                .into())
+            }
+        });
+        let options = QueryOptions::new().hook(
+            crate::protocol::HookEvent::PreToolUse,
+            crate::callbacks::HookMatcher::new(Some("Bash"), hook),
         );
-        assert!(hook_reply["response"]["response"].get("decision").is_none());
+        let frames = [serde_json::json!({
+            "type": "control_request",
+            "request_id": "cli-hook-1",
+            "request": {
+                "subtype": "hook_callback",
+                "callback_id": "$HOOK0",
+                "tool_use_id": "tu-1",
+                "input": {"hook_event_name": "PreToolUse", "tool_name": "Bash", "tool_input": {"command": "ls"}}
+            }
+        })];
+        let lines = run_scripted(&frames, options, Duration::from_millis(200)).await;
+
+        let init = &lines[0];
+        assert_eq!(init["request"]["subtype"], "initialize");
+        let matcher = &init["request"]["hooks"]["PreToolUse"][0];
+        assert_eq!(matcher["matcher"], "Bash");
+        assert_eq!(matcher["hookCallbackIds"][0], "hook_0");
+
+        assert!(ran.load(Ordering::SeqCst), "the host hook must run");
+        let reply = reply_to(&lines, "cli-hook-1").expect("hook_callback reply");
+        assert_eq!(reply["response"]["subtype"], "success");
+        assert_eq!(
+            reply["response"]["response"]["hookSpecificOutput"]["permissionDecision"],
+            "deny"
+        );
+    }
+
+    #[tokio::test]
+    async fn unknown_hook_callback_id_is_an_error_reply() {
+        let frames = [serde_json::json!({
+            "type": "control_request",
+            "request_id": "cli-hook-2",
+            "request": {"subtype": "hook_callback", "callback_id": "hook_99", "input": {}}
+        })];
+        let lines = run_scripted(&frames, QueryOptions::new(), Duration::from_millis(150)).await;
+        let reply = reply_to(&lines, "cli-hook-2").expect("hook_callback reply");
+        assert_eq!(reply["response"]["subtype"], "error");
+        assert!(
+            reply["response"]["error"]
+                .as_str()
+                .unwrap()
+                .contains("hook_99")
+        );
+    }
+
+    #[tokio::test]
+    async fn elicitation_without_a_handler_is_declined() {
+        let frames = [serde_json::json!({
+            "type": "control_request",
+            "request_id": "cli-elicit-1",
+            "request": {
+                "subtype": "elicitation",
+                "mcp_server_name": "docs",
+                "message": "Pick a branch",
+                "mode": "form",
+                "requested_schema": {"type": "object"}
+            }
+        })];
+        let lines = run_scripted(&frames, QueryOptions::new(), Duration::from_millis(150)).await;
+        let reply = reply_to(&lines, "cli-elicit-1").expect("elicitation reply");
+        assert_eq!(reply["response"]["subtype"], "success");
+        assert_eq!(
+            reply["response"]["response"],
+            serde_json::json!({"action": "decline"})
+        );
+    }
+
+    struct AcceptElicitation;
+
+    #[async_trait::async_trait]
+    impl crate::callbacks::ElicitationHandler for AcceptElicitation {
+        async fn elicit(
+            &self,
+            request: &crate::protocol::ElicitationRequest,
+        ) -> Result<Option<crate::protocol::ElicitationResult>> {
+            assert_eq!(request.mcp_server_name, "docs");
+            Ok(Some(crate::protocol::ElicitationResult {
+                action: crate::protocol::ElicitationAction::Accept,
+                content: Some(serde_json::json!({"branch": "main"})),
+            }))
+        }
+    }
+
+    #[tokio::test]
+    async fn elicitation_handler_answer_is_the_reply() {
+        let mut options = QueryOptions::new();
+        options.on_elicitation = Some(Arc::new(AcceptElicitation));
+        let frames = [serde_json::json!({
+            "type": "control_request",
+            "request_id": "cli-elicit-2",
+            "request": {"subtype": "elicitation", "mcp_server_name": "docs", "message": "Pick"}
+        })];
+        let lines = run_scripted(&frames, options, Duration::from_millis(150)).await;
+        let reply = reply_to(&lines, "cli-elicit-2").expect("elicitation reply");
+        assert_eq!(reply["response"]["response"]["action"], "accept");
+        assert_eq!(reply["response"]["response"]["content"]["branch"], "main");
+    }
+
+    #[tokio::test]
+    async fn user_dialog_without_a_handler_gets_no_reply_and_unsupported_gets_an_error() {
+        let frames = [
+            serde_json::json!({
+                "type": "control_request",
+                "request_id": "cli-dialog-1",
+                "request": {"subtype": "request_user_dialog", "dialog_kind": "confirm", "payload": {}}
+            }),
+            serde_json::json!({
+                "type": "control_request",
+                "request_id": "cli-future-1",
+                "request": {"subtype": "some_future_subtype", "x": 1}
+            }),
+            serde_json::json!({
+                "type": "control_request",
+                "request_id": "cli-remote-1",
+                "request": {"subtype": "remote_tool_call"}
+            }),
+            serde_json::json!({
+                "type": "control_request",
+                "request_id": "cli-perm-1",
+                "request": {"subtype": "can_use_tool", "tool_name": "Bash", "input": {}, "tool_use_id": "tu-9"}
+            }),
+        ];
+        let lines = run_scripted(&frames, QueryOptions::new(), Duration::from_millis(200)).await;
+        assert!(reply_to(&lines, "cli-dialog-1").is_none());
+        assert!(reply_to(&lines, "cli-remote-1").is_none());
+        let future = reply_to(&lines, "cli-future-1").expect("unsupported reply");
+        assert_eq!(future["response"]["subtype"], "error");
+        assert!(
+            future["response"]["error"]
+                .as_str()
+                .unwrap()
+                .contains("some_future_subtype")
+        );
+        // Without a permission handler the TS SDK refuses can_use_tool.
+        let perm = reply_to(&lines, "cli-perm-1").expect("can_use_tool reply");
+        assert_eq!(perm["response"]["subtype"], "error");
+    }
+
+    #[tokio::test]
+    async fn control_cancel_request_stops_a_slow_hook() {
+        let hook = crate::callbacks::hook_fn(|_input, _tool_use_id| async {
+            tokio::time::sleep(Duration::from_secs(5)).await;
+            Ok(crate::protocol::SyncHookJSONOutput::continue_execution().into())
+        });
+        let options = QueryOptions::new().hook(
+            crate::protocol::HookEvent::PreToolUse,
+            crate::callbacks::HookMatcher::new(None, hook),
+        );
+        let frames = [
+            serde_json::json!({
+                "type": "control_request",
+                "request_id": "cli-slow-1",
+                "request": {"subtype": "hook_callback", "callback_id": "$HOOK0", "input": {}}
+            }),
+            serde_json::json!({"type": "control_cancel_request", "request_id": "cli-slow-1"}),
+        ];
+        let started = std::time::Instant::now();
+        let lines = run_scripted(&frames, options, Duration::from_millis(200)).await;
+        assert!(started.elapsed() < Duration::from_secs(3));
+        assert!(reply_to(&lines, "cli-slow-1").is_none());
+    }
+
+    #[test]
+    fn initialize_request_carries_0_3_289_fields_in_camel_case() {
+        let mut options = QueryOptions::new();
+        options.supported_dialog_kinds = Some(vec!["confirm".into()]);
+        options.per_task_stop_affordance = true;
+        options.prompt_suggestions = true;
+        options.title = Some("smoke".into());
+        options.plugin_delivery = crate::options::PluginDelivery::Initialize;
+        options.plugins = vec![crate::options::PluginConfig::Local {
+            path: "/tmp/plug".into(),
+            skip_mcp_discovery: Some(true),
+        }];
+        let request = ControlRequestData::Initialize(options.initialize_request(None));
+        let value = serde_json::to_value(&request).unwrap();
+        assert_eq!(value["subtype"], "initialize");
+        assert_eq!(value["supportedDialogKinds"][0], "confirm");
+        assert_eq!(value["perTaskStopAffordance"], true);
+        assert_eq!(value["promptSuggestions"], true);
+        assert_eq!(value["title"], "smoke");
+        assert_eq!(value["plugins"][0]["type"], "local");
+        assert_eq!(value["plugins"][0]["skipMcpDiscovery"], true);
+        assert!(value.get("hooks").is_none());
+
+        let args = options.build_args();
+        assert!(args.contains(&"--await-initialize".to_string()));
+        assert!(!args.iter().any(|a| a.starts_with("--plugin-dir")));
+    }
+
+    #[test]
+    fn build_args_match_the_0_3_289_flag_spellings() {
+        let mut options = QueryOptions::new().no_session_persistence();
+        options.allowed_tools = Some(vec!["Read".into(), "Bash(git *)".into()]);
+        options.disallowed_tools = Some(vec!["Write".into()]);
+        options.setting_sources = Some(vec![
+            crate::options::SettingSource::User,
+            crate::options::SettingSource::Project,
+        ]);
+        options.betas = vec!["a".into(), "b".into()];
+        options.allow_dangerously_skip_permissions = true;
+        options.resume = Some("sess-1".into());
+        options.resume_session_at = Some("msg-1".into());
+        options.session_id = Some("sess-2".into());
+        options.task_budget = Some(5000);
+        options.agent = Some("reviewer".into());
+        options.permission_prompts = Some(crate::options::PermissionPrompts::None);
+        options.strict_mcp_config = true;
+        options.include_hook_events = true;
+        options.project_config_root = Some(PathBuf::from("/repo"));
+        options.settings = Some(serde_json::json!({"model": "haiku"}));
+        options.sandbox = Some(crate::options::SandboxSettings {
+            enabled: Some(true),
+            ..Default::default()
+        });
+        options.plugins = vec![crate::options::PluginConfig::Local {
+            path: "/p".into(),
+            skip_mcp_discovery: Some(true),
+        }];
+        options.enable_file_checkpointing = true;
+
+        let args = options.build_args();
+        assert_eq!(
+            flag_value(&args, "--allowedTools"),
+            Some("Read,Bash(git *)")
+        );
+        assert_eq!(flag_value(&args, "--disallowedTools"), Some("Write"));
+        assert_eq!(flag_value(&args, "--betas"), Some("a,b"));
+        assert_eq!(flag_value(&args, "--task-budget"), Some("5000"));
+        assert_eq!(flag_value(&args, "--agent"), Some("reviewer"));
+        assert_eq!(flag_value(&args, "--permission-prompts"), Some("none"));
+        assert_eq!(flag_value(&args, "--plugin-dir-no-mcp"), Some("/p"));
+        for flag in [
+            "--setting-sources=user,project",
+            "--allow-dangerously-skip-permissions",
+            "--resume=sess-1",
+            "--resume-session-at=msg-1",
+            "--session-id=sess-2",
+            "--no-session-persistence",
+            "--strict-mcp-config",
+            "--include-hook-events",
+            "--project-config-root=/repo",
+        ] {
+            assert!(args.iter().any(|a| a == flag), "missing {flag}: {args:?}");
+        }
+        for gone in [
+            "--no-persist-session",
+            "--dangerously-skip-permissions",
+            "--enable-file-checkpointing",
+            "--permission-prompt-tool",
+        ] {
+            assert!(!args.iter().any(|a| a == gone), "unexpected {gone}");
+        }
+        let settings: Value =
+            serde_json::from_str(flag_value(&args, "--settings").unwrap()).unwrap();
+        assert_eq!(settings["model"], "haiku");
+        assert_eq!(settings["sandbox"]["enabled"], true);
+        assert_eq!(settings["sandbox"]["failIfUnavailable"], true);
+        assert!(options.env_vars().contains(&(
+            "CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING".into(),
+            "true".into()
+        )));
+
+        let with_handler = options.build_args_for(true);
+        assert_eq!(
+            flag_value(&with_handler, "--permission-prompt-tool"),
+            Some("stdio")
+        );
+    }
+
+    #[test]
+    fn validate_rejects_what_the_ts_sdk_rejects() {
+        let mut options = QueryOptions::new().model("sonnet");
+        options.fallback_model = Some("sonnet".into());
+        assert!(matches!(
+            options.validate(false),
+            Err(Error::InvalidOptions(_))
+        ));
+
+        let mut options = QueryOptions::new();
+        options.permission_prompt_tool_name = Some("mcp__perm__ask".into());
+        assert!(options.validate(false).is_ok());
+        assert!(matches!(
+            options.validate(true),
+            Err(Error::InvalidOptions(_))
+        ));
+    }
+
+    #[test]
+    fn new_0_3_289_control_subtypes_serialize_on_the_wire() {
+        let cases = [
+            (ControlRequestData::ListModels, "list_models"),
+            (ControlRequestData::GetHooksListing, "get_hooks_listing"),
+            (
+                ControlRequestData::ListPermissionRules,
+                "list_permission_rules",
+            ),
+            (
+                ControlRequestData::ReloadOutputStyles,
+                "reload_output_styles",
+            ),
+            (ControlRequestData::GetSettings, "get_settings"),
+            (
+                ControlRequestData::GetTaskOutput(GetTaskOutputRequest {
+                    task_id: "t1".into(),
+                }),
+                "get_task_output",
+            ),
+            (
+                ControlRequestData::McpReadResource(McpReadResourceRequest {
+                    server_name: "docs".into(),
+                    uri: "file:///a".into(),
+                }),
+                "mcp_read_resource",
+            ),
+            (
+                ControlRequestData::UpdateSettings(UpdateSettingsRequest {
+                    source: "localSettings".into(),
+                    settings: serde_json::json!({}),
+                }),
+                "update_settings",
+            ),
+            (
+                ControlRequestData::Interrupt(InterruptRequest {
+                    cancel_queued: Some(true),
+                }),
+                "interrupt",
+            ),
+        ];
+        for (request, subtype) in cases {
+            let value = serde_json::to_value(&request).unwrap();
+            assert_eq!(value["subtype"], subtype);
+            assert_eq!(request.subtype().as_deref(), Some(subtype));
+        }
+        let read = serde_json::to_value(ControlRequestData::McpReadResource(
+            McpReadResourceRequest {
+                server_name: "docs".into(),
+                uri: "u".into(),
+            },
+        ))
+        .unwrap();
+        assert_eq!(read["serverName"], "docs");
     }
 }

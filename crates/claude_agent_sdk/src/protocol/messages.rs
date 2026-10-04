@@ -19,9 +19,11 @@ pub const KNOWN_SDK_MESSAGE_TYPES: &[&str] = &[
     "prompt_suggestion",
     "rate_limit_event",
     "tool_use_summary",
+    "active_goal",
+    "conversation_reset",
 ];
 
-/// Internally tagged union of recognized SDK stdout messages (0.3.172 set).
+/// Internally tagged union of recognized SDK stdout messages (0.3.289 set).
 /// Unknown future `type` values become [`SdkMessage::Unknown`] instead of a
 /// deserialize failure, so hosts can count protocol drift.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -47,6 +49,10 @@ enum KnownSdkMessage {
     RateLimitEvent(SdkRateLimitEvent),
     #[serde(rename = "tool_use_summary")]
     ToolUseSummary(SdkToolUseSummaryMessage),
+    #[serde(rename = "active_goal")]
+    ActiveGoal(SdkActiveGoalMessage),
+    #[serde(rename = "conversation_reset")]
+    ConversationReset(SdkConversationResetMessage),
 }
 
 /// All SDK message types from CLI stdout.
@@ -81,6 +87,12 @@ pub enum SdkMessage {
 
     /// Per-tool-group rollup summary
     ToolUseSummary(SdkToolUseSummaryMessage),
+
+    /// The session's active goal changed or cleared (0.3.289)
+    ActiveGoal(SdkActiveGoalMessage),
+
+    /// The conversation was reset under a new conversation ID (0.3.289)
+    ConversationReset(SdkConversationResetMessage),
 
     /// Valid JSON whose `type` is not a modelled SDK variant.
     ///
@@ -121,6 +133,8 @@ impl SdkMessage {
             SdkMessage::PromptSuggestion(_) => "prompt_suggestion",
             SdkMessage::RateLimitEvent(_) => "rate_limit_event",
             SdkMessage::ToolUseSummary(_) => "tool_use_summary",
+            SdkMessage::ActiveGoal(_) => "active_goal",
+            SdkMessage::ConversationReset(_) => "conversation_reset",
             SdkMessage::Unknown { type_name, .. } => type_name,
         }
     }
@@ -139,6 +153,8 @@ impl From<KnownSdkMessage> for SdkMessage {
             KnownSdkMessage::PromptSuggestion(v) => SdkMessage::PromptSuggestion(v),
             KnownSdkMessage::RateLimitEvent(v) => SdkMessage::RateLimitEvent(v),
             KnownSdkMessage::ToolUseSummary(v) => SdkMessage::ToolUseSummary(v),
+            KnownSdkMessage::ActiveGoal(v) => SdkMessage::ActiveGoal(v),
+            KnownSdkMessage::ConversationReset(v) => SdkMessage::ConversationReset(v),
         }
     }
 }
@@ -169,6 +185,12 @@ impl Serialize for SdkMessage {
             SdkMessage::ToolUseSummary(v) => {
                 KnownSdkMessage::ToolUseSummary(v.clone()).serialize(serializer)
             }
+            SdkMessage::ActiveGoal(v) => {
+                KnownSdkMessage::ActiveGoal(v.clone()).serialize(serializer)
+            }
+            SdkMessage::ConversationReset(v) => {
+                KnownSdkMessage::ConversationReset(v.clone()).serialize(serializer)
+            }
         }
     }
 }
@@ -188,7 +210,29 @@ pub struct SdkAssistantMessage {
     /// Parent tool use ID if this is part of a tool call
     pub parent_tool_use_id: Option<String>,
     /// Error type if there was an error
+    #[serde(default)]
     pub error: Option<AssistantMessageError>,
+    /// The user message this reply answers (0.3.289).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_message_uuid: Option<String>,
+    /// Every user message this reply answers when turns were coalesced.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_message_uuids: Option<Vec<String>>,
+    /// Why the turn resumed, when it did.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resume_reason: Option<String>,
+    /// `true` when the message was cut off by an abort.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub aborted: Option<bool>,
+    /// ISO 8601 time the message was produced.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timestamp: Option<String>,
+    /// Context-window usage snapshot, when the CLI attaches one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context_usage: Option<Value>,
+    /// Usage report, when the CLI attaches one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage_report: Option<Value>,
     /// Unique message ID
     pub uuid: String,
     /// Session ID
@@ -208,6 +252,9 @@ pub enum AssistantMessageError {
     ModelNotFound,
     ServerError,
     MaxOutputTokens,
+    AccountOnHold,
+    VerificationRequired,
+    CloudCredentialError,
     #[serde(other)]
     Unknown,
 }
@@ -236,6 +283,10 @@ pub struct SdkUserMessage {
     /// True if this is a replay/acknowledgment
     #[serde(skip_serializing_if = "Option::is_none")]
     pub is_replay: Option<bool>,
+    /// Deliver the text as written: no `@path` expansion and no
+    /// slash-command dispatch (TS `client_composed`, 0.3.289).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client_composed: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -285,12 +336,41 @@ pub struct ResultSuccess {
     #[serde(rename = "modelUsage")]
     pub model_usage: HashMap<String, ModelUsage>,
     pub permission_denials: Vec<PermissionDenial>,
+    #[serde(default)]
     pub structured_output: Option<Value>,
-    /// Why the turn ended (TS `terminal_reason`, 0.3.172 set).
+    /// Why the turn ended (TS `terminal_reason`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub terminal_reason: Option<TerminalReason>,
+    #[serde(flatten)]
+    pub turn: ResultTurnFields,
     pub uuid: String,
     pub session_id: String,
+}
+
+/// Optional result fields shared by success and error results (0.3.289).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ResultTurnFields {
+    /// The user message this result answers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_message_uuid: Option<String>,
+    /// Every user message this result answers when turns were coalesced.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_message_uuids: Option<Vec<String>>,
+    /// Why the turn resumed, when it did.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resume_reason: Option<String>,
+    /// Turns still queued behind this one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub queued_turn_count: Option<u64>,
+    /// Position of this result among results for one input.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub result_index: Option<u64>,
+    /// Why fast mode was off for this turn.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fast_mode_disabled_reason: Option<String>,
+    /// Why the session failed to start (error results only).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub startup_failure_reason: Option<String>,
 }
 
 /// Error result data.
@@ -306,14 +386,16 @@ pub struct ResultError {
     pub model_usage: HashMap<String, ModelUsage>,
     pub permission_denials: Vec<PermissionDenial>,
     pub errors: Vec<String>,
-    /// Why the turn ended (TS `terminal_reason`, 0.3.172 set).
+    /// Why the turn ended (TS `terminal_reason`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub terminal_reason: Option<TerminalReason>,
+    #[serde(flatten)]
+    pub turn: ResultTurnFields,
     pub uuid: String,
     pub session_id: String,
 }
 
-/// Structured turn-end reason on result messages (0.3.172 `TerminalReason`).
+/// Structured turn-end reason on result messages (0.3.289 `TerminalReason`).
 ///
 /// Later CLI values deserialize as [`TerminalReason::Unknown`] so the result
 /// stays a typed [`SdkResultMessage`] instead of [`SdkMessage::Unknown`].
@@ -325,13 +407,20 @@ pub enum TerminalReason {
     PromptTooLong,
     ImageError,
     ModelError,
+    ApiError,
+    MalformedToolUseExhausted,
     AbortedStreaming,
     AbortedTools,
     StopHookPrevented,
     HookStopped,
     ToolDeferred,
     MaxTurns,
+    BackgroundRequested,
     Completed,
+    BudgetExhausted,
+    StructuredOutputRetryExhausted,
+    ToolDeferredUnavailable,
+    TurnSetupFailed,
     #[serde(other)]
     Unknown,
 }
@@ -370,6 +459,26 @@ pub struct ModelUsage {
         skip_serializing_if = "Option::is_none"
     )]
     pub max_output_tokens: Option<u64>,
+    /// Thinking tokens, when reported (0.3.289).
+    #[serde(
+        rename = "thinkingTokens",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub thinking_tokens: Option<u64>,
+    /// Canonical model ID behind an alias (0.3.289).
+    #[serde(
+        rename = "canonicalModel",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub canonical_model: Option<String>,
+    /// Serving provider (0.3.289).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    /// `list`, `managed`, or `unknown` (0.3.289).
+    #[serde(rename = "costBasis", default, skip_serializing_if = "Option::is_none")]
+    pub cost_basis: Option<String>,
 }
 
 /// Permission denial record.
@@ -382,7 +491,7 @@ pub struct PermissionDenial {
 
 /// System message types (`type: "system"` plus a `subtype` discriminator).
 ///
-/// Subtypes follow `@anthropic-ai/claude-agent-sdk` 0.3.172. An unrecognized
+/// Subtypes follow `@anthropic-ai/claude-agent-sdk` 0.3.289. An unrecognized
 /// subtype fails this enum and is recovered as [`SdkMessage::Unknown`].
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "subtype")]
@@ -478,6 +587,26 @@ pub enum SdkSystemMessage {
     /// Transcript-mirror batch failed after retry
     #[serde(rename = "mirror_error")]
     MirrorError(SdkMirrorErrorMessage),
+
+    /// Progress on a control request the SDK sent (0.3.289)
+    #[serde(rename = "control_request_progress")]
+    ControlRequestProgress(SdkControlRequestProgressMessage),
+
+    /// Primary model refused and no fallback ran (0.3.289)
+    #[serde(rename = "model_refusal_no_fallback")]
+    ModelRefusalNoFallback(SdkModelRefusalNoFallbackMessage),
+
+    /// The set of background tasks changed (0.3.289)
+    #[serde(rename = "background_tasks_changed")]
+    BackgroundTasksChanged(SdkBackgroundTasksChangedMessage),
+
+    /// The worker serving the session is shutting down (0.3.289)
+    #[serde(rename = "worker_shutting_down")]
+    WorkerShuttingDown(SdkWorkerShuttingDownMessage),
+
+    /// Informational notice for the user (0.3.289)
+    #[serde(rename = "informational")]
+    Informational(SdkInformationalMessage),
 }
 
 /// Session initialization data.
@@ -498,6 +627,18 @@ pub struct SystemInit {
     pub output_style: String,
     pub skills: Vec<String>,
     pub plugins: Vec<PluginInfo>,
+    /// Plugins that failed to load (0.3.289).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub plugin_errors: Option<Vec<Value>>,
+    /// Effort level in force (0.3.289).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effort: Option<String>,
+    /// Why fast mode is off (0.3.289).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fast_mode_disabled_reason: Option<String>,
+    /// Session capabilities the CLI advertises (0.3.289).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capabilities: Option<Vec<String>>,
     pub uuid: String,
     pub session_id: String,
 }
@@ -514,6 +655,10 @@ pub struct McpServerStatus {
 pub struct PluginInfo {
     pub name: String,
     pub path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
 }
 
 /// Compact boundary marker.
@@ -573,6 +718,15 @@ pub struct SdkToolProgressMessage {
     pub tool_name: String,
     pub parent_tool_use_id: Option<String>,
     pub elapsed_time_seconds: f64,
+    /// Liveness tick with no new progress (0.3.289).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub heartbeat: Option<bool>,
+    /// Subagent type when the tool runs a subagent (0.3.289).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subagent_type: Option<String>,
+    /// Subagent API retry state (0.3.289).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subagent_retry: Option<Value>,
     pub uuid: String,
     pub session_id: String,
 }
@@ -654,6 +808,28 @@ pub struct SdkRateLimitInfo {
         skip_serializing_if = "Option::is_none"
     )]
     pub surpassed_threshold: Option<f64>,
+    /// `service`, `channel`, or `group_pool` (0.3.289).
+    #[serde(
+        rename = "limitScope",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub limit_scope: Option<String>,
+    /// `credits_required` (0.3.289).
+    #[serde(rename = "errorCode", default, skip_serializing_if = "Option::is_none")]
+    pub error_code: Option<String>,
+    #[serde(
+        rename = "canUserPurchaseCredits",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub can_user_purchase_credits: Option<bool>,
+    #[serde(
+        rename = "hasChargeableSavedPaymentMethod",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub has_chargeable_saved_payment_method: Option<bool>,
 }
 
 /// Per-tool-group rollup summary.
@@ -673,14 +849,27 @@ pub struct SdkApiRetryMessage {
     pub retry_delay_ms: u64,
     pub error_status: Option<i64>,
     pub error: AssistantMessageError,
+    /// Present when the retry follows a request that got no response.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub no_response: Option<SdkApiRetryNoResponse>,
     pub uuid: String,
     pub session_id: String,
+}
+
+/// Wait times for an `api_retry` after no response.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SdkApiRetryNoResponse {
+    pub waited_ms: u64,
+    pub retry_wait_ms: u64,
 }
 
 /// Model-refusal fallback notice (`subtype: model_refusal_fallback`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SdkModelRefusalFallbackMessage {
     pub trigger: String,
+    /// `session` or `local` (0.3.289).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope: Option<String>,
     pub direction: String,
     pub original_model: String,
     pub fallback_model: String,
@@ -691,6 +880,8 @@ pub struct SdkModelRefusalFallbackMessage {
     pub api_refusal_explanation: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub retracted_message_uuids: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub refused_user_message_uuid: Option<String>,
     pub content: String,
     pub uuid: String,
     pub session_id: String,
@@ -752,6 +943,13 @@ pub struct SdkTaskNotificationMessage {
     pub usage: Option<SdkTaskUsage>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub skip_transcript: Option<bool>,
+    /// `worker_restart` when the task settled because its worker restarted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resource_links: Option<Vec<Value>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ambient: Option<bool>,
     pub uuid: String,
     pub session_id: String,
 }
@@ -773,6 +971,12 @@ pub struct SdkTaskStartedMessage {
     pub prompt: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub skip_transcript: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub is_backgrounded: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spawn_depth: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ambient: Option<bool>,
     pub uuid: String,
     pub session_id: String,
 }
@@ -834,6 +1038,8 @@ pub struct SdkTaskUsage {
 pub struct SdkThinkingTokensMessage {
     pub estimated_tokens: u64,
     pub estimated_tokens_delta: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_message_uuid: Option<String>,
     pub uuid: String,
     pub session_id: String,
 }
@@ -964,4 +1170,119 @@ pub struct SdkMirrorErrorKey {
     pub session_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub subpath: Option<String>,
+}
+
+/// Progress on a control request the SDK sent
+/// (`subtype: control_request_progress`, 0.3.289).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SdkControlRequestProgressMessage {
+    pub request_id: String,
+    /// `started` or `api_retry`.
+    pub status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attempt: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_retries: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retry_delay_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error_status: Option<i64>,
+    pub uuid: String,
+    pub session_id: String,
+}
+
+/// Primary model refused and no fallback ran
+/// (`subtype: model_refusal_no_fallback`, 0.3.289).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SdkModelRefusalNoFallbackMessage {
+    pub original_model: String,
+    pub request_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api_refusal_category: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub api_refusal_explanation: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub refused_user_message_uuid: Option<String>,
+    pub content: String,
+    pub uuid: String,
+    pub session_id: String,
+}
+
+/// The set of background tasks changed
+/// (`subtype: background_tasks_changed`, 0.3.289).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SdkBackgroundTasksChangedMessage {
+    pub tasks: Vec<SdkBackgroundTask>,
+    pub uuid: String,
+    pub session_id: String,
+}
+
+/// One running background task.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SdkBackgroundTask {
+    pub task_id: String,
+    pub task_type: String,
+    pub description: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ambient: Option<bool>,
+}
+
+/// The worker serving the session is shutting down
+/// (`subtype: worker_shutting_down`, 0.3.289).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SdkWorkerShuttingDownMessage {
+    pub reason: String,
+    pub uuid: String,
+    pub session_id: String,
+}
+
+/// Informational notice (`subtype: informational`, 0.3.289).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SdkInformationalMessage {
+    pub content: String,
+    /// `info`, `notice`, `suggestion`, or `warning`.
+    pub level: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_use_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prevent_continuation: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tag: Option<String>,
+    pub uuid: String,
+    pub session_id: String,
+}
+
+/// The session's active goal (`type: active_goal`, 0.3.289). `value` is
+/// `None` when the goal was cleared.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SdkActiveGoalMessage {
+    pub value: Option<SdkActiveGoal>,
+    pub uuid: String,
+    pub session_id: String,
+}
+
+/// Active goal state.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SdkActiveGoal {
+    pub condition: String,
+    pub iterations: u64,
+    pub set_at: f64,
+    pub tokens_at_start: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_reason: Option<String>,
+}
+
+/// The conversation was reset (`type: conversation_reset`, 0.3.289).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SdkConversationResetMessage {
+    pub new_conversation_id: String,
+    /// `clear`, `plan_mode_exit`, `fresh_session`, or `onboarding`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trigger: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_message_uuid: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timestamp: Option<String>,
+    pub uuid: String,
+    pub session_id: String,
 }

@@ -28,6 +28,10 @@ pub enum StdoutMessage {
     ControlRequest(SdkControlRequest),
     /// Control response (to a request we sent)
     ControlResponse(SdkControlResponse),
+    /// The CLI withdrew a control request it sent
+    ControlCancelRequest(SdkControlCancelRequest),
+    /// Control request whose subtype this crate does not model
+    UnsupportedControlRequest(UnsupportedControlRequest),
     /// Keep-alive ping
     KeepAlive(KeepAliveMessage),
 }
@@ -51,7 +55,25 @@ impl StdoutMessage {
         match value.get("type").and_then(Value::as_str) {
             Some("control_request") => {
                 match serde_json::from_value::<SdkControlRequest>(value.clone()) {
+                    Ok(req) if matches!(req.request, ControlRequestData::Unsupported) => {
+                        let subtype = value
+                            .pointer("/request/subtype")
+                            .and_then(Value::as_str)
+                            .unwrap_or("")
+                            .to_owned();
+                        StdoutMessage::UnsupportedControlRequest(UnsupportedControlRequest {
+                            request_id: req.request_id,
+                            subtype,
+                            raw: value,
+                        })
+                    }
                     Ok(req) => StdoutMessage::ControlRequest(req),
+                    Err(_) => unknown_sdk(value),
+                }
+            }
+            Some("control_cancel_request") => {
+                match serde_json::from_value::<SdkControlCancelRequest>(value.clone()) {
+                    Ok(cancel) => StdoutMessage::ControlCancelRequest(cancel),
                     Err(_) => unknown_sdk(value),
                 }
             }

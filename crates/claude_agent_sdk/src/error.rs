@@ -67,6 +67,10 @@ pub enum Error {
     /// MCP server error.
     #[error("MCP server error: {0}")]
     McpError(String),
+
+    /// Query options that the CLI or the TS SDK rejects.
+    #[error("invalid query options: {0}")]
+    InvalidOptions(String),
 }
 
 /// Result type alias for the Claude Agent SDK.

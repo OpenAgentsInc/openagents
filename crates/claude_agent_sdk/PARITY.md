@@ -1,129 +1,144 @@
 # Claude Agent SDK Rust parity
 
-This crate ports the wire protocol of `@anthropic-ai/claude-agent-sdk`.
-Parity is checked with `scripts/check-claude-sdk-parity.sh`.
+This crate ports the wire protocol of `@anthropic-ai/claude-agent-sdk`: the
+stream-json frames the `claude` CLI writes, the control protocol in both
+directions, and the options that become CLI flags or `initialize` fields.
+It tracks SDK **0.3.289** (`UPSTREAM_SDK_VERSION` in `src/lib.rs`), checked
+against Claude Code **2.1.289**. The npm package is read as a reference;
+nothing from it is vendored.
 
-## P1 landed (issue #232)
+Run `scripts/check-claude-sdk-parity.sh` to compare the crate with the
+tracked version, or pass `latest` to see what a newer release adds. The
+script exits 1 only for gaps this file does not list as deferred.
 
-Silent JSONL skip is gone. The stdout reader:
+## Stream messages
 
-- maps modelled 0.3.172 `type` / `subtype` values onto typed [`SdkMessage`] variants
-- emits [`SdkMessage::Unknown { type_name, raw }`](src/protocol/messages.rs) for a
-  valid JSON object whose `type` is not modelled, and keeps the stream going
-- emits [`Error::UnrecognizedMessage { type_name, raw }`](src/error.rs) for
-  invalid JSON, and keeps the stream going
+Every `type` and `system` `subtype` in the 0.3.289 `SDKMessage` union
+parses to a typed `SdkMessage` variant. A valid JSON object with an
+unmodelled `type` or `subtype` becomes `SdkMessage::Unknown { type_name,
+raw }` and the stream continues; invalid JSON becomes
+`Error::UnrecognizedMessage` and the stream continues.
 
-Control (`control_request`, `control_response`) and `keep_alive` frames are
-classified before the unknown-SDK fallback so they are not swallowed.
+Added for 0.3.289:
 
-### 0.3.172 variants added in P1
+- Top-level types: `active_goal`, `conversation_reset`.
+- `system` subtypes: `control_request_progress`,
+  `model_refusal_no_fallback`, `background_tasks_changed`,
+  `worker_shutting_down`, `informational`.
+- `TerminalReason`: `api_error`, `malformed_tool_use_exhausted`,
+  `background_requested`, `budget_exhausted`,
+  `structured_output_retry_exhausted`, `tool_deferred_unavailable`,
+  `turn_setup_failed`. A later value is `TerminalReason::Unknown`, so the
+  result stays typed.
+- `AssistantMessageError`: `account_on_hold`, `verification_required`,
+  `cloud_credential_error`.
+- Optional fields on existing messages: result `ResultTurnFields`
+  (`queued_turn_count`, `result_index`, `user_message_uuid(s)`,
+  `resume_reason`, `fast_mode_disabled_reason`, `startup_failure_reason`);
+  `modelUsage` `thinkingTokens`, `canonicalModel`, `provider`,
+  `costBasis`; assistant `timestamp`, `aborted`, `user_message_uuid(s)`,
+  `context_usage`, `usage_report`; `system/init` `plugin_errors`,
+  `effort`, `capabilities`; `tool_progress` `heartbeat`, `subagent_type`,
+  `subagent_retry`; `api_retry` `no_response`; task and rate-limit fields.
 
-Top-level `type` values: `prompt_suggestion`, `rate_limit_event`,
-`tool_use_summary`, plus `SdkMessage::Unknown`.
+No 0.3.172 message type or required field was removed in 0.3.289.
 
-`type: "system"` subtypes: `api_retry`, `model_refusal_fallback`,
-`local_command_output`, `hook_started`, `hook_progress`, `hook_response`
-(fields extended), `plugin_install`, `task_notification`, `task_started`,
-`task_updated`, `task_progress`, `thinking_tokens`, `session_state_changed`,
-`commands_changed`, `notification`, `files_persisted`, `memory_recall`,
-`elicitation_complete`, `permission_denied`, `mirror_error`.
+## Control protocol
 
-Already present before P1: `assistant`, `user`, `result`, `system` (`init`,
-`compact_boundary`, `status`), `stream_event`, `tool_progress`, `auth_status`.
+Outbound (SDK to CLI): all 40 subtypes in 0.3.289 `SDKControlRequestInner`
+serialize, and `Query` has a method for each one a host sends. New since
+0.3.172: `list_models`, `get_hooks_listing`, `get_task_output`,
+`list_permission_rules`, `mcp_read_resource`, `reload_output_styles`, and
+`update_settings`. `get_settings`, `set_color`, `mcp_call`, `read_file`,
+`seed_read_state`, and `register_repo_root` were in 0.3.172 but not
+modelled before. `interrupt` carries `cancel_queued`, and `rewind_files`
+carries `dry_run`.
 
-## P2 landed (issue #232)
+`initialize` is sent first, in camelCase as the CLI expects
+(`sdkMcpServers`, `jsonSchema`, `systemPrompt` as a string array, and the
+other 0.3.289 fields). Earlier versions of this crate sent snake_case
+names; the defaults left them empty, so no frame was affected.
 
-`Query::new` sends `subtype: "initialize"` before the user prompt, stores
-the handshake payload, and exposes it as `Query::initialization_result()`
-(TS `Query.initializationResult()`). Control requests wait at most
-`DEFAULT_CONTROL_TIMEOUT` (60s, overridable via
-`QueryOptions::control_timeout`). A silent CLI returns
-`Error::ControlTimeout` instead of hanging. A CLI `subtype: "error"` on
-initialize is `Error::InitializationFailed`. The stdout reader no longer
-holds the stdin lock across `recv`, so the handshake cannot deadlock.
+Inbound (CLI to SDK), each answered on its own task so a slow callback
+does not stall the stdout reader:
 
-## P3 first slice landed (issue #232)
+| Subtype | Answer |
+| --- | --- |
+| `can_use_tool` | The `PermissionHandler` (`can_use_tool_request` sees every 0.3.289 field). Without a handler: an error, as in the TS SDK. |
+| `hook_callback` | Runs the host closure registered under that callback ID; its `HookJSONOutput` (sync or async) is the reply. An unknown ID is an error. |
+| `elicitation` | The `ElicitationHandler`; `Ok(None)` sends nothing. Without a handler: `{"action":"decline"}`. |
+| `request_user_dialog` | The `UserDialogHandler`; without one, no reply, as in the TS SDK. |
+| `mcp_message` | Error: SDK-hosted MCP servers are not supported. |
+| `oauth_token_refresh`, `host_auth_token_refresh` | Error: no token callback. |
+| `remote_tool_call` and the other remote tool subtypes | No reply, as in the TS SDK. |
+| Any other subtype | Error naming the subtype. |
 
-Queryable control methods now include `apply_flag_settings`, `set_mcp_servers`,
-`stop_task`, `get_context_usage`, `background_tasks`, `cancel_async_message`,
-`get_session_cost`, `get_usage`, `get_binary_version`, `file_suggestions`,
-`reload_plugins`, `reload_skills`, `reconnect_mcp_server`, `toggle_mcp_server`,
-and `rename_session`. `supported_models()` reads the initialize payload
-(there is no `list_models` wire subtype). Elicitation and the remaining
-auth/dialog subtypes are still open. `hook_callback` is a typed continue
-stub; it does not run host hooks.
+`control_cancel_request` aborts the matching in-flight answer, and a
+duplicate delivery of an in-flight request is skipped. Permission and
+dialog requests carried in a control response's
+`pending_permission_requests` or `pending_user_dialog_requests` are
+answered like any other request.
 
-## P4 first slice landed (issue #232)
+Hooks are registered as in the TS SDK: `QueryOptions::hooks` (or
+`QueryOptions::hook`) maps a `HookEvent` (all 33 0.3.289 events) to
+`HookMatcher`s; each callback gets the ID `hook_N`, and the matchers go to
+the CLI in `initialize.hooks`.
 
-`PermissionMode::Auto` is on the wire (`auto`). `build_args()` emits
-`--fallback-model` and `--plugin-dir` from the previously ignored
-`fallback_model` and `plugins` fields.
+## Options and flags
 
-## P4 remainder landed (issue #232)
+`build_args` follows the 0.3.289 argument builder. Fixed against the
+CLI: `--allowedTools` and `--disallowedTools` take one comma-joined value,
+`--setting-sources=` and `--betas` take joined lists,
+`allow_dangerously_skip_permissions` is
+`--allow-dangerously-skip-permissions`, persistence off is
+`--no-session-persistence` (was the nonexistent `--no-persist-session`),
+file checkpointing is the `CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING`
+environment variable (was the nonexistent `--enable-file-checkpointing`),
+and `--permission-prompt-tool stdio` is sent only when a permission
+handler is present.
 
-`QueryOptions::build_args()` now emits the previously ignored option
-fields as CLI flags verified against `claude` 2.1.247 and
-`@anthropic-ai/claude-agent-sdk` 0.3.172:
+Added: `task_budget`, `agent`, `debug`, `debug_file`,
+`permission_prompt_tool_name`, `permission_prompts`, `strict_mcp_config`,
+`include_hook_events`, `project_config_root`, `session_id`,
+`resume_drops_turn`, `settings` (merged with `sandbox`, which now carries
+`failIfUnavailable` when enabled), `managed_settings`,
+`plugin_delivery` (`--await-initialize`), `skip_mcp_discovery`
+(`--plugin-dir-no-mcp`), `verbatim_prompts` (`client_composed`), and the
+`initialize` fields `supported_dialog_kinds`, `per_task_stop_affordance`,
+`prompt_suggestions`, `agent_progress_summaries`,
+`forward_subagent_text`, `title`, `skills`, `plan_mode_instructions`,
+and `tool_aliases`. `validate` rejects a fallback model equal to the main
+model, a permission handler with a permission prompt tool, and a settings
+path with a sandbox.
 
-- `system_prompt`: `Custom` → `--system-prompt`; Preset `append` →
-  `--append-system-prompt`. A Preset with no append uses the CLI default.
-- `mcp_servers` → `--mcp-config` with a JSON string
-  `{"mcpServers":{...}}` (same encoding as the TS SDK).
-- `agents` → `--agents` JSON object (`disallowedTools` camelCase).
-- `sandbox` → `--settings` JSON `{"sandbox":{...}}`. The main CLI rejects
-  `--sandbox` (`unknown option`); the TS SDK also writes sandbox settings
-  through `--settings`, not a `--sandbox` flag.
-- `output_format` schema → `--json-schema`. `--output-format stream-json`
-  stays the SDK transport; a response schema is not a second output
-  format and must not replace stream-json.
+The system prompt and agents still go as `--system-prompt`,
+`--append-system-prompt`, and `--agents`; the TS SDK sends them in
+`initialize`, and the CLI accepts both. Permission modes are unchanged
+from 0.3.172.
 
-Added because the CLI/TS SDK have real flags:
+## Verification
 
-- `tools` → `--tools` (`Names` joined by comma, empty list is `--tools ""`,
-  `Default` is `--tools default`).
-- `thinking` → `--thinking adaptive|disabled`, `--thinking-display`, or
-  `--max-thinking-tokens` for `Enabled { budget_tokens }`. Takes
-  precedence over `max_thinking_tokens`.
-- `effort` → `--effort` (`low|medium|high|xhigh|max`).
+- `cargo test -p claude_agent_sdk`: fixtures for every new message,
+  inbound control frame, and outbound subtype, plus fake-CLI tests for
+  hook execution, elicitation, dialogs, unsupported subtypes,
+  cancellation, and flag spellings.
+- `cargo run -p claude_agent_sdk --example smoke`: one Haiku turn through
+  the installed CLI with `--no-session-persistence`, no tools, and no
+  settings files. On 2026-10-04 with Claude Code 2.1.289 it completed the
+  handshake (12 models, 55 commands) and a `success` result with no
+  `Unknown` messages.
 
-The fake-claude initialize fixture now builds its handshake payload with
-`JSON.parse` of a JSON string so Node does not see unquoted object-literal
-keys.
+## Deferred
 
-## Result fidelity landed (issue #232)
-
-`ResultSuccess` models 0.3.172 `api_error_status` and `terminal_reason`.
-`ResultError` models `terminal_reason`. `ModelUsage` includes
-`maxOutputTokens` (optional on the wire so older fixtures still parse).
-The 0.3.172 `TerminalReason` set is `blocking_limit`,
-`rapid_refill_breaker`, `prompt_too_long`, `image_error`, `model_error`,
-`aborted_streaming`, `aborted_tools`, `stop_hook_prevented`,
-`hook_stopped`, `tool_deferred`, `max_turns`, `completed`. A later value
-deserializes as `TerminalReason::Unknown` so the result stays a typed
-`SdkResultMessage` instead of `SdkMessage::Unknown`. 0.3.247+ result
-fields (`canonicalModel`, `queued_turn_count`, extra `modelUsage` keys)
-are not modelled.
-
-## Hook callback stub landed (issue #232)
-
-Inbound `subtype: "hook_callback"` parses as `HookCallbackRequest`. Query
-replies with typed `SyncHookJSONOutput::continue_without_running()`
-(`{"continue": true}`). `HookCallbackStub` records `hook_event_name` and
-`callback_id` so the path is testable; `hook_ran` is always false. This
-is not hook execution: no host callback runs, and the reply has no
-`hookSpecificOutput` or permission decision.
-
-## Remaining work
-
-#232's named first slices (P1–P4 plus this result/hook-stub packet) are
-landed. Residual, out of scope unless a later packet says otherwise:
-
-- **Full hook execution** — host callbacks, PreToolUse permission
-  decisions, matchers, timeouts.
-- **Elicitation and remaining auth/dialog control subtypes.**
-- **The remaining TypeScript `Query` methods** (~50).
-- **Later upstream types (0.3.247+)** such as `conversation_reset`,
-  `informational`, `control_request_progress`,
-  `background_tasks_changed`, `worker_shutting_down`, and
-  `model_refusal_no_fallback` currently arrive as `SdkMessage::Unknown`.
-  That is the P1 contract, not a silent drop.
+- SDK-hosted MCP servers (`createSdkMcpServer`, `mcp_message` routing,
+  `sdkMcpServerManifests`).
+- Streaming input (`AsyncIterable` prompts, `streamInput`), and
+  `abortController`, `stderr`, `spawnClaudeCodeProcess`, `loadTimeoutMs`,
+  and `toolConfig`.
+- Session stores (`sessionStore`, `sessionStoreFlush`, the
+  `transcript_mirror` frame) and the session listing helpers.
+- Auth token callbacks (`oauth_token_refresh`,
+  `host_auth_token_refresh`), which the published declarations do not
+  expose.
+- Hook input and hook-specific output stay `serde_json::Value` rather than
+  one Rust type per event.
