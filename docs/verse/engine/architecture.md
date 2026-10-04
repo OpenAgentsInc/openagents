@@ -240,7 +240,7 @@ interrupted poses, and retain grounded corpses. Gameplay controls root movement;
 any root-motion support must reconcile through authority. Events such as footsteps
 are visual/audio markers, while spell release is a world event.
 
-[#10443](https://github.com/OpenAgentsInc/openagents/issues/10443) implements named chamber animation states, compiled per-model loop/hold and transition settings, and exact-life playback reset. Original world presentation selects semantics rather than source clip IDs; the research adapter supplies explicit legacy bindings. General graphs, marker events, IK, and root-motion admission remain future work.
+[#10443](https://github.com/OpenAgentsInc/openagents/issues/10443) implements named chamber animation states, compiled per-model loop/hold and transition settings, and exact-life playback reset. Original world presentation selects semantics rather than source clip IDs; the research adapter supplies explicit legacy bindings. Marker events landed in [#10489](https://github.com/OpenAgentsInc/openagents/issues/10489). [#10494](https://github.com/OpenAgentsInc/openagents/issues/10494) adds portable graph data and local blend/layer evaluation; graph playback, weighted markers, and native integration remain in progress. IK and root-motion admission remain future work.
 
 ## Original content and authoring pipeline
 
