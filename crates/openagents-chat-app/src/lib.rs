@@ -1,6 +1,7 @@
 //! Chat application state shared by desktop and phone adapters.
 //! No wallet, SQLite, native widget, or platform host dependency belongs here.
 pub use openagents_chat::{basic_chats, basic_coder, router};
+pub mod attention;
 pub mod chat_invites;
 pub mod chats;
 pub mod cli_run;

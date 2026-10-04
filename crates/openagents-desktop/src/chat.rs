@@ -7,6 +7,7 @@ use crate::control::ControlResult;
 use crate::model::{Intent, Request};
 use openagents_chat::basic_coder::Role;
 use openagents_chat::service::{Command, Snapshot};
+use openagents_chat_app::attention;
 use openagents_chat_app::coder_run::{self, Action as RunAction, Run};
 use openagents_chat_app::projection::{Appearance, Projection, Reply};
 use openagents_chat_app::session::Session;
@@ -85,6 +86,10 @@ pub struct Panel {
     task_submissions: BTreeMap<(String, String), Submission>,
     /// Coder runs on this computer, by chat ([`coder_run`]).
     runs: BTreeMap<String, Run>,
+    /// Each chat's Coder ending the person has seen, by its mark
+    /// ([`Run::mark`] or the task summary's sequence): a seen ending no
+    /// longer asks for attention ([`attention`]).
+    seen: BTreeMap<String, u64>,
     run_submissions: BTreeMap<(String, u64), Submission>,
     /// Messages sent from this window, by chat and request: a coding
     /// reply to one starts Coder here at once, as `openagents chat` does.
@@ -223,6 +228,7 @@ impl Panel {
             tasks: BTreeMap::new(),
             task_submissions: BTreeMap::new(),
             runs: BTreeMap::new(),
+            seen: BTreeMap::new(),
             run_submissions: BTreeMap::new(),
             sent: Default::default(),
             coder_projects: vec![],
@@ -1332,7 +1338,47 @@ impl Panel {
                 })
             })
     }
+    /// Each chat with Coder work and what its row shows
+    /// ([`attention::Indicator`]) at `now` and Unix second `unix`. The
+    /// chat open on the chat page (`viewing`) has its current ending
+    /// marked seen.
+    fn indicators(
+        &mut self,
+        now: Instant,
+        unix: u64,
+        viewing: bool,
+    ) -> BTreeMap<String, attention::Indicator> {
+        let mut out = BTreeMap::new();
+        let open = self.session.selected.clone().filter(|_| viewing);
+        for (chat, run) in &self.runs {
+            let (activity, silent) = run.activity(now);
+            if open.as_ref() == Some(chat) {
+                self.seen.insert(chat.clone(), run.mark());
+            }
+            let seen = self.seen.get(chat) == Some(&run.mark());
+            out.insert(chat.clone(), attention::indicator(activity, silent, seen));
+        }
+        for (chat, task) in &self.tasks {
+            if self.runs.contains_key(chat) {
+                continue;
+            }
+            let Some(summary) = &task.summary else {
+                continue;
+            };
+            if open.as_ref() == Some(chat) {
+                self.seen.insert(chat.clone(), summary.sequence);
+            }
+            let seen = self.seen.get(chat) == Some(&summary.sequence);
+            out.insert(chat.clone(), attention::of_summary(summary, unix, seen));
+        }
+        out
+    }
+
     pub fn sync_sidebar(&mut self, state: &mut State) {
+        self.sync_sidebar_at(state, Instant::now(), task_chat::unix_now());
+    }
+
+    fn sync_sidebar_at(&mut self, state: &mut State, now: Instant, unix: u64) {
         state.profile_open =
             self.commands.kind == Some(openagents_chat_app::commands::Kind::Profile);
         self.sidebar_width = state.sidebar_width;
@@ -1355,7 +1401,16 @@ impl Panel {
         // The shared list order (#10100): Pinned, then Recent newest first
         // across projects (a project is a label on its row), then Archived,
         // so a new chat opens at the top, as on the phone.
-        let listed = openagents_chat_app::chat_list::search(&self.session.summaries, &state.search);
+        // Within each group, a chat that needs the person rises above
+        // quieter ones (#10468); equal indicators stay newest first.
+        let viewing = matches!(state.page, crate::chrome::Page::Chat(_));
+        let indicators = self.indicators(now, unix, viewing);
+        let indicator = |summary: &openagents_chat::basic_chats::Summary| {
+            indicators.get(&summary.id).copied().unwrap_or_default()
+        };
+        let mut listed =
+            openagents_chat_app::chat_list::search(&self.session.summaries, &state.search);
+        openagents_chat_app::chat_list::by_attention(&mut listed, indicator);
         for summary in &listed {
             if let openagents_chat_app::chat_list::Group::Project(project) =
                 openagents_chat_app::chat_list::group(summary)
@@ -1369,6 +1424,7 @@ impl Panel {
                 id: self.ids[&summary.id],
                 title: summary.title.clone(),
                 detail: "OpenAgents · Saved",
+                indicator: indicator(summary),
                 section: if summary.archived {
                     Section::Archived
                 } else if summary.pinned {
@@ -5865,5 +5921,42 @@ mod sidebar_order_tests {
             .map(|chat| chat.title.as_str())
             .collect();
         assert_eq!(titles, ["new", "older-project", "old-plain"]);
+    }
+
+    /// #10468: a chat whose Coder run is working rises above a newer quiet
+    /// chat and says so; silent past the stale bound, it says stale.
+    #[test]
+    fn a_working_chat_rises_and_goes_stale_when_silent() {
+        let start = Instant::now();
+        let mut panel = Panel::new(start);
+        panel.session.summaries = vec![summary("busy", 10, None), summary("quiet", 20, None)];
+        panel
+            .runs
+            .insert("busy".into(), Run::follow("busy", "task", None, start));
+        let rows = |panel: &mut Panel, now: Instant| {
+            let mut state = State::default();
+            panel.sync_sidebar_at(&mut state, now, 0);
+            state
+                .chats
+                .iter()
+                .filter(|chat| chat.section == Section::Recent)
+                .map(|chat| (chat.title.clone(), chat.indicator))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            rows(&mut panel, start),
+            [
+                ("busy".to_owned(), attention::Indicator::Working),
+                ("quiet".to_owned(), attention::Indicator::Idle),
+            ]
+        );
+        let later = start + attention::STALE_AFTER + std::time::Duration::from_secs(1);
+        assert_eq!(
+            rows(&mut panel, later),
+            [
+                ("busy".to_owned(), attention::Indicator::Stale),
+                ("quiet".to_owned(), attention::Indicator::Idle),
+            ]
+        );
     }
 }

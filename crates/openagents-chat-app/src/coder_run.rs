@@ -25,6 +25,7 @@
 //! ("ran 3 commands") when the turn ends. Zeron's composer question is a
 //! card with one answer control, as the port audit adapts it.
 
+use crate::attention::Activity;
 use crate::coder_tab::{Choice, Mode};
 use openagents_chat::coder_events::{self, CoderEvent, Line, StepKind};
 use openagents_chat::tool_groups::{self, Entry, Item, Shown, Stretch};
@@ -209,6 +210,9 @@ pub struct Run {
     pending: BTreeMap<u64, Request>,
     next_ticket: u64,
     poll: Instant,
+    /// When the task last sent an event or changed state, for the stale
+    /// rule ([`crate::attention::STALE_AFTER`]).
+    heard: Instant,
     /// A start or continue to send at the next tick.
     due: Option<Request>,
     /// The task started here and its thread should record it.
@@ -280,6 +284,7 @@ impl Run {
             pending: BTreeMap::new(),
             next_ticket: 1,
             poll: now,
+            heard: now,
             due: None,
             bind: None,
             reviewer: crate::changes::Reviewer::new(),
@@ -535,6 +540,32 @@ impl Run {
             .map(|line| line.seq)
     }
 
+    /// What the run is doing, for [`crate::attention::indicator`], and how
+    /// long it has been since the task was last heard from at `now`.
+    #[must_use]
+    pub fn activity(&self, now: Instant) -> (Activity, Duration) {
+        let activity = match (&self.phase, self.state) {
+            (Phase::Starting, _) | (Phase::Following, State::Running) => Activity::Working,
+            (Phase::NeedsProject(_), _) | (Phase::Following, State::Waiting) => {
+                Activity::AwaitingInput
+            }
+            (Phase::Failed, _) => Activity::Failed,
+            (Phase::Following, State::Ended) => match self.lines.back().map(|line| &line.event) {
+                Some(CoderEvent::Result(_)) => Activity::Completed,
+                Some(CoderEvent::Failure(_)) => Activity::Failed,
+                _ => Activity::Idle,
+            },
+        };
+        (activity, now.saturating_duration_since(self.heard))
+    }
+
+    /// The last event's sequence number: what a person who has seen the
+    /// run's ending has seen.
+    #[must_use]
+    pub fn mark(&self) -> u64 {
+        self.lines.back().map_or(0, |line| line.seq)
+    }
+
     /// Whether the task's last turn finished with a result.
     #[must_use]
     pub fn finished(&self) -> bool {
@@ -639,6 +670,7 @@ impl Run {
                 self.error = None;
                 self.failed = None;
                 self.poll = now;
+                self.heard = now;
             }
             (Request::Start { .. }, Answer::NeedsProject { why }) => {
                 self.phase = Phase::NeedsProject(why);
@@ -674,6 +706,7 @@ impl Run {
                 if changed {
                     self.revision += 1;
                     self.poll = now;
+                    self.heard = now;
                 }
                 return false;
             }
@@ -684,6 +717,7 @@ impl Run {
             (Request::Continue { .. }, Answer::Continued) => {
                 self.state = State::Running;
                 self.poll = now;
+                self.heard = now;
                 accepted = true;
             }
             (Request::Choose, Answer::Folder(Some(dir))) => {

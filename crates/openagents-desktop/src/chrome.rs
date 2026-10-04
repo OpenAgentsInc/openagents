@@ -6,6 +6,7 @@
 //! (captures and tests) and never create a task or a saved conversation.
 
 use crate::model::{Intent, Model};
+pub use openagents_chat_app::attention::Indicator;
 use rust_native::style::{Color, Space, Style, TextAlign, TextWeight};
 use rust_native::{Axis, Element, Glyph, Icon, Node, TextRole};
 use serde::Serialize;
@@ -103,6 +104,9 @@ pub struct Chat {
     pub id: u64,
     pub title: String,
     pub detail: &'static str,
+    /// What the chat's Coder work asks of the person, which the row names
+    /// before its context line.
+    pub indicator: Indicator,
     pub section: Section,
 }
 
@@ -243,6 +247,7 @@ impl Default for State {
                     id: index as u64 + 1,
                     title: title.into(),
                     detail,
+                    indicator: Indicator::Idle,
                     section,
                 })
                 .collect(),
@@ -298,6 +303,7 @@ impl State {
                         id,
                         title: "New chat".into(),
                         detail: "OpenAgents · Just now",
+                        indicator: Indicator::Idle,
                         section: Section::Recent,
                     },
                 );
@@ -588,10 +594,13 @@ fn sidebar(state: &State, model: &Model) -> Node<Intent> {
                         // One newest-first list (#10100): a Coder chat's
                         // project is its row's context line, not a header
                         // that would sort its old chats above a new one.
-                        let detail = state.projects.get(&chat.id).map_or_else(
+                        let mut detail = state.projects.get(&chat.id).map_or_else(
                             || chat.detail.to_owned(),
                             |project| format!("Coder · {project}"),
                         );
+                        if let Some(label) = chat.indicator.label() {
+                            detail = format!("{label} · {detail}");
+                        }
                         action(
                             &format!("sidebar-chat-{}", chat.id),
                             format!("{}\n{detail}", chat.title),

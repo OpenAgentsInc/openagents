@@ -5,6 +5,7 @@
 //! newest first in one list, then Archived (#10100). A project is a label
 //! on its row, not a block that sorts ahead of newer chats, so the chat
 //! Cmd/Ctrl-N just made is always the first unpinned row.
+use crate::attention::Indicator;
 use openagents_chat::basic_chats::Summary;
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -63,6 +64,23 @@ pub fn search<'a>(summaries: &'a [Summary], query: &str) -> Vec<&'a Summary> {
         .collect();
     rows.sort_by_key(|summary| (group(summary).rank(), std::cmp::Reverse(summary.updated)));
     rows
+}
+
+/// Reorders `rows`, already in [`search`] order, by attention within each
+/// group: a chat that needs the person rises above quieter ones, and chats
+/// with the same [`Indicator`] keep their recency order. Archived chats
+/// keep recency only.
+pub fn by_attention(rows: &mut [&Summary], attention: impl Fn(&Summary) -> Indicator) {
+    rows.sort_by_cached_key(|summary| {
+        let summary: &Summary = summary;
+        let group = group(summary);
+        let rank = if group == Group::Archived {
+            Indicator::Idle.rank()
+        } else {
+            attention(summary).rank()
+        };
+        (group.rank(), rank)
+    });
 }
 
 /// The archived conversations a Settings list offers to restore, most
@@ -193,5 +211,52 @@ mod tests {
         // order, where the newest made is first.
         let tied = vec![chat("made second", 7, None), chat("made first", 7, None)];
         assert_eq!(search(&tied, "")[0].title, "made second");
+    }
+
+    /// #10468: a chat that needs the person sorts above newer quiet chats
+    /// in its group, and equal indicators keep recency.
+    #[test]
+    fn attention_orders_within_each_group() {
+        let mut rows = vec![
+            chat("idle new", 900, None),
+            chat("working", 800, Some("p")),
+            chat("asks", 100, Some("p")),
+            chat("stale", 700, None),
+            chat("done", 600, None),
+            chat("failed", 500, None),
+            chat("idle old", 50, None),
+            chat("pinned idle", 1_000, None),
+            chat("pinned asks", 10, None),
+            chat("archived asks", 5_000, None),
+        ];
+        rows[7].pinned = true;
+        rows[8].pinned = true;
+        rows[9].archived = true;
+        let indicator = |summary: &Summary| match summary.title.as_str() {
+            "working" => Indicator::Working,
+            "asks" | "pinned asks" | "archived asks" => Indicator::AwaitingInput,
+            "stale" => Indicator::Stale,
+            "done" => Indicator::Completed,
+            "failed" => Indicator::Errored,
+            _ => Indicator::Idle,
+        };
+        let mut listed = search(&rows, "");
+        by_attention(&mut listed, indicator);
+        let titles: Vec<&str> = listed.iter().map(|row| row.title.as_str()).collect();
+        assert_eq!(
+            titles,
+            [
+                "pinned asks",
+                "pinned idle",
+                "asks",
+                "failed",
+                "working",
+                "stale",
+                "done",
+                "idle new",
+                "idle old",
+                "archived asks",
+            ]
+        );
     }
 }
