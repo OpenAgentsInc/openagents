@@ -6677,6 +6677,108 @@
                 "effect": "local_write",
                 "runs_on": "connected_computer"
               }
+            },
+            {
+              "name": "pause",
+              "leaf": {
+                "path": [
+                  "studio",
+                  "seat",
+                  "pause"
+                ],
+                "usage": [
+                  "seat pause|resume|stop SEAT"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "seat"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "pause"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "SEAT"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Pause a seat (it keeps its task and takes no new one), resume it, or stop it: cancel its task, return that task to the board, and pause the seat.",
+                "effect": "publishes",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "resume",
+              "leaf": {
+                "path": [
+                  "studio",
+                  "seat",
+                  "resume"
+                ],
+                "usage": [
+                  "seat pause|resume|stop SEAT"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "seat"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "resume"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "SEAT"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Pause a seat (it keeps its task and takes no new one), resume it, or stop it: cancel its task, return that task to the board, and pause the seat.",
+                "effect": "publishes",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "stop",
+              "leaf": {
+                "path": [
+                  "studio",
+                  "seat",
+                  "stop"
+                ],
+                "usage": [
+                  "seat pause|resume|stop SEAT"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "seat"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "stop"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "SEAT"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Pause a seat (it keeps its task and takes no new one), resume it, or stop it: cancel its task, return that task to the board, and pause the seat.",
+                "effect": "publishes",
+                "runs_on": "connected_computer"
+              }
             }
           ]
         },
@@ -6725,7 +6827,7 @@
                     ]
                   }
                 ],
-                "summary": "Start a goal on an admitted workspace: its lead plans it.",
+                "summary": "Start a goal on an admitted workspace: its lead plans it. Goes through the running host when one answers.",
                 "effect": "publishes",
                 "runs_on": "connected_computer"
               }
@@ -6867,8 +6969,498 @@
                 ]
               }
             ],
-            "summary": "Message a seat, or every seat with `everyone`. A running task reads it now when its engine reads steering; otherwise its next briefing carries it.",
+            "summary": "Message a seat, or every seat with `everyone`. A running task reads it now when its engine reads steering; otherwise its next briefing carries it. Goes through the running host when one answers.",
             "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "status",
+          "leaf": {
+            "path": [
+              "studio",
+              "status"
+            ],
+            "usage": [
+              "status"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "status"
+                  }
+                ]
+              }
+            ],
+            "summary": "The studio on the running host: goals, each seat's activity, station, and task, and how many decisions wait.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "tasks",
+          "leaf": {
+            "path": [
+              "studio",
+              "tasks"
+            ],
+            "usage": [
+              "tasks [GOAL]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "tasks"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "GOAL",
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Every studio task, or one goal's: its identity, plan entry, seat, status, and the entries it waits on.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "log",
+          "leaf": {
+            "path": [
+              "studio",
+              "log"
+            ],
+            "usage": [
+              "log SEAT"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "log"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "SEAT"
+                  }
+                ]
+              }
+            ],
+            "summary": "The seat's log tail: what its engine did last.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "decisions",
+          "leaf": {
+            "path": [
+              "studio",
+              "decisions"
+            ],
+            "usage": [
+              "decisions"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "decisions"
+                  }
+                ]
+              }
+            ],
+            "summary": "The open decisions: questions, approvals with the step they ask to take, and goals waiting on a plan.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "answer",
+          "leaf": {
+            "path": [
+              "studio",
+              "answer"
+            ],
+            "usage": [
+              "answer DECISION [TEXT] [--file PATH] [--always]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "answer"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "DECISION"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "TEXT",
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "file",
+                    "value": "PATH",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "always",
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Answer a decision: `allow` or `deny` an approval, answer a question, or give a goal its plan (--file PATH, `-` for stdin). --always approves the step and keeps the standing rule the approval offers for its seat.",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "review",
+          "leaf": {
+            "path": [
+              "studio",
+              "review"
+            ],
+            "usage": [
+              "review TASK [--diff]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "review"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "TASK"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "diff",
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "The task's change: its revisions, files, and line counts; --diff prints the diff.",
+            "effect": "read_only",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "merge",
+          "leaf": {
+            "path": [
+              "studio",
+              "merge"
+            ],
+            "usage": [
+              "merge TASK [--head REV]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "merge"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "TASK"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "head",
+                    "value": "REV",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Merge the task's reviewed change into its checkout's branch. Nothing is pushed. --head refuses when the change moved past the revision you reviewed.",
+            "effect": "local_write",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "request-changes",
+          "leaf": {
+            "path": [
+              "studio",
+              "request-changes"
+            ],
+            "usage": [
+              "request-changes TASK TEXT [--head REV]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "request-changes"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "TASK"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "TEXT"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "head",
+                    "value": "REV",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Send the change back to the task's seat with TEXT.",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "reject",
+          "leaf": {
+            "path": [
+              "studio",
+              "reject"
+            ],
+            "usage": [
+              "reject TASK [REASON] [--head REV]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "reject"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "TASK"
+                  },
+                  {
+                    "kind": "positional",
+                    "name": "REASON",
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "head",
+                    "value": "REV",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Close the task; its worktree stays until it is archived.",
+            "effect": "publishes",
+            "runs_on": "connected_computer"
+          }
+        },
+        {
+          "name": "task",
+          "children": [
+            {
+              "name": "cancel",
+              "leaf": {
+                "path": [
+                  "studio",
+                  "task",
+                  "cancel"
+                ],
+                "usage": [
+                  "task cancel|retry|prioritize TASK"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "task"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "cancel"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "TASK"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Cancel a planned or running task, plan a failed or cancelled one again under a new identity, or move a planned task ahead of its goal's other planned tasks.",
+                "effect": "publishes",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "retry",
+              "leaf": {
+                "path": [
+                  "studio",
+                  "task",
+                  "retry"
+                ],
+                "usage": [
+                  "task cancel|retry|prioritize TASK"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "task"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "retry"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "TASK"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Cancel a planned or running task, plan a failed or cancelled one again under a new identity, or move a planned task ahead of its goal's other planned tasks.",
+                "effect": "publishes",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "prioritize",
+              "leaf": {
+                "path": [
+                  "studio",
+                  "task",
+                  "prioritize"
+                ],
+                "usage": [
+                  "task cancel|retry|prioritize TASK"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "task"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "prioritize"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "TASK"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Cancel a planned or running task, plan a failed or cancelled one again under a new identity, or move a planned task ahead of its goal's other planned tasks.",
+                "effect": "publishes",
+                "runs_on": "connected_computer"
+              }
+            },
+            {
+              "name": "reassign",
+              "leaf": {
+                "path": [
+                  "studio",
+                  "task",
+                  "reassign"
+                ],
+                "usage": [
+                  "task reassign TASK SEAT"
+                ],
+                "forms": [
+                  {
+                    "tokens": [
+                      {
+                        "kind": "literal",
+                        "word": "task"
+                      },
+                      {
+                        "kind": "literal",
+                        "word": "reassign"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "TASK"
+                      },
+                      {
+                        "kind": "positional",
+                        "name": "SEAT"
+                      }
+                    ]
+                  }
+                ],
+                "summary": "Give a planned task to another seat.",
+                "effect": "publishes",
+                "runs_on": "connected_computer"
+              }
+            }
+          ]
+        },
+        {
+          "name": "watch",
+          "leaf": {
+            "path": [
+              "studio",
+              "watch"
+            ],
+            "usage": [
+              "watch [--interval SECONDS] [--limit N]"
+            ],
+            "forms": [
+              {
+                "tokens": [
+                  {
+                    "kind": "literal",
+                    "word": "watch"
+                  },
+                  {
+                    "kind": "option",
+                    "name": "interval",
+                    "value": "SECONDS",
+                    "open": true,
+                    "optional": true
+                  },
+                  {
+                    "kind": "option",
+                    "name": "limit",
+                    "value": "N",
+                    "open": true,
+                    "optional": true
+                  }
+                ]
+              }
+            ],
+            "summary": "Print the studio, then each change as it happens: one JSON line each under --json. Stops after N lines.",
+            "effect": "long_running",
             "runs_on": "connected_computer"
           }
         },
@@ -7098,6 +7690,56 @@
         },
         {
           "kind": "option",
+          "name": "file",
+          "value": "PATH",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "always",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "diff",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "head",
+          "value": "REV",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "interval",
+          "value": "SECONDS",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "limit",
+          "value": "N",
+          "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "json",
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
           "name": "kind",
           "value": "KIND",
           "open": true,
@@ -7125,6 +7767,12 @@
           "name": "root",
           "value": "DIR",
           "open": true,
+          "optional": true,
+          "repeated": true
+        },
+        {
+          "kind": "option",
+          "name": "control",
           "optional": true,
           "repeated": true
         }

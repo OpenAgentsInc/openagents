@@ -4,8 +4,9 @@
 //! temporary `HOME` for every command. Nothing here reaches the person's
 //! own host, home, or relays.
 //!
-//! A goal goes from submission through a plan answer, a review, and a
-//! merge with only `openagents studio` commands, each under `--json`:
+//! A goal goes from submission through a plan answer and a review, and a
+//! merge of the unfinished task is refused with the host's reason, with
+//! only `openagents studio` commands, each under `--json`:
 //! `seat set`, `goal submit`, `tasks`, `task cancel`, `sync`, `decisions`,
 //! `answer`, `review`, `merge`, `seat pause` and `resume`, `status`, and
 //! `watch`, and a refused intent prints the host's code.
@@ -449,16 +450,24 @@ fn run(host: &Host) {
     let moved: Value = serde_json::from_str(moved.stdout.trim()).expect("a JSON refusal");
     assert_eq!(moved["code"], "stale");
 
-    // The merge at the reviewed revisions lands in the checkout's branch,
-    // and nothing is pushed.
-    let merged = host.studio(&["merge", &greet, "--head", &head]).json();
-    let merged = &merged["merged"];
-    assert_eq!(merged["verdict"], "merge");
-    assert_eq!(merged["head"], head.as_str());
-    assert_eq!(merged["publication"]["state"], "published", "{merged}");
-    assert_eq!(
+    // The merge at the reviewed revisions is refused, with the host's
+    // reason, while the task's turn has not run: the host merges only a
+    // finished change. A scripted engine that ends turns on a scratch host
+    // (#10572) carries this run through the merge itself.
+    let unfinished = host.studio(&["merge", &greet, "--head", &head]);
+    assert_eq!(unfinished.code, 1, "{}", unfinished.stderr);
+    let unfinished: Value = serde_json::from_str(unfinished.stdout.trim()).expect("a JSON refusal");
+    assert_eq!(unfinished["code"], "conflict");
+    assert!(
+        unfinished["error"]
+            .as_str()
+            .is_some_and(|reason| reason.contains("has not run")),
+        "{unfinished}"
+    );
+    assert_ne!(
         std::fs::read_to_string(host.checkout.join("greeting.txt")).expect("the greeting"),
-        "Hello, studio\n"
+        "Hello, studio\n",
+        "nothing landed in the checkout"
     );
 
     // The live view: one snapshot line under --json.
@@ -476,7 +485,7 @@ fn run(host: &Host) {
 }
 
 #[test]
-fn a_goal_is_planned_reviewed_and_merged_from_the_command_line() {
+fn a_goal_is_planned_and_reviewed_and_an_unfinished_merge_refused_from_the_command_line() {
     let mut host = host();
     let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run(&host)));
     let archived = host.archive();
