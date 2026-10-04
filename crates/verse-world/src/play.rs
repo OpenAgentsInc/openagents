@@ -150,6 +150,8 @@ pub struct Game {
     pub physics_clock: physics::FixedStep,
     pub physics_steps: u64,
     previous_player: Vec3,
+    #[serde(skip)]
+    player_trajectory: Vec<[f32; 3]>,
     previous_npc: BTreeMap<u64, Vec3>,
     #[serde(skip)]
     query_scene: physics::queries::Scene,
@@ -251,6 +253,37 @@ impl Game {
         }
         Ok(())
     }
+    pub fn player_life(&self) -> verse_engine::core::LifeId {
+        self.admission.actor()
+    }
+    pub(super) fn player_motion_segments(&self) -> usize {
+        self.player_trajectory.len().saturating_sub(1)
+    }
+    pub(super) fn player_motion_at(&self, fraction: f32) -> Vec3 {
+        if self.player_trajectory.len() < 2 {
+            return self.player;
+        }
+        let segment = fraction.clamp(0., 1.) * (self.player_trajectory.len() - 1) as f32;
+        let index = (segment.floor() as usize).min(self.player_trajectory.len() - 2);
+        Vec3::from(self.player_trajectory[index]).lerp(
+            Vec3::from(self.player_trajectory[index + 1]),
+            segment - index as f32,
+        )
+    }
+    pub(super) fn projectile_cover(
+        &self,
+        start: Vec3,
+        delta: Vec3,
+        radius: f64,
+    ) -> Result<Option<f64>, String> {
+        Ok(physics::kinematic::sweep_box(
+            start.as_dvec3(),
+            glam::DVec3::splat(radius),
+            delta.as_dvec3(),
+            &self.colliders,
+        )?
+        .map(|h| h.fraction))
+    }
     pub fn actor_life(&self, actor: u64) -> Option<verse_engine::core::LifeId> {
         self.lives.get(&actor).copied()
     }
@@ -259,8 +292,11 @@ impl Game {
         self.simulation.validate()?;
         self.bodies.validate()?;
         self.validate_body_bindings()?;
+        if let Some(encounter) = &self.encounter {
+            encounter.validate(self)?;
+        }
         let bytes = serde_json::to_vec(&serde_json::json!({
-            "version": 1, "rules_revision": "verse-chamber-owned-v8", "world": self,
+            "version": 1, "rules_revision": "verse-chamber-owned-v9", "world": self,
         }))
         .map_err(|e| e.to_string())?;
         if bytes.len() > 2 * 1024 * 1024 {
@@ -280,12 +316,15 @@ impl Game {
             return Err("World checkpoint budget exceeded".into());
         }
         let saved: Saved = serde_json::from_slice(bytes).map_err(|e| e.to_string())?;
-        if saved.version != 1 || saved.rules_revision != "verse-chamber-owned-v8" {
+        if saved.version != 1 || saved.rules_revision != "verse-chamber-owned-v9" {
             return Err("Unsupported world checkpoint".into());
         }
         let mut world = saved.world;
         world.bodies.validate()?;
         world.validate_body_bindings()?;
+        if let Some(encounter) = &world.encounter {
+            encounter.validate(&world)?;
+        }
         world.simulation.validate()?;
         world.controls.validate()?;
         world.blockers.validate()?;
@@ -940,6 +979,7 @@ impl Game {
             physics_clock: physics::FixedStep::new(1. / 120., 12),
             physics_steps: 0,
             previous_player: player,
+            player_trajectory: vec![],
             previous_npc: BTreeMap::new(),
             query_scene,
             events: vec![],
@@ -1284,6 +1324,7 @@ impl Game {
         let mut player_path = vec![];
         if self.colliders.is_empty() {
             self.player = self.move_player(self.player, delta)?;
+            player_path.extend([previous_player.to_array(), self.player.to_array()]);
         } else {
             if self.character.feet.as_vec3() != self.player {
                 self.character = physics::character::Character::new(self.player.as_dvec3());
@@ -1315,6 +1356,7 @@ impl Game {
         let travelled = self.player.distance(previous_player);
         self.motion_clock += travelled / speed;
         self.moving = travelled > 0.00001;
+        self.player_trajectory = player_path.clone();
         if player_path.len() >= 2 {
             self.simulation
                 .place_chamber_actor(0, self.player.to_array(), self.yaw)?;

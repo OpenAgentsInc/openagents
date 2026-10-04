@@ -312,10 +312,7 @@ pub fn combat_lighting(game: &super::play::Game) -> super::lighting::Lighting {
             let position = if game.time < cast.release {
                 cast.origin
             } else {
-                cast.origin.lerp(
-                    cast.target + Vec3::Y,
-                    ((game.time - cast.release) / (cast.impact - cast.release)).clamp(0.0, 1.0),
-                )
+                cast.position.unwrap_or(cast.origin)
             };
             let charge =
                 ((game.time - cast.started) / (cast.release - cast.started)).clamp(0.0, 1.0);
@@ -726,10 +723,7 @@ pub fn spell_instances(game: &super::play::Game) -> Vec<Instance> {
             let position = if game.time < cast.release {
                 cast.origin
             } else {
-                cast.origin.lerp(
-                    cast.target + Vec3::Y,
-                    ((game.time - cast.release) / (cast.impact - cast.release)).clamp(0.0, 1.0),
-                )
+                cast.position.unwrap_or(cast.origin)
             };
             let size = if cast.boss { 0.55 } else { 0.23 };
             out.push(Instance {

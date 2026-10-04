@@ -8,10 +8,13 @@ use verse_engine::director::{Action, Scene};
 pub struct EnemyCast {
     pub actor: u64,
     pub life: verse_engine::core::LifeId,
+    pub target_life: verse_engine::core::LifeId,
+    pub position: Option<Vec3>,
     pub origin: Vec3,
     pub target: Vec3,
     pub started: f32,
     pub release: f32,
+    /// Nominal area arrival; collision can resolve the flight sooner.
     pub impact: f32,
     pub damage: i32,
     pub radius: f32,
@@ -87,6 +90,52 @@ impl Game {
     }
 }
 impl Encounter {
+    pub fn validate(&self, game: &Game) -> Result<(), String> {
+        if self.casts.len() > 128
+            || self.positions.len() > 256
+            || self.ready.len() > 256
+            || self.released.len() > 256
+        {
+            return Err("Encounter checkpoint budget exceeded".into());
+        }
+        for cast in &self.casts {
+            if game.actor_life(cast.actor) != Some(cast.life)
+                || game.player_life() != cast.target_life
+                || !cast.origin.is_finite()
+                || cast.origin.abs().max_element() > 1_000_000.
+                || !cast.target.is_finite()
+                || cast.target.abs().max_element() > 1_000_000.
+                || !cast.started.is_finite()
+                || cast.started < 0.
+                || cast.started > game.time
+                || !cast.release.is_finite()
+                || cast.release < cast.started
+                || !cast.impact.is_finite()
+                || !(0.05..=6.).contains(&(cast.impact - cast.release))
+                || !(1..=10_000).contains(&cast.damage)
+                || !cast.radius.is_finite()
+                || !(0.05..=32.).contains(&cast.radius)
+                || cast
+                    .position
+                    .is_some_and(|p| !p.is_finite() || p.abs().max_element() > 1_000_000.)
+                || (cast.position.is_some() && game.time < cast.release)
+            {
+                return Err("Invalid hostile projectile checkpoint".into());
+            }
+            if let Some(position) = cast.position {
+                let fraction =
+                    ((game.time - cast.release) / (cast.impact - cast.release)).clamp(0., 1.);
+                let expected = cast.origin.lerp(cast.target + Vec3::Y, fraction);
+                if position.distance(expected) > 0.002 {
+                    return Err("Hostile projectile position disagrees with its flight".into());
+                }
+            } else if game.time >= cast.release {
+                return Err("Released hostile projectile has no position".into());
+            }
+        }
+        Ok(())
+    }
+
     /// Delays new hostile casts for a bounded local scene fixture.
     pub fn postpone_casts_until(&mut self, until: f32) -> Result<(), String> {
         if !until.is_finite() || !(0. ..=600.).contains(&until) {
@@ -155,8 +204,10 @@ impl Encounter {
             });
         }
         let mut keep = Vec::new();
-        for cast in self.casts.drain(..) {
-            if game.actor_life(cast.actor) != Some(cast.life) {
+        for mut cast in self.casts.drain(..) {
+            if game.actor_life(cast.actor) != Some(cast.life)
+                || game.player_life() != cast.target_life
+            {
                 continue;
             }
             let source = frame.actors.iter().find(|a| a.actor.id == cast.actor);
@@ -165,13 +216,91 @@ impl Encounter {
             if interrupted && game.time < cast.release {
                 continue;
             }
-            if game.time >= cast.release {
-                self.released.insert(cast.actor, cast.release);
+            if game.time < cast.release {
+                keep.push(cast);
+                continue;
             }
+            self.released.insert(cast.actor, cast.release);
+            let command_start = game.time - dt;
+            let begin = if cast.position.is_none() {
+                cast.release
+            } else {
+                command_start.max(cast.release)
+            };
+            let end = game.time.min(cast.impact);
+            let velocity = (cast.target + Vec3::Y - cast.origin) / (cast.impact - cast.release);
+            let duration = (end - begin).max(0.);
+            let steps = (duration * 120.).ceil().max(1.) as usize;
+            let radius = if cast.boss { 0.18 } else { 0.08 };
+            let mut position = cast.position.unwrap_or(cast.origin);
+            let mut resolved = false;
+            let mut boundaries: Vec<f32> = (0..=steps)
+                .map(|step| begin + duration * step as f32 / steps as f32)
+                .collect();
+            let segments = game.player_motion_segments();
+            if segments > 1 {
+                boundaries.extend(
+                    (1..segments)
+                        .map(|step| command_start + dt * step as f32 / segments as f32)
+                        .filter(|at| *at > begin && *at < end),
+                );
+            }
+            boundaries.sort_by(f32::total_cmp);
+            boundaries.dedup();
+            if duration == 0. {
+                boundaries.push(begin);
+            }
+            for window in boundaries.windows(2) {
+                let (at, until) = (window[0], window[1]);
+                let delta = velocity * (until - at);
+                let from = if dt > 0. {
+                    (at - command_start) / dt
+                } else {
+                    1.
+                };
+                let to = if dt > 0. {
+                    (until - command_start) / dt
+                } else {
+                    1.
+                };
+                let wall = game.projectile_cover(position, delta, radius)?;
+                let hit = physics::continuous::sphere_capsule(
+                    position.as_dvec3(),
+                    (position + delta).as_dvec3(),
+                    radius,
+                    game.player_motion_at(from).as_dvec3(),
+                    game.player_motion_at(to).as_dvec3(),
+                    0.35,
+                    1.8,
+                )?;
+                if hit.is_some_and(|t| wall.is_none_or(|w| t < w)) {
+                    let (damage, absorbed) = game.hostile_hit(cast.damage)?;
+                    self.damage += damage;
+                    self.absorbed += absorbed;
+                    resolved = true;
+                    break;
+                }
+                if wall.is_some() {
+                    self.dodged += 1;
+                    resolved = true;
+                    break;
+                }
+                position += delta;
+            }
+            if resolved {
+                continue;
+            }
+            cast.position = Some(position);
             if game.time >= cast.impact {
-                let delta = game.player - cast.target;
-                if Vec3::new(delta.x, 0.0, delta.z).length() <= cast.radius
-                    && game.attack_clear(cast.origin, game.player + Vec3::Y * 1.4)
+                let fraction = if dt > 0. {
+                    (cast.impact - command_start) / dt
+                } else {
+                    1.
+                };
+                let player = game.player_motion_at(fraction);
+                let delta = player - cast.target;
+                if Vec3::new(delta.x, 0., delta.z).length() <= cast.radius
+                    && game.attack_clear(position, player + Vec3::Y * 1.4)
                 {
                     let (damage, absorbed) = game.hostile_hit(cast.damage)?;
                     self.damage += damage;
@@ -222,7 +351,11 @@ impl Encounter {
                     dt * if actor.actor.id % 3 == 0 { 1.8 } else { 0.9 },
                 )?;
             }
-            if blocked || casting || game.time < self.ready[&actor.actor.id] {
+            if self.casts.len() >= 128
+                || blocked
+                || casting
+                || game.time < self.ready[&actor.actor.id]
+            {
                 continue;
             }
             let origin = actor.actor.position + Vec3::Y * if boss { 4.0 } else { 1.4 };
@@ -236,6 +369,8 @@ impl Encounter {
                 life: game
                     .actor_life(actor.actor.id)
                     .ok_or("Missing hostile life")?,
+                target_life: game.player_life(),
+                position: None,
                 origin,
                 target: game.player,
                 started: game.time,
@@ -664,6 +799,8 @@ mod obstruction_tests {
         encounter.casts.push(EnemyCast {
             actor: 2,
             life: game.actor_life(2).unwrap(),
+            target_life: game.player_life(),
+            position: None,
             origin: Vec3::new(17., 1.4, -13.),
             target: game.player,
             started: 19.,
@@ -715,5 +852,92 @@ mod obstruction_tests {
             .find(|a| a.actor.id == 2)
             .unwrap();
         assert!((cultist.actor.position.z + 13.).abs() > 1.);
+    }
+}
+
+#[cfg(test)]
+mod hostile_flight_tests {
+    use super::*;
+    fn game() -> Game {
+        let mut g = Game::combat(
+            Scene::from_json(include_bytes!("../../../assets/verse/original/ritual.json")).unwrap(),
+            false,
+        )
+        .unwrap();
+        g.time = 21.;
+        g.player = Vec3::new(0., 0., 0.);
+        g
+    }
+    fn shot(g: &Game) -> EnemyCast {
+        EnemyCast {
+            actor: 2,
+            life: g.actor_life(2).unwrap(),
+            target_life: g.player_life(),
+            position: None,
+            origin: Vec3::new(0., 1.1, -4.),
+            target: Vec3::ZERO,
+            started: 20.,
+            release: 20.5,
+            impact: 21.5,
+            damage: 8,
+            radius: 1.6,
+            boss: false,
+        }
+    }
+    #[test]
+    fn actual_hostile_flight_hits_before_scheduled_area_time_and_only_once() {
+        let mut g = game();
+        let mut e = g.encounter.take().unwrap();
+        e.postpone_casts_until(100.).unwrap();
+        e.casts.push(shot(&g));
+        e.step(&mut g, 0.1).unwrap();
+        assert_eq!(g.snapshot().player.hp, 100);
+        for at in [21.1, 21.2, 21.3, 21.4] {
+            g.time = at;
+            e.step(&mut g, 0.1).unwrap();
+        }
+        assert_eq!(g.snapshot().player.hp, 92);
+        assert!(e.casts.is_empty());
+        g.time = 21.5;
+        e.step(&mut g, 0.1).unwrap();
+        assert_eq!(g.snapshot().player.hp, 92);
+    }
+    #[test]
+    fn hostile_flight_shield_and_target_life_fences_precede_damage() {
+        let mut g = game();
+        let mut e = g.encounter.take().unwrap();
+        e.postpone_casts_until(100.).unwrap();
+        let mut stale = shot(&g);
+        stale.target_life.generation += 1;
+        e.casts.push(stale);
+        e.step(&mut g, 0.1).unwrap();
+        assert!(e.casts.is_empty());
+        assert_eq!(g.snapshot().player.hp, 100);
+        g.activate(Ability::Shield).unwrap();
+        e.casts.push(shot(&g));
+        e.step(&mut g, 0.1).unwrap();
+        for at in [21.1, 21.2, 21.3, 21.4] {
+            g.time = at;
+            e.step(&mut g, 0.1).unwrap();
+        }
+        assert_eq!(g.snapshot().player.hp, 100);
+        assert_eq!(e.absorbed, 8);
+        assert!(e.casts.is_empty());
+    }
+    #[test]
+    fn stored_hostile_position_replays_and_forged_flight_is_refused() {
+        let mut g = game();
+        let mut e = g.encounter.take().unwrap();
+        e.postpone_casts_until(100.).unwrap();
+        e.casts.push(shot(&g));
+        e.step(&mut g, 0.1).unwrap();
+        assert!(e.casts[0].position.is_some());
+        g.encounter = Some(e);
+        let bytes = g.checkpoint().unwrap();
+        let restored = Game::restore(&bytes).unwrap();
+        assert_eq!(bytes, restored.checkpoint().unwrap());
+        let mut forged: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        forged["world"]["encounter"]["casts"][0]["position"] = serde_json::json!([100., 1., 0.]);
+        assert!(Game::restore(&serde_json::to_vec(&forged).unwrap()).is_err());
     }
 }

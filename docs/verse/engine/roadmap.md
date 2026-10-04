@@ -142,7 +142,12 @@ or mismatched bounds. The `verse-chamber-owned-v8` profile replaces scheduled bo
 non-homing arrows in the shared continuous projectile path. Arrows collide with
 the first actor or cover, can miss moving targets, expire, and retain exact
 in-flight replay. Presentation uses the arrow mesh without spell emission.
-Live-body contacts, unified clock ownership, and hostile projectile integration
+The `verse-chamber-owned-v9` profile advances stored hostile flights against
+player controller trajectories and cover. Capsule contact can resolve before
+nominal area arrival; area impacts sample the player at impact time. Shields
+use the shared damage path, and checkpoints validate source and target lives
+and stored flight positions.
+Live-body contacts and unified clock ownership
 remain VE-2 work. Renderer lighting and overlapping nameplates
 remain visual work.
 
