@@ -3,6 +3,7 @@
 //! The director has no keyboard or chat-input path. It emits typed scene events
 //! and presentation state from simulation time. Directed impacts do not claim
 //! multiplayer authority or implement the complete WoW combat rules.
+use crate::motion::{Selection, State};
 use glam::{Mat4, Vec3};
 use serde::{Deserialize, Serialize};
 
@@ -20,7 +21,7 @@ pub struct Actor {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Action {
-    Yell { text: String, animation: u16 },
+    Yell { text: String, animation: Selection },
     CameraCut,
     Bow { target: u64, damage: u32 },
 }
@@ -45,7 +46,8 @@ pub struct Scene {
 #[derive(Clone, Debug)]
 pub struct ActorFrame {
     pub actor: Actor,
-    pub animation: u16,
+    pub life: Option<crate::core::LifeId>,
+    pub animation: Selection,
     pub animation_time: f32,
     pub visible: bool,
     pub health: u32,
@@ -186,16 +188,32 @@ impl Scene {
         let mut actors = Vec::new();
         for a in &self.actors {
             let actor = self.actor_at(a, time);
-            let mut animation = 0;
+            let mut animation = Selection::Legacy(0);
+            if self.collision_profile.as_deref() == Some("original-chamber-v1") {
+                animation = State::Idle.into();
+            }
             let mut animation_time = time + a.id as f32 * 0.19;
             if actor.model.starts_with("cultist")
                 && time > self.cut_at + 2.0
                 && time < self.cut_at + 7.0
             {
-                animation = 5;
+                animation = if self.collision_profile.as_deref() == Some("original-chamber-v1") {
+                    State::Run.into()
+                } else {
+                    5.into()
+                };
             }
             if actor.model == "adventurer" {
-                animation = if time < self.cut_at + 4.0 { 5 } else { 109 };
+                animation = if self.collision_profile.as_deref() == Some("original-chamber-v1") {
+                    if time < self.cut_at + 4.0 {
+                        State::Run
+                    } else {
+                        State::BowReady
+                    }
+                    .into()
+                } else {
+                    Selection::Legacy(if time < self.cut_at + 4.0 { 5 } else { 109 })
+                };
             }
             if let Some(c) = self
                 .cues
@@ -211,7 +229,12 @@ impl Scene {
                         animation_time = time - c.at;
                     }
                     Action::Bow { .. } => {
-                        animation = 46;
+                        animation =
+                            if self.collision_profile.as_deref() == Some("original-chamber-v1") {
+                                State::BowRelease.into()
+                            } else {
+                                46.into()
+                            };
                         animation_time = (time - c.at).min(0.65);
                     }
                     _ => {}
@@ -225,6 +248,7 @@ impl Scene {
             actors.push(ActorFrame {
                 visible: a.model != "adventurer" || time >= self.cut_at,
                 actor,
+                life: None,
                 animation,
                 animation_time,
                 health: a.health.saturating_sub(damage),

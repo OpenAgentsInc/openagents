@@ -3,6 +3,7 @@
 //! This crate owns no transport, credentials, GPU, or realm authority. Positions
 //! use Verse meters and Y-up axes. The adapter preserves authoritative IDs and
 //! refuses malformed snapshots before presentation consumes them.
+pub mod motion;
 use glam::Vec3;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;

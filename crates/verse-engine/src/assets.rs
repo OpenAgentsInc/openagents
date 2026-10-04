@@ -73,8 +73,40 @@ pub struct Skin {
     pub inverse_bind: Vec<[f32; 16]>,
     pub basis: [f32; 16],
 }
+fn read_states<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<BTreeMap<crate::motion::State, crate::motion::Binding>, D::Error> {
+    struct States;
+    impl<'de> serde::de::Visitor<'de> for States {
+        type Value = BTreeMap<crate::motion::State, crate::motion::Binding>;
+        fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            formatter.write_str("unique named animation bindings")
+        }
+        fn visit_map<M: serde::de::MapAccess<'de>>(
+            self,
+            mut map: M,
+        ) -> Result<Self::Value, M::Error> {
+            let mut states = BTreeMap::new();
+            while let Some((state, binding)) = map.next_entry()? {
+                if states.insert(state, binding).is_some() {
+                    return Err(serde::de::Error::custom(
+                        "Duplicate animation state binding",
+                    ));
+                }
+            }
+            Ok(states)
+        }
+    }
+    deserializer.deserialize_map(States)
+}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Model {
+    #[serde(
+        default,
+        deserialize_with = "read_states",
+        skip_serializing_if = "BTreeMap::is_empty"
+    )]
+    pub states: BTreeMap<crate::motion::State, crate::motion::Binding>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub skin: Option<Skin>,
     pub source: String,
@@ -148,6 +180,20 @@ impl Pack {
         }
         let mut vertices = 0;
         for model in self.models.values() {
+            let mut ids = std::collections::BTreeSet::new();
+            let duplicate_ids = model
+                .clips
+                .iter()
+                .fold(false, |duplicate, clip| !ids.insert(clip.id) || duplicate);
+            if !model.states.is_empty() && duplicate_ids
+                || model.states.values().any(|binding| {
+                    !ids.contains(&binding.clip)
+                        || !binding.transition_seconds.is_finite()
+                        || !(0. ..=2.).contains(&binding.transition_seconds)
+                })
+            {
+                return Err("Invalid semantic animation bindings".into());
+            }
             if let Some(skin) = &model.skin {
                 if skin.names.len() != model.bones.len()
                     || skin.rest.len() != model.bones.len()
@@ -213,6 +259,10 @@ impl Pack {
                 }
             }
             for clip in &model.clips {
+                let mut tracks = std::collections::BTreeSet::new();
+                if clip.bones.iter().any(|keys| !tracks.insert(keys.bone)) {
+                    return Err("Duplicate animation bone track".into());
+                }
                 if !clip.duration.is_finite()
                     || clip.duration <= 0.0
                     || clip.bones.iter().any(|k| k.bone >= model.bones.len())
@@ -252,6 +302,7 @@ mod tests {
             models: BTreeMap::from([(
                 "room".into(),
                 Model {
+                    states: Default::default(),
                     skin: None,
                     source: String::new(),
                     source_sha256: String::new(),
@@ -278,5 +329,61 @@ mod tests {
         assert!(pack.validate().is_err());
         pack.models.get_mut("room").unwrap().bones[0].parent = -1;
         assert!(pack.validate().is_ok());
+        use crate::motion::{Binding, Mode, State};
+        let model = pack.models.get_mut("room").unwrap();
+        model.states.insert(
+            State::Idle,
+            Binding {
+                clip: 421,
+                mode: Mode::Loop,
+                transition_seconds: 0.22,
+            },
+        );
+        assert!(pack.validate().is_err());
+        pack.models.get_mut("room").unwrap().clips.push(Clip {
+            id: 421,
+            duration: 1.,
+            bones: vec![],
+        });
+        assert!(pack.validate().is_ok());
+        let duplicate = pack.models["room"].clips[0].clone();
+        pack.models.get_mut("room").unwrap().clips.push(duplicate);
+        assert!(pack.validate().is_err());
+        pack.models.get_mut("room").unwrap().clips.pop();
+        pack.models
+            .get_mut("room")
+            .unwrap()
+            .states
+            .get_mut(&State::Idle)
+            .unwrap()
+            .transition_seconds = f32::NAN;
+        assert!(pack.validate().is_err());
+        let model = pack.models.get_mut("room").unwrap();
+        model
+            .states
+            .get_mut(&State::Idle)
+            .unwrap()
+            .transition_seconds = 0.22;
+        let track = BoneKeys {
+            bone: 0,
+            translation: vec![],
+            rotation: vec![],
+            scale: vec![],
+        };
+        model.clips[0].bones = vec![track.clone(), track];
+        assert!(pack.validate().is_err());
+    }
+    #[test]
+    fn duplicate_semantic_names_are_refused_during_decoding() {
+        let body = r#""skin":null,"source":"test","source_sha256":"","surfaces":[],"bones":[],"clips":[],"height":1,"attachments":[]"#;
+        let binding = r#"{"clip":7,"mode":"hold","transition_seconds":0.12}"#;
+        let json = format!("{{\"states\":{{\"death\":{binding},\"death\":{binding}}},{body}}}");
+        let error = serde_json::from_str::<Model>(&json)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("Duplicate animation state binding"),
+            "{error}"
+        );
     }
 }

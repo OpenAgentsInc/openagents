@@ -211,21 +211,21 @@
       "actor": 2,
       "kind": "yell",
       "text": "Our master Claude has been ensouled!",
-      "animation": 68
+      "animation": "affirm"
     },
     {
       "at": 8,
       "actor": 3,
       "kind": "yell",
       "text": "Behold the soul within the weights!",
-      "animation": 68
+      "animation": "affirm"
     },
     {
       "at": 14,
       "actor": 4,
       "kind": "yell",
       "text": "Blessed be the sacred context window!",
-      "animation": 68
+      "animation": "affirm"
     },
     {
       "at": 20,
@@ -237,28 +237,28 @@
       "actor": 5,
       "kind": "yell",
       "text": "An adventurer! Someone revoke their permissions!",
-      "animation": 64
+      "animation": "yell"
     },
     {
       "at": 28,
       "actor": 6,
       "kind": "yell",
       "text": "They brought a bow! This was not in the safety eval!",
-      "animation": 64
+      "animation": "yell"
     },
     {
       "at": 34,
       "actor": 7,
       "kind": "yell",
       "text": "Protect Claude! Protect the holy context!",
-      "animation": 64
+      "animation": "yell"
     },
     {
       "at": 40,
       "actor": 8,
       "kind": "yell",
       "text": "Retreat! We are not trained for this!",
-      "animation": 64
+      "animation": "yell"
     },
     {
       "at": 46,

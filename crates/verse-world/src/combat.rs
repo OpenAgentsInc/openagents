@@ -67,7 +67,7 @@ impl Game {
             actor: 3,
             action: Action::Yell {
                 text: "Seal the chamber! Protect our ensouled master!".into(),
-                animation: 60,
+                animation: verse_engine::motion::State::Yell.into(),
             },
         });
         let mut game = Self::new(scene)?;
@@ -177,7 +177,7 @@ impl Encounter {
                     actor: 1,
                     action: Action::Yell {
                         text: "So close, adventurer. Yet the soul persists.".into(),
-                        animation: 60,
+                        animation: verse_engine::motion::State::Yell.into(),
                     },
                 });
             }
@@ -199,7 +199,7 @@ impl Encounter {
                 actor: 1,
                 action: Action::Yell {
                     text: "You almost unmade me. Now face my full wrath!".into(),
-                    animation: 60,
+                    animation: verse_engine::motion::State::Yell.into(),
                 },
             });
         }
@@ -588,14 +588,18 @@ mod tests {
                     && a.health > 0
                     && game.encounter.as_ref().is_some_and(|e| e.ended.is_none())
                 {
-                    assert_ne!(a.animation, 0, "Living cultist must keep a combat pose");
+                    assert_ne!(
+                        a.animation,
+                        verse_engine::motion::State::Idle.into(),
+                        "Living cultist must keep a combat pose"
+                    );
                 }
-                walked |= a.animation == 4;
-                cast |= a.animation == 52;
+                walked |= a.animation == verse_engine::motion::State::Walk.into();
+                cast |= a.animation == verse_engine::motion::State::Cast.into();
                 if a.health > 0 {
                     deaths.remove(&a.actor.id);
                 }
-                if a.animation == 1 {
+                if a.animation == verse_engine::motion::State::Death.into() {
                     saw_death = true;
                     assert!(a.visible, "Corpse must survive ECS removal");
                     assert!(!a.actor.nameplate, "Corpse must hide its nameplate");

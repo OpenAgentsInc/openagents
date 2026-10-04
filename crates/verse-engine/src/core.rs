@@ -2,7 +2,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Persistent actor identity within one world instance, fenced by life generation.
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash, Serialize, Deserialize)]
 pub struct LifeId {
     pub instance: u64,
     pub actor: u64,

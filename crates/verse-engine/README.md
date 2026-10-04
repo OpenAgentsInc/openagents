@@ -2,7 +2,7 @@
 
 This headless crate owns generation-safe entity storage and life identities,
 a bounded fixed-step schedule, the version-one asset pack, skeleton sampling and
-crossfades, and deterministic cinematic director. The native original chamber
+crossfades, named animation states and compiled playback bindings, and a deterministic cinematic director. The native original chamber
 and renderer use these contracts directly. It has no GPU, platform, game rules,
 transport, or credential dependency.
 
@@ -15,3 +15,5 @@ schema revision.
 
 Game authority, physics integration, persistence, and multiplayer are separate
 boundaries on the [roadmap](../../docs/verse/engine/roadmap.md).
+
+Original scenes select semantic states instead of source clip numbers. Each model declares its clip reference, loop or hold behavior, and transition duration. Playback blends local transforms and resets when the actor life changes. Numeric selection remains an explicit compatibility path for retained research packs.

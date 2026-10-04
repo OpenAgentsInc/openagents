@@ -1,5 +1,8 @@
-//! Continuous skeletal animation evaluated from imported source keyframes.
-use crate::assets::Model;
+//! Skeletal pose evaluation and interruptible local-space playback.
+use crate::{
+    assets::Model,
+    motion::{Binding, Mode, Selection},
+};
 use glam::{Mat4, Quat, Vec3};
 
 fn pair<const N: usize>(
@@ -33,16 +36,12 @@ struct Local {
     rotation: Quat,
     scale: Vec3,
 }
-fn sample(model: &Model, animation: u16, time: f32) -> Vec<Local> {
-    let clip = model
-        .clips
-        .iter()
-        .find(|c| c.id == animation)
-        .or_else(|| model.clips.iter().find(|c| c.id == 0));
+fn sample(model: &Model, binding: Binding, time: f32) -> Vec<Local> {
+    let clip = model.clips.iter().find(|c| c.id == binding.clip);
     let time = clip.map_or(0.0, |c| {
         if !time.is_finite() || c.duration <= 0.0 {
             0.0
-        } else if c.id == 1 {
+        } else if binding.mode == Mode::Hold {
             time.clamp(0.0, c.duration)
         } else {
             time.max(0.0) % c.duration
@@ -112,36 +111,115 @@ fn matrices(model: &Model, locals: &[Local]) -> Vec<Mat4> {
     }
     result
 }
-/// Produce model-space skin matrices; a missing clip uses the rest pose.
+/// Samples retained numeric clips, with the legacy idle/rest fallback.
 pub fn pose(model: &Model, animation: u16, time: f32) -> Vec<Mat4> {
-    matrices(model, &sample(model, animation, time))
+    matrices(
+        model,
+        &sample(model, resolve(model, animation.into()).unwrap(), time),
+    )
+}
+fn resolve(model: &Model, selection: Selection) -> Result<Binding, String> {
+    match selection {
+        Selection::Named(state) => {
+            let binding = model
+                .states
+                .get(&state)
+                .copied()
+                .ok_or_else(|| format!("Missing animation state: {state:?}"))?;
+            if !model.clips.iter().any(|clip| clip.id == binding.clip) {
+                return Err(format!("Missing clip for animation state: {state:?}"));
+            }
+            Ok(binding)
+        }
+        Selection::Legacy(id) => Ok(Binding {
+            clip: model
+                .clips
+                .iter()
+                .find(|c| c.id == id)
+                .or_else(|| model.clips.iter().find(|c| c.id == 0))
+                .map_or(id, |c| c.id),
+            mode: if id == 1 { Mode::Hold } else { Mode::Loop },
+            transition_seconds: if id == 1 { 0.12 } else { 0.22 },
+        }),
+    }
+}
+/// Samples a declared semantic binding; missing states are explicit errors.
+pub fn pose_selected(model: &Model, selection: Selection, time: f32) -> Result<Vec<Mat4>, String> {
+    if !time.is_finite() || time < 0. {
+        return Err("Invalid animation sample time".into());
+    }
+    Ok(matrices(
+        model,
+        &sample(model, resolve(model, selection)?, time),
+    ))
+}
+fn valid_time(time: f32, clock: f32) -> Result<(), String> {
+    if !time.is_finite() || time < 0. || !clock.is_finite() || clock < 0. {
+        return Err("Invalid animation playback time".into());
+    }
+    Ok(())
 }
 /// Interruptible clip blending in local space, before parent transforms accumulate.
 #[derive(Default)]
 pub struct Playback {
-    clip: Option<u16>,
+    life: Option<crate::core::LifeId>,
+    clip: Option<Selection>,
     clock: f32,
     changed: f32,
     from: Vec<Local>,
     current: Vec<Local>,
 }
 impl Playback {
+    /// Compatibility playback for retained numeric clips.
     pub fn update(&mut self, model: &Model, animation: u16, time: f32, clock: f32) -> Vec<Mat4> {
-        let target = sample(model, animation, time);
+        self.update_selected(model, animation.into(), time, clock)
+            .unwrap()
+    }
+    /// A new actor life starts from its requested pose, regardless of the old corpse pose.
+    pub fn update_for_life(
+        &mut self,
+        life: crate::core::LifeId,
+        model: &Model,
+        selection: Selection,
+        time: f32,
+        clock: f32,
+    ) -> Result<Vec<Mat4>, String> {
+        // Validate before changing the retained life or pose.
+        valid_time(time, clock)?;
+        resolve(model, selection)?;
+        if self.life != Some(life) {
+            *self = Self::default();
+            self.life = Some(life);
+        }
+        self.update_selected(model, selection, time, clock)
+    }
+    pub fn update_selected(
+        &mut self,
+        model: &Model,
+        selection: Selection,
+        time: f32,
+        clock: f32,
+    ) -> Result<Vec<Mat4>, String> {
+        valid_time(time, clock)?;
+        let binding = resolve(model, selection)?;
+        let target = sample(model, binding, time);
         if self.current.len() != target.len() || clock < self.clock {
             self.clip = None;
             self.current = target.clone();
         }
-        if self.clip != Some(animation) {
+        if self.clip != Some(selection) {
             self.from = self.current.clone();
             self.changed = clock;
             if self.clip.is_none() {
-                self.changed -= 0.25;
+                self.changed -= binding.transition_seconds;
             }
-            self.clip = Some(animation);
+            self.clip = Some(selection);
         }
-        let duration = if animation == 1 { 0.12 } else { 0.22 };
-        let f = ((clock - self.changed) / duration).clamp(0.0, 1.0);
+        let f = if binding.transition_seconds == 0. {
+            1.
+        } else {
+            ((clock - self.changed) / binding.transition_seconds).clamp(0., 1.)
+        };
         let f = f * f * (3.0 - 2.0 * f);
         self.current = self
             .from
@@ -154,7 +232,7 @@ impl Playback {
             })
             .collect();
         self.clock = clock;
-        matrices(model, &self.current)
+        Ok(matrices(model, &self.current))
     }
 }
 #[cfg(test)]
@@ -171,6 +249,7 @@ mod tests {
         };
         let basis = Mat4::from_rotation_x(0.7) * Mat4::from_scale(Vec3::splat(2.));
         let mut model = Model {
+            states: Default::default(),
             source: String::new(),
             source_sha256: String::new(),
             height: 2.,
@@ -232,6 +311,7 @@ mod tests {
     #[test]
     fn interrupted_transitions_preserve_pose_and_rotation_length() {
         let model = Model {
+            states: Default::default(),
             skin: None,
             source: String::new(),
             source_sha256: String::new(),
@@ -275,6 +355,7 @@ mod tests {
     #[test]
     fn death_holds_the_final_pose_while_idle_keeps_looping() {
         let mut model = Model {
+            states: Default::default(),
             skin: None,
             source: String::new(),
             source_sha256: String::new(),
@@ -305,6 +386,7 @@ mod tests {
     #[test]
     fn child_inherits_interpolated_parent_motion() {
         let model = Model {
+            states: Default::default(),
             skin: None,
             source: String::new(),
             source_sha256: String::new(),
@@ -333,5 +415,131 @@ mod tests {
             }],
         };
         assert!((pose(&model, 0, 1.0)[1].transform_point3(Vec3::ZERO) - Vec3::X).length() < 1e-5);
+    }
+}
+
+#[cfg(test)]
+mod semantic_tests {
+    use super::*;
+    use crate::{
+        assets::{Bone, BoneKeys, Clip},
+        core::LifeId,
+        motion::State,
+    };
+    fn model() -> Model {
+        Model {
+            states: std::collections::BTreeMap::from([
+                (
+                    State::Idle,
+                    Binding {
+                        clip: 402,
+                        mode: Mode::Loop,
+                        transition_seconds: 0.4,
+                    },
+                ),
+                (
+                    State::Walk,
+                    Binding {
+                        clip: 403,
+                        mode: Mode::Loop,
+                        transition_seconds: 0.4,
+                    },
+                ),
+                (
+                    State::Death,
+                    Binding {
+                        clip: 404,
+                        mode: Mode::Hold,
+                        transition_seconds: 0.1,
+                    },
+                ),
+            ]),
+            skin: None,
+            source: "test/semantic".into(),
+            source_sha256: String::new(),
+            height: 1.,
+            surfaces: vec![],
+            attachments: vec![],
+            bones: vec![Bone {
+                parent: -1,
+                pivot: [0.; 3],
+            }],
+            clips: [(402, 0.), (403, 2.), (404, 4.)]
+                .into_iter()
+                .map(|(id, end)| Clip {
+                    id,
+                    duration: 1.,
+                    bones: vec![BoneKeys {
+                        bone: 0,
+                        translation: vec![(0., [0.; 3]), (1., [end, 0., 0.])],
+                        rotation: vec![],
+                        scale: vec![],
+                    }],
+                })
+                .collect(),
+        }
+    }
+    #[test]
+    fn semantic_resolution_uses_declared_ids_modes_and_transition_duration() {
+        let m = model();
+        assert_eq!(
+            pose_selected(&m, State::Death.into(), 5.).unwrap()[0]
+                .w_axis
+                .x,
+            4.
+        );
+        assert_eq!(
+            pose_selected(&m, State::Walk.into(), 1.5).unwrap()[0]
+                .w_axis
+                .x,
+            1.
+        );
+        assert!(pose_selected(&m, State::Cast.into(), 0.).is_err());
+        let life = LifeId {
+            instance: 9,
+            actor: 17,
+            generation: 0,
+        };
+        let mut p = Playback::default();
+        p.update_for_life(life, &m, State::Idle.into(), 0., 0.)
+            .unwrap();
+        p.update_for_life(life, &m, State::Walk.into(), 0.5, 1.)
+            .unwrap();
+        let middle = p
+            .update_for_life(life, &m, State::Walk.into(), 0.5, 1.2)
+            .unwrap()[0];
+        assert!((middle.w_axis.x - 0.5).abs() < 1e-5);
+        let interrupted = p
+            .update_for_life(life, &m, State::Death.into(), 1., 1.2)
+            .unwrap()[0];
+        assert!(interrupted.abs_diff_eq(middle, 1e-5));
+        assert_eq!(
+            p.update_for_life(life, &m, State::Death.into(), 4., 1.4)
+                .unwrap()[0]
+                .w_axis
+                .x,
+            4.
+        );
+        let revived = p
+            .update_for_life(life.next().unwrap(), &m, State::Idle.into(), 0., 1.4)
+            .unwrap()[0];
+        assert_eq!(revived.w_axis.x, 0.);
+        let mut bad = m.clone();
+        bad.states.get_mut(&State::Walk).unwrap().clip = 600;
+        assert!(pose_selected(&bad, State::Walk.into(), 0.).is_err());
+    }
+    #[test]
+    fn legacy_json_and_numeric_sampling_remain_an_explicit_compatibility_path() {
+        assert_eq!(
+            serde_json::from_str::<Selection>("52").unwrap(),
+            Selection::Legacy(52)
+        );
+        assert_eq!(
+            serde_json::from_str::<Selection>("\"cast\"").unwrap(),
+            State::Cast.into()
+        );
+        assert!(serde_json::from_str::<Selection>("\"unknown_state\"").is_err());
+        let m = model();
+        assert_eq!(pose(&m, 403, 0.5)[0].w_axis.x, 1.);
     }
 }

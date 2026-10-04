@@ -27,7 +27,7 @@ fn main() -> Result<(), String> {
                     Quat::from_array(p.rotation),
                     p.position.into(),
                 ),
-            animation: 0,
+            animation: 0.into(),
             time: 0.0,
             emission: if pack.models[&p.model]
                 .source
@@ -127,7 +127,7 @@ fn main() -> Result<(), String> {
                 1280.0,
                 720.0,
             );
-            let pixels = renderer.draw(view, &instances(&pack, &frame), &ui, &lighting)?;
+            let pixels = renderer.draw(view, &instances(&pack, &frame)?, &ui, &lighting)?;
             pipe.write_all(&pixels).map_err(|e| e.to_string())?;
             if index % 300 == 0 {
                 eprintln!("Captured {} / {} seconds", frame.time, scene.duration);
@@ -160,7 +160,7 @@ fn main() -> Result<(), String> {
         .map_err(|e| e.to_string())?;
         return Ok(());
     }
-    let pixels = renderer.draw(view, &instances(&pack, &frame), &ui, &lighting)?;
+    let pixels = renderer.draw(view, &instances(&pack, &frame)?, &ui, &lighting)?;
     let mut png = png::Encoder::new(
         std::fs::File::create(output).map_err(|e| e.to_string())?,
         1280,

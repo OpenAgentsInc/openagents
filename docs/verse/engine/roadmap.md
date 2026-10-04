@@ -156,7 +156,7 @@ Death replaces the live capsule with corpse collision, and loading rebuilds
 live colliders from owned bodies. Defeat cancels pending player casts.
 The adventurer now has 200 HP. After defeat, **Respawn** returns human control at the authored spawn with full health and mana, a new player life, and a new command epoch. NPC health and cultist respawn deadlines survive. Native [death](../../../bench/verse/2026-10-03/player-dead.png), [respawn](../../../bench/verse/2026-10-03/player-respawned.png), and [receipt](../../../bench/verse/2026-10-03/player-respawn.json) artifacts record the transition.
 
-The `verse-chamber-owned-v12` profile uses one world clock to consume movement,
+The `verse-chamber-owned-v13` profile uses one world clock to consume movement,
 combat, and timer time. Combat elapsed time derives from the 120 Hz step count;
 scene time uses a retained origin. Fractional frames retain pending input until
 a step is available, and checkpoints reject divergent clocks. The retained
@@ -180,6 +180,10 @@ Set `VERSE_FRAME_PROFILE` to an NDJSON path when running `verse_play
 `--stress-demo PATH.ndjson 100` measures the real window with scripted controls.
 The retained window run ended early at 86.7 seconds and supports live latency
 measurements. The offscreen stress capture provides the full 100-second run.
+
+[#10443](https://github.com/OpenAgentsInc/openagents/issues/10443) replaces original-scene numeric animation selectors with named states and per-model clip bindings. Cinematic cues, world snapshots, humanoid/monster compilers, weapon visibility, corpse grounding, and GPU playback share the contract. Packs declare looping or held poses and transition durations; interrupted blends retain the current local pose. Exact actor lives fence playback and grounding across respawn. Numeric decoding remains in the explicit research compatibility path. `verse-chamber-owned-v13` checkpoints carry the new cue selection format.
+
+The [native named-state battle](../../../bench/verse/2026-10-03/named-animation-combat.mp4) and [receipt](../../../bench/verse/2026-10-03/named-animation-combat.json) record all ten abilities, 200 damage taken, 162 shield absorption, cultist respawns, and surviving Claude. The [respawn proof](../../../bench/verse/2026-10-03/named-animation-respawn/player-respawn.json) records the next player life, movement, and a shield cast. The [performance report](../../../bench/verse/2026-10-03/named-animation-performance.json) retains both runs: the first overlapped verification jobs and exceeded the 50 ms stall bound; its cause is unproven. The isolated repeat passed at 12.7 ms p95 / 19.1 ms maximum. Generic animation graphs, marker/audio events, asset residency, renderer extraction, service authority, and tool/platform acceptance remain.
 
 ## Reuse inventory
 

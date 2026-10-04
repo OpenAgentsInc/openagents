@@ -134,6 +134,7 @@ pub fn import(pack: &mut Pack, dir: &Path, path: &Path) -> Result<Model, String>
         })
         .collect();
     let mut model = Model {
+        states: Default::default(),
         source: format!(
             "verse/licensed/quaternius/{}",
             path.file_name().unwrap().to_string_lossy()
@@ -753,6 +754,7 @@ fn animations(model: &mut Model, path: &Path) -> Result<(), String> {
                 .to_array(),
         });
     }
+    super::original::bind_states(model);
     Ok(())
 }
 /// Retargets any named clip from the retained 43-clip library to a composed rig.

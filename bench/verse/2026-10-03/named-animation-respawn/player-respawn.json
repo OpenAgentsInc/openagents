@@ -1,0 +1,82 @@
+{
+  "schema": "openagents.verse.player-respawn.v1",
+  "rules_revision": "verse-chamber-owned-v13",
+  "old_life": {
+    "instance": 0,
+    "actor": 14,
+    "generation": 0
+  },
+  "new_life": {
+    "instance": 0,
+    "actor": 14,
+    "generation": 1
+  },
+  "player": {
+    "hp": 200,
+    "max_hp": 200,
+    "mana": 20,
+    "max_mana": 20
+  },
+  "player_position": [
+    9.664939852882526e-7,
+    0.0,
+    -15.599199295043945
+  ],
+  "control_mode": "human",
+  "shield_cast": true,
+  "world_time": 34.86666488647461,
+  "npc_lives": [
+    [
+      1,
+      300000
+    ],
+    [
+      2,
+      15
+    ],
+    [
+      3,
+      15
+    ],
+    [
+      4,
+      15
+    ],
+    [
+      5,
+      15
+    ],
+    [
+      6,
+      15
+    ],
+    [
+      7,
+      15
+    ],
+    [
+      8,
+      15
+    ],
+    [
+      9,
+      15
+    ],
+    [
+      10,
+      15
+    ],
+    [
+      11,
+      15
+    ],
+    [
+      12,
+      15
+    ],
+    [
+      13,
+      15
+    ]
+  ]
+}

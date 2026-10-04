@@ -32,10 +32,10 @@ use wgpu::util::DeviceExt;
 
 #[derive(Clone, Debug)]
 pub struct Instance {
-    pub actor: Option<u64>,
+    pub actor: Option<verse_engine::core::LifeId>,
     pub model: String,
     pub transform: Mat4,
-    pub animation: u16,
+    pub animation: verse_engine::motion::Selection,
     pub time: f32,
     pub emission: Vec3,
 }
@@ -152,8 +152,8 @@ pub struct Renderer {
     models: HashMap<String, Vec<Batch>>,
     static_batches: Vec<Batch>,
     actors: Vec<Actor>,
-    playback: HashMap<(u64, String), animation::Playback>,
-    grounding: HashMap<(u64, String), Grounding>,
+    playback: HashMap<(verse_engine::core::LifeId, String), animation::Playback>,
+    grounding: HashMap<(Option<verse_engine::core::LifeId>, String), Grounding>,
     bounds: HashMap<String, Option<culling::BoneBounds>>,
     ui_pipeline: wgpu::RenderPipeline,
     ui_group: wgpu::BindGroup,
@@ -238,7 +238,7 @@ fn upload(device: &wgpu::Device, merged: Merged) -> Vec<Batch> {
         })
         .collect()
 }
-fn make_pose(pack: &Pack, instance: Option<&Instance>) -> Pose {
+fn make_pose(pack: &Pack, instance: Option<&Instance>) -> Result<Pose, String> {
     let mut pose = Pose {
         model: Mat4::IDENTITY.to_cols_array_2d(),
         params: [0.0; 4],
@@ -262,14 +262,14 @@ fn make_pose(pack: &Pack, instance: Option<&Instance>) -> Pose {
             pose.params = [4.0, i.emission.x.clamp(0.0, 1.0), i.time, 0.0];
         }
         for (dst, m) in pose.bones.iter_mut().zip(if i.actor.is_none() {
-            animation::pose(&pack.models[&i.model], i.animation, i.time)
+            animation::pose_selected(&pack.models[&i.model], i.animation, i.time)?
         } else {
             vec![]
         }) {
             *dst = m.to_cols_array_2d();
         }
     }
-    pose
+    Ok(pose)
 }
 impl Renderer {
     pub fn new(
@@ -707,7 +707,7 @@ impl Renderer {
             let buffer = buffer(
                 &self.device,
                 "Verse actor palette",
-                bytemuck::bytes_of(&make_pose(&self.pack, None)),
+                bytemuck::bytes_of(&make_pose(&self.pack, None)?),
                 wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             );
             let group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -723,7 +723,7 @@ impl Renderer {
         self.queue.write_buffer(
             &self.actors[0].buffer,
             0,
-            bytemuck::bytes_of(&make_pose(&self.pack, None)),
+            bytemuck::bytes_of(&make_pose(&self.pack, None)?),
         );
         self.playback.retain(|(id, model), _| {
             instances
@@ -731,35 +731,34 @@ impl Renderer {
                 .any(|i| i.actor == Some(*id) && i.model == *model)
         });
         self.grounding.retain(|(id, model), _| {
-            instances.iter().any(|i| {
-                i.actor.unwrap_or(u64::MAX) == *id
-                    && i.model == *model
-                    && matches!(i.animation, 1 | 100)
-            })
+            instances
+                .iter()
+                .any(|i| i.actor == *id && i.model == *model && i.animation.grounded())
         });
         let mut adventurer_pose: Option<Pose> = None;
         let mut actor_bounds = Vec::with_capacity(instances.len());
         for (i, instance) in instances.iter().enumerate() {
-            let mut palette = make_pose(&self.pack, Some(instance));
+            let mut palette = make_pose(&self.pack, Some(instance))?;
             if let Some(id) = instance.actor {
                 let bones = self
                     .playback
                     .entry((id, instance.model.clone()))
                     .or_default()
-                    .update(
+                    .update_for_life(
+                        id,
                         &self.pack.models[&instance.model],
                         instance.animation,
                         instance.time,
                         lighting.time,
-                    );
+                    )?;
                 for (dst, bone) in palette.bones.iter_mut().zip(bones) {
                     *dst = bone.to_cols_array_2d();
                 }
             }
-            if matches!(instance.animation, 1 | 100) {
+            if instance.animation.grounded() {
                 // Ground fallen and prone bodies using their posed geometry.
                 let model = &self.pack.models[&instance.model];
-                let key = (instance.actor.unwrap_or(u64::MAX), instance.model.clone());
+                let key = (instance.actor, instance.model.clone());
                 let basis = [palette.model[0], palette.model[1], palette.model[2]];
                 if self
                     .grounding
@@ -1012,6 +1011,7 @@ mod tests {
         use super::*;
         use verse_engine::assets::{Model, Surface, Vertex};
         let model = Model {
+            states: Default::default(),
             skin: None,
             source: "fixture".into(),
             source_sha256: String::new(),

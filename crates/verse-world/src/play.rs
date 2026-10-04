@@ -4,6 +4,7 @@ use crate::utilities::{Controls, Utility};
 use glam::Vec3;
 use std::collections::BTreeMap;
 use verse_engine::director::{Action, Frame, Scene};
+use verse_engine::motion::State;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Ability {
@@ -298,7 +299,7 @@ impl Game {
             encounter.validate(self)?;
         }
         let bytes = serde_json::to_vec(&serde_json::json!({
-            "version": 1, "rules_revision": "verse-chamber-owned-v12", "world": self,
+            "version": 1, "rules_revision": "verse-chamber-owned-v13", "world": self,
         }))
         .map_err(|e| e.to_string())?;
         if bytes.len() > 2 * 1024 * 1024 {
@@ -318,7 +319,7 @@ impl Game {
             return Err("World checkpoint budget exceeded".into());
         }
         let saved: Saved = serde_json::from_slice(bytes).map_err(|e| e.to_string())?;
-        if saved.version != 1 || saved.rules_revision != "verse-chamber-owned-v12" {
+        if saved.version != 1 || saved.rules_revision != "verse-chamber-owned-v13" {
             return Err("Unsupported world checkpoint".into());
         }
         let mut world = saved.world;
@@ -1152,6 +1153,13 @@ impl Game {
     }
     pub fn frame(&self) -> Frame {
         let mut frame = self.scene.frame(self.time);
+        for actor in &mut frame.actors {
+            actor.life = if actor.actor.model == "adventurer" {
+                Some(self.player_life())
+            } else {
+                self.actor_life(actor.actor.id)
+            };
+        }
         if !self.unlocked() {
             return frame;
         }
@@ -1169,7 +1177,7 @@ impl Game {
                 a.actor.position = self.player;
                 a.actor.yaw = self.yaw;
                 if snapshot.player.hp == 0 {
-                    a.animation = 1;
+                    a.animation = State::Death.into();
                     a.animation_time = self
                         .encounter
                         .as_ref()
@@ -1181,26 +1189,36 @@ impl Game {
                     if self.scene.collision_profile.is_some()
                         && self.locomotion[0].abs() > self.locomotion[1].abs()
                     {
-                        if self.locomotion[0] < 0. { 14 } else { 15 }
+                        if self.locomotion[0] < 0. {
+                            State::StrafeLeft
+                        } else {
+                            State::StrafeRight
+                        }
                     } else if self.locomotion[1] < 0.0 {
-                        13
+                        State::Backpedal
                     } else {
-                        5
+                        State::Run
                     }
                 } else {
-                    109
-                };
+                    State::BowReady
+                }
+                .into();
                 if !self.colliders.is_empty() && self.character.support.is_none() {
-                    a.animation = 37;
+                    a.animation = State::Airborne.into();
                     a.animation_time = 0.2;
                 }
                 if let Some(cast) = &self.casting {
-                    a.animation = 52;
+                    a.animation = State::Cast.into();
                     a.animation_time = self.time - cast.started;
                 }
                 if let Some((ability, at)) = self.last_cast {
                     if self.time - at < 1.0 {
-                        a.animation = if ability == Ability::Bow { 46 } else { 53 };
+                        a.animation = if ability == Ability::Bow {
+                            State::BowRelease
+                        } else {
+                            State::SpellRelease
+                        }
+                        .into();
                         a.animation_time = self.time - at;
                     }
                 }
@@ -1214,13 +1232,18 @@ impl Game {
                             .get(&a.actor.id)
                             .is_some_and(|v| v.length_squared() > 0.01)
                         {
-                            4
+                            State::Walk
                         } else if a.actor.model.starts_with("cultist") && e.ended.is_none() {
-                            if a.actor.id % 3 == 0 { 25 } else { 51 }
+                            if a.actor.id % 3 == 0 {
+                                State::CombatReadyAlternate
+                            } else {
+                                State::CombatReady
+                            }
                         } else {
-                            0
-                        };
-                        a.animation_time = if a.animation == 4 {
+                            State::Idle
+                        }
+                        .into();
+                        a.animation_time = if a.animation == State::Walk.into() {
                             self.npc_motion_clock
                                 .get(&a.actor.id)
                                 .copied()
@@ -1233,14 +1256,14 @@ impl Game {
                             .iter()
                             .find(|c| c.actor == a.actor.id && self.time < c.release)
                         {
-                            a.animation = 52;
+                            a.animation = State::Cast.into();
                             a.animation_time = self.time - cast.started;
                         } else if e
                             .released
                             .get(&a.actor.id)
                             .is_some_and(|at| self.time - at < 0.7)
                         {
-                            a.animation = 53;
+                            a.animation = State::SpellRelease.into();
                             a.animation_time = self.time - e.released[&a.actor.id];
                         }
                         let direction = self.player - a.actor.position;
@@ -1256,11 +1279,12 @@ impl Game {
                             .get(&a.actor.id)
                             .is_some_and(|v| v.length_squared() > 0.01)
                         {
-                            4
+                            State::Walk
                         } else {
-                            109
-                        };
-                        a.animation_time = if a.animation == 4 {
+                            State::BowReady
+                        }
+                        .into();
+                        a.animation_time = if a.animation == State::Walk.into() {
                             self.npc_motion_clock
                                 .get(&a.actor.id)
                                 .copied()
@@ -1276,18 +1300,23 @@ impl Game {
                         a.animation = if a.actor.model.starts_with("cultist")
                             && self.encounter.as_ref().is_some_and(|e| e.ended.is_none())
                         {
-                            if a.actor.id % 3 == 0 { 25 } else { 51 }
+                            if a.actor.id % 3 == 0 {
+                                State::CombatReadyAlternate
+                            } else {
+                                State::CombatReady
+                            }
                         } else {
-                            0
-                        };
+                            State::Idle
+                        }
+                        .into();
                         a.animation_time = self.time + a.actor.id as f32 * 0.19;
                     }
                     if self.controls.prone(a.actor.position, self.time) {
-                        a.animation = 100;
+                        a.animation = State::Prone.into();
                         a.animation_time = 1.0;
                     }
                     if !source.alive {
-                        a.animation = 1;
+                        a.animation = State::Death.into();
                         a.animation_time = self
                             .npc_deaths
                             .get(&a.actor.id)
@@ -1300,7 +1329,7 @@ impl Game {
                         .get(&a.actor.id)
                         .copied()
                         .unwrap_or(a.actor.yaw);
-                    a.animation = 1;
+                    a.animation = State::Death.into();
                     a.animation_time = self
                         .npc_deaths
                         .get(&a.actor.id)
@@ -2249,7 +2278,7 @@ mod tests {
                 .unwrap();
             assert_eq!(alive.health, 15);
             assert_eq!(alive.actor.position, cultist.position);
-            assert!(alive.actor.nameplate && alive.animation != 1);
+            assert!(alive.actor.nameplate && alive.animation != State::Death.into());
         }
     }
     #[test]
@@ -2364,7 +2393,7 @@ mod tests {
                 .find(|a| a.actor.id == 2)
                 .unwrap()
                 .animation,
-            100
+            State::Prone.into()
         );
         g.player = rooted - Vec3::Z * 3.0;
         let hp = g
@@ -2533,10 +2562,10 @@ mod original_collision_tests {
         let mut g = game();
         g.player = Vec3::new(0., 0., -16.);
         for (movement, clip) in [
-            ([0., -1.], 13),
-            ([-1., 0.], 14),
-            ([1., 0.], 15),
-            ([0., 1.], 5),
+            ([0., -1.], State::Backpedal),
+            ([-1., 0.], State::StrafeLeft),
+            ([1., 0.], State::StrafeRight),
+            ([0., 1.], State::Run),
         ] {
             let previous = g.motion_clock;
             g.tick(0.05, movement).unwrap();
@@ -2546,7 +2575,7 @@ mod original_collision_tests {
                 .into_iter()
                 .find(|a| a.actor.model == "adventurer")
                 .unwrap();
-            assert_eq!(player.animation, clip);
+            assert_eq!(player.animation, clip.into());
             assert!(g.motion_clock > previous);
             assert_eq!(player.animation_time, g.motion_clock);
         }
@@ -2889,7 +2918,7 @@ mod grounded_movement_tests {
                 .find(|a| a.actor.model == "adventurer")
                 .unwrap()
                 .animation,
-            37
+            State::Airborne.into()
         );
         let before = game.checkpoint().unwrap();
         let frame = game.interpolated_frame(0.5).unwrap();
@@ -2980,7 +3009,7 @@ mod compiled_navigation_tests {
         }
         let frame = game.frame();
         let walking = frame.actors.iter().find(|a| a.actor.id == 2).unwrap();
-        assert_eq!(walking.animation, 4);
+        assert_eq!(walking.animation, State::Walk.into());
         let mut restored = Game::restore(&game.checkpoint().unwrap()).unwrap();
         for _ in 0..180 {
             game.tick(1. / 30., [0.; 2]).unwrap();

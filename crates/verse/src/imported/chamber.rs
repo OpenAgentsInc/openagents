@@ -9,13 +9,20 @@ pub fn basis() -> Mat4 {
     ])
 }
 
-pub fn instances(pack: &Pack, frame: &verse_engine::director::Frame) -> Vec<Instance> {
+pub fn instances(
+    pack: &Pack,
+    frame: &verse_engine::director::Frame,
+) -> Result<Vec<Instance>, String> {
     let mut actors: Vec<_> = frame
         .actors
         .iter()
         .filter(|a| a.visible)
         .map(|a| Instance {
-            actor: Some(a.actor.id),
+            actor: Some(a.life.unwrap_or(verse_engine::core::LifeId {
+                instance: 0,
+                actor: a.actor.id,
+                generation: 0,
+            })),
             model: a.actor.model.clone(),
             transform: Mat4::from_translation(a.actor.position)
                 * Mat4::from_rotation_y(a.actor.yaw)
@@ -29,11 +36,15 @@ pub fn instances(pack: &Pack, frame: &verse_engine::director::Frame) -> Vec<Inst
     for a in frame
         .actors
         .iter()
-        .filter(|a| a.visible && a.actor.model == "adventurer" && ![52, 53].contains(&a.animation))
+        .filter(|a| a.visible && a.actor.model == "adventurer" && !a.animation.casting())
     {
-        let model = &pack.models["adventurer"];
+        let model = pack
+            .models
+            .get("adventurer")
+            .ok_or("Missing adventurer model")?;
         if let Some(hand) = model.attachments.iter().find(|a| a.id == 2) {
-            let pose = verse_engine::animation::pose(model, a.animation, a.animation_time);
+            let pose =
+                verse_engine::animation::pose_selected(model, a.animation, a.animation_time)?;
             let hand_position = (Mat4::from_translation(a.actor.position)
                 * Mat4::from_rotation_y(a.actor.yaw)
                 * basis()
@@ -48,7 +59,7 @@ pub fn instances(pack: &Pack, frame: &verse_engine::director::Frame) -> Vec<Inst
                 actor: None,
                 model: "bow".into(),
                 transform,
-                animation: 0,
+                animation: 0.into(),
                 time: frame.time,
                 emission: Vec3::ONE,
             });
@@ -61,12 +72,12 @@ pub fn instances(pack: &Pack, frame: &verse_engine::director::Frame) -> Vec<Inst
             transform: Mat4::from_translation(arrow.position)
                 * Mat4::from_quat(Quat::from_rotation_arc(-Vec3::Z, arrow.direction))
                 * basis(),
-            animation: 0,
+            animation: 0.into(),
             time: frame.time,
             emission: Vec3::ONE,
         });
     }
-    actors
+    Ok(actors)
 }
 
 /// Projects admitted world props using the same bounds as collision and routing.
@@ -88,7 +99,7 @@ pub fn blocker_instances(pack: &Pack, game: &super::play::Game) -> Vec<Instance>
             transform: Mat4::from_translation(((min + max) * 0.5).as_vec3())
                 * Mat4::from_scale((max - min).as_vec3() / 0.9144)
                 * basis(),
-            animation: 0,
+            animation: 0.into(),
             time: game.time,
             emission: Vec3::ONE,
         })
@@ -165,7 +176,7 @@ pub fn static_instances(pack: &Pack, origin: Vec3) -> Vec<Instance> {
                     Quat::from_array(p.rotation),
                     p.position.into(),
                 ),
-            animation: 0,
+            animation: 0.into(),
             time: 0.0,
             emission: if pack.models[&p.model]
                 .source
@@ -450,6 +461,7 @@ pub fn add_effect_models(pack: &mut Pack, dir: &std::path::Path) -> Result<(), S
         pack.models.insert(
             name.into(),
             Model {
+                states: Default::default(),
                 skin: None,
                 source: format!(
                     "verse/{}/{name}",
@@ -496,6 +508,7 @@ pub fn add_effect_models(pack: &mut Pack, dir: &std::path::Path) -> Result<(), S
         pack.models.insert(
             name.into(),
             Model {
+                states: Default::default(),
                 skin: None,
                 source: format!("verse/particles/{name}"),
                 source_sha256: format!("{:x}", Sha256::digest(name.as_bytes())),
@@ -519,6 +532,7 @@ pub fn add_effect_models(pack: &mut Pack, dir: &std::path::Path) -> Result<(), S
     pack.models.insert(
         "effect-ribbon".into(),
         Model {
+            states: Default::default(),
             skin: None,
             source: "verse/ribbon/effect-ribbon".into(),
             source_sha256: format!("{:x}", Sha256::digest(b"effect-ribbon")),
@@ -571,6 +585,7 @@ pub fn add_effect_models(pack: &mut Pack, dir: &std::path::Path) -> Result<(), S
         pack.models.insert(
             name.into(),
             Model {
+                states: Default::default(),
                 skin: None,
                 source: format!("verse/procedural/{name}"),
                 source_sha256: format!("{:x}", Sha256::digest(name.as_bytes())),
@@ -625,7 +640,7 @@ pub fn spell_instances(game: &super::play::Game) -> Vec<Instance> {
             actor: None,
             model: if force { "effect-force" } else { "effect-fire" }.into(),
             transform: Mat4::from_translation(p.pos.into()) * Mat4::from_scale(Vec3::splat(scale)),
-            animation: 0,
+            animation: 0.into(),
             time: game.time,
             emission: Vec3::ONE,
         });
@@ -636,7 +651,7 @@ pub fn spell_instances(game: &super::play::Game) -> Vec<Instance> {
                 transform: Mat4::from_translation(
                     Vec3::from(p.pos) - Vec3::from(p.vel).normalize_or_zero() * trail as f32 * 0.2,
                 ) * Mat4::from_scale(Vec3::splat(scale * (1.0 - trail as f32 * 0.2))),
-                animation: 0,
+                animation: 0.into(),
                 time: game.time,
                 emission: Vec3::ONE,
             });
@@ -669,7 +684,7 @@ pub fn spell_instances(game: &super::play::Game) -> Vec<Instance> {
                 } else {
                     Mat4::from_scale(scale)
                 },
-            animation: 0,
+            animation: 0.into(),
             time: game.time,
             emission: Vec3::splat(alpha),
         });
@@ -679,7 +694,7 @@ pub fn spell_instances(game: &super::play::Game) -> Vec<Instance> {
             actor: None,
             model: "effect-light".into(),
             transform: Mat4::from_translation(position) * Mat4::from_scale(Vec3::splat(0.12)),
-            animation: 0,
+            animation: 0.into(),
             time: game.time,
             emission: Vec3::ONE,
         });
@@ -691,7 +706,7 @@ pub fn spell_instances(game: &super::play::Game) -> Vec<Instance> {
             transform: Mat4::from_translation(game.player + Vec3::Y * 1.05)
                 * Mat4::from_rotation_y(game.time * 0.7)
                 * Mat4::from_scale(Vec3::new(1.1, 1.25, 1.1)),
-            animation: 0,
+            animation: 0.into(),
             time: game.time,
             emission: Vec3::splat(0.8),
         });
@@ -716,7 +731,7 @@ pub fn spell_instances(game: &super::play::Game) -> Vec<Instance> {
                 transform: Mat4::from_translation(cast.target + Vec3::Y * 0.08)
                     * Mat4::from_rotation_x(-std::f32::consts::FRAC_PI_2)
                     * Mat4::from_scale(Vec3::splat(cast.radius)),
-                animation: 0,
+                animation: 0.into(),
                 time: game.time,
                 emission: Vec3::splat(0.6),
             });
@@ -730,7 +745,7 @@ pub fn spell_instances(game: &super::play::Game) -> Vec<Instance> {
                 actor: None,
                 model: "effect-shadow".into(),
                 transform: Mat4::from_translation(position) * Mat4::from_scale(Vec3::splat(size)),
-                animation: 0,
+                animation: 0.into(),
                 time: game.time,
                 emission: Vec3::ONE,
             });
@@ -742,7 +757,7 @@ pub fn spell_instances(game: &super::play::Game) -> Vec<Instance> {
                     transform: Mat4::from_translation(position - direction * 0.65)
                         * Mat4::from_quat(Quat::from_rotation_arc(Vec3::Y, direction))
                         * Mat4::from_scale(Vec3::new(size * 0.7, 0.85, 1.0)),
-                    animation: 0,
+                    animation: 0.into(),
                     time: game.time,
                     emission: Vec3::splat(0.75),
                 });
@@ -763,7 +778,7 @@ pub fn spell_instances(game: &super::play::Game) -> Vec<Instance> {
             actor: None,
             model: "effect-impact".into(),
             transform: Mat4::from_translation(*position) * Mat4::from_scale(Vec3::splat(scale)),
-            animation: 0,
+            animation: 0.into(),
             time: game.time,
             emission: Vec3::splat((1.0 - elapsed / 0.6).max(0.0)),
         });
@@ -829,7 +844,7 @@ fn particle(model: &str, position: Vec3, radius: f32, opacity: f32, time: f32) -
         actor: None,
         model: model.into(),
         transform: Mat4::from_translation(position) * Mat4::from_scale(Vec3::splat(radius)),
-        animation: 0,
+        animation: 0.into(),
         time,
         emission: Vec3::splat(opacity.clamp(0.0, 1.0)),
     }
@@ -873,7 +888,7 @@ fn portraits(dir: &std::path::Path, pack: &Pack, mut atlas: Atlas) -> Result<Atl
                 actor: None,
                 model: name.into(),
                 transform: basis(),
-                animation: 0,
+                animation: 0.into(),
                 time: 0.0,
                 emission: Vec3::ONE,
             }],

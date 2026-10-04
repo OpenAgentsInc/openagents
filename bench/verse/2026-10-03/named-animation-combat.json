@@ -1,0 +1,1091 @@
+{
+  "schema": "openagents.verse.agent-combat.v1",
+  "rules_revision": "verse-chamber-owned-v13",
+  "authority_tick": 3045,
+  "physics_steps": 9780,
+  "physics_dropped_seconds": 0.0,
+  "committed_event_count": 127,
+  "asset_pack": "verse-bestiary-ritual-v1",
+  "controller": "local observation-driven tactical controller",
+  "control_mode": "agent",
+  "time": 101.5,
+  "ended_at": 96.5,
+  "player": {
+    "hp": 0,
+    "max_hp": 200,
+    "mana": 3,
+    "max_mana": 20
+  },
+  "boss_remaining": 299494,
+  "boss_max": 300000,
+  "cultists_defeated": 1,
+  "damage_taken": 200,
+  "shield_absorbed": 162,
+  "dodged": 14,
+  "enemy_casts": 46,
+  "ability_uses": {
+    "Fire Bolt": 13,
+    "Fireball": 7,
+    "Grease": 1,
+    "Light": 1,
+    "Magic Missile": 17,
+    "Misty Step": 1,
+    "Shield": 9,
+    "Shoot Bow": 16,
+    "Thunderwave": 3,
+    "Web": 1
+  },
+  "boss_model": {
+    "source": "verse/licensed/quaternius/Puglin.glb",
+    "sha256": "8d0a87d7165e5da0761418491511d2187e46de359e2f65110538f8b91a48e6af",
+    "height_m": 6.0
+  },
+  "animation_contract": "named states and life-aware local-space transitions",
+  "animation_bindings": {
+    "adventurer": {
+      "idle": {
+        "clip": 0,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "death": {
+        "clip": 1,
+        "mode": "hold",
+        "transition_seconds": 0.11999999731779099
+      },
+      "walk": {
+        "clip": 4,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "run": {
+        "clip": 5,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "backpedal": {
+        "clip": 13,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "strafe_left": {
+        "clip": 14,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "strafe_right": {
+        "clip": 15,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "airborne": {
+        "clip": 37,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "combat_ready": {
+        "clip": 51,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "combat_ready_alternate": {
+        "clip": 25,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "cast": {
+        "clip": 52,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "spell_release": {
+        "clip": 53,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      },
+      "bow_ready": {
+        "clip": 109,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "bow_release": {
+        "clip": 46,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      },
+      "prone": {
+        "clip": 100,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      },
+      "yell": {
+        "clip": 64,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      },
+      "affirm": {
+        "clip": 68,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      }
+    },
+    "claude": {
+      "idle": {
+        "clip": 0,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "death": {
+        "clip": 1,
+        "mode": "hold",
+        "transition_seconds": 0.11999999731779099
+      },
+      "walk": {
+        "clip": 4,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "run": {
+        "clip": 5,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "backpedal": {
+        "clip": 13,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "strafe_left": {
+        "clip": 14,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "strafe_right": {
+        "clip": 15,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "airborne": {
+        "clip": 37,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "combat_ready": {
+        "clip": 51,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "combat_ready_alternate": {
+        "clip": 25,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "cast": {
+        "clip": 52,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "spell_release": {
+        "clip": 53,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      },
+      "bow_ready": {
+        "clip": 109,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "bow_release": {
+        "clip": 46,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      },
+      "prone": {
+        "clip": 100,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      },
+      "yell": {
+        "clip": 64,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      },
+      "affirm": {
+        "clip": 68,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      }
+    },
+    "cultist": {
+      "idle": {
+        "clip": 0,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "death": {
+        "clip": 1,
+        "mode": "hold",
+        "transition_seconds": 0.11999999731779099
+      },
+      "walk": {
+        "clip": 4,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "run": {
+        "clip": 5,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "backpedal": {
+        "clip": 13,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "strafe_left": {
+        "clip": 14,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "strafe_right": {
+        "clip": 15,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "airborne": {
+        "clip": 37,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "combat_ready": {
+        "clip": 51,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "combat_ready_alternate": {
+        "clip": 25,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "cast": {
+        "clip": 52,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "spell_release": {
+        "clip": 53,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      },
+      "bow_ready": {
+        "clip": 109,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "bow_release": {
+        "clip": 46,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      },
+      "prone": {
+        "clip": 100,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      },
+      "yell": {
+        "clip": 64,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      },
+      "affirm": {
+        "clip": 68,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      }
+    },
+    "cultist-female": {
+      "idle": {
+        "clip": 0,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "death": {
+        "clip": 1,
+        "mode": "hold",
+        "transition_seconds": 0.11999999731779099
+      },
+      "walk": {
+        "clip": 4,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "run": {
+        "clip": 5,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "backpedal": {
+        "clip": 13,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "strafe_left": {
+        "clip": 14,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "strafe_right": {
+        "clip": 15,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "airborne": {
+        "clip": 37,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "combat_ready": {
+        "clip": 51,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "combat_ready_alternate": {
+        "clip": 25,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "cast": {
+        "clip": 52,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "spell_release": {
+        "clip": 53,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      },
+      "bow_ready": {
+        "clip": 109,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "bow_release": {
+        "clip": 46,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      },
+      "prone": {
+        "clip": 100,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      },
+      "yell": {
+        "clip": 64,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      },
+      "affirm": {
+        "clip": 68,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      }
+    },
+    "cultist-peasant": {
+      "idle": {
+        "clip": 0,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "death": {
+        "clip": 1,
+        "mode": "hold",
+        "transition_seconds": 0.11999999731779099
+      },
+      "walk": {
+        "clip": 4,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "run": {
+        "clip": 5,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "backpedal": {
+        "clip": 13,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "strafe_left": {
+        "clip": 14,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "strafe_right": {
+        "clip": 15,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "airborne": {
+        "clip": 37,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "combat_ready": {
+        "clip": 51,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "combat_ready_alternate": {
+        "clip": 25,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "cast": {
+        "clip": 52,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "spell_release": {
+        "clip": 53,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      },
+      "bow_ready": {
+        "clip": 109,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "bow_release": {
+        "clip": 46,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      },
+      "prone": {
+        "clip": 100,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      },
+      "yell": {
+        "clip": 64,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      },
+      "affirm": {
+        "clip": 68,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      }
+    },
+    "cultist-peasant-female": {
+      "idle": {
+        "clip": 0,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "death": {
+        "clip": 1,
+        "mode": "hold",
+        "transition_seconds": 0.11999999731779099
+      },
+      "walk": {
+        "clip": 4,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "run": {
+        "clip": 5,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "backpedal": {
+        "clip": 13,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "strafe_left": {
+        "clip": 14,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "strafe_right": {
+        "clip": 15,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "airborne": {
+        "clip": 37,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "combat_ready": {
+        "clip": 51,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "combat_ready_alternate": {
+        "clip": 25,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "cast": {
+        "clip": 52,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "spell_release": {
+        "clip": 53,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      },
+      "bow_ready": {
+        "clip": 109,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "bow_release": {
+        "clip": 46,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      },
+      "prone": {
+        "clip": 100,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      },
+      "yell": {
+        "clip": 64,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      },
+      "affirm": {
+        "clip": 68,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      }
+    },
+    "universal-female-peasant": {
+      "idle": {
+        "clip": 0,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "death": {
+        "clip": 1,
+        "mode": "hold",
+        "transition_seconds": 0.11999999731779099
+      },
+      "walk": {
+        "clip": 4,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "run": {
+        "clip": 5,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "backpedal": {
+        "clip": 13,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "strafe_left": {
+        "clip": 14,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "strafe_right": {
+        "clip": 15,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "airborne": {
+        "clip": 37,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "combat_ready": {
+        "clip": 51,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "combat_ready_alternate": {
+        "clip": 25,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "cast": {
+        "clip": 52,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "spell_release": {
+        "clip": 53,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      },
+      "bow_ready": {
+        "clip": 109,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "bow_release": {
+        "clip": 46,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      },
+      "prone": {
+        "clip": 100,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      },
+      "yell": {
+        "clip": 64,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      },
+      "affirm": {
+        "clip": 68,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      }
+    },
+    "universal-female-ranger": {
+      "idle": {
+        "clip": 0,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "death": {
+        "clip": 1,
+        "mode": "hold",
+        "transition_seconds": 0.11999999731779099
+      },
+      "walk": {
+        "clip": 4,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "run": {
+        "clip": 5,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "backpedal": {
+        "clip": 13,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "strafe_left": {
+        "clip": 14,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "strafe_right": {
+        "clip": 15,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "airborne": {
+        "clip": 37,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "combat_ready": {
+        "clip": 51,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "combat_ready_alternate": {
+        "clip": 25,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "cast": {
+        "clip": 52,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "spell_release": {
+        "clip": 53,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      },
+      "bow_ready": {
+        "clip": 109,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "bow_release": {
+        "clip": 46,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      },
+      "prone": {
+        "clip": 100,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      },
+      "yell": {
+        "clip": 64,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      },
+      "affirm": {
+        "clip": 68,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      }
+    },
+    "universal-male-peasant": {
+      "idle": {
+        "clip": 0,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "death": {
+        "clip": 1,
+        "mode": "hold",
+        "transition_seconds": 0.11999999731779099
+      },
+      "walk": {
+        "clip": 4,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "run": {
+        "clip": 5,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "backpedal": {
+        "clip": 13,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "strafe_left": {
+        "clip": 14,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "strafe_right": {
+        "clip": 15,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "airborne": {
+        "clip": 37,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "combat_ready": {
+        "clip": 51,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "combat_ready_alternate": {
+        "clip": 25,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "cast": {
+        "clip": 52,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "spell_release": {
+        "clip": 53,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      },
+      "bow_ready": {
+        "clip": 109,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "bow_release": {
+        "clip": 46,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      },
+      "prone": {
+        "clip": 100,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      },
+      "yell": {
+        "clip": 64,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      },
+      "affirm": {
+        "clip": 68,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      }
+    },
+    "universal-male-ranger": {
+      "idle": {
+        "clip": 0,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "death": {
+        "clip": 1,
+        "mode": "hold",
+        "transition_seconds": 0.11999999731779099
+      },
+      "walk": {
+        "clip": 4,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "run": {
+        "clip": 5,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "backpedal": {
+        "clip": 13,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "strafe_left": {
+        "clip": 14,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "strafe_right": {
+        "clip": 15,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "airborne": {
+        "clip": 37,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "combat_ready": {
+        "clip": 51,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "combat_ready_alternate": {
+        "clip": 25,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "cast": {
+        "clip": 52,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "spell_release": {
+        "clip": 53,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      },
+      "bow_ready": {
+        "clip": 109,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "bow_release": {
+        "clip": 46,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      },
+      "prone": {
+        "clip": 100,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      },
+      "yell": {
+        "clip": 64,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      },
+      "affirm": {
+        "clip": 68,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      }
+    },
+    "universal-superhero-female": {
+      "idle": {
+        "clip": 0,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "death": {
+        "clip": 1,
+        "mode": "hold",
+        "transition_seconds": 0.11999999731779099
+      },
+      "walk": {
+        "clip": 4,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "run": {
+        "clip": 5,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "backpedal": {
+        "clip": 13,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "strafe_left": {
+        "clip": 14,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "strafe_right": {
+        "clip": 15,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "airborne": {
+        "clip": 37,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "combat_ready": {
+        "clip": 51,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "combat_ready_alternate": {
+        "clip": 25,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "cast": {
+        "clip": 52,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "spell_release": {
+        "clip": 53,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      },
+      "bow_ready": {
+        "clip": 109,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "bow_release": {
+        "clip": 46,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      },
+      "prone": {
+        "clip": 100,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      },
+      "yell": {
+        "clip": 64,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      },
+      "affirm": {
+        "clip": 68,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      }
+    },
+    "universal-superhero-male": {
+      "idle": {
+        "clip": 0,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "death": {
+        "clip": 1,
+        "mode": "hold",
+        "transition_seconds": 0.11999999731779099
+      },
+      "walk": {
+        "clip": 4,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "run": {
+        "clip": 5,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "backpedal": {
+        "clip": 13,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "strafe_left": {
+        "clip": 14,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "strafe_right": {
+        "clip": 15,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "airborne": {
+        "clip": 37,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "combat_ready": {
+        "clip": 51,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "combat_ready_alternate": {
+        "clip": 25,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "cast": {
+        "clip": 52,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "spell_release": {
+        "clip": 53,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      },
+      "bow_ready": {
+        "clip": 109,
+        "mode": "loop",
+        "transition_seconds": 0.2199999988079071
+      },
+      "bow_release": {
+        "clip": 46,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      },
+      "prone": {
+        "clip": 100,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      },
+      "yell": {
+        "clip": 64,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      },
+      "affirm": {
+        "clip": 68,
+        "mode": "hold",
+        "transition_seconds": 0.2199999988079071
+      }
+    }
+  },
+  "renderer": "owned native GPU pipeline; no grading; no chat-input automation"
+}

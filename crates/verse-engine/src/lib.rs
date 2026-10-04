@@ -5,6 +5,7 @@ pub mod animation;
 pub mod assets;
 pub mod core;
 pub mod director;
+pub mod motion;
 
 /// Converts version-one pack source coordinates to Y-up meters.
 ///

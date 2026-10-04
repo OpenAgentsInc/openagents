@@ -20,6 +20,7 @@ fn png_file(dir: &Path, name: &str, size: u32, pixels: &[u8]) -> Result<(), Stri
 }
 fn model(name: &str, height: f32) -> Model {
     Model {
+        states: Default::default(),
         skin: None,
         source: format!("verse/original/{name}"),
         source_sha256: String::new(),
@@ -77,6 +78,61 @@ fn cuboid(
             .extend([base, base + 1, base + 2, base, base + 2, base + 3]);
     }
     m.surfaces.push(s);
+}
+/// Compiles chamber semantics into explicit per-model clip bindings.
+/// Clip numbers are compiler-local references, never gameplay selectors.
+pub(super) fn bind_states(model: &mut Model) {
+    use verse_engine::motion::{Binding, Mode, State};
+    let defaults = [
+        (State::Idle, 0),
+        (State::Death, 1),
+        (State::Walk, 4),
+        (State::Run, 5),
+        (State::Backpedal, 13),
+        (State::StrafeLeft, 14),
+        (State::StrafeRight, 15),
+        (State::Airborne, 37),
+        (State::CombatReadyAlternate, 25),
+        (State::CombatReady, 51),
+        (State::Cast, 52),
+        (State::SpellRelease, 53),
+        (State::BowReady, 109),
+        (State::BowRelease, 46),
+        (State::Prone, 100),
+        (State::Yell, 64),
+        (State::Affirm, 68),
+    ];
+    for (state, preferred) in defaults {
+        let clip = if model.clips.iter().any(|c| c.id == preferred) {
+            preferred
+        } else if state == State::Prone {
+            1
+        } else if matches!(state, State::BowReady | State::BowRelease) {
+            51
+        } else {
+            0
+        };
+        model.states.insert(
+            state,
+            Binding {
+                clip,
+                mode: if matches!(
+                    state,
+                    State::Death
+                        | State::Prone
+                        | State::SpellRelease
+                        | State::BowRelease
+                        | State::Yell
+                        | State::Affirm
+                ) {
+                    Mode::Hold
+                } else {
+                    Mode::Loop
+                },
+                transition_seconds: if state == State::Death { 0.12 } else { 0.22 },
+            },
+        );
+    }
 }
 fn actor(name: &str, robe: [f32; 3], monster: bool) -> Model {
     let mut m = model(name, 2.35);
@@ -202,6 +258,7 @@ fn actor(name: &str, robe: [f32; 3], monster: bool) -> Model {
         bone: 1,
         position: [0., -0.52, 0.88],
     });
+    bind_states(&mut m);
     m
 }
 pub use verse_world::room::{colliders, room_boxes};
@@ -424,6 +481,43 @@ mod tests {
         }
         atlas().unwrap();
         std::fs::remove_dir_all(dir).unwrap();
+    }
+    #[test]
+    fn original_presentation_survives_arbitrary_clip_ids() {
+        use verse_engine::{
+            animation::pose_selected,
+            motion::{Selection, State},
+        };
+        let mut actor = actor("semantic-fixture", [0.2; 3], false);
+        assert_eq!(actor.states.len(), State::ALL.len());
+        let before: Vec<_> = State::ALL
+            .iter()
+            .map(|state| pose_selected(&actor, (*state).into(), 0.7).unwrap())
+            .collect();
+        for clip in &mut actor.clips {
+            clip.id += 1000;
+        }
+        for binding in actor.states.values_mut() {
+            binding.clip += 1000;
+        }
+        for (state, expected) in State::ALL.iter().zip(before) {
+            assert_eq!(
+                pose_selected(&actor, (*state).into(), 0.7).unwrap(),
+                expected
+            );
+        }
+        let scene = verse_engine::director::Scene::from_json(include_bytes!(
+            "../../../../assets/verse/original/ritual.json"
+        ))
+        .unwrap();
+        let mut game = super::super::play::Game::combat(scene, true).unwrap();
+        for _ in 0..4200 {
+            game.tick(1. / 30., [0.; 2]).unwrap();
+            for actor in game.frame().actors {
+                assert!(matches!(actor.animation, Selection::Named(_)));
+                assert!(actor.life.is_some());
+            }
+        }
     }
     #[test]
     fn original_timeline_runs_the_full_kit_and_actual_defeat() {

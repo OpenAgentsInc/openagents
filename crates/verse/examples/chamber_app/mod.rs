@@ -171,6 +171,14 @@ impl App {
     fn draw_frame(&mut self) -> Result<Vec<u8>, String> {
         let started = Instant::now();
         let mut frame = self.game.interpolated_frame(self.interpolation)?;
+        if self.game.scene.collision_profile.as_deref() == Some("original-chamber-v1")
+            && frame
+                .actors
+                .iter()
+                .any(|a| matches!(a.animation, verse_engine::motion::Selection::Legacy(_)))
+        {
+            return Err("Original scene selected a legacy animation".into());
+        }
         if let Some((eye, target, fov)) = self.capture_view {
             frame.eye = eye;
             frame.target = target;
@@ -200,7 +208,7 @@ impl App {
         );
         let hover = overlay::action_at(self.cursor[0], self.cursor[1], 1280.0, 720.0);
         overlay::action_bar(&mut ui, &self.atlas, &self.game, 1280.0, 720.0, hover);
-        let mut actors = chamber::instances(&self.pack, &frame);
+        let mut actors = chamber::instances(&self.pack, &frame)?;
         actors.extend(chamber::spell_instances(&self.game));
         actors.extend(chamber::blocker_instances(&self.pack, &self.game));
         let lighting = chamber::combat_lighting(&self.game);
@@ -607,6 +615,7 @@ pub fn run(original_default: bool) -> Result<(), String> {
         }
     }
     if !original {
+        verse_wow::motion::bind(&mut pack)?;
         chamber::add_effect_models(&mut pack, &dir)?;
     }
     let mut scene = Scene::from_json(if original {
@@ -739,7 +748,7 @@ pub fn run(original_default: bool) -> Result<(), String> {
             app.game.tick(1. / 30., [0., 1.])?;
         }
         let evidence = serde_json::json!({"schema":"openagents.verse.player-respawn.v1",
-            "rules_revision":"verse-chamber-owned-v12", "old_life":old,
+            "rules_revision":"verse-chamber-owned-v13", "old_life":old,
             "new_life":app.game.player_life(), "player":app.game.snapshot().player,
             "player_position":app.game.player, "control_mode":"human", "shield_cast":true,
             "world_time":app.game.time, "npc_lives":app.game.frame().actors.iter()
@@ -1076,7 +1085,7 @@ fn demo(app: &mut App, output: PathBuf, mode: Demo) -> Result<(), String> {
                 return Err("Movement capture did not climb, jump, and land".into());
             }
             std::fs::write(output.with_extension("json"),serde_json::to_vec_pretty(&serde_json::json!({
-                "schema":"openagents.verse.grounded-movement.v1", "rules_revision":"verse-chamber-owned-v12",
+                "schema":"openagents.verse.grounded-movement.v1", "rules_revision":"verse-chamber-owned-v13",
                 "authority_tick":app.game.authority_tick, "physics_steps":app.game.physics_steps,
                 "physics_dropped_seconds":app.game.physics_clock.dropped,"max_height_m":movement_max_height,
                 "final_feet":app.game.player.to_array(),"jump_command_frame":110,
@@ -1103,7 +1112,7 @@ fn demo(app: &mut App, output: PathBuf, mode: Demo) -> Result<(), String> {
                 ));
             }
             std::fs::write(output.with_extension("json"),serde_json::to_vec_pretty(&serde_json::json!({
-                "schema":"openagents.verse.navigation.v2","rules_revision":"verse-chamber-owned-v12",
+                "schema":"openagents.verse.navigation.v2","rules_revision":"verse-chamber-owned-v13",
                 "start":[18.,0.,-32.],"target":target.to_array(),"cultist_final":position.to_array(),
                 "authority_tick":app.game.authority_tick,"physics_steps":app.game.physics_steps,
                 "navigation_plans":app.game.navigation_plans,"navigation_budget_refusals":app.game.navigation_budget_refusals,
@@ -1138,7 +1147,7 @@ fn demo(app: &mut App, output: PathBuf, mode: Demo) -> Result<(), String> {
             }
             if encounter.ended.is_some_and(|at| app.game.time - at >= 5.0) {
                 save_png(&output.with_extension("png"), &pixels)?;
-                let evidence = serde_json::json!({"schema":"openagents.verse.agent-combat.v1","rules_revision":"verse-chamber-owned-v12","authority_tick":app.game.authority_tick,"physics_steps":app.game.physics_steps,"physics_dropped_seconds":app.game.physics_clock.dropped,"committed_event_count":app.game.events.len(),"asset_pack":app.pack.source_revision,"controller":"local observation-driven tactical controller","control_mode":"agent","time":app.game.time,"ended_at":encounter.ended,"player":app.game.snapshot().player,"boss_remaining":encounter.boss_remaining,"boss_max":encounter.boss_max,"cultists_defeated":encounter.kills,"damage_taken":encounter.damage,"shield_absorbed":encounter.absorbed,"dodged":encounter.dodged,"enemy_casts":encounter.enemy_casts,"ability_uses":encounter.used,"boss_model":{"source":app.pack.models["claude"].source,"sha256":app.pack.models["claude"].source_sha256,"height_m":app.game.scene.actors.iter().find(|a|a.model=="claude").unwrap().scale * app.pack.models["claude"].height * 0.9144},"renderer":"owned native GPU pipeline; no grading; no chat-input automation"});
+                let evidence = serde_json::json!({"schema":"openagents.verse.agent-combat.v1","rules_revision":"verse-chamber-owned-v13","authority_tick":app.game.authority_tick,"physics_steps":app.game.physics_steps,"physics_dropped_seconds":app.game.physics_clock.dropped,"committed_event_count":app.game.events.len(),"asset_pack":app.pack.source_revision,"controller":"local observation-driven tactical controller","control_mode":"agent","time":app.game.time,"ended_at":encounter.ended,"player":app.game.snapshot().player,"boss_remaining":encounter.boss_remaining,"boss_max":encounter.boss_max,"cultists_defeated":encounter.kills,"damage_taken":encounter.damage,"shield_absorbed":encounter.absorbed,"dodged":encounter.dodged,"enemy_casts":encounter.enemy_casts,"ability_uses":encounter.used,"boss_model":{"source":app.pack.models["claude"].source,"sha256":app.pack.models["claude"].source_sha256,"height_m":app.game.scene.actors.iter().find(|a|a.model=="claude").unwrap().scale * app.pack.models["claude"].height * 0.9144},"animation_contract":"named states and life-aware local-space transitions", "animation_bindings":app.pack.models.iter().filter(|(_,m)|!m.states.is_empty()).map(|(name,m)|(name, &m.states)).collect::<std::collections::BTreeMap<_,_>>(), "renderer":"owned native GPU pipeline; no grading; no chat-input automation"});
                 std::fs::write(
                     output.with_extension("json"),
                     serde_json::to_vec_pretty(&evidence).map_err(|e| e.to_string())?,

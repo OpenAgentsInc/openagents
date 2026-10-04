@@ -28,6 +28,7 @@ fn main() -> Result<(), String> {
         view_proj: Mat4::perspective_rh(30_f32.to_radians(), 1600. / 560., 0.01, 50.)
             * Mat4::look_at_rh(eye, Vec3::Y * 0.9, Vec3::Y),
     };
+    use verse_engine::motion::State;
     let mut instances: Vec<_> = characters::APPEARANCES
         .iter()
         .enumerate()
@@ -36,7 +37,7 @@ fn main() -> Result<(), String> {
             model: format!("universal-{name}"),
             transform: Mat4::from_translation(Vec3::new((2.5 - i as f32) * 1.9, 0., 0.))
                 * chamber::basis(),
-            animation: 0,
+            animation: State::Idle.into(),
             time: 0.4,
             emission: Vec3::ONE,
         })
@@ -87,19 +88,19 @@ fn main() -> Result<(), String> {
             .map_err(|e| e.to_string())?;
         let mut input = encoder.stdin.take().ok_or("Missing video input")?;
         for (segment, (id, label)) in [
-            (0, "Idle"),
-            (4, "Walk"),
-            (5, "Run"),
-            (13, "Backpedal"),
-            (14, "Strafe left"),
-            (15, "Strafe right"),
-            (25, "Guard"),
-            (51, "Combat ready"),
-            (52, "Spell windup"),
-            (53, "Spell release"),
-            (109, "Bow ready"),
-            (46, "Bow release"),
-            (1, "Fall and corpse"),
+            (State::Idle, "Idle"),
+            (State::Walk, "Walk"),
+            (State::Run, "Run"),
+            (State::Backpedal, "Backpedal"),
+            (State::StrafeLeft, "Strafe left"),
+            (State::StrafeRight, "Strafe right"),
+            (State::CombatReadyAlternate, "Guard"),
+            (State::CombatReady, "Combat ready"),
+            (State::Cast, "Spell windup"),
+            (State::SpellRelease, "Spell release"),
+            (State::BowReady, "Bow ready"),
+            (State::BowRelease, "Bow release"),
+            (State::Death, "Fall and corpse"),
         ]
         .into_iter()
         .enumerate()
@@ -109,8 +110,12 @@ fn main() -> Result<(), String> {
                 let mut lighting = lighting.clone();
                 lighting.time = segment as f32 * 3. + time;
                 for (i, actor) in instances.iter_mut().enumerate() {
-                    actor.actor = Some(i as u64 + 1);
-                    actor.animation = id;
+                    actor.actor = Some(verse_engine::core::LifeId {
+                        instance: 0,
+                        actor: i as u64 + 1,
+                        generation: 0,
+                    });
+                    actor.animation = id.into();
                     actor.time = time;
                 }
                 let mut labels = ui.clone();

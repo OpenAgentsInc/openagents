@@ -1,0 +1,49 @@
+{
+  "schema": "openagents.verse.animation-performance.v1",
+  "adapter": "Apple M5 Max",
+  "scenario": "same deterministic 200-HP agent battle with named animation states",
+  "runs": {
+    "concurrent": {
+      "exit_code": 1,
+      "budget": {
+        "schema": "openagents.verse.frame-budget.v1",
+        "adapter": "Apple M5 Max",
+        "frames": 3015,
+        "duration_seconds": 101.4666666649282,
+        "work_p95_ms": 13.763333,
+        "work_max_ms": 53.01325,
+        "delivered_p95_ms": null,
+        "delivered_max_ms": null,
+        "stress_casts": null,
+        "dropped_seconds": 0.0,
+        "passed": false
+      },
+      "profile": "named-animation-profile-concurrent.ndjson",
+      "sha256": "8a4114c0cbfa0d70fcd8b7d380e875c253b22caf1be76345f999526a62d05e2b"
+    },
+    "isolated": {
+      "exit_code": 0,
+      "budget": {
+        "schema": "openagents.verse.frame-budget.v1",
+        "adapter": "Apple M5 Max",
+        "frames": 3015,
+        "duration_seconds": 101.4666666649282,
+        "work_p95_ms": 12.651292,
+        "work_max_ms": 19.094541,
+        "delivered_p95_ms": null,
+        "delivered_max_ms": null,
+        "stress_casts": null,
+        "dropped_seconds": 0.0,
+        "passed": true
+      },
+      "profile": "named-animation-profile-isolated.ndjson",
+      "sha256": "f3f37e44d66b06b3a5424fa6e5743200cdd273e921ce2923d4f935a00671a352"
+    }
+  },
+  "limitations": [
+    "The first recording overlapped verification jobs and exceeded the stall bound; the cause of its single outlier is not proven.",
+    "The isolated repeat met the budget. Both profiles are retained.",
+    "GPU execution timestamps were not measured; the GPU wait field includes synchronous capture readback.",
+    "Offscreen capture does not measure delivered window frame intervals."
+  ]
+}
