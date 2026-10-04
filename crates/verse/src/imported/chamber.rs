@@ -3,6 +3,59 @@ use super::Instance;
 use crate::ui::Atlas;
 use glam::{Mat4, Quat, Vec3};
 use verse_engine::{assets::Pack, source_position as position_from_wow};
+/// Assembles admitted remote actors and effects without a local simulation.
+#[cfg(feature = "remote-chamber")]
+pub struct RemoteScene {
+    pub frame: verse_engine::director::Frame,
+    pub instances: Vec<Instance>,
+    pub lighting: super::lighting::Lighting,
+}
+#[cfg(feature = "remote-chamber")]
+pub fn remote_scene(
+    pack: &Pack,
+    view: &verse_world::service::view::View,
+    alpha: f32,
+    camera: verse_world::service::view::Camera,
+    origin: Vec3,
+    playground: bool,
+    focus: Vec3,
+) -> Result<Option<RemoteScene>, String> {
+    if !origin.is_finite() || !focus.is_finite() {
+        return Err("Invalid remote scene lighting position".into());
+    }
+    let Some(sample) = view.scene_sample(alpha, camera)? else {
+        return Ok(None);
+    };
+    render_remote_sample(pack, sample, origin, playground, focus).map(Some)
+}
+#[cfg(feature = "remote-chamber")]
+fn render_remote_sample(
+    pack: &Pack,
+    sample: verse_world::service::view::SceneSample,
+    origin: Vec3,
+    playground: bool,
+    focus: Vec3,
+) -> Result<RemoteScene, String> {
+    let mut drawn = instances(pack, &sample.frame)?;
+    drawn.extend(prop_instances_from_poses(
+        pack,
+        &sample.presentation.props,
+        sample.frame.time,
+    ));
+    drawn.extend(blocker_instances_from_bounds(
+        pack,
+        &sample.presentation.blockers,
+        sample.frame.time,
+    ));
+    drawn.extend(spell_instances_from_visuals(&sample.combat));
+    let lighting = lighting_from_visuals(&sample.combat, origin, playground, focus);
+    Ok(RemoteScene {
+        frame: sample.frame,
+        instances: drawn,
+        lighting,
+    })
+}
+
 pub fn basis() -> Mat4 {
     Mat4::from_cols_array(&[
         0.0, 0.0, -0.9144, 0.0, -0.9144, 0.0, 0.0, 0.0, 0.0, 0.9144, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
@@ -1062,6 +1115,86 @@ fn portraits(dir: &std::path::Path, pack: &Pack, mut atlas: Atlas) -> Result<Atl
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "remote-chamber")]
+    #[test]
+    fn assembled_remote_sample_matches_local_native_world_consumers() {
+        let scene = verse_engine::director::Scene::from_json(include_bytes!(
+            "../../../../assets/verse/original/ritual.json"
+        ))
+        .unwrap();
+        let game = verse_world::play::Game::new_in(scene, 160).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let pack = super::super::original::generate(dir.path()).unwrap();
+        let frame = game.frame();
+        let combat = verse_world::visuals::Combat::extract(&game);
+        let presentation = verse_world::service::presentation::Presentation {
+            time: frame.time,
+            actors: vec![],
+            effects: vec![],
+            hostile_casts: vec![],
+            impacts: vec![],
+            props: verse_world::visuals::prop_poses(&game, 1.),
+            blockers: verse_world::visuals::blocker_bounds(&game),
+        };
+        let mut expected = instances(&pack, &frame).unwrap();
+        expected.extend(prop_instances(&pack, &game, 1.));
+        expected.extend(blocker_instances(&pack, &game));
+        expected.extend(spell_instances(&game));
+        let origin = position_from_wow(game.scene.origin_wow);
+        let drawn = render_remote_sample(
+            &pack,
+            verse_world::service::view::SceneSample {
+                frame,
+                presentation,
+                combat,
+            },
+            origin,
+            false,
+            game.player,
+        )
+        .unwrap();
+        assert_eq!(format!("{:?}", drawn.instances), format!("{:?}", expected));
+        let local = combat_lighting(&game);
+        assert_eq!(drawn.lighting.time, local.time);
+        assert_eq!(drawn.lighting.lights.len(), local.lights.len());
+        for (a, b) in drawn.lighting.lights.iter().zip(&local.lights) {
+            assert_eq!(a.position, b.position);
+            assert_eq!(a.intensity, b.intensity);
+            assert_eq!(a.color, b.color);
+        }
+    }
+    #[cfg(feature = "remote-chamber")]
+    #[test]
+    fn remote_scene_waits_for_admission_and_rejects_invalid_view_inputs() {
+        let dir = tempfile::tempdir().unwrap();
+        let pack = super::super::original::generate(dir.path()).unwrap();
+        let view = verse_world::service::view::View::new(160, 10., 0).unwrap();
+        let camera = verse_world::service::view::Camera {
+            eye: Vec3::new(0., 3., -5.),
+            target: Vec3::Y,
+            fov: 60.,
+        };
+        assert!(
+            remote_scene(&pack, &view, 0.5, camera, Vec3::ZERO, false, Vec3::ZERO)
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            remote_scene(
+                &pack,
+                &view,
+                f32::NAN,
+                camera,
+                Vec3::ZERO,
+                false,
+                Vec3::ZERO
+            )
+            .is_err()
+        );
+        assert!(remote_scene(&pack, &view, 0.5, camera, Vec3::NAN, false, Vec3::ZERO).is_err());
+        let invalid = verse_world::service::view::Camera { fov: 0., ..camera };
+        assert!(remote_scene(&pack, &view, 0.5, invalid, Vec3::ZERO, false, Vec3::ZERO).is_err());
+    }
     #[test]
     fn local_and_read_only_blocker_bounds_share_native_transforms_and_table_proxy_rules() {
         let scene = verse_engine::director::Scene::from_json(include_bytes!(

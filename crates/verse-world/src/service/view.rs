@@ -32,6 +32,12 @@ impl Camera {
         Ok(())
     }
 }
+/// A single admitted presentation sample for all native world render consumers.
+pub struct SceneSample {
+    pub frame: Frame,
+    pub presentation: super::presentation::Presentation,
+    pub combat: crate::visuals::Combat,
+}
 /// Owns presentation history only. Initialize progress from the worker's cursor.
 pub struct View {
     instance: u64,
@@ -263,13 +269,26 @@ impl View {
         Ok(())
     }
     pub fn frame(&self, alpha: f32, camera: Camera) -> Result<Option<Frame>, String> {
+        Ok(self.scene_sample(alpha, camera)?.map(|sample| sample.frame))
+    }
+    pub fn scene_sample(&self, alpha: f32, camera: Camera) -> Result<Option<SceneSample>, String> {
         camera.validate()?;
         let Some(presentation) = self.replica.sample(alpha)? else {
             return Ok(None);
         };
+        let mut combat = self
+            .replica
+            .latest()
+            .unwrap()
+            .combat_visuals(self.instance)?;
+        combat.time = presentation.time;
+        for (player, effect) in combat.players.iter_mut().zip(&presentation.effects) {
+            player.position = effect.position.into();
+        }
         let actors: Vec<_> = presentation
             .actors
-            .into_iter()
+            .iter()
+            .cloned()
             .map(|p| ActorFrame {
                 actor: p.actor,
                 life: Some(p.life.into()),
@@ -312,7 +331,7 @@ impl View {
                 direction: Vec3::from(p.vel).normalize_or(Vec3::NEG_Z),
             })
             .collect();
-        Ok(Some(Frame {
+        let frame = Frame {
             time: presentation.time,
             actors,
             eye: camera.eye,
@@ -321,6 +340,11 @@ impl View {
             yell,
             projectiles,
             shots: Vec::new(),
+        };
+        Ok(Some(SceneSample {
+            frame,
+            presentation,
+            combat,
         }))
     }
 }
@@ -353,6 +377,45 @@ mod tests {
                 text: "Our master Claude has been ensouled!".into(),
             },
         }
+    }
+    #[test]
+    fn scene_sample_keeps_interpolated_body_and_effect_anchors_together() {
+        let mut view = View::new(130, 10., 0).unwrap();
+        let first = response(1);
+        view.push_snapshot(&first).unwrap();
+        let mut next = first.clone();
+        next.tick = 2;
+        let s = state(&mut next);
+        s.presentation.time += 0.1;
+        s.snapshot.elapsed = s.presentation.time;
+        for actor in &mut s.presentation.actors {
+            actor.actor.position.x += 1.;
+        }
+        for effect in &mut s.presentation.effects {
+            effect.position[0] += 1.;
+        }
+        view.push_snapshot(&next).unwrap();
+        let sampled = view.scene_sample(0.5, camera()).unwrap().unwrap();
+        assert_eq!(sampled.frame.time, sampled.combat.time);
+        assert_eq!(sampled.frame.time, sampled.presentation.time);
+        for (player, effect) in sampled
+            .combat
+            .players
+            .iter()
+            .zip(&sampled.presentation.effects)
+        {
+            assert_eq!(player.position, Vec3::from(effect.position));
+        }
+        for (actor, pose) in sampled
+            .frame
+            .actors
+            .iter()
+            .zip(&sampled.presentation.actors)
+        {
+            assert_eq!(actor.actor.position, pose.actor.position);
+            assert_eq!(actor.life, Some(pose.life.into()));
+        }
+        assert!(view.scene_sample(f32::NAN, camera()).is_err());
     }
     #[test]
     fn admitted_poses_bow_flights_and_programmatic_dialogue_project_into_native_frames() {

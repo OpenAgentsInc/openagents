@@ -260,6 +260,8 @@ The [inventory window profile](../../../bench/verse/2026-10-03/inventory-window/
 
 [#10516](https://github.com/OpenAgentsInc/openagents/issues/10516) adds wire version seven active blocker lives and bounds. Extraction omits corpse blockers and preserves authored table proxy metadata. Admission validates box bounds, identities, capacity, and retirement; replicas use the latest bounds without interpolation. Native local and remote values share model transforms without client collision authority. Tests cover extraction/removal, malformed and duplicate bounds, generation retirement, TLS reception, and native transform/table proxy parity. Native mounting, camera/audio, catalog adapters, prediction, persistence, and full acceptance remain.
 
+[#10517](https://github.com/OpenAgentsInc/openagents/issues/10517) assembles admitted remote native scenes from one replica sample. Frames retain lives and animation phases; shield anchors follow interpolated bodies, and prop/blocker transforms, attachments, particles, and dynamic lighting share existing native helpers. Empty views wait for admission and invalid camera/interpolation/lighting inputs are refused. Tests cover sampled frame/effect alignment and local/native assembly parity. Window/transport mounting, scene/pack admission, camera/audio routing, and full service acceptance remain.
+
 ## Reuse inventory
 
 Review baseline: OpenAgents `843c92dd7e`. The entries below were checked against

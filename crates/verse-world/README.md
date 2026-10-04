@@ -182,6 +182,10 @@ Wire version seven also carries active blocker lives and bounds, omits corpse
 blockers, and preserves authored table proxy metadata. Admission rejects malformed
 boxes and retired lives. Native local and remote bounds share model transforms;
 remote bounds use the latest host state without constructing client collision.
+A remote scene sample now supplies the frame, sampled prop/blocker bounds, and
+combat visuals together. Native assembly shares actor/attachment, particle, prop,
+cover, and lighting helpers behind Verse's `remote-chamber` feature; shield
+anchors follow sampled body positions.
 Remote window mounting remains.
 
 Revocation leaves an uncontrolled actor in the world; actor retirement and capacity reclamation remain lifecycle work.

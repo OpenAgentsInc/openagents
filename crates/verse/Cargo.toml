@@ -20,6 +20,7 @@ panels = ["dep:rust-native-desktop", "dep:openagents-chat-app"]
 studio-host = ["dep:openagents-connect"]
 imported-desktop = ["dep:winit", "capture", "native-audio"]
 native-audio = ["dep:cpal"]
+remote-chamber = ["verse-world/service-net"]
 
 [dependencies]
 cpal = { version = "=0.18.2", optional = true }
