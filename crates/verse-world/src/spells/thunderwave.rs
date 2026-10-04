@@ -276,13 +276,13 @@ pub fn scenario() -> crate::playground::Scenario {
             vec![
                 Shot {
                     at: 0.,
-                    eye: Vec3::new(10.5, 4.2, -3.5),
-                    target: Vec3::new(4., 0.8, 3.),
+                    eye: Vec3::new(10.0, 4.6, 6.0),
+                    target: Vec3::new(4.0, 1.9, 1.2),
                 },
                 Shot {
                     at: 4.2,
-                    eye: Vec3::new(10.5, 4.2, -3.5),
-                    target: Vec3::new(4., 0.8, 3.),
+                    eye: Vec3::new(10.0, 4.6, 6.0),
+                    target: Vec3::new(4.0, 1.9, 1.2),
                 },
                 Shot {
                     at: 5.4,

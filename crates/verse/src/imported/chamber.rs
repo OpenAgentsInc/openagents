@@ -43,21 +43,23 @@ pub fn instances(
             .get("adventurer")
             .ok_or("Missing adventurer model")?;
         let drawn = bow_drawn(a.animation);
-        if let Some(anchor) = model
-            .attachments
-            .iter()
-            .find(|x| x.id == if drawn { 2 } else { 3 })
-        {
-            let pose =
-                verse_engine::animation::pose_selected(model, a.animation, a.animation_time)?;
-            let body = Mat4::from_translation(a.actor.position)
-                * Mat4::from_rotation_y(a.actor.yaw)
-                * Mat4::from_scale(Vec3::splat(a.actor.scale))
-                * basis();
+        let pose = verse_engine::animation::pose_selected(model, a.animation, a.animation_time)?;
+        let body = Mat4::from_translation(a.actor.position)
+            * Mat4::from_rotation_y(a.actor.yaw)
+            * Mat4::from_scale(Vec3::splat(a.actor.scale))
+            * basis();
+        let point = |id| {
+            model
+                .attachments
+                .iter()
+                .find(|x| x.id == id)
+                .map(|x| (body * pose[x.bone]).transform_point3(x.position.into()))
+        };
+        if let (Some(palm), Some(back), Some(elbow)) = (point(2), point(3), point(4)) {
             actors.push(Instance {
                 actor: None,
                 model: "bow".into(),
-                transform: bow_pose(body, pose[anchor.bone], anchor.position.into(), drawn),
+                transform: bow_pose(body, palm, back, elbow, drawn),
                 animation: 0.into(),
                 time: frame.time,
                 emission: Vec3::ONE,
@@ -1093,29 +1095,36 @@ pub fn bow_drawn(animation: verse_engine::motion::Selection) -> bool {
     )
 }
 
-/// Places the bow from the adventurer's posed body. `body` is the actor's
-/// model matrix, `bone` the posed skinning matrix of the attachment bone, and
-/// `anchor` the attachment's bind-pose position. The bow follows the anchor's
-/// position but takes its orientation from the body, not the bone, so a drawn
-/// bow stays upright in the hand with its string toward the archer, and a
-/// stowed bow hangs diagonally across the upper back with its string outward.
-pub fn bow_pose(body: Mat4, bone: Mat4, anchor: Vec3, drawn: bool) -> Mat4 {
-    let at = (body * bone).transform_point3(anchor);
+/// Places the bow in world space from the adventurer's posed body and three
+/// posed world points: the left palm, the upper back, and the left elbow.
+///
+/// The bow model is in the pack's Z-up units with its limbs along +Z and its
+/// string on its -Y side. A drawn bow stands upright in the fist with its back
+/// (+Y) pointing along the bow arm, so the string faces the archer. A stowed
+/// bow hangs diagonally against the upper back with its string outward.
+pub fn bow_pose(body: Mat4, palm: Vec3, back: Vec3, elbow: Vec3, drawn: bool) -> Mat4 {
     let (scale, rotation, _) = body.to_scale_rotation_translation();
-    let local = if drawn {
-        Mat4::from_rotation_z(BOW_FACING)
+    // The body's forward is the pack's +X; see `basis`.
+    let forward = flat(rotation * Vec3::X).unwrap_or(Vec3::NEG_Z);
+    let up = Vec3::Y;
+    let (at, facing, limbs) = if drawn {
+        let arm = flat(palm - elbow).unwrap_or(forward);
+        (palm, arm, up)
     } else {
-        Mat4::from_translation(BOW_BACK_OFFSET)
-            * Mat4::from_rotation_z(BOW_FACING)
-            * Mat4::from_rotation_y(BOW_BACK_TILT)
+        let right = forward.cross(up);
+        let limbs = up * BOW_BACK_TILT.cos() + right * BOW_BACK_TILT.sin();
+        (back - forward * BOW_BACK_DEPTH, forward, limbs)
     };
-    Mat4::from_scale_rotation_translation(scale, rotation, at) * local
+    let side = facing.cross(limbs).normalize();
+    let limbs = side.cross(facing).normalize();
+    Mat4::from_translation(at)
+        * Mat4::from_mat3(glam::Mat3::from_cols(side, facing, limbs))
+        * Mat4::from_scale(scale)
 }
-/// Turns the bow model, whose string lies on its -Y side, so the string faces
-/// the archer. In the actor's model space +Y is forward, so a stowed bow keeps
-/// the same turn and its string faces outward from the back.
-const BOW_FACING: f32 = 0.;
-/// From the upper spine to the bow's grip, in the actor's model space.
-const BOW_BACK_OFFSET: Vec3 = Vec3::new(0., -0.2, 0.);
-/// Diagonal of the stowed bow across the back, in radians.
+fn flat(v: Vec3) -> Option<Vec3> {
+    Vec3::new(v.x, 0., v.z).try_normalize()
+}
+/// From the upper spine to the stowed bow's grip, in meters behind the body.
+const BOW_BACK_DEPTH: f32 = 0.14;
+/// How far the stowed bow leans from vertical across the back, in radians.
 const BOW_BACK_TILT: f32 = 0.6;

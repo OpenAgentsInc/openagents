@@ -811,16 +811,31 @@ fn animations(model: &mut Model, path: &Path) -> Result<(), String> {
     model.clips.retain(|c| c.id != 250);
     let global = globals(model);
     let skin = model.skin.as_ref().unwrap();
-    // Attachment 2 is the bow hand; attachment 3 is the upper back, where the
-    // bow rests when it isn't drawn.
-    for (id, name) in [(2, "hand_l"), (3, "spine_03")] {
-        if let Some(bone) = skin.names.iter().position(|n| n == name) {
+    // Bow attachments: 2 is the left palm, between the wrist and the middle
+    // knuckle, so the grip sits inside the closed fist; 3 is the upper back;
+    // 4 is the left elbow, which with the palm gives the bow arm's direction.
+    let basis = Mat4::from_cols_array(&skin.basis);
+    let at = |name: &str| {
+        skin.names.iter().position(|n| n == name).map(|bone| {
+            (
+                bone,
+                basis.transform_point3(global[bone].transform_point3(Vec3::ZERO)),
+            )
+        })
+    };
+    if let (Some((hand, wrist)), Some((_, knuckle))) = (at("hand_l"), at("middle_01_l")) {
+        model.attachments.push(Attachment {
+            id: 2,
+            bone: hand,
+            position: wrist.lerp(knuckle, 0.55).to_array(),
+        });
+    }
+    for (id, name) in [(3, "spine_03"), (4, "lowerarm_l")] {
+        if let Some((bone, position)) = at(name) {
             model.attachments.push(Attachment {
                 id,
                 bone,
-                position: Mat4::from_cols_array(&skin.basis)
-                    .transform_point3(global[bone].transform_point3(Vec3::ZERO))
-                    .to_array(),
+                position: position.to_array(),
             });
         }
     }

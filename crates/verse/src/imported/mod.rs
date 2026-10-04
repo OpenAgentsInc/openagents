@@ -1273,21 +1273,22 @@ impl Renderer {
                 bow_drawn = chamber::bow_drawn(instance.animation);
             }
             if instance.model == "bow" {
-                let drawn = bow_drawn;
-                if let (Some(parent), Some(anchor)) = (
-                    adventurer_pose,
-                    self.pack.models["adventurer"]
-                        .attachments
-                        .iter()
-                        .find(|a| a.id == if drawn { 2 } else { 3 }),
-                ) {
-                    palette.model = chamber::bow_pose(
-                        Mat4::from_cols_array_2d(&parent.model),
-                        Mat4::from_cols_array_2d(&parent.bones[anchor.bone]),
-                        anchor.position.into(),
-                        drawn,
-                    )
-                    .to_cols_array_2d();
+                if let Some(parent) = adventurer_pose {
+                    let body = Mat4::from_cols_array_2d(&parent.model);
+                    let point = |id| {
+                        self.pack.models["adventurer"]
+                            .attachments
+                            .iter()
+                            .find(|a| a.id == id)
+                            .map(|a| {
+                                (body * Mat4::from_cols_array_2d(&parent.bones[a.bone]))
+                                    .transform_point3(a.position.into())
+                            })
+                    };
+                    if let (Some(palm), Some(back), Some(elbow)) = (point(2), point(3), point(4)) {
+                        palette.model = chamber::bow_pose(body, palm, back, elbow, bow_drawn)
+                            .to_cols_array_2d();
+                    }
                 }
             }
             actor_bounds.push(
