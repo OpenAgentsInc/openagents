@@ -1,0 +1,99 @@
+{
+  "schema": "verse.remote.capture.v1",
+  "profile": {
+    "schema": "verse.remote.profile.v5",
+    "client_preparation_ms": {
+      "samples": 0,
+      "omitted": 0,
+      "median": null,
+      "p95": null,
+      "max": null
+    },
+    "render_submission_cpu_ms": {
+      "samples": 0,
+      "omitted": 0,
+      "median": null,
+      "p95": null,
+      "max": null
+    },
+    "frame_interval_ms": {
+      "samples": 0,
+      "omitted": 0,
+      "median": null,
+      "p95": null,
+      "max": null
+    },
+    "renderer_phase_ms": {},
+    "renderer_counts": {},
+    "prediction_correction_meters": {
+      "samples": 0,
+      "omitted": 0,
+      "median": null,
+      "p95": null,
+      "max": null
+    },
+    "intentional_discontinuity_meters": {
+      "samples": 0,
+      "omitted": 0,
+      "median": null,
+      "p95": null,
+      "max": null
+    },
+    "reset_observations": 0,
+    "input_retirement_correction_meters": {
+      "samples": 0,
+      "omitted": 0,
+      "median": null,
+      "p95": null,
+      "max": null
+    },
+    "retirement_trace": [],
+    "omitted_retirements": 0,
+    "correction_trace": [],
+    "omitted_corrections": 0,
+    "binding_to_outcome_ms": {
+      "samples": 0,
+      "omitted": 0,
+      "median": null,
+      "p95": null,
+      "max": null
+    },
+    "limits": [
+      "Render submission and renderer phases measure CPU elapsed time, including driver and presentation waits; GPU execution is not measured.",
+      "Binding-to-outcome includes transport, server processing, and client update delivery; it is not isolated network RTT.",
+      "Samples retain the first 8192 observations per series; omitted observations are counted."
+    ]
+  },
+  "frames": 0,
+  "sampled_frames": 0,
+  "duplicated_frames": 0,
+  "dropped_capture_frames": 0,
+  "encoded_size": [
+    1280,
+    720
+  ],
+  "world_start": null,
+  "world_end": null,
+  "accepted_cast_commands": {},
+  "demo_trace": [],
+  "demo_slot": 0,
+  "pending_commands": 0,
+  "final_status": "",
+  "window_failure": "Chamber update stream stopped",
+  "damage_events": 0,
+  "dialogue_events": 0,
+  "minimum_owned_hp": null,
+  "programmatic_controller": true,
+  "programmatic_respawn": true,
+  "programmatic_movement": true,
+  "respawn_attempts": [],
+  "owned_life_changes": 0,
+  "native_dimensions": [
+    2560,
+    1440
+  ],
+  "capture_wall_seconds": null,
+  "wire_version": 21,
+  "final_inventory": null,
+  "final_state": null
+}

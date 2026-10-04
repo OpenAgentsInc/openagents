@@ -1,0 +1,34 @@
+{
+  "schema": "verse.battle.scale.run.v1",
+  "acceptance": "failed",
+  "workload": {
+    "players": 20,
+    "hostile_npcs": 40,
+    "cultist_health": 20000,
+    "native_clients": 1,
+    "headless_clients": 19,
+    "seconds": 60,
+    "persistent_storage": true,
+    "compiled_revisions": {
+      "host": "0cfd1decc2",
+      "clients": "0cfd1decc2"
+    },
+    "fixture_revision": "0cfd1decc21d72628dc34664ce11625b86360ae4",
+    "limits": [
+      "NPC health is raised in the authored load scene to sustain spell and AI work.",
+      "Headless player connections do not establish rendering performance on their machines.",
+      "Native player and load generator share one host machine."
+    ]
+  },
+  "failure": "Storage backpressure terminates native and headless read streams before meaningful combat.",
+  "limits": [
+    "All 19 headless players receive one snapshot, then observation failure; no sustained NPC occupancy samples are recorded.",
+    "Native capture produces no meaningful video; the empty container is not retained.",
+    "The host completes shutdown without a runtime fatal error and records zero blocked motor advances. This does not establish crowded recovery acceptance.",
+    "Host records 993 commits, 15,459,184 committed bytes, and 66.349 seconds of storage time.",
+    "Storage backlog reaches two copies; 42 requests are refused and 1,133 ticks pause for 37.806 seconds.",
+    "Simulation p99 histogram upper bound is 33.333 ms, maximum 49.961 ms; paused elapsed time is reported separately.",
+    "Persistent state remains only in the scratch directory. Retained evidence excludes credentials and save contents.",
+    "Worker read classes currently treat storage_busy refusals as fatal. Mutating retry safety and FIFO/control fences require investigation before retries are introduced."
+  ]
+}
