@@ -157,34 +157,50 @@ impl Inbox {
             return Err(Code::Unsupported);
         };
         if !Studio::present(&self.store) {
-            return Err(Code::Forbidden);
+            return Err(studio_refused(Code::Forbidden, "This host has no studio."));
         }
         let (seat, step) = {
             let studio = Studio::open(&self.store).map_err(studio_refusal)?;
             if let Some(reference) = studio.answered(key) {
                 return Ok(reference);
             }
-            let seat = studio.seat_of(decision).ok_or(Code::Forbidden)?;
+            let seat = studio.seat_of(decision).ok_or_else(|| {
+                studio_refused(Code::Forbidden, "No studio seat holds this task.")
+            })?;
             let task = Store::open(&self.store)
                 .and_then(|tasks| tasks.show(decision))
-                .map_err(|_| Code::Forbidden)?;
+                .map_err(|_| {
+                    studio_refused(Code::Forbidden, "The task inbox does not hold this task.")
+                })?;
+            let moved = || {
+                studio_refused(
+                    Code::Stale,
+                    "The task no longer asks for this approval. Read its decision again.",
+                )
+            };
             if task.revision != *based_on
                 || interaction::pending(&task) != Some(interaction::Kind::Approval)
             {
-                return Err(Code::Stale);
+                return Err(moved());
             }
             let step = super::local::asked_in(Some(&self.store), decision)
                 .as_deref()
                 .and_then(Step::in_reply)
-                .ok_or(Code::Stale)?;
+                .ok_or_else(moved)?;
             if Studio::offer(&seat, &step).as_deref() != Some(rule.as_str()) {
-                return Err(Code::Stale);
+                return Err(studio_refused(
+                    Code::Stale,
+                    "The rule this approval offers changed. Read its decision again.",
+                ));
             }
             // A full rule book refuses before the step is approved.
             if studio.rules().len() >= super::studio::rules::MAX_RULES
                 && studio.standing_rule(&seat, &step).is_none()
             {
-                return Err(Code::Bounds);
+                return Err(studio_refused(
+                    Code::Bounds,
+                    "The studio holds the most standing rules. Remove one before you add another.",
+                ));
             }
             (seat, step)
         };
@@ -269,6 +285,26 @@ impl Inbox {
         Ok(reference(&receipt))
     }
 
+    /// Mark studio task `task` merged in its coordinator once its merge
+    /// landed, so its plan entry is done, and ask the auto-start policy for
+    /// a pass so the entries that wait on it start. A failure is logged:
+    /// the coordinator's next pass marks the merge itself.
+    fn studio_merged(&self, task: &str) {
+        let marked = super::studio::Studio::open(&self.store)
+            .and_then(|mut studio| studio.note_merged(task));
+        match marked {
+            Ok(true) => {
+                if let Some(autostart) = &self.autostart {
+                    autostart.sweep_soon();
+                }
+            }
+            Ok(false) => {}
+            Err(error) => {
+                eprintln!("openagents host: studio: cannot mark task {task} merged: {error}");
+            }
+        }
+    }
+
     /// Bind `principal` as the approver of the step studio task `task`
     /// asks to approve at revision `based_on`, under the answer's
     /// `command` ID. Returns the approval subject, or `None` when the task
@@ -286,7 +322,9 @@ impl Inbox {
         let record = Store::open(&self.store)
             .map_err(refusal)?
             .show(task)
-            .map_err(|_| Code::Forbidden)?;
+            .map_err(|_| {
+                studio_refused(Code::Forbidden, "The task inbox does not hold this task.")
+            })?;
         let Some(action) = Action::of(&record).filter(|action| action.revision == based_on) else {
             return Ok(None);
         };
@@ -758,16 +796,21 @@ impl Tasks for Inbox {
             head_commit: reviewed.head_commit.clone(),
             head: reviewed.head.clone(),
         };
-        let outcome = if super::studio::git::seat_of(&self.store, task).is_some() {
+        let studio = super::studio::git::seat_of(&self.store, task).is_some();
+        let outcome = if studio {
             super::studio::git::merge(&self.store, task, &reviewed)
         } else {
             super::publish::Publisher::new(&self.store, &super::publish::GhForge)
                 .publish(task, &reviewed)
         };
-        outcome.map_err(|refusal| match refusal {
+        let publication = outcome.map_err(|refusal| match refusal {
             super::publish::Refusal::NoWorktree => Code::Unsupported,
             super::publish::Refusal::Store(_) => Code::Unavailable,
-        })
+        })?;
+        if studio && publication.state == coder_host::access::review::PublishState::Published {
+            self.studio_merged(task);
+        }
+        Ok(publication)
     }
 
     fn local_run(&self, task: &str, thread: &str) -> bool {
@@ -845,7 +888,10 @@ impl Tasks for Inbox {
             let studio = Studio::open(&self.store).map_err(studio_refusal)?;
             let for_task = studio.state().goal(decision).is_none();
             if for_task && !studio.holds_task(decision) {
-                return Err(Code::Forbidden);
+                return Err(studio_refused(
+                    Code::Forbidden,
+                    "No studio goal or task has this decision.",
+                ));
             }
             drop(studio);
             if for_task {
@@ -887,7 +933,12 @@ impl Tasks for Inbox {
                 workspace,
                 lead,
             } => {
-                let root = self.workspaces.get(workspace).ok_or(Code::Forbidden)?;
+                let root = self.workspaces.get(workspace).ok_or_else(|| {
+                    studio_refused(
+                        Code::Forbidden,
+                        &format!("This host admits no workspace labeled `{workspace}`."),
+                    )
+                })?;
                 let goal = NewGoal {
                     text: text.clone(),
                     repository: Repository {
@@ -957,7 +1008,12 @@ impl Tasks for Inbox {
                     matches!(outcome, PlanOutcome::Accepted { released } if !released.is_empty());
                 (decision.clone(), released)
             }
-            _ => return Err(Code::Unsupported),
+            _ => {
+                return Err(studio_refused(
+                    Code::Unsupported,
+                    "The studio does not take this operation.",
+                ));
+            }
         };
         studio
             .record_answer(key, &reference)
@@ -980,7 +1036,7 @@ impl Tasks for Inbox {
         reason: &str,
     ) -> Result<(), Code> {
         if !super::studio::Studio::present(&self.store) {
-            return Err(Code::Forbidden);
+            return Err(studio_refused(Code::Forbidden, "This host has no studio."));
         }
         let mut tasks = Store::open(&self.store).map_err(refusal)?;
         let mut studio = super::studio::Studio::open(&self.store).map_err(studio_refusal)?;
@@ -991,17 +1047,42 @@ impl Tasks for Inbox {
     }
 }
 
-/// The refusal a device receives for a studio coordinator failure.
+/// The refusal a device receives for a studio coordinator failure, with
+/// the coordinator's sentence noted for the host to carry
+/// ([`coder_host::tasks::refuse`]): a goal with no lead seat says so,
+/// rather than arriving as a bare `conflict`.
 fn studio_refusal(error: super::studio::Error) -> Code {
     use super::studio::Error as Studio;
-    match error {
+    let reason = sentence(&error.to_string());
+    let code = match error {
         Studio::Tasks(error) => refusal(error),
         Studio::Invalid(_) => Code::Malformed,
         Studio::UnknownSeat(_) | Studio::UnknownGoal(_) => Code::Forbidden,
         Studio::State(_) => Code::Conflict,
         Studio::LimitExceeded(_) => Code::Bounds,
         Studio::Corrupt(_) => Code::Unavailable,
+    };
+    coder_host::tasks::refuse(code, reason)
+}
+
+/// A studio refusal the host decides itself, with its sentence.
+fn studio_refused(code: Code, reason: &str) -> Code {
+    coder_host::tasks::refuse(code, reason)
+}
+
+/// `text` as a sentence: its first letter in upper case and a closing
+/// period.
+fn sentence(text: &str) -> String {
+    let text = text.trim();
+    let mut chars = text.chars();
+    let mut out: String = match chars.next() {
+        Some(first) => first.to_uppercase().chain(chars).collect(),
+        None => return "The studio refused the request.".to_owned(),
+    };
+    if !out.ends_with(['.', '!', '?']) {
+        out.push('.');
     }
+    out
 }
 
 /// Whether the task's run ended because no admitted provider had capacity.
@@ -1317,5 +1398,68 @@ mod tests {
                 .collect::<Vec<_>>(),
             [phone.as_str()]
         );
+    }
+
+    /// A studio refusal arrives with the coordinator's sentence, not only
+    /// its code: a goal with no lead seat names the missing lead seat.
+    #[test]
+    fn a_studio_refusal_carries_the_coordinators_sentence() {
+        let temp = tempfile::tempdir().unwrap();
+        let inbox = inbox(temp.path());
+        let owner = Principal {
+            device: "d".repeat(64),
+            grant: None,
+            epoch: None,
+        };
+        let always = |_: &Principal| true;
+        let goal = Operation::SubmitGoal {
+            text: "Write CONTRIBUTING.md.".into(),
+            workspace: "checkout".into(),
+            lead: None,
+        };
+        assert_eq!(
+            inbox.studio_intent(&"a".repeat(64), &owner, &goal, &always),
+            Err(Code::Conflict)
+        );
+        let reason = coder_host::tasks::take_reason(Code::Conflict).expect("a sentence");
+        assert!(reason.contains("no lead seat"), "{reason}");
+        assert!(reason.starts_with('T') && reason.ends_with('.'), "{reason}");
+        // The sentence is taken once.
+        assert_eq!(coder_host::tasks::take_reason(Code::Conflict), None);
+
+        // A message to a seat the studio does not have names it.
+        let message = Operation::MessageSeat {
+            seat: Some("nobody".into()),
+            text: "Hello.".into(),
+        };
+        assert_eq!(
+            inbox.studio_intent(&"b".repeat(64), &owner, &message, &always),
+            Err(Code::Forbidden)
+        );
+        let reason = coder_host::tasks::take_reason(Code::Forbidden).expect("a sentence");
+        assert!(reason.contains("`nobody`"), "{reason}");
+
+        // A workspace the host does not admit says so.
+        let elsewhere = Operation::SubmitGoal {
+            text: "Write CONTRIBUTING.md.".into(),
+            workspace: "elsewhere".into(),
+            lead: None,
+        };
+        assert_eq!(
+            inbox.studio_intent(&"c".repeat(64), &owner, &elsewhere, &always),
+            Err(Code::Forbidden)
+        );
+        let reason = coder_host::tasks::take_reason(Code::Forbidden).expect("a sentence");
+        assert!(reason.contains("`elsewhere`"), "{reason}");
+    }
+
+    #[test]
+    fn a_refusal_reads_as_a_sentence() {
+        assert_eq!(
+            sentence("the studio has no lead seat"),
+            "The studio has no lead seat."
+        );
+        assert_eq!(sentence("Already one."), "Already one.");
+        assert_eq!(sentence("  "), "The studio refused the request.");
     }
 }

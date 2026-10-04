@@ -564,3 +564,38 @@ fn a_task_that_changed_nothing_is_done_without_a_merge_decision() {
     assert_eq!(bench.progress("look"), Progress::Done);
     assert_eq!(ids(&released), vec![bench.task_id("next")]);
 }
+
+#[test]
+fn a_merged_change_is_done_and_its_dependent_starts() {
+    let mut bench = Bench::new(
+        false,
+        json!([
+            {"id": "greet", "title": "Change the greeting", "seat": WORKER},
+            {"id": "docs", "title": "Document the greeting", "depends_on": ["greet"], "seat": WORKER},
+        ]),
+    );
+    // The change lands while its task still sits in the queue, as a
+    // `task.publish` of a studio task can make it land.
+    let task = bench.task_id("greet");
+    let worktree = bench.worktree("greet");
+    std::fs::write(worktree.join("greeting.txt"), "Hello, studio\n").unwrap();
+    commit(&worktree, "Change the greeting");
+    assert_eq!(bench.task("greet").status, Status::Queued);
+    let merged = bench.merge("greet");
+    assert_eq!(merged.state, PublishState::Published, "{}", merged.note);
+    assert_eq!(bench.entry("docs").slot.state, SlotState::Held);
+
+    // The host marks it merged: the entry is done whatever its task does
+    // next, and the next pass starts its dependent.
+    assert!(bench.studio.note_merged(&task).unwrap());
+    assert!(!bench.studio.note_merged(&task).unwrap(), "marked once");
+    assert_eq!(bench.flow("greet").stage, Stage::Merged);
+    assert_eq!(bench.progress("greet"), Progress::Done);
+    let released = bench.reconcile();
+    assert_eq!(ids(&released), vec![bench.task_id("docs")]);
+    assert_eq!(bench.flow("greet").stage, Stage::Merged);
+    assert_eq!(bench.progress("greet"), Progress::Done);
+
+    // A task no plan entry holds changes nothing.
+    assert!(!bench.studio.note_merged(&"0".repeat(64)).unwrap());
+}

@@ -486,6 +486,35 @@ pub trait Tasks: Send + Sync {
     }
 }
 
+std::thread_local! {
+    /// The sentence a task owner gave for the refusal it is returning on
+    /// this thread, with that refusal's code.
+    static REASON: std::cell::RefCell<Option<(Code, String)>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Return `code` after noting `reason`, a plain sentence that says why, so
+/// the host can carry it with the refusal where the transport has room for
+/// one (the control socket's `message`). A task owner calls it on the
+/// thread that answers the operation; the host takes the sentence with
+/// [`take_reason`] when the call returns `code`. A NIP-HOST reply over a
+/// relay carries only the code.
+pub fn refuse(code: Code, reason: impl Into<String>) -> Code {
+    let reason = reason.into();
+    REASON.with(|slot| *slot.borrow_mut() = Some((code, reason)));
+    code
+}
+
+/// Take the sentence noted on this thread for a refusal with `code`. A
+/// sentence noted for another code is dropped, as is any sentence once
+/// taken.
+#[must_use]
+pub fn take_reason(code: Code) -> Option<String> {
+    REASON
+        .with(|slot| slot.borrow_mut().take())
+        .and_then(|(noted, reason)| (noted == code).then_some(reason))
+}
+
 /// The revisions a device reviewed: the identity a publication carries.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Reviewed {

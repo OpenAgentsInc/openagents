@@ -262,7 +262,8 @@ pub fn review_in_reply(reply: &str) -> Option<ReviewVerdict> {
 /// change is still in its checks or the lead's review is
 /// [`Progress::Review`], one that waits on the person is
 /// [`Progress::Merge`], a rejected one is cancelled, and only a merged or
-/// unchanged one is done.
+/// unchanged one is done. A merged change is done whatever its task does
+/// after: what landed is what its dependents build on.
 #[must_use]
 pub fn entry_progress(entry: &PlanEntry, tasks: &dyn Inbox) -> Progress {
     let raw = slot_progress(&entry.slot, tasks);
@@ -273,6 +274,9 @@ pub fn entry_progress(entry: &PlanEntry, tasks: &dyn Inbox) -> Progress {
     else {
         return raw;
     };
+    if flow.stage == Stage::Merged && entry.slot.state == SlotState::Submitted {
+        return Progress::Done;
+    }
     if raw != Progress::Done {
         return if flow.stage == Stage::Rejected && raw.is_final() {
             Progress::Cancelled
@@ -424,6 +428,50 @@ impl Studio {
             self.save()?;
         }
         Ok(())
+    }
+
+    /// Mark the change of studio task `task` merged once the person's
+    /// merge landed: its plan entry is done, so the entries that wait on it
+    /// start at the next pass ([`Studio::reconcile`]), and its flow sends
+    /// nothing more to its worker. Returns whether this changed the studio;
+    /// a task no plan entry holds changes nothing.
+    ///
+    /// # Errors
+    /// The studio document cannot be written.
+    pub fn note_merged(&mut self, task: &str) -> Result<bool, Error> {
+        let Some((index, entry)) = self
+            .state
+            .goals
+            .iter()
+            .enumerate()
+            .find_map(|(index, goal)| {
+                goal.plan
+                    .iter()
+                    .position(|entry| {
+                        entry.slot.task_id == task && entry.slot.state == SlotState::Submitted
+                    })
+                    .map(|entry| (index, entry))
+            })
+        else {
+            return Ok(false);
+        };
+        let item = &mut self.state.goals[index].plan[entry];
+        // A flow left from an earlier attempt of a retried entry is not
+        // this task's.
+        if item.flow.as_ref().is_some_and(|flow| flow.task_id != task) {
+            item.flow = None;
+        }
+        let flow = self.flow_mut(index, entry);
+        if flow.stage == Stage::Merged {
+            return Ok(false);
+        }
+        flow.stage = Stage::Merged;
+        flow.review = None;
+        flow.conflict = None;
+        flow.command = None;
+        forget_conflict(&self.dir, task);
+        self.save()?;
+        Ok(true)
     }
 
     fn flow_mut(&mut self, index: usize, entry: usize) -> &mut Flow {

@@ -433,14 +433,22 @@ pub(super) async fn call(shared: Arc<Shared>, request: String, operation: Operat
     let result = tokio::task::spawn_blocking(move || {
         let mut dispatcher = Dispatcher::new(worker.clone());
         let result = task(&worker, request, operation, &mut dispatcher);
-        (result, dispatcher.changed)
+        (result, dispatcher.changed, dispatcher.refusal)
     })
     .await;
-    let Ok((result, changed)) = result else {
+    let Ok((mut result, changed, refusal)) = result else {
         return super::refused("unavailable", "Coder could not answer the task operation");
     };
     for task in &changed {
         crate::serve::summarize(&shared, task).await;
+    }
+    // A studio refusal carries the coordinator's sentence, not only its
+    // code.
+    if let (Err(error), Some(refusal)) = (&mut result, refusal)
+        && error.code == refusal.code
+        && let Some(reason) = refusal.reason
+    {
+        error.message = reason;
     }
     result
         .map(|outcome| Reply::Task { outcome })

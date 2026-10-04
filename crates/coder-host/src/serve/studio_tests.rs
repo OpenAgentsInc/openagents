@@ -1,5 +1,6 @@
-//! The host's merge decision over a task owner: the stale refusal, each
-//! verdict's effect, and a retried merge after it published.
+//! The host's merge decision over a task owner: the stale refusal, the
+//! refusal of an unfinished task, each verdict's effect, a retried merge
+//! after it published, and the owner's sentence carried with a refusal.
 use std::sync::Mutex;
 
 use coder_access::Code;
@@ -25,6 +26,10 @@ struct Owner {
     publication: Mutex<Option<Publication>>,
     effects: Mutex<Vec<String>>,
     commands: Mutex<Vec<TaskCommand>>,
+    /// The task's phase; `None` is completed.
+    phase: Mutex<Option<Phase>>,
+    /// A refusal the landing path answers, with its sentence.
+    refuse: Mutex<Option<(Code, &'static str)>>,
 }
 
 impl Owner {
@@ -35,6 +40,10 @@ impl Owner {
     }
     fn effects(&self) -> Vec<String> {
         self.effects.lock().unwrap().clone()
+    }
+    fn in_phase(self, phase: Phase) -> Self {
+        *self.phase.lock().unwrap() = Some(phase);
+        self
     }
 }
 
@@ -52,7 +61,7 @@ impl Tasks for Owner {
         vec![TaskRef {
             task: TASK.into(),
             revision: 7,
-            phase: Phase::Completed,
+            phase: self.phase.lock().unwrap().unwrap_or(Phase::Completed),
         }]
     }
     fn review(&self, task: &str) -> Result<TaskReview, Code> {
@@ -77,6 +86,9 @@ impl Tasks for Owner {
         task: &str,
         reviewed: &Reviewed,
     ) -> Result<Publication, Code> {
+        if let Some((code, reason)) = *self.refuse.lock().unwrap() {
+            return Err(crate::tasks::refuse(code, reason));
+        }
         self.effects.lock().unwrap().push("publish".into());
         let publication = Publication {
             operation: "e".repeat(64),
@@ -163,7 +175,8 @@ fn a_decision_on_a_moved_worktree_is_stale_and_does_nothing() {
             &always,
         )
         .unwrap_err();
-        assert_eq!(refused, Code::Stale, "{verdict:?}");
+        assert_eq!(refused.code, Code::Stale, "{verdict:?}");
+        assert!(refused.reason.is_some(), "a stale refusal says why");
     }
     assert!(owner.effects().is_empty());
 }
@@ -201,7 +214,8 @@ fn a_merge_publishes_the_reviewed_revisions_once_and_a_retry_answers_it_again() 
             &decision(Verdict::RequestChanges, &rev('b'), "More tests."),
             &always,
         )
-        .unwrap_err(),
+        .unwrap_err()
+        .code,
         Code::Stale
     );
     assert_eq!(owner.effects(), ["publish", "publish"]);
@@ -241,6 +255,92 @@ fn request_changes_is_the_same_seats_next_turn_and_reject_is_recorded() {
             format!("reject {TASK} {} Out of scope.", rev('b'))
         ]
     );
+}
+
+#[test]
+fn a_merge_or_request_for_changes_of_an_unfinished_task_is_refused_with_a_reason() {
+    for phase in [
+        Phase::Queued,
+        Phase::Running,
+        Phase::Waiting,
+        Phase::Failed,
+        Phase::Cancelled,
+    ] {
+        let owner = Owner::at(&rev('b')).in_phase(phase);
+        for (verdict, text) in [
+            (Verdict::Merge, ""),
+            (Verdict::RequestChanges, "Name the flag."),
+        ] {
+            let refused = studio_merge(
+                &owner,
+                &principal(),
+                &decision(verdict, &rev('b'), text),
+                &always,
+            )
+            .unwrap_err();
+            assert_eq!(refused.code, Code::Conflict, "{phase:?} {verdict:?}");
+            let reason = refused.reason.expect("the refusal says why");
+            assert!(
+                reason.contains("waiting for review or done"),
+                "{phase:?}: {reason}"
+            );
+        }
+        // Nothing landed and no turn was sent.
+        assert!(owner.effects().is_empty(), "{phase:?}");
+    }
+    let queued = Owner::at(&rev('b')).in_phase(Phase::Queued);
+    let refused = studio_merge(
+        &queued,
+        &principal(),
+        &decision(Verdict::Merge, &rev('b'), ""),
+        &always,
+    )
+    .unwrap_err();
+    assert!(
+        refused
+            .reason
+            .unwrap()
+            .contains("is queued and has not run"),
+        "the sentence says where the task is"
+    );
+    // **Reject** still closes an unfinished task.
+    let (merged, _) = studio_merge(
+        &queued,
+        &principal(),
+        &decision(Verdict::Reject, &rev('b'), "Not needed."),
+        &always,
+    )
+    .unwrap();
+    assert_eq!(merged.verdict, Verdict::Reject);
+    assert_eq!(
+        queued.effects(),
+        [format!("reject {TASK} {} Not needed.", rev('b'))]
+    );
+}
+
+#[test]
+fn an_owner_refusal_carries_the_owners_sentence() {
+    let owner = Owner::at(&rev('b'));
+    *owner.refuse.lock().unwrap() = Some((
+        Code::Conflict,
+        "The studio's checkout has uncommitted changes.",
+    ));
+    let refused = studio_merge(
+        &owner,
+        &principal(),
+        &decision(Verdict::Merge, &rev('b'), ""),
+        &always,
+    )
+    .unwrap_err();
+    assert_eq!(refused.code, Code::Conflict);
+    assert_eq!(
+        refused.reason.as_deref(),
+        Some("The studio's checkout has uncommitted changes.")
+    );
+    // A sentence noted for another code is not carried.
+    let _ = crate::tasks::refuse(Code::Bounds, "Too many.");
+    assert_eq!(crate::tasks::take_reason(Code::Conflict), None);
+    assert_eq!(crate::tasks::take_reason(Code::Bounds), None, "taken once");
 }
 
 #[test]

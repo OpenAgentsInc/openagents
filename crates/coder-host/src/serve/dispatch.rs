@@ -13,6 +13,7 @@ use coder_access::protocol::{
 };
 use coder_access::studio::{MergeDecision, Merged, Snapshot, Stream, Update, Verdict};
 use coder_pty::wire::{Launch, Open, Reason, Size, Value};
+use nostr::activity_summary::Phase;
 
 use super::Shared;
 use crate::tasks::TaskRef;
@@ -27,6 +28,36 @@ pub(crate) struct Dispatcher {
     spends: crate::spend::Book,
     /// Asks for the owner's wallet, beside the access store.
     links: crate::wallet_link::Book,
+    /// The last studio refusal and the sentence the coordinator gave for
+    /// it, for a transport that carries one (the control socket).
+    pub(crate) refusal: Option<Refusal>,
+}
+
+/// A refusal's code and, when the task owner or the host gave one, the
+/// plain sentence that says why.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Refusal {
+    pub(crate) code: Code,
+    pub(crate) reason: Option<String>,
+}
+
+impl Refusal {
+    fn because(code: Code, reason: impl Into<String>) -> Self {
+        Self {
+            code,
+            reason: Some(reason.into()),
+        }
+    }
+}
+
+/// A task owner's refusal, with the sentence it noted on this thread.
+impl From<Code> for Refusal {
+    fn from(code: Code) -> Self {
+        Self {
+            code,
+            reason: crate::tasks::take_reason(code),
+        }
+    }
 }
 
 impl Dispatcher {
@@ -38,7 +69,17 @@ impl Dispatcher {
             changed: Vec::new(),
             spends,
             links,
+            refusal: None,
         }
+    }
+
+    /// Keep `result`'s refusal, with its sentence, and answer its code.
+    fn noted<T>(&mut self, result: Result<T, Refusal>) -> Result<T, Code> {
+        result.map_err(|refusal| {
+            let code = refusal.code;
+            self.refusal = Some(refusal);
+            code
+        })
     }
 
     fn task(&mut self, op: &Operation, result: Result<TaskRef, Code>) -> Result<Receipt, Code> {
@@ -75,17 +116,22 @@ pub(crate) fn studio_stream() -> Stream {
 /// revisions a device reviewed. The task owner reads the review again
 /// first: a worktree that moved refuses as `stale`, unless a merge of
 /// exactly these revisions already published, which a retry answers
-/// again. **Merge** goes to the landing path (`task.publish`), which for a
-/// studio task merges into its checkout's branch and pushes nothing,
-/// **Request changes** is the task's next turn through the durable
-/// command journal under the device's command ID, and **Reject** is the
-/// owner's record. Returns the record and the task a follow-up changed.
+/// again. **Merge** and **Request changes** need a task whose turn ended
+/// with its change waiting for review, or done; any other task refuses as
+/// `conflict`, with a sentence that says where it is. **Merge** goes to
+/// the landing path (`task.publish`), which for a studio task merges into
+/// its checkout's branch and pushes nothing, **Request changes** is the
+/// task's next turn through the durable command journal under the
+/// device's command ID, and **Reject** is the owner's record. Returns the
+/// record and the task a follow-up changed.
 pub(crate) fn studio_merge(
     tasks: &dyn crate::tasks::Tasks,
     principal: &crate::tasks::Principal,
     decision: &MergeDecision,
     standing: crate::tasks::Standing<'_>,
-) -> Result<(Merged, Option<TaskRef>), Code> {
+) -> Result<(Merged, Option<TaskRef>), Refusal> {
+    // Forget a sentence an earlier call left on this thread.
+    let _ = crate::tasks::take_reason(Code::Unavailable);
     let review = tasks.review(&decision.task)?;
     let same = |base: &str, head_commit: &str, head: &str| {
         base == decision.base && head_commit == decision.head_commit && head == decision.head
@@ -96,7 +142,21 @@ pub(crate) fn studio_merge(
             .as_ref()
             .is_some_and(|p| same(&p.base, &p.head_commit, &p.head));
     if !published && !same(&review.base, &review.head_commit, &review.head) {
-        return Err(Code::Stale);
+        return Err(Refusal::because(
+            Code::Stale,
+            "The task's worktree changed since this review. Read the review again before you \
+             decide.",
+        ));
+    }
+    let current = tasks
+        .current()
+        .into_iter()
+        .find(|task| task.task == decision.task);
+    if !published
+        && decision.verdict != Verdict::Reject
+        && let Some(why) = not_ready(current.as_ref().map(|task| task.phase))
+    {
+        return Err(Refusal::because(Code::Conflict, why));
     }
     let reviewed = crate::tasks::Reviewed {
         base: decision.base.clone(),
@@ -117,16 +177,11 @@ pub(crate) fn studio_merge(
             merged.publication = Some(tasks.publish(principal, &decision.task, &reviewed)?);
         }
         Verdict::RequestChanges => {
-            let based_on = tasks
-                .current()
-                .into_iter()
-                .find(|task| task.task == decision.task)
-                .map_or(0, |task| task.revision);
             let command = TaskCommand {
                 command: decision.command.clone(),
                 task: decision.task.clone(),
                 action: CommandAction::Send,
-                based_on,
+                based_on: current.map_or(0, |task| task.revision),
                 text: decision.text.clone(),
                 emulate: false,
                 issued_at: decision.issued_at,
@@ -138,6 +193,25 @@ pub(crate) fn studio_merge(
         }
     }
     Ok((merged, changed))
+}
+
+/// Why a task in `phase` cannot be merged or sent back for changes, as a
+/// sentence; `None` when its turn ended and its change waits for review,
+/// or it is done. A task the owner does not list is left to the owner.
+fn not_ready(phase: Option<Phase>) -> Option<String> {
+    let place = match phase? {
+        Phase::Completed => return None,
+        Phase::Queued => "is queued and has not run yet",
+        Phase::Running => "is still running",
+        Phase::Waiting => "is waiting for an answer to its question or approval",
+        Phase::Failed => "failed",
+        Phase::Cancelled => "was cancelled",
+        Phase::Unknown => "has not finished",
+    };
+    Some(format!(
+        "This task {place}, so it has no finished change to merge or send back. Merge and \
+         Request changes need a task whose change is waiting for review or done."
+    ))
 }
 
 /// A single-use `coder-pair:` invitation to this host's read-only Coder
@@ -276,8 +350,8 @@ impl Dispatch for Dispatcher {
         let principal = principal(device, grant);
         let authority = self.shared.authority.clone();
         let standing = move |other: &crate::tasks::Principal| super::standing(&authority, other);
-        let (merged, changed) =
-            studio_merge(self.shared.tasks.as_ref(), &principal, decision, &standing)?;
+        let result = studio_merge(self.shared.tasks.as_ref(), &principal, decision, &standing);
+        let (merged, changed) = self.noted(result)?;
         self.changed.extend(changed);
         Ok(merged)
     }
@@ -341,11 +415,15 @@ impl Dispatch for Dispatcher {
                 let authority = self.shared.authority.clone();
                 let standing =
                     move |other: &crate::tasks::Principal| super::standing(&authority, other);
-                let reference = self
+                // Forget a sentence an earlier call left on this thread.
+                let _ = crate::tasks::take_reason(Code::Unavailable);
+                let result = self
                     .shared
                     .tasks
                     .clone()
-                    .studio_intent(request, &principal, op, &standing)?;
+                    .studio_intent(request, &principal, op, &standing)
+                    .map_err(Refusal::from);
+                let reference = self.noted(result)?;
                 Ok(Receipt {
                     operation: op.name().into(),
                     reference,
