@@ -278,3 +278,10 @@ the image serves gzip copies of the build (the module drops from 11.3 MB to
 7.7 MB), and the page retries on WebGL2 when a browser's WebGPU rejects the
 physical renderer. Both paths rendered the glade on the `new` tag before
 traffic moved. Rollback: `--to-revisions coder-web-98ddaac99d=100`.
+
+## 2026-10-04: coder-web-4b966fdc06
+
+Everglade's player is the ritual chamber's ranger with no companion
+(#10534, 4b966fdc06), from the re-pinned pack `3680adf2…7297`. The `new`
+tag served every page and the pack at 200 and rendered the ranger before
+traffic moved. Rollback: `--to-revisions coder-web-10535d62b5=100`.
